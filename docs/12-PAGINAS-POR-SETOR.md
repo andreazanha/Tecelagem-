@@ -87,3 +87,13 @@ Preciso das **etapas internas reais de cada setor** (as colunas dentro de cada p
 - **Costura**: separa por *costureira* (já proposto) — confirma?
 - **Revisão**: por *revisor* + *aprovado/devolvido* — confirma?
 - Algum setor tem etapa interna que eu não previ?
+
+## 3.2 Fiscal — fluxo aprovado ✅
+
+A **nota fiscal é emitida no ERP**. A página Fiscal só organiza quem precisa emitir. Colunas:
+
+1. **Pedidos para emitir** — pedidos aguardando NF
+2. **Cotando frete** — fiscal cota o frete usando o formulário da Expedição
+3. **NF emitida** — ao marcar emitida, o pedido vai para **Transporte**
+
+**Requisito da Expedição:** gerar um **formulário de frete** com **medidas, peso e quantidade de volumes**, usado pelo Fiscal para **cotar o frete**.
