@@ -10,10 +10,12 @@ export function PedidoDetalhe() {
   const { id } = useParams();
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [originais, setOriginais] = useState<{ nome: string; url: string }[]>([]);
 
   useEffect(() => {
     if (!id) return;
     api.obterPedido(id).then(setPedido).catch((e) => setErro(e.message));
+    api.listarOriginais(id).then((r) => setOriginais(r.arquivos)).catch(() => {});
   }, [id]);
 
   if (erro) return <div className="card pad erro">Erro: {erro}</div>;
@@ -50,17 +52,26 @@ export function PedidoDetalhe() {
           )}
           <Info label="Data do pedido" value={pedido.data_pedido || "—"} />
           <Info label="Data de entrega" value={pedido.data_entrega || "—"} />
-          {pedido.pdf_key && (
-            <Info
-              label="PDF original"
-              value={
-                <a className="link" href={`/api/pedidos/${pedido.id}/pdf`} target="_blank">
-                  📄 abrir
-                </a>
-              }
-            />
-          )}
         </div>
+        {pedido.observacao && (
+          <div style={{ marginTop: 14, color: "#c0392b", fontWeight: 700 }}>
+            ⚠️ {pedido.observacao}
+          </div>
+        )}
+        {originais.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div className="info-label" style={{ marginBottom: 6 }}>
+              PDFs originais ({originais.length})
+            </div>
+            <div className="pdf-list" style={{ marginTop: 0 }}>
+              {originais.map((o) => (
+                <a key={o.nome} className="btn btn-soft" href={o.url} target="_blank" rel="noreferrer">
+                  📄 {o.nome}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card">

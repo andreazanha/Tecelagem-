@@ -11,10 +11,9 @@ export function NovoPedido() {
   const [clientes, setClientes] = useState<string[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [pdf, setPdf] = useState<File | null>(null);
+  const [arquivos, setArquivos] = useState<{ file: File; url: string }[]>([]);
   const [lendo, setLendo] = useState(false);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "warn"; msg: string } | null>(null);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   const [form, setForm] = useState<NovoPedidoBody>({
     numero_erp: "",
@@ -73,11 +72,11 @@ export function NovoPedido() {
         itens,
       };
       const { id } = await api.criarPedido(body);
-      if (pdf) {
+      if (arquivos.length) {
         try {
-          await api.enviarPdf(id, pdf);
+          await api.enviarPdfs(id, arquivos.map((a) => a.file));
         } catch {
-          /* PDF é opcional; segue mesmo se falhar */
+          /* PDFs são opcionais; segue mesmo se falhar */
         }
       }
       nav(`/pedidos/${id}`);
@@ -87,56 +86,74 @@ export function NovoPedido() {
     }
   }
 
-  async function aoSelecionarPdf(file: File | null) {
-    setPdf(file);
+  // Sobe um OU VÁRIOS PDFs: lê cada um, JUNTA os itens (consolidação) e acumula os números
+  // dos pedidos. Vários pedidos pequenos viram uma OP grande.
+  async function aoAdicionarPdfs(files: File[]) {
+    if (files.length === 0) return;
     setAviso(null);
-    setPdfUrl((old) => {
-      if (old) URL.revokeObjectURL(old);
-      return file ? URL.createObjectURL(file) : null;
-    });
-    if (!file) return;
+    const novos = files.map((file) => ({ file, url: URL.createObjectURL(file) }));
+    setArquivos((prev) => [...prev, ...novos]);
     setLendo(true);
-    try {
-      const s = await api.importarPdf(file);
-      setForm((f) => {
-        const itens =
-          s.itens && s.itens.length
-            ? s.itens.map((it) => ({
-                produto: it.produto || "",
-                ref: it.ref ?? "",
-                cor_grade: it.cor_grade ?? "",
-                tamanho: it.tamanho ?? "",
-                qtd: Number(it.qtd) || 0,
-                parte: it.parte || "unico",
-              }))
-            : f.itens;
-        return {
-          ...f,
-          numero_erp: s.numero_erp ?? f.numero_erp,
-          cliente_nome: s.cliente_nome ?? f.cliente_nome,
-          vendedor: s.vendedor ?? f.vendedor,
-          data_pedido: s.data_pedido ?? f.data_pedido,
-          data_entrega: s.data_entrega ?? f.data_entrega,
-          itens,
-        };
-      });
-      if (s.metodo === "nenhum" || (!s.cliente_nome && s.itens.length === 0)) {
-        setAviso({
-          tipo: "warn",
-          msg: "Não consegui ler os dados automaticamente deste PDF. Preencha manualmente — o arquivo será anexado.",
+    let lidos = 0;
+    let falhas = 0;
+    for (const { file } of novos) {
+      try {
+        const s = await api.importarPdf(file);
+        const add = (s.itens || []).map((it) => ({
+          produto: it.produto || "",
+          ref: it.ref ?? "",
+          cor_grade: it.cor_grade ?? "",
+          tamanho: it.tamanho ?? "",
+          qtd: Number(it.qtd) || 0,
+          parte: it.parte || "unico",
+        }));
+        if (add.length || s.cliente_nome) lidos++;
+        else falhas++;
+        setForm((f) => {
+          const base = f.itens.filter((it) => it.produto.trim());
+          const nums = (f.numero_erp || "")
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean);
+          if (s.numero_erp && !nums.includes(s.numero_erp)) nums.push(s.numero_erp);
+          const itens = [...base, ...add];
+          return {
+            ...f,
+            numero_erp: nums.join(", "),
+            cliente_nome: f.cliente_nome || s.cliente_nome || "",
+            vendedor: f.vendedor || s.vendedor || "",
+            data_pedido: f.data_pedido || s.data_pedido || "",
+            data_entrega: f.data_entrega || s.data_entrega || "",
+            itens: itens.length ? itens : [linhaVazia()],
+          };
         });
-      } else {
-        const via = s.metodo === "ocr" ? "OCR" : "texto do PDF";
-        setAviso({
-          tipo: "ok",
-          msg: `PDF lido por ${via} (${s.confianca}% de confiança). Confira os campos antes de salvar.`,
-        });
+      } catch {
+        falhas++;
       }
-    } catch (e) {
-      setAviso({ tipo: "warn", msg: "Falha ao ler o PDF: " + (e as Error).message });
-    } finally {
-      setLendo(false);
     }
+    setLendo(false);
+    if (lidos > 0) {
+      setAviso({
+        tipo: "ok",
+        msg:
+          `${lidos} PDF(s) lido(s) e itens juntados na OP.` +
+          (falhas ? ` ${falhas} não foram lidos automaticamente (anexados mesmo assim).` : "") +
+          " Confira os itens antes de salvar.",
+      });
+    } else {
+      setAviso({
+        tipo: "warn",
+        msg: "Não consegui ler os dados automaticamente. Preencha manualmente — os arquivos serão anexados.",
+      });
+    }
+  }
+
+  function removerArquivo(i: number) {
+    setArquivos((prev) => {
+      const a = prev[i];
+      if (a) URL.revokeObjectURL(a.url);
+      return prev.filter((_, idx) => idx !== i);
+    });
   }
 
   const totalPecas = form.itens.reduce((s, it) => s + (Number(it.qtd) || 0), 0);
@@ -161,43 +178,70 @@ export function NovoPedido() {
       {erro && <div className="card pad erro">{erro}</div>}
 
       <div className="grid-2">
-        {/* Importação do PDF */}
+        {/* Importação dos PDFs (vários → uma OP) */}
         <div className="card pad">
           <h2>Importar do ERP (PDF)</h2>
           <p className="muted">
-            Anexe o PDF do pedido — ele é <strong>preservado</strong>. A leitura automática (OCR)
-            entra numa próxima etapa; por ora os dados são conferidos abaixo.
+            Anexe <strong>um ou vários</strong> PDFs — eles são <strong>preservados</strong>. Vários
+            pedidos pequenos são <strong>juntados numa OP só</strong> (itens consolidados; os números
+            entram no cabeçalho do PDF gerado).
           </p>
           <label className="dropzone">
             <input
               type="file"
               accept="application/pdf"
-              onChange={(e) => aoSelecionarPdf(e.target.files?.[0] ?? null)}
+              multiple
+              onChange={(e) => {
+                aoAdicionarPdfs(Array.from(e.target.files ?? []));
+                e.currentTarget.value = "";
+              }}
             />
             {lendo ? (
-              <span>⏳ Lendo o PDF…</span>
-            ) : pdf ? (
-              <span>📄 {pdf.name}</span>
+              <span>⏳ Lendo os PDFs…</span>
             ) : (
-              <span className="muted">Clique para selecionar o PDF (lê e preenche automático)</span>
+              <span className="muted">
+                Clique para selecionar PDF(s) — pode escolher vários de uma vez
+              </span>
             )}
           </label>
-          {pdf && pdfUrl && (
-            <div className="row-gap" style={{ marginTop: 10 }}>
-              <a className="btn btn-primary" href={pdfUrl} target="_blank" rel="noreferrer">
-                👁 Visualizar PDF
-              </a>
-              <label className="btn" style={{ cursor: "pointer" }}>
-                ↻ Trocar arquivo
+
+          {arquivos.length > 0 && (
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              {arquivos.map((a, i) => (
+                <div
+                  key={i}
+                  className="row-gap"
+                  style={{ alignItems: "center", justifyContent: "space-between" }}
+                >
+                  <span className="strong" style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    📄 {a.file.name}
+                  </span>
+                  <span className="row-gap">
+                    <a className="btn btn-soft" href={a.url} target="_blank" rel="noreferrer">
+                      👁 Ver
+                    </a>
+                    <button type="button" className="icon-btn" title="Remover" onClick={() => removerArquivo(i)}>
+                      ✕
+                    </button>
+                  </span>
+                </div>
+              ))}
+              <label className="btn btn-soft" style={{ cursor: "pointer", alignSelf: "flex-start" }}>
+                ＋ Adicionar mais PDFs
                 <input
                   type="file"
                   accept="application/pdf"
+                  multiple
                   style={{ display: "none" }}
-                  onChange={(e) => aoSelecionarPdf(e.target.files?.[0] ?? null)}
+                  onChange={(e) => {
+                    aoAdicionarPdfs(Array.from(e.target.files ?? []));
+                    e.currentTarget.value = "";
+                  }}
                 />
               </label>
             </div>
           )}
+
           {aviso && (
             <div className={"aviso " + (aviso.tipo === "ok" ? "aviso-ok" : "aviso-warn")}>
               {aviso.tipo === "ok" ? "✅ " : "⚠️ "}

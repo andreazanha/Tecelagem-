@@ -88,13 +88,17 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => j<{ id: string }>(r)),
-  enviarPdf: (id: string, file: File) => {
+  enviarPdfs: (id: string, files: File[]) => {
     const fd = new FormData();
-    fd.append("file", file);
+    for (const f of files) fd.append("file", f);
     return fetch(`/api/pedidos/${id}/pdf`, { method: "POST", body: fd }).then((r) =>
-      j<{ ok: boolean; pdf_key: string }>(r)
+      j<{ ok: boolean; total: number }>(r)
     );
   },
+  listarOriginais: (id: string) =>
+    fetch(`/api/pedidos/${id}/originais`).then((r) =>
+      j<{ arquivos: { nome: string; url: string }[] }>(r)
+    ),
   listarClientes: () => fetch("/api/clientes").then((r) => j<{ id: string; nome: string }[]>(r)),
   listarModelos: () => fetch("/api/modelos").then((r) => j<Modelo[]>(r)),
   salvarModelo: (m: Modelo, de?: string) =>

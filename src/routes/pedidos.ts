@@ -182,7 +182,7 @@ pedidos.post("/", async (c) => {
   return c.json({ id }, 201);
 });
 
-// UPLOAD do PDF original (preserva no R2)
+// UPLOAD dos PDFs originais (um ou vários — preserva todos no R2 sob orig/)
 pedidos.post("/:id/pdf", async (c) => {
   const id = c.req.param("id");
   const exists = await c.env.DB.prepare("SELECT id FROM pedidos WHERE id = ?")
@@ -190,16 +190,47 @@ pedidos.post("/:id/pdf", async (c) => {
     .first();
   if (!exists) return c.json({ error: "pedido não encontrado" }, 404);
 
-  const body = await c.req.parseBody();
-  const file = body["file"];
-  if (!(file instanceof File)) return c.json({ error: "arquivo ausente" }, 400);
+  const body = await c.req.parseBody({ all: true });
+  const raw = body["file"];
+  const files = (Array.isArray(raw) ? raw : [raw]).filter((f): f is File => f instanceof File);
+  if (files.length === 0) return c.json({ error: "arquivo ausente" }, 400);
 
-  const key = `pedidos/${id}/${file.name}`;
-  await c.env.BUCKET.put(key, await file.arrayBuffer(), {
-    httpMetadata: { contentType: file.type || "application/pdf" },
+  const keys: string[] = [];
+  for (const file of files) {
+    const key = `pedidos/${id}/orig/${file.name}`;
+    await c.env.BUCKET.put(key, await file.arrayBuffer(), {
+      httpMetadata: { contentType: file.type || "application/pdf" },
+    });
+    keys.push(key);
+  }
+  // pdf_key guarda o primeiro (compatibilidade); a lista completa vem de GET /originais
+  await c.env.DB.prepare("UPDATE pedidos SET pdf_key = ? WHERE id = ?").bind(keys[0], id).run();
+  return c.json({ ok: true, total: files.length });
+});
+
+// LISTA os PDFs originais anexados (vários, na OP consolidada de vários pedidos)
+pedidos.get("/:id/originais", async (c) => {
+  const id = c.req.param("id");
+  const list = await c.env.BUCKET.list({ prefix: `pedidos/${id}/orig/` });
+  const arquivos = list.objects.map((o) => {
+    const nome = o.key.split("/").pop() || "arquivo.pdf";
+    return { nome, url: `/api/pedidos/${id}/original/${encodeURIComponent(nome)}` };
   });
-  await c.env.DB.prepare("UPDATE pedidos SET pdf_key = ? WHERE id = ?").bind(key, id).run();
-  return c.json({ ok: true, pdf_key: key });
+  return c.json({ arquivos });
+});
+
+// DOWNLOAD de um PDF original específico
+pedidos.get("/:id/original/:nome", async (c) => {
+  const id = c.req.param("id");
+  const nome = decodeURIComponent(c.req.param("nome"));
+  const obj = await c.env.BUCKET.get(`pedidos/${id}/orig/${nome}`);
+  if (!obj) return c.json({ error: "arquivo não encontrado" }, 404);
+  return new Response(obj.body, {
+    headers: {
+      "Content-Type": obj.httpMetadata?.contentType || "application/pdf",
+      "Content-Disposition": `inline; filename="${nome}"`,
+    },
+  });
 });
 
 // CLASSIFICAR — diz como o pedido será dividido (e se tem kit → perguntar junto/separado)
@@ -245,10 +276,11 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   const modelos = await catalogos(c.env);
   const cl = classificar(itens, modelos);
 
+  const baseNum = ped.numero_erp || id.slice(0, 8);
   const info: PedidoInfo = {
     cliente: ped.cliente_nome,
     representante: ped.vendedor || "—",
-    numero: ped.numero_erp || id.slice(0, 8),
+    numero: baseNum,
     emissao: br(ped.data_pedido),
     entrega: br(ped.data_entrega),
     observacao: ped.observacao || "",
@@ -269,10 +301,11 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
 
   const arquivos: { tipo: string; label: string; url: string }[] = [];
   for (const job of jobs) {
-    const bytes = await gerarPdfParte(job.label, job.sub, job.banda, info, job.blocos);
+    const codigo = codigoParte(baseNum, TIPOS_PDF[job.tipo]?.suf ?? "");
+    const bytes = await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, job.blocos);
     const key = `pedidos/${id}/${job.tipo}.pdf`;
     await c.env.BUCKET.put(key, bytes, { httpMetadata: { contentType: "application/pdf" } });
-    arquivos.push({ tipo: job.tipo, label: job.label, url: `/api/pedidos/${id}/pdf/${job.tipo}` });
+    arquivos.push({ tipo: job.tipo, label: `${codigo} · ${job.label}`, url: `/api/pedidos/${id}/pdf/${job.tipo}` });
   }
   await c.env.DB.prepare("UPDATE pedidos SET status = 'conferido', entrega_pe = ? WHERE id = ?")
     .bind(cl.temKit ? kitOpt : null, id)
@@ -283,15 +316,24 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
 
 // LISTA os PDFs de produção já gerados (persistente: lê do R2). Assim a tela do pedido
 // mostra os botões "Visualizar PDF" mesmo depois de recarregar.
-const TIPOS_PDF: Record<string, string> = {
-  "parte-unica": "PARTE ÚNICA",
-  "parte-1": "PARTE 1",
-  "parte-2": "PARTE 2",
-  "pronta-entrega": "PRONTA ENTREGA",
+const TIPOS_PDF: Record<string, { nome: string; suf: string }> = {
+  "parte-unica": { nome: "PARTE ÚNICA", suf: "" },
+  "parte-1": { nome: "PARTE 1", suf: "-P1" },
+  "parte-2": { nome: "PARTE 2", suf: "-P2" },
+  "pronta-entrega": { nome: "PRONTA ENTREGA", suf: "-PE" },
 };
 const ORDEM_PDF = ["parte-unica", "parte-1", "parte-2", "pronta-entrega"];
+// Código da parte: número único → "2030-P1"; vários números → "2030, 2031 (P1)".
+function codigoParte(baseNum: string, suf: string): string {
+  if (!suf) return baseNum;
+  return baseNum.includes(",") ? `${baseNum} (${suf.replace("-", "")})` : `${baseNum}${suf}`;
+}
 pedidos.get("/:id/pdfs", async (c) => {
   const id = c.req.param("id");
+  const ped = await c.env.DB.prepare("SELECT numero_erp FROM pedidos WHERE id = ?")
+    .bind(id)
+    .first<{ numero_erp: string | null }>();
+  const baseNum = ped?.numero_erp || id.slice(0, 8);
   const list = await c.env.BUCKET.list({ prefix: `pedidos/${id}/` });
   const tipos = new Set(
     list.objects
@@ -300,11 +342,15 @@ pedidos.get("/:id/pdfs", async (c) => {
       .map((f) => f.slice(0, -4))
       .filter((t) => t in TIPOS_PDF)
   );
-  const arquivos = ORDEM_PDF.filter((t) => tipos.has(t)).map((tipo) => ({
-    tipo,
-    label: TIPOS_PDF[tipo],
-    url: `/api/pedidos/${id}/pdf/${tipo}`,
-  }));
+  const arquivos = ORDEM_PDF.filter((t) => tipos.has(t)).map((tipo) => {
+    const codigo = codigoParte(baseNum, TIPOS_PDF[tipo].suf);
+    return {
+      tipo,
+      codigo,
+      label: `${codigo} · ${TIPOS_PDF[tipo].nome}`,
+      url: `/api/pedidos/${id}/pdf/${tipo}`,
+    };
+  });
   return c.json({ arquivos });
 });
 
@@ -314,10 +360,15 @@ pedidos.get("/:id/pdf/:tipo", async (c) => {
   const tipo = c.req.param("tipo");
   const obj = await c.env.BUCKET.get(`pedidos/${id}/${tipo}.pdf`);
   if (!obj) return c.json({ error: "PDF não gerado" }, 404);
+  const ped = await c.env.DB.prepare("SELECT numero_erp FROM pedidos WHERE id = ?")
+    .bind(id)
+    .first<{ numero_erp: string | null }>();
+  const baseNum = ped?.numero_erp || id.slice(0, 8);
+  const nome = codigoParte(baseNum, TIPOS_PDF[tipo]?.suf ?? "");
   return new Response(obj.body, {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="pedido-${tipo}.pdf"`,
+      "Content-Disposition": `inline; filename="${nome}.pdf"`,
     },
   });
 });

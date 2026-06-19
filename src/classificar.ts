@@ -142,6 +142,7 @@ export function resolverModelo(it: ItemBase, cat: Catalogo): ModeloInfo | undefi
 
 function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
   const map = new Map<string, Bloco>();
+  const sizeIdx = new Map<string, Map<string, number>>(); // key -> (tamanho -> índice em sizes)
   const ordem: string[] = [];
   for (const it of itens) {
     const info = resolverModelo(it, cat);
@@ -153,9 +154,18 @@ function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
     if (!b) {
       b = { modelo, ref, cor, comp: info?.composicao || "", sizes: [], total: 0 };
       map.set(key, b);
+      sizeIdx.set(key, new Map());
       ordem.push(key);
     }
-    b.sizes.push({ tamanho: (it.tamanho || "—").trim() || "—", qtd: it.qtd });
+    const tamanho = (it.tamanho || "—").trim() || "—";
+    const idxMap = sizeIdx.get(key)!;
+    // Consolida: mesma medida soma a quantidade (junta pedidos repetidos numa OP).
+    if (idxMap.has(tamanho)) {
+      b.sizes[idxMap.get(tamanho)!].qtd += it.qtd;
+    } else {
+      idxMap.set(tamanho, b.sizes.length);
+      b.sizes.push({ tamanho, qtd: it.qtd });
+    }
     b.total += it.qtd;
   }
   return ordem.map((k) => map.get(k)!);
