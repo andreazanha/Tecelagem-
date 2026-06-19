@@ -41,7 +41,11 @@ export interface Modelo {
   nome: string;
   parte: number; // 1 ou 2
   ref?: string | null;
+  composicao?: string | null; // '100% POLIÉSTER' | '100% ACRÍLICO' | ''
+  tassel?: number; // qtd de tassel por peça
 }
+
+export const COMPOSICOES = ["", "100% POLIÉSTER", "100% ACRÍLICO"];
 
 export interface Cor {
   nome: string;
@@ -159,5 +163,6 @@ export const PARTES: { value: string; label: string }[] = [
 ];
 
 export function tipoLabel(v: string) {
+  if (v === "auto" || !v) return "Classificação automática";
   return TIPOS.find((t) => t.value === v)?.label ?? v;
 }

@@ -40,6 +40,13 @@ export function norm(s: string): string {
     .trim();
 }
 
+// Lista base dos modelos da Parte 1 (Máquina 3). Usada como segurança caso o
+// catálogo do banco venha vazio — assim nunca deixamos de dividir em 2 partes.
+export const DEFAULT_PARTE1 = [
+  "Aspen", "Elo", "Perola", "Balls", "Kora", "Celine",
+  "Linea", "Rice", "Montana", "Daytona", "Otto", "Pipoca",
+].map((m) => norm(m));
+
 function titleCase(s: string): string {
   return s
     .toLowerCase()
@@ -60,24 +67,25 @@ function ehKit(it: ItemBase): boolean {
   return /^kit\b/i.test(it.produto.trim()) || it.parte === "kit";
 }
 
-function agrupar(itens: ItemBase[], coresPoliester: Set<string>): Bloco[] {
+// Catálogo de modelos: norm(nome) -> { parte (1/2), composicao }
+export interface ModeloInfo {
+  parte: number;
+  composicao: string;
+}
+export type Catalogo = Map<string, ModeloInfo>;
+
+function agrupar(itens: ItemBase[], modelos: Catalogo): Bloco[] {
   const map = new Map<string, Bloco>();
   const ordem: string[] = [];
   for (const it of itens) {
     const modelo = modeloDe(it.produto);
+    const info = modelos.get(norm(modelo));
     const ref = (it.ref || "").trim();
     const cor = (it.cor_grade || "").trim();
     const key = `${modelo}|${ref}|${cor}`;
     let b = map.get(key);
     if (!b) {
-      b = {
-        modelo,
-        ref,
-        cor,
-        comp: cor && coresPoliester.has(norm(cor)) ? "100% POLIÉSTER" : "",
-        sizes: [],
-        total: 0,
-      };
+      b = { modelo, ref, cor, comp: info?.composicao || "", sizes: [], total: 0 };
       map.set(key, b);
       ordem.push(key);
     }
@@ -87,26 +95,23 @@ function agrupar(itens: ItemBase[], coresPoliester: Set<string>): Bloco[] {
   return ordem.map((k) => map.get(k)!);
 }
 
-export function classificar(
-  itens: ItemBase[],
-  modelosParte1: Set<string>, // nomes normalizados (norm())
-  coresPoliester: Set<string> // nomes normalizados (norm())
-): Classificacao {
+export function classificar(itens: ItemBase[], modelos: Catalogo): Classificacao {
   const kitsItens = itens.filter(ehKit);
   const prod = itens.filter((i) => !ehKit(i));
-  const kits = agrupar(kitsItens, coresPoliester);
+  const kits = agrupar(kitsItens, modelos);
   const temKit = kits.length > 0;
 
-  const p1 = prod.filter((i) => modelosParte1.has(norm(modeloDe(i.produto))));
-  const p2 = prod.filter((i) => !modelosParte1.has(norm(modeloDe(i.produto))));
+  const ehP1 = (i: ItemBase) => modelos.get(norm(modeloDe(i.produto)))?.parte === 1;
+  const p1 = prod.filter(ehP1);
+  const p2 = prod.filter((i) => !ehP1(i));
 
   if (p1.length === 0) {
-    return { modo: "unica", parteUnica: agrupar(prod, coresPoliester), kits, temKit };
+    return { modo: "unica", parteUnica: agrupar(prod, modelos), kits, temKit };
   }
   return {
     modo: "split",
-    parte1: agrupar(p1, coresPoliester),
-    parte2: agrupar(p2, coresPoliester),
+    parte1: agrupar(p1, modelos),
+    parte2: agrupar(p2, modelos),
     kits,
     temKit,
   };

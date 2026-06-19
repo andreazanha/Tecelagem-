@@ -6,23 +6,32 @@ export const modelos = new Hono<{ Bindings: Env }>();
 
 modelos.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT nome, parte, ref FROM modelos ORDER BY parte, nome"
+    "SELECT nome, parte, ref, composicao, tassel FROM modelos ORDER BY nome"
   ).all();
   return c.json(results);
 });
 
 modelos.post("/", async (c) => {
-  const b = await c.req.json<{ nome?: string; parte?: number; ref?: string }>();
+  const b = await c.req.json<{
+    nome?: string;
+    parte?: number;
+    ref?: string;
+    composicao?: string;
+    tassel?: number;
+  }>();
   const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
   const parte = b.parte === 1 ? 1 : 2;
+  const tassel = Math.max(0, Math.trunc(Number(b.tassel) || 0));
   await c.env.DB.prepare(
-    `INSERT INTO modelos (nome, parte, ref) VALUES (?, ?, ?)
-     ON CONFLICT(nome) DO UPDATE SET parte = excluded.parte, ref = excluded.ref`
+    `INSERT INTO modelos (nome, parte, ref, composicao, tassel) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(nome) DO UPDATE SET
+       parte = excluded.parte, ref = excluded.ref,
+       composicao = excluded.composicao, tassel = excluded.tassel`
   )
-    .bind(nome, parte, b.ref || null)
+    .bind(nome, parte, b.ref || null, b.composicao || null, tassel)
     .run();
-  return c.json({ nome, parte, ref: b.ref || null }, 201);
+  return c.json({ nome, parte, ref: b.ref || null, composicao: b.composicao || null, tassel }, 201);
 });
 
 modelos.delete("/:nome", async (c) => {

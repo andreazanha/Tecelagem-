@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { extractText, getDocumentProxy } from "unpdf";
 import type { Env } from "../index";
 import { parsePedido } from "../parser";
-import { classificar, norm, type ItemBase } from "../classificar";
+import { classificar, norm, DEFAULT_PARTE1, type ItemBase, type Catalogo } from "../classificar";
 import { gerarPdfParte, type PedidoInfo } from "../pdf";
 
 export const pedidos = new Hono<{ Bindings: Env }>();
@@ -12,13 +12,17 @@ function br(iso?: string | null): string {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }
-async function catalogos(env: Env) {
-  const m = await env.DB.prepare("SELECT nome FROM modelos WHERE parte = 1").all<{ nome: string }>();
-  const cs = await env.DB.prepare("SELECT nome FROM cores WHERE poliester = 1").all<{ nome: string }>();
-  return {
-    p1: new Set(m.results.map((r) => norm(r.nome))),
-    cores: new Set(cs.results.map((r) => norm(r.nome))),
-  };
+async function catalogos(env: Env): Promise<Catalogo> {
+  const m = await env.DB.prepare(
+    "SELECT nome, parte, composicao FROM modelos"
+  ).all<{ nome: string; parte: number; composicao: string | null }>();
+  const modelos: Catalogo = new Map();
+  for (const r of m.results) {
+    modelos.set(norm(r.nome), { parte: Number(r.parte) === 1 ? 1 : 2, composicao: r.composicao || "" });
+  }
+  // segurança: catálogo vazio → usa a lista base da Parte 1 (sem composição)
+  if (modelos.size === 0) for (const n of DEFAULT_PARTE1) modelos.set(n, { parte: 1, composicao: "" });
+  return modelos;
 }
 
 // IMPORTAR PDF → extrai texto (PDF digital) ou OCR (Workers AI) → devolve sugestão
@@ -119,14 +123,15 @@ pedidos.get("/:id", async (c) => {
 pedidos.post("/", async (c) => {
   const b = await c.req.json<PedidoIn>();
   const cliente_nome = (b.cliente_nome || "").trim();
-  const tipo = (b.tipo || "").trim();
+  // A classificação (Parte 1/2/Única + Pronta Entrega) é automática na geração dos PDFs,
+  // pelo catálogo de modelos/cores — não há mais "tipo" manual no formulário.
+  const tipoIn = (b.tipo || "auto").trim();
+  const tipo = TIPOS.includes(tipoIn) ? tipoIn : "auto";
 
   if (!cliente_nome) return c.json({ error: "cliente é obrigatório" }, 400);
-  if (!TIPOS.includes(tipo))
-    return c.json({ error: `tipo inválido (use: ${TIPOS.join(", ")})` }, 400);
 
-  const temPE = tipo === "unico_pe" || tipo === "p1p2_pe";
-  const entrega_pe = temPE ? (b.entrega_pe === "separado" ? "separado" : "junto") : null;
+  // a entrega da Pronta Entrega (junto/separado) é decidida na geração dos PDFs (se houver kit)
+  const entrega_pe = null;
 
   const id = crypto.randomUUID();
   const stmts: D1PreparedStatement[] = [];
@@ -211,8 +216,8 @@ pedidos.get("/:id/classificar", async (c) => {
   )
     .bind(id)
     .all<ItemBase>();
-  const { p1, cores } = await catalogos(c.env);
-  const cl = classificar(results, p1, cores);
+  const modelos = await catalogos(c.env);
+  const cl = classificar(results, modelos);
   const soma = (b?: { total: number }[]) => (b || []).reduce((a, x) => a + x.total, 0);
   return c.json({
     modo: cl.modo,
@@ -241,8 +246,8 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   )
     .bind(id)
     .all<ItemBase>();
-  const { p1, cores } = await catalogos(c.env);
-  const cl = classificar(itens, p1, cores);
+  const modelos = await catalogos(c.env);
+  const cl = classificar(itens, modelos);
 
   const info: PedidoInfo = {
     cliente: ped.cliente_nome,

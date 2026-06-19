@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, TIPOS, PARTES, type PedidoItem, type NovoPedidoBody } from "../api";
+import { api, PARTES, type PedidoItem, type NovoPedidoBody } from "../api";
 
 function linhaVazia(): PedidoItem {
   return { produto: "", ref: "", cor_grade: "", tamanho: "", qtd: 0, parte: "unico" };
@@ -14,13 +14,14 @@ export function NovoPedido() {
   const [pdf, setPdf] = useState<File | null>(null);
   const [lendo, setLendo] = useState(false);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "warn"; msg: string } | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   const [form, setForm] = useState<NovoPedidoBody>({
     numero_erp: "",
     cliente_nome: "",
     vendedor: "",
-    tipo: "unico",
-    entrega_pe: "junto",
+    tipo: "auto",
+    entrega_pe: null,
     data_pedido: "",
     data_entrega: "",
     observacao: "",
@@ -33,9 +34,6 @@ export function NovoPedido() {
       .then((cs) => setClientes(cs.map((c) => c.nome)))
       .catch(() => {});
   }, []);
-
-  const tipoInfo = TIPOS.find((t) => t.value === form.tipo);
-  const temPE = !!tipoInfo?.pe;
 
   function set<K extends keyof NovoPedidoBody>(k: K, v: NovoPedidoBody[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -70,7 +68,8 @@ export function NovoPedido() {
     try {
       const body: NovoPedidoBody = {
         ...form,
-        entrega_pe: temPE ? form.entrega_pe : null,
+        tipo: "auto",
+        entrega_pe: null,
         itens,
       };
       const { id } = await api.criarPedido(body);
@@ -91,6 +90,10 @@ export function NovoPedido() {
   async function aoSelecionarPdf(file: File | null) {
     setPdf(file);
     setAviso(null);
+    setPdfUrl((old) => {
+      if (old) URL.revokeObjectURL(old);
+      return file ? URL.createObjectURL(file) : null;
+    });
     if (!file) return;
     setLendo(true);
     try {
@@ -179,6 +182,22 @@ export function NovoPedido() {
               <span className="muted">Clique para selecionar o PDF (lê e preenche automático)</span>
             )}
           </label>
+          {pdf && pdfUrl && (
+            <div className="row-gap" style={{ marginTop: 10 }}>
+              <a className="btn btn-primary" href={pdfUrl} target="_blank" rel="noreferrer">
+                👁 Visualizar PDF
+              </a>
+              <label className="btn" style={{ cursor: "pointer" }}>
+                ↻ Trocar arquivo
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  style={{ display: "none" }}
+                  onChange={(e) => aoSelecionarPdf(e.target.files?.[0] ?? null)}
+                />
+              </label>
+            </div>
+          )}
           {aviso && (
             <div className={"aviso " + (aviso.tipo === "ok" ? "aviso-ok" : "aviso-warn")}>
               {aviso.tipo === "ok" ? "✅ " : "⚠️ "}
@@ -244,45 +263,6 @@ export function NovoPedido() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Tipo de pedido */}
-      <div className="card pad">
-        <h2>Tipo de pedido</h2>
-        <div className="segmented">
-          {TIPOS.map((t) => (
-            <button
-              type="button"
-              key={t.value}
-              className={"seg" + (form.tipo === t.value ? " seg-on" : "")}
-              onClick={() => set("tipo", t.value)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {temPE && (
-          <div className="pe-box">
-            <div className="pe-title">Entrega da Pronta Entrega</div>
-            <div className="segmented">
-              <button
-                type="button"
-                className={"seg" + (form.entrega_pe === "junto" ? " seg-on" : "")}
-                onClick={() => set("entrega_pe", "junto")}
-              >
-                📦 Entregar JUNTO com o pedido
-              </button>
-              <button
-                type="button"
-                className={"seg" + (form.entrega_pe === "separado" ? " seg-on" : "")}
-                onClick={() => set("entrega_pe", "separado")}
-              >
-                ⏩ Entregar SEPARADO (antecipado)
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Itens */}

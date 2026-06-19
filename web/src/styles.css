@@ -134,3 +134,7 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .pdf-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; align-items: center; }
 .pdf-link { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 10px; background: #22416b; color: #fff; font-weight: 700; font-size: 13px; text-decoration: none; }
 .pdf-link:hover { background: #1b3556; }
+
+.row-novo td { background: #f8fafc; }
+.row-novo input, .row-novo select { width: 100%; }
+.sel-p1 { color: #047857; font-weight: 700; }
