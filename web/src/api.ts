@@ -132,6 +132,10 @@ export const api = {
         contagem: { parteUnica: number; parte1: number; parte2: number; kits: number };
       }>(r)
     ),
+  listarPdfsGerados: (id: string) =>
+    fetch(`/api/pedidos/${id}/pdfs`).then((r) =>
+      j<{ arquivos: { tipo: string; label: string; url: string }[] }>(r)
+    ),
   gerarPdfs: (id: string, kit?: "junto" | "separado") =>
     fetch(`/api/pedidos/${id}/gerar-pdfs`, {
       method: "POST",

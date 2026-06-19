@@ -107,6 +107,14 @@ function GerarPdfs({ id }: { id: string }) {
   const [erro, setErro] = useState<string | null>(null);
   const [arquivos, setArquivos] = useState<{ tipo: string; label: string; url: string }[]>([]);
 
+  // carrega os PDFs já gerados (persistente, mesmo após recarregar a página)
+  useEffect(() => {
+    api
+      .listarPdfsGerados(id)
+      .then((r) => setArquivos(r.arquivos))
+      .catch(() => {});
+  }, [id]);
+
   async function iniciar() {
     setErro(null);
     setCarregando(true);
@@ -173,7 +181,7 @@ function GerarPdfs({ id }: { id: string }) {
         <div className="pdf-list">
           {arquivos.map((a) => (
             <a key={a.tipo} className="pdf-link" href={a.url} target="_blank" rel="noreferrer">
-              📄 {a.label}
+              👁 Visualizar {a.label}
             </a>
           ))}
           <button className="btn btn-soft" onClick={() => setArquivos([])}>

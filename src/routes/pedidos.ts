@@ -280,6 +280,33 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   return c.json({ modo: cl.modo, temKit: cl.temKit, arquivos });
 });
 
+// LISTA os PDFs de produção já gerados (persistente: lê do R2). Assim a tela do pedido
+// mostra os botões "Visualizar PDF" mesmo depois de recarregar.
+const TIPOS_PDF: Record<string, string> = {
+  "parte-unica": "PARTE ÚNICA",
+  "parte-1": "PARTE 1",
+  "parte-2": "PARTE 2",
+  "pronta-entrega": "PRONTA ENTREGA",
+};
+const ORDEM_PDF = ["parte-unica", "parte-1", "parte-2", "pronta-entrega"];
+pedidos.get("/:id/pdfs", async (c) => {
+  const id = c.req.param("id");
+  const list = await c.env.BUCKET.list({ prefix: `pedidos/${id}/` });
+  const tipos = new Set(
+    list.objects
+      .map((o) => o.key.split("/").pop() || "")
+      .filter((f) => f.endsWith(".pdf"))
+      .map((f) => f.slice(0, -4))
+      .filter((t) => t in TIPOS_PDF)
+  );
+  const arquivos = ORDEM_PDF.filter((t) => tipos.has(t)).map((tipo) => ({
+    tipo,
+    label: TIPOS_PDF[tipo],
+    url: `/api/pedidos/${id}/pdf/${tipo}`,
+  }));
+  return c.json({ arquivos });
+});
+
 // DOWNLOAD de um PDF gerado (parte-unica | parte-1 | parte-2 | pronta-entrega)
 pedidos.get("/:id/pdf/:tipo", async (c) => {
   const id = c.req.param("id");
