@@ -36,6 +36,18 @@ export interface NovoPedidoBody {
   itens: PedidoItem[];
 }
 
+export interface Sugestao {
+  numero_erp?: string;
+  cliente_nome?: string;
+  vendedor?: string;
+  data_pedido?: string;
+  data_entrega?: string;
+  itens: PedidoItem[];
+  confianca: number;
+  texto: string;
+  metodo: "texto" | "ocr" | "nenhum";
+}
+
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let msg = `Erro ${res.status}`;
@@ -67,6 +79,13 @@ export const api = {
     );
   },
   listarClientes: () => fetch("/api/clientes").then((r) => j<{ id: string; nome: string }[]>(r)),
+  importarPdf: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return fetch("/api/pedidos/importar", { method: "POST", body: fd }).then((r) =>
+      j<Sugestao>(r)
+    );
+  },
 };
 
 export const TIPOS: { value: string; label: string; pe?: boolean }[] = [

@@ -25,5 +25,6 @@
       "bucket_name": "rolagem-de-fase-arquivos"
     }
   ],
+  "ai": { "binding": "AI" },
   "observability": { "enabled": true }
 }

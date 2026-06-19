@@ -92,6 +92,9 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 
 .dropzone { display: grid; place-items: center; gap: 6px; padding: 28px; border: 2px dashed #c7d2fe; border-radius: 12px; background: #fafbff; cursor: pointer; text-align: center; }
 .dropzone input { display: none; }
+.aviso { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; font-weight: 600; }
+.aviso-ok { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+.aviso-warn { background: #fff7ed; color: #b45309; border: 1px solid #fed7aa; }
 
 .segmented { display: flex; flex-wrap: wrap; gap: 8px; }
 .seg { font: inherit; font-size: 12.5px; padding: 8px 14px; border-radius: 9px; border: 1px solid #e2e8f0; background: #fff; color: #475569; cursor: pointer; }

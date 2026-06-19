@@ -1,7 +1,53 @@
 import { Hono } from "hono";
+import { extractText, getDocumentProxy } from "unpdf";
 import type { Env } from "../index";
+import { parsePedido } from "../parser";
 
 export const pedidos = new Hono<{ Bindings: Env }>();
+
+// IMPORTAR PDF → extrai texto (PDF digital) ou OCR (Workers AI) → devolve sugestão
+// NÃO cria o pedido: o usuário confere/corrige no formulário e salva.
+pedidos.post("/importar", async (c) => {
+  const body = await c.req.parseBody();
+  const file = body["file"];
+  if (!(file instanceof File)) return c.json({ error: "arquivo ausente" }, 400);
+
+  const buf = new Uint8Array(await file.arrayBuffer());
+  let texto = "";
+  let metodo: "texto" | "ocr" | "nenhum" = "nenhum";
+
+  // 1) PDF digital: extração de texto
+  try {
+    const pdf = await getDocumentProxy(buf);
+    const r = await extractText(pdf, { mergePages: true });
+    texto = (Array.isArray(r.text) ? r.text.join("\n") : r.text || "").trim();
+    if (texto.length >= 20) metodo = "texto";
+  } catch {
+    /* segue para OCR */
+  }
+
+  // 2) PDF escaneado: OCR via Workers AI (toMarkdown)
+  if (texto.length < 20 && (c.env.AI as unknown as { toMarkdown?: unknown })?.toMarkdown) {
+    try {
+      const res: any = await (c.env.AI as any).toMarkdown([
+        {
+          name: file.name || "pedido.pdf",
+          blob: new Blob([buf], { type: file.type || "application/pdf" }),
+        },
+      ]);
+      const md = Array.isArray(res) ? res[0]?.data : res?.data;
+      if (md) {
+        texto = String(md).trim();
+        metodo = "ocr";
+      }
+    } catch {
+      /* mantém vazio */
+    }
+  }
+
+  const sugestao = parsePedido(texto);
+  return c.json({ ...sugestao, metodo });
+});
 
 const TIPOS = ["unico", "unico_pe", "p1p2", "p1p2_pe", "estoque", "pronta_entrega"];
 const PARTES = ["unico", "p1", "p2", "kit", "pe", "estoque"];

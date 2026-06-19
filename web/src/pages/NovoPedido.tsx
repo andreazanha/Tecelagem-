@@ -12,6 +12,8 @@ export function NovoPedido() {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [pdf, setPdf] = useState<File | null>(null);
+  const [lendo, setLendo] = useState(false);
+  const [aviso, setAviso] = useState<{ tipo: "ok" | "warn"; msg: string } | null>(null);
 
   const [form, setForm] = useState<NovoPedidoBody>({
     numero_erp: "",
@@ -86,6 +88,53 @@ export function NovoPedido() {
     }
   }
 
+  async function aoSelecionarPdf(file: File | null) {
+    setPdf(file);
+    setAviso(null);
+    if (!file) return;
+    setLendo(true);
+    try {
+      const s = await api.importarPdf(file);
+      setForm((f) => {
+        const itens =
+          s.itens && s.itens.length
+            ? s.itens.map((it) => ({
+                produto: it.produto || "",
+                ref: it.ref ?? "",
+                cor_grade: it.cor_grade ?? "",
+                qtd: Number(it.qtd) || 0,
+                parte: it.parte || "unico",
+              }))
+            : f.itens;
+        return {
+          ...f,
+          numero_erp: s.numero_erp ?? f.numero_erp,
+          cliente_nome: s.cliente_nome ?? f.cliente_nome,
+          vendedor: s.vendedor ?? f.vendedor,
+          data_pedido: s.data_pedido ?? f.data_pedido,
+          data_entrega: s.data_entrega ?? f.data_entrega,
+          itens,
+        };
+      });
+      if (s.metodo === "nenhum" || (!s.cliente_nome && s.itens.length === 0)) {
+        setAviso({
+          tipo: "warn",
+          msg: "Não consegui ler os dados automaticamente deste PDF. Preencha manualmente — o arquivo será anexado.",
+        });
+      } else {
+        const via = s.metodo === "ocr" ? "OCR" : "texto do PDF";
+        setAviso({
+          tipo: "ok",
+          msg: `PDF lido por ${via} (${s.confianca}% de confiança). Confira os campos antes de salvar.`,
+        });
+      }
+    } catch (e) {
+      setAviso({ tipo: "warn", msg: "Falha ao ler o PDF: " + (e as Error).message });
+    } finally {
+      setLendo(false);
+    }
+  }
+
   const totalPecas = form.itens.reduce((s, it) => s + (Number(it.qtd) || 0), 0);
 
   return (
@@ -119,14 +168,22 @@ export function NovoPedido() {
             <input
               type="file"
               accept="application/pdf"
-              onChange={(e) => setPdf(e.target.files?.[0] ?? null)}
+              onChange={(e) => aoSelecionarPdf(e.target.files?.[0] ?? null)}
             />
-            {pdf ? (
+            {lendo ? (
+              <span>⏳ Lendo o PDF…</span>
+            ) : pdf ? (
               <span>📄 {pdf.name}</span>
             ) : (
-              <span className="muted">Clique para selecionar o PDF (opcional)</span>
+              <span className="muted">Clique para selecionar o PDF (lê e preenche automático)</span>
             )}
           </label>
+          {aviso && (
+            <div className={"aviso " + (aviso.tipo === "ok" ? "aviso-ok" : "aviso-warn")}>
+              {aviso.tipo === "ok" ? "✅ " : "⚠️ "}
+              {aviso.msg}
+            </div>
+          )}
         </div>
 
         {/* Dados do pedido */}
