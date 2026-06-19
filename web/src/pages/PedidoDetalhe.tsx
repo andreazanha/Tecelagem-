@@ -95,7 +95,93 @@ export function PedidoDetalhe() {
           </tbody>
         </table>
       </div>
+
+      <GerarPdfs id={pedido.id} />
     </>
+  );
+}
+
+function GerarPdfs({ id }: { id: string }) {
+  const [perguntaKit, setPerguntaKit] = useState(false);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [arquivos, setArquivos] = useState<{ tipo: string; label: string; url: string }[]>([]);
+
+  async function iniciar() {
+    setErro(null);
+    setCarregando(true);
+    try {
+      const cl = await api.classificarPedido(id);
+      if (cl.temKit) {
+        setPerguntaKit(true);
+        setCarregando(false);
+      } else {
+        await gerar();
+      }
+    } catch (e) {
+      setErro((e as Error).message);
+      setCarregando(false);
+    }
+  }
+
+  async function gerar(kit?: "junto" | "separado") {
+    setPerguntaKit(false);
+    setCarregando(true);
+    setErro(null);
+    try {
+      const res = await api.gerarPdfs(id, kit);
+      setArquivos(res.arquivos);
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  return (
+    <div className="card pad">
+      <div className="card-head" style={{ padding: 0, marginBottom: 12 }}>
+        <h2>Gerar PDFs de produção</h2>
+        {arquivos.length === 0 && (
+          <button className="btn btn-primary" onClick={iniciar} disabled={carregando}>
+            {carregando ? "Gerando…" : "🧾 Gerar PDFs"}
+          </button>
+        )}
+      </div>
+      <p className="muted" style={{ marginTop: 0 }}>
+        O sistema identifica <strong>kit</strong>, <strong>Parte 1</strong> e <strong>Parte 2</strong>{" "}
+        automaticamente (sem modelos da Parte 1 → Parte Única) e gera os PDFs no padrão Big Tricot.
+      </p>
+
+      {erro && <div className="aviso aviso-warn">⚠️ {erro}</div>}
+
+      {perguntaKit && (
+        <div className="pe-box">
+          <div className="pe-title">Este pedido tem KIT (Pronta Entrega). Como entregar?</div>
+          <div className="segmented">
+            <button className="seg seg-on" onClick={() => gerar("junto")}>
+              📦 Entregar JUNTO com o pedido
+            </button>
+            <button className="seg" onClick={() => gerar("separado")}>
+              ⏩ Entregar SEPARADO (antecipado)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {arquivos.length > 0 && (
+        <div className="pdf-list">
+          {arquivos.map((a) => (
+            <a key={a.tipo} className="pdf-link" href={a.url} target="_blank" rel="noreferrer">
+              📄 {a.label}
+            </a>
+          ))}
+          <button className="btn btn-soft" onClick={() => setArquivos([])}>
+            ↻ Gerar novamente
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

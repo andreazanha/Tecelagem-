@@ -113,6 +113,24 @@ export const api = {
     fetch(`/api/cores/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) =>
       j<{ ok: boolean }>(r)
     ),
+  classificarPedido: (id: string) =>
+    fetch(`/api/pedidos/${id}/classificar`).then((r) =>
+      j<{
+        modo: "unica" | "split";
+        temKit: boolean;
+        contagem: { parteUnica: number; parte1: number; parte2: number; kits: number };
+      }>(r)
+    ),
+  gerarPdfs: (id: string, kit?: "junto" | "separado") =>
+    fetch(`/api/pedidos/${id}/gerar-pdfs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(kit ? { kit } : {}),
+    }).then((r) =>
+      j<{ modo: string; temKit: boolean; arquivos: { tipo: string; label: string; url: string }[] }>(
+        r
+      )
+    ),
   importarPdf: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);
