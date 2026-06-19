@@ -1,21 +1,61 @@
-# Rolagem de Fase — Big Tricot
+# Big Tricot — Rolagem de Fase
 
-Sistema de controle e rastreabilidade de produção da Big Tricot, do pedido à entrega final.
+Sistema de gestão de produção da Big Tricot (Home Decor), do pedido à entrega. Stack **Cloudflare-native**:
 
-> **Status:** 📐 Fase de Arquitetura — **nenhum código será escrito até a aprovação da documentação e dos mockups.**
+- **Worker + Hono** (API) — `src/`
+- **D1** (banco SQLite) — `migrations/`
+- **R2** (armazenamento de PDFs) — binding `BUCKET`
+- **React + Vite** (frontend SPA) — `web/`
 
-## 📚 Documentação
+A documentação de produto/arquitetura e os protótipos ficam em [`docs/`](./docs/README.md).
 
-A análise completa do projeto está em [`docs/`](./docs/README.md):
+## Pré-requisitos
+- Node 20+ e npm
+- Conta Cloudflare (para deploy) — `npx wrangler login`
 
-1. [Visão Geral](./docs/00-VISAO-GERAL.md)
-2. [Arquitetura](./docs/01-ARQUITETURA.md)
-3. [Banco de Dados](./docs/02-BANCO-DE-DADOS.md)
-4. [Fluxos Operacionais](./docs/03-FLUXOS-OPERACIONAIS.md)
-5. [Módulos](./docs/04-MODULOS.md)
-6. [Relacionamentos](./docs/05-RELACIONAMENTOS.md)
-7. [Permissões](./docs/06-PERMISSOES.md)
-8. [Mockups](./docs/07-MOCKUPS.md)
-9. [Melhorias de Processo](./docs/08-MELHORIAS.md)
-10. [Gargalos Futuros](./docs/09-GARGALOS.md)
-11. [Plano de Implementação](./docs/10-PLANO-IMPLEMENTACAO.md)
+## Instalação
+```bash
+npm run install:all      # instala raiz (worker) e web (frontend)
+```
+
+## Desenvolvimento
+```bash
+# banco local + API (Worker)
+npm run db:migrate:local     # aplica as migrations no D1 local
+npm run db:seed:local        # (opcional) dados de exemplo
+npm run dev                  # wrangler dev → http://localhost:8787
+
+# frontend com hot-reload (proxy /api → 8787), em outro terminal
+npm run dev:web              # vite → http://localhost:5173
+```
+> Para rodar tudo pelo Worker (sem hot-reload): `npm run build:web` e acesse `http://localhost:8787`.
+
+## Deploy (Cloudflare)
+```bash
+# uma vez:
+npx wrangler d1 create rolagem-de-fase           # copie o database_id p/ wrangler.jsonc
+npx wrangler r2 bucket create rolagem-de-fase-arquivos
+npm run db:migrate                                # migrations no D1 remoto
+# a cada release:
+npm run deploy                                    # build do web + wrangler deploy
+```
+
+## Estrutura
+```
+src/                 Worker (Hono)
+  index.ts           app + fallback do SPA
+  routes/pedidos.ts  CRUD de pedidos + upload/download do PDF (R2)
+  routes/clientes.ts catálogo de clientes
+migrations/          esquema do D1
+seed/                dados de exemplo (não é migration)
+web/                 React + Vite (SPA): pages/ Pedidos, NovoPedido, PedidoDetalhe
+docs/                produto, arquitetura e protótipos
+```
+
+## Status
+- [x] **Pedidos**: criar (tipos, Pronta Entrega junto/separado, itens), listar, detalhar, anexar PDF original (R2).
+- [ ] OCR/leitura automática do PDF
+- [ ] Produção (Rolagem de Fase — quadro das 9 fases)
+- [ ] Romaneios · Estoque · Fiscal · Transporte · Relatórios
+
+Roadmap: [`docs/10-PLANO-IMPLEMENTACAO.md`](./docs/10-PLANO-IMPLEMENTACAO.md) · [`docs/14-ROADMAP-INTEGRACOES.md`](./docs/14-ROADMAP-INTEGRACOES.md)
