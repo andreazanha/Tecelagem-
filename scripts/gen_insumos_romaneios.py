@@ -337,7 +337,7 @@ def whats_lembretes():
 
 os.makedirs(OUT_SVG,exist_ok=True)
 for name,fn,z in [("43-insumos",insumos,1.3),("44-romaneios",romaneios,1.0),
-                  ("45-romaneio-pdf",romaneio_pdf,1.5),("46-cadastro-servicos",servicos,1.4),
+                  ("46-cadastro-servicos",servicos,1.4),
                   ("47-whatsapp-mensal",whats_mensal,1.35),("48-whatsapp-lembretes",whats_lembretes,1.3)]:
     open(os.path.join(OUT_SVG,name+".svg"),"w").write(fn())
     subprocess.run(["rsvg-convert","-z",str(z),os.path.join(OUT_SVG,name+".svg"),"-o",os.path.join(OUT_PNG,name+".png")],check=True)
