@@ -121,3 +121,14 @@ Formulário preenchido pela **Expedição** (o **Fiscal só visualiza**, em leit
 - Cada **linha = 1 volume** (caixa ou fardo); botão **＋ Adicionar linha** e **✕** para remover.
 - **Totais automáticos:** quantidade de volumes + peso total.
 - Ação **Salvar e enviar ao Fiscal** → o Fiscal usa estes dados para **cotar o frete** (coluna "Cotando frete").
+
+## 3.5 Costura — fluxo aprovado ✅
+
+**Cada costureira é uma coluna.** Costureiras iniciais: **Silvia, Angélica, Bene, Nice, Cris** — com opção de **cadastrar novas** (vira uma nova coluna).
+
+- Cada **card** = uma OP que está com aquela costureira (cliente, produto·qtd, **romaneio** R-xxx, entrega).
+- Ação **Concluir ▶** → envia o pedido para a **Revisão**.
+- Cards podem aparecer marcados **↩ Devolvida** (retrabalho).
+- **Cadastrar costureira** (modal): nome, tipo (interna/facção), capacidade (pç/sem), contato e **cor da coluna**.
+
+> Modelo de dados: catálogo `costureira` (nome, tipo, capacidade, cor) + `romaneio` ligando OPs à costureira. As colunas do quadro são geradas dinamicamente a partir das costureiras cadastradas.
