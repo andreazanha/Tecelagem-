@@ -34,12 +34,9 @@ b+=text(168,38,"Rolagem de Fase",13,"#e0e7ff")+text(W-28,38,"Carla Mendes",13,"#
 b+=rect(0,60,W,H-60,"#eceef3")
 # ---- modal ----
 mw,mh=620,620; mx=(W-mw)/2; my=110
-STRIPE="#10b981"  # cor de identidade do card (status Passando) — listra vertical
-# base colorida + modal branco por cima = listra lateral arredondada integrada
-b+=rect(mx,my,mw,mh,STRIPE,rx=22,filt="modalShadow")
-b+=rect(mx+9,my,mw-9,mh,"#ffffff",rx=22)
-# header gradient (inset para deixar a listra aparecer)
-b+=rect(mx+9,my,mw-9,108,"url(#hg)",rx=22)+rect(mx+9,my+70,mw-9,38,"url(#hg)")
+b+=rect(mx,my,mw,mh,"#ffffff",rx=22,filt="modalShadow")
+# header gradient
+b+=rect(mx,my,mw,108,"url(#hg)",rx=22)+rect(mx,my+70,mw,38,"url(#hg)")
 # OP chip
 b+=rect(mx+28,my+24,96,26,"#ffffff2e",rx=8)+text(mx+28+14,my+42,"OP-1042",13,"#fff",weight="bold",ls="0.4")
 # part badge
