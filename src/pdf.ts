@@ -59,6 +59,17 @@ function geradoEm(): string {
   return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}, ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 }
 
+// Junta vários PDFs (um por parte) num único arquivo de várias páginas — usado na PRÉVIA.
+export async function mergePdfs(lista: Uint8Array[]): Promise<Uint8Array> {
+  const out = await PDFDocument.create();
+  for (const bytes of lista) {
+    const src = await PDFDocument.load(bytes);
+    const pages = await out.copyPages(src, src.getPageIndices());
+    for (const p of pages) out.addPage(p);
+  }
+  return out.save();
+}
+
 export async function gerarPdfParte(
   parteLabel: string,
   subtitulo: string,

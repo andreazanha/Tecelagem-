@@ -3,7 +3,7 @@ import { extractText, getDocumentProxy } from "unpdf";
 import type { Env } from "../index";
 import { parsePedido } from "../parser";
 import { classificar, criarCatalogo, type ItemBase, type Catalogo } from "../classificar";
-import { gerarPdfParte, type PedidoInfo } from "../pdf";
+import { gerarPdfParte, mergePdfs, type PedidoInfo } from "../pdf";
 
 export const pedidos = new Hono<{ Bindings: Env }>();
 
@@ -19,6 +19,23 @@ async function catalogos(env: Env): Promise<Catalogo> {
     "SELECT nome, parte, composicao, ref FROM modelos"
   ).all<{ nome: string; parte: number; composicao: string | null; ref: string | null }>();
   return criarCatalogo(m.results);
+}
+
+type Job = { tipo: string; label: string; banda: "gold" | "green"; sub: string; blocos: ReturnType<typeof classificar>["kits"] };
+function montarJobs(cl: ReturnType<typeof classificar>, kitOpt: "junto" | "separado"): Job[] {
+  const jobs: Job[] = [];
+  const subProd = "Produção / Tecelagem";
+  if (cl.modo === "unica") {
+    jobs.push({ tipo: "parte-unica", label: "PARTE ÚNICA", banda: "gold", sub: subProd, blocos: cl.parteUnica! });
+  } else {
+    jobs.push({ tipo: "parte-1", label: "PARTE 1", banda: "gold", sub: subProd, blocos: cl.parte1! });
+    jobs.push({ tipo: "parte-2", label: "PARTE 2", banda: "gold", sub: subProd, blocos: cl.parte2! });
+  }
+  if (cl.temKit) {
+    const sub = `Pronta Entrega · ${kitOpt === "separado" ? "Entregar SEPARADO (antecipado)" : "Entregar JUNTO com o pedido"}`;
+    jobs.push({ tipo: "pronta-entrega", label: "PRONTA ENTREGA", banda: "green", sub, blocos: cl.kits });
+  }
+  return jobs;
 }
 
 // IMPORTAR PDF → extrai texto (PDF digital) ou OCR (Workers AI) → devolve sugestão
@@ -63,6 +80,50 @@ pedidos.post("/importar", async (c) => {
 
   const sugestao = parsePedido(texto);
   return c.json({ ...sugestao, metodo });
+});
+
+// PRÉVIA do PDF de produção SEM criar o pedido: gera todas as partes e junta num único
+// arquivo (várias páginas) para visualizar antes de salvar.
+pedidos.post("/previa", async (c) => {
+  const b = await c.req.json<PedidoIn & { kit?: string }>().catch(() => ({}) as PedidoIn & { kit?: string });
+  const itens: ItemBase[] = (b.itens || [])
+    .filter((it) => (it.produto || "").trim())
+    .map((it) => ({
+      produto: (it.produto || "").trim(),
+      ref: it.ref || null,
+      cor_grade: it.cor_grade || null,
+      tamanho: it.tamanho || null,
+      qtd: Math.max(0, Math.trunc(Number(it.qtd) || 0)),
+      parte: it.parte || "unico",
+    }));
+  if (itens.length === 0) return c.json({ error: "adicione ao menos um item para visualizar" }, 400);
+
+  const modelos = await catalogos(c.env);
+  const cl = classificar(itens, modelos);
+  const kitOpt = b.kit === "separado" ? "separado" : "junto";
+  const baseNum = (b.numero_erp || "").trim() || "PRÉVIA";
+  const info: PedidoInfo = {
+    cliente: (b.cliente_nome || "—").trim() || "—",
+    representante: (b.vendedor || "—").trim() || "—",
+    numero: baseNum,
+    emissao: br(b.data_pedido || null),
+    entrega: br(b.data_entrega || null),
+    observacao: b.observacao || "",
+  };
+
+  const jobs = montarJobs(cl, kitOpt);
+  const partes: Uint8Array[] = [];
+  for (const job of jobs) {
+    const codigo = codigoParte(baseNum, TIPOS_PDF[job.tipo]?.suf ?? "");
+    partes.push(await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, job.blocos));
+  }
+  const pdf = await mergePdfs(partes);
+  return new Response(pdf, {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="previa-${baseNum}.pdf"`,
+    },
+  });
 });
 
 const TIPOS = ["unico", "unico_pe", "p1p2", "p1p2_pe", "estoque", "pronta_entrega"];
@@ -286,18 +347,7 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     observacao: ped.observacao || "",
   };
 
-  const jobs: { tipo: string; label: string; banda: "gold" | "green"; sub: string; blocos: any[] }[] = [];
-  const subProd = "Produção / Tecelagem";
-  if (cl.modo === "unica") {
-    jobs.push({ tipo: "parte-unica", label: "PARTE ÚNICA", banda: "gold", sub: subProd, blocos: cl.parteUnica! });
-  } else {
-    jobs.push({ tipo: "parte-1", label: "PARTE 1", banda: "gold", sub: subProd, blocos: cl.parte1! });
-    jobs.push({ tipo: "parte-2", label: "PARTE 2", banda: "gold", sub: subProd, blocos: cl.parte2! });
-  }
-  if (cl.temKit) {
-    const sub = `Pronta Entrega · ${kitOpt === "separado" ? "Entregar SEPARADO (antecipado)" : "Entregar JUNTO com o pedido"}`;
-    jobs.push({ tipo: "pronta-entrega", label: "PRONTA ENTREGA", banda: "green", sub, blocos: cl.kits });
-  }
+  const jobs = montarJobs(cl, kitOpt);
 
   const arquivos: { tipo: string; label: string; url: string }[] = [];
   for (const job of jobs) {

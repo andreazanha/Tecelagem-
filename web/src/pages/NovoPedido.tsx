@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, PARTES, type PedidoItem, type NovoPedidoBody } from "../api";
+import { api, type PedidoItem, type NovoPedidoBody, type Modelo } from "../api";
+import { calcularPartes } from "../parte";
 
 function linhaVazia(): PedidoItem {
   return { produto: "", ref: "", cor_grade: "", tamanho: "", qtd: 0, parte: "unico" };
@@ -9,7 +10,9 @@ function linhaVazia(): PedidoItem {
 export function NovoPedido() {
   const nav = useNavigate();
   const [clientes, setClientes] = useState<string[]>([]);
+  const [modelos, setModelos] = useState<Modelo[]>([]);
   const [salvando, setSalvando] = useState(false);
+  const [previa, setPrevia] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [arquivos, setArquivos] = useState<{ file: File; url: string }[]>([]);
   const [lendo, setLendo] = useState(false);
@@ -32,7 +35,11 @@ export function NovoPedido() {
       .listarClientes()
       .then((cs) => setClientes(cs.map((c) => c.nome)))
       .catch(() => {});
+    api.listarModelos().then(setModelos).catch(() => {});
   }, []);
+
+  // Classificação real (Parte 1/2/Única/Pronta Entrega) por código/nome do catálogo.
+  const partes = useMemo(() => calcularPartes(form.itens, modelos), [form.itens, modelos]);
 
   function set<K extends keyof NovoPedidoBody>(k: K, v: NovoPedidoBody[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -65,13 +72,7 @@ export function NovoPedido() {
     }
     setSalvando(true);
     try {
-      const body: NovoPedidoBody = {
-        ...form,
-        tipo: "auto",
-        entrega_pe: null,
-        itens,
-      };
-      const { id } = await api.criarPedido(body);
+      const { id } = await api.criarPedido(montarBody(itens));
       if (arquivos.length) {
         try {
           await api.enviarPdfs(id, arquivos.map((a) => a.file));
@@ -83,6 +84,42 @@ export function NovoPedido() {
     } catch (err) {
       setErro((err as Error).message);
       setSalvando(false);
+    }
+  }
+
+  // Monta o corpo do pedido com a parte JÁ classificada por código/nome (catálogo).
+  function montarBody(itens: PedidoItem[]): NovoPedidoBody {
+    const cls = calcularPartes(itens, modelos);
+    return {
+      ...form,
+      tipo: "auto",
+      entrega_pe: null,
+      itens: itens.map((it, i) => ({ ...it, parte: cls[i]?.value || it.parte })),
+    };
+  }
+
+  // Visualiza o PDF da OP ANTES de criar o pedido (não salva nada).
+  async function visualizarPrevia() {
+    setErro(null);
+    const itens = form.itens.filter((it) => it.produto.trim());
+    if (itens.length === 0) {
+      setErro("Adicione pelo menos um item para visualizar o PDF.");
+      return;
+    }
+    // abre a aba já no clique (evita bloqueio de pop-up) e depois aponta para o PDF
+    const win = window.open("", "_blank");
+    setPrevia(true);
+    try {
+      const blob = await api.previaPdf(montarBody(itens));
+      const url = URL.createObjectURL(blob);
+      if (win) win.location.href = url;
+      else window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) {
+      if (win) win.close();
+      setErro("Falha ao gerar a prévia: " + (e as Error).message);
+    } finally {
+      setPrevia(false);
     }
   }
 
@@ -132,6 +169,12 @@ export function NovoPedido() {
       }
     }
     setLendo(false);
+    // Vários pedidos numa OP só → inventa um nome no lugar do cliente (editável).
+    setForm((f) => {
+      const nums = (f.numero_erp || "").split(",").map((x) => x.trim()).filter(Boolean);
+      if (nums.length >= 2) return { ...f, cliente_nome: `OP CONSOLIDADA — ${nums.length} PEDIDOS` };
+      return f;
+    });
     if (lidos > 0) {
       setAviso({
         tipo: "ok",
@@ -168,6 +211,9 @@ export function NovoPedido() {
         <div className="row-gap">
           <button type="button" className="btn" onClick={() => nav("/pedidos")}>
             Cancelar
+          </button>
+          <button type="button" className="btn btn-soft" onClick={visualizarPrevia} disabled={previa}>
+            {previa ? "Gerando…" : "👁 Visualizar PDF"}
           </button>
           <button type="submit" className="btn btn-primary" disabled={salvando}>
             {salvando ? "Salvando…" : "🔒 Salvar pedido"}
@@ -391,13 +437,12 @@ export function NovoPedido() {
                   />
                 </td>
                 <td>
-                  <select value={it.parte} onChange={(e) => setItem(i, { parte: e.target.value })}>
-                    {PARTES.map((p) => (
-                      <option key={p.value} value={p.value}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
+                  <span
+                    className={"chip" + (partes[i]?.value === "p1" ? " chip-soft" : "")}
+                    title="Classificado automaticamente pelo código/nome do modelo"
+                  >
+                    {partes[i]?.label ?? "—"}
+                  </span>
                 </td>
                 <td>
                   <button
@@ -430,6 +475,9 @@ export function NovoPedido() {
       <div className="row-gap" style={{ justifyContent: "flex-end", marginBottom: 24 }}>
         <button type="button" className="btn" onClick={() => nav("/pedidos")}>
           Cancelar
+        </button>
+        <button type="button" className="btn btn-soft" onClick={visualizarPrevia} disabled={previa}>
+          {previa ? "Gerando…" : "👁 Visualizar PDF"}
         </button>
         <button type="submit" className="btn btn-primary" disabled={salvando}>
           {salvando ? "Salvando…" : "🔒 Salvar pedido"}

@@ -150,6 +150,24 @@ export const api = {
         r
       )
     ),
+  previaPdf: async (body: NovoPedidoBody) => {
+    const res = await fetch("/api/pedidos/previa", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let msg = `Erro ${res.status}`;
+      try {
+        const j = (await res.json()) as { error?: string };
+        if (j?.error) msg = j.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    return res.blob();
+  },
   importarPdf: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);
