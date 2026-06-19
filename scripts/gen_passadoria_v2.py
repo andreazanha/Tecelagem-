@@ -13,9 +13,21 @@ def text(x,y,s,size=13,fill="#0f172a",weight="normal",anchor="start",ls=None):
     return f'<text x="{x}" y="{y}" font-size="{size}" fill="{fill}" font-weight="{weight}" text-anchor="{anchor}"{extra}>{esc(s)}</text>'
 def circle(cx,cy,r,fill):
     return f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="{fill}"/>'
-DEFS=('<defs>'
- '<linearGradient id="hg" x1="0" y1="0" x2="1" y2="0">'
- '<stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#7c3aed"/></linearGradient>'
+
+# gradientes por TIPO (cada tipo uma cor)
+GRADS={
+ "p1":("#4338ca","#6366f1"),   # Parte 1 — índigo
+ "p2":("#7c3aed","#c026d3"),   # Parte 2 — violeta/fúcsia
+ "kit":("#0891b2","#06b6d4"),  # Kit — ciano/teal
+ "uni":("#475569","#64748b"),  # Único — grafite
+ "brand":("#4f46e5","#7c3aed"),
+}
+def grad_defs():
+    g=""
+    for k,(a,bb) in GRADS.items():
+        g+=f'<linearGradient id="g_{k}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{a}"/><stop offset="1" stop-color="{bb}"/></linearGradient>'
+    return g
+DEFS=('<defs>'+grad_defs()+
  '<filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%">'
  '<feDropShadow dx="0" dy="2" stdDeviation="5" flood-color="#0f172a" flood-opacity="0.10"/></filter>'
  '</defs>')
@@ -28,46 +40,48 @@ def avatar(cx,cy,r,initials,fill="#6366f1"):
 TINT={"amber":("#fff8ee","#f59e0b","#b45309"),"orange":("#fff3ea","#f97316","#c2410c"),
       "emerald":("#edfcf4","#10b981","#047857"),"blue":("#eef4ff","#3b82f6","#1d4ed8")}
 
-# ---------- CARD FECHADO no estilo do card aberto ----------
-def card(x,y,cw,op_prefix,op_num,client,product,qty,part,status_label,status_key,action,pedido_date,due_date,who=None):
-    ch=176
+def type_of(prefix,part):
+    if prefix=="KIT": return "kit","KIT"
+    if part=="Parte 1": return "p1","PARTE 1"
+    if part=="Parte 2": return "p2","PARTE 2"
+    return "uni","ÚNICO"
+
+# ---------- CARD FECHADO com cabeçalho colorido por tipo ----------
+def card(x,y,cw,op_prefix,op_num,client,product,qty,part,status_label,status_key,action,pedido_date,due_date):
+    ch=184
+    tkey,tlabel=type_of(op_prefix,part)
     s=rect(x,y,cw,ch,"#ffffff",rx=16,stroke="#eef0f4",filt="cardShadow")
-    # top: OP chip + status pill
+    # cabeçalho colorido (igual card aberto), cor por tipo
+    hh=40
+    s+=rect(x,y,cw,hh,f"url(#g_{tkey})",rx=16)+rect(x,y+hh-16,cw,16,f"url(#g_{tkey})")
     code=f"{op_prefix}-{op_num}"
-    cwid=20+len(code)*7.0
-    s+=rect(x+16,y+16,cwid,23,"#f1f5f9",rx=7,stroke="#e2e8f0")
-    s+=text(x+16+10,y+31.5,code,12,"#334155",weight="bold",ls="0.3")
+    s+=text(x+16,y+25,code,13,"#ffffff",weight="bold",ls="0.4")
+    s+=rect(x+cw-16-(14+len(tlabel)*6.6),y+11,14+len(tlabel)*6.6,18,"#ffffff33",rx=9)
+    s+=text(x+cw-16-(14+len(tlabel)*6.6)/2,y+24,tlabel,10,"#ffffff",weight="bold",anchor="middle",ls="0.5")
+    # corpo: cliente + produto
+    s+=text(x+16,y+hh+28,client,15.5,"#0f172a",weight="bold")
     bg,dot,fg=TINT[status_key]
-    sp_w=26+len(status_label)*6.2
-    s+=rect(x+cw-16-sp_w,y+16,sp_w,23,bg,rx=11)
-    s+=circle(x+cw-16-sp_w+13,y+27.5,3.5,dot)
-    s+=text(x+cw-16-sp_w+23,y+31.5,status_label,11,fg,weight="bold")
-    # client + product
-    s+=text(x+16,y+62,client,15.5,"#0f172a",weight="bold")
-    prod=f"{product} · {qty} pç"
-    s+=text(x+16,y+81,prod,11.5,"#64748b")
-    # date mini-boxes (estilo do card aberto)
-    bw=(cw-32-10)/2; by=y+92
+    sp_w=24+len(status_label)*6.0
+    s+=rect(x+cw-16-sp_w,y+hh+14,sp_w,20,bg,rx=10)+circle(x+cw-16-sp_w+12,y+hh+24,3,dot)+text(x+cw-16-sp_w+21,y+hh+27.5,status_label,10,fg,weight="bold")
+    s+=text(x+16,y+hh+47,f"{product} · {qty} pç",11.5,"#64748b")
+    # datas (caixinhas suaves, como no card aberto)
+    bw=(cw-32-10)/2; by=y+hh+58
     s+=rect(x+16,by,bw,42,"#f5f3ff",rx=10,stroke="#e9e3ff")
-    s+=text(x+16+12,by+16,"PEDIDO",8,"#7c3aed",weight="bold",ls="0.6")
-    s+=text(x+16+12,by+33,pedido_date,13,"#4c1d95",weight="bold")
+    s+=text(x+16+12,by+16,"PEDIDO",8,"#7c3aed",weight="bold",ls="0.6")+text(x+16+12,by+33,pedido_date,13,"#4c1d95",weight="bold")
     s+=rect(x+16+bw+10,by,bw,42,"#fff1f2",rx=10,stroke="#fde0e3")
-    s+=text(x+16+bw+10+12,by+16,"ENTREGA",8,"#e11d48",weight="bold",ls="0.6")
-    s+=text(x+16+bw+10+12,by+33,due_date,13,"#be123c",weight="bold")
-    # footer: part tag + action
+    s+=text(x+16+bw+10+12,by+16,"ENTREGA",8,"#e11d48",weight="bold",ls="0.6")+text(x+16+bw+10+12,by+33,due_date,13,"#be123c",weight="bold")
+    # footer: ação
     fy=y+ch-28
-    if part:
-        pw=14+len(part)*6.2
-        s+=rect(x+16,fy,pw,22,"#eef2ff",rx=8)+text(x+16+7,fy+15,part,10.5,"#4338ca",weight="bold")
     lab,col={"start":("Passar","#10b981"),"stop":("Finalizar","#3b82f6"),"send":("Enviar ▶","#6d28d9")}[action]
     bwid=26+len(lab)*7.2
+    s+=text(x+16,fy+16,"toque p/ detalhes",10,"#94a3b8")
     s+=rect(x+cw-16-bwid,fy,bwid,24,col,rx=8)+text(x+cw-16-bwid/2,fy+16,lab,11.5,"#fff",weight="bold",anchor="middle")
     return s
 
 def build_board():
-    W,H=2240,940
+    W,H=2240,960
     b=""
-    b+=rect(0,0,W,60,"url(#hg)")
+    b+=rect(0,0,W,60,"url(#g_brand)")
     b+=text(28,38,"BIG TRICOT",18,"#fff",weight="bold",ls="0.5")
     b+=circle(150,30,3,"#c7d2fe")+text(168,38,"Rolagem de Fase",13,"#e0e7ff")
     b+=rect(W-470,16,250,28,"#ffffff26",rx=14)+text(W-452,34,"🔎  Buscar OP, cliente, kit…",12,"#e0e7ff")
@@ -84,10 +98,17 @@ def build_board():
         else:
             b+=text(34,y+3,ic,13,"#7b8499")+text(58,y+3,label,13.5,"#aeb6c7")
         y+=44
+    # legenda de tipos
+    b+=text(26,H-150,"TIPOS",10,"#5b6478",weight="bold",ls="1")
+    leg=[("Parte 1","p1"),("Parte 2","p2"),("Kit","kit"),("Único","uni")]
+    ly=H-128
+    for nm,k in leg:
+        b+=rect(26,ly-11,16,16,f"url(#g_{k})",rx=4)+text(50,ly+1,nm,12,"#aeb6c7")
+        ly+=26
     b+=text(258,96,"Passadoria",24,"#0f172a",weight="bold")
     b+=text(258,118,"Produção  ›  Passadoria",12,"#94a3b8")
     b+=rect(W-372,80,150,34,"#ffffff",rx=9,stroke="#e5e7eb",filt="cardShadow")
-    b+=rect(W-368,84,72,26,"url(#hg)",rx=7)+text(W-332,101,"▦ Quadro",12,"#fff",weight="bold",anchor="middle")
+    b+=rect(W-368,84,72,26,"url(#g_brand)",rx=7)+text(W-332,101,"▦ Quadro",12,"#fff",weight="bold",anchor="middle")
     b+=text(W-258,101,"☰ Lista",12,"#6b7280",anchor="middle")
     b+=rect(W-208,80,120,34,"#ffffff",rx=9,stroke="#e5e7eb",filt="cardShadow")+text(W-148,101,"⚙  Filtros",12.5,"#374151",weight="bold",anchor="middle")
     kpis=[("Em fila","6","#f59e0b"),("Passando","3","#10b981"),("Finalizados hoje","4","#3b82f6"),
@@ -125,19 +146,19 @@ def build_board():
         cy=ytop+66
         for (pf,num,cl,pr,qt,pt,sl,sk,ac,pd,du) in cards:
             b+=card(x+10,cy,cw-20,pf,num,cl,pr,qt,pt,sl,sk,ac,pd,du)
-            cy+=192
-    b+=text(258,H-12,"Clique em qualquer card para abrir os detalhes completos (mesmo visual, ampliado).",11.5,"#94a3b8")
+            cy+=198
     return svg(W,H,b)
 
 def build_closeup():
-    # close-up de um card fechado para o cliente avaliar o acabamento
-    W,Hc=360,250
-    b=card(40,40,280,"OP","1042","Loja K","Blusa Tricô · BT12",150,"Parte 1","Aguardando","amber","start","14/06","22/06")
+    W,Hc=980,260
+    b=card(40,40,280,"OP","1042","Loja K","Blusa · BT12",150,"Parte 1","Aguardando","amber","start","14/06","22/06")
+    b+=card(350,40,280,"OP","1042","Loja K","Blusa · BT12",150,"Parte 2","Aguardando","orange","start","14/06","22/06")
+    b+=card(660,40,280,"KIT","1031","Malharia F","Casaco · CA09",80,None,"Passando","emerald","stop","16/06","23/06")
     return svg(W,Hc,b,bg="#eef0f5")
 
 os.makedirs(OUT_SVG,exist_ok=True)
-p=os.path.join(OUT_SVG,"22-setor-passadoria.svg"); open(p,"w").write(build_board())
-subprocess.run(["rsvg-convert","-z","1.1",p,"-o",os.path.join(OUT_PNG,"22-setor-passadoria.png")],check=True)
-p2=os.path.join(OUT_SVG,"24-card-fechado.svg"); open(p2,"w").write(build_closeup())
-subprocess.run(["rsvg-convert","-z","2.6",p2,"-o",os.path.join(OUT_PNG,"24-card-fechado.png")],check=True)
-print("OK passadoria + closeup")
+open(os.path.join(OUT_SVG,"22-setor-passadoria.svg"),"w").write(build_board())
+subprocess.run(["rsvg-convert","-z","1.1",os.path.join(OUT_SVG,"22-setor-passadoria.svg"),"-o",os.path.join(OUT_PNG,"22-setor-passadoria.png")],check=True)
+open(os.path.join(OUT_SVG,"24-card-fechado.svg"),"w").write(build_closeup())
+subprocess.run(["rsvg-convert","-z","2.0",os.path.join(OUT_SVG,"24-card-fechado.svg"),"-o",os.path.join(OUT_PNG,"24-card-fechado.png")],check=True)
+print("OK board + closeup (cabecalho colorido por tipo)")
