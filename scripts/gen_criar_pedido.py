@@ -29,7 +29,7 @@ def field(x,y,w,label,value,muted=False):
     s+=text(x+14,y+33,value,13,"#94a3b8" if muted else "#0f172a",weight="normal" if muted else "bold")
     return s
 
-W,H=1600,1020
+W,H=1600,1110
 b=rect(0,0,W,60,"url(#g_brand)")
 b+=text(28,38,"BIG TRICOT",18,"#fff",weight="bold",ls="0.5")+circle(150,30,3,"#c7d2fe")+text(168,38,"Rolagem de Fase",13,"#e0e7ff")
 b+=text(W-200,38,"Ana Paula",13,"#fff",anchor="end")+avatar(W-176,30,15,"AP","#a78bfa")
@@ -49,7 +49,7 @@ b+=rect(262,136,200,32,"#ffffff",rx=8,filt="cardShadow")+text(362,156,"📄 Impo
 b+=text(540,156,"✎ Manual",12,"#6b7280",anchor="middle")
 
 # ---------- LEFT: PDF ----------
-lx,ly,lw,lh=258,190,452,780
+lx,ly,lw,lh=258,190,452,870
 b+=rect(lx,ly,lw,lh,"#ffffff",rx=16,stroke="#eef0f4",filt="cardShadow")
 b+=text(lx+22,ly+34,"PDF do ERP",14,"#0f172a",weight="bold")
 b+=rect(lx+lw-150,ly+18,128,24,"#ecfdf5",rx=12)+circle(lx+lw-150+14,ly+30,3.5,"#10b981")+text(lx+lw-150+24,ly+34,"OCR 94% lido",10.5,"#047857",weight="bold")
@@ -66,7 +66,7 @@ b+=rect(lx+22,ly+lh-60,180,40,"#ffffff",rx=10,stroke="#cbd5e1")+text(lx+22+90,ly
 b+=rect(lx+212,ly+lh-60,180,40,"#ffffff",rx=10,stroke="#cbd5e1")+text(lx+212+90,ly+lh-34,"↻  Reprocessar OCR",11.5,"#334155",weight="bold",anchor="middle")
 
 # ---------- RIGHT: FORM ----------
-rx,ry,rw,rh=734,190,842,780
+rx,ry,rw,rh=734,190,842,870
 b+=rect(rx,ry,rw,rh,"#ffffff",rx=16,stroke="#eef0f4",filt="cardShadow")
 ix=rx+28; iw=rw-56
 b+=text(ix,ry+34,"Dados do pedido",15,"#0f172a",weight="bold")
@@ -98,9 +98,19 @@ for lab,sel in opts:
     ox+=ow+10
 # helper do tipo selecionado
 hny=oy+44
-b+=rect(ix,hny,iw,30,"#ecfdf5",rx=8,stroke="#a7f3d0")
-b+=text(ix+12,hny+20,"ℹ  Único + Pronta Entrega: o pedido único produz normalmente e os itens de Pronta Entrega (não produzem) saem junto.",10.5,"#047857",weight="bold")
-oy=hny
+b+=rect(ix,hny,iw,28,"#ecfdf5",rx=8,stroke="#a7f3d0")
+b+=text(ix+12,hny+19,"ℹ  Único + Pronta Entrega: o pedido único produz normalmente e os itens de Pronta Entrega (não produzem).",10.5,"#047857",weight="bold")
+# seletor de ENTREGA (junto x separado) — aparece quando o tipo tem Pronta Entrega
+egy=hny+44
+b+=text(ix,egy,"ENTREGA DA PRONTA ENTREGA",9.5,"#94a3b8",weight="bold",ls="0.6")
+seg=[("📦  Entregar JUNTO com o pedido",True),("⏩  Entregar SEPARADO (antecipado)",False)]
+sx=ix; sgy=egy+10
+for lab,sel in seg:
+    sw=28+len(lab)*6.5
+    if sel: b+=rect(sx,sgy,sw,36,"url(#g_brand)",rx=9)+text(sx+sw/2,sgy+23,lab,12,"#fff",weight="bold",anchor="middle")
+    else: b+=rect(sx,sgy,sw,36,"#ffffff",rx=9,stroke="#e2e8f0")+text(sx+sw/2,sgy+23,lab,12,"#475569",anchor="middle")
+    sx+=sw+12
+oy=sgy
 # itens
 ity=oy+58
 b+=text(ix,ity,"ITENS DO PEDIDO",9.5,"#94a3b8",weight="bold",ls="0.6")

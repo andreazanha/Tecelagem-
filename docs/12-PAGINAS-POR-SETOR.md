@@ -153,3 +153,13 @@ Colunas:
 - **Cadastrar revisora** (modal): nome, contato e **cor da coluna**.
 
 > Modelo de dados: catálogo `revisora` + `revisao` (resultado aprovado/reprovado, motivo). Colunas geradas dinamicamente a partir das revisoras cadastradas.
+
+
+## 3.0 Montar Pedido — Pronta Entrega: junto x separado ✅
+
+Quando o tipo do pedido inclui **Pronta Entrega** (ex.: *Único + Pronta Entrega* ou *P1+P2 + Pronta Entrega*), a pessoa que monta o pedido escolhe explicitamente, num seletor:
+
+- **📦 Entregar JUNTO com o pedido** — a Pronta Entrega aguarda e sai junto com a produção.
+- **⏩ Entregar SEPARADO (antecipado)** — a Pronta Entrega sai antes, separada da produção.
+
+Essa escolha define o destino do item de Pronta Entrega no **Estoque** (coluna "Pronta Entrega + Produção" para *junto*; coluna "Separar" para *separado/antecipado*). É assim que o sistema sabe se entrega junto ou separado.
