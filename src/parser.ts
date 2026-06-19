@@ -40,6 +40,19 @@ function dataBRtoISO(d?: string): string | undefined {
   return `${yy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
 }
 
+// Deixa só o NOME do vendedor: tira código no início, telefone/CNPJ e o "lixo" do ERP
+// (EMITENTE, Entrega, Transportador, Fones, OBS, CNPJ, etc.).
+function limparVendedor(v?: string): string | undefined {
+  if (!v) return undefined;
+  let s = v.replace(/\s+/g, " ").trim();
+  s = s.replace(/^\d+\s+/, ""); // código numérico no início (ex.: "25 ANDRE..." -> "ANDRE...")
+  s = s.split(
+    /\s+(?:EMITENTE|ENTREGA|TRANSPORTADOR|FONES?|OBS\.?|CNPJ|CPF|ENDERE|BAIRRO|CIDADE|CEP|TEL\.?|INSC|REPRES)\b/i
+  )[0];
+  s = s.replace(/\s+\d{4,}.*$/, ""); // a partir de um número longo (telefone/CNPJ) corta o resto
+  return s.trim() || undefined;
+}
+
 function primeiraCaptura(text: string, regexes: RegExp[]): string | undefined {
   for (const re of regexes) {
     const m = text.match(re);
@@ -160,10 +173,9 @@ function parseERPBigTricot(text: string): SugestaoPedido {
     ?.replace(/\s+/g, " ")
     .trim();
 
-  const vendedor = text
-    .match(/Representante:\s*(?:Fones:\S*\s*)?(.+?\s+LTDA)\b/i)?.[1]
-    ?.replace(/\s+/g, " ")
-    .trim();
+  const vendedor = limparVendedor(
+    text.match(/Representante:\s*(?:Fones:\S*\s*)?(.+?)(?:\s+LTDA\b|\n|$)/i)?.[1]
+  );
 
   const data_pedido = dataBRtoISO(text.match(/Data:\s*(\d{2}\/\d{2}\/\d{4})/i)?.[1]);
   const data_entrega = dataBRtoISO(text.match(/\bDe\s+(\d{2}\/\d{2}\/\d{4})/i)?.[1]);
@@ -205,9 +217,11 @@ export function parsePedido(texto: string): SugestaoPedido {
     new RegExp(`raz[\\u00e3a]o\\s*social\\s*[:\\-]\\s*(.+?)${STOP}`, "i"),
   ]);
 
-  const vendedor = primeiraCaptura(text, [
-    new RegExp(`(?:vendedor|representante)\\s*[:\\-]\\s*(.+?)${STOP}`, "i"),
-  ]);
+  const vendedor = limparVendedor(
+    primeiraCaptura(text, [
+      new RegExp(`(?:vendedor|representante)\\s*[:\\-]\\s*(.+?)${STOP}`, "i"),
+    ])
+  );
 
   // datas: prioriza rótulos; senão usa 1ª (pedido) e última (entrega)
   const data_entrega =

@@ -16,6 +16,7 @@ export function NovoPedido() {
   const [previaUrl, setPreviaUrl] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [arquivos, setArquivos] = useState<{ file: File; url: string }[]>([]);
+  const [vendedores, setVendedores] = useState<string[]>([]);
   const [lendo, setLendo] = useState(false);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "warn"; msg: string } | null>(null);
 
@@ -41,6 +42,13 @@ export function NovoPedido() {
 
   // Classificação real (Parte 1/2/Única/Pronta Entrega) por código/nome do catálogo.
   const partes = useMemo(() => calcularPartes(form.itens, modelos), [form.itens, modelos]);
+
+  // Vendedor: 1 pedido (ou todos do mesmo vendedor) → nome; vários vendedores diferentes → em branco.
+  useEffect(() => {
+    const distintos = [...new Set(vendedores.map((v) => v.trim()).filter(Boolean))];
+    if (distintos.length === 1) setForm((f) => ({ ...f, vendedor: distintos[0] }));
+    else if (distintos.length > 1) setForm((f) => ({ ...f, vendedor: "" }));
+  }, [vendedores]);
 
   function set<K extends keyof NovoPedidoBody>(k: K, v: NovoPedidoBody[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -138,9 +146,11 @@ export function NovoPedido() {
     setLendo(true);
     let lidos = 0;
     let falhas = 0;
+    const vends: string[] = []; // 1 por arquivo (alinha com `arquivos`)
     for (const { file } of novos) {
       try {
         const s = await api.importarPdf(file);
+        vends.push(s.vendedor || "");
         const add = (s.itens || []).map((it) => ({
           produto: it.produto || "",
           ref: it.ref ?? "",
@@ -163,16 +173,17 @@ export function NovoPedido() {
             ...f,
             numero_erp: nums.join(", "),
             cliente_nome: f.cliente_nome || s.cliente_nome || "",
-            vendedor: f.vendedor || s.vendedor || "",
             data_pedido: f.data_pedido || s.data_pedido || "",
             data_entrega: f.data_entrega || s.data_entrega || "",
             itens: itens.length ? itens : [linhaVazia()],
           };
         });
       } catch {
+        vends.push("");
         falhas++;
       }
     }
+    setVendedores((prev) => [...prev, ...vends]);
     setLendo(false);
     // Vários pedidos numa OP só → inventa um nome no lugar do cliente (editável).
     setForm((f) => {
@@ -202,6 +213,7 @@ export function NovoPedido() {
       if (a) URL.revokeObjectURL(a.url);
       return prev.filter((_, idx) => idx !== i);
     });
+    setVendedores((prev) => prev.filter((_, idx) => idx !== i));
   }
 
   const totalPecas = form.itens.reduce((s, it) => s + (Number(it.qtd) || 0), 0);

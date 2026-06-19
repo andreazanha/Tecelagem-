@@ -171,9 +171,8 @@ export async function gerarPdfParte(
     // barra cinza
     R(ix, y, iw, 26, GREY);
     let tx = ix + 10;
-    const nomeProduto = b.tipo ? `${b.tipo} ${b.modelo}` : b.modelo;
-    T("Produto:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Produto:", 9.5) + 6;
-    T(nomeProduto, tx, y + 17, 11, bld); tx += bld.widthOfTextAtSize(nomeProduto, 11) + 14;
+    T("Modelo:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Modelo:", 9.5) + 6;
+    T(b.modelo, tx, y + 17, 11, bld); tx += bld.widthOfTextAtSize(b.modelo, 11) + 14;
     T("Ref:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Ref:", 9.5) + 5;
     T(b.ref || "—", tx, y + 17, 10, bld); tx += bld.widthOfTextAtSize(b.ref || "—", 10) + 10;
     if (b.comp) T("· " + b.comp, tx, y + 17, 8.5, bld, REDC);
@@ -182,12 +181,12 @@ export async function gerarPdfParte(
     TR(`Total: ${b.total} ${b.total === 1 ? "peça" : "peças"}`, ix + iw - 10, y + 17, 10, bld);
     // cabeçalho tabela
     let ry = y + 26;
-    T("TAMANHO", ix + 10, ry + 13, 8, bld, MUTE);
+    T("PRODUTO / TAMANHO", ix + 10, ry + 13, 8, bld, MUTE);
     T("QUANTIDADE PEDIDA", qx + 14, ry + 13, 8, bld, MUTE);
     L(ix, ry + 18, ix + iw, LINEC, 1);
     ry += 18;
     for (const s of b.sizes) {
-      T(s.tamanho, ix + 10, ry + 14, 10, bld);
+      T(`${s.tipo ? s.tipo + " " : ""}${s.tamanho}`, ix + 10, ry + 14, 10, bld);
       RB(qx + 14, ry + 5, 11, 11, hx("#9aa3b2"), 1.2);
       T(`${s.qtd} ${s.qtd === 1 ? "peça" : "peças"}`, qx + 32, ry + 14, 10, bld, QBLUE);
       L(ix, ry + 19, ix + iw, hx("#eef0f4"), 0.8);

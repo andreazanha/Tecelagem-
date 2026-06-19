@@ -18,12 +18,12 @@ export interface ItemBase {
 }
 
 export interface Bloco {
-  tipo: string; // Peseira | Almofada | Capa | Manta | Kit | ""
   modelo: string;
   ref: string;
   comp: string;
   cor: string;
-  sizes: { tamanho: string; qtd: number }[];
+  // cada linha traz o TIPO junto do tamanho (ex.: "Almofada 55X35", "Peseira 70X250")
+  sizes: { tipo: string; tamanho: string; qtd: number }[];
   total: number;
 }
 
@@ -179,36 +179,35 @@ function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
     const tipo = tipoDe(it.produto, it.tamanho);
     const ref = (it.ref || "").trim();
     const cor = (it.cor_grade || "").trim();
-    // tipo no agrupamento: peseira e almofada do mesmo modelo/ref/cor NÃO se misturam
-    const key = `${tipo}|${modelo}|${ref}|${cor}`;
+    // Bloco = modelo + cor; o TIPO vai na linha do tamanho (Almofada 55X35, Peseira 70X250).
+    const key = `${modelo}|${ref}|${cor}`;
     let b = map.get(key);
     if (!b) {
-      b = { tipo, modelo, ref, cor, comp: info?.composicao || "", sizes: [], total: 0 };
+      b = { modelo, ref, cor, comp: info?.composicao || "", sizes: [], total: 0 };
       map.set(key, b);
       sizeIdx.set(key, new Map());
       ordem.push(key);
     }
     const tamanho = (it.tamanho || "—").trim() || "—";
+    const sk = `${tipo}|${tamanho}`;
     const idxMap = sizeIdx.get(key)!;
-    // Consolida: mesma medida soma a quantidade (junta pedidos repetidos numa OP).
-    if (idxMap.has(tamanho)) {
-      b.sizes[idxMap.get(tamanho)!].qtd += it.qtd;
+    // Consolida: mesmo tipo+medida soma a quantidade (junta pedidos repetidos numa OP).
+    if (idxMap.has(sk)) {
+      b.sizes[idxMap.get(sk)!].qtd += it.qtd;
     } else {
-      idxMap.set(tamanho, b.sizes.length);
-      b.sizes.push({ tamanho, qtd: it.qtd });
+      idxMap.set(sk, b.sizes.length);
+      b.sizes.push({ tipo, tamanho, qtd: it.qtd });
     }
     b.total += it.qtd;
   }
-  // Ordem alfabética por FAMÍLIA (modelo) — toda a família junta; dentro da família,
-  // agrupado por COR (mesma cor junta; cor diferente na linha de baixo); depois por tipo.
+  // dentro do bloco: ordena as linhas por tipo e depois por tamanho
+  for (const b of map.values()) {
+    b.sizes.sort((a, c) => a.tipo.localeCompare(c.tipo, "pt") || a.tamanho.localeCompare(c.tamanho, "pt"));
+  }
+  // blocos: ordem alfabética por FAMÍLIA (modelo) e, dentro, por COR (cor diferente = linha de baixo)
   return ordem
     .map((k) => map.get(k)!)
-    .sort(
-      (a, b) =>
-        a.modelo.localeCompare(b.modelo, "pt") ||
-        a.cor.localeCompare(b.cor, "pt") ||
-        a.tipo.localeCompare(b.tipo, "pt")
-    );
+    .sort((a, b) => a.modelo.localeCompare(b.modelo, "pt") || a.cor.localeCompare(b.cor, "pt"));
 }
 
 export function classificar(itens: ItemBase[], cat: Catalogo): Classificacao {
