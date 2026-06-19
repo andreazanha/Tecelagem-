@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rolagem de Fase — Big Tricot · Protótipo Visual</title>
+<style>
+  :root{
+    --bt:#6d28d9; --bt2:#8b5cf6; --bt-dark:#4c1d95;
+    --bg:#f4f4f7; --card:#ffffff; --line:#e6e6ee; --txt:#1f2430; --muted:#7a8194;
+    --green:#16a34a; --amber:#d97706; --red:#dc2626; --blue:#2563eb;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  body{background:var(--bg);color:var(--txt);font-size:14px}
+  .topbar{background:linear-gradient(90deg,var(--bt-dark),var(--bt));color:#fff;padding:12px 18px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:10}
+  .topbar h1{font-size:16px;font-weight:700;letter-spacing:.3px}
+  .topbar .badge{background:rgba(255,255,255,.18);padding:4px 10px;border-radius:20px;font-size:12px}
+  .topbar .spacer{flex:1}
+  .nav{display:flex;gap:6px;flex-wrap:wrap;padding:12px 18px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:48px;z-index:9}
+  .nav button{border:1px solid var(--line);background:#fff;color:var(--txt);padding:7px 12px;border-radius:8px;cursor:pointer;font-size:12.5px}
+  .nav button:hover{background:#f7f5ff}
+  .nav button.active{background:var(--bt);color:#fff;border-color:var(--bt)}
+  .wrap{max-width:1100px;margin:22px auto;padding:0 16px}
+  .screen{display:none}
+  .screen.active{display:block}
+  .screen-title{font-size:13px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px}
+
+  /* App shell */
+  .app{display:flex;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 8px 30px rgba(40,20,80,.06);background:#fff;min-height:560px}
+  .side{width:210px;background:#1b1530;color:#cfc8e6;padding:16px 0;flex-shrink:0}
+  .side .logo{padding:0 18px 14px;font-weight:800;color:#fff;font-size:15px;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:10px}
+  .side a{display:flex;align-items:center;gap:10px;padding:10px 18px;color:#cfc8e6;text-decoration:none;font-size:13.5px;cursor:pointer}
+  .side a.active,.side a:hover{background:rgba(139,92,246,.22);color:#fff;border-left:3px solid var(--bt2)}
+  .main{flex:1;background:var(--bg);padding:18px;overflow:auto}
+  .head{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+  .head h2{font-size:18px}
+  .head .spacer{flex:1}
+  .btn{background:var(--bt);color:#fff;border:0;padding:9px 14px;border-radius:9px;cursor:pointer;font-weight:600;font-size:13px}
+  .btn.ghost{background:#fff;color:var(--bt);border:1px solid var(--bt)}
+  .btn.lock::before{content:"🔒 "}
+  .user{display:flex;align-items:center;gap:8px;font-size:13px;color:#fff}
+  .avatar{width:30px;height:30px;border-radius:50%;background:var(--bt2);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:12px}
+
+  .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px}
+  .stat .n{font-size:24px;font-weight:800}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:2px}
+  .stat .bar{height:6px;border-radius:6px;background:var(--bt);margin-top:10px;opacity:.85}
+  .grid2{display:grid;grid-template-columns:2fr 1fr;gap:14px}
+  .panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+  .panel h3{font-size:14px;margin-bottom:12px}
+  .alert{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:10px 12px;border-radius:10px;font-size:13px;margin-bottom:12px}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;padding:8px 10px;border-bottom:1px solid var(--line)}
+  td{padding:10px;border-bottom:1px solid #f0f0f5}
+  tr:hover td{background:#faf9ff;cursor:pointer}
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11.5px;font-weight:600}
+  .pill::before{content:"●";font-size:9px}
+  .p-green{background:#dcfce7;color:#15803d}
+  .p-amber{background:#fef3c7;color:#b45309}
+  .p-red{background:#fee2e2;color:#b91c1c}
+  .p-blue{background:#dbeafe;color:#1d4ed8}
+  .p-gray{background:#eef0f4;color:#64748b}
+  .filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .filters select,.filters input{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff}
+
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+  .field input,.field select{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:13.5px}
+  .ok{border-color:#bbf7d0 !important;background:#f0fdf4}
+  .warn{border-color:#fde68a !important;background:#fffbeb}
+  .pdfbox{background:#fff;border:1px dashed #c7c2d8;border-radius:10px;height:330px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;text-align:center;line-height:1.6}
+
+  /* timeline */
+  .tl{list-style:none}
+  .tl li{display:flex;gap:12px;padding:10px 0;border-bottom:1px dashed #eee}
+  .dot{width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff}
+  .d-done{background:var(--green)} .d-now{background:var(--amber)} .d-wait{background:#cbd5e1}
+  .tl .meta{font-size:12px;color:var(--muted)}
+
+  /* phone */
+  .phones{display:flex;gap:26px;flex-wrap:wrap;justify-content:center}
+  .phone{width:300px;background:#0b0b14;border-radius:34px;padding:12px;box-shadow:0 14px 40px rgba(0,0,0,.25)}
+  .phone .scr{background:var(--bg);border-radius:24px;overflow:hidden;height:600px;display:flex;flex-direction:column}
+  .phone .pbar{background:linear-gradient(90deg,var(--bt-dark),var(--bt));color:#fff;padding:14px 16px;font-weight:700;font-size:15px}
+  .phone .pbody{padding:14px;overflow:auto;flex:1}
+  .dcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+  .dcard .t{font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+  .dcard .s{font-size:12px;color:var(--muted);margin-top:4px}
+  .pbtn{display:block;width:100%;text-align:center;background:var(--green);color:#fff;border:0;padding:12px;border-radius:10px;font-weight:700;margin-top:8px;font-size:14px}
+  .pbtn.sec{background:#fff;color:var(--bt);border:1px solid var(--bt)}
+  .photo{display:inline-flex;width:62px;height:62px;border-radius:10px;background:#e9e6f5;align-items:center;justify-content:center;color:#a99fce;margin-right:6px;font-size:22px}
+
+  /* login */
+  .login{max-width:380px;margin:30px auto;background:#fff;border:1px solid var(--line);border-radius:16px;padding:34px;text-align:center;box-shadow:0 10px 40px rgba(40,20,80,.08)}
+  .login .brand{font-size:22px;font-weight:800;color:var(--bt-dark)}
+  .login .sub{color:var(--muted);margin:4px 0 22px;font-size:13px}
+  .login input{width:100%;border:1px solid var(--line);border-radius:9px;padding:11px;margin-bottom:12px}
+  .tag{display:inline-block;background:#f3effe;color:var(--bt-dark);font-size:11px;padding:3px 9px;border-radius:20px;margin-left:6px}
+  .note{font-size:12px;color:var(--muted);margin-top:10px}
+  .modal{max-width:360px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,.12)}
+  @media(max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.side{display:none}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>🧶 BIG TRICOT</h1><span class="badge">Rolagem de Fase</span>
+  <span class="badge">Protótipo Visual · não é o sistema final</span>
+  <div class="spacer"></div>
+  <div class="user"><span class="avatar">JS</span> João (Supervisor) ▾</div>
+</div>
+
+<div class="nav" id="nav"></div>
+
+<div class="wrap">
+
+  <!-- LOGIN -->
+  <section class="screen" data-name="Login">
+    <div class="screen-title">T01 · Tela de Login</div>
+    <div class="login">
+      <div class="brand">🧶 BIG TRICOT</div>
+      <div class="sub">Rolagem de Fase</div>
+      <input placeholder="Usuário"><input type="password" placeholder="Senha">
+      <button class="btn" style="width:100%">Entrar</button>
+      <div class="note">Esqueci minha senha · Suporte</div>
+    </div>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section class="screen" data-name="Dashboard">
+    <div class="screen-title">T02 · Dashboard</div>
+    <div class="app">
+      <nav class="side">
+        <div class="logo">🧶 Big Tricot</div>
+        <a class="active">📊 Início</a><a>📦 Pedidos</a><a>🏭 Ordens de Produção</a>
+        <a>📋 Romaneios</a><a>🧵 Costureiras</a><a>🗃️ Almoxarifado</a>
+        <a>🚚 Motoristas</a><a>📈 Relatórios</a><a>⚙️ Configurações</a>
+      </nav>
+      <div class="main">
+        <div class="head"><h2>Resumo de Produção</h2><div class="spacer"></div><span class="pill p-gray">19/06/2026</span></div>
+        <div class="cards">
+          <div class="stat"><div class="n">12</div><div class="l">Tecelagem</div><div class="bar" style="width:80%"></div></div>
+          <div class="stat"><div class="n">5</div><div class="l">Passadoria</div><div class="bar" style="width:35%"></div></div>
+          <div class="stat"><div class="n">8</div><div class="l">Corte</div><div class="bar" style="width:55%"></div></div>
+          <div class="stat"><div class="n">22</div><div class="l">Costura</div><div class="bar" style="width:100%"></div></div>
+          <div class="stat"><div class="n">3</div><div class="l">Revisão</div><div class="bar" style="width:22%"></div></div>
+        </div>
+        <div class="alert">⚠️ 4 OPs paradas há mais de 48h · 🔴 2 pedidos atrasados · 🗃️ 3 materiais abaixo do mínimo</div>
+        <div class="grid2">
+          <div class="panel"><h3>Pedidos por fase</h3>
+            <div style="display:flex;align-items:flex-end;gap:14px;height:150px">
+              <div style="flex:1;background:var(--bt);height:80%;border-radius:6px 6px 0 0"></div>
+              <div style="flex:1;background:var(--bt2);height:35%;border-radius:6px 6px 0 0"></div>
+              <div style="flex:1;background:var(--bt);height:55%;border-radius:6px 6px 0 0"></div>
+              <div style="flex:1;background:var(--bt2);height:100%;border-radius:6px 6px 0 0"></div>
+              <div style="flex:1;background:var(--bt);height:22%;border-radius:6px 6px 0 0"></div>
+            </div>
+            <div style="display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:6px"><span style="flex:1;text-align:center">Tecel.</span><span style="flex:1;text-align:center">Passad.</span><span style="flex:1;text-align:center">Corte</span><span style="flex:1;text-align:center">Costura</span><span style="flex:1;text-align:center">Revisão</span></div>
+          </div>
+          <div class="panel"><h3>Hoje</h3>
+            <p style="margin-bottom:10px">🚚 Entregas: <b>6</b></p>
+            <p style="margin-bottom:10px">⏱️ Lead time médio: <b>2,3 dias</b></p>
+            <p style="margin-bottom:10px">✅ OTIF (no prazo): <b>85%</b></p>
+            <p>🗃️ Estoque baixo: <b>3 materiais</b></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TODOS OS PEDIDOS -->
+  <section class="screen" data-name="Todos os Pedidos">
+    <div class="screen-title">T03 · Todos os Pedidos (tela central)</div>
+    <div class="app">
+      <nav class="side">
+        <div class="logo">🧶 Big Tricot</div>
+        <a>📊 Início</a><a class="active">📦 Pedidos</a><a>🏭 Ordens de Produção</a>
+        <a>📋 Romaneios</a><a>🧵 Costureiras</a><a>🗃️ Almoxarifado</a><a>🚚 Motoristas</a><a>📈 Relatórios</a>
+      </nav>
+      <div class="main">
+        <div class="head"><h2>Todos os Pedidos</h2><div class="spacer"></div><button class="btn">+ Importar PDF</button></div>
+        <div class="filters">
+          <select><option>Cliente ▾</option></select><select><option>Fase ▾</option></select>
+          <select><option>Setor ▾</option></select><select><option>Status ▾</option></select>
+          <select><option>Tipo ▾</option></select><input placeholder="Entrega: __/__ → __/__">
+          <select><option>Responsável ▾</option></select><button class="btn ghost">Filtrar</button>
+        </div>
+        <div class="panel" style="padding:0">
+        <table>
+          <thead><tr><th>Cliente</th><th>Nº Pedido</th><th>Entrega</th><th>Fase</th><th>Setor</th><th>Status</th><th>Responsável</th><th>Parado</th></tr></thead>
+          <tbody>
+            <tr><td>Loja A</td><td>#1001 <span class="tag">G-046</span></td><td>22/06 🔴</td><td>Costura</td><td>Facção 3</td><td><span class="pill p-amber">Em execução</span></td><td>Maria</td><td>1d 4h</td></tr>
+            <tr><td>Loja A</td><td>#1002 <span class="tag">G-046</span></td><td>22/06 🔴</td><td>Costura</td><td>Facção 3</td><td><span class="pill p-amber">Em execução</span></td><td>Maria</td><td>1d 4h</td></tr>
+            <tr><td>Cliente B</td><td>#1010</td><td>25/06</td><td>Tecelagem</td><td>Tear 2</td><td><span class="pill p-green">Em execução</span></td><td>Pedro</td><td>3h 12m</td></tr>
+            <tr><td>Loja C</td><td>#1020 <span class="tag">Pronta Entrega</span></td><td>20/06 🔴</td><td>Expedição</td><td>Exped.</td><td><span class="pill p-amber">Aguardando</span></td><td>—</td><td>2d 1h ⚠️</td></tr>
+            <tr><td>Atacado D</td><td>#0998</td><td>28/06</td><td>Revisão</td><td>Qualidade</td><td><span class="pill p-blue">Aguardando</span></td><td>Carla</td><td>40m</td></tr>
+            <tr><td>Loja E</td><td>#0985</td><td>19/06</td><td>Transporte</td><td>Logística</td><td><span class="pill p-green">Entregue</span></td><td>Carlos</td><td>—</td></tr>
+          </tbody>
+        </table>
+        </div>
+        <div style="display:flex;justify-content:space-between;color:var(--muted);font-size:12.5px">
+          <span>142 pedidos</span><span>◀ 1 2 3 … ▶ &nbsp; <button class="btn ghost" style="padding:6px 10px">Exportar Excel</button></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONFERENCIA -->
+  <section class="screen" data-name="Conferência PDF">
+    <div class="screen-title">T05 · Conferência de Pedido (pós-OCR)</div>
+    <div class="app"><div class="main" style="background:#fff">
+      <div class="head"><h2>Conferência — pedido_1001.pdf</h2><div class="spacer"></div><span class="pill p-green">Confiança OCR: 92%</span></div>
+      <div class="grid2">
+        <div class="pdfbox">📄<br>Visualizador do PDF original do ERP<br><span style="font-size:12px">(preservado no sistema)</span></div>
+        <div>
+          <div class="field"><label>Cliente ✅</label><input class="ok" value="Loja A"></div>
+          <div class="field"><label>Nº Pedido ✅</label><input class="ok" value="1001"></div>
+          <div class="field"><label>Data de entrega ✅</label><input class="ok" value="22/06/2026"></div>
+          <div class="field"><label>Tipo de pedido</label><select><option>Único</option><option>Parte 1 + Parte 2</option><option>Pronta Entrega</option></select></div>
+          <div class="panel" style="padding:10px">
+            <table><thead><tr><th>Produto</th><th>Ref</th><th>Qtd</th></tr></thead>
+            <tbody><tr><td>Blusa Tricô</td><td>BT12</td><td><input class="warn" style="width:60px;padding:5px" value="120"> 🟡85%</td></tr>
+            <tr><td>Cachecol</td><td>CC07</td><td><input style="width:60px;padding:5px" value="60"></td></tr></tbody></table>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+            <button class="btn ghost">Cancelar</button><button class="btn lock">Confirmar e gerar PDF padronizado</button>
+          </div>
+          <div class="note">🟡 Campos de baixa confiança são destacados. Correções ficam registradas na auditoria.</div>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- DETALHE OP / ROLAGEM -->
+  <section class="screen" data-name="Detalhe da OP / Rolagem">
+    <div class="screen-title">T07 · Detalhe da OP — Rolagem de Fase</div>
+    <div class="app"><div class="main">
+      <div class="head"><h2>OP G-046 <span class="tag">#1001, #1002, #1003</span></h2><div class="spacer"></div><span class="pill p-amber">Em execução</span></div>
+      <div class="panel"><b>Cliente:</b> Loja A &nbsp;·&nbsp; <b>Tipo:</b> Agrupamento &nbsp;·&nbsp; <b>Entrega:</b> 22/06 🔴</div>
+      <div class="grid2">
+        <div class="panel"><h3>Linha do tempo (rastreabilidade)</h3>
+          <ul class="tl">
+            <li><span class="dot d-done">✓</span><div><b>Criação</b> · Ana<div class="meta">18/06 09:12</div></div></li>
+            <li><span class="dot d-done">✓</span><div><b>Tecelagem</b> · Pedro<div class="meta">18/06 14:30 → 19/06 08:00 (17h30)</div></div></li>
+            <li><span class="dot d-done">✓</span><div><b>Passadoria</b> · Carla<div class="meta">19/06 08:10 → 10:00 (1h50)</div></div></li>
+            <li><span class="dot d-done">✓</span><div><b>Corte</b> · José<div class="meta">19/06 10:15 → 12:00 (1h45)</div></div></li>
+            <li><span class="dot d-now">●</span><div><b>Costura</b> · Maria — Romaneio R-220<div class="meta">19/06 13:00 → … (parado 1d 4h)</div></div></li>
+            <li><span class="dot d-wait">·</span><div><b>Revisão</b><div class="meta">aguardando</div></div></li>
+            <li><span class="dot d-wait">·</span><div><b>Expedição · Fiscal · Transporte</b><div class="meta">—</div></div></li>
+          </ul>
+        </div>
+        <div>
+          <div class="panel"><h3>Documentos</h3>
+            <p>📄 PDF original</p><p>📄 PDF padronizado</p><p>📄 PDF agrupado</p><p>📋 Romaneio R-220</p>
+          </div>
+          <div class="panel"><h3>Rolar fase</h3>
+            <div class="field"><label>Próxima fase</label><select><option>Revisão ▶</option></select></div>
+            <div class="field"><label>Setor</label><select><option>Qualidade</option></select></div>
+            <div class="field"><label>Observação</label><input placeholder="opcional"></div>
+            <button class="btn lock" style="width:100%">Rolar Fase</button>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ENVIAR PARA COSTURA -->
+  <section class="screen" data-name="Enviar p/ Costura">
+    <div class="screen-title">T08 · Corte → Costura (gera Romaneio)</div>
+    <div class="app"><div class="main" style="background:#fff">
+      <div class="head"><h2>Enviar para Costura — OP G-046</h2></div>
+      <div class="grid2">
+        <div>
+          <div class="field"><label>Costureira</label><select><option>Maria (Facção 3) · 2 em aberto</option><option>Joana (Facção 1)</option></select></div>
+          <div class="field"><label>Motorista</label><select><option>Carlos</option><option>Rafael</option></select></div>
+          <div class="field"><label>Previsão de retorno</label><input value="21/06/2026"></div>
+          <div class="field"><label>Observação</label><input placeholder="opcional"></div>
+        </div>
+        <div class="panel"><h3>Itens a enviar</h3>
+          <table><thead><tr><th>Produto</th><th>Pedido</th><th>Cortada</th><th>Enviar</th></tr></thead>
+          <tbody><tr><td>Blusa BT12</td><td>#1001</td><td>120</td><td><input style="width:60px;padding:5px" value="120"></td></tr>
+          <tr><td>Cachecol CC07</td><td>#1002</td><td>60</td><td><input style="width:60px;padding:5px" value="60"></td></tr></tbody></table>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+        <button class="btn ghost">Cancelar</button><button class="btn lock">Gerar Romaneio e Iniciar Rastreamento</button>
+      </div>
+      <div class="note">→ Gera romaneio (PDF), cria a entrega do motorista e dispara WhatsApp para a costureira (futuro).</div>
+    </div></div>
+  </section>
+
+  <!-- COSTUREIRA -->
+  <section class="screen" data-name="Costureira">
+    <div class="screen-title">T10 · Cadastro de Costureira (abas)</div>
+    <div class="app"><div class="main">
+      <div class="head"><h2>Maria Silva <span class="tag">Facção 3</span></h2><div class="spacer"></div><span class="pill p-green">Ativa</span> <button class="btn ghost">Editar</button></div>
+      <div class="filters">
+        <button class="btn">Cadastro</button><button class="btn ghost">Histórico</button><button class="btn ghost">Pedidos em Aberto</button>
+        <button class="btn ghost">Romaneios</button><button class="btn ghost">Pagamentos</button><button class="btn ghost">Pendências</button>
+      </div>
+      <div class="grid2">
+        <div class="panel"><h3>Dados cadastrais</h3>
+          <div class="field"><label>Tipo</label><input value="Facção"></div>
+          <div class="field"><label>WhatsApp</label><input value="(47) 9 9999-0000"></div>
+          <div class="field"><label>Chave PIX</label><input value="maria@email.com"></div>
+          <div class="field"><label>Capacidade declarada</label><input value="400 peças/semana"></div>
+        </div>
+        <div>
+          <div class="panel"><h3>Pedidos em aberto</h3>
+            <p>📋 R-220 · G-046 · 180pç · enviado 19/06 · prev. 21/06 <span class="pill p-amber">em trânsito</span></p>
+          </div>
+          <div class="panel"><h3>Pagamentos</h3>
+            <p>Jun/2026 · <b>R$ 1.240,00</b> · <span class="pill p-amber">Pendente</span> <button class="btn lock" style="padding:6px 10px">Registrar pagamento</button></p>
+          </div>
+          <div class="panel"><h3>Pendências</h3>
+            <p><span class="pill p-red">2 peças faltantes</span> (R-210) · aberta 15/06 <button class="btn ghost" style="padding:6px 10px">Resolver</button></p>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ALMOXARIFADO -->
+  <section class="screen" data-name="Almoxarifado">
+    <div class="screen-title">T11 · Almoxarifado</div>
+    <div class="app"><div class="main">
+      <div class="head"><h2>Almoxarifado</h2><div class="spacer"></div>
+        <button class="btn ghost">Entrada</button>&nbsp;<button class="btn ghost">Saída</button>&nbsp;<button class="btn lock">Ajuste</button></div>
+      <div class="panel" style="padding:0">
+      <table><thead><tr><th>Material</th><th>Categoria</th><th>Estoque</th><th>Mínimo</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Fio Algodão</td><td>Matéria-prima</td><td>45 kg</td><td>50 kg</td><td><span class="pill p-red">Abaixo do mínimo</span></td></tr>
+          <tr><td>Linha Preta</td><td>Aviamento</td><td>320 un</td><td>100 un</td><td><span class="pill p-green">OK</span></td></tr>
+          <tr><td>Etiqueta BT</td><td>Embalagem</td><td>1.200 un</td><td>500 un</td><td><span class="pill p-green">OK</span></td></tr>
+          <tr><td>Botão Madrepérola</td><td>Aviamento</td><td>80 un</td><td>200 un</td><td><span class="pill p-red">Abaixo do mínimo</span></td></tr>
+        </tbody></table>
+      </div>
+      <div class="note">Todas as movimentações (entrada/saída/ajuste) são append-only e registradas na auditoria.</div>
+    </div></div>
+  </section>
+
+  <!-- MOBILE MOTORISTA -->
+  <section class="screen" data-name="App Motorista">
+    <div class="screen-title">M01–M04 · App do Motorista (mobile)</div>
+    <div class="phones">
+      <div class="phone"><div class="scr">
+        <div class="pbar">🚚 Minhas Entregas</div>
+        <div class="pbody">
+          <div class="dcard"><div class="t">R-220 · Maria <span class="pill p-amber">A caminho</span></div><div class="s">Facção 3 · 180 peças · OP G-046</div></div>
+          <div class="dcard"><div class="t">R-221 · Joana <span class="pill p-blue">Aguardando</span></div><div class="s">Facção 1 · 90 peças</div></div>
+          <div class="dcard"><div class="t">R-218 · Cliente C <span class="pill p-green">Entregue</span></div><div class="s">Entregue 19/06 10:20</div></div>
+          <div class="note">⬤ 2 ações pendentes de sincronização (offline)</div>
+        </div>
+      </div></div>
+      <div class="phone"><div class="scr">
+        <div class="pbar">← R-220 · Maria</div>
+        <div class="pbody">
+          <div class="dcard"><div class="s">📍 Rua das Flores, 123</div><div class="s">Itens: Blusa 120 · Cachecol 60</div><div class="s">OP: G-046</div>
+            <button class="pbtn sec">🗺️ Abrir no mapa</button></div>
+          <div class="dcard"><div class="t">Status: A caminho</div>
+            <button class="pbtn">✅ Confirmar Chegada</button></div>
+          <div class="dcard"><div class="s">Fotos da entrega</div>
+            <div style="margin:8px 0"><span class="photo">📷</span><span class="photo">📷</span><span class="photo">＋</span></div>
+            <input style="width:100%;border:1px solid var(--line);border-radius:8px;padding:9px" placeholder="Observação...">
+            <button class="pbtn">✅ Confirmar Entrega</button></div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- REAUTH MODAL -->
+  <section class="screen" data-name="Assinatura (segurança)">
+    <div class="screen-title">T15 · Confirmação com Reautenticação (assinatura eletrônica)</div>
+    <div class="modal">
+      <h3 style="margin-bottom:6px">🔒 Confirme sua identidade</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:14px">Ação: <b>Rolar OP G-046 para Revisão</b></p>
+      <div class="field"><label>Usuário (logado)</label><input value="João" disabled style="background:#f4f4f7"></div>
+      <div class="field"><label>Senha / PIN</label><input type="password" placeholder="••••••"></div>
+      <p class="note">Esta ação será assinada e registrada na auditoria (usuário, data, hora, ação).</p>
+      <div style="display:flex;gap:10px;margin-top:14px"><button class="btn ghost" style="flex:1">Cancelar</button><button class="btn" style="flex:1">Confirmar</button></div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  const screens=[...document.querySelectorAll('.screen')];
+  const nav=document.getElementById('nav');
+  screens.forEach((s,i)=>{
+    const b=document.createElement('button');
+    b.textContent=s.dataset.name;
+    b.onclick=()=>{screens.forEach(x=>x.classList.remove('active'));[...nav.children].forEach(x=>x.classList.remove('active'));s.classList.add('active');b.classList.add('active');window.scrollTo({top:0,behavior:'smooth'})};
+    nav.appendChild(b);
+    if(i===0){s.classList.add('active');b.classList.add('active')}
+  });
+</script>
+</body>
+</html>
