@@ -189,3 +189,15 @@ Colunas:
 - **Cadastrar transportadora** (modal): nome, **tipo** (Transportadora / Correios / Cliente retira / Transporte interno), site de rastreio, contato e **cor da coluna**.
 
 > Modelo de dados: catálogo `transportadora` (nome, tipo, cor, site_rastreio) + `entrega` (status, código de rastreio, comprovante). Colunas geradas dinamicamente. Tipos especiais "Cliente retira" e "Transporte interno" são apenas transportadoras com comportamento próprio (sem rastreio externo).
+
+
+## 3.9 Estoque — fluxo aprovado ✅
+
+Colunas:
+1. **Entrada no Estoque** — ao **dar entrada**, dispara **mensagem automática no grupo de representantes (WhatsApp)**: *"Atenção, atualização de estoque!"* + **Produto, Kit, Tamanho, Cor, Quantidade** (puxados do PDF do pedido) + frase final. Card mostra Produto/Kit/Tamanho/Cor/Qtd.
+2. **Pedido de Vendas — Separar** — ao **separar** do estoque, o item vai para a **Revisão**.
+3. **Pronta Entrega + Estoque (juntos)** — ao **separar**, vai para a **Revisão**.
+
+**Regra-chave (reunião na Revisão):** quando o item separado chega na Revisão, ele **se une ao card P1+P2** (os que foram unidos no Corte) referente ao mesmo pedido, para **seguirem juntos** dali em diante (Expedição → Fiscal → Transporte).
+
+> Integração: webhook/Cloud API do WhatsApp para o grupo de representantes. Mensagem com **template configurável** (produto/kit/tamanho/cor vêm do cadastro do pedido/PDF). As colunas e nomes são configuráveis.
