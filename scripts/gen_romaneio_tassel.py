@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Romaneio de Tassel: 3 vias na mesma pagina; SOMENTE a 1a via tem campo de assinatura.
-import os, subprocess
+import os, subprocess, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from brand_logo import logo_left
 OUT_SVG="docs/prototipo/svg"; OUT_PNG="docs/prototipo"
 def esc(s): return str(s).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
 def rect(x,y,w,h,fill,rx=0,stroke=None,sw=1,filt=None):
@@ -22,9 +24,7 @@ def svg(w,h,body,bg="#e5e7eb"):
             f'font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">'+DEFS+rect(0,0,w,h,bg)+body+'</svg>')
 SERIF="Georgia, 'Times New Roman', serif"; GRAY="#eceff3"; BORDER="#c7cdd6"
 def logo(x,y):
-    s=text(x,y,"BiG",24,"#111827",weight="bold",family=SERIF)
-    s+=f'<circle cx="{x+26}" cy="{y-17}" r="2.1" fill="#111827"/>'
-    s+=text(x+2,y+13,"BIG TRICOT HOME DECOR",6,"#6b7280",ls="1.8")
+    s,_=logo_left(x, y-12, 24, "#111827", sub=True)
     return s
 def via(px,oy,iw,signature):
     ix=px+34; s=""

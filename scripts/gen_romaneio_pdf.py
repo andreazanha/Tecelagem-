@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Romaneio fiel ao modelo real da Big Tricot (ROM-0135): 2 vias na mesma pagina.
-import os, subprocess
+import os, subprocess, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from brand_logo import logo_left
 OUT_SVG="docs/prototipo/svg"; OUT_PNG="docs/prototipo"
 def esc(s): return str(s).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
 def rect(x,y,w,h,fill,rx=0,stroke=None,sw=1,filt=None):
@@ -25,10 +27,7 @@ SERIF="Georgia, 'Times New Roman', serif"
 GRAY="#eceff3"; BORDER="#c7cdd6"
 
 def logo(x,y):
-    s=text(x,y,"BiG",30,"#111827",weight="bold",family=SERIF)
-    # ponto do i
-    s+=f'<circle cx="{x+33}" cy="{y-22}" r="2.6" fill="#111827"/>'
-    s+=text(x+2,y+16,"BIG TRICOT HOME DECOR",7,"#6b7280",ls="2.2")
+    s,_=logo_left(x, y-14, 30, "#111827", sub=True)
     return s
 
 def via(px,oy,iw,label_cut=None):
