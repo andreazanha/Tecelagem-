@@ -49,7 +49,24 @@ Combinações possíveis de pedido:
 - Vendedor enxerga **a produção em tempo real** do pedido que ele vendeu.
 - Sem integração frágil entre dois sistemas; **um só banco, um só app**.
 
-### ⚠️ A definir com a Big Tricot
-1. O CRM já está sendo construído **em qual tecnologia/base**? (para decidir entre *absorver no mesmo projeto* ou *integrar via módulo/serviço*).
-2. **Escopo do CRM** v1: só funil de vendas e clientes, ou também propostas/financeiro/pós-venda?
-3. O pedido **nasce no CRM** (proposta aprovada vira pedido) ou continua entrando pelo **PDF do ERP**, e o CRM só acompanha?
+### ✅ Decisões do cliente (definidas)
+1. **Base do CRM:** ainda em protótipo/início → será **absorvido no mesmo projeto** desde já (sem retrabalho, plataforma única).
+2. **Origem do pedido:** continua entrando pelo **PDF do ERP**. O CRM **acompanha** (não gera o pedido de produção). A *Proposta/Orçamento* do CRM fica **vinculada** ao pedido quando ele entrar pelo ERP.
+3. **Escopo do CRM v1:** **Clientes 360º · Funil de vendas · Propostas/Orçamentos · Pós-venda** (os quatro).
+
+### Fluxo unificado resultante
+```
+CRM: Lead → Oportunidade → Proposta/Orçamento (aprovada)
+        │
+        ▼  (cliente fecha; ERP emite o pedido)
+   PDF do ERP → importa → Pedido (vinculado à proposta) → Rolagem de Fase
+        │
+        ▼
+   Entrega → Pós-venda (volta ao CRM: relacionamento, recompra)
+```
+
+### Reflexo na navegação
+- Novo item de menu **CRM** (Clientes, Funil, Propostas, Pós-venda), com permissões próprias (papel **Vendedor**).
+- O **Vendedor** acompanha a produção/entrega do seu pedido em tempo real (puxado da Rolagem de Fase) na aba Pós-venda.
+
+> Próximos mockups do CRM serão feitos após concluirmos as telas de produção/estoque em andamento.
