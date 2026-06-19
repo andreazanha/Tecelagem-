@@ -127,17 +127,7 @@ export async function gerarPdfParte(
     R(ix + iw - pw, 46, pw, 20, bandaColor);
     T(parteLabel, ix + iw - pw + 8, 60, 9, bld, bandaTxt);
     // dados
-    let y = bh + 24;
-    // Observação em VERMELHO LOGO ABAIXO DO CABEÇALHO (destaque), com quebra de linha.
-    if (ped.observacao && ped.observacao.trim()) {
-      T("OBSERVAÇÃO", ix, y, 8.5, bld, MUTE);
-      const linhas = wrap(ped.observacao.trim().toUpperCase(), bld, 10.5, iw - 140);
-      for (const ln of linhas) {
-        T(ln, ix + 140, y, 10.5, bld, REDC);
-        y += 15;
-      }
-      y += 12;
-    }
+    let y = bh + 26;
     const info = (k: string, v: string, vc = INK) => {
       T(k, ix, y, 8.5, bld, MUTE);
       T(fit(v, bld, 10, iw - 140 - 4), ix + 140, y, 10, bld, vc);
@@ -149,7 +139,20 @@ export async function gerarPdfParte(
     T("DATAS", ix, y, 8.5, bld, MUTE);
     T(`Emissão: ${ped.emissao}`, ix + 140, y, 10, bld);
     T(`Entrega: ${ped.entrega}`, ix + 320, y, 10, bld);
-    y += 28;
+    y += 20;
+    // OBSERVAÇÃO em VERMELHO, logo abaixo do bloco de dados (antes dos itens).
+    if (ped.observacao && ped.observacao.trim()) {
+      y += 6;
+      T("OBSERVAÇÃO", ix, y, 8.5, bld, MUTE);
+      const linhas = wrap(ped.observacao.trim().toUpperCase(), bld, 10.5, iw - 140);
+      for (const ln of linhas) {
+        T(ln, ix + 140, y, 10.5, bld, REDC);
+        y += 15;
+      }
+      y += 5;
+    } else {
+      y += 8;
+    }
     const titulo = banda === "green" ? "ITENS — PRONTA ENTREGA" : "ITENS A PRODUZIR";
     T(titulo, ix, y, 13, bld, NAVY);
     R(ix, y + 6, iw, 2.5, NAVY);
