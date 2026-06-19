@@ -89,9 +89,10 @@ TINT={"amber":("#fff8ee","#f59e0b","#b45309"),"orange":("#fff3ea","#f97316","#c2
 def card(x,y,cw,op_prefix,op_num,client,product,qty,part,stripe,status_label,status_key,
          action,due=None,who=None,passadeira_time=None):
     ch=118
-    s=rect(x,y,cw,ch,"#ffffff",rx=14,stroke="#eef0f4",filt="cardShadow")
     scol={"amber":"#f59e0b","orange":"#f97316","emerald":"#10b981","blue":"#3b82f6"}[stripe]
-    s+=rect(x,y+14,4,ch-28,scol,rx=2)
+    # base colorida + card branco por cima = borda lateral arredondada que acompanha o card
+    s=rect(x,y,cw,ch,scol,rx=14,filt="cardShadow")
+    s+=rect(x+6,y,cw-6,ch,"#ffffff",rx=14,stroke="#eef0f4")
     # OP chip
     code=f"{op_prefix}-{op_num}"
     cw_chip=22+len(code)*7.2
