@@ -163,3 +163,16 @@ Quando o tipo do pedido inclui **Pronta Entrega** (ex.: *Único + Pronta Entrega
 - **⏩ Entregar SEPARADO (antecipado)** — a Pronta Entrega sai antes, separada da produção.
 
 Essa escolha define o destino do item de Pronta Entrega no **Estoque** (coluna "Pronta Entrega + Produção" para *junto*; coluna "Separar" para *separado/antecipado*). É assim que o sistema sabe se entrega junto ou separado.
+
+
+## 3.7 Expedição — quadro aprovado ✅
+
+Colunas:
+1. **Pedidos a expedir** — chega aprovado da Revisão · ação **▶ Expedir** (separar/embalar).
+2. **Expedindo** — separando/embalando. No card:
+   - Botão **📐 Medidas/Volumes** → abre o **Formulário de Medidas e Pesos** (caixa/fardo, várias linhas).
+   - Enquanto não preenche, mostra **"Medidas pendentes"** e o **✓ Finalizar fica desabilitado**.
+   - Preenchido, mostra o resumo (ex.: "2 vol · 18 kg") e **libera o Finalizar**.
+3. **Finalizados → Fiscal** — card mostra o resumo das medidas; ação **🔒 Enviar ao Fiscal ▶**.
+
+> É assim que o operador "coloca as medidas": pelo botão **📐** no card (coluna Expedindo). As medidas são obrigatórias para finalizar, garantindo que o Fiscal tenha os dados para cotar o frete.
