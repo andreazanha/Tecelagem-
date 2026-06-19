@@ -97,3 +97,14 @@ A **nota fiscal é emitida no ERP**. A página Fiscal só organiza quem precisa 
 3. **NF emitida** — ao marcar emitida, o pedido vai para **Transporte**
 
 **Requisito da Expedição:** gerar um **formulário de frete** com **medidas, peso e quantidade de volumes**, usado pelo Fiscal para **cotar o frete**.
+
+## 3.3 Corte — fluxo aprovado ✅
+
+Colunas:
+1. **Aguardando Corte** — Parte 1 e Parte 2 caem aqui e **se unem em um único card** (selo "🔗 P1+P2 unidos"). Se houver **Pronta Entrega** para ir junto, o card mostra "📦 + Pronta Entrega".
+2. **Aguardando Corte · Kits / Estoque**
+3. **Cortando** (mostra a mesa de corte)
+4. **Kits / Estoque Cortados** — aguardando envio para a costureira
+5. **Pedidos Cortados** — aguardando envio para a costureira
+
+**Ação nos cortados:** *Enviar para Costureira* → abre o modal para escolher **costureira + motorista + previsão de retorno**, conferir itens e **gerar o romaneio automaticamente** (com rastreio e histórico).
