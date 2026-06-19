@@ -132,3 +132,24 @@ Formulário preenchido pela **Expedição** (o **Fiscal só visualiza**, em leit
 - **Cadastrar costureira** (modal): nome, tipo (interna/facção), capacidade (pç/sem), contato e **cor da coluna**.
 
 > Modelo de dados: catálogo `costureira` (nome, tipo, capacidade, cor) + `romaneio` ligando OPs à costureira. As colunas do quadro são geradas dinamicamente a partir das costureiras cadastradas.
+
+
+## 3.5b Costura — conferência no retorno ✅
+
+Quando o pedido **volta da costureira**, o funcionário da Costura **confere as peças** no próprio card:
+- **✓ OK p/ Revisão** → o pedido sai da Costura e entra na Revisão (coluna "Aguardando para revisar").
+- **⚠ Problema** → o card vai para a coluna **"Voltou com problemas"** (dentro da Costura), com o **defeito descrito** e o botão **↩ Reenviar p/ costureira**.
+
+Estados do card na coluna da costureira: **Em costura** → (📥 Recebi o retorno) → **Conferir retorno** → ✓/⚠.
+
+## 3.6 Revisão — fluxo aprovado ✅
+
+Colunas:
+1. **Aguardando para revisar** — pedidos que chegaram da Costura (aprovados na conferência).
+2. **Uma coluna por revisora:** **Betânia, Bruna, Sula, Ray, Eduarda** — com opção de **cadastrar novas**.
+
+- Card em "Aguardando": **👤 Atribuir revisora** (escolhe para qual coluna vai).
+- Card na coluna da revisora: **✓ Aprovar** → vai para a **Expedição** (e **desmembra os pedidos agrupados**) · **✗ Reprovar** → volta para a **Costura** ("Voltou com problemas").
+- **Cadastrar revisora** (modal): nome, contato e **cor da coluna**.
+
+> Modelo de dados: catálogo `revisora` + `revisao` (resultado aprovado/reprovado, motivo). Colunas geradas dinamicamente a partir das revisoras cadastradas.
