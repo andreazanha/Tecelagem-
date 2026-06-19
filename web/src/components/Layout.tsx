@@ -1,5 +1,6 @@
 import { NavLink, Outlet, Link } from "react-router-dom";
 import { Logo } from "./Logo";
+import { VERSION } from "../version";
 
 const NAV = [
   { to: "/pedidos", icon: "📦", label: "Pedidos" },
@@ -47,6 +48,7 @@ export function Layout() {
             )
           )}
         </nav>
+        <div className="sidebar-version">{VERSION}</div>
       </aside>
 
       <main className="content">

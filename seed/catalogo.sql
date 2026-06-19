@@ -1,13 +1,9 @@
--- Seed de PRODUÇÃO: modelos + código (grade) usados para casar o modelo no pedido.
--- ON CONFLICT(nome) DO UPDATE SET ref → só atualiza o CÓDIGO; NÃO mexe em parte/composição/tassel
--- já editados na tela de Cadastros. Parte 1 (Máquina 3) já vem marcada nos 12 modelos base.
+-- Seed de PRODUÇÃO (BOOTSTRAP): só cria modelos que AINDA NÃO existem.
+-- Usa INSERT OR IGNORE → roda em todo deploy SEM sobrescrever nada que você edita na tela
+-- de Cadastros (código/parte/composição/tassel são preservados). Parte 1 = Máquina 3.
 --   wrangler d1 execute DB --remote --file=./seed/catalogo.sql
 
--- Limpeza: a grafia canônica passou a ser "Pérola" (com acento); remove a antiga sem acento
--- para não duplicar a linha (a classificação ignora acentos, então o casamento não muda).
-DELETE FROM modelos WHERE nome = 'Perola';
-
-INSERT INTO modelos (nome, parte, ref, composicao) VALUES
+INSERT OR IGNORE INTO modelos (nome, parte, ref, composicao) VALUES
   -- Parte 1 (Máquina 3)
   ('Aspen',1,'1092',NULL),
   ('Balls',1,'1078',NULL),

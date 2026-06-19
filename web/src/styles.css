@@ -40,7 +40,9 @@ a { color: inherit; }
 
 .sidebar {
   grid-area: side; background: var(--sidebar); color: #aeb6c7; padding: 18px 14px;
+  display: flex; flex-direction: column;
 }
+.sidebar-version { margin-top: auto; padding: 10px 8px 0; color: #5b6478; font-size: 11px; font-weight: 700; letter-spacing: .5px; }
 .sidebar-title { color: #fff; font-weight: 700; font-size: 15px; padding: 0 8px; }
 .sidebar-kicker { color: #5b6478; font-size: 10px; letter-spacing: 1px; padding: 2px 8px 14px; }
 .nav-item {

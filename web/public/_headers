@@ -1,0 +1,8 @@
+# Assets com hash no nome podem ser cacheados para sempre.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# HTML (e tudo o mais) sempre revalida — assim toda atualização chega na hora,
+# sem precisar de Ctrl+Shift+R no navegador.
+/*
+  Cache-Control: no-cache
