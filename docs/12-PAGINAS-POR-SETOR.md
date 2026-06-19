@@ -108,3 +108,16 @@ Colunas:
 5. **Pedidos Cortados** — aguardando envio para a costureira
 
 **Ação nos cortados:** *Enviar para Costureira* → abre o modal para escolher **costureira + motorista + previsão de retorno**, conferir itens e **gerar o romaneio automaticamente** (com rastreio e histórico).
+
+## 3.4 Expedição — Formulário de Medidas e Pesos ✅
+
+Formulário preenchido pela **Expedição** (o **Fiscal só visualiza**, em leitura, para cotar o frete).
+
+**Cabeçalho da tabela (várias linhas):**
+
+| CAIXA / FARDO | Nº | ALTURA (cm) | LARGURA (cm) | COMPRIMENTO (cm) | PESO (kg) |
+|---------------|----|-------------|--------------|------------------|-----------|
+
+- Cada **linha = 1 volume** (caixa ou fardo); botão **＋ Adicionar linha** e **✕** para remover.
+- **Totais automáticos:** quantidade de volumes + peso total.
+- Ação **Salvar e enviar ao Fiscal** → o Fiscal usa estes dados para **cotar o frete** (coluna "Cotando frete").
