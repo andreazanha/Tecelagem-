@@ -35,7 +35,8 @@ function montarJobs(cl: ReturnType<typeof classificar>, kitOpt: "junto" | "separ
     const sub = `Pronta Entrega · ${kitOpt === "separado" ? "Entregar SEPARADO (antecipado)" : "Entregar JUNTO com o pedido"}`;
     jobs.push({ tipo: "pronta-entrega", label: "PRONTA ENTREGA", banda: "green", sub, blocos: cl.kits });
   }
-  return jobs;
+  // não gera PDF de uma parte vazia (ex.: só Parte 1 → não cria Parte 2 em branco)
+  return jobs.filter((j) => j.blocos.length > 0);
 }
 
 // IMPORTAR PDF → extrai texto (PDF digital) ou OCR (Workers AI) → devolve sugestão

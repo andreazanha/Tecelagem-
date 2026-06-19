@@ -53,6 +53,19 @@ function wrap(s: string, font: PDFFont, size: number, maxW: number): string[] {
   return linhas;
 }
 
+// Trunca com reticências para caber em `maxW` (evita estourar o cabeçalho).
+function fit(s: string, font: PDFFont, size: number, maxW: number): string {
+  if (font.widthOfTextAtSize(s, size) <= maxW) return s;
+  let lo = 0;
+  let hi = s.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (font.widthOfTextAtSize(s.slice(0, mid) + "…", size) <= maxW) lo = mid;
+    else hi = mid - 1;
+  }
+  return s.slice(0, lo).trimEnd() + "…";
+}
+
 function geradoEm(): string {
   const d = new Date(Date.now() - 3 * 3600 * 1000); // ~horário de Brasília (UTC-3)
   const p = (n: number) => String(n).padStart(2, "0");
@@ -114,10 +127,20 @@ export async function gerarPdfParte(
     R(ix + iw - pw, 46, pw, 20, bandaColor);
     T(parteLabel, ix + iw - pw + 8, 60, 9, bld, bandaTxt);
     // dados
-    let y = bh + 26;
+    let y = bh + 24;
+    // Observação em VERMELHO LOGO ABAIXO DO CABEÇALHO (destaque), com quebra de linha.
+    if (ped.observacao && ped.observacao.trim()) {
+      T("OBSERVAÇÃO", ix, y, 8.5, bld, MUTE);
+      const linhas = wrap(ped.observacao.trim().toUpperCase(), bld, 10.5, iw - 140);
+      for (const ln of linhas) {
+        T(ln, ix + 140, y, 10.5, bld, REDC);
+        y += 15;
+      }
+      y += 12;
+    }
     const info = (k: string, v: string, vc = INK) => {
       T(k, ix, y, 8.5, bld, MUTE);
-      T(v, ix + 140, y, 10, bld, vc);
+      T(fit(v, bld, 10, iw - 140 - 4), ix + 140, y, 10, bld, vc);
       y += 20;
     };
     info("CLIENTE", ped.cliente);
@@ -126,20 +149,7 @@ export async function gerarPdfParte(
     T("DATAS", ix, y, 8.5, bld, MUTE);
     T(`Emissão: ${ped.emissao}`, ix + 140, y, 10, bld);
     T(`Entrega: ${ped.entrega}`, ix + 320, y, 10, bld);
-    y += 20;
-    // Observação em VERMELHO (com destaque), quebrando em várias linhas se necessário.
-    if (ped.observacao && ped.observacao.trim()) {
-      y += 6;
-      T("OBSERVAÇÃO", ix, y, 8.5, bld, MUTE);
-      const linhas = wrap(ped.observacao.trim().toUpperCase(), bld, 10.5, iw - 140);
-      for (const ln of linhas) {
-        T(ln, ix + 140, y, 10.5, bld, REDC);
-        y += 15;
-      }
-      y += 5;
-    } else {
-      y += 8;
-    }
+    y += 28;
     const titulo = banda === "green" ? "ITENS — PRONTA ENTREGA" : "ITENS A PRODUZIR";
     T(titulo, ix, y, 13, bld, NAVY);
     R(ix, y + 6, iw, 2.5, NAVY);

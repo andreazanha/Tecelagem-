@@ -13,6 +13,7 @@ export function NovoPedido() {
   const [modelos, setModelos] = useState<Modelo[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [previa, setPrevia] = useState(false);
+  const [previaUrl, setPreviaUrl] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [arquivos, setArquivos] = useState<{ file: File; url: string }[]>([]);
   const [lendo, setLendo] = useState(false);
@@ -98,7 +99,8 @@ export function NovoPedido() {
     };
   }
 
-  // Visualiza o PDF da OP ANTES de criar o pedido (não salva nada).
+  // Visualiza o PDF da OP ANTES de criar o pedido (não salva nada). Mostra num modal embutido
+  // (sem pop-up, que costuma ser bloqueado pelo navegador).
   async function visualizarPrevia() {
     setErro(null);
     const itens = form.itens.filter((it) => it.produto.trim());
@@ -106,21 +108,24 @@ export function NovoPedido() {
       setErro("Adicione pelo menos um item para visualizar o PDF.");
       return;
     }
-    // abre a aba já no clique (evita bloqueio de pop-up) e depois aponta para o PDF
-    const win = window.open("", "_blank");
     setPrevia(true);
     try {
       const blob = await api.previaPdf(montarBody(itens));
-      const url = URL.createObjectURL(blob);
-      if (win) win.location.href = url;
-      else window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setPreviaUrl((old) => {
+        if (old) URL.revokeObjectURL(old);
+        return URL.createObjectURL(blob);
+      });
     } catch (e) {
-      if (win) win.close();
       setErro("Falha ao gerar a prévia: " + (e as Error).message);
     } finally {
       setPrevia(false);
     }
+  }
+  function fecharPrevia() {
+    setPreviaUrl((old) => {
+      if (old) URL.revokeObjectURL(old);
+      return null;
+    });
   }
 
   // Sobe um OU VÁRIOS PDFs: lê cada um, JUNTA os itens (consolidação) e acumula os números
@@ -483,6 +488,55 @@ export function NovoPedido() {
           {salvando ? "Salvando…" : "🔒 Salvar pedido"}
         </button>
       </div>
+
+      {previaUrl && (
+        <div
+          onClick={fecharPrevia}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "#0f172acc",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 50,
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: 14,
+              width: "min(900px, 96vw)",
+              height: "92vh",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 16px",
+                borderBottom: "1px solid #eef0f4",
+              }}
+            >
+              <strong>Prévia do PDF da OP (não salvo)</strong>
+              <span className="row-gap">
+                <a className="btn btn-soft" href={previaUrl} target="_blank" rel="noreferrer">
+                  ⤢ Abrir em nova aba
+                </a>
+                <button type="button" className="btn" onClick={fecharPrevia}>
+                  Fechar
+                </button>
+              </span>
+            </div>
+            <iframe src={previaUrl} title="Prévia" style={{ flex: 1, border: "none", width: "100%" }} />
+          </div>
+        </div>
+      )}
     </form>
   );
 }
