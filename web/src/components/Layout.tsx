@@ -3,6 +3,7 @@ import { Logo } from "./Logo";
 
 const NAV = [
   { to: "/pedidos", icon: "📦", label: "Pedidos" },
+  { to: "/cadastros", icon: "🏷️", label: "Cadastros" },
   { to: "/producao", icon: "🏭", label: "Produção", disabled: true },
   { to: "/romaneios", icon: "📋", label: "Romaneios", disabled: true },
   { to: "/estoque", icon: "🗃️", label: "Estoque", disabled: true },

@@ -37,6 +37,17 @@ export interface NovoPedidoBody {
   itens: PedidoItem[];
 }
 
+export interface Modelo {
+  nome: string;
+  parte: number; // 1 ou 2
+  ref?: string | null;
+}
+
+export interface Cor {
+  nome: string;
+  poliester: number | boolean; // 1/0
+}
+
 export interface Sugestao {
   numero_erp?: string;
   cliente_nome?: string;
@@ -80,6 +91,28 @@ export const api = {
     );
   },
   listarClientes: () => fetch("/api/clientes").then((r) => j<{ id: string; nome: string }[]>(r)),
+  listarModelos: () => fetch("/api/modelos").then((r) => j<Modelo[]>(r)),
+  salvarModelo: (m: Modelo) =>
+    fetch("/api/modelos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(m),
+    }).then((r) => j<Modelo>(r)),
+  excluirModelo: (nome: string) =>
+    fetch(`/api/modelos/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) =>
+      j<{ ok: boolean }>(r)
+    ),
+  listarCores: () => fetch("/api/cores").then((r) => j<Cor[]>(r)),
+  salvarCor: (cor: Cor) =>
+    fetch("/api/cores", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cor),
+    }).then((r) => j<Cor>(r)),
+  excluirCor: (nome: string) =>
+    fetch(`/api/cores/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) =>
+      j<{ ok: boolean }>(r)
+    ),
   importarPdf: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);
