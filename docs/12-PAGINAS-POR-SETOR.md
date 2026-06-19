@@ -17,7 +17,7 @@ Revisor             →  abre  →  Página "Setor: Revisão"    (vê só Revis�
 
 | Página de Setor | Quem acessa | Etapas internas (sub-status) | Ao finalizar, envia para |
 |-----------------|-------------|------------------------------|--------------------------|
-| **Tecelagem** | Operador Tecelagem | Aguardando → Tecendo (por tear) → Finalizado | Passadoria |
+| **Tecelagem** ✅ | Operador Tecelagem | Aguard. Parte 1 (Máq 3) · Aguard. Parte 2 (Máq 7) · Aguard. Kits · Tecendo · Tecidos · Tecidos Kits | Passadoria |
 | **Passadoria** | Operador Passadoria | Aguardando → Passando → Finalizado | Corte |
 | **Corte** | Operador Corte | Aguardando → Cortando → Finalizado | Costura *(gera romaneio)* |
 | **Costura** | Operador Costura | Aguardando → Costurando (por costureira) → Finalizado | Revisão |
@@ -60,6 +60,24 @@ Revisor             →  abre  →  Página "Setor: Revisão"    (vê só Revis�
 - **Permissões** (doc 06): cada papel de operador enxerga apenas o seu `setor`.
 - **Sub-status internos** são configuráveis por setor (catálogo `setor_etapa`), permitindo que cada setor tenha suas próprias colunas sem alterar o código.
 - **Enviar ▶** = a rolagem de fase já especificada (movimentacao_fase + auditoria + assinatura).
+
+## 3.1 Tecelagem — fluxo aprovado ✅
+
+Colunas da página da Tecelagem:
+
+1. **Aguardando Tecelagem · Parte 1** — fila da **Máquina 3**
+2. **Aguardando Tecelagem · Parte 2** — fila da **Máquina 7**
+3. **Aguardando Tecelagem · Kits** — fila de kits
+4. **Tecendo** — em produção (mostra máquina, operador, tempo)
+5. **Tecidos** — partes prontas
+6. **Tecidos · Kits** — kits prontos
+
+**Regras de negócio:**
+- **Parte 1 (Máq 3)** e **Parte 2 (Máq 7)** são tecidas **separadamente** e **se unem somente no Corte**, formando uma única parte.
+- **Kits** seguem **separados** durante todo o fluxo (não se unem).
+- Ações no cartão: **▶ Iniciar** (vai p/ Tecendo, escolhe máquina) · **✓ Finalizar** (vai p/ Tecidos) · **🔒 Enviar ▶** (rola p/ próxima fase).
+
+> Modelo de dados: `pedido.parte` (P1/P2/KIT) + `setor_etapa` por setor já comportam essas colunas. A união P1+P2 ocorre no Corte (agregação por `pedido_id`).
 
 ## ⚠️ Para confirmar com a Big Tricot
 
