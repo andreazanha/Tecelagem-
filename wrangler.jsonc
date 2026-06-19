@@ -13,9 +13,7 @@
     {
       "binding": "DB",
       "database_name": "rolagem-de-fase",
-      // Substitua pelo id real após `wrangler d1 create rolagem-de-fase`.
-      // Para desenvolvimento local (--local) qualquer valor funciona.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "ef152da6-0798-42aa-a5ee-593539ddf17c",
       "migrations_dir": "migrations"
     }
   ],
