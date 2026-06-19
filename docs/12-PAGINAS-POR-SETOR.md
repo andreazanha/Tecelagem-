@@ -201,3 +201,15 @@ Colunas:
 **Regra-chave (reunião na Revisão):** quando o item separado chega na Revisão, ele **se une ao card P1+P2** (os que foram unidos no Corte) referente ao mesmo pedido, para **seguirem juntos** dali em diante (Expedição → Fiscal → Transporte).
 
 > Integração: webhook/Cloud API do WhatsApp para o grupo de representantes. Mensagem com **template configurável** (produto/kit/tamanho/cor vêm do cadastro do pedido/PDF). As colunas e nomes são configuráveis.
+
+## 6. Página "Todos os Pedidos" (visão de gestão) ✅
+
+Lista global para **busca rápida**, com **filtros**:
+- **Mês**
+- **Setor**
+- **Fase / etapa** (onde o pedido se encontra)
+- \+ campo de **busca livre** (pedido, OP, cliente, NF)
+
+Cada linha mostra **Pedido · Cliente · Produto · Tipo · Setor atual · Fase/etapa · Entrega** e uma **barra de progresso** indicando exatamente em qual das **9 fases** (Tecelagem → Passadoria → Corte → Costura → Revisão → Expedição → Fiscal → Transporte → Entregue) o pedido está.
+
+> Acesso: Supervisor/Gestor (visão geral). Mockup: `49-todos-pedidos`.
