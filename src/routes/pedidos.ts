@@ -56,6 +56,7 @@ interface ItemIn {
   produto?: string;
   ref?: string;
   cor_grade?: string;
+  tamanho?: string;
   qtd?: number | string;
   parte?: string;
 }
@@ -145,14 +146,15 @@ pedidos.post("/", async (c) => {
     const parte = PARTES.includes(it.parte || "") ? (it.parte as string) : "unico";
     stmts.push(
       c.env.DB.prepare(
-        `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, qtd, parte)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         crypto.randomUUID(),
         id,
         produto,
         it.ref || null,
         it.cor_grade || null,
+        it.tamanho || null,
         Math.max(0, Math.trunc(Number(it.qtd) || 0)),
         parte
       )

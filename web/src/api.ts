@@ -3,6 +3,7 @@ export interface PedidoItem {
   produto: string;
   ref?: string | null;
   cor_grade?: string | null;
+  tamanho?: string | null;
   qtd: number;
   parte: string;
 }

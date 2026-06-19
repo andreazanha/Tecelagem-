@@ -71,9 +71,10 @@ export function PedidoDetalhe() {
         <table className="table">
           <thead>
             <tr>
-              <th>Produto</th>
-              <th>Ref</th>
-              <th>Cor / Grade</th>
+              <th>Modelo / Produto</th>
+              <th>Ref (grade)</th>
+              <th>Cor</th>
+              <th>Tamanho</th>
               <th className="num">Qtd</th>
               <th>Parte</th>
             </tr>
@@ -84,6 +85,7 @@ export function PedidoDetalhe() {
                 <td className="strong">{it.produto}</td>
                 <td>{it.ref || "—"}</td>
                 <td>{it.cor_grade || "—"}</td>
+                <td>{it.tamanho || "—"}</td>
                 <td className="num">{it.qtd}</td>
                 <td>
                   <span className="chip">{parteLabel(it.parte)}</span>

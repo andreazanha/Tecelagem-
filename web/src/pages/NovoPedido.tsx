@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, TIPOS, PARTES, type PedidoItem, type NovoPedidoBody } from "../api";
 
 function linhaVazia(): PedidoItem {
-  return { produto: "", ref: "", cor_grade: "", qtd: 0, parte: "unico" };
+  return { produto: "", ref: "", cor_grade: "", tamanho: "", qtd: 0, parte: "unico" };
 }
 
 export function NovoPedido() {
@@ -102,6 +102,7 @@ export function NovoPedido() {
                 produto: it.produto || "",
                 ref: it.ref ?? "",
                 cor_grade: it.cor_grade ?? "",
+                tamanho: it.tamanho ?? "",
                 qtd: Number(it.qtd) || 0,
                 parte: it.parte || "unico",
               }))
@@ -295,9 +296,10 @@ export function NovoPedido() {
         <table className="table">
           <thead>
             <tr>
-              <th>Produto</th>
-              <th>Ref</th>
-              <th>Cor / Grade</th>
+              <th>Modelo / Produto</th>
+              <th>Ref (grade)</th>
+              <th>Cor</th>
+              <th>Tamanho</th>
               <th className="num">Qtd</th>
               <th>Parte</th>
               <th></th>
@@ -318,14 +320,22 @@ export function NovoPedido() {
                     className="w-sm"
                     value={it.ref ?? ""}
                     onChange={(e) => setItem(i, { ref: e.target.value })}
-                    placeholder="BT12"
+                    placeholder="1075"
                   />
                 </td>
                 <td>
                   <input
                     value={it.cor_grade ?? ""}
                     onChange={(e) => setItem(i, { cor_grade: e.target.value })}
-                    placeholder="Off-white · P-M-G"
+                    placeholder="ROMENIA"
+                  />
+                </td>
+                <td>
+                  <input
+                    className="w-sm"
+                    value={it.tamanho ?? ""}
+                    onChange={(e) => setItem(i, { tamanho: e.target.value })}
+                    placeholder="90X200"
                   />
                 </td>
                 <td className="num">
@@ -362,7 +372,7 @@ export function NovoPedido() {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={3} className="strong">
+              <td colSpan={4} className="strong">
                 Total
               </td>
               <td className="num strong">{totalPecas} pç</td>

@@ -4,10 +4,20 @@
 
 export interface ItemSugerido {
   produto: string;
-  ref?: string;
-  cor_grade?: string;
+  ref?: string; // grade (ex.: 1075, 1083, KT1096)
+  cor_grade?: string; // cor (ex.: ROMENIA)
+  tamanho?: string; // ex.: 50X50, 90X200
   qtd: number;
   parte: string;
+}
+
+// Extrai o tamanho (ex.: 50X50, 90X200, 1.20X1.80) do nome do produto.
+function extrairTamanho(nome: string): { produto: string; tamanho?: string } {
+  const m = nome.match(/(\d[\d.,]*\s*[xX]\s*\d[\d.,]*)/);
+  if (!m) return { produto: nome.trim() };
+  const tamanho = m[1].replace(/\s+/g, "");
+  const produto = nome.replace(m[1], "").replace(/\s{2,}/g, " ").trim();
+  return { produto: produto || nome.trim(), tamanho };
 }
 
 export interface SugestaoPedido {
@@ -117,9 +127,11 @@ function parseItensERP(text: string): ItemSugerido[] {
   for (const bloco of blocos) {
     const mNome = bloco.match(/^\s*\d+\s+(\d+)\s+(.+?)\s+Col:/i);
     if (!mNome) continue;
-    const ref = mNome[1];
-    const nome = mNome[2].replace(/\s+/g, " ").trim();
-    const parte = /\bkit\b/i.test(nome) ? "kit" : "unico";
+    const nomeBruto = mNome[2].replace(/\s+/g, " ").trim();
+    const { produto, tamanho } = extrairTamanho(nomeBruto);
+    // Ref = GRADE (código após "Cores"); fallback para o código do produto.
+    const ref = (bloco.match(/Cores\s+(\S+)\s+UN/i)?.[1] || mNome[1]).trim();
+    const parte = /\bkit\b/i.test(nomeBruto) ? "kit" : "unico";
     const antesTotal = bloco.split(/\bT\.:/)[0];
     const cores = (antesTotal.split(/Valor\s*em\s*R\$/i).pop() || "").trim();
     let m: RegExpExecArray | null;
@@ -129,12 +141,11 @@ function parseItensERP(text: string): ItemSugerido[] {
       achouCor = true;
       const cor = m[2].replace(/\s+/g, " ").trim();
       const qtd = parseInt(m[4], 10) || parseInt(m[3], 10) || 0;
-      itens.push({ produto: nome, ref, cor_grade: cor, qtd, parte });
+      itens.push({ produto, ref, cor_grade: cor, tamanho, qtd, parte });
     }
-    // produto sem linha de cor reconhecida: registra com o total
     if (!achouCor) {
       const mTot = bloco.match(/T\.:\s*(\d+)/);
-      itens.push({ produto: nome, ref, qtd: mTot ? parseInt(mTot[1], 10) : 0, parte });
+      itens.push({ produto, ref, tamanho, qtd: mTot ? parseInt(mTot[1], 10) : 0, parte });
     }
   }
   return itens;
