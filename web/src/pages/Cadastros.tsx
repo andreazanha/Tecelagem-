@@ -4,21 +4,33 @@ import { api, COMPOSICOES, type Modelo } from "../api";
 export function Cadastros() {
   const [itens, setItens] = useState<Modelo[]>([]);
   const [busca, setBusca] = useState("");
-  const [novo, setNovo] = useState<Modelo>({ nome: "", parte: 2, ref: "", composicao: "", tassel: 0 });
+  const [novo, setNovo] = useState<Modelo>({
+    nome: "",
+    parte: 2,
+    ref: "",
+    composicao: "",
+    tassel_peseira: 0,
+    tassel_almofada: 0,
+  });
 
   function recarregar() {
     api.listarModelos().then(setItens).catch(() => {});
   }
   useEffect(recarregar, []);
 
-  async function salvar(m: Modelo) {
-    await api.salvarModelo(m);
-    recarregar();
+  async function salvar(m: Modelo, de?: string) {
+    try {
+      await api.salvarModelo(m, de);
+      recarregar();
+    } catch (e) {
+      alert((e as Error).message);
+      recarregar();
+    }
   }
   async function adicionar() {
     if (!novo.nome.trim()) return;
     await salvar(novo);
-    setNovo({ nome: "", parte: 2, ref: "", composicao: "", tassel: 0 });
+    setNovo({ nome: "", parte: 2, ref: "", composicao: "", tassel_peseira: 0, tassel_almofada: 0 });
   }
   async function remover(m: Modelo) {
     await api.excluirModelo(m.nome);
@@ -46,7 +58,10 @@ export function Cadastros() {
         Tabela completa de modelos. <strong>Parte 1</strong> = tece na Máquina 3 (o resto = Parte 2;
         kits = Pronta Entrega; sem Parte 1 → Parte Única). A <strong>composição</strong> é do modelo
         (a mesma cor pode ser acrílico num modelo e poliéster em outro). <strong>Tassel</strong> = qtd
-        do acessório por peça. {itens.length} modelos · {p1} na Parte 1.
+        do acessório por peça (peseira e almofada têm tamanhos diferentes).{" "}
+        <strong>Para editar um modelo</strong>, basta alterar qualquer campo na linha (nome, código,
+        parte, composição ou tassel) — salva automaticamente.{" "}
+        {itens.length} modelos · {p1} na Parte 1.
       </p>
 
       <div className="card">
@@ -54,10 +69,11 @@ export function Cadastros() {
           <thead>
             <tr>
               <th>Modelo</th>
-              <th>Ref</th>
+              <th>Código</th>
               <th>Parte</th>
               <th>Composição</th>
-              <th className="num">Tassel/peça</th>
+              <th className="num">Tassel Peseira</th>
+              <th className="num">Tassel Almofada</th>
               <th></th>
             </tr>
           </thead>
@@ -75,7 +91,7 @@ export function Cadastros() {
               <td>
                 <input
                   className="w-sm"
-                  placeholder="Ref"
+                  placeholder="Código"
                   value={novo.ref ?? ""}
                   onChange={(e) => setNovo({ ...novo, ref: e.target.value })}
                 />
@@ -106,8 +122,17 @@ export function Cadastros() {
                   className="w-xs num"
                   type="number"
                   min={0}
-                  value={novo.tassel ?? 0}
-                  onChange={(e) => setNovo({ ...novo, tassel: Number(e.target.value) })}
+                  value={novo.tassel_peseira ?? 0}
+                  onChange={(e) => setNovo({ ...novo, tassel_peseira: Number(e.target.value) })}
+                />
+              </td>
+              <td className="num">
+                <input
+                  className="w-xs num"
+                  type="number"
+                  min={0}
+                  value={novo.tassel_almofada ?? 0}
+                  onChange={(e) => setNovo({ ...novo, tassel_almofada: Number(e.target.value) })}
                 />
               </td>
               <td>
@@ -122,7 +147,7 @@ export function Cadastros() {
             ))}
             {itens.length === 0 && (
               <tr>
-                <td colSpan={6} className="empty pad">
+                <td colSpan={7} className="empty pad">
                   Nenhum modelo cadastrado ainda.
                 </td>
               </tr>
@@ -140,13 +165,32 @@ function ModeloRow({
   onRemover,
 }: {
   m: Modelo;
-  onSalvar: (m: Modelo) => void;
+  onSalvar: (m: Modelo, de?: string) => void;
   onRemover: (m: Modelo) => void;
 }) {
   return (
     <tr>
-      <td className="strong">{m.nome}</td>
-      <td>{m.ref || "—"}</td>
+      <td className="strong">
+        <input
+          defaultValue={m.nome}
+          placeholder="Nome do modelo"
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v && v !== m.nome) onSalvar({ ...m, nome: v }, m.nome);
+          }}
+        />
+      </td>
+      <td>
+        <input
+          className="w-sm"
+          placeholder="Código"
+          defaultValue={m.ref ?? ""}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v !== (m.ref ?? "")) onSalvar({ ...m, ref: v });
+          }}
+        />
+      </td>
       <td>
         <select
           value={m.parte}
@@ -171,10 +215,22 @@ function ModeloRow({
           className="w-xs num"
           type="number"
           min={0}
-          defaultValue={m.tassel ?? 0}
+          defaultValue={m.tassel_peseira ?? 0}
           onBlur={(e) => {
             const v = Number(e.target.value);
-            if (v !== (m.tassel ?? 0)) onSalvar({ ...m, tassel: v });
+            if (v !== (m.tassel_peseira ?? 0)) onSalvar({ ...m, tassel_peseira: v });
+          }}
+        />
+      </td>
+      <td className="num">
+        <input
+          className="w-xs num"
+          type="number"
+          min={0}
+          defaultValue={m.tassel_almofada ?? 0}
+          onBlur={(e) => {
+            const v = Number(e.target.value);
+            if (v !== (m.tassel_almofada ?? 0)) onSalvar({ ...m, tassel_almofada: v });
           }}
         />
       </td>

@@ -41,11 +41,12 @@ export interface Modelo {
   nome: string;
   parte: number; // 1 ou 2
   ref?: string | null;
-  composicao?: string | null; // '100% POLIÉSTER' | '100% ACRÍLICO' | ''
-  tassel?: number; // qtd de tassel por peça
+  composicao?: string | null; // '100% POLIÉSTER' | '100% ACRÍLICO' | '100% ALGODÃO' | ''
+  tassel_peseira?: number; // qtd de tassel (peseira) por peça
+  tassel_almofada?: number; // qtd de tassel (almofada) por peça
 }
 
-export const COMPOSICOES = ["", "100% POLIÉSTER", "100% ACRÍLICO"];
+export const COMPOSICOES = ["", "100% POLIÉSTER", "100% ACRÍLICO", "100% ALGODÃO"];
 
 export interface Cor {
   nome: string;
@@ -96,11 +97,11 @@ export const api = {
   },
   listarClientes: () => fetch("/api/clientes").then((r) => j<{ id: string; nome: string }[]>(r)),
   listarModelos: () => fetch("/api/modelos").then((r) => j<Modelo[]>(r)),
-  salvarModelo: (m: Modelo) =>
+  salvarModelo: (m: Modelo, de?: string) =>
     fetch("/api/modelos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(m),
+      body: JSON.stringify(de && de !== m.nome ? { ...m, de } : m),
     }).then((r) => j<Modelo>(r)),
   excluirModelo: (nome: string) =>
     fetch(`/api/modelos/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) =>

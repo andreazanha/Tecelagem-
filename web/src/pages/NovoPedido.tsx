@@ -361,6 +361,17 @@ export function NovoPedido() {
           </tfoot>
         </table>
       </div>
+
+      {erro && <div className="card pad erro">{erro}</div>}
+
+      <div className="row-gap" style={{ justifyContent: "flex-end", marginBottom: 24 }}>
+        <button type="button" className="btn" onClick={() => nav("/pedidos")}>
+          Cancelar
+        </button>
+        <button type="submit" className="btn btn-primary" disabled={salvando}>
+          {salvando ? "Salvando…" : "🔒 Salvar pedido"}
+        </button>
+      </div>
     </form>
   );
 }
