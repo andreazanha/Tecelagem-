@@ -10,121 +10,117 @@ def rect(x,y,w,h,fill,rx=0,stroke=None,sw=1,filt=None,op=None):
     return s+'/>'
 def line(x1,y1,x2,y2,stroke,sw=1):
     return f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" stroke-width="{sw}"/>'
-def text(x,y,s,size=13,fill="#0f172a",weight="normal",anchor="start",ls=None):
+def text(x,y,s,size=13,fill="#111827",weight="normal",anchor="start",ls=None,family=None):
     extra=f' letter-spacing="{ls}"' if ls else ''
-    return f'<text x="{x}" y="{y}" font-size="{size}" fill="{fill}" font-weight="{weight}" text-anchor="{anchor}"{extra}>{esc(s)}</text>'
-def circle(cx,cy,r,fill): return f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="{fill}"/>'
-def avatar(cx,cy,r,ini,fill,fg="#fff"): return circle(cx,cy,r,fill)+text(cx,cy+r*0.35,ini,r*0.8,fg,weight="bold",anchor="middle")
-def chip(x,y,label,bg,fg,fs=9.5,h=19):
-    w=14+len(label)*5.8
-    return rect(x,y,w,h,bg,rx=h/2)+text(x+7,y+h*0.69,label,fs,fg,weight="bold"),w
-DEFS=('<defs>'
- '<linearGradient id="g_brand" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#7c3aed"/></linearGradient>'
- '<filter id="paper" x="-15%" y="-6%" width="130%" height="112%"><feDropShadow dx="0" dy="8" stdDeviation="20" flood-color="#0f172a" flood-opacity="0.20"/></filter></defs>')
+    fam=f' font-family="{family}"' if family else ''
+    return f'<text x="{x}" y="{y}" font-size="{size}" fill="{fill}" font-weight="{weight}" text-anchor="{anchor}"{extra}{fam}>{esc(s)}</text>'
+DEFS=('<defs><filter id="paper" x="-15%" y="-6%" width="130%" height="112%">'
+ '<feDropShadow dx="0" dy="8" stdDeviation="20" flood-color="#0f172a" flood-opacity="0.18"/></filter></defs>')
 def svg(w,h,body,bg="#e5e7eb"):
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" '
             f'font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">'+DEFS+rect(0,0,w,h,bg)+body+'</svg>')
 
-W,H=820,1200
-b=text(W/2,28,"Relatório Individual por Costureira — PDF (1 por costureira)",12.5,"#0f172a",weight="bold",anchor="middle")
-px,py,pw,ph=60,46,700,1130
-b+=rect(px,py,pw,ph,"#ffffff",rx=8,filt="paper")
+W,H=1200,1260
+b=text(W/2,30,"Relatório Individual por Costureira (formato Resumo Financeiro)",13,"#0f172a",weight="bold",anchor="middle")
+px,py,pw,ph=40,50,1120,1180
+b+=rect(px,py,pw,ph,"#ffffff",rx=6,filt="paper")
 ix=px+40; iw=pw-80
 
-# header band
-hh=116
-b+=rect(px,py,pw,hh,"url(#g_brand)",rx=8)+rect(px,py+hh-20,pw,20,"url(#g_brand)")
-b+=text(ix,py+44,"BIG TRICOT",22,"#fff",weight="bold",ls="0.5")
-b+=text(ix,py+66,"Demonstrativo Individual de Costura",12,"#e0e7ff")
-b+=rect(px+pw-40-130,py+28,130,24,"#ffffff2e",rx=12)+text(px+pw-40-65,py+44,"JUNHO / 2026",10.5,"#fff",weight="bold",anchor="middle")
-b+=text(px+pw-40,py+86,"Período: 01–30/06/2026",11.5,"#e0e7ff",anchor="end")
+# ---------- cabeçalho ----------
+b+=rect(ix,py+34,44,34,"#ffffff",rx=4,stroke="#111827",sw=1.5)+text(ix+22,py+56,"BiG",15,"#111827",weight="bold",anchor="middle")
+b+=text(ix+58,py+52,"BIG TRICOT",24,"#111827",weight="bold",ls="0.5")
+b+=text(ix+60,py+70,"HOME DECOR",10,"#6b7280",ls="3")
+b+=text(ix+iw,py+44,"RESUMO FINANCEIRO",18,"#111827",weight="bold",anchor="end")
+b+=text(ix+iw,py+62,"Período: Junho / 2026",10.5,"#6b7280",anchor="end")
+b+=text(ix+iw,py+77,"Emissão: 01/07/2026",10.5,"#6b7280",anchor="end")
+b+=line(ix,py+92,ix+iw,py+92,"#111827",2)
 
-# costureira info card
-cy=py+hh+18
-b+=rect(ix,cy,iw,64,"#f8fafc",rx=12,stroke="#eef0f4")
-b+=avatar(ix+38,cy+32,22,"CR","#3b82f6")
-b+=text(ix+74,cy+28,"Cris",17,"#0f172a",weight="bold")
-c,w=chip(ix+74,cy+38,"Interna","#eef2ff","#4338ca"); b+=c
-c2,w2=chip(ix+74+w+8,cy+38,"Costureira ativa","#ecfdf5","#047857"); b+=c2
-b+=text(ix+iw-16,cy+28,"Contato: (00) 0 0000-0000",10.5,"#64748b",anchor="end")
-b+=text(ix+iw-16,cy+48,"Romaneios no mês: 4",10.5,"#64748b",anchor="end")
+# ---------- faixa costureira ----------
+fy=py+104
+b+=rect(ix,fy,iw,52,"#f8fafc",rx=8,stroke="#e5e7eb")
+b+=text(ix+18,fy+24,"👤  SILVIA — COSTURA",15,"#111827",weight="bold")
+b+=text(ix+18,fy+43,"Telefone: 19 99621-7167",11,"#6b7280")
+b+=text(ix+iw-18,fy+32,"Interna · Costureira ativa",11,"#6b7280",anchor="end")
 
-# KPIs
-ky=cy+64+16; kw=(iw-3*12)/4
-kpis=[("Devolvidos","3","#10b981"),("Peças/serviços","134","#6366f1"),("A pagar (liberado)","R$ 700","#10b981"),("Bloqueado","R$ 135","#ef4444")]
-for i,(l,n,c) in enumerate(kpis):
-    kx=ix+i*(kw+12)
-    b+=rect(kx,ky,kw,64,"#ffffff",rx=12,stroke="#eef0f4")+rect(kx,ky+12,4,40,c,rx=2)
-    b+=text(kx+14,ky+32,n,18,"#0f172a",weight="bold")+text(kx+14,ky+51,l,10,"#64748b")
+# ---------- tabela ----------
+ty=fy+68
+b+=rect(ix,ty,iw,30,"#111827",rx=6)+rect(ix,ty+14,iw,16,"#111827")
+cR=ix+18; cD=ix+170; cC=ix+300; cP=ix+iw-300; cV=ix+iw-18
+b+=text(cR,ty+20,"ROMANEIO",10,"#ffffff",weight="bold",ls="0.3")
+b+=text(cD,ty+20,"DATA",10,"#ffffff",weight="bold",ls="0.3")
+b+=text(cC,ty+20,"CLIENTE",10,"#ffffff",weight="bold",ls="0.3")
+b+=text(cP,ty+20,"PEÇAS",10,"#ffffff",weight="bold",ls="0.3",anchor="end")
+b+=text(cV,ty+20,"VALOR",10,"#ffffff",weight="bold",ls="0.3",anchor="end")
+rows=[
+ ("ROM-0037","29/05/2026","ARTELASSE","85","fora"),
+ ("ROM-0052","03/06/2026","ARTELASSE INDUSTRIA E COMERCIO LTDA","85","R$ 450,50"),
+ ("ROM-0053","03/06/2026","ARTELASSE INDUSTRIA E COMERCIO LTDA","45","R$ 171,00"),
+ ("ROM-0068","04/06/2026","COMERCIO E CONFECÇÃO JL LTDA","38","R$ 136,00"),
+ ("ROM-0080","08/06/2026","MOSTRUÁRIO DE PONTO","4","R$ 12,00"),
+ ("ROM-0082","09/06/2026","ARTELASSE INDUSTRIA E COMERCIO LTDA","50","R$ 220,00"),
+ ("ROM-0087","09/06/2026","CAPAS AVULSAS","4","R$ 15,50"),
+ ("ROM-0106","12/06/2026","QUENIA DA COSTA PAZ","95","aguard"),
+ ("ROM-0133","19/06/2026","GF TECIDOS LTDA","28","aguard"),
+ ("ROM-0134","18/06/2026","SIMPLE ART FM PRESENTES LTDA","29","aguard"),
+ ("ROM-0135","19/06/2026","IRENE GOBBI MENEGAZZO E CIA LTDA","2","aguard"),
+ ("ROM-0136","19/06/2026","SCHWAITZER COM. DE OBJETOS E DECORAÇÕES","69","aguard"),
+ ("ROM-0137","19/06/2026","URGENTE","4","aguard"),
+]
+ry=ty+30; rh=34
+for i,(num,dt,cli,pc,val) in enumerate(rows):
+    if i%2==1: b+=rect(ix,ry,iw,rh,"#fafbfc")
+    b+=text(cR,ry+22,num,11.5,"#1d4ed8",weight="bold")
+    b+=text(cD,ry+22,dt,11,"#374151")
+    b+=text(cC,ry+22,cli,11,"#374151")
+    b+=text(cP,ry+22,pc,11.5,"#111827",weight="bold",anchor="end")
+    if val=="fora":
+        b+=text(cV,ry+22,"🔒 Retorno fora do mês",11,"#b45309",weight="bold",anchor="end")
+    elif val=="aguard":
+        b+=text(cV,ry+22,"🔒 Aguardando retorno",11,"#9ca3af",weight="bold",anchor="end")
+    else:
+        b+=text(cV,ry+22,val,11.5,"#111827",weight="bold",anchor="end")
+    b+=line(ix,ry+rh,ix+iw,ry+rh,"#eef0f4",1)
+    ry+=rh
+# total bruto liberado
+b+=rect(ix,ry,iw,32,"#f1f5f9")
+b+=text(cR,ry+21,"TOTAL BRUTO LIBERADO",11.5,"#111827",weight="bold")
+b+=text(cV,ry+21,"R$ 1.005,00",12.5,"#111827",weight="bold",anchor="end")
+ry+=32
+b+=rect(ix,ry,iw,34,"#ffffff")
+b+=text(cV-150,ry+23,"TOTAL LÍQUIDO A PAGAR:",12,"#111827",weight="bold",anchor="end")
+b+=text(cV,ry+23,"R$ 1.005,00",14,"#16a34a",weight="bold",anchor="end")
+ry+=34+8
+b+=line(ix,ry,ix+iw,ry,"#111827",1.5)
 
-# tabela romaneios
-def sectitle(yy,txt,accent):
-    return rect(ix,yy-12,4,18,accent,rx=2)+text(ix+14,yy+3,txt,13,"#0f172a",weight="bold")
-ty=ky+64+34
-b+=sectitle(ty,"Romaneios do mês","#6366f1")
-ty+=18
-b+=rect(ix,ty,iw,30,"#f1f5f9",rx=8)
-cols=[("Nº",ix+12),("PEDIDO",ix+80),("SAÍDA",ix+185),("RETORNO",ix+260),("SERVIÇOS / QTD",ix+350),("VALOR",ix+iw-110),("STATUS",ix+iw-12)]
-for t,hx in cols:
-    an="end" if t in("VALOR","STATUS") else "start"
-    b+=text(hx,ty+20,t,8.5,"#94a3b8",weight="bold",ls="0.2",anchor=an)
-rows=[("R-150","OP-0900","03/06","10/06","Costurar 45","R$ 135,00","ok"),
-      ("R-168","OP-0925","09/06","16/06","Peseiras/Mantas 49","R$ 245,00","ok"),
-      ("R-190","OP-0955","14/06","21/06","Almofadas/Capas 40","R$ 320,00","ok"),
-      ("R-210","OP-0980","02/06","—","Costurar 45","R$ 135,00","blk")]
-ry=ty+30
-for i,(num,ped,sai,ret,serv,vl,st) in enumerate(rows):
-    if st=="blk": b+=rect(ix,ry,iw,32,"#fff5f5",rx=6,stroke="#fecaca")
-    elif i%2==0: b+=rect(ix,ry,iw,32,"#fafbfc")
-    b+=text(ix+12,ry+21,num,11.5,"#0f172a",weight="bold")
-    b+=text(ix+80,ry+21,ped,11,"#475569")
-    b+=text(ix+185,ry+21,sai,11,"#475569")
-    b+=text(ix+260,ry+21,ret,11,"#dc2626" if ret=="—" else "#475569",weight="bold" if ret=="—" else "normal")
-    b+=text(ix+350,ry+21,serv,11,"#334155")
-    b+=text(ix+iw-110,ry+21,vl,11.5,"#0f172a",weight="bold",anchor="end")
-    if st=="ok": c,w=chip(ix+iw-12-58,ry+7,"Devolvido","#ecfdf5","#047857")
-    else: c,w=chip(ix+iw-12-58,ry+7,"Bloqueado","#fef2f2","#dc2626")
-    b+=c
-    ry+=32
-# subtotais
-b+=rect(ix,ry+6,iw,28,"#ecfdf5",rx=8)
-b+=text(ix+14,ry+25,"Subtotal LIBERADO (3 romaneios devolvidos)",11,"#047857",weight="bold")
-b+=text(ix+iw-14,ry+25,"R$ 700,00",13,"#047857",weight="bold",anchor="end")
-ry+=34
-b+=rect(ix,ry+6,iw,26,"#fff5f5",rx=8)
-b+=text(ix+14,ry+24,"Bloqueado — não voltou até 31 (não entra no pagamento)",10.5,"#b91c1c",weight="bold")
-b+=text(ix+iw-14,ry+24,"R$ 135,00",12,"#b91c1c",weight="bold",anchor="end")
-ry+=32+20
-
-# resumo por serviço
-b+=sectitle(ry,"Resumo por serviço (liberado)","#a855f7")
+# ---------- total líquido do período ----------
 ry+=18
-serv=[("Costurar","45 pç","R$ 3,00","R$ 135,00"),
-      ("Peseiras / Mantas","49","R$ 5,00","R$ 245,00"),
-      ("Almofadas / Capas","40","R$ 8,00","R$ 320,00")]
-b+=rect(ix,ry,iw,26,"#f1f5f9",rx=6)
-for t,hx in [("SERVIÇO",ix+12),("QTD",ix+260),("UNIT.",ix+360),("SUBTOTAL",ix+iw-12)]:
-    b+=text(hx,ry+18,t,8.5,"#94a3b8",weight="bold",anchor="end" if t=="SUBTOTAL" else "start")
-ry+=26
-for nm,q,u,sub in serv:
-    b+=text(ix+12,ry+19,nm,11.5,"#0f172a",weight="bold")+text(ix+260,ry+19,q,11,"#475569")+text(ix+360,ry+19,u,11,"#475569")+text(ix+iw-12,ry+19,sub,11.5,"#0f172a",weight="bold",anchor="end")
-    b+=line(ix,ry+28,ix+iw,ry+28,"#f1f5f9",1); ry+=30
+b+=rect(ix,ry,iw,70,"#ffffff",rx=8,stroke="#111827",sw=1.5)
+b+=text(ix+20,ry+32,"TOTAL LÍQUIDO DO PERÍODO",14,"#111827",weight="bold")
+b+=text(ix+iw-20,ry+26,"Bruto R$ 1.005,00 − Descontos R$ 0,00",10.5,"#6b7280",anchor="end")
+b+=text(ix+iw-20,ry+54,"R$ 1.005,00",26,"#111827",weight="bold",anchor="end")
+ry+=70+24
 
-# recibo / assinatura
+# ---------- resumo do período ----------
+b+=text(ix,ry,"RESUMO DO PERÍODO (13 ROMANEIOS)",12,"#374151",weight="bold",ls="0.5")
 ry+=14
-b+=rect(ix,ry,iw,86,"#fffdf5",rx=12,stroke="#fde68a")
-b+=text(ix+16,ry+26,"RECIBO",9.5,"#92400e",weight="bold",ls="0.5")
-b+=text(ix+16,ry+48,"Recebi a importância de R$ 700,00 (setecentos reais) referente aos",11.5,"#334155")
-b+=text(ix+16,ry+64,"serviços de costura prestados em Junho/2026.",11.5,"#334155")
-b+=line(ix+iw-230,ry+66,ix+iw-16,ry+66,"#0f172a",1)+text(ix+iw-123,ry+80,"Assinatura da costureira",9.5,"#94a3b8",anchor="middle")
+cards=[("TOTAL DE ROMANEIOS","13","#111827"),("TOTAL DE PEÇAS","538","#111827"),
+       ("LIBERADO P/ PAGAMENTO","R$ 1.005,00","#16a34a"),("BLOQUEADO (AGUARDANDO)","R$ 1.176,90","#ea580c")]
+cw=(iw-3*16)/4
+for i,(l,n,c) in enumerate(cards):
+    cx=ix+i*(cw+16)
+    b+=rect(cx,ry,cw,72,"#ffffff",rx=10,stroke="#e5e7eb")
+    b+=text(cx+16,ry+26,l,9,"#6b7280",weight="bold",ls="0.3")
+    b+=text(cx+16,ry+56,n,21,c,weight="bold")
+ry+=72+18
+b+=text(ix,ry+6,"Bloqueado = romaneios ainda em poder da costureira (aguardando retorno) — não entram no total a pagar até voltarem.",10.5,"#94a3b8")
 
 # footer
-fyy=py+ph-40
+fyy=py+ph-30
 b+=line(ix,fyy,ix+iw,fyy,"#eef0f4",1)
-b+=text(ix,fyy+20,"Gerado automaticamente · um relatório por costureira · Big Tricot",10,"#94a3b8")
-b+=text(px+pw-40,fyy+20,"Cris · 1 de 5",10,"#94a3b8",anchor="end")
+b+=text(ix,fyy+18,"Gerado automaticamente · 1 relatório por costureira · Big Tricot Home Decor",10,"#94a3b8")
+b+=text(ix+iw,fyy+18,"Silvia · 1 de 5",10,"#94a3b8",anchor="end")
 
 os.makedirs(OUT_SVG,exist_ok=True)
 open(os.path.join(OUT_SVG,"51-relatorio-individual-pdf.svg"),"w").write(svg(W,H,b))
-subprocess.run(["rsvg-convert","-z","1.5",os.path.join(OUT_SVG,"51-relatorio-individual-pdf.svg"),"-o",os.path.join(OUT_PNG,"51-relatorio-individual-pdf.png")],check=True)
-print("OK relatorio individual")
+subprocess.run(["rsvg-convert","-z","1.25",os.path.join(OUT_SVG,"51-relatorio-individual-pdf.svg"),"-o",os.path.join(OUT_PNG,"51-relatorio-individual-pdf.png")],check=True)
+print("OK relatorio individual v2")
