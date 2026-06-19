@@ -18,6 +18,7 @@ export interface ItemBase {
 }
 
 export interface Bloco {
+  tipo: string; // Peseira | Almofada | Capa | Manta | Kit | ""
   modelo: string;
   ref: string;
   comp: string;
@@ -61,10 +62,38 @@ function titleCase(s: string): string {
 export function modeloDe(produto: string): string {
   const semPref = produto
     .trim()
-    .replace(/^(PESEIRA|PES|MANTA|MAN|ALMOFADA|ALM|KIT)\.?\s+/i, "")
+    .replace(/^(PESEIRA|PES|MANTA|MAN|ALMOFADA|ALM|CAPA|KIT)\.?\s+/i, "")
     .trim();
   const primeira = semPref.split(/\s+/)[0] || semPref;
   return titleCase(primeira);
+}
+
+// Tipo do produto a partir do prefixo do nome (PES→Peseira, MAN→Manta, ALM→Almofada, CAPA, KIT).
+// Importante: peseira e almofada do MESMO modelo são produtos diferentes e NÃO podem se misturar.
+// Se não houver prefixo, infere pelo TAMANHO padrão (peseira 70x2.50, almofada 50x50, capa 45x45,
+// manta 90x2.00 / 1.20x1.80).
+const TAMANHO_PADRAO: Record<string, string> = {
+  "70X250": "Peseira",
+  "50X50": "Almofada",
+  "45X45": "Capa",
+  "90X200": "Manta",
+  "120X180": "Manta",
+};
+export function tipoDe(produto: string, tamanho?: string | null): string {
+  const m = produto.trim().match(/^(PESEIRA|PES|MANTA|MAN|ALMOFADA|ALM|CAPA|KIT)\b/i);
+  if (m) {
+    const t = m[1].toUpperCase();
+    if (t === "PES" || t === "PESEIRA") return "Peseira";
+    if (t === "MAN" || t === "MANTA") return "Manta";
+    if (t === "ALM" || t === "ALMOFADA") return "Almofada";
+    if (t === "CAPA") return "Capa";
+    if (t === "KIT") return "Kit";
+  }
+  if (tamanho) {
+    const t = tamanho.toUpperCase().replace(/[^0-9X]/g, "");
+    if (TAMANHO_PADRAO[t]) return TAMANHO_PADRAO[t];
+  }
+  return "";
 }
 
 // Kit (Pronta Entrega) SÓ quando o NOME do produto contém a palavra "KIT" (ex.: "KIT ASPEN 90x200").
@@ -147,12 +176,14 @@ function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
   for (const it of itens) {
     const info = resolverModelo(it, cat);
     const modelo = info?.nome || modeloDe(it.produto);
+    const tipo = tipoDe(it.produto, it.tamanho);
     const ref = (it.ref || "").trim();
     const cor = (it.cor_grade || "").trim();
-    const key = `${modelo}|${ref}|${cor}`;
+    // tipo no agrupamento: peseira e almofada do mesmo modelo/ref/cor NÃO se misturam
+    const key = `${tipo}|${modelo}|${ref}|${cor}`;
     let b = map.get(key);
     if (!b) {
-      b = { modelo, ref, cor, comp: info?.composicao || "", sizes: [], total: 0 };
+      b = { tipo, modelo, ref, cor, comp: info?.composicao || "", sizes: [], total: 0 };
       map.set(key, b);
       sizeIdx.set(key, new Map());
       ordem.push(key);
@@ -168,7 +199,15 @@ function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
     }
     b.total += it.qtd;
   }
-  return ordem.map((k) => map.get(k)!);
+  // mesmo MODELO fica junto (ex.: os dois Aspen lado a lado); depois por tipo e cor.
+  return ordem
+    .map((k) => map.get(k)!)
+    .sort(
+      (a, b) =>
+        a.modelo.localeCompare(b.modelo) ||
+        a.tipo.localeCompare(b.tipo) ||
+        a.cor.localeCompare(b.cor)
+    );
 }
 
 export function classificar(itens: ItemBase[], cat: Catalogo): Classificacao {

@@ -168,8 +168,9 @@ export async function gerarPdfParte(
     // barra cinza
     R(ix, y, iw, 26, GREY);
     let tx = ix + 10;
-    T("Modelo:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Modelo:", 9.5) + 6;
-    T(b.modelo, tx, y + 17, 11, bld); tx += bld.widthOfTextAtSize(b.modelo, 11) + 14;
+    const nomeProduto = b.tipo ? `${b.tipo} ${b.modelo}` : b.modelo;
+    T("Produto:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Produto:", 9.5) + 6;
+    T(nomeProduto, tx, y + 17, 11, bld); tx += bld.widthOfTextAtSize(nomeProduto, 11) + 14;
     T("Ref:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Ref:", 9.5) + 5;
     T(b.ref || "—", tx, y + 17, 10, bld); tx += bld.widthOfTextAtSize(b.ref || "—", 10) + 10;
     if (b.comp) T("· " + b.comp, tx, y + 17, 8.5, bld, REDC);

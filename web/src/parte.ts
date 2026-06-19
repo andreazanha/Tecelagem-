@@ -20,7 +20,7 @@ function norm(s: string): string {
 function modeloDe(produto: string): string {
   const semPref = produto
     .trim()
-    .replace(/^(PESEIRA|PES|MANTA|MAN|ALMOFADA|ALM|KIT)\.?\s+/i, "")
+    .replace(/^(PESEIRA|PES|MANTA|MAN|ALMOFADA|ALM|CAPA|KIT)\.?\s+/i, "")
     .trim();
   return semPref.split(/\s+/)[0] || semPref;
 }
