@@ -67,11 +67,11 @@ PROD=("→ Produção","#eef2ff","#4338ca")
 def EST(col): return (f"→ Estoque · «{col}»","#fff7ed","#b45309")
 
 rows=[
- ("uni","Pedido Único","1 PDF","Tecelagem → Passadoria → Corte → Costura → Revisão → Expedição → Fiscal → Transporte",[PROD]),
- ("pp","Pedido Parte 1 e 2","2 PDFs (1 por parte)","P1 (Máq 3) + P2 (Máq 7) — unem-se no Corte → … → Transporte",[PROD]),
- ("est","Pedido Estoque","1 PDF (normal)","Não passa pela produção · entra direto no Estoque",[EST("Dar entrada no estoque")]),
- ("pej","P1 e 2 + Pronta Entrega — ENVIAR JUNTO","3 PDFs","P1/P2 → Produção · PE aguarda e sai junto com o pedido",[PROD,EST("Pronta Entrega + Produção")]),
- ("pes","P1 e 2 + Pronta Entrega — ENVIAR SEPARADO","3 PDFs","P1/P2 → Produção · PE sai antes (antecipado)",[PROD,EST("Separar")]),
+ ("uni","Pedido Único","1 PDF","Tecelagem → Passadoria → Corte → Costura → Revisão → Expedição → Transporte",[PROD]),
+ ("pp","Pedido Parte 1 e 2","2 PDFs (1 por parte)","Tecelagem → Passadoria → (unem no Corte) → Costura → Revisão → Expedição → Transporte",[PROD]),
+ ("est","Pedido Estoque","1 PDF (produção)","Faz TODA a produção (igual Parte 1 e 2) e, no fim, dá entrada no Estoque",[PROD,EST("Dar entrada no estoque")]),
+ ("pej","P1 e 2 + Pronta Entrega — ENVIAR JUNTO","3 PDFs","P1/P2 produzem · PE (não produz) aguarda e sai junto com o pedido",[PROD,EST("Pronta Entrega + Produção")]),
+ ("pes","P1 e 2 + Pronta Entrega — ENVIAR SEPARADO","3 PDFs","P1/P2 produzem · PE (não produz) sai antes (antecipado)",[PROD,EST("Separar")]),
 ]
 yy=178
 for gk,tn,np,fl,ds in rows:

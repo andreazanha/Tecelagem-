@@ -1,5 +1,17 @@
 # 13 — Geração de Pedidos (PDF por parte) + Integração CRM
 
+## 0. Roteamento por tipo de pedido (aprovado)
+
+| Tipo | Fluxo / Destino |
+|------|-----------------|
+| **Único** | Tecelagem → Passadoria → Corte → Costura → Revisão → Expedição → Transporte |
+| **Parte 1 e 2** | Tecelagem → Passadoria (separadas) → **unem no Corte** → Costura → Revisão → Expedição → Transporte |
+| **Estoque** | **Faz toda a produção** (igual Parte 1 e 2) e, no fim, **dá entrada no Estoque** (coluna *Dar entrada no estoque*) |
+| **P1+P2 + Pronta Entrega (junto)** | P1/P2 produzem · **PE não produz** → Estoque (coluna *Pronta Entrega + Produção*) → sai junto |
+| **P1+P2 + Pronta Entrega (separado)** | P1/P2 produzem · **PE não produz** → Estoque (coluna *Separar*) → sai antes |
+
+> Apenas a **Pronta Entrega** não passa pela produção. Colunas do Estoque (editáveis): *Dar entrada no estoque · Pronta Entrega + Produção · Separar*.
+
 ## 1. Regras de geração da Ordem (aprovadas)
 
 - O sistema importa o **PDF do ERP** (preservado) → lê por OCR → conferência → gera os PDFs padronizados.
