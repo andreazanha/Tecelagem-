@@ -85,8 +85,10 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .btn { font: inherit; font-weight: 700; font-size: 13px; padding: 9px 16px; border-radius: 10px; border: 1px solid #cbd5e1; background: #fff; color: #334155; cursor: pointer; }
 .btn:hover { background: #f8fafc; }
 .btn-primary { background: linear-gradient(90deg, var(--brand1), var(--brand2)); color: #fff; border: none; }
+.btn-primary:hover { background: linear-gradient(90deg, #4338ca, #6d28d9); color: #fff; filter: brightness(1.03); }
 .btn-primary:disabled { opacity: .6; cursor: default; }
 .btn-soft { background: #eef2ff; color: #4338ca; border: none; }
+.btn-soft:hover { background: #e0e7ff; color: #4338ca; }
 .icon-btn { border: 1px solid #e2e8f0; background: #fff; border-radius: 8px; width: 30px; height: 30px; cursor: pointer; color: #ef4444; }
 .icon-btn:disabled { opacity: .4; cursor: default; }
 
