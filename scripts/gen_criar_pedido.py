@@ -88,7 +88,7 @@ b+=text(ix+half+16+16,dby+48,"22/06/2026  📅",20,"#be123c",weight="bold")
 # tipo de pedido (segmented)
 ty=dby+92
 b+=text(ix,ty,"TIPO DE PEDIDO",9.5,"#94a3b8",weight="bold",ls="0.6")
-opts=[("Único",False),("Parte 1 + Parte 2",True),("P1 + P2 + Pronta Entrega",False),("Estoque",False),("Pronta Entrega",False)]
+opts=[("Único",False),("Único + Pronta Entrega",True),("Parte 1 + Parte 2",False),("P1 + P2 + Pronta Entrega",False),("Estoque",False),("Pronta Entrega",False)]
 ox=ix; oy=ty+12
 for lab,sel in opts:
     ow=24+len(lab)*6.8
@@ -96,6 +96,11 @@ for lab,sel in opts:
     if sel: b+=rect(ox,oy,ow,34,"url(#g_brand)",rx=9)+text(ox+ow/2,oy+22,lab,12,"#fff",weight="bold",anchor="middle")
     else: b+=rect(ox,oy,ow,34,"#ffffff",rx=9,stroke="#e2e8f0")+text(ox+ow/2,oy+22,lab,12,"#475569",anchor="middle")
     ox+=ow+10
+# helper do tipo selecionado
+hny=oy+44
+b+=rect(ix,hny,iw,30,"#ecfdf5",rx=8,stroke="#a7f3d0")
+b+=text(ix+12,hny+20,"ℹ  Único + Pronta Entrega: o pedido único produz normalmente e os itens de Pronta Entrega (não produzem) saem junto.",10.5,"#047857",weight="bold")
+oy=hny
 # itens
 ity=oy+58
 b+=text(ix,ity,"ITENS DO PEDIDO",9.5,"#94a3b8",weight="bold",ls="0.6")
@@ -107,9 +112,9 @@ cx=ix
 for t,w in cols:
     b+=text(cx,thy+14,t,9.5,"#94a3b8",weight="bold"); cx+=w
 b+=rect(ix,thy+22,iw,1,"#eef0f4")
-rows=[("Blusa Tricô","BT12","Off-white · P-M-G","150","Parte 1 / 2","#eef2ff","#4338ca"),
-      ("Cachecol","CC07","Cinza · Único","60","Kit","#ecfeff","#0e7490"),
-      ("Gola Alta","GL02","Preto · P-M","80","Parte 1 / 2","#eef2ff","#4338ca")]
+rows=[("Blusa Tricô","BT12","Off-white · P-M-G","150","Único","#f1f5f9","#475569"),
+      ("Echarpe","EC09","Bege · Único","40","Pronta Entrega","#ecfdf5","#047857"),
+      ("Gola Alta","GL02","Preto · P-M","80","Único","#f1f5f9","#475569")]
 ryy=thy+30
 for prod,ref,cor,qt,parte,pbg,pfg in rows:
     b+=text(ix,ryy+20,prod,12.5,"#0f172a",weight="bold")

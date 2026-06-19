@@ -12,7 +12,7 @@ def text(x,y,s,size=13,fill="#0f172a",weight="normal",anchor="start",ls=None):
     return f'<text x="{x}" y="{y}" font-size="{size}" fill="{fill}" font-weight="{weight}" text-anchor="{anchor}"{extra}>{esc(s)}</text>'
 def circle(cx,cy,r,fill):
     return f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="{fill}"/>'
-GRADS={"uni":("#475569","#64748b"),"pp":("#4338ca","#6366f1"),"est":("#d97706","#f59e0b"),
+GRADS={"uni":("#475569","#64748b"),"upe":("#0d9488","#14b8a6"),"pp":("#4338ca","#6366f1"),"est":("#d97706","#f59e0b"),
        "pej":("#059669","#10b981"),"pes":("#0891b2","#06b6d4"),"brand":("#4f46e5","#7c3aed")}
 def gdefs():
     return "".join(f'<linearGradient id="g_{k}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{a}"/><stop offset="1" stop-color="{b}"/></linearGradient>' for k,(a,b) in GRADS.items())
@@ -27,7 +27,7 @@ def badge(x,y,label,bg,fg,h=26,fs=11.5):
     w=24+len(label)*6.6
     return rect(x,y,w,h,bg,rx=h/2)+text(x+w/2,y+h*0.66,label,fs,fg,weight="bold",anchor="middle"),w
 
-W,H=1500,880
+W,H=1500,1030
 b=rect(0,0,W,60,"url(#g_brand)")
 b+=text(28,38,"BIG TRICOT",18,"#fff",weight="bold",ls="0.5")+circle(150,30,3,"#c7d2fe")+text(168,38,"Rolagem de Fase",13,"#e0e7ff")
 b+=text(W-200,38,"Ana Paula",13,"#fff",anchor="end")+avatar(W-176,30,15,"AP")
@@ -68,6 +68,7 @@ def EST(col): return (f"→ Estoque · «{col}»","#fff7ed","#b45309")
 
 rows=[
  ("uni","Pedido Único","1 PDF","Tecelagem → Passadoria → Corte → Costura → Revisão → Expedição → Transporte",[PROD]),
+ ("upe","Único + Pronta Entrega","2 PDFs","Único produz normalmente · PE (não produz) aguarda e sai JUNTO com o pedido",[PROD,EST("Pronta Entrega + Produção")]),
  ("pp","Pedido Parte 1 e 2","2 PDFs (1 por parte)","Tecelagem → Passadoria → (unem no Corte) → Costura → Revisão → Expedição → Transporte",[PROD]),
  ("est","Pedido Estoque","1 PDF (produção)","Faz TODA a produção (igual Parte 1 e 2) e, no fim, dá entrada no Estoque",[PROD,EST("Dar entrada no estoque")]),
  ("pej","P1 e 2 + Pronta Entrega — ENVIAR JUNTO","3 PDFs","P1/P2 produzem · PE (não produz) aguarda e sai junto com o pedido",[PROD,EST("Pronta Entrega + Produção")]),
