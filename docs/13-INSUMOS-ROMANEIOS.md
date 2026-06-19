@@ -28,3 +28,13 @@
 - **Relatório mensal** — **todo dia 1º**: total a pagar liberado, valores **por costureira** e os **não liberados** (vencidos).
 
 > Mockups: `43-insumos` · `44-romaneios` · `45-romaneio-pdf` · `46-cadastro-servicos` · `47-whatsapp-mensal` · `48-whatsapp-lembretes`.
+
+## 6. Relatório Individual por Costureira (PDF)
+O fechamento mensal também gera **um PDF para cada costureira**, contendo:
+- Dados da costureira + período + indicadores.
+- **Todos os romaneios do mês** (Nº, pedido, saída, retorno, serviços/qtd, valor, status).
+- **Subtotais**: liberado e bloqueado (não voltou até dia 31).
+- **Resumo por serviço** (qtd × valor unitário × subtotal).
+- **Recibo** com linha de assinatura.
+
+Mockup: `51-relatorio-individual-pdf`. (O `50-relatorio-mensal-pdf` é o consolidado de todas.)
