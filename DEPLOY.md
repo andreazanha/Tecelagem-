@@ -38,6 +38,30 @@ npm run deploy              # build do front + wrangler deploy
 ```
 O Wrangler mostra a URL final (algo como `https://rolagem-de-fase.<sua-conta>.workers.dev`).
 
+## Deploy automático (GitHub Action) — recomendado
+
+Já existe o workflow `.github/workflows/deploy.yml`: a cada **push**, ele builda, migra o banco, garante o catálogo e publica.
+
+**Pré-requisito (uma vez):** criar o D1 e o R2 e colar o `database_id` no `wrangler.jsonc` (passos 3 acima — pode ser pelo CLI ou pelo painel da Cloudflare → Storage & Databases).
+
+**Configurar os 2 segredos no GitHub** (repositório → Settings → Secrets and variables → Actions → New repository secret):
+
+| Secret | Valor |
+|--------|-------|
+| `CLOUDFLARE_ACCOUNT_ID` | `1a2702df36cf6c51695a3b5095165f1a` |
+| `CLOUDFLARE_API_TOKEN`  | criar em **dash.cloudflare.com → My Profile → API Tokens → Create Token** |
+
+**Permissões do token** (use o template "Edit Cloudflare Workers" e adicione):
+- Account · **Workers Scripts** · Edit
+- Account · **D1** · Edit
+- Account · **Workers R2 Storage** · Edit
+- Account · **Workers AI** · Read
+- (o template já inclui Account Settings · Read e Workers KV · Edit)
+
+Pronto: o próximo push roda o deploy. Acompanhe na aba **Actions** do GitHub.
+
+> Não precisa usar o "Connect GitHub" no painel da Cloudflare se for por aqui — escolha **um** dos dois.
+
 ## Atualizações futuras
 ```bash
 git pull
