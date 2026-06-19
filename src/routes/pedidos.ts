@@ -13,15 +13,18 @@ function br(iso?: string | null): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }
 async function catalogos(env: Env): Promise<Catalogo> {
+  const modelos: Catalogo = new Map();
+  // Base: os 12 modelos da Parte 1 (Máquina 3) sempre entram como Parte 1.
+  // Assim a divisão em 2 partes NÃO depende do seed remoto ter rodado.
+  for (const n of DEFAULT_PARTE1) modelos.set(n, { parte: 1, composicao: "" });
+  // O catálogo do banco (tela de Cadastros) sobrescreve: o usuário pode mudar
+  // parte/composição de qualquer modelo, inclusive rebaixar um base para Parte 2.
   const m = await env.DB.prepare(
     "SELECT nome, parte, composicao FROM modelos"
   ).all<{ nome: string; parte: number; composicao: string | null }>();
-  const modelos: Catalogo = new Map();
   for (const r of m.results) {
     modelos.set(norm(r.nome), { parte: Number(r.parte) === 1 ? 1 : 2, composicao: r.composicao || "" });
   }
-  // segurança: catálogo vazio → usa a lista base da Parte 1 (sem composição)
-  if (modelos.size === 0) for (const n of DEFAULT_PARTE1) modelos.set(n, { parte: 1, composicao: "" });
   return modelos;
 }
 
