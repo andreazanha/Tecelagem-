@@ -98,8 +98,86 @@ function extrairItens(text: string): ItemSugerido[] {
   return itens;
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// Parser específico do ERP da Big Tricot (PDF digital).
+// Cabeçalho: "Pedido: 003.768 <CLIENTE> Ped. Cliente: ..." · "Data: dd/mm/aaaa"
+//            "Entrega: De dd/mm/aaaa ... a dd/mm/aaaa" · "Representante: ... LTDA"
+// Itens:     "Produto: <g> <cod> <NOME> Col: <c> <preço>Preço Un.: Cores <grade> UN
+//             Qte. Valor em R$ <corcod> <COR> <q> <q> <valor> [...] T.: <total> <valor>"
+// ───────────────────────────────────────────────────────────────────────────
+function pareceERPBigTricot(text: string): boolean {
+  return /Pre[çc]o\s*Un\./i.test(text) && /Produto:/i.test(text) && /Pedido:/i.test(text);
+}
+
+function parseItensERP(text: string): ItemSugerido[] {
+  const itens: ItemSugerido[] = [];
+  const blocos = text.split(/Produto:\s*/i).slice(1);
+  const reCor =
+    /(\d{4})\s+(?:\d{2,3}\s+)?([A-Za-zÀ-ú][A-Za-zÀ-ú0-9 ]*?)\s+(\d+)\s+(\d+)\s+\d{1,3}(?:\.\d{3})*,\d{2}/g;
+  for (const bloco of blocos) {
+    const mNome = bloco.match(/^\s*\d+\s+(\d+)\s+(.+?)\s+Col:/i);
+    if (!mNome) continue;
+    const ref = mNome[1];
+    const nome = mNome[2].replace(/\s+/g, " ").trim();
+    const parte = /\bkit\b/i.test(nome) ? "kit" : "unico";
+    const antesTotal = bloco.split(/\bT\.:/)[0];
+    const cores = (antesTotal.split(/Valor\s*em\s*R\$/i).pop() || "").trim();
+    let m: RegExpExecArray | null;
+    reCor.lastIndex = 0;
+    let achouCor = false;
+    while ((m = reCor.exec(cores))) {
+      achouCor = true;
+      const cor = m[2].replace(/\s+/g, " ").trim();
+      const qtd = parseInt(m[4], 10) || parseInt(m[3], 10) || 0;
+      itens.push({ produto: nome, ref, cor_grade: cor, qtd, parte });
+    }
+    // produto sem linha de cor reconhecida: registra com o total
+    if (!achouCor) {
+      const mTot = bloco.match(/T\.:\s*(\d+)/);
+      itens.push({ produto: nome, ref, qtd: mTot ? parseInt(mTot[1], 10) : 0, parte });
+    }
+  }
+  return itens;
+}
+
+function parseERPBigTricot(text: string): SugestaoPedido {
+  const numRaw = text.match(/Pedido:\s*([\d.]+)/i)?.[1];
+  const numero_erp = numRaw ? String(parseInt(numRaw.replace(/\D/g, ""), 10)) : undefined;
+
+  const cliente_nome = text
+    .match(/Pedido:\s*[\d.]+\s+(.+?)\s+Ped\.\s*Cliente:/i)?.[1]
+    ?.replace(/\s+/g, " ")
+    .trim();
+
+  const vendedor = text
+    .match(/Representante:\s*(?:Fones:\S*\s*)?(.+?\s+LTDA)\b/i)?.[1]
+    ?.replace(/\s+/g, " ")
+    .trim();
+
+  const data_pedido = dataBRtoISO(text.match(/Data:\s*(\d{2}\/\d{2}\/\d{4})/i)?.[1]);
+  const data_entrega = dataBRtoISO(text.match(/\bDe\s+(\d{2}\/\d{2}\/\d{4})/i)?.[1]);
+
+  const itens = parseItensERP(text);
+
+  let achados = 0;
+  for (const v of [numero_erp, cliente_nome, vendedor, data_pedido, data_entrega]) if (v) achados++;
+  const confianca = Math.min(100, Math.round((achados / 5) * 50 + (itens.length > 0 ? 50 : 0)));
+
+  return {
+    numero_erp,
+    cliente_nome: cliente_nome?.slice(0, 120),
+    vendedor: vendedor?.slice(0, 80),
+    data_pedido,
+    data_entrega,
+    itens,
+    confianca,
+    texto: text,
+  };
+}
+
 export function parsePedido(texto: string): SugestaoPedido {
   const text = (texto || "").replace(/\r/g, "");
+  if (pareceERPBigTricot(text)) return parseERPBigTricot(text);
 
   const numero_erp = primeiraCaptura(text, [
     /pedido[^\d]{0,15}(\d{3,8})/i,
