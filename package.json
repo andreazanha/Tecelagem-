@@ -12,6 +12,7 @@
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate": "wrangler d1 migrations apply DB --remote",
     "db:seed:local": "wrangler d1 execute DB --local --file=./seed/seed.sql",
+    "db:seed:catalogo": "wrangler d1 execute DB --remote --file=./seed/catalogo.sql",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
