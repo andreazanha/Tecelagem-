@@ -103,6 +103,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(de && de !== m.nome ? { ...m, de } : m),
     }).then((r) => j<Modelo>(r)),
+  importarModelos: (itens: { nome: string; ref?: string }[]) =>
+    fetch("/api/modelos/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itens }),
+    }).then((r) => j<{ ok: boolean; total: number }>(r)),
   excluirModelo: (nome: string) =>
     fetch(`/api/modelos/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) =>
       j<{ ok: boolean }>(r)

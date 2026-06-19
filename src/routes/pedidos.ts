@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { extractText, getDocumentProxy } from "unpdf";
 import type { Env } from "../index";
 import { parsePedido } from "../parser";
-import { classificar, norm, DEFAULT_PARTE1, type ItemBase, type Catalogo } from "../classificar";
+import { classificar, criarCatalogo, type ItemBase, type Catalogo } from "../classificar";
 import { gerarPdfParte, type PedidoInfo } from "../pdf";
 
 export const pedidos = new Hono<{ Bindings: Env }>();
@@ -13,19 +13,12 @@ function br(iso?: string | null): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }
 async function catalogos(env: Env): Promise<Catalogo> {
-  const modelos: Catalogo = new Map();
-  // Base: os 12 modelos da Parte 1 (Máquina 3) sempre entram como Parte 1.
-  // Assim a divisão em 2 partes NÃO depende do seed remoto ter rodado.
-  for (const n of DEFAULT_PARTE1) modelos.set(n, { parte: 1, composicao: "" });
-  // O catálogo do banco (tela de Cadastros) sobrescreve: o usuário pode mudar
-  // parte/composição de qualquer modelo, inclusive rebaixar um base para Parte 2.
+  // Os 12 modelos base da Parte 1 entram sempre; o catálogo do banco (tela de Cadastros)
+  // sobrescreve parte/composição/código. O código (ref) permite casar o modelo pela grade.
   const m = await env.DB.prepare(
-    "SELECT nome, parte, composicao FROM modelos"
-  ).all<{ nome: string; parte: number; composicao: string | null }>();
-  for (const r of m.results) {
-    modelos.set(norm(r.nome), { parte: Number(r.parte) === 1 ? 1 : 2, composicao: r.composicao || "" });
-  }
-  return modelos;
+    "SELECT nome, parte, composicao, ref FROM modelos"
+  ).all<{ nome: string; parte: number; composicao: string | null; ref: string | null }>();
+  return criarCatalogo(m.results);
 }
 
 // IMPORTAR PDF → extrai texto (PDF digital) ou OCR (Workers AI) → devolve sugestão

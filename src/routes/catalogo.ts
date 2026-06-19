@@ -1,5 +1,8 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
+import { DEFAULT_PARTE1, norm } from "../classificar";
+
+const BASE_P1 = new Set(DEFAULT_PARTE1.map((n) => norm(n)));
 
 // ── Modelos (definem Parte 1 / Parte 2) ──────────────────────────────────────
 export const modelos = new Hono<{ Bindings: Env }>();
@@ -54,6 +57,29 @@ modelos.post("/", async (c) => {
     { nome, parte, ref: b.ref || null, composicao: b.composicao || null, tassel_peseira: tp, tassel_almofada: ta },
     201
   );
+});
+
+// IMPORTAÇÃO em lote (nome + código). Cria os modelos que faltam e atualiza o código dos
+// existentes SEM mexer em parte/composição já cadastradas. Modelos novos que estejam na lista
+// base da Parte 1 nascem como Parte 1; os demais como Parte 2.
+modelos.post("/bulk", async (c) => {
+  const b = await c.req
+    .json<{ itens?: { nome?: string; ref?: string }[] }>()
+    .catch(() => ({}) as { itens?: { nome?: string; ref?: string }[] });
+  const itens = (b.itens || [])
+    .map((i) => ({ nome: (i.nome || "").trim(), ref: (i.ref || "").trim() }))
+    .filter((i) => i.nome);
+  if (itens.length === 0) return c.json({ error: "nenhum modelo válido na lista" }, 400);
+
+  const stmts = itens.map((i) =>
+    c.env.DB.prepare(
+      `INSERT INTO modelos (nome, parte, ref)
+       VALUES (?, ?, ?)
+       ON CONFLICT(nome) DO UPDATE SET ref = excluded.ref`
+    ).bind(i.nome, BASE_P1.has(norm(i.nome)) ? 1 : 2, i.ref || null)
+  );
+  await c.env.DB.batch(stmts);
+  return c.json({ ok: true, total: itens.length }, 201);
 });
 
 modelos.delete("/:nome", async (c) => {

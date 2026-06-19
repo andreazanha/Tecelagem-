@@ -40,6 +40,40 @@ export function Cadastros() {
   const filtrados = itens.filter((m) => m.nome.toLowerCase().includes(busca.toLowerCase()));
   const p1 = itens.filter((m) => m.parte === 1).length;
 
+  // Importação em lote: cada linha "Nome  Código" (separador: vírgula, ponto e vírgula, tab ou 2+ espaços).
+  const [mostrarImport, setMostrarImport] = useState(false);
+  const [texto, setTexto] = useState("");
+  const [importando, setImportando] = useState(false);
+  function parseLinhas(): { nome: string; ref?: string }[] {
+    return texto
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const partes = l.split(/\t|;|,|\s{2,}/).map((p) => p.trim()).filter(Boolean);
+        const nome = partes[0] || "";
+        const ref = partes.slice(1).find((p) => /\w/.test(p));
+        return { nome, ref };
+      })
+      .filter((i) => i.nome);
+  }
+  async function importarLista() {
+    const linhas = parseLinhas();
+    if (linhas.length === 0) return;
+    setImportando(true);
+    try {
+      const r = await api.importarModelos(linhas);
+      setTexto("");
+      setMostrarImport(false);
+      recarregar();
+      alert(`${r.total} modelo(s) importado(s)/atualizado(s).`);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setImportando(false);
+    }
+  }
+
   return (
     <>
       <div className="page-head">
@@ -47,13 +81,47 @@ export function Cadastros() {
           <h1>Cadastro de Modelos</h1>
           <div className="breadcrumb">Configuração › Modelos</div>
         </div>
-        <input
-          placeholder="🔎 Buscar modelo…"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          style={{ minWidth: 220 }}
-        />
+        <div className="row-gap">
+          <input
+            placeholder="🔎 Buscar modelo…"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            style={{ minWidth: 220 }}
+          />
+          <button className="btn btn-soft" onClick={() => setMostrarImport((v) => !v)}>
+            ⬆ Subir lista (nome + código)
+          </button>
+        </div>
       </div>
+
+      {mostrarImport && (
+        <div className="card pad">
+          <h2>Subir lista de modelos (nome + código)</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Cole uma linha por modelo: <strong>Nome</strong> e <strong>Código</strong> separados por
+            vírgula, tab ou 2+ espaços. Ex.: <code>Perola, 1075</code>. Cria os que faltam e atualiza
+            o código dos existentes <strong>sem alterar</strong> parte/composição já cadastradas.
+          </p>
+          <textarea
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder={"Perola, 1075\nAspen, 1083\nKora, KT1092"}
+            rows={8}
+            style={{ width: "100%", font: "inherit", padding: 10, borderRadius: 10, border: "1px solid #e2e8f0" }}
+          />
+          <div className="row-gap" style={{ marginTop: 10, justifyContent: "flex-end" }}>
+            <span className="muted" style={{ marginRight: "auto" }}>
+              {parseLinhas().length} linha(s) detectada(s)
+            </span>
+            <button className="btn" onClick={() => { setTexto(""); setMostrarImport(false); }}>
+              Cancelar
+            </button>
+            <button className="btn btn-primary" onClick={importarLista} disabled={importando}>
+              {importando ? "Importando…" : "Importar"}
+            </button>
+          </div>
+        </div>
+      )}
       <p className="muted" style={{ marginTop: -8, marginBottom: 16 }}>
         Tabela completa de modelos. <strong>Parte 1</strong> = tece na Máquina 3 (o resto = Parte 2;
         kits = Pronta Entrega; sem Parte 1 → Parte Única). A <strong>composição</strong> é do modelo
