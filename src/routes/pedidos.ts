@@ -251,6 +251,7 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     numero: ped.numero_erp || id.slice(0, 8),
     emissao: br(ped.data_pedido),
     entrega: br(ped.data_entrega),
+    observacao: ped.observacao || "",
   };
 
   const jobs: { tipo: string; label: string; banda: "gold" | "green"; sub: string; blocos: any[] }[] = [];

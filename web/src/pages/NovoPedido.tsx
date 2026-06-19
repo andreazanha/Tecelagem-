@@ -262,6 +262,25 @@ export function NovoPedido() {
               />
             </div>
           </div>
+
+          <div className="field">
+            <label style={{ color: "#c0392b" }}>Observação (sai em vermelho no PDF)</label>
+            <textarea
+              value={form.observacao ?? ""}
+              onChange={(e) => set("observacao", e.target.value)}
+              placeholder="ex.: PRIORIDADE — entregar tassel separado"
+              rows={2}
+              style={{
+                font: "inherit",
+                padding: "9px 12px",
+                border: "1px solid #fca5a5",
+                borderRadius: 10,
+                color: "#c0392b",
+                fontWeight: 600,
+                resize: "vertical",
+              }}
+            />
+          </div>
         </div>
       </div>
 

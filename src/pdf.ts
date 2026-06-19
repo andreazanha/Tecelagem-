@@ -29,9 +29,34 @@ const SW: Record<string, string> = {
 export interface PedidoInfo {
   cliente: string;
   representante: string;
-  numero: string;
+  numero: string; // número(s) do(s) pedido(s) — ex.: "3756, 3765, 3768" numa OP consolidada
   emissao: string;
   entrega: string;
+  observacao?: string; // exibida em VERMELHO no cabeçalho
+}
+
+// Quebra um texto em linhas que cabem em `maxW` (pdf-lib não tem wrap automático).
+function wrap(s: string, font: PDFFont, size: number, maxW: number): string[] {
+  const palavras = s.split(/\s+/);
+  const linhas: string[] = [];
+  let atual = "";
+  for (const p of palavras) {
+    const tent = atual ? `${atual} ${p}` : p;
+    if (font.widthOfTextAtSize(tent, size) > maxW && atual) {
+      linhas.push(atual);
+      atual = p;
+    } else {
+      atual = tent;
+    }
+  }
+  if (atual) linhas.push(atual);
+  return linhas;
+}
+
+function geradoEm(): string {
+  const d = new Date(Date.now() - 3 * 3600 * 1000); // ~horário de Brasília (UTC-3)
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}, ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 }
 
 export async function gerarPdfParte(
@@ -71,9 +96,9 @@ export async function gerarPdfParte(
     R(0, 0, A4W, bh, NAVY);
     T("BIG TRICOT", ix, 44, 24, bld, WHITE);
     T("HOME DECOR", ix + 2, 60, 8, reg, hx("#c7d2e0"));
-    T("Pedido de Venda", ix + 210, 40, 16, bld, WHITE);
+    T("Ordem de Produção", ix + 210, 40, 16, bld, WHITE);
     T(subtitulo, ix + 210, 58, 10, reg, hx("#c7d2e0"));
-    TR("Gerado em 19/06/2026, 17:33", ix + iw, 34, 8.5, reg, hx("#aab8cc"));
+    TR(`Gerado em ${geradoEm()}`, ix + iw, 34, 8.5, reg, hx("#aab8cc"));
     const pw = 16 + bld.widthOfTextAtSize(parteLabel, 9);
     R(ix + iw - pw, 46, pw, 20, bandaColor);
     T(parteLabel, ix + iw - pw + 8, 60, 9, bld, bandaTxt);
@@ -86,11 +111,24 @@ export async function gerarPdfParte(
     };
     info("CLIENTE", ped.cliente);
     info("REPRESENTANTE", ped.representante);
-    info("PEDIDO", ped.numero);
+    info(ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
     T("DATAS", ix, y, 8.5, bld, MUTE);
     T(`Emissão: ${ped.emissao}`, ix + 140, y, 10, bld);
     T(`Entrega: ${ped.entrega}`, ix + 320, y, 10, bld);
-    y += 28;
+    y += 20;
+    // Observação em VERMELHO (com destaque), quebrando em várias linhas se necessário.
+    if (ped.observacao && ped.observacao.trim()) {
+      y += 6;
+      T("OBSERVAÇÃO", ix, y, 8.5, bld, MUTE);
+      const linhas = wrap(ped.observacao.trim().toUpperCase(), bld, 10.5, iw - 140);
+      for (const ln of linhas) {
+        T(ln, ix + 140, y, 10.5, bld, REDC);
+        y += 15;
+      }
+      y += 5;
+    } else {
+      y += 8;
+    }
     const titulo = banda === "green" ? "ITENS — PRONTA ENTREGA" : "ITENS A PRODUZIR";
     T(titulo, ix, y, 13, bld, NAVY);
     R(ix, y + 6, iw, 2.5, NAVY);
