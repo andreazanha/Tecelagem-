@@ -176,3 +176,16 @@ Colunas:
 3. **Finalizados → Fiscal** — card mostra o resumo das medidas; ação **🔒 Enviar ao Fiscal ▶**.
 
 > É assim que o operador "coloca as medidas": pelo botão **📐** no card (coluna Expedindo). As medidas são obrigatórias para finalizar, garantindo que o Fiscal tenha os dados para cotar o frete.
+
+
+## 3.8 Transporte — fluxo aprovado ✅
+
+Colunas:
+1. **Pedidos a serem enviados** — chega do Fiscal (NF emitida); card mostra NF, volumes/peso e frete cotado; ação **🚚 Atribuir transportadora**.
+2. **Uma coluna por transportadora:** **Braspress, Translovato, Jadlog, Correios, Cliente retirou, Transporte interno** — com opção de **cadastrar novas**.
+
+- Status do card: **Aguardando coleta → Em rota → Entregue** (com rastreio/motorista).
+- Ações: **📤 Despachar**, **✓ Confirmar entrega**, **📄 Ver comprovante**.
+- **Cadastrar transportadora** (modal): nome, **tipo** (Transportadora / Correios / Cliente retira / Transporte interno), site de rastreio, contato e **cor da coluna**.
+
+> Modelo de dados: catálogo `transportadora` (nome, tipo, cor, site_rastreio) + `entrega` (status, código de rastreio, comprovante). Colunas geradas dinamicamente. Tipos especiais "Cliente retira" e "Transporte interno" são apenas transportadoras com comportamento próprio (sem rastreio externo).
