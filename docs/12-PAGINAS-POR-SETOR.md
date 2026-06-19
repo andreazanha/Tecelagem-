@@ -22,8 +22,8 @@ Revisor             →  abre  →  Página "Setor: Revisão"    (vê só Revis�
 | **Corte** | Operador Corte | Aguardando → Cortando → Finalizado | Costura *(gera romaneio)* |
 | **Costura** | Operador Costura | Aguardando → Costurando (por costureira) → Finalizado | Revisão |
 | **Revisão** | Revisor | Aguardando → Revisando (por revisor) → Aprovado/Devolvido | Expedição *(desmembra agrupados)* |
-| **Expedição** | Expedição | Aguardando → Separando/Embalando → Finalizado | Fiscal |
-| **Fiscal** | Fiscal | Aguardando → Emitindo NF → Finalizado | Transporte |
+| **Expedição** | Expedição | Aguardando → Separando/Embalando → Formulário de frete (volumes/peso/medidas) | Fiscal |
+| **Fiscal** ✅ | Fiscal | Pedidos para emitir → Cotando frete → NF emitida | Transporte |
 | **Transporte** | Logística/Motorista | Aguardando → Em rota → Entregue | (fim) |
 
 > Cada página tem o **mesmo formato**: contadores no topo (Aguardando / Em execução / Finalizados), recursos do setor (teares, costureiras, revisores…) e um **mini-quadro Kanban interno** com as etapas daquele setor.
