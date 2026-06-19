@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="760" viewBox="0 0 1120 760" font-family="Segoe UI, Arial, sans-serif">
+  <rect width="1120" height="760" fill="#f4f4f7"/>
+  <rect width="1120" height="50" fill="#4c1d95"/>
+  <text x="20" y="31" fill="#fff" font-size="17" font-weight="bold">🧶 BIG TRICOT</text>
+  <rect x="170" y="14" width="120" height="23" rx="11" fill="#ffffff22"/>
+  <text x="182" y="30" fill="#fff" font-size="12">Rolagem de Fase</text>
+  <text x="980" y="31" fill="#fff" font-size="13">João (Supervisor) ▾</text>
+  <!-- sidebar -->
+  <rect x="0" y="50" width="210" height="710" fill="#1b1530"/>
+  <text x="20" y="86" fill="#fff" font-size="14" font-weight="bold">🧶 Big Tricot</text>
+  <text x="20" y="122" fill="#cfc8e6" font-size="13">📊 Início</text>
+  <rect x="0" y="138" width="210" height="34" fill="#8b5cf633"/><rect x="0" y="138" width="3" height="34" fill="#8b5cf6"/>
+  <text x="20" y="160" fill="#fff" font-size="13">📦 Pedidos</text>
+  <text x="20" y="196" fill="#cfc8e6" font-size="13">🏭 Ordens de Produção</text>
+  <text x="20" y="230" fill="#cfc8e6" font-size="13">📋 Romaneios</text>
+  <text x="20" y="264" fill="#cfc8e6" font-size="13">🧵 Costureiras</text>
+  <text x="20" y="298" fill="#cfc8e6" font-size="13">🗃️ Almoxarifado</text>
+  <text x="20" y="332" fill="#cfc8e6" font-size="13">🚚 Motoristas</text>
+  <text x="20" y="366" fill="#cfc8e6" font-size="13">📈 Relatórios</text>
+  <!-- header -->
+  <text x="240" y="88" fill="#1f2430" font-size="20" font-weight="bold">Todos os Pedidos</text>
+  <rect x="940" y="68" width="148" height="34" rx="9" fill="#6d28d9"/>
+  <text x="958" y="90" fill="#fff" font-size="13" font-weight="bold">+ Importar PDF</text>
+  <!-- filters -->
+  <g font-size="12" fill="#1f2430">
+    <rect x="240" y="116" width="110" height="30" rx="8" fill="#fff" stroke="#e6e6ee"/><text x="252" y="135">Cliente ▾</text>
+    <rect x="360" y="116" width="90" height="30" rx="8" fill="#fff" stroke="#e6e6ee"/><text x="372" y="135">Fase ▾</text>
+    <rect x="460" y="116" width="90" height="30" rx="8" fill="#fff" stroke="#e6e6ee"/><text x="472" y="135">Setor ▾</text>
+    <rect x="560" y="116" width="100" height="30" rx="8" fill="#fff" stroke="#e6e6ee"/><text x="572" y="135">Status ▾</text>
+    <rect x="670" y="116" width="90" height="30" rx="8" fill="#fff" stroke="#e6e6ee"/><text x="682" y="135">Tipo ▾</text>
+    <rect x="770" y="116" width="160" height="30" rx="8" fill="#fff" stroke="#e6e6ee"/><text x="782" y="135">Entrega __/__ → __/__</text>
+    <rect x="940" y="116" width="80" height="30" rx="8" fill="#fff" stroke="#6d28d9"/><text x="958" y="135" fill="#6d28d9" font-weight="bold">Filtrar</text>
+  </g>
+  <!-- table -->
+  <rect x="240" y="160" width="848" height="470" rx="12" fill="#fff" stroke="#e6e6ee"/>
+  <g font-size="11" fill="#7a8194" font-weight="bold">
+    <text x="258" y="190">CLIENTE</text><text x="370" y="190">Nº PEDIDO</text><text x="520" y="190">ENTREGA</text>
+    <text x="620" y="190">FASE</text><text x="720" y="190">SETOR</text><text x="810" y="190">STATUS</text>
+    <text x="930" y="190">RESP.</text><text x="1010" y="190">PARADO</text>
+  </g>
+  <line x1="256" y1="200" x2="1072" y2="200" stroke="#e6e6ee"/>
+  <!-- rows -->
+  <g font-size="13" fill="#1f2430">
+    <!-- row1 -->
+    <text x="258" y="230">Loja A</text><text x="370" y="230">#1001</text>
+    <rect x="420" y="218" width="44" height="17" rx="8" fill="#f3effe"/><text x="426" y="231" font-size="10" fill="#4c1d95">G-046</text>
+    <text x="520" y="230">22/06 🔴</text><text x="620" y="230">Costura</text><text x="720" y="230">Facção 3</text>
+    <rect x="805" y="218" width="100" height="18" rx="9" fill="#fef3c7"/><text x="813" y="231" font-size="11" fill="#b45309">● Em execução</text>
+    <text x="930" y="230">Maria</text><text x="1010" y="230">1d 4h</text>
+    <line x1="256" y1="244" x2="1072" y2="244" stroke="#f0f0f5"/>
+    <!-- row2 -->
+    <text x="258" y="274">Loja A</text><text x="370" y="274">#1002</text>
+    <rect x="420" y="262" width="44" height="17" rx="8" fill="#f3effe"/><text x="426" y="275" font-size="10" fill="#4c1d95">G-046</text>
+    <text x="520" y="274">22/06 🔴</text><text x="620" y="274">Costura</text><text x="720" y="274">Facção 3</text>
+    <rect x="805" y="262" width="100" height="18" rx="9" fill="#fef3c7"/><text x="813" y="275" font-size="11" fill="#b45309">● Em execução</text>
+    <text x="930" y="274">Maria</text><text x="1010" y="274">1d 4h</text>
+    <line x1="256" y1="288" x2="1072" y2="288" stroke="#f0f0f5"/>
+    <!-- row3 -->
+    <text x="258" y="318">Cliente B</text><text x="370" y="318">#1010</text>
+    <text x="520" y="318">25/06</text><text x="620" y="318">Tecelagem</text><text x="720" y="318">Tear 2</text>
+    <rect x="805" y="306" width="100" height="18" rx="9" fill="#dcfce7"/><text x="813" y="319" font-size="11" fill="#15803d">● Em execução</text>
+    <text x="930" y="318">Pedro</text><text x="1010" y="318">3h 12m</text>
+    <line x1="256" y1="332" x2="1072" y2="332" stroke="#f0f0f5"/>
+    <!-- row4 -->
+    <text x="258" y="362">Loja C</text><text x="370" y="362">#1020</text>
+    <rect x="420" y="350" width="90" height="17" rx="8" fill="#f3effe"/><text x="426" y="363" font-size="10" fill="#4c1d95">Pronta Entrega</text>
+    <text x="540" y="362">20/06 🔴</text><text x="620" y="362">Expedição</text><text x="720" y="362">Exped.</text>
+    <rect x="805" y="350" width="92" height="18" rx="9" fill="#fef3c7"/><text x="813" y="363" font-size="11" fill="#b45309">● Aguardando</text>
+    <text x="930" y="362">—</text><text x="1010" y="362" fill="#b91c1c">2d 1h ⚠️</text>
+    <line x1="256" y1="376" x2="1072" y2="376" stroke="#f0f0f5"/>
+    <!-- row5 -->
+    <text x="258" y="406">Atacado D</text><text x="370" y="406">#0998</text>
+    <text x="520" y="406">28/06</text><text x="620" y="406">Revisão</text><text x="720" y="406">Qualidade</text>
+    <rect x="805" y="394" width="92" height="18" rx="9" fill="#dbeafe"/><text x="813" y="407" font-size="11" fill="#1d4ed8">● Aguardando</text>
+    <text x="930" y="406">Carla</text><text x="1010" y="406">40m</text>
+    <line x1="256" y1="420" x2="1072" y2="420" stroke="#f0f0f5"/>
+    <!-- row6 -->
+    <text x="258" y="450">Loja E</text><text x="370" y="450">#0985</text>
+    <text x="520" y="450">19/06</text><text x="620" y="450">Transporte</text><text x="720" y="450">Logística</text>
+    <rect x="805" y="438" width="80" height="18" rx="9" fill="#dcfce7"/><text x="813" y="451" font-size="11" fill="#15803d">● Entregue</text>
+    <text x="930" y="450">Carlos</text><text x="1010" y="450">—</text>
+  </g>
+  <text x="258" y="660" font-size="12" fill="#7a8194">142 pedidos</text>
+  <text x="820" y="660" font-size="12" fill="#7a8194">◀ 1 2 3 … ▶</text>
+  <rect x="960" y="646" width="112" height="26" rx="8" fill="#fff" stroke="#6d28d9"/><text x="974" y="664" font-size="12" fill="#6d28d9">Exportar Excel</text>
+</svg>

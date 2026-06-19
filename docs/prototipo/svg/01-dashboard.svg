@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="760" viewBox="0 0 1120 760" font-family="Segoe UI, Arial, sans-serif">
+  <rect width="1120" height="760" fill="#f4f4f7"/>
+  <!-- topbar -->
+  <rect width="1120" height="50" fill="#4c1d95"/>
+  <text x="20" y="31" fill="#fff" font-size="17" font-weight="bold">🧶 BIG TRICOT</text>
+  <rect x="170" y="14" width="120" height="23" rx="11" fill="#ffffff22"/>
+  <text x="182" y="30" fill="#fff" font-size="12">Rolagem de Fase</text>
+  <text x="980" y="31" fill="#fff" font-size="13">João (Supervisor) ▾</text>
+  <circle cx="958" cy="25" r="14" fill="#8b5cf6"/><text x="950" y="30" fill="#fff" font-size="11" font-weight="bold">JS</text>
+  <!-- sidebar -->
+  <rect x="0" y="50" width="210" height="710" fill="#1b1530"/>
+  <text x="20" y="86" fill="#fff" font-size="14" font-weight="bold">🧶 Big Tricot</text>
+  <rect x="0" y="100" width="210" height="34" fill="#8b5cf633"/>
+  <rect x="0" y="100" width="3" height="34" fill="#8b5cf6"/>
+  <text x="20" y="122" fill="#fff" font-size="13">📊 Início</text>
+  <text x="20" y="158" fill="#cfc8e6" font-size="13">📦 Pedidos</text>
+  <text x="20" y="192" fill="#cfc8e6" font-size="13">🏭 Ordens de Produção</text>
+  <text x="20" y="226" fill="#cfc8e6" font-size="13">📋 Romaneios</text>
+  <text x="20" y="260" fill="#cfc8e6" font-size="13">🧵 Costureiras</text>
+  <text x="20" y="294" fill="#cfc8e6" font-size="13">🗃️ Almoxarifado</text>
+  <text x="20" y="328" fill="#cfc8e6" font-size="13">🚚 Motoristas</text>
+  <text x="20" y="362" fill="#cfc8e6" font-size="13">📈 Relatórios</text>
+  <text x="20" y="396" fill="#cfc8e6" font-size="13">⚙️ Configurações</text>
+  <!-- main -->
+  <text x="240" y="90" fill="#1f2430" font-size="20" font-weight="bold">Resumo de Produção</text>
+  <text x="1000" y="90" fill="#7a8194" font-size="13">19/06/2026</text>
+  <!-- stat cards -->
+  <g>
+    <rect x="240" y="110" width="160" height="92" rx="12" fill="#fff" stroke="#e6e6ee"/>
+    <text x="256" y="150" font-size="26" font-weight="bold" fill="#1f2430">12</text>
+    <text x="256" y="172" font-size="12" fill="#7a8194">Tecelagem</text>
+    <rect x="256" y="182" width="100" height="6" rx="3" fill="#6d28d9"/>
+  </g>
+  <g>
+    <rect x="412" y="110" width="160" height="92" rx="12" fill="#fff" stroke="#e6e6ee"/>
+    <text x="428" y="150" font-size="26" font-weight="bold" fill="#1f2430">5</text>
+    <text x="428" y="172" font-size="12" fill="#7a8194">Passadoria</text>
+    <rect x="428" y="182" width="45" height="6" rx="3" fill="#6d28d9"/>
+  </g>
+  <g>
+    <rect x="584" y="110" width="160" height="92" rx="12" fill="#fff" stroke="#e6e6ee"/>
+    <text x="600" y="150" font-size="26" font-weight="bold" fill="#1f2430">8</text>
+    <text x="600" y="172" font-size="12" fill="#7a8194">Corte</text>
+    <rect x="600" y="182" width="70" height="6" rx="3" fill="#6d28d9"/>
+  </g>
+  <g>
+    <rect x="756" y="110" width="160" height="92" rx="12" fill="#fff" stroke="#e6e6ee"/>
+    <text x="772" y="150" font-size="26" font-weight="bold" fill="#1f2430">22</text>
+    <text x="772" y="172" font-size="12" fill="#7a8194">Costura</text>
+    <rect x="772" y="182" width="128" height="6" rx="3" fill="#6d28d9"/>
+  </g>
+  <g>
+    <rect x="928" y="110" width="160" height="92" rx="12" fill="#fff" stroke="#e6e6ee"/>
+    <text x="944" y="150" font-size="26" font-weight="bold" fill="#1f2430">3</text>
+    <text x="944" y="172" font-size="12" fill="#7a8194">Revisão</text>
+    <rect x="944" y="182" width="30" height="6" rx="3" fill="#6d28d9"/>
+  </g>
+  <!-- alert -->
+  <rect x="240" y="216" width="848" height="40" rx="10" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="256" y="241" font-size="13" fill="#9a3412">⚠️ 4 OPs paradas há mais de 48h   ·   🔴 2 pedidos atrasados   ·   🗃️ 3 materiais abaixo do mínimo</text>
+  <!-- chart panel -->
+  <rect x="240" y="272" width="540" height="300" rx="12" fill="#fff" stroke="#e6e6ee"/>
+  <text x="260" y="300" font-size="14" font-weight="bold" fill="#1f2430">Pedidos por fase</text>
+  <rect x="270" y="420" width="70" height="120" fill="#6d28d9" rx="4"/>
+  <rect x="360" y="490" width="70" height="50"  fill="#8b5cf6" rx="4"/>
+  <rect x="450" y="450" width="70" height="90"  fill="#6d28d9" rx="4"/>
+  <rect x="540" y="370" width="70" height="170" fill="#8b5cf6" rx="4"/>
+  <rect x="630" y="505" width="70" height="35"  fill="#6d28d9" rx="4"/>
+  <text x="278" y="558" font-size="11" fill="#7a8194">Tecel.</text>
+  <text x="365" y="558" font-size="11" fill="#7a8194">Passad.</text>
+  <text x="463" y="558" font-size="11" fill="#7a8194">Corte</text>
+  <text x="548" y="558" font-size="11" fill="#7a8194">Costura</text>
+  <text x="638" y="558" font-size="11" fill="#7a8194">Revisão</text>
+  <!-- today panel -->
+  <rect x="796" y="272" width="292" height="300" rx="12" fill="#fff" stroke="#e6e6ee"/>
+  <text x="816" y="300" font-size="14" font-weight="bold" fill="#1f2430">Hoje</text>
+  <text x="816" y="344" font-size="14" fill="#1f2430">🚚 Entregas: <tspan font-weight="bold">6</tspan></text>
+  <text x="816" y="384" font-size="14" fill="#1f2430">⏱️ Lead time médio: <tspan font-weight="bold">2,3 dias</tspan></text>
+  <text x="816" y="424" font-size="14" fill="#1f2430">✅ OTIF (no prazo): <tspan font-weight="bold">85%</tspan></text>
+  <text x="816" y="464" font-size="14" fill="#1f2430">🗃️ Estoque baixo: <tspan font-weight="bold">3 materiais</tspan></text>
+  <rect x="240" y="700" width="848" height="1" fill="#e6e6ee"/>
+  <text x="240" y="600" font-size="11" fill="#aab" >Protótipo visual — Big Tricot · Rolagem de Fase</text>
+</svg>
