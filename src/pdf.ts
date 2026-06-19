@@ -159,6 +159,18 @@ export async function gerarPdfParte(
     return y + 22;
   }
 
+  // Cabeçalho de CONTINUAÇÃO (páginas 2+): só uma faixa fina identificando a parte.
+  function headerCont(): number {
+    const bh = 34;
+    R(0, 0, A4W, bh, NAVY);
+    T("BIG TRICOT", ix, 22, 13, bld, WHITE);
+    T(`Ordem de Produção · ${parteLabel} (continuação)`, ix + 130, 22, 10, reg, hx("#c7d2e0"));
+    const pw = 16 + bld.widthOfTextAtSize(parteLabel, 9);
+    R(ix + iw - pw, 8, pw, 18, bandaColor);
+    T(parteLabel, ix + iw - pw + 8, 21, 9, bld, bandaTxt);
+    return bh + 24;
+  }
+
   let y = header();
   const total = blocos.reduce((a, b) => a + b.total, 0);
 
@@ -166,7 +178,7 @@ export async function gerarPdfParte(
     const blocoH = 26 + 16 + b.sizes.length * 18 + 10;
     if (y + blocoH > A4H - 70) {
       page = doc.addPage([A4W, A4H]);
-      y = header();
+      y = headerCont();
     }
     // barra cinza
     R(ix, y, iw, 26, GREY);
@@ -198,7 +210,7 @@ export async function gerarPdfParte(
   // faixa total
   if (y + 50 > A4H - 30) {
     page = doc.addPage([A4W, A4H]);
-    y = 50;
+    y = headerCont();
   }
   R(ix, y + 6, iw, 34, bandaColor);
   const rot = parteLabel === "PARTE ÚNICA" ? "QTD TOTAL" : `QTD ${parteLabel}`;

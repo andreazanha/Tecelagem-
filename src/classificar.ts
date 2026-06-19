@@ -108,7 +108,7 @@ export interface ModeloInfo {
   nome: string; // nome canônico (exibição)
   parte: number; // 1 | 2
   composicao: string;
-  codigo?: string; // código/grade (já normalizado)
+  codigo?: string; // código do modelo (como cadastrado, para exibir)
 }
 
 export interface Catalogo {
@@ -138,13 +138,13 @@ export function criarCatalogo(rows: CatalogoRow[]): Catalogo {
       nome,
       parte: Number(r.parte) === 1 ? 1 : 2,
       composicao: r.composicao || "",
-      codigo: r.ref ? norm(r.ref) : undefined,
+      codigo: (r.ref || "").trim() || undefined,
     });
   }
 
   const porCodigo = new Map<string, ModeloInfo>();
   for (const info of porNome.values()) {
-    if (info.codigo) porCodigo.set(info.codigo, info);
+    if (info.codigo) porCodigo.set(norm(info.codigo), info);
   }
   return { porNome, porCodigo, lista: [...porNome.values()] };
 }
@@ -177,10 +177,12 @@ function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
     const info = resolverModelo(it, cat);
     const modelo = info?.nome || modeloDe(it.produto);
     const tipo = tipoDe(it.produto, it.tamanho);
-    const ref = (it.ref || "").trim();
+    // código do MODELO (cadastro) — ignora a grade do ERP quando o modelo é conhecido;
+    // assim os produtos do mesmo modelo/cor ficam num bloco só (ex.: Aspen Almofada + Manta).
+    const ref = info?.codigo || (it.ref || "").trim();
     const cor = (it.cor_grade || "").trim();
     // Bloco = modelo + cor; o TIPO vai na linha do tamanho (Almofada 55X35, Peseira 70X250).
-    const key = `${modelo}|${ref}|${cor}`;
+    const key = `${modelo}|${cor}`;
     let b = map.get(key);
     if (!b) {
       b = { modelo, ref, cor, comp: info?.composicao || "", sizes: [], total: 0 };
