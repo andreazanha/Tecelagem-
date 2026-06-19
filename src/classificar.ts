@@ -199,14 +199,15 @@ function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
     }
     b.total += it.qtd;
   }
-  // mesmo MODELO fica junto (ex.: os dois Aspen lado a lado); depois por tipo e cor.
+  // Ordem alfabética por FAMÍLIA (modelo) — toda a família junta; dentro da família,
+  // agrupado por COR (mesma cor junta; cor diferente na linha de baixo); depois por tipo.
   return ordem
     .map((k) => map.get(k)!)
     .sort(
       (a, b) =>
-        a.modelo.localeCompare(b.modelo) ||
-        a.tipo.localeCompare(b.tipo) ||
-        a.cor.localeCompare(b.cor)
+        a.modelo.localeCompare(b.modelo, "pt") ||
+        a.cor.localeCompare(b.cor, "pt") ||
+        a.tipo.localeCompare(b.tipo, "pt")
     );
 }
 
