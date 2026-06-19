@@ -30,11 +30,8 @@ b=""
 # topbar
 b+=rect(0,0,W,60,"url(#hg)")+text(28,38,"BIG TRICOT",18,"#fff",weight="bold",ls="0.5")
 b+=text(168,38,"Rolagem de Fase",13,"#e0e7ff")+text(W-28,38,"Carla Mendes",13,"#fff",anchor="end")
-# faint board behind
-b+=rect(0,60,W,H-60,"#eef0f5")
-for i in range(6):
-    b+=rect(40+i*200,120,180,560,"#ffffff",rx=14,filt="cardShadow")
-b+=rect(0,60,W,H-60,"#1e1b4b",op=0.55)
+# clean backdrop (sem esmaecido para ficar nitido)
+b+=rect(0,60,W,H-60,"#eceef3")
 # ---- modal ----
 mw,mh=620,620; mx=(W-mw)/2; my=110
 b+=rect(mx,my,mw,mh,"#ffffff",rx=22,filt="modalShadow")
@@ -91,5 +88,5 @@ b+=rect(mx+mw-156,fy,128,42,"url(#hg)",rx=10)+text(mx+mw-156+64,fy+27,"🔒 Envi
 
 os.makedirs(OUT_SVG,exist_ok=True)
 p=os.path.join(OUT_SVG,"23-card-popup.svg"); open(p,"w").write(svg(W,H,b))
-subprocess.run(["rsvg-convert","-z","1.5",p,"-o",os.path.join(OUT_PNG,"23-card-popup.png")],check=True)
+subprocess.run(["rsvg-convert","-z","2.2",p,"-o",os.path.join(OUT_PNG,"23-card-popup.png")],check=True)
 print("OK popup v2")
