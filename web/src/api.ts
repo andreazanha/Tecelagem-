@@ -113,6 +113,18 @@ export interface DashboardData {
   urgentes: { numero: string | null; cliente: string; data_entrega: string | null; atrasado: number; etapa: string | null }[];
   ranking: { etapa: string; qtd: number }[];
   expedicao: { prontos: number; aguardando_nf: number; enviados_hoje: number };
+  esteira: { setor: string; total: number; fazendo: number; aguardando: number; pecas: number }[];
+  graficos: {
+    pedidosPorEtapa: { etapa: string; qtd: number }[];
+    pecasPorEtapa: { etapa: string; pecas: number }[];
+    pedidosPorDia: { dia: string; qtd: number }[];
+    pecasSemana: { dia: string; pecas: number }[];
+    statusPrazo: { atrasados: number; hoje: number; amanha: number; emDia: number };
+    topRepresentantes: { nome: string; qtd: number }[];
+    topClientes: { nome: string; pecas: number }[];
+    hojeOntem: { hoje: number; ontem: number };
+    metaMes: { realizadoPedidos: number; realizadoPecas: number };
+  };
   avisos: { id: string; texto: string }[];
   ultimoPedido: { id: string; numero: string | null; cliente: string; vendedor: string | null; data_entrega: string | null; pecas: number; created_at: string } | null;
   geradoEm: string;
