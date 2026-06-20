@@ -261,7 +261,7 @@ export async function gerarPdfParte(
   return await doc.save();
 }
 
-// ── Romaneio de TASSEL (mão de obra do terceirizado) ─────────────────────────
+// ── Romaneio de TASSEL — 3 vias na mesma página, só a quantidade total ───────
 const money = (v: number) => "R$ " + v.toFixed(2).replace(".", ",");
 
 export async function gerarRomaneioTassel(
@@ -275,88 +275,71 @@ export async function gerarRomaneioTassel(
   const M = 34;
   const ix = M;
   const iw = A4W - 2 * M;
+  const page = doc.addPage([A4W, A4H]);
 
-  let page = doc.addPage([A4W, A4H]);
   const T = (s: string, x: number, yTop: number, size: number, f: PDFFont, c = INK) =>
     page.drawText(s, { x, y: A4H - yTop, size, font: f, color: c });
   const TR = (s: string, xr: number, yTop: number, size: number, f: PDFFont, c = INK) =>
     page.drawText(s, { x: xr - f.widthOfTextAtSize(s, size), y: A4H - yTop, size, font: f, color: c });
   const R = (x: number, yTop: number, w: number, h: number, c = INK) =>
     page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, color: c });
-  const L = (y1: number, c: ReturnType<typeof rgb>, th = 1) =>
-    page.drawLine({ start: { x: ix, y: A4H - y1 }, end: { x: ix + iw, y: A4H - y1 }, thickness: th, color: c });
+  const L = (yTop: number, c: ReturnType<typeof rgb>, th = 1, dash?: number[]) =>
+    page.drawLine({
+      start: { x: ix, y: A4H - yTop },
+      end: { x: ix + iw, y: A4H - yTop },
+      thickness: th,
+      color: c,
+      ...(dash ? { dashArray: dash } : {}),
+    });
 
-  // colunas
-  const cMod = ix + 6;
-  const cCor = ix + 92;
-  const cPeca = ix + 182;
-  const cQtd = ix + 268; // right
-  const cTpp = ix + 330; // right
-  const cTas = ix + 392; // right
-  const cTam = ix + 410;
-  const cVal = ix + 478; // right
-  const cTot = ix + iw - 4; // right
+  const cCor = ix + 6;
+  const cTam = ix + 175;
+  const cTas = ix + 300;
+  const cVal = ix + 420;
+  const cTot = ix + iw - 4;
 
-  function header(): number {
-    const bh = 84;
-    R(0, 0, A4W, bh, NAVY);
-    T("BIG TRICOT", ix, 40, 22, bld, WHITE);
-    T("HOME DECOR", ix + 2, 55, 8, reg, hx("#c7d2e0"));
-    T("Romaneio de Tassel", ix + 210, 38, 16, bld, WHITE);
-    T("Mão de obra · terceirizado", ix + 210, 55, 10, reg, hx("#c7d2e0"));
-    TR(`Gerado em ${geradoEm()}`, ix + iw, 32, 8.5, reg, hx("#aab8cc"));
-    let y = bh + 24;
-    const info = (k: string, v: string, vc = INK) => {
-      T(k, ix, y, 8.5, bld, MUTE);
-      T(fit(v, bld, 10, iw - 140 - 4), ix + 140, y, 10, bld, vc);
-      y += 19;
-    };
-    info("CLIENTE", ped.cliente);
-    info(ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
-    info("PRESTADOR", prestador || "_______________________________");
-    info("DATA", ped.emissao || "—");
-    y += 6;
-    T("TASSEIS A CONFECCIONAR", ix, y, 13, bld, NAVY);
-    R(ix, y + 6, iw, 2.5, NAVY);
-    y += 22;
-    // cabeçalho da tabela
-    R(ix, y, iw, 20, GREY);
-    T("MODELO", cMod, y + 13, 8, bld, MUTE);
-    T("COR", cCor, y + 13, 8, bld, MUTE);
-    T("PEÇA", cPeca, y + 13, 8, bld, MUTE);
-    TR("PÇS", cQtd, y + 13, 8, bld, MUTE);
-    TR("T/PÇ", cTpp, y + 13, 8, bld, MUTE);
-    TR("TASSEIS", cTas, y + 13, 8, bld, MUTE);
-    T("TAM", cTam, y + 13, 8, bld, MUTE);
-    TR("VALOR UN", cVal, y + 13, 8, bld, MUTE);
-    TR("TOTAL", cTot, y + 13, 8, bld, MUTE);
-    return y + 20;
-  }
-
-  let y = header();
-  for (const l of rom.linhas) {
-    if (y + 20 > A4H - 90) {
-      page = doc.addPage([A4W, A4H]);
-      y = header();
+  function drawVia(top: number, n: number) {
+    R(0, top, A4W, 24, NAVY);
+    T("BIG TRICOT", ix, top + 16, 12, bld, WHITE);
+    T("· Romaneio de Tassel (mão de obra)", ix + 92, top + 16, 9.5, reg, hx("#c7d2e0"));
+    TR(`${n}ª via · ${geradoEm()}`, ix + iw, top + 15, 8.5, reg, hx("#c7d2e0"));
+    let y = top + 24 + 16;
+    T("Cliente:", ix, y, 9, reg, MUTE);
+    T(fit(ped.cliente, bld, 9, iw * 0.5 - 60), ix + 44, y, 9, bld);
+    T(ped.numero.includes(",") ? "Pedidos:" : "Pedido:", ix + iw * 0.56, y, 9, reg, MUTE);
+    T(fit(ped.numero, bld, 9, iw * 0.44 - 48), ix + iw * 0.56 + 44, y, 9, bld);
+    y += 14;
+    T("Prestador:", ix, y, 9, reg, MUTE);
+    T(prestador || "______________________________", ix + 54, y, 9, bld);
+    y += 16;
+    R(ix, y, iw, 18, GREY);
+    T("COR", cCor, y + 12, 8, bld, MUTE);
+    T("TAM", cTam, y + 12, 8, bld, MUTE);
+    TR("TASSEIS", cTas, y + 12, 8, bld, MUTE);
+    TR("VALOR UN", cVal, y + 12, 8, bld, MUTE);
+    TR("TOTAL", cTot, y + 12, 8, bld, MUTE);
+    y += 18;
+    for (const l of rom.linhas) {
+      T(fit(l.cor, reg, 9.5, 160), cCor, y + 13, 9.5, reg);
+      T(l.tamanho, cTam, y + 13, 9.5, bld);
+      TR(String(l.tasseis), cTas, y + 13, 10, bld, QBLUE);
+      TR(l.valorUnit ? money(l.valorUnit) : "—", cVal, y + 13, 9.5, reg);
+      TR(l.total ? money(l.total) : "—", cTot, y + 13, 9.5, bld);
+      L(y + 17, hx("#eef0f4"), 0.7);
+      y += 17;
     }
-    T(fit(l.modelo, bld, 10, 80), cMod, y + 14, 10, bld);
-    T(fit(l.cor, reg, 9.5, 86), cCor, y + 14, 9.5, reg);
-    T(l.tipo, cPeca, y + 14, 9.5, reg);
-    TR(String(l.pecas), cQtd, y + 14, 9.5, reg);
-    TR(String(l.tasselPorPeca), cTpp, y + 14, 9.5, reg);
-    TR(String(l.tasseis), cTas, y + 14, 10, bld, QBLUE);
-    T(l.tamanhoTassel, cTam, y + 14, 9.5, bld);
-    TR(l.valorUnit ? money(l.valorUnit) : "—", cVal, y + 14, 9.5, reg);
-    TR(l.total ? money(l.total) : "—", cTot, y + 14, 10, bld);
-    L(y + 19, hx("#eef0f4"), 0.8);
-    y += 20;
+    y += 4;
+    R(ix, y, iw, 22, GOLD);
+    T(`TOTAL: ${rom.totalTasseis} tasseis`, ix + 10, y + 15, 10.5, bld, hx("#3a2f12"));
+    TR(`MÃO DE OBRA: ${money(rom.totalValor)}`, ix + iw - 10, y + 15, 11, bld, hx("#3a2f12"));
+    y += 22 + 18;
+    T("Assinatura do prestador: ______________________________", ix, y, 9, reg, MUTE);
   }
 
-  // totais
-  y += 8;
-  R(ix, y, iw, 30, GOLD);
-  T(`TOTAL DE TASSEIS: ${rom.totalTasseis}`, ix + 14, y + 20, 12, bld, hx("#3a2f12"));
-  TR(`TOTAL MÃO DE OBRA: ${money(rom.totalValor)}`, ix + iw - 14, y + 20, 13, bld, hx("#3a2f12"));
-
+  const viaH = (A4H - 16) / 3;
+  for (let i = 0; i < 3; i++) {
+    drawVia(10 + i * viaH, i + 1);
+    if (i < 2) L(viaH * (i + 1) + 4, hx("#9aa3b2"), 0.7, [4, 3]); // linha de corte (✂)
+  }
   return await doc.save();
 }

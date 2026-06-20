@@ -278,13 +278,9 @@ export function classificar(itens: ItemBase[], cat: Catalogo): Classificacao {
 export type TabelaTassel = Record<string, number>; // `${COR}|${TAM}` -> valor unit
 
 export interface TasselLinha {
-  modelo: string;
   cor: string;
-  tipo: "Peseira" | "Almofada";
-  tamanhoTassel: "G" | "P";
-  pecas: number;
-  tasselPorPeca: number;
-  tasseis: number;
+  tamanho: "G" | "P";
+  tasseis: number; // quantidade total de tasseis (todas as peças somadas)
   valorUnit: number;
   total: number;
 }
@@ -294,6 +290,7 @@ export interface TasselRomaneio {
   totalValor: number;
 }
 
+// Agrupa por (cor, tamanho) e mostra só a QUANTIDADE TOTAL de tasseis (peseira=G, almofada=P).
 export function romaneioTassel(itens: ItemBase[], cat: Catalogo, valores: TabelaTassel): TasselRomaneio {
   const map = new Map<string, TasselLinha>();
   const ordem: string[] = [];
@@ -304,31 +301,23 @@ export function romaneioTassel(itens: ItemBase[], cat: Catalogo, valores: Tabela
     const info = resolverModelo(it, cat);
     const porPeca = tipo === "Peseira" ? info?.tasselPeseira || 0 : info?.tasselAlmofada || 0;
     if (porPeca <= 0) continue;
-    const modelo = info?.nome || modeloDe(it.produto);
     const cor = (it.cor_grade || "").trim();
     const tam: "G" | "P" = tipo === "Peseira" ? "G" : "P";
     const valorUnit = valores[`${cor.toUpperCase()}|${tam}`] || 0;
-    const key = `${modelo}|${cor}|${tipo}`;
+    const key = `${cor}|${tam}`;
     let l = map.get(key);
     if (!l) {
-      l = { modelo, cor, tipo, tamanhoTassel: tam, pecas: 0, tasselPorPeca: porPeca, tasseis: 0, valorUnit, total: 0 };
+      l = { cor, tamanho: tam, tasseis: 0, valorUnit, total: 0 };
       map.set(key, l);
       ordem.push(key);
     }
-    l.pecas += it.qtd;
-    l.tasselPorPeca = porPeca;
     l.tasseis += it.qtd * porPeca;
     l.valorUnit = valorUnit;
     l.total = l.tasseis * valorUnit;
   }
   const linhas = ordem
     .map((k) => map.get(k)!)
-    .sort(
-      (a, b) =>
-        a.modelo.localeCompare(b.modelo, "pt") ||
-        a.cor.localeCompare(b.cor, "pt") ||
-        a.tipo.localeCompare(b.tipo, "pt")
-    );
+    .sort((a, b) => a.cor.localeCompare(b.cor, "pt") || a.tamanho.localeCompare(b.tamanho, "pt"));
   const totalTasseis = linhas.reduce((s, l) => s + l.tasseis, 0);
   const totalValor = linhas.reduce((s, l) => s + l.total, 0);
   return { linhas, totalTasseis, totalValor };
