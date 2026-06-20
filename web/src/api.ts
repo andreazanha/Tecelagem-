@@ -55,6 +55,12 @@ export interface Cor {
   foto_key?: string | null; // se tiver foto da cor (amostra real)
 }
 
+export interface Tassel {
+  cor: string;
+  tamanho: string; // G | P | ...
+  valor: number; // mão de obra por tassel
+}
+
 export interface Sugestao {
   numero_erp?: string;
   cliente_nome?: string;
@@ -142,6 +148,23 @@ export const api = {
       j<{ ok: boolean }>(r)
     ),
   fotoCorUrl: (nome: string) => `/api/cores/${encodeURIComponent(nome)}/foto`,
+  listarTasseis: () => fetch("/api/tasseis").then((r) => j<Tassel[]>(r)),
+  salvarTassel: (t: Tassel) =>
+    fetch("/api/tasseis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(t),
+    }).then((r) => j<Tassel>(r)),
+  excluirTassel: (cor: string, tamanho: string) =>
+    fetch(`/api/tasseis/${encodeURIComponent(cor)}/${encodeURIComponent(tamanho)}`, {
+      method: "DELETE",
+    }).then((r) => j<{ ok: boolean }>(r)),
+  gerarRomaneioTassel: (id: string, prestador: string) =>
+    fetch(`/api/pedidos/${id}/romaneio-tassel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prestador }),
+    }).then((r) => j<{ ok: boolean; url: string; totalTasseis: number; totalValor: number }>(r)),
   classificarPedido: (id: string) =>
     fetch(`/api/pedidos/${id}/classificar`).then((r) =>
       j<{

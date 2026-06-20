@@ -142,6 +142,8 @@ export interface ModeloInfo {
   parte: number; // 1 | 2
   composicao: string;
   codigo?: string; // código do modelo (como cadastrado, para exibir)
+  tasselPeseira: number; // tasseis por peseira (tamanho G)
+  tasselAlmofada: number; // tasseis por almofada (tamanho P)
 }
 
 export interface Catalogo {
@@ -155,6 +157,8 @@ export interface CatalogoRow {
   parte: number;
   composicao?: string | null;
   ref?: string | null; // código/grade
+  tassel_peseira?: number | null;
+  tassel_almofada?: number | null;
 }
 
 // Monta o catálogo: começa com os 12 modelos base da Parte 1 e deixa as linhas do banco
@@ -163,7 +167,8 @@ export function criarCatalogo(rows: CatalogoRow[]): Catalogo {
   const porNome = new Map<string, ModeloInfo>();
   const set = (info: ModeloInfo) => porNome.set(norm(info.nome), info);
 
-  for (const n of DEFAULT_PARTE1) set({ nome: n, parte: 1, composicao: "" });
+  for (const n of DEFAULT_PARTE1)
+    set({ nome: n, parte: 1, composicao: "", tasselPeseira: 0, tasselAlmofada: 0 });
   for (const r of rows) {
     const nome = (r.nome || "").trim();
     if (!nome) continue;
@@ -172,6 +177,8 @@ export function criarCatalogo(rows: CatalogoRow[]): Catalogo {
       parte: Number(r.parte) === 1 ? 1 : 2,
       composicao: r.composicao || "",
       codigo: (r.ref || "").trim() || undefined,
+      tasselPeseira: Math.max(0, Math.trunc(Number(r.tassel_peseira) || 0)),
+      tasselAlmofada: Math.max(0, Math.trunc(Number(r.tassel_almofada) || 0)),
     });
   }
 
@@ -262,4 +269,67 @@ export function classificar(itens: ItemBase[], cat: Catalogo): Classificacao {
     return { modo: "unica", parteUnica: agrupar(prod, cat), kits, temKit };
   }
   return { modo: "split", parte1: agrupar(p1, cat), parte2: agrupar(p2, cat), kits, temKit };
+}
+
+// ── Romaneio de TASSEL ───────────────────────────────────────────────────────
+// Regra: peseira → tassel tamanho G; almofada → tassel tamanho P. A quantidade por peça
+// vem do MODELO (tasselPeseira/tasselAlmofada). O valor (mão de obra) vem da tabela de
+// Tasseis por (cor, tamanho). Tudo somado automaticamente.
+export type TabelaTassel = Record<string, number>; // `${COR}|${TAM}` -> valor unit
+
+export interface TasselLinha {
+  modelo: string;
+  cor: string;
+  tipo: "Peseira" | "Almofada";
+  tamanhoTassel: "G" | "P";
+  pecas: number;
+  tasselPorPeca: number;
+  tasseis: number;
+  valorUnit: number;
+  total: number;
+}
+export interface TasselRomaneio {
+  linhas: TasselLinha[];
+  totalTasseis: number;
+  totalValor: number;
+}
+
+export function romaneioTassel(itens: ItemBase[], cat: Catalogo, valores: TabelaTassel): TasselRomaneio {
+  const map = new Map<string, TasselLinha>();
+  const ordem: string[] = [];
+  for (const it of itens) {
+    if (ehKit(it)) continue;
+    const tipo = tipoDe(it.produto, it.tamanho);
+    if (tipo !== "Peseira" && tipo !== "Almofada") continue;
+    const info = resolverModelo(it, cat);
+    const porPeca = tipo === "Peseira" ? info?.tasselPeseira || 0 : info?.tasselAlmofada || 0;
+    if (porPeca <= 0) continue;
+    const modelo = info?.nome || modeloDe(it.produto);
+    const cor = (it.cor_grade || "").trim();
+    const tam: "G" | "P" = tipo === "Peseira" ? "G" : "P";
+    const valorUnit = valores[`${cor.toUpperCase()}|${tam}`] || 0;
+    const key = `${modelo}|${cor}|${tipo}`;
+    let l = map.get(key);
+    if (!l) {
+      l = { modelo, cor, tipo, tamanhoTassel: tam, pecas: 0, tasselPorPeca: porPeca, tasseis: 0, valorUnit, total: 0 };
+      map.set(key, l);
+      ordem.push(key);
+    }
+    l.pecas += it.qtd;
+    l.tasselPorPeca = porPeca;
+    l.tasseis += it.qtd * porPeca;
+    l.valorUnit = valorUnit;
+    l.total = l.tasseis * valorUnit;
+  }
+  const linhas = ordem
+    .map((k) => map.get(k)!)
+    .sort(
+      (a, b) =>
+        a.modelo.localeCompare(b.modelo, "pt") ||
+        a.cor.localeCompare(b.cor, "pt") ||
+        a.tipo.localeCompare(b.tipo, "pt")
+    );
+  const totalTasseis = linhas.reduce((s, l) => s + l.tasseis, 0);
+  const totalValor = linhas.reduce((s, l) => s + l.total, 0);
+  return { linhas, totalTasseis, totalValor };
 }

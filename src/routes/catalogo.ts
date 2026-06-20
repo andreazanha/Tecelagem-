@@ -160,3 +160,35 @@ cores.delete("/:nome/foto", async (c) => {
   await c.env.DB.prepare("UPDATE cores SET foto_key = NULL WHERE nome = ?").bind(nome).run();
   return c.json({ ok: true });
 });
+
+// ── Tasseis (cor + tamanho + valor da mão de obra) ───────────────────────────
+export const tasseis = new Hono<{ Bindings: Env }>();
+
+tasseis.get("/", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT cor, tamanho, valor FROM tasseis ORDER BY cor, tamanho"
+  ).all();
+  return c.json(results);
+});
+
+tasseis.post("/", async (c) => {
+  const b = await c.req.json<{ cor?: string; tamanho?: string; valor?: number | string }>();
+  const cor = (b.cor || "").trim();
+  const tamanho = (b.tamanho || "").trim().toUpperCase();
+  if (!cor || !tamanho) return c.json({ error: "cor e tamanho são obrigatórios" }, 400);
+  const valor = Math.max(0, Number(b.valor) || 0);
+  await c.env.DB.prepare(
+    `INSERT INTO tasseis (cor, tamanho, valor) VALUES (?, ?, ?)
+     ON CONFLICT(cor, tamanho) DO UPDATE SET valor = excluded.valor`
+  )
+    .bind(cor, tamanho, valor)
+    .run();
+  return c.json({ cor, tamanho, valor }, 201);
+});
+
+tasseis.delete("/:cor/:tamanho", async (c) => {
+  await c.env.DB.prepare("DELETE FROM tasseis WHERE cor = ? AND tamanho = ?")
+    .bind(decodeURIComponent(c.req.param("cor")), decodeURIComponent(c.req.param("tamanho")).toUpperCase())
+    .run();
+  return c.json({ ok: true });
+});

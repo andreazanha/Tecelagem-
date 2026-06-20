@@ -1,6 +1,6 @@
 // Gera o PDF de produção/pronta-entrega no padrão Big Tricot (pdf-lib, roda no Worker).
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
-import type { Bloco } from "./classificar";
+import type { Bloco, TasselRomaneio } from "./classificar";
 
 const A4W = 595.28;
 const A4H = 841.89;
@@ -257,6 +257,106 @@ export async function gerarPdfParte(
     font: bld,
     color: bandaTxt,
   });
+
+  return await doc.save();
+}
+
+// ── Romaneio de TASSEL (mão de obra do terceirizado) ─────────────────────────
+const money = (v: number) => "R$ " + v.toFixed(2).replace(".", ",");
+
+export async function gerarRomaneioTassel(
+  ped: PedidoInfo,
+  prestador: string,
+  rom: TasselRomaneio
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const reg = await doc.embedFont(StandardFonts.Helvetica);
+  const bld = await doc.embedFont(StandardFonts.HelveticaBold);
+  const M = 34;
+  const ix = M;
+  const iw = A4W - 2 * M;
+
+  let page = doc.addPage([A4W, A4H]);
+  const T = (s: string, x: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x, y: A4H - yTop, size, font: f, color: c });
+  const TR = (s: string, xr: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x: xr - f.widthOfTextAtSize(s, size), y: A4H - yTop, size, font: f, color: c });
+  const R = (x: number, yTop: number, w: number, h: number, c = INK) =>
+    page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, color: c });
+  const L = (y1: number, c: ReturnType<typeof rgb>, th = 1) =>
+    page.drawLine({ start: { x: ix, y: A4H - y1 }, end: { x: ix + iw, y: A4H - y1 }, thickness: th, color: c });
+
+  // colunas
+  const cMod = ix + 6;
+  const cCor = ix + 92;
+  const cPeca = ix + 182;
+  const cQtd = ix + 268; // right
+  const cTpp = ix + 330; // right
+  const cTas = ix + 392; // right
+  const cTam = ix + 410;
+  const cVal = ix + 478; // right
+  const cTot = ix + iw - 4; // right
+
+  function header(): number {
+    const bh = 84;
+    R(0, 0, A4W, bh, NAVY);
+    T("BIG TRICOT", ix, 40, 22, bld, WHITE);
+    T("HOME DECOR", ix + 2, 55, 8, reg, hx("#c7d2e0"));
+    T("Romaneio de Tassel", ix + 210, 38, 16, bld, WHITE);
+    T("Mão de obra · terceirizado", ix + 210, 55, 10, reg, hx("#c7d2e0"));
+    TR(`Gerado em ${geradoEm()}`, ix + iw, 32, 8.5, reg, hx("#aab8cc"));
+    let y = bh + 24;
+    const info = (k: string, v: string, vc = INK) => {
+      T(k, ix, y, 8.5, bld, MUTE);
+      T(fit(v, bld, 10, iw - 140 - 4), ix + 140, y, 10, bld, vc);
+      y += 19;
+    };
+    info("CLIENTE", ped.cliente);
+    info(ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
+    info("PRESTADOR", prestador || "_______________________________");
+    info("DATA", ped.emissao || "—");
+    y += 6;
+    T("TASSEIS A CONFECCIONAR", ix, y, 13, bld, NAVY);
+    R(ix, y + 6, iw, 2.5, NAVY);
+    y += 22;
+    // cabeçalho da tabela
+    R(ix, y, iw, 20, GREY);
+    T("MODELO", cMod, y + 13, 8, bld, MUTE);
+    T("COR", cCor, y + 13, 8, bld, MUTE);
+    T("PEÇA", cPeca, y + 13, 8, bld, MUTE);
+    TR("PÇS", cQtd, y + 13, 8, bld, MUTE);
+    TR("T/PÇ", cTpp, y + 13, 8, bld, MUTE);
+    TR("TASSEIS", cTas, y + 13, 8, bld, MUTE);
+    T("TAM", cTam, y + 13, 8, bld, MUTE);
+    TR("VALOR UN", cVal, y + 13, 8, bld, MUTE);
+    TR("TOTAL", cTot, y + 13, 8, bld, MUTE);
+    return y + 20;
+  }
+
+  let y = header();
+  for (const l of rom.linhas) {
+    if (y + 20 > A4H - 90) {
+      page = doc.addPage([A4W, A4H]);
+      y = header();
+    }
+    T(fit(l.modelo, bld, 10, 80), cMod, y + 14, 10, bld);
+    T(fit(l.cor, reg, 9.5, 86), cCor, y + 14, 9.5, reg);
+    T(l.tipo, cPeca, y + 14, 9.5, reg);
+    TR(String(l.pecas), cQtd, y + 14, 9.5, reg);
+    TR(String(l.tasselPorPeca), cTpp, y + 14, 9.5, reg);
+    TR(String(l.tasseis), cTas, y + 14, 10, bld, QBLUE);
+    T(l.tamanhoTassel, cTam, y + 14, 9.5, bld);
+    TR(l.valorUnit ? money(l.valorUnit) : "—", cVal, y + 14, 9.5, reg);
+    TR(l.total ? money(l.total) : "—", cTot, y + 14, 10, bld);
+    L(y + 19, hx("#eef0f4"), 0.8);
+    y += 20;
+  }
+
+  // totais
+  y += 8;
+  R(ix, y, iw, 30, GOLD);
+  T(`TOTAL DE TASSEIS: ${rom.totalTasseis}`, ix + 14, y + 20, 12, bld, hx("#3a2f12"));
+  TR(`TOTAL MÃO DE OBRA: ${money(rom.totalValor)}`, ix + iw - 14, y + 20, 13, bld, hx("#3a2f12"));
 
   return await doc.save();
 }

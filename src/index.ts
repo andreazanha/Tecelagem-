@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { pedidos } from "./routes/pedidos";
 import { clientes } from "./routes/clientes";
-import { modelos, cores } from "./routes/catalogo";
+import { modelos, cores, tasseis } from "./routes/catalogo";
 
 export interface Env {
   DB: D1Database;
@@ -23,6 +23,7 @@ app.route("/api/pedidos", pedidos);
 app.route("/api/clientes", clientes);
 app.route("/api/modelos", modelos);
 app.route("/api/cores", cores);
+app.route("/api/tasseis", tasseis);
 
 // Fallback: serve o SPA (assets estáticos do build do Vite).
 app.all("*", async (c) => {

@@ -2,8 +2,16 @@ import { Hono } from "hono";
 import { extractText, getDocumentProxy } from "unpdf";
 import type { Env } from "../index";
 import { parsePedido } from "../parser";
-import { classificar, criarCatalogo, ehKit, agrupar, type ItemBase, type Catalogo } from "../classificar";
-import { gerarPdfParte, mergePdfs, type PedidoInfo } from "../pdf";
+import {
+  classificar,
+  criarCatalogo,
+  ehKit,
+  agrupar,
+  romaneioTassel,
+  type ItemBase,
+  type Catalogo,
+} from "../classificar";
+import { gerarPdfParte, mergePdfs, gerarRomaneioTassel, type PedidoInfo } from "../pdf";
 
 export const pedidos = new Hono<{ Bindings: Env }>();
 
@@ -16,9 +24,28 @@ async function catalogos(env: Env): Promise<Catalogo> {
   // Os 12 modelos base da Parte 1 entram sempre; o catálogo do banco (tela de Cadastros)
   // sobrescreve parte/composição/código. O código (ref) permite casar o modelo pela grade.
   const m = await env.DB.prepare(
-    "SELECT nome, parte, composicao, ref FROM modelos"
-  ).all<{ nome: string; parte: number; composicao: string | null; ref: string | null }>();
+    "SELECT nome, parte, composicao, ref, tassel_peseira, tassel_almofada FROM modelos"
+  ).all<{
+    nome: string;
+    parte: number;
+    composicao: string | null;
+    ref: string | null;
+    tassel_peseira: number | null;
+    tassel_almofada: number | null;
+  }>();
   return criarCatalogo(m.results);
+}
+
+// Tabela de valores de tassel → `${COR}|${TAM}` -> valor (mão de obra por tassel).
+async function tabelaTassel(env: Env): Promise<Record<string, number>> {
+  const { results } = await env.DB.prepare("SELECT cor, tamanho, valor FROM tasseis").all<{
+    cor: string;
+    tamanho: string;
+    valor: number;
+  }>();
+  const m: Record<string, number> = {};
+  for (const r of results) m[`${(r.cor || "").trim().toUpperCase()}|${(r.tamanho || "").trim().toUpperCase()}`] = Number(r.valor) || 0;
+  return m;
 }
 
 // Cores cadastradas → mapa NOME(maiúsculo) -> { hex, foto } para a bolinha de cor do PDF.
@@ -409,6 +436,50 @@ pedidos.get("/:id/kits-pedidos", async (c) => {
     map.set(o, (map.get(o) || 0) + Number(it.qtd || 0));
   }
   return c.json({ pedidos: [...map.entries()].map(([numero, pecas]) => ({ numero, pecas })) });
+});
+
+// ROMANEIO DE TASSEL — pré-pronto; a pessoa só escolhe o prestador. Soma tudo automaticamente.
+pedidos.post("/:id/romaneio-tassel", async (c) => {
+  const id = c.req.param("id");
+  const ped = await c.env.DB.prepare("SELECT * FROM pedidos WHERE id = ?")
+    .bind(id)
+    .first<Record<string, string>>();
+  if (!ped) return c.json({ error: "pedido não encontrado" }, 404);
+  const body = await c.req.json<{ prestador?: string }>().catch(() => ({}) as { prestador?: string });
+  const prestador = (body.prestador || "").trim();
+
+  const { results: itens } = await c.env.DB.prepare(
+    "SELECT produto, ref, cor_grade, tamanho, qtd, parte, origem FROM pedido_itens WHERE pedido_id = ?"
+  )
+    .bind(id)
+    .all<ItemBase>();
+  const modelos = await catalogos(c.env);
+  const valores = await tabelaTassel(c.env);
+  const rom = romaneioTassel(itens, modelos, valores);
+  if (rom.linhas.length === 0)
+    return c.json(
+      { error: "Nenhum tassel a confeccionar. Configure o Tassel/peça nos Modelos e tenha itens de peseira/almofada." },
+      400
+    );
+
+  const baseNum = ped.numero_erp || id.slice(0, 8);
+  const info: PedidoInfo = {
+    cliente: ped.cliente_nome,
+    representante: ped.vendedor || "—",
+    numero: baseNum,
+    emissao: br(ped.data_pedido),
+    entrega: br(ped.data_entrega),
+  };
+  const bytes = await gerarRomaneioTassel(info, prestador, rom);
+  await c.env.BUCKET.put(`pedidos/${id}/romaneio-tassel.pdf`, bytes, {
+    httpMetadata: { contentType: "application/pdf" },
+  });
+  return c.json({
+    ok: true,
+    url: `/api/pedidos/${id}/pdf/romaneio-tassel`,
+    totalTasseis: rom.totalTasseis,
+    totalValor: rom.totalValor,
+  });
 });
 
 // GERAR PDFs — classifica e gera os PDFs (Parte Única OU Parte 1/2) + Pronta Entrega (kits)

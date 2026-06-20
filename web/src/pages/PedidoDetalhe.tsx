@@ -108,7 +108,64 @@ export function PedidoDetalhe() {
       </div>
 
       <GerarPdfs id={pedido.id} />
+      <RomaneioTassel id={pedido.id} />
     </>
+  );
+}
+
+function RomaneioTassel({ id }: { id: string }) {
+  const [prestador, setPrestador] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [res, setRes] = useState<{ url: string; totalTasseis: number; totalValor: number } | null>(null);
+
+  async function gerar() {
+    setErro(null);
+    setCarregando(true);
+    try {
+      const r = await api.gerarRomaneioTassel(id, prestador);
+      setRes(r);
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+  const brl = (v: number) => "R$ " + (v || 0).toFixed(2).replace(".", ",");
+
+  return (
+    <div className="card pad">
+      <div className="card-head" style={{ padding: 0, marginBottom: 12 }}>
+        <h2>Romaneio de Tassel</h2>
+      </div>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Pré-pronto: peseira → tassel <strong>G</strong>, almofada → tassel <strong>P</strong> (qtd por
+        peça vem do modelo). Escolha o <strong>prestador</strong> e gere — o valor da mão de obra é
+        somado automaticamente (configure em <strong>Cadastros › Tasseis</strong>).
+      </p>
+      <div className="inline-form" style={{ maxWidth: 520 }}>
+        <input
+          placeholder="Prestador de serviço (quem vai fazer)"
+          value={prestador}
+          onChange={(e) => setPrestador(e.target.value)}
+        />
+        <button className="btn btn-primary" onClick={gerar} disabled={carregando}>
+          {carregando ? "Gerando…" : "🧶 Gerar romaneio"}
+        </button>
+      </div>
+
+      {erro && <div className="aviso aviso-warn" style={{ marginTop: 12 }}>⚠️ {erro}</div>}
+
+      {res && (
+        <div className="pdf-list" style={{ marginTop: 14 }}>
+          <a className="pdf-link" href={res.url} target="_blank" rel="noreferrer">
+            👁 Visualizar romaneio
+          </a>
+          <span className="chip">{res.totalTasseis} tasseis</span>
+          <span className="chip chip-soft">Mão de obra: {brl(res.totalValor)}</span>
+        </div>
+      )}
+    </div>
   );
 }
 
