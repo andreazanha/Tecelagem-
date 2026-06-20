@@ -424,7 +424,7 @@ function CoresCadastro() {
             </tr>
 
             {filtrados.map((c) => (
-              <CorRow key={c.nome} c={c} onSalvar={salvar} onRemover={remover} />
+              <CorRow key={c.nome} c={c} onSalvar={salvar} onRemover={remover} onAtualizar={recarregar} />
             ))}
             {cores.length === 0 && (
               <tr>
@@ -444,22 +444,63 @@ function CorRow({
   c,
   onSalvar,
   onRemover,
+  onAtualizar,
 }: {
   c: Cor;
   onSalvar: (c: Cor) => void;
   onRemover: (c: Cor) => void;
+  onAtualizar: () => void;
 }) {
   const hex = c.hex || "#cccccc";
+  const [ver, setVer] = useState(0); // cache-bust da imagem após subir
+  const [subindo, setSubindo] = useState(false);
+
+  async function subirFoto(file: File | null) {
+    if (!file) return;
+    setSubindo(true);
+    try {
+      await api.enviarFotoCor(c.nome, file);
+      setVer((v) => v + 1);
+      onAtualizar();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setSubindo(false);
+    }
+  }
+  async function removerFoto() {
+    await api.excluirFotoCor(c.nome);
+    onAtualizar();
+  }
+
+  const quadrado: React.CSSProperties = {
+    width: 34,
+    height: 34,
+    borderRadius: 7,
+    border: "1px solid #e2e8f0",
+    flex: "0 0 auto",
+  };
+
   return (
     <tr>
       <td className="strong">{c.nome}</td>
       <td>
         <div className="row-gap" style={{ alignItems: "center" }}>
+          {c.foto_key ? (
+            <img
+              src={`${api.fotoCorUrl(c.nome)}?v=${ver}`}
+              style={{ ...quadrado, objectFit: "cover" }}
+              alt={c.nome}
+            />
+          ) : (
+            <span style={{ ...quadrado, background: hex, display: "inline-block" }} />
+          )}
           <input
             type="color"
             value={hex}
             onChange={(e) => onSalvar({ ...c, hex: e.target.value })}
-            style={{ width: 44, height: 32, padding: 2 }}
+            style={{ width: 40, height: 32, padding: 2 }}
+            title="Cor sólida"
           />
           <input
             className="w-sm"
@@ -470,6 +511,20 @@ function CorRow({
               if (v !== (c.hex || "")) onSalvar({ ...c, hex: v });
             }}
           />
+          <label className="btn btn-soft" style={{ cursor: "pointer" }}>
+            {subindo ? "Enviando…" : c.foto_key ? "↻ Trocar foto" : "📷 Foto"}
+            <input
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={(e) => subirFoto(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          {c.foto_key && (
+            <button className="btn" onClick={removerFoto}>
+              Remover foto
+            </button>
+          )}
         </div>
       </td>
       <td>

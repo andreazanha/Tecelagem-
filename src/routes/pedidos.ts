@@ -21,14 +21,31 @@ async function catalogos(env: Env): Promise<Catalogo> {
   return criarCatalogo(m.results);
 }
 
-// Cores cadastradas → mapa NOME(maiúsculo) -> hex, para a bolinha de cor do PDF.
-async function swatches(env: Env): Promise<Record<string, string>> {
+// Cores cadastradas → mapa NOME(maiúsculo) -> { hex, foto } para a bolinha de cor do PDF.
+// Só busca a foto (R2) das cores realmente usadas no pedido.
+async function coresParaPdf(
+  env: Env,
+  usadas: Set<string>
+): Promise<Record<string, { hex?: string; foto?: Uint8Array }>> {
   const { results } = await env.DB.prepare(
-    "SELECT nome, hex FROM cores WHERE hex IS NOT NULL"
-  ).all<{ nome: string; hex: string | null }>();
-  const m: Record<string, string> = {};
-  for (const r of results) if (r.hex) m[(r.nome || "").trim().toUpperCase()] = r.hex;
+    "SELECT nome, hex, foto_key FROM cores"
+  ).all<{ nome: string; hex: string | null; foto_key: string | null }>();
+  const m: Record<string, { hex?: string; foto?: Uint8Array }> = {};
+  for (const r of results) {
+    const key = (r.nome || "").trim().toUpperCase();
+    if (!usadas.has(key)) continue;
+    const entry: { hex?: string; foto?: Uint8Array } = {};
+    if (r.hex) entry.hex = r.hex;
+    if (r.foto_key) {
+      const obj = await env.BUCKET.get(r.foto_key);
+      if (obj) entry.foto = new Uint8Array(await obj.arrayBuffer());
+    }
+    if (entry.hex || entry.foto) m[key] = entry;
+  }
   return m;
+}
+function coresUsadas(itens: { cor_grade?: string | null }[]): Set<string> {
+  return new Set(itens.map((i) => (i.cor_grade || "").trim().toUpperCase()).filter(Boolean));
 }
 
 type Job = { tipo: string; label: string; banda: "gold" | "green"; sub: string; blocos: ReturnType<typeof classificar>["kits"] };
@@ -122,7 +139,7 @@ pedidos.post("/previa", async (c) => {
     observacao: b.observacao || "",
   };
 
-  const cores = await swatches(c.env);
+  const cores = await coresParaPdf(c.env, coresUsadas(itens));
   const jobs = montarJobs(cl, kitOpt);
   const partes: Uint8Array[] = [];
   for (const job of jobs) {
@@ -359,7 +376,7 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     observacao: ped.observacao || "",
   };
 
-  const cores = await swatches(c.env);
+  const cores = await coresParaPdf(c.env, coresUsadas(itens));
   const jobs = montarJobs(cl, kitOpt);
 
   const arquivos: { tipo: string; label: string; url: string }[] = [];

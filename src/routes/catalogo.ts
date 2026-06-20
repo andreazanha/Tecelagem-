@@ -94,7 +94,7 @@ export const cores = new Hono<{ Bindings: Env }>();
 
 cores.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT nome, hex FROM cores ORDER BY nome"
+    "SELECT nome, hex, foto_key FROM cores ORDER BY nome"
   ).all();
   return c.json(results);
 });
@@ -119,5 +119,44 @@ cores.delete("/:nome", async (c) => {
   await c.env.DB.prepare("DELETE FROM cores WHERE nome = ?")
     .bind(decodeURIComponent(c.req.param("nome")))
     .run();
+  return c.json({ ok: true });
+});
+
+// FOTO da cor (amostra real) — sobe no R2 e cria a cor se ainda não existir.
+cores.post("/:nome/foto", async (c) => {
+  const nome = decodeURIComponent(c.req.param("nome")).trim();
+  if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
+  const body = await c.req.parseBody();
+  const file = body["file"];
+  if (!(file instanceof File)) return c.json({ error: "arquivo ausente" }, 400);
+  const key = `cores/${nome}`;
+  await c.env.BUCKET.put(key, await file.arrayBuffer(), {
+    httpMetadata: { contentType: file.type || "image/png" },
+  });
+  await c.env.DB.prepare(
+    `INSERT INTO cores (nome, foto_key) VALUES (?, ?)
+     ON CONFLICT(nome) DO UPDATE SET foto_key = excluded.foto_key`
+  )
+    .bind(nome, key)
+    .run();
+  return c.json({ ok: true, foto_key: key });
+});
+
+cores.get("/:nome/foto", async (c) => {
+  const nome = decodeURIComponent(c.req.param("nome")).trim();
+  const obj = await c.env.BUCKET.get(`cores/${nome}`);
+  if (!obj) return c.json({ error: "sem foto" }, 404);
+  return new Response(obj.body, {
+    headers: {
+      "Content-Type": obj.httpMetadata?.contentType || "image/png",
+      "Cache-Control": "no-cache",
+    },
+  });
+});
+
+cores.delete("/:nome/foto", async (c) => {
+  const nome = decodeURIComponent(c.req.param("nome")).trim();
+  await c.env.BUCKET.delete(`cores/${nome}`);
+  await c.env.DB.prepare("UPDATE cores SET foto_key = NULL WHERE nome = ?").bind(nome).run();
   return c.json({ ok: true });
 });

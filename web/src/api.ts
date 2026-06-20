@@ -51,6 +51,7 @@ export const COMPOSICOES = ["", "100% POLIÉSTER", "100% ACRÍLICO", "100% ALGOD
 export interface Cor {
   nome: string;
   hex?: string | null; // cor visual da bolinha do PDF (ex.: #7a5230)
+  foto_key?: string | null; // se tiver foto da cor (amostra real)
 }
 
 export interface Sugestao {
@@ -128,6 +129,18 @@ export const api = {
     fetch(`/api/cores/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) =>
       j<{ ok: boolean }>(r)
     ),
+  enviarFotoCor: (nome: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return fetch(`/api/cores/${encodeURIComponent(nome)}/foto`, { method: "POST", body: fd }).then(
+      (r) => j<{ ok: boolean; foto_key: string }>(r)
+    );
+  },
+  excluirFotoCor: (nome: string) =>
+    fetch(`/api/cores/${encodeURIComponent(nome)}/foto`, { method: "DELETE" }).then((r) =>
+      j<{ ok: boolean }>(r)
+    ),
+  fotoCorUrl: (nome: string) => `/api/cores/${encodeURIComponent(nome)}/foto`,
   classificarPedido: (id: string) =>
     fetch(`/api/pedidos/${id}/classificar`).then((r) =>
       j<{

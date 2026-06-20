@@ -1,5 +1,5 @@
 // Gera o PDF de produção/pronta-entrega no padrão Big Tricot (pdf-lib, roda no Worker).
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
 import type { Bloco } from "./classificar";
 
 const A4W = 595.28;
@@ -104,11 +104,23 @@ export async function gerarPdfParte(
   banda: "gold" | "green",
   ped: PedidoInfo,
   blocos: Bloco[],
-  cores: Record<string, string> = {} // nome(maiúsculo) -> hex; sobrescreve o padrão SW
+  cores: Record<string, { hex?: string; foto?: Uint8Array }> = {} // nome(maiúsculo) -> cor visual
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
   const bld = await doc.embedFont(StandardFonts.HelveticaBold);
+
+  // pré-embute as fotos das cores (quando houver)
+  const fotos = new Map<string, PDFImage>();
+  for (const [k, v] of Object.entries(cores)) {
+    if (!v.foto || v.foto.length < 4) continue;
+    try {
+      const img = v.foto[0] === 0x89 && v.foto[1] === 0x50 ? await doc.embedPng(v.foto) : await doc.embedJpg(v.foto);
+      fotos.set(k, img);
+    } catch {
+      /* imagem inválida: ignora, cai no hex */
+    }
+  }
   const bandaColor = banda === "green" ? GREEN : GOLD;
   const bandaTxt = banda === "green" ? WHITE : hx("#3a2f12");
 
@@ -205,7 +217,13 @@ export async function gerarPdfParte(
     T(b.ref || "—", tx, y + 17, 10, bld); tx += bld.widthOfTextAtSize(b.ref || "—", 10) + 10;
     if (b.comp) T("· " + b.comp, tx, y + 17, 8.5, bld, REDC);
     const corKey = (b.cor || "").toUpperCase();
-    Circle(qx + 6, y + 13, 6, hx(cores[corKey] || SW[corKey] || "#c9cdd3"));
+    const foto = fotos.get(corKey);
+    if (foto) {
+      // foto da cor como um quadradinho onde ficaria a bolinha
+      page.drawImage(foto, { x: qx, y: A4H - (y + 7) - 13, width: 13, height: 13 });
+    } else {
+      Circle(qx + 6, y + 13, 6, hx(cores[corKey]?.hex || SW[corKey] || "#c9cdd3"));
+    }
     T(b.cor, qx + 18, y + 17, 10.5, bld);
     TR(`Total: ${b.total} ${b.total === 1 ? "peça" : "peças"}`, ix + iw - 10, y + 17, 10, bld);
     // cabeçalho tabela
