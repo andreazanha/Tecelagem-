@@ -158,6 +158,7 @@ export function NovoPedido() {
           tamanho: it.tamanho ?? "",
           qtd: Number(it.qtd) || 0,
           parte: it.parte || "unico",
+          origem: s.numero_erp || "", // de qual pedido este item veio
         }));
         if (add.length || s.cliente_nome) lidos++;
         else falhas++;

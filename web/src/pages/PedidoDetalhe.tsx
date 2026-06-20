@@ -117,6 +117,8 @@ function GerarPdfs({ id }: { id: string }) {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [arquivos, setArquivos] = useState<{ tipo: string; label: string; url: string }[]>([]);
+  const [kitsPeds, setKitsPeds] = useState<{ numero: string; pecas: number }[]>([]);
+  const [entregas, setEntregas] = useState<Record<string, string>>({});
 
   // carrega os PDFs já gerados (persistente, mesmo após recarregar a página)
   useEffect(() => {
@@ -132,6 +134,10 @@ function GerarPdfs({ id }: { id: string }) {
     try {
       const cl = await api.classificarPedido(id);
       if (cl.temKit) {
+        const r = await api.kitsPedidos(id);
+        setKitsPeds(r.pedidos);
+        // padrão: todos JUNTO
+        setEntregas(Object.fromEntries(r.pedidos.map((p) => [p.numero, "junto"])));
         setPerguntaKit(true);
         setCarregando(false);
       } else {
@@ -143,12 +149,12 @@ function GerarPdfs({ id }: { id: string }) {
     }
   }
 
-  async function gerar(kit?: "junto" | "separado") {
+  async function gerar(opts?: { kit?: "junto" | "separado"; entregas?: Record<string, string> }) {
     setPerguntaKit(false);
     setCarregando(true);
     setErro(null);
     try {
-      const res = await api.gerarPdfs(id, kit);
+      const res = await api.gerarPdfs(id, opts);
       setArquivos(res.arquivos);
     } catch (e) {
       setErro((e as Error).message);
@@ -156,6 +162,8 @@ function GerarPdfs({ id }: { id: string }) {
       setCarregando(false);
     }
   }
+
+  const umKit = kitsPeds.length <= 1;
 
   return (
     <div className="card pad">
@@ -174,15 +182,61 @@ function GerarPdfs({ id }: { id: string }) {
 
       {erro && <div className="aviso aviso-warn">⚠️ {erro}</div>}
 
-      {perguntaKit && (
+      {perguntaKit && umKit && (
         <div className="pe-box">
           <div className="pe-title">Este pedido tem KIT (Pronta Entrega). Como entregar?</div>
           <div className="segmented">
-            <button className="seg seg-on" onClick={() => gerar("junto")}>
+            <button className="seg seg-on" onClick={() => gerar({ kit: "junto" })}>
               📦 Entregar JUNTO com o pedido
             </button>
-            <button className="seg" onClick={() => gerar("separado")}>
+            <button className="seg" onClick={() => gerar({ kit: "separado" })}>
               ⏩ Entregar SEPARADO (antecipado)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {perguntaKit && !umKit && (
+        <div className="pe-box">
+          <div className="pe-title">
+            Esta OP junta vários pedidos com KIT. Escolha por pedido como entregar a Pronta Entrega:
+          </div>
+          <table className="table" style={{ marginTop: 6 }}>
+            <thead>
+              <tr>
+                <th>Pedido</th>
+                <th className="num">Peças (kit)</th>
+                <th>Entrega</th>
+              </tr>
+            </thead>
+            <tbody>
+              {kitsPeds.map((p) => (
+                <tr key={p.numero}>
+                  <td className="strong">{p.numero}</td>
+                  <td className="num">{p.pecas}</td>
+                  <td>
+                    <div className="segmented">
+                      <button
+                        className={"seg" + (entregas[p.numero] !== "separado" ? " seg-on" : "")}
+                        onClick={() => setEntregas((e) => ({ ...e, [p.numero]: "junto" }))}
+                      >
+                        📦 Junto
+                      </button>
+                      <button
+                        className={"seg" + (entregas[p.numero] === "separado" ? " seg-on" : "")}
+                        onClick={() => setEntregas((e) => ({ ...e, [p.numero]: "separado" }))}
+                      >
+                        ⏩ Separado
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 10 }}>
+            <button className="btn btn-primary" onClick={() => gerar({ entregas })} disabled={carregando}>
+              {carregando ? "Gerando…" : "🧾 Gerar PDFs"}
             </button>
           </div>
         </div>

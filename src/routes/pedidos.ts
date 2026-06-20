@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { extractText, getDocumentProxy } from "unpdf";
 import type { Env } from "../index";
 import { parsePedido } from "../parser";
-import { classificar, criarCatalogo, type ItemBase, type Catalogo } from "../classificar";
+import { classificar, criarCatalogo, ehKit, agrupar, type ItemBase, type Catalogo } from "../classificar";
 import { gerarPdfParte, mergePdfs, type PedidoInfo } from "../pdf";
 
 export const pedidos = new Hono<{ Bindings: Env }>();
@@ -49,7 +49,9 @@ function coresUsadas(itens: { cor_grade?: string | null }[]): Set<string> {
 }
 
 type Job = { tipo: string; label: string; banda: "gold" | "green"; sub: string; blocos: ReturnType<typeof classificar>["kits"] };
-function montarJobs(cl: ReturnType<typeof classificar>, kitOpt: "junto" | "separado"): Job[] {
+// Jobs das PARTES (1/2/Única). A Pronta Entrega (kit) é montada à parte (buildPEJobs),
+// pois pode ser dividida em JUNTO/SEPARADO por pedido.
+function montarJobs(cl: ReturnType<typeof classificar>): Job[] {
   const jobs: Job[] = [];
   const subProd = "Produção / Tecelagem";
   if (cl.modo === "unica") {
@@ -58,11 +60,43 @@ function montarJobs(cl: ReturnType<typeof classificar>, kitOpt: "junto" | "separ
     jobs.push({ tipo: "parte-1", label: "PARTE 1", banda: "gold", sub: subProd, blocos: cl.parte1! });
     jobs.push({ tipo: "parte-2", label: "PARTE 2", banda: "gold", sub: subProd, blocos: cl.parte2! });
   }
-  if (cl.temKit) {
-    const sub = `Pronta Entrega · ${kitOpt === "separado" ? "Entregar SEPARADO (antecipado)" : "Entregar JUNTO com o pedido"}`;
-    jobs.push({ tipo: "pronta-entrega", label: "PRONTA ENTREGA", banda: "green", sub, blocos: cl.kits });
-  }
   // não gera PDF de uma parte vazia (ex.: só Parte 1 → não cria Parte 2 em branco)
+  return jobs.filter((j) => j.blocos.length > 0);
+}
+
+const origemDe = (it: ItemBase, baseNum: string) => (it.origem || "").trim() || baseNum;
+
+// Pronta Entrega dividida por pedido: gera PDF de JUNTO e/ou de SEPARADO conforme a escolha
+// de cada pedido (entregas[numero] = 'junto'|'separado'); o resto usa o padrão.
+function buildPEJobs(
+  kitItens: ItemBase[],
+  entregas: Record<string, string>,
+  defOpt: "junto" | "separado",
+  cat: Catalogo,
+  baseNum: string
+): Job[] {
+  if (kitItens.length === 0) return [];
+  const opt = (it: ItemBase) => (entregas[origemDe(it, baseNum)] ?? defOpt) === "separado" ? "separado" : "junto";
+  const sep = kitItens.filter((it) => opt(it) === "separado");
+  const jun = kitItens.filter((it) => opt(it) === "junto");
+  const peds = (arr: ItemBase[]) => [...new Set(arr.map((it) => origemDe(it, baseNum)))].join(", ");
+  const jobs: Job[] = [];
+  if (jun.length)
+    jobs.push({
+      tipo: "pronta-entrega",
+      label: "PRONTA ENTREGA",
+      banda: "green",
+      sub: `Pronta Entrega · Entregar JUNTO com o pedido — ${peds(jun)}`,
+      blocos: agrupar(jun, cat),
+    });
+  if (sep.length)
+    jobs.push({
+      tipo: "pronta-entrega-sep",
+      label: "PRONTA ENTREGA",
+      banda: "green",
+      sub: `Pronta Entrega · Entregar SEPARADO (antecipado) — ${peds(sep)}`,
+      blocos: agrupar(sep, cat),
+    });
   return jobs.filter((j) => j.blocos.length > 0);
 }
 
@@ -113,7 +147,8 @@ pedidos.post("/importar", async (c) => {
 // PRÉVIA do PDF de produção SEM criar o pedido: gera todas as partes e junta num único
 // arquivo (várias páginas) para visualizar antes de salvar.
 pedidos.post("/previa", async (c) => {
-  const b = await c.req.json<PedidoIn & { kit?: string }>().catch(() => ({}) as PedidoIn & { kit?: string });
+  type PreviaIn = PedidoIn & { kit?: string; entregas?: Record<string, string> };
+  const b = await c.req.json<PreviaIn>().catch(() => ({}) as PreviaIn);
   const itens: ItemBase[] = (b.itens || [])
     .filter((it) => (it.produto || "").trim())
     .map((it) => ({
@@ -123,6 +158,7 @@ pedidos.post("/previa", async (c) => {
       tamanho: it.tamanho || null,
       qtd: Math.max(0, Math.trunc(Number(it.qtd) || 0)),
       parte: it.parte || "unico",
+      origem: it.origem || null,
     }));
   if (itens.length === 0) return c.json({ error: "adicione ao menos um item para visualizar" }, 400);
 
@@ -140,7 +176,10 @@ pedidos.post("/previa", async (c) => {
   };
 
   const cores = await coresParaPdf(c.env, coresUsadas(itens));
-  const jobs = montarJobs(cl, kitOpt);
+  const jobs = [
+    ...montarJobs(cl),
+    ...buildPEJobs(itens.filter(ehKit), b.entregas || {}, kitOpt, modelos, baseNum),
+  ];
   const partes: Uint8Array[] = [];
   for (const job of jobs) {
     const codigo = codigoParte(baseNum, TIPOS_PDF[job.tipo]?.suf ?? "");
@@ -165,6 +204,7 @@ interface ItemIn {
   tamanho?: string;
   qtd?: number | string;
   parte?: string;
+  origem?: string;
 }
 interface PedidoIn {
   numero_erp?: string;
@@ -253,8 +293,8 @@ pedidos.post("/", async (c) => {
     const parte = PARTES.includes(it.parte || "") ? (it.parte as string) : "unico";
     stmts.push(
       c.env.DB.prepare(
-        `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, origem)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         crypto.randomUUID(),
         id,
@@ -263,7 +303,8 @@ pedidos.post("/", async (c) => {
         it.cor_grade || null,
         it.tamanho || null,
         Math.max(0, Math.trunc(Number(it.qtd) || 0)),
-        parte
+        parte,
+        it.origem || null
       )
     );
   }
@@ -348,6 +389,28 @@ pedidos.get("/:id/classificar", async (c) => {
   });
 });
 
+// PEDIDOS QUE TÊM KIT — para perguntar junto/separado por pedido (OP que junta vários).
+pedidos.get("/:id/kits-pedidos", async (c) => {
+  const id = c.req.param("id");
+  const ped = await c.env.DB.prepare("SELECT numero_erp FROM pedidos WHERE id = ?")
+    .bind(id)
+    .first<{ numero_erp: string | null }>();
+  if (!ped) return c.json({ error: "pedido não encontrado" }, 404);
+  const baseNum = ped.numero_erp || id.slice(0, 8);
+  const { results } = await c.env.DB.prepare(
+    "SELECT produto, origem, qtd FROM pedido_itens WHERE pedido_id = ?"
+  )
+    .bind(id)
+    .all<{ produto: string; origem: string | null; qtd: number }>();
+  const map = new Map<string, number>();
+  for (const it of results) {
+    if (!ehKit({ produto: it.produto, qtd: it.qtd })) continue;
+    const o = (it.origem || "").trim() || baseNum;
+    map.set(o, (map.get(o) || 0) + Number(it.qtd || 0));
+  }
+  return c.json({ pedidos: [...map.entries()].map(([numero, pecas]) => ({ numero, pecas })) });
+});
+
 // GERAR PDFs — classifica e gera os PDFs (Parte Única OU Parte 1/2) + Pronta Entrega (kits)
 pedidos.post("/:id/gerar-pdfs", async (c) => {
   const id = c.req.param("id");
@@ -355,11 +418,14 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     .bind(id)
     .first<Record<string, string>>();
   if (!ped) return c.json({ error: "pedido não encontrado" }, 404);
-  const body = await c.req.json<{ kit?: string }>().catch(() => ({}) as { kit?: string });
+  const body = await c.req
+    .json<{ kit?: string; entregas?: Record<string, string> }>()
+    .catch(() => ({}) as { kit?: string; entregas?: Record<string, string> });
   const kitOpt = body.kit === "separado" ? "separado" : "junto";
+  const entregas = body.entregas || {};
 
   const { results: itens } = await c.env.DB.prepare(
-    "SELECT produto, ref, cor_grade, tamanho, qtd, parte FROM pedido_itens WHERE pedido_id = ?"
+    "SELECT produto, ref, cor_grade, tamanho, qtd, parte, origem FROM pedido_itens WHERE pedido_id = ?"
   )
     .bind(id)
     .all<ItemBase>();
@@ -377,7 +443,13 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   };
 
   const cores = await coresParaPdf(c.env, coresUsadas(itens));
-  const jobs = montarJobs(cl, kitOpt);
+  const peJobs = buildPEJobs(itens.filter(ehKit), entregas, kitOpt, modelos, baseNum);
+  const jobs = [...montarJobs(cl), ...peJobs];
+
+  // limpa PDFs de PE antigos (pode ter mudado a divisão junto/separado)
+  for (const t of ["pronta-entrega", "pronta-entrega-sep"]) {
+    await c.env.BUCKET.delete(`pedidos/${id}/${t}.pdf`);
+  }
 
   const arquivos: { tipo: string; label: string; url: string }[] = [];
   for (const job of jobs) {
@@ -387,8 +459,11 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     await c.env.BUCKET.put(key, bytes, { httpMetadata: { contentType: "application/pdf" } });
     arquivos.push({ tipo: job.tipo, label: `${codigo} · ${job.label}`, url: `/api/pedidos/${id}/pdf/${job.tipo}` });
   }
+  const temSep = peJobs.some((j) => j.tipo === "pronta-entrega-sep");
+  const temJun = peJobs.some((j) => j.tipo === "pronta-entrega");
+  const entregaResumo = !peJobs.length ? null : temSep && temJun ? "misto" : temSep ? "separado" : "junto";
   await c.env.DB.prepare("UPDATE pedidos SET status = 'conferido', entrega_pe = ? WHERE id = ?")
-    .bind(cl.temKit ? kitOpt : null, id)
+    .bind(entregaResumo, id)
     .run();
 
   return c.json({ modo: cl.modo, temKit: cl.temKit, arquivos });
@@ -400,9 +475,10 @@ const TIPOS_PDF: Record<string, { nome: string; suf: string }> = {
   "parte-unica": { nome: "PARTE ÚNICA", suf: "" },
   "parte-1": { nome: "PARTE 1", suf: "-P1" },
   "parte-2": { nome: "PARTE 2", suf: "-P2" },
-  "pronta-entrega": { nome: "PRONTA ENTREGA", suf: "-PE" },
+  "pronta-entrega": { nome: "PRONTA ENTREGA (JUNTO)", suf: "-PE" },
+  "pronta-entrega-sep": { nome: "PRONTA ENTREGA (SEPARADO)", suf: "-PE-SEP" },
 };
-const ORDEM_PDF = ["parte-unica", "parte-1", "parte-2", "pronta-entrega"];
+const ORDEM_PDF = ["parte-unica", "parte-1", "parte-2", "pronta-entrega", "pronta-entrega-sep"];
 // Código da parte: número único → "2030-P1"; vários números → "2030, 2031 (P1)".
 function codigoParte(baseNum: string, suf: string): string {
   if (!suf) return baseNum;

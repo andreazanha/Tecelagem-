@@ -6,6 +6,7 @@ export interface PedidoItem {
   tamanho?: string | null;
   qtd: number;
   parte: string;
+  origem?: string | null; // número do pedido de origem (OP que junta vários)
 }
 
 export interface Pedido {
@@ -153,11 +154,18 @@ export const api = {
     fetch(`/api/pedidos/${id}/pdfs`).then((r) =>
       j<{ arquivos: { tipo: string; label: string; url: string }[] }>(r)
     ),
-  gerarPdfs: (id: string, kit?: "junto" | "separado") =>
+  kitsPedidos: (id: string) =>
+    fetch(`/api/pedidos/${id}/kits-pedidos`).then((r) =>
+      j<{ pedidos: { numero: string; pecas: number }[] }>(r)
+    ),
+  gerarPdfs: (
+    id: string,
+    opts?: { kit?: "junto" | "separado"; entregas?: Record<string, string> }
+  ) =>
     fetch(`/api/pedidos/${id}/gerar-pdfs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(kit ? { kit } : {}),
+      body: JSON.stringify(opts || {}),
     }).then((r) =>
       j<{ modo: string; temKit: boolean; arquivos: { tipo: string; label: string; url: string }[] }>(
         r

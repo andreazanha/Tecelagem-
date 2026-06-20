@@ -15,6 +15,7 @@ export interface ItemBase {
   tamanho?: string | null;
   qtd: number;
   parte?: string | null;
+  origem?: string | null; // número do pedido de origem (OP que junta vários)
 }
 
 export interface Bloco {
@@ -100,8 +101,40 @@ export function tipoDe(produto: string, tamanho?: string | null): string {
 // Atenção: um CÓDIGO/grade como "KT1092" NÃO faz o item virar kit — peseira/almofada/manta com
 // código "KT..." são componentes que compõem os kits e são produzidos individualmente. Por isso só
 // olhamos o nome (it.produto), nunca o código (it.ref), e "KT" não é a palavra "KIT".
-function ehKit(it: ItemBase): boolean {
+export function ehKit(it: ItemBase): boolean {
   return /\bkit\b/i.test(it.produto || "");
+}
+
+// Tipo da PEÇA PRINCIPAL do kit pelo tamanho (largura): ~70 → Peseira; 90+ → Manta; pequeno → Almofada.
+function tipoPorMedida(tamanho: string): string {
+  const m = (tamanho || "").toUpperCase().replace(/\s/g, "").match(/^([\d.,]+)X([\d.,]+)/);
+  if (!m) return "";
+  const cm = (x: string) => {
+    const n = parseFloat(x.replace(",", "."));
+    return n < 10 ? Math.round(n * 100) : Math.round(n);
+  };
+  const W = cm(m[1]);
+  const H = cm(m[2]);
+  if (W <= 60 && H <= 60) return "Almofada";
+  if (W <= 75) return "Peseira";
+  return "Manta";
+}
+
+// Composição do kit lida do NOME do ERP: "KIT ASPEN +2- 55X35 C/ ENCHIMENTO" + tamanho da peça
+// principal (ex.: 70X2.50) → "Peseira 70X2.50 + 2 Almofada 55X35 c/ ench.".
+function composicaoKit(produto: string, tamanho: string): string {
+  const nome = (produto || "").toUpperCase();
+  const main = tipoPorMedida(tamanho) || "Peça";
+  let label = `${main} ${tamanho}`.trim();
+  const count = nome.match(/\+\s*(\d+)/)?.[1];
+  const almSize = (
+    nome.match(/\+\s*\d+\s*-?\s*(\d[\d.,]*\s*X\s*\d[\d.,]*)/i)?.[1] ||
+    nome.match(/(\d[\d.,]*\s*X\s*\d[\d.,]*)/i)?.[1]
+  )?.replace(/\s+/g, "");
+  const almTipo = /\bCAPA\b/.test(nome) ? "Capa" : "Almofada";
+  if (almSize) label += ` + ${count ? count + " " : ""}${almTipo} ${almSize}`;
+  if (/ENCH/.test(nome)) label += " c/ ench.";
+  return label;
 }
 
 export interface ModeloInfo {
@@ -169,14 +202,16 @@ export function resolverModelo(it: ItemBase, cat: Catalogo): ModeloInfo | undefi
   return best;
 }
 
-function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
+export function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
   const map = new Map<string, Bloco>();
   const sizeIdx = new Map<string, Map<string, number>>(); // key -> (tamanho -> índice em sizes)
   const ordem: string[] = [];
   for (const it of itens) {
     const info = resolverModelo(it, cat);
     const modelo = info?.nome || modeloDe(it.produto);
-    const tipo = tipoDe(it.produto, it.tamanho);
+    // Para KIT a linha mostra a COMPOSIÇÃO (peseira/manta + almofada/capa); para os demais, o tipo.
+    const kit = ehKit(it);
+    const tipo = kit ? "" : tipoDe(it.produto, it.tamanho);
     // código do MODELO (cadastro) — ignora a grade do ERP quando o modelo é conhecido;
     // assim os produtos do mesmo modelo/cor ficam num bloco só (ex.: Aspen Almofada + Manta).
     const ref = info?.codigo || (it.ref || "").trim();
@@ -190,7 +225,9 @@ function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
       sizeIdx.set(key, new Map());
       ordem.push(key);
     }
-    const tamanho = (it.tamanho || "—").trim() || "—";
+    const tamanho = kit
+      ? composicaoKit(it.produto, (it.tamanho || "").trim())
+      : (it.tamanho || "—").trim() || "—";
     const sk = `${tipo}|${tamanho}`;
     const idxMap = sizeIdx.get(key)!;
     // Consolida: mesmo tipo+medida soma a quantidade (junta pedidos repetidos numa OP).
