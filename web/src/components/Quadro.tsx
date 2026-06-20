@@ -136,10 +136,6 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 
       {carregando ? (
         <div className="card pad">Carregando…</div>
-      ) : cards.length === 0 ? (
-        <div className="card pad empty">
-          Nada em {cfg.titulo} ainda. As partes chegam aqui quando são enviadas da fase anterior.
-        </div>
       ) : (
         <>
           <div className="kanban">
@@ -252,7 +248,21 @@ function Coluna({
             </div>
           );
         })}
-        {cards.length === 0 && <div className="muted" style={{ padding: 8, fontSize: 12 }}>—</div>}
+        {cards.length === 0 && (
+          <div
+            style={{
+              border: "1.5px dashed #e2e8f0",
+              borderRadius: 12,
+              padding: "18px 10px",
+              textAlign: "center",
+              color: "#cbd5e1",
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+          >
+            vazio
+          </div>
+        )}
       </div>
     </div>
   );
