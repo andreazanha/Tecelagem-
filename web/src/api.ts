@@ -102,6 +102,22 @@ export interface Sugestao {
   metodo: "texto" | "ocr" | "nenhum";
 }
 
+export interface DashboardData {
+  hoje: { pedidos: number; pecas: number; atrasados: number; entregaProxima: number; finalizados: number };
+  producao: {
+    aguardando_tecelagem: number; em_tecelagem: number;
+    aguardando_passadoria: number; em_passadoria: number;
+    aguardando_corte: number; em_corte: number;
+    costura: number; revisao: number; expedicao: number;
+  };
+  urgentes: { numero: string | null; cliente: string; data_entrega: string | null; atrasado: number; etapa: string | null }[];
+  ranking: { etapa: string; qtd: number }[];
+  expedicao: { prontos: number; aguardando_nf: number; enviados_hoje: number };
+  avisos: { id: string; texto: string }[];
+  ultimoPedido: { id: string; numero: string | null; cliente: string; vendedor: string | null; data_entrega: string | null; pecas: number; created_at: string } | null;
+  geradoEm: string;
+}
+
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let msg = `Erro ${res.status}`;
@@ -190,6 +206,15 @@ export const api = {
     }).then((r) => j<{ ok: boolean }>(r)),
   listarProducao: (setor = "tecelagem") =>
     fetch(`/api/producao?setor=${encodeURIComponent(setor)}`).then((r) => j<CardProducao[]>(r)),
+  dashboard: () => fetch("/api/dashboard").then((r) => j<DashboardData>(r)),
+  addAviso: (texto: string) =>
+    fetch("/api/dashboard/avisos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texto }),
+    }).then((r) => j<{ id: string; texto: string }>(r)),
+  removerAviso: (id: string) =>
+    fetch(`/api/dashboard/avisos/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   detalheProducao: (pedido_id: string, parte: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}`).then((r) =>
       j<

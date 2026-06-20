@@ -9,12 +9,14 @@ import { Cadastros } from "./pages/Cadastros";
 import { Romaneios } from "./pages/Romaneios";
 import { Producao } from "./pages/Producao";
 import { Passadoria } from "./pages/Passadoria";
+import { Dashboard } from "./pages/Dashboard";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
       <Routes>
+        <Route path="/dashboard" element={<Dashboard />} />
         <Route element={<Layout />}>
           <Route path="/" element={<Navigate to="/pedidos" replace />} />
           <Route path="/pedidos" element={<Pedidos />} />

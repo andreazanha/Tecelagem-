@@ -21,6 +21,9 @@ export function Layout() {
           <span className="brand-sub">Rolagem de Fase</span>
         </Link>
         <div className="topbar-right">
+          <a className="painel-link" href="/dashboard" target="_blank" rel="noopener noreferrer" title="Abrir painel de TV">
+            📺 Painel TV
+          </a>
           <span className="user">Ana Paula</span>
           <span className="avatar">AP</span>
         </div>

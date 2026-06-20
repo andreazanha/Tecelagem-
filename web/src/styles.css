@@ -32,6 +32,12 @@ a { color: inherit; }
 .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
 .brand-sub { color: #e0e7ff; font-size: 13px; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
+.painel-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #ffffff1f; color: #fff; text-decoration: none;
+  font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px;
+}
+.painel-link:hover { background: #ffffff33; }
 .user { font-size: 13px; }
 .avatar {
   width: 30px; height: 30px; border-radius: 50%; background: #a78bfa;

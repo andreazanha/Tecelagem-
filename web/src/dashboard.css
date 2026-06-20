@@ -1,0 +1,99 @@
+/* ── Dashboard TV (tema escuro) ─────────────────────────────────────────── */
+.dash {
+  position: fixed; inset: 0; overflow: hidden;
+  background: radial-gradient(1200px 700px at 80% -10%, #1b2747 0%, #0b1020 55%, #070b16 100%);
+  color: #e9eefb; font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  display: flex; flex-direction: column;
+}
+.dash * { box-sizing: border-box; }
+.dash-top { display: flex; align-items: center; justify-content: space-between; padding: 22px 34px 6px; }
+.dash-brand { display: flex; align-items: baseline; gap: 12px; }
+.dash-brand b { font-size: 26px; letter-spacing: .5px; font-weight: 800; }
+.dash-brand span { color: #8ea0c8; font-size: 14px; }
+.dash-clock { font-size: 20px; font-weight: 800; color: #aab8da; font-variant-numeric: tabular-nums; }
+.dash-pills { display: flex; gap: 8px; }
+.dash-pill { font-size: 12px; font-weight: 800; padding: 6px 12px; border-radius: 999px; background: #ffffff14; color: #aab8da; }
+.dash-pill.on { background: linear-gradient(90deg, #6366f1, #a855f7); color: #fff; }
+
+.dash-stage { flex: 1; position: relative; padding: 10px 34px 18px; }
+.dash-screen { position: absolute; inset: 10px 34px 18px; display: flex; flex-direction: column; animation: dashIn .6s ease both; }
+@keyframes dashIn { from { opacity: 0; transform: translateY(24px) scale(.99); } to { opacity: 1; transform: none; } }
+.dash-h2 { font-size: 30px; font-weight: 800; margin: 0 0 16px; display: flex; align-items: center; gap: 12px; }
+.dash-h2 .ic { font-size: 26px; }
+
+.dash-grid { display: grid; gap: 20px; flex: 1; }
+.g5 { grid-template-columns: repeat(5, 1fr); }
+.g3 { grid-template-columns: repeat(3, 1fr); }
+.g2 { grid-template-columns: repeat(2, 1fr); }
+.g3r2 { grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; }
+
+.dash-card { background: linear-gradient(160deg, #18223c, #121a30); border: 1px solid #ffffff12; border-radius: 22px; padding: 24px 26px; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 10px 40px #0006; }
+.dash-card .kpi { font-size: clamp(44px, 7vw, 96px); font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.dash-card .lbl { margin-top: 10px; font-size: 16px; font-weight: 700; color: #9fb0d6; text-transform: uppercase; letter-spacing: .5px; }
+.dash-card .ic { font-size: 26px; margin-bottom: 6px; opacity: .8; }
+.dash-card.green { box-shadow: inset 0 0 0 2px #22c55e44, 0 10px 40px #0006; } .green .kpi { color: #4ade80; }
+.dash-card.blue { box-shadow: inset 0 0 0 2px #3b82f644, 0 10px 40px #0006; } .blue .kpi { color: #60a5fa; }
+.dash-card.yellow { box-shadow: inset 0 0 0 2px #eab30844, 0 10px 40px #0006; } .yellow .kpi { color: #fbbf24; }
+.dash-card.red { box-shadow: inset 0 0 0 2px #ef444455, 0 10px 40px #0006; } .red .kpi { color: #f87171; }
+.dash-card.purple .kpi { color: #c4b5fd; }
+
+/* lista (urgentes) */
+.dash-list { display: flex; flex-direction: column; gap: 12px; flex: 1; overflow: hidden; }
+.dash-row { display: grid; grid-template-columns: 120px 1fr 160px 200px; align-items: center; gap: 16px; background: #141d34; border: 1px solid #ffffff10; border-radius: 16px; padding: 16px 22px; font-size: 22px; }
+.dash-row.atraso { background: #2a1420; border-color: #ef444455; }
+.dash-row .op { font-weight: 900; color: #c4b5fd; }
+.dash-row .cli { font-weight: 800; }
+.dash-row .ent { font-weight: 800; font-variant-numeric: tabular-nums; }
+.dash-row .ent.atraso { color: #f87171; }
+.dash-row .et { justify-self: end; font-weight: 800; padding: 6px 14px; border-radius: 999px; background: #3b82f622; color: #93c5fd; font-size: 16px; text-transform: capitalize; }
+
+/* barras (ranking) */
+.dash-bars { display: flex; flex-direction: column; gap: 16px; flex: 1; justify-content: center; }
+.dash-bar { display: grid; grid-template-columns: 200px 1fr 80px; align-items: center; gap: 16px; font-size: 22px; font-weight: 800; }
+.dash-bar .track { height: 30px; background: #ffffff0f; border-radius: 999px; overflow: hidden; }
+.dash-bar .fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #6366f1, #a855f7); transition: width .8s ease; }
+.dash-bar .v { text-align: right; color: #c4b5fd; }
+
+/* avisos */
+.dash-avisos { display: flex; flex-direction: column; gap: 18px; flex: 1; justify-content: center; }
+.dash-aviso { background: linear-gradient(120deg, #3b2a12, #2a1f10); border: 1px solid #eab30855; border-radius: 20px; padding: 26px 30px; font-size: 30px; font-weight: 800; color: #fcd34d; display: flex; gap: 16px; align-items: center; }
+.dash-empty { color: #5b6b92; font-size: 24px; font-weight: 700; text-align: center; margin: auto; }
+
+/* controles */
+.dash-ctrl { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px; }
+.dash-btn { background: #ffffff14; color: #dbe4fb; border: none; border-radius: 12px; padding: 10px 16px; font-size: 16px; font-weight: 800; cursor: pointer; }
+.dash-btn:hover { background: #ffffff22; }
+.dash-dots { display: flex; gap: 8px; margin: 0 10px; }
+.dash-dot { width: 10px; height: 10px; border-radius: 50%; background: #ffffff2e; cursor: pointer; }
+.dash-dot.on { background: #a855f7; width: 26px; border-radius: 999px; }
+
+/* overlay novo pedido */
+.dash-novo { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: radial-gradient(900px 600px at 50% 30%, #3b2a6b 0%, #0b1020 70%); animation: novoBg .5s ease; }
+@keyframes novoBg { from { opacity: 0; } to { opacity: 1; } }
+.dash-novo-card { text-align: center; animation: novoPop .7s cubic-bezier(.2,1.3,.4,1) both; }
+@keyframes novoPop { from { opacity: 0; transform: scale(.6) translateY(40px); } to { opacity: 1; transform: none; } }
+.dash-novo .tag { font-size: 28px; font-weight: 900; color: #c4b5fd; letter-spacing: 2px; text-transform: uppercase; }
+.dash-novo .titulo { font-size: clamp(48px, 8vw, 110px); font-weight: 900; margin: 8px 0 26px; background: linear-gradient(90deg, #a855f7, #38bdf8); -webkit-background-clip: text; background-clip: text; color: transparent; animation: shine 2s linear infinite; }
+.dash-novo .cli { font-size: clamp(34px, 5vw, 64px); font-weight: 900; }
+.dash-novo .meta { display: flex; gap: 26px; justify-content: center; margin-top: 22px; flex-wrap: wrap; }
+.dash-novo .meta .m { background: #ffffff10; border-radius: 16px; padding: 16px 24px; min-width: 150px; }
+.dash-novo .meta .m .l { font-size: 14px; color: #9fb0d6; font-weight: 800; text-transform: uppercase; }
+.dash-novo .meta .m .v { font-size: 32px; font-weight: 900; margin-top: 4px; }
+@keyframes shine { to { filter: hue-rotate(40deg); } }
+
+/* config */
+.dash-cfg { position: fixed; top: 0; right: 0; bottom: 0; width: min(380px, 92vw); background: #0d1426; border-left: 1px solid #ffffff14; z-index: 95; padding: 22px; overflow: auto; box-shadow: -20px 0 60px #0009; }
+.dash-cfg h3 { margin: 0 0 14px; font-size: 20px; }
+.dash-cfg .grp { margin-bottom: 18px; }
+.dash-cfg label { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; font-size: 15px; color: #cdd8f3; font-weight: 700; }
+.dash-cfg input[type="number"], .dash-cfg input[type="text"] { background: #131c33; border: 1px solid #ffffff1a; color: #fff; border-radius: 10px; padding: 8px 10px; font: inherit; }
+.dash-cfg .aviso-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.dash-cfg .aviso-row input { flex: 1; }
+
+@media (max-width: 900px) {
+  .g5 { grid-template-columns: repeat(2, 1fr); }
+  .g3, .g3r2 { grid-template-columns: 1fr; }
+  .dash-row { grid-template-columns: 90px 1fr; row-gap: 6px; }
+  .dash-row .ent, .dash-row .et { grid-column: 2; justify-self: start; }
+  .dash-bar { grid-template-columns: 120px 1fr 50px; }
+}
