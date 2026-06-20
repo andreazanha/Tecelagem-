@@ -4,9 +4,9 @@ import { VERSION } from "../version";
 
 const NAV = [
   { to: "/pedidos", icon: "📦", label: "Pedidos" },
+  { to: "/producao", icon: "🧶", label: "Tecelagem" },
   { to: "/cadastros", icon: "🏷️", label: "Cadastros" },
   { to: "/romaneios", icon: "📋", label: "Romaneios" },
-  { to: "/producao", icon: "🏭", label: "Produção", disabled: true },
   { to: "/estoque", icon: "🗃️", label: "Estoque", disabled: true },
   { to: "/relatorios", icon: "📊", label: "Relatórios", disabled: true },
 ];

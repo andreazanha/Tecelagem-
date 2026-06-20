@@ -7,6 +7,7 @@ import { NovoPedido } from "./pages/NovoPedido";
 import { PedidoDetalhe } from "./pages/PedidoDetalhe";
 import { Cadastros } from "./pages/Cadastros";
 import { Romaneios } from "./pages/Romaneios";
+import { Producao } from "./pages/Producao";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -20,6 +21,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/pedidos/:id" element={<PedidoDetalhe />} />
           <Route path="/cadastros" element={<Cadastros />} />
           <Route path="/romaneios" element={<Romaneios />} />
+          <Route path="/producao" element={<Producao />} />
         </Route>
       </Routes>
     </BrowserRouter>

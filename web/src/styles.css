@@ -109,6 +109,16 @@ h2 { font-size: 15px; margin: 0 0 12px; }
 @media (max-width: 480px) {
   .info-grid { grid-template-columns: 1fr; }
 }
+/* tabela vira cards no celular (quando marcada com .cards) */
+@media (max-width: 700px) {
+  .table.cards { min-width: 0; }
+  .table.cards thead { display: none; }
+  .table.cards, .table.cards tbody, .table.cards tr, .table.cards td { display: block; }
+  .table.cards tr { border: 1px solid var(--line); border-radius: 12px; margin: 10px; padding: 4px 2px; background: #fff; }
+  .table.cards td { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: none; padding: 7px 12px; text-align: right; }
+  .table.cards td::before { content: attr(data-label); color: var(--muted); font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px; text-align: left; }
+  .table.cards td:empty { display: none; }
+}
 
 .field { margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -173,6 +183,41 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .pdf-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; align-items: center; }
 .pdf-link { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 10px; background: #22416b; color: #fff; font-weight: 700; font-size: 13px; text-decoration: none; }
 .pdf-link:hover { background: #1b3556; }
+
+/* ── Tecelagem (Kanban) ─────────────────────────────────────────────────── */
+.stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 14px; }
+@media (max-width: 900px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+.stat { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+.stat .n { font-size: 22px; font-weight: 800; }
+.stat .l { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+.maqstrip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.maqchip { font-size: 11.5px; font-weight: 700; padding: 6px 10px; border-radius: 9px; background: #eef2ff; color: #4338ca; }
+.maqchip.livre { background: #f1f5f9; color: #64748b; }
+.kanban { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 10px; -webkit-overflow-scrolling: touch; }
+.kcol { flex: 0 0 290px; max-width: 290px; }
+.kcol-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 10px; }
+.kcol-title { font-weight: 800; font-size: 13.5px; }
+.kcol-sub { font-size: 11px; color: var(--muted); font-weight: 600; }
+.kcol-count { background: #1e2942; color: #fff; font-size: 11px; font-weight: 800; border-radius: 8px; padding: 2px 8px; }
+.kcol-body { display: flex; flex-direction: column; gap: 10px; min-height: 40px; }
+.kcard { background: #fff; border: 1px solid var(--line); border-left: 4px solid #818cf8; border-radius: 12px; padding: 12px; box-shadow: 0 1px 3px #0f172a10; }
+.kcard.p1 { border-left-color: #6366f1; } .kcard.p2 { border-left-color: #a855f7; }
+.kcard.unica { border-left-color: #0ea5e9; } .kcard.kit { border-left-color: #1f7a4d; }
+.kcard-top { display: flex; align-items: center; justify-content: space-between; }
+.kcard-op { font-weight: 800; font-size: 13.5px; }
+.kbadge { font-size: 9.5px; font-weight: 800; padding: 2px 7px; border-radius: 8px; letter-spacing: .3px; }
+.kbadge.p1 { background: #eef2ff; color: #4338ca; } .kbadge.p2 { background: #f5e8ff; color: #7e22ce; }
+.kbadge.unica { background: #e0f2fe; color: #0369a1; } .kbadge.kit { background: #ecfdf5; color: #047857; }
+.kcard-cli { font-weight: 700; font-size: 13px; margin-top: 4px; }
+.kcard-prod { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.kcard-dts { display: flex; gap: 14px; margin-top: 8px; }
+.kcard-dts .dl { font-size: 9px; color: var(--muted); font-weight: 700; text-transform: uppercase; }
+.kcard-dts .dv { font-size: 12px; font-weight: 700; }
+.kcard-foot { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kcard-meta { font-size: 11px; color: var(--muted); }
+.btn-tecer { background: #6366f1; color: #fff; border: none; }
+.btn-final { background: #1f7a4d; color: #fff; border: none; }
+.btn-enviar { background: #c2a05a; color: #3a2f12; border: none; }
 
 .row-novo td { background: #f8fafc; }
 .row-novo input, .row-novo select { width: 100%; }

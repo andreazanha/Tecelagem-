@@ -37,7 +37,7 @@ export function Pedidos() {
               Nenhum pedido ainda. Clique em <strong>Novo Pedido</strong> para começar.
             </div>
           ) : (
-            <table className="table">
+            <table className="table cards">
               <thead>
                 <tr>
                   <th>Nº ERP</th>
@@ -52,13 +52,15 @@ export function Pedidos() {
               <tbody>
                 {pedidos.map((p) => (
                   <tr key={p.id}>
-                    <td>
+                    <td data-label="Nº ERP">
                       <Link to={`/pedidos/${p.id}`} className="link">
                         {p.numero_erp || "—"}
                       </Link>
                     </td>
-                    <td className="strong">{p.cliente_nome}</td>
-                    <td>
+                    <td className="strong" data-label="Cliente">
+                      {p.cliente_nome}
+                    </td>
+                    <td data-label="Tipo">
                       <span className="chip">{tipoLabel(p.tipo)}</span>
                       {p.entrega_pe && (
                         <span className="chip chip-soft">
@@ -66,10 +68,14 @@ export function Pedidos() {
                         </span>
                       )}
                     </td>
-                    <td className="num">{p.itens as number}</td>
-                    <td className="num">{p.pecas ?? 0}</td>
-                    <td>{p.data_entrega || "—"}</td>
-                    <td>
+                    <td className="num" data-label="Itens">
+                      {p.itens as number}
+                    </td>
+                    <td className="num" data-label="Peças">
+                      {p.pecas ?? 0}
+                    </td>
+                    <td data-label="Entrega">{p.data_entrega || "—"}</td>
+                    <td data-label="Status">
                       <span className={"status status-" + p.status}>{p.status}</span>
                     </td>
                   </tr>

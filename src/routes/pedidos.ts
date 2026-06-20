@@ -537,6 +537,26 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     .bind(entregaResumo, id)
     .run();
 
+  // cria/atualiza os cards de TECELAGUEM (uma parte por OP); preserva o status de produção.
+  const partesProd: { parte: string; blocos: ReturnType<typeof classificar>["kits"] }[] = [];
+  if (cl.modo === "unica") partesProd.push({ parte: "parte-unica", blocos: cl.parteUnica! });
+  else {
+    partesProd.push({ parte: "parte-1", blocos: cl.parte1! });
+    partesProd.push({ parte: "parte-2", blocos: cl.parte2! });
+  }
+  if (cl.temKit) partesProd.push({ parte: "pronta-entrega", blocos: cl.kits });
+  for (const p of partesProd) {
+    if (!p.blocos.length) continue;
+    const pecas = p.blocos.reduce((s, b) => s + b.total, 0);
+    const resumo = `${p.blocos.length} modelo(s)`;
+    await c.env.DB.prepare(
+      `INSERT INTO producao (pedido_id, parte, pecas, resumo) VALUES (?, ?, ?, ?)
+       ON CONFLICT(pedido_id, parte) DO UPDATE SET pecas = excluded.pecas, resumo = excluded.resumo`
+    )
+      .bind(id, p.parte, pecas, resumo)
+      .run();
+  }
+
   return c.json({ modo: cl.modo, temKit: cl.temKit, arquivos });
 });
 

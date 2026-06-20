@@ -74,6 +74,22 @@ export interface Costura {
   valor: number;
 }
 
+export interface CardProducao {
+  pedido_id: string;
+  parte: string; // parte-1 | parte-2 | parte-unica | pronta-entrega
+  status: string; // aguardando | tecendo | pronto | enviado
+  pecas: number;
+  resumo?: string | null;
+  maquina?: string | null;
+  operador?: string | null;
+  iniciado_em?: string | null;
+  finalizado_em?: string | null;
+  numero_erp?: string | null;
+  cliente_nome: string;
+  data_pedido?: string | null;
+  data_entrega?: string | null;
+}
+
 export interface Sugestao {
   numero_erp?: string;
   cliente_nome?: string;
@@ -171,6 +187,17 @@ export const api = {
   excluirTassel: (cor: string, tamanho: string) =>
     fetch(`/api/tasseis/${encodeURIComponent(cor)}/${encodeURIComponent(tamanho)}`, {
       method: "DELETE",
+    }).then((r) => j<{ ok: boolean }>(r)),
+  listarProducao: () => fetch("/api/producao").then((r) => j<CardProducao[]>(r)),
+  atualizarProducao: (
+    pedido_id: string,
+    parte: string,
+    body: { status: string; maquina?: string; operador?: string }
+  ) =>
+    fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     }).then((r) => j<{ ok: boolean }>(r)),
   listarPrestadores: () => fetch("/api/prestadores").then((r) => j<Prestador[]>(r)),
   salvarPrestador: (p: Prestador) =>
