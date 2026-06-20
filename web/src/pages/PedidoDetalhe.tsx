@@ -115,9 +115,17 @@ export function PedidoDetalhe() {
 
 function RomaneioTassel({ id }: { id: string }) {
   const [prestador, setPrestador] = useState("");
+  const [prestadores, setPrestadores] = useState<string[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [res, setRes] = useState<{ url: string; totalTasseis: number; totalValor: number } | null>(null);
+
+  useEffect(() => {
+    api
+      .listarPrestadores()
+      .then((ps) => setPrestadores(ps.map((p) => p.nome)))
+      .catch(() => {});
+  }, []);
 
   async function gerar() {
     setErro(null);
@@ -141,14 +149,24 @@ function RomaneioTassel({ id }: { id: string }) {
       <p className="muted" style={{ marginTop: 0 }}>
         Pré-pronto: peseira → tassel <strong>G</strong>, almofada → tassel <strong>P</strong> (qtd por
         peça vem do modelo). Escolha o <strong>prestador</strong> e gere — o valor da mão de obra é
-        somado automaticamente (configure em <strong>Cadastros › Tasseis</strong>).
+        somado automaticamente. Gerencie tasseis e prestadores em{" "}
+        <Link to="/romaneios" className="link">
+          Romaneios
+        </Link>
+        .
       </p>
       <div className="inline-form" style={{ maxWidth: 520 }}>
         <input
+          list="prestadores-tassel"
           placeholder="Prestador de serviço (quem vai fazer)"
           value={prestador}
           onChange={(e) => setPrestador(e.target.value)}
         />
+        <datalist id="prestadores-tassel">
+          {prestadores.map((p) => (
+            <option key={p} value={p} />
+          ))}
+        </datalist>
         <button className="btn btn-primary" onClick={gerar} disabled={carregando}>
           {carregando ? "Gerando…" : "🧶 Gerar romaneio"}
         </button>

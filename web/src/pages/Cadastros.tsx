@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { api, COMPOSICOES, type Modelo, type Cor, type Tassel } from "../api";
+import { api, COMPOSICOES, type Modelo, type Cor } from "../api";
 
 export function Cadastros() {
-  const [aba, setAba] = useState<"modelos" | "cores" | "tasseis">("modelos");
+  const [aba, setAba] = useState<"modelos" | "cores">("modelos");
   const [itens, setItens] = useState<Modelo[]>([]);
   const [busca, setBusca] = useState("");
   const [novo, setNovo] = useState<Modelo>({
@@ -80,9 +80,7 @@ export function Cadastros() {
       <div className="page-head">
         <div>
           <h1>Cadastros</h1>
-          <div className="breadcrumb">
-            Configuração › {aba === "modelos" ? "Modelos" : aba === "cores" ? "Cores" : "Tasseis"}
-          </div>
+          <div className="breadcrumb">Configuração › {aba === "modelos" ? "Modelos" : "Cores"}</div>
         </div>
         <div className="segmented">
           <button
@@ -99,18 +97,10 @@ export function Cadastros() {
           >
             🎨 Cores
           </button>
-          <button
-            type="button"
-            className={"seg" + (aba === "tasseis" ? " seg-on" : "")}
-            onClick={() => setAba("tasseis")}
-          >
-            🧶 Tasseis
-          </button>
         </div>
       </div>
 
       {aba === "cores" && <CoresCadastro />}
-      {aba === "tasseis" && <TasseisCadastro />}
 
       {aba === "modelos" && (
         <>
@@ -543,126 +533,5 @@ function CorRow({
         </button>
       </td>
     </tr>
-  );
-}
-
-// ── Cadastro de Tasseis (cor + tamanho + valor da mão de obra) ───────────────
-function TasseisCadastro() {
-  const [itens, setItens] = useState<Tassel[]>([]);
-  const [novo, setNovo] = useState<Tassel>({ cor: "", tamanho: "G", valor: 0 });
-
-  function recarregar() {
-    api.listarTasseis().then(setItens).catch(() => {});
-  }
-  useEffect(recarregar, []);
-
-  async function salvar(t: Tassel) {
-    try {
-      await api.salvarTassel(t);
-      recarregar();
-    } catch (e) {
-      alert((e as Error).message);
-    }
-  }
-  async function adicionar() {
-    if (!novo.cor.trim() || !novo.tamanho.trim()) return;
-    await salvar(novo);
-    setNovo({ cor: "", tamanho: "G", valor: 0 });
-  }
-  async function remover(t: Tassel) {
-    await api.excluirTassel(t.cor, t.tamanho);
-    recarregar();
-  }
-
-  const brl = (v: number) => "R$ " + (Number(v) || 0).toFixed(2).replace(".", ",");
-
-  return (
-    <>
-      <p className="muted" style={{ marginTop: -4, marginBottom: 16 }}>
-        Cadastre o <strong>tassel</strong> por <strong>cor</strong> e <strong>tamanho</strong> (G para
-        peseira, P para almofada) e o <strong>valor da mão de obra</strong> por tassel. O romaneio soma
-        tudo automaticamente. {itens.length} tasseis.
-      </p>
-      <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Cor</th>
-              <th>Tamanho</th>
-              <th className="num">Valor (mão de obra)</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="row-novo">
-              <td>
-                <input
-                  placeholder="Cor (ex.: AREIA)"
-                  value={novo.cor}
-                  onChange={(e) => setNovo({ ...novo, cor: e.target.value })}
-                  onKeyDown={(e) => e.key === "Enter" && adicionar()}
-                />
-              </td>
-              <td>
-                <select
-                  value={novo.tamanho}
-                  onChange={(e) => setNovo({ ...novo, tamanho: e.target.value })}
-                >
-                  <option value="G">G (peseira)</option>
-                  <option value="P">P (almofada)</option>
-                </select>
-              </td>
-              <td className="num">
-                <input
-                  className="w-sm num"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={novo.valor}
-                  onChange={(e) => setNovo({ ...novo, valor: Number(e.target.value) })}
-                />
-              </td>
-              <td>
-                <button className="btn btn-primary" onClick={adicionar}>
-                  ＋
-                </button>
-              </td>
-            </tr>
-            {itens.map((t) => (
-              <tr key={t.cor + "|" + t.tamanho}>
-                <td className="strong">{t.cor}</td>
-                <td>{t.tamanho}</td>
-                <td className="num">
-                  <input
-                    className="w-sm num"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    defaultValue={t.valor}
-                    onBlur={(e) => {
-                      const v = Number(e.target.value);
-                      if (v !== t.valor) salvar({ ...t, valor: v });
-                    }}
-                  />
-                  <span className="muted" style={{ marginLeft: 8 }}>{brl(t.valor)}</span>
-                </td>
-                <td>
-                  <button className="icon-btn" title="Remover" onClick={() => remover(t)}>
-                    ✕
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {itens.length === 0 && (
-              <tr>
-                <td colSpan={4} className="empty pad">
-                  Nenhum tassel cadastrado ainda.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </>
   );
 }

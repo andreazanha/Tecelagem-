@@ -192,3 +192,63 @@ tasseis.delete("/:cor/:tamanho", async (c) => {
     .run();
   return c.json({ ok: true });
 });
+
+// ── Prestadores de serviço ───────────────────────────────────────────────────
+export const prestadores = new Hono<{ Bindings: Env }>();
+
+prestadores.get("/", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, nome, telefone, servico, obs FROM prestadores ORDER BY nome"
+  ).all();
+  return c.json(results);
+});
+
+prestadores.post("/", async (c) => {
+  const b = await c.req.json<{ id?: string; nome?: string; telefone?: string; servico?: string; obs?: string }>();
+  const nome = (b.nome || "").trim();
+  if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
+  const id = b.id || crypto.randomUUID();
+  await c.env.DB.prepare(
+    `INSERT INTO prestadores (id, nome, telefone, servico, obs) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(nome) DO UPDATE SET telefone = excluded.telefone, servico = excluded.servico, obs = excluded.obs`
+  )
+    .bind(id, nome, b.telefone || null, b.servico || null, b.obs || null)
+    .run();
+  return c.json({ id, nome, telefone: b.telefone || null, servico: b.servico || null, obs: b.obs || null }, 201);
+});
+
+prestadores.delete("/:nome", async (c) => {
+  await c.env.DB.prepare("DELETE FROM prestadores WHERE nome = ?")
+    .bind(decodeURIComponent(c.req.param("nome")))
+    .run();
+  return c.json({ ok: true });
+});
+
+// ── Cadastro de Costura (serviço + valor) ────────────────────────────────────
+export const costura = new Hono<{ Bindings: Env }>();
+
+costura.get("/", async (c) => {
+  const { results } = await c.env.DB.prepare("SELECT nome, valor FROM costura ORDER BY nome").all();
+  return c.json(results);
+});
+
+costura.post("/", async (c) => {
+  const b = await c.req.json<{ nome?: string; valor?: number | string }>();
+  const nome = (b.nome || "").trim();
+  if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
+  const valor = Math.max(0, Number(b.valor) || 0);
+  await c.env.DB.prepare(
+    `INSERT INTO costura (nome, valor) VALUES (?, ?)
+     ON CONFLICT(nome) DO UPDATE SET valor = excluded.valor`
+  )
+    .bind(nome, valor)
+    .run();
+  return c.json({ nome, valor }, 201);
+});
+
+costura.delete("/:nome", async (c) => {
+  await c.env.DB.prepare("DELETE FROM costura WHERE nome = ?")
+    .bind(decodeURIComponent(c.req.param("nome")))
+    .run();
+  return c.json({ ok: true });
+});

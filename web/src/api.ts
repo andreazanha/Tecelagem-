@@ -61,6 +61,19 @@ export interface Tassel {
   valor: number; // mão de obra por tassel
 }
 
+export interface Prestador {
+  id?: string;
+  nome: string;
+  telefone?: string | null;
+  servico?: string | null; // tassel | costura | outro
+  obs?: string | null;
+}
+
+export interface Costura {
+  nome: string;
+  valor: number;
+}
+
 export interface Sugestao {
   numero_erp?: string;
   cliente_nome?: string;
@@ -159,6 +172,28 @@ export const api = {
     fetch(`/api/tasseis/${encodeURIComponent(cor)}/${encodeURIComponent(tamanho)}`, {
       method: "DELETE",
     }).then((r) => j<{ ok: boolean }>(r)),
+  listarPrestadores: () => fetch("/api/prestadores").then((r) => j<Prestador[]>(r)),
+  salvarPrestador: (p: Prestador) =>
+    fetch("/api/prestadores", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p),
+    }).then((r) => j<Prestador>(r)),
+  excluirPrestador: (nome: string) =>
+    fetch(`/api/prestadores/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) =>
+      j<{ ok: boolean }>(r)
+    ),
+  listarCostura: () => fetch("/api/costura").then((r) => j<Costura[]>(r)),
+  salvarCostura: (cst: Costura) =>
+    fetch("/api/costura", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cst),
+    }).then((r) => j<Costura>(r)),
+  excluirCostura: (nome: string) =>
+    fetch(`/api/costura/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) =>
+      j<{ ok: boolean }>(r)
+    ),
   gerarRomaneioTassel: (id: string, prestador: string) =>
     fetch(`/api/pedidos/${id}/romaneio-tassel`, {
       method: "POST",
