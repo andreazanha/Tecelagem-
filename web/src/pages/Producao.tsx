@@ -154,10 +154,10 @@ function Coluna({
 }) {
   const btn =
     tipoAcao === "tecer"
-      ? { cls: "btn-tecer", label: "Tecer" }
+      ? { cls: "tecer", label: "Tecer" }
       : tipoAcao === "final"
-        ? { cls: "btn-final", label: "Finalizar" }
-        : { cls: "btn-enviar", label: "Enviar ▶" };
+        ? { cls: "final", label: "Finalizar" }
+        : { cls: "enviar", label: "Enviar ▶" };
   return (
     <div className="kcol">
       <div className="kcol-head">
@@ -170,37 +170,42 @@ function Coluna({
       <div className="kcol-body">
         {cards.map((c) => {
           const t = TIPO[c.parte] || { label: c.parte, cls: "" };
+          const stLabel =
+            c.status === "tecendo" ? "Tecendo" : c.status === "pronto" ? "Pronto" : "Aguardando";
           return (
-            <div key={c.pedido_id + c.parte} className={"kcard " + t.cls}>
-              <div className="kcard-top">
+            <div key={c.pedido_id + c.parte} className="kcard">
+              <div className={"kcard-hd " + t.cls}>
                 <span className="kcard-op">{opCodigo(c)}</span>
-                <span className={"kbadge " + t.cls}>{t.label}</span>
+                <span className="kcard-badge">{t.label}</span>
               </div>
-              <div className="kcard-cli">{c.cliente_nome}</div>
-              <div className="kcard-prod">
-                {c.pecas} pç · {c.resumo || ""}
-              </div>
-              <div className="kcard-dts">
-                <div>
-                  <div className="dl">Pedido</div>
-                  <div className="dv">{br(c.data_pedido)}</div>
+              <div className="kcard-bd">
+                <div className="kcard-row1">
+                  <span className="kcard-cli">{c.cliente_nome}</span>
+                  <span className={"kstatus " + c.status}>{stLabel}</span>
                 </div>
-                <div>
-                  <div className="dl">Entrega</div>
-                  <div className="dv">{br(c.data_entrega)}</div>
+                <div className="kcard-prod">
+                  {c.pecas} pç · {c.resumo || ""}
                 </div>
-              </div>
-              <div className="kcard-foot">
-                <span className="kcard-meta">
-                  {c.status === "tecendo"
-                    ? `${c.maquina || "—"}${c.operador ? " · " + c.operador : ""}`
-                    : c.status === "pronto"
-                      ? "pronto p/ próxima fase"
-                      : "toque p/ tecer"}
-                </span>
-                <button className={"btn " + btn.cls} onClick={() => acao(c)}>
-                  {btn.label}
-                </button>
+                <div className="kcard-boxes">
+                  <div className="kbox ped">
+                    <div className="kbox-l">PEDIDO</div>
+                    <div className="kbox-v">{br(c.data_pedido)}</div>
+                  </div>
+                  <div className="kbox ent">
+                    <div className="kbox-l">ENTREGA</div>
+                    <div className="kbox-v">{br(c.data_entrega)}</div>
+                  </div>
+                </div>
+                <div className="kcard-foot">
+                  <span className="kcard-hint">
+                    {c.status === "tecendo"
+                      ? `${c.maquina || "—"}${c.operador ? " · " + c.operador : ""}`
+                      : "toque p/ detalhes"}
+                  </span>
+                  <button className={"kbtn " + btn.cls} onClick={() => acao(c)}>
+                    {btn.label}
+                  </button>
+                </div>
               </div>
             </div>
           );
