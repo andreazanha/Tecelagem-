@@ -229,10 +229,44 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .kbtn { font: inherit; font-weight: 800; font-size: 13px; padding: 9px 18px; border-radius: 10px; border: none; color: #fff; cursor: pointer; }
 .kbtn.tecer { background: #16a34a; } .kbtn.final { background: #2563eb; } .kbtn.enviar { background: #c2a05a; color: #3a2f12; }
 
+.kdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; }
+.kdot.aguardando { background: #f59e0b; } .kdot.tecendo { background: #10b981; } .kdot.pronto { background: #3b82f6; }
+.kcol-count.aguardando { background: #f59e0b; } .kcol-count.tecendo { background: #10b981; } .kcol-count.pronto { background: #3b82f6; }
+
 @media (max-width: 900px) {
   .kanban { flex-direction: column; overflow-x: visible; }
   .kcol { flex: none; max-width: 100%; }
 }
+
+/* Popup do card de produção */
+.modal-bg { position: fixed; inset: 0; background: #0f172acc; display: grid; place-items: center; z-index: 60; padding: 16px; }
+.modal-card { background: #fff; border-radius: 16px; width: min(680px, 96vw); max-height: 92vh; overflow: auto; box-shadow: 0 20px 60px #0008; }
+.modal-hd { color: #fff; padding: 16px 18px; }
+.modal-hd.p1 { background: linear-gradient(120deg, #4338ca, #6366f1); }
+.modal-hd.p2 { background: linear-gradient(120deg, #7e22ce, #c026d3); }
+.modal-hd.unica { background: linear-gradient(120deg, #0284c7, #0ea5e9); }
+.modal-hd.kit { background: linear-gradient(120deg, #0d9488, #06b6d4); }
+.modal-hd-top { display: flex; align-items: center; justify-content: space-between; }
+.modal-pills { display: flex; gap: 8px; }
+.modal-pill { background: #ffffff33; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; }
+.modal-x { background: #ffffff2e; border: none; color: #fff; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 13px; }
+.modal-hd-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.modal-cli { font-size: 22px; font-weight: 800; }
+.modal-bd { padding: 16px 18px; }
+.modal-boxes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; margin-top: 16px; }
+.campo-l { font-size: 10px; font-weight: 800; color: var(--muted); letter-spacing: .4px; }
+.campo-v { font-size: 14px; font-weight: 700; margin-top: 1px; }
+.modal-itens { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.modal-item { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+.modal-hist { margin-top: 16px; }
+.hist { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 12.5px; font-weight: 700; }
+.hist .muted { font-weight: 500; }
+.hdot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.hdot.ok { background: #10b981; } .hdot.now { background: #f59e0b; }
+.hsep { width: 22px; height: 2px; background: #e5e7eb; display: inline-block; }
+.modal-ft { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--line); position: sticky; bottom: 0; background: #fff; }
+@media (max-width: 560px) { .modal-grid, .modal-boxes { grid-template-columns: 1fr; } }
 
 .row-novo td { background: #f8fafc; }
 .row-novo input, .row-novo select { width: 100%; }

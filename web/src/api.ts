@@ -189,6 +189,16 @@ export const api = {
       method: "DELETE",
     }).then((r) => j<{ ok: boolean }>(r)),
   listarProducao: () => fetch("/api/producao").then((r) => j<CardProducao[]>(r)),
+  detalheProducao: (pedido_id: string, parte: string) =>
+    fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}`).then((r) =>
+      j<
+        CardProducao & {
+          vendedor?: string | null;
+          observacao?: string | null;
+          blocos: { modelo: string; ref: string; comp: string; cor: string; total: number; sizes: { tipo: string; tamanho: string; qtd: number }[] }[];
+        }
+      >(r)
+    ),
   atualizarProducao: (
     pedido_id: string,
     parte: string,

@@ -4,6 +4,13 @@ import { classificar, criarCatalogo, type ItemBase } from "../classificar";
 
 export const producao = new Hono<{ Bindings: Env }>();
 
+async function catalogoDe(env: Env) {
+  const m = await env.DB.prepare(
+    "SELECT nome, parte, composicao, ref, tassel_peseira, tassel_almofada FROM modelos"
+  ).all();
+  return criarCatalogo(m.results as never[]);
+}
+
 // Backfill: todo pedido vira card de Tecelagem (mesmo sem ter gerado PDF).
 async function garantirCards(env: Env) {
   const { results: faltantes } = await env.DB.prepare(
@@ -11,10 +18,7 @@ async function garantirCards(env: Env) {
       WHERE NOT EXISTS (SELECT 1 FROM producao pr WHERE pr.pedido_id = p.id)`
   ).all<{ id: string }>();
   if (!faltantes.length) return;
-  const m = await env.DB.prepare(
-    "SELECT nome, parte, composicao, ref, tassel_peseira, tassel_almofada FROM modelos"
-  ).all();
-  const cat = criarCatalogo(m.results as never[]);
+  const cat = await catalogoDe(env);
   for (const f of faltantes) {
     const { results: itens } = await env.DB.prepare(
       "SELECT produto, ref, cor_grade, tamanho, qtd, parte, origem FROM pedido_itens WHERE pedido_id = ?"
@@ -57,6 +61,31 @@ producao.get("/", async (c) => {
    ORDER BY (p.data_entrega IS NULL), p.data_entrega, p.numero_erp`
   ).all();
   return c.json(results);
+});
+
+// DETALHE de uma parte (para o popup): dados + os blocos (modelo/cor/tamanhos) daquela parte.
+producao.get("/:pedido_id/:parte", async (c) => {
+  const pedido_id = c.req.param("pedido_id");
+  const parte = decodeURIComponent(c.req.param("parte"));
+  const card = await c.env.DB.prepare(
+    `SELECT pr.pedido_id, pr.parte, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
+            pr.iniciado_em, pr.finalizado_em,
+            p.numero_erp, p.cliente_nome, p.vendedor, p.data_pedido, p.data_entrega, p.observacao
+       FROM producao pr JOIN pedidos p ON p.id = pr.pedido_id
+      WHERE pr.pedido_id = ? AND pr.parte = ?`
+  )
+    .bind(pedido_id, parte)
+    .first();
+  if (!card) return c.json({ error: "não encontrado" }, 404);
+  const { results: itens } = await c.env.DB.prepare(
+    "SELECT produto, ref, cor_grade, tamanho, qtd, parte, origem FROM pedido_itens WHERE pedido_id = ?"
+  )
+    .bind(pedido_id)
+    .all<ItemBase>();
+  const cl = classificar(itens, await catalogoDe(c.env));
+  const blocos =
+    parte === "parte-1" ? cl.parte1 : parte === "parte-2" ? cl.parte2 : parte === "parte-unica" ? cl.parteUnica : cl.kits;
+  return c.json({ ...card, blocos: blocos || [] });
 });
 
 const STATUS = ["aguardando", "tecendo", "pronto", "enviado"];
