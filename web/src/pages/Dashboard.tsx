@@ -149,6 +149,24 @@ export function Dashboard() {
     else document.documentElement.requestFullscreen?.();
   }
 
+  // Dispara a animação de "novo pedido" sem tocar no banco (apenas demonstração).
+  function simular() {
+    const exemplos = ["Loja Aurora", "Casa Bella", "Tricô & Cia", "Boutique Lumiar", "Atelier Sul"];
+    const fake: NonNullable<DashboardData["ultimoPedido"]> = {
+      id: "sim-" + Date.now(),
+      numero: String(2000 + Math.floor(Math.random() * 900)),
+      cliente: exemplos[Math.floor(Math.random() * exemplos.length)],
+      vendedor: "Demonstração",
+      data_entrega: new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10),
+      created_at: new Date().toISOString(),
+      pecas: 40 + Math.floor(Math.random() * 160),
+    };
+    setShowCfg(false);
+    setNovo(fake);
+    if (cfg.som) beep();
+    setTimeout(() => setNovo(null), 8000);
+  }
+
   return (
     <div className="dash">
       <div className="dash-top">
@@ -183,7 +201,7 @@ export function Dashboard() {
       </div>
 
       {novo && <NovoPedidoOverlay p={novo} mostrarValores={cfg.mostrarValores} />}
-      {showCfg && <ConfigPanel cfg={cfg} setCfg={setCfg} avisos={data?.avisos || []} onFechar={() => setShowCfg(false)} onMudouAvisos={() => api.dashboard().then(setData)} />}
+      {showCfg && <ConfigPanel cfg={cfg} setCfg={setCfg} avisos={data?.avisos || []} onFechar={() => setShowCfg(false)} onMudouAvisos={() => api.dashboard().then(setData)} onSimular={simular} />}
     </div>
   );
 }
@@ -336,12 +354,14 @@ function ConfigPanel({
   avisos,
   onFechar,
   onMudouAvisos,
+  onSimular,
 }: {
   cfg: Cfg;
   setCfg: (c: Cfg) => void;
   avisos: { id: string; texto: string }[];
   onFechar: () => void;
   onMudouAvisos: () => void;
+  onSimular: () => void;
 }) {
   const [novoAviso, setNovoAviso] = useState("");
   const telasLabels: [string, string][] = [
@@ -374,6 +394,9 @@ function ConfigPanel({
         <label>Som de novo pedido <input type="checkbox" checked={cfg.som} onChange={(e) => setCfg({ ...cfg, som: e.target.checked })} /></label>
         <label>Tela de novo pedido <input type="checkbox" checked={cfg.novoPedido} onChange={(e) => setCfg({ ...cfg, novoPedido: e.target.checked })} /></label>
         <label>Mostrar valores <input type="checkbox" checked={cfg.mostrarValores} onChange={(e) => setCfg({ ...cfg, mostrarValores: e.target.checked })} /></label>
+        <button className="dash-btn" style={{ width: "100%", marginTop: 8, background: "linear-gradient(90deg,#6366f1,#a855f7)", color: "#fff" }} onClick={onSimular}>
+          🎬 Simular novo pedido
+        </button>
       </div>
 
       <div className="grp">
