@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { api, COMPOSICOES, type Modelo } from "../api";
+import { api, COMPOSICOES, type Modelo, type Cor } from "../api";
 
 export function Cadastros() {
+  const [aba, setAba] = useState<"modelos" | "cores">("modelos");
   const [itens, setItens] = useState<Modelo[]>([]);
   const [busca, setBusca] = useState("");
   const [novo, setNovo] = useState<Modelo>({
@@ -78,21 +79,42 @@ export function Cadastros() {
     <>
       <div className="page-head">
         <div>
-          <h1>Cadastro de Modelos</h1>
-          <div className="breadcrumb">Configuração › Modelos</div>
+          <h1>Cadastros</h1>
+          <div className="breadcrumb">Configuração › {aba === "modelos" ? "Modelos" : "Cores"}</div>
         </div>
-        <div className="row-gap">
-          <input
-            placeholder="🔎 Buscar modelo…"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            style={{ minWidth: 220 }}
-          />
-          <button className="btn btn-soft" onClick={() => setMostrarImport((v) => !v)}>
-            ⬆ Subir lista (nome + código)
+        <div className="segmented">
+          <button
+            type="button"
+            className={"seg" + (aba === "modelos" ? " seg-on" : "")}
+            onClick={() => setAba("modelos")}
+          >
+            🏷️ Modelos
+          </button>
+          <button
+            type="button"
+            className={"seg" + (aba === "cores" ? " seg-on" : "")}
+            onClick={() => setAba("cores")}
+          >
+            🎨 Cores
           </button>
         </div>
       </div>
+
+      {aba === "cores" && <CoresCadastro />}
+
+      {aba === "modelos" && (
+        <>
+          <div className="row-gap" style={{ justifyContent: "flex-end", marginBottom: 12 }}>
+            <input
+              placeholder="🔎 Buscar modelo…"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              style={{ minWidth: 220 }}
+            />
+            <button className="btn btn-soft" onClick={() => setMostrarImport((v) => !v)}>
+              ⬆ Subir lista (nome + código)
+            </button>
+          </div>
 
       {mostrarImport && (
         <div className="card pad">
@@ -223,6 +245,8 @@ export function Cadastros() {
           </tbody>
         </table>
       </div>
+        </>
+      )}
     </>
   );
 }
@@ -304,6 +328,152 @@ function ModeloRow({
       </td>
       <td>
         <button className="icon-btn" title="Remover" onClick={() => onRemover(m)}>
+          ✕
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+// ── Cadastro de Cores (cor visual do PDF) ────────────────────────────────────
+function CoresCadastro() {
+  const [cores, setCores] = useState<Cor[]>([]);
+  const [busca, setBusca] = useState("");
+  const [novo, setNovo] = useState<Cor>({ nome: "", hex: "#cccccc" });
+
+  function recarregar() {
+    api.listarCores().then(setCores).catch(() => {});
+  }
+  useEffect(recarregar, []);
+
+  async function salvar(c: Cor) {
+    try {
+      await api.salvarCor(c);
+      recarregar();
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  }
+  async function adicionar() {
+    if (!novo.nome.trim()) return;
+    await salvar(novo);
+    setNovo({ nome: "", hex: "#cccccc" });
+  }
+  async function remover(c: Cor) {
+    await api.excluirCor(c.nome);
+    recarregar();
+  }
+
+  const filtrados = cores.filter((c) => c.nome.toLowerCase().includes(busca.toLowerCase()));
+
+  return (
+    <>
+      <div className="row-gap" style={{ justifyContent: "flex-end", marginBottom: 12 }}>
+        <input
+          placeholder="🔎 Buscar cor…"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          style={{ minWidth: 220 }}
+        />
+      </div>
+      <p className="muted" style={{ marginTop: -4, marginBottom: 16 }}>
+        Cadastre o <strong>nome da cor</strong> e a <strong>cor visual</strong> — é ela que pinta a
+        bolinha de cor no PDF de produção (cores sem cadastro saem em cinza). {cores.length} cores.
+      </p>
+
+      <div className="card">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Cor</th>
+              <th>Cor visual</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="row-novo">
+              <td>
+                <input
+                  placeholder="Nome da cor (ex.: ROMENIA)"
+                  value={novo.nome}
+                  onChange={(e) => setNovo({ ...novo, nome: e.target.value })}
+                  onKeyDown={(e) => e.key === "Enter" && adicionar()}
+                />
+              </td>
+              <td>
+                <div className="row-gap" style={{ alignItems: "center" }}>
+                  <input
+                    type="color"
+                    value={novo.hex || "#cccccc"}
+                    onChange={(e) => setNovo({ ...novo, hex: e.target.value })}
+                    style={{ width: 44, height: 32, padding: 2 }}
+                  />
+                  <input
+                    className="w-sm"
+                    placeholder="#RRGGBB"
+                    value={novo.hex || ""}
+                    onChange={(e) => setNovo({ ...novo, hex: e.target.value })}
+                  />
+                </div>
+              </td>
+              <td>
+                <button className="btn btn-primary" onClick={adicionar}>
+                  ＋
+                </button>
+              </td>
+            </tr>
+
+            {filtrados.map((c) => (
+              <CorRow key={c.nome} c={c} onSalvar={salvar} onRemover={remover} />
+            ))}
+            {cores.length === 0 && (
+              <tr>
+                <td colSpan={3} className="empty pad">
+                  Nenhuma cor cadastrada ainda.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function CorRow({
+  c,
+  onSalvar,
+  onRemover,
+}: {
+  c: Cor;
+  onSalvar: (c: Cor) => void;
+  onRemover: (c: Cor) => void;
+}) {
+  const hex = c.hex || "#cccccc";
+  return (
+    <tr>
+      <td className="strong">{c.nome}</td>
+      <td>
+        <div className="row-gap" style={{ alignItems: "center" }}>
+          <input
+            type="color"
+            value={hex}
+            onChange={(e) => onSalvar({ ...c, hex: e.target.value })}
+            style={{ width: 44, height: 32, padding: 2 }}
+          />
+          <input
+            className="w-sm"
+            defaultValue={c.hex || ""}
+            placeholder="#RRGGBB"
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              if (v !== (c.hex || "")) onSalvar({ ...c, hex: v });
+            }}
+          />
+        </div>
+      </td>
+      <td>
+        <button className="icon-btn" title="Remover" onClick={() => onRemover(c)}>
           ✕
         </button>
       </td>

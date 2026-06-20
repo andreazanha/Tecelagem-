@@ -94,23 +94,25 @@ export const cores = new Hono<{ Bindings: Env }>();
 
 cores.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT nome, poliester FROM cores ORDER BY nome"
+    "SELECT nome, hex FROM cores ORDER BY nome"
   ).all();
   return c.json(results);
 });
 
 cores.post("/", async (c) => {
-  const b = await c.req.json<{ nome?: string; poliester?: boolean | number }>();
+  const b = await c.req.json<{ nome?: string; hex?: string }>();
   const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
-  const poliester = b.poliester ? 1 : 0;
+  // valida hex (#RGB ou #RRGGBB); vazio = sem cor definida
+  const hexRaw = (b.hex || "").trim();
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hexRaw) ? hexRaw : null;
   await c.env.DB.prepare(
-    `INSERT INTO cores (nome, poliester) VALUES (?, ?)
-     ON CONFLICT(nome) DO UPDATE SET poliester = excluded.poliester`
+    `INSERT INTO cores (nome, hex) VALUES (?, ?)
+     ON CONFLICT(nome) DO UPDATE SET hex = excluded.hex`
   )
-    .bind(nome, poliester)
+    .bind(nome, hex)
     .run();
-  return c.json({ nome, poliester }, 201);
+  return c.json({ nome, hex }, 201);
 });
 
 cores.delete("/:nome", async (c) => {

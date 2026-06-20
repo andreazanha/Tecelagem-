@@ -88,7 +88,8 @@ export async function gerarPdfParte(
   subtitulo: string,
   banda: "gold" | "green",
   ped: PedidoInfo,
-  blocos: Bloco[]
+  blocos: Bloco[],
+  cores: Record<string, string> = {} // nome(maiúsculo) -> hex; sobrescreve o padrão SW
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
@@ -188,7 +189,8 @@ export async function gerarPdfParte(
     T("Ref:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Ref:", 9.5) + 5;
     T(b.ref || "—", tx, y + 17, 10, bld); tx += bld.widthOfTextAtSize(b.ref || "—", 10) + 10;
     if (b.comp) T("· " + b.comp, tx, y + 17, 8.5, bld, REDC);
-    Circle(qx + 6, y + 13, 6, hx(SW[b.cor?.toUpperCase()] || "#c9cdd3"));
+    const corKey = (b.cor || "").toUpperCase();
+    Circle(qx + 6, y + 13, 6, hx(cores[corKey] || SW[corKey] || "#c9cdd3"));
     T(b.cor, qx + 18, y + 17, 10.5, bld);
     TR(`Total: ${b.total} ${b.total === 1 ? "peça" : "peças"}`, ix + iw - 10, y + 17, 10, bld);
     // cabeçalho tabela

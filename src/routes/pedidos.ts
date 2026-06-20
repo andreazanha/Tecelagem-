@@ -21,6 +21,16 @@ async function catalogos(env: Env): Promise<Catalogo> {
   return criarCatalogo(m.results);
 }
 
+// Cores cadastradas → mapa NOME(maiúsculo) -> hex, para a bolinha de cor do PDF.
+async function swatches(env: Env): Promise<Record<string, string>> {
+  const { results } = await env.DB.prepare(
+    "SELECT nome, hex FROM cores WHERE hex IS NOT NULL"
+  ).all<{ nome: string; hex: string | null }>();
+  const m: Record<string, string> = {};
+  for (const r of results) if (r.hex) m[(r.nome || "").trim().toUpperCase()] = r.hex;
+  return m;
+}
+
 type Job = { tipo: string; label: string; banda: "gold" | "green"; sub: string; blocos: ReturnType<typeof classificar>["kits"] };
 function montarJobs(cl: ReturnType<typeof classificar>, kitOpt: "junto" | "separado"): Job[] {
   const jobs: Job[] = [];
@@ -112,11 +122,12 @@ pedidos.post("/previa", async (c) => {
     observacao: b.observacao || "",
   };
 
+  const cores = await swatches(c.env);
   const jobs = montarJobs(cl, kitOpt);
   const partes: Uint8Array[] = [];
   for (const job of jobs) {
     const codigo = codigoParte(baseNum, TIPOS_PDF[job.tipo]?.suf ?? "");
-    partes.push(await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, job.blocos));
+    partes.push(await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, job.blocos, cores));
   }
   const pdf = await mergePdfs(partes);
   return new Response(pdf, {
@@ -348,12 +359,13 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     observacao: ped.observacao || "",
   };
 
+  const cores = await swatches(c.env);
   const jobs = montarJobs(cl, kitOpt);
 
   const arquivos: { tipo: string; label: string; url: string }[] = [];
   for (const job of jobs) {
     const codigo = codigoParte(baseNum, TIPOS_PDF[job.tipo]?.suf ?? "");
-    const bytes = await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, job.blocos);
+    const bytes = await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, job.blocos, cores);
     const key = `pedidos/${id}/${job.tipo}.pdf`;
     await c.env.BUCKET.put(key, bytes, { httpMetadata: { contentType: "application/pdf" } });
     arquivos.push({ tipo: job.tipo, label: `${codigo} · ${job.label}`, url: `/api/pedidos/${id}/pdf/${job.tipo}` });

@@ -50,7 +50,7 @@ export const COMPOSICOES = ["", "100% POLIÉSTER", "100% ACRÍLICO", "100% ALGOD
 
 export interface Cor {
   nome: string;
-  poliester: number | boolean; // 1/0
+  hex?: string | null; // cor visual da bolinha do PDF (ex.: #7a5230)
 }
 
 export interface Sugestao {
