@@ -5,6 +5,7 @@ import { VERSION } from "../version";
 const NAV = [
   { to: "/pedidos", icon: "📦", label: "Pedidos" },
   { to: "/producao", icon: "🧶", label: "Tecelagem" },
+  { to: "/passadoria", icon: "🔥", label: "Passadoria" },
   { to: "/cadastros", icon: "🏷️", label: "Cadastros" },
   { to: "/romaneios", icon: "📋", label: "Romaneios" },
   { to: "/estoque", icon: "🗃️", label: "Estoque", disabled: true },

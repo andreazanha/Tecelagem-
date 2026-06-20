@@ -48,18 +48,21 @@ async function garantirCards(env: Env) {
   }
 }
 
-// QUADRO — todas as partes em produção (não enviadas), com dados do pedido.
+// QUADRO de um SETOR (default tecelagem) — partes naquele setor, com dados do pedido.
 producao.get("/", async (c) => {
   await garantirCards(c.env);
+  const setor = c.req.query("setor") || "tecelagem";
   const { results } = await c.env.DB.prepare(
-    `SELECT pr.pedido_id, pr.parte, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
+    `SELECT pr.pedido_id, pr.parte, pr.setor, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
             pr.iniciado_em, pr.finalizado_em,
             p.numero_erp, p.cliente_nome, p.data_pedido, p.data_entrega
        FROM producao pr
        JOIN pedidos p ON p.id = pr.pedido_id
-      WHERE pr.status != 'enviado'
+      WHERE pr.setor = ?
    ORDER BY (p.data_entrega IS NULL), p.data_entrega, p.numero_erp`
-  ).all();
+  )
+    .bind(setor)
+    .all();
   return c.json(results);
 });
 
@@ -88,19 +91,23 @@ producao.get("/:pedido_id/:parte", async (c) => {
   return c.json({ ...card, blocos: blocos || [] });
 });
 
-const STATUS = ["aguardando", "tecendo", "pronto", "enviado"];
+const STATUS = ["aguardando", "fazendo", "pronto"];
 
-// MUDA O STATUS de uma parte (Tecer → tecendo, Finalizar → pronto, Enviar → enviado).
+// MUDA status/setor de uma parte: Fazer → fazendo, Finalizar → pronto, Enviar → próximo setor.
 producao.post("/:pedido_id/:parte", async (c) => {
   const pedido_id = c.req.param("pedido_id");
   const parte = decodeURIComponent(c.req.param("parte"));
   const b = await c.req
-    .json<{ status?: string; maquina?: string; operador?: string }>()
-    .catch(() => ({}) as { status?: string; maquina?: string; operador?: string });
+    .json<{ status?: string; setor?: string; maquina?: string; operador?: string }>()
+    .catch(() => ({}) as { status?: string; setor?: string; maquina?: string; operador?: string });
   const status = STATUS.includes(b.status || "") ? (b.status as string) : "aguardando";
 
   const sets: string[] = ["status = ?"];
   const binds: (string | null)[] = [status];
+  if (b.setor) {
+    sets.push("setor = ?", "maquina = NULL", "operador = NULL", "iniciado_em = NULL", "finalizado_em = NULL");
+    binds.push(b.setor.trim());
+  }
   if (b.maquina !== undefined) {
     sets.push("maquina = ?");
     binds.push((b.maquina || "").trim() || null);
@@ -109,7 +116,7 @@ producao.post("/:pedido_id/:parte", async (c) => {
     sets.push("operador = ?");
     binds.push((b.operador || "").trim() || null);
   }
-  if (status === "tecendo") sets.push("iniciado_em = datetime('now')");
+  if (status === "fazendo") sets.push("iniciado_em = datetime('now')");
   if (status === "pronto") sets.push("finalizado_em = datetime('now')");
 
   binds.push(pedido_id, parte);

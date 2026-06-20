@@ -188,7 +188,8 @@ export const api = {
     fetch(`/api/tasseis/${encodeURIComponent(cor)}/${encodeURIComponent(tamanho)}`, {
       method: "DELETE",
     }).then((r) => j<{ ok: boolean }>(r)),
-  listarProducao: () => fetch("/api/producao").then((r) => j<CardProducao[]>(r)),
+  listarProducao: (setor = "tecelagem") =>
+    fetch(`/api/producao?setor=${encodeURIComponent(setor)}`).then((r) => j<CardProducao[]>(r)),
   detalheProducao: (pedido_id: string, parte: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}`).then((r) =>
       j<

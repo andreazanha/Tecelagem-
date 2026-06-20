@@ -215,7 +215,7 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .kstatus { font-size: 11.5px; font-weight: 800; padding: 4px 10px; border-radius: 20px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .kstatus::before { content: "●"; font-size: 9px; }
 .kstatus.aguardando { background: #fff7ed; color: #b45309; }
-.kstatus.tecendo { background: #ecfdf5; color: #047857; }
+.kstatus.tecendo, .kstatus.fazendo { background: #ecfdf5; color: #047857; }
 .kstatus.pronto { background: #eff6ff; color: #1d4ed8; }
 .kcard-prod { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
 .kcard-boxes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
@@ -230,8 +230,8 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .kbtn.tecer { background: #16a34a; } .kbtn.final { background: #2563eb; } .kbtn.enviar { background: #c2a05a; color: #3a2f12; }
 
 .kdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; }
-.kdot.aguardando { background: #f59e0b; } .kdot.tecendo { background: #10b981; } .kdot.pronto { background: #3b82f6; }
-.kcol-count.aguardando { background: #f59e0b; } .kcol-count.tecendo { background: #10b981; } .kcol-count.pronto { background: #3b82f6; }
+.kdot.aguardando { background: #f59e0b; } .kdot.fazendo { background: #10b981; } .kdot.pronto { background: #3b82f6; }
+.kcol-count.aguardando { background: #f59e0b; } .kcol-count.fazendo { background: #10b981; } .kcol-count.pronto { background: #3b82f6; }
 
 @media (max-width: 900px) {
   .kanban { flex-direction: column; overflow-x: visible; }
