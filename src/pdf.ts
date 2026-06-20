@@ -36,11 +36,26 @@ export interface PedidoInfo {
 }
 
 // Quebra um texto em linhas que cabem em `maxW` (pdf-lib não tem wrap automático).
+// Também quebra PALAVRAS muito longas (sem espaços) caractere a caractere.
 function wrap(s: string, font: PDFFont, size: number, maxW: number): string[] {
-  const palavras = s.split(/\s+/);
   const linhas: string[] = [];
   let atual = "";
-  for (const p of palavras) {
+  const fechar = () => {
+    if (atual) {
+      linhas.push(atual);
+      atual = "";
+    }
+  };
+  for (let p of s.split(/\s+/).filter(Boolean)) {
+    // palavra maior que a largura → corta em pedaços que cabem
+    while (font.widthOfTextAtSize(p, size) > maxW) {
+      fechar();
+      let i = 1;
+      while (i < p.length && font.widthOfTextAtSize(p.slice(0, i + 1), size) <= maxW) i++;
+      linhas.push(p.slice(0, i));
+      p = p.slice(i);
+    }
+    if (!p) continue;
     const tent = atual ? `${atual} ${p}` : p;
     if (font.widthOfTextAtSize(tent, size) > maxW && atual) {
       linhas.push(atual);
@@ -49,7 +64,7 @@ function wrap(s: string, font: PDFFont, size: number, maxW: number): string[] {
       atual = tent;
     }
   }
-  if (atual) linhas.push(atual);
+  fechar();
   return linhas;
 }
 

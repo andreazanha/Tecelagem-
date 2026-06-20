@@ -37,5 +37,4 @@ INSERT OR IGNORE INTO modelos (nome, parte, ref, composicao) VALUES
   ('Frascati',2,'1118',NULL),
   ('Genebra',2,'1119',NULL),
   ('Paris',2,'1120',NULL),
-  ('Predileta (Soft)',2,'1121',NULL)
-ON CONFLICT(nome) DO UPDATE SET ref = excluded.ref;
+  ('Predileta (Soft)',2,'1121',NULL);
