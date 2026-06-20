@@ -73,7 +73,42 @@ h2 { font-size: 15px; margin: 0 0 12px; }
 .strong { font-weight: 700; }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-@media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } .app { grid-template-columns: 1fr; grid-template-areas: "top" "main"; } .sidebar { display: none; } }
+
+/* ── Mobile ─────────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .grid-2 { grid-template-columns: 1fr; }
+  /* sidebar vira barra de navegação horizontal (rolável) abaixo do topo */
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 56px auto 1fr;
+    grid-template-areas: "top" "side" "main";
+  }
+  .sidebar { padding: 8px 10px; }
+  .sidebar-title, .sidebar-kicker, .sidebar-version { display: none; }
+  .sidebar nav { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .nav-item { margin: 0; padding: 8px 12px; white-space: nowrap; border-radius: 9px; }
+  .nav-item .soon { display: none; }
+  .nav-item.active { box-shadow: none; background: #6366f12e; }
+
+  .content { padding: 16px 14px; }
+  h1 { font-size: 20px; }
+  .page-head { flex-wrap: wrap; gap: 10px; }
+  .page-head > div:first-child { flex: 1 1 100%; }
+
+  /* tabelas largas: rolagem horizontal dentro do card */
+  .card { overflow-x: auto; }
+  .table { min-width: 620px; }
+
+  /* campos lado a lado empilham */
+  .field-row { grid-template-columns: 1fr; }
+  .info-grid { grid-template-columns: 1fr 1fr; }
+  .topbar { padding: 0 14px; }
+  .brand-sub { display: none; }
+  .inline-form { flex-wrap: wrap; }
+}
+@media (max-width: 480px) {
+  .info-grid { grid-template-columns: 1fr; }
+}
 
 .field { margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
