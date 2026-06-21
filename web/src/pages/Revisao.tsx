@@ -19,7 +19,8 @@ const BASE: Omit<QuadroCfg, "colunas"> = {
   statPronto: "—",
   mostrarMaquinas: false,
   enviarLabel: "Enviar p/ expedição ▶",
-  nota: "Cada coluna é uma revisadora. Em 'Aguardando para enviar', toque em Revisar e escolha a revisadora; no card dela, Enviar p/ expedição.",
+  setorDefeito: "costura", // "Voltou com defeito" devolve à costureira que fez
+  nota: "Cada coluna é uma revisadora. Revisar → coluna dela → Enviar p/ expedição. Com defeito, devolve para a costureira que fez.",
 };
 
 export function Revisao() {
@@ -39,6 +40,7 @@ export function Revisao() {
       status: "fazendo",
       operador: r.nome,
       acao: "enviar",
+      acaoExtra: "devolverDefeito",
     })),
   ];
 

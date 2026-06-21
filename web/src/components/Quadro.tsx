@@ -51,7 +51,7 @@ const brDT = (s?: string | null) => {
   return isNaN(+d) ? "—" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 };
 
-export type Acao = "fazer" | "finalizar" | "enviar" | "defeito" | "voltar";
+export type Acao = "fazer" | "finalizar" | "enviar" | "defeito" | "voltar" | "devolverDefeito";
 export interface ColCfg {
   cor: "aguardando" | "fazendo" | "pronto" | "prioridade" | "defeito";
   titulo: string;
@@ -87,6 +87,7 @@ export interface QuadroCfg {
   semPrioridade?: boolean; // esconde o "passar na frente" (ex.: Costura)
   proxSetorKit?: string | null; // destino dos kits (pronta-entrega) ao enviar, se diferente
   escolherOperadorAoEnviar?: boolean; // ao enviar, abre a lista de pessoas do próximo setor
+  setorDefeito?: string; // setor para onde "Voltou com defeito" devolve a peça (ex.: Revisão → Costura)
 }
 
 export function Quadro({ cfg }: { cfg: QuadroCfg }) {
@@ -132,7 +133,10 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     if (acao === "fazer") setIniciar(c);
     else if (acao === "finalizar") mudar(c, { status: "pronto" });
     else if (acao === "defeito") mudar(c, { status: "defeito" });
-    else if (acao === "voltar") mudar(c, { status: "fazendo", operador: c.operador || "" });
+    else if (acao === "voltar")
+      // Volta para a coluna da pessoa (se tiver dono); senão, para a fila de distribuição.
+      mudar(c, { status: c.operador ? "fazendo" : "aguardando", operador: c.operador || "" });
+    else if (acao === "devolverDefeito") devolverComDefeito(c);
     else {
       // Enviar: escolhendo a pessoa do próximo setor (ex.: Corte → costureira)…
       if (cfg.escolherOperadorAoEnviar) {
@@ -148,6 +152,22 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   // Próximo setor de um card (kits podem ter destino diferente, ex.: Costura → Estoque).
   function destinoDe(c: CardProducao) {
     return c.parte === "pronta-entrega" && cfg.proxSetorKit !== undefined ? cfg.proxSetorKit : cfg.proxSetor;
+  }
+
+  // "Voltou com defeito" (ex.: na Revisão): devolve a peça ao setor de defeito,
+  // já endereçada à pessoa que a fez (último operador naquele setor).
+  async function devolverComDefeito(c: CardProducao) {
+    const destino = cfg.setorDefeito;
+    if (!destino) return;
+    let operador = "";
+    try {
+      const h = await api.historicoProducao(c.pedido_id, c.parte);
+      const ult = [...h.passagens].reverse().find((p) => p.setor === destino && p.operador);
+      operador = ult?.operador || "";
+    } catch {
+      /* sem histórico: cai na coluna de defeito sem dono */
+    }
+    mudar(c, { setor: destino, status: "defeito", operador });
   }
 
   // "Passar na frente": liga/desliga a prioridade da parte (com desfazer).
@@ -499,14 +519,14 @@ function btnDe(acao: Acao, cfg: QuadroCfg) {
   if (acao === "fazer") return { cls: "tecer", label: cfg.fazerLabel };
   if (acao === "finalizar") return { cls: "final", label: "Finalizar" };
   if (acao === "defeito") return { cls: "defeito", label: "⚠ Defeito" };
+  if (acao === "devolverDefeito") return { cls: "defeito", label: "⚠ Voltou com defeito" };
   if (acao === "voltar") return { cls: "tecer", label: "↩ Refazer" };
   return { cls: "enviar", label: cfg.enviarLabel || "Enviar ▶" };
 }
-// Texto do botão de uma coluna para um card — "enviar" muda conforme kit/normal.
-function labelBotao(col: ColCfg, c: CardProducao, cfg: QuadroCfg): string {
-  if (col.botaoLabel) return col.botaoLabel;
-  if (col.acao === "enviar" && c.parte === "pronta-entrega" && cfg.enviarLabelKit) return cfg.enviarLabelKit;
-  return btnDe(col.acao, cfg).label;
+// Texto de um botão para um card — "enviar" muda conforme kit/normal.
+function rotulo(acao: Acao, c: CardProducao, cfg: QuadroCfg): string {
+  if (acao === "enviar" && c.parte === "pronta-entrega" && cfg.enviarLabelKit) return cfg.enviarLabelKit;
+  return btnDe(acao, cfg).label;
 }
 
 function Coluna({
@@ -586,7 +606,7 @@ function Coluna({
                         className={"kbtn " + btnDe(col.acaoExtra, cfg).cls}
                         onClick={(e) => { e.stopPropagation(); onAcao(c, col.acaoExtra!); }}
                       >
-                        {btnDe(col.acaoExtra, cfg).label}
+                        {rotulo(col.acaoExtra, c, cfg)}
                       </button>
                     )}
                     <button
@@ -596,7 +616,7 @@ function Coluna({
                         onAcao(c, col.acao);
                       }}
                     >
-                      {labelBotao(col, c, cfg)}
+                      {col.botaoLabel || rotulo(col.acao, c, cfg)}
                     </button>
                   </div>
                 </div>
@@ -677,11 +697,12 @@ function CardModal({
           ? "voltar"
           : "enviar";
   const btn = btnDe(acaoAtual, cfg);
-  const btnLabel =
-    acaoAtual === "enviar" && card.parte === "pronta-entrega" && cfg.enviarLabelKit ? cfg.enviarLabelKit : btn.label;
-  // Botão "Defeito" no modal (setores com defeito), enquanto a peça está sendo
-  // feita ou já pronta — não quando já está marcada como defeito.
-  const mostrarDefeito = cfg.defeito && (card.status === "fazendo" || card.status === "pronto");
+  const btnLabel = rotulo(acaoAtual, card, cfg);
+  const emTrabalho = card.status === "fazendo" || card.status === "pronto";
+  // "Defeito" no próprio setor (Costura) ou "Voltou com defeito" devolvendo a
+  // peça ao setor de origem (Revisão → Costura).
+  const mostrarDefeito = cfg.defeito && emTrabalho;
+  const mostrarDevolver = !!cfg.setorDefeito && emTrabalho;
 
   return (
     <div className="modal-bg" onClick={onFechar}>
@@ -792,6 +813,11 @@ function CardModal({
           {mostrarDefeito && (
             <button className="kbtn defeito" onClick={() => onAcao(card, "defeito")}>
               ⚠ Defeito
+            </button>
+          )}
+          {mostrarDevolver && (
+            <button className="kbtn defeito" onClick={() => onAcao(card, "devolverDefeito")}>
+              ⚠ Voltou com defeito
             </button>
           )}
           <button className={"kbtn " + btn.cls} onClick={() => onAcao(card, acaoAtual)}>

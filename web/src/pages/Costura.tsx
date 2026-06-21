@@ -45,7 +45,7 @@ export function Costura() {
       acao: "enviar",
       acaoExtra: "defeito",
     })),
-    { cor: "defeito", titulo: "⚠ Voltou com defeito", sub: "Refazer e reenviar", status: "defeito", acao: "voltar" },
+    { cor: "defeito", titulo: "⚠ Voltou com defeito", sub: "Refazer ou enviar direto", status: "defeito", acao: "voltar", acaoExtra: "enviar" },
   ];
 
   return <Quadro cfg={{ ...BASE, colunas }} />;
