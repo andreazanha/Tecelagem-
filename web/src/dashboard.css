@@ -254,7 +254,7 @@
    O cabeçalho some, mas os CONTROLES seguem no rodapé (mesmo lugar das outras
    telas), e a entrada usa a mesma animação slideIn. */
 .dash-screen.full { inset: 0; padding: 0; }
-.dash .tcl { position: absolute; }
+.dash .tcl, .dash .cst { position: absolute; }
 
 /* ── Overlay: novo pedido ───────────────────────────────────────────────────── */
 .novo { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; overflow: hidden;
