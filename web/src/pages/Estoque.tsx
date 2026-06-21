@@ -19,9 +19,9 @@ const ESTOQUE: QuadroCfg = {
   nota: "Os kits chegam da Costura na coluna Entrada. Separe e deixe disponível no estoque.",
   colunas: [
     { cor: "prioridade", titulo: "Passar na frente", sub: "Urgentes / clientes atrasados", status: "aguardando", acao: "fazer", somentePrioridade: true },
-    { cor: "aguardando", titulo: "Entrada", sub: "Kits vindos da costura", status: "aguardando", acao: "fazer" },
-    { cor: "fazendo", titulo: "Separação", sub: "Em separação", status: "fazendo", acao: "finalizar", botaoLabel: "Separado ▶" },
-    { cor: "pronto", titulo: "Disponível", sub: "Pronto no estoque", status: "pronto", acao: "enviar" },
+    { cor: "aguardando", corCard: "kit", titulo: "Entrada", sub: "Kits vindos da costura", status: "aguardando", acao: "fazer" },
+    { cor: "fazendo", corCard: "kit", titulo: "Separação", sub: "Em separação", status: "fazendo", acao: "finalizar", botaoLabel: "Separado ▶" },
+    { cor: "pronto", corCard: "kit", titulo: "Disponível", sub: "Pronto no estoque", status: "pronto", acao: "enviar" },
   ],
 };
 

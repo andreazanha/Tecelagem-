@@ -237,6 +237,15 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .kcol-head.prioridade .kcol-title { color: #be123c; } .kcol-head.prioridade .kcol-sub { color: #e11d48; }
 .kcol-head.defeito { background: #fef2f2; border-color: #fecaca; border-left-color: #dc2626; }
 .kcol-head.defeito .kcol-title { color: #b91c1c; } .kcol-head.defeito .kcol-sub { color: #dc2626; }
+/* Cabeçalho com a cor do card (tipo da peça), letras brancas. */
+.kcol-head.card-p1 { background: linear-gradient(120deg, #4338ca, #6366f1); border-color: #4338ca; border-left-color: #312e81; }
+.kcol-head.card-p2 { background: linear-gradient(120deg, #7e22ce, #c026d3); border-color: #7e22ce; border-left-color: #581c87; }
+.kcol-head.card-unica { background: linear-gradient(120deg, #0284c7, #0ea5e9); border-color: #0284c7; border-left-color: #075985; }
+.kcol-head.card-kit { background: linear-gradient(120deg, #0d9488, #06b6d4); border-color: #0d9488; border-left-color: #115e59; }
+.kcol-head.card-p1 .kcol-title, .kcol-head.card-p2 .kcol-title, .kcol-head.card-unica .kcol-title, .kcol-head.card-kit .kcol-title { color: #fff; }
+.kcol-head.card-p1 .kcol-sub, .kcol-head.card-p2 .kcol-sub, .kcol-head.card-unica .kcol-sub, .kcol-head.card-kit .kcol-sub { color: #ffffffcc; }
+.kcol-head.card-p1 .kcol-count, .kcol-head.card-p2 .kcol-count, .kcol-head.card-unica .kcol-count, .kcol-head.card-kit .kcol-count { background: #ffffff33; color: #fff; }
+.kcol-head.card-p1 .kdot, .kcol-head.card-p2 .kdot, .kcol-head.card-unica .kdot, .kcol-head.card-kit .kdot { background: #ffffffcc; }
 
 /* Linha do tempo do pedido (modal) */
 .tl { display: flex; flex-direction: column; margin-top: 8px; }

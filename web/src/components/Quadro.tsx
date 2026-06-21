@@ -59,6 +59,7 @@ export interface ColCfg {
   status: "aguardando" | "fazendo" | "pronto" | "defeito";
   tipos?: string[];
   acao: Acao;
+  corCard?: "p1" | "p2" | "unica" | "kit"; // pinta o cabeçalho com a cor do card (tipo da peça)
   operador?: string; // filtra cards por costureira/operador (coluna por pessoa)
   botaoLabel?: string; // sobrescreve o texto do botão da coluna
   acaoExtra?: Acao; // botão secundário no card (ex.: "Defeito")
@@ -549,7 +550,7 @@ function Coluna({
   const btn = btnDe(col.acao, cfg);
   return (
     <div className={"kcol" + (col.somentePrioridade ? " prio" : "") + (col.cor === "defeito" ? " defeito" : "")}>
-      <div className={"kcol-head " + col.cor}>
+      <div className={"kcol-head " + (col.corCard ? "card-" + col.corCard : col.cor)}>
         <div>
           <div className="kcol-title">
             <span className={"kdot " + col.cor} /> {col.somentePrioridade ? "🔥 " : ""}{col.titulo}

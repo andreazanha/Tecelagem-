@@ -18,12 +18,12 @@ const TECELAGEM: QuadroCfg = {
     "Parte 1 e Parte 2 seguem separadas até o Corte. Use ★ Passar na frente p/ priorizar pedidos urgentes. Clique no card p/ detalhes.",
   colunas: [
     { cor: "prioridade", titulo: "Passar na frente", sub: "Urgentes / clientes atrasados", status: "aguardando", acao: "fazer", somentePrioridade: true },
-    { cor: "aguardando", titulo: "Aguardando", sub: "Máquina 3 · Parte 1 / Única", status: "aguardando", tipos: ["parte-1", "parte-unica"], acao: "fazer" },
-    { cor: "aguardando", titulo: "Aguardando", sub: "Máquina 7 · Parte 2", status: "aguardando", tipos: ["parte-2"], acao: "fazer" },
-    { cor: "aguardando", titulo: "Kits", sub: "Pedidos de estoque", status: "aguardando", tipos: ["pronta-entrega"], acao: "fazer" },
+    { cor: "aguardando", corCard: "p1", titulo: "Aguardando", sub: "Máquina 3 · Parte 1 / Única", status: "aguardando", tipos: ["parte-1", "parte-unica"], acao: "fazer" },
+    { cor: "aguardando", corCard: "p2", titulo: "Aguardando", sub: "Máquina 7 · Parte 2", status: "aguardando", tipos: ["parte-2"], acao: "fazer" },
+    { cor: "aguardando", corCard: "kit", titulo: "Kits", sub: "Pedidos de estoque", status: "aguardando", tipos: ["pronta-entrega"], acao: "fazer" },
     { cor: "fazendo", titulo: "Tecendo", sub: "Em produção", status: "fazendo", acao: "finalizar" },
     { cor: "pronto", titulo: "Tecidos", sub: "Partes prontas", status: "pronto", tipos: ["parte-1", "parte-2", "parte-unica"], acao: "enviar" },
-    { cor: "pronto", titulo: "Kits prontos", sub: "Seguir p/ passadoria", status: "pronto", tipos: ["pronta-entrega"], acao: "enviar" },
+    { cor: "pronto", corCard: "kit", titulo: "Kits prontos", sub: "Seguir p/ passadoria", status: "pronto", tipos: ["pronta-entrega"], acao: "enviar" },
   ],
 };
 
