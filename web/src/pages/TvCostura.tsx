@@ -80,8 +80,11 @@ function Ic({ n, s = 24 }: { n: string; s?: number }) {
   );
 }
 
+// Última resposta boa, para a tela reabrir já com dados reais no loop.
+let cacheCostura: TvCosturaData | null = null;
+
 export function TvCostura() {
-  const [raw, setRaw] = useState<TvCosturaData | null>(null);
+  const [raw, setRaw] = useState<TvCosturaData | null>(() => cacheCostura);
   const [hora, setHora] = useState(new Date());
 
   useEffect(() => {
@@ -93,7 +96,7 @@ export function TvCostura() {
     const puxar = async () => {
       try {
         const d = await api.tvCostura();
-        if (vivo) setRaw(d);
+        if (vivo) { cacheCostura = d; setRaw(d); }
       } catch {
         /* ignora */
       }

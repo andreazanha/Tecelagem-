@@ -71,8 +71,11 @@ function Ic({ n, s = 24 }: { n: string; s?: number }) {
   );
 }
 
+// Última resposta boa, para a tela reabrir já com dados reais no loop.
+let cacheRevisao: TvRevisaoData | null = null;
+
 export function TvRevisao() {
-  const [raw, setRaw] = useState<TvRevisaoData | null>(null);
+  const [raw, setRaw] = useState<TvRevisaoData | null>(() => cacheRevisao);
   const [hora, setHora] = useState(new Date());
 
   useEffect(() => {
@@ -82,7 +85,7 @@ export function TvRevisao() {
   useEffect(() => {
     let vivo = true;
     const puxar = async () => {
-      try { const d = await api.tvRevisao(); if (vivo) setRaw(d); } catch { /* ignora */ }
+      try { const d = await api.tvRevisao(); if (vivo) { cacheRevisao = d; setRaw(d); } } catch { /* ignora */ }
     };
     puxar();
     const t = setInterval(puxar, 5000);

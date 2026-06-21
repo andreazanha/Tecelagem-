@@ -85,8 +85,12 @@ function Ic({ n, s = 24 }: { n: string; s?: number }) {
   );
 }
 
+// Guarda a última resposta boa: ao voltar no loop, a tela já abre com os dados
+// reais (sem piscar os de demonstração antes de carregar).
+let cacheTecelagem: TvTecelagemData | null = null;
+
 export function TvTecelagem() {
-  const [raw, setRaw] = useState<TvTecelagemData | null>(null);
+  const [raw, setRaw] = useState<TvTecelagemData | null>(() => cacheTecelagem);
   const [hora, setHora] = useState(new Date());
   const [foto, setFoto] = useState<string | null>(() => localStorage.getItem("tclFoto2") || FOTO_PADRAO);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -101,7 +105,7 @@ export function TvTecelagem() {
     async function puxar() {
       try {
         const d = await api.tvTecelagem();
-        if (vivo) setRaw(d);
+        if (vivo) { cacheTecelagem = d; setRaw(d); }
       } catch {
         /* ignora */
       }
