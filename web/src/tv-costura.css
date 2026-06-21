@@ -2,7 +2,7 @@
    TV COSTURA — Produção em tempo real · paleta azul/roxa (igual à Tecelagem)
    ═══════════════════════════════════════════════════════════════════════════ */
 .cst {
-  position: fixed; inset: 0; overflow: hidden;
+  position: absolute; inset: 0; overflow: hidden;
   background:
     radial-gradient(1200px 700px at 82% -12%, #1b2747 0%, transparent 55%),
     radial-gradient(900px 620px at 12% 8%, #17204a 0%, transparent 55%),

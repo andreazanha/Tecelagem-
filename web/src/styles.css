@@ -241,6 +241,9 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 
 /* Protetor de tela (modo TV por inatividade) */
 .ss-overlay { position: fixed; inset: 0; z-index: 9999; }
+/* Palco de TV com escala fixa (1920×1080 que cresce/encolhe junto) */
+.tvframe { position: fixed; inset: 0; background: #060912; overflow: hidden; }
+.tvframe-canvas { position: absolute; top: 50%; left: 50%; transform-origin: center center; }
 .ss-cfg { display: flex; align-items: center; gap: 6px; padding: 8px; color: #5b6478; font-size: 11px; font-weight: 700; }
 .ss-cfg input { width: 52px; background: #0f172a; border: 1px solid #ffffff1a; color: #fff; border-radius: 8px; padding: 4px 6px; font: inherit; }
 .kcol-count { background: #1e2942; color: #fff; font-size: 11px; font-weight: 800; border-radius: 8px; padding: 2px 8px; }

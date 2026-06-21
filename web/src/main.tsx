@@ -14,6 +14,7 @@ import { TvTecelagem } from "./pages/TvTecelagem";
 import { TvCostura } from "./pages/TvCostura";
 import { TvRevisao } from "./pages/TvRevisao";
 import { Login } from "./pages/Login";
+import { TVFrame } from "./components/TVFrame";
 import { getUser, pode, primeiraPagina } from "./auth";
 import "./styles.css";
 
@@ -58,7 +59,7 @@ function Screensaver() {
     };
   }, [jaTv]);
   if (!ativo) return null;
-  return <div className="ss-overlay"><Dashboard /></div>;
+  return <div className="ss-overlay"><TVFrame><Dashboard /></TVFrame></div>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -66,10 +67,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <Screensaver />
       <Routes>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/tv/tecelagem" element={<TvTecelagem />} />
-        <Route path="/tv/costura" element={<TvCostura />} />
-        <Route path="/tv/revisao" element={<TvRevisao />} />
+        <Route path="/dashboard" element={<TVFrame><Dashboard /></TVFrame>} />
+        <Route path="/tv/tecelagem" element={<TVFrame><TvTecelagem /></TVFrame>} />
+        <Route path="/tv/costura" element={<TVFrame><TvCostura /></TVFrame>} />
+        <Route path="/tv/revisao" element={<TVFrame><TvRevisao /></TVFrame>} />
         <Route path="/login" element={<Login />} />
         <Route element={<Layout />}>
           <Route path="/" element={<Navigate to={primeiraPagina(getUser())} replace />} />
