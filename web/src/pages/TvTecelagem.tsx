@@ -177,8 +177,7 @@ export function TvTecelagem() {
           <div className="tcl-stats">
             <Stat ic="pecas" label="PEÇAS PRODUZIDAS HOJE" n={nf(d.pecas.hoje)} sub="peças" />
             <Stat label="ACUMULADO DO MÊS" n={nf(d.pecas.mes)} sub="peças" />
-            <Stat ic="maquina" label="MÁQUINAS EM OPERAÇÃO" n={`${d.pecas.maquinasEmUso} de ${d.pecas.maquinasTotal}`} sub="máquinas" />
-            <Stat label="ACUMULADO DO ANO" n={nf(d.pecas.ano)} sub="peças" />
+            <Stat ic="chart" label="ACUMULADO DO ANO" n={nf(d.pecas.ano)} sub="peças" />
           </div>
 
           <div className="tcl-atual">
