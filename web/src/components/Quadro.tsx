@@ -86,6 +86,7 @@ export interface QuadroCfg {
   defeito?: boolean; // mostra botão "Defeito" no modal
   semPrioridade?: boolean; // esconde o "passar na frente" (ex.: Costura)
   proxSetorKit?: string | null; // destino dos kits (pronta-entrega) ao enviar, se diferente
+  escolherOperadorAoEnviar?: boolean; // ao enviar, abre a lista de pessoas do próximo setor
 }
 
 export function Quadro({ cfg }: { cfg: QuadroCfg }) {
@@ -93,6 +94,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [carregando, setCarregando] = useState(true);
   const [aberto, setAberto] = useState<CardProducao | null>(null);
   const [iniciar, setIniciar] = useState<CardProducao | null>(null);
+  const [enviarOp, setEnviarOp] = useState<CardProducao | null>(null);
   const [busca, setBusca] = useState("");
 
   function recarregar() {
@@ -132,10 +134,20 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     else if (acao === "defeito") mudar(c, { status: "defeito" });
     else if (acao === "voltar") mudar(c, { status: "fazendo", operador: c.operador || "" });
     else {
-      // Kits podem ter um destino diferente das demais partes (ex.: Costura → Estoque).
-      const prox = c.parte === "pronta-entrega" && cfg.proxSetorKit !== undefined ? cfg.proxSetorKit : cfg.proxSetor;
+      // Enviar: escolhendo a pessoa do próximo setor (ex.: Corte → costureira)…
+      if (cfg.escolherOperadorAoEnviar) {
+        setEnviarOp(c);
+        return;
+      }
+      // …ou direto para a fila do próximo setor.
+      const prox = destinoDe(c);
       if (prox) mudar(c, { setor: prox, status: "aguardando" });
     }
+  }
+
+  // Próximo setor de um card (kits podem ter destino diferente, ex.: Costura → Estoque).
+  function destinoDe(c: CardProducao) {
+    return c.parte === "pronta-entrega" && cfg.proxSetorKit !== undefined ? cfg.proxSetorKit : cfg.proxSetor;
   }
 
   // "Passar na frente": liga/desliga a prioridade da parte (com desfazer).
@@ -268,6 +280,20 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
           }}
         />
       )}
+
+      {enviarOp && (
+        <EnviarModal
+          card={enviarOp}
+          setor={destinoDe(enviarOp) || ""}
+          onFechar={() => setEnviarOp(null)}
+          onConfirmar={(operador) => {
+            const c = enviarOp;
+            const destino = destinoDe(c);
+            setEnviarOp(null);
+            if (destino) mudar(c, { setor: destino, status: "fazendo", operador });
+          }}
+        />
+      )}
     </>
   );
 }
@@ -376,6 +402,83 @@ function IniciarModal({
           <button className="btn" onClick={onFechar}>Cancelar</button>
           <button className="kbtn tecer" disabled={enviando || carregando || ops.length === 0} onClick={confirmar}>
             {enviando ? "Validando…" : cfg.fazerLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Escolhe a PESSOA do próximo setor ao enviar (ex.: Corte → costureira). Só
+// seleção, sem senha: quem envia está só direcionando o trabalho.
+function EnviarModal({
+  card,
+  setor,
+  onFechar,
+  onConfirmar,
+}: {
+  card: CardProducao;
+  setor: string;
+  onFechar: () => void;
+  onConfirmar: (operador: string) => void;
+}) {
+  const [ops, setOps] = useState<{ id: string; nome: string }[]>([]);
+  const [nome, setNome] = useState("");
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    api
+      .listarOperadores(setor)
+      .then((o) => {
+        setOps(o);
+        if (o[0]) setNome(o[0].nome);
+      })
+      .catch(() => {})
+      .finally(() => setCarregando(false));
+  }, [setor]);
+
+  const titulo = setor.charAt(0).toUpperCase() + setor.slice(1);
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd">
+          <div className="modal-hd-top">
+            <span className="modal-pills"><span className="modal-pill">{opCodigo(card)}</span></span>
+            <button className="modal-x" onClick={onFechar}>✕</button>
+          </div>
+          <div className="modal-hd-row">
+            <span className="modal-cli">Enviar para {titulo}</span>
+          </div>
+        </div>
+
+        <div className="modal-bd">
+          {carregando ? (
+            <div className="muted">Carregando…</div>
+          ) : ops.length === 0 ? (
+            <div className="muted" style={{ fontSize: 14 }}>
+              Ninguém cadastrado em {titulo}. Cadastre em <strong>Cadastros › Operadores</strong> (setor {titulo}).
+            </div>
+          ) : (
+            <>
+              <label className="campo-l" htmlFor="env-sel">QUEM VAI RECEBER</label>
+              <select
+                id="env-sel"
+                value={nome}
+                onChange={(e) => setNome(e.target.value)}
+                style={{ width: "100%", padding: "12px 14px", fontSize: 16, borderRadius: 10, border: "1px solid #e2e8f0", marginTop: 4 }}
+              >
+                {ops.map((o) => (
+                  <option key={o.id} value={o.nome}>{o.nome}</option>
+                ))}
+              </select>
+            </>
+          )}
+        </div>
+
+        <div className="modal-ft">
+          <button className="btn" onClick={onFechar}>Cancelar</button>
+          <button className="kbtn enviar" disabled={carregando || ops.length === 0} onClick={() => nome && onConfirmar(nome)}>
+            Enviar ▶
           </button>
         </div>
       </div>

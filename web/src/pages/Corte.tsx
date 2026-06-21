@@ -6,6 +6,8 @@ const CORTE: QuadroCfg = {
   fazerLabel: "Cortar",
   fazendoLabel: "Cortando",
   proxSetor: "costura",
+  escolherOperadorAoEnviar: true, // ao enviar, escolhe a costureira que vai receber
+  enviarLabel: "Enviar p/ costura ▶",
   pedeMaquina: false,
   recursoLabel: "Cortador",
   recursoTotal: 4,
