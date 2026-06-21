@@ -36,6 +36,15 @@ const dur = (min: number) => {
   const d = Math.floor(h / 24), hh = h % 24;
   return hh ? `${d}d ${hh}h` : `${d}d`;
 };
+// Vendedor às vezes vem poluído do PDF ("PEDRO HENRIQUE 35992103017 EMITENTE Entrega:…").
+// Mostra só o nome: corta no 1º número longo ou nas palavras de ruído.
+const limparVendedor = (v?: string | null) => {
+  if (!v) return "—";
+  let s = v.split(/\s+\d{4,}/)[0];
+  s = s.split(/\s*\b(EMITENTE|ENTREGA|TRANSPORTADOR|FONES?|OBS|ADICION|CNPJ|CPF|RG|INSCR)/i)[0];
+  s = s.replace(/[-–·,;:]+\s*$/, "").trim();
+  return s || "—";
+};
 const brDT = (s?: string | null) => {
   if (!s) return "—";
   const d = new Date(s.replace(" ", "T") + (s.includes("Z") ? "" : "Z"));
@@ -73,6 +82,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [carregando, setCarregando] = useState(true);
   const [aberto, setAberto] = useState<CardProducao | null>(null);
   const [iniciar, setIniciar] = useState<CardProducao | null>(null);
+  const [busca, setBusca] = useState("");
 
   function recarregar() {
     api
@@ -127,6 +137,16 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     ? maquinas.filter((m) => m.op).length
     : new Set(ativos.map((c) => c.operador).filter(Boolean)).size;
 
+  const q = busca.trim().toLowerCase();
+  const filtrados = q
+    ? cards.filter(
+        (c) =>
+          (c.numero_erp || "").toLowerCase().includes(q) ||
+          (c.cliente_nome || "").toLowerCase().includes(q) ||
+          (c.codigo_terceiro || "").toLowerCase().includes(q)
+      )
+    : cards;
+
   return (
     <>
       <div className="page-head">
@@ -134,9 +154,15 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
           <h1>{cfg.titulo}</h1>
           <div className="breadcrumb">Produção › {cfg.titulo}</div>
         </div>
-        <button className="btn" onClick={recarregar}>
-          ↻ Atualizar
-        </button>
+        <div className="row-gap">
+          <input
+            className="busca-ped"
+            placeholder="🔎 Nº do pedido, código de terceiro ou cliente…"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+          />
+          <button className="btn" onClick={recarregar}>↻ Atualizar</button>
+        </div>
       </div>
 
       <div className="stats">
@@ -163,7 +189,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
         <>
           <div className="kanban">
             {cfg.colunas.map((col, i) => {
-              const lista = cards.filter(
+              const lista = filtrados.filter(
                 (c) => c.status === col.status && (!col.tipos || col.tipos.includes(c.parte))
               );
               return <Coluna key={i} col={col} cards={lista} cfg={cfg} stLabel={stLabel} onAbrir={setAberto} onAcao={acaoCard} />;
@@ -440,33 +466,10 @@ function CardModal({
   const [det, setDet] = useState<Awaited<ReturnType<typeof api.detalheProducao>> | null>(null);
   const [hist, setHist] = useState<Awaited<ReturnType<typeof api.historicoProducao>> | null>(null);
   const [verHist, setVerHist] = useState(false);
-  const [codTerc, setCodTerc] = useState("");
-  const [salvouCod, setSalvouCod] = useState(false);
-  const [salvandoCod, setSalvandoCod] = useState(false);
   useEffect(() => {
-    api
-      .detalheProducao(card.pedido_id, card.parte)
-      .then((d) => {
-        setDet(d);
-        setCodTerc(d.codigo_terceiro || "");
-      })
-      .catch(() => {});
+    api.detalheProducao(card.pedido_id, card.parte).then(setDet).catch(() => {});
     api.historicoProducao(card.pedido_id, card.parte).then(setHist).catch(() => {});
   }, [card.pedido_id, card.parte]);
-
-  async function salvarCod() {
-    setSalvandoCod(true);
-    setSalvouCod(false);
-    try {
-      await api.salvarCodigoTerceiro(card.pedido_id, codTerc);
-      setSalvouCod(true);
-      setTimeout(() => setSalvouCod(false), 2000);
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setSalvandoCod(false);
-    }
-  }
 
   const t = TIPO[card.parte] || { label: card.parte, cls: "" };
   const origem =
@@ -480,8 +483,6 @@ function CardModal({
     const d = Math.round((e.getTime() - h.getTime()) / 86400000);
     faltam = d < 0 ? `${-d} dia(s) atrasado` : d === 0 ? "entrega hoje" : `faltam ${d} dia(s)`;
   }
-  const cores = [...new Set((det?.blocos || []).map((b) => b.cor).filter(Boolean))].join(", ");
-  const modelos = [...new Set((det?.blocos || []).map((b) => b.modelo).filter(Boolean))].join(", ");
   const acaoAtual: ColCfg["acao"] =
     card.status === "aguardando" ? "fazer" : card.status === "fazendo" ? "finalizar" : "enviar";
   const btn = btnDe(acaoAtual, cfg);
@@ -525,29 +526,26 @@ function CardModal({
           <div className="modal-grid">
             <Campo l="TIPO" v={t.label} />
             <Campo l="QUANTIDADE" v={`${card.pecas} peças`} />
-            <Campo l="PRODUTO" v={modelos || card.resumo || "—"} />
-            <Campo l="COR / GRADE" v={cores || "—"} />
-            <Campo l="ORIGEM" v={origem} />
             <Campo l="RESPONSÁVEL" v={card.operador || "—"} />
-            <Campo l="VENDEDOR" v={det?.vendedor || "—"} />
-            <Campo l="SETOR ATUAL" v={cfg.titulo} />
+            <Campo l="VENDEDOR" v={limparVendedor(det?.vendedor)} />
+            <Campo l="CÓDIGO DE TERCEIRO" v={det?.codigo_terceiro || "—"} />
+            <Campo l="ORIGEM" v={origem} />
           </div>
 
-          <div style={{ marginTop: 14 }}>
-            <div className="campo-l">CÓDIGO DE TERCEIRO (código interno do cliente)</div>
-            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <input
-                value={codTerc}
-                onChange={(e) => setCodTerc(e.target.value)}
-                placeholder="Preencher se o cliente usa código próprio…"
-                style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 15 }}
-                onKeyDown={(e) => e.key === "Enter" && salvarCod()}
-              />
-              <button className="btn btn-primary" disabled={salvandoCod} onClick={salvarCod}>
-                {salvandoCod ? "…" : salvouCod ? "✓ Salvo" : "Salvar"}
-              </button>
+          {det?.observacao && (
+            <div style={{ marginTop: 14 }}>
+              <div className="campo-l">OBSERVAÇÃO</div>
+              <div
+                style={{
+                  marginTop: 4, padding: "10px 12px", background: "#fef2f2",
+                  border: "1px solid #fecaca", borderRadius: 10, color: "#b91c1c",
+                  fontWeight: 600, fontSize: 14, whiteSpace: "pre-wrap",
+                }}
+              >
+                {det.observacao}
+              </div>
             </div>
-          </div>
+          )}
 
           <div style={{ marginTop: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div className="campo-l">LINHA DO TEMPO</div>

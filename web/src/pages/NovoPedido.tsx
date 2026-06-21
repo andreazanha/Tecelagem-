@@ -24,6 +24,7 @@ export function NovoPedido() {
     numero_erp: "",
     cliente_nome: "",
     vendedor: "",
+    codigo_terceiro: "",
     tipo: "auto",
     entrega_pe: null,
     data_pedido: "",
@@ -350,6 +351,15 @@ export function NovoPedido() {
                 placeholder="ex.: Marcos R."
               />
             </div>
+          </div>
+
+          <div className="field">
+            <label>Código de terceiro (código interno do cliente)</label>
+            <input
+              value={form.codigo_terceiro ?? ""}
+              onChange={(e) => set("codigo_terceiro", e.target.value)}
+              placeholder="Preencher se o cliente usa código próprio (opcional)"
+            />
           </div>
 
           <div className="field-row">

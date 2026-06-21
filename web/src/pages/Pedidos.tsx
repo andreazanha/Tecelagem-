@@ -6,6 +6,7 @@ export function Pedidos() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
+  const [busca, setBusca] = useState("");
 
   useEffect(() => {
     api
@@ -15,6 +16,16 @@ export function Pedidos() {
       .finally(() => setCarregando(false));
   }, []);
 
+  const q = busca.trim().toLowerCase();
+  const lista = q
+    ? pedidos.filter(
+        (p) =>
+          (p.numero_erp || "").toLowerCase().includes(q) ||
+          (p.cliente_nome || "").toLowerCase().includes(q) ||
+          (p.codigo_terceiro || "").toLowerCase().includes(q)
+      )
+    : pedidos;
+
   return (
     <>
       <div className="page-head">
@@ -22,9 +33,17 @@ export function Pedidos() {
           <h1>Pedidos</h1>
           <div className="breadcrumb">Cadastro › Pedidos</div>
         </div>
-        <Link to="/pedidos/novo" className="btn btn-primary">
-          ＋ Novo Pedido
-        </Link>
+        <div className="row-gap">
+          <input
+            className="busca-ped"
+            placeholder="🔎 Nº do pedido, código de terceiro ou cliente…"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+          />
+          <Link to="/pedidos/novo" className="btn btn-primary">
+            ＋ Novo Pedido
+          </Link>
+        </div>
       </div>
 
       {carregando && <div className="card pad">Carregando…</div>}
@@ -32,9 +51,13 @@ export function Pedidos() {
 
       {!carregando && !erro && (
         <div className="card">
-          {pedidos.length === 0 ? (
+          {lista.length === 0 ? (
             <div className="pad empty">
-              Nenhum pedido ainda. Clique em <strong>Novo Pedido</strong> para começar.
+              {pedidos.length === 0 ? (
+                <>Nenhum pedido ainda. Clique em <strong>Novo Pedido</strong> para começar.</>
+              ) : (
+                <>Nenhum pedido encontrado para “{busca}”.</>
+              )}
             </div>
           ) : (
             <table className="table cards">
@@ -50,7 +73,7 @@ export function Pedidos() {
                 </tr>
               </thead>
               <tbody>
-                {pedidos.map((p) => (
+                {lista.map((p) => (
                   <tr key={p.id}>
                     <td data-label="Nº ERP">
                       <Link to={`/pedidos/${p.id}`} className="link">

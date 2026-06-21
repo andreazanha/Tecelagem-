@@ -237,6 +237,7 @@ interface PedidoIn {
   numero_erp?: string;
   cliente_nome?: string;
   vendedor?: string;
+  codigo_terceiro?: string;
   tipo?: string;
   entrega_pe?: string | null;
   data_pedido?: string;
@@ -301,13 +302,14 @@ pedidos.post("/", async (c) => {
   stmts.push(
     c.env.DB.prepare(
       `INSERT INTO pedidos
-        (id, numero_erp, cliente_nome, vendedor, tipo, entrega_pe, data_pedido, data_entrega, observacao, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'novo')`
+        (id, numero_erp, cliente_nome, vendedor, codigo_terceiro, tipo, entrega_pe, data_pedido, data_entrega, observacao, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'novo')`
     ).bind(
       id,
       b.numero_erp || null,
       cliente_nome,
       b.vendedor || null,
+      (b.codigo_terceiro || "").trim() || null,
       tipo,
       entrega_pe,
       b.data_pedido || null,
