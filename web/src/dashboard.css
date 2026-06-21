@@ -83,12 +83,19 @@
 .cmd-kpi-l { font-size: 14px; font-weight: 800; color: #9fb0d6; text-transform: uppercase; letter-spacing: .5px; margin-top: 4px; }
 .cmd-kpi.blue { --ac: #60a5fa; } .cmd-kpi.violet { --ac: #c4b5fd; } .cmd-kpi.red { --ac: #f87171; } .cmd-kpi.green { --ac: #4ade80; }
 
-.cmd-mid { display: grid; grid-template-columns: 1.7fr 1fr; gap: 18px; min-height: 0; }
-.cmd-charts { display: grid; grid-template-rows: 1fr 1fr; gap: 18px; min-height: 0; }
-.cmd-charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; min-height: 0; }
+.cmd-mid { display: grid; grid-template-columns: 1.15fr 1fr 0.95fr; gap: 18px; min-height: 0; }
+.cmd-etapa { min-height: 0; }
+.cmd-col2 { display: grid; grid-template-rows: 1fr 1fr; gap: 18px; min-height: 0; }
 .cmd-side { display: grid; grid-template-rows: 1fr 1fr 1fr; gap: 14px; min-height: 0; }
-.panel.sm { padding: 18px 20px; border-radius: 20px; }
+.panel.sm { padding: 16px 18px; border-radius: 20px; overflow: hidden; }
 .panel.sm .panel-t { font-size: 16px; margin-bottom: 10px; }
+
+/* barras compactas dentro da Central de Comando */
+.cmd-etapa .chart-bars { gap: 12px; }
+.cmd-etapa .cbar { grid-template-columns: 130px 1fr; }
+.cmd-etapa .cbar-track { height: 32px; }
+.cmd-etapa .cbar-lbl { font-size: 17px; }
+.cmd-etapa .cbar-val { font-size: 16px; }
 
 .cmd-rank { display: flex; flex-direction: column; gap: 9px; flex: 1; justify-content: center; }
 .cmd-rank-row { display: grid; grid-template-columns: 26px 110px 1fr auto; align-items: center; gap: 10px; font-size: 15px; font-weight: 700; }

@@ -44,6 +44,7 @@ interface Cfg {
   novoPedido: boolean;
   mostrarValores: boolean;
   metaPedidos: number;
+  fixarComando: boolean;
   telas: Record<string, boolean>;
 }
 const CFG_PADRAO: Cfg = {
@@ -52,6 +53,7 @@ const CFG_PADRAO: Cfg = {
   novoPedido: true,
   mostrarValores: false,
   metaPedidos: 80,
+  fixarComando: true,
   telas: { comando: true, capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
 };
 function carregarCfg(): Cfg {
@@ -149,6 +151,7 @@ export function Dashboard() {
       { key: "ranking", el: <RankingScreen d={data} cfg={cfg} /> },
       { key: "avisos", el: <AvisosScreen d={data} /> },
     ];
+    if (cfg.fixarComando) return all.filter((t) => t.key === "comando");
     return all.filter((t) => cfg.telas[t.key]);
   }, [data, cfg, hora]);
 
@@ -317,20 +320,19 @@ function ComandoScreen({ d, hora }: { d: DashboardData | null; hora: Date }) {
       </div>
 
       <div className="cmd-mid">
-        <div className="cmd-charts">
+        <div className="panel sm cmd-etapa">
+          <div className="panel-t">Produção por etapa</div>
+          <BarsH data={barEtapa} />
+        </div>
+
+        <div className="cmd-col2">
           <div className="panel sm">
-            <div className="panel-t">Produção por etapa</div>
-            <BarsH data={barEtapa} />
+            <div className="panel-t">Pedidos por dia</div>
+            <LineArea data={linha} color="#38bdf8" height={170} />
           </div>
-          <div className="cmd-charts-row">
-            <div className="panel sm">
-              <div className="panel-t">Pedidos por dia</div>
-              <LineArea data={linha} color="#38bdf8" height={220} />
-            </div>
-            <div className="panel sm">
-              <div className="panel-t">Peças produzidas</div>
-              <Columns data={cols} color="#a855f7" height={220} />
-            </div>
+          <div className="panel sm">
+            <div className="panel-t">Peças produzidas</div>
+            <Columns data={cols} color="#a855f7" height={150} />
           </div>
         </div>
 
@@ -772,6 +774,7 @@ function ConfigPanel({
           Meta de pedidos no mês
           <input type="number" min={1} value={cfg.metaPedidos} onChange={(e) => setCfg({ ...cfg, metaPedidos: Math.max(1, Number(e.target.value) || 80) })} style={{ width: 80 }} />
         </label>
+        <label>Apenas Central de Comando <input type="checkbox" checked={cfg.fixarComando} onChange={(e) => setCfg({ ...cfg, fixarComando: e.target.checked })} /></label>
         <label>Som de novo pedido <input type="checkbox" checked={cfg.som} onChange={(e) => setCfg({ ...cfg, som: e.target.checked })} /></label>
         <label>Tela de novo pedido <input type="checkbox" checked={cfg.novoPedido} onChange={(e) => setCfg({ ...cfg, novoPedido: e.target.checked })} /></label>
         <label>Mostrar valores <input type="checkbox" checked={cfg.mostrarValores} onChange={(e) => setCfg({ ...cfg, mostrarValores: e.target.checked })} /></label>
