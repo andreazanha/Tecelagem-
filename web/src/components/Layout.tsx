@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink, Outlet, Link } from "react-router-dom";
 import { Logo } from "./Logo";
 import { VERSION } from "../version";
@@ -13,6 +14,12 @@ const NAV = [
 ];
 
 export function Layout() {
+  const [ssMin, setSsMin] = useState(() => Number(localStorage.getItem("ssMin") || "0"));
+  function mudarSs(v: number) {
+    const n = Math.max(0, Math.min(240, Math.floor(v) || 0));
+    setSsMin(n);
+    localStorage.setItem("ssMin", String(n));
+  }
   return (
     <div className="app">
       <header className="topbar">
@@ -55,6 +62,10 @@ export function Layout() {
             )
           )}
         </nav>
+        <div className="ss-cfg" title="Após esse tempo sem uso, entra em modo TV (Dashboard). 0 = desligado.">
+          💤 Protetor (min)
+          <input type="number" min={0} max={240} value={ssMin} onChange={(e) => mudarSs(Number(e.target.value))} />
+        </div>
         <div className="sidebar-version">{VERSION}</div>
       </aside>
 

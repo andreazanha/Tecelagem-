@@ -206,6 +206,27 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .kcol-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 10px; }
 .kcol-title { font-weight: 800; font-size: 13.5px; }
 .kcol-sub { font-size: 13px; color: #475569; font-weight: 800; margin-top: 3px; letter-spacing: .2px; }
+
+/* Linha do tempo do pedido (modal) */
+.tl { display: flex; flex-direction: column; margin-top: 8px; }
+.tl-row { position: relative; display: flex; gap: 12px; padding-bottom: 14px; }
+.tl-row:last-child { padding-bottom: 0; }
+.tl-dot { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 15px; flex-shrink: 0; position: relative; z-index: 1; box-shadow: 0 2px 8px #0002; }
+.tl-line { position: absolute; left: 14px; top: 30px; bottom: 0; width: 2px; background: #e2e8f0; }
+.tl-body { flex: 1; padding-top: 3px; min-width: 0; }
+.tl-top { display: flex; align-items: center; gap: 8px; }
+.tl-top strong { font-size: 14.5px; }
+.tl-badge { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #4338ca; }
+.tl-badge.agora { background: #dcfce7; color: #15803d; }
+.tl-dur { font-size: 12px; font-weight: 700; color: #64748b; }
+.tl-meta { font-size: 12px; color: #64748b; margin-top: 2px; }
+.tl-row.big .tl-dot { width: 34px; height: 34px; font-size: 17px; }
+.tl-row.big .tl-line { left: 16px; top: 34px; }
+
+/* Protetor de tela (modo TV por inatividade) */
+.ss-overlay { position: fixed; inset: 0; z-index: 9999; }
+.ss-cfg { display: flex; align-items: center; gap: 6px; padding: 8px; color: #5b6478; font-size: 11px; font-weight: 700; }
+.ss-cfg input { width: 52px; background: #0f172a; border: 1px solid #ffffff1a; color: #fff; border-radius: 8px; padding: 4px 6px; font: inherit; }
 .kcol-count { background: #1e2942; color: #fff; font-size: 11px; font-weight: 800; border-radius: 8px; padding: 2px 8px; }
 .kcol-body { display: flex; flex-direction: column; gap: 12px; min-height: 40px; }
 

@@ -259,6 +259,15 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => j<{ ok: boolean }>(r)),
+  historicoProducao: (pedido_id: string, parte: string) =>
+    fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/historico`).then((r) =>
+      j<{
+        criadoEm: string;
+        agora: string;
+        totalMin: number;
+        passagens: { setor: string; status: string; operador: string | null; entrouEm: string; saiuEm: string | null; duracaoMin: number; atual: boolean }[];
+      }>(r)
+    ),
   listarPrestadores: () => fetch("/api/prestadores").then((r) => j<Prestador[]>(r)),
   salvarPrestador: (p: Prestador) =>
     fetch("/api/prestadores", {

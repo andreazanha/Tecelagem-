@@ -123,5 +123,82 @@ producao.post("/:pedido_id/:parte", async (c) => {
   await c.env.DB.prepare(`UPDATE producao SET ${sets.join(", ")} WHERE pedido_id = ? AND parte = ?`)
     .bind(...binds)
     .run();
+
+  // Registra o evento (linha do tempo): estado resultante após a mudança.
+  const after = await c.env.DB.prepare(
+    "SELECT setor, status, operador FROM producao WHERE pedido_id = ? AND parte = ?"
+  )
+    .bind(pedido_id, parte)
+    .first<{ setor: string; status: string; operador: string | null }>();
+  if (after) {
+    await c.env.DB.prepare(
+      "INSERT INTO producao_eventos (pedido_id, parte, setor, status, operador) VALUES (?, ?, ?, ?, ?)"
+    )
+      .bind(pedido_id, parte, after.setor, after.status, after.operador)
+      .run();
+  }
   return c.json({ ok: true });
+});
+
+// HISTÓRICO de uma parte: por onde passou, qual operador e o tempo em cada setor.
+producao.get("/:pedido_id/:parte/historico", async (c) => {
+  const pedido_id = c.req.param("pedido_id");
+  const parte = decodeURIComponent(c.req.param("parte"));
+  const ped = await c.env.DB.prepare("SELECT created_at FROM pedidos WHERE id = ?")
+    .bind(pedido_id)
+    .first<{ created_at: string }>();
+  const row = await c.env.DB.prepare(
+    "SELECT setor, status, operador, iniciado_em, finalizado_em, created_at FROM producao WHERE pedido_id = ? AND parte = ?"
+  )
+    .bind(pedido_id, parte)
+    .first<{ setor: string; status: string; operador: string | null; iniciado_em: string | null; finalizado_em: string | null; created_at: string }>();
+  if (!row) return c.json({ error: "não encontrado" }, 404);
+
+  const criadoEm = ped?.created_at || row.created_at;
+  let { results: ev } = await c.env.DB.prepare(
+    "SELECT setor, status, operador, em FROM producao_eventos WHERE pedido_id = ? AND parte = ? ORDER BY em, id"
+  )
+    .bind(pedido_id, parte)
+    .all<{ setor: string; status: string; operador: string | null; em: string }>();
+
+  // Cards antigos (sem eventos): reconstrói o básico a partir da linha atual.
+  if (!ev.length) {
+    ev = [];
+    if (row.iniciado_em) ev.push({ setor: row.setor, status: "fazendo", operador: row.operador, em: row.iniciado_em });
+    if (row.finalizado_em) ev.push({ setor: row.setor, status: "pronto", operador: row.operador, em: row.finalizado_em });
+    if (!ev.length) ev.push({ setor: row.setor, status: row.status, operador: row.operador, em: criadoEm });
+  }
+
+  // Âncora de criação: o pedido entra na primeira etapa no momento da criação.
+  const eventos = [{ setor: ev[0].setor, status: "aguardando", operador: null as string | null, em: criadoEm }, ...ev];
+
+  const ms = (s?: string | null) => {
+    if (!s) return NaN;
+    const iso = s.includes("T") ? s : s.replace(" ", "T");
+    const withZ = /[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + "Z";
+    return Date.parse(withZ);
+  };
+  const agora = new Date().toISOString();
+
+  type Passagem = { setor: string; status: string; operador: string | null; entrouEm: string; saiuEm: string | null; duracaoMin: number; atual: boolean };
+  const passagens: Passagem[] = [];
+  let cur: Passagem | null = null;
+  for (const e of eventos) {
+    if (!cur || cur.setor !== e.setor) {
+      if (cur) cur.saiuEm = e.em;
+      cur = { setor: e.setor, status: e.status, operador: e.operador, entrouEm: e.em, saiuEm: null, duracaoMin: 0, atual: false };
+      passagens.push(cur);
+    } else {
+      if (e.operador) cur.operador = e.operador;
+      cur.status = e.status;
+    }
+  }
+  for (const p of passagens) {
+    const fim = p.saiuEm || agora;
+    p.duracaoMin = Math.max(0, Math.round((ms(fim) - ms(p.entrouEm)) / 60000));
+    p.atual = !p.saiuEm;
+  }
+  const totalMin = Math.max(0, Math.round((ms(agora) - ms(criadoEm)) / 60000));
+
+  return c.json({ criadoEm, agora, totalMin, passagens });
 });

@@ -19,6 +19,27 @@ const brLong = (d?: string | null) => {
   const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
 };
+const SETOR_INFO: Record<string, { nome: string; ic: string; cor: string }> = {
+  tecelagem: { nome: "Tecelagem", ic: "🧶", cor: "#6366f1" },
+  passadoria: { nome: "Passadoria", ic: "🔥", cor: "#f97316" },
+  corte: { nome: "Corte", ic: "✂️", cor: "#06b6d4" },
+  costura: { nome: "Costura", ic: "🪡", cor: "#ec4899" },
+  revisao: { nome: "Revisão", ic: "🔍", cor: "#eab308" },
+  expedicao: { nome: "Expedição", ic: "📦", cor: "#22c55e" },
+};
+const dur = (min: number) => {
+  if (min < 1) return "agora";
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  if (h < 24) return m ? `${h}h ${m}min` : `${h}h`;
+  const d = Math.floor(h / 24), hh = h % 24;
+  return hh ? `${d}d ${hh}h` : `${d}d`;
+};
+const brDT = (s?: string | null) => {
+  if (!s) return "—";
+  const d = new Date(s.replace(" ", "T") + (s.includes("Z") ? "" : "Z"));
+  return isNaN(+d) ? "—" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+};
 
 export interface ColCfg {
   cor: "aguardando" | "fazendo" | "pronto";
@@ -402,8 +423,11 @@ function CardModal({
   onAcao: (c: CardProducao, acao: ColCfg["acao"]) => void;
 }) {
   const [det, setDet] = useState<Awaited<ReturnType<typeof api.detalheProducao>> | null>(null);
+  const [hist, setHist] = useState<Awaited<ReturnType<typeof api.historicoProducao>> | null>(null);
+  const [verHist, setVerHist] = useState(false);
   useEffect(() => {
     api.detalheProducao(card.pedido_id, card.parte).then(setDet).catch(() => {});
+    api.historicoProducao(card.pedido_id, card.parte).then(setHist).catch(() => {});
   }, [card.pedido_id, card.parte]);
 
   const t = TIPO[card.parte] || { label: card.parte, cls: "" };
@@ -471,21 +495,36 @@ function CardModal({
             <Campo l="SETOR ATUAL" v={cfg.titulo} />
           </div>
 
-          {!!(det?.blocos || []).length && (
-            <div style={{ marginTop: 14 }}>
-              <div className="campo-l">ITENS</div>
-              <div className="modal-itens">
-                {det!.blocos.map((b, i) => (
-                  <div key={i} className="modal-item">
-                    <strong>{b.modelo}</strong> · {b.cor || "—"} · {b.total} pç
-                    <div className="muted" style={{ fontSize: 11.5 }}>
-                      {b.sizes.map((s) => `${s.tipo ? s.tipo + " " : ""}${s.tamanho}: ${s.qtd}`).join("  ·  ")}
+          <div style={{ marginTop: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div className="campo-l">LINHA DO TEMPO</div>
+            <button className="btn btn-soft" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => setVerHist(true)}>
+              🕓 Histórico completo
+            </button>
+          </div>
+          <div className="tl">
+            {!hist ? (
+              <div className="muted" style={{ fontSize: 13 }}>Carregando…</div>
+            ) : (
+              hist.passagens.map((p, i) => {
+                const s = SETOR_INFO[p.setor] || { nome: p.setor, ic: "•", cor: "#94a3b8" };
+                return (
+                  <div className="tl-row" key={i}>
+                    <span className="tl-dot" style={{ background: s.cor }}>{s.ic}</span>
+                    {i < hist.passagens.length - 1 && <span className="tl-line" />}
+                    <div className="tl-body">
+                      <div className="tl-top">
+                        <strong>{s.nome}</strong>
+                        {p.atual ? <span className="tl-badge agora">aqui agora</span> : <span className="tl-dur">{dur(p.duracaoMin)}</span>}
+                      </div>
+                      <div className="tl-meta">
+                        👤 {p.operador || "—"} · entrou {brDT(p.entrouEm)}
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                );
+              })
+            )}
+          </div>
         </div>
 
         <div className="modal-ft">
@@ -495,6 +534,72 @@ function CardModal({
           <button className={"kbtn " + btn.cls} onClick={() => onAcao(card, acaoAtual)}>
             {btn.label}
           </button>
+        </div>
+      </div>
+
+      {verHist && hist && (
+        <HistoricoModal hist={hist} titulo={opCodigo(card)} cliente={card.cliente_nome} onFechar={() => setVerHist(false)} />
+      )}
+    </div>
+  );
+}
+
+function HistoricoModal({
+  hist,
+  titulo,
+  cliente,
+  onFechar,
+}: {
+  hist: NonNullable<Awaited<ReturnType<typeof api.historicoProducao>>>;
+  titulo: string;
+  cliente: string;
+  onFechar: () => void;
+}) {
+  return (
+    <div className="modal-bg" onClick={(e) => { e.stopPropagation(); onFechar(); }}>
+      <div className="modal-card" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd">
+          <div className="modal-hd-top">
+            <span className="modal-pills">
+              <span className="modal-pill">{titulo}</span>
+            </span>
+            <button className="modal-x" onClick={onFechar}>✕</button>
+          </div>
+          <div className="modal-hd-row">
+            <span className="modal-cli">Histórico do pedido</span>
+            <span className="kstatus fazendo">{dur(hist.totalMin)} no total</span>
+          </div>
+        </div>
+
+        <div className="modal-bd">
+          <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+            {cliente} · criado em {brDT(hist.criadoEm)}
+          </div>
+          <div className="tl">
+            {hist.passagens.map((p, i) => {
+              const s = SETOR_INFO[p.setor] || { nome: p.setor, ic: "•", cor: "#94a3b8" };
+              return (
+                <div className="tl-row big" key={i}>
+                  <span className="tl-dot" style={{ background: s.cor }}>{s.ic}</span>
+                  {i < hist.passagens.length - 1 && <span className="tl-line" />}
+                  <div className="tl-body">
+                    <div className="tl-top">
+                      <strong>{s.nome}</strong>
+                      {p.atual ? <span className="tl-badge agora">aqui agora</span> : <span className="tl-badge">{dur(p.duracaoMin)}</span>}
+                    </div>
+                    <div className="tl-meta">👤 Operador: <strong>{p.operador || "—"}</strong></div>
+                    <div className="tl-meta">
+                      Entrou {brDT(p.entrouEm)}{p.saiuEm ? ` · saiu ${brDT(p.saiuEm)}` : " · ainda neste setor"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="modal-ft">
+          <button className="btn" onClick={onFechar}>Fechar</button>
         </div>
       </div>
     </div>
