@@ -82,6 +82,9 @@ export function Layout() {
           <a className="painel-link tcl-link" href="/tv/costura" target="_blank" rel="noopener noreferrer" title="TV Costura">
             🪡 TV Costura
           </a>
+          <a className="painel-link tcl-link" href="/tv/revisao" target="_blank" rel="noopener noreferrer" title="TV Revisão">
+            🔍 TV Revisão
+          </a>
           <span className="user">Ana Paula</span>
           <span className="avatar">AP</span>
         </div>

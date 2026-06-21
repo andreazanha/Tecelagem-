@@ -255,6 +255,7 @@
    telas), e a entrada usa a mesma animação slideIn. */
 .dash-screen.full { inset: 0; padding: 0; }
 .dash .tcl, .dash .cst { position: absolute; }
+/* (.cst cobre Costura e Revisão, que usam o mesmo tema) */
 
 /* ── Overlay: novo pedido ───────────────────────────────────────────────────── */
 .novo { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; overflow: hidden;

@@ -4,6 +4,7 @@ import { Logo } from "../components/Logo";
 import { Donut, DonutLegend, BarsH, LineArea, Columns, Gauge, type Slice } from "../components/charts";
 import { TvTecelagem } from "./TvTecelagem";
 import { TvCostura } from "./TvCostura";
+import { TvRevisao } from "./TvRevisao";
 import "../dashboard.css";
 
 // ── Setores (cor + ícone próprios) ──────────────────────────────────────────
@@ -56,7 +57,7 @@ const CFG_PADRAO: Cfg = {
   mostrarValores: false,
   metaPedidos: 80,
   fixarComando: false,
-  telas: { comando: true, tecelagem: true, costura: true, capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
+  telas: { comando: true, tecelagem: true, costura: true, revisao: true, capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
 };
 function carregarCfg(): Cfg {
   try {
@@ -145,6 +146,7 @@ export function Dashboard() {
       { key: "comando", el: <ComandoScreen d={data} hora={hora} /> },
       { key: "tecelagem", el: <TvTecelagem />, full: true },
       { key: "costura", el: <TvCostura />, full: true },
+      { key: "revisao", el: <TvRevisao />, full: true },
       { key: "capa", el: <CapaScreen hora={hora} /> },
       { key: "resumo", el: <ResumoScreen d={data} /> },
       { key: "producao", el: <ProducaoScreen d={data} /> },
@@ -751,6 +753,7 @@ function ConfigPanel({
     ["comando", "Central de Comando"],
     ["tecelagem", "TV Tecelagem"],
     ["costura", "TV Costura"],
+    ["revisao", "TV Revisão"],
     ["capa", "Capa de abertura"],
     ["resumo", "Resumo do dia"],
     ["producao", "Linha de produção"],

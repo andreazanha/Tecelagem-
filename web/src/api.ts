@@ -152,6 +152,19 @@ export interface TvCosturaData {
   geradoEm: string;
 }
 
+export interface TvRevisaoData {
+  topo: {
+    revisadorasAtivas: number; revisadorasTotal: number; pedidosEmRevisao: number; pecasEmRevisao: number;
+    totalDia: number; totalMes: number; totalAno: number;
+  };
+  status: { emRevisao: number; aguardando: number; finalizadosHoje: number };
+  revisadoras: { nome: string; qtdPedidos: number; qtdPecas: number; emRevisao: string | null; aguardando: string[]; datas: string[] }[];
+  ultimosFinalizados: { numero: string | null; cliente: string; pecas: number; finalizado_em: string | null }[];
+  proximosPrazos: { numero: string | null; cliente: string; data_entrega: string | null }[];
+  avisos: { texto: string }[];
+  geradoEm: string;
+}
+
 export interface TvTecelagemData {
   topo: { aguardando: number; emTecimento: number; finalizadosHoje: number };
   pecas: { hoje: number; mes: number; ano: number; maquinasEmUso: number; maquinasTotal: number };
@@ -253,6 +266,7 @@ export const api = {
   dashboard: () => fetch("/api/dashboard").then((r) => j<DashboardData>(r)),
   tvTecelagem: () => fetch("/api/dashboard/tecelagem").then((r) => j<TvTecelagemData>(r)),
   tvCostura: () => fetch("/api/dashboard/costura").then((r) => j<TvCosturaData>(r)),
+  tvRevisao: () => fetch("/api/dashboard/revisao").then((r) => j<TvRevisaoData>(r)),
   addAviso: (texto: string) =>
     fetch("/api/dashboard/avisos", {
       method: "POST",

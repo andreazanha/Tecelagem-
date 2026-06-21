@@ -274,6 +274,9 @@ dashboard.get("/costura", async (c) => {
       WHERE ${S} AND pr.operador IS NOT NULL AND pr.operador<>''`
   )) as { operador: string; status: string; pecas: number; numero: string | null; codigo_pai: string | null; data_entrega: string | null }[];
   const mapa = new Map<string, { nome: string; qtdPedidos: number; qtdPecas: number; emCostura: string | null; aguardando: string[]; datas: string[] }>();
+  // Base: costureiras cadastradas (Cadastros › Operadores, setor Costura) — aparecem mesmo sem pedido.
+  const cadastradas = (await all("SELECT nome FROM operadores WHERE setor='costura' ORDER BY nome")) as { nome: string }[];
+  for (const o of cadastradas) mapa.set(o.nome, { nome: o.nome, qtdPedidos: 0, qtdPecas: 0, emCostura: null, aguardando: [], datas: [] });
   for (const l of linhas) {
     const cod = l.codigo_pai || l.numero || "—";
     let e = mapa.get(l.operador);
@@ -301,6 +304,67 @@ dashboard.get("/costura", async (c) => {
   const avisos = (await all("SELECT texto FROM avisos ORDER BY created_at DESC LIMIT 3")) as { texto: string }[];
 
   return c.json({ topo, status, costureiras, tipos: [], ultimosFinalizados, proximosPrazos, avisos, geradoEm: new Date().toISOString() });
+});
+
+// ── Painel de TV do setor REVISÃO ─────────────────────────────────────────────
+dashboard.get("/revisao", async (c) => {
+  const db = c.env.DB;
+  const one = async (sql: string) => ((await db.prepare(sql).first<Record<string, number>>()) || {}) as Record<string, number>;
+  const all = async (sql: string) => (await db.prepare(sql).all()).results as Record<string, unknown>[];
+  const S = "pr.setor='revisao'";
+
+  const topo = {
+    revisadorasAtivas: (await one(`SELECT COUNT(DISTINCT pr.operador) n FROM producao pr WHERE ${S} AND pr.status='fazendo' AND pr.operador IS NOT NULL AND pr.operador<>''`)).n || 0,
+    revisadorasTotal: (await one("SELECT COUNT(*) n FROM operadores WHERE setor='revisao'")).n || 0,
+    pedidosEmRevisao: (await one(`SELECT COUNT(*) n FROM producao pr WHERE ${S} AND pr.status='fazendo'`)).n || 0,
+    pecasEmRevisao: (await one(`SELECT COALESCE(SUM(pr.pecas),0) n FROM producao pr WHERE ${S} AND pr.status='fazendo'`)).n || 0,
+    totalDia: (await one(`SELECT COALESCE(SUM(pr.pecas),0) n FROM producao pr WHERE ${S} AND pr.status='pronto' AND date(pr.finalizado_em)=date('now')`)).n || 0,
+    totalMes: (await one(`SELECT COALESCE(SUM(pr.pecas),0) n FROM producao pr WHERE ${S} AND pr.status='pronto' AND strftime('%Y-%m',pr.finalizado_em)=strftime('%Y-%m','now')`)).n || 0,
+    totalAno: (await one(`SELECT COALESCE(SUM(pr.pecas),0) n FROM producao pr WHERE ${S} AND pr.status='pronto' AND strftime('%Y',pr.finalizado_em)=strftime('%Y','now')`)).n || 0,
+  };
+
+  const status = {
+    emRevisao: (await one(`SELECT COUNT(*) n FROM producao pr WHERE ${S} AND pr.status='fazendo'`)).n || 0,
+    aguardando: (await one(`SELECT COUNT(*) n FROM producao pr WHERE ${S} AND pr.status='aguardando'`)).n || 0,
+    finalizadosHoje: (await one(`SELECT COUNT(*) n FROM producao pr WHERE ${S} AND pr.status='pronto' AND date(pr.finalizado_em)=date('now')`)).n || 0,
+  };
+
+  const linhas = (await all(
+    `SELECT pr.operador, pr.status, pr.pecas, p.numero_erp numero, p.codigo_pai, p.data_entrega
+       FROM producao pr JOIN pedidos p ON p.id=pr.pedido_id
+      WHERE ${S} AND pr.operador IS NOT NULL AND pr.operador<>''`
+  )) as { operador: string; status: string; pecas: number; numero: string | null; codigo_pai: string | null; data_entrega: string | null }[];
+  const mapa = new Map<string, { nome: string; qtdPedidos: number; qtdPecas: number; emRevisao: string | null; aguardando: string[]; datas: string[] }>();
+  // Base: revisadoras cadastradas (Cadastros › Operadores, setor Revisão) — aparecem mesmo sem pedido.
+  const cadastradas = (await all("SELECT nome FROM operadores WHERE setor='revisao' ORDER BY nome")) as { nome: string }[];
+  for (const o of cadastradas) mapa.set(o.nome, { nome: o.nome, qtdPedidos: 0, qtdPecas: 0, emRevisao: null, aguardando: [], datas: [] });
+  for (const l of linhas) {
+    const cod = l.codigo_pai || l.numero || "—";
+    let e = mapa.get(l.operador);
+    if (!e) { e = { nome: l.operador, qtdPedidos: 0, qtdPecas: 0, emRevisao: null, aguardando: [], datas: [] }; mapa.set(l.operador, e); }
+    e.qtdPedidos++;
+    e.qtdPecas += l.pecas || 0;
+    if (l.status === "fazendo" && !e.emRevisao) e.emRevisao = cod;
+    else if (l.status === "aguardando") e.aguardando.push(cod);
+    if (l.data_entrega) e.datas.push(l.data_entrega);
+  }
+  const revisadoras = Array.from(mapa.values());
+
+  const ultimosFinalizados = (await all(
+    `SELECT p.numero_erp numero, p.cliente_nome cliente, pr.pecas, pr.finalizado_em
+       FROM producao pr JOIN pedidos p ON p.id=pr.pedido_id
+      WHERE ${S} AND pr.status='pronto' ORDER BY pr.finalizado_em DESC LIMIT 5`
+  )) as { numero: string | null; cliente: string; pecas: number; finalizado_em: string | null }[];
+
+  const proximosPrazos = (await all(
+    `SELECT DISTINCT p.numero_erp numero, p.cliente_nome cliente, p.data_entrega
+       FROM producao pr JOIN pedidos p ON p.id=pr.pedido_id
+      WHERE ${S} AND p.data_entrega IS NOT NULL ORDER BY p.data_entrega ASC LIMIT 5`
+  )) as { numero: string | null; cliente: string; data_entrega: string | null }[];
+
+  const avisos = (await all("SELECT texto FROM avisos ORDER BY created_at DESC LIMIT 3")) as { texto: string }[];
+
+  return c.json({ topo, status, revisadoras, ultimosFinalizados, proximosPrazos, avisos, geradoEm: new Date().toISOString() });
 });
 
 // Avisos (CRUD usado na configuração do painel).
