@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type TvRevisaoData } from "../api";
-import { Donut, type Slice } from "../components/charts";
+import { Donut, BarsH, type Slice } from "../components/charts";
 import "../tv-costura.css";
 
-const FOTO_PADRAO = "/costura.webp";
+const CORES = ["#38bdf8", "#a855f7", "#22c55e", "#fbbf24", "#ec4899", "#06b6d4"];
 const nf = (n: number) => n.toLocaleString("pt-BR");
 const brDM = (d?: string | null) => {
   if (!d) return "—";
@@ -74,8 +74,6 @@ function Ic({ n, s = 24 }: { n: string; s?: number }) {
 export function TvRevisao() {
   const [raw, setRaw] = useState<TvRevisaoData | null>(null);
   const [hora, setHora] = useState(new Date());
-  const [foto, setFoto] = useState<string | null>(() => localStorage.getItem("revFoto") || FOTO_PADRAO);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const t = setInterval(() => setHora(new Date()), 1000);
@@ -93,14 +91,6 @@ export function TvRevisao() {
 
   const d = vazio(raw) ? DEMO : (raw as TvRevisaoData);
   const demo = vazio(raw);
-
-  function trocarFoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => { const url = String(r.result); localStorage.setItem("revFoto", url); setFoto(url); };
-    r.readAsDataURL(f);
-  }
 
   const dataExt = hora.toLocaleDateString("pt-BR", { weekday: "long" }).toUpperCase();
   const dataLin = hora.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
@@ -144,9 +134,9 @@ export function TvRevisao() {
 
       <div className="cst-main">
         <section className="cst-left">
-          <div className="cst-photo" onClick={() => fileRef.current?.click()} title="Clique para trocar a foto">
-            {foto ? <img src={foto} alt="Revisão" /> : <div className="cst-photo-ph"><Ic n="search" s={56} /><span>Foto da revisão<br /><small>clique para enviar</small></span></div>}
-            <input ref={fileRef} type="file" accept="image/*" hidden onChange={trocarFoto} />
+          <div className="cst-card" style={{ minHeight: 0 }}>
+            <div className="cst-card-h sm"><span><Ic n="search" s={18} /> PEÇAS POR REVISADORA</span></div>
+            <BarsH data={revs.map((r, i) => ({ label: r.nome, value: r.qtdPecas, color: CORES[i % CORES.length] }))} unidade="pç" />
           </div>
           <div className="cst-stats">
             <Stat ic="sun" label="TOTAL DO DIA" v={nf(d.topo.totalDia)} sub="peças" />
