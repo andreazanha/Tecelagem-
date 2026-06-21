@@ -51,10 +51,11 @@ const DEMO: TvCosturaData = {
   geradoEm: "",
 };
 
+// Sem produção real ainda → mostra demonstração para a tela ficar "viva".
 function vazio(d: TvCosturaData | null) {
   if (!d) return true;
   const t = d.topo;
-  return t.pecasEmCostura + t.finalizadosHoje + t.acumuladoAno === 0 && d.costureiras.length === 0;
+  return t.pecasEmCostura + t.finalizadosHoje + t.acumuladoAno === 0;
 }
 
 function Ic({ n, s = 24 }: { n: string; s?: number }) {

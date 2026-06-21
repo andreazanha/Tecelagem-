@@ -43,10 +43,13 @@ const DEMO: TvRevisaoData = {
   geradoEm: "",
 };
 
+// Enquanto não houver produção de verdade (revisadoras cadastradas mas ainda
+// sem pedidos/peças), mostra os dados de demonstração para a tela ficar "viva"
+// — assim que entrar produção real, troca sozinho.
 function vazio(d: TvRevisaoData | null) {
   if (!d) return true;
   const t = d.topo;
-  return t.pecasEmRevisao + t.totalDia + t.totalAno === 0 && d.revisadoras.length === 0;
+  return t.pecasEmRevisao + t.totalDia + t.totalMes + t.totalAno === 0 && d.status.emRevisao === 0;
 }
 
 function Ic({ n, s = 24 }: { n: string; s?: number }) {
