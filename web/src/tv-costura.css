@@ -9,7 +9,7 @@
     #070b16;
   color: #e9eefb;
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
-  display: grid; grid-template-rows: auto auto minmax(0, 1.18fr) minmax(0, 0.82fr) auto;
+  display: grid; grid-template-rows: auto auto minmax(0, 1.02fr) minmax(0, 0.92fr) auto;
   --ac: #a78bfa; --ac2: #c4b5fd; --acd: #6366f1;
   --panel: #18223c; --line: rgba(124, 123, 247, 0.20); --line2: rgba(255, 255, 255, 0.07); --muted: #8ea0c8;
 }
@@ -48,7 +48,7 @@
 .cst-left { display: grid; grid-template-rows: 1fr auto; gap: 12px; min-height: 0; }
 .cst-right { min-height: 0; }
 
-.cst-photo { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: radial-gradient(circle at 50% 40%, #16204a, #0b1020); min-height: 180px; cursor: pointer; }
+.cst-photo { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: radial-gradient(circle at 50% 40%, #16204a, #0b1020); min-height: 150px; cursor: pointer; }
 .cst-photo img { width: 100%; height: 100%; object-fit: cover; }
 .cst-photo-ph { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #4a5680; }
 .cst-photo-ph span { text-align: center; font-size: 15px; font-weight: 700; }
@@ -69,9 +69,9 @@
 .cst-card-h span { display: flex; align-items: center; gap: 8px; }
 .cst-card-h svg { color: var(--ac); }
 
-/* tela das costureiras */
-.cst-tela table { width: 100%; border-collapse: collapse; }
-.cst-tela th { text-align: left; font-size: 11px; font-weight: 800; letter-spacing: 1px; color: var(--muted); padding: 8px 8px; }
+/* tela das costureiras — a tabela cresce p/ preencher o card (linhas espalhadas) */
+.cst-tela table { width: 100%; border-collapse: collapse; flex: 1 1 auto; }
+.cst-tela th { text-align: left; font-size: 11px; font-weight: 800; letter-spacing: 1px; color: var(--muted); padding: 8px 8px; height: 1px; }
 .cst-tela th.c { text-align: center; }
 .cst-tela td { font-size: 18px; font-weight: 700; color: #e9eefb; padding: 10px 8px; border-top: 1px solid var(--line2); vertical-align: middle; }
 .cst-tela td.c { text-align: center; }
@@ -103,8 +103,8 @@
 .tp-bar span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #22c55e, #4ade80); }
 .tp-v { font-size: 13px; font-weight: 800; color: #aab8da; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-.cst-lista { display: flex; flex-direction: column; gap: 9px; flex: 1; justify-content: center; }
-.cst-lista .li { display: grid; grid-template-columns: 24px auto 1fr auto auto; align-items: center; gap: 10px; font-size: 14px; }
+.cst-lista { display: flex; flex-direction: column; gap: 7px; flex: 1; justify-content: center; }
+.cst-lista .li { display: grid; grid-template-columns: 22px auto 1fr auto auto; align-items: center; gap: 10px; font-size: 13.5px; }
 .cst-lista .ic.ok { color: #4ade80; }
 .cst-lista .ic.cal { color: #f87171; }
 .cst-lista .op { font-weight: 900; color: #c4b5fd; }
