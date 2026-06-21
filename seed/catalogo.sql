@@ -38,3 +38,10 @@ INSERT OR IGNORE INTO modelos (nome, parte, ref, composicao) VALUES
   ('Genebra',2,'1119',NULL),
   ('Paris',2,'1120',NULL),
   ('Predileta (Soft)',2,'1121',NULL);
+
+-- Revisadoras pré-cadastradas (senha provisória 1234 — trocar em Cadastros › Operadores).
+INSERT OR IGNORE INTO operadores (id, nome, senha, setor) VALUES
+  ('op-rev-betania', 'Betânia', '1234', 'revisao'),
+  ('op-rev-bruna',   'Bruna',   '1234', 'revisao'),
+  ('op-rev-sula',    'Sula',    '1234', 'revisao'),
+  ('op-rev-eduarda', 'Eduarda', '1234', 'revisao');
