@@ -48,7 +48,7 @@
 /* ── Corpo ──────────────────────────────────────────────────────────────────── */
 .tcl-main { display: grid; grid-template-columns: 1.28fr 0.92fr; gap: 18px; padding: 16px 30px; min-height: 0; }
 .tcl-left { display: grid; grid-template-rows: 1.6fr auto auto; gap: 14px; min-height: 0; }
-.tcl-right { display: grid; grid-template-rows: 1fr auto; gap: 18px; min-height: 0; }
+.tcl-right { display: grid; grid-template-rows: 1.3fr 0.85fr; gap: 18px; min-height: 0; }
 
 /* foto da máquina */
 .tcl-photo { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: radial-gradient(circle at 50% 40%, #1b1813, #0a0908); min-height: 360px; cursor: pointer; }
@@ -86,13 +86,15 @@
 .tcl-atual-row .v svg { color: var(--gold); }
 
 /* ── Cards direita ──────────────────────────────────────────────────────────── */
-.tcl-card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 22px; display: flex; flex-direction: column; min-height: 0; }
+.tcl-card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 22px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.tcl-tabela { overflow: auto; }
+.tcl-tabela::-webkit-scrollbar { width: 0; height: 0; }
 .tcl-card-h { display: flex; align-items: center; justify-content: space-between; color: var(--gold2); font-size: 15px; font-weight: 800; letter-spacing: 2px; padding-bottom: 12px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
 .tcl-card-h svg { color: var(--gold); }
 
 .tcl-tabela table { width: 100%; border-collapse: collapse; }
 .tcl-tabela th { text-align: left; font-size: 11.5px; font-weight: 800; letter-spacing: 1.5px; color: var(--muted); padding: 12px 8px 10px; }
-.tcl-tabela td { font-size: 18px; font-weight: 600; color: #e7e2d8; padding: 13px 8px; border-top: 1px solid var(--line2); }
+.tcl-tabela td { font-size: 17px; font-weight: 600; color: #e7e2d8; padding: 11px 8px; border-top: 1px solid var(--line2); }
 .tcl-tabela td.gold { color: var(--gold2); font-weight: 800; }
 .tcl-tabela tr:last-child td { border-bottom: none; }
 
