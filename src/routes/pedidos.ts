@@ -299,17 +299,28 @@ pedidos.post("/", async (c) => {
   const id = crypto.randomUUID();
   const stmts: D1PreparedStatement[] = [];
 
+  // Vários pedidos juntos (numero_erp tipo "3772, 3768, 3756") ganham um CÓDIGO PAI
+  // para facilitar a busca; pedido único mantém o código original.
+  const nums = (b.numero_erp || "").split(",").map((x) => x.trim()).filter(Boolean);
+  let codigo_pai: string | null = null;
+  if (nums.length >= 2) {
+    await c.env.DB.prepare("UPDATE contadores SET valor = valor + 1 WHERE nome = 'codigo_pai'").run();
+    const seq = await c.env.DB.prepare("SELECT valor FROM contadores WHERE nome = 'codigo_pai'").first<{ valor: number }>();
+    codigo_pai = "OP-" + (seq?.valor ?? Date.now());
+  }
+
   stmts.push(
     c.env.DB.prepare(
       `INSERT INTO pedidos
-        (id, numero_erp, cliente_nome, vendedor, codigo_terceiro, tipo, entrega_pe, data_pedido, data_entrega, observacao, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'novo')`
+        (id, numero_erp, cliente_nome, vendedor, codigo_terceiro, codigo_pai, tipo, entrega_pe, data_pedido, data_entrega, observacao, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'novo')`
     ).bind(
       id,
       b.numero_erp || null,
       cliente_nome,
       b.vendedor || null,
       (b.codigo_terceiro || "").trim() || null,
+      codigo_pai,
       tipo,
       entrega_pe,
       b.data_pedido || null,
@@ -348,7 +359,7 @@ pedidos.post("/", async (c) => {
   }
 
   await c.env.DB.batch(stmts);
-  return c.json({ id }, 201);
+  return c.json({ id, codigo_pai }, 201);
 });
 
 // UPLOAD dos PDFs originais (um ou vários — preserva todos no R2 sob orig/)
@@ -430,11 +441,11 @@ pedidos.get("/:id/classificar", async (c) => {
 // PEDIDOS QUE TÊM KIT — para perguntar junto/separado por pedido (OP que junta vários).
 pedidos.get("/:id/kits-pedidos", async (c) => {
   const id = c.req.param("id");
-  const ped = await c.env.DB.prepare("SELECT numero_erp FROM pedidos WHERE id = ?")
+  const ped = await c.env.DB.prepare("SELECT numero_erp, codigo_pai FROM pedidos WHERE id = ?")
     .bind(id)
-    .first<{ numero_erp: string | null }>();
+    .first<{ numero_erp: string | null; codigo_pai: string | null }>();
   if (!ped) return c.json({ error: "pedido não encontrado" }, 404);
-  const baseNum = ped.numero_erp || id.slice(0, 8);
+  const baseNum = ped.codigo_pai || ped.numero_erp || id.slice(0, 8);
   const { results } = await c.env.DB.prepare(
     "SELECT produto, origem, qtd FROM pedido_itens WHERE pedido_id = ?"
   )
@@ -473,7 +484,7 @@ pedidos.post("/:id/romaneio-tassel", async (c) => {
       400
     );
 
-  const baseNum = ped.numero_erp || id.slice(0, 8);
+  const baseNum = ped.codigo_pai || ped.numero_erp || id.slice(0, 8);
   const info: PedidoInfo = {
     cliente: ped.cliente_nome,
     representante: ped.vendedor || "—",
@@ -514,11 +525,12 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   const modelos = await catalogos(c.env);
   const cl = classificar(itens, modelos);
 
-  const baseNum = ped.numero_erp || id.slice(0, 8);
+  const baseNum = ped.codigo_pai || ped.numero_erp || id.slice(0, 8);
   const info: PedidoInfo = {
     cliente: ped.cliente_nome,
     representante: ped.vendedor || "—",
     numero: baseNum,
+    pedidos: ped.codigo_pai ? ped.numero_erp || "" : "",
     emissao: br(ped.data_pedido),
     entrega: br(ped.data_entrega),
     observacao: ped.observacao || "",
@@ -588,10 +600,10 @@ function codigoParte(baseNum: string, suf: string): string {
 }
 pedidos.get("/:id/pdfs", async (c) => {
   const id = c.req.param("id");
-  const ped = await c.env.DB.prepare("SELECT numero_erp FROM pedidos WHERE id = ?")
+  const ped = await c.env.DB.prepare("SELECT numero_erp, codigo_pai FROM pedidos WHERE id = ?")
     .bind(id)
-    .first<{ numero_erp: string | null }>();
-  const baseNum = ped?.numero_erp || id.slice(0, 8);
+    .first<{ numero_erp: string | null; codigo_pai: string | null }>();
+  const baseNum = ped?.codigo_pai || ped?.numero_erp || id.slice(0, 8);
   const list = await c.env.BUCKET.list({ prefix: `pedidos/${id}/` });
   const tipos = new Set(
     list.objects
@@ -618,10 +630,10 @@ pedidos.get("/:id/pdf/:tipo", async (c) => {
   const tipo = c.req.param("tipo");
   const obj = await c.env.BUCKET.get(`pedidos/${id}/${tipo}.pdf`);
   if (!obj) return c.json({ error: "PDF não gerado" }, 404);
-  const ped = await c.env.DB.prepare("SELECT numero_erp FROM pedidos WHERE id = ?")
+  const ped = await c.env.DB.prepare("SELECT numero_erp, codigo_pai FROM pedidos WHERE id = ?")
     .bind(id)
-    .first<{ numero_erp: string | null }>();
-  const baseNum = ped?.numero_erp || id.slice(0, 8);
+    .first<{ numero_erp: string | null; codigo_pai: string | null }>();
+  const baseNum = ped?.codigo_pai || ped?.numero_erp || id.slice(0, 8);
   const nome = codigoParte(baseNum, TIPOS_PDF[tipo]?.suf ?? "");
   return new Response(obj.body, {
     headers: {

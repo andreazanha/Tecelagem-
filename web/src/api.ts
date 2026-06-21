@@ -15,6 +15,7 @@ export interface Pedido {
   cliente_nome: string;
   vendedor?: string | null;
   codigo_terceiro?: string | null;
+  codigo_pai?: string | null;
   tipo: string;
   entrega_pe?: string | null;
   data_pedido?: string | null;
@@ -90,6 +91,7 @@ export interface CardProducao {
   numero_erp?: string | null;
   cliente_nome: string;
   codigo_terceiro?: string | null;
+  codigo_pai?: string | null;
   data_pedido?: string | null;
   data_entrega?: string | null;
 }

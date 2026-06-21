@@ -9,7 +9,7 @@ const TIPO: Record<string, { label: string; cls: string }> = {
   "pronta-entrega": { label: "KIT", cls: "kit" },
 };
 const opCodigo = (c: CardProducao) =>
-  (c.parte === "pronta-entrega" ? "KIT " : "OP ") + (c.numero_erp || c.pedido_id.slice(0, 6));
+  (c.parte === "pronta-entrega" ? "KIT " : "OP ") + (c.codigo_pai || c.numero_erp || c.pedido_id.slice(0, 6));
 const br = (d?: string | null) => {
   if (!d) return "—";
   const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -142,6 +142,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     ? cards.filter(
         (c) =>
           (c.numero_erp || "").toLowerCase().includes(q) ||
+          (c.codigo_pai || "").toLowerCase().includes(q) ||
           (c.cliente_nome || "").toLowerCase().includes(q) ||
           (c.codigo_terceiro || "").toLowerCase().includes(q)
       )
@@ -157,7 +158,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
         <div className="row-gap">
           <input
             className="busca-ped"
-            placeholder="🔎 Nº do pedido, código de terceiro ou cliente…"
+            placeholder="🔎 Pedido, código pai, terceiro ou cliente…"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
           />
@@ -528,6 +529,7 @@ function CardModal({
             <Campo l="QUANTIDADE" v={`${card.pecas} peças`} />
             <Campo l="RESPONSÁVEL" v={card.operador || "—"} />
             <Campo l="VENDEDOR" v={limparVendedor(det?.vendedor)} />
+            {card.codigo_pai && <Campo l="PEDIDOS" v={card.numero_erp || "—"} />}
             <Campo l="CÓDIGO DE TERCEIRO" v={det?.codigo_terceiro || "—"} />
             <Campo l="ORIGEM" v={origem} />
           </div>

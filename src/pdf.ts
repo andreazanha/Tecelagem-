@@ -29,7 +29,8 @@ const SW: Record<string, string> = {
 export interface PedidoInfo {
   cliente: string;
   representante: string;
-  numero: string; // número(s) do(s) pedido(s) — ex.: "3756, 3765, 3768" numa OP consolidada
+  numero: string; // código principal — código pai (OP-xxxx) ou número do pedido único
+  pedidos?: string; // números originais quando é OP consolidada (ex.: "3756, 3768")
   emissao: string;
   entrega: string;
   observacao?: string; // exibida em VERMELHO no cabeçalho
@@ -163,7 +164,12 @@ export async function gerarPdfParte(
     };
     info("CLIENTE", ped.cliente);
     info("REPRESENTANTE", ped.representante);
-    info(ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
+    if (ped.pedidos && ped.pedidos.trim()) {
+      info("CÓDIGO PAI", ped.numero);
+      info("PEDIDOS", ped.pedidos);
+    } else {
+      info(ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
+    }
     T("DATAS", ix, y, 8.5, bld, MUTE);
     T(`Emissão: ${ped.emissao}`, ix + 140, y, 10, bld);
     T(`Entrega: ${ped.entrega}`, ix + 320, y, 10, bld);

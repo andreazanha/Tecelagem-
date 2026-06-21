@@ -21,6 +21,7 @@ export function Pedidos() {
     ? pedidos.filter(
         (p) =>
           (p.numero_erp || "").toLowerCase().includes(q) ||
+          (p.codigo_pai || "").toLowerCase().includes(q) ||
           (p.cliente_nome || "").toLowerCase().includes(q) ||
           (p.codigo_terceiro || "").toLowerCase().includes(q)
       )
@@ -36,7 +37,7 @@ export function Pedidos() {
         <div className="row-gap">
           <input
             className="busca-ped"
-            placeholder="🔎 Nº do pedido, código de terceiro ou cliente…"
+            placeholder="🔎 Pedido, código pai, terceiro ou cliente…"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
           />
@@ -77,8 +78,11 @@ export function Pedidos() {
                   <tr key={p.id}>
                     <td data-label="Nº ERP">
                       <Link to={`/pedidos/${p.id}`} className="link">
-                        {p.numero_erp || "—"}
+                        {p.codigo_pai || p.numero_erp || "—"}
                       </Link>
+                      {p.codigo_pai && (
+                        <div className="muted" style={{ fontSize: 11 }}>{p.numero_erp}</div>
+                      )}
                     </td>
                     <td className="strong" data-label="Cliente">
                       {p.cliente_nome}
