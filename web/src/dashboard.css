@@ -254,8 +254,49 @@
    O cabeçalho some, mas os CONTROLES seguem no rodapé (mesmo lugar das outras
    telas), e a entrada usa a mesma animação slideIn. */
 .dash-screen.full { inset: 0; padding: 0; }
-.dash .tcl, .dash .cst { position: absolute; }
+.dash .tcl, .dash .cst, .dash .np { position: absolute; }
 /* (.cst cobre Costura e Revisão, que usam o mesmo tema) */
+
+/* ── Tela de celebração: NOVO PEDIDO! ───────────────────────────────────────── */
+.np {
+  inset: 0; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  background:
+    radial-gradient(900px 700px at 50% 32%, #1e3a8a 0%, #122a63 30%, #0a1230 60%, #060912 100%);
+  text-align: center;
+}
+.np-rays { position: absolute; top: 32%; left: 50%; width: 1600px; height: 1600px; transform: translate(-50%, -50%);
+  background: repeating-conic-gradient(from 0deg, #60a5fa22 0deg 6deg, transparent 6deg 14deg);
+  mask-image: radial-gradient(circle, #000 0%, transparent 62%);
+  -webkit-mask-image: radial-gradient(circle, #000 0%, transparent 62%);
+  animation: npspin 60s linear infinite; opacity: .5; }
+@keyframes npspin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+.np-confetti { position: absolute; inset: 0; pointer-events: none; }
+.np-confetti .cf { position: absolute; top: -20px; width: 9px; height: 16px; border-radius: 2px; opacity: .9; animation: npfall linear infinite; }
+.np-confetti .c0 { background: #60a5fa; } .np-confetti .c1 { background: #a855f7; } .np-confetti .c2 { background: #38bdf8; } .np-confetti .c3 { background: #f472b6; } .np-confetti .c4 { background: #fbbf24; }
+@keyframes npfall { 0% { transform: translateY(-20px) rotate(0); } 100% { transform: translateY(105vh) rotate(540deg); } }
+
+.np-bell { position: relative; z-index: 1; width: 130px; height: 130px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle, #1d4ed855, #1e3a8a00 70%);
+  box-shadow: 0 0 0 3px #3b82f655, 0 0 60px #3b82f699; margin-bottom: 6px; animation: npbell 2.2s ease-in-out infinite; }
+.np-bell span { font-size: 64px; filter: drop-shadow(0 4px 16px #1d4ed8); }
+@keyframes npbell { 0%,100% { transform: rotate(-8deg) scale(1); } 50% { transform: rotate(8deg) scale(1.06); } }
+
+.np-title { position: relative; z-index: 1; font-size: clamp(64px, 11vw, 150px); font-weight: 900; line-height: .9; letter-spacing: 2px;
+  background: linear-gradient(180deg, #ffffff, #93c5fd 55%, #3b82f6); -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 8px 50px #2563eb88; filter: drop-shadow(0 6px 30px #1d4ed8aa); }
+.np-sub { position: relative; z-index: 1; margin-top: 14px; font-size: 20px; font-weight: 700; letter-spacing: 2px; color: #9fc1f5; line-height: 1.5; }
+.np-sub b { color: #fff; font-size: 22px; }
+
+.np-cards { position: relative; z-index: 1; display: flex; gap: 18px; margin-top: 30px; flex-wrap: wrap; justify-content: center; }
+.np-card { min-width: 150px; background: linear-gradient(180deg, #1e3a8a66, #11203f88); border: 1px solid #3b82f655; border-radius: 18px; padding: 16px 24px; display: flex; flex-direction: column; align-items: center; gap: 2px; backdrop-filter: blur(8px); box-shadow: 0 14px 40px #00000055; }
+.np-card-ic { font-size: 22px; }
+.np-card-l { font-size: 12px; font-weight: 800; letter-spacing: 1.5px; color: #93c5fd; }
+.np-card-v { font-size: 26px; font-weight: 900; color: #fff; }
+.np-btn { position: relative; z-index: 1; margin-top: 30px; padding: 14px 40px; border-radius: 999px; font-size: 20px; font-weight: 900; letter-spacing: 1px; color: #fff;
+  background: linear-gradient(90deg, #2563eb, #3b82f6); box-shadow: 0 12px 36px #2563ebaa; animation: nppulse 2s ease-in-out infinite; }
+@keyframes nppulse { 0%,100% { transform: scale(1); box-shadow: 0 12px 36px #2563eb88; } 50% { transform: scale(1.05); box-shadow: 0 16px 48px #3b82f6cc; } }
 
 /* ── Overlay: novo pedido ───────────────────────────────────────────────────── */
 .novo { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; overflow: hidden;

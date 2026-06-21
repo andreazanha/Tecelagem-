@@ -57,7 +57,7 @@ const CFG_PADRAO: Cfg = {
   mostrarValores: false,
   metaPedidos: 80,
   fixarComando: false,
-  telas: { comando: true, tecelagem: true, costura: true, revisao: true, capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
+  telas: { comando: true, novopedido: true, tecelagem: true, costura: true, revisao: true, capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
 };
 function carregarCfg(): Cfg {
   try {
@@ -144,6 +144,7 @@ export function Dashboard() {
   const telas = useMemo(() => {
     const all: { key: string; el: ReactNode; full?: boolean }[] = [
       { key: "comando", el: <ComandoScreen d={data} hora={hora} /> },
+      { key: "novopedido", el: <NovoPedidoScreen d={data} />, full: true },
       { key: "tecelagem", el: <TvTecelagem />, full: true },
       { key: "costura", el: <TvCostura />, full: true },
       { key: "revisao", el: <TvRevisao />, full: true },
@@ -711,6 +712,50 @@ function ScreenHead({ ic, t, demo }: { ic: string; t: string; demo?: boolean }) 
 }
 
 // ── Overlay: Novo pedido ──────────────────────────────────────────────────────────
+// Tela de celebração do último pedido (entra no loop).
+function NovoPedidoScreen({ d }: { d: DashboardData | null }) {
+  const p = d?.ultimoPedido;
+  const ped = p || { id: "", numero: "2605", cliente: "Loja Donna", vendedor: "", pecas: 250, data_entrega: "2025-06-24", created_at: "" };
+  const dataFull = (s?: string | null) => {
+    if (!s) return "—";
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+  };
+  const horario = ped.created_at
+    ? new Date(ped.created_at.replace(" ", "T") + (ped.created_at.includes("Z") ? "" : "Z")).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    : "14:32";
+  return (
+    <div className="np">
+      <div className="np-rays" aria-hidden />
+      <div className="np-confetti" aria-hidden>
+        {Array.from({ length: 16 }).map((_, i) => (
+          <span key={i} className={"cf c" + (i % 5)} style={{ left: `${(i * 6.3 + 4) % 100}%`, animationDelay: `${(i % 8) * 0.35}s`, animationDuration: `${3 + (i % 4)}s` }} />
+        ))}
+      </div>
+      <div className="np-bell"><span>🔔</span></div>
+      <div className="np-title">NOVO<br />PEDIDO!</div>
+      <div className="np-sub">UM NOVO DESAFIO CHEGOU 💙<br /><b>VAMOS FAZER ACONTECER!</b></div>
+      <div className="np-cards">
+        <NpCard ic="🧾" l="PEDIDO" v={"#" + (ped.numero || "—")} />
+        <NpCard ic="🏢" l="CLIENTE" v={ped.cliente} />
+        <NpCard ic="🧶" l="PEÇAS" v={String(ped.pecas)} />
+        <NpCard ic="📅" l="ENTREGA" v={dataFull(ped.data_entrega)} />
+        <NpCard ic="🕒" l="HORÁRIO" v={horario} />
+      </div>
+      <div className="np-btn">▶ VAMOS LÁ!</div>
+    </div>
+  );
+}
+function NpCard({ ic, l, v }: { ic: string; l: string; v: string }) {
+  return (
+    <div className="np-card">
+      <span className="np-card-ic">{ic}</span>
+      <span className="np-card-l">{l}</span>
+      <span className="np-card-v">{v}</span>
+    </div>
+  );
+}
+
 function NovoPedidoOverlay({ p, mostrarValores }: { p: NonNullable<DashboardData["ultimoPedido"]>; mostrarValores: boolean }) {
   return (
     <div className="novo">
@@ -751,6 +796,7 @@ function ConfigPanel({
   const [novoAviso, setNovoAviso] = useState("");
   const telasLabels: [string, string][] = [
     ["comando", "Central de Comando"],
+    ["novopedido", "Novo Pedido (celebração)"],
     ["tecelagem", "TV Tecelagem"],
     ["costura", "TV Costura"],
     ["revisao", "TV Revisão"],
