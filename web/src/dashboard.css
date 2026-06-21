@@ -250,11 +250,11 @@
 .dash-dot.on { background: linear-gradient(90deg, #a855f7, #38bdf8); width: 30px; border-radius: 999px; }
 .dash-empty { color: #5b6b92; font-size: 24px; font-weight: 700; text-align: center; margin: auto; }
 
-/* telas full-bleed (ex.: TV Tecelagem) ocupam a tela toda; controles flutuam */
-.dash-fade { animation: fadeIn .5s ease both; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.dash-ctrl.float { position: fixed; top: 16px; right: 16px; bottom: auto; left: auto; z-index: 96; gap: 6px; padding: 7px 9px; background: rgba(8, 8, 8, .72); border: 1px solid rgba(201, 162, 74, .35); border-radius: 14px; backdrop-filter: blur(8px); }
-.dash-ctrl.float .dash-dot.on { background: linear-gradient(90deg, #c9a24a, #e8cd86); }
+/* telas full-bleed (ex.: TV Tecelagem): preenchem todo o palco, sem margem.
+   O cabeçalho some, mas os CONTROLES seguem no rodapé (mesmo lugar das outras
+   telas), e a entrada usa a mesma animação slideIn. */
+.dash-screen.full { inset: 0; padding: 0; }
+.dash .tcl { position: absolute; }
 
 /* ── Overlay: novo pedido ───────────────────────────────────────────────────── */
 .novo { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; overflow: hidden;

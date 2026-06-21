@@ -239,16 +239,14 @@ export function Dashboard() {
       <main className="dash-stage">
         {telas.length === 0 ? (
           <div className="dash-empty">Nenhuma tela ativa — abra as configurações ⚙</div>
-        ) : isFull ? (
-          <div className="dash-fade" key={cur?.key}>{cur?.el}</div>
         ) : (
-          <div className="dash-screen" key={cur?.key}>
+          <div className={"dash-screen" + (isFull ? " full" : "")} key={cur?.key}>
             {cur?.el}
           </div>
         )}
       </main>
 
-      <footer className={"dash-ctrl" + (isFull ? " float" : "")}>
+      <footer className="dash-ctrl">
         <button className="dash-btn" onClick={() => setIdx((i) => (i - 1 + telas.length) % Math.max(1, telas.length))}>◀</button>
         <button className="dash-btn" onClick={() => setPausado((p) => !p)}>{pausado ? "▶" : "⏸"}</button>
         <button className="dash-btn" onClick={() => setIdx((i) => (i + 1) % Math.max(1, telas.length))}>▶</button>

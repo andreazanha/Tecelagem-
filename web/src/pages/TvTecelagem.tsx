@@ -88,7 +88,7 @@ function Ic({ n, s = 24 }: { n: string; s?: number }) {
 export function TvTecelagem() {
   const [raw, setRaw] = useState<TvTecelagemData | null>(null);
   const [hora, setHora] = useState(new Date());
-  const [foto, setFoto] = useState<string | null>(() => localStorage.getItem("tclFoto") || FOTO_PADRAO);
+  const [foto, setFoto] = useState<string | null>(() => localStorage.getItem("tclFoto2") || FOTO_PADRAO);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -123,7 +123,7 @@ export function TvTecelagem() {
     const r = new FileReader();
     r.onload = () => {
       const url = String(r.result);
-      localStorage.setItem("tclFoto", url);
+      localStorage.setItem("tclFoto2", url);
       setFoto(url);
     };
     r.readAsDataURL(f);
