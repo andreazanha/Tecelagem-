@@ -37,8 +37,8 @@ async function garantirCards(env: Env) {
     for (const [parte, blocos] of partes) {
       if (!blocos.length) continue;
       const pecas = blocos.reduce((s, b) => s + b.total, 0);
-      // Pronta-entrega (kit) já é estoque: entra direto na separação, fora da produção.
-      const setor = parte === "pronta-entrega" ? "estoque" : "tecelagem";
+      // Kits (pronta-entrega) também passam pela esteira: começam na Tecelagem.
+      const setor = "tecelagem";
       stmts.push(
         env.DB.prepare(
           `INSERT INTO producao (pedido_id, parte, setor, pecas, resumo) VALUES (?, ?, ?, ?, ?)

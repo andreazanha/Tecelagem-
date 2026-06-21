@@ -19,9 +19,11 @@ const PASSADORIA: QuadroCfg = {
     { cor: "prioridade", titulo: "Passar na frente", sub: "Urgentes / clientes atrasados", status: "aguardando", acao: "fazer", somentePrioridade: true },
     { cor: "aguardando", titulo: "Aguardando", sub: "Parte 1", status: "aguardando", tipos: ["parte-1", "parte-unica"], acao: "fazer" },
     { cor: "aguardando", titulo: "Aguardando", sub: "Parte 2", status: "aguardando", tipos: ["parte-2"], acao: "fazer" },
+    { cor: "aguardando", titulo: "Kits aguardando", sub: "Pedidos de estoque", status: "aguardando", tipos: ["pronta-entrega"], acao: "fazer" },
     { cor: "fazendo", titulo: "Passando", sub: "Em produção", status: "fazendo", acao: "finalizar" },
     { cor: "pronto", titulo: "Finalizados", sub: "Parte 1", status: "pronto", tipos: ["parte-1", "parte-unica"], acao: "enviar" },
     { cor: "pronto", titulo: "Finalizados", sub: "Parte 2", status: "pronto", tipos: ["parte-2"], acao: "enviar" },
+    { cor: "pronto", titulo: "Kits finalizados", sub: "Seguir p/ corte", status: "pronto", tipos: ["pronta-entrega"], acao: "enviar" },
   ],
 };
 

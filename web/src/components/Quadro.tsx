@@ -82,6 +82,7 @@ export interface QuadroCfg {
   acaoFazendo?: "finalizar" | "enviar"; // o que o card "fazendo" faz no modal (default finalizar)
   enviarLabel?: string; // texto do botão "enviar" (default "Enviar ▶")
   defeito?: boolean; // mostra botão "Defeito" no modal
+  proxSetorKit?: string | null; // destino dos kits (pronta-entrega) ao enviar, se diferente
 }
 
 export function Quadro({ cfg }: { cfg: QuadroCfg }) {
@@ -127,7 +128,11 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     else if (acao === "finalizar") mudar(c, { status: "pronto" });
     else if (acao === "defeito") mudar(c, { status: "defeito" });
     else if (acao === "voltar") mudar(c, { status: "fazendo", operador: c.operador || "" });
-    else if (cfg.proxSetor) mudar(c, { setor: cfg.proxSetor, status: "aguardando" });
+    else {
+      // Kits podem ter um destino diferente das demais partes (ex.: Costura → Estoque).
+      const prox = c.parte === "pronta-entrega" && cfg.proxSetorKit !== undefined ? cfg.proxSetorKit : cfg.proxSetor;
+      if (prox) mudar(c, { setor: prox, status: "aguardando" });
+    }
   }
 
   // "Passar na frente": liga/desliga a prioridade da parte (com desfazer).
@@ -411,7 +416,7 @@ function Coluna({
   const btn = btnDe(col.acao, cfg);
   return (
     <div className={"kcol" + (col.somentePrioridade ? " prio" : "") + (col.cor === "defeito" ? " defeito" : "")}>
-      <div className="kcol-head">
+      <div className={"kcol-head " + col.cor}>
         <div>
           <div className="kcol-title">
             <span className={"kdot " + col.cor} /> {col.somentePrioridade ? "🔥 " : ""}{col.titulo}

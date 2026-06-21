@@ -1,28 +1,27 @@
 import { Quadro, type QuadroCfg } from "../components/Quadro";
 
-// Estoque / pronta-entrega: os kits não passam pela produção — entram direto
-// para separação. Ao separar, seguem para a Revisão (coluna "Pronta entrega").
+// Estoque: os kits (pronta-entrega) chegam aqui depois da Costura, na coluna
+// "Entrada", são separados e ficam disponíveis. (Outras colunas a definir.)
 const ESTOQUE: QuadroCfg = {
   setor: "estoque",
   titulo: "Estoque",
   fazerLabel: "Separar",
   fazendoLabel: "Separando",
-  proxSetor: "revisao",
+  proxSetor: "expedicao",
   pedeMaquina: false,
   recursoLabel: "Estoquista",
   recursoTotal: 3,
   statRecursoLabel: "Estoquistas",
-  statFila: "Para separar",
+  statFila: "Entrada",
   statFazendo: "Em separação",
-  statPronto: "Separados",
+  statPronto: "Disponível",
   mostrarMaquinas: false,
-  acaoFazendo: "enviar",
-  enviarLabel: "Separado ▶",
-  nota: "Pronta-entrega entra direto na separação. Ao concluir (Separado), segue para a Revisão.",
+  nota: "Os kits chegam da Costura na coluna Entrada. Separe e deixe disponível no estoque.",
   colunas: [
     { cor: "prioridade", titulo: "Passar na frente", sub: "Urgentes / clientes atrasados", status: "aguardando", acao: "fazer", somentePrioridade: true },
-    { cor: "aguardando", titulo: "Para separar", sub: "Kits / pronta-entrega", status: "aguardando", acao: "fazer" },
-    { cor: "fazendo", titulo: "Separação", sub: "Em separação", status: "fazendo", acao: "enviar", botaoLabel: "Separado ▶" },
+    { cor: "aguardando", titulo: "Entrada", sub: "Kits vindos da costura", status: "aguardando", acao: "fazer" },
+    { cor: "fazendo", titulo: "Separação", sub: "Em separação", status: "fazendo", acao: "finalizar", botaoLabel: "Separado ▶" },
+    { cor: "pronto", titulo: "Disponível", sub: "Pronto no estoque", status: "pronto", acao: "enviar" },
   ],
 };
 

@@ -14,11 +14,10 @@ const REVISAO: QuadroCfg = {
   statFazendo: "Revisando",
   statPronto: "Revisados",
   mostrarMaquinas: false,
-  nota: "Use ★ Passar na frente para os pedidos que precisam sair primeiro. Pronta-entrega chega do Estoque.",
+  nota: "Use ★ Passar na frente para os pedidos que precisam sair primeiro (clientes urgentes / atrasados).",
   colunas: [
     { cor: "prioridade", titulo: "Passar na frente", sub: "Urgentes / clientes atrasados", status: "aguardando", acao: "fazer", somentePrioridade: true },
-    { cor: "aguardando", titulo: "Aguardando", sub: "Para revisar", status: "aguardando", tipos: ["parte-1", "parte-2", "parte-unica"], acao: "fazer" },
-    { cor: "pronto", titulo: "Pronta entrega", sub: "Kits vindos do Estoque", status: "aguardando", tipos: ["pronta-entrega"], acao: "enviar" },
+    { cor: "aguardando", titulo: "Aguardando", sub: "Para revisar", status: "aguardando", acao: "fazer" },
     { cor: "fazendo", titulo: "Revisando", sub: "Em revisão", status: "fazendo", acao: "finalizar" },
     { cor: "pronto", titulo: "Revisados", sub: "Prontos p/ expedição", status: "pronto", acao: "enviar" },
   ],

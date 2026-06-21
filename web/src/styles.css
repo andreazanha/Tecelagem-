@@ -219,9 +219,20 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .maqchip.livre { background: #f1f5f9; color: #64748b; }
 .kanban { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 10px; -webkit-overflow-scrolling: touch; }
 .kcol { flex: 0 0 300px; max-width: 300px; }
-.kcol-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 10px; }
-.kcol-title { font-weight: 800; font-size: 13.5px; }
-.kcol-sub { font-size: 13px; color: #475569; font-weight: 800; margin-top: 3px; letter-spacing: .2px; }
+/* Cabeçalho da coluna em destaque, como um "card" colorido por status. */
+.kcol-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; margin-bottom: 10px; border-radius: 12px; border: 1px solid var(--line); background: #fff; box-shadow: 0 1px 3px #0f172a12; border-left: 5px solid #cbd5e1; }
+.kcol-title { font-weight: 900; font-size: 14px; color: #0f172a; }
+.kcol-sub { font-size: 12.5px; color: #475569; font-weight: 800; margin-top: 3px; letter-spacing: .2px; }
+.kcol-head.aguardando { background: #fff8ef; border-color: #fed7aa; border-left-color: #f59e0b; }
+.kcol-head.aguardando .kcol-title { color: #b45309; } .kcol-head.aguardando .kcol-sub { color: #c2740b; }
+.kcol-head.fazendo { background: #effdf6; border-color: #bbf7d0; border-left-color: #10b981; }
+.kcol-head.fazendo .kcol-title { color: #047857; } .kcol-head.fazendo .kcol-sub { color: #059669; }
+.kcol-head.pronto { background: #eff6ff; border-color: #bfdbfe; border-left-color: #3b82f6; }
+.kcol-head.pronto .kcol-title { color: #1d4ed8; } .kcol-head.pronto .kcol-sub { color: #2563eb; }
+.kcol-head.prioridade { background: #fff1f2; border-color: #fecaca; border-left-color: #ef4444; }
+.kcol-head.prioridade .kcol-title { color: #be123c; } .kcol-head.prioridade .kcol-sub { color: #e11d48; }
+.kcol-head.defeito { background: #fef2f2; border-color: #fecaca; border-left-color: #dc2626; }
+.kcol-head.defeito .kcol-title { color: #b91c1c; } .kcol-head.defeito .kcol-sub { color: #dc2626; }
 
 /* Linha do tempo do pedido (modal) */
 .tl { display: flex; flex-direction: column; margin-top: 8px; }
