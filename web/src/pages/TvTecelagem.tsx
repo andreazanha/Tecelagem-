@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type TvTecelagemData } from "../api";
 import "../tv-tecelagem.css";
 
+const FOTO_PADRAO = "/maquina-tecelagem.webp";
 const nf = (n: number) => n.toLocaleString("pt-BR");
 const brDM = (d?: string | null) => {
   if (!d) return "—";
@@ -87,7 +88,7 @@ function Ic({ n, s = 24 }: { n: string; s?: number }) {
 export function TvTecelagem() {
   const [raw, setRaw] = useState<TvTecelagemData | null>(null);
   const [hora, setHora] = useState(new Date());
-  const [foto, setFoto] = useState<string | null>(() => localStorage.getItem("tclFoto"));
+  const [foto, setFoto] = useState<string | null>(() => localStorage.getItem("tclFoto") || FOTO_PADRAO);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -136,9 +137,7 @@ export function TvTecelagem() {
       {/* ── Cabeçalho ── */}
       <header className="tcl-top">
         <div className="tcl-brand">
-          <div className="tcl-logo">
-            B<span>i</span>G<small>TRICOT HOME DECOR</small>
-          </div>
+          <img className="tcl-logo-img" src="/logo-bigtricot.png" alt="Big Tricot Home Decor" />
           <span className="tcl-div" />
           <div className="tcl-setor">
             <h1>TECELAGEM</h1>

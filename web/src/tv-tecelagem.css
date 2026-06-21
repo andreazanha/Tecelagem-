@@ -21,6 +21,7 @@
 /* ── Cabeçalho ──────────────────────────────────────────────────────────────── */
 .tcl-top { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 26px; padding: 18px 30px 14px; border-bottom: 1px solid var(--line); }
 .tcl-brand { display: flex; align-items: center; gap: 22px; }
+.tcl-logo-img { height: 104px; width: auto; object-fit: contain; display: block; margin: -14px 0; }
 .tcl-logo { font-family: "Playfair Display", Georgia, serif; font-size: 40px; font-weight: 800; letter-spacing: 1px; line-height: .9; color: #fff; position: relative; padding-bottom: 12px; }
 .tcl-logo span { font-size: 30px; font-style: italic; color: var(--gold2); }
 .tcl-logo small { position: absolute; left: 2px; bottom: -2px; font-family: "Inter", sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 3.5px; color: var(--muted); }
