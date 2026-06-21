@@ -10,6 +10,7 @@ import { Romaneios } from "./pages/Romaneios";
 import { Producao } from "./pages/Producao";
 import { Passadoria } from "./pages/Passadoria";
 import { Dashboard } from "./pages/Dashboard";
+import { TvTecelagem } from "./pages/TvTecelagem";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -17,6 +18,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <Routes>
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/tv/tecelagem" element={<TvTecelagem />} />
         <Route element={<Layout />}>
           <Route path="/" element={<Navigate to="/pedidos" replace />} />
           <Route path="/pedidos" element={<Pedidos />} />

@@ -24,6 +24,9 @@ export function Layout() {
           <a className="painel-link" href="/dashboard" target="_blank" rel="noopener noreferrer" title="Abrir painel de TV">
             📺 Painel TV
           </a>
+          <a className="painel-link tcl-link" href="/tv/tecelagem" target="_blank" rel="noopener noreferrer" title="TV Tecelagem">
+            🧵 TV Tecelagem
+          </a>
           <span className="user">Ana Paula</span>
           <span className="avatar">AP</span>
         </div>

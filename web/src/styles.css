@@ -38,6 +38,8 @@ a { color: inherit; }
   font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px;
 }
 .painel-link:hover { background: #ffffff33; }
+.painel-link.tcl-link { background: linear-gradient(90deg, #8a6d2f, #c9a24a); color: #1a1304; }
+.painel-link.tcl-link:hover { filter: brightness(1.1); }
 .user { font-size: 13px; }
 .avatar {
   width: 30px; height: 30px; border-radius: 50%; background: #a78bfa;

@@ -179,6 +179,69 @@ dashboard.get("/", async (c) => {
   });
 });
 
+// ── Painel de TV do setor TECELAGEM (tema preto & dourado) ───────────────────
+dashboard.get("/tecelagem", async (c) => {
+  const db = c.env.DB;
+  const one = async (sql: string) => ((await db.prepare(sql).first<Record<string, number>>()) || {}) as Record<string, number>;
+  const all = async (sql: string) => (await db.prepare(sql).all()).results as Record<string, unknown>[];
+  const S = "pr.setor='tecelagem'";
+
+  const topo = {
+    aguardando: (await one(`SELECT COUNT(*) n FROM producao pr WHERE ${S} AND pr.status='aguardando'`)).n || 0,
+    emTecimento: (await one(`SELECT COUNT(*) n FROM producao pr WHERE ${S} AND pr.status='fazendo'`)).n || 0,
+    finalizadosHoje: (await one(`SELECT COUNT(*) n FROM producao pr WHERE ${S} AND pr.status='pronto' AND date(pr.finalizado_em)=date('now')`)).n || 0,
+  };
+
+  const pecas = {
+    hoje: (await one(`SELECT COALESCE(SUM(pr.pecas),0) n FROM producao pr WHERE ${S} AND pr.status='pronto' AND date(pr.finalizado_em)=date('now')`)).n || 0,
+    mes: (await one(`SELECT COALESCE(SUM(pr.pecas),0) n FROM producao pr WHERE ${S} AND pr.status='pronto' AND strftime('%Y-%m',pr.finalizado_em)=strftime('%Y-%m','now')`)).n || 0,
+    ano: (await one(`SELECT COALESCE(SUM(pr.pecas),0) n FROM producao pr WHERE ${S} AND pr.status='pronto' AND strftime('%Y',pr.finalizado_em)=strftime('%Y','now')`)).n || 0,
+    maquinasEmUso: (await one(`SELECT COUNT(DISTINCT pr.maquina) n FROM producao pr WHERE ${S} AND pr.status='fazendo' AND pr.maquina IS NOT NULL AND pr.maquina<>''`)).n || 0,
+    maquinasTotal: 7,
+  };
+
+  const emProducao = (await all(
+    `SELECT p.numero_erp numero, p.cliente_nome cliente, pr.pecas quantidade,
+            pr.iniciado_em dataInicio, p.data_entrega previsao
+       FROM producao pr JOIN pedidos p ON p.id=pr.pedido_id
+      WHERE ${S} AND pr.status='fazendo'
+   ORDER BY pr.iniciado_em ASC LIMIT 8`
+  )) as { numero: string | null; cliente: string; quantidade: number; dataInicio: string | null; previsao: string | null }[];
+
+  const atual = (await db
+    .prepare(
+      `SELECT p.numero_erp numero, p.cliente_nome cliente, pr.pecas quantidade,
+              p.data_entrega entrega, pr.iniciado_em inicio
+         FROM producao pr JOIN pedidos p ON p.id=pr.pedido_id
+        WHERE ${S} AND pr.status='fazendo'
+     ORDER BY pr.iniciado_em ASC LIMIT 1`
+    )
+    .first()) as Record<string, unknown> | null;
+
+  const topProdutos = (await all(
+    `SELECT produto nome, COALESCE(SUM(qtd),0) pecas
+       FROM pedido_itens GROUP BY produto ORDER BY pecas DESC LIMIT 5`
+  )) as { nome: string; pecas: number }[];
+
+  const atualizacoes = (await all(
+    `SELECT p.numero_erp numero, pr.status,
+            COALESCE(pr.finalizado_em, pr.iniciado_em, pr.created_at) ts
+       FROM producao pr JOIN pedidos p ON p.id=pr.pedido_id
+      WHERE ${S}
+   ORDER BY ts DESC LIMIT 6`
+  )) as { numero: string | null; status: string; ts: string | null }[];
+
+  return c.json({
+    topo,
+    pecas,
+    emProducao,
+    pedidoAtual: atual && atual.numero !== undefined ? atual : null,
+    topProdutos,
+    atualizacoes,
+    geradoEm: new Date().toISOString(),
+  });
+});
+
 // Avisos (CRUD usado na configuração do painel).
 dashboard.post("/avisos", async (c) => {
   const b = await c.req.json<{ texto?: string }>().catch(() => ({}) as { texto?: string });

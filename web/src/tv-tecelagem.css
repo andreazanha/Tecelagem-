@@ -1,0 +1,130 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   TV TECELAGEM — Produção em tempo real · tema preto & dourado (luxo)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.tcl {
+  position: fixed; inset: 0; overflow: hidden;
+  background:
+    radial-gradient(1200px 700px at 18% 18%, #1c1813 0%, transparent 55%),
+    radial-gradient(900px 600px at 100% 0%, #1a160f 0%, transparent 50%),
+    #070707;
+  color: #f3efe7;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  display: grid; grid-template-rows: auto auto 1fr auto;
+  --gold: #c9a24a; --gold2: #e8cd86; --gold-d: #8a6d2f;
+  --panel: #121110; --panel2: #161412;
+  --line: rgba(201, 162, 74, 0.18); --line2: rgba(255, 255, 255, 0.07);
+  --muted: #9c958a;
+}
+.tcl * { box-sizing: border-box; }
+.tcl svg { display: block; }
+
+/* ── Cabeçalho ──────────────────────────────────────────────────────────────── */
+.tcl-top { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 26px; padding: 18px 30px 14px; border-bottom: 1px solid var(--line); }
+.tcl-brand { display: flex; align-items: center; gap: 22px; }
+.tcl-logo { font-family: "Playfair Display", Georgia, serif; font-size: 40px; font-weight: 800; letter-spacing: 1px; line-height: .9; color: #fff; position: relative; padding-bottom: 12px; }
+.tcl-logo span { font-size: 30px; font-style: italic; color: var(--gold2); }
+.tcl-logo small { position: absolute; left: 2px; bottom: -2px; font-family: "Inter", sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 3.5px; color: var(--muted); }
+.tcl-div { width: 1px; height: 56px; background: linear-gradient(#0000, var(--gold), #0000); }
+.tcl-setor h1 { margin: 0; font-size: 38px; font-weight: 800; letter-spacing: 4px; color: var(--gold2); text-shadow: 0 2px 20px #c9a24a44; }
+.tcl-setor span { font-size: 13px; font-weight: 700; letter-spacing: 4px; color: var(--muted); }
+
+.tcl-kpis { display: flex; justify-self: end; background: linear-gradient(180deg, #15130f, #0e0d0b); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.tcl-kpi { display: flex; align-items: center; gap: 14px; padding: 14px 26px; border-left: 1px solid var(--line2); }
+.tcl-kpi:first-child { border-left: none; }
+.tcl-kpi-ic { color: var(--gold); }
+.tcl-kpi-body { display: flex; flex-direction: column; line-height: 1.05; }
+.tcl-kpi-body .lbl { font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: var(--muted); }
+.tcl-kpi-body .n { font-size: 42px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+.tcl-kpi.gold .n { color: var(--gold2); }
+.tcl-kpi-body .sub { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--muted); }
+
+.tcl-clock { text-align: right; border: 1px solid var(--line); border-radius: 14px; padding: 10px 22px; background: #100e0b; }
+.tcl-clock .t { font-size: 38px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; line-height: 1; }
+.tcl-clock .d { font-size: 12px; font-weight: 800; letter-spacing: 3px; color: var(--gold2); margin-top: 4px; }
+.tcl-clock .d2 { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--muted); }
+
+.tcl-demo { text-align: center; font-size: 12px; font-weight: 700; letter-spacing: .5px; color: var(--gold); background: #c9a24a12; padding: 5px; }
+
+/* ── Corpo ──────────────────────────────────────────────────────────────────── */
+.tcl-main { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 16px 30px; min-height: 0; }
+.tcl-left { display: grid; grid-template-rows: 1fr auto auto; gap: 14px; min-height: 0; }
+.tcl-right { display: grid; grid-template-rows: 1fr auto; gap: 18px; min-height: 0; }
+
+/* foto da máquina */
+.tcl-photo { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: radial-gradient(circle at 50% 40%, #1b1813, #0a0908); min-height: 0; cursor: pointer; }
+.tcl-photo img { width: 100%; height: 100%; object-fit: cover; }
+.tcl-photo-ph { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #4d463b; }
+.tcl-photo-ph span { text-align: center; font-size: 16px; font-weight: 700; }
+.tcl-photo-ph small { color: #3c372f; font-size: 12px; }
+.tcl-status { position: absolute; right: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: flex-end; background: #0b0a08cc; border: 1px solid var(--line); border-radius: 12px; padding: 10px 16px; backdrop-filter: blur(6px); }
+.tcl-status .lbl { font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: var(--muted); }
+.tcl-status .val { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; color: #fff; }
+.tcl-status .dot { width: 11px; height: 11px; border-radius: 50%; background: #36d36b; box-shadow: 0 0 0 0 #36d36b88; animation: tclping 1.8s ease-out infinite; }
+@keyframes tclping { 0% { box-shadow: 0 0 0 0 #36d36b88; } 100% { box-shadow: 0 0 0 12px #36d36b00; } }
+
+/* mini stats */
+.tcl-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.tcl-stat { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
+.tcl-stat-ic { position: absolute; top: 12px; right: 12px; color: var(--gold-d); }
+.tcl-stat .lbl { font-size: 10.5px; font-weight: 800; letter-spacing: 1px; color: var(--muted); }
+.tcl-stat .n { font-size: 34px; font-weight: 800; color: var(--gold2); font-variant-numeric: tabular-nums; line-height: 1.05; }
+.tcl-stat .n small, .tcl-stat .n :where(b) { font-size: 18px; }
+.tcl-stat .sub { font-size: 11px; font-weight: 700; color: var(--muted); }
+
+/* pedido atual */
+.tcl-atual { display: flex; gap: 20px; align-items: center; background: linear-gradient(120deg, #15120c, #0e0c0a); border: 1px solid var(--line); border-radius: 16px; padding: 18px 22px; }
+.tcl-atual-ic { width: 86px; height: 86px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center; color: var(--gold); border: 2px solid var(--line); background: radial-gradient(circle, #1a160e, #0c0a08); }
+.tcl-atual-body { flex: 1; min-width: 0; }
+.tcl-atual-t { font-size: 13px; font-weight: 800; letter-spacing: 2px; color: var(--gold2); margin-bottom: 10px; }
+.tcl-atual-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.tcl-atual-row.sub { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line2); }
+.tcl-atual-row > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tcl-atual-row .l { font-size: 10.5px; font-weight: 800; letter-spacing: 1px; color: var(--muted); }
+.tcl-atual-row .v { font-size: 20px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 6px; }
+.tcl-atual-row .v.gold { font-size: 30px; color: var(--gold2); }
+.tcl-atual-row .v small { font-size: 13px; color: var(--muted); font-weight: 700; }
+.tcl-atual-row .v svg { color: var(--gold); }
+
+/* ── Cards direita ──────────────────────────────────────────────────────────── */
+.tcl-card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 22px; display: flex; flex-direction: column; min-height: 0; }
+.tcl-card-h { display: flex; align-items: center; justify-content: space-between; color: var(--gold2); font-size: 15px; font-weight: 800; letter-spacing: 2px; padding-bottom: 12px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.tcl-card-h svg { color: var(--gold); }
+
+.tcl-tabela table { width: 100%; border-collapse: collapse; }
+.tcl-tabela th { text-align: left; font-size: 11.5px; font-weight: 800; letter-spacing: 1.5px; color: var(--muted); padding: 12px 8px 10px; }
+.tcl-tabela td { font-size: 18px; font-weight: 600; color: #e7e2d8; padding: 13px 8px; border-top: 1px solid var(--line2); }
+.tcl-tabela td.gold { color: var(--gold2); font-weight: 800; }
+.tcl-tabela tr:last-child td { border-bottom: none; }
+
+/* produtos mais vendidos */
+.tcl-rank { display: flex; flex-direction: column; gap: 14px; padding-top: 10px; flex: 1; justify-content: center; }
+.tcl-rank-row { display: grid; grid-template-columns: 36px 130px 1fr auto; align-items: center; gap: 16px; }
+.medal { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; font-weight: 900; color: #1a1304; }
+.medal.m1 { background: linear-gradient(135deg, #f5d98b, #c9a24a); box-shadow: 0 4px 14px #c9a24a55; }
+.medal.m2 { background: linear-gradient(135deg, #e6e6e6, #a9a9a9); }
+.medal.m3 { background: linear-gradient(135deg, #e0a373, #b06a36); }
+.medal.m4, .medal.m5 { background: #1b1813; border: 1px solid var(--line); color: var(--muted); }
+.tcl-rank-row .nm { font-size: 22px; font-weight: 800; color: #fff; letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tcl-rank-row .bar { height: 10px; background: #ffffff0a; border-radius: 999px; overflow: hidden; }
+.tcl-rank-row .bar span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--gold-d), var(--gold2)); animation: tclbar 1s cubic-bezier(.16,1,.3,1) both; transform-origin: left; }
+@keyframes tclbar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.tcl-rank-row .v { font-size: 20px; font-weight: 800; color: var(--gold2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tcl-rank-row .v small { color: var(--muted); font-size: 13px; font-weight: 700; }
+
+/* ── Ticker ─────────────────────────────────────────────────────────────────── */
+.tcl-ticker { display: flex; align-items: stretch; gap: 0; border-top: 1px solid var(--line); background: linear-gradient(180deg, #100e0b, #0a0908); }
+.tcl-ticker-tag { display: flex; align-items: center; gap: 10px; padding: 0 26px; font-size: 13px; font-weight: 800; letter-spacing: 2px; color: var(--gold2); border-right: 1px solid var(--line); white-space: nowrap; }
+.tcl-ticker-tag svg { color: var(--gold); }
+.tcl-ticker-items { flex: 1; display: flex; align-items: center; gap: 0; overflow: hidden; }
+.tcl-upd { display: flex; align-items: center; gap: 12px; padding: 14px 30px; border-right: 1px solid var(--line2); flex: 1; min-width: 0; }
+.tcl-upd .ic { color: var(--gold); flex-shrink: 0; }
+.tcl-upd .txt { display: flex; flex-direction: column; line-height: 1.2; font-size: 16px; font-weight: 800; color: #fff; min-width: 0; }
+.tcl-upd .txt small { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.tcl-upd .hora { margin-left: auto; font-size: 15px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 1200px) {
+  .tcl-top { grid-template-columns: 1fr; justify-items: center; gap: 12px; }
+  .tcl-kpis { justify-self: center; }
+  .tcl-main { grid-template-columns: 1fr; }
+  .tcl-ticker-items { flex-wrap: wrap; }
+}

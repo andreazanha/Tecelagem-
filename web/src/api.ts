@@ -131,6 +131,16 @@ export interface DashboardData {
   geradoEm: string;
 }
 
+export interface TvTecelagemData {
+  topo: { aguardando: number; emTecimento: number; finalizadosHoje: number };
+  pecas: { hoje: number; mes: number; ano: number; maquinasEmUso: number; maquinasTotal: number };
+  emProducao: { numero: string | null; cliente: string; quantidade: number; dataInicio: string | null; previsao: string | null }[];
+  pedidoAtual: { numero: string | null; cliente: string; quantidade: number; entrega: string | null; inicio: string | null } | null;
+  topProdutos: { nome: string; pecas: number }[];
+  atualizacoes: { numero: string | null; status: string; ts: string | null }[];
+  geradoEm: string;
+}
+
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let msg = `Erro ${res.status}`;
@@ -220,6 +230,7 @@ export const api = {
   listarProducao: (setor = "tecelagem") =>
     fetch(`/api/producao?setor=${encodeURIComponent(setor)}`).then((r) => j<CardProducao[]>(r)),
   dashboard: () => fetch("/api/dashboard").then((r) => j<DashboardData>(r)),
+  tvTecelagem: () => fetch("/api/dashboard/tecelagem").then((r) => j<TvTecelagemData>(r)),
   addAviso: (texto: string) =>
     fetch("/api/dashboard/avisos", {
       method: "POST",
