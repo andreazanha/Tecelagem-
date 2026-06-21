@@ -46,12 +46,12 @@
 .tcl-demo { text-align: center; font-size: 12px; font-weight: 700; letter-spacing: .5px; color: var(--gold); background: #c9a24a12; padding: 5px; }
 
 /* ── Corpo ──────────────────────────────────────────────────────────────────── */
-.tcl-main { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 16px 30px; min-height: 0; }
-.tcl-left { display: grid; grid-template-rows: 1fr auto auto; gap: 14px; min-height: 0; }
+.tcl-main { display: grid; grid-template-columns: 1.28fr 0.92fr; gap: 18px; padding: 16px 30px; min-height: 0; }
+.tcl-left { display: grid; grid-template-rows: 1.6fr auto auto; gap: 14px; min-height: 0; }
 .tcl-right { display: grid; grid-template-rows: 1fr auto; gap: 18px; min-height: 0; }
 
 /* foto da máquina */
-.tcl-photo { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: radial-gradient(circle at 50% 40%, #1b1813, #0a0908); min-height: 0; cursor: pointer; }
+.tcl-photo { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: radial-gradient(circle at 50% 40%, #1b1813, #0a0908); min-height: 360px; cursor: pointer; }
 .tcl-photo img { width: 100%; height: 100%; object-fit: cover; }
 .tcl-photo-ph { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #4d463b; }
 .tcl-photo-ph span { text-align: center; font-size: 16px; font-weight: 700; }

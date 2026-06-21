@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, type DashboardData } from "../api";
 import { Logo } from "../components/Logo";
 import { Donut, DonutLegend, BarsH, LineArea, Columns, Gauge, type Slice } from "../components/charts";
+import { TvTecelagem } from "./TvTecelagem";
 import "../dashboard.css";
 
 // ── Setores (cor + ícone próprios) ──────────────────────────────────────────
@@ -53,12 +54,12 @@ const CFG_PADRAO: Cfg = {
   novoPedido: true,
   mostrarValores: false,
   metaPedidos: 80,
-  fixarComando: true,
-  telas: { comando: true, capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
+  fixarComando: false,
+  telas: { comando: true, tecelagem: true, capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
 };
 function carregarCfg(): Cfg {
   try {
-    const v = JSON.parse(localStorage.getItem("dashCfg") || "{}");
+    const v = JSON.parse(localStorage.getItem("dashCfg2") || "{}");
     return { ...CFG_PADRAO, ...v, telas: { ...CFG_PADRAO.telas, ...(v.telas || {}) } };
   } catch {
     return CFG_PADRAO;
@@ -102,7 +103,7 @@ export function Dashboard() {
   const lastId = useRef<string | null>(null);
 
   useEffect(() => {
-    localStorage.setItem("dashCfg", JSON.stringify(cfg));
+    localStorage.setItem("dashCfg2", JSON.stringify(cfg));
   }, [cfg]);
 
   useEffect(() => {
@@ -139,8 +140,9 @@ export function Dashboard() {
   }, [cfg.novoPedido, cfg.som]);
 
   const telas = useMemo(() => {
-    const all = [
+    const all: { key: string; el: ReactNode; full?: boolean }[] = [
       { key: "comando", el: <ComandoScreen d={data} hora={hora} /> },
+      { key: "tecelagem", el: <TvTecelagem />, full: true },
       { key: "capa", el: <CapaScreen hora={hora} /> },
       { key: "resumo", el: <ResumoScreen d={data} /> },
       { key: "producao", el: <ProducaoScreen d={data} /> },
@@ -201,9 +203,11 @@ export function Dashboard() {
   }
 
   const at = Math.min(idx, Math.max(0, telas.length - 1));
+  const cur = telas[at];
+  const isFull = !!cur?.full;
 
   return (
-    <div className="dash">
+    <div className={"dash" + (isFull ? " dash-full" : "")}>
       <div className="dash-bg" aria-hidden>
         <span className="orb o1" />
         <span className="orb o2" />
@@ -211,36 +215,40 @@ export function Dashboard() {
         <span className="grid" />
       </div>
 
-      <header className="dash-top">
-        <div className="dash-brand">
-          <span className="dash-mark">BT</span>
-          <div>
-            <b>BIG TRICOT</b>
-            <span>Central de Produção · ao vivo</span>
+      {!isFull && (
+        <header className="dash-top">
+          <div className="dash-brand">
+            <span className="dash-mark">BT</span>
+            <div>
+              <b>BIG TRICOT</b>
+              <span>Central de Produção · ao vivo</span>
+            </div>
           </div>
-        </div>
-        <div className="dash-top-right">
-          <span className={"dash-live" + (pausado ? " off" : "")}>
-            <span className="ping" /> {pausado ? "pausado" : "ao vivo"}
-          </span>
-          <div className="dash-clock">
-            {hora.toLocaleTimeString("pt-BR")}
-            <small>{hora.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "long" })}</small>
+          <div className="dash-top-right">
+            <span className={"dash-live" + (pausado ? " off" : "")}>
+              <span className="ping" /> {pausado ? "pausado" : "ao vivo"}
+            </span>
+            <div className="dash-clock">
+              {hora.toLocaleTimeString("pt-BR")}
+              <small>{hora.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "long" })}</small>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       <main className="dash-stage">
         {telas.length === 0 ? (
           <div className="dash-empty">Nenhuma tela ativa — abra as configurações ⚙</div>
+        ) : isFull ? (
+          <div className="dash-fade" key={cur?.key}>{cur?.el}</div>
         ) : (
-          <div className="dash-screen" key={telas[at]?.key}>
-            {telas[at]?.el}
+          <div className="dash-screen" key={cur?.key}>
+            {cur?.el}
           </div>
         )}
       </main>
 
-      <footer className="dash-ctrl">
+      <footer className={"dash-ctrl" + (isFull ? " float" : "")}>
         <button className="dash-btn" onClick={() => setIdx((i) => (i - 1 + telas.length) % Math.max(1, telas.length))}>◀</button>
         <button className="dash-btn" onClick={() => setPausado((p) => !p)}>{pausado ? "▶" : "⏸"}</button>
         <button className="dash-btn" onClick={() => setIdx((i) => (i + 1) % Math.max(1, telas.length))}>▶</button>
@@ -741,6 +749,7 @@ function ConfigPanel({
   const [novoAviso, setNovoAviso] = useState("");
   const telasLabels: [string, string][] = [
     ["comando", "Central de Comando"],
+    ["tecelagem", "TV Tecelagem (preto & dourado)"],
     ["capa", "Capa de abertura"],
     ["resumo", "Resumo do dia"],
     ["producao", "Linha de produção"],

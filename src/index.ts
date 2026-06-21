@@ -32,12 +32,24 @@ app.route("/api/producao", producao);
 app.route("/api/dashboard", dashboard);
 
 // Fallback: serve o SPA (assets estáticos do build do Vite).
+// IMPORTANTE: como o worker intercepta todas as rotas e busca o asset por código,
+// o arquivo _headers NÃO é aplicado. Então definimos o cache aqui:
+//  - HTML (index.html / SPA): nunca cacheia → toda atualização chega na hora.
+//  - /assets/* (nomes com hash): cache eterno e imutável.
 app.all("*", async (c) => {
-  const res = await c.env.ASSETS.fetch(c.req.raw);
+  let res = await c.env.ASSETS.fetch(c.req.raw);
   if (res.status === 404) {
     const url = new URL(c.req.url);
     url.pathname = "/index.html";
-    return c.env.ASSETS.fetch(new Request(url.toString(), { headers: c.req.raw.headers }));
+    res = await c.env.ASSETS.fetch(new Request(url.toString(), { headers: c.req.raw.headers }));
+  }
+  const ct = res.headers.get("content-type") || "";
+  const path = new URL(c.req.url).pathname;
+  res = new Response(res.body, res);
+  if (ct.includes("text/html")) {
+    res.headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+  } else if (path.startsWith("/assets/")) {
+    res.headers.set("Cache-Control", "public, max-age=31536000, immutable");
   }
   return res;
 });
