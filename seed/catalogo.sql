@@ -45,3 +45,7 @@ INSERT OR IGNORE INTO operadores (id, nome, senha, setor) VALUES
   ('op-rev-bruna',   'Bruna',   '1234', 'revisao'),
   ('op-rev-sula',    'Sula',    '1234', 'revisao'),
   ('op-rev-eduarda', 'Eduarda', '1234', 'revisao');
+
+-- Usuário administrador inicial (admin/admin) — troque a senha em Cadastros › Usuários.
+INSERT OR IGNORE INTO usuarios (id, nome, usuario, senha, admin, paginas) VALUES
+  ('user-admin', 'Administrador', 'admin', 'admin', 1, '[]');

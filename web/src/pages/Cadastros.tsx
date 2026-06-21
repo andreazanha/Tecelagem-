@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { api, COMPOSICOES, type Modelo, type Cor } from "../api";
+import { getUser, PAGINAS, type Usuario } from "../auth";
 
 export function Cadastros() {
-  const [aba, setAba] = useState<"modelos" | "cores" | "operadores">("modelos");
+  const ehAdmin = !!getUser()?.admin;
+  const [aba, setAba] = useState<"modelos" | "cores" | "operadores" | "usuarios">("modelos");
   const [itens, setItens] = useState<Modelo[]>([]);
   const [busca, setBusca] = useState("");
   const [novo, setNovo] = useState<Modelo>({
@@ -80,7 +82,7 @@ export function Cadastros() {
       <div className="page-head">
         <div>
           <h1>Cadastros</h1>
-          <div className="breadcrumb">Configuração › {aba === "modelos" ? "Modelos" : aba === "cores" ? "Cores" : "Operadores"}</div>
+          <div className="breadcrumb">Configuração › {aba === "modelos" ? "Modelos" : aba === "cores" ? "Cores" : aba === "operadores" ? "Operadores" : "Usuários"}</div>
         </div>
         <div className="segmented">
           <button
@@ -104,11 +106,21 @@ export function Cadastros() {
           >
             👤 Operadores
           </button>
+          {ehAdmin && (
+            <button
+              type="button"
+              className={"seg" + (aba === "usuarios" ? " seg-on" : "")}
+              onClick={() => setAba("usuarios")}
+            >
+              🔐 Usuários
+            </button>
+          )}
         </div>
       </div>
 
       {aba === "cores" && <CoresCadastro />}
       {aba === "operadores" && <OperadoresCadastro />}
+      {aba === "usuarios" && ehAdmin && <UsuariosCadastro />}
 
       {aba === "modelos" && (
         <>
@@ -621,6 +633,100 @@ function OperadoresCadastro() {
               <td data-label="Senha">••••</td>
               <td>
                 <button className="icon-btn" title="Remover" onClick={() => remover(o.id)}>✕</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+// ── Usuários (login + permissões de telas) — somente admin ────────────────────
+function UsuariosCadastro() {
+  const [itens, setItens] = useState<Usuario[]>([]);
+  const vazio = { nome: "", usuario: "", senha: "", admin: false, paginas: [] as string[] };
+  const [novo, setNovo] = useState<{ nome: string; usuario: string; senha: string; admin: boolean; paginas: string[] }>(vazio);
+  const [editId, setEditId] = useState<string | null>(null);
+
+  function recarregar() {
+    api.listarUsuarios().then(setItens).catch(() => {});
+  }
+  useEffect(recarregar, []);
+
+  function toggle(key: string) {
+    setNovo((f) => ({ ...f, paginas: f.paginas.includes(key) ? f.paginas.filter((k) => k !== key) : [...f.paginas, key] }));
+  }
+  async function salvar() {
+    if (!novo.nome.trim() || !novo.usuario.trim()) return alert("Informe nome e usuário.");
+    if (!editId && !novo.senha.trim()) return alert("Informe uma senha.");
+    try {
+      await api.salvarUsuario({ id: editId || undefined, nome: novo.nome.trim(), usuario: novo.usuario.trim(), senha: novo.senha.trim() || undefined, admin: novo.admin, paginas: novo.paginas });
+      setNovo(vazio);
+      setEditId(null);
+      recarregar();
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  }
+  function editar(u: Usuario) {
+    setEditId(u.id);
+    setNovo({ nome: u.nome, usuario: u.usuario, senha: "", admin: u.admin, paginas: u.paginas });
+  }
+  async function remover(u: Usuario) {
+    if (u.usuario === "admin") return alert("O usuário admin não pode ser removido.");
+    if (!confirm(`Remover ${u.nome}?`)) return;
+    await api.removerUsuario(u.id);
+    recarregar();
+  }
+
+  return (
+    <>
+      <div className="card pad" style={{ marginBottom: 16 }}>
+        <h2>{editId ? "Editar usuário" : "Novo usuário"}</h2>
+        <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+          Defina o login e marque as telas que essa pessoa pode usar. Admin enxerga tudo.
+          {editId && " Deixe a senha em branco para mantê-la."}
+        </p>
+        <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap" }}>
+          <input placeholder="Nome" value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} style={{ minWidth: 180 }} />
+          <input placeholder="Usuário (login)" value={novo.usuario} onChange={(e) => setNovo({ ...novo, usuario: e.target.value })} style={{ minWidth: 160 }} />
+          <input placeholder={editId ? "Senha (manter)" : "Senha"} type="text" value={novo.senha} onChange={(e) => setNovo({ ...novo, senha: e.target.value })} style={{ minWidth: 140 }} />
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}>
+            <input type="checkbox" checked={novo.admin} onChange={(e) => setNovo({ ...novo, admin: e.target.checked })} /> Admin (tudo)
+          </label>
+        </div>
+        {!novo.admin && (
+          <div style={{ marginTop: 14 }}>
+            <div className="campo-l">TELAS LIBERADAS</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6 }}>
+              {PAGINAS.map((p) => (
+                <label key={p.key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 600, background: p.tv ? "#f1f5f9" : "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px" }}>
+                  <input type="checkbox" checked={novo.paginas.includes(p.key)} onChange={() => toggle(p.key)} />
+                  {p.tv ? "📺 " : ""}{p.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="row-gap" style={{ marginTop: 14 }}>
+          <button className="btn btn-primary" onClick={salvar}>{editId ? "Salvar" : "＋ Adicionar"}</button>
+          {editId && <button className="btn" onClick={() => { setEditId(null); setNovo(vazio); }}>Cancelar</button>}
+        </div>
+      </div>
+
+      <table className="table">
+        <thead><tr><th>Nome</th><th>Usuário</th><th>Acesso</th><th></th></tr></thead>
+        <tbody>
+          {itens.length === 0 && <tr><td colSpan={4} className="muted">Nenhum usuário ainda.</td></tr>}
+          {itens.map((u) => (
+            <tr key={u.id}>
+              <td data-label="Nome"><strong>{u.nome}</strong></td>
+              <td data-label="Usuário">{u.usuario}</td>
+              <td data-label="Acesso">{u.admin ? "Admin (tudo)" : u.paginas.length ? u.paginas.length + " tela(s)" : "nenhuma"}</td>
+              <td>
+                <button className="icon-btn" title="Editar" onClick={() => editar(u)}>✎</button>
+                <button className="icon-btn" title="Remover" onClick={() => remover(u)}>✕</button>
               </td>
             </tr>
           ))}

@@ -37,6 +37,16 @@ a { color: inherit; }
 .ur-btn:hover:not(:disabled) { background: #ffffff33; }
 .ur-btn:disabled { opacity: .4; cursor: default; }
 .busca-ped { min-width: 320px; padding: 9px 14px; border: 1px solid #e2e8f0; border-radius: 10px; font: inherit; }
+/* Login */
+.login-bg { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(900px 600px at 50% 20%, #eef2ff, #f8fafc); padding: 20px; }
+.login-card { width: 100%; max-width: 360px; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 28px 26px; box-shadow: 0 20px 60px #0f172a18; display: flex; flex-direction: column; }
+.login-logo { display: flex; justify-content: center; margin-bottom: 14px; }
+.login-card h1 { margin: 4px 0 2px; font-size: 24px; }
+.login-card .muted { margin: 0 0 14px; font-size: 13px; }
+.login-card label { font-size: 12px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: .5px; margin-top: 10px; }
+.login-card input { margin-top: 4px; padding: 11px 13px; border: 1px solid #e2e8f0; border-radius: 10px; font: inherit; }
+.login-card .btn-primary { margin-top: 18px; padding: 12px; font-size: 15px; }
+.login-erro { margin-top: 12px; color: #b91c1c; font-weight: 700; font-size: 13px; }
 @media (max-width: 720px) { .busca-ped { min-width: 0; width: 100%; } }
 .painel-link {
   display: inline-flex; align-items: center; gap: 6px;

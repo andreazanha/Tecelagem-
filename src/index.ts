@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { pedidos } from "./routes/pedidos";
 import { clientes } from "./routes/clientes";
-import { modelos, cores, tasseis, prestadores, costura, operadores } from "./routes/catalogo";
+import { modelos, cores, tasseis, prestadores, costura, operadores, usuarios } from "./routes/catalogo";
 import { producao } from "./routes/producao";
 import { dashboard } from "./routes/dashboard";
 
@@ -29,6 +29,7 @@ app.route("/api/tasseis", tasseis);
 app.route("/api/prestadores", prestadores);
 app.route("/api/costura", costura);
 app.route("/api/operadores", operadores);
+app.route("/api/usuarios", usuarios);
 app.route("/api/producao", producao);
 app.route("/api/dashboard", dashboard);
 

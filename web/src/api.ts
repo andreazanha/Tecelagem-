@@ -345,6 +345,25 @@ export const api = {
     }).then((r) => j<{ id: string; nome: string; setor: string | null }>(r)),
   removerOperador: (id: string) =>
     fetch(`/api/operadores/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  login: async (usuario: string, senha: string) => {
+    const r = await fetch("/api/usuarios/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usuario, senha }),
+    });
+    if (r.status === 401) return { ok: false as const };
+    return j<{ ok: boolean; user: import("./auth").Usuario }>(r);
+  },
+  listarUsuarios: () =>
+    fetch("/api/usuarios").then((r) => j<import("./auth").Usuario[]>(r)),
+  salvarUsuario: (b: { id?: string; nome: string; usuario: string; senha?: string; admin: boolean; paginas: string[] }) =>
+    fetch("/api/usuarios", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(b),
+    }).then((r) => j<import("./auth").Usuario>(r)),
+  removerUsuario: (id: string) =>
+    fetch(`/api/usuarios/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   validarOperador: async (id: string, senha: string) => {
     const r = await fetch("/api/operadores/validar", {
       method: "POST",

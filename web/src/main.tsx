@@ -13,7 +13,27 @@ import { Dashboard } from "./pages/Dashboard";
 import { TvTecelagem } from "./pages/TvTecelagem";
 import { TvCostura } from "./pages/TvCostura";
 import { TvRevisao } from "./pages/TvRevisao";
+import { Login } from "./pages/Login";
+import { getUser, pode, primeiraPagina } from "./auth";
 import "./styles.css";
+
+// Protege uma página: exige login e a permissão da tela. Sem permissão, manda
+// para a primeira página liberada do usuário.
+function Protegido({ page, children }: { page?: string; children: React.ReactNode }) {
+  const u = getUser();
+  if (!u) return <Navigate to="/login" replace />;
+  if (page && !pode(u, page)) return <Navigate to={primeiraPagina(u)} replace />;
+  return <>{children}</>;
+}
+
+function SemAcesso() {
+  return (
+    <div style={{ padding: 40, textAlign: "center" }}>
+      <h2>Sem telas liberadas</h2>
+      <p className="muted">Seu usuário ainda não tem nenhuma tela liberada. Fale com o administrador.</p>
+    </div>
+  );
+}
 
 // Protetor de tela: após N min sem uso (config por dispositivo em localStorage
 // "ssMin", 0 = desligado), entra no Dashboard em modo TV; qualquer atividade volta.
@@ -50,15 +70,17 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Route path="/tv/tecelagem" element={<TvTecelagem />} />
         <Route path="/tv/costura" element={<TvCostura />} />
         <Route path="/tv/revisao" element={<TvRevisao />} />
+        <Route path="/login" element={<Login />} />
         <Route element={<Layout />}>
-          <Route path="/" element={<Navigate to="/pedidos" replace />} />
-          <Route path="/pedidos" element={<Pedidos />} />
-          <Route path="/pedidos/novo" element={<NovoPedido />} />
-          <Route path="/pedidos/:id" element={<PedidoDetalhe />} />
-          <Route path="/cadastros" element={<Cadastros />} />
-          <Route path="/romaneios" element={<Romaneios />} />
-          <Route path="/producao" element={<Producao />} />
-          <Route path="/passadoria" element={<Passadoria />} />
+          <Route path="/" element={<Navigate to={primeiraPagina(getUser())} replace />} />
+          <Route path="/sem-acesso" element={<SemAcesso />} />
+          <Route path="/pedidos" element={<Protegido page="pedidos"><Pedidos /></Protegido>} />
+          <Route path="/pedidos/novo" element={<Protegido page="pedidos"><NovoPedido /></Protegido>} />
+          <Route path="/pedidos/:id" element={<Protegido page="pedidos"><PedidoDetalhe /></Protegido>} />
+          <Route path="/cadastros" element={<Protegido page="cadastros"><Cadastros /></Protegido>} />
+          <Route path="/romaneios" element={<Protegido page="romaneios"><Romaneios /></Protegido>} />
+          <Route path="/producao" element={<Protegido page="producao"><Producao /></Protegido>} />
+          <Route path="/passadoria" element={<Protegido page="passadoria"><Passadoria /></Protegido>} />
         </Route>
       </Routes>
     </BrowserRouter>

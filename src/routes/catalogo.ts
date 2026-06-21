@@ -291,6 +291,58 @@ operadores.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── Usuários (login + permissões de telas) ────────────────────────────────────
+export const usuarios = new Hono<{ Bindings: Env }>();
+
+usuarios.get("/", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, nome, usuario, admin, paginas FROM usuarios ORDER BY nome"
+  ).all<{ id: string; nome: string; usuario: string; admin: number; paginas: string }>();
+  return c.json(
+    results.map((u) => ({ id: u.id, nome: u.nome, usuario: u.usuario, admin: !!u.admin, paginas: JSON.parse(u.paginas || "[]") }))
+  );
+});
+
+usuarios.post("/", async (c) => {
+  const b = await c.req.json<{ id?: string; nome?: string; usuario?: string; senha?: string; admin?: boolean; paginas?: string[] }>();
+  const nome = (b.nome || "").trim();
+  const usuario = (b.usuario || "").trim().toLowerCase();
+  if (!nome || !usuario) return c.json({ error: "nome e usuário são obrigatórios" }, 400);
+  const ex = await c.env.DB.prepare("SELECT id, senha FROM usuarios WHERE usuario = ?")
+    .bind(usuario)
+    .first<{ id: string; senha: string }>();
+  const senha = b.senha && b.senha.trim() ? b.senha.trim() : ex?.senha || "";
+  if (!senha) return c.json({ error: "senha é obrigatória" }, 400);
+  const id = ex?.id || b.id || crypto.randomUUID();
+  const paginas = JSON.stringify(Array.isArray(b.paginas) ? b.paginas : []);
+  const admin = b.admin ? 1 : 0;
+  await c.env.DB.prepare(
+    `INSERT INTO usuarios (id, nome, usuario, senha, admin, paginas) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(usuario) DO UPDATE SET nome = excluded.nome, senha = excluded.senha, admin = excluded.admin, paginas = excluded.paginas`
+  )
+    .bind(id, nome, usuario, senha, admin, paginas)
+    .run();
+  return c.json({ id, nome, usuario, admin: !!admin, paginas: JSON.parse(paginas) }, 201);
+});
+
+usuarios.delete("/:id", async (c) => {
+  await c.env.DB.prepare("DELETE FROM usuarios WHERE id = ? AND usuario <> 'admin'").bind(c.req.param("id")).run();
+  return c.json({ ok: true });
+});
+
+usuarios.post("/login", async (c) => {
+  const b = await c.req.json<{ usuario?: string; senha?: string }>().catch(() => ({}) as { usuario?: string; senha?: string });
+  const usuario = (b.usuario || "").trim().toLowerCase();
+  const row = await c.env.DB.prepare("SELECT id, nome, usuario, senha, admin, paginas FROM usuarios WHERE usuario = ?")
+    .bind(usuario)
+    .first<{ id: string; nome: string; usuario: string; senha: string; admin: number; paginas: string }>();
+  if (!row || row.senha !== (b.senha || "")) return c.json({ ok: false }, 401);
+  return c.json({
+    ok: true,
+    user: { id: row.id, nome: row.nome, usuario: row.usuario, admin: !!row.admin, paginas: JSON.parse(row.paginas || "[]") },
+  });
+});
+
 // Valida a senha do operador selecionado (usado ao iniciar produção).
 operadores.post("/validar", async (c) => {
   const b = await c.req.json<{ id?: string; senha?: string }>();
