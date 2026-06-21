@@ -242,6 +242,67 @@ dashboard.get("/tecelagem", async (c) => {
   });
 });
 
+// ── Painel de TV do setor COSTURA ─────────────────────────────────────────────
+dashboard.get("/costura", async (c) => {
+  const db = c.env.DB;
+  const one = async (sql: string) => ((await db.prepare(sql).first<Record<string, number>>()) || {}) as Record<string, number>;
+  const all = async (sql: string) => (await db.prepare(sql).all()).results as Record<string, unknown>[];
+  const S = "pr.setor='costura'";
+
+  const topo = {
+    costureirasAtivas: (await one(`SELECT COUNT(DISTINCT pr.operador) n FROM producao pr WHERE ${S} AND pr.status='fazendo' AND pr.operador IS NOT NULL AND pr.operador<>''`)).n || 0,
+    costureirasTotal: (await one("SELECT COUNT(*) n FROM operadores WHERE setor='costura'")).n || 0,
+    pedidosComCostureiras: (await one(`SELECT COUNT(*) n FROM producao pr WHERE ${S} AND pr.operador IS NOT NULL AND pr.operador<>''`)).n || 0,
+    pecasEmCostura: (await one(`SELECT COALESCE(SUM(pr.pecas),0) n FROM producao pr WHERE ${S} AND pr.status='fazendo'`)).n || 0,
+    finalizadosHoje: (await one(`SELECT COUNT(*) n FROM producao pr WHERE ${S} AND pr.status='pronto' AND date(pr.finalizado_em)=date('now')`)).n || 0,
+    acumuladoAno: (await one(`SELECT COALESCE(SUM(pr.pecas),0) n FROM producao pr WHERE ${S} AND pr.status='pronto' AND strftime('%Y',pr.finalizado_em)=strftime('%Y','now')`)).n || 0,
+    maquinasOperacao: 0,
+    maquinasTotal: 48,
+  };
+
+  const status = {
+    emCostura: (await one(`SELECT COUNT(*) n FROM producao pr WHERE ${S} AND pr.status='fazendo'`)).n || 0,
+    aguardando: (await one(`SELECT COUNT(*) n FROM producao pr WHERE ${S} AND pr.status='aguardando'`)).n || 0,
+    emRevisao: (await one("SELECT COUNT(*) n FROM producao pr WHERE pr.setor='revisao'")).n || 0,
+    finalizadosHoje: topo.finalizadosHoje,
+  };
+
+  // Tela das costureiras: agrupa pedidos de costura por operador.
+  const linhas = (await all(
+    `SELECT pr.operador, pr.status, pr.pecas, p.numero_erp numero, p.codigo_pai, p.data_entrega
+       FROM producao pr JOIN pedidos p ON p.id=pr.pedido_id
+      WHERE ${S} AND pr.operador IS NOT NULL AND pr.operador<>''`
+  )) as { operador: string; status: string; pecas: number; numero: string | null; codigo_pai: string | null; data_entrega: string | null }[];
+  const mapa = new Map<string, { nome: string; qtdPedidos: number; qtdPecas: number; emCostura: string | null; aguardando: string[]; datas: string[] }>();
+  for (const l of linhas) {
+    const cod = l.codigo_pai || l.numero || "—";
+    let e = mapa.get(l.operador);
+    if (!e) { e = { nome: l.operador, qtdPedidos: 0, qtdPecas: 0, emCostura: null, aguardando: [], datas: [] }; mapa.set(l.operador, e); }
+    e.qtdPedidos++;
+    e.qtdPecas += l.pecas || 0;
+    if (l.status === "fazendo" && !e.emCostura) e.emCostura = cod;
+    else if (l.status === "aguardando") e.aguardando.push(cod);
+    if (l.data_entrega) e.datas.push(l.data_entrega);
+  }
+  const costureiras = Array.from(mapa.values());
+
+  const ultimosFinalizados = (await all(
+    `SELECT p.numero_erp numero, p.cliente_nome cliente, pr.pecas, pr.finalizado_em
+       FROM producao pr JOIN pedidos p ON p.id=pr.pedido_id
+      WHERE ${S} AND pr.status='pronto' ORDER BY pr.finalizado_em DESC LIMIT 5`
+  )) as { numero: string | null; cliente: string; pecas: number; finalizado_em: string | null }[];
+
+  const proximosPrazos = (await all(
+    `SELECT DISTINCT p.numero_erp numero, p.cliente_nome cliente, p.data_entrega
+       FROM producao pr JOIN pedidos p ON p.id=pr.pedido_id
+      WHERE ${S} AND p.data_entrega IS NOT NULL ORDER BY p.data_entrega ASC LIMIT 5`
+  )) as { numero: string | null; cliente: string; data_entrega: string | null }[];
+
+  const avisos = (await all("SELECT texto FROM avisos ORDER BY created_at DESC LIMIT 3")) as { texto: string }[];
+
+  return c.json({ topo, status, costureiras, tipos: [], ultimosFinalizados, proximosPrazos, avisos, geradoEm: new Date().toISOString() });
+});
+
 // Avisos (CRUD usado na configuração do painel).
 dashboard.post("/avisos", async (c) => {
   const b = await c.req.json<{ texto?: string }>().catch(() => ({}) as { texto?: string });

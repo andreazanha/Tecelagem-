@@ -137,6 +137,21 @@ export interface DashboardData {
   geradoEm: string;
 }
 
+export interface TvCosturaData {
+  topo: {
+    costureirasAtivas: number; costureirasTotal: number; pedidosComCostureiras: number;
+    pecasEmCostura: number; finalizadosHoje: number; acumuladoAno: number;
+    maquinasOperacao: number; maquinasTotal: number;
+  };
+  status: { emCostura: number; aguardando: number; emRevisao: number; finalizadosHoje: number };
+  costureiras: { nome: string; qtdPedidos: number; qtdPecas: number; emCostura: string | null; aguardando: string[]; datas: string[] }[];
+  tipos: { nome: string; pedidos: number; pct: number }[];
+  ultimosFinalizados: { numero: string | null; cliente: string; pecas: number; finalizado_em: string | null }[];
+  proximosPrazos: { numero: string | null; cliente: string; data_entrega: string | null }[];
+  avisos: { texto: string }[];
+  geradoEm: string;
+}
+
 export interface TvTecelagemData {
   topo: { aguardando: number; emTecimento: number; finalizadosHoje: number };
   pecas: { hoje: number; mes: number; ano: number; maquinasEmUso: number; maquinasTotal: number };
@@ -237,6 +252,7 @@ export const api = {
     fetch(`/api/producao?setor=${encodeURIComponent(setor)}`).then((r) => j<CardProducao[]>(r)),
   dashboard: () => fetch("/api/dashboard").then((r) => j<DashboardData>(r)),
   tvTecelagem: () => fetch("/api/dashboard/tecelagem").then((r) => j<TvTecelagemData>(r)),
+  tvCostura: () => fetch("/api/dashboard/costura").then((r) => j<TvCosturaData>(r)),
   addAviso: (texto: string) =>
     fetch("/api/dashboard/avisos", {
       method: "POST",

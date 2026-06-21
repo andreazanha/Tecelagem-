@@ -3,6 +3,7 @@ import { api, type DashboardData } from "../api";
 import { Logo } from "../components/Logo";
 import { Donut, DonutLegend, BarsH, LineArea, Columns, Gauge, type Slice } from "../components/charts";
 import { TvTecelagem } from "./TvTecelagem";
+import { TvCostura } from "./TvCostura";
 import "../dashboard.css";
 
 // ── Setores (cor + ícone próprios) ──────────────────────────────────────────
@@ -55,7 +56,7 @@ const CFG_PADRAO: Cfg = {
   mostrarValores: false,
   metaPedidos: 80,
   fixarComando: false,
-  telas: { comando: true, tecelagem: true, capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
+  telas: { comando: true, tecelagem: true, costura: true, capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
 };
 function carregarCfg(): Cfg {
   try {
@@ -143,6 +144,7 @@ export function Dashboard() {
     const all: { key: string; el: ReactNode; full?: boolean }[] = [
       { key: "comando", el: <ComandoScreen d={data} hora={hora} /> },
       { key: "tecelagem", el: <TvTecelagem />, full: true },
+      { key: "costura", el: <TvCostura />, full: true },
       { key: "capa", el: <CapaScreen hora={hora} /> },
       { key: "resumo", el: <ResumoScreen d={data} /> },
       { key: "producao", el: <ProducaoScreen d={data} /> },
@@ -747,7 +749,8 @@ function ConfigPanel({
   const [novoAviso, setNovoAviso] = useState("");
   const telasLabels: [string, string][] = [
     ["comando", "Central de Comando"],
-    ["tecelagem", "TV Tecelagem (preto & dourado)"],
+    ["tecelagem", "TV Tecelagem"],
+    ["costura", "TV Costura"],
     ["capa", "Capa de abertura"],
     ["resumo", "Resumo do dia"],
     ["producao", "Linha de produção"],

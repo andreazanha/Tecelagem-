@@ -11,6 +11,7 @@ import { Producao } from "./pages/Producao";
 import { Passadoria } from "./pages/Passadoria";
 import { Dashboard } from "./pages/Dashboard";
 import { TvTecelagem } from "./pages/TvTecelagem";
+import { TvCostura } from "./pages/TvCostura";
 import "./styles.css";
 
 // Protetor de tela: após N min sem uso (config por dispositivo em localStorage
@@ -46,6 +47,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <Routes>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/tv/tecelagem" element={<TvTecelagem />} />
+        <Route path="/tv/costura" element={<TvCostura />} />
         <Route element={<Layout />}>
           <Route path="/" element={<Navigate to="/pedidos" replace />} />
           <Route path="/pedidos" element={<Pedidos />} />

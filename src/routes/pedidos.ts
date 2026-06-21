@@ -246,8 +246,23 @@ interface PedidoIn {
   itens?: ItemIn[];
 }
 
+// Backfill: pedidos consolidados (vários números) sem código pai ganham um agora.
+async function garantirCodigoPai(env: Env) {
+  const { results } = await env.DB.prepare(
+    "SELECT id FROM pedidos WHERE codigo_pai IS NULL AND numero_erp LIKE '%,%' ORDER BY created_at, rowid"
+  ).all<{ id: string }>();
+  for (const r of results) {
+    await env.DB.prepare("UPDATE contadores SET valor = valor + 1 WHERE nome = 'codigo_pai'").run();
+    const seq = await env.DB.prepare("SELECT valor FROM contadores WHERE nome = 'codigo_pai'").first<{ valor: number }>();
+    await env.DB.prepare("UPDATE pedidos SET codigo_pai = ? WHERE id = ?")
+      .bind("OP-" + (seq?.valor ?? Date.now()), r.id)
+      .run();
+  }
+}
+
 // LISTA
 pedidos.get("/", async (c) => {
+  await garantirCodigoPai(c.env);
   const { results } = await c.env.DB.prepare(
     `SELECT p.*,
             (SELECT COUNT(*)             FROM pedido_itens i WHERE i.pedido_id = p.id) AS itens,
