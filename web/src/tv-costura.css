@@ -61,6 +61,11 @@
 .cst .cst-left .chart-bars .cbar-track { height: 62%; min-height: 18px; max-height: 40px; }
 .cst .cst-left .chart-bars .cbar-lbl { font-size: 17px; }
 .cst .cst-left .chart-bars .cbar-val { font-size: 16px; }
+/* linhas/barras "vazias" de preenchimento — bem discretas */
+.cst .chart-bars .cbar.ghost .cbar-lbl { opacity: .25; }
+.cst .chart-bars .cbar.ghost .cbar-track { background: #ffffff07; }
+.cst-tela tr.ghost td { opacity: .3; }
+.cst-tela tr.ghost .cst-av { background: #ffffff08; border-style: dashed; }
 
 .cst-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .cst-stat { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 1px; }

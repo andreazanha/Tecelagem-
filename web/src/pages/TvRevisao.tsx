@@ -110,6 +110,18 @@ export function TvRevisao() {
   const meta = 85;
   const revs = d.revisadoras.length ? d.revisadoras : DEMO.revisadoras;
 
+  // Completa com linhas vazias para manter a mesma "cara cheia" com poucas
+  // pessoas — mesmo padrão da Costura (mínimo de 6 linhas).
+  const MIN_LINHAS = 6;
+  const barras = [
+    ...revs.map((r, i) => ({ label: r.nome, value: r.qtdPecas, color: CORES[i % CORES.length] })),
+    ...Array.from({ length: Math.max(0, MIN_LINHAS - revs.length) }, () => ({ label: "—", value: 0, ghost: true })),
+  ];
+  const linhas = [
+    ...revs.map((r) => ({ ...r, ghost: false })),
+    ...Array.from({ length: Math.max(0, MIN_LINHAS - revs.length) }, () => ({ nome: "—", qtdPedidos: 0, qtdPecas: 0, emRevisao: "", aguardando: [] as string[], datas: [] as string[], ghost: true })),
+  ];
+
   return (
     <div className="cst">
       <header className="cst-top">
@@ -142,7 +154,7 @@ export function TvRevisao() {
         <section className="cst-left">
           <div className="cst-card" style={{ minHeight: 0 }}>
             <div className="cst-card-h sm"><span><Ic n="search" s={18} /> PEÇAS POR REVISADORA</span></div>
-            <BarsH data={revs.map((r, i) => ({ label: r.nome, value: r.qtdPecas, color: CORES[i % CORES.length] }))} unidade="pç" />
+            <BarsH data={barras} unidade="pç" />
           </div>
           <div className="cst-stats">
             <Stat ic="sun" label="TOTAL DO DIA" v={nf(d.topo.totalDia)} sub="peças" />
@@ -160,7 +172,16 @@ export function TvRevisao() {
                 <tr><th>REVISADORA</th><th className="c">QTD. PEDIDOS</th><th className="c">QTD. PEÇAS</th><th>EM REVISÃO AGORA</th><th>AGUARDANDO COM ELA</th><th>DATA DE ENTREGA</th></tr>
               </thead>
               <tbody>
-                {revs.map((c, i) => (
+                {linhas.map((c, i) => c.ghost ? (
+                  <tr key={i} className="ghost">
+                    <td className="nm"><span className="cst-av" /> <span className="muted">—</span></td>
+                    <td className="c"><span className="muted">—</span></td>
+                    <td className="c"><span className="muted">—</span></td>
+                    <td><span className="muted">—</span></td>
+                    <td><span className="muted">—</span></td>
+                    <td className="dt"><span className="muted">—</span></td>
+                  </tr>
+                ) : (
                   <tr key={i}>
                     <td className="nm"><span className="cst-av"><Ic n="user" s={18} /></span> {c.nome}</td>
                     <td className="c"><span className="cst-qt">{c.qtdPedidos}</span></td>

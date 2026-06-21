@@ -111,6 +111,18 @@ export function TvCostura() {
   const demo = vazio(raw);
   const costs = d.costureiras.length ? d.costureiras : DEMO.costureiras;
 
+  // Completa com linhas vazias para a tela manter sempre a mesma "cara cheia",
+  // mesmo com poucas pessoas (4, 5…). Mínimo de 6 linhas.
+  const MIN_LINHAS = 6;
+  const barras = [
+    ...costs.map((c, i) => ({ label: c.nome, value: c.qtdPecas, color: CORES[i % CORES.length] })),
+    ...Array.from({ length: Math.max(0, MIN_LINHAS - costs.length) }, () => ({ label: "—", value: 0, ghost: true })),
+  ];
+  const linhas = [
+    ...costs.map((c) => ({ ...c, ghost: false })),
+    ...Array.from({ length: Math.max(0, MIN_LINHAS - costs.length) }, () => ({ nome: "—", qtdPedidos: 0, qtdPecas: 0, emCostura: "", aguardando: [] as string[], datas: [] as string[], ghost: true })),
+  ];
+
   const dataExt = hora.toLocaleDateString("pt-BR", { weekday: "long" }).toUpperCase();
   const dataLin = hora.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
 
@@ -157,7 +169,7 @@ export function TvCostura() {
         <section className="cst-left">
           <div className="cst-card" style={{ minHeight: 0 }}>
             <div className="cst-card-h sm"><span><Ic n="spool" s={18} /> PEÇAS POR COSTUREIRA</span></div>
-            <BarsH data={costs.map((c, i) => ({ label: c.nome, value: c.qtdPecas, color: CORES[i % CORES.length] }))} unidade="pç" />
+            <BarsH data={barras} unidade="pç" />
           </div>
           <div className="cst-stats">
             <Stat ic="machine" label="MÁQUINAS EM OPERAÇÃO" v={`${d.topo.maquinasOperacao || DEMO.topo.maquinasOperacao} de ${d.topo.maquinasTotal}`} sub="máquinas" />
@@ -175,7 +187,16 @@ export function TvCostura() {
                 <tr><th>COSTUREIRA</th><th className="c">QTD. PEDIDOS</th><th className="c">QTD. PEÇAS</th><th>EM COSTURA AGORA</th><th>AGUARDANDO COM ELA</th><th>DATA DE ENTREGA</th></tr>
               </thead>
               <tbody>
-                {(d.costureiras.length ? d.costureiras : DEMO.costureiras).map((c, i) => (
+                {linhas.map((c, i) => c.ghost ? (
+                  <tr key={i} className="ghost">
+                    <td className="nm"><span className="cst-av" /> <span className="muted">—</span></td>
+                    <td className="c"><span className="muted">—</span></td>
+                    <td className="c"><span className="muted">—</span></td>
+                    <td><span className="muted">—</span></td>
+                    <td><span className="muted">—</span></td>
+                    <td className="dt"><span className="muted">—</span></td>
+                  </tr>
+                ) : (
                   <tr key={i}>
                     <td className="nm"><span className="cst-av"><Ic n="user" s={18} /></span> {c.nome}</td>
                     <td className="c"><span className="cst-qt">{c.qtdPedidos}</span></td>

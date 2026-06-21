@@ -83,7 +83,7 @@ export function BarsH({
   accent = "#a855f7",
   unidade,
 }: {
-  data: { label: string; value: number; color?: string }[];
+  data: { label: string; value: number; color?: string; ghost?: boolean }[];
   accent?: string;
   unidade?: string;
 }) {
@@ -91,24 +91,26 @@ export function BarsH({
   return (
     <div className="chart-bars">
       {data.map((d, i) => (
-        <div className="cbar" key={d.label + i}>
+        <div className={"cbar" + (d.ghost ? " ghost" : "")} key={d.label + i}>
           <span className="cbar-lbl">{d.label}</span>
           <div className="cbar-track">
-            <div
-              className="cbar-fill"
-              style={{
-                width: `${(d.value / max) * 100}%`,
-                background: d.color
-                  ? `linear-gradient(90deg, ${d.color}cc, ${d.color})`
-                  : `linear-gradient(90deg, #6366f1, ${accent})`,
-                animationDelay: `${i * 0.08}s`,
-              }}
-            >
-              <span className="cbar-val">
-                {d.value}
-                {unidade ? ` ${unidade}` : ""}
-              </span>
-            </div>
+            {!d.ghost && (
+              <div
+                className="cbar-fill"
+                style={{
+                  width: `${(d.value / max) * 100}%`,
+                  background: d.color
+                    ? `linear-gradient(90deg, ${d.color}cc, ${d.color})`
+                    : `linear-gradient(90deg, #6366f1, ${accent})`,
+                  animationDelay: `${i * 0.08}s`,
+                }}
+              >
+                <span className="cbar-val">
+                  {d.value}
+                  {unidade ? ` ${unidade}` : ""}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       ))}
