@@ -52,7 +52,7 @@ const CFG_PADRAO: Cfg = {
   novoPedido: true,
   mostrarValores: false,
   metaPedidos: 80,
-  telas: { capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
+  telas: { comando: true, capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
 };
 function carregarCfg(): Cfg {
   try {
@@ -138,6 +138,7 @@ export function Dashboard() {
 
   const telas = useMemo(() => {
     const all = [
+      { key: "comando", el: <ComandoScreen d={data} hora={hora} /> },
       { key: "capa", el: <CapaScreen hora={hora} /> },
       { key: "resumo", el: <ResumoScreen d={data} /> },
       { key: "producao", el: <ProducaoScreen d={data} /> },
@@ -260,6 +261,155 @@ export function Dashboard() {
           onSimular={simular}
         />
       )}
+    </div>
+  );
+}
+
+// ── Tela: Central de Comando (visão única e densa) ──────────────────────────────
+function ComandoScreen({ d, hora }: { d: DashboardData | null; hora: Date }) {
+  const h = d?.hoje;
+
+  // Produção por etapa (barras)
+  const ped = d?.graficos?.pedidosPorEtapa || [];
+  const demoEtapa = !ped.length || ped.every((x) => !x.qtd);
+  const etapaDados = demoEtapa ? ORDEM.map((s, i) => ({ etapa: s, qtd: [12, 8, 6, 9, 4, 7][i] })) : ped;
+  const barEtapa = etapaDados.map((x) => ({ label: SETOR[x.etapa]?.nome || x.etapa, value: x.qtd, color: SETOR[x.etapa]?.cor }));
+
+  // Pedidos por dia (linha)
+  const serie = (d?.graficos?.pedidosPorDia || []).map((x) => ({ dia: x.dia, value: x.qtd }));
+  const realDia = serie.some((x) => x.value > 0);
+  let linha = ultimosDias(serie, 10);
+  if (!realDia) linha = linha.map((p, i) => ({ ...p, value: [3, 2, 4, 5, 3, 6, 4, 7, 5, 8][i] ?? 3 }));
+
+  // Peças produzidas (colunas, semana)
+  const sem = (d?.graficos?.pecasSemana || []).map((x) => ({ dia: x.dia, value: x.pecas }));
+  const realSem = sem.some((x) => x.value > 0);
+  let cols = ultimosDias(sem, 7);
+  if (!realSem) cols = cols.map((p, i) => ({ ...p, value: [120, 180, 90, 220, 160, 240, 140][i] ?? 120 }));
+
+  // Laterais
+  const rep = d?.graficos?.topRepresentantes || [];
+  const cli = d?.graficos?.topClientes || [];
+  const repD = rep.length && rep.some((x) => x.qtd)
+    ? rep
+    : [{ nome: "Ana Paula", qtd: 18 }, { nome: "Carlos", qtd: 14 }, { nome: "Marina", qtd: 11 }, { nome: "João", qtd: 9 }, { nome: "Paula", qtd: 6 }];
+  const cliD = cli.length && cli.some((x) => x.pecas)
+    ? cli
+    : [{ nome: "Loja Aurora", pecas: 420 }, { nome: "Casa Bella", pecas: 360 }, { nome: "Tricô & Cia", pecas: 280 }, { nome: "Boutique Lumiar", pecas: 210 }, { nome: "Atelier Sul", pecas: 160 }];
+
+  const alertas = [
+    ...(d?.avisos || []).map((a) => ({ ic: "📣", txt: a.texto, tom: "amber" })),
+    ...(h?.atrasados ? [{ ic: "⚠️", txt: `${h.atrasados} pedido(s) em atraso`, tom: "red" }] : []),
+    ...(h?.entregaProxima ? [{ ic: "📅", txt: `${h.entregaProxima} entrega(s) nos próximos dias`, tom: "blue" }] : []),
+  ];
+
+  return (
+    <div className="cmd">
+      <div className="cmd-top">
+        <div className="cmd-clock">
+          <div className="t">{hora.toLocaleTimeString("pt-BR")}</div>
+          <div className="d">{hora.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}</div>
+        </div>
+        <CmdKpi ic="🧾" n={h?.pedidos ?? 0} l="Pedidos hoje" tom="blue" />
+        <CmdKpi ic="🧶" n={h?.pecas ?? 0} l="Peças hoje" tom="violet" />
+        <CmdKpi ic="⏰" n={h?.atrasados ?? 0} l="Atrasados" tom="red" />
+        <CmdKpi ic="⚡" n={`${h?.eficiencia ?? 0}%`} l="Eficiência" tom="green" />
+      </div>
+
+      <div className="cmd-mid">
+        <div className="cmd-charts">
+          <div className="panel sm">
+            <div className="panel-t">Produção por etapa</div>
+            <BarsH data={barEtapa} />
+          </div>
+          <div className="cmd-charts-row">
+            <div className="panel sm">
+              <div className="panel-t">Pedidos por dia</div>
+              <LineArea data={linha} color="#38bdf8" height={220} />
+            </div>
+            <div className="panel sm">
+              <div className="panel-t">Peças produzidas</div>
+              <Columns data={cols} color="#a855f7" height={220} />
+            </div>
+          </div>
+        </div>
+
+        <div className="cmd-side">
+          <div className="panel sm">
+            <div className="panel-t">🏆 Top 5 representantes</div>
+            <CmdRank data={repD.map((x) => ({ nome: x.nome, v: x.qtd }))} suf="ped" />
+          </div>
+          <div className="panel sm">
+            <div className="panel-t">👑 Top 5 clientes</div>
+            <CmdRank data={cliD.map((x) => ({ nome: x.nome, v: x.pecas }))} suf="pç" />
+          </div>
+          <div className="panel sm">
+            <div className="panel-t">🔔 Alertas</div>
+            <div className="cmd-alertas">
+              {alertas.length === 0 && <div className="urg-empty">Tudo sob controle ✅</div>}
+              {alertas.slice(0, 4).map((a, i) => (
+                <div className={"cmd-alerta " + a.tom} key={i}>
+                  <span>{a.ic}</span> {a.txt}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Ticker eventos={d?.eventos || []} />
+    </div>
+  );
+}
+function CmdKpi({ ic, n, l, tom }: { ic: string; n: number | string; l: string; tom: string }) {
+  return (
+    <div className={"cmd-kpi " + tom}>
+      <div className="cmd-kpi-ic">{ic}</div>
+      <div className="cmd-kpi-n">{n}</div>
+      <div className="cmd-kpi-l">{l}</div>
+    </div>
+  );
+}
+function CmdRank({ data, suf }: { data: { nome: string; v: number }[]; suf: string }) {
+  const max = Math.max(1, ...data.map((x) => x.v));
+  return (
+    <div className="cmd-rank">
+      {data.map((x, i) => (
+        <div className="cmd-rank-row" key={i}>
+          <span className="pos">{i + 1}</span>
+          <span className="nm">{x.nome}</span>
+          <div className="bar"><span style={{ width: `${(x.v / max) * 100}%` }} /></div>
+          <span className="v">{x.v} {suf}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+function Ticker({ eventos }: { eventos: DashboardData["eventos"] }) {
+  const txt: Record<string, (n: string) => string> = {
+    entrou: (n) => `🟢 Pedido ${n} entrou`,
+    expedido: (n) => `📦 Pedido ${n} foi expedido`,
+    atrasado: (n) => `🔴 Pedido ${n} atrasado`,
+  };
+  const itens = (eventos.length
+    ? eventos
+    : [
+        { tipo: "entrou" as const, numero: "254", cliente: "" },
+        { tipo: "expedido" as const, numero: "251", cliente: "" },
+        { tipo: "atrasado" as const, numero: "248", cliente: "" },
+      ]
+  ).map((e) => txt[e.tipo](e.numero || "—"));
+  const linha = [...itens, ...itens, ...itens];
+  return (
+    <div className="ticker">
+      <div className="ticker-tag">AO VIVO</div>
+      <div className="ticker-track">
+        <div className="ticker-move">
+          {linha.map((t, i) => (
+            <span className="ticker-item" key={i}>{t}<span className="sep">•</span></span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -588,6 +738,7 @@ function ConfigPanel({
 }) {
   const [novoAviso, setNovoAviso] = useState("");
   const telasLabels: [string, string][] = [
+    ["comando", "Central de Comando"],
     ["capa", "Capa de abertura"],
     ["resumo", "Resumo do dia"],
     ["producao", "Linha de produção"],

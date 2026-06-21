@@ -103,7 +103,7 @@ export interface Sugestao {
 }
 
 export interface DashboardData {
-  hoje: { pedidos: number; pecas: number; atrasados: number; entregaProxima: number; finalizados: number };
+  hoje: { pedidos: number; pecas: number; atrasados: number; entregaProxima: number; finalizados: number; eficiencia: number };
   producao: {
     aguardando_tecelagem: number; em_tecelagem: number;
     aguardando_passadoria: number; em_passadoria: number;
@@ -126,6 +126,7 @@ export interface DashboardData {
     metaMes: { realizadoPedidos: number; realizadoPecas: number };
   };
   avisos: { id: string; texto: string }[];
+  eventos: { tipo: "entrou" | "expedido" | "atrasado"; numero: string | null; cliente: string }[];
   ultimoPedido: { id: string; numero: string | null; cliente: string; vendedor: string | null; data_entrega: string | null; pecas: number; created_at: string } | null;
   geradoEm: string;
 }

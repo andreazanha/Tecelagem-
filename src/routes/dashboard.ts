@@ -21,12 +21,16 @@ dashboard.get("/", async (c) => {
     atrasados: (await one("SELECT COUNT(*) n FROM pedidos WHERE data_entrega IS NOT NULL AND data_entrega < date('now')")).n || 0,
     entregaProxima: (await one("SELECT COUNT(*) n FROM pedidos WHERE data_entrega BETWEEN date('now') AND date('now','+3 day')")).n || 0,
     finalizados: (await one("SELECT COUNT(*) n FROM producao WHERE status='pronto'")).n || 0,
+    eficiencia: 0,
   };
 
   const prod = await all("SELECT setor, status, COUNT(*) n, COALESCE(SUM(pecas),0) p FROM producao GROUP BY setor, status");
   const cnt = (setor: string, status?: string) =>
     prod.filter((r) => r.setor === setor && (!status || r.status === status)).reduce((s, r) => s + (r.n as number), 0);
   const pecasSetor = (setor: string) => prod.filter((r) => r.setor === setor).reduce((s, r) => s + (r.p as number), 0);
+  const totalRows = prod.reduce((s, r) => s + (r.n as number), 0);
+  const prontosRows = prod.filter((r) => r.status === "pronto").reduce((s, r) => s + (r.n as number), 0);
+  hoje.eficiencia = totalRows ? Math.round((prontosRows / totalRows) * 100) : 0;
   const producao = {
     aguardando_tecelagem: cnt("tecelagem", "aguardando"),
     em_tecelagem: cnt("tecelagem", "fazendo"),
@@ -126,6 +130,30 @@ dashboard.get("/", async (c) => {
       )).n || 0,
   };
 
+  // ── Ticker de eventos (entradas, expedições, atrasos) ──────────────────────
+  const entraram = (await all(
+    "SELECT numero_erp numero, cliente_nome cliente FROM pedidos ORDER BY created_at DESC, rowid DESC LIMIT 5"
+  )) as { numero: string | null; cliente: string }[];
+  const expedidos = (await all(
+    `SELECT p.numero_erp numero, p.cliente_nome cliente
+       FROM producao pr JOIN pedidos p ON p.id=pr.pedido_id
+      WHERE pr.setor='expedicao' AND pr.status='pronto'
+   ORDER BY pr.finalizado_em DESC LIMIT 5`
+  )) as { numero: string | null; cliente: string }[];
+  const atrasos = (await all(
+    `SELECT numero_erp numero, cliente_nome cliente FROM pedidos
+      WHERE data_entrega IS NOT NULL AND data_entrega < date('now')
+   ORDER BY data_entrega ASC LIMIT 5`
+  )) as { numero: string | null; cliente: string }[];
+
+  const eventos: { tipo: "entrou" | "expedido" | "atrasado"; numero: string | null; cliente: string }[] = [];
+  const maxLen = Math.max(entraram.length, expedidos.length, atrasos.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (entraram[i]) eventos.push({ tipo: "entrou", ...entraram[i] });
+    if (expedidos[i]) eventos.push({ tipo: "expedido", ...expedidos[i] });
+    if (atrasos[i]) eventos.push({ tipo: "atrasado", ...atrasos[i] });
+  }
+
   return c.json({
     hoje,
     producao,
@@ -134,6 +162,7 @@ dashboard.get("/", async (c) => {
     ranking,
     expedicao,
     avisos,
+    eventos,
     graficos: {
       pedidosPorEtapa,
       pecasPorEtapa,

@@ -70,6 +70,49 @@
 .cap-clock { z-index: 1; margin-top: 18px; font-size: clamp(40px, 5vw, 64px); font-weight: 900; font-variant-numeric: tabular-nums; color: #fff; }
 .cap-date { z-index: 1; color: #8ea0c8; font-size: 20px; font-weight: 700; text-transform: capitalize; }
 
+/* ── Central de Comando (visão densa única) ─────────────────────────────────── */
+.cmd { flex: 1; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 18px; min-height: 0; }
+.cmd-top { display: grid; grid-template-columns: 1.4fr repeat(4, 1fr); gap: 18px; }
+.cmd-clock { background: linear-gradient(135deg, #6366f133, #a855f722); border: 1px solid var(--stroke); border-radius: 22px; padding: 18px 26px; display: flex; flex-direction: column; justify-content: center; backdrop-filter: blur(14px); }
+.cmd-clock .t { font-size: clamp(44px, 5.2vw, 76px); font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.cmd-clock .d { font-size: 18px; font-weight: 700; color: #9fb0d6; text-transform: capitalize; margin-top: 6px; }
+.cmd-kpi { position: relative; overflow: hidden; background: var(--glass); border: 1px solid var(--stroke); border-radius: 22px; padding: 16px 22px; display: flex; flex-direction: column; justify-content: center; backdrop-filter: blur(14px); box-shadow: 0 14px 40px #00000044; }
+.cmd-kpi::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--ac); }
+.cmd-kpi-ic { font-size: 24px; opacity: .85; }
+.cmd-kpi-n { font-size: clamp(38px, 4.6vw, 66px); font-weight: 900; line-height: 1; color: var(--ac); font-variant-numeric: tabular-nums; }
+.cmd-kpi-l { font-size: 14px; font-weight: 800; color: #9fb0d6; text-transform: uppercase; letter-spacing: .5px; margin-top: 4px; }
+.cmd-kpi.blue { --ac: #60a5fa; } .cmd-kpi.violet { --ac: #c4b5fd; } .cmd-kpi.red { --ac: #f87171; } .cmd-kpi.green { --ac: #4ade80; }
+
+.cmd-mid { display: grid; grid-template-columns: 1.7fr 1fr; gap: 18px; min-height: 0; }
+.cmd-charts { display: grid; grid-template-rows: 1fr 1fr; gap: 18px; min-height: 0; }
+.cmd-charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; min-height: 0; }
+.cmd-side { display: grid; grid-template-rows: 1fr 1fr 1fr; gap: 14px; min-height: 0; }
+.panel.sm { padding: 18px 20px; border-radius: 20px; }
+.panel.sm .panel-t { font-size: 16px; margin-bottom: 10px; }
+
+.cmd-rank { display: flex; flex-direction: column; gap: 9px; flex: 1; justify-content: center; }
+.cmd-rank-row { display: grid; grid-template-columns: 26px 110px 1fr auto; align-items: center; gap: 10px; font-size: 15px; font-weight: 700; }
+.cmd-rank-row .pos { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-weight: 900; background: #ffffff12; color: #c4b5fd; }
+.cmd-rank-row .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmd-rank-row .bar { height: 12px; background: #ffffff0d; border-radius: 999px; overflow: hidden; }
+.cmd-rank-row .bar span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #6366f1, #a855f7); animation: barGrow .8s cubic-bezier(.16,1,.3,1) both; }
+.cmd-rank-row .v { font-weight: 900; color: #c4b5fd; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.cmd-alertas { display: flex; flex-direction: column; gap: 10px; flex: 1; justify-content: center; }
+.cmd-alerta { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; padding: 12px 16px; border-radius: 14px; background: #ffffff08; border: 1px solid #ffffff0f; }
+.cmd-alerta.red { background: #ef44441a; border-color: #ef444433; color: #fca5a5; }
+.cmd-alerta.amber { background: #eab3081a; border-color: #eab30833; color: #fcd34d; }
+.cmd-alerta.blue { background: #3b82f61a; border-color: #3b82f633; color: #93c5fd; }
+
+/* ticker (rodapé com notícias rolando) */
+.ticker { display: flex; align-items: center; gap: 0; background: linear-gradient(90deg, #11182e, #0c1326); border: 1px solid var(--stroke); border-radius: 16px; overflow: hidden; height: 56px; }
+.ticker-tag { flex-shrink: 0; align-self: stretch; display: flex; align-items: center; padding: 0 20px; font-size: 14px; font-weight: 900; letter-spacing: 1.5px; color: #fff; background: linear-gradient(135deg, #ef4444, #b91c1c); }
+.ticker-track { flex: 1; overflow: hidden; position: relative; }
+.ticker-move { display: inline-flex; white-space: nowrap; will-change: transform; animation: tick 40s linear infinite; }
+@keyframes tick { from { transform: translateX(0); } to { transform: translateX(-33.333%); } }
+.ticker-item { display: inline-flex; align-items: center; font-size: 22px; font-weight: 800; padding: 0 10px; color: #e6ecff; }
+.ticker-item .sep { color: #6366f1; margin: 0 18px 0 28px; font-size: 18px; }
+
 /* ── Cards KPI ─────────────────────────────────────────────────────────────── */
 .kpi-grid { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; gap: 24px; }
 .kpi {
