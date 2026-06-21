@@ -4,9 +4,9 @@
 .tcl {
   position: fixed; inset: 0; overflow: hidden;
   background:
-    radial-gradient(1200px 700px at 18% 18%, #1c1813 0%, transparent 55%),
-    radial-gradient(900px 600px at 100% 0%, #1a160f 0%, transparent 50%),
-    #070707;
+    radial-gradient(1100px 650px at 15% 10%, #161616 0%, transparent 58%),
+    radial-gradient(900px 600px at 100% 0%, #14120d 0%, transparent 55%),
+    #050505;
   color: #f3efe7;
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
   display: grid; grid-template-rows: auto auto 1fr auto;
@@ -46,12 +46,12 @@
 .tcl-demo { text-align: center; font-size: 12px; font-weight: 700; letter-spacing: .5px; color: var(--gold); background: #c9a24a12; padding: 5px; }
 
 /* ── Corpo ──────────────────────────────────────────────────────────────────── */
-.tcl-main { display: grid; grid-template-columns: 1.28fr 0.92fr; gap: 18px; padding: 16px 30px; min-height: 0; }
-.tcl-left { display: grid; grid-template-rows: 1.6fr auto auto; gap: 14px; min-height: 0; }
+.tcl-main { display: grid; grid-template-columns: 1.28fr 0.92fr; gap: 18px; padding: 14px 30px; min-height: 0; }
+.tcl-left { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; gap: 12px; min-height: 0; }
 .tcl-right { display: grid; grid-template-rows: 1.3fr 0.85fr; gap: 18px; min-height: 0; }
 
 /* foto da máquina */
-.tcl-photo { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: radial-gradient(circle at 50% 40%, #1b1813, #0a0908); min-height: 360px; cursor: pointer; }
+.tcl-photo { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: radial-gradient(circle at 50% 40%, #161616, #090909); min-height: 200px; cursor: pointer; }
 .tcl-photo img { width: 100%; height: 100%; object-fit: cover; }
 .tcl-photo-ph { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #4d463b; }
 .tcl-photo-ph span { text-align: center; font-size: 16px; font-weight: 700; }
@@ -64,24 +64,24 @@
 
 /* mini stats */
 .tcl-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.tcl-stat { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
-.tcl-stat-ic { position: absolute; top: 12px; right: 12px; color: var(--gold-d); }
+.tcl-stat { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 11px 14px; display: flex; flex-direction: column; gap: 1px; }
+.tcl-stat-ic { position: absolute; top: 11px; right: 11px; color: var(--gold-d); }
 .tcl-stat .lbl { font-size: 10.5px; font-weight: 800; letter-spacing: 1px; color: var(--muted); }
-.tcl-stat .n { font-size: 34px; font-weight: 800; color: var(--gold2); font-variant-numeric: tabular-nums; line-height: 1.05; }
+.tcl-stat .n { font-size: 28px; font-weight: 800; color: var(--gold2); font-variant-numeric: tabular-nums; line-height: 1.05; }
 .tcl-stat .n small, .tcl-stat .n :where(b) { font-size: 18px; }
 .tcl-stat .sub { font-size: 11px; font-weight: 700; color: var(--muted); }
 
 /* pedido atual */
-.tcl-atual { display: flex; gap: 20px; align-items: center; background: linear-gradient(120deg, #15120c, #0e0c0a); border: 1px solid var(--line); border-radius: 16px; padding: 18px 22px; }
-.tcl-atual-ic { width: 86px; height: 86px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center; color: var(--gold); border: 2px solid var(--line); background: radial-gradient(circle, #1a160e, #0c0a08); }
+.tcl-atual { display: flex; gap: 18px; align-items: center; background: linear-gradient(120deg, #131210, #0c0c0b); border: 1px solid var(--line); border-radius: 16px; padding: 14px 20px; }
+.tcl-atual-ic { width: 66px; height: 66px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center; color: var(--gold); border: 2px solid var(--line); background: radial-gradient(circle, #181613, #0c0a08); }
 .tcl-atual-body { flex: 1; min-width: 0; }
-.tcl-atual-t { font-size: 13px; font-weight: 800; letter-spacing: 2px; color: var(--gold2); margin-bottom: 10px; }
+.tcl-atual-t { font-size: 13px; font-weight: 800; letter-spacing: 2px; color: var(--gold2); margin-bottom: 8px; }
 .tcl-atual-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.tcl-atual-row.sub { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line2); }
-.tcl-atual-row > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tcl-atual-row.sub { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line2); }
+.tcl-atual-row > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tcl-atual-row .l { font-size: 10.5px; font-weight: 800; letter-spacing: 1px; color: var(--muted); }
-.tcl-atual-row .v { font-size: 20px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 6px; }
-.tcl-atual-row .v.gold { font-size: 30px; color: var(--gold2); }
+.tcl-atual-row .v { font-size: 18px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 6px; }
+.tcl-atual-row .v.gold { font-size: 24px; color: var(--gold2); }
 .tcl-atual-row .v small { font-size: 13px; color: var(--muted); font-weight: 700; }
 .tcl-atual-row .v svg { color: var(--gold); }
 
