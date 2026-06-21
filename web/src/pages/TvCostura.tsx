@@ -4,6 +4,7 @@ import { Donut, type Slice } from "../components/charts";
 import "../tv-costura.css";
 
 const nf = (n: number) => n.toLocaleString("pt-BR");
+const FOTO_PADRAO = "/costura.webp";
 const brDM = (d?: string | null) => {
   if (!d) return "—";
   const m = d.match(/(\d{4})-(\d{2})-(\d{2})/);
@@ -82,7 +83,7 @@ function Ic({ n, s = 24 }: { n: string; s?: number }) {
 export function TvCostura() {
   const [raw, setRaw] = useState<TvCosturaData | null>(null);
   const [hora, setHora] = useState(new Date());
-  const [foto, setFoto] = useState<string | null>(() => localStorage.getItem("cstFoto"));
+  const [foto, setFoto] = useState<string | null>(() => localStorage.getItem("cstFoto") || FOTO_PADRAO);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
