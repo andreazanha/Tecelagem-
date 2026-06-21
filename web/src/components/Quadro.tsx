@@ -50,6 +50,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [cards, setCards] = useState<CardProducao[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [aberto, setAberto] = useState<CardProducao | null>(null);
+  const [iniciar, setIniciar] = useState<CardProducao | null>(null);
 
   function recarregar() {
     api
@@ -68,22 +69,8 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     setAberto(null);
     recarregar();
   }
-  function fazer(c: CardProducao) {
-    let extra: { maquina?: string; operador?: string } = {};
-    if (cfg.pedeMaquina) {
-      const maquina = window.prompt("Máquina:", c.parte === "parte-2" ? "Máq 7" : "Máq 3");
-      if (maquina === null) return;
-      const operador = window.prompt("Operador:", c.operador || "") ?? "";
-      extra = { maquina, operador };
-    } else {
-      const operador = window.prompt(`${cfg.recursoLabel} (quem vai fazer):`, c.operador || "");
-      if (operador === null) return;
-      extra = { operador };
-    }
-    mudar(c, { status: "fazendo", ...extra });
-  }
   function acaoCard(c: CardProducao, acao: ColCfg["acao"]) {
-    if (acao === "fazer") fazer(c);
+    if (acao === "fazer") setIniciar(c);
     else if (acao === "finalizar") mudar(c, { status: "pronto" });
     else if (cfg.proxSetor) mudar(c, { setor: cfg.proxSetor, status: "aguardando" });
   }
@@ -155,7 +142,131 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
       {aberto && (
         <CardModal card={aberto} cfg={cfg} stLabel={stLabel} onFechar={() => setAberto(null)} onAcao={acaoCard} />
       )}
+
+      {iniciar && (
+        <IniciarModal
+          card={iniciar}
+          cfg={cfg}
+          onFechar={() => setIniciar(null)}
+          onConfirmar={(operador) => {
+            const c = iniciar;
+            setIniciar(null);
+            mudar(c, { status: "fazendo", operador });
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function IniciarModal({
+  card,
+  cfg,
+  onFechar,
+  onConfirmar,
+}: {
+  card: CardProducao;
+  cfg: QuadroCfg;
+  onFechar: () => void;
+  onConfirmar: (operador: string) => void;
+}) {
+  const [ops, setOps] = useState<{ id: string; nome: string }[]>([]);
+  const [opId, setOpId] = useState("");
+  const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(true);
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    api
+      .listarOperadores(cfg.setor)
+      .then((o) => {
+        setOps(o);
+        if (o[0]) setOpId(o[0].id);
+      })
+      .catch(() => {})
+      .finally(() => setCarregando(false));
+  }, [cfg.setor]);
+
+  async function confirmar() {
+    setErro("");
+    if (!opId) return setErro("Selecione o operador.");
+    if (!senha) return setErro("Digite a senha.");
+    setEnviando(true);
+    try {
+      const r = await api.validarOperador(opId, senha);
+      if (!r.ok || !r.nome) {
+        setErro("Senha incorreta.");
+        setEnviando(false);
+        return;
+      }
+      onConfirmar(r.nome);
+    } catch {
+      setErro("Erro ao validar. Tente de novo.");
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd">
+          <div className="modal-hd-top">
+            <span className="modal-pills">
+              <span className="modal-pill">{opCodigo(card)}</span>
+            </span>
+            <button className="modal-x" onClick={onFechar}>✕</button>
+          </div>
+          <div className="modal-hd-row">
+            <span className="modal-cli">Iniciar produção</span>
+          </div>
+        </div>
+
+        <div className="modal-bd">
+          {carregando ? (
+            <div className="muted">Carregando operadores…</div>
+          ) : ops.length === 0 ? (
+            <div className="muted" style={{ fontSize: 14 }}>
+              Nenhum operador cadastrado. Cadastre em <strong>Cadastros › Operadores</strong>.
+            </div>
+          ) : (
+            <>
+              <label className="campo-l" htmlFor="op-sel">OPERADOR</label>
+              <select
+                id="op-sel"
+                value={opId}
+                onChange={(e) => setOpId(e.target.value)}
+                style={{ width: "100%", padding: "12px 14px", fontSize: 16, borderRadius: 10, border: "1px solid #e2e8f0", marginTop: 4 }}
+              >
+                {ops.map((o) => (
+                  <option key={o.id} value={o.id}>{o.nome}</option>
+                ))}
+              </select>
+
+              <label className="campo-l" htmlFor="op-senha" style={{ marginTop: 14, display: "block" }}>SENHA</label>
+              <input
+                id="op-senha"
+                type="password"
+                value={senha}
+                autoFocus
+                onChange={(e) => setSenha(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && confirmar()}
+                placeholder="••••"
+                style={{ width: "100%", padding: "12px 14px", fontSize: 16, borderRadius: 10, border: "1px solid #e2e8f0", marginTop: 4 }}
+              />
+              {erro && <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 13, marginTop: 10 }}>{erro}</div>}
+            </>
+          )}
+        </div>
+
+        <div className="modal-ft">
+          <button className="btn" onClick={onFechar}>Cancelar</button>
+          <button className="kbtn tecer" disabled={enviando || carregando || ops.length === 0} onClick={confirmar}>
+            {enviando ? "Validando…" : cfg.fazerLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

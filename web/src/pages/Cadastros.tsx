@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, COMPOSICOES, type Modelo, type Cor } from "../api";
 
 export function Cadastros() {
-  const [aba, setAba] = useState<"modelos" | "cores">("modelos");
+  const [aba, setAba] = useState<"modelos" | "cores" | "operadores">("modelos");
   const [itens, setItens] = useState<Modelo[]>([]);
   const [busca, setBusca] = useState("");
   const [novo, setNovo] = useState<Modelo>({
@@ -80,7 +80,7 @@ export function Cadastros() {
       <div className="page-head">
         <div>
           <h1>Cadastros</h1>
-          <div className="breadcrumb">Configuração › {aba === "modelos" ? "Modelos" : "Cores"}</div>
+          <div className="breadcrumb">Configuração › {aba === "modelos" ? "Modelos" : aba === "cores" ? "Cores" : "Operadores"}</div>
         </div>
         <div className="segmented">
           <button
@@ -97,10 +97,18 @@ export function Cadastros() {
           >
             🎨 Cores
           </button>
+          <button
+            type="button"
+            className={"seg" + (aba === "operadores" ? " seg-on" : "")}
+            onClick={() => setAba("operadores")}
+          >
+            👤 Operadores
+          </button>
         </div>
       </div>
 
       {aba === "cores" && <CoresCadastro />}
+      {aba === "operadores" && <OperadoresCadastro />}
 
       {aba === "modelos" && (
         <>
@@ -533,5 +541,91 @@ function CorRow({
         </button>
       </td>
     </tr>
+  );
+}
+
+// ── Operadores (lista pré-salva usada ao iniciar produção) ────────────────────
+function OperadoresCadastro() {
+  const [itens, setItens] = useState<{ id: string; nome: string; setor: string | null }[]>([]);
+  const [nome, setNome] = useState("");
+  const [senha, setSenha] = useState("");
+  const [setor, setSetor] = useState("");
+
+  function recarregar() {
+    api.listarOperadores().then(setItens).catch(() => {});
+  }
+  useEffect(recarregar, []);
+
+  async function adicionar() {
+    if (!nome.trim() || !senha.trim()) {
+      alert("Informe nome e senha.");
+      return;
+    }
+    try {
+      await api.salvarOperador({ nome: nome.trim(), senha: senha.trim(), setor: setor || undefined });
+      setNome("");
+      setSenha("");
+      setSetor("");
+      recarregar();
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  }
+  async function remover(id: string) {
+    await api.removerOperador(id);
+    recarregar();
+  }
+
+  const SETORES = ["tecelagem", "passadoria", "corte", "costura", "revisao", "expedicao"];
+
+  return (
+    <>
+      <div className="card pad" style={{ marginBottom: 16 }}>
+        <h2>Novo operador</h2>
+        <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+          Ao iniciar uma produção, a pessoa seleciona o nome e digita a senha. Deixe o setor em branco
+          para liberar em todos os setores.
+        </p>
+        <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap" }}>
+          <input placeholder="Nome do operador" value={nome} onChange={(e) => setNome(e.target.value)} style={{ minWidth: 200 }} />
+          <input placeholder="Senha" type="text" value={senha} onChange={(e) => setSenha(e.target.value)} style={{ minWidth: 140 }} />
+          <select value={setor} onChange={(e) => setSetor(e.target.value)} style={{ minWidth: 160 }}>
+            <option value="">Todos os setores</option>
+            {SETORES.map((s) => (
+              <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+            ))}
+          </select>
+          <button className="btn btn-primary" onClick={adicionar}>＋ Adicionar</button>
+        </div>
+      </div>
+
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Operador</th>
+            <th>Setor</th>
+            <th>Senha</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {itens.length === 0 && (
+            <tr>
+              <td colSpan={4} className="muted">Nenhum operador cadastrado ainda.</td>
+            </tr>
+          )}
+          {itens.map((o) => (
+            <tr key={o.id}>
+              <td data-label="Operador"><strong>{o.nome}</strong></td>
+              <td data-label="Setor">{o.setor ? o.setor.charAt(0).toUpperCase() + o.setor.slice(1) : "Todos"}</td>
+              <td data-label="Senha">••••</td>
+              <td>
+                <button className="icon-btn" title="Remover" onClick={() => remover(o.id)}>✕</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
   );
 }

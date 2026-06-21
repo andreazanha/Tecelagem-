@@ -205,7 +205,7 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .kcol { flex: 0 0 300px; max-width: 300px; }
 .kcol-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 10px; }
 .kcol-title { font-weight: 800; font-size: 13.5px; }
-.kcol-sub { font-size: 11px; color: var(--muted); font-weight: 600; }
+.kcol-sub { font-size: 13px; color: #475569; font-weight: 800; margin-top: 3px; letter-spacing: .2px; }
 .kcol-count { background: #1e2942; color: #fff; font-size: 11px; font-weight: 800; border-radius: 8px; padding: 2px 8px; }
 .kcol-body { display: flex; flex-direction: column; gap: 12px; min-height: 40px; }
 

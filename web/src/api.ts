@@ -281,6 +281,27 @@ export const api = {
     fetch(`/api/costura/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) =>
       j<{ ok: boolean }>(r)
     ),
+  listarOperadores: (setor?: string) =>
+    fetch(`/api/operadores${setor ? `?setor=${encodeURIComponent(setor)}` : ""}`).then((r) =>
+      j<{ id: string; nome: string; setor: string | null }[]>(r)
+    ),
+  salvarOperador: (b: { nome: string; senha: string; setor?: string }) =>
+    fetch("/api/operadores", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(b),
+    }).then((r) => j<{ id: string; nome: string; setor: string | null }>(r)),
+  removerOperador: (id: string) =>
+    fetch(`/api/operadores/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  validarOperador: async (id: string, senha: string) => {
+    const r = await fetch("/api/operadores/validar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, senha }),
+    });
+    if (r.status === 401) return { ok: false as const };
+    return j<{ ok: boolean; nome?: string }>(r);
+  },
   gerarRomaneioTassel: (id: string, prestador: string) =>
     fetch(`/api/pedidos/${id}/romaneio-tassel`, {
       method: "POST",

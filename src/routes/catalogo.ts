@@ -252,3 +252,51 @@ costura.delete("/:nome", async (c) => {
     .run();
   return c.json({ ok: true });
 });
+
+// ── Operadores (lista pré-salva + senha) ──────────────────────────────────────
+export const operadores = new Hono<{ Bindings: Env }>();
+
+operadores.get("/", async (c) => {
+  const setor = c.req.query("setor");
+  // Nunca expõe a senha na listagem.
+  let sql = "SELECT id, nome, setor FROM operadores";
+  const binds: string[] = [];
+  if (setor) {
+    sql += " WHERE setor IS NULL OR setor = ?";
+    binds.push(setor);
+  }
+  sql += " ORDER BY nome";
+  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
+  return c.json(results);
+});
+
+operadores.post("/", async (c) => {
+  const b = await c.req.json<{ id?: string; nome?: string; senha?: string; setor?: string }>();
+  const nome = (b.nome || "").trim();
+  const senha = (b.senha || "").trim();
+  if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
+  if (!senha) return c.json({ error: "senha é obrigatória" }, 400);
+  const id = b.id || crypto.randomUUID();
+  await c.env.DB.prepare(
+    `INSERT INTO operadores (id, nome, senha, setor) VALUES (?, ?, ?, ?)
+     ON CONFLICT(nome) DO UPDATE SET senha = excluded.senha, setor = excluded.setor`
+  )
+    .bind(id, nome, senha, b.setor || null)
+    .run();
+  return c.json({ id, nome, setor: b.setor || null }, 201);
+});
+
+operadores.delete("/:id", async (c) => {
+  await c.env.DB.prepare("DELETE FROM operadores WHERE id = ?").bind(c.req.param("id")).run();
+  return c.json({ ok: true });
+});
+
+// Valida a senha do operador selecionado (usado ao iniciar produção).
+operadores.post("/validar", async (c) => {
+  const b = await c.req.json<{ id?: string; senha?: string }>();
+  const row = await c.env.DB.prepare("SELECT nome, senha FROM operadores WHERE id = ?")
+    .bind(b.id || "")
+    .first<{ nome: string; senha: string }>();
+  if (!row || row.senha !== (b.senha || "")) return c.json({ ok: false }, 401);
+  return c.json({ ok: true, nome: row.nome });
+});
