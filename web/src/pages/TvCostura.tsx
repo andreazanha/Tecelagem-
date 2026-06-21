@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type TvCosturaData } from "../api";
-import { Donut, type Slice } from "../components/charts";
+import { Donut, BarsH, type Slice } from "../components/charts";
 import "../tv-costura.css";
 
 const nf = (n: number) => n.toLocaleString("pt-BR");
-const FOTO_PADRAO = "/costura.webp";
+const CORES = ["#a855f7", "#38bdf8", "#22c55e", "#fbbf24", "#ec4899", "#06b6d4"];
 const brDM = (d?: string | null) => {
   if (!d) return "—";
   const m = d.match(/(\d{4})-(\d{2})-(\d{2})/);
@@ -83,8 +83,6 @@ function Ic({ n, s = 24 }: { n: string; s?: number }) {
 export function TvCostura() {
   const [raw, setRaw] = useState<TvCosturaData | null>(null);
   const [hora, setHora] = useState(new Date());
-  const [foto, setFoto] = useState<string | null>(() => localStorage.getItem("cstFoto") || FOTO_PADRAO);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const t = setInterval(() => setHora(new Date()), 1000);
@@ -107,14 +105,7 @@ export function TvCostura() {
 
   const d = vazio(raw) ? DEMO : (raw as TvCosturaData);
   const demo = vazio(raw);
-
-  function trocarFoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => { const url = String(r.result); localStorage.setItem("cstFoto", url); setFoto(url); };
-    r.readAsDataURL(f);
-  }
+  const costs = d.costureiras.length ? d.costureiras : DEMO.costureiras;
 
   const dataExt = hora.toLocaleDateString("pt-BR", { weekday: "long" }).toUpperCase();
   const dataLin = hora.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
@@ -160,9 +151,9 @@ export function TvCostura() {
 
       <div className="cst-main">
         <section className="cst-left">
-          <div className="cst-photo" onClick={() => fileRef.current?.click()} title="Clique para trocar a foto">
-            {foto ? <img src={foto} alt="Costura" /> : <div className="cst-photo-ph"><Ic n="seam" s={56} /><span>Foto da costura<br /><small>clique para enviar</small></span></div>}
-            <input ref={fileRef} type="file" accept="image/*" hidden onChange={trocarFoto} />
+          <div className="cst-card" style={{ minHeight: 0 }}>
+            <div className="cst-card-h sm"><span><Ic n="spool" s={18} /> PEÇAS POR COSTUREIRA</span></div>
+            <BarsH data={costs.map((c, i) => ({ label: c.nome, value: c.qtdPecas, color: CORES[i % CORES.length] }))} unidade="pç" />
           </div>
           <div className="cst-stats">
             <Stat ic="machine" label="MÁQUINAS EM OPERAÇÃO" v={`${d.topo.maquinasOperacao || DEMO.topo.maquinasOperacao} de ${d.topo.maquinasTotal}`} sub="máquinas" />
