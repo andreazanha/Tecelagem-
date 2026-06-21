@@ -52,12 +52,13 @@ const brDT = (s?: string | null) => {
 };
 
 export interface ColCfg {
-  cor: "aguardando" | "fazendo" | "pronto";
+  cor: "aguardando" | "fazendo" | "pronto" | "prioridade";
   titulo: string;
   sub: string;
   status: "aguardando" | "fazendo" | "pronto";
   tipos?: string[];
   acao: "fazer" | "finalizar" | "enviar";
+  somentePrioridade?: boolean; // coluna "passar na frente"
 }
 export interface QuadroCfg {
   setor: string;
@@ -121,6 +122,19 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     else if (cfg.proxSetor) mudar(c, { setor: cfg.proxSetor, status: "aguardando" });
   }
 
+  // "Passar na frente": liga/desliga a prioridade da parte (com desfazer).
+  async function alternarPrioridade(c: CardProducao) {
+    const novo = c.prioridade ? 0 : 1;
+    await api.definirPrioridade(c.pedido_id, c.parte, novo);
+    historico.registrar({
+      label: opCodigo(c) + (novo ? " ▶ passar na frente" : " · tirar prioridade"),
+      desfazer: () => api.definirPrioridade(c.pedido_id, c.parte, novo ? 0 : 1),
+      refazer: () => api.definirPrioridade(c.pedido_id, c.parte, novo),
+    });
+    setAberto((a) => (a && a.pedido_id === c.pedido_id && a.parte === c.parte ? { ...a, prioridade: novo } : a));
+    recarregar();
+  }
+
   const stLabel = (s: string) => (s === "fazendo" ? cfg.fazendoLabel : s === "pronto" ? "Pronto" : "Aguardando");
   const ativos = useMemo(() => cards.filter((c) => c.status === "fazendo"), [cards]);
   const maquinas = useMemo(() => {
@@ -137,6 +151,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     ? maquinas.filter((m) => m.op).length
     : new Set(ativos.map((c) => c.operador).filter(Boolean)).size;
 
+  const temColPrioridade = cfg.colunas.some((c) => c.somentePrioridade);
   const q = busca.trim().toLowerCase();
   const filtrados = q
     ? cards.filter(
@@ -190,10 +205,27 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
         <>
           <div className="kanban">
             {cfg.colunas.map((col, i) => {
-              const lista = filtrados.filter(
-                (c) => c.status === col.status && (!col.tipos || col.tipos.includes(c.parte))
+              const lista = filtrados.filter((c) => {
+                if (c.status !== col.status) return false;
+                if (col.tipos && !col.tipos.includes(c.parte)) return false;
+                if (col.somentePrioridade) return !!c.prioridade;
+                // Numa coluna normal de "aguardando", os prioritários saem para a
+                // coluna "passar na frente" (sem duplicar).
+                if (temColPrioridade && col.status === "aguardando" && c.prioridade) return false;
+                return true;
+              });
+              return (
+                <Coluna
+                  key={i}
+                  col={col}
+                  cards={lista}
+                  cfg={cfg}
+                  stLabel={stLabel}
+                  onAbrir={setAberto}
+                  onAcao={acaoCard}
+                  onPrioridade={alternarPrioridade}
+                />
               );
-              return <Coluna key={i} col={col} cards={lista} cfg={cfg} stLabel={stLabel} onAbrir={setAberto} onAcao={acaoCard} />;
             })}
           </div>
           <p className="muted" style={{ marginTop: 14, fontSize: 12 }}>
@@ -203,7 +235,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
       )}
 
       {aberto && (
-        <CardModal card={aberto} cfg={cfg} stLabel={stLabel} onFechar={() => setAberto(null)} onAcao={acaoCard} />
+        <CardModal card={aberto} cfg={cfg} stLabel={stLabel} onFechar={() => setAberto(null)} onAcao={acaoCard} onPrioridade={alternarPrioridade} />
       )}
 
       {iniciar && (
@@ -355,6 +387,7 @@ function Coluna({
   stLabel,
   onAbrir,
   onAcao,
+  onPrioridade,
 }: {
   col: ColCfg;
   cards: CardProducao[];
@@ -362,14 +395,15 @@ function Coluna({
   stLabel: (s: string) => string;
   onAbrir: (c: CardProducao) => void;
   onAcao: (c: CardProducao, acao: ColCfg["acao"]) => void;
+  onPrioridade: (c: CardProducao) => void;
 }) {
   const btn = btnDe(col.acao, cfg);
   return (
-    <div className="kcol">
+    <div className={"kcol" + (col.somentePrioridade ? " prio" : "")}>
       <div className="kcol-head">
         <div>
           <div className="kcol-title">
-            <span className={"kdot " + col.cor} /> {col.titulo}
+            <span className={"kdot " + col.cor} /> {col.somentePrioridade ? "🔥 " : ""}{col.titulo}
           </div>
           <div className="kcol-sub">{col.sub}</div>
         </div>
@@ -379,9 +413,16 @@ function Coluna({
         {cards.map((c) => {
           const t = TIPO[c.parte] || { label: c.parte, cls: "" };
           return (
-            <div key={c.pedido_id + c.parte} className="kcard" onClick={() => onAbrir(c)} style={{ cursor: "pointer" }}>
+            <div key={c.pedido_id + c.parte} className={"kcard" + (c.prioridade ? " prio" : "")} onClick={() => onAbrir(c)} style={{ cursor: "pointer" }}>
               <div className={"kcard-hd " + t.cls}>
                 <span className="kcard-op">{opCodigo(c)}</span>
+                <button
+                  className={"kcard-prio" + (c.prioridade ? " on" : "")}
+                  title={c.prioridade ? "Tirar da frente" : "Passar na frente"}
+                  onClick={(e) => { e.stopPropagation(); onPrioridade(c); }}
+                >
+                  {c.prioridade ? "★" : "☆"}
+                </button>
                 <span className="kcard-badge">{t.label}</span>
               </div>
               <div className="kcard-bd">
@@ -457,12 +498,14 @@ function CardModal({
   stLabel,
   onFechar,
   onAcao,
+  onPrioridade,
 }: {
   card: CardProducao;
   cfg: QuadroCfg;
   stLabel: (s: string) => string;
   onFechar: () => void;
   onAcao: (c: CardProducao, acao: ColCfg["acao"]) => void;
+  onPrioridade: (c: CardProducao) => void;
 }) {
   const [det, setDet] = useState<Awaited<ReturnType<typeof api.detalheProducao>> | null>(null);
   const [hist, setHist] = useState<Awaited<ReturnType<typeof api.historicoProducao>> | null>(null);
@@ -584,6 +627,13 @@ function CardModal({
         <div className="modal-ft">
           <button className="btn" onClick={onFechar}>
             Fechar
+          </button>
+          <button
+            className={"btn btn-prio" + (card.prioridade ? " on" : "")}
+            onClick={() => onPrioridade(card)}
+            title="Faz o pedido passar na frente nos próximos setores"
+          >
+            {card.prioridade ? "★ Na frente" : "☆ Passar na frente"}
           </button>
           <button className={"kbtn " + btn.cls} onClick={() => onAcao(card, acaoAtual)}>
             {btn.label}

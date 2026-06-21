@@ -86,6 +86,7 @@ export interface CardProducao {
   resumo?: string | null;
   maquina?: string | null;
   operador?: string | null;
+  prioridade?: number; // 1 = "passar na frente"
   iniciado_em?: string | null;
   finalizado_em?: string | null;
   numero_erp?: string | null;
@@ -302,6 +303,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => j<{ ok: boolean }>(r)),
+  definirPrioridade: (pedido_id: string, parte: string, prioridade: number) =>
+    fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/prioridade`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prioridade }),
+    }).then((r) => j<{ ok: boolean; prioridade: number }>(r)),
   historicoProducao: (pedido_id: string, parte: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/historico`).then((r) =>
       j<{

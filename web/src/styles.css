@@ -279,7 +279,18 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 
 .kdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; }
 .kdot.aguardando { background: #f59e0b; } .kdot.fazendo { background: #10b981; } .kdot.pronto { background: #3b82f6; }
+.kdot.prioridade { background: #ef4444; }
 .kcol-count.aguardando { background: #f59e0b; } .kcol-count.fazendo { background: #10b981; } .kcol-count.pronto { background: #3b82f6; }
+.kcol-count.prioridade { background: #ef4444; }
+
+/* Coluna e cards de "passar na frente" */
+.kcol.prio { background: #fff5f5; border: 1px solid #fecaca; border-radius: 14px; }
+.kcard.prio { border: 2px solid #ef4444; box-shadow: 0 4px 14px #ef444433; }
+.kcard-prio { font: inherit; font-size: 15px; line-height: 1; background: transparent; border: none; color: #ffffffcc; cursor: pointer; padding: 0 4px; margin-left: auto; margin-right: 6px; }
+.kcard-prio:hover { color: #fff; transform: scale(1.15); }
+.kcard-prio.on { color: #fde047; }
+.btn-prio { border: 1px solid #fecaca; background: #fff5f5; color: #b91c1c; font-weight: 800; }
+.btn-prio.on { background: #ef4444; border-color: #ef4444; color: #fff; }
 
 @media (max-width: 900px) {
   .kanban { flex-direction: column; overflow-x: visible; }

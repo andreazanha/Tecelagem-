@@ -588,7 +588,7 @@ function OperadoresCadastro() {
     recarregar();
   }
 
-  const SETORES = ["tecelagem", "passadoria", "corte", "costura", "revisao", "expedicao"];
+  const SETORES = ["tecelagem", "passadoria", "corte", "costura", "revisao", "estoque", "expedicao"];
 
   return (
     <>

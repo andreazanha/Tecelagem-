@@ -37,11 +37,13 @@ async function garantirCards(env: Env) {
     for (const [parte, blocos] of partes) {
       if (!blocos.length) continue;
       const pecas = blocos.reduce((s, b) => s + b.total, 0);
+      // Pronta-entrega (kit) já é estoque: entra direto na separação, fora da produção.
+      const setor = parte === "pronta-entrega" ? "estoque" : "tecelagem";
       stmts.push(
         env.DB.prepare(
-          `INSERT INTO producao (pedido_id, parte, pecas, resumo) VALUES (?, ?, ?, ?)
+          `INSERT INTO producao (pedido_id, parte, setor, pecas, resumo) VALUES (?, ?, ?, ?, ?)
            ON CONFLICT(pedido_id, parte) DO NOTHING`
-        ).bind(f.id, parte, pecas, `${blocos.length} modelo(s)`)
+        ).bind(f.id, parte, setor, pecas, `${blocos.length} modelo(s)`)
       );
     }
     if (stmts.length) await env.DB.batch(stmts);
@@ -54,12 +56,12 @@ producao.get("/", async (c) => {
   const setor = c.req.query("setor") || "tecelagem";
   const { results } = await c.env.DB.prepare(
     `SELECT pr.pedido_id, pr.parte, pr.setor, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
-            pr.iniciado_em, pr.finalizado_em,
+            pr.prioridade, pr.iniciado_em, pr.finalizado_em,
             p.numero_erp, p.cliente_nome, p.data_pedido, p.data_entrega, p.codigo_terceiro, p.codigo_pai
        FROM producao pr
        JOIN pedidos p ON p.id = pr.pedido_id
       WHERE pr.setor = ?
-   ORDER BY (p.data_entrega IS NULL), p.data_entrega, p.numero_erp`
+   ORDER BY pr.prioridade DESC, (p.data_entrega IS NULL), p.data_entrega, p.numero_erp`
   )
     .bind(setor)
     .all();
@@ -72,7 +74,7 @@ producao.get("/:pedido_id/:parte", async (c) => {
   const parte = decodeURIComponent(c.req.param("parte"));
   const card = await c.env.DB.prepare(
     `SELECT pr.pedido_id, pr.parte, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
-            pr.iniciado_em, pr.finalizado_em,
+            pr.prioridade, pr.iniciado_em, pr.finalizado_em,
             p.numero_erp, p.cliente_nome, p.vendedor, p.data_pedido, p.data_entrega, p.observacao,
             p.codigo_terceiro, p.codigo_pai
        FROM producao pr JOIN pedidos p ON p.id = pr.pedido_id
@@ -142,6 +144,18 @@ producao.post("/:pedido_id/:parte", async (c) => {
       .run();
   }
   return c.json({ ok: true });
+});
+
+// "Passar na frente": liga/desliga a prioridade de uma parte.
+producao.post("/:pedido_id/:parte/prioridade", async (c) => {
+  const pedido_id = c.req.param("pedido_id");
+  const parte = decodeURIComponent(c.req.param("parte"));
+  const b = await c.req.json<{ prioridade?: number | boolean }>().catch(() => ({}) as { prioridade?: number | boolean });
+  const v = b.prioridade ? 1 : 0;
+  await c.env.DB.prepare("UPDATE producao SET prioridade = ? WHERE pedido_id = ? AND parte = ?")
+    .bind(v, pedido_id, parte)
+    .run();
+  return c.json({ ok: true, prioridade: v });
 });
 
 // HISTÓRICO de uma parte: por onde passou, qual operador e o tempo em cada setor.
