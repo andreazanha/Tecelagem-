@@ -1,7 +1,51 @@
-import { useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { NavLink, Outlet, Link } from "react-router-dom";
 import { Logo } from "./Logo";
 import { VERSION } from "../version";
+import { historico } from "../historico";
+
+function UndoRedo() {
+  const [, forcar] = useReducer((x) => x + 1, 0);
+  useEffect(() => historico.subscribe(forcar), []);
+  useEffect(() => {
+    function k(e: KeyboardEvent) {
+      const alvo = e.target as HTMLElement;
+      if (alvo && /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName)) return;
+      const meta = e.ctrlKey || e.metaKey;
+      if (!meta) return;
+      const key = e.key.toLowerCase();
+      if (key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        historico.desfazer().catch((err) => alert((err as Error).message));
+      } else if ((key === "z" && e.shiftKey) || key === "y") {
+        e.preventDefault();
+        historico.refazer().catch((err) => alert((err as Error).message));
+      }
+    }
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, []);
+  return (
+    <div className="undoredo">
+      <button
+        className="ur-btn"
+        disabled={!historico.podeDesfazer()}
+        title={historico.podeDesfazer() ? `Desfazer ${historico.rotuloDesfazer()} (Ctrl+Z)` : "Nada para desfazer"}
+        onClick={() => historico.desfazer().catch((e) => alert((e as Error).message))}
+      >
+        ↶ Desfazer
+      </button>
+      <button
+        className="ur-btn"
+        disabled={!historico.podeRefazer()}
+        title={historico.podeRefazer() ? `Refazer ${historico.rotuloRefazer()} (Ctrl+Y)` : "Nada para refazer"}
+        onClick={() => historico.refazer().catch((e) => alert((e as Error).message))}
+      >
+        ↷ Refazer
+      </button>
+    </div>
+  );
+}
 
 const NAV = [
   { to: "/pedidos", icon: "📦", label: "Pedidos" },
@@ -28,6 +72,7 @@ export function Layout() {
           <span className="brand-sub">Rolagem de Fase</span>
         </Link>
         <div className="topbar-right">
+          <UndoRedo />
           <a className="painel-link" href="/dashboard" target="_blank" rel="noopener noreferrer" title="Abrir painel de TV">
             📺 Painel TV
           </a>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type CardProducao } from "../api";
+import { historico } from "../historico";
 
 const TIPO: Record<string, { label: string; cls: string }> = {
   "parte-1": { label: "PARTE 1", cls: "p1" },
@@ -85,8 +86,22 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     recarregar();
   }, [cfg.setor]);
 
+  // Recarrega quando uma ação é desfeita/refeita em qualquer tela.
+  useEffect(() => {
+    const h = () => recarregar();
+    window.addEventListener("historico:mudou", h);
+    return () => window.removeEventListener("historico:mudou", h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg.setor]);
+
   async function mudar(c: CardProducao, body: { status: string; setor?: string; maquina?: string; operador?: string }) {
+    const antes = { status: c.status, setor: c.setor, operador: c.operador ?? "" };
     await api.atualizarProducao(c.pedido_id, c.parte, body);
+    historico.registrar({
+      label: opCodigo(c),
+      desfazer: () => api.atualizarProducao(c.pedido_id, c.parte, { status: antes.status, setor: antes.setor, operador: antes.operador }),
+      refazer: () => api.atualizarProducao(c.pedido_id, c.parte, body),
+    });
     setAberto(null);
     recarregar();
   }

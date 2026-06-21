@@ -32,6 +32,10 @@ a { color: inherit; }
 .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
 .brand-sub { color: #e0e7ff; font-size: 13px; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
+.undoredo { display: flex; gap: 6px; margin-right: 4px; }
+.ur-btn { background: #ffffff1f; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.ur-btn:hover:not(:disabled) { background: #ffffff33; }
+.ur-btn:disabled { opacity: .4; cursor: default; }
 .painel-link {
   display: inline-flex; align-items: center; gap: 6px;
   background: #ffffff1f; color: #fff; text-decoration: none;

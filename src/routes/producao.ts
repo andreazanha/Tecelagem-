@@ -106,8 +106,11 @@ producao.post("/:pedido_id/:parte", async (c) => {
   const sets: string[] = ["status = ?"];
   const binds: (string | null)[] = [status];
   if (b.setor) {
-    sets.push("setor = ?", "maquina = NULL", "operador = NULL", "iniciado_em = NULL", "finalizado_em = NULL");
+    sets.push("setor = ?", "maquina = NULL", "iniciado_em = NULL", "finalizado_em = NULL");
     binds.push(b.setor.trim());
+    // Ao mudar de setor zera o operador — exceto se um operador for enviado junto
+    // (caso de "desfazer/refazer", que restaura o estado anterior).
+    if (b.operador === undefined) sets.push("operador = NULL");
   }
   if (b.maquina !== undefined) {
     sets.push("maquina = ?");

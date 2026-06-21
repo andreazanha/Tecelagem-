@@ -77,6 +77,7 @@ export interface Costura {
 export interface CardProducao {
   pedido_id: string;
   parte: string; // parte-1 | parte-2 | parte-unica | pronta-entrega
+  setor?: string;
   status: string; // aguardando | tecendo | pronto | enviado
   pecas: number;
   resumo?: string | null;
@@ -259,7 +260,7 @@ export const api = {
   atualizarProducao: (
     pedido_id: string,
     parte: string,
-    body: { status: string; maquina?: string; operador?: string }
+    body: { status: string; setor?: string; maquina?: string; operador?: string }
   ) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}`, {
       method: "POST",
