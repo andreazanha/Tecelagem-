@@ -44,5 +44,8 @@ export function Revisao() {
     })),
   ];
 
-  return <Quadro cfg={{ ...BASE, colunas }} />;
+  return <Quadro cfg={{ ...BASE, nota: revisadoras.length ? BASE.nota : SEM, colunas }} />;
 }
+
+const SEM =
+  "⚠️ Nenhuma revisadora cadastrada. Cadastre em Cadastros › Operadores (setor Revisão) — cada revisadora vira uma coluna aqui.";

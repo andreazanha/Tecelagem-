@@ -48,5 +48,8 @@ export function Costura() {
     { cor: "defeito", titulo: "⚠ Voltou com defeito", sub: "Refazer ou enviar direto", status: "defeito", acao: "voltar", acaoExtra: "enviar" },
   ];
 
-  return <Quadro cfg={{ ...BASE, colunas }} />;
+  return <Quadro cfg={{ ...BASE, nota: costureiras.length ? BASE.nota : SEM, colunas }} />;
 }
+
+const SEM =
+  "⚠️ Nenhuma costureira cadastrada. Cadastre em Cadastros › Operadores (setor Costura) — cada costureira vira uma coluna aqui. (Os nomes no painel de TV são apenas demonstração.)";
