@@ -257,7 +257,9 @@
 .dash .tcl, .dash .cst, .dash .np { position: absolute; }
 /* (.cst cobre Costura e Revisão, que usam o mesmo tema) */
 
-/* ── Tela de celebração: NOVO PEDIDO! ───────────────────────────────────────── */
+/* ── Overlay/celebração: NOVO PEDIDO! (dispara quando chega pedido) ──────────── */
+.np-overlay { position: fixed; inset: 0; z-index: 95; animation: npIn .45s ease both; }
+@keyframes npIn { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: none; } }
 .np {
   inset: 0; overflow: hidden;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;

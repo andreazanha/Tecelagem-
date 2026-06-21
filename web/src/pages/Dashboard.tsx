@@ -52,12 +52,12 @@ interface Cfg {
 }
 const CFG_PADRAO: Cfg = {
   intervalo: 12,
-  som: false,
+  som: true,
   novoPedido: true,
   mostrarValores: false,
   metaPedidos: 80,
   fixarComando: false,
-  telas: { comando: true, novopedido: true, tecelagem: true, costura: true, revisao: true, capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
+  telas: { comando: true, tecelagem: true, costura: true, revisao: true, capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
 };
 function carregarCfg(): Cfg {
   try {
@@ -144,7 +144,6 @@ export function Dashboard() {
   const telas = useMemo(() => {
     const all: { key: string; el: ReactNode; full?: boolean }[] = [
       { key: "comando", el: <ComandoScreen d={data} hora={hora} /> },
-      { key: "novopedido", el: <NovoPedidoScreen d={data} />, full: true },
       { key: "tecelagem", el: <TvTecelagem />, full: true },
       { key: "costura", el: <TvCostura />, full: true },
       { key: "revisao", el: <TvRevisao />, full: true },
@@ -264,7 +263,7 @@ export function Dashboard() {
         <button className="dash-btn" onClick={() => setShowCfg(true)}>⚙</button>
       </footer>
 
-      {novo && <NovoPedidoOverlay p={novo} mostrarValores={cfg.mostrarValores} />}
+      {novo && <NovoPedidoOverlay p={novo} />}
       {showCfg && (
         <ConfigPanel
           cfg={cfg}
@@ -711,41 +710,7 @@ function ScreenHead({ ic, t, demo }: { ic: string; t: string; demo?: boolean }) 
   );
 }
 
-// ── Overlay: Novo pedido ──────────────────────────────────────────────────────────
-// Tela de celebração do último pedido (entra no loop).
-function NovoPedidoScreen({ d }: { d: DashboardData | null }) {
-  const p = d?.ultimoPedido;
-  const ped = p || { id: "", numero: "2605", cliente: "Loja Donna", vendedor: "", pecas: 250, data_entrega: "2025-06-24", created_at: "" };
-  const dataFull = (s?: string | null) => {
-    if (!s) return "—";
-    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
-  };
-  const horario = ped.created_at
-    ? new Date(ped.created_at.replace(" ", "T") + (ped.created_at.includes("Z") ? "" : "Z")).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-    : "14:32";
-  return (
-    <div className="np">
-      <div className="np-rays" aria-hidden />
-      <div className="np-confetti" aria-hidden>
-        {Array.from({ length: 16 }).map((_, i) => (
-          <span key={i} className={"cf c" + (i % 5)} style={{ left: `${(i * 6.3 + 4) % 100}%`, animationDelay: `${(i % 8) * 0.35}s`, animationDuration: `${3 + (i % 4)}s` }} />
-        ))}
-      </div>
-      <div className="np-bell"><span>🔔</span></div>
-      <div className="np-title">NOVO<br />PEDIDO!</div>
-      <div className="np-sub">UM NOVO DESAFIO CHEGOU 💙<br /><b>VAMOS FAZER ACONTECER!</b></div>
-      <div className="np-cards">
-        <NpCard ic="🧾" l="PEDIDO" v={"#" + (ped.numero || "—")} />
-        <NpCard ic="🏢" l="CLIENTE" v={ped.cliente} />
-        <NpCard ic="🧶" l="PEÇAS" v={String(ped.pecas)} />
-        <NpCard ic="📅" l="ENTREGA" v={dataFull(ped.data_entrega)} />
-        <NpCard ic="🕒" l="HORÁRIO" v={horario} />
-      </div>
-      <div className="np-btn">▶ VAMOS LÁ!</div>
-    </div>
-  );
-}
+// ── Overlay: Novo pedido (dispara com som quando chega pedido novo) ─────────────────
 function NpCard({ ic, l, v }: { ic: string; l: string; v: string }) {
   return (
     <div className="np-card">
@@ -756,22 +721,35 @@ function NpCard({ ic, l, v }: { ic: string; l: string; v: string }) {
   );
 }
 
-function NovoPedidoOverlay({ p, mostrarValores }: { p: NonNullable<DashboardData["ultimoPedido"]>; mostrarValores: boolean }) {
+function NovoPedidoOverlay({ p }: { p: NonNullable<DashboardData["ultimoPedido"]> }) {
+  const dataFull = (s?: string | null) => {
+    if (!s) return "—";
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+  };
+  const horario = p.created_at
+    ? new Date(p.created_at.replace(" ", "T") + (p.created_at.includes("Z") ? "" : "Z")).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    : new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   return (
-    <div className="novo">
-      <div className="novo-glow" />
-      <div className="novo-rings"><span /><span /><span /></div>
-      <div className="novo-card">
-        <div className="novo-tag">✨ Novo pedido</div>
-        <div className="novo-big">NOVO PEDIDO!</div>
-        <div className="novo-cli">{p.cliente}</div>
-        <div className="novo-meta">
-          <div className="nm"><span className="l">Pedido</span><span className="v">{p.numero || "—"}</span></div>
-          <div className="nm"><span className="l">Peças</span><span className="v">{p.pecas}</span></div>
-          <div className="nm"><span className="l">Representante</span><span className="v">{p.vendedor || "—"}</span></div>
-          <div className="nm"><span className="l">Entrega</span><span className="v">{brD(p.data_entrega)}</span></div>
-          {mostrarValores && <div className="nm"><span className="l">Valor</span><span className="v">—</span></div>}
+    <div className="np-overlay">
+      <div className="np">
+        <div className="np-rays" aria-hidden />
+        <div className="np-confetti" aria-hidden>
+          {Array.from({ length: 18 }).map((_, i) => (
+            <span key={i} className={"cf c" + (i % 5)} style={{ left: `${(i * 5.6 + 3) % 100}%`, animationDelay: `${(i % 8) * 0.3}s`, animationDuration: `${2.8 + (i % 4)}s` }} />
+          ))}
         </div>
+        <div className="np-bell"><span>🔔</span></div>
+        <div className="np-title">NOVO<br />PEDIDO!</div>
+        <div className="np-sub">UM NOVO DESAFIO CHEGOU 💙<br /><b>VAMOS FAZER ACONTECER!</b></div>
+        <div className="np-cards">
+          <NpCard ic="🧾" l="PEDIDO" v={"#" + (p.numero || "—")} />
+          <NpCard ic="🏢" l="CLIENTE" v={p.cliente} />
+          <NpCard ic="🧶" l="PEÇAS" v={String(p.pecas)} />
+          <NpCard ic="📅" l="ENTREGA" v={dataFull(p.data_entrega)} />
+          <NpCard ic="🕒" l="HORÁRIO" v={horario} />
+        </div>
+        <div className="np-btn">▶ VAMOS LÁ!</div>
       </div>
     </div>
   );
@@ -796,7 +774,6 @@ function ConfigPanel({
   const [novoAviso, setNovoAviso] = useState("");
   const telasLabels: [string, string][] = [
     ["comando", "Central de Comando"],
-    ["novopedido", "Novo Pedido (celebração)"],
     ["tecelagem", "TV Tecelagem"],
     ["costura", "TV Costura"],
     ["revisao", "TV Revisão"],
