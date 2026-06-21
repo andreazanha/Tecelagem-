@@ -1,34 +1,52 @@
-import { Quadro, type QuadroCfg } from "../components/Quadro";
+import { useEffect, useState } from "react";
+import { Quadro, type QuadroCfg, type ColCfg } from "../components/Quadro";
+import { api } from "../api";
 
-const COSTURA: QuadroCfg = {
+// Costura é organizada por COSTUREIRA: cada coluna é uma costureira (vêm do
+// cadastro de Operadores, setor Costura). Quem "pega" a peça vira a dona da
+// coluna. Sem "passar na frente"; a única coluna fixa é "Voltou com defeito".
+const BASE: Omit<QuadroCfg, "colunas"> = {
   setor: "costura",
   titulo: "Costura",
-  fazerLabel: "Costurar",
+  fazerLabel: "Pegar costura",
   fazendoLabel: "Costurando",
   proxSetor: "revisao",
-  proxSetorKit: "estoque", // kits costurados vão direto para o Estoque (Entrada)
+  proxSetorKit: "estoque",
   pedeMaquina: false,
   recursoLabel: "Costureira",
   recursoTotal: 8,
   statRecursoLabel: "Costureiras",
-  statFila: "Aguardando",
-  statFazendo: "Costurando",
-  statPronto: "Finalizados",
+  statFila: "A distribuir",
+  statFazendo: "Em costura",
+  statPronto: "—",
   mostrarMaquinas: false,
-  enviarLabel: "Enviar p/ revisão ▶",
+  semPrioridade: true,
   defeito: true,
-  nota: "Peça com problema: use ⚠ Defeito (vai para 'Voltou com defeito'). Pronta: Enviar p/ revisão.",
-  colunas: [
-    { cor: "prioridade", titulo: "Passar na frente", sub: "Urgentes / clientes atrasados", status: "aguardando", acao: "fazer", somentePrioridade: true },
-    { cor: "aguardando", titulo: "Aguardando", sub: "Para costurar", status: "aguardando", tipos: ["parte-1", "parte-2", "parte-unica"], acao: "fazer" },
-    { cor: "aguardando", titulo: "Kits aguardando", sub: "Kits para costurar", status: "aguardando", tipos: ["pronta-entrega"], acao: "fazer" },
-    { cor: "fazendo", titulo: "Costurando", sub: "Em produção", status: "fazendo", acao: "finalizar", acaoExtra: "defeito" },
-    { cor: "pronto", titulo: "Finalizados", sub: "Prontos p/ revisão", status: "pronto", tipos: ["parte-1", "parte-2", "parte-unica"], acao: "enviar", botaoLabel: "Enviar p/ revisão ▶", acaoExtra: "defeito" },
-    { cor: "pronto", titulo: "Kits finalizados", sub: "Seguir p/ estoque", status: "pronto", tipos: ["pronta-entrega"], acao: "enviar", botaoLabel: "Enviar p/ estoque ▶" },
-    { cor: "defeito", titulo: "Voltou com defeito", sub: "Refazer e reenviar", status: "defeito", acao: "voltar" },
-  ],
+  enviarLabel: "Enviar p/ revisão ▶",
+  enviarLabelKit: "Enviar p/ estoque ▶",
+  nota: "Cada coluna é uma costureira. Em 'A distribuir', toque em Pegar e escolha a costureira. No card: Enviar (revisão / estoque para kit) ou ⚠ Defeito.",
 };
 
 export function Costura() {
-  return <Quadro cfg={COSTURA} />;
+  const [costureiras, setCostureiras] = useState<{ id: string; nome: string }[]>([]);
+
+  useEffect(() => {
+    api.listarOperadores("costura").then(setCostureiras).catch(() => {});
+  }, []);
+
+  const colunas: ColCfg[] = [
+    { cor: "aguardando", titulo: "A distribuir", sub: "Chegou do corte", status: "aguardando", acao: "fazer", botaoLabel: "Pegar ▶" },
+    ...costureiras.map<ColCfg>((c) => ({
+      cor: "fazendo",
+      titulo: c.nome,
+      sub: "Costureira",
+      status: "fazendo",
+      operador: c.nome,
+      acao: "enviar",
+      acaoExtra: "defeito",
+    })),
+    { cor: "defeito", titulo: "⚠ Voltou com defeito", sub: "Refazer e reenviar", status: "defeito", acao: "voltar" },
+  ];
+
+  return <Quadro cfg={{ ...BASE, colunas }} />;
 }

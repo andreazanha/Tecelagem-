@@ -59,6 +59,7 @@ export interface ColCfg {
   status: "aguardando" | "fazendo" | "pronto" | "defeito";
   tipos?: string[];
   acao: Acao;
+  operador?: string; // filtra cards por costureira/operador (coluna por pessoa)
   botaoLabel?: string; // sobrescreve o texto do botão da coluna
   acaoExtra?: Acao; // botão secundário no card (ex.: "Defeito")
   somentePrioridade?: boolean; // coluna "passar na frente"
@@ -81,7 +82,9 @@ export interface QuadroCfg {
   colunas: ColCfg[];
   acaoFazendo?: "finalizar" | "enviar"; // o que o card "fazendo" faz no modal (default finalizar)
   enviarLabel?: string; // texto do botão "enviar" (default "Enviar ▶")
+  enviarLabelKit?: string; // texto do botão "enviar" quando o card é kit (pronta-entrega)
   defeito?: boolean; // mostra botão "Defeito" no modal
+  semPrioridade?: boolean; // esconde o "passar na frente" (ex.: Costura)
   proxSetorKit?: string | null; // destino dos kits (pronta-entrega) ao enviar, se diferente
 }
 
@@ -221,6 +224,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
             {cfg.colunas.map((col, i) => {
               const lista = filtrados.filter((c) => {
                 if (c.status !== col.status) return false;
+                if (col.operador !== undefined && (c.operador || "") !== col.operador) return false;
                 if (col.tipos && !col.tipos.includes(c.parte)) return false;
                 if (col.somentePrioridade) return !!c.prioridade;
                 // Numa coluna normal de "aguardando", os prioritários saem para a
@@ -395,6 +399,12 @@ function btnDe(acao: Acao, cfg: QuadroCfg) {
   if (acao === "voltar") return { cls: "tecer", label: "↩ Refazer" };
   return { cls: "enviar", label: cfg.enviarLabel || "Enviar ▶" };
 }
+// Texto do botão de uma coluna para um card — "enviar" muda conforme kit/normal.
+function labelBotao(col: ColCfg, c: CardProducao, cfg: QuadroCfg): string {
+  if (col.botaoLabel) return col.botaoLabel;
+  if (col.acao === "enviar" && c.parte === "pronta-entrega" && cfg.enviarLabelKit) return cfg.enviarLabelKit;
+  return btnDe(col.acao, cfg).label;
+}
 
 function Coluna({
   col,
@@ -432,13 +442,15 @@ function Coluna({
             <div key={c.pedido_id + c.parte} className={"kcard" + (c.prioridade ? " prio" : "")} onClick={() => onAbrir(c)} style={{ cursor: "pointer" }}>
               <div className={"kcard-hd " + t.cls}>
                 <span className="kcard-op">{opCodigo(c)}</span>
-                <button
-                  className={"kcard-prio" + (c.prioridade ? " on" : "")}
-                  title={c.prioridade ? "Tirar da frente" : "Passar na frente"}
-                  onClick={(e) => { e.stopPropagation(); onPrioridade(c); }}
-                >
-                  {c.prioridade ? "★" : "☆"}
-                </button>
+                {!cfg.semPrioridade && (
+                  <button
+                    className={"kcard-prio" + (c.prioridade ? " on" : "")}
+                    title={c.prioridade ? "Tirar da frente" : "Passar na frente"}
+                    onClick={(e) => { e.stopPropagation(); onPrioridade(c); }}
+                  >
+                    {c.prioridade ? "★" : "☆"}
+                  </button>
+                )}
                 <span className="kcard-badge">{t.label}</span>
               </div>
               <div className="kcard-bd">
@@ -481,7 +493,7 @@ function Coluna({
                         onAcao(c, col.acao);
                       }}
                     >
-                      {col.botaoLabel || btn.label}
+                      {labelBotao(col, c, cfg)}
                     </button>
                   </div>
                 </div>
@@ -562,6 +574,8 @@ function CardModal({
           ? "voltar"
           : "enviar";
   const btn = btnDe(acaoAtual, cfg);
+  const btnLabel =
+    acaoAtual === "enviar" && card.parte === "pronta-entrega" && cfg.enviarLabelKit ? cfg.enviarLabelKit : btn.label;
   // Botão "Defeito" no modal (setores com defeito), enquanto a peça está sendo
   // feita ou já pronta — não quando já está marcada como defeito.
   const mostrarDefeito = cfg.defeito && (card.status === "fazendo" || card.status === "pronto");
@@ -663,20 +677,22 @@ function CardModal({
           <button className="btn" onClick={onFechar}>
             Fechar
           </button>
-          <button
-            className={"btn btn-prio" + (card.prioridade ? " on" : "")}
-            onClick={() => onPrioridade(card)}
-            title="Faz o pedido passar na frente nos próximos setores"
-          >
-            {card.prioridade ? "★ Na frente" : "☆ Passar na frente"}
-          </button>
+          {!cfg.semPrioridade && (
+            <button
+              className={"btn btn-prio" + (card.prioridade ? " on" : "")}
+              onClick={() => onPrioridade(card)}
+              title="Faz o pedido passar na frente nos próximos setores"
+            >
+              {card.prioridade ? "★ Na frente" : "☆ Passar na frente"}
+            </button>
+          )}
           {mostrarDefeito && (
             <button className="kbtn defeito" onClick={() => onAcao(card, "defeito")}>
               ⚠ Defeito
             </button>
           )}
           <button className={"kbtn " + btn.cls} onClick={() => onAcao(card, acaoAtual)}>
-            {btn.label}
+            {btnLabel}
           </button>
         </div>
       </div>

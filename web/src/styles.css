@@ -304,7 +304,7 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 
 /* Coluna e cards de "passar na frente" */
 .kcol.prio { background: #fff5f5; border: 1px solid #fecaca; border-radius: 14px; }
-.kcol.defeito { background: #fff7f7; border: 1px solid #fecaca; border-radius: 14px; }
+.kcol.defeito { background: #fff5f5; border: 2px solid #f87171; border-radius: 14px; padding: 6px; box-shadow: 0 4px 16px #ef444426; }
 .kcard.prio { border: 2px solid #ef4444; box-shadow: 0 4px 14px #ef444433; }
 .kcard-prio { font: inherit; font-size: 15px; line-height: 1; background: transparent; border: none; color: #ffffffcc; cursor: pointer; padding: 0 4px; margin-left: auto; margin-right: 6px; }
 .kcard-prio:hover { color: #fff; transform: scale(1.15); }
