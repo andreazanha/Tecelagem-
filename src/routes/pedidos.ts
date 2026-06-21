@@ -258,6 +258,15 @@ pedidos.get("/", async (c) => {
 });
 
 // DETALHE
+// Atualiza o código de terceiro (código interno do cliente) do pedido.
+pedidos.post("/:id/codigo-terceiro", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ codigo?: string }>().catch(() => ({}) as { codigo?: string });
+  const codigo = (b.codigo || "").trim() || null;
+  await c.env.DB.prepare("UPDATE pedidos SET codigo_terceiro = ? WHERE id = ?").bind(codigo, id).run();
+  return c.json({ ok: true, codigo_terceiro: codigo });
+});
+
 pedidos.get("/:id", async (c) => {
   const id = c.req.param("id");
   const pedido = await c.env.DB.prepare("SELECT * FROM pedidos WHERE id = ?")

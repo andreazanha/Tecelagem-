@@ -245,10 +245,17 @@ export const api = {
         CardProducao & {
           vendedor?: string | null;
           observacao?: string | null;
+          codigo_terceiro?: string | null;
           blocos: { modelo: string; ref: string; comp: string; cor: string; total: number; sizes: { tipo: string; tamanho: string; qtd: number }[] }[];
         }
       >(r)
     ),
+  salvarCodigoTerceiro: (pedido_id: string, codigo: string) =>
+    fetch(`/api/pedidos/${pedido_id}/codigo-terceiro`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ codigo }),
+    }).then((r) => j<{ ok: boolean; codigo_terceiro: string | null }>(r)),
   atualizarProducao: (
     pedido_id: string,
     parte: string,

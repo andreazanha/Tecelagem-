@@ -1,3 +1,3 @@
 // Versão visível na tela — bump a cada deploy para confirmar que a versão nova carregou
 // (se o número não mudar após atualizar, é cache do navegador).
-export const VERSION = "v1.26.0";
+export const VERSION = "v1.27.0";

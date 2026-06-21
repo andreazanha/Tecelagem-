@@ -425,10 +425,33 @@ function CardModal({
   const [det, setDet] = useState<Awaited<ReturnType<typeof api.detalheProducao>> | null>(null);
   const [hist, setHist] = useState<Awaited<ReturnType<typeof api.historicoProducao>> | null>(null);
   const [verHist, setVerHist] = useState(false);
+  const [codTerc, setCodTerc] = useState("");
+  const [salvouCod, setSalvouCod] = useState(false);
+  const [salvandoCod, setSalvandoCod] = useState(false);
   useEffect(() => {
-    api.detalheProducao(card.pedido_id, card.parte).then(setDet).catch(() => {});
+    api
+      .detalheProducao(card.pedido_id, card.parte)
+      .then((d) => {
+        setDet(d);
+        setCodTerc(d.codigo_terceiro || "");
+      })
+      .catch(() => {});
     api.historicoProducao(card.pedido_id, card.parte).then(setHist).catch(() => {});
   }, [card.pedido_id, card.parte]);
+
+  async function salvarCod() {
+    setSalvandoCod(true);
+    setSalvouCod(false);
+    try {
+      await api.salvarCodigoTerceiro(card.pedido_id, codTerc);
+      setSalvouCod(true);
+      setTimeout(() => setSalvouCod(false), 2000);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setSalvandoCod(false);
+    }
+  }
 
   const t = TIPO[card.parte] || { label: card.parte, cls: "" };
   const origem =
@@ -493,6 +516,22 @@ function CardModal({
             <Campo l="RESPONSÁVEL" v={card.operador || "—"} />
             <Campo l="VENDEDOR" v={det?.vendedor || "—"} />
             <Campo l="SETOR ATUAL" v={cfg.titulo} />
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <div className="campo-l">CÓDIGO DE TERCEIRO (código interno do cliente)</div>
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <input
+                value={codTerc}
+                onChange={(e) => setCodTerc(e.target.value)}
+                placeholder="Preencher se o cliente usa código próprio…"
+                style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 15 }}
+                onKeyDown={(e) => e.key === "Enter" && salvarCod()}
+              />
+              <button className="btn btn-primary" disabled={salvandoCod} onClick={salvarCod}>
+                {salvandoCod ? "…" : salvouCod ? "✓ Salvo" : "Salvar"}
+              </button>
+            </div>
           </div>
 
           <div style={{ marginTop: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>

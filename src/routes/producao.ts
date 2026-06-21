@@ -73,7 +73,8 @@ producao.get("/:pedido_id/:parte", async (c) => {
   const card = await c.env.DB.prepare(
     `SELECT pr.pedido_id, pr.parte, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
             pr.iniciado_em, pr.finalizado_em,
-            p.numero_erp, p.cliente_nome, p.vendedor, p.data_pedido, p.data_entrega, p.observacao
+            p.numero_erp, p.cliente_nome, p.vendedor, p.data_pedido, p.data_entrega, p.observacao,
+            p.codigo_terceiro
        FROM producao pr JOIN pedidos p ON p.id = pr.pedido_id
       WHERE pr.pedido_id = ? AND pr.parte = ?`
   )
