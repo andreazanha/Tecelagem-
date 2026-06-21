@@ -94,7 +94,7 @@ producao.get("/:pedido_id/:parte", async (c) => {
   return c.json({ ...card, blocos: blocos || [] });
 });
 
-const STATUS = ["aguardando", "fazendo", "pronto"];
+const STATUS = ["aguardando", "fazendo", "pronto", "defeito"];
 
 // MUDA status/setor de uma parte: Fazer → fazendo, Finalizar → pronto, Enviar → próximo setor.
 producao.post("/:pedido_id/:parte", async (c) => {

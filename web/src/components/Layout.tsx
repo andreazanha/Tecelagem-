@@ -53,6 +53,7 @@ const NAV = [
   { to: "/producao", icon: "🧶", label: "Tecelagem", page: "producao" },
   { to: "/passadoria", icon: "🔥", label: "Passadoria", page: "passadoria" },
   { to: "/corte", icon: "✂️", label: "Corte", page: "corte" },
+  { to: "/costura", icon: "🪡", label: "Costura", page: "costura" },
   { to: "/revisao", icon: "🔍", label: "Revisão", page: "revisao" },
   { to: "/estoque", icon: "📦", label: "Estoque", page: "estoque" },
   { to: "/cadastros", icon: "🏷️", label: "Cadastros", page: "cadastros" },
@@ -117,9 +118,13 @@ export function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="ss-cfg" title="Após esse tempo sem uso, entra em modo TV (Dashboard). 0 = desligado.">
-          💤 Protetor (min)
-          <input type="number" min={0} max={240} value={ssMin} onChange={(e) => mudarSs(Number(e.target.value))} />
+        <div className="ss-cfg" title="Após esse tempo sem uso, entra em modo TV (Painel). 0 = desligado.">
+          <div className="ss-cfg-top">💤 Protetor de tela</div>
+          <div className="ss-cfg-row">
+            <input type="number" min={0} max={240} value={ssMin} onChange={(e) => mudarSs(Number(e.target.value))} />
+            <span className="ss-cfg-un">minutos</span>
+          </div>
+          <div className="ss-cfg-hint">0 = desligado · abre o Painel TV após esse tempo parado</div>
         </div>
         <div className="sidebar-version">{VERSION}</div>
       </aside>

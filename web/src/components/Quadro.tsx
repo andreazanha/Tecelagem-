@@ -51,13 +51,16 @@ const brDT = (s?: string | null) => {
   return isNaN(+d) ? "—" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 };
 
+export type Acao = "fazer" | "finalizar" | "enviar" | "defeito" | "voltar";
 export interface ColCfg {
-  cor: "aguardando" | "fazendo" | "pronto" | "prioridade";
+  cor: "aguardando" | "fazendo" | "pronto" | "prioridade" | "defeito";
   titulo: string;
   sub: string;
-  status: "aguardando" | "fazendo" | "pronto";
+  status: "aguardando" | "fazendo" | "pronto" | "defeito";
   tipos?: string[];
-  acao: "fazer" | "finalizar" | "enviar";
+  acao: Acao;
+  botaoLabel?: string; // sobrescreve o texto do botão da coluna
+  acaoExtra?: Acao; // botão secundário no card (ex.: "Defeito")
   somentePrioridade?: boolean; // coluna "passar na frente"
 }
 export interface QuadroCfg {
@@ -76,6 +79,9 @@ export interface QuadroCfg {
   mostrarMaquinas: boolean;
   nota: string;
   colunas: ColCfg[];
+  acaoFazendo?: "finalizar" | "enviar"; // o que o card "fazendo" faz no modal (default finalizar)
+  enviarLabel?: string; // texto do botão "enviar" (default "Enviar ▶")
+  defeito?: boolean; // mostra botão "Defeito" no modal
 }
 
 export function Quadro({ cfg }: { cfg: QuadroCfg }) {
@@ -116,9 +122,11 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     setAberto(null);
     recarregar();
   }
-  function acaoCard(c: CardProducao, acao: ColCfg["acao"]) {
+  function acaoCard(c: CardProducao, acao: Acao) {
     if (acao === "fazer") setIniciar(c);
     else if (acao === "finalizar") mudar(c, { status: "pronto" });
+    else if (acao === "defeito") mudar(c, { status: "defeito" });
+    else if (acao === "voltar") mudar(c, { status: "fazendo", operador: c.operador || "" });
     else if (cfg.proxSetor) mudar(c, { setor: cfg.proxSetor, status: "aguardando" });
   }
 
@@ -135,7 +143,8 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     recarregar();
   }
 
-  const stLabel = (s: string) => (s === "fazendo" ? cfg.fazendoLabel : s === "pronto" ? "Pronto" : "Aguardando");
+  const stLabel = (s: string) =>
+    s === "fazendo" ? cfg.fazendoLabel : s === "pronto" ? "Pronto" : s === "defeito" ? "Com defeito" : "Aguardando";
   const ativos = useMemo(() => cards.filter((c) => c.status === "fazendo"), [cards]);
   const maquinas = useMemo(() => {
     const m = new Map<string, string>();
@@ -374,10 +383,12 @@ function Stat({ n, l }: { n: number | string; l: string }) {
   );
 }
 
-function btnDe(acao: ColCfg["acao"], cfg: QuadroCfg) {
+function btnDe(acao: Acao, cfg: QuadroCfg) {
   if (acao === "fazer") return { cls: "tecer", label: cfg.fazerLabel };
   if (acao === "finalizar") return { cls: "final", label: "Finalizar" };
-  return { cls: "enviar", label: "Enviar ▶" };
+  if (acao === "defeito") return { cls: "defeito", label: "⚠ Defeito" };
+  if (acao === "voltar") return { cls: "tecer", label: "↩ Refazer" };
+  return { cls: "enviar", label: cfg.enviarLabel || "Enviar ▶" };
 }
 
 function Coluna({
@@ -399,7 +410,7 @@ function Coluna({
 }) {
   const btn = btnDe(col.acao, cfg);
   return (
-    <div className={"kcol" + (col.somentePrioridade ? " prio" : "")}>
+    <div className={"kcol" + (col.somentePrioridade ? " prio" : "") + (col.cor === "defeito" ? " defeito" : "")}>
       <div className="kcol-head">
         <div>
           <div className="kcol-title">
@@ -449,15 +460,25 @@ function Coluna({
                       ? `${c.maquina ? c.maquina + " · " : ""}${c.operador || "—"}`
                       : "toque p/ detalhes"}
                   </span>
-                  <button
-                    className={"kbtn " + btn.cls}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAcao(c, col.acao);
-                    }}
-                  >
-                    {btn.label}
-                  </button>
+                  <div className="kcard-acoes">
+                    {col.acaoExtra && (
+                      <button
+                        className={"kbtn " + btnDe(col.acaoExtra, cfg).cls}
+                        onClick={(e) => { e.stopPropagation(); onAcao(c, col.acaoExtra!); }}
+                      >
+                        {btnDe(col.acaoExtra, cfg).label}
+                      </button>
+                    )}
+                    <button
+                      className={"kbtn " + btn.cls}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAcao(c, col.acao);
+                      }}
+                    >
+                      {col.botaoLabel || btn.label}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -527,9 +548,18 @@ function CardModal({
     const d = Math.round((e.getTime() - h.getTime()) / 86400000);
     faltam = d < 0 ? `${-d} dia(s) atrasado` : d === 0 ? "entrega hoje" : `faltam ${d} dia(s)`;
   }
-  const acaoAtual: ColCfg["acao"] =
-    card.status === "aguardando" ? "fazer" : card.status === "fazendo" ? "finalizar" : "enviar";
+  const acaoAtual: Acao =
+    card.status === "aguardando"
+      ? "fazer"
+      : card.status === "fazendo"
+        ? cfg.acaoFazendo || "finalizar"
+        : card.status === "defeito"
+          ? "voltar"
+          : "enviar";
   const btn = btnDe(acaoAtual, cfg);
+  // Botão "Defeito" no modal (setores com defeito), enquanto a peça está sendo
+  // feita ou já pronta — não quando já está marcada como defeito.
+  const mostrarDefeito = cfg.defeito && (card.status === "fazendo" || card.status === "pronto");
 
   return (
     <div className="modal-bg" onClick={onFechar}>
@@ -635,6 +665,11 @@ function CardModal({
           >
             {card.prioridade ? "★ Na frente" : "☆ Passar na frente"}
           </button>
+          {mostrarDefeito && (
+            <button className="kbtn defeito" onClick={() => onAcao(card, "defeito")}>
+              ⚠ Defeito
+            </button>
+          )}
           <button className={"kbtn " + btn.cls} onClick={() => onAcao(card, acaoAtual)}>
             {btn.label}
           </button>

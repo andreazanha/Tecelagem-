@@ -14,6 +14,7 @@ export const PAGINAS: { key: string; label: string; tv?: boolean }[] = [
   { key: "producao", label: "Tecelagem" },
   { key: "passadoria", label: "Passadoria" },
   { key: "corte", label: "Corte" },
+  { key: "costura", label: "Costura" },
   { key: "revisao", label: "Revisão" },
   { key: "estoque", label: "Estoque" },
   { key: "romaneios", label: "Romaneios" },
@@ -46,7 +47,7 @@ export function primeiraPagina(u: Usuario | null): string {
   if (u.admin) return "/pedidos";
   const ordem: [string, string][] = [
     ["pedidos", "/pedidos"], ["producao", "/producao"], ["passadoria", "/passadoria"],
-    ["corte", "/corte"], ["revisao", "/revisao"], ["estoque", "/estoque"],
+    ["corte", "/corte"], ["costura", "/costura"], ["revisao", "/revisao"], ["estoque", "/estoque"],
     ["romaneios", "/romaneios"], ["cadastros", "/cadastros"],
   ];
   for (const [k, rota] of ordem) if (u.paginas.includes(k)) return rota;
