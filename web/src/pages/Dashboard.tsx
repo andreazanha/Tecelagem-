@@ -683,20 +683,24 @@ function RankingScreen({ d, cfg }: { d: DashboardData | null; cfg: Cfg }) {
 
 // ── Tela: Avisos ─────────────────────────────────────────────────────────────────
 function AvisosScreen({ d }: { d: DashboardData | null }) {
-  const a = d?.avisos || [];
+  const frases = (d?.avisos || []).map((a) => a.texto).filter(Boolean);
+  const lista = frases.length ? frases : ["Cadastre suas frases em ⚙ Configurações"];
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (lista.length <= 1) return;
+    const t = setInterval(() => setI((x) => (x + 1) % lista.length), 5000);
+    return () => clearInterval(t);
+  }, [lista.length]);
+  const at = Math.min(i, lista.length - 1);
   return (
-    <>
-      <ScreenHead ic="📌" t="Avisos internos" />
-      <div className="avisos">
-        {a.length === 0 && <div className="dash-empty">Nenhum aviso. Cadastre em ⚙ Configurações.</div>}
-        {a.slice(0, 5).map((x) => (
-          <div className="aviso" key={x.id}>
-            <span className="aviso-ic">📣</span>
-            <span>{x.texto}</span>
-          </div>
-        ))}
-      </div>
-    </>
+    <div className="frase">
+      <div className="frase-bg" aria-hidden><span className="g1" /><span className="g2" /></div>
+      <div className="frase-aspas">❝</div>
+      <div className="frase-txt" key={at}>{lista[at]}</div>
+      {lista.length > 1 && (
+        <div className="frase-dots">{lista.map((_, k) => <span key={k} className={k === at ? "on" : ""} />)}</div>
+      )}
+    </div>
   );
 }
 
@@ -785,7 +789,7 @@ function ConfigPanel({
     ["prazo", "Prazos & meta"],
     ["evolucao", "Evolução diária"],
     ["ranking", "Top representantes/clientes"],
-    ["avisos", "Avisos"],
+    ["avisos", "Frases motivacionais"],
   ];
   async function addAviso() {
     const t = novoAviso.trim();
@@ -828,9 +832,9 @@ function ConfigPanel({
       </div>
 
       <div className="grp">
-        <h3 className="grp-t">Avisos</h3>
+        <h3 className="grp-t">Frases motivacionais / avisos</h3>
         <div className="aviso-row">
-          <input type="text" placeholder="Novo aviso…" value={novoAviso} onChange={(e) => setNovoAviso(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addAviso()} />
+          <input type="text" placeholder="Nova frase…" value={novoAviso} onChange={(e) => setNovoAviso(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addAviso()} />
           <button className="dash-btn" onClick={addAviso}>＋</button>
         </div>
         {avisos.map((a) => (
