@@ -57,7 +57,7 @@ const CFG_PADRAO: Cfg = {
   mostrarValores: false,
   metaPedidos: 80,
   fixarComando: false,
-  telas: { comando: true, tecelagem: true, costura: true, revisao: true, capa: true, resumo: true, producao: true, urgentes: true, etapas: true, prazo: true, evolucao: true, ranking: true, avisos: true },
+  telas: { comando: true, tecelagem: true, costura: true, revisao: true, avisos: true },
 };
 function carregarCfg(): Cfg {
   try {
@@ -147,14 +147,6 @@ export function Dashboard() {
       { key: "tecelagem", el: <TvTecelagem />, full: true },
       { key: "costura", el: <TvCostura />, full: true },
       { key: "revisao", el: <TvRevisao />, full: true },
-      { key: "capa", el: <CapaScreen hora={hora} /> },
-      { key: "resumo", el: <ResumoScreen d={data} /> },
-      { key: "producao", el: <ProducaoScreen d={data} /> },
-      { key: "urgentes", el: <UrgentesScreen d={data} /> },
-      { key: "etapas", el: <EtapasScreen d={data} /> },
-      { key: "prazo", el: <PrazoScreen d={data} cfg={cfg} /> },
-      { key: "evolucao", el: <EvolucaoScreen d={data} /> },
-      { key: "ranking", el: <RankingScreen d={data} cfg={cfg} /> },
       { key: "avisos", el: <AvisosScreen d={data} /> },
     ];
     if (cfg.fixarComando) return all.filter((t) => t.key === "comando");
@@ -781,14 +773,6 @@ function ConfigPanel({
     ["tecelagem", "TV Tecelagem"],
     ["costura", "TV Costura"],
     ["revisao", "TV Revisão"],
-    ["capa", "Capa de abertura"],
-    ["resumo", "Resumo do dia"],
-    ["producao", "Linha de produção"],
-    ["urgentes", "Pedidos urgentes"],
-    ["etapas", "Produção por etapa"],
-    ["prazo", "Prazos & meta"],
-    ["evolucao", "Evolução diária"],
-    ["ranking", "Top representantes/clientes"],
     ["avisos", "Frases motivacionais"],
   ];
   async function addAviso() {
