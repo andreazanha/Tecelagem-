@@ -408,7 +408,9 @@ body.dark .stat,
 body.dark .modal-card,
 body.dark .login-card,
 body.dark .table.cards tr { background: #0e1426; border-color: #ffffff14; color: var(--ink); }
-body.dark .kcol-head { background: #ffffff0a; border-color: #ffffff14; box-shadow: 0 6px 20px #00000040; }
+/* Só os cabeçalhos SEM cor de tipo (card-*) recebem o vidro escuro genérico —
+   os de tipo (Parte 1/2/Única/Kit) mantêm o gradiente do card também no escuro. */
+body.dark .kcol-head:not([class*="card-"]) { background: #ffffff0a; border-color: #ffffff14; box-shadow: 0 6px 20px #00000040; }
 body.dark .kcol.prio { background: #ffffff05; border-color: #fecaca33; }
 body.dark .kcol.defeito { background: #ffffff05; }
 body.dark .row-novo td { background: #0b1120; }
