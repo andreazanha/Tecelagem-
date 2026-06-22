@@ -30,6 +30,7 @@ a { color: inherit; }
   padding: 0 20px; color: #fff;
 }
 .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+.brand-logo { height: 46px; width: auto; display: block; }
 .brand-sub { color: #e0e7ff; font-size: 13px; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
 .undoredo { display: flex; gap: 6px; margin-right: 4px; }

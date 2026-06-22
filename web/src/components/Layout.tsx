@@ -1,6 +1,5 @@
 import { useEffect, useReducer, useState } from "react";
 import { NavLink, Outlet, Link, Navigate, useNavigate } from "react-router-dom";
-import { Logo } from "./Logo";
 import { VERSION } from "../version";
 import { historico } from "../historico";
 import { getUser, setUser, pode } from "../auth";
@@ -94,7 +93,7 @@ export function Layout() {
     <div className="app">
       <header className="topbar">
         <Link to="/" className="brand">
-          <Logo h={30} color="#ffffff" />
+          <img className="brand-logo" src="/logo-bigtricot.png" alt="Big Tricot Home Decor" />
           <span className="brand-sub">Rolagem de Fase</span>
         </Link>
         <div className="topbar-right">
