@@ -26,7 +26,8 @@ export function NovoPedido() {
     vendedor: "",
     codigo_terceiro: "",
     tipo: "auto",
-    entrega_pe: null,
+    entrega_pe: "junto",
+    reposicao: false,
     data_pedido: "",
     data_entrega: "",
     observacao: "",
@@ -43,6 +44,7 @@ export function NovoPedido() {
 
   // Classificação real (Parte 1/2/Única/Pronta Entrega) por código/nome do catálogo.
   const partes = useMemo(() => calcularPartes(form.itens, modelos), [form.itens, modelos]);
+  const temKit = useMemo(() => partes.some((p) => p.value === "kit"), [partes]);
 
   // Vendedor: 1 pedido (ou todos do mesmo vendedor) → nome; vários vendedores diferentes → em branco.
   useEffect(() => {
@@ -103,7 +105,8 @@ export function NovoPedido() {
     return {
       ...form,
       tipo: "auto",
-      entrega_pe: null,
+      // pronta-entrega: reposição não usa junto/separado; cliente usa o escolhido.
+      entrega_pe: form.reposicao ? null : form.entrega_pe || "junto",
       itens: itens.map((it, i) => ({ ...it, parte: cls[i]?.value || it.parte })),
     };
   }
@@ -399,6 +402,32 @@ export function NovoPedido() {
               }}
             />
           </div>
+
+          <div className="field">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: "#0f172a", textTransform: "none", fontSize: 14, cursor: "pointer" }}>
+              <input type="checkbox" checked={!!form.reposicao} onChange={(e) => set("reposicao", e.target.checked)} />
+              📦 Pedido de reposição de estoque (produzir os kits)
+            </label>
+            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+              Ligado: os kits passam pela produção (Tecelagem → … → Estoque · Entrada). Desligado (pedido de cliente): a pronta-entrega já está no estoque e vai direto pro Estoque.
+            </div>
+          </div>
+
+          {!form.reposicao && temKit && (
+            <div className="field">
+              <label>Pronta-entrega deste pedido</label>
+              <div className="row-gap" style={{ flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, textTransform: "none", fontSize: 14, cursor: "pointer" }}>
+                  <input type="radio" name="entrega_pe" checked={form.entrega_pe === "junto"} onChange={() => set("entrega_pe", "junto")} />
+                  Junto com a produção → coluna "Pronta entrega com produção"
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, textTransform: "none", fontSize: 14, cursor: "pointer" }}>
+                  <input type="radio" name="entrega_pe" checked={form.entrega_pe === "separado"} onChange={() => set("entrega_pe", "separado")} />
+                  Separado (vai antes) → coluna "Separação"
+                </label>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

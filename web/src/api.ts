@@ -36,6 +36,7 @@ export interface NovoPedidoBody {
   codigo_terceiro?: string;
   tipo: string;
   entrega_pe?: string | null;
+  reposicao?: boolean;
   data_pedido?: string;
   data_entrega?: string;
   observacao?: string;

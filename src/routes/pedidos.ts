@@ -242,6 +242,7 @@ interface PedidoIn {
   codigo_terceiro?: string;
   tipo?: string;
   entrega_pe?: string | null;
+  reposicao?: boolean;
   data_pedido?: string;
   data_entrega?: string;
   observacao?: string;
@@ -311,7 +312,9 @@ pedidos.post("/", async (c) => {
   if (!cliente_nome) return c.json({ error: "cliente é obrigatório" }, 400);
 
   // a entrega da Pronta Entrega (junto/separado) é decidida na geração dos PDFs (se houver kit)
-  const entrega_pe = null;
+  // Reposição = produz os kits; cliente = pronta-entrega já no estoque (junto/separado).
+  const reposicao = b.reposicao ? 1 : 0;
+  const entrega_pe = b.entrega_pe === "separado" ? "separado" : b.entrega_pe === "junto" ? "junto" : null;
 
   const id = crypto.randomUUID();
   const stmts: D1PreparedStatement[] = [];
@@ -329,8 +332,8 @@ pedidos.post("/", async (c) => {
   stmts.push(
     c.env.DB.prepare(
       `INSERT INTO pedidos
-        (id, numero_erp, cliente_nome, vendedor, codigo_terceiro, codigo_pai, tipo, entrega_pe, data_pedido, data_entrega, observacao, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'novo')`
+        (id, numero_erp, cliente_nome, vendedor, codigo_terceiro, codigo_pai, tipo, entrega_pe, reposicao, data_pedido, data_entrega, observacao, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'novo')`
     ).bind(
       id,
       b.numero_erp || null,
@@ -340,6 +343,7 @@ pedidos.post("/", async (c) => {
       codigo_pai,
       tipo,
       entrega_pe,
+      reposicao,
       b.data_pedido || null,
       b.data_entrega || null,
       b.observacao || null

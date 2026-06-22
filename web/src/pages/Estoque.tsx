@@ -20,7 +20,6 @@ const ESTOQUE: QuadroCfg = {
   enviarSemPessoa: true, // vai p/ "Aguardando para revisar" (sem escolher revisadora)
   nota: "Kits chegam na Entrada e são separados. Em 'Pronta entrega com produção' ficam os kits de pedidos mistos — ao enviar, vão para a Revisão encontrar a Parte 1/2 (ou Única) do mesmo pedido.",
   colunas: [
-    { cor: "prioridade", titulo: "Passar na frente", sub: "Urgentes / clientes atrasados", status: "aguardando", acao: "fazer", somentePrioridade: true },
     { cor: "aguardando", corCard: "kit", titulo: "Entrada", sub: "Kits vindos da costura", status: "aguardando", acao: "fazer" },
     { cor: "fazendo", corCard: "kit", titulo: "Separação", sub: "Em separação", status: "fazendo", acao: "finalizar", botaoLabel: "Separado ▶" },
     { cor: "pronto", corCard: "kit", titulo: "Pronta entrega com produção", sub: "Mistos · enviar p/ revisão", status: "pronto", acao: "enviar", botaoLabel: "Enviar p/ revisão ▶" },

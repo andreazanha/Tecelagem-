@@ -14,9 +14,9 @@ async function catalogoDe(env: Env) {
 // Backfill: todo pedido vira card de Tecelagem (mesmo sem ter gerado PDF).
 async function garantirCards(env: Env) {
   const { results: faltantes } = await env.DB.prepare(
-    `SELECT p.id FROM pedidos p
+    `SELECT p.id, p.reposicao, p.entrega_pe FROM pedidos p
       WHERE NOT EXISTS (SELECT 1 FROM producao pr WHERE pr.pedido_id = p.id)`
-  ).all<{ id: string }>();
+  ).all<{ id: string; reposicao: number; entrega_pe: string | null }>();
   if (!faltantes.length) return;
   const cat = await catalogoDe(env);
   for (const f of faltantes) {
@@ -37,13 +37,21 @@ async function garantirCards(env: Env) {
     for (const [parte, blocos] of partes) {
       if (!blocos.length) continue;
       const pecas = blocos.reduce((s, b) => s + b.total, 0);
-      // Kits (pronta-entrega) também passam pela esteira: começam na Tecelagem.
-      const setor = "tecelagem";
+      // Onde o card NASCE:
+      //  • Reposição (produzir p/ estocar): tudo começa na Tecelagem.
+      //  • Pedido de cliente: a pronta-entrega já está no estoque → nasce no Estoque
+      //    (Junto = "Pronta entrega com produção"/pronto; Separado = "Separação"/fazendo).
+      let setor = "tecelagem";
+      let status = "aguardando";
+      if (parte === "pronta-entrega" && !f.reposicao) {
+        setor = "estoque";
+        status = f.entrega_pe === "separado" ? "fazendo" : "pronto";
+      }
       stmts.push(
         env.DB.prepare(
-          `INSERT INTO producao (pedido_id, parte, setor, pecas, resumo) VALUES (?, ?, ?, ?, ?)
+          `INSERT INTO producao (pedido_id, parte, setor, status, pecas, resumo) VALUES (?, ?, ?, ?, ?, ?)
            ON CONFLICT(pedido_id, parte) DO NOTHING`
-        ).bind(f.id, parte, setor, pecas, `${blocos.length} modelo(s)`)
+        ).bind(f.id, parte, setor, status, pecas, `${blocos.length} modelo(s)`)
       );
     }
     if (stmts.length) await env.DB.batch(stmts);
