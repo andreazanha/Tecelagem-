@@ -366,3 +366,76 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .row-novo td { background: #f8fafc; }
 .row-novo input, .row-novo select { width: 100%; }
 .sel-p1 { color: #047857; font-weight: 700; }
+
+/* ============================================================= */
+/* TEMA ESCURO (toggle no topo) — navy + roxo, igual ao painel.   */
+/* ============================================================= */
+body.dark {
+  --ink: #e8ecf6;
+  --muted: #93a0bd;
+  --line: #ffffff1a;
+  --bg: #070b16;
+  background: #070b16;
+}
+body.dark::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(620px 620px at 6% 0%, #4338ca55, transparent 60%),
+    radial-gradient(560px 560px at 100% 100%, #7c3aed55, transparent 62%),
+    radial-gradient(440px 440px at 82% 22%, #0ea5e92e, transparent 60%);
+}
+body.dark .app { position: relative; z-index: 1; }
+body.dark .content { background: transparent; }
+body.dark h1, body.dark h2, body.dark .strong, body.dark .kcard-cli, body.dark .kbox-v, body.dark .info-value { color: #eef2ff; }
+
+/* superfícies em "vidro" escuro */
+body.dark .card,
+body.dark .kcard,
+body.dark .stat,
+body.dark .modal-card,
+body.dark .login-card,
+body.dark .table.cards tr { background: #0e1426; border-color: #ffffff14; color: var(--ink); }
+body.dark .kcol-head { background: #ffffff0a; border-color: #ffffff14; box-shadow: 0 6px 20px #00000040; }
+body.dark .kcol.prio { background: #ffffff05; border-color: #fecaca33; }
+body.dark .kcol.defeito { background: #ffffff05; }
+body.dark .row-novo td { background: #0b1120; }
+
+/* inputs / selects */
+body.dark input, body.dark select, body.dark textarea, body.dark .busca-ped {
+  background: #0b1120; border-color: #ffffff1c; color: var(--ink);
+}
+body.dark input::placeholder { color: #5b6478; }
+
+/* tabelas */
+body.dark .table th { color: var(--muted); border-color: #ffffff14; }
+body.dark .table td { border-color: #ffffff0d; }
+body.dark .table tr:hover td { background: #ffffff06; }
+
+/* chips / status */
+body.dark .chip { background: #ffffff12; color: #cbd5e1; }
+body.dark .kstatus.aguardando { background: #f59e0b22; color: #fbbf24; }
+body.dark .kstatus.tecendo, body.dark .kstatus.fazendo { background: #10b98122; color: #34d399; }
+body.dark .kstatus.pronto { background: #3b82f622; color: #93c5fd; }
+
+/* cabeçalho de coluna por status: tons escuros translúcidos */
+body.dark .kcol-head.aguardando { background: #f59e0b1c; border-color: #f59e0b3a; }
+body.dark .kcol-head.aguardando .kcol-title { color: #fcd34d; } body.dark .kcol-head.aguardando .kcol-sub { color: #fbbf24; }
+body.dark .kcol-head.fazendo { background: #10b9811c; border-color: #10b9813a; }
+body.dark .kcol-head.fazendo .kcol-title { color: #6ee7b7; } body.dark .kcol-head.fazendo .kcol-sub { color: #34d399; }
+body.dark .kcol-head.pronto { background: #3b82f61c; border-color: #3b82f63a; }
+body.dark .kcol-head.pronto .kcol-title { color: #93c5fd; } body.dark .kcol-head.pronto .kcol-sub { color: #60a5fa; }
+body.dark .kcol-head.prioridade { background: #ef44441c; border-color: #ef44443a; }
+body.dark .kcol-head.prioridade .kcol-title { color: #fca5a5; }
+body.dark .kcol-head.defeito { background: #ef44441c; border-color: #ef44443a; }
+body.dark .kcol-head.defeito .kcol-title { color: #fca5a5; }
+body.dark .kcol-title { color: #fff; }
+
+/* caixas pedido/entrega do card */
+body.dark .kbox.ped { background: #6366f120; } body.dark .kbox.ped .kbox-v { color: #c7d2fe; }
+body.dark .kbox.ent { background: #ef444420; } body.dark .kbox.ent .kbox-v { color: #fecaca; }
+
+/* botões neutros / ícones */
+body.dark .btn { background: #1b2438; border-color: #ffffff1c; color: #e8ecf6; }
+body.dark .icon-btn { background: #0b1120; border-color: #ffffff1c; }
+body.dark .modal-bg { background: #020409cc; }
+body.dark .empty, body.dark .breadcrumb { color: var(--muted); }

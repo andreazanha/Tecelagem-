@@ -75,6 +75,12 @@ export function Layout() {
     setSsMin(n);
     localStorage.setItem("ssMin", String(n));
   }
+  // Tema claro/escuro (por dispositivo, igual ao protetor de tela).
+  const [tema, setTema] = useState(() => localStorage.getItem("tema") || "claro");
+  useEffect(() => {
+    document.body.classList.toggle("dark", tema === "escuro");
+    localStorage.setItem("tema", tema);
+  }, [tema]);
   function sair() {
     setUser(null);
     nav("/login", { replace: true });
@@ -92,6 +98,13 @@ export function Layout() {
         </Link>
         <div className="topbar-right">
           <UndoRedo />
+          <button
+            className="ur-btn"
+            onClick={() => setTema(tema === "escuro" ? "claro" : "escuro")}
+            title="Alternar tema claro / escuro"
+          >
+            {tema === "escuro" ? "☀️ Claro" : "🌙 Escuro"}
+          </button>
           {tvsVisiveis.map((t) => (
             <a key={t.to} className={t.cls} href={t.to} target="_blank" rel="noopener noreferrer" title={t.label}>
               {t.icon} {t.label}
