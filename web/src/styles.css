@@ -234,25 +234,21 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .kcol-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 11px; margin-bottom: 9px; border-radius: 12px; border: 1px solid var(--line); background: #fff; box-shadow: 0 1px 3px #0f172a12; border-left: 5px solid #cbd5e1; }
 .kcol-title { font-weight: 900; font-size: 13px; color: #0f172a; }
 .kcol-sub { font-size: 11.5px; color: #475569; font-weight: 800; margin-top: 2px; letter-spacing: .2px; }
-.kcol-head.aguardando { background: #fff8ef; border-color: #fed7aa; border-left-color: #f59e0b; }
-.kcol-head.aguardando .kcol-title { color: #b45309; } .kcol-head.aguardando .kcol-sub { color: #c2740b; }
-.kcol-head.fazendo { background: #effdf6; border-color: #bbf7d0; border-left-color: #10b981; }
-.kcol-head.fazendo .kcol-title { color: #047857; } .kcol-head.fazendo .kcol-sub { color: #059669; }
-.kcol-head.pronto { background: #eff6ff; border-color: #bfdbfe; border-left-color: #3b82f6; }
-.kcol-head.pronto .kcol-title { color: #1d4ed8; } .kcol-head.pronto .kcol-sub { color: #2563eb; }
-.kcol-head.prioridade { background: #fff1f2; border-color: #fecaca; border-left-color: #ef4444; }
-.kcol-head.prioridade .kcol-title { color: #be123c; } .kcol-head.prioridade .kcol-sub { color: #e11d48; }
-.kcol-head.defeito { background: #fef2f2; border-color: #fecaca; border-left-color: #dc2626; }
-.kcol-head.defeito .kcol-title { color: #b91c1c; } .kcol-head.defeito .kcol-sub { color: #dc2626; }
-/* Cabeçalho com a cor do card (tipo da peça), letras brancas. */
-.kcol-head.card-p1 { background: linear-gradient(120deg, #4338ca, #6366f1); border-color: #4338ca; border-left-color: #312e81; }
-.kcol-head.card-p2 { background: linear-gradient(120deg, #7e22ce, #c026d3); border-color: #7e22ce; border-left-color: #581c87; }
+/* Cabeçalho da coluna: cor FORTE (gradiente) + texto branco — igual ao card.
+   Vale por status (aguardando/fazendo/pronto/prioridade/defeito) e por tipo (card-*). */
+.kcol-head.aguardando { background: linear-gradient(120deg, #d97706, #f59e0b); border-color: #d97706; border-left-color: #b45309; }
+.kcol-head.fazendo    { background: linear-gradient(120deg, #059669, #10b981); border-color: #059669; border-left-color: #047857; }
+.kcol-head.pronto     { background: linear-gradient(120deg, #2563eb, #3b82f6); border-color: #2563eb; border-left-color: #1d4ed8; }
+.kcol-head.prioridade { background: linear-gradient(120deg, #dc2626, #ef4444); border-color: #dc2626; border-left-color: #b91c1c; }
+.kcol-head.defeito    { background: linear-gradient(120deg, #b91c1c, #dc2626); border-color: #b91c1c; border-left-color: #991b1b; }
+.kcol-head.card-p1    { background: linear-gradient(120deg, #4338ca, #6366f1); border-color: #4338ca; border-left-color: #312e81; }
+.kcol-head.card-p2    { background: linear-gradient(120deg, #7e22ce, #c026d3); border-color: #7e22ce; border-left-color: #581c87; }
 .kcol-head.card-unica { background: linear-gradient(120deg, #0284c7, #0ea5e9); border-color: #0284c7; border-left-color: #075985; }
-.kcol-head.card-kit { background: linear-gradient(120deg, #0d9488, #06b6d4); border-color: #0d9488; border-left-color: #115e59; }
-.kcol-head.card-p1 .kcol-title, .kcol-head.card-p2 .kcol-title, .kcol-head.card-unica .kcol-title, .kcol-head.card-kit .kcol-title { color: #fff; }
-.kcol-head.card-p1 .kcol-sub, .kcol-head.card-p2 .kcol-sub, .kcol-head.card-unica .kcol-sub, .kcol-head.card-kit .kcol-sub { color: #ffffffcc; }
-.kcol-head.card-p1 .kcol-count, .kcol-head.card-p2 .kcol-count, .kcol-head.card-unica .kcol-count, .kcol-head.card-kit .kcol-count { background: #ffffff33; color: #fff; }
-.kcol-head.card-p1 .kdot, .kcol-head.card-p2 .kdot, .kcol-head.card-unica .kdot, .kcol-head.card-kit .kdot { background: #ffffffcc; }
+.kcol-head.card-kit   { background: linear-gradient(120deg, #0d9488, #06b6d4); border-color: #0d9488; border-left-color: #115e59; }
+.kcol-head .kcol-title { color: #fff; }
+.kcol-head .kcol-sub { color: #ffffffd0; }
+.kcol-head .kcol-count { background: #ffffff33; color: #fff; }
+.kcol-head .kdot { background: #ffffffd0; }
 
 /* Linha do tempo do pedido (modal) */
 .tl { display: flex; flex-direction: column; margin-top: 8px; }
@@ -408,9 +404,6 @@ body.dark .stat,
 body.dark .modal-card,
 body.dark .login-card,
 body.dark .table.cards tr { background: #0e1426; border-color: #ffffff14; color: var(--ink); }
-/* Só os cabeçalhos SEM cor de tipo (card-*) recebem o vidro escuro genérico —
-   os de tipo (Parte 1/2/Única/Kit) mantêm o gradiente do card também no escuro. */
-body.dark .kcol-head:not([class*="card-"]) { background: #ffffff0a; border-color: #ffffff14; box-shadow: 0 6px 20px #00000040; }
 body.dark .kcol.prio { background: #ffffff05; border-color: #fecaca33; }
 body.dark .kcol.defeito { background: #ffffff05; }
 body.dark .row-novo td { background: #0b1120; }
@@ -431,18 +424,8 @@ body.dark .chip { background: #ffffff12; color: #cbd5e1; }
 body.dark .kstatus.aguardando { background: #f59e0b22; color: #fbbf24; }
 body.dark .kstatus.tecendo, body.dark .kstatus.fazendo { background: #10b98122; color: #34d399; }
 body.dark .kstatus.pronto { background: #3b82f622; color: #93c5fd; }
-
-/* cabeçalho de coluna por status: tons escuros translúcidos */
-body.dark .kcol-head.aguardando { background: #f59e0b1c; border-color: #f59e0b3a; }
-body.dark .kcol-head.aguardando .kcol-title { color: #fcd34d; } body.dark .kcol-head.aguardando .kcol-sub { color: #fbbf24; }
-body.dark .kcol-head.fazendo { background: #10b9811c; border-color: #10b9813a; }
-body.dark .kcol-head.fazendo .kcol-title { color: #6ee7b7; } body.dark .kcol-head.fazendo .kcol-sub { color: #34d399; }
-body.dark .kcol-head.pronto { background: #3b82f61c; border-color: #3b82f63a; }
-body.dark .kcol-head.pronto .kcol-title { color: #93c5fd; } body.dark .kcol-head.pronto .kcol-sub { color: #60a5fa; }
-body.dark .kcol-head.prioridade { background: #ef44441c; border-color: #ef44443a; }
-body.dark .kcol-head.prioridade .kcol-title { color: #fca5a5; }
-body.dark .kcol-head.defeito { background: #ef44441c; border-color: #ef44443a; }
-body.dark .kcol-head.defeito .kcol-title { color: #fca5a5; }
+/* No escuro, os cabeçalhos coloridos (status e tipo) mantêm o mesmo gradiente
+   forte do claro — nada de tom escuro por cima. */
 body.dark .kcol-title { color: #fff; }
 
 /* caixas pedido/entrega do card */
