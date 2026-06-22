@@ -42,14 +42,30 @@ export function NovoPedidoArte({ info }: { info: NovoPedidoInfo | null }) {
     [info]
   );
 
-  // O título 3D + boneco + subtítulo + confete vêm da arte (imagem de fundo).
-  // Aqui desenhamos só a faixa de dados reais + botão por cima.
+  // O título 3D + boneco + subtítulo vêm da arte (imagem de fundo). Aqui
+  // somamos efeitos animados (confete caindo, brilho) e a faixa de dados.
   return (
     <div className="np-bg">
+      <div className="np-glow" />
+      <div className="np-confete">
+        {CONFETE.map((c, i) => (
+          <span
+            key={i}
+            style={{
+              left: c.left + "%",
+              animationDelay: c.delay + "s",
+              animationDuration: c.dur + "s",
+              background: c.cor,
+              width: c.size,
+              height: c.size * 1.6,
+            }}
+          />
+        ))}
+      </div>
       <div className="np-band">
         <div className="np-stats">
-          {stats.map((s) => (
-            <div className="np-stat" key={s.l}>
+          {stats.map((s, i) => (
+            <div className="np-stat" key={s.l} style={{ animationDelay: 0.12 * i + "s" }}>
               <div className="np-stat-ic">{s.ic}</div>
               <div className="np-stat-l">{s.l}</div>
               <div className="np-stat-v">{s.v}</div>
@@ -61,6 +77,15 @@ export function NovoPedidoArte({ info }: { info: NovoPedidoInfo | null }) {
     </div>
   );
 }
+
+// Confete animado (sobre a arte). Posições/cores fixas p/ não recalcular.
+const CONFETE = Array.from({ length: 48 }, (_, i) => ({
+  left: (i * 21 + (i % 3) * 7) % 100,
+  delay: (i % 12) * 0.5,
+  dur: 3.5 + (i % 6) * 0.6,
+  cor: ["#fde047", "#60a5fa", "#f472b6", "#34d399", "#fb923c", "#a78bfa", "#22d3ee"][i % 7],
+  size: 7 + (i % 4) * 2,
+}));
 
 // Painel dedicado (/tv/novo-pedido): mostra sempre o pedido mais recente.
 export function NovoPedidoTV() {
