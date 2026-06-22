@@ -23,6 +23,7 @@ export const PAGINAS: { key: string; label: string; tv?: boolean }[] = [
   { key: "tv-tecelagem", label: "TV Tecelagem", tv: true },
   { key: "tv-costura", label: "TV Costura", tv: true },
   { key: "tv-revisao", label: "TV Revisão", tv: true },
+  { key: "tv-novo-pedido", label: "TV Novo Pedido", tv: true },
 ];
 
 export function getUser(): Usuario | null {

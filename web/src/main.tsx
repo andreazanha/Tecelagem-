@@ -17,6 +17,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { TvTecelagem } from "./pages/TvTecelagem";
 import { TvCostura } from "./pages/TvCostura";
 import { TvRevisao } from "./pages/TvRevisao";
+import { NovoPedidoTV } from "./pages/NovoPedidoTV";
 import { Login } from "./pages/Login";
 import { TVFrame } from "./components/TVFrame";
 import { getUser, pode, primeiraPagina } from "./auth";
@@ -75,6 +76,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Route path="/tv/tecelagem" element={<TVFrame><TvTecelagem /></TVFrame>} />
         <Route path="/tv/costura" element={<TVFrame><TvCostura /></TVFrame>} />
         <Route path="/tv/revisao" element={<TVFrame><TvRevisao /></TVFrame>} />
+        <Route path="/tv/novo-pedido" element={<TVFrame><NovoPedidoTV /></TVFrame>} />
         <Route path="/login" element={<Login />} />
         <Route element={<Layout />}>
           <Route path="/" element={<Navigate to={primeiraPagina(getUser())} replace />} />

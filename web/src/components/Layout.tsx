@@ -64,6 +64,7 @@ const TVS = [
   { to: "/tv/tecelagem", icon: "🧵", label: "TV Tecelagem", page: "tv-tecelagem", cls: "painel-link tcl-link" },
   { to: "/tv/costura", icon: "🪡", label: "TV Costura", page: "tv-costura", cls: "painel-link tcl-link" },
   { to: "/tv/revisao", icon: "🔍", label: "TV Revisão", page: "tv-revisao", cls: "painel-link tcl-link" },
+  { to: "/tv/novo-pedido", icon: "🔔", label: "TV Novo Pedido", page: "tv-novo-pedido", cls: "painel-link tcl-link" },
 ];
 
 export function Layout() {
