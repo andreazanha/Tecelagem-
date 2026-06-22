@@ -691,17 +691,19 @@ function AvisosScreen({ d }: { d: DashboardData | null }) {
     return () => clearInterval(t);
   }, [lista.length]);
   const at = Math.min(i, lista.length - 1);
+  // Sempre à direita: virar para a esquerda espelharia o logo "BiG" da camiseta.
   return (
-    <div className="frase">
+    <div className="frase frase-dir">
       <div className="frase-bg" aria-hidden><span className="g1" /><span className="g2" /></div>
-      <div className="frase-conteudo">
+      <div className="frase-pulse" aria-hidden />
+      <div className="frase-conteudo" key={at}>
         <div className="frase-aspas">❝</div>
-        <div className="frase-txt" key={at}>{lista[at]}</div>
+        <div className="frase-txt">{lista[at]}</div>
         {lista.length > 1 && (
           <div className="frase-dots">{lista.map((_, k) => <span key={k} className={k === at ? "on" : ""} />)}</div>
         )}
       </div>
-      <img className="frase-boneco" src="/boneco-aponta.png" alt="" />
+      <img className="frase-boneco" key={"b" + at} src="/boneco-aponta.png" alt="" />
     </div>
   );
 }
