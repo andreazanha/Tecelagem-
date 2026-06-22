@@ -60,3 +60,7 @@
   box-shadow: 0 14px 36px #1d4ed888, inset 0 2px 0 #fff; animation: np-pulsa 1.8s ease-in-out infinite;
 }
 @keyframes np-pulsa { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+
+/* Pop-up sobre o Painel quando entra um pedido novo */
+.np-pop { position: absolute; inset: 0; z-index: 80; animation: np-entra .45s ease both; }
+@keyframes np-entra { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: none; } }

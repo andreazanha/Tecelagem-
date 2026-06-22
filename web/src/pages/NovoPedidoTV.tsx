@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type Pedido } from "../api";
+import { api } from "../api";
 import "../novo-pedido.css";
 
-// Tela de celebração "NOVO PEDIDO!" — painel de TV que mostra o pedido mais
-// recente com o boneco da BiG. Atualiza sozinho quando entra um novo.
+// Dados mínimos para a arte (serve tanto para Pedido quanto para ultimoPedido do dashboard).
+export interface NovoPedidoInfo {
+  numero: string | null;
+  cliente: string;
+  pecas: number;
+  data_entrega: string | null;
+  created_at: string;
+}
+
 function brData(s?: string | null) {
   if (!s) return "—";
   const d = (s.length >= 10 ? s.slice(0, 10) : s).split("-");
@@ -12,7 +19,7 @@ function brData(s?: string | null) {
 function horaDe(s?: string | null) {
   if (!s) return "—";
   try {
-    return new Date(s.replace(" ", "T") + "Z").toLocaleTimeString("pt-BR", {
+    return new Date(s.replace(" ", "T") + (s.includes("Z") ? "" : "Z")).toLocaleTimeString("pt-BR", {
       hour: "2-digit",
       minute: "2-digit",
       timeZone: "America/Sao_Paulo",
@@ -30,26 +37,17 @@ const CONFETE = Array.from({ length: 70 }, (_, i) => ({
   size: 6 + (i % 4) * 2,
 }));
 
-export function NovoPedidoTV() {
-  const [pedido, setPedido] = useState<Pedido | null>(null);
-
-  useEffect(() => {
-    const carregar = () =>
-      api.listarPedidos().then((l) => l[0] && setPedido(l[0])).catch(() => {});
-    carregar();
-    const t = setInterval(carregar, 12000);
-    return () => clearInterval(t);
-  }, []);
-
+// Arte da celebração "NOVO PEDIDO!" — usada no painel dedicado e no pop-up do Painel.
+export function NovoPedidoArte({ info }: { info: NovoPedidoInfo | null }) {
   const stats = useMemo(
     () => [
-      { ic: "📋", l: "PEDIDO", v: pedido ? "#" + (pedido.codigo_pai || pedido.numero_erp || "—") : "—" },
-      { ic: "🏢", l: "CLIENTE", v: pedido?.cliente_nome || "—" },
-      { ic: "🧶", l: "PEÇAS", v: pedido ? String(pedido.pecas ?? 0) : "—" },
-      { ic: "📅", l: "ENTREGA", v: brData(pedido?.data_entrega) },
-      { ic: "🕐", l: "HORÁRIO", v: horaDe(pedido?.created_at) },
+      { ic: "📋", l: "PEDIDO", v: info ? "#" + (info.numero || "—") : "—" },
+      { ic: "🏢", l: "CLIENTE", v: info?.cliente || "—" },
+      { ic: "🧶", l: "PEÇAS", v: info ? String(info.pecas ?? 0) : "—" },
+      { ic: "📅", l: "ENTREGA", v: brData(info?.data_entrega) },
+      { ic: "🕐", l: "HORÁRIO", v: horaDe(info?.created_at) },
     ],
-    [pedido]
+    [info]
   );
 
   return (
@@ -91,4 +89,30 @@ export function NovoPedidoTV() {
       </div>
     </div>
   );
+}
+
+// Painel dedicado (/tv/novo-pedido): mostra sempre o pedido mais recente.
+export function NovoPedidoTV() {
+  const [info, setInfo] = useState<NovoPedidoInfo | null>(null);
+  useEffect(() => {
+    const carregar = () =>
+      api
+        .listarPedidos()
+        .then((l) => {
+          const p = l[0];
+          if (p)
+            setInfo({
+              numero: p.codigo_pai || p.numero_erp || null,
+              cliente: p.cliente_nome,
+              pecas: p.pecas ?? 0,
+              data_entrega: p.data_entrega ?? null,
+              created_at: p.created_at,
+            });
+        })
+        .catch(() => {});
+    carregar();
+    const t = setInterval(carregar, 12000);
+    return () => clearInterval(t);
+  }, []);
+  return <NovoPedidoArte info={info} />;
 }

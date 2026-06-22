@@ -5,6 +5,7 @@ import { Donut, DonutLegend, BarsH, LineArea, Columns, Gauge, type Slice } from 
 import { TvTecelagem } from "./TvTecelagem";
 import { TvCostura } from "./TvCostura";
 import { TvRevisao } from "./TvRevisao";
+import { NovoPedidoArte } from "./NovoPedidoTV";
 import "../dashboard.css";
 
 // ── Setores (cor + ícone próprios) ──────────────────────────────────────────
@@ -255,7 +256,13 @@ export function Dashboard() {
         <button className="dash-btn" onClick={() => setShowCfg(true)}>⚙</button>
       </footer>
 
-      {novo && <NovoPedidoOverlay p={novo} />}
+      {novo && (
+        <div className="np-pop">
+          <NovoPedidoArte
+            info={{ numero: novo.numero, cliente: novo.cliente, pecas: novo.pecas, data_entrega: novo.data_entrega, created_at: novo.created_at }}
+          />
+        </div>
+      )}
       {showCfg && (
         <ConfigPanel
           cfg={cfg}
@@ -702,51 +709,6 @@ function ScreenHead({ ic, t, demo }: { ic: string; t: string; demo?: boolean }) 
       <span className="sh-ic">{ic}</span>
       <h2>{t}</h2>
       {demo && <span className="sh-demo">dados de demonstração</span>}
-    </div>
-  );
-}
-
-// ── Overlay: Novo pedido (dispara com som quando chega pedido novo) ─────────────────
-function NpCard({ ic, l, v }: { ic: string; l: string; v: string }) {
-  return (
-    <div className="np-card">
-      <span className="np-card-ic">{ic}</span>
-      <span className="np-card-l">{l}</span>
-      <span className="np-card-v">{v}</span>
-    </div>
-  );
-}
-
-function NovoPedidoOverlay({ p }: { p: NonNullable<DashboardData["ultimoPedido"]> }) {
-  const dataFull = (s?: string | null) => {
-    if (!s) return "—";
-    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
-  };
-  const horario = p.created_at
-    ? new Date(p.created_at.replace(" ", "T") + (p.created_at.includes("Z") ? "" : "Z")).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-    : new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  return (
-    <div className="np-overlay">
-      <div className="np">
-        <div className="np-rays" aria-hidden />
-        <div className="np-confetti" aria-hidden>
-          {Array.from({ length: 18 }).map((_, i) => (
-            <span key={i} className={"cf c" + (i % 5)} style={{ left: `${(i * 5.6 + 3) % 100}%`, animationDelay: `${(i % 8) * 0.3}s`, animationDuration: `${2.8 + (i % 4)}s` }} />
-          ))}
-        </div>
-        <div className="np-bell"><span>🔔</span></div>
-        <div className="np-title">NOVO<br />PEDIDO!</div>
-        <div className="np-sub">UM NOVO DESAFIO CHEGOU 💙<br /><b>VAMOS FAZER ACONTECER!</b></div>
-        <div className="np-cards">
-          <NpCard ic="🧾" l="PEDIDO" v={"#" + (p.numero || "—")} />
-          <NpCard ic="🏢" l="CLIENTE" v={p.cliente} />
-          <NpCard ic="🧶" l="PEÇAS" v={String(p.pecas)} />
-          <NpCard ic="📅" l="ENTREGA" v={dataFull(p.data_entrega)} />
-          <NpCard ic="🕒" l="HORÁRIO" v={horario} />
-        </div>
-        <div className="np-btn">▶ VAMOS LÁ!</div>
-      </div>
     </div>
   );
 }
