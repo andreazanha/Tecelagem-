@@ -112,7 +112,8 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   function recarregar() {
     api
       .listarProducao(cfg.setor)
-      .then(setCards)
+      // Só atualiza com uma lista válida — nunca esvazia a tela por erro/resposta ruim.
+      .then((d) => { if (Array.isArray(d)) setCards(d); })
       .catch(() => {})
       .finally(() => setCarregando(false));
   }
@@ -131,12 +132,6 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 
   async function mudar(c: CardProducao, body: { status: string; setor?: string; maquina?: string; operador?: string }) {
     const antes = { status: c.status, setor: c.setor, operador: c.operador ?? "" };
-    // Otimista: move o card na hora (sem piscar esperando o servidor). Se mudou de
-    // setor, sai deste quadro; senão, só atualiza status/operador na coluna nova.
-    const mesmo = (x: CardProducao) => x.pedido_id === c.pedido_id && x.parte === c.parte;
-    setCards((prev) =>
-      body.setor && body.setor !== c.setor ? prev.filter((x) => !mesmo(x)) : prev.map((x) => (mesmo(x) ? { ...x, ...body } : x))
-    );
     try {
       await api.atualizarProducao(c.pedido_id, c.parte, body);
       historico.registrar({
