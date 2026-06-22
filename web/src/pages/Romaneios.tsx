@@ -328,6 +328,7 @@ function PrestadoresCadastro() {
                 <select value={novo.servico ?? ""} onChange={(e) => setNovo({ ...novo, servico: e.target.value })}>
                   <option value="tassel">Tassel</option>
                   <option value="costura">Costura</option>
+                  <option value="revisao">Revisão</option>
                   <option value="outro">Outro</option>
                 </select>
               </td>

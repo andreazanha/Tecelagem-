@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { Quadro, type QuadroCfg, type ColCfg } from "../components/Quadro";
 import { api } from "../api";
 
-// Revisão é organizada por REVISADORA: cada coluna é uma revisadora (cadastro de
-// Operadores, setor Revisão). Mantém "Passar na frente" e "Aguardando para enviar".
+// Revisão é organizada por REVISADORA: cada coluna é uma revisadora (Romaneios ›
+// Prestadores, serviço Revisão). Operadores internos (com senha) movimentam.
 const BASE: Omit<QuadroCfg, "colunas"> = {
   setor: "revisao",
   titulo: "Revisão",
@@ -24,21 +24,24 @@ const BASE: Omit<QuadroCfg, "colunas"> = {
 };
 
 export function Revisao() {
-  const [revisadoras, setRevisadoras] = useState<{ id: string; nome: string }[]>([]);
+  const [revisadoras, setRevisadoras] = useState<string[]>([]);
 
   useEffect(() => {
-    api.listarOperadores("revisao").then(setRevisadoras).catch(() => {});
+    api
+      .listarPrestadores()
+      .then((l) => setRevisadoras(l.filter((p) => (p.servico || "") === "revisao").map((p) => p.nome)))
+      .catch(() => {});
   }, []);
 
   const colunas: ColCfg[] = [
     { cor: "prioridade", titulo: "Passar na frente", sub: "Urgentes / clientes atrasados", status: "aguardando", acao: "fazer", somentePrioridade: true },
     { cor: "aguardando", titulo: "Aguardando para enviar", sub: "Chegou da costura", status: "aguardando", operador: "", acao: "fazer", botaoLabel: "Revisar ▶" },
-    ...revisadoras.map<ColCfg>((r) => ({
+    ...revisadoras.map<ColCfg>((nome) => ({
       cor: "fazendo",
-      titulo: r.nome,
+      titulo: nome,
       sub: "Revisadora",
       status: "fazendo",
-      operador: r.nome,
+      operador: nome,
       acao: "enviar",
       acaoExtra: "devolverDefeito",
     })),
@@ -48,4 +51,4 @@ export function Revisao() {
 }
 
 const SEM =
-  "⚠️ Nenhuma revisadora cadastrada. Cadastre em Cadastros › Operadores (setor Revisão) — cada revisadora vira uma coluna aqui.";
+  "⚠️ Nenhuma revisadora cadastrada. Cadastre em Romaneios › Prestadores com serviço 'Revisão' — cada revisadora vira uma coluna aqui.";

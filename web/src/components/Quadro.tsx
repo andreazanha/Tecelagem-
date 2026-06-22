@@ -90,13 +90,13 @@ export interface QuadroCfg {
   setorDefeito?: string; // setor para onde "Voltou com defeito" devolve a peça (ex.: Revisão → Costura)
 }
 
-// Setores cujas colunas são PESSOAS: Costura = costureiras (Prestadores, serviço
-// costura, terceirizadas); Revisão = revisadoras (Operadores internos).
-type FontePessoas = "operadores" | "prestadores";
-interface DestinoPessoa { setor: string; fonte: FontePessoas; label: string }
-const FONTE_PESSOAS: Record<string, FontePessoas> = { costura: "prestadores", revisao: "operadores" };
-function pessoasDeSetor(s: string): FontePessoas | null {
-  return FONTE_PESSOAS[s] ?? null;
+// Setores cujas colunas são PESSOAS, vindas de Romaneios › Prestadores pelo
+// SERVIÇO: Costura = costureiras (serviço costura), Revisão = revisadoras
+// (serviço revisao). Terceirizadas, sem senha — quem manipula é o operador.
+interface DestinoPessoa { setor: string; servico: string; label: string }
+const SERVICO_PESSOAS: Record<string, string> = { costura: "costura", revisao: "revisao" };
+function pessoasDeSetor(s: string): string | null {
+  return SERVICO_PESSOAS[s] ?? null;
 }
 function tituloSetor(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -175,12 +175,12 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   function destinoPessoa(card: CardProducao, acao: Acao): DestinoPessoa | null {
     if (acao === "enviar") {
       const d = destinoDe(card);
-      const f = d ? pessoasDeSetor(d) : null;
-      return d && f ? { setor: d, fonte: f, label: tituloSetor(d) } : null;
+      const sv = d ? pessoasDeSetor(d) : null;
+      return d && sv ? { setor: d, servico: sv, label: tituloSetor(d) } : null;
     }
     if (acao === "fazer") {
-      const f = pessoasDeSetor(cfg.setor);
-      return f ? { setor: cfg.setor, fonte: f, label: tituloSetor(cfg.setor) } : null;
+      const sv = pessoasDeSetor(cfg.setor);
+      return sv ? { setor: cfg.setor, servico: sv, label: tituloSetor(cfg.setor) } : null;
     }
     return null;
   }
@@ -378,10 +378,9 @@ function AcaoModal({
       }),
     ];
     if (destino) {
-      const p =
-        destino.fonte === "prestadores"
-          ? api.listarPrestadores().then((l) => l.filter((x) => (x.servico || "") === "costura").map((x) => x.nome))
-          : api.listarOperadores(destino.setor).then((l) => l.map((x) => x.nome));
+      const p = api
+        .listarPrestadores()
+        .then((l) => l.filter((x) => (x.servico || "") === destino.servico).map((x) => x.nome));
       tarefas.push(
         p.then((list) => {
           setPessoas(list);
@@ -390,7 +389,7 @@ function AcaoModal({
       );
     }
     Promise.all(tarefas).catch(() => {}).finally(() => setCarregando(false));
-  }, [cfg.setor, destino?.setor, destino?.fonte]);
+  }, [cfg.setor, destino?.setor, destino?.servico]);
 
   async function confirmar() {
     setErro("");
@@ -440,9 +439,7 @@ function AcaoModal({
                   <label className="campo-l" htmlFor="ac-pessoa">QUEM VAI RECEBER · {destino.label}</label>
                   {pessoas.length === 0 ? (
                     <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-                      {destino.fonte === "prestadores"
-                        ? "Nenhuma costureira em Romaneios › Prestadores (serviço Costura)."
-                        : `Ninguém cadastrado em ${destino.label}.`}
+                      Ninguém em Romaneios › Prestadores com serviço <strong>{destino.label}</strong>.
                     </div>
                   ) : (
                     <select
