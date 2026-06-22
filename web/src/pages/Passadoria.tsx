@@ -12,18 +12,17 @@ const PASSADORIA: QuadroCfg = {
   statRecursoLabel: "Passadeiras",
   statFila: "Em fila",
   statFazendo: "Passando",
-  statPronto: "Finalizados hoje",
+  statPronto: "Enviados",
   mostrarMaquinas: false,
-  nota: "Parte 1 e Parte 2 permanecem separadas — unem-se apenas no Corte. Use ★ Passar na frente p/ priorizar.",
+  acaoFazendo: "enviar",
+  enviarLabel: "Enviar p/ corte ▶",
+  nota: "Parte 1 e Parte 2 permanecem separadas — unem-se apenas no Corte. Ao passar, envie direto p/ o corte.",
   colunas: [
     { cor: "prioridade", titulo: "Passar na frente", sub: "Urgentes / clientes atrasados", status: "aguardando", acao: "fazer", somentePrioridade: true },
     { cor: "aguardando", corCard: "p1", titulo: "Aguardando", sub: "Parte 1", status: "aguardando", tipos: ["parte-1", "parte-unica"], acao: "fazer" },
     { cor: "aguardando", corCard: "p2", titulo: "Aguardando", sub: "Parte 2", status: "aguardando", tipos: ["parte-2"], acao: "fazer" },
     { cor: "aguardando", corCard: "kit", titulo: "Kits aguardando", sub: "Pedidos de estoque", status: "aguardando", tipos: ["pronta-entrega"], acao: "fazer" },
-    { cor: "fazendo", titulo: "Passando", sub: "Em produção", status: "fazendo", acao: "finalizar" },
-    { cor: "pronto", corCard: "p1", titulo: "Finalizados", sub: "Parte 1", status: "pronto", tipos: ["parte-1", "parte-unica"], acao: "enviar" },
-    { cor: "pronto", corCard: "p2", titulo: "Finalizados", sub: "Parte 2", status: "pronto", tipos: ["parte-2"], acao: "enviar" },
-    { cor: "pronto", corCard: "kit", titulo: "Kits finalizados", sub: "Seguir p/ corte", status: "pronto", tipos: ["pronta-entrega"], acao: "enviar" },
+    { cor: "fazendo", titulo: "Passando", sub: "Em produção · enviar p/ corte", status: "fazendo", acao: "enviar", botaoLabel: "Enviar p/ corte ▶" },
   ],
 };
 
