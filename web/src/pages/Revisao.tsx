@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { Quadro, type QuadroCfg, type ColCfg } from "../components/Quadro";
 import { api } from "../api";
 
-// Revisão é organizada por REVISADORA: cada coluna é uma revisadora (Romaneios ›
-// Prestadores, serviço Revisão). Operadores internos (com senha) movimentam.
+// Revisão é organizada por REVISADORA: cada coluna é uma revisadora interna
+// (Cadastros › Operadores, setor Revisão). Operadores de "Todos os setores" não
+// viram coluna (ficam só como quem opera/confirma a senha).
 const BASE: Omit<QuadroCfg, "colunas"> = {
   setor: "revisao",
   titulo: "Revisão",
@@ -27,9 +28,10 @@ export function Revisao() {
   const [revisadoras, setRevisadoras] = useState<string[]>([]);
 
   useEffect(() => {
+    // Só operadores do setor EXATO "revisao" (exclui os de "Todos os setores").
     api
-      .listarPrestadores()
-      .then((l) => setRevisadoras(l.filter((p) => (p.servico || "") === "revisao").map((p) => p.nome)))
+      .listarOperadores("revisao")
+      .then((l) => setRevisadoras(l.filter((o) => (o.setor || "") === "revisao").map((o) => o.nome)))
       .catch(() => {});
   }, []);
 
@@ -51,4 +53,4 @@ export function Revisao() {
 }
 
 const SEM =
-  "⚠️ Nenhuma revisadora cadastrada. Cadastre em Romaneios › Prestadores com serviço 'Revisão' — cada revisadora vira uma coluna aqui.";
+  "⚠️ Nenhuma revisadora cadastrada. Cadastre em Cadastros › Operadores com setor 'Revisão' — cada revisadora vira uma coluna aqui. (Operadores de 'Todos os setores' não viram coluna.)";
