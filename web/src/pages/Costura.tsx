@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { Quadro, type QuadroCfg, type ColCfg } from "../components/Quadro";
 import { api } from "../api";
 
-// Costura é organizada por COSTUREIRA: cada coluna é uma costureira (vêm do
-// cadastro de Operadores, setor Costura). Quem "pega" a peça vira a dona da
-// coluna. Sem "passar na frente"; a única coluna fixa é "Voltou com defeito".
+// Costura é organizada por COSTUREIRA (terceirizada): cada coluna é uma
+// costureira, vinda de Romaneios › Prestadores (serviço Costura). Quem movimenta
+// os cards são operadores internos (com senha). Coluna fixa: "Voltou com defeito".
 const BASE: Omit<QuadroCfg, "colunas"> = {
   setor: "costura",
   titulo: "Costura",
@@ -24,24 +24,27 @@ const BASE: Omit<QuadroCfg, "colunas"> = {
   defeito: true,
   enviarLabel: "Enviar p/ revisão ▶",
   enviarLabelKit: "Enviar p/ estoque ▶",
-  nota: "Cada coluna é uma costureira. Em 'A distribuir', toque em Pegar e escolha a costureira. No card: Enviar (revisão / estoque para kit) ou ⚠ Defeito.",
+  nota: "Cada coluna é uma costureira (Prestadores). O Corte já manda o card para a costureira escolhida; aqui o operador interno movimenta (Enviar / ⚠ Defeito) com sua senha.",
 };
 
 export function Costura() {
-  const [costureiras, setCostureiras] = useState<{ id: string; nome: string }[]>([]);
+  const [costureiras, setCostureiras] = useState<string[]>([]);
 
   useEffect(() => {
-    api.listarOperadores("costura").then(setCostureiras).catch(() => {});
+    api
+      .listarPrestadores()
+      .then((l) => setCostureiras(l.filter((p) => (p.servico || "") === "costura").map((p) => p.nome)))
+      .catch(() => {});
   }, []);
 
   const colunas: ColCfg[] = [
-    { cor: "aguardando", titulo: "A distribuir", sub: "Chegou do corte", status: "aguardando", acao: "fazer", botaoLabel: "Pegar ▶" },
-    ...costureiras.map<ColCfg>((c) => ({
+    { cor: "aguardando", titulo: "A distribuir", sub: "Chegou do corte", status: "aguardando", operador: "", acao: "fazer", botaoLabel: "Atribuir ▶" },
+    ...costureiras.map<ColCfg>((nome) => ({
       cor: "fazendo",
-      titulo: c.nome,
+      titulo: nome,
       sub: "Costureira",
       status: "fazendo",
-      operador: c.nome,
+      operador: nome,
       acao: "enviar",
       acaoExtra: "defeito",
     })),
@@ -52,4 +55,4 @@ export function Costura() {
 }
 
 const SEM =
-  "⚠️ Nenhuma costureira cadastrada. Cadastre em Cadastros › Operadores (setor Costura) — cada costureira vira uma coluna aqui. (Os nomes no painel de TV são apenas demonstração.)";
+  "⚠️ Nenhuma costureira cadastrada. Cadastre em Romaneios › Prestadores com serviço 'Costura' — cada costureira vira uma coluna aqui.";

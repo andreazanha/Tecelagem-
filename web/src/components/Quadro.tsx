@@ -87,16 +87,26 @@ export interface QuadroCfg {
   defeito?: boolean; // mostra botão "Defeito" no modal
   semPrioridade?: boolean; // esconde o "passar na frente" (ex.: Costura)
   proxSetorKit?: string | null; // destino dos kits (pronta-entrega) ao enviar, se diferente
-  escolherOperadorAoEnviar?: boolean; // ao enviar, abre a lista de pessoas do próximo setor
   setorDefeito?: string; // setor para onde "Voltou com defeito" devolve a peça (ex.: Revisão → Costura)
+}
+
+// Setores cujas colunas são PESSOAS: Costura = costureiras (Prestadores, serviço
+// costura, terceirizadas); Revisão = revisadoras (Operadores internos).
+type FontePessoas = "operadores" | "prestadores";
+interface DestinoPessoa { setor: string; fonte: FontePessoas; label: string }
+const FONTE_PESSOAS: Record<string, FontePessoas> = { costura: "prestadores", revisao: "operadores" };
+function pessoasDeSetor(s: string): FontePessoas | null {
+  return FONTE_PESSOAS[s] ?? null;
+}
+function tituloSetor(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [cards, setCards] = useState<CardProducao[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [aberto, setAberto] = useState<CardProducao | null>(null);
-  const [iniciar, setIniciar] = useState<CardProducao | null>(null);
-  const [enviarOp, setEnviarOp] = useState<CardProducao | null>(null);
+  const [acaoModal, setAcaoModal] = useState<{ card: CardProducao; acao: Acao } | null>(null);
   const [busca, setBusca] = useState("");
 
   function recarregar() {
@@ -121,6 +131,12 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 
   async function mudar(c: CardProducao, body: { status: string; setor?: string; maquina?: string; operador?: string }) {
     const antes = { status: c.status, setor: c.setor, operador: c.operador ?? "" };
+    // Otimista: move o card na hora (sem piscar esperando o servidor). Se mudou de
+    // setor, sai deste quadro; senão, só atualiza status/operador na coluna nova.
+    const mesmo = (x: CardProducao) => x.pedido_id === c.pedido_id && x.parte === c.parte;
+    setCards((prev) =>
+      body.setor && body.setor !== c.setor ? prev.filter((x) => !mesmo(x)) : prev.map((x) => (mesmo(x) ? { ...x, ...body } : x))
+    );
     await api.atualizarProducao(c.pedido_id, c.parte, body);
     historico.registrar({
       label: opCodigo(c),
@@ -130,24 +146,42 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     setAberto(null);
     recarregar();
   }
+  // Toda ação passa pelo modal (senha do operador interno + destino quando aplicável).
   function acaoCard(c: CardProducao, acao: Acao) {
-    if (acao === "fazer") setIniciar(c);
-    else if (acao === "finalizar") mudar(c, { status: "pronto" });
-    else if (acao === "defeito") mudar(c, { status: "defeito" });
+    setAcaoModal({ card: c, acao });
+  }
+
+  // Executa de fato, já com o operador validado e (se houver) a pessoa de destino.
+  function executarAcao(card: CardProducao, acao: Acao, opInterno: string, pessoaDestino?: string) {
+    if (acao === "fazer") {
+      // Em setor por pessoa (Costura/Revisão) o "dono" é a costureira/revisadora; senão, o operador.
+      const op = pessoasDeSetor(cfg.setor) ? pessoaDestino || "" : opInterno;
+      mudar(card, { status: "fazendo", operador: op });
+    } else if (acao === "finalizar") mudar(card, { status: "pronto" });
+    else if (acao === "defeito") mudar(card, { status: "defeito" });
     else if (acao === "voltar")
-      // Volta para a coluna da pessoa (se tiver dono); senão, para a fila de distribuição.
-      mudar(c, { status: c.operador ? "fazendo" : "aguardando", operador: c.operador || "" });
-    else if (acao === "devolverDefeito") devolverComDefeito(c);
+      mudar(card, { status: card.operador ? "fazendo" : "aguardando", operador: card.operador || "" });
+    else if (acao === "devolverDefeito") devolverComDefeito(card);
     else {
-      // Enviar: escolhendo a pessoa do próximo setor (ex.: Corte → costureira)…
-      if (cfg.escolherOperadorAoEnviar) {
-        setEnviarOp(c);
-        return;
-      }
-      // …ou direto para a fila do próximo setor.
-      const prox = destinoDe(c);
-      if (prox) mudar(c, { setor: prox, status: "aguardando" });
+      const destino = destinoDe(card);
+      if (!destino) return;
+      if (pessoasDeSetor(destino)) mudar(card, { setor: destino, status: "fazendo", operador: pessoaDestino || "" });
+      else mudar(card, { setor: destino, status: "aguardando" });
     }
+  }
+
+  // Pessoa (costureira/revisadora) a escolher no modal, se a ação leva a um setor por pessoa.
+  function destinoPessoa(card: CardProducao, acao: Acao): DestinoPessoa | null {
+    if (acao === "enviar") {
+      const d = destinoDe(card);
+      const f = d ? pessoasDeSetor(d) : null;
+      return d && f ? { setor: d, fonte: f, label: tituloSetor(d) } : null;
+    }
+    if (acao === "fazer") {
+      const f = pessoasDeSetor(cfg.setor);
+      return f ? { setor: cfg.setor, fonte: f, label: tituloSetor(cfg.setor) } : null;
+    }
+    return null;
   }
 
   // Próximo setor de um card (kits podem ter destino diferente, ex.: Costura → Estoque).
@@ -289,29 +323,18 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
         <CardModal card={aberto} cfg={cfg} stLabel={stLabel} onFechar={() => setAberto(null)} onAcao={acaoCard} onPrioridade={alternarPrioridade} />
       )}
 
-      {iniciar && (
-        <IniciarModal
-          card={iniciar}
+      {acaoModal && (
+        <AcaoModal
+          card={acaoModal.card}
+          acao={acaoModal.acao}
           cfg={cfg}
-          onFechar={() => setIniciar(null)}
-          onConfirmar={(operador) => {
-            const c = iniciar;
-            setIniciar(null);
-            mudar(c, { status: "fazendo", operador });
-          }}
-        />
-      )}
-
-      {enviarOp && (
-        <EnviarModal
-          card={enviarOp}
-          setor={destinoDe(enviarOp) || ""}
-          onFechar={() => setEnviarOp(null)}
-          onConfirmar={(operador) => {
-            const c = enviarOp;
-            const destino = destinoDe(c);
-            setEnviarOp(null);
-            if (destino) mudar(c, { setor: destino, status: "fazendo", operador });
+          destino={destinoPessoa(acaoModal.card, acaoModal.acao)}
+          onFechar={() => setAcaoModal(null)}
+          onConfirmar={(opInterno, pessoaDestino) => {
+            const { card, acao } = acaoModal;
+            setAcaoModal(null);
+            setAberto(null);
+            executarAcao(card, acao, opInterno, pessoaDestino);
           }}
         />
       )}
@@ -319,37 +342,58 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   );
 }
 
-function IniciarModal({
+// Modal único de ação. Sempre pede o OPERADOR INTERNO + senha (de quem está
+// manipulando o card). Quando a ação leva a um setor por pessoa (Costura →
+// costureira, Revisão → revisadora), também escolhe essa pessoa.
+function AcaoModal({
   card,
+  acao,
   cfg,
+  destino,
   onFechar,
   onConfirmar,
 }: {
   card: CardProducao;
+  acao: Acao;
   cfg: QuadroCfg;
+  destino: DestinoPessoa | null;
   onFechar: () => void;
-  onConfirmar: (operador: string) => void;
+  onConfirmar: (opInterno: string, pessoaDestino?: string) => void;
 }) {
   const [ops, setOps] = useState<{ id: string; nome: string }[]>([]);
   const [opId, setOpId] = useState("");
   const [senha, setSenha] = useState("");
+  const [pessoas, setPessoas] = useState<string[]>([]);
+  const [pessoa, setPessoa] = useState("");
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
-    api
-      .listarOperadores(cfg.setor)
-      .then((o) => {
+    const tarefas: Promise<unknown>[] = [
+      api.listarOperadores(cfg.setor).then((o) => {
         setOps(o);
         if (o[0]) setOpId(o[0].id);
-      })
-      .catch(() => {})
-      .finally(() => setCarregando(false));
-  }, [cfg.setor]);
+      }),
+    ];
+    if (destino) {
+      const p =
+        destino.fonte === "prestadores"
+          ? api.listarPrestadores().then((l) => l.filter((x) => (x.servico || "") === "costura").map((x) => x.nome))
+          : api.listarOperadores(destino.setor).then((l) => l.map((x) => x.nome));
+      tarefas.push(
+        p.then((list) => {
+          setPessoas(list);
+          if (list[0]) setPessoa(list[0]);
+        })
+      );
+    }
+    Promise.all(tarefas).catch(() => {}).finally(() => setCarregando(false));
+  }, [cfg.setor, destino?.setor, destino?.fonte]);
 
   async function confirmar() {
     setErro("");
+    if (destino && !pessoa) return setErro(`Escolha quem recebe em ${destino.label}.`);
     if (!opId) return setErro("Selecione o operador.");
     if (!senha) return setErro("Digite a senha.");
     setEnviando(true);
@@ -360,40 +404,63 @@ function IniciarModal({
         setEnviando(false);
         return;
       }
-      onConfirmar(r.nome);
+      onConfirmar(r.nome, destino ? pessoa : undefined);
     } catch {
       setErro("Erro ao validar. Tente de novo.");
       setEnviando(false);
     }
   }
 
+  const semOperadores = !carregando && ops.length === 0;
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd">
           <div className="modal-hd-top">
-            <span className="modal-pills">
-              <span className="modal-pill">{opCodigo(card)}</span>
-            </span>
+            <span className="modal-pills"><span className="modal-pill">{opCodigo(card)}</span></span>
             <button className="modal-x" onClick={onFechar}>✕</button>
           </div>
           <div className="modal-hd-row">
-            <span className="modal-cli">Iniciar produção</span>
+            <span className="modal-cli">{rotulo(acao, card, cfg)}</span>
           </div>
         </div>
 
         <div className="modal-bd">
           {carregando ? (
-            <div className="muted">Carregando operadores…</div>
-          ) : ops.length === 0 ? (
+            <div className="muted">Carregando…</div>
+          ) : semOperadores ? (
             <div className="muted" style={{ fontSize: 14 }}>
-              Nenhum operador cadastrado. Cadastre em <strong>Cadastros › Operadores</strong>.
+              Nenhum operador no setor <strong>{tituloSetor(cfg.setor)}</strong>. Cadastre em <strong>Cadastros › Operadores</strong>.
             </div>
           ) : (
             <>
-              <label className="campo-l" htmlFor="op-sel">OPERADOR</label>
+              {destino && (
+                <>
+                  <label className="campo-l" htmlFor="ac-pessoa">QUEM VAI RECEBER · {destino.label}</label>
+                  {pessoas.length === 0 ? (
+                    <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                      {destino.fonte === "prestadores"
+                        ? "Nenhuma costureira em Romaneios › Prestadores (serviço Costura)."
+                        : `Ninguém cadastrado em ${destino.label}.`}
+                    </div>
+                  ) : (
+                    <select
+                      id="ac-pessoa"
+                      value={pessoa}
+                      onChange={(e) => setPessoa(e.target.value)}
+                      style={{ width: "100%", padding: "12px 14px", fontSize: 16, borderRadius: 10, border: "1px solid #e2e8f0", marginTop: 4, marginBottom: 14 }}
+                    >
+                      {pessoas.map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  )}
+                </>
+              )}
+
+              <label className="campo-l" htmlFor="ac-op">OPERADOR (você)</label>
               <select
-                id="op-sel"
+                id="ac-op"
                 value={opId}
                 onChange={(e) => setOpId(e.target.value)}
                 style={{ width: "100%", padding: "12px 14px", fontSize: 16, borderRadius: 10, border: "1px solid #e2e8f0", marginTop: 4 }}
@@ -403,9 +470,9 @@ function IniciarModal({
                 ))}
               </select>
 
-              <label className="campo-l" htmlFor="op-senha" style={{ marginTop: 14, display: "block" }}>SENHA</label>
+              <label className="campo-l" htmlFor="ac-senha" style={{ marginTop: 14, display: "block" }}>SENHA</label>
               <input
-                id="op-senha"
+                id="ac-senha"
                 type="password"
                 value={senha}
                 autoFocus
@@ -421,85 +488,8 @@ function IniciarModal({
 
         <div className="modal-ft">
           <button className="btn" onClick={onFechar}>Cancelar</button>
-          <button className="kbtn tecer" disabled={enviando || carregando || ops.length === 0} onClick={confirmar}>
-            {enviando ? "Validando…" : cfg.fazerLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Escolhe a PESSOA do próximo setor ao enviar (ex.: Corte → costureira). Só
-// seleção, sem senha: quem envia está só direcionando o trabalho.
-function EnviarModal({
-  card,
-  setor,
-  onFechar,
-  onConfirmar,
-}: {
-  card: CardProducao;
-  setor: string;
-  onFechar: () => void;
-  onConfirmar: (operador: string) => void;
-}) {
-  const [ops, setOps] = useState<{ id: string; nome: string }[]>([]);
-  const [nome, setNome] = useState("");
-  const [carregando, setCarregando] = useState(true);
-
-  useEffect(() => {
-    api
-      .listarOperadores(setor)
-      .then((o) => {
-        setOps(o);
-        if (o[0]) setNome(o[0].nome);
-      })
-      .catch(() => {})
-      .finally(() => setCarregando(false));
-  }, [setor]);
-
-  const titulo = setor.charAt(0).toUpperCase() + setor.slice(1);
-  return (
-    <div className="modal-bg" onClick={onFechar}>
-      <div className="modal-card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-hd">
-          <div className="modal-hd-top">
-            <span className="modal-pills"><span className="modal-pill">{opCodigo(card)}</span></span>
-            <button className="modal-x" onClick={onFechar}>✕</button>
-          </div>
-          <div className="modal-hd-row">
-            <span className="modal-cli">Enviar para {titulo}</span>
-          </div>
-        </div>
-
-        <div className="modal-bd">
-          {carregando ? (
-            <div className="muted">Carregando…</div>
-          ) : ops.length === 0 ? (
-            <div className="muted" style={{ fontSize: 14 }}>
-              Ninguém cadastrado em {titulo}. Cadastre em <strong>Cadastros › Operadores</strong> (setor {titulo}).
-            </div>
-          ) : (
-            <>
-              <label className="campo-l" htmlFor="env-sel">QUEM VAI RECEBER</label>
-              <select
-                id="env-sel"
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                style={{ width: "100%", padding: "12px 14px", fontSize: 16, borderRadius: 10, border: "1px solid #e2e8f0", marginTop: 4 }}
-              >
-                {ops.map((o) => (
-                  <option key={o.id} value={o.nome}>{o.nome}</option>
-                ))}
-              </select>
-            </>
-          )}
-        </div>
-
-        <div className="modal-ft">
-          <button className="btn" onClick={onFechar}>Cancelar</button>
-          <button className="kbtn enviar" disabled={carregando || ops.length === 0} onClick={() => nome && onConfirmar(nome)}>
-            Enviar ▶
+          <button className="kbtn tecer" disabled={enviando || carregando || semOperadores} onClick={confirmar}>
+            {enviando ? "Validando…" : "Confirmar"}
           </button>
         </div>
       </div>
