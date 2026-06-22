@@ -13,6 +13,10 @@ import { Corte } from "./pages/Corte";
 import { Costura } from "./pages/Costura";
 import { Revisao } from "./pages/Revisao";
 import { Estoque } from "./pages/Estoque";
+import { Expedicao } from "./pages/Expedicao";
+import { Fiscal } from "./pages/Fiscal";
+import { Transporte } from "./pages/Transporte";
+import { TodosPedidos } from "./pages/TodosPedidos";
 import { Dashboard } from "./pages/Dashboard";
 import { TvTecelagem } from "./pages/TvTecelagem";
 import { TvCostura } from "./pages/TvCostura";
@@ -92,6 +96,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/costura" element={<Protegido page="costura"><Costura /></Protegido>} />
           <Route path="/revisao" element={<Protegido page="revisao"><Revisao /></Protegido>} />
           <Route path="/estoque" element={<Protegido page="estoque"><Estoque /></Protegido>} />
+          <Route path="/expedicao" element={<Protegido page="expedicao"><Expedicao /></Protegido>} />
+          <Route path="/fiscal" element={<Protegido page="fiscal"><Fiscal /></Protegido>} />
+          <Route path="/transporte" element={<Protegido page="transporte"><Transporte /></Protegido>} />
+          <Route path="/todos-pedidos" element={<Protegido page="todos-pedidos"><TodosPedidos /></Protegido>} />
         </Route>
       </Routes>
     </BrowserRouter>

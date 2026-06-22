@@ -55,6 +55,10 @@ const NAV = [
   { to: "/costura", icon: "🪡", label: "Costura", page: "costura" },
   { to: "/revisao", icon: "🔍", label: "Revisão", page: "revisao" },
   { to: "/estoque", icon: "📦", label: "Estoque", page: "estoque" },
+  { to: "/expedicao", icon: "📦", label: "Expedição", page: "expedicao" },
+  { to: "/fiscal", icon: "🧾", label: "Fiscal", page: "fiscal" },
+  { to: "/transporte", icon: "🚚", label: "Transporte", page: "transporte" },
+  { to: "/todos-pedidos", icon: "📋", label: "Todos os Pedidos", page: "todos-pedidos" },
   { to: "/cadastros", icon: "🏷️", label: "Cadastros", page: "cadastros" },
   { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
 ];

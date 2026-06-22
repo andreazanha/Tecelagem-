@@ -438,3 +438,65 @@ body.dark .btn { background: #1b2438; border-color: #ffffff1c; color: #e8ecf6; }
 body.dark .icon-btn { background: #0b1120; border-color: #ffffff1c; }
 body.dark .modal-bg { background: #020409cc; }
 body.dark .empty, body.dark .breadcrumb { color: var(--muted); }
+
+/* ============================================================= */
+/* Expedição · Fiscal · Transporte · Todos os Pedidos            */
+/* ============================================================= */
+.kcol-vazio { border: 1.5px dashed #e2e8f0; border-radius: 12px; padding: 18px 10px; text-align: center; color: #cbd5e1; font-size: 12px; font-weight: 700; }
+
+/* Formulário de Medidas e Pesos (Expedição) */
+.med-info { background: #ecfeff; border: 1px solid #a5f3fc; color: #0e7490; font-weight: 700; font-size: 12px; border-radius: 10px; padding: 9px 12px; margin-bottom: 14px; }
+.med-tab-head { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr 1fr 34px; gap: 8px; font-size: 9.5px; font-weight: 800; color: #64748b; letter-spacing: .3px; padding: 0 4px 6px; }
+.med-row { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr 1fr 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
+.med-del { width: 30px; height: 30px; border-radius: 8px; border: none; background: #fef2f2; color: #ef4444; font-weight: 800; cursor: pointer; }
+.med-del:hover { background: #fee2e2; }
+.med-totais { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin-top: 14px; padding: 12px 16px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 12px; font-size: 13px; color: #334155; }
+.med-tot-l { font-size: 10px; font-weight: 800; color: #94a3b8; letter-spacing: .6px; }
+.med-flag { margin-top: 8px; font-size: 11px; font-weight: 700; border-radius: 8px; padding: 6px 9px; }
+.med-flag.ok { background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857; }
+.med-flag.pend { background: #fff7ed; border: 1px solid #fed7aa; color: #b45309; }
+
+/* Fiscal — bloco de frete */
+.fis-frete { margin-top: 9px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 9px 11px; }
+.fis-frete-t { font-size: 8.5px; font-weight: 800; color: #94a3b8; letter-spacing: .4px; }
+.fis-frete-r { display: flex; gap: 16px; margin-top: 5px; font-size: 12px; font-weight: 700; color: #334155; }
+.fis-frete-v { margin-top: 4px; font-size: 12px; font-weight: 800; color: #1d4ed8; }
+.fis-frete-nf { margin-top: 2px; font-size: 11.5px; font-weight: 800; color: #047857; }
+
+/* Transporte — abas + grade de cards */
+.tr-abas { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.tr-aba { display: inline-flex; align-items: center; gap: 8px; font: inherit; font-weight: 800; font-size: 13px; color: #475569; background: #fff; border: 1.5px solid var(--line); border-radius: 999px; padding: 7px 13px 7px 7px; cursor: pointer; }
+.tr-aba.ativa { border-width: 2px; box-shadow: 0 2px 8px #0f172a14; }
+.tr-aba-ic { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; color: #fff; }
+.tr-aba-n { background: #eef2f7; color: #475569; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 8px; }
+.tr-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.tr-card { align-self: start; }
+.tr-frete { margin-top: 5px; font-size: 11.5px; font-weight: 800; color: #1d4ed8; }
+.tr-atribuir { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 10px; }
+.tr-atribuir-l { font-size: 10px; font-weight: 800; color: #64748b; letter-spacing: .3px; margin-bottom: 7px; }
+.tr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tr-chip { font: inherit; font-weight: 800; font-size: 11px; background: #fff; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 5px 9px; cursor: pointer; }
+.tr-chip:hover { filter: brightness(0.97); transform: translateY(-1px); }
+
+/* Todos os Pedidos — filtros + tabela + progresso */
+.tp-filtros { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; box-shadow: 0 1px 3px #0f172a12; }
+.tp-filtros label { display: flex; flex-direction: column; gap: 5px; }
+.tp-filtros label span { font-size: 9.5px; font-weight: 800; color: #94a3b8; letter-spacing: .5px; }
+.tp-filtros select, .tp-filtros input { font: inherit; font-size: 14px; font-weight: 600; padding: 9px 12px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fff; }
+.tp-busca { flex: 1 1 220px; }
+.tp-busca input { width: 100%; }
+.tp-conta { margin-left: auto; font-size: 12px; font-weight: 700; color: #64748b; }
+.tp-tabela-wrap { padding: 0; overflow-x: auto; }
+.tp-tabela { width: 100%; border-collapse: collapse; }
+.tp-tabela th { text-align: left; font-size: 9.5px; font-weight: 800; color: #94a3b8; letter-spacing: .3px; padding: 14px 14px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tp-tabela td { padding: 12px 14px; border-bottom: 1px solid #f1f5f9; font-size: 13px; vertical-align: middle; }
+.tp-tabela tbody tr:hover { background: #f8fafc; }
+.tp-pecas { font-size: 10.5px; color: #94a3b8; font-weight: 600; margin-top: 2px; }
+.tp-fase { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 800; border: 1.4px solid; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.tp-prog { display: flex; align-items: center; gap: 5px; }
+.tp-prog-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.tp-prog-dot.atual { width: 13px; height: 13px; box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px currentColor; }
+
+body.dark .med-totais, body.dark .fis-frete, body.dark .tp-filtros, body.dark .tr-aba, body.dark .tr-chip { background: #0f1830; }
+body.dark .tp-tabela tbody tr:hover { background: #0f1830; }
+body.dark .kcol-vazio { border-color: #ffffff1a; color: #ffffff44; }

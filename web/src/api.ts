@@ -100,6 +100,58 @@ export interface CardProducao {
   observacao?: string | null;
 }
 
+// Expedição → Fiscal → Transporte
+export interface Volume {
+  tipo: string; // Caixa | Fardo
+  altura: string;
+  largura: string;
+  comprimento: string;
+  peso: string;
+}
+export interface CardExpedicao {
+  pedido_id: string;
+  fase: string; // expedicao | fiscal | transporte
+  status: string;
+  volumes: string | null; // JSON
+  nf_numero: string | null;
+  frete: string | null;
+  transportadora: string | null;
+  entrou_em: string;
+  numero_erp: string | null;
+  codigo_pai: string | null;
+  cliente_nome: string;
+  data_pedido: string | null;
+  data_entrega: string | null;
+  observacao: string | null;
+  pecas: number | null;
+  partes: string | null;
+  resumos: string | null;
+}
+export interface PedidoTimeline {
+  pedido_id: string;
+  numero_erp: string | null;
+  codigo_pai: string | null;
+  cliente_nome: string;
+  data_pedido: string | null;
+  data_entrega: string | null;
+  created_at: string;
+  pecas: number;
+  tipo: string; // ÚNICO | P1+P2 | KIT | MISTO
+  faseAtual: string;
+  idx: number;
+  statusExp: string | null;
+  transportadora: string | null;
+  passagens: { fase: string; entrouEm: string; duracaoMin: number; atual: boolean }[];
+}
+export interface ExpedicaoUpdate {
+  fase?: string;
+  status?: string;
+  volumes?: Volume[] | null;
+  nf_numero?: string | null;
+  frete?: string | null;
+  transportadora?: string | null;
+}
+
 export interface Sugestao {
   numero_erp?: string;
   cliente_nome?: string;
@@ -323,6 +375,21 @@ export const api = {
         passagens: { setor: string; status: string; operador: string | null; entrouEm: string; saiuEm: string | null; duracaoMin: number; atual: boolean }[];
       }>(r)
     ),
+  listarExpedicao: (fase: string) =>
+    fetch(`/api/expedicao?fase=${encodeURIComponent(fase)}`).then((r) => j<CardExpedicao[]>(r)),
+  atualizarExpedicao: (pedido_id: string, body: ExpedicaoUpdate) =>
+    fetch(`/api/expedicao/${pedido_id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => j<{ ok: boolean }>(r)),
+  todosPedidos: (params?: { mes?: string; setor?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.mes) q.set("mes", params.mes);
+    if (params?.setor) q.set("setor", params.setor);
+    const qs = q.toString();
+    return fetch(`/api/expedicao/todos${qs ? `?${qs}` : ""}`).then((r) => j<PedidoTimeline[]>(r));
+  },
   listarPrestadores: () => fetch("/api/prestadores").then((r) => j<Prestador[]>(r)),
   salvarPrestador: (p: Prestador) =>
     fetch("/api/prestadores", {
