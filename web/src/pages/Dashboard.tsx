@@ -694,11 +694,14 @@ function AvisosScreen({ d }: { d: DashboardData | null }) {
   return (
     <div className="frase">
       <div className="frase-bg" aria-hidden><span className="g1" /><span className="g2" /></div>
-      <div className="frase-aspas">❝</div>
-      <div className="frase-txt" key={at}>{lista[at]}</div>
-      {lista.length > 1 && (
-        <div className="frase-dots">{lista.map((_, k) => <span key={k} className={k === at ? "on" : ""} />)}</div>
-      )}
+      <div className="frase-conteudo">
+        <div className="frase-aspas">❝</div>
+        <div className="frase-txt" key={at}>{lista[at]}</div>
+        {lista.length > 1 && (
+          <div className="frase-dots">{lista.map((_, k) => <span key={k} className={k === at ? "on" : ""} />)}</div>
+        )}
+      </div>
+      <img className="frase-boneco" src="/boneco-aponta.png" alt="" />
     </div>
   );
 }

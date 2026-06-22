@@ -237,15 +237,17 @@
 .meta-row span { font-size: 14px; color: #9fb0d6; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
 
 /* ── Frase motivacional (tela de avisos, estilo celebração) ─────────────────── */
-.frase { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; overflow: hidden; }
+.frase { flex: 1; position: relative; display: flex; align-items: center; justify-content: flex-start; text-align: left; overflow: hidden; }
 .frase-bg { position: absolute; inset: 0; pointer-events: none; }
-.frase-bg span { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .55; }
-.frase-bg .g1 { width: 620px; height: 620px; background: #6366f1; top: -120px; left: 8%; animation: float 16s ease-in-out infinite; }
-.frase-bg .g2 { width: 560px; height: 560px; background: #a855f7; bottom: -140px; right: 6%; animation: float 19s ease-in-out infinite reverse; }
-.frase-aspas { position: relative; z-index: 1; font-size: clamp(70px, 173px, 130px); line-height: .4; color: #6366f1; opacity: .55; font-family: Georgia, serif; }
-.frase-txt { position: relative; z-index: 1; max-width: 80%; margin-top: 8px; font-size: clamp(40px, 108px, 90px); font-weight: 900; line-height: 1.18; letter-spacing: .3px;
-  background: linear-gradient(120deg, #ffffff, #c4b5fd 45%, #38bdf8); -webkit-background-clip: text; background-clip: text; color: transparent;
-  text-shadow: 0 10px 60px #6366f155; filter: drop-shadow(0 6px 30px #4338ca66); animation: fraseIn .8s cubic-bezier(.16,1,.3,1) both; }
+.frase-bg span { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .6; }
+.frase-bg .g1 { width: 640px; height: 640px; background: #2563eb; top: -100px; left: 2%; animation: float 16s ease-in-out infinite; }
+.frase-bg .g2 { width: 560px; height: 560px; background: #3b82f6; bottom: -120px; left: 30%; animation: float 19s ease-in-out infinite reverse; }
+/* texto à esquerda + boneco à direita apontando p/ a frase */
+.frase-conteudo { position: relative; z-index: 1; padding: 0 40% 0 7%; }
+.frase-aspas { font-size: clamp(70px, 173px, 130px); line-height: .4; color: #60a5fa; opacity: .7; font-family: Georgia, serif; }
+.frase-txt { max-width: 100%; margin-top: 8px; font-size: clamp(40px, 100px, 84px); font-weight: 900; line-height: 1.16; letter-spacing: .3px;
+  color: #fff; text-shadow: 0 0 36px #3b82f6, 0 0 80px #2563ebaa, 0 8px 40px #00000055; animation: fraseIn .8s cubic-bezier(.16,1,.3,1) both; }
+.frase-boneco { position: absolute; right: 1.5%; bottom: 0; height: 92%; width: auto; z-index: 1; filter: drop-shadow(0 16px 40px #00000066); }
 @keyframes fraseIn { from { opacity: 0; transform: translateY(26px) scale(.98); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
 .frase-dots { position: relative; z-index: 1; display: flex; gap: 10px; margin-top: 40px; }
 .frase-dots span { width: 12px; height: 12px; border-radius: 50%; background: #ffffff2e; transition: all .3s; }
