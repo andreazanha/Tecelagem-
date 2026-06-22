@@ -1,32 +1,32 @@
-/* Tela "NOVO PEDIDO!" — a arte (título 3D + boneco + subtítulo + confete) vem da
-   imagem de fundo enviada; aqui desenhamos só a faixa de dados reais + botão. */
+/* Tela "NOVO PEDIDO!" — a arte limpa (título 3D + boneco + subtítulo + confete)
+   é o fundo; aqui só desenhamos a faixa de dados reais + botão na área vazia. */
 .np-bg {
   position: relative; width: 1920px; height: 1080px; overflow: hidden;
-  background: #0a1230 url("/np-bg-full.png") center top / cover no-repeat;
+  background: #0a1430 url("/np-bg-full.png") center top / cover no-repeat;
   font-family: Inter, "Segoe UI", sans-serif; color: #fff;
 }
 
-/* faixa inferior que cobre os dados de exemplo da arte e mostra os reais */
+/* faixa de dados, ancorada embaixo (sobre o azul vazio da arte) */
 .np-band {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 256px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
-  background: linear-gradient(180deg, #0b1f70 0%, #081447 60%, #060f38 100%);
+  position: absolute; left: 0; right: 0; bottom: 26px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
 }
 
-.np-stats { display: flex; gap: 22px; }
+.np-stats { display: flex; gap: 20px; }
 .np-stat {
-  width: 250px; padding: 18px 16px; border-radius: 20px; text-align: center;
+  width: 256px; padding: 12px 14px; border-radius: 18px; text-align: center;
   background: linear-gradient(180deg, #163a9e, #112a6e);
-  border: 2px solid #38bdf8aa; box-shadow: 0 10px 30px #00000050, 0 0 24px #38bdf833, inset 0 1px 0 #ffffff22;
+  border: 2px solid #38bdf8cc;
+  box-shadow: 0 10px 28px #00000055, 0 0 22px #38bdf833, inset 0 1px 0 #ffffff22;
 }
-.np-stat-ic { font-size: 30px; line-height: 1; }
-.np-stat-l { margin-top: 6px; font-size: 16px; font-weight: 800; letter-spacing: 1px; color: #93c5fd; }
-.np-stat-v { margin-top: 4px; font-size: 28px; font-weight: 900; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-stat-ic { font-size: 26px; line-height: 1; }
+.np-stat-l { margin-top: 5px; font-size: 15px; font-weight: 800; letter-spacing: 1px; color: #93c5fd; }
+.np-stat-v { margin-top: 3px; font-size: 24px; font-weight: 900; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .np-cta {
-  padding: 18px 64px; border-radius: 999px; font-size: 32px; font-weight: 900; letter-spacing: 1px;
+  padding: 15px 60px; border-radius: 999px; font-size: 28px; font-weight: 900; letter-spacing: 1px;
   color: #07235e; background: linear-gradient(180deg, #ffffff, #cfe1ff);
-  box-shadow: 0 14px 36px #1d4ed888, inset 0 2px 0 #fff; animation: np-pulsa 1.8s ease-in-out infinite;
+  box-shadow: 0 12px 30px #1d4ed888, inset 0 2px 0 #fff; animation: np-pulsa 1.8s ease-in-out infinite;
 }
 @keyframes np-pulsa { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
 
