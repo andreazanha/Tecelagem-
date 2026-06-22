@@ -89,6 +89,7 @@ export interface QuadroCfg {
   proxSetorKit?: string | null; // destino dos kits (pronta-entrega) ao enviar, se diferente
   setorDefeito?: string; // setor para onde "Voltou com defeito" devolve a peça (ex.: Revisão → Costura)
   enviarSemPessoa?: boolean; // enviar para a FILA do próximo setor (aguardando), sem escolher pessoa
+  agruparPorPedido?: boolean; // junta as partes do mesmo pedido num card só (ex.: Revisão, pedido misto)
 }
 
 // Setores cujas colunas são PESSOAS. Costura = costureiras terceirizadas
@@ -103,6 +104,16 @@ const FONTE_PESSOAS: Record<string, FontePessoas> = {
 function pessoasDeSetor(s: string): FontePessoas | null {
   return FONTE_PESSOAS[s] ?? null;
 }
+// Junta as partes do mesmo pedido (pedido_id) num grupo só, mantendo a ordem.
+function agruparPorPedido(cards: CardProducao[]): CardProducao[][] {
+  const m = new Map<string, CardProducao[]>();
+  for (const c of cards) {
+    const g = m.get(c.pedido_id);
+    if (g) g.push(c);
+    else m.set(c.pedido_id, [c]);
+  }
+  return [...m.values()];
+}
 function tituloSetor(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -111,7 +122,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [cards, setCards] = useState<CardProducao[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [aberto, setAberto] = useState<CardProducao | null>(null);
-  const [acaoModal, setAcaoModal] = useState<{ card: CardProducao; acao: Acao } | null>(null);
+  const [acaoModal, setAcaoModal] = useState<{ cards: CardProducao[]; acao: Acao } | null>(null);
   const [busca, setBusca] = useState("");
 
   function recarregar() {
@@ -135,44 +146,47 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg.setor]);
 
-  async function mudar(c: CardProducao, body: { status: string; setor?: string; maquina?: string; operador?: string }) {
-    const antes = { status: c.status, setor: c.setor, operador: c.operador ?? "" };
+  // Aplica a MESMA mudança a 1+ cards (pedido misto agrupado = várias partes).
+  async function mudarGrupo(cards: CardProducao[], body: { status: string; setor?: string; maquina?: string; operador?: string }) {
+    const antes = cards.map((c) => ({ pedido_id: c.pedido_id, parte: c.parte, status: c.status, setor: c.setor, operador: c.operador ?? "" }));
     try {
-      await api.atualizarProducao(c.pedido_id, c.parte, body);
+      await Promise.all(cards.map((c) => api.atualizarProducao(c.pedido_id, c.parte, body)));
       historico.registrar({
-        label: opCodigo(c),
-        desfazer: () => api.atualizarProducao(c.pedido_id, c.parte, { status: antes.status, setor: antes.setor, operador: antes.operador }),
-        refazer: () => api.atualizarProducao(c.pedido_id, c.parte, body),
+        label: opCodigo(cards[0]) + (cards.length > 1 ? ` +${cards.length - 1}` : ""),
+        desfazer: () => Promise.all(antes.map((a) => api.atualizarProducao(a.pedido_id, a.parte, { status: a.status, setor: a.setor, operador: a.operador }))).then(() => {}),
+        refazer: () => Promise.all(cards.map((c) => api.atualizarProducao(c.pedido_id, c.parte, body))).then(() => {}),
       });
     } catch {
       alert("Não foi possível atualizar o card. Tente novamente.");
     } finally {
-      // Recarrega SEMPRE (mesmo em erro): nunca deixa o card sumido esperando refresh.
       setAberto(null);
       recarregar();
     }
   }
+  const mudar = (c: CardProducao, body: { status: string; setor?: string; maquina?: string; operador?: string }) => mudarGrupo([c], body);
+
   // Toda ação passa pelo modal (senha do operador interno + destino quando aplicável).
-  function acaoCard(c: CardProducao, acao: Acao) {
-    setAcaoModal({ card: c, acao });
+  function acaoCard(cards: CardProducao[], acao: Acao) {
+    setAcaoModal({ cards, acao });
   }
 
   // Executa de fato, já com o operador validado e (se houver) a pessoa de destino.
-  function executarAcao(card: CardProducao, acao: Acao, opInterno: string, pessoaDestino?: string) {
+  function executarAcao(cards: CardProducao[], acao: Acao, opInterno: string, pessoaDestino?: string) {
+    const rep = cards[0];
     if (acao === "fazer") {
       // Em setor por pessoa (Costura/Revisão) o "dono" é a costureira/revisadora; senão, o operador.
       const op = pessoasDeSetor(cfg.setor) ? pessoaDestino || "" : opInterno;
-      mudar(card, { status: "fazendo", operador: op });
-    } else if (acao === "finalizar") mudar(card, { status: "pronto" });
-    else if (acao === "defeito") mudar(card, { status: "defeito" });
+      mudarGrupo(cards, { status: "fazendo", operador: op });
+    } else if (acao === "finalizar") mudarGrupo(cards, { status: "pronto" });
+    else if (acao === "defeito") mudarGrupo(cards, { status: "defeito" });
     else if (acao === "voltar")
-      mudar(card, { status: card.operador ? "fazendo" : "aguardando", operador: card.operador || "" });
-    else if (acao === "devolverDefeito") devolverComDefeito(card);
+      mudarGrupo(cards, { status: rep.operador ? "fazendo" : "aguardando", operador: rep.operador || "" });
+    else if (acao === "devolverDefeito") cards.forEach(devolverComDefeito);
     else {
-      const destino = destinoDe(card);
+      const destino = destinoDe(rep);
       if (!destino) return;
-      if (pessoasDeSetor(destino) && !cfg.enviarSemPessoa) mudar(card, { setor: destino, status: "fazendo", operador: pessoaDestino || "" });
-      else mudar(card, { setor: destino, status: "aguardando" }); // vai para a fila (sem dono)
+      if (pessoasDeSetor(destino) && !cfg.enviarSemPessoa) mudarGrupo(cards, { setor: destino, status: "fazendo", operador: pessoaDestino || "" });
+      else mudarGrupo(cards, { setor: destino, status: "aguardando" }); // vai para a fila (sem dono)
     }
   }
 
@@ -332,16 +346,17 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 
       {acaoModal && (
         <AcaoModal
-          card={acaoModal.card}
+          card={acaoModal.cards[0]}
+          qtdGrupo={acaoModal.cards.length}
           acao={acaoModal.acao}
           cfg={cfg}
-          destino={destinoPessoa(acaoModal.card, acaoModal.acao)}
+          destino={destinoPessoa(acaoModal.cards[0], acaoModal.acao)}
           onFechar={() => setAcaoModal(null)}
           onConfirmar={(opInterno, pessoaDestino) => {
-            const { card, acao } = acaoModal;
+            const { cards, acao } = acaoModal;
             setAcaoModal(null);
             setAberto(null);
-            executarAcao(card, acao, opInterno, pessoaDestino);
+            executarAcao(cards, acao, opInterno, pessoaDestino);
           }}
         />
       )}
@@ -354,6 +369,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 // costureira, Revisão → revisadora), também escolhe essa pessoa.
 function AcaoModal({
   card,
+  qtdGrupo,
   acao,
   cfg,
   destino,
@@ -361,6 +377,7 @@ function AcaoModal({
   onConfirmar,
 }: {
   card: CardProducao;
+  qtdGrupo: number;
   acao: Acao;
   cfg: QuadroCfg;
   destino: DestinoPessoa | null;
@@ -430,7 +447,7 @@ function AcaoModal({
             <button className="modal-x" onClick={onFechar}>✕</button>
           </div>
           <div className="modal-hd-row">
-            <span className="modal-cli">{rotulo(acao, card, cfg)}</span>
+            <span className="modal-cli">{rotulo(acao, card, cfg)}{qtdGrupo > 1 ? ` · ${qtdGrupo} partes` : ""}</span>
           </div>
         </div>
 
@@ -543,10 +560,12 @@ function Coluna({
   cfg: QuadroCfg;
   stLabel: (s: string) => string;
   onAbrir: (c: CardProducao) => void;
-  onAcao: (c: CardProducao, acao: ColCfg["acao"]) => void;
+  onAcao: (cards: CardProducao[], acao: ColCfg["acao"]) => void;
   onPrioridade: (c: CardProducao) => void;
 }) {
   const btn = btnDe(col.acao, cfg);
+  // Pedido misto: agrupa as partes do mesmo pedido num card só (ex.: na Revisão).
+  const grupos = cfg.agruparPorPedido ? agruparPorPedido(cards) : cards.map((c) => [c]);
   return (
     <div className={"kcol" + (col.somentePrioridade ? " prio" : "") + (col.cor === "defeito" ? " defeito" : "")}>
       <div className={"kcol-head " + (col.corCard ? "card-" + col.corCard : col.cor)}>
@@ -556,14 +575,18 @@ function Coluna({
           </div>
           <div className="kcol-sub">{col.sub}</div>
         </div>
-        <span className={"kcol-count " + col.cor}>{cards.length}</span>
+        <span className={"kcol-count " + col.cor}>{grupos.length}</span>
       </div>
       <div className="kcol-body">
-        {cards.map((c) => {
+        {grupos.map((g) => {
+          const c = g[0];
+          const combinado = g.length > 1;
           const t = TIPO[c.parte] || { label: c.parte, cls: "" };
+          const hdCls = combinado ? "misto" : t.cls;
+          const pecas = g.reduce((s, x) => s + (x.pecas || 0), 0);
           return (
-            <div key={c.pedido_id + c.parte} className={"kcard" + (c.prioridade ? " prio" : "")} onClick={() => onAbrir(c)} style={{ cursor: "pointer" }}>
-              <div className={"kcard-hd " + t.cls}>
+            <div key={c.pedido_id + (combinado ? "-misto" : c.parte)} className={"kcard" + (c.prioridade ? " prio" : "")} onClick={() => onAbrir(c)} style={{ cursor: "pointer" }}>
+              <div className={"kcard-hd " + hdCls}>
                 <span className="kcard-op">{opCodigo(c)}</span>
                 {!cfg.semPrioridade && (
                   <button
@@ -574,16 +597,25 @@ function Coluna({
                     {c.prioridade ? "★" : "☆"}
                   </button>
                 )}
-                <span className="kcard-badge">{t.label}</span>
+                <span className="kcard-badge">{combinado ? "MISTO" : t.label}</span>
               </div>
               <div className="kcard-bd">
                 <div className="kcard-row1">
                   <span className="kcard-cli">{c.cliente_nome}</span>
                   <span className={"kstatus " + c.status}>{stLabel(c.status)}</span>
                 </div>
+                {combinado && (
+                  <div className="kcard-partes">
+                    {g.map((x) => {
+                      const tt = TIPO[x.parte] || { label: x.parte, cls: "" };
+                      return <span key={x.parte} className={"kparte " + tt.cls}>{tt.label}</span>;
+                    })}
+                  </div>
+                )}
                 <div className="kcard-prod">
-                  {c.pecas} pç · {c.resumo || ""}
+                  {pecas} pç{combinado ? ` · ${g.length} partes` : c.resumo ? ` · ${c.resumo}` : ""}
                 </div>
+                {c.observacao && <div className="kcard-obs">📝 {c.observacao}</div>}
                 <div className="kcard-boxes">
                   <div className="kbox ped">
                     <div className="kbox-l">PEDIDO</div>
@@ -604,7 +636,7 @@ function Coluna({
                     {col.acaoExtra && (
                       <button
                         className={"kbtn " + btnDe(col.acaoExtra, cfg).cls}
-                        onClick={(e) => { e.stopPropagation(); onAcao(c, col.acaoExtra!); }}
+                        onClick={(e) => { e.stopPropagation(); onAcao(g, col.acaoExtra!); }}
                       >
                         {rotulo(col.acaoExtra, c, cfg)}
                       </button>
@@ -613,7 +645,7 @@ function Coluna({
                       className={"kbtn " + btn.cls}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onAcao(c, col.acao);
+                        onAcao(g, col.acao);
                       }}
                     >
                       {col.botaoLabel || rotulo(col.acao, c, cfg)}
@@ -624,7 +656,7 @@ function Coluna({
             </div>
           );
         })}
-        {cards.length === 0 && (
+        {grupos.length === 0 && (
           <div
             style={{
               border: "1.5px dashed #e2e8f0",
@@ -665,7 +697,7 @@ function CardModal({
   cfg: QuadroCfg;
   stLabel: (s: string) => string;
   onFechar: () => void;
-  onAcao: (c: CardProducao, acao: ColCfg["acao"]) => void;
+  onAcao: (cards: CardProducao[], acao: ColCfg["acao"]) => void;
   onPrioridade: (c: CardProducao) => void;
 }) {
   const [det, setDet] = useState<Awaited<ReturnType<typeof api.detalheProducao>> | null>(null);
@@ -811,16 +843,16 @@ function CardModal({
             </button>
           )}
           {mostrarDefeito && (
-            <button className="kbtn defeito" onClick={() => onAcao(card, "defeito")}>
+            <button className="kbtn defeito" onClick={() => onAcao([card], "defeito")}>
               ⚠ Defeito
             </button>
           )}
           {mostrarDevolver && (
-            <button className="kbtn defeito" onClick={() => onAcao(card, "devolverDefeito")}>
+            <button className="kbtn defeito" onClick={() => onAcao([card], "devolverDefeito")}>
               ⚠ Voltou com defeito
             </button>
           )}
-          <button className={"kbtn " + btn.cls} onClick={() => onAcao(card, acaoAtual)}>
+          <button className={"kbtn " + btn.cls} onClick={() => onAcao([card], acaoAtual)}>
             {btnLabel}
           </button>
         </div>

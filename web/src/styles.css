@@ -293,6 +293,11 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .kcard-hd.p2 { background: linear-gradient(120deg, #7e22ce, #c026d3); }
 .kcard-hd.unica { background: linear-gradient(120deg, #0284c7, #0ea5e9); }
 .kcard-hd.kit { background: linear-gradient(120deg, #0d9488, #06b6d4); }
+.kcard-hd.misto { background: linear-gradient(120deg, #b45309, #d97706); }
+.kcard-partes { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.kparte { font-size: 9px; font-weight: 800; letter-spacing: .3px; padding: 2px 7px; border-radius: 20px; color: #fff; }
+.kparte.p1 { background: #6366f1; } .kparte.p2 { background: #c026d3; } .kparte.unica { background: #0ea5e9; } .kparte.kit { background: #0d9488; }
+.kcard-obs { margin-top: 7px; font-size: 11px; font-weight: 700; color: #9a6a12; background: #fef9ec; border: 1px solid #fce3b0; border-radius: 8px; padding: 5px 8px; }
 .kcard-op { font-weight: 800; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kcard-badge { font-size: 9px; font-weight: 800; letter-spacing: .4px; padding: 3px 8px; border-radius: 20px; background: #ffffff38; flex: 0 0 auto; margin-left: 8px; }
 .kcard-bd { padding: 9px 11px 11px; }

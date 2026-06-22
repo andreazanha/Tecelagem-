@@ -21,6 +21,7 @@ const BASE: Omit<QuadroCfg, "colunas"> = {
   mostrarMaquinas: false,
   enviarLabel: "Enviar p/ expedição ▶",
   setorDefeito: "costura", // "Voltou com defeito" devolve à costureira que fez
+  agruparPorPedido: true, // junta kit + Parte 1/2/Única do mesmo pedido num card só
   nota: "Cada coluna é uma revisadora. Revisar → coluna dela → Enviar p/ expedição. Com defeito, devolve para a costureira que fez.",
 };
 

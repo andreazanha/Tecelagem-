@@ -96,6 +96,7 @@ export interface CardProducao {
   codigo_pai?: string | null;
   data_pedido?: string | null;
   data_entrega?: string | null;
+  observacao?: string | null;
 }
 
 export interface Sugestao {
