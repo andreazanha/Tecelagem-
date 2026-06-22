@@ -37,7 +37,7 @@ export function Revisao() {
 
   const colunas: ColCfg[] = [
     { cor: "prioridade", titulo: "Passar na frente", sub: "Urgentes / clientes atrasados", status: "aguardando", acao: "fazer", somentePrioridade: true },
-    { cor: "aguardando", titulo: "Aguardando para enviar", sub: "Chegou da costura", status: "aguardando", operador: "", acao: "fazer", botaoLabel: "Revisar ▶" },
+    { cor: "aguardando", titulo: "Aguardando para revisar", sub: "Chegou da costura", status: "aguardando", operador: "", acao: "fazer", botaoLabel: "Revisar ▶" },
     ...revisadoras.map<ColCfg>((nome) => ({
       cor: "fazendo",
       titulo: nome,
