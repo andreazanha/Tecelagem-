@@ -68,12 +68,15 @@ export function NovoPedidoArte({ info }: { info: NovoPedidoInfo | null }) {
         ))}
       </div>
 
-      <img className="np-boneco" src="/boneco-big.png" alt="" />
-
-      <div className="np-centro">
-        <div className="np-sino">🔔</div>
-        <h1 className="np-titulo">NOVO<br />PEDIDO!</h1>
-        <div className="np-sub">UM NOVO DESAFIO CHEGOU 💪 VAMOS FAZER ACONTECER!</div>
+      <div className="np-wrap">
+        <div className="np-hero">
+          <div className="np-text">
+            <div className="np-sino">🔔</div>
+            <h1 className="np-titulo">NOVO<br />PEDIDO!</h1>
+            <div className="np-sub">UM NOVO DESAFIO CHEGOU 💙 VAMOS FAZER ACONTECER!</div>
+          </div>
+          <img className="np-boneco" src="/boneco-big.png" alt="" />
+        </div>
 
         <div className="np-stats">
           {stats.map((s) => (

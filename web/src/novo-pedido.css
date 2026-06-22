@@ -1,6 +1,7 @@
 /* Tela "NOVO PEDIDO!" — celebração no painel de TV (1920×1080, dentro do TVFrame). */
 .np-bg {
   position: relative; width: 1920px; height: 1080px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
   background:
     radial-gradient(1200px 900px at 50% 8%, #1e40af, transparent 60%),
     radial-gradient(1000px 1000px at 85% 100%, #1d4ed8, transparent 60%),
@@ -19,31 +20,27 @@
   100% { transform: translateY(1120px) rotate(540deg); }
 }
 
-/* boneco à direita */
-.np-boneco {
-  position: absolute; right: 60px; bottom: 0; height: 940px; width: auto;
-  filter: drop-shadow(0 20px 50px #00000066);
-  z-index: 2;
+/* grupo central (tudo centralizado) */
+.np-wrap {
+  position: relative; z-index: 3;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
 }
 
-.np-centro {
-  position: absolute; left: 55px; top: 0; bottom: 0; width: 1045px;
-  display: flex; flex-direction: column; justify-content: center; align-items: center;
-  text-align: center; z-index: 3;
-}
-.np-sino { font-size: 84px; filter: drop-shadow(0 0 26px #fbbf24aa); animation: np-toca 1.6s ease-in-out infinite; }
+/* título + boneco lado a lado, centralizados */
+.np-hero { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.np-text { display: flex; flex-direction: column; align-items: center; }
+.np-boneco { height: 640px; width: auto; margin-bottom: -10px; filter: drop-shadow(0 20px 50px #00000066); }
+
+.np-sino { font-size: 76px; filter: drop-shadow(0 0 26px #fbbf24aa); animation: np-toca 1.6s ease-in-out infinite; }
 @keyframes np-toca { 0%,100% { transform: rotate(-10deg); } 50% { transform: rotate(10deg); } }
 
 .np-titulo {
-  margin: 6px 0 0; font-size: 168px; line-height: .92; font-weight: 900; letter-spacing: 2px;
+  margin: 4px 0 0; font-size: 150px; line-height: .9; font-weight: 900; letter-spacing: 2px;
   text-shadow: 0 0 40px #3b82f6cc, 0 8px 0 #1e3a8a; color: #fff;
 }
-.np-sub {
-  margin-top: 22px; font-size: 30px; font-weight: 800; letter-spacing: .5px;
-  color: #bfdbfe;
-}
+.np-sub { margin-top: 20px; font-size: 28px; font-weight: 800; letter-spacing: .5px; color: #bfdbfe; }
 
-.np-stats { margin-top: 54px; display: flex; gap: 22px; }
+.np-stats { margin-top: 44px; display: flex; gap: 20px; }
 .np-stat {
   min-width: 180px; padding: 22px 18px; border-radius: 22px;
   background: linear-gradient(180deg, #1e3a8a99, #1e40af66);
@@ -54,7 +51,7 @@
 .np-stat-v { margin-top: 4px; font-size: 28px; font-weight: 900; color: #fff; white-space: nowrap; }
 
 .np-cta {
-  margin-top: 50px; padding: 22px 70px; border-radius: 999px; font-size: 34px; font-weight: 900;
+  margin-top: 40px; padding: 22px 70px; border-radius: 999px; font-size: 34px; font-weight: 900;
   letter-spacing: 1px; color: #07235e;
   background: linear-gradient(180deg, #ffffff, #cfe1ff);
   box-shadow: 0 14px 36px #1d4ed888, inset 0 2px 0 #fff; animation: np-pulsa 1.8s ease-in-out infinite;
