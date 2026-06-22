@@ -162,6 +162,7 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .btn-soft:hover { background: #e0e7ff; color: #4338ca; }
 .icon-btn { border: 1px solid #e2e8f0; background: #fff; border-radius: 8px; width: 30px; height: 30px; cursor: pointer; color: #ef4444; }
 .icon-btn:disabled { opacity: .4; cursor: default; }
+.icon-btn.danger:hover { background: #fef2f2; border-color: #fecaca; }
 
 .dropzone { display: grid; place-items: center; gap: 6px; padding: 28px; border: 2px dashed #c7d2fe; border-radius: 12px; background: #fafbff; cursor: pointer; text-align: center; }
 .dropzone input { display: none; }

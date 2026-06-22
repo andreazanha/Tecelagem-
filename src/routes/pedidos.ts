@@ -380,6 +380,20 @@ pedidos.post("/", async (c) => {
   return c.json({ id, codigo_pai }, 201);
 });
 
+// EXCLUI um pedido lançado errado (e tudo que depende dele).
+pedidos.delete("/:id", async (c) => {
+  const id = c.req.param("id");
+  const exists = await c.env.DB.prepare("SELECT id FROM pedidos WHERE id = ?").bind(id).first();
+  if (!exists) return c.json({ error: "pedido não encontrado" }, 404);
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM producao_eventos WHERE pedido_id = ?").bind(id),
+    c.env.DB.prepare("DELETE FROM producao WHERE pedido_id = ?").bind(id),
+    c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id = ?").bind(id),
+    c.env.DB.prepare("DELETE FROM pedidos WHERE id = ?").bind(id),
+  ]);
+  return c.json({ ok: true });
+});
+
 // UPLOAD dos PDFs originais (um ou vários — preserva todos no R2 sob orig/)
 pedidos.post("/:id/pdf", async (c) => {
   const id = c.req.param("id");

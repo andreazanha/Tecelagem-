@@ -16,6 +16,17 @@ export function Pedidos() {
       .finally(() => setCarregando(false));
   }, []);
 
+  async function excluir(p: Pedido) {
+    const cod = p.codigo_pai || p.numero_erp || "";
+    if (!confirm(`Excluir o pedido ${cod} de ${p.cliente_nome}?\n\nIsso remove o pedido e seus cards da produção. Não dá para desfazer.`)) return;
+    try {
+      await api.excluirPedido(p.id);
+      setPedidos((prev) => prev.filter((x) => x.id !== p.id));
+    } catch (e) {
+      alert("Não foi possível excluir: " + (e as Error).message);
+    }
+  }
+
   const q = busca.trim().toLowerCase();
   const lista = q
     ? pedidos.filter(
@@ -71,6 +82,7 @@ export function Pedidos() {
                   <th className="num">Peças</th>
                   <th>Entrega</th>
                   <th>Status</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -104,6 +116,15 @@ export function Pedidos() {
                     <td data-label="Entrega">{p.data_entrega || "—"}</td>
                     <td data-label="Status">
                       <span className={"status status-" + p.status}>{p.status}</span>
+                    </td>
+                    <td data-label="">
+                      <button
+                        className="icon-btn danger"
+                        title="Excluir pedido"
+                        onClick={() => excluir(p)}
+                      >
+                        🗑
+                      </button>
                     </td>
                   </tr>
                 ))}

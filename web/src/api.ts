@@ -194,6 +194,8 @@ async function j<T>(res: Response): Promise<T> {
 export const api = {
   listarPedidos: () => fetch("/api/pedidos").then((r) => j<Pedido[]>(r)),
   obterPedido: (id: string) => fetch(`/api/pedidos/${id}`).then((r) => j<Pedido>(r)),
+  excluirPedido: (id: string) =>
+    fetch(`/api/pedidos/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   criarPedido: (body: NovoPedidoBody) =>
     fetch("/api/pedidos", {
       method: "POST",
