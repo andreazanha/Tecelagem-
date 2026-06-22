@@ -38,7 +38,6 @@ export function Costura() {
   }, []);
 
   const colunas: ColCfg[] = [
-    { cor: "aguardando", titulo: "A distribuir", sub: "Chegou do corte", status: "aguardando", operador: "", acao: "fazer", botaoLabel: "Atribuir ▶" },
     ...costureiras.map<ColCfg>((nome) => ({
       cor: "fazendo",
       titulo: nome,

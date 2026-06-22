@@ -137,14 +137,20 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     setCards((prev) =>
       body.setor && body.setor !== c.setor ? prev.filter((x) => !mesmo(x)) : prev.map((x) => (mesmo(x) ? { ...x, ...body } : x))
     );
-    await api.atualizarProducao(c.pedido_id, c.parte, body);
-    historico.registrar({
-      label: opCodigo(c),
-      desfazer: () => api.atualizarProducao(c.pedido_id, c.parte, { status: antes.status, setor: antes.setor, operador: antes.operador }),
-      refazer: () => api.atualizarProducao(c.pedido_id, c.parte, body),
-    });
-    setAberto(null);
-    recarregar();
+    try {
+      await api.atualizarProducao(c.pedido_id, c.parte, body);
+      historico.registrar({
+        label: opCodigo(c),
+        desfazer: () => api.atualizarProducao(c.pedido_id, c.parte, { status: antes.status, setor: antes.setor, operador: antes.operador }),
+        refazer: () => api.atualizarProducao(c.pedido_id, c.parte, body),
+      });
+    } catch {
+      alert("Não foi possível atualizar o card. Tente novamente.");
+    } finally {
+      // Recarrega SEMPRE (mesmo em erro): nunca deixa o card sumido esperando refresh.
+      setAberto(null);
+      recarregar();
+    }
   }
   // Toda ação passa pelo modal (senha do operador interno + destino quando aplicável).
   function acaoCard(c: CardProducao, acao: Acao) {
