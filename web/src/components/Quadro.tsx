@@ -88,6 +88,7 @@ export interface QuadroCfg {
   semPrioridade?: boolean; // esconde o "passar na frente" (ex.: Costura)
   proxSetorKit?: string | null; // destino dos kits (pronta-entrega) ao enviar, se diferente
   setorDefeito?: string; // setor para onde "Voltou com defeito" devolve a peça (ex.: Revisão → Costura)
+  enviarSemPessoa?: boolean; // enviar para a FILA do próximo setor (aguardando), sem escolher pessoa
 }
 
 // Setores cujas colunas são PESSOAS. Costura = costureiras terceirizadas
@@ -170,14 +171,15 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     else {
       const destino = destinoDe(card);
       if (!destino) return;
-      if (pessoasDeSetor(destino)) mudar(card, { setor: destino, status: "fazendo", operador: pessoaDestino || "" });
-      else mudar(card, { setor: destino, status: "aguardando" });
+      if (pessoasDeSetor(destino) && !cfg.enviarSemPessoa) mudar(card, { setor: destino, status: "fazendo", operador: pessoaDestino || "" });
+      else mudar(card, { setor: destino, status: "aguardando" }); // vai para a fila (sem dono)
     }
   }
 
   // Pessoa (costureira/revisadora) a escolher no modal, se a ação leva a um setor por pessoa.
   function destinoPessoa(card: CardProducao, acao: Acao): DestinoPessoa | null {
     if (acao === "enviar") {
+      if (cfg.enviarSemPessoa) return null; // vai para a fila, sem escolher pessoa
       const d = destinoDe(card);
       const f = d ? pessoasDeSetor(d) : null;
       return d && f ? { setor: d, fonte: f, label: tituloSetor(d) } : null;
