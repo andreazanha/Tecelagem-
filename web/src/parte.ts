@@ -42,7 +42,7 @@ export function calcularPartes(itens: PedidoItem[], modelos: Modelo[]): ParteCal
 
   const ehKit = (p: string) => /\bkit\b/i.test(p || "");
   const parteDe = (it: PedidoItem): number | "kit" => {
-    if (ehKit(it.produto)) return "kit";
+    if (it.kit || ehKit(it.produto)) return "kit";
     const cod = norm((it.ref || "").trim());
     if (cod && porCodigo.has(cod)) return porCodigo.get(cod)!;
     const nm = porNome.get(norm(modeloDe(it.produto)));

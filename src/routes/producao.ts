@@ -21,7 +21,7 @@ async function garantirCards(env: Env) {
   const cat = await catalogoDe(env);
   for (const f of faltantes) {
     const { results: itens } = await env.DB.prepare(
-      "SELECT produto, ref, cor_grade, tamanho, qtd, parte, origem FROM pedido_itens WHERE pedido_id = ?"
+      "SELECT produto, ref, cor_grade, tamanho, qtd, parte, kit, origem FROM pedido_itens WHERE pedido_id = ?"
     )
       .bind(f.id)
       .all<ItemBase>();

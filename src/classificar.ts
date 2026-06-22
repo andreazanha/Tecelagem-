@@ -15,6 +15,7 @@ export interface ItemBase {
   tamanho?: string | null;
   qtd: number;
   parte?: string | null;
+  kit?: boolean | number | null; // marcado como kit (pronta-entrega/estoque) na criação
   origem?: string | null; // número do pedido de origem (OP que junta vários)
 }
 
@@ -102,7 +103,8 @@ export function tipoDe(produto: string, tamanho?: string | null): string {
 // código "KT..." são componentes que compõem os kits e são produzidos individualmente. Por isso só
 // olhamos o nome (it.produto), nunca o código (it.ref), e "KT" não é a palavra "KIT".
 export function ehKit(it: ItemBase): boolean {
-  return /\bkit\b/i.test(it.produto || "");
+  // Marcado manualmente como kit (pedido de estoque) OU nome contém "KIT".
+  return !!it.kit || /\bkit\b/i.test(it.produto || "");
 }
 
 // Tipo da PEÇA PRINCIPAL do kit pelo tamanho (largura): ~70 → Peseira; 90+ → Manta; pequeno → Almofada.

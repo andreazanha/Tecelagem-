@@ -6,6 +6,7 @@ export interface PedidoItem {
   tamanho?: string | null;
   qtd: number;
   parte: string;
+  kit?: boolean; // marcado como kit (pronta-entrega / estoque)
   origem?: string | null; // número do pedido de origem (OP que junta vários)
 }
 

@@ -185,6 +185,7 @@ pedidos.post("/previa", async (c) => {
       tamanho: it.tamanho || null,
       qtd: Math.max(0, Math.trunc(Number(it.qtd) || 0)),
       parte: it.parte || "unico",
+      kit: it.kit ? 1 : 0,
       origem: it.origem || null,
     }));
   if (itens.length === 0) return c.json({ error: "adicione ao menos um item para visualizar" }, 400);
@@ -231,6 +232,7 @@ interface ItemIn {
   tamanho?: string;
   qtd?: number | string;
   parte?: string;
+  kit?: boolean;
   origem?: string;
 }
 interface PedidoIn {
@@ -357,8 +359,8 @@ pedidos.post("/", async (c) => {
     const parte = PARTES.includes(it.parte || "") ? (it.parte as string) : "unico";
     stmts.push(
       c.env.DB.prepare(
-        `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, origem)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, origem)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         crypto.randomUUID(),
         id,
@@ -368,6 +370,7 @@ pedidos.post("/", async (c) => {
         it.tamanho || null,
         Math.max(0, Math.trunc(Number(it.qtd) || 0)),
         parte,
+        it.kit ? 1 : 0,
         it.origem || null
       )
     );

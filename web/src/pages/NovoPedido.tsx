@@ -465,12 +465,14 @@ export function NovoPedido() {
                   />
                 </td>
                 <td>
-                  <span
-                    className={"chip" + (partes[i]?.value === "p1" ? " chip-soft" : "")}
-                    title="Classificado automaticamente pelo código/nome do modelo"
+                  <button
+                    type="button"
+                    className={"chip" + (it.kit ? " chip-kit" : partes[i]?.value === "p1" ? " chip-soft" : "")}
+                    title={it.kit ? "Kit (pronta-entrega → estoque). Clique para voltar ao automático." : "Classificado automaticamente. Clique para marcar como Kit (estoque)."}
+                    onClick={() => setItem(i, { kit: !it.kit })}
                   >
-                    {partes[i]?.label ?? "—"}
-                  </span>
+                    {it.kit ? "KIT" : partes[i]?.label ?? "—"}
+                  </button>
                 </td>
                 <td>
                   <button
