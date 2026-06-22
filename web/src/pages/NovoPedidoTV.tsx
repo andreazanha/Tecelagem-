@@ -29,14 +29,6 @@ function horaDe(s?: string | null) {
   }
 }
 
-const CONFETE = Array.from({ length: 70 }, (_, i) => ({
-  left: (i * 37) % 100,
-  delay: (i % 10) * 0.4,
-  dur: 3 + (i % 5),
-  cor: ["#fde047", "#60a5fa", "#f472b6", "#34d399", "#fb923c", "#a78bfa"][i % 6],
-  size: 6 + (i % 4) * 2,
-}));
-
 // Arte da celebração "NOVO PEDIDO!" — usada no painel dedicado e no pop-up do Painel.
 export function NovoPedidoArte({ info }: { info: NovoPedidoInfo | null }) {
   const stats = useMemo(
@@ -50,34 +42,11 @@ export function NovoPedidoArte({ info }: { info: NovoPedidoInfo | null }) {
     [info]
   );
 
+  // O título 3D + boneco + subtítulo + confete vêm da arte (imagem de fundo).
+  // Aqui desenhamos só a faixa de dados reais + botão por cima.
   return (
     <div className="np-bg">
-      <div className="np-confete">
-        {CONFETE.map((c, i) => (
-          <span
-            key={i}
-            style={{
-              left: c.left + "%",
-              animationDelay: c.delay + "s",
-              animationDuration: c.dur + "s",
-              background: c.cor,
-              width: c.size,
-              height: c.size * 1.6,
-            }}
-          />
-        ))}
-      </div>
-
-      <div className="np-wrap">
-        <div className="np-hero">
-          <div className="np-text">
-            <div className="np-sino">🔔</div>
-            <h1 className="np-titulo">NOVO<br />PEDIDO!</h1>
-            <div className="np-sub">UM NOVO DESAFIO CHEGOU 💙 VAMOS FAZER ACONTECER!</div>
-          </div>
-          <img className="np-boneco" src="/boneco-big.png" alt="" />
-        </div>
-
+      <div className="np-band">
         <div className="np-stats">
           {stats.map((s) => (
             <div className="np-stat" key={s.l}>
@@ -87,7 +56,6 @@ export function NovoPedidoArte({ info }: { info: NovoPedidoInfo | null }) {
             </div>
           ))}
         </div>
-
         <div className="np-cta">VAMOS LÁ!</div>
       </div>
     </div>

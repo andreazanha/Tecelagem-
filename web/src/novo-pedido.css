@@ -1,62 +1,34 @@
-/* Tela "NOVO PEDIDO!" — celebração no painel de TV (1920×1080, dentro do TVFrame). */
+/* Tela "NOVO PEDIDO!" — a arte (título 3D + boneco + subtítulo + confete) vem da
+   imagem de fundo enviada; aqui desenhamos só a faixa de dados reais + botão. */
 .np-bg {
   position: relative; width: 1920px; height: 1080px; overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
-  background:
-    radial-gradient(1200px 900px at 50% 8%, #1e40af, transparent 60%),
-    radial-gradient(1000px 1000px at 85% 100%, #1d4ed8, transparent 60%),
-    linear-gradient(160deg, #0a1f5c, #061235 70%);
+  background: #0a1230 url("/np-bg-full.png") center top / cover no-repeat;
   font-family: Inter, "Segoe UI", sans-serif; color: #fff;
 }
 
-/* confete caindo */
-.np-confete { position: absolute; inset: 0; pointer-events: none; }
-.np-confete span {
-  position: absolute; top: -40px; border-radius: 2px; opacity: .9;
-  animation-name: np-cai; animation-timing-function: linear; animation-iteration-count: infinite;
-}
-@keyframes np-cai {
-  0% { transform: translateY(-40px) rotate(0deg); }
-  100% { transform: translateY(1120px) rotate(540deg); }
+/* faixa inferior que cobre os dados de exemplo da arte e mostra os reais */
+.np-band {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 256px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+  background: linear-gradient(180deg, #0b1f70 0%, #081447 60%, #060f38 100%);
 }
 
-/* grupo central (tudo centralizado) */
-.np-wrap {
-  position: relative; z-index: 3;
-  display: flex; flex-direction: column; align-items: center; text-align: center;
-}
-
-/* título + boneco lado a lado, centralizados */
-.np-hero { display: flex; align-items: center; justify-content: center; gap: 4px; }
-.np-text { display: flex; flex-direction: column; align-items: center; }
-.np-boneco { height: 640px; width: auto; margin-bottom: -10px; filter: drop-shadow(0 20px 50px #00000066); }
-
-.np-sino { font-size: 76px; filter: drop-shadow(0 0 26px #fbbf24aa); animation: np-toca 1.6s ease-in-out infinite; }
-@keyframes np-toca { 0%,100% { transform: rotate(-10deg); } 50% { transform: rotate(10deg); } }
-
-.np-titulo {
-  margin: 4px 0 0; font-size: 150px; line-height: .9; font-weight: 900; letter-spacing: 2px;
-  text-shadow: 0 0 40px #3b82f6cc, 0 8px 0 #1e3a8a; color: #fff;
-}
-.np-sub { margin-top: 20px; font-size: 28px; font-weight: 800; letter-spacing: .5px; color: #bfdbfe; }
-
-.np-stats { margin-top: 44px; display: flex; gap: 20px; }
+.np-stats { display: flex; gap: 22px; }
 .np-stat {
-  min-width: 180px; padding: 22px 18px; border-radius: 22px;
-  background: linear-gradient(180deg, #1e3a8a99, #1e40af66);
-  border: 1px solid #60a5fa55; box-shadow: 0 10px 30px #00000040, inset 0 1px 0 #ffffff22;
+  width: 250px; padding: 18px 16px; border-radius: 20px; text-align: center;
+  background: linear-gradient(180deg, #163a9e, #112a6e);
+  border: 2px solid #38bdf8aa; box-shadow: 0 10px 30px #00000050, 0 0 24px #38bdf833, inset 0 1px 0 #ffffff22;
 }
-.np-stat-ic { font-size: 34px; }
-.np-stat-l { margin-top: 8px; font-size: 16px; font-weight: 800; letter-spacing: 1px; color: #93c5fd; }
-.np-stat-v { margin-top: 4px; font-size: 28px; font-weight: 900; color: #fff; white-space: nowrap; }
+.np-stat-ic { font-size: 30px; line-height: 1; }
+.np-stat-l { margin-top: 6px; font-size: 16px; font-weight: 800; letter-spacing: 1px; color: #93c5fd; }
+.np-stat-v { margin-top: 4px; font-size: 28px; font-weight: 900; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .np-cta {
-  margin-top: 40px; padding: 22px 70px; border-radius: 999px; font-size: 34px; font-weight: 900;
-  letter-spacing: 1px; color: #07235e;
-  background: linear-gradient(180deg, #ffffff, #cfe1ff);
+  padding: 18px 64px; border-radius: 999px; font-size: 32px; font-weight: 900; letter-spacing: 1px;
+  color: #07235e; background: linear-gradient(180deg, #ffffff, #cfe1ff);
   box-shadow: 0 14px 36px #1d4ed888, inset 0 2px 0 #fff; animation: np-pulsa 1.8s ease-in-out infinite;
 }
-@keyframes np-pulsa { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+@keyframes np-pulsa { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
 
 /* Pop-up sobre o Painel quando entra um pedido novo */
 .np-pop { position: absolute; inset: 0; z-index: 80; animation: np-entra .45s ease both; }
