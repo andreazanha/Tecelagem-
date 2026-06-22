@@ -249,7 +249,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     : cards;
 
   return (
-    <>
+    <div className="quadro-page">
       <div className="page-head">
         <div>
           <h1>{cfg.titulo}</h1>
@@ -339,7 +339,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
           }}
         />
       )}
-    </>
+    </div>
   );
 }
 
