@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — Tecelagem (tema escuro)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+    background: #070b16; color: #e8ecf6; min-height: 100vh; position: relative; overflow-x: hidden;
+    padding: 22px 26px 40px;
+  }
+  /* fundo: grade + orbs índigo/roxo/azul (igual dash) */
+  .bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
+  .bg .grid {
+    position: absolute; inset: 0;
+    background-image: linear-gradient(#ffffff06 1px, transparent 1px), linear-gradient(90deg, #ffffff06 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(120% 90% at 50% 0%, #000 25%, transparent 80%);
+  }
+  .bg .orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .55; }
+  .bg .o1 { width: 620px; height: 620px; background: #4338ca; top: -200px; left: -140px; }
+  .bg .o2 { width: 560px; height: 560px; background: #7c3aed; bottom: -220px; right: -120px; }
+  .bg .o3 { width: 400px; height: 400px; background: #0ea5e9; top: 24%; right: 30%; opacity: .3; }
+  .wrap { position: relative; z-index: 1; }
+
+  /* topo */
+  .top { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .title { font-size: 30px; font-weight: 900; letter-spacing: .5px;
+    background: linear-gradient(90deg, #c4b5fd, #38bdf8); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { color: #93a0bd; font-weight: 700; font-size: 13px; margin-top: 2px; }
+  .live { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
+    color: #4ade80; background: #22c55e1a; padding: 7px 14px; border-radius: 999px; }
+  .live .ping { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+  .search { margin-left: auto; background: #ffffff0c; border: 1px solid #ffffff1c; color: #aeb8d0; border-radius: 12px; padding: 10px 16px; font-size: 14px; min-width: 240px; }
+
+  /* stats */
+  .stats { display: flex; gap: 12px; margin-bottom: 22px; flex-wrap: wrap; }
+  .stat { background: #ffffff08; border: 1px solid #ffffff14; border-radius: 16px; padding: 12px 18px; min-width: 130px; backdrop-filter: blur(12px); }
+  .stat b { display: block; font-size: 24px; font-weight: 900; color: #fff; }
+  .stat span { font-size: 11px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: #8b97b6; }
+
+  /* kanban */
+  .kanban { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 12px; }
+  .kcol { flex: 0 0 250px; max-width: 250px; }
+  .khead { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 13px; border-radius: 13px; border: 1px solid #ffffff14; border-left: 5px solid #64748b;
+    background: #ffffff0a; backdrop-filter: blur(12px); margin-bottom: 12px; box-shadow: 0 6px 20px #00000040; }
+  .khead .t { font-weight: 900; font-size: 13.5px; color: #fff; }
+  .khead .s { font-size: 11.5px; font-weight: 700; color: #aab4d0; margin-top: 2px; }
+  .khead .n { font-size: 11px; font-weight: 900; color: #fff; background: #ffffff22; border-radius: 8px; padding: 2px 9px; }
+
+  /* cabeçalho colorido por tipo (igual cor do card) */
+  .h-p1 { border-left-color: #6366f1; background: linear-gradient(120deg, #4338ca55, #6366f130); }
+  .h-p2 { border-left-color: #c026d3; background: linear-gradient(120deg, #7e22ce55, #c026d330); }
+  .h-kit { border-left-color: #06b6d4; background: linear-gradient(120deg, #0d948855, #06b6d430); }
+  .h-go { border-left-color: #10b981; background: linear-gradient(120deg, #05966955, #10b98130); }
+  .h-ok { border-left-color: #3b82f6; background: linear-gradient(120deg, #1d4ed855, #3b82f630); }
+  .h-fire { border-left-color: #ef4444; background: linear-gradient(120deg, #b91c1c55, #ef444430); }
+
+  /* cards */
+  .kbody { display: flex; flex-direction: column; gap: 11px; }
+  .card { background: #0e1426; border: 1px solid #ffffff14; border-radius: 14px; overflow: hidden; box-shadow: 0 8px 26px #00000055; }
+  .card.fire { border: 2px solid #ef4444; box-shadow: 0 8px 26px #ef444433; }
+  .chd { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; color: #fff; }
+  .chd .op { font-weight: 900; font-size: 14px; }
+  .chd .bd { font-size: 9px; font-weight: 900; letter-spacing: .4px; padding: 3px 9px; border-radius: 20px; background: #ffffff33; }
+  .chd .star { margin-left: auto; margin-right: 6px; color: #fde047; font-size: 14px; }
+  .p1 { background: linear-gradient(120deg, #4338ca, #6366f1); }
+  .p2 { background: linear-gradient(120deg, #7e22ce, #c026d3); }
+  .kit { background: linear-gradient(120deg, #0d9488, #06b6d4); }
+  .cbd { padding: 10px 12px 12px; }
+  .row1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .cli { font-weight: 800; font-size: 14px; color: #eef2ff; }
+  .stt { font-size: 10px; font-weight: 800; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+  .stt.ag { background: #f59e0b22; color: #fbbf24; }
+  .stt.go { background: #10b98122; color: #34d399; }
+  .stt.ok { background: #3b82f622; color: #93c5fd; }
+  .prod { font-size: 11.5px; color: #8b97b6; margin-top: 4px; }
+  .boxes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .box { border-radius: 9px; padding: 6px 9px; border: 1px solid #ffffff10; }
+  .box .l { font-size: 8.5px; font-weight: 800; letter-spacing: .4px; }
+  .box .v { font-size: 13px; font-weight: 900; margin-top: 1px; color: #eef2ff; }
+  .box.ped { background: #6366f118; } .box.ped .l { color: #a5b4fc; }
+  .box.ent { background: #ef444418; } .box.ent .l { color: #fca5a5; }
+  .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; }
+  .hint { font-size: 10.5px; color: #6b7798; }
+  .btn { font-weight: 800; font-size: 12px; padding: 7px 14px; border-radius: 9px; border: none; color: #fff; cursor: pointer; }
+  .btn.go { background: #16a34a; } .btn.ok { background: #2563eb; }
+  .btn.send { background: linear-gradient(135deg, #6366f1, #a855f7); }
+  .note { color: #6b7798; font-size: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+  <div class="bg"><div class="grid"></div><div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div></div>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <div class="title">🧶 Tecelagem</div>
+        <div class="sub">Esteira de produção · Parte 1 e Parte 2 seguem até o Corte</div>
+      </div>
+      <span class="live"><span class="ping"></span> Ao vivo</span>
+      <div class="search">🔎 Buscar pedido, cliente…</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><b>8</b><span>Operadores ativos</span></div>
+      <div class="stat"><b>14</b><span>Aguardando</span></div>
+      <div class="stat"><b>6</b><span>Tecendo</span></div>
+      <div class="stat"><b>23</b><span>Tecidos hoje</span></div>
+    </div>
+
+    <div class="kanban">
+      <!-- Passar na frente -->
+      <div class="kcol">
+        <div class="khead h-fire"><div><div class="t">🔥 Passar na frente</div><div class="s">Urgentes / atrasados</div></div><span class="n">1</span></div>
+        <div class="kbody">
+          <div class="card fire">
+            <div class="chd p2"><span class="op">#2588</span><span class="star">★</span><span class="bd">PARTE 2</span></div>
+            <div class="cbd">
+              <div class="row1"><span class="cli">Magazine Luiza</span><span class="stt ag">Aguardando</span></div>
+              <div class="prod">320 pç · 4 modelo(s)</div>
+              <div class="boxes"><div class="box ped"><div class="l">PEDIDO</div><div class="v">12/06</div></div><div class="box ent"><div class="l">ENTREGA</div><div class="v">24/06</div></div></div>
+              <div class="foot"><span class="hint">toque p/ detalhes</span><button class="btn go">Tecer</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Aguardando Parte 1 -->
+      <div class="kcol">
+        <div class="khead h-p1"><div><div class="t">Aguardando</div><div class="s">Máquina 3 · Parte 1 / Única</div></div><span class="n">3</span></div>
+        <div class="kbody">
+          <div class="card">
+            <div class="chd p1"><span class="op">#2601</span><span class="bd">PARTE 1</span></div>
+            <div class="cbd">
+              <div class="row1"><span class="cli">Camicado</span><span class="stt ag">Aguardando</span></div>
+              <div class="prod">180 pç · Aspen, Perola</div>
+              <div class="boxes"><div class="box ped"><div class="l">PEDIDO</div><div class="v">15/06</div></div><div class="box ent"><div class="l">ENTREGA</div><div class="v">28/06</div></div></div>
+              <div class="foot"><span class="hint">toque p/ detalhes</span><button class="btn go">Tecer</button></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="chd p1"><span class="op">#2605</span><span class="bd">ÚNICA</span></div>
+            <div class="cbd">
+              <div class="row1"><span class="cli">MMartan</span><span class="stt ag">Aguardando</span></div>
+              <div class="prod">95 pç · Linea</div>
+              <div class="boxes"><div class="box ped"><div class="l">PEDIDO</div><div class="v">16/06</div></div><div class="box ent"><div class="l">ENTREGA</div><div class="v">30/06</div></div></div>
+              <div class="foot"><span class="hint">toque p/ detalhes</span><button class="btn go">Tecer</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Aguardando Parte 2 -->
+      <div class="kcol">
+        <div class="khead h-p2"><div><div class="t">Aguardando</div><div class="s">Máquina 7 · Parte 2</div></div><span class="n">2</span></div>
+        <div class="kbody">
+          <div class="card">
+            <div class="chd p2"><span class="op">#2599</span><span class="bd">PARTE 2</span></div>
+            <div class="cbd">
+              <div class="row1"><span class="cli">Riachuelo</span><span class="stt ag">Aguardando</span></div>
+              <div class="prod">240 pç · Montana, Otto</div>
+              <div class="boxes"><div class="box ped"><div class="l">PEDIDO</div><div class="v">14/06</div></div><div class="box ent"><div class="l">ENTREGA</div><div class="v">27/06</div></div></div>
+              <div class="foot"><span class="hint">toque p/ detalhes</span><button class="btn go">Tecer</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kits -->
+      <div class="kcol">
+        <div class="khead h-kit"><div><div class="t">Kits</div><div class="s">Pedidos de estoque</div></div><span class="n">2</span></div>
+        <div class="kbody">
+          <div class="card">
+            <div class="chd kit"><span class="op">KIT-0996</span><span class="bd">KIT</span></div>
+            <div class="cbd">
+              <div class="row1"><span class="cli">Estoque · Cachecol CC07</span><span class="stt ag">Aguardando</span></div>
+              <div class="prod">120 pç · Cinza mescla</div>
+              <div class="boxes"><div class="box ped"><div class="l">PEDIDO</div><div class="v">18/06</div></div><div class="box ent"><div class="l">ENTREGA</div><div class="v">—</div></div></div>
+              <div class="foot"><span class="hint">toque p/ detalhes</span><button class="btn go">Tecer</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tecendo -->
+      <div class="kcol">
+        <div class="khead h-go"><div><div class="t">Tecendo</div><div class="s">Em produção</div></div><span class="n">2</span></div>
+        <div class="kbody">
+          <div class="card">
+            <div class="chd p1"><span class="op">#2593</span><span class="bd">PARTE 1</span></div>
+            <div class="cbd">
+              <div class="row1"><span class="cli">Renner</span><span class="stt go">Tecendo</span></div>
+              <div class="prod">Máq 3 · João</div>
+              <div class="boxes"><div class="box ped"><div class="l">PEDIDO</div><div class="v">13/06</div></div><div class="box ent"><div class="l">ENTREGA</div><div class="v">26/06</div></div></div>
+              <div class="foot"><span class="hint">Máq 3 · João</span><button class="btn ok">Finalizar</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tecidos -->
+      <div class="kcol">
+        <div class="khead h-ok"><div><div class="t">Tecidos</div><div class="s">Partes prontas</div></div><span class="n">2</span></div>
+        <div class="kbody">
+          <div class="card">
+            <div class="chd p2"><span class="op">#2591</span><span class="bd">PARTE 2</span></div>
+            <div class="cbd">
+              <div class="row1"><span class="cli">Tok&Stok</span><span class="stt ok">Pronto</span></div>
+              <div class="prod">210 pç · Daytona</div>
+              <div class="boxes"><div class="box ped"><div class="l">PEDIDO</div><div class="v">11/06</div></div><div class="box ent"><div class="l">ENTREGA</div><div class="v">25/06</div></div></div>
+              <div class="foot"><span class="hint">toque p/ detalhes</span><button class="btn send">Enviar ▶</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kits prontos -->
+      <div class="kcol">
+        <div class="khead h-kit"><div><div class="t">Kits prontos</div><div class="s">Seguir p/ passadoria</div></div><span class="n">1</span></div>
+        <div class="kbody">
+          <div class="card">
+            <div class="chd kit"><span class="op">KIT-0980</span><span class="bd">KIT</span></div>
+            <div class="cbd">
+              <div class="row1"><span class="cli">Estoque · Manta MT12</span><span class="stt ok">Pronto</span></div>
+              <div class="prod">80 pç · Bege</div>
+              <div class="boxes"><div class="box ped"><div class="l">PEDIDO</div><div class="v">10/06</div></div><div class="box ent"><div class="l">ENTREGA</div><div class="v">—</div></div></div>
+              <div class="foot"><span class="hint">toque p/ detalhes</span><button class="btn send">Enviar ▶</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">Mockup estático (tema escuro azul + roxo, igual ao painel). Nada do app foi alterado — é só para você avaliar o visual.</div>
+  </div>
+</body>
+</html>
