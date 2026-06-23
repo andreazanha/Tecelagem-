@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Tassel, type Prestador, type Costura, type RomaneioPedido } from "../api";
+import { api, type Tassel, type Prestador, type Costura, type RomaneioPedido, type RomaneioData } from "../api";
 
 const brl = (v: number) => "R$ " + (Number(v) || 0).toFixed(2).replace(".", ",");
 const br = (d?: string | null) => {
@@ -7,6 +7,13 @@ const br = (d?: string | null) => {
   const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
 };
+// Famílias de peças que um serviço de costura pode cobrar.
+const AGRUP: { id: string; label: string }[] = [
+  { id: "peseira_manta", label: "Peseiras / Mantas" },
+  { id: "almofada_capa", label: "Almofadas / Capas" },
+  { id: "todas", label: "Todas as peças" },
+];
+const agrupLabel = (id?: string) => AGRUP.find((a) => a.id === id)?.label || "Todas as peças";
 
 export function Romaneios() {
   const [aba, setAba] = useState<"romaneios" | "tasseis" | "costura" | "prestadores" | "relatorios">("romaneios");
@@ -121,94 +128,163 @@ function RomaneiosPedidos() {
   );
 }
 
+function selCss(): React.CSSProperties {
+  return { width: "100%", maxWidth: 320, padding: "10px 12px", fontSize: 14, borderRadius: 10, border: "1px solid #e2e8f0" };
+}
+
 function RomaneioModal({ pedido, onFechar }: { pedido: RomaneioPedido; onFechar: () => void }) {
-  const [prestadores, setPrestadores] = useState<string[]>([]);
-  const [prestador, setPrestador] = useState("");
-  const [gerando, setGerando] = useState(false);
+  const [data, setData] = useState<RomaneioData | null>(null);
+  const [carregando, setCarregando] = useState(true);
+  const [costureiras, setCostureiras] = useState<string[]>([]);
+  const [tasselistas, setTasselistas] = useState<string[]>([]);
+  const [costureira, setCostureira] = useState("");
+  const [prestadorTassel, setPrestadorTassel] = useState("");
+  const [gerando, setGerando] = useState("");
   const [erro, setErro] = useState("");
 
   useEffect(() => {
-    api
-      .listarPrestadores()
-      .then((l) => setPrestadores(l.filter((x) => (x.servico || "") === "costura").map((x) => x.nome)))
-      .catch(() => {});
-  }, []);
+    api.obterRomaneio(pedido.pedido_id).then(setData).catch((e) => setErro((e as Error).message)).finally(() => setCarregando(false));
+    api.listarPrestadores().then((l) => {
+      setCostureiras(l.filter((x) => (x.servico || "") === "costura").map((x) => x.nome));
+      setTasselistas(l.filter((x) => (x.servico || "") === "tassel").map((x) => x.nome));
+    }).catch(() => {});
+  }, [pedido.pedido_id]);
 
-  async function gerar() {
-    setErro("");
-    setGerando(true);
+  async function gerarCostura() {
+    setErro(""); setGerando("costura");
     try {
-      const r = await api.gerarRomaneioCostura(pedido.pedido_id, prestador);
+      const r = await api.gerarRomaneioCostura(pedido.pedido_id, costureira);
       window.open(r.url, "_blank");
-    } catch (e) {
-      setErro((e as Error).message);
-    } finally {
-      setGerando(false);
-    }
+    } catch (e) { setErro((e as Error).message); } finally { setGerando(""); }
+  }
+  async function gerarTassel() {
+    setErro(""); setGerando("tassel");
+    try {
+      const r = await api.gerarRomaneioTassel(pedido.pedido_id, prestadorTassel);
+      window.open(r.url, "_blank");
+    } catch (e) { setErro((e as Error).message); } finally { setGerando(""); }
   }
 
-  const linhas = [
-    { servico: "Peseiras / Mantas", qtd: pedido.peseirasMantas },
-    { servico: "Almofadas / Capas", qtd: pedido.almofadasCapas },
-    ...(pedido.outros > 0 ? [{ servico: "Outros", qtd: pedido.outros }] : []),
-  ];
+  const temServicos = !!data?.servicos.length;
 
   return (
     <div className="modal-bg" onClick={onFechar}>
-      <div className="modal-card" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card rom-grande" onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd kit">
           <div className="modal-hd-top">
             <span className="modal-pills">
-              <span className="modal-pill">{pedido.numero}</span>
-              <span className="modal-pill">🧾 Romaneio de Costura</span>
+              <span className="modal-pill">ROMANEIO Nº {pedido.numero}</span>
+              {pedido.reposicao && <span className="modal-pill">reposição</span>}
             </span>
             <button className="modal-x" onClick={onFechar}>✕</button>
           </div>
           <div className="modal-hd-row">
             <span className="modal-cli">{pedido.cliente_nome}</span>
-            {pedido.reposicao && <span className="kstatus fazendo">reposição</span>}
+            <span className="kstatus fazendo">{pedido.totalPecas} pç · entrega {br(pedido.data_entrega)}</span>
           </div>
         </div>
 
         <div className="modal-bd">
-          <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
-            Entrega {br(pedido.data_entrega)} · agrupado por família (sem cor/tamanho).
-          </div>
-          <table className="table">
-            <thead>
-              <tr><th>Serviço (agrupado)</th><th className="num">Qtd</th></tr>
-            </thead>
-            <tbody>
-              {linhas.map((l) => (
-                <tr key={l.servico}>
-                  <td className="strong">{l.servico}</td>
-                  <td className="num strong" style={{ fontSize: 16, color: "#1d4ed8" }}>{l.qtd}</td>
-                </tr>
-              ))}
-              <tr>
-                <td className="strong">TOTAL DE PEÇAS</td>
-                <td className="num strong" style={{ fontSize: 16 }}>{pedido.totalPecas}</td>
-              </tr>
-            </tbody>
-          </table>
+          {erro && <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 13, marginBottom: 10 }}>{erro}</div>}
+          {carregando || !data ? (
+            <div className="muted">Carregando…</div>
+          ) : (
+            <>
+              {/* ───── Romaneio de Costura ───── */}
+              <div className="rom-sec">
+                <div className="rom-sec-hd">
+                  <h3>🪡 Romaneio de Costura <span className="muted">→ costureira</span></h3>
+                  <div className="row-gap">
+                    <select value={costureira} onChange={(e) => setCostureira(e.target.value)} style={selCss()}>
+                      <option value="">— costureira (opcional) —</option>
+                      {costureiras.map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                    <button className="kbtn final" disabled={gerando === "costura"} onClick={gerarCostura}>
+                      {gerando === "costura" ? "Gerando…" : "👁 PDF (2 vias)"}
+                    </button>
+                  </div>
+                </div>
+                <table className="table">
+                  <thead>
+                    <tr><th>Serviço</th><th className="num">Qtd</th><th className="num">Vl Unit.</th><th className="num">Vl Total</th></tr>
+                  </thead>
+                  <tbody>
+                    {temServicos ? (
+                      data.servicos.map((s) => (
+                        <tr key={s.nome}>
+                          <td className="strong">{s.nome} <span className="muted" style={{ fontWeight: 400 }}>· {agrupLabel(s.agrupamento)}</span></td>
+                          <td className="num strong">{s.qtd}</td>
+                          <td className="num">{brl(s.valorUnit)}</td>
+                          <td className="num strong">{brl(s.total)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <>
+                        <tr><td className="strong">Peseiras / Mantas</td><td className="num strong">{data.peseirasMantas}</td><td className="num muted">—</td><td className="num muted">—</td></tr>
+                        <tr><td className="strong">Almofadas / Capas</td><td className="num strong">{data.almofadasCapas}</td><td className="num muted">—</td><td className="num muted">—</td></tr>
+                      </>
+                    )}
+                    <tr className="rom-total">
+                      <td className="strong">TOTAL GERAL</td>
+                      <td className="num strong">{data.totalPecas} pç</td>
+                      <td></td>
+                      <td className="num strong">{temServicos ? brl(data.totalValor) : "—"}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                {!temServicos && (
+                  <p className="muted" style={{ fontSize: 12 }}>
+                    💡 Cadastre os serviços com valor na aba <strong>🪡 Costura</strong> (com o agrupamento) para os valores saírem pré-fixados.
+                  </p>
+                )}
+              </div>
 
-          <label className="campo-l" style={{ marginTop: 16, display: "block" }}>COSTUREIRA (opcional)</label>
-          <select
-            value={prestador}
-            onChange={(e) => setPrestador(e.target.value)}
-            style={{ width: "100%", padding: "11px 13px", fontSize: 15, borderRadius: 10, border: "1px solid #e2e8f0", marginTop: 4 }}
-          >
-            <option value="">— sem costureira (linha em branco) —</option>
-            {prestadores.map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-          {erro && <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 13, marginTop: 10 }}>{erro}</div>}
+              {/* ───── Romaneio de Tassel (se houver) ───── */}
+              {data.tassel && (
+                <div className="rom-sec">
+                  <div className="rom-sec-hd">
+                    <h3>🧶 Romaneio de Tassel <span className="muted">→ prestador de tassel</span></h3>
+                    <div className="row-gap">
+                      <select value={prestadorTassel} onChange={(e) => setPrestadorTassel(e.target.value)} style={selCss()}>
+                        <option value="">— prestador (opcional) —</option>
+                        {tasselistas.map((n) => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      <button className="kbtn tecer" disabled={gerando === "tassel"} onClick={gerarTassel}>
+                        {gerando === "tassel" ? "Gerando…" : "👁 PDF (3 vias)"}
+                      </button>
+                    </div>
+                  </div>
+                  <table className="table">
+                    <thead>
+                      <tr><th>Cor</th><th>Tam</th><th className="num">Tasseis</th><th className="num">Vl Unit.</th><th className="num">Vl Total</th></tr>
+                    </thead>
+                    <tbody>
+                      {data.tassel.linhas.map((l) => (
+                        <tr key={l.cor + l.tamanho}>
+                          <td className="strong">{l.cor || "—"}</td>
+                          <td>{l.tamanho}</td>
+                          <td className="num strong">{l.tasseis}</td>
+                          <td className="num">{l.valorUnit ? brl(l.valorUnit) : "—"}</td>
+                          <td className="num strong">{l.total ? brl(l.total) : "—"}</td>
+                        </tr>
+                      ))}
+                      <tr className="rom-total">
+                        <td className="strong" colSpan={2}>TOTAL</td>
+                        <td className="num strong">{data.tassel.totalTasseis}</td>
+                        <td></td>
+                        <td className="num strong">{brl(data.tassel.totalValor)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <p className="muted" style={{ fontSize: 12 }}>3 vias · só a 1ª (Empresa) tem assinatura · 2ª Prestador · 3ª Caixa.</p>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         <div className="modal-ft">
           <button className="btn" onClick={onFechar}>Fechar</button>
-          <button className="kbtn final" disabled={gerando} onClick={gerar}>
-            {gerando ? "Gerando…" : "👁 Gerar / ver PDF (2 vias)"}
-          </button>
         </div>
       </div>
     </div>
@@ -332,7 +408,7 @@ function TasseisCadastro() {
 // ── Costura (serviço + valor) ────────────────────────────────────────────────
 function CosturaCadastro() {
   const [itens, setItens] = useState<Costura[]>([]);
-  const [novo, setNovo] = useState<Costura>({ nome: "", valor: 0 });
+  const [novo, setNovo] = useState<Costura>({ nome: "", valor: 0, agrupamento: "todas" });
   function recarregar() {
     api.listarCostura().then(setItens).catch(() => {});
   }
@@ -348,7 +424,7 @@ function CosturaCadastro() {
   async function adicionar() {
     if (!novo.nome.trim()) return;
     await salvar(novo);
-    setNovo({ nome: "", valor: 0 });
+    setNovo({ nome: "", valor: 0, agrupamento: "todas" });
   }
   async function remover(c: Costura) {
     await api.excluirCostura(c.nome);
@@ -357,14 +433,16 @@ function CosturaCadastro() {
   return (
     <>
       <p className="muted" style={{ marginTop: -4, marginBottom: 16 }}>
-        Serviços de <strong>costura</strong> e o valor da mão de obra. Usados nos romaneios de costura.
+        Serviços de <strong>costura</strong> com <strong>valor pré-fixado</strong>. O{" "}
+        <strong>agrupamento</strong> diz qual família cada serviço cobra — o romaneio usa essa qtd × valor.
       </p>
       <div className="card">
         <table className="table">
           <thead>
             <tr>
               <th>Serviço de costura</th>
-              <th className="num">Valor (mão de obra)</th>
+              <th>Agrupamento (cobra qual família)</th>
+              <th className="num">Valor unitário</th>
               <th></th>
             </tr>
           </thead>
@@ -372,11 +450,18 @@ function CosturaCadastro() {
             <tr className="row-novo">
               <td>
                 <input
-                  placeholder="Ex.: Fechar almofada"
+                  placeholder="Ex.: Capas tricô / Etiqueta"
                   value={novo.nome}
                   onChange={(e) => setNovo({ ...novo, nome: e.target.value })}
                   onKeyDown={(e) => e.key === "Enter" && adicionar()}
                 />
+              </td>
+              <td>
+                <select value={novo.agrupamento} onChange={(e) => setNovo({ ...novo, agrupamento: e.target.value })}>
+                  {AGRUP.map((a) => (
+                    <option key={a.id} value={a.id}>{a.label}</option>
+                  ))}
+                </select>
               </td>
               <td className="num">
                 <input
@@ -397,6 +482,16 @@ function CosturaCadastro() {
             {itens.map((c) => (
               <tr key={c.nome}>
                 <td className="strong">{c.nome}</td>
+                <td>
+                  <select
+                    defaultValue={c.agrupamento || "todas"}
+                    onChange={(e) => salvar({ ...c, agrupamento: e.target.value })}
+                  >
+                    {AGRUP.map((a) => (
+                      <option key={a.id} value={a.id}>{a.label}</option>
+                    ))}
+                  </select>
+                </td>
                 <td className="num">
                   <input
                     className="w-sm num"
@@ -422,7 +517,7 @@ function CosturaCadastro() {
             ))}
             {itens.length === 0 && (
               <tr>
-                <td colSpan={3} className="empty pad">
+                <td colSpan={4} className="empty pad">
                   Nenhum serviço de costura cadastrado ainda.
                 </td>
               </tr>

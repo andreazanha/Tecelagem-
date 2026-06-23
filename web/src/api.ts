@@ -77,6 +77,7 @@ export interface Prestador {
 export interface Costura {
   nome: string;
   valor: number;
+  agrupamento?: string; // peseira_manta | almofada_capa | todas
 }
 
 export interface CardProducao {
@@ -164,6 +165,25 @@ export interface RomaneioPedido {
   almofadasCapas: number;
   outros: number;
   totalPecas: number;
+}
+export interface RomaneioServico {
+  nome: string;
+  agrupamento: string;
+  qtd: number;
+  valorUnit: number;
+  total: number;
+}
+export interface TasselLinha {
+  cor: string;
+  tamanho: string;
+  tasseis: number;
+  valorUnit: number;
+  total: number;
+}
+export interface RomaneioData extends RomaneioPedido {
+  servicos: RomaneioServico[];
+  totalValor: number;
+  tassel: { linhas: TasselLinha[]; totalTasseis: number; totalValor: number } | null;
 }
 
 export interface Sugestao {
@@ -405,6 +425,7 @@ export const api = {
     return fetch(`/api/expedicao/todos${qs ? `?${qs}` : ""}`).then((r) => j<PedidoTimeline[]>(r));
   },
   listarRomaneiosPedidos: () => fetch("/api/romaneios/pedidos").then((r) => j<RomaneioPedido[]>(r)),
+  obterRomaneio: (id: string) => fetch(`/api/romaneios/${id}`).then((r) => j<RomaneioData>(r)),
   gerarRomaneioCostura: (id: string, prestador?: string) =>
     fetch(`/api/romaneios/${id}`, {
       method: "POST",

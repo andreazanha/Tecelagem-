@@ -507,3 +507,13 @@ body.dark .empty, body.dark .breadcrumb { color: var(--muted); }
 body.dark .med-totais, body.dark .fis-frete, body.dark .tp-filtros, body.dark .tr-aba, body.dark .tr-chip { background: #0f1830; }
 body.dark .tp-tabela tbody tr:hover { background: #0f1830; }
 body.dark .kcol-vazio { border-color: #ffffff1a; color: #ffffff44; }
+
+/* Romaneio — tela grande (costura + tassel) */
+.modal-card.rom-grande { width: min(960px, 96vw); max-width: 960px; }
+.rom-sec { margin-bottom: 22px; }
+.rom-sec + .rom-sec { border-top: 1px solid var(--line); padding-top: 16px; }
+.rom-sec-hd { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.rom-sec-hd h3 { margin: 0; font-size: 16px; }
+.rom-sec-hd h3 .muted { font-size: 12px; font-weight: 600; }
+.rom-total td { border-top: 2px solid var(--line); background: #f8fafc; font-size: 15px; }
+body.dark .rom-total td { background: #ffffff08; }

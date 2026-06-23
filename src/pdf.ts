@@ -308,7 +308,9 @@ export async function gerarRomaneioTassel(
     R(0, top, A4W, 24, NAVY);
     T("BIG TRICOT", ix, top + 16, 12, bld, WHITE);
     T("· Romaneio de Tassel (mão de obra)", ix + 92, top + 16, 9.5, reg, hx("#c7d2e0"));
-    TR(`${n}ª via · ${geradoEm()}`, ix + iw, top + 15, 8.5, reg, hx("#c7d2e0"));
+    // Nº do romaneio = Nº do pedido/OP · via (Empresa / Prestador / Caixa).
+    const via = ["Empresa", "Prestador", "Caixa"][n - 1] || "";
+    TR(`ROMANEIO Nº ${ped.numero} · ${n}ª via (${via}) · ${geradoEm()}`, ix + iw, top + 15, 8.5, bld, WHITE);
     let y = top + 24 + 16;
     T("Cliente:", ix, y, 9, reg, MUTE);
     T(fit(ped.cliente, bld, 9, iw * 0.5 - 60), ix + 44, y, 9, bld);
@@ -339,7 +341,8 @@ export async function gerarRomaneioTassel(
     T(`TOTAL: ${rom.totalTasseis} tasseis`, ix + 10, y + 15, 10.5, bld, hx("#3a2f12"));
     TR(`MÃO DE OBRA: ${money(rom.totalValor)}`, ix + iw - 10, y + 15, 11, bld, hx("#3a2f12"));
     y += 22 + 18;
-    T("Assinatura do prestador: ______________________________", ix, y, 9, reg, MUTE);
+    // Só a 1ª via (Empresa) tem campo de assinatura; 2ª (prestador) e 3ª (caixa) são controle.
+    if (n === 1) T("Assinatura do prestador: ______________________________", ix, y, 9, reg, MUTE);
   }
 
   const viaH = (A4H - 16) / 3;
@@ -350,12 +353,25 @@ export async function gerarRomaneioTassel(
   return await doc.save();
 }
 
-// ── Romaneio de COSTURA — 2 vias (1ª Empresa / 2ª Costureira), simplificado ───
-// Mostra só as duas famílias somadas: Peseiras/Mantas e Almofadas/Capas.
+// Uma linha de serviço do romaneio de costura (nome + qtd + valor unit + total).
+export interface ServicoLinha {
+  nome: string;
+  agrupamento: string;
+  qtd: number;
+  valorUnit: number;
+  total: number;
+}
+
+// ── Romaneio de COSTURA — 2 vias (1ª Empresa / 2ª Costureira) ─────────────────
+// Tabela Serviço · Qtd · Vl Unit · Vl Total (valores pré-fixados do cadastro) e
+// TOTAL GERAL (peças + R$). Se não houver serviços cadastrados, cai nas duas
+// famílias (Peseiras/Mantas, Almofadas/Capas) sem valor.
 export async function gerarRomaneioCostura(
   ped: PedidoInfo,
   prestador: string,
-  rom: RomaneioCostura
+  rom: RomaneioCostura,
+  servicos: ServicoLinha[] = [],
+  totalValor = 0
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
@@ -374,20 +390,28 @@ export async function gerarRomaneioCostura(
   const L = (yTop: number, c: ReturnType<typeof rgb>, th = 1, dash?: number[]) =>
     page.drawLine({ start: { x: ix, y: A4H - yTop }, end: { x: ix + iw, y: A4H - yTop }, thickness: th, color: c, ...(dash ? { dashArray: dash } : {}) });
 
+  // Colunas: SERVIÇO | QTD | VL UNIT | VL TOTAL
+  const temValor = servicos.length > 0;
   const cServ = ix + 8;
-  const cQtd = ix + iw - 6;
+  const cQtd = ix + iw * (temValor ? 0.56 : 0.94);
+  const cUnit = ix + iw * 0.78;
+  const cTot = ix + iw - 6;
 
-  const linhas: { servico: string; qtd: number }[] = [
-    { servico: "Peseiras / Mantas", qtd: rom.peseirasMantas },
-    { servico: "Almofadas / Capas", qtd: rom.almofadasCapas },
-  ];
-  if (rom.outros > 0) linhas.push({ servico: "Outros", qtd: rom.outros });
+  // Linhas a imprimir: serviços (com valor) OU as 2 famílias (fallback sem valor).
+  const linhas: { nome: string; qtd: number; valorUnit: number; total: number }[] = temValor
+    ? servicos.map((s) => ({ nome: s.nome, qtd: s.qtd, valorUnit: s.valorUnit, total: s.total }))
+    : [
+        { nome: "Peseiras / Mantas", qtd: rom.peseirasMantas, valorUnit: 0, total: 0 },
+        { nome: "Almofadas / Capas", qtd: rom.almofadasCapas, valorUnit: 0, total: 0 },
+        ...(rom.outros > 0 ? [{ nome: "Outros", qtd: rom.outros, valorUnit: 0, total: 0 }] : []),
+      ];
 
   function drawVia(top: number, n: number) {
     R(0, top, A4W, 24, NAVY);
     T("BIG TRICOT", ix, top + 16, 12, bld, WHITE);
     T("· Romaneio de Costura", ix + 92, top + 16, 9.5, reg, hx("#c7d2e0"));
-    TR(`${n}ª via · ${n === 1 ? "Empresa" : "Costureira"} · ${geradoEm()}`, ix + iw, top + 15, 8.5, reg, hx("#c7d2e0"));
+    // Nº do romaneio = Nº do pedido/OP.
+    TR(`ROMANEIO Nº ${ped.numero} · ${n}ª via (${n === 1 ? "Empresa" : "Costureira"}) · ${geradoEm()}`, ix + iw, top + 15, 8.5, bld, WHITE);
     let y = top + 24 + 16;
     T("Cliente:", ix, y, 9, reg, MUTE);
     T(fit(ped.cliente, bld, 9, iw * 0.5 - 60), ix + 44, y, 9, bld);
@@ -400,22 +424,35 @@ export async function gerarRomaneioCostura(
     T(ped.entrega || "—", ix + iw * 0.56 + 48, y, 9, bld);
     y += 16;
     R(ix, y, iw, 18, GREY);
-    T("SERVIÇO (agrupado)", cServ, y + 12, 8, bld, MUTE);
+    T("SERVIÇO", cServ, y + 12, 8, bld, MUTE);
     TR("QTD", cQtd, y + 12, 8, bld, MUTE);
+    if (temValor) {
+      TR("VL UNIT.", cUnit, y + 12, 8, bld, MUTE);
+      TR("VL TOTAL", cTot, y + 12, 8, bld, MUTE);
+    }
     y += 18;
     for (const l of linhas) {
-      T(l.servico, cServ, y + 14, 10.5, bld);
-      TR(String(l.qtd), cQtd, y + 14, 12, bld, QBLUE);
+      T(fit(l.nome, bld, 10.5, iw * 0.5), cServ, y + 14, 10.5, bld);
+      TR(String(l.qtd), cQtd, y + 14, 11, bld, QBLUE);
+      if (temValor) {
+        TR(money(l.valorUnit), cUnit, y + 14, 9.5, reg);
+        TR(money(l.total), cTot, y + 14, 9.5, bld);
+      }
       L(y + 19, hx("#eef0f4"), 0.7);
       y += 19;
     }
     y += 4;
-    R(ix, y, iw, 22, GOLD);
-    T("TOTAL DE PEÇAS", ix + 10, y + 15, 10.5, bld, hx("#3a2f12"));
-    TR(String(rom.totalPecas), ix + iw - 10, y + 15, 12, bld, hx("#3a2f12"));
-    y += 22 + 20;
-    T("Conferido na IDA: ____________", ix, y, 9, reg, MUTE);
-    T("no RETORNO: ____________", ix + iw * 0.56, y, 9, reg, MUTE);
+    R(ix, y, iw, 24, GOLD);
+    T("TOTAL GERAL", ix + 10, y + 16, 10.5, bld, hx("#3a2f12"));
+    TR(`${rom.totalPecas} pç`, cQtd, y + 16, 10, bld, hx("#3a2f12"));
+    if (temValor) TR(money(totalValor), ix + iw - 10, y + 16, 12, bld, hx("#3a2f12"));
+    y += 24 + 22;
+    // áreas de conferência (IDA / RETORNO)
+    L(y, hx("#cbd5e1"), 0.7);
+    T("Conferido na IDA", ix, y + 12, 8.5, bld, MUTE);
+    T("Assinatura / Data", ix, y + 23, 8, reg, MUTE);
+    T("Conferido no RETORNO", ix + iw * 0.53, y + 12, 8.5, bld, MUTE);
+    T("Assinatura / Data", ix + iw * 0.53, y + 23, 8, reg, MUTE);
   }
 
   const viaH = (A4H - 16) / 2;

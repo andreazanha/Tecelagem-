@@ -228,22 +228,23 @@ prestadores.delete("/:nome", async (c) => {
 export const costura = new Hono<{ Bindings: Env }>();
 
 costura.get("/", async (c) => {
-  const { results } = await c.env.DB.prepare("SELECT nome, valor FROM costura ORDER BY nome").all();
+  const { results } = await c.env.DB.prepare("SELECT nome, valor, agrupamento FROM costura ORDER BY nome").all();
   return c.json(results);
 });
 
 costura.post("/", async (c) => {
-  const b = await c.req.json<{ nome?: string; valor?: number | string }>();
+  const b = await c.req.json<{ nome?: string; valor?: number | string; agrupamento?: string }>();
   const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
   const valor = Math.max(0, Number(b.valor) || 0);
+  const ag = ["peseira_manta", "almofada_capa", "todas"].includes(b.agrupamento || "") ? b.agrupamento! : "todas";
   await c.env.DB.prepare(
-    `INSERT INTO costura (nome, valor) VALUES (?, ?)
-     ON CONFLICT(nome) DO UPDATE SET valor = excluded.valor`
+    `INSERT INTO costura (nome, valor, agrupamento) VALUES (?, ?, ?)
+     ON CONFLICT(nome) DO UPDATE SET valor = excluded.valor, agrupamento = excluded.agrupamento`
   )
-    .bind(nome, valor)
+    .bind(nome, valor, ag)
     .run();
-  return c.json({ nome, valor }, 201);
+  return c.json({ nome, valor, agrupamento: ag }, 201);
 });
 
 costura.delete("/:nome", async (c) => {
