@@ -647,12 +647,21 @@ function RelatoriosPagamento() {
       ) : (
         data.grupos.map((g) => (
           <div className="card" key={g.costureira} style={{ marginBottom: 14 }}>
-            <div className="card-head" style={{ paddingBottom: 12 }}>
+            <div className="card-head" style={{ paddingBottom: 12, gap: 10, flexWrap: "wrap" }}>
               <h2 style={{ margin: 0 }}>👩‍🔧 {g.costureira}</h2>
-              <span className="chip" style={{ fontSize: 14, fontWeight: 800 }}>
-                a pagar: {g.totalPecas} {tipo === "tassel" ? "tasseis" : "pç"} · {brl(g.totalValor)}
-                {g.pendentes ? <span style={{ color: "#94a3b8" }}> · {g.pendentes} pendente(s) {brl(g.pendenteValor || 0)} (não conta)</span> : null}
-              </span>
+              <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                <span className="chip" style={{ fontSize: 14, fontWeight: 800 }}>
+                  a pagar: {g.totalPecas} {tipo === "tassel" ? "tasseis" : "pç"} · {brl(g.totalValor)}
+                  {g.pendentes ? <span style={{ color: "#94a3b8" }}> · {g.pendentes} pendente(s) {brl(g.pendenteValor || 0)} (não conta)</span> : null}
+                </span>
+                <button
+                  className="kbtn final"
+                  title="Recibo de pagamento com QR Code Pix"
+                  onClick={() => window.open(api.reciboPagamentoUrl(mes, tipo, g.costureira), "_blank")}
+                >
+                  🧾 Recibo (Pix)
+                </button>
+              </div>
             </div>
             <table className="table">
               <thead>
@@ -926,7 +935,7 @@ function CosturaCadastro() {
 // ── Prestadores de serviço ───────────────────────────────────────────────────
 function PrestadoresCadastro() {
   const [itens, setItens] = useState<Prestador[]>([]);
-  const [novo, setNovo] = useState<Prestador>({ nome: "", telefone: "", servico: "tassel", obs: "" });
+  const [novo, setNovo] = useState<Prestador>({ nome: "", telefone: "", servico: "costura", obs: "", pix: "", cidade: "" });
   function recarregar() {
     api.listarPrestadores().then(setItens).catch(() => {});
   }
@@ -942,7 +951,7 @@ function PrestadoresCadastro() {
   async function adicionar() {
     if (!novo.nome.trim()) return;
     await salvar(novo);
-    setNovo({ nome: "", telefone: "", servico: "tassel", obs: "" });
+    setNovo({ nome: "", telefone: "", servico: "costura", obs: "", pix: "", cidade: "" });
   }
   async function remover(p: Prestador) {
     await api.excluirPrestador(p.nome);
@@ -951,7 +960,8 @@ function PrestadoresCadastro() {
   return (
     <>
       <p className="muted" style={{ marginTop: -4, marginBottom: 16 }}>
-        Quem faz o serviço (tassel, costura…). Aparecem para escolha ao gerar o romaneio.
+        Quem faz o serviço (costura, tassel…). A <strong>Chave Pix</strong> e a <strong>cidade</strong> entram no{" "}
+        <strong>recibo de pagamento</strong> (QR Code Pix com o valor já preenchido).
       </p>
       <div className="card">
         <table className="table">
@@ -960,7 +970,8 @@ function PrestadoresCadastro() {
               <th>Nome</th>
               <th>Telefone</th>
               <th>Serviço</th>
-              <th>Observação</th>
+              <th>Chave Pix</th>
+              <th>Cidade</th>
               <th></th>
             </tr>
           </thead>
@@ -983,16 +994,23 @@ function PrestadoresCadastro() {
               </td>
               <td>
                 <select value={novo.servico ?? ""} onChange={(e) => setNovo({ ...novo, servico: e.target.value })}>
-                  <option value="tassel">Tassel</option>
                   <option value="costura">Costura</option>
+                  <option value="tassel">Tassel</option>
                   <option value="outro">Outro</option>
                 </select>
               </td>
               <td>
                 <input
-                  placeholder="Observação"
-                  value={novo.obs ?? ""}
-                  onChange={(e) => setNovo({ ...novo, obs: e.target.value })}
+                  placeholder="CPF, e-mail, telefone ou aleatória"
+                  value={novo.pix ?? ""}
+                  onChange={(e) => setNovo({ ...novo, pix: e.target.value })}
+                />
+              </td>
+              <td>
+                <input
+                  placeholder="Cidade"
+                  value={novo.cidade ?? ""}
+                  onChange={(e) => setNovo({ ...novo, cidade: e.target.value })}
                 />
               </td>
               <td>
@@ -1008,7 +1026,8 @@ function PrestadoresCadastro() {
                 <td>
                   <span className="chip">{p.servico || "—"}</span>
                 </td>
-                <td>{p.obs || "—"}</td>
+                <td>{p.pix ? <span className="chip" style={{ background: "#dcfce7", color: "#15803d" }}>✓ Pix</span> : <span className="muted">—</span>}</td>
+                <td>{p.cidade || "—"}</td>
                 <td>
                   <button className="icon-btn" title="Remover" onClick={() => remover(p)}>
                     ✕
@@ -1018,7 +1037,7 @@ function PrestadoresCadastro() {
             ))}
             {itens.length === 0 && (
               <tr>
-                <td colSpan={5} className="empty pad">
+                <td colSpan={6} className="empty pad">
                   Nenhum prestador cadastrado ainda.
                 </td>
               </tr>

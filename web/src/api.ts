@@ -72,6 +72,8 @@ export interface Prestador {
   telefone?: string | null;
   servico?: string | null; // tassel | costura | outro
   obs?: string | null;
+  pix?: string | null; // chave Pix (recibo de pagamento)
+  cidade?: string | null; // cidade do recebedor (BR Code Pix)
 }
 
 export interface Costura {
@@ -578,6 +580,11 @@ export const api = {
     if (mes) q.set("mes", mes);
     if (costureira) q.set("costureira", costureira);
     return `/api/romaneios/pagamento/pdf?${q.toString()}`;
+  },
+  reciboPagamentoUrl: (mes: string, tipo: "costura" | "tassel", costureira: string) => {
+    const q = new URLSearchParams({ tipo, costureira });
+    if (mes) q.set("mes", mes);
+    return `/api/romaneios/recibo/pdf?${q.toString()}`;
   },
   gerarRomaneioAvulso: (body: {
     tipo: "costura" | "tassel";

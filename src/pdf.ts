@@ -1,5 +1,6 @@
 // Gera o PDF de produção/pronta-entrega no padrão Big Tricot (pdf-lib, roda no Worker).
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
+import qrcode from "qrcode-generator";
 import type { Bloco, TasselRomaneio, RomaneioCostura } from "./classificar";
 
 const A4W = 595.28;
@@ -651,5 +652,136 @@ export async function gerarRelatorioPagamento(resumo: ResumoPagamento, tipo: str
   T("TOTAL GERAL A PAGAR (liberados)", ix + 10, y + 17, 11, bld, hx("#3a2f12"));
   TR(money(resumo.totalGeral), ix + iw - 10, y + 17, 13, bld, hx("#3a2f12"));
   T("Pendentes (esmaecidos) ainda não voltaram da costura/prestador — não entram no pagamento até retornarem.", ix, A4H - 24, 8.5, reg, MUTE);
+  return await doc.save();
+}
+
+// ── Recibo de Pagamento (com QR Code Pix e valor preenchido) ──────────────────
+export interface ReciboDados {
+  costureira: string;
+  mesLabel: string;
+  valor: number;
+  romaneios: number; // qtd de romaneios liberados
+  pecas: number;
+  unidade: string; // "pç" | "tasseis"
+  servico: string; // "costura" | "tassel"
+  pixPayload: string; // "copia e cola"
+  chave: string;
+  temPix: boolean;
+}
+
+export async function gerarReciboPagamento(d: ReciboDados): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const reg = await doc.embedFont(StandardFonts.Helvetica);
+  const bld = await doc.embedFont(StandardFonts.HelveticaBold);
+  const M = 40;
+  const ix = M;
+  const iw = A4W - 2 * M;
+  const page = doc.addPage([A4W, A4H]);
+  const SLATE = hx("#334155"),
+    LINEC2 = hx("#cbd5e1");
+
+  const T = (s: string, x: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x, y: A4H - yTop, size, font: f, color: c });
+  const TR = (s: string, xr: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x: xr - f.widthOfTextAtSize(s, size), y: A4H - yTop, size, font: f, color: c });
+  const R = (x: number, yTop: number, w: number, h: number, c = INK) =>
+    page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, color: c });
+  const RB = (x: number, yTop: number, w: number, h: number, c: ReturnType<typeof rgb>, bw = 0.8) =>
+    page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, borderColor: c, borderWidth: bw });
+  const seg = (x1: number, y1: number, x2: number, c: ReturnType<typeof rgb>, th = 0.8) =>
+    page.drawLine({ start: { x: x1, y: A4H - y1 }, end: { x: x2, y: A4H - y1 }, thickness: th, color: c });
+
+  // Cabeçalho
+  R(0, 0, A4W, 70, NAVY);
+  T("BIG TRICOT", ix, 34, 19, bld, WHITE);
+  T("HOME DECOR", ix + 2, 47, 7.5, reg, hx("#c7d2e0"));
+  TR("RECIBO DE PAGAMENTO", ix + iw, 32, 15, bld, WHITE);
+  TR(`Emitido em ${geradoEm()}`, ix + iw, 47, 8.5, reg, hx("#c7d2e0"));
+
+  let y = 110;
+  // Corpo: declaração
+  const texto =
+    `Recebi de BIG TRICOT HOME DECOR a importância de ${money(d.valor)}, referente à mão de obra de ` +
+    `${d.servico === "tassel" ? "tassel" : "costura"} do período de ${d.mesLabel}, conforme os romaneios ` +
+    `liberados (retornados) relacionados abaixo.`;
+  for (const ln of wrap(texto, reg, 11.5, iw)) {
+    T(ln, ix, y, 11.5, reg, SLATE);
+    y += 17;
+  }
+  y += 6;
+
+  // Valor em destaque
+  R(ix, y, iw, 46, hx("#f1f5f9"));
+  RB(ix, y, iw, 46, LINEC2, 0.8);
+  T("VALOR A RECEBER", ix + 16, y + 19, 9, bld, MUTE);
+  T(money(d.valor), ix + 16, y + 38, 22, bld, NAVY);
+  TR(`${d.romaneios} romaneio(s) · ${d.pecas} ${d.unidade}`, ix + iw - 16, y + 28, 11, bld, SLATE);
+  y += 64;
+
+  // Beneficiário
+  T("BENEFICIÁRIO", ix, y, 9, bld, MUTE);
+  T(d.costureira, ix + 110, y, 13, bld, INK);
+  y += 26;
+  seg(ix, y, ix + iw, LINEC2);
+  y += 22;
+
+  // Bloco Pix (QR + dados)
+  if (d.temPix) {
+    T("PAGAMENTO VIA PIX", ix, y, 11, bld, NAVY);
+    y += 8;
+    const qrSize = 150;
+    const qrTop = y;
+    // desenha o QR Code
+    const qr = qrcode(0, "M");
+    qr.addData(d.pixPayload);
+    qr.make();
+    const n = qr.getModuleCount();
+    const cell = qrSize / n;
+    RB(ix, qrTop, qrSize, qrSize, LINEC2, 0.8);
+    for (let r = 0; r < n; r++) {
+      for (let col = 0; col < n; col++) {
+        if (qr.isDark(r, col)) R(ix + col * cell, qrTop + r * cell, cell + 0.3, cell + 0.3, INK);
+      }
+    }
+    // dados ao lado do QR
+    const dx = ix + qrSize + 24;
+    let dy = qrTop + 16;
+    T("Chave Pix:", dx, dy, 9, bld, MUTE);
+    T(fit(d.chave, reg, 11, iw - qrSize - 24), dx, dy + 15, 11, reg, INK);
+    dy += 40;
+    T("Valor:", dx, dy, 9, bld, MUTE);
+    T(money(d.valor), dx, dy + 16, 14, bld, NAVY);
+    dy += 42;
+    T("Escaneie o QR Code ou use o", dx, dy, 9, reg, SLATE);
+    T("Pix Copia e Cola abaixo. O valor", dx, dy + 12, 9, reg, SLATE);
+    T("já vem preenchido.", dx, dy + 24, 9, reg, SLATE);
+    y = qrTop + qrSize + 20;
+
+    // Pix copia e cola (texto completo)
+    T("PIX COPIA E COLA", ix, y, 8.5, bld, MUTE);
+    y += 12;
+    R(ix, y, iw, 4 + 11 * 3, hx("#f8fafc"));
+    RB(ix, y, iw, 4 + 11 * 3, LINEC2, 0.6);
+    let cy = y + 12;
+    for (const ln of wrap(d.pixPayload, reg, 7.5, iw - 16).slice(0, 3)) {
+      T(ln, ix + 8, cy, 7.5, reg, SLATE);
+      cy += 11;
+    }
+    y += 4 + 11 * 3 + 24;
+  } else {
+    R(ix, y, iw, 30, hx("#fff7ed"));
+    RB(ix, y, iw, 30, hx("#fed7aa"), 0.8);
+    T("⚠ Cadastre a chave Pix do prestador em Romaneios › Prestadores para o QR Code aparecer.", ix + 12, y + 19, 9.5, bld, hx("#b45309"));
+    y += 50;
+  }
+
+  // Assinatura
+  y = Math.max(y, A4H - 130);
+  T("Para os devidos fins, firmo o presente recibo.", ix, y, 10, reg, SLATE);
+  y += 50;
+  seg(ix, y, ix + iw * 0.6, LINEC2);
+  T(d.costureira, ix, y + 14, 10.5, bld, INK);
+  T("Assinatura do beneficiário", ix, y + 26, 8.5, reg, MUTE);
+  TR("Data: ____ / ____ / ______", ix + iw, y + 14, 10, reg, SLATE);
   return await doc.save();
 }

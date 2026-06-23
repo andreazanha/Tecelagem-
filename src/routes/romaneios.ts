@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { romaneioCostura, romaneioTassel, criarCatalogo, type ItemBase, type RomaneioCostura } from "../classificar";
-import { gerarRomaneioCostura, gerarRomaneioTassel, gerarRelatorioPagamento, type PedidoInfo, type ServicoLinha } from "../pdf";
+import { gerarRomaneioCostura, gerarRomaneioTassel, gerarRelatorioPagamento, gerarReciboPagamento, type PedidoInfo, type ServicoLinha } from "../pdf";
+import { pixPayload } from "../pix";
 
 export const romaneios = new Hono<{ Bindings: Env }>();
 
@@ -251,6 +252,42 @@ romaneios.put("/emitido/:tipo/:id", async (c) => {
     .run();
   await regenerarPdf(c.env, tipo, id);
   return c.json({ ok: true, url: `/api/pedidos/${id}/pdf/${pdfNome(tipo)}` });
+});
+
+// RECIBO de pagamento (com QR Code Pix e valor preenchido) de uma costureira/prestador.
+romaneios.get("/recibo/pdf", async (c) => {
+  const mes = c.req.query("mes") || "";
+  const tipo = tipoOk(c.req.query("tipo") || "");
+  const costureira = (c.req.query("costureira") || "").trim();
+  if (!costureira) return c.json({ error: "Escolha a costureira/prestador para o recibo." }, 400);
+  const resumo = await resumoPagamento(c.env, mes, tipo, costureira);
+  const grupo = resumo.grupos[0];
+  const valor = grupo ? grupo.totalValor : 0;
+  const liberados = grupo ? grupo.romaneios.filter((r) => r.retornou).length : 0;
+  const prest = await c.env.DB.prepare("SELECT pix, cidade FROM prestadores WHERE nome = ?")
+    .bind(costureira)
+    .first<{ pix: string | null; cidade: string | null }>();
+  const chave = (prest?.pix || "").trim();
+  const temPix = !!chave && valor > 0;
+  const payload = temPix ? pixPayload({ chave, nome: costureira, cidade: prest?.cidade || "BRASIL", valor }) : "";
+  const nomesMes = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  const [ano, mm] = mes.split("-");
+  const mesLabel = mm ? `${nomesMes[Number(mm)] || mm}/${ano}` : "todos os meses";
+  const bytes = await gerarReciboPagamento({
+    costureira,
+    mesLabel,
+    valor,
+    romaneios: liberados,
+    pecas: grupo ? grupo.totalPecas : 0,
+    unidade: tipo === "tassel" ? "tasseis" : "pç",
+    servico: tipo,
+    pixPayload: payload,
+    chave,
+    temPix,
+  });
+  return new Response(bytes, {
+    headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="recibo-${costureira}-${mes || "tudo"}.pdf"` },
+  });
 });
 
 // PDF do relatório de pagamento (Gerar relatório / Baixar PDF).

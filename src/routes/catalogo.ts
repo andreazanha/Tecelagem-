@@ -198,23 +198,24 @@ export const prestadores = new Hono<{ Bindings: Env }>();
 
 prestadores.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT id, nome, telefone, servico, obs FROM prestadores ORDER BY nome"
+    "SELECT id, nome, telefone, servico, obs, pix, cidade FROM prestadores ORDER BY nome"
   ).all();
   return c.json(results);
 });
 
 prestadores.post("/", async (c) => {
-  const b = await c.req.json<{ id?: string; nome?: string; telefone?: string; servico?: string; obs?: string }>();
+  const b = await c.req.json<{ id?: string; nome?: string; telefone?: string; servico?: string; obs?: string; pix?: string; cidade?: string }>();
   const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
   const id = b.id || crypto.randomUUID();
   await c.env.DB.prepare(
-    `INSERT INTO prestadores (id, nome, telefone, servico, obs) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(nome) DO UPDATE SET telefone = excluded.telefone, servico = excluded.servico, obs = excluded.obs`
+    `INSERT INTO prestadores (id, nome, telefone, servico, obs, pix, cidade) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(nome) DO UPDATE SET telefone = excluded.telefone, servico = excluded.servico, obs = excluded.obs,
+       pix = excluded.pix, cidade = excluded.cidade`
   )
-    .bind(id, nome, b.telefone || null, b.servico || null, b.obs || null)
+    .bind(id, nome, b.telefone || null, b.servico || null, b.obs || null, (b.pix || "").trim() || null, (b.cidade || "").trim() || null)
     .run();
-  return c.json({ id, nome, telefone: b.telefone || null, servico: b.servico || null, obs: b.obs || null }, 201);
+  return c.json({ id, nome, telefone: b.telefone || null, servico: b.servico || null, obs: b.obs || null, pix: b.pix || null, cidade: b.cidade || null }, 201);
 });
 
 prestadores.delete("/:nome", async (c) => {
