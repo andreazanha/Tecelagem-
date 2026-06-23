@@ -52,6 +52,7 @@ export function PedidoDetalhe() {
           )}
           <Info label="Data do pedido" value={pedido.data_pedido || "—"} />
           <Info label="Data de entrega" value={pedido.data_entrega || "—"} />
+          <Info label="🧶 Limite da Tecelagem" value={pedido.data_tecelagem || "—"} />
         </div>
         {pedido.observacao && (
           <div style={{ marginTop: 14, color: "#c0392b", fontWeight: 700 }}>

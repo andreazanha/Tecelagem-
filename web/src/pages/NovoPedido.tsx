@@ -30,6 +30,7 @@ export function NovoPedido() {
     reposicao: false,
     data_pedido: "",
     data_entrega: "",
+    data_tecelagem: "",
     observacao: "",
     itens: [linhaVazia()],
   });
@@ -380,6 +381,14 @@ export function NovoPedido() {
                 type="date"
                 value={form.data_entrega}
                 onChange={(e) => set("data_entrega", e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label title="Prazo interno do tear — aparece só no card da Tecelagem">🧶 Data limite da Tecelagem</label>
+              <input
+                type="date"
+                value={form.data_tecelagem}
+                onChange={(e) => set("data_tecelagem", e.target.value)}
               />
             </div>
           </div>

@@ -97,7 +97,7 @@ producao.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT pr.pedido_id, pr.parte, pr.setor, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
             pr.prioridade, pr.iniciado_em, pr.finalizado_em,
-            p.numero_erp, p.cliente_nome, p.data_pedido, p.data_entrega, p.codigo_terceiro, p.codigo_pai, p.observacao
+            p.numero_erp, p.cliente_nome, p.data_pedido, p.data_entrega, p.data_tecelagem, p.codigo_terceiro, p.codigo_pai, p.observacao
        FROM producao pr
        JOIN pedidos p ON p.id = pr.pedido_id
       WHERE pr.setor = ?

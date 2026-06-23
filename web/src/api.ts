@@ -21,6 +21,7 @@ export interface Pedido {
   entrega_pe?: string | null;
   data_pedido?: string | null;
   data_entrega?: string | null;
+  data_tecelagem?: string | null;
   observacao?: string | null;
   pdf_key?: string | null;
   status: string;
@@ -39,6 +40,7 @@ export interface NovoPedidoBody {
   reposicao?: boolean;
   data_pedido?: string;
   data_entrega?: string;
+  data_tecelagem?: string;
   observacao?: string;
   itens: PedidoItem[];
 }
@@ -100,6 +102,7 @@ export interface CardProducao {
   codigo_pai?: string | null;
   data_pedido?: string | null;
   data_entrega?: string | null;
+  data_tecelagem?: string | null;
   observacao?: string | null;
 }
 

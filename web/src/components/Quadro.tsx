@@ -622,8 +622,8 @@ function Coluna({
                     <div className="kbox-v">{br(c.data_pedido)}</div>
                   </div>
                   <div className="kbox ent">
-                    <div className="kbox-l">ENTREGA</div>
-                    <div className="kbox-v">{br(c.data_entrega)}</div>
+                    <div className="kbox-l">{cfg.setor === "tecelagem" ? "PRAZO TEAR" : "ENTREGA"}</div>
+                    <div className="kbox-v">{br(cfg.setor === "tecelagem" ? c.data_tecelagem || c.data_entrega : c.data_entrega)}</div>
                   </div>
                 </div>
                 <div className="kcard-foot">
