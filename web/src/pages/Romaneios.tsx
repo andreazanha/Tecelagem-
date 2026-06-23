@@ -132,8 +132,11 @@ function RomaneiosPedidos({ tipo }: { tipo: "costura" | "tassel" }) {
   );
 }
 
-// Modal de UM romaneio (costura OU tassel) — tabela + campos + gerar PDF.
+// Modal de UM romaneio (costura OU tassel) — itens editáveis + gerar PDF.
+type ServEdit = { nome: string; agrupamento: string; qtd: number; valorUnit: number };
+type TasEdit = { cor: string; tamanho: string; tasseis: number; valorUnit: number };
 function RomaneioModal({ pedido, tipo, onFechar }: { pedido: RomaneioPedido; tipo: "costura" | "tassel"; onFechar: () => void }) {
+  const ehTassel = tipo === "tassel";
   const [data, setData] = useState<RomaneioData | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [pessoas, setPessoas] = useState<string[]>([]);
@@ -143,30 +146,48 @@ function RomaneioModal({ pedido, tipo, onFechar }: { pedido: RomaneioPedido; tip
   const [gerando, setGerando] = useState("");
   const [erro, setErro] = useState("");
   const [ok, setOk] = useState("");
+  const [editando, setEditando] = useState(false);
+  // itens editáveis + cadastros (para valores ao adicionar)
+  const [serv, setServ] = useState<ServEdit[]>([]);
+  const [tas, setTas] = useState<TasEdit[]>([]);
+  const [servCad, setServCad] = useState<Costura[]>([]);
+  const [valTassel, setValTassel] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    api.obterRomaneio(pedido.pedido_id).then(setData).catch((e) => setErro((e as Error).message)).finally(() => setCarregando(false));
-    api.listarPrestadores().then((l) => {
-      const servico = tipo === "tassel" ? "tassel" : "costura";
-      setPessoas(l.filter((x) => (x.servico || "") === servico).map((x) => x.nome));
-    }).catch(() => {});
-  }, [pedido.pedido_id, tipo]);
+    api.obterRomaneio(pedido.pedido_id).then((d) => {
+      setData(d);
+      setServ(d.servicos.map((s) => ({ nome: s.nome, agrupamento: s.agrupamento, qtd: s.qtd, valorUnit: s.valorUnit })));
+      setTas((d.tassel?.linhas || []).map((l) => ({ cor: l.cor, tamanho: l.tamanho, tasseis: l.tasseis, valorUnit: l.valorUnit })));
+    }).catch((e) => setErro((e as Error).message)).finally(() => setCarregando(false));
+    api.listarPrestadores().then((l) => setPessoas(l.filter((x) => (x.servico || "") === (ehTassel ? "tassel" : "costura")).map((x) => x.nome))).catch(() => {});
+    if (ehTassel) api.listarTasseis().then((l) => setValTassel(Object.fromEntries(l.map((t) => [`${t.cor.toUpperCase()}|${t.tamanho.toUpperCase()}`, t.valor])))).catch(() => {});
+    else api.listarCostura().then(setServCad).catch(() => {});
+  }, [pedido.pedido_id, ehTassel]);
 
-  // registrar=false → só visualiza; registrar=true → "Gerar" (marca como gerado/pendente).
+  // registrar=false → só visualiza; registrar=true → "Gerar" (marca como pendente).
   async function gerar(registrar: boolean) {
     setErro(""); setOk(""); setGerando(registrar ? "gerar" : "ver");
     try {
-      const opts = { prestador: pessoa, volumes, dataRetorno, registrar };
-      const r = tipo === "tassel"
-        ? await api.gerarRomaneioTassel(pedido.pedido_id, opts)
-        : await api.gerarRomaneioCostura(pedido.pedido_id, opts);
+      const base = { prestador: pessoa, volumes, dataRetorno, registrar };
+      const opts = editando
+        ? ehTassel
+          ? { ...base, linhas: tas.filter((l) => l.tasseis > 0 && l.cor.trim()).map((l) => ({ cor: l.cor, tamanho: l.tamanho, qtd: l.tasseis })) }
+          : { ...base, servicos: serv.filter((s) => s.qtd > 0 && s.nome).map((s) => ({ nome: s.nome, qtd: s.qtd })) }
+        : base;
+      const r = ehTassel ? await api.gerarRomaneioTassel(pedido.pedido_id, opts) : await api.gerarRomaneioCostura(pedido.pedido_id, opts);
       window.open(r.url, "_blank");
       if (registrar) setOk("✓ Romaneio gerado e salvo na base (pendente até retornar).");
     } catch (e) { setErro((e as Error).message); } finally { setGerando(""); }
   }
 
-  const temServicos = !!data?.servicos.length;
-  const ehTassel = tipo === "tassel";
+  // helpers de edição
+  const valDeServ = (nome: string) => servCad.find((s) => s.nome === nome)?.valor || 0;
+  const agrDeServ = (nome: string) => servCad.find((s) => s.nome === nome)?.agrupamento || "todas";
+  const valDeTas = (cor: string, tam: string) => valTassel[`${cor.toUpperCase()}|${tam.toUpperCase()}`] || 0;
+  const totServ = serv.reduce((s, l) => s + l.qtd * l.valorUnit, 0);
+  const pecServ = serv.reduce((s, l) => s + l.qtd, 0);
+  const totTas = tas.reduce((s, l) => s + l.tasseis * l.valorUnit, 0);
+  const tasTot = tas.reduce((s, l) => s + l.tasseis, 0);
 
   return (
     <div className="modal-bg" onClick={onFechar}>
@@ -206,52 +227,68 @@ function RomaneioModal({ pedido, tipo, onFechar }: { pedido: RomaneioPedido; tip
             </label>
           </div>
 
+          <div className="rom-sec-hd" style={{ marginBottom: 4 }}>
+            <strong style={{ fontSize: 13 }}>Itens do romaneio</strong>
+            <button className={"btn" + (editando ? " btn-soft" : "")} onClick={() => setEditando((v) => !v)}>
+              {editando ? "✓ Concluir edição" : "✎ Editar itens"}
+            </button>
+          </div>
+
           {carregando || !data ? (
             <div className="muted">Carregando…</div>
           ) : ehTassel ? (
-            !data.tassel ? (
-              <p className="muted">Este pedido não tem tassel a confeccionar.</p>
-            ) : (
+            <>
               <table className="table">
                 <thead>
-                  <tr><th>Cor</th><th>Tam</th><th className="num">Tasseis</th><th className="num">Vl Unit.</th><th className="num">Vl Total</th></tr>
+                  <tr><th>Cor</th><th>Tam</th><th className="num">Tasseis</th><th className="num">Vl Unit.</th><th className="num">Vl Total</th>{editando && <th></th>}</tr>
                 </thead>
                 <tbody>
-                  {data.tassel.linhas.map((l) => (
-                    <tr key={l.cor + l.tamanho}>
-                      <td className="strong">{l.cor || "—"}</td>
-                      <td>{l.tamanho}</td>
-                      <td className="num strong">{l.tasseis}</td>
+                  {tas.map((l, i) => (
+                    <tr key={i}>
+                      <td>{editando ? <input value={l.cor} onChange={(e) => setTas((a) => a.map((x, j) => j === i ? { ...x, cor: e.target.value, valorUnit: valDeTas(e.target.value, x.tamanho) } : x))} placeholder="Cor" /> : <span className="strong">{l.cor || "—"}</span>}</td>
+                      <td>{editando ? <select value={l.tamanho} onChange={(e) => setTas((a) => a.map((x, j) => j === i ? { ...x, tamanho: e.target.value, valorUnit: valDeTas(x.cor, e.target.value) } : x))}><option value="G">G</option><option value="P">P</option></select> : l.tamanho}</td>
+                      <td className="num">{editando ? <input className="w-sm num" type="number" min={0} value={l.tasseis || ""} onChange={(e) => setTas((a) => a.map((x, j) => j === i ? { ...x, tasseis: Number(e.target.value) } : x))} /> : <span className="strong">{l.tasseis}</span>}</td>
                       <td className="num">{l.valorUnit ? brl(l.valorUnit) : "—"}</td>
-                      <td className="num strong">{l.total ? brl(l.total) : "—"}</td>
+                      <td className="num strong">{brl(l.tasseis * l.valorUnit)}</td>
+                      {editando && <td><button className="icon-btn" onClick={() => setTas((a) => a.filter((_, j) => j !== i))}>✕</button></td>}
                     </tr>
                   ))}
                   <tr className="rom-total">
                     <td className="strong" colSpan={2}>TOTAL</td>
-                    <td className="num strong">{data.tassel.totalTasseis}</td>
+                    <td className="num strong">{tasTot}</td>
                     <td></td>
-                    <td className="num strong">{brl(data.tassel.totalValor)}</td>
+                    <td className="num strong">{brl(totTas)}</td>
+                    {editando && <td></td>}
                   </tr>
                 </tbody>
               </table>
-            )
+              {editando && <button className="btn btn-soft" style={{ marginTop: 6 }} onClick={() => setTas((a) => [...a, { cor: "", tamanho: "G", tasseis: 0, valorUnit: 0 }])}>＋ Adicionar cor</button>}
+              {!data.tassel && !editando && <p className="muted">Este pedido não tem tassel a confeccionar.</p>}
+            </>
           ) : (
             <>
               <table className="table">
                 <thead>
-                  <tr><th>Serviço</th><th className="num">Qtd</th><th className="num">Vl Unit.</th><th className="num">Vl Total</th></tr>
+                  <tr><th>Serviço</th><th className="num">Qtd</th><th className="num">Vl Unit.</th><th className="num">Vl Total</th>{editando && <th></th>}</tr>
                 </thead>
                 <tbody>
-                  {temServicos ? (
-                    data.servicos.map((s) => (
-                      <tr key={s.nome}>
-                        <td className="strong">{s.nome} <span className="muted" style={{ fontWeight: 400 }}>· {agrupLabel(s.agrupamento)}</span></td>
-                        <td className="num strong">{s.qtd}</td>
-                        <td className="num">{brl(s.valorUnit)}</td>
-                        <td className="num strong">{brl(s.total)}</td>
-                      </tr>
-                    ))
-                  ) : (
+                  {serv.map((s, i) => (
+                    <tr key={i}>
+                      <td>
+                        {editando
+                          ? <select value={s.nome} onChange={(e) => setServ((a) => a.map((x, j) => j === i ? { ...x, nome: e.target.value, valorUnit: valDeServ(e.target.value), agrupamento: agrDeServ(e.target.value) } : x))}>
+                              <option value="">— serviço —</option>
+                              {servCad.map((c) => <option key={c.nome} value={c.nome}>{c.nome}</option>)}
+                            </select>
+                          : <span className="strong">{s.nome} <span className="muted" style={{ fontWeight: 400 }}>· {agrupLabel(s.agrupamento)}</span></span>}
+                      </td>
+                      <td className="num">{editando ? <input className="w-sm num" type="number" min={0} value={s.qtd || ""} onChange={(e) => setServ((a) => a.map((x, j) => j === i ? { ...x, qtd: Number(e.target.value) } : x))} /> : <span className="strong">{s.qtd}</span>}</td>
+                      <td className="num">{brl(s.valorUnit)}</td>
+                      <td className="num strong">{brl(s.qtd * s.valorUnit)}</td>
+                      {editando && <td><button className="icon-btn" onClick={() => setServ((a) => a.filter((_, j) => j !== i))}>✕</button></td>}
+                    </tr>
+                  ))}
+                  {serv.length === 0 && !editando && (
                     <>
                       <tr><td className="strong">Peseiras / Mantas</td><td className="num strong">{data.peseirasMantas}</td><td className="num muted">—</td><td className="num muted">—</td></tr>
                       <tr><td className="strong">Almofadas / Capas</td><td className="num strong">{data.almofadasCapas}</td><td className="num muted">—</td><td className="num muted">—</td></tr>
@@ -259,13 +296,15 @@ function RomaneioModal({ pedido, tipo, onFechar }: { pedido: RomaneioPedido; tip
                   )}
                   <tr className="rom-total">
                     <td className="strong">TOTAL GERAL</td>
-                    <td className="num strong">{data.totalPecas} pç</td>
+                    <td className="num strong">{serv.length ? pecServ : data.totalPecas} pç</td>
                     <td></td>
-                    <td className="num strong">{temServicos ? brl(data.totalValor) : "—"}</td>
+                    <td className="num strong">{serv.length ? brl(totServ) : "—"}</td>
+                    {editando && <td></td>}
                   </tr>
                 </tbody>
               </table>
-              {!temServicos && (
+              {editando && <button className="btn btn-soft" style={{ marginTop: 6 }} onClick={() => setServ((a) => [...a, { nome: "", agrupamento: "todas", qtd: 0, valorUnit: 0 }])}>＋ Adicionar serviço</button>}
+              {serv.length === 0 && !editando && (
                 <p className="muted" style={{ fontSize: 12 }}>
                   💡 Cadastre os serviços com valor na aba <strong>Serviços Costura</strong> (com o agrupamento) para os valores saírem pré-fixados.
                 </p>

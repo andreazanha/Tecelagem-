@@ -478,7 +478,10 @@ export const api = {
     if (costureira) q.set("costureira", costureira);
     return fetch(`/api/romaneios/pagamento?${q.toString()}`).then((r) => j<PagamentoData>(r));
   },
-  gerarRomaneioCostura: (id: string, opts?: { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean }) =>
+  gerarRomaneioCostura: (
+    id: string,
+    opts?: { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; servicos?: { nome: string; qtd: number }[] }
+  ) =>
     fetch(`/api/romaneios/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -546,7 +549,10 @@ export const api = {
     if (r.status === 401) return { ok: false as const };
     return j<{ ok: boolean; nome?: string }>(r);
   },
-  gerarRomaneioTassel: (id: string, opts?: { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean }) =>
+  gerarRomaneioTassel: (
+    id: string,
+    opts?: { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; linhas?: { cor: string; tamanho: string; qtd: number }[] }
+  ) =>
     fetch(`/api/romaneios/${id}/tassel`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

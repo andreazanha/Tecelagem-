@@ -55,6 +55,34 @@ function montarServicos(servicos: CosturaServico[], rom: RomaneioCostura): { lin
   return { linhas, totalValor };
 }
 
+// Constrói as linhas a partir de uma EDIÇÃO manual (qtd/serviço informados na tela),
+// puxando os valores do cadastro. Usado quando o usuário edita o romaneio.
+async function linhasCosturaDe(env: Env, entrada: { nome?: string; qtd?: number | string }[]): Promise<ServicoLinha[]> {
+  const map = new Map<string, { valor: number; agrupamento: string }>();
+  for (const s of await servicosCostura(env)) map.set(s.nome, { valor: Number(s.valor) || 0, agrupamento: s.agrupamento });
+  return entrada
+    .filter((l) => Number(l.qtd) > 0 && (l.nome || "").trim())
+    .map((l) => {
+      const nome = (l.nome || "").trim();
+      const qtd = Math.max(0, Math.trunc(Number(l.qtd) || 0));
+      const cad = map.get(nome);
+      const valorUnit = cad?.valor || 0;
+      return { nome, agrupamento: cad?.agrupamento || "todas", qtd, valorUnit, total: qtd * valorUnit };
+    });
+}
+async function linhasTasselDe(env: Env, entrada: { cor?: string; tamanho?: string; qtd?: number | string }[]) {
+  const valores = await tabelaTassel(env);
+  return entrada
+    .filter((l) => Number(l.qtd) > 0 && (l.cor || "").trim())
+    .map((l) => {
+      const cor = (l.cor || "").trim();
+      const tam: "G" | "P" = (l.tamanho || "G").trim().toUpperCase() === "P" ? "P" : "G";
+      const qtd = Math.max(0, Math.trunc(Number(l.qtd) || 0));
+      const valorUnit = valores[`${cor.toUpperCase()}|${tam}`] || 0;
+      return { cor, tamanho: tam, tasseis: qtd, valorUnit, total: qtd * valorUnit };
+    });
+}
+
 // LISTA dos pedidos que vão para produção (têm peças a costurar), com o romaneio já somado.
 romaneios.get("/pedidos", async (c) => {
   const cat = await catalogoDe(c.env);
@@ -410,13 +438,25 @@ romaneios.post("/:id", async (c) => {
   const { ped, rom } = d;
   if (rom.totalPecas <= 0) return c.json({ error: "Pedido sem peças de produção para o romaneio." }, 400);
   const body = await c.req
-    .json<{ prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean }>()
-    .catch(() => ({}) as { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean });
+    .json<{ prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; servicos?: { nome?: string; qtd?: number | string }[] }>()
+    .catch(() => ({}) as { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; servicos?: { nome?: string; qtd?: number | string }[] });
   const prestador = (body.prestador || "").trim();
   const volumes = (body.volumes || "").trim();
   const dataRetornoISO = (body.dataRetorno || "").trim(); // YYYY-MM-DD
   const dataSaidaISO = new Date().toISOString().slice(0, 10);
-  const { linhas, totalValor } = montarServicos(await servicosCostura(c.env), rom);
+
+  // Edição: se vier `servicos`, usa o que o usuário ajustou; senão, calcula do pedido.
+  let linhas: ServicoLinha[];
+  let totalValor: number;
+  let romPdf = rom;
+  if (Array.isArray(body.servicos) && body.servicos.length) {
+    linhas = await linhasCosturaDe(c.env, body.servicos);
+    totalValor = linhas.reduce((s, l) => s + l.total, 0);
+    const totalPecas = linhas.reduce((s, l) => s + l.qtd, 0);
+    romPdf = { peseirasMantas: 0, almofadasCapas: 0, outros: totalPecas, totalPecas };
+  } else {
+    ({ linhas, totalValor } = montarServicos(await servicosCostura(c.env), rom));
+  }
 
   const numero = ped.codigo_pai || ped.numero_erp || id.slice(0, 8);
   const info: PedidoInfo = {
@@ -426,7 +466,7 @@ romaneios.post("/:id", async (c) => {
     emissao: br(ped.data_pedido),
     entrega: br(ped.data_entrega),
   };
-  const bytes = await gerarRomaneioCostura(info, prestador, rom, linhas, totalValor, {
+  const bytes = await gerarRomaneioCostura(info, prestador, romPdf, linhas, totalValor, {
     volumes,
     dataSaida: br(dataSaidaISO),
     dataRetorno: dataRetornoISO ? br(dataRetornoISO) : "",
@@ -447,11 +487,11 @@ romaneios.post("/:id", async (c) => {
          data_saida = excluded.data_saida, data_retorno = excluded.data_retorno,
          servicos = excluded.servicos, excluido = 0, updated_at = datetime('now')`
     )
-      .bind(id, numero, ped.cliente_nome, prestador || null, volumes || null, rom.totalPecas, totalValor, dataSaidaISO, dataRetornoISO || null, JSON.stringify(linhas))
+      .bind(id, numero, ped.cliente_nome, prestador || null, volumes || null, romPdf.totalPecas, totalValor, dataSaidaISO, dataRetornoISO || null, JSON.stringify(linhas))
       .run();
   }
 
-  return c.json({ ok: true, url: `/api/pedidos/${id}/pdf/romaneio-costura`, totalValor, servicos: linhas, ...rom });
+  return c.json({ ok: true, url: `/api/pedidos/${id}/pdf/romaneio-costura`, totalValor, servicos: linhas, ...romPdf });
 });
 
 // GERA o PDF do romaneio de TASSEL (3 vias) já preenchido, salva o registro
@@ -461,12 +501,19 @@ romaneios.post("/:id/tassel", async (c) => {
   const d = await dadosPedido(c.env, id);
   if (!d) return c.json({ error: "pedido não encontrado" }, 404);
   const { ped, itens, cat } = d;
-  const tassel = romaneioTassel(itens, cat, await tabelaTassel(c.env));
+  const body = await c.req
+    .json<{ prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; linhas?: { cor?: string; tamanho?: string; qtd?: number | string }[] }>()
+    .catch(() => ({}) as { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; linhas?: { cor?: string; tamanho?: string; qtd?: number | string }[] });
+  // Edição: se vier `linhas`, usa o ajuste do usuário; senão, calcula do pedido.
+  let tassel: { linhas: { cor: string; tamanho: "G" | "P"; tasseis: number; valorUnit: number; total: number }[]; totalTasseis: number; totalValor: number };
+  if (Array.isArray(body.linhas) && body.linhas.length) {
+    const linhas = await linhasTasselDe(c.env, body.linhas);
+    tassel = { linhas, totalTasseis: linhas.reduce((s, l) => s + l.tasseis, 0), totalValor: linhas.reduce((s, l) => s + l.total, 0) };
+  } else {
+    tassel = romaneioTassel(itens, cat, await tabelaTassel(c.env));
+  }
   if (tassel.linhas.length === 0)
     return c.json({ error: "Nenhum tassel a confeccionar. Configure o tassel por peça nos Modelos e a tabela de Tasseis." }, 400);
-  const body = await c.req
-    .json<{ prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean }>()
-    .catch(() => ({}) as { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean });
   const prestador = (body.prestador || "").trim();
   const volumes = (body.volumes || "").trim();
   const dataRetornoISO = (body.dataRetorno || "").trim();
