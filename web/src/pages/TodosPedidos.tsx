@@ -4,6 +4,27 @@ import { br, brLong, dur, FASE_INFO, FASES_ORDEM } from "../expedicaoUtil";
 
 const opCod = (o: PedidoTimeline) => "OP " + (o.codigo_pai || o.numero_erp || o.pedido_id.slice(0, 6));
 
+// Colunas (situações) de cada setor — alimentam o filtro extra quando um setor é escolhido.
+const SITUACOES: Record<string, { value: string; label: string }[]> = {
+  tecelagem: [{ value: "aguardando", label: "Aguardando" }, { value: "fazendo", label: "Tecendo" }, { value: "pronto", label: "Tecidos" }],
+  passadoria: [{ value: "aguardando", label: "Aguardando" }, { value: "fazendo", label: "Passando" }],
+  corte: [{ value: "aguardando", label: "Aguardando" }, { value: "fazendo", label: "Cortando" }, { value: "pronto", label: "Cortados" }],
+  costura: [{ value: "aguardando", label: "Aguardando" }, { value: "fazendo", label: "Em costura" }, { value: "defeito", label: "Voltou com defeito" }],
+  revisao: [{ value: "aguardando", label: "Aguardando" }, { value: "fazendo", label: "Revisando" }],
+  expedicao: [{ value: "aguardando", label: "Aguardando" }, { value: "expedindo", label: "Expedindo" }],
+  fiscal: [{ value: "aguardando", label: "Aguardando" }, { value: "cotando", label: "Cotando frete" }],
+  transporte: [{ value: "aguardando", label: "Aguardando" }, { value: "enviado", label: "Enviado" }],
+  entregue: [],
+};
+const PARTES_OPC = [
+  { value: "parte-1", label: "Parte 1" },
+  { value: "parte-2", label: "Parte 2" },
+  { value: "parte-unica", label: "Única" },
+  { value: "pronta-entrega", label: "Kit" },
+];
+const SETOR_PRODUCAO = ["tecelagem", "passadoria", "corte", "costura", "revisao"];
+const situLabel = (setor: string, st: string) => SITUACOES[setor]?.find((s) => s.value === st)?.label || st;
+
 // Todos os Pedidos: visão geral de rastreio. Filtros por mês e setor (fase atual),
 // linha do tempo de cada pedido (por onde passou, tempo em cada fase) e em qual fase está.
 export function TodosPedidos() {
@@ -11,8 +32,18 @@ export function TodosPedidos() {
   const [carregando, setCarregando] = useState(true);
   const [mes, setMes] = useState("");
   const [setor, setSetor] = useState("");
+  const [situacao, setSituacao] = useState("");
+  const [parte, setParte] = useState("");
+  const [soPrioridade, setSoPrioridade] = useState(false);
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState<PedidoTimeline | null>(null);
+
+  // Ao trocar de setor, zera os filtros de coluna (as opções mudam).
+  useEffect(() => {
+    setSituacao("");
+    setParte("");
+    setSoPrioridade(false);
+  }, [setor]);
 
   function recarregar() {
     setCarregando(true);
@@ -46,15 +77,15 @@ export function TodosPedidos() {
   const q = busca.trim().toLowerCase();
   const filtrados = useMemo(
     () =>
-      q
-        ? pedidos.filter(
-            (o) =>
-              (o.numero_erp || "").toLowerCase().includes(q) ||
-              (o.codigo_pai || "").toLowerCase().includes(q) ||
-              (o.cliente_nome || "").toLowerCase().includes(q)
-          )
-        : pedidos,
-    [pedidos, q]
+      pedidos.filter((o) => {
+        if (q && !((o.numero_erp || "").toLowerCase().includes(q) || (o.codigo_pai || "").toLowerCase().includes(q) || (o.cliente_nome || "").toLowerCase().includes(q)))
+          return false;
+        if (situacao && !(o.situacoes || []).includes(situacao)) return false;
+        if (parte && !(o.partesNoSetor || []).includes(parte)) return false;
+        if (soPrioridade && !o.prioridade) return false;
+        return true;
+      }),
+    [pedidos, q, situacao, parte, soPrioridade]
   );
 
   const mesLabel = (m: string) => {
@@ -92,6 +123,36 @@ export function TodosPedidos() {
             ))}
           </select>
         </label>
+        {setor && (SITUACOES[setor]?.length ?? 0) > 0 && (
+          <label>
+            <span>SITUAÇÃO / COLUNA</span>
+            <select value={situacao} onChange={(e) => setSituacao(e.target.value)}>
+              <option value="">Todas</option>
+              {SITUACOES[setor].map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {setor && SETOR_PRODUCAO.includes(setor) && (
+          <label>
+            <span>PARTE</span>
+            <select value={parte} onChange={(e) => setParte(e.target.value)}>
+              <option value="">Todas</option>
+              {PARTES_OPC.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {setor && SETOR_PRODUCAO.includes(setor) && (
+          <label className="tp-prio">
+            <span>PRIORIDADE</span>
+            <button type="button" className={"btn" + (soPrioridade ? " btn-primary" : "")} onClick={() => setSoPrioridade((v) => !v)}>
+              {soPrioridade ? "★ Só urgentes" : "☆ Só urgentes"}
+            </button>
+          </label>
+        )}
         <label className="tp-busca">
           <span>BUSCA RÁPIDA</span>
           <input placeholder="🔎 Pedido, OP, cliente…" value={busca} onChange={(e) => setBusca(e.target.value)} />
@@ -124,6 +185,9 @@ export function TodosPedidos() {
                     <td><span className={"kparte " + (o.tipo === "MISTO" ? "kit" : o.tipo === "KIT" ? "kit" : o.tipo === "P1+P2" ? "p1" : "unica")}>{o.tipo}</span></td>
                     <td>
                       <span className="tp-fase" style={{ borderColor: fi.cor, color: fi.cor }}>{fi.ic} {fi.nome}</span>
+                      {(o.situacoes || []).length > 0 && (
+                        <div className="tp-pecas">{o.prioridade ? "★ " : ""}{(o.situacoes || []).map((s) => situLabel(o.faseAtual, s)).join(" · ")}</div>
+                      )}
                       {o.transportadora && <div className="tp-pecas">{o.transportadora}</div>}
                     </td>
                     <td><Progresso idx={o.idx} /></td>

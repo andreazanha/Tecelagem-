@@ -147,6 +147,9 @@ export interface PedidoTimeline {
   idx: number;
   statusExp: string | null;
   transportadora: string | null;
+  situacoes?: string[]; // situações (colunas) dentro do setor atual
+  partesNoSetor?: string[]; // partes presentes no setor atual
+  prioridade?: boolean; // tem card marcado como prioridade no setor atual
   passagens: { fase: string; entrouEm: string; duracaoMin: number; atual: boolean }[];
 }
 export interface ExpedicaoUpdate {

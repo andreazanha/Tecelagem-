@@ -141,13 +141,17 @@ expedicao.get("/todos", async (c) => {
 
   // Setor atual de cada parte (produção) e fase de expedição.
   const { results: prRows } = await c.env.DB.prepare(
-    "SELECT pedido_id, setor FROM producao"
-  ).all<{ pedido_id: string; setor: string }>();
+    "SELECT pedido_id, setor, status, parte, prioridade FROM producao"
+  ).all<{ pedido_id: string; setor: string; status: string; parte: string; prioridade: number }>();
   const setoresProd = new Map<string, string[]>();
+  const cardsDe = new Map<string, { setor: string; status: string; parte: string; prioridade: number }[]>();
   for (const r of prRows) {
     const a = setoresProd.get(r.pedido_id) || [];
     a.push(r.setor);
     setoresProd.set(r.pedido_id, a);
+    const cs = cardsDe.get(r.pedido_id) || [];
+    cs.push(r);
+    cardsDe.set(r.pedido_id, cs);
   }
   const { results: expRows } = await c.env.DB.prepare(
     "SELECT pedido_id, fase, status, transportadora FROM expedicao"
@@ -215,6 +219,13 @@ expedicao.get("/todos", async (c) => {
     else if (tem("pronta-entrega")) tipo = "KIT";
     else if (tem("parte-1") || tem("parte-2")) tipo = "P1+P2";
 
+    // Coluna/situação dentro do setor atual (para os filtros de "Todos os Pedidos").
+    const cards = cardsDe.get(p.pedido_id) || [];
+    const noSetor = cards.filter((cd) => cd.setor === faseAtual);
+    const situacoes = exp ? [exp.status] : [...new Set(noSetor.map((cd) => cd.status))];
+    const partesNoSetor = [...new Set(noSetor.map((cd) => cd.parte))];
+    const prioridade = noSetor.some((cd) => !!cd.prioridade);
+
     return {
       pedido_id: p.pedido_id,
       numero_erp: p.numero_erp,
@@ -229,6 +240,9 @@ expedicao.get("/todos", async (c) => {
       idx: idxFase(faseAtual),
       statusExp: exp ? exp.status : null,
       transportadora: exp ? exp.transportadora : null,
+      situacoes,
+      partesNoSetor,
+      prioridade,
       passagens,
     };
   });
