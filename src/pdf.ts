@@ -1,6 +1,6 @@
 // Gera o PDF de produção/pronta-entrega no padrão Big Tricot (pdf-lib, roda no Worker).
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
-import type { Bloco, TasselRomaneio } from "./classificar";
+import type { Bloco, TasselRomaneio, RomaneioCostura } from "./classificar";
 
 const A4W = 595.28;
 const A4H = 841.89;
@@ -346,6 +346,82 @@ export async function gerarRomaneioTassel(
   for (let i = 0; i < 3; i++) {
     drawVia(10 + i * viaH, i + 1);
     if (i < 2) L(viaH * (i + 1) + 4, hx("#9aa3b2"), 0.7, [4, 3]); // linha de corte (✂)
+  }
+  return await doc.save();
+}
+
+// ── Romaneio de COSTURA — 2 vias (1ª Empresa / 2ª Costureira), simplificado ───
+// Mostra só as duas famílias somadas: Peseiras/Mantas e Almofadas/Capas.
+export async function gerarRomaneioCostura(
+  ped: PedidoInfo,
+  prestador: string,
+  rom: RomaneioCostura
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const reg = await doc.embedFont(StandardFonts.Helvetica);
+  const bld = await doc.embedFont(StandardFonts.HelveticaBold);
+  const M = 34;
+  const ix = M;
+  const iw = A4W - 2 * M;
+  const page = doc.addPage([A4W, A4H]);
+
+  const T = (s: string, x: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x, y: A4H - yTop, size, font: f, color: c });
+  const TR = (s: string, xr: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x: xr - f.widthOfTextAtSize(s, size), y: A4H - yTop, size, font: f, color: c });
+  const R = (x: number, yTop: number, w: number, h: number, c = INK) =>
+    page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, color: c });
+  const L = (yTop: number, c: ReturnType<typeof rgb>, th = 1, dash?: number[]) =>
+    page.drawLine({ start: { x: ix, y: A4H - yTop }, end: { x: ix + iw, y: A4H - yTop }, thickness: th, color: c, ...(dash ? { dashArray: dash } : {}) });
+
+  const cServ = ix + 8;
+  const cQtd = ix + iw - 6;
+
+  const linhas: { servico: string; qtd: number }[] = [
+    { servico: "Peseiras / Mantas", qtd: rom.peseirasMantas },
+    { servico: "Almofadas / Capas", qtd: rom.almofadasCapas },
+  ];
+  if (rom.outros > 0) linhas.push({ servico: "Outros", qtd: rom.outros });
+
+  function drawVia(top: number, n: number) {
+    R(0, top, A4W, 24, NAVY);
+    T("BIG TRICOT", ix, top + 16, 12, bld, WHITE);
+    T("· Romaneio de Costura", ix + 92, top + 16, 9.5, reg, hx("#c7d2e0"));
+    TR(`${n}ª via · ${n === 1 ? "Empresa" : "Costureira"} · ${geradoEm()}`, ix + iw, top + 15, 8.5, reg, hx("#c7d2e0"));
+    let y = top + 24 + 16;
+    T("Cliente:", ix, y, 9, reg, MUTE);
+    T(fit(ped.cliente, bld, 9, iw * 0.5 - 60), ix + 44, y, 9, bld);
+    T(ped.numero.includes(",") ? "Pedidos:" : "Pedido:", ix + iw * 0.56, y, 9, reg, MUTE);
+    T(fit(ped.numero, bld, 9, iw * 0.44 - 48), ix + iw * 0.56 + 44, y, 9, bld);
+    y += 14;
+    T("Costureira:", ix, y, 9, reg, MUTE);
+    T(prestador || "______________________________", ix + 58, y, 9, bld);
+    T("Entrega:", ix + iw * 0.56, y, 9, reg, MUTE);
+    T(ped.entrega || "—", ix + iw * 0.56 + 48, y, 9, bld);
+    y += 16;
+    R(ix, y, iw, 18, GREY);
+    T("SERVIÇO (agrupado)", cServ, y + 12, 8, bld, MUTE);
+    TR("QTD", cQtd, y + 12, 8, bld, MUTE);
+    y += 18;
+    for (const l of linhas) {
+      T(l.servico, cServ, y + 14, 10.5, bld);
+      TR(String(l.qtd), cQtd, y + 14, 12, bld, QBLUE);
+      L(y + 19, hx("#eef0f4"), 0.7);
+      y += 19;
+    }
+    y += 4;
+    R(ix, y, iw, 22, GOLD);
+    T("TOTAL DE PEÇAS", ix + 10, y + 15, 10.5, bld, hx("#3a2f12"));
+    TR(String(rom.totalPecas), ix + iw - 10, y + 15, 12, bld, hx("#3a2f12"));
+    y += 22 + 20;
+    T("Conferido na IDA: ____________", ix, y, 9, reg, MUTE);
+    T("no RETORNO: ____________", ix + iw * 0.56, y, 9, reg, MUTE);
+  }
+
+  const viaH = (A4H - 16) / 2;
+  for (let i = 0; i < 2; i++) {
+    drawVia(10 + i * viaH, i + 1);
+    if (i < 1) L(viaH + 4, hx("#9aa3b2"), 0.7, [4, 3]); // ✂ CORTAR AQUI
   }
   return await doc.save();
 }

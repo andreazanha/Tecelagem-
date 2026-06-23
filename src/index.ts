@@ -5,6 +5,7 @@ import { clientes } from "./routes/clientes";
 import { modelos, cores, tasseis, prestadores, costura, operadores, usuarios } from "./routes/catalogo";
 import { producao } from "./routes/producao";
 import { expedicao } from "./routes/expedicao";
+import { romaneios } from "./routes/romaneios";
 import { dashboard } from "./routes/dashboard";
 
 export interface Env {
@@ -33,6 +34,7 @@ app.route("/api/operadores", operadores);
 app.route("/api/usuarios", usuarios);
 app.route("/api/producao", producao);
 app.route("/api/expedicao", expedicao);
+app.route("/api/romaneios", romaneios);
 app.route("/api/dashboard", dashboard);
 
 // Fallback: serve o SPA (assets estáticos do build do Vite).

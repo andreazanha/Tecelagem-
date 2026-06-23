@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
-import { api, type Tassel, type Prestador, type Costura } from "../api";
+import { api, type Tassel, type Prestador, type Costura, type RomaneioPedido } from "../api";
 
 const brl = (v: number) => "R$ " + (Number(v) || 0).toFixed(2).replace(".", ",");
+const br = (d?: string | null) => {
+  if (!d) return "—";
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
+};
 
 export function Romaneios() {
-  const [aba, setAba] = useState<"tasseis" | "costura" | "prestadores" | "relatorios">("tasseis");
+  const [aba, setAba] = useState<"romaneios" | "tasseis" | "costura" | "prestadores" | "relatorios">("romaneios");
   const abas: { id: typeof aba; label: string }[] = [
+    { id: "romaneios", label: "🧾 Romaneios" },
     { id: "tasseis", label: "🧶 Tasseis" },
     { id: "costura", label: "🪡 Costura" },
     { id: "prestadores", label: "👷 Prestadores" },
@@ -32,6 +38,7 @@ export function Romaneios() {
         </div>
       </div>
 
+      {aba === "romaneios" && <RomaneiosPedidos />}
       {aba === "tasseis" && <TasseisCadastro />}
       {aba === "costura" && <CosturaCadastro />}
       {aba === "prestadores" && <PrestadoresCadastro />}
@@ -44,6 +51,167 @@ export function Romaneios() {
         </div>
       )}
     </>
+  );
+}
+
+// ── Romaneios de produção (lista de pedidos + romaneio de costura preenchido) ──
+function RomaneiosPedidos() {
+  const [itens, setItens] = useState<RomaneioPedido[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [busca, setBusca] = useState("");
+  const [aberto, setAberto] = useState<RomaneioPedido | null>(null);
+
+  useEffect(() => {
+    api.listarRomaneiosPedidos().then(setItens).catch(() => {}).finally(() => setCarregando(false));
+  }, []);
+
+  const q = busca.trim().toLowerCase();
+  const lista = q
+    ? itens.filter((p) => p.numero.toLowerCase().includes(q) || (p.cliente_nome || "").toLowerCase().includes(q))
+    : itens;
+
+  return (
+    <>
+      <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>
+        Pedidos que vão para <strong>produção</strong>. Clique para abrir o romaneio de costura já preenchido —{" "}
+        <strong>Peseiras + Mantas</strong> e <strong>Almofadas + Capas</strong> somadas (sem cor/tamanho). Kits de
+        reposição são desmembrados nas duas famílias.
+      </p>
+      <div className="row-gap" style={{ marginBottom: 12 }}>
+        <input className="busca-ped" placeholder="🔎 Pedido, OP ou cliente…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+      </div>
+      <div className="card">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Pedido / OP</th>
+              <th>Cliente</th>
+              <th>Entrega</th>
+              <th className="num">Peseiras/Mantas</th>
+              <th className="num">Almofadas/Capas</th>
+              <th className="num">Total</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {carregando ? (
+              <tr><td colSpan={7} className="empty pad">Carregando…</td></tr>
+            ) : lista.length === 0 ? (
+              <tr><td colSpan={7} className="empty pad">Nenhum pedido de produção.</td></tr>
+            ) : (
+              lista.map((p) => (
+                <tr key={p.pedido_id} style={{ cursor: "pointer" }} onClick={() => setAberto(p)}>
+                  <td className="strong">
+                    {p.numero} {p.reposicao && <span className="chip" style={{ marginLeft: 6 }}>reposição</span>}
+                  </td>
+                  <td>{p.cliente_nome}</td>
+                  <td>{br(p.data_entrega)}</td>
+                  <td className="num strong">{p.peseirasMantas}</td>
+                  <td className="num strong">{p.almofadasCapas}</td>
+                  <td className="num">{p.totalPecas}</td>
+                  <td><button className="btn btn-soft" onClick={(e) => { e.stopPropagation(); setAberto(p); }}>Abrir romaneio</button></td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      {aberto && <RomaneioModal pedido={aberto} onFechar={() => setAberto(null)} />}
+    </>
+  );
+}
+
+function RomaneioModal({ pedido, onFechar }: { pedido: RomaneioPedido; onFechar: () => void }) {
+  const [prestadores, setPrestadores] = useState<string[]>([]);
+  const [prestador, setPrestador] = useState("");
+  const [gerando, setGerando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    api
+      .listarPrestadores()
+      .then((l) => setPrestadores(l.filter((x) => (x.servico || "") === "costura").map((x) => x.nome)))
+      .catch(() => {});
+  }, []);
+
+  async function gerar() {
+    setErro("");
+    setGerando(true);
+    try {
+      const r = await api.gerarRomaneioCostura(pedido.pedido_id, prestador);
+      window.open(r.url, "_blank");
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setGerando(false);
+    }
+  }
+
+  const linhas = [
+    { servico: "Peseiras / Mantas", qtd: pedido.peseirasMantas },
+    { servico: "Almofadas / Capas", qtd: pedido.almofadasCapas },
+    ...(pedido.outros > 0 ? [{ servico: "Outros", qtd: pedido.outros }] : []),
+  ];
+
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd kit">
+          <div className="modal-hd-top">
+            <span className="modal-pills">
+              <span className="modal-pill">{pedido.numero}</span>
+              <span className="modal-pill">🧾 Romaneio de Costura</span>
+            </span>
+            <button className="modal-x" onClick={onFechar}>✕</button>
+          </div>
+          <div className="modal-hd-row">
+            <span className="modal-cli">{pedido.cliente_nome}</span>
+            {pedido.reposicao && <span className="kstatus fazendo">reposição</span>}
+          </div>
+        </div>
+
+        <div className="modal-bd">
+          <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+            Entrega {br(pedido.data_entrega)} · agrupado por família (sem cor/tamanho).
+          </div>
+          <table className="table">
+            <thead>
+              <tr><th>Serviço (agrupado)</th><th className="num">Qtd</th></tr>
+            </thead>
+            <tbody>
+              {linhas.map((l) => (
+                <tr key={l.servico}>
+                  <td className="strong">{l.servico}</td>
+                  <td className="num strong" style={{ fontSize: 16, color: "#1d4ed8" }}>{l.qtd}</td>
+                </tr>
+              ))}
+              <tr>
+                <td className="strong">TOTAL DE PEÇAS</td>
+                <td className="num strong" style={{ fontSize: 16 }}>{pedido.totalPecas}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <label className="campo-l" style={{ marginTop: 16, display: "block" }}>COSTUREIRA (opcional)</label>
+          <select
+            value={prestador}
+            onChange={(e) => setPrestador(e.target.value)}
+            style={{ width: "100%", padding: "11px 13px", fontSize: 15, borderRadius: 10, border: "1px solid #e2e8f0", marginTop: 4 }}
+          >
+            <option value="">— sem costureira (linha em branco) —</option>
+            {prestadores.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+          {erro && <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 13, marginTop: 10 }}>{erro}</div>}
+        </div>
+
+        <div className="modal-ft">
+          <button className="btn" onClick={onFechar}>Fechar</button>
+          <button className="kbtn final" disabled={gerando} onClick={gerar}>
+            {gerando ? "Gerando…" : "👁 Gerar / ver PDF (2 vias)"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

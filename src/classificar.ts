@@ -273,6 +273,60 @@ export function classificar(itens: ItemBase[], cat: Catalogo): Classificacao {
   return { modo: "split", parte1: agrupar(p1, cat), parte2: agrupar(p2, cat), kits, temKit };
 }
 
+// ── Romaneio de COSTURA (simplificado) ───────────────────────────────────────
+// Agrupa as peças do pedido em DUAS famílias, sem cor nem tamanho:
+//   • Peseiras + Mantas  (somam juntas)
+//   • Almofadas + Capas  (somam juntas)
+// Itens de produção (não-kit) entram pelo tipo. KITS de REPOSIÇÃO são desmembrados:
+//   peça principal (manta/peseira/almofada) + as almofadas/capas que o acompanham
+//   (ex.: "KIT PEROLA 90x2.00 + 2 50x50" = 1 Manta + 2 Almofadas por kit).
+// Kits de pedido de CLIENTE (venda, não produzidos) são ignorados.
+export interface RomaneioCostura {
+  peseirasMantas: number;
+  almofadasCapas: number;
+  outros: number;
+  totalPecas: number;
+}
+
+// Quantas peças de cada família UM kit (de reposição) gera (sem multiplicar pela qtd).
+function pecasDoKit(produto: string, tamanho: string): { pm: number; ac: number } {
+  const nome = (produto || "").toUpperCase();
+  let mainTam = (tamanho || "").trim();
+  if (!mainTam) mainTam = nome.match(/(\d[\d.,]*\s*X\s*\d[\d.,]*)/i)?.[1] || "";
+  const main = tipoPorMedida(mainTam.replace(/\s+/g, ""));
+  let pm = 0,
+    ac = 0;
+  if (main === "Manta" || main === "Peseira") pm += 1;
+  else if (main === "Almofada") ac += 1;
+  // peças que acompanham: "+ 2 50x50" → 2 almofadas/capas
+  const count = parseInt(nome.match(/\+\s*(\d+)/)?.[1] || "0", 10);
+  if (count > 0) ac += count;
+  return { pm, ac };
+}
+
+export function romaneioCostura(itens: ItemBase[], reposicao: boolean, cat: Catalogo): RomaneioCostura {
+  let pm = 0,
+    ac = 0,
+    outros = 0;
+  for (const it of itens) {
+    const qtd = Number(it.qtd) || 0;
+    if (ehKit(it)) {
+      if (!reposicao) continue; // kit de cliente = venda (já no estoque), não produz
+      const d = pecasDoKit(it.produto, (it.tamanho || "").trim());
+      pm += d.pm * qtd;
+      ac += d.ac * qtd;
+      if (d.pm === 0 && d.ac === 0) outros += qtd;
+      continue;
+    }
+    const tipo = tipoDe(it.produto, it.tamanho);
+    if (tipo === "Peseira" || tipo === "Manta") pm += qtd;
+    else if (tipo === "Almofada" || tipo === "Capa") ac += qtd;
+    else outros += qtd;
+  }
+  void cat; // catálogo reservado para evoluções (ex.: serviços por modelo)
+  return { peseirasMantas: pm, almofadasCapas: ac, outros, totalPecas: pm + ac + outros };
+}
+
 // ── Romaneio de TASSEL ───────────────────────────────────────────────────────
 // Regra: peseira → tassel tamanho G; almofada → tassel tamanho P. A quantidade por peça
 // vem do MODELO (tasselPeseira/tasselAlmofada). O valor (mão de obra) vem da tabela de

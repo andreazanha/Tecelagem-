@@ -152,6 +152,20 @@ export interface ExpedicaoUpdate {
   transportadora?: string | null;
 }
 
+// Romaneio de costura (simplificado): peseiras/mantas e almofadas/capas somadas.
+export interface RomaneioPedido {
+  pedido_id: string;
+  numero: string;
+  cliente_nome: string;
+  data_pedido: string | null;
+  data_entrega: string | null;
+  reposicao: boolean;
+  peseirasMantas: number;
+  almofadasCapas: number;
+  outros: number;
+  totalPecas: number;
+}
+
 export interface Sugestao {
   numero_erp?: string;
   cliente_nome?: string;
@@ -390,6 +404,13 @@ export const api = {
     const qs = q.toString();
     return fetch(`/api/expedicao/todos${qs ? `?${qs}` : ""}`).then((r) => j<PedidoTimeline[]>(r));
   },
+  listarRomaneiosPedidos: () => fetch("/api/romaneios/pedidos").then((r) => j<RomaneioPedido[]>(r)),
+  gerarRomaneioCostura: (id: string, prestador?: string) =>
+    fetch(`/api/romaneios/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prestador: prestador || "" }),
+    }).then((r) => j<{ ok: boolean; url: string; peseirasMantas: number; almofadasCapas: number; outros: number; totalPecas: number }>(r)),
   listarPrestadores: () => fetch("/api/prestadores").then((r) => j<Prestador[]>(r)),
   salvarPrestador: (p: Prestador) =>
     fetch("/api/prestadores", {
