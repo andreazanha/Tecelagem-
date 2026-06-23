@@ -131,7 +131,7 @@ function RomaneioTassel({ id }: { id: string }) {
     setErro(null);
     setCarregando(true);
     try {
-      const r = await api.gerarRomaneioTassel(id, prestador);
+      const r = await api.gerarRomaneioTassel(id, { prestador });
       setRes(r);
     } catch (e) {
       setErro((e as Error).message);

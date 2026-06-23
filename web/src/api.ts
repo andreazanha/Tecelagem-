@@ -165,6 +165,9 @@ export interface RomaneioPedido {
   almofadasCapas: number;
   outros: number;
   totalPecas: number;
+  temTassel?: boolean;
+  tasselTasseis?: number;
+  tasselValor?: number;
 }
 export interface RomaneioServico {
   nome: string;
@@ -445,8 +448,11 @@ export const api = {
   },
   listarRomaneiosPedidos: () => fetch("/api/romaneios/pedidos").then((r) => j<RomaneioPedido[]>(r)),
   obterRomaneio: (id: string) => fetch(`/api/romaneios/${id}`).then((r) => j<RomaneioData>(r)),
-  pagamentoCostura: (mes?: string) =>
-    fetch(`/api/romaneios/pagamento${mes ? `?mes=${encodeURIComponent(mes)}` : ""}`).then((r) => j<PagamentoData>(r)),
+  pagamentoCostura: (mes?: string, tipo: "costura" | "tassel" = "costura") => {
+    const q = new URLSearchParams({ tipo });
+    if (mes) q.set("mes", mes);
+    return fetch(`/api/romaneios/pagamento?${q.toString()}`).then((r) => j<PagamentoData>(r));
+  },
   gerarRomaneioCostura: (id: string, opts?: { prestador?: string; volumes?: string; dataRetorno?: string }) =>
     fetch(`/api/romaneios/${id}`, {
       method: "POST",
@@ -515,12 +521,26 @@ export const api = {
     if (r.status === 401) return { ok: false as const };
     return j<{ ok: boolean; nome?: string }>(r);
   },
-  gerarRomaneioTassel: (id: string, prestador: string) =>
-    fetch(`/api/pedidos/${id}/romaneio-tassel`, {
+  gerarRomaneioTassel: (id: string, opts?: { prestador?: string; volumes?: string; dataRetorno?: string }) =>
+    fetch(`/api/romaneios/${id}/tassel`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prestador }),
+      body: JSON.stringify(typeof opts === "string" ? { prestador: opts } : opts || {}),
     }).then((r) => j<{ ok: boolean; url: string; totalTasseis: number; totalValor: number }>(r)),
+  gerarRomaneioAvulso: (body: {
+    tipo: "costura" | "tassel";
+    cliente?: string;
+    numero?: string;
+    prestador?: string;
+    volumes?: string;
+    dataRetorno?: string;
+    linhas: { nome?: string; cor?: string; tamanho?: string; qtd: number }[];
+  }) =>
+    fetch(`/api/romaneios/avulso`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => j<{ ok: boolean; url: string; totalValor: number }>(r)),
   classificarPedido: (id: string) =>
     fetch(`/api/pedidos/${id}/classificar`).then((r) =>
       j<{
