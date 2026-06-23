@@ -346,6 +346,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => j<{ id: string }>(r)),
+  atualizarPedido: (id: string, body: NovoPedidoBody) =>
+    fetch(`/api/pedidos/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => j<{ ok: boolean }>(r)),
   enviarPdfs: (id: string, files: File[]) => {
     const fd = new FormData();
     for (const f of files) fd.append("file", f);

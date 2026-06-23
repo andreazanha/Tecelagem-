@@ -386,6 +386,74 @@ pedidos.post("/", async (c) => {
   return c.json({ id, codigo_pai }, 201);
 });
 
+// EDITA um pedido (datas, cliente, observação, itens) e atualiza os cards.
+pedidos.put("/:id", async (c) => {
+  const id = c.req.param("id");
+  const exists = await c.env.DB.prepare("SELECT id FROM pedidos WHERE id = ?").bind(id).first();
+  if (!exists) return c.json({ error: "pedido não encontrado" }, 404);
+  const b = await c.req.json<PedidoIn>();
+  const cliente_nome = (b.cliente_nome || "").trim();
+  if (!cliente_nome) return c.json({ error: "cliente é obrigatório" }, 400);
+  const reposicao = b.reposicao ? 1 : 0;
+  const entrega_pe = b.entrega_pe === "separado" ? "separado" : b.entrega_pe === "junto" ? "junto" : null;
+
+  const stmts: D1PreparedStatement[] = [];
+  stmts.push(
+    c.env.DB.prepare(
+      `UPDATE pedidos SET cliente_nome = ?, vendedor = ?, codigo_terceiro = ?, entrega_pe = ?, reposicao = ?,
+         data_pedido = ?, data_entrega = ?, data_tecelagem = ?, observacao = ? WHERE id = ?`
+    ).bind(
+      cliente_nome,
+      b.vendedor || null,
+      (b.codigo_terceiro || "").trim() || null,
+      entrega_pe,
+      reposicao,
+      b.data_pedido || null,
+      b.data_entrega || null,
+      b.data_tecelagem || null,
+      b.observacao || null,
+      id
+    )
+  );
+  stmts.push(c.env.DB.prepare("INSERT INTO clientes (id, nome) VALUES (?, ?) ON CONFLICT(nome) DO NOTHING").bind(crypto.randomUUID(), cliente_nome));
+  stmts.push(c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id = ?").bind(id));
+  for (const it of b.itens || []) {
+    const produto = (it.produto || "").trim();
+    if (!produto) continue;
+    const parte = PARTES.includes(it.parte || "") ? (it.parte as string) : "unico";
+    stmts.push(
+      c.env.DB.prepare(
+        `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, origem)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), id, produto, it.ref || null, it.cor_grade || null, it.tamanho || null, Math.max(0, Math.trunc(Number(it.qtd) || 0)), parte, it.kit ? 1 : 0, it.origem || null)
+    );
+  }
+  await c.env.DB.batch(stmts);
+
+  // Atualiza as PEÇAS dos cards já existentes (sem mover de setor). Se mudou itens
+  // que alteram o split do kit, o ideal é Gerar PDFs de novo (refaz tudo).
+  const { results: itensNovos } = await c.env.DB.prepare(
+    "SELECT produto, ref, cor_grade, tamanho, qtd, parte, kit, origem FROM pedido_itens WHERE pedido_id = ?"
+  )
+    .bind(id)
+    .all<ItemBase>();
+  const cl = classificar(itensNovos, await catalogos(c.env));
+  const upd = (parte: string, blocos: ReturnType<typeof classificar>["kits"]) =>
+    c.env.DB.prepare("UPDATE producao SET pecas = ?, resumo = ? WHERE pedido_id = ? AND parte = ?")
+      .bind(blocos.reduce((s, x) => s + x.total, 0), `${blocos.length} modelo(s)`, id, parte)
+      .run();
+  if (cl.modo === "unica") await upd("parte-unica", cl.parteUnica!);
+  else {
+    await upd("parte-1", cl.parte1!);
+    await upd("parte-2", cl.parte2!);
+  }
+  if (cl.temKit) {
+    const sep = await c.env.DB.prepare("SELECT 1 FROM producao WHERE pedido_id = ? AND parte = 'pronta-entrega-sep'").bind(id).first();
+    if (!sep) await upd("pronta-entrega", cl.kits);
+  }
+  return c.json({ ok: true });
+});
+
 // EXCLUI um pedido lançado errado (e tudo que depende dele).
 pedidos.delete("/:id", async (c) => {
   const id = c.req.param("id");

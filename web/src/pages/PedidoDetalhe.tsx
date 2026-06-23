@@ -36,7 +36,10 @@ export function PedidoDetalhe() {
             › Detalhe
           </div>
         </div>
-        <span className={"status status-" + pedido.status}>{pedido.status}</span>
+        <div className="row-gap" style={{ alignItems: "center" }}>
+          <Link to={`/pedidos/${pedido.id}/editar`} className="btn btn-soft">✏️ Editar pedido</Link>
+          <span className={"status status-" + pedido.status}>{pedido.status}</span>
+        </div>
       </div>
 
       <div className="card pad">

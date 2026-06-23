@@ -87,6 +87,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/sem-acesso" element={<SemAcesso />} />
           <Route path="/pedidos" element={<Protegido page="pedidos"><Pedidos /></Protegido>} />
           <Route path="/pedidos/novo" element={<Protegido page="pedidos"><NovoPedido /></Protegido>} />
+          <Route path="/pedidos/:id/editar" element={<Protegido page="pedidos"><NovoPedido /></Protegido>} />
           <Route path="/pedidos/:id" element={<Protegido page="pedidos"><PedidoDetalhe /></Protegido>} />
           <Route path="/cadastros" element={<Protegido page="cadastros"><Cadastros /></Protegido>} />
           <Route path="/romaneios" element={<Protegido page="romaneios"><Romaneios /></Protegido>} />

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api, type PedidoItem, type NovoPedidoBody, type Modelo } from "../api";
 import { calcularPartes } from "../parte";
 
@@ -9,6 +9,8 @@ function linhaVazia(): PedidoItem {
 
 export function NovoPedido() {
   const nav = useNavigate();
+  const { id: editId } = useParams<{ id: string }>();
+  const editando = !!editId;
   const [clientes, setClientes] = useState<string[]>([]);
   const [modelos, setModelos] = useState<Modelo[]>([]);
   const [salvando, setSalvando] = useState(false);
@@ -42,6 +44,33 @@ export function NovoPedido() {
       .catch(() => {});
     api.listarModelos().then(setModelos).catch(() => {});
   }, []);
+
+  // Modo edição: carrega o pedido e preenche o formulário.
+  useEffect(() => {
+    if (!editId) return;
+    api
+      .obterPedido(editId)
+      .then((p) => {
+        const its = Array.isArray(p.itens) ? (p.itens as PedidoItem[]) : [];
+        setForm({
+          numero_erp: p.numero_erp || "",
+          cliente_nome: p.cliente_nome || "",
+          vendedor: p.vendedor || "",
+          codigo_terceiro: p.codigo_terceiro || "",
+          tipo: "auto",
+          entrega_pe: p.entrega_pe || "junto",
+          reposicao: !!(p as unknown as { reposicao?: number }).reposicao,
+          data_pedido: p.data_pedido || "",
+          data_entrega: p.data_entrega || "",
+          data_tecelagem: p.data_tecelagem || "",
+          observacao: p.observacao || "",
+          itens: its.length
+            ? its.map((i) => ({ produto: i.produto || "", ref: i.ref || "", cor_grade: i.cor_grade || "", tamanho: i.tamanho || "", qtd: i.qtd || 0, parte: i.parte || "unico", kit: !!i.kit, origem: i.origem || "" }))
+            : [linhaVazia()],
+        });
+      })
+      .catch((e) => setErro((e as Error).message));
+  }, [editId]);
 
   // Classificação real (Parte 1/2/Única/Pronta Entrega) por código/nome do catálogo.
   const partes = useMemo(() => calcularPartes(form.itens, modelos), [form.itens, modelos]);
@@ -85,6 +114,11 @@ export function NovoPedido() {
     }
     setSalvando(true);
     try {
+      if (editando && editId) {
+        await api.atualizarPedido(editId, montarBody(itens));
+        nav(`/pedidos/${editId}`);
+        return;
+      }
       const { id } = await api.criarPedido(montarBody(itens));
       if (arquivos.length) {
         try {
@@ -228,8 +262,8 @@ export function NovoPedido() {
     <form onSubmit={salvar}>
       <div className="page-head">
         <div>
-          <h1>Novo Pedido</h1>
-          <div className="breadcrumb">Pedidos › Novo</div>
+          <h1>{editando ? "Editar Pedido" : "Novo Pedido"}</h1>
+          <div className="breadcrumb">Pedidos › {editando ? "Editar" : "Novo"}</div>
         </div>
         <div className="row-gap">
           <button type="button" className="btn" onClick={() => nav("/pedidos")}>
@@ -548,7 +582,7 @@ export function NovoPedido() {
           {previa ? "Gerando…" : "👁 Visualizar PDF"}
         </button>
         <button type="submit" className="btn btn-primary" disabled={salvando}>
-          {salvando ? "Salvando…" : "🔒 Salvar pedido"}
+          {salvando ? "Salvando…" : editando ? "💾 Salvar alterações" : "🔒 Salvar pedido"}
         </button>
       </div>
 
