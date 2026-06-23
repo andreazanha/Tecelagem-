@@ -189,8 +189,28 @@ async function resumoPagamento(env: Env, mes: string, tipo: string, costureira: 
     }
     porPessoa.set(nome, g);
   }
-  const grupos = [...porPessoa.values()].sort((a, b) => a.costureira.localeCompare(b.costureira, "pt"));
-  const totalGeral = grupos.reduce((s, g) => s + g.totalValor, 0); // liberados
+  // Descontos (lançamentos) do período/tipo — abatem do líquido a pagar.
+  const { results: descs } = await env.DB.prepare(
+    "SELECT id, pessoa, descricao, valor, data FROM descontos WHERE excluido = 0 AND tipo = ?"
+  )
+    .bind(tipo)
+    .all<{ id: string; pessoa: string; descricao: string | null; valor: number; data: string | null }>();
+  let descFil = mes ? descs.filter((d) => (d.data || "").slice(0, 7) === mes) : descs;
+  if (costureira) descFil = descFil.filter((d) => (d.pessoa || "") === costureira);
+  // garante grupo para quem tem desconto mas nenhum romaneio no período
+  for (const d of descFil) {
+    if (!porPessoa.has(d.pessoa))
+      porPessoa.set(d.pessoa, { costureira: d.pessoa, romaneios: [], totalPecas: 0, totalValor: 0, pendentes: 0, pendentePecas: 0, pendenteValor: 0 });
+  }
+
+  const grupos = [...porPessoa.values()]
+    .map((g) => {
+      const ds = descFil.filter((d) => d.pessoa === g.costureira);
+      const descontosValor = ds.reduce((s, d) => s + (d.valor || 0), 0);
+      return { ...g, descontos: ds, descontosValor, liquido: g.totalValor - descontosValor };
+    })
+    .sort((a, b) => a.costureira.localeCompare(b.costureira, "pt"));
+  const totalGeral = grupos.reduce((s, g) => s + g.liquido, 0); // líquido (liberados − descontos)
   return { mes, tipo, grupos, totalGeral };
 }
 
@@ -198,6 +218,65 @@ async function resumoPagamento(env: Env, mes: string, tipo: string, costureira: 
 romaneios.get("/pagamento", async (c) => {
   const r = await resumoPagamento(c.env, c.req.query("mes") || "", tipoOk(c.req.query("tipo") || ""), c.req.query("costureira") || "");
   return c.json(r);
+});
+
+// ── Descontos FIXOS (catálogo reutilizável) ──────────────────────────────────
+romaneios.get("/descontos-fixos", async (c) => {
+  const { results } = await c.env.DB.prepare("SELECT nome, valor FROM descontos_fixos ORDER BY nome").all();
+  return c.json(results);
+});
+romaneios.post("/descontos-fixos", async (c) => {
+  const b = await c.req.json<{ nome?: string; valor?: number | string }>().catch(() => ({}) as { nome?: string; valor?: number | string });
+  const nome = (b.nome || "").trim();
+  if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
+  const valor = Math.max(0, Number(b.valor) || 0);
+  await c.env.DB.prepare(
+    "INSERT INTO descontos_fixos (nome, valor) VALUES (?, ?) ON CONFLICT(nome) DO UPDATE SET valor = excluded.valor"
+  )
+    .bind(nome, valor)
+    .run();
+  return c.json({ nome, valor }, 201);
+});
+romaneios.delete("/descontos-fixos/:nome", async (c) => {
+  await c.env.DB.prepare("DELETE FROM descontos_fixos WHERE nome = ?").bind(decodeURIComponent(c.req.param("nome"))).run();
+  return c.json({ ok: true });
+});
+
+// ── Descontos LANÇADOS (esporádicos / por costureira) ────────────────────────
+romaneios.get("/descontos", async (c) => {
+  const tipo = tipoOk(c.req.query("tipo") || "");
+  const mes = c.req.query("mes") || "";
+  const pessoa = c.req.query("pessoa") || "";
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, pessoa, descricao, valor, data FROM descontos WHERE excluido = 0 AND tipo = ? ORDER BY data DESC"
+  )
+    .bind(tipo)
+    .all<{ id: string; pessoa: string; descricao: string | null; valor: number; data: string | null }>();
+  let lista = mes ? results.filter((d) => (d.data || "").slice(0, 7) === mes) : results;
+  if (pessoa) lista = lista.filter((d) => (d.pessoa || "") === pessoa);
+  return c.json(lista);
+});
+romaneios.post("/descontos", async (c) => {
+  const b = await c.req
+    .json<{ pessoa?: string; tipo?: string; descricao?: string; valor?: number | string; data?: string }>()
+    .catch(() => ({}) as { pessoa?: string; tipo?: string; descricao?: string; valor?: number | string; data?: string });
+  const pessoa = (b.pessoa || "").trim();
+  if (!pessoa) return c.json({ error: "Escolha a costureira/prestador do desconto." }, 400);
+  const valor = Math.max(0, Number(b.valor) || 0);
+  if (valor <= 0) return c.json({ error: "Informe o valor do desconto." }, 400);
+  const id = crypto.randomUUID();
+  const data = (b.data || "").trim() || new Date().toISOString().slice(0, 10);
+  await c.env.DB.prepare(
+    "INSERT INTO descontos (id, pessoa, tipo, descricao, valor, data) VALUES (?, ?, ?, ?, ?, ?)"
+  )
+    .bind(id, pessoa, tipoOk(b.tipo || ""), (b.descricao || "").trim() || null, valor, data)
+    .run();
+  return c.json({ id, pessoa, valor, data }, 201);
+});
+romaneios.post("/descontos/:id/excluir", async (c) => {
+  const b = await c.req.json<{ excluido?: boolean }>().catch(() => ({}) as { excluido?: boolean });
+  await c.env.DB.prepare("UPDATE descontos SET excluido = ? WHERE id = ?").bind(b.excluido ? 1 : 0, c.req.param("id")).run();
+  return c.json({ ok: true, excluido: !!b.excluido });
 });
 
 // LISTA de todos os romaneios emitidos (costura + tassel), com status pendente/retornou.
@@ -290,7 +369,9 @@ romaneios.get("/recibo/pdf", async (c) => {
   if (!costureira) return c.json({ error: "Escolha a costureira/prestador para o recibo." }, 400);
   const resumo = await resumoPagamento(c.env, mes, tipo, costureira);
   const grupo = resumo.grupos[0];
-  const valor = grupo ? grupo.totalValor : 0;
+  const bruto = grupo ? grupo.totalValor : 0;
+  const descontoValor = grupo ? grupo.descontosValor : 0;
+  const valor = grupo ? grupo.liquido : 0; // líquido = paga via Pix
   const liberados = grupo ? grupo.romaneios.filter((r) => r.retornou).length : 0;
   const prest = await c.env.DB.prepare("SELECT pix, cidade FROM prestadores WHERE nome = ?")
     .bind(costureira)
@@ -305,6 +386,9 @@ romaneios.get("/recibo/pdf", async (c) => {
     costureira,
     mesLabel,
     valor,
+    bruto,
+    descontoValor,
+    descontos: grupo ? grupo.descontos.map((d) => ({ descricao: d.descricao || "Desconto", valor: d.valor || 0 })) : [],
     romaneios: liberados,
     pecas: grupo ? grupo.totalPecas : 0,
     unidade: tipo === "tassel" ? "tasseis" : "pç",

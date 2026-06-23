@@ -202,6 +202,13 @@ export interface RomaneioEmitido {
   data_retorno: string | null;
   retornou?: number;
 }
+export interface DescontoLancado {
+  id: string;
+  pessoa: string;
+  descricao: string | null;
+  valor: number;
+  data: string | null;
+}
 export interface PagamentoCostureira {
   costureira: string;
   romaneios: RomaneioEmitido[];
@@ -210,6 +217,9 @@ export interface PagamentoCostureira {
   pendentes?: number;
   pendentePecas?: number;
   pendenteValor?: number;
+  descontosValor?: number;
+  liquido?: number;
+  descontos?: DescontoLancado[];
 }
 export interface PagamentoData {
   mes: string;
@@ -595,6 +605,22 @@ export const api = {
     if (mes) q.set("mes", mes);
     return `/api/romaneios/recibo/pdf?${q.toString()}`;
   },
+  listarDescontosFixos: () => fetch("/api/romaneios/descontos-fixos").then((r) => j<{ nome: string; valor: number }[]>(r)),
+  salvarDescontoFixo: (b: { nome: string; valor: number }) =>
+    fetch("/api/romaneios/descontos-fixos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then((r) => j<{ nome: string; valor: number }>(r)),
+  excluirDescontoFixo: (nome: string) =>
+    fetch(`/api/romaneios/descontos-fixos/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  listarDescontos: (params: { mes?: string; tipo?: string; pessoa?: string }) => {
+    const q = new URLSearchParams();
+    if (params.mes) q.set("mes", params.mes);
+    if (params.tipo) q.set("tipo", params.tipo);
+    if (params.pessoa) q.set("pessoa", params.pessoa);
+    return fetch(`/api/romaneios/descontos?${q.toString()}`).then((r) => j<DescontoLancado[]>(r));
+  },
+  lancarDesconto: (b: { pessoa: string; tipo: string; descricao?: string; valor: number; data?: string }) =>
+    fetch("/api/romaneios/descontos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then((r) => j<{ id: string }>(r)),
+  excluirDesconto: (id: string, excluido: boolean) =>
+    fetch(`/api/romaneios/descontos/${id}/excluir`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ excluido }) }).then((r) => j<{ ok: boolean }>(r)),
   gerarRomaneioAvulso: (body: {
     tipo: "costura" | "tassel";
     cliente?: string;

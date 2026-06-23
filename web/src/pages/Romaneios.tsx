@@ -16,7 +16,7 @@ const AGRUP: { id: string; label: string }[] = [
 ];
 const agrupLabel = (id?: string) => AGRUP.find((a) => a.id === id)?.label || "Todas as peças";
 
-type AbaRomaneio = "costureiras" | "tassel" | "avulso" | "gerados" | "relatorios" | "tasseis" | "costura" | "prestadores";
+type AbaRomaneio = "costureiras" | "tassel" | "avulso" | "gerados" | "relatorios" | "tasseis" | "costura" | "descontos" | "prestadores";
 export function Romaneios() {
   // Mantém a aba ao atualizar a página (não volta para a primeira).
   const [aba, setAba] = useState<AbaRomaneio>(() => (localStorage.getItem("romaneios-aba") as AbaRomaneio) || "costureiras");
@@ -31,6 +31,7 @@ export function Romaneios() {
     { id: "relatorios", label: "📊 Pagamentos" },
     { id: "costura", label: "⚙️ Serviços Costura" },
     { id: "tasseis", label: "⚙️ Valores Tassel" },
+    { id: "descontos", label: "➖ Descontos" },
     { id: "prestadores", label: "👷 Prestadores" },
   ];
   return (
@@ -60,6 +61,7 @@ export function Romaneios() {
       {aba === "gerados" && <RomaneiosGerados />}
       {aba === "tasseis" && <TasseisCadastro />}
       {aba === "costura" && <CosturaCadastro />}
+      {aba === "descontos" && <DescontosCadastro />}
       {aba === "prestadores" && <PrestadoresCadastro />}
       {aba === "relatorios" && <RelatoriosPagamento />}
     </>
@@ -626,6 +628,129 @@ function EditarEmitidoModal({ emitido, onFechar, onSalvo }: { emitido: EmitidoRo
   );
 }
 
+// ── Descontos FIXOS (catálogo reutilizável) ──────────────────────────────────
+function DescontosCadastro() {
+  const [itens, setItens] = useState<{ nome: string; valor: number }[]>([]);
+  const [novo, setNovo] = useState({ nome: "", valor: 0 });
+  function recarregar() {
+    api.listarDescontosFixos().then(setItens).catch(() => {});
+  }
+  useEffect(recarregar, []);
+  async function salvar(d: { nome: string; valor: number }) {
+    try { await api.salvarDescontoFixo(d); recarregar(); } catch (e) { alert((e as Error).message); }
+  }
+  async function adicionar() {
+    if (!novo.nome.trim()) return;
+    await salvar(novo);
+    setNovo({ nome: "", valor: 0 });
+  }
+  async function remover(nome: string) { await api.excluirDescontoFixo(nome); recarregar(); }
+  return (
+    <>
+      <p className="muted" style={{ marginTop: -4, marginBottom: 16 }}>
+        Descontos <strong>fixos</strong> (reutilizáveis) — ex.: "Almofada refeita", "Peça danificada". Você aplica nos{" "}
+        <strong>Pagamentos</strong> (ou lança um desconto esporádico direto lá). Descontos abatem do líquido a pagar.
+      </p>
+      <div className="card">
+        <table className="table">
+          <thead><tr><th>Desconto</th><th className="num">Valor</th><th></th></tr></thead>
+          <tbody>
+            <tr className="row-novo">
+              <td><input placeholder="Ex.: Almofada refeita" value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} onKeyDown={(e) => e.key === "Enter" && adicionar()} /></td>
+              <td className="num"><input className="w-sm num" type="number" min={0} step="0.01" value={novo.valor} onChange={(e) => setNovo({ ...novo, valor: Number(e.target.value) })} /></td>
+              <td><button className="btn btn-primary" onClick={adicionar}>＋</button></td>
+            </tr>
+            {itens.map((d) => (
+              <tr key={d.nome}>
+                <td className="strong">{d.nome}</td>
+                <td className="num">
+                  <input className="w-sm num" type="number" min={0} step="0.01" defaultValue={d.valor}
+                    onBlur={(e) => { const v = Number(e.target.value); if (v !== d.valor) salvar({ nome: d.nome, valor: v }); }} />
+                  <span className="muted" style={{ marginLeft: 8 }}>{brl(d.valor)}</span>
+                </td>
+                <td><button className="icon-btn" title="Remover" onClick={() => remover(d.nome)}>✕</button></td>
+              </tr>
+            ))}
+            {itens.length === 0 && <tr><td colSpan={3} className="empty pad">Nenhum desconto fixo cadastrado.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// Descontos de UMA costureira no período (lista + lançar + excluir) dentro do Pagamento.
+function DescontosGrupo({ g, mes, tipo, onMudar }: { g: import("../api").PagamentoCostureira; mes: string; tipo: "costura" | "tassel"; onMudar: () => void }) {
+  const [fixos, setFixos] = useState<{ nome: string; valor: number }[]>([]);
+  const [abrir, setAbrir] = useState(false);
+  const [desc, setDesc] = useState("");
+  const [valor, setValor] = useState(0);
+  const [data, setData] = useState(() => (mes ? `${mes}-15` : new Date().toISOString().slice(0, 10)));
+
+  useEffect(() => { api.listarDescontosFixos().then(setFixos).catch(() => {}); }, []);
+
+  async function lancar() {
+    if (valor <= 0 || !desc.trim()) return;
+    await api.lancarDesconto({ pessoa: g.costureira, tipo, descricao: desc.trim(), valor, data }).catch((e) => alert((e as Error).message));
+    setDesc(""); setValor(0); setAbrir(false);
+    onMudar();
+  }
+  async function excluir(id: string) {
+    await api.excluirDesconto(id, true).catch(() => {});
+    historico.registrar({
+      label: "excluir desconto",
+      desfazer: () => api.excluirDesconto(id, false),
+      refazer: () => api.excluirDesconto(id, true),
+    });
+    onMudar();
+  }
+  const escolherFixo = (nome: string) => {
+    const f = fixos.find((x) => x.nome === nome);
+    if (f) { setDesc(f.nome); setValor(f.valor); }
+  };
+
+  return (
+    <div style={{ padding: "10px 20px 16px" }}>
+      {(g.descontos || []).length > 0 && (
+        <table className="table" style={{ marginBottom: 8 }}>
+          <tbody>
+            {(g.descontos || []).map((d) => (
+              <tr key={d.id}>
+                <td className="strong" style={{ color: "#b45309" }}>➖ {d.descricao || "Desconto"}</td>
+                <td>{br(d.data)}</td>
+                <td className="num strong" style={{ color: "#b45309" }}>− {brl(d.valor)}</td>
+                <td className="num"><button className="icon-btn" title="Remover (Ctrl+Z desfaz)" onClick={() => excluir(d.id)}>✕</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {abrir ? (
+        <div className="rom-campos" style={{ alignItems: "flex-end" }}>
+          <label>
+            <span>DESCONTO FIXO</span>
+            <select value="" onChange={(e) => escolherFixo(e.target.value)}>
+              <option value="">— escolher / ou digite —</option>
+              {fixos.map((f) => <option key={f.nome} value={f.nome}>{f.nome} ({brl(f.valor)})</option>)}
+            </select>
+          </label>
+          <label><span>DESCRIÇÃO</span><input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="motivo" /></label>
+          <label><span>VALOR</span><input type="number" min={0} step="0.01" value={valor || ""} onChange={(e) => setValor(Number(e.target.value))} /></label>
+          <label><span>DATA</span><input type="date" value={data} onChange={(e) => setData(e.target.value)} /></label>
+          <button className="kbtn final" onClick={lancar}>Lançar</button>
+          <button className="btn" onClick={() => setAbrir(false)}>Cancelar</button>
+        </div>
+      ) : (
+        <button className="btn btn-soft" onClick={() => setAbrir(true)}>➖ Lançar desconto</button>
+      )}
+      <div style={{ textAlign: "right", marginTop: 10, fontSize: 15 }}>
+        Líquido a pagar: <strong style={{ color: "#15803d", fontSize: 17 }}>{brl(g.liquido ?? g.totalValor)}</strong>
+        {(g.descontosValor || 0) > 0 && <span className="muted"> (bruto {brl(g.totalValor)} − {brl(g.descontosValor || 0)})</span>}
+      </div>
+    </div>
+  );
+}
+
 // ── Relatório de pagamento por costureira (fim do mês) ───────────────────────
 function RelatoriosPagamento() {
   const [data, setData] = useState<import("../api").PagamentoData | null>(null);
@@ -635,9 +760,20 @@ function RelatoriosPagamento() {
   const [pessoas, setPessoas] = useState<string[]>([]);
   const [carregando, setCarregando] = useState(true);
 
-  useEffect(() => {
+  function recarregar() {
     setCarregando(true);
     api.pagamentoCostura(mes, tipo, costureira).then(setData).catch(() => {}).finally(() => setCarregando(false));
+  }
+  useEffect(() => {
+    recarregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mes, tipo, costureira]);
+  // Recarrega ao desfazer/refazer (ex.: undo de exclusão de desconto).
+  useEffect(() => {
+    const h = () => recarregar();
+    window.addEventListener("historico:mudou", h);
+    return () => window.removeEventListener("historico:mudou", h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mes, tipo, costureira]);
   useEffect(() => {
     setCostureira("");
@@ -720,12 +856,13 @@ function RelatoriosPagamento() {
                   </tr>
                 ))}
                 <tr className="rom-total">
-                  <td className="strong" colSpan={4}>TOTAL A PAGAR (liberados)</td>
+                  <td className="strong" colSpan={4}>{(g.descontosValor || 0) > 0 ? "Subtotal (liberados)" : "TOTAL A PAGAR"}</td>
                   <td className="num strong">{g.totalPecas} {tipo === "tassel" ? "tasseis" : "pç"}</td>
                   <td className="num strong">{brl(g.totalValor)}</td>
                 </tr>
               </tbody>
             </table>
+            <DescontosGrupo g={g} mes={mes} tipo={tipo} onMudar={recarregar} />
           </div>
         ))
       )}
@@ -1061,12 +1198,25 @@ function PrestadoresCadastro() {
             {itens.map((p) => (
               <tr key={p.nome}>
                 <td className="strong">{p.nome}</td>
-                <td>{p.telefone || "—"}</td>
                 <td>
-                  <span className="chip">{p.servico || "—"}</span>
+                  <input defaultValue={p.telefone ?? ""} placeholder="telefone"
+                    onBlur={(e) => e.target.value !== (p.telefone ?? "") && salvar({ ...p, telefone: e.target.value })} />
                 </td>
-                <td>{p.pix ? <span className="chip" style={{ background: "#dcfce7", color: "#15803d" }}>✓ Pix</span> : <span className="muted">—</span>}</td>
-                <td>{p.cidade || "—"}</td>
+                <td>
+                  <select defaultValue={p.servico ?? "costura"} onChange={(e) => salvar({ ...p, servico: e.target.value })}>
+                    <option value="costura">Costura</option>
+                    <option value="tassel">Tassel</option>
+                    <option value="outro">Outro</option>
+                  </select>
+                </td>
+                <td>
+                  <input defaultValue={p.pix ?? ""} placeholder="chave Pix"
+                    onBlur={(e) => e.target.value !== (p.pix ?? "") && salvar({ ...p, pix: e.target.value })} />
+                </td>
+                <td>
+                  <input defaultValue={p.cidade ?? ""} placeholder="cidade"
+                    onBlur={(e) => e.target.value !== (p.cidade ?? "") && salvar({ ...p, cidade: e.target.value })} />
+                </td>
                 <td>
                   <button className="icon-btn" title="Remover" onClick={() => remover(p)}>
                     ✕

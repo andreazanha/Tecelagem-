@@ -553,6 +553,9 @@ export interface ResumoPagamentoGrupo {
   pendentes: number;
   pendentePecas: number;
   pendenteValor: number;
+  descontosValor: number;
+  liquido: number;
+  descontos: { descricao: string | null; valor: number }[];
 }
 export interface ResumoPagamento {
   mes: string;
@@ -634,12 +637,25 @@ export async function gerarRelatorioPagamento(resumo: ResumoPagamento, tipo: str
       y += 17;
       seg(ix, y, ix + iw, hx("#eef0f4"), 0.5);
     }
-    // subtotal a pagar (só liberados)
+    // subtotal liberados (bruto)
     R(ix, y, iw, 20, hx("#f8fafc"));
-    T("TOTAL A PAGAR", cX[0] + 6, y + 14, 9.5, bld, INK);
+    T(g.descontosValor > 0 ? "Subtotal (liberados)" : "TOTAL A PAGAR", cX[0] + 6, y + 14, 9.5, bld, INK);
     TR(`${g.totalPecas} ${unidade}`, cX[4] - 6, y + 14, 9, bld, INK);
     TR(money(g.totalValor), cX[5] - 6, y + 14, 10, bld, INK);
     y += 20;
+    // descontos da costureira → líquido a pagar
+    if (g.descontosValor > 0) {
+      for (const ds of g.descontos) {
+        quebra(15);
+        T(`Desconto: ${ds.descricao || "—"}`, cX[0] + 6, y + 12, 8.5, reg, AMBER);
+        TR(`- ${money(ds.valor)}`, cX[5] - 6, y + 12, 8.5, bld, AMBER);
+        y += 14;
+      }
+      R(ix, y, iw, 22, hx("#eef6ff"));
+      T("LÍQUIDO A PAGAR", cX[0] + 6, y + 15, 10, bld, NAVY);
+      TR(money(g.liquido), cX[5] - 6, y + 15, 11, bld, NAVY);
+      y += 22;
+    }
     if (g.pendentes > 0) {
       T(`Pendentes (não entram no pagamento): ${g.pendentes} romaneio(s) · ${money(g.pendenteValor)}`, cX[0] + 6, y + 12, 8.5, reg, AMBER);
       y += 16;
@@ -649,7 +665,7 @@ export async function gerarRelatorioPagamento(resumo: ResumoPagamento, tipo: str
 
   quebra(30);
   R(ix, y, iw, 26, GOLD);
-  T("TOTAL GERAL A PAGAR (liberados)", ix + 10, y + 17, 11, bld, hx("#3a2f12"));
+  T("TOTAL GERAL A PAGAR (líquido)", ix + 10, y + 17, 11, bld, hx("#3a2f12"));
   TR(money(resumo.totalGeral), ix + iw - 10, y + 17, 13, bld, hx("#3a2f12"));
   T("Pendentes (esmaecidos) ainda não voltaram da costura/prestador — não entram no pagamento até retornarem.", ix, A4H - 24, 8.5, reg, MUTE);
   return await doc.save();
@@ -659,7 +675,10 @@ export async function gerarRelatorioPagamento(resumo: ResumoPagamento, tipo: str
 export interface ReciboDados {
   costureira: string;
   mesLabel: string;
-  valor: number;
+  valor: number; // líquido (o que paga via Pix)
+  bruto: number; // antes dos descontos
+  descontoValor: number;
+  descontos: { descricao: string; valor: number }[];
   romaneios: number; // qtd de romaneios liberados
   pecas: number;
   unidade: string; // "pç" | "tasseis"
@@ -710,13 +729,33 @@ export async function gerarReciboPagamento(d: ReciboDados): Promise<Uint8Array> 
   }
   y += 6;
 
-  // Valor em destaque
-  R(ix, y, iw, 46, hx("#f1f5f9"));
-  RB(ix, y, iw, 46, LINEC2, 0.8);
-  T("VALOR A RECEBER", ix + 16, y + 19, 9, bld, MUTE);
-  T(money(d.valor), ix + 16, y + 38, 22, bld, NAVY);
-  TR(`${d.romaneios} romaneio(s) · ${d.pecas} ${d.unidade}`, ix + iw - 16, y + 28, 11, bld, SLATE);
-  y += 64;
+  // Valor em destaque (com descontos, se houver)
+  const temDesc = d.descontoValor > 0;
+  const bh = temDesc ? 70 : 46;
+  R(ix, y, iw, bh, hx("#f1f5f9"));
+  RB(ix, y, iw, bh, LINEC2, 0.8);
+  T(temDesc ? "VALOR A RECEBER (líquido)" : "VALOR A RECEBER", ix + 16, y + 19, 9, bld, MUTE);
+  T(money(d.valor), ix + 16, y + 40, 22, bld, NAVY);
+  if (temDesc) {
+    TR(`Bruto: ${money(d.bruto)}`, ix + iw - 16, y + 22, 10.5, reg, SLATE);
+    TR(`Descontos: - ${money(d.descontoValor)}`, ix + iw - 16, y + 38, 10.5, bld, hx("#b45309"));
+    TR(`${d.romaneios} romaneio(s) · ${d.pecas} ${d.unidade}`, ix + iw - 16, y + 56, 9, reg, MUTE);
+  } else {
+    TR(`${d.romaneios} romaneio(s) · ${d.pecas} ${d.unidade}`, ix + iw - 16, y + 28, 11, bld, SLATE);
+  }
+  y += bh + 16;
+
+  // Lista de descontos aplicados
+  if (temDesc && d.descontos.length) {
+    T("DESCONTOS APLICADOS", ix, y, 8.5, bld, MUTE);
+    y += 14;
+    for (const ds of d.descontos.slice(0, 6)) {
+      T(`• ${fit(ds.descricao, reg, 10, iw - 90)}`, ix, y, 10, reg, SLATE);
+      TR(`- ${money(ds.valor)}`, ix + iw, y, 10, bld, hx("#b45309"));
+      y += 15;
+    }
+    y += 8;
+  }
 
   // Beneficiário
   T("BENEFICIÁRIO", ix, y, 9, bld, MUTE);
