@@ -596,7 +596,12 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     .bind(entregaResumo, id)
     .run();
 
-  // cria/atualiza os cards de TECELAGUEM (uma parte por OP); preserva o status de produção.
+  // cria/atualiza os cards de produção (uma parte por OP); preserva o status de produção.
+  // A pronta-entrega de PEDIDO DE CLIENTE (não-reposição) NASCE no Estoque, não na Tecelagem:
+  //  • Junto    → Estoque "Pronta entrega com produção" (pronto)
+  //  • Separado → Estoque "Separação" (fazendo)
+  // Reposição (produzir p/ estocar) continua nascendo na Tecelagem.
+  const reposicao = !!Number(ped.reposicao);
   const partesProd: { parte: string; blocos: ReturnType<typeof classificar>["kits"] }[] = [];
   if (cl.modo === "unica") partesProd.push({ parte: "parte-unica", blocos: cl.parteUnica! });
   else {
@@ -608,12 +613,27 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     if (!p.blocos.length) continue;
     const pecas = p.blocos.reduce((s, b) => s + b.total, 0);
     const resumo = `${p.blocos.length} modelo(s)`;
-    await c.env.DB.prepare(
-      `INSERT INTO producao (pedido_id, parte, pecas, resumo) VALUES (?, ?, ?, ?)
-       ON CONFLICT(pedido_id, parte) DO UPDATE SET pecas = excluded.pecas, resumo = excluded.resumo`
-    )
-      .bind(id, p.parte, pecas, resumo)
-      .run();
+    const ehKitCliente = p.parte === "pronta-entrega" && !reposicao;
+    if (ehKitCliente) {
+      const status = entregaResumo === "separado" ? "fazendo" : "pronto";
+      // Cria já no Estoque; se o card já existe e ainda NÃO começou, recoloca no lugar certo
+      // (corrige kits que tinham caído na Tecelagem). Cards em andamento ficam onde estão.
+      await c.env.DB.prepare(
+        `INSERT INTO producao (pedido_id, parte, setor, status, pecas, resumo) VALUES (?, ?, 'estoque', ?, ?, ?)
+         ON CONFLICT(pedido_id, parte) DO UPDATE SET pecas = excluded.pecas, resumo = excluded.resumo,
+           setor = excluded.setor, status = excluded.status
+         WHERE producao.operador IS NULL AND producao.iniciado_em IS NULL AND producao.finalizado_em IS NULL`
+      )
+        .bind(id, p.parte, status, pecas, resumo)
+        .run();
+    } else {
+      await c.env.DB.prepare(
+        `INSERT INTO producao (pedido_id, parte, pecas, resumo) VALUES (?, ?, ?, ?)
+         ON CONFLICT(pedido_id, parte) DO UPDATE SET pecas = excluded.pecas, resumo = excluded.resumo`
+      )
+        .bind(id, p.parte, pecas, resumo)
+        .run();
+    }
   }
 
   return c.json({ modo: cl.modo, temKit: cl.temKit, arquivos });

@@ -58,9 +58,27 @@ async function garantirCards(env: Env) {
   }
 }
 
+// Auto-correção: kits (pronta-entrega) de PEDIDO DE CLIENTE que caíram na Tecelagem
+// por engano voltam para o Estoque (Separação se separado, senão Pronta entrega).
+// Só mexe em cards intocados (sem operador/início) e nunca em reposição.
+async function corrigirKitsNaTecelagem(env: Env) {
+  await env.DB.prepare(
+    `UPDATE producao
+        SET setor = 'estoque',
+            status = CASE WHEN (SELECT entrega_pe FROM pedidos WHERE id = producao.pedido_id) = 'separado'
+                          THEN 'fazendo' ELSE 'pronto' END
+      WHERE parte = 'pronta-entrega'
+        AND setor = 'tecelagem'
+        AND status = 'aguardando'
+        AND operador IS NULL AND iniciado_em IS NULL AND finalizado_em IS NULL
+        AND pedido_id IN (SELECT id FROM pedidos WHERE COALESCE(reposicao, 0) = 0)`
+  ).run();
+}
+
 // QUADRO de um SETOR (default tecelagem) — partes naquele setor, com dados do pedido.
 producao.get("/", async (c) => {
   await garantirCards(c.env);
+  await corrigirKitsNaTecelagem(c.env);
   const setor = c.req.query("setor") || "tecelagem";
   const { results } = await c.env.DB.prepare(
     `SELECT pr.pedido_id, pr.parte, pr.setor, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
