@@ -529,3 +529,112 @@ export async function gerarRomaneioCostura(
   TC(ct, A4W / 2, cutY + 3, 8, bld, hx("#64748b"));
   return await doc.save();
 }
+
+// ── Relatório de Pagamento (Costureiras / Tassel) ─────────────────────────────
+export interface ResumoPagamentoLinha {
+  numero: string;
+  data_saida: string | null;
+  data_retorno: string | null;
+  retornou: number;
+  total_pecas: number;
+  total_valor: number;
+}
+export interface ResumoPagamentoGrupo {
+  costureira: string;
+  romaneios: ResumoPagamentoLinha[];
+  totalPecas: number;
+  totalValor: number;
+  pendentes: number;
+}
+export interface ResumoPagamento {
+  mes: string;
+  tipo: string; // costura | tassel
+  grupos: ResumoPagamentoGrupo[];
+  totalGeral: number;
+}
+
+export async function gerarRelatorioPagamento(resumo: ResumoPagamento, tipo: string): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const reg = await doc.embedFont(StandardFonts.Helvetica);
+  const bld = await doc.embedFont(StandardFonts.HelveticaBold);
+  const M = 34;
+  const ix = M;
+  const iw = A4W - 2 * M;
+  let page = doc.addPage([A4W, A4H]);
+  let y = 0;
+  const SLATE = hx("#334155"),
+    LINEC2 = hx("#cbd5e1"),
+    GREY2 = hx("#eef1f5"),
+    AMBER = hx("#b45309");
+  const unidade = tipo === "tassel" ? "tasseis" : "pç";
+
+  const T = (s: string, x: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x, y: A4H - yTop, size, font: f, color: c });
+  const TR = (s: string, xr: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x: xr - f.widthOfTextAtSize(s, size), y: A4H - yTop, size, font: f, color: c });
+  const R = (x: number, yTop: number, w: number, h: number, c = INK) =>
+    page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, color: c });
+  const seg = (x1: number, y1: number, x2: number, c: ReturnType<typeof rgb>, th = 0.7) =>
+    page.drawLine({ start: { x: x1, y: A4H - y1 }, end: { x: x2, y: A4H - y1 }, thickness: th, color: c });
+  const quebra = (need: number) => {
+    if (y + need > A4H - 40) {
+      page = doc.addPage([A4W, A4H]);
+      y = 40;
+    }
+  };
+
+  // Cabeçalho
+  R(0, 0, A4W, 60, NAVY);
+  T("BIG TRICOT", ix, 28, 17, bld, WHITE);
+  T("HOME DECOR", ix + 2, 40, 7, reg, hx("#c7d2e0"));
+  TR("RELATÓRIO DE PAGAMENTO", ix + iw, 26, 13, bld, WHITE);
+  TR(`${tipo === "tassel" ? "Tassel" : "Costureiras"} · ${resumo.mes || "todos os meses"} · gerado ${geradoEm()}`, ix + iw, 40, 8.5, reg, hx("#c7d2e0"));
+  y = 84;
+
+  // Colunas: Romaneio | Saída | Retorno prev. | Status | Qtd | Valor
+  const cX = [ix, ix + iw * 0.20, ix + iw * 0.37, ix + iw * 0.55, ix + iw * 0.74, ix + iw];
+
+  for (const g of resumo.grupos) {
+    quebra(60);
+    // título da pessoa
+    R(ix, y, iw, 22, GREY2);
+    T(g.costureira, ix + 8, y + 15, 11, bld, INK);
+    TR(`${g.totalPecas} ${unidade} · ${money(g.totalValor)}${g.pendentes ? ` · ${g.pendentes} pendente(s)` : ""}`, ix + iw - 8, y + 15, 10, bld, INK);
+    y += 22;
+    // cabeçalho da tabela
+    T("Romaneio", cX[0] + 6, y + 12, 8, bld, SLATE);
+    T("Saída", cX[1] + 6, y + 12, 8, bld, SLATE);
+    T("Retorno prev.", cX[2] + 6, y + 12, 8, bld, SLATE);
+    T("Status", cX[3] + 6, y + 12, 8, bld, SLATE);
+    TR("Qtd", cX[4] - 6, y + 12, 8, bld, SLATE);
+    TR("Valor", cX[5] - 6, y + 12, 8, bld, SLATE);
+    y += 16;
+    seg(ix, y, ix + iw, LINEC2);
+    for (const r of g.romaneios) {
+      quebra(18);
+      const dt = (s: string | null) => (s ? s.split("-").reverse().join("/") : "—");
+      T(`Nº ${r.numero}`, cX[0] + 6, y + 13, 9, bld);
+      T(dt(r.data_saida), cX[1] + 6, y + 13, 8.5, reg);
+      T(dt(r.data_retorno), cX[2] + 6, y + 13, 8.5, reg);
+      if (r.retornou) T("Retornou", cX[3] + 6, y + 13, 8.5, bld, hx("#047857"));
+      else T("PENDENTE", cX[3] + 6, y + 13, 8.5, bld, AMBER);
+      TR(`${r.total_pecas}`, cX[4] - 6, y + 13, 9, reg);
+      TR(money(r.total_valor), cX[5] - 6, y + 13, 9, bld);
+      y += 17;
+      seg(ix, y, ix + iw, hx("#eef0f4"), 0.5);
+    }
+    // subtotal
+    R(ix, y, iw, 20, hx("#f8fafc"));
+    T("TOTAL A PAGAR", cX[0] + 6, y + 14, 9.5, bld, INK);
+    TR(`${g.totalPecas} ${unidade}`, cX[4] - 6, y + 14, 9, bld, INK);
+    TR(money(g.totalValor), cX[5] - 6, y + 14, 10, bld, INK);
+    y += 32;
+  }
+
+  quebra(30);
+  R(ix, y, iw, 26, GOLD);
+  T("TOTAL GERAL DO PERÍODO", ix + 10, y + 17, 11, bld, hx("#3a2f12"));
+  TR(money(resumo.totalGeral), ix + iw - 10, y + 17, 13, bld, hx("#3a2f12"));
+  T("Romaneios PENDENTES ainda não retornaram da costura/prestador (viraram o mês sem devolução).", ix, A4H - 24, 8.5, reg, MUTE);
+  return await doc.save();
+}

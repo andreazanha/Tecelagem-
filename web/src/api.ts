@@ -195,17 +195,34 @@ export interface RomaneioEmitido {
   total_valor: number;
   data_saida: string | null;
   data_retorno: string | null;
+  retornou?: number;
 }
 export interface PagamentoCostureira {
   costureira: string;
   romaneios: RomaneioEmitido[];
   totalPecas: number;
   totalValor: number;
+  pendentes?: number;
 }
 export interface PagamentoData {
   mes: string;
+  tipo?: string;
   grupos: PagamentoCostureira[];
   totalGeral: number;
+}
+export interface EmitidoRomaneio {
+  tipo: string; // costura | tassel
+  pedido_id: string;
+  numero: string;
+  cliente: string | null;
+  pessoa: string | null;
+  volumes: string | null;
+  qtd: number;
+  total_valor: number;
+  data_saida: string | null;
+  data_retorno: string | null;
+  data_retorno_real: string | null;
+  retornou: number;
 }
 
 export interface Sugestao {
@@ -448,12 +465,13 @@ export const api = {
   },
   listarRomaneiosPedidos: () => fetch("/api/romaneios/pedidos").then((r) => j<RomaneioPedido[]>(r)),
   obterRomaneio: (id: string) => fetch(`/api/romaneios/${id}`).then((r) => j<RomaneioData>(r)),
-  pagamentoCostura: (mes?: string, tipo: "costura" | "tassel" = "costura") => {
+  pagamentoCostura: (mes?: string, tipo: "costura" | "tassel" = "costura", costureira = "") => {
     const q = new URLSearchParams({ tipo });
     if (mes) q.set("mes", mes);
+    if (costureira) q.set("costureira", costureira);
     return fetch(`/api/romaneios/pagamento?${q.toString()}`).then((r) => j<PagamentoData>(r));
   },
-  gerarRomaneioCostura: (id: string, opts?: { prestador?: string; volumes?: string; dataRetorno?: string }) =>
+  gerarRomaneioCostura: (id: string, opts?: { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean }) =>
     fetch(`/api/romaneios/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -521,12 +539,44 @@ export const api = {
     if (r.status === 401) return { ok: false as const };
     return j<{ ok: boolean; nome?: string }>(r);
   },
-  gerarRomaneioTassel: (id: string, opts?: { prestador?: string; volumes?: string; dataRetorno?: string }) =>
+  gerarRomaneioTassel: (id: string, opts?: { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean }) =>
     fetch(`/api/romaneios/${id}/tassel`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(typeof opts === "string" ? { prestador: opts } : opts || {}),
     }).then((r) => j<{ ok: boolean; url: string; totalTasseis: number; totalValor: number }>(r)),
+  listarEmitidos: (params?: { tipo?: string; status?: string; costureira?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.tipo) q.set("tipo", params.tipo);
+    if (params?.status) q.set("status", params.status);
+    if (params?.costureira) q.set("costureira", params.costureira);
+    const qs = q.toString();
+    return fetch(`/api/romaneios/emitidos${qs ? `?${qs}` : ""}`).then((r) => j<EmitidoRomaneio[]>(r));
+  },
+  marcarRetornoRomaneio: (tipo: string, id: string, retornou: boolean) =>
+    fetch(`/api/romaneios/emitido/${tipo}/${id}/retorno`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ retornou }),
+    }).then((r) => j<{ ok: boolean; retornou: boolean }>(r)),
+  excluirEmitido: (tipo: string, id: string, excluido: boolean) =>
+    fetch(`/api/romaneios/emitido/${tipo}/${id}/excluir`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ excluido }),
+    }).then((r) => j<{ ok: boolean; excluido: boolean }>(r)),
+  editarEmitido: (tipo: string, id: string, body: { prestador?: string; volumes?: string; dataRetorno?: string }) =>
+    fetch(`/api/romaneios/emitido/${tipo}/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => j<{ ok: boolean; url: string }>(r)),
+  relatorioPagamentoUrl: (mes: string, tipo: "costura" | "tassel", costureira: string) => {
+    const q = new URLSearchParams({ tipo });
+    if (mes) q.set("mes", mes);
+    if (costureira) q.set("costureira", costureira);
+    return `/api/romaneios/pagamento/pdf?${q.toString()}`;
+  },
   gerarRomaneioAvulso: (body: {
     tipo: "costura" | "tassel";
     cliente?: string;

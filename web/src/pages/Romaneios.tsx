@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, type Tassel, type Prestador, type Costura, type RomaneioPedido, type RomaneioData } from "../api";
+import { api, type Tassel, type Prestador, type Costura, type RomaneioPedido, type RomaneioData, type EmitidoRomaneio } from "../api";
+import { historico } from "../historico";
 
 const brl = (v: number) => "R$ " + (Number(v) || 0).toFixed(2).replace(".", ",");
 const br = (d?: string | null) => {
@@ -17,12 +18,13 @@ const agrupLabel = (id?: string) => AGRUP.find((a) => a.id === id)?.label || "To
 
 export function Romaneios() {
   const [aba, setAba] = useState<
-    "costureiras" | "tassel" | "avulso" | "tasseis" | "costura" | "prestadores" | "relatorios"
+    "costureiras" | "tassel" | "avulso" | "gerados" | "relatorios" | "tasseis" | "costura" | "prestadores"
   >("costureiras");
   const abas: { id: typeof aba; label: string }[] = [
     { id: "costureiras", label: "🪡 Romaneio Costureiras" },
     { id: "tassel", label: "🧶 Romaneio Tassel" },
     { id: "avulso", label: "➕ Romaneio Avulso" },
+    { id: "gerados", label: "📃 Romaneios Gerados" },
     { id: "relatorios", label: "📊 Pagamentos" },
     { id: "costura", label: "⚙️ Serviços Costura" },
     { id: "tasseis", label: "⚙️ Valores Tassel" },
@@ -52,6 +54,7 @@ export function Romaneios() {
       {aba === "costureiras" && <RomaneiosPedidos tipo="costura" />}
       {aba === "tassel" && <RomaneiosPedidos tipo="tassel" />}
       {aba === "avulso" && <RomaneioAvulso />}
+      {aba === "gerados" && <RomaneiosGerados />}
       {aba === "tasseis" && <TasseisCadastro />}
       {aba === "costura" && <CosturaCadastro />}
       {aba === "prestadores" && <PrestadoresCadastro />}
@@ -134,8 +137,9 @@ function RomaneioModal({ pedido, tipo, onFechar }: { pedido: RomaneioPedido; tip
   const [pessoa, setPessoa] = useState("");
   const [volumes, setVolumes] = useState("");
   const [dataRetorno, setDataRetorno] = useState("");
-  const [gerando, setGerando] = useState(false);
+  const [gerando, setGerando] = useState("");
   const [erro, setErro] = useState("");
+  const [ok, setOk] = useState("");
 
   useEffect(() => {
     api.obterRomaneio(pedido.pedido_id).then(setData).catch((e) => setErro((e as Error).message)).finally(() => setCarregando(false));
@@ -145,14 +149,17 @@ function RomaneioModal({ pedido, tipo, onFechar }: { pedido: RomaneioPedido; tip
     }).catch(() => {});
   }, [pedido.pedido_id, tipo]);
 
-  async function gerar() {
-    setErro(""); setGerando(true);
+  // registrar=false → só visualiza; registrar=true → "Gerar" (marca como gerado/pendente).
+  async function gerar(registrar: boolean) {
+    setErro(""); setOk(""); setGerando(registrar ? "gerar" : "ver");
     try {
+      const opts = { prestador: pessoa, volumes, dataRetorno, registrar };
       const r = tipo === "tassel"
-        ? await api.gerarRomaneioTassel(pedido.pedido_id, { prestador: pessoa, volumes, dataRetorno })
-        : await api.gerarRomaneioCostura(pedido.pedido_id, { prestador: pessoa, volumes, dataRetorno });
+        ? await api.gerarRomaneioTassel(pedido.pedido_id, opts)
+        : await api.gerarRomaneioCostura(pedido.pedido_id, opts);
       window.open(r.url, "_blank");
-    } catch (e) { setErro((e as Error).message); } finally { setGerando(false); }
+      if (registrar) setOk("✓ Romaneio gerado e salvo na base (pendente até retornar).");
+    } catch (e) { setErro((e as Error).message); } finally { setGerando(""); }
   }
 
   const temServicos = !!data?.servicos.length;
@@ -177,6 +184,7 @@ function RomaneioModal({ pedido, tipo, onFechar }: { pedido: RomaneioPedido; tip
 
         <div className="modal-bd">
           {erro && <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 13, marginBottom: 10 }}>{erro}</div>}
+          {ok && <div style={{ color: "#047857", fontWeight: 700, fontSize: 13, marginBottom: 10 }}>{ok}</div>}
           <div className="rom-campos">
             <label>
               <span>{ehTassel ? "PRESTADOR DE TASSEL" : "COSTUREIRA"}</span>
@@ -265,9 +273,14 @@ function RomaneioModal({ pedido, tipo, onFechar }: { pedido: RomaneioPedido; tip
 
         <div className="modal-ft">
           <button className="btn" onClick={onFechar}>Fechar</button>
-          <button className={"kbtn " + (ehTassel ? "tecer" : "final")} disabled={gerando} onClick={gerar}>
-            {gerando ? "Gerando…" : ehTassel ? "👁 Visualizar / PDF (3 vias)" : "👁 Visualizar / PDF (2 vias)"}
-          </button>
+          <div className="row-gap">
+            <button className="btn" disabled={!!gerando} onClick={() => gerar(false)}>
+              {gerando === "ver" ? "Abrindo…" : "👁 Visualizar PDF"}
+            </button>
+            <button className={"kbtn " + (ehTassel ? "tecer" : "final")} disabled={!!gerando} onClick={() => gerar(true)}>
+              {gerando === "gerar" ? "Gerando…" : "✓ Gerar romaneio"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -398,17 +411,200 @@ function RomaneioAvulso() {
   );
 }
 
+// ── Todos os romaneios gerados (status, retorno, editar, excluir + undo) ─────
+const pdfUrl = (e: EmitidoRomaneio) => `/api/pedidos/${e.pedido_id}/pdf/${e.tipo === "tassel" ? "romaneio-tassel" : "romaneio-costura"}`;
+
+function RomaneiosGerados() {
+  const [itens, setItens] = useState<EmitidoRomaneio[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [fTipo, setFTipo] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  const [busca, setBusca] = useState("");
+  const [editar, setEditar] = useState<EmitidoRomaneio | null>(null);
+
+  function recarregar() {
+    api.listarEmitidos({ tipo: fTipo, status: fStatus }).then(setItens).catch(() => {}).finally(() => setCarregando(false));
+  }
+  useEffect(() => {
+    setCarregando(true);
+    recarregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fTipo, fStatus]);
+  // Recarrega ao desfazer/refazer (undo global).
+  useEffect(() => {
+    const h = () => recarregar();
+    window.addEventListener("historico:mudou", h);
+    return () => window.removeEventListener("historico:mudou", h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fTipo, fStatus]);
+
+  async function marcarRetorno(e: EmitidoRomaneio, retornou: boolean) {
+    await api.marcarRetornoRomaneio(e.tipo, e.pedido_id, retornou).catch(() => {});
+    historico.registrar({
+      label: retornou ? `marcar retorno ${e.numero}` : `desmarcar retorno ${e.numero}`,
+      desfazer: () => api.marcarRetornoRomaneio(e.tipo, e.pedido_id, !retornou),
+      refazer: () => api.marcarRetornoRomaneio(e.tipo, e.pedido_id, retornou),
+    });
+    recarregar();
+  }
+  async function excluir(e: EmitidoRomaneio) {
+    if (!confirm(`Excluir o romaneio Nº ${e.numero}? (dá para desfazer)`)) return;
+    await api.excluirEmitido(e.tipo, e.pedido_id, true).catch(() => {});
+    historico.registrar({
+      label: `excluir romaneio ${e.numero}`,
+      desfazer: () => api.excluirEmitido(e.tipo, e.pedido_id, false),
+      refazer: () => api.excluirEmitido(e.tipo, e.pedido_id, true),
+    });
+    recarregar();
+  }
+
+  const q = busca.trim().toLowerCase();
+  const lista = q
+    ? itens.filter((e) => e.numero.toLowerCase().includes(q) || (e.cliente || "").toLowerCase().includes(q) || (e.pessoa || "").toLowerCase().includes(q))
+    : itens;
+
+  return (
+    <>
+      <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>
+        Todos os romaneios <strong>gerados</strong>. Marque o <strong>retorno</strong> quando voltar da costura/prestador.
+        Os que ainda não voltaram ficam <strong>pendentes</strong>. Editar/excluir com <strong>desfazer</strong> (Ctrl+Z).
+      </p>
+      <div className="row-gap" style={{ marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <div className="segmented">
+          <button className={"seg" + (fTipo === "" ? " seg-on" : "")} onClick={() => setFTipo("")}>Todos</button>
+          <button className={"seg" + (fTipo === "costura" ? " seg-on" : "")} onClick={() => setFTipo("costura")}>🪡 Costura</button>
+          <button className={"seg" + (fTipo === "tassel" ? " seg-on" : "")} onClick={() => setFTipo("tassel")}>🧶 Tassel</button>
+        </div>
+        <div className="segmented">
+          <button className={"seg" + (fStatus === "" ? " seg-on" : "")} onClick={() => setFStatus("")}>Todos status</button>
+          <button className={"seg" + (fStatus === "pendente" ? " seg-on" : "")} onClick={() => setFStatus("pendente")}>⏳ Pendentes</button>
+          <button className={"seg" + (fStatus === "retornou" ? " seg-on" : "")} onClick={() => setFStatus("retornou")}>✓ Retornaram</button>
+        </div>
+        <input className="busca-ped" placeholder="🔎 Nº, cliente ou prestador…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+      </div>
+      <div className="card">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Nº</th><th>Tipo</th><th>Cliente</th><th>Costureira/Prestador</th>
+              <th>Saída</th><th>Retorno prev.</th><th>Status</th><th className="num">Valor</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {carregando ? (
+              <tr><td colSpan={9} className="empty pad">Carregando…</td></tr>
+            ) : lista.length === 0 ? (
+              <tr><td colSpan={9} className="empty pad">Nenhum romaneio gerado.</td></tr>
+            ) : (
+              lista.map((e) => (
+                <tr key={e.tipo + e.pedido_id}>
+                  <td className="strong">{e.numero}</td>
+                  <td><span className="chip">{e.tipo === "tassel" ? "🧶 Tassel" : "🪡 Costura"}</span></td>
+                  <td>{e.cliente || "—"}</td>
+                  <td>{e.pessoa || "—"}</td>
+                  <td>{br(e.data_saida)}</td>
+                  <td>{br(e.data_retorno)}</td>
+                  <td>
+                    {e.retornou
+                      ? <span className="chip" style={{ background: "#dcfce7", color: "#15803d" }}>✓ Retornou {e.data_retorno_real ? `(${br(e.data_retorno_real)})` : ""}</span>
+                      : <span className="chip" style={{ background: "#fef3c7", color: "#b45309" }}>⏳ Pendente</span>}
+                  </td>
+                  <td className="num strong">{brl(e.total_valor)}</td>
+                  <td>
+                    <div className="row-gap" style={{ gap: 6, justifyContent: "flex-end" }}>
+                      <button className="icon-btn" title="Ver PDF" onClick={() => window.open(pdfUrl(e), "_blank")}>👁</button>
+                      {e.retornou
+                        ? <button className="icon-btn" title="Desmarcar retorno" onClick={() => marcarRetorno(e, false)}>↩</button>
+                        : <button className="btn btn-soft" title="Marcar como retornado" onClick={() => marcarRetorno(e, true)}>✓ Voltou</button>}
+                      <button className="icon-btn" title="Editar" onClick={() => setEditar(e)}>✎</button>
+                      <button className="icon-btn" title="Excluir" onClick={() => excluir(e)}>✕</button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      {editar && <EditarEmitidoModal emitido={editar} onFechar={() => setEditar(null)} onSalvo={() => { setEditar(null); recarregar(); }} />}
+    </>
+  );
+}
+
+function EditarEmitidoModal({ emitido, onFechar, onSalvo }: { emitido: EmitidoRomaneio; onFechar: () => void; onSalvo: () => void }) {
+  const [pessoas, setPessoas] = useState<string[]>([]);
+  const [pessoa, setPessoa] = useState(emitido.pessoa || "");
+  const [volumes, setVolumes] = useState(emitido.volumes || "");
+  const [dataRetorno, setDataRetorno] = useState(emitido.data_retorno || "");
+  const [salvando, setSalvando] = useState(false);
+  const ehTassel = emitido.tipo === "tassel";
+
+  useEffect(() => {
+    api.listarPrestadores().then((l) => setPessoas(l.filter((x) => (x.servico || "") === (ehTassel ? "tassel" : "costura")).map((x) => x.nome))).catch(() => {});
+  }, [ehTassel]);
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      await api.editarEmitido(emitido.tipo, emitido.pedido_id, { prestador: pessoa, volumes, dataRetorno });
+      onSalvo();
+    } finally { setSalvando(false); }
+  }
+
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+        <div className={"modal-hd " + (ehTassel ? "unica" : "kit")}>
+          <div className="modal-hd-top">
+            <span className="modal-pills"><span className="modal-pill">Nº {emitido.numero}</span><span className="modal-pill">editar</span></span>
+            <button className="modal-x" onClick={onFechar}>✕</button>
+          </div>
+          <div className="modal-hd-row"><span className="modal-cli">{emitido.cliente || "—"}</span></div>
+        </div>
+        <div className="modal-bd">
+          <div className="rom-campos">
+            <label>
+              <span>{ehTassel ? "PRESTADOR DE TASSEL" : "COSTUREIRA"}</span>
+              <select value={pessoa} onChange={(e) => setPessoa(e.target.value)}>
+                <option value="">— escolher —</option>
+                {pessoas.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </label>
+            <label><span>DATA RETORNO</span><input type="date" value={dataRetorno} onChange={(e) => setDataRetorno(e.target.value)} /></label>
+            <label><span>VOLUMES</span><input type="number" min={0} value={volumes} onChange={(e) => setVolumes(e.target.value)} /></label>
+          </div>
+          <p className="muted" style={{ fontSize: 12 }}>O PDF é regerado com os novos dados (mantém os itens/valores do romaneio).</p>
+        </div>
+        <div className="modal-ft">
+          <button className="btn" onClick={onFechar}>Cancelar</button>
+          <button className="kbtn final" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "💾 Salvar e regerar PDF"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Relatório de pagamento por costureira (fim do mês) ───────────────────────
 function RelatoriosPagamento() {
   const [data, setData] = useState<import("../api").PagamentoData | null>(null);
   const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7));
   const [tipo, setTipo] = useState<"costura" | "tassel">("costura");
+  const [costureira, setCostureira] = useState("");
+  const [pessoas, setPessoas] = useState<string[]>([]);
   const [carregando, setCarregando] = useState(true);
 
   useEffect(() => {
     setCarregando(true);
-    api.pagamentoCostura(mes, tipo).then(setData).catch(() => {}).finally(() => setCarregando(false));
-  }, [mes, tipo]);
+    api.pagamentoCostura(mes, tipo, costureira).then(setData).catch(() => {}).finally(() => setCarregando(false));
+  }, [mes, tipo, costureira]);
+  useEffect(() => {
+    setCostureira("");
+    api.listarPrestadores()
+      .then((l) => setPessoas(l.filter((x) => (x.servico || "") === (tipo === "tassel" ? "tassel" : "costura")).map((x) => x.nome)))
+      .catch(() => {});
+  }, [tipo]);
+
+  const abrirRelatorio = () => window.open(api.relatorioPagamentoUrl(mes, tipo, costureira), "_blank");
 
   const mesLabel = (m: string) => {
     const [y, mm] = m.split("-");
@@ -430,7 +626,15 @@ function RelatoriosPagamento() {
           <span style={{ fontSize: 9.5, fontWeight: 800, color: "#94a3b8" }}>MÊS (data de saída)</span>
           <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} />
         </label>
-        {data && <div className="muted" style={{ marginLeft: "auto", fontSize: 14 }}>Total do mês: <strong style={{ color: "#1d4ed8" }}>{brl(data.totalGeral)}</strong></div>}
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 9.5, fontWeight: 800, color: "#94a3b8" }}>{tipo === "tassel" ? "PRESTADOR" : "COSTUREIRA"}</span>
+          <select value={costureira} onChange={(e) => setCostureira(e.target.value)}>
+            <option value="">Todas</option>
+            {pessoas.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+        <button className="kbtn final" onClick={abrirRelatorio}>📄 Gerar / baixar PDF</button>
+        {data && <div className="muted" style={{ marginLeft: "auto", fontSize: 14 }}>Total: <strong style={{ color: "#1d4ed8" }}>{brl(data.totalGeral)}</strong></div>}
       </div>
 
       {carregando || !data ? (
@@ -444,11 +648,12 @@ function RelatoriosPagamento() {
               <h2 style={{ margin: 0 }}>👩‍🔧 {g.costureira}</h2>
               <span className="chip" style={{ fontSize: 14, fontWeight: 800 }}>
                 {g.totalPecas} {tipo === "tassel" ? "tasseis" : "pç"} · {brl(g.totalValor)}
+                {g.pendentes ? <span style={{ color: "#b45309" }}> · {g.pendentes} pendente(s)</span> : null}
               </span>
             </div>
             <table className="table">
               <thead>
-                <tr><th>Romaneio / Pedido</th><th>Saída</th><th>Retorno previsto</th><th className="num">{tipo === "tassel" ? "Tasseis" : "Peças"}</th><th className="num">Valor</th></tr>
+                <tr><th>Romaneio / Pedido</th><th>Saída</th><th>Retorno previsto</th><th>Status</th><th className="num">{tipo === "tassel" ? "Tasseis" : "Peças"}</th><th className="num">Valor</th></tr>
               </thead>
               <tbody>
                 {g.romaneios.map((r) => (
@@ -456,12 +661,15 @@ function RelatoriosPagamento() {
                     <td className="strong">Nº {r.numero}</td>
                     <td>{br(r.data_saida)}</td>
                     <td>{br(r.data_retorno)}</td>
+                    <td>{r.retornou
+                      ? <span className="chip" style={{ background: "#dcfce7", color: "#15803d" }}>✓ Retornou</span>
+                      : <span className="chip" style={{ background: "#fef3c7", color: "#b45309" }}>⏳ Pendente</span>}</td>
                     <td className="num">{r.total_pecas}</td>
                     <td className="num strong">{brl(r.total_valor)}</td>
                   </tr>
                 ))}
                 <tr className="rom-total">
-                  <td className="strong" colSpan={3}>TOTAL A PAGAR</td>
+                  <td className="strong" colSpan={4}>TOTAL A PAGAR</td>
                   <td className="num strong">{g.totalPecas} {tipo === "tassel" ? "tasseis" : "pç"}</td>
                   <td className="num strong">{brl(g.totalValor)}</td>
                 </tr>
