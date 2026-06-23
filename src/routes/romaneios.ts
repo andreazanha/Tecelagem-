@@ -111,6 +111,40 @@ async function dadosPedido(env: Env, id: string) {
   return { ped, rom, itens, cat };
 }
 
+// PAGAMENTO: resumo por costureira num mês (base p/ pagamento no fim do mês).
+// Registrado ANTES de "/:id" para não ser capturado pela rota com parâmetro.
+romaneios.get("/pagamento", async (c) => {
+  const mes = c.req.query("mes") || ""; // YYYY-MM (filtra por data_saida)
+  const { results } = await c.env.DB.prepare(
+    `SELECT pedido_id, numero, costureira, total_pecas, total_valor, data_saida, data_retorno
+       FROM romaneios_costura ORDER BY costureira, data_saida`
+  ).all<{
+    pedido_id: string;
+    numero: string;
+    costureira: string | null;
+    total_pecas: number;
+    total_valor: number;
+    data_saida: string | null;
+    data_retorno: string | null;
+  }>();
+  const filtrados = mes ? results.filter((r) => (r.data_saida || "").slice(0, 7) === mes) : results;
+  const porCostureira = new Map<
+    string,
+    { costureira: string; romaneios: typeof filtrados; totalPecas: number; totalValor: number }
+  >();
+  for (const r of filtrados) {
+    const nome = r.costureira || "— sem costureira —";
+    const g = porCostureira.get(nome) || { costureira: nome, romaneios: [], totalPecas: 0, totalValor: 0 };
+    g.romaneios.push(r);
+    g.totalPecas += r.total_pecas || 0;
+    g.totalValor += r.total_valor || 0;
+    porCostureira.set(nome, g);
+  }
+  const grupos = [...porCostureira.values()].sort((a, b) => a.costureira.localeCompare(b.costureira, "pt"));
+  const totalGeral = grupos.reduce((s, g) => s + g.totalValor, 0);
+  return c.json({ mes, grupos, totalGeral });
+});
+
 // DADOS do romaneio (para a tela grande): cabeçalho + serviços (costura, valores
 // pré-fixados) + romaneio de tassel (se houver tasseis a fazer).
 romaneios.get("/:id", async (c) => {
@@ -133,27 +167,63 @@ romaneios.get("/:id", async (c) => {
   });
 });
 
-// GERA o PDF do romaneio de costura (2 vias) já preenchido e devolve a URL.
+// GERA o PDF do romaneio de costura (2 vias) já preenchido, salva o registro
+// (base da costureira p/ pagamento) e devolve a URL.
 romaneios.post("/:id", async (c) => {
   const id = c.req.param("id");
   const d = await dadosPedido(c.env, id);
   if (!d) return c.json({ error: "pedido não encontrado" }, 404);
   const { ped, rom } = d;
   if (rom.totalPecas <= 0) return c.json({ error: "Pedido sem peças de produção para o romaneio." }, 400);
-  const body = await c.req.json<{ prestador?: string }>().catch(() => ({}) as { prestador?: string });
+  const body = await c.req
+    .json<{ prestador?: string; volumes?: string; dataRetorno?: string }>()
+    .catch(() => ({}) as { prestador?: string; volumes?: string; dataRetorno?: string });
   const prestador = (body.prestador || "").trim();
+  const volumes = (body.volumes || "").trim();
+  const dataRetornoISO = (body.dataRetorno || "").trim(); // YYYY-MM-DD
+  const dataSaidaISO = new Date().toISOString().slice(0, 10);
   const { linhas, totalValor } = montarServicos(await servicosCostura(c.env), rom);
 
+  const numero = ped.codigo_pai || ped.numero_erp || id.slice(0, 8);
   const info: PedidoInfo = {
     cliente: ped.cliente_nome,
     representante: ped.vendedor || "—",
-    numero: ped.codigo_pai || ped.numero_erp || id.slice(0, 8),
+    numero,
     emissao: br(ped.data_pedido),
     entrega: br(ped.data_entrega),
   };
-  const bytes = await gerarRomaneioCostura(info, prestador, rom, linhas, totalValor);
+  const bytes = await gerarRomaneioCostura(info, prestador, rom, linhas, totalValor, {
+    volumes,
+    dataSaida: br(dataSaidaISO),
+    dataRetorno: dataRetornoISO ? br(dataRetornoISO) : "",
+  });
   await c.env.BUCKET.put(`pedidos/${id}/romaneio-costura.pdf`, bytes, {
     httpMetadata: { contentType: "application/pdf" },
   });
+
+  // Salva/atualiza o registro do romaneio (base da costureira p/ pagamento).
+  await c.env.DB.prepare(
+    `INSERT INTO romaneios_costura
+       (pedido_id, numero, costureira, volumes, total_pecas, total_valor, data_saida, data_retorno, servicos, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(pedido_id) DO UPDATE SET
+       numero = excluded.numero, costureira = excluded.costureira, volumes = excluded.volumes,
+       total_pecas = excluded.total_pecas, total_valor = excluded.total_valor,
+       data_saida = excluded.data_saida, data_retorno = excluded.data_retorno,
+       servicos = excluded.servicos, updated_at = datetime('now')`
+  )
+    .bind(
+      id,
+      numero,
+      prestador || null,
+      volumes || null,
+      rom.totalPecas,
+      totalValor,
+      dataSaidaISO,
+      dataRetornoISO || null,
+      JSON.stringify(linhas)
+    )
+    .run();
+
   return c.json({ ok: true, url: `/api/pedidos/${id}/pdf/romaneio-costura`, totalValor, servicos: linhas, ...rom });
 });

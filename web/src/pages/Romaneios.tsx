@@ -49,14 +49,7 @@ export function Romaneios() {
       {aba === "tasseis" && <TasseisCadastro />}
       {aba === "costura" && <CosturaCadastro />}
       {aba === "prestadores" && <PrestadoresCadastro />}
-      {aba === "relatorios" && (
-        <div className="card pad">
-          <p className="muted">
-            Relatórios por prestador (total a pagar, romaneios emitidos, por período) entram numa
-            próxima etapa. Me diga quais números você quer ver aqui.
-          </p>
-        </div>
-      )}
+      {aba === "relatorios" && <RelatoriosPagamento />}
     </>
   );
 }
@@ -139,6 +132,8 @@ function RomaneioModal({ pedido, onFechar }: { pedido: RomaneioPedido; onFechar:
   const [tasselistas, setTasselistas] = useState<string[]>([]);
   const [costureira, setCostureira] = useState("");
   const [prestadorTassel, setPrestadorTassel] = useState("");
+  const [volumes, setVolumes] = useState("");
+  const [dataRetorno, setDataRetorno] = useState("");
   const [gerando, setGerando] = useState("");
   const [erro, setErro] = useState("");
 
@@ -153,7 +148,7 @@ function RomaneioModal({ pedido, onFechar }: { pedido: RomaneioPedido; onFechar:
   async function gerarCostura() {
     setErro(""); setGerando("costura");
     try {
-      const r = await api.gerarRomaneioCostura(pedido.pedido_id, costureira);
+      const r = await api.gerarRomaneioCostura(pedido.pedido_id, { prestador: costureira, volumes, dataRetorno });
       window.open(r.url, "_blank");
     } catch (e) { setErro((e as Error).message); } finally { setGerando(""); }
   }
@@ -194,15 +189,26 @@ function RomaneioModal({ pedido, onFechar }: { pedido: RomaneioPedido; onFechar:
               <div className="rom-sec">
                 <div className="rom-sec-hd">
                   <h3>🪡 Romaneio de Costura <span className="muted">→ costureira</span></h3>
-                  <div className="row-gap">
-                    <select value={costureira} onChange={(e) => setCostureira(e.target.value)} style={selCss()}>
-                      <option value="">— costureira (opcional) —</option>
+                  <button className="kbtn final" disabled={gerando === "costura"} onClick={gerarCostura}>
+                    {gerando === "costura" ? "Gerando…" : "👁 Visualizar / PDF (2 vias)"}
+                  </button>
+                </div>
+                <div className="rom-campos">
+                  <label>
+                    <span>COSTUREIRA</span>
+                    <select value={costureira} onChange={(e) => setCostureira(e.target.value)}>
+                      <option value="">— escolher —</option>
                       {costureiras.map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
-                    <button className="kbtn final" disabled={gerando === "costura"} onClick={gerarCostura}>
-                      {gerando === "costura" ? "Gerando…" : "👁 PDF (2 vias)"}
-                    </button>
-                  </div>
+                  </label>
+                  <label>
+                    <span>DATA RETORNO (devolução)</span>
+                    <input type="date" value={dataRetorno} onChange={(e) => setDataRetorno(e.target.value)} />
+                  </label>
+                  <label>
+                    <span>VOLUMES</span>
+                    <input type="number" min={0} placeholder="ex.: 2" value={volumes} onChange={(e) => setVolumes(e.target.value)} />
+                  </label>
                 </div>
                 <table className="table">
                   <thead>
@@ -288,6 +294,77 @@ function RomaneioModal({ pedido, onFechar }: { pedido: RomaneioPedido; onFechar:
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Relatório de pagamento por costureira (fim do mês) ───────────────────────
+function RelatoriosPagamento() {
+  const [data, setData] = useState<import("../api").PagamentoData | null>(null);
+  const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7));
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    setCarregando(true);
+    api.pagamentoCostura(mes).then(setData).catch(() => {}).finally(() => setCarregando(false));
+  }, [mes]);
+
+  const mesLabel = (m: string) => {
+    const [y, mm] = m.split("-");
+    const nomes = ["", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    return `${nomes[Number(mm)] || mm} / ${y}`;
+  };
+
+  return (
+    <>
+      <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>
+        Pagamento das <strong>costureiras</strong> no fim do mês — soma os romaneios emitidos (saída no mês).
+      </p>
+      <div className="row-gap" style={{ marginBottom: 14, alignItems: "center" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 9.5, fontWeight: 800, color: "#94a3b8" }}>MÊS (data de saída)</span>
+          <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} />
+        </label>
+        {data && <div className="muted" style={{ marginLeft: "auto", fontSize: 14 }}>Total do mês: <strong style={{ color: "#1d4ed8" }}>{brl(data.totalGeral)}</strong></div>}
+      </div>
+
+      {carregando || !data ? (
+        <div className="card pad">Carregando…</div>
+      ) : data.grupos.length === 0 ? (
+        <div className="card pad muted">Nenhum romaneio emitido em {mesLabel(mes)}.</div>
+      ) : (
+        data.grupos.map((g) => (
+          <div className="card" key={g.costureira} style={{ marginBottom: 14 }}>
+            <div className="card-head" style={{ paddingBottom: 12 }}>
+              <h2 style={{ margin: 0 }}>👩‍🔧 {g.costureira}</h2>
+              <span className="chip" style={{ fontSize: 14, fontWeight: 800 }}>
+                {g.totalPecas} pç · {brl(g.totalValor)}
+              </span>
+            </div>
+            <table className="table">
+              <thead>
+                <tr><th>Romaneio / Pedido</th><th>Saída</th><th>Retorno previsto</th><th className="num">Peças</th><th className="num">Valor</th></tr>
+              </thead>
+              <tbody>
+                {g.romaneios.map((r) => (
+                  <tr key={r.pedido_id}>
+                    <td className="strong">Nº {r.numero}</td>
+                    <td>{br(r.data_saida)}</td>
+                    <td>{br(r.data_retorno)}</td>
+                    <td className="num">{r.total_pecas}</td>
+                    <td className="num strong">{brl(r.total_valor)}</td>
+                  </tr>
+                ))}
+                <tr className="rom-total">
+                  <td className="strong" colSpan={3}>TOTAL A PAGAR</td>
+                  <td className="num strong">{g.totalPecas} pç</td>
+                  <td className="num strong">{brl(g.totalValor)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ))
+      )}
+    </>
   );
 }
 

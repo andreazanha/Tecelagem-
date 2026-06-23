@@ -371,7 +371,8 @@ export async function gerarRomaneioCostura(
   prestador: string,
   rom: RomaneioCostura,
   servicos: ServicoLinha[] = [],
-  totalValor = 0
+  totalValor = 0,
+  opts: { volumes?: string; dataSaida?: string; dataRetorno?: string } = {}
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
@@ -385,19 +386,17 @@ export async function gerarRomaneioCostura(
     page.drawText(s, { x, y: A4H - yTop, size, font: f, color: c });
   const TR = (s: string, xr: number, yTop: number, size: number, f: PDFFont, c = INK) =>
     page.drawText(s, { x: xr - f.widthOfTextAtSize(s, size), y: A4H - yTop, size, font: f, color: c });
+  const TC = (s: string, xc: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x: xc - f.widthOfTextAtSize(s, size) / 2, y: A4H - yTop, size, font: f, color: c });
   const R = (x: number, yTop: number, w: number, h: number, c = INK) =>
     page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, color: c });
-  const L = (yTop: number, c: ReturnType<typeof rgb>, th = 1, dash?: number[]) =>
-    page.drawLine({ start: { x: ix, y: A4H - yTop }, end: { x: ix + iw, y: A4H - yTop }, thickness: th, color: c, ...(dash ? { dashArray: dash } : {}) });
+  const RB = (x: number, yTop: number, w: number, h: number, c: ReturnType<typeof rgb>, bw = 0.8) =>
+    page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, borderColor: c, borderWidth: bw });
+  const seg = (x1: number, y1: number, x2: number, y2: number, c: ReturnType<typeof rgb>, th = 0.8, dash?: number[]) =>
+    page.drawLine({ start: { x: x1, y: A4H - y1 }, end: { x: x2, y: A4H - y2 }, thickness: th, color: c, ...(dash ? { dashArray: dash } : {}) });
 
-  // Colunas: SERVIÇO | QTD | VL UNIT | VL TOTAL
   const temValor = servicos.length > 0;
-  const cServ = ix + 8;
-  const cQtd = ix + iw * (temValor ? 0.56 : 0.94);
-  const cUnit = ix + iw * 0.78;
-  const cTot = ix + iw - 6;
-
-  // Linhas a imprimir: serviços (com valor) OU as 2 famílias (fallback sem valor).
+  // Linhas: serviços (com valor) OU as 2 famílias (fallback sem valor).
   const linhas: { nome: string; qtd: number; valorUnit: number; total: number }[] = temValor
     ? servicos.map((s) => ({ nome: s.nome, qtd: s.qtd, valorUnit: s.valorUnit, total: s.total }))
     : [
@@ -406,59 +405,94 @@ export async function gerarRomaneioCostura(
         ...(rom.outros > 0 ? [{ nome: "Outros", qtd: rom.outros, valorUnit: 0, total: 0 }] : []),
       ];
 
-  function drawVia(top: number, n: number) {
-    R(0, top, A4W, 24, NAVY);
-    T("BIG TRICOT", ix, top + 16, 12, bld, WHITE);
-    T("· Romaneio de Costura", ix + 92, top + 16, 9.5, reg, hx("#c7d2e0"));
-    // Nº do romaneio = Nº do pedido/OP.
-    TR(`ROMANEIO Nº ${ped.numero} · ${n}ª via (${n === 1 ? "Empresa" : "Costureira"}) · ${geradoEm()}`, ix + iw, top + 15, 8.5, bld, WHITE);
-    let y = top + 24 + 16;
-    T("Cliente:", ix, y, 9, reg, MUTE);
-    T(fit(ped.cliente, bld, 9, iw * 0.5 - 60), ix + 44, y, 9, bld);
-    T(ped.numero.includes(",") ? "Pedidos:" : "Pedido:", ix + iw * 0.56, y, 9, reg, MUTE);
-    T(fit(ped.numero, bld, 9, iw * 0.44 - 48), ix + iw * 0.56 + 44, y, 9, bld);
-    y += 14;
-    T("Costureira:", ix, y, 9, reg, MUTE);
-    T(prestador || "______________________________", ix + 58, y, 9, bld);
-    T("Entrega:", ix + iw * 0.56, y, 9, reg, MUTE);
-    T(ped.entrega || "—", ix + iw * 0.56 + 48, y, 9, bld);
-    y += 16;
-    R(ix, y, iw, 18, GREY);
-    T("SERVIÇO", cServ, y + 12, 8, bld, MUTE);
-    TR("QTD", cQtd, y + 12, 8, bld, MUTE);
-    if (temValor) {
-      TR("VL UNIT.", cUnit, y + 12, 8, bld, MUTE);
-      TR("VL TOTAL", cTot, y + 12, 8, bld, MUTE);
-    }
-    y += 18;
+  // Geometria da tabela (4 colunas).
+  const colX = [ix, ix + iw * 0.595, ix + iw * 0.735, ix + iw * 0.865, ix + iw];
+  const LINEC2 = hx("#cbd5e1");
+  const GREY2 = hx("#eef1f5");
+  const SLATE = hx("#334155");
+
+  function drawVia(top: number) {
+    // Cabeçalho branco: logo (texto) à esquerda, ROMANEIO Nº à direita.
+    T("BIG TRICOT", ix, top + 20, 17, bld, INK);
+    T("HOME DECOR", ix + 2, top + 31, 7, reg, MUTE);
+    TR(`ROMANEIO Nº ${ped.numero}`, ix + iw, top + 18, 13, bld, INK);
+    TR(`Emitido em ${opts.dataSaida || ped.emissao}`, ix + iw, top + 31, 8, reg, MUTE);
+    seg(ix, top + 42, ix + iw, top + 42, LINEC2, 0.8);
+
+    // Bloco de dados (2 colunas).
+    const rx = ix + iw * 0.55;
+    let iy = top + 60;
+    const lab = (x: number, yy: number, t: string) => T(t, x, yy, 8.5, bld, SLATE);
+    const val = (x: number, yy: number, t: string, max: number) => T(fit(t, reg, 9.5, max), x, yy, 9.5, reg, INK);
+    // Cliente (pode quebrar em 2 linhas)
+    lab(ix, iy, "Cliente:");
+    const clLines = wrap(ped.cliente, reg, 9.5, iw * 0.40);
+    T(clLines[0] || "—", ix + 50, iy, 9.5, reg, INK);
+    if (clLines[1]) T(fit(clLines[1], reg, 9.5, iw * 0.40), ix + 50, iy + 11, 9.5, reg, INK);
+    lab(rx, iy, "Pedido:");
+    val(rx + 52, iy, `#${ped.numero}`, iw * 0.40);
+    iy += 22;
+    lab(ix, iy, "Costureira:");
+    T(prestador || "______________________", ix + 62, iy, 9.5, bld, INK);
+    lab(rx, iy, "Volumes:");
+    val(rx + 52, iy, opts.volumes || "—", iw * 0.40);
+    iy += 16;
+    lab(ix, iy, "Data Saída:");
+    val(ix + 62, iy, opts.dataSaida || ped.emissao, 120);
+    lab(rx, iy, "Data Retorno:");
+    val(rx + 70, iy, opts.dataRetorno || "—", 120);
+
+    // Tabela com grade.
+    let ty = iy + 20;
+    const headH = 20, rowH = 22, totH = 26;
+    const tableH = headH + linhas.length * rowH + totH;
+    R(ix, ty, iw, headH, GREY2); // header fill
+    R(ix, ty + headH + linhas.length * rowH, iw, totH, GREY2); // total fill
+    // header labels
+    T("Serviço", colX[0] + 8, ty + 13, 8.5, bld, SLATE);
+    TR("Qtd", colX[2] - 8, ty + 13, 8.5, bld, SLATE);
+    TR("Vl Unit.", colX[3] - 8, ty + 13, 8.5, bld, SLATE);
+    TR("Vl Total", colX[4] - 8, ty + 13, 8.5, bld, SLATE);
+    // rows
+    let ry = ty + headH;
     for (const l of linhas) {
-      T(fit(l.nome, bld, 10.5, iw * 0.5), cServ, y + 14, 10.5, bld);
-      TR(String(l.qtd), cQtd, y + 14, 11, bld, QBLUE);
-      if (temValor) {
-        TR(money(l.valorUnit), cUnit, y + 14, 9.5, reg);
-        TR(money(l.total), cTot, y + 14, 9.5, bld);
-      }
-      L(y + 19, hx("#eef0f4"), 0.7);
-      y += 19;
+      T(fit(l.nome, bld, 9.5, colX[1] - colX[0] - 16), colX[0] + 8, ry + 15, 9.5, bld);
+      TR(String(l.qtd), colX[2] - 8, ry + 15, 10, bld, QBLUE);
+      TR(temValor ? money(l.valorUnit) : "—", colX[3] - 8, ry + 15, 9.5, reg);
+      TR(temValor ? money(l.total) : "—", colX[4] - 8, ry + 15, 9.5, bld);
+      ry += rowH;
     }
-    y += 4;
-    R(ix, y, iw, 24, GOLD);
-    T("TOTAL GERAL", ix + 10, y + 16, 10.5, bld, hx("#3a2f12"));
-    TR(`${rom.totalPecas} pç`, cQtd, y + 16, 10, bld, hx("#3a2f12"));
-    if (temValor) TR(money(totalValor), ix + iw - 10, y + 16, 12, bld, hx("#3a2f12"));
-    y += 24 + 22;
-    // áreas de conferência (IDA / RETORNO)
-    L(y, hx("#cbd5e1"), 0.7);
-    T("Conferido na IDA", ix, y + 12, 8.5, bld, MUTE);
-    T("Assinatura / Data", ix, y + 23, 8, reg, MUTE);
-    T("Conferido no RETORNO", ix + iw * 0.53, y + 12, 8.5, bld, MUTE);
-    T("Assinatura / Data", ix + iw * 0.53, y + 23, 8, reg, MUTE);
+    // total row
+    T("TOTAL GERAL", colX[0] + 8, ry + 17, 10, bld, INK);
+    TR(`${rom.totalPecas} pç`, colX[2] - 8, ry + 17, 9.5, bld, INK);
+    if (temValor) TR(money(totalValor), colX[4] - 8, ry + 17, 11, bld, INK);
+    // grade: borda externa + linhas
+    RB(ix, ty, iw, tableH, LINEC2, 0.8);
+    seg(ix, ty + headH, ix + iw, ty + headH, LINEC2, 0.8); // sob o cabeçalho
+    seg(ix, ty + headH + linhas.length * rowH, ix + iw, ty + headH + linhas.length * rowH, LINEC2, 0.8); // sobre o total
+    for (let i = 1; i < linhas.length; i++)
+      seg(ix, ty + headH + i * rowH, ix + iw, ty + headH + i * rowH, hx("#e6eaf0"), 0.6);
+    for (let i = 1; i < 4; i++) seg(colX[i], ty, colX[i], ty + tableH, LINEC2, 0.8);
+
+    // Rodapé: assinaturas (IDA / RETORNO).
+    const fy = ty + tableH + 34;
+    seg(ix, fy, ix + iw * 0.45, fy, LINEC2, 0.8);
+    seg(ix + iw * 0.53, fy, ix + iw, fy, LINEC2, 0.8);
+    T("Conferido na IDA", ix, fy + 12, 8.5, bld, SLATE);
+    T("Assinatura / Data", ix, fy + 22, 7.5, reg, MUTE);
+    T("Conferido no RETORNO", ix + iw * 0.53, fy + 12, 8.5, bld, SLATE);
+    T("Assinatura / Data", ix + iw * 0.53, fy + 22, 7.5, reg, MUTE);
   }
 
   const viaH = (A4H - 16) / 2;
-  for (let i = 0; i < 2; i++) {
-    drawVia(10 + i * viaH, i + 1);
-    if (i < 1) L(viaH + 4, hx("#9aa3b2"), 0.7, [4, 3]); // ✂ CORTAR AQUI
-  }
+  drawVia(20);
+  drawVia(20 + viaH);
+  // linha de corte entre as vias
+  const cutY = viaH + 12;
+  seg(ix, cutY, ix + iw, cutY, hx("#9aa3b2"), 0.7, [4, 3]);
+  const ct = "CORTAR AQUI";
+  const ctw = bld.widthOfTextAtSize(ct, 8) + 26;
+  R(A4W / 2 - ctw / 2, cutY - 6, ctw, 12, WHITE);
+  TC(ct, A4W / 2, cutY + 3, 8, bld, hx("#64748b"));
   return await doc.save();
 }

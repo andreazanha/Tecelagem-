@@ -185,6 +185,25 @@ export interface RomaneioData extends RomaneioPedido {
   totalValor: number;
   tassel: { linhas: TasselLinha[]; totalTasseis: number; totalValor: number } | null;
 }
+export interface RomaneioEmitido {
+  pedido_id: string;
+  numero: string;
+  total_pecas: number;
+  total_valor: number;
+  data_saida: string | null;
+  data_retorno: string | null;
+}
+export interface PagamentoCostureira {
+  costureira: string;
+  romaneios: RomaneioEmitido[];
+  totalPecas: number;
+  totalValor: number;
+}
+export interface PagamentoData {
+  mes: string;
+  grupos: PagamentoCostureira[];
+  totalGeral: number;
+}
 
 export interface Sugestao {
   numero_erp?: string;
@@ -426,12 +445,14 @@ export const api = {
   },
   listarRomaneiosPedidos: () => fetch("/api/romaneios/pedidos").then((r) => j<RomaneioPedido[]>(r)),
   obterRomaneio: (id: string) => fetch(`/api/romaneios/${id}`).then((r) => j<RomaneioData>(r)),
-  gerarRomaneioCostura: (id: string, prestador?: string) =>
+  pagamentoCostura: (mes?: string) =>
+    fetch(`/api/romaneios/pagamento${mes ? `?mes=${encodeURIComponent(mes)}` : ""}`).then((r) => j<PagamentoData>(r)),
+  gerarRomaneioCostura: (id: string, opts?: { prestador?: string; volumes?: string; dataRetorno?: string }) =>
     fetch(`/api/romaneios/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prestador: prestador || "" }),
-    }).then((r) => j<{ ok: boolean; url: string; peseirasMantas: number; almofadasCapas: number; outros: number; totalPecas: number }>(r)),
+      body: JSON.stringify(opts || {}),
+    }).then((r) => j<{ ok: boolean; url: string; totalValor: number; peseirasMantas: number; almofadasCapas: number; outros: number; totalPecas: number }>(r)),
   listarPrestadores: () => fetch("/api/prestadores").then((r) => j<Prestador[]>(r)),
   salvarPrestador: (p: Prestador) =>
     fetch("/api/prestadores", {
