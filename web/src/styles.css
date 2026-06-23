@@ -500,6 +500,10 @@ body.dark .empty, body.dark .breadcrumb { color: var(--muted); }
 .tp-tabela tbody tr:hover { background: #f8fafc; }
 .tp-pecas { font-size: 10.5px; color: #94a3b8; font-weight: 600; margin-top: 2px; }
 .tp-fase { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 800; border: 1.4px solid; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.tp-grupo td { background: #f1f5f9; font-weight: 800; font-size: 12px; color: #334155; letter-spacing: .2px; padding: 9px 14px; position: sticky; top: 0; border-bottom: 1px solid var(--line); }
+.tp-grupo:hover td { background: #f1f5f9; }
+.tp-grupo-conta { font-weight: 700; color: #94a3b8; }
+body.dark .tp-grupo td, body.dark .tp-grupo:hover td { background: #142036; color: #cbd5e1; }
 .tp-prog { display: flex; align-items: center; gap: 5px; }
 .tp-prog-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
 .tp-prog-dot.atual { width: 13px; height: 13px; box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px currentColor; }

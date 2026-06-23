@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { api, type PedidoTimeline } from "../api";
 import { br, brLong, dur, FASE_INFO, FASES_ORDEM } from "../expedicaoUtil";
 
@@ -93,6 +93,24 @@ export function TodosPedidos() {
     const nomes = ["", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
     return `${nomes[Number(mm)] || mm} / ${y}`;
   };
+  const mesAnoLongo = (m: string) => {
+    if (m === "sem-data") return "Sem data";
+    const [y, mm] = m.split("-");
+    const nomes = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    return `${nomes[Number(mm)] || mm} de ${y}`;
+  };
+
+  // Agrupa por ANO/MÊS (data do pedido, ou criação) — histórico fica para sempre, organizado.
+  const grupos = useMemo(() => {
+    const map = new Map<string, PedidoTimeline[]>();
+    for (const o of filtrados) {
+      const k = (o.data_pedido || o.created_at || "").slice(0, 7) || "sem-data";
+      const arr = map.get(k);
+      if (arr) arr.push(o);
+      else map.set(k, [o]);
+    }
+    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [filtrados]);
 
   return (
     <div className="quadro-page">
@@ -176,25 +194,34 @@ export function TodosPedidos() {
               </tr>
             </thead>
             <tbody>
-              {filtrados.map((o) => {
-                const fi = FASE_INFO[o.faseAtual] || { nome: o.faseAtual, ic: "•", cor: "#94a3b8" };
-                return (
-                  <tr key={o.pedido_id} onClick={() => setAberto(o)} style={{ cursor: "pointer" }}>
-                    <td><strong>{opCod(o)}</strong><div className="tp-pecas">{o.pecas} pç</div></td>
-                    <td>{o.cliente_nome}</td>
-                    <td><span className={"kparte " + (o.tipo === "MISTO" ? "kit" : o.tipo === "KIT" ? "kit" : o.tipo === "P1+P2" ? "p1" : "unica")}>{o.tipo}</span></td>
-                    <td>
-                      <span className="tp-fase" style={{ borderColor: fi.cor, color: fi.cor }}>{fi.ic} {fi.nome}</span>
-                      {(o.situacoes || []).length > 0 && (
-                        <div className="tp-pecas">{o.prioridade ? "★ " : ""}{(o.situacoes || []).map((s) => situLabel(o.faseAtual, s)).join(" · ")}</div>
-                      )}
-                      {o.transportadora && <div className="tp-pecas">{o.transportadora}</div>}
+              {grupos.map(([mesKey, lista]) => (
+                <Fragment key={mesKey}>
+                  <tr className="tp-grupo">
+                    <td colSpan={6}>
+                      📅 {mesAnoLongo(mesKey)} <span className="tp-grupo-conta">· {lista.length} pedido(s)</span>
                     </td>
-                    <td><Progresso idx={o.idx} /></td>
-                    <td><strong>{br(o.data_entrega)}</strong></td>
                   </tr>
-                );
-              })}
+                  {lista.map((o) => {
+                    const fi = FASE_INFO[o.faseAtual] || { nome: o.faseAtual, ic: "•", cor: "#94a3b8" };
+                    return (
+                      <tr key={o.pedido_id} onClick={() => setAberto(o)} style={{ cursor: "pointer" }}>
+                        <td><strong>{opCod(o)}</strong><div className="tp-pecas">{o.pecas} pç</div></td>
+                        <td>{o.cliente_nome}</td>
+                        <td><span className={"kparte " + (o.tipo === "MISTO" ? "kit" : o.tipo === "KIT" ? "kit" : o.tipo === "P1+P2" ? "p1" : "unica")}>{o.tipo}</span></td>
+                        <td>
+                          <span className="tp-fase" style={{ borderColor: fi.cor, color: fi.cor }}>{fi.ic} {fi.nome}</span>
+                          {(o.situacoes || []).length > 0 && (
+                            <div className="tp-pecas">{o.prioridade ? "★ " : ""}{(o.situacoes || []).map((s) => situLabel(o.faseAtual, s)).join(" · ")}</div>
+                          )}
+                          {o.transportadora && <div className="tp-pecas">{o.transportadora}</div>}
+                        </td>
+                        <td><Progresso idx={o.idx} /></td>
+                        <td><strong>{br(o.data_entrega)}</strong></td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              ))}
               {filtrados.length === 0 && (
                 <tr><td colSpan={6} style={{ textAlign: "center", padding: 24, color: "#94a3b8" }}>nenhum pedido encontrado</td></tr>
               )}
