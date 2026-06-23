@@ -420,6 +420,13 @@ body.dark .table th { color: var(--muted); border-color: #ffffff14; }
 body.dark .table td { border-color: #ffffff0d; }
 body.dark .table tr:hover td { background: #ffffff06; }
 
+/* caixas claras (pronta-entrega / avisos) — fundo escuro p/ o texto claro aparecer */
+body.dark .pe-box { background: #0c1f1a; border-color: #134e4a; }
+body.dark .pe-title { color: #5eead4; }
+body.dark .pe-box .table td { color: var(--ink); }
+body.dark .aviso-ok { background: #06291f; border-color: #134e4a; color: #6ee7b7; }
+body.dark .aviso-warn { background: #2a1c08; border-color: #7c4a12; color: #fbbf24; }
+
 /* chips / status */
 body.dark .chip { background: #ffffff12; color: #cbd5e1; }
 body.dark .kstatus.aguardando { background: #f59e0b22; color: #fbbf24; }
