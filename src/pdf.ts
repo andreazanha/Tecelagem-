@@ -336,7 +336,7 @@ export async function gerarRomaneioTassel(
 
     // Tabela com grade — altura da linha adaptada para caber as 3 vias.
     const ty = iy + 14;
-    const headH = 15, totH = 18, footH = 18;
+    const headH = 15, totH = 18, footH = 26;
     const avail = viaH - (ty - top) - headH - totH - footH - 6;
     const rowH = Math.max(11, Math.min(16, avail / nRows));
     const tableH = headH + nRows * rowH + totH;
@@ -366,11 +366,16 @@ export async function gerarRomaneioTassel(
     for (let i = 1; i < nRows; i++) seg(ix, ty + headH + i * rowH, ix + iw, ty + headH + i * rowH, hx("#e6eaf0"), 0.5);
     for (let i = 1; i < 5; i++) seg(colX[i], ty, colX[i], ty + tableH, LINEC2, 0.8);
 
-    // Só a 1ª via (Empresa) tem assinatura; 2ª (Prestador) e 3ª (Caixa) são controle.
+    // Só a 1ª via (Empresa) tem assinatura — dois campos (IDA / RETORNO), igual à costura.
+    // 2ª (Prestador) e 3ª (Caixa) são controle, sem assinatura.
     const fy = ty + tableH + 14;
     if (n === 1) {
-      seg(ix, fy, ix + iw * 0.55, fy, LINEC2, 0.8);
-      T("Assinatura do prestador / Data", ix, fy + 10, 7.5, reg, MUTE);
+      seg(ix, fy, ix + iw * 0.45, fy, LINEC2, 0.8);
+      seg(ix + iw * 0.53, fy, ix + iw, fy, LINEC2, 0.8);
+      T("Conferido na IDA", ix, fy + 11, 8, bld, SLATE);
+      T("Assinatura / Data", ix, fy + 20, 7, reg, MUTE);
+      T("Conferido no RETORNO", ix + iw * 0.53, fy + 11, 8, bld, SLATE);
+      T("Assinatura / Data", ix + iw * 0.53, fy + 20, 7, reg, MUTE);
     }
   }
 
