@@ -144,18 +144,24 @@ async function resumoPagamento(env: Env, mes: string, tipo: string, costureira: 
   ).all<EmitidoRow>();
   let filtrados = mes ? results.filter((r) => (r.data_saida || "").slice(0, 7) === mes) : results;
   if (costureira) filtrados = filtrados.filter((r) => (r.pessoa || "") === costureira);
-  const porPessoa = new Map<string, { costureira: string; romaneios: EmitidoRow[]; totalPecas: number; totalValor: number; pendentes: number }>();
+  const porPessoa = new Map<string, { costureira: string; romaneios: EmitidoRow[]; totalPecas: number; totalValor: number; pendentes: number; pendentePecas: number; pendenteValor: number }>();
   for (const r of filtrados) {
     const nome = r.pessoa || (tipo === "tassel" ? "— sem prestador —" : "— sem costureira —");
-    const g = porPessoa.get(nome) || { costureira: nome, romaneios: [], totalPecas: 0, totalValor: 0, pendentes: 0 };
+    const g = porPessoa.get(nome) || { costureira: nome, romaneios: [], totalPecas: 0, totalValor: 0, pendentes: 0, pendentePecas: 0, pendenteValor: 0 };
     g.romaneios.push(r);
-    g.totalPecas += r.total_pecas || 0;
-    g.totalValor += r.total_valor || 0;
-    if (!r.retornou) g.pendentes += 1;
+    // Só os RETORNADOS (liberados) entram no total a pagar; pendentes ficam à parte.
+    if (r.retornou) {
+      g.totalPecas += r.total_pecas || 0;
+      g.totalValor += r.total_valor || 0;
+    } else {
+      g.pendentes += 1;
+      g.pendentePecas += r.total_pecas || 0;
+      g.pendenteValor += r.total_valor || 0;
+    }
     porPessoa.set(nome, g);
   }
   const grupos = [...porPessoa.values()].sort((a, b) => a.costureira.localeCompare(b.costureira, "pt"));
-  const totalGeral = grupos.reduce((s, g) => s + g.totalValor, 0);
+  const totalGeral = grupos.reduce((s, g) => s + g.totalValor, 0); // liberados
   return { mes, tipo, grupos, totalGeral };
 }
 

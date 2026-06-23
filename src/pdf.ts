@@ -545,6 +545,8 @@ export interface ResumoPagamentoGrupo {
   totalPecas: number;
   totalValor: number;
   pendentes: number;
+  pendentePecas: number;
+  pendenteValor: number;
 }
 export interface ResumoPagamento {
   mes: string;
@@ -565,6 +567,7 @@ export async function gerarRelatorioPagamento(resumo: ResumoPagamento, tipo: str
   const SLATE = hx("#334155"),
     LINEC2 = hx("#cbd5e1"),
     GREY2 = hx("#eef1f5"),
+    FADE = hx("#aab2c0"),
     AMBER = hx("#b45309");
   const unidade = tipo === "tassel" ? "tasseis" : "pç";
 
@@ -599,7 +602,7 @@ export async function gerarRelatorioPagamento(resumo: ResumoPagamento, tipo: str
     // título da pessoa
     R(ix, y, iw, 22, GREY2);
     T(g.costureira, ix + 8, y + 15, 11, bld, INK);
-    TR(`${g.totalPecas} ${unidade} · ${money(g.totalValor)}${g.pendentes ? ` · ${g.pendentes} pendente(s)` : ""}`, ix + iw - 8, y + 15, 10, bld, INK);
+    TR(`a pagar: ${g.totalPecas} ${unidade} · ${money(g.totalValor)}`, ix + iw - 8, y + 15, 10, bld, INK);
     y += 22;
     // cabeçalho da tabela
     T("Romaneio", cX[0] + 6, y + 12, 8, bld, SLATE);
@@ -613,28 +616,35 @@ export async function gerarRelatorioPagamento(resumo: ResumoPagamento, tipo: str
     for (const r of g.romaneios) {
       quebra(18);
       const dt = (s: string | null) => (s ? s.split("-").reverse().join("/") : "—");
-      T(`Nº ${r.numero}`, cX[0] + 6, y + 13, 9, bld);
-      T(dt(r.data_saida), cX[1] + 6, y + 13, 8.5, reg);
-      T(dt(r.data_retorno), cX[2] + 6, y + 13, 8.5, reg);
-      if (r.retornou) T("Retornou", cX[3] + 6, y + 13, 8.5, bld, hx("#047857"));
-      else T("PENDENTE", cX[3] + 6, y + 13, 8.5, bld, AMBER);
-      TR(`${r.total_pecas}`, cX[4] - 6, y + 13, 9, reg);
-      TR(money(r.total_valor), cX[5] - 6, y + 13, 9, bld);
+      // Pendente = não liberado: linha esmaecida (não entra no total a pagar).
+      const cor = r.retornou ? INK : FADE;
+      T(`Nº ${r.numero}`, cX[0] + 6, y + 13, 9, bld, cor);
+      T(dt(r.data_saida), cX[1] + 6, y + 13, 8.5, reg, cor);
+      T(dt(r.data_retorno), cX[2] + 6, y + 13, 8.5, reg, cor);
+      if (r.retornou) T("Liberado", cX[3] + 6, y + 13, 8.5, bld, hx("#047857"));
+      else T("PENDENTE", cX[3] + 6, y + 13, 8.5, bld, FADE);
+      TR(`${r.total_pecas}`, cX[4] - 6, y + 13, 9, reg, cor);
+      TR(money(r.total_valor), cX[5] - 6, y + 13, 9, bld, cor);
       y += 17;
       seg(ix, y, ix + iw, hx("#eef0f4"), 0.5);
     }
-    // subtotal
+    // subtotal a pagar (só liberados)
     R(ix, y, iw, 20, hx("#f8fafc"));
     T("TOTAL A PAGAR", cX[0] + 6, y + 14, 9.5, bld, INK);
     TR(`${g.totalPecas} ${unidade}`, cX[4] - 6, y + 14, 9, bld, INK);
     TR(money(g.totalValor), cX[5] - 6, y + 14, 10, bld, INK);
-    y += 32;
+    y += 20;
+    if (g.pendentes > 0) {
+      T(`Pendentes (não entram no pagamento): ${g.pendentes} romaneio(s) · ${money(g.pendenteValor)}`, cX[0] + 6, y + 12, 8.5, reg, AMBER);
+      y += 16;
+    }
+    y += 10;
   }
 
   quebra(30);
   R(ix, y, iw, 26, GOLD);
-  T("TOTAL GERAL DO PERÍODO", ix + 10, y + 17, 11, bld, hx("#3a2f12"));
+  T("TOTAL GERAL A PAGAR (liberados)", ix + 10, y + 17, 11, bld, hx("#3a2f12"));
   TR(money(resumo.totalGeral), ix + iw - 10, y + 17, 13, bld, hx("#3a2f12"));
-  T("Romaneios PENDENTES ainda não retornaram da costura/prestador (viraram o mês sem devolução).", ix, A4H - 24, 8.5, reg, MUTE);
+  T("Pendentes (esmaecidos) ainda não voltaram da costura/prestador — não entram no pagamento até retornarem.", ix, A4H - 24, 8.5, reg, MUTE);
   return await doc.save();
 }

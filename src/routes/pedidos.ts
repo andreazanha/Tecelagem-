@@ -393,6 +393,9 @@ pedidos.delete("/:id", async (c) => {
     c.env.DB.prepare("DELETE FROM producao_eventos WHERE pedido_id = ?").bind(id),
     c.env.DB.prepare("DELETE FROM producao WHERE pedido_id = ?").bind(id),
     c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id = ?").bind(id),
+    // Excluir o pedido também remove os romaneios emitidos dele (base de pagamento).
+    c.env.DB.prepare("DELETE FROM romaneios_costura WHERE pedido_id = ?").bind(id),
+    c.env.DB.prepare("DELETE FROM romaneios_tassel WHERE pedido_id = ?").bind(id),
     c.env.DB.prepare("DELETE FROM pedidos WHERE id = ?").bind(id),
   ]);
   return c.json({ ok: true });
@@ -599,42 +602,58 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     .bind(entregaResumo, id)
     .run();
 
-  // cria/atualiza os cards de produção (uma parte por OP); preserva o status de produção.
-  // A pronta-entrega de PEDIDO DE CLIENTE (não-reposição) NASCE no Estoque, não na Tecelagem:
-  //  • Junto    → Estoque "Pronta entrega com produção" (pronto)
-  //  • Separado → Estoque "Separação" (fazendo)
-  // Reposição (produzir p/ estocar) continua nascendo na Tecelagem.
+  // cria/atualiza os cards de produção. Partes 1/2/Única ficam na Tecelagem.
   const reposicao = !!Number(ped.reposicao);
-  const partesProd: { parte: string; blocos: ReturnType<typeof classificar>["kits"] }[] = [];
-  if (cl.modo === "unica") partesProd.push({ parte: "parte-unica", blocos: cl.parteUnica! });
+  const inserirTecelagem = async (parte: string, blocos: ReturnType<typeof classificar>["kits"]) => {
+    if (!blocos.length) return;
+    const pecas = blocos.reduce((s, b) => s + b.total, 0);
+    await c.env.DB.prepare(
+      `INSERT INTO producao (pedido_id, parte, pecas, resumo) VALUES (?, ?, ?, ?)
+       ON CONFLICT(pedido_id, parte) DO UPDATE SET pecas = excluded.pecas, resumo = excluded.resumo`
+    )
+      .bind(id, parte, pecas, `${blocos.length} modelo(s)`)
+      .run();
+  };
+  if (cl.modo === "unica") await inserirTecelagem("parte-unica", cl.parteUnica!);
   else {
-    partesProd.push({ parte: "parte-1", blocos: cl.parte1! });
-    partesProd.push({ parte: "parte-2", blocos: cl.parte2! });
+    await inserirTecelagem("parte-1", cl.parte1!);
+    await inserirTecelagem("parte-2", cl.parte2!);
   }
-  if (cl.temKit) partesProd.push({ parte: "pronta-entrega", blocos: cl.kits });
-  for (const p of partesProd) {
-    if (!p.blocos.length) continue;
-    const pecas = p.blocos.reduce((s, b) => s + b.total, 0);
-    const resumo = `${p.blocos.length} modelo(s)`;
-    const ehKitCliente = p.parte === "pronta-entrega" && !reposicao;
-    if (ehKitCliente) {
-      const status = entregaResumo === "separado" ? "fazendo" : "pronto";
-      // Cria já no Estoque; se o card já existe e ainda NÃO começou, recoloca no lugar certo
-      // (corrige kits que tinham caído na Tecelagem). Cards em andamento ficam onde estão.
+
+  // Pronta-entrega (kit):
+  //  • Reposição (produzir p/ estocar): um card na Tecelagem.
+  //  • Pedido de cliente: NASCE no Estoque e separa JUNTO × SEPARADO por sub-pedido
+  //    (numa OP consolidada, cada pedido pode ser junto ou separado) → 2 cards:
+  //      pronta-entrega (junto)  → "Pronta entrega com produção" (pronto)
+  //      pronta-entrega-sep (sep) → "Separação" (fazendo)
+  if (cl.temKit && reposicao) {
+    await inserirTecelagem("pronta-entrega", cl.kits);
+  } else if (cl.temKit) {
+    const kitItens = itens.filter(ehKit);
+    const ehSep = (it: ItemBase) => (entregas[origemDe(it, baseNum)] ?? kitOpt) === "separado";
+    const grupos: { parte: string; blocos: ReturnType<typeof classificar>["kits"]; status: string }[] = [
+      { parte: "pronta-entrega", blocos: agrupar(kitItens.filter((it) => !ehSep(it)), modelos), status: "pronto" },
+      { parte: "pronta-entrega-sep", blocos: agrupar(kitItens.filter(ehSep), modelos), status: "fazendo" },
+    ];
+    for (const g of grupos) {
+      if (!g.blocos.length) {
+        // sem itens nessa modalidade: remove o card (se existir e ainda não começou)
+        await c.env.DB.prepare(
+          `DELETE FROM producao WHERE pedido_id = ? AND parte = ?
+             AND operador IS NULL AND iniciado_em IS NULL AND finalizado_em IS NULL`
+        )
+          .bind(id, g.parte)
+          .run();
+        continue;
+      }
+      const pecas = g.blocos.reduce((s, b) => s + b.total, 0);
       await c.env.DB.prepare(
         `INSERT INTO producao (pedido_id, parte, setor, status, pecas, resumo) VALUES (?, ?, 'estoque', ?, ?, ?)
          ON CONFLICT(pedido_id, parte) DO UPDATE SET pecas = excluded.pecas, resumo = excluded.resumo,
            setor = excluded.setor, status = excluded.status
          WHERE producao.operador IS NULL AND producao.iniciado_em IS NULL AND producao.finalizado_em IS NULL`
       )
-        .bind(id, p.parte, status, pecas, resumo)
-        .run();
-    } else {
-      await c.env.DB.prepare(
-        `INSERT INTO producao (pedido_id, parte, pecas, resumo) VALUES (?, ?, ?, ?)
-         ON CONFLICT(pedido_id, parte) DO UPDATE SET pecas = excluded.pecas, resumo = excluded.resumo`
-      )
-        .bind(id, p.parte, pecas, resumo)
+        .bind(id, g.parte, g.status, pecas, `${g.blocos.length} modelo(s)`)
         .run();
     }
   }

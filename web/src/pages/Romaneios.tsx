@@ -16,11 +16,14 @@ const AGRUP: { id: string; label: string }[] = [
 ];
 const agrupLabel = (id?: string) => AGRUP.find((a) => a.id === id)?.label || "Todas as peças";
 
+type AbaRomaneio = "costureiras" | "tassel" | "avulso" | "gerados" | "relatorios" | "tasseis" | "costura" | "prestadores";
 export function Romaneios() {
-  const [aba, setAba] = useState<
-    "costureiras" | "tassel" | "avulso" | "gerados" | "relatorios" | "tasseis" | "costura" | "prestadores"
-  >("costureiras");
-  const abas: { id: typeof aba; label: string }[] = [
+  // Mantém a aba ao atualizar a página (não volta para a primeira).
+  const [aba, setAba] = useState<AbaRomaneio>(() => (localStorage.getItem("romaneios-aba") as AbaRomaneio) || "costureiras");
+  useEffect(() => {
+    localStorage.setItem("romaneios-aba", aba);
+  }, [aba]);
+  const abas: { id: AbaRomaneio; label: string }[] = [
     { id: "costureiras", label: "🪡 Romaneio Costureiras" },
     { id: "tassel", label: "🧶 Romaneio Tassel" },
     { id: "avulso", label: "➕ Romaneio Avulso" },
@@ -647,8 +650,8 @@ function RelatoriosPagamento() {
             <div className="card-head" style={{ paddingBottom: 12 }}>
               <h2 style={{ margin: 0 }}>👩‍🔧 {g.costureira}</h2>
               <span className="chip" style={{ fontSize: 14, fontWeight: 800 }}>
-                {g.totalPecas} {tipo === "tassel" ? "tasseis" : "pç"} · {brl(g.totalValor)}
-                {g.pendentes ? <span style={{ color: "#b45309" }}> · {g.pendentes} pendente(s)</span> : null}
+                a pagar: {g.totalPecas} {tipo === "tassel" ? "tasseis" : "pç"} · {brl(g.totalValor)}
+                {g.pendentes ? <span style={{ color: "#94a3b8" }}> · {g.pendentes} pendente(s) {brl(g.pendenteValor || 0)} (não conta)</span> : null}
               </span>
             </div>
             <table className="table">
@@ -657,19 +660,19 @@ function RelatoriosPagamento() {
               </thead>
               <tbody>
                 {g.romaneios.map((r) => (
-                  <tr key={r.pedido_id}>
+                  <tr key={r.pedido_id} style={r.retornou ? undefined : { opacity: 0.45 }}>
                     <td className="strong">Nº {r.numero}</td>
                     <td>{br(r.data_saida)}</td>
                     <td>{br(r.data_retorno)}</td>
                     <td>{r.retornou
-                      ? <span className="chip" style={{ background: "#dcfce7", color: "#15803d" }}>✓ Retornou</span>
-                      : <span className="chip" style={{ background: "#fef3c7", color: "#b45309" }}>⏳ Pendente</span>}</td>
+                      ? <span className="chip" style={{ background: "#dcfce7", color: "#15803d" }}>✓ Liberado</span>
+                      : <span className="chip" style={{ background: "#eef0f4", color: "#94a3b8" }}>⏳ Pendente</span>}</td>
                     <td className="num">{r.total_pecas}</td>
                     <td className="num strong">{brl(r.total_valor)}</td>
                   </tr>
                 ))}
                 <tr className="rom-total">
-                  <td className="strong" colSpan={4}>TOTAL A PAGAR</td>
+                  <td className="strong" colSpan={4}>TOTAL A PAGAR (liberados)</td>
                   <td className="num strong">{g.totalPecas} {tipo === "tassel" ? "tasseis" : "pç"}</td>
                   <td className="num strong">{brl(g.totalValor)}</td>
                 </tr>

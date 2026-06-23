@@ -203,6 +203,8 @@ export interface PagamentoCostureira {
   totalPecas: number;
   totalValor: number;
   pendentes?: number;
+  pendentePecas?: number;
+  pendenteValor?: number;
 }
 export interface PagamentoData {
   mes: string;
