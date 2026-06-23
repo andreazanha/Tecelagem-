@@ -107,7 +107,7 @@ export function PedidoDetalhe() {
         </table>
       </div>
 
-      <GerarPdfs id={pedido.id} />
+      <GerarPdfs id={pedido.id} entregaPe={pedido.entrega_pe || "junto"} />
       <RomaneioTassel id={pedido.id} />
     </>
   );
@@ -187,7 +187,8 @@ function RomaneioTassel({ id }: { id: string }) {
   );
 }
 
-function GerarPdfs({ id }: { id: string }) {
+function GerarPdfs({ id, entregaPe }: { id: string; entregaPe: string }) {
+  const sep = entregaPe === "separado";
   const [perguntaKit, setPerguntaKit] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -211,8 +212,8 @@ function GerarPdfs({ id }: { id: string }) {
       if (cl.temKit) {
         const r = await api.kitsPedidos(id);
         setKitsPeds(r.pedidos);
-        // padrão: todos JUNTO
-        setEntregas(Object.fromEntries(r.pedidos.map((p) => [p.numero, "junto"])));
+        // padrão: o que foi escolhido na criação do pedido (junto/separado)
+        setEntregas(Object.fromEntries(r.pedidos.map((p) => [p.numero, sep ? "separado" : "junto"])));
         setPerguntaKit(true);
         setCarregando(false);
       } else {
@@ -261,10 +262,10 @@ function GerarPdfs({ id }: { id: string }) {
         <div className="pe-box">
           <div className="pe-title">Este pedido tem KIT (Pronta Entrega). Como entregar?</div>
           <div className="segmented">
-            <button className="seg seg-on" onClick={() => gerar({ kit: "junto" })}>
+            <button className={"seg" + (!sep ? " seg-on" : "")} onClick={() => gerar({ kit: "junto" })}>
               📦 Entregar JUNTO com o pedido
             </button>
-            <button className="seg" onClick={() => gerar({ kit: "separado" })}>
+            <button className={"seg" + (sep ? " seg-on" : "")} onClick={() => gerar({ kit: "separado" })}>
               ⏩ Entregar SEPARADO (antecipado)
             </button>
           </div>

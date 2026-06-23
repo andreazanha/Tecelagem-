@@ -550,7 +550,10 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   const body = await c.req
     .json<{ kit?: string; entregas?: Record<string, string> }>()
     .catch(() => ({}) as { kit?: string; entregas?: Record<string, string> });
-  const kitOpt = body.kit === "separado" ? "separado" : "junto";
+  // Sem escolha explícita na geração, respeita o entrega_pe definido na criação do pedido
+  // (não força "junto", que jogava os kits "separado" na coluna errada).
+  const kitOpt =
+    body.kit === "separado" ? "separado" : body.kit === "junto" ? "junto" : ped.entrega_pe === "separado" ? "separado" : "junto";
   const entregas = body.entregas || {};
 
   const { results: itens } = await c.env.DB.prepare(

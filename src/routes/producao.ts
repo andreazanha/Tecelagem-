@@ -58,10 +58,13 @@ async function garantirCards(env: Env) {
   }
 }
 
-// Auto-correção: kits (pronta-entrega) de PEDIDO DE CLIENTE que caíram na Tecelagem
-// por engano voltam para o Estoque (Separação se separado, senão Pronta entrega).
-// Só mexe em cards intocados (sem operador/início) e nunca em reposição.
-async function corrigirKitsNaTecelagem(env: Env) {
+// Auto-correção dos kits (pronta-entrega) de PEDIDO DE CLIENTE (não-reposição):
+//  1) os que caíram na Tecelagem por engano voltam para o Estoque;
+//  2) no Estoque, a COLUNA segue o entrega_pe do pedido (separado → "Separação"/fazendo,
+//     junto → "Pronta entrega com produção"/pronto).
+// Só mexe em cards intocados (sem operador/início/fim); nunca em reposição.
+async function corrigirKitsEstoque(env: Env) {
+  // 1) Tecelagem → Estoque
   await env.DB.prepare(
     `UPDATE producao
         SET setor = 'estoque',
@@ -73,12 +76,23 @@ async function corrigirKitsNaTecelagem(env: Env) {
         AND operador IS NULL AND iniciado_em IS NULL AND finalizado_em IS NULL
         AND pedido_id IN (SELECT id FROM pedidos WHERE COALESCE(reposicao, 0) = 0)`
   ).run();
+  // 2) Estoque: a coluna acompanha o entrega_pe do pedido (cards ainda não trabalhados)
+  await env.DB.prepare(
+    `UPDATE producao
+        SET status = CASE WHEN (SELECT entrega_pe FROM pedidos WHERE id = producao.pedido_id) = 'separado'
+                          THEN 'fazendo' ELSE 'pronto' END
+      WHERE parte = 'pronta-entrega'
+        AND setor = 'estoque'
+        AND status IN ('pronto', 'fazendo')
+        AND operador IS NULL AND iniciado_em IS NULL AND finalizado_em IS NULL
+        AND pedido_id IN (SELECT id FROM pedidos WHERE COALESCE(reposicao, 0) = 0)`
+  ).run();
 }
 
 // QUADRO de um SETOR (default tecelagem) — partes naquele setor, com dados do pedido.
 producao.get("/", async (c) => {
   await garantirCards(c.env);
-  await corrigirKitsNaTecelagem(c.env);
+  await corrigirKitsEstoque(c.env);
   const setor = c.req.query("setor") || "tecelagem";
   const { results } = await c.env.DB.prepare(
     `SELECT pr.pedido_id, pr.parte, pr.setor, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
