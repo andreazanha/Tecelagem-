@@ -8,6 +8,15 @@ const br = (d?: string | null) => {
   const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
 };
+// Data + hora (UTC do banco → horário de Brasília, UTC-3): "dd/mm/yyyy HH:MM".
+const dthora = (s?: string | null) => {
+  if (!s) return "";
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return br(s);
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - 3 * 3600 * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+};
 // Famílias de peças que um serviço de costura pode cobrar.
 const AGRUP: { id: string; label: string }[] = [
   { id: "peseira_manta", label: "Peseiras / Mantas" },
@@ -531,14 +540,14 @@ function RomaneiosGerados() {
           <thead>
             <tr>
               <th>Nº</th><th>Tipo</th><th>Cliente</th><th>Costureira/Prestador</th>
-              <th>Saída</th><th>Retorno prev.</th><th>Status</th><th className="num">Valor</th><th></th>
+              <th>Gerado por</th><th>Saída</th><th>Retorno prev.</th><th>Status / Retorno</th><th className="num">Valor</th><th></th>
             </tr>
           </thead>
           <tbody>
             {carregando ? (
-              <tr><td colSpan={9} className="empty pad">Carregando…</td></tr>
+              <tr><td colSpan={10} className="empty pad">Carregando…</td></tr>
             ) : lista.length === 0 ? (
-              <tr><td colSpan={9} className="empty pad">Nenhum romaneio gerado.</td></tr>
+              <tr><td colSpan={10} className="empty pad">Nenhum romaneio gerado.</td></tr>
             ) : (
               lista.map((e) => (
                 <tr key={e.tipo + e.pedido_id}>
@@ -546,11 +555,18 @@ function RomaneiosGerados() {
                   <td><span className="chip">{e.tipo === "tassel" ? "🧶 Tassel" : "🪡 Costura"}</span></td>
                   <td>{e.cliente || "—"}</td>
                   <td>{e.pessoa || "—"}</td>
+                  <td>
+                    {e.gerado_por
+                      ? <span title={dthora(e.updated_at)}><strong>{e.gerado_por}</strong><br /><span className="muted" style={{ fontSize: 11 }}>{dthora(e.updated_at)}</span></span>
+                      : "—"}
+                  </td>
                   <td>{br(e.data_saida)}</td>
                   <td>{br(e.data_retorno)}</td>
                   <td>
                     {e.retornou
-                      ? <span className="chip" style={{ background: "#dcfce7", color: "#15803d" }}>✓ Retornou {e.data_retorno_real ? `(${br(e.data_retorno_real)})` : ""}</span>
+                      ? <span className="chip" style={{ background: "#dcfce7", color: "#15803d" }} title={(e.retorno_por ? `Retorno por ${e.retorno_por}` : "") + (e.retorno_em ? ` em ${dthora(e.retorno_em)}` : "")}>
+                          ✓ Retornou{e.retorno_por ? ` · ${e.retorno_por}` : ""}{e.retorno_em ? ` (${dthora(e.retorno_em)})` : e.data_retorno_real ? ` (${br(e.data_retorno_real)})` : ""}
+                        </span>
                       : <span className="chip" style={{ background: "#fef3c7", color: "#b45309" }}>⏳ Pendente</span>}
                   </td>
                   <td className="num strong">{brl(e.total_valor)}</td>

@@ -1,3 +1,7 @@
+import { getUser } from "./auth";
+// Nome do usuário logado (para auditoria: quem gerou / quem deu retorno).
+const quemSou = () => getUser()?.nome || undefined;
+
 export interface PedidoItem {
   id?: string;
   produto: string;
@@ -245,6 +249,10 @@ export interface EmitidoRomaneio {
   data_retorno: string | null;
   data_retorno_real: string | null;
   retornou: number;
+  gerado_por?: string | null; // quem emitiu o romaneio
+  retorno_por?: string | null; // quem marcou o retorno
+  retorno_em?: string | null; // data/hora do retorno (UTC)
+  updated_at?: string | null; // data/hora da última geração (UTC)
 }
 
 export interface Sugestao {
@@ -507,7 +515,7 @@ export const api = {
     fetch(`/api/romaneios/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(opts || {}),
+      body: JSON.stringify({ ...(opts || {}), usuario: quemSou() }),
     }).then((r) => j<{ ok: boolean; url: string; totalValor: number; peseirasMantas: number; almofadasCapas: number; outros: number; totalPecas: number }>(r)),
   listarPrestadores: () => fetch("/api/prestadores").then((r) => j<Prestador[]>(r)),
   salvarPrestador: (p: Prestador) =>
@@ -578,7 +586,7 @@ export const api = {
     fetch(`/api/romaneios/${id}/tassel`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(typeof opts === "string" ? { prestador: opts } : opts || {}),
+      body: JSON.stringify({ ...(typeof opts === "string" ? { prestador: opts } : opts || {}), usuario: quemSou() }),
     }).then((r) => j<{ ok: boolean; url: string; totalTasseis: number; totalValor: number }>(r)),
   listarEmitidos: (params?: { tipo?: string; status?: string; costureira?: string }) => {
     const q = new URLSearchParams();
@@ -592,7 +600,7 @@ export const api = {
     fetch(`/api/romaneios/emitido/${tipo}/${id}/retorno`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ retornou }),
+      body: JSON.stringify({ retornou, usuario: quemSou() }),
     }).then((r) => j<{ ok: boolean; retornou: boolean }>(r)),
   excluirEmitido: (tipo: string, id: string, excluido: boolean) =>
     fetch(`/api/romaneios/emitido/${tipo}/${id}/excluir`, {
@@ -645,7 +653,7 @@ export const api = {
     fetch(`/api/romaneios/avulso`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, usuario: quemSou() }),
     }).then((r) => j<{ ok: boolean; url: string; totalValor: number }>(r)),
   classificarPedido: (id: string) =>
     fetch(`/api/pedidos/${id}/classificar`).then((r) =>

@@ -289,7 +289,8 @@ romaneios.get("/emitidos", async (c) => {
   const carregar = async (tipo: string) => {
     const { results } = await c.env.DB.prepare(
       `SELECT '${tipo}' AS tipo, pedido_id, numero, cliente, ${pessoaCol(tipo)} AS pessoa, volumes,
-              ${qtdCol(tipo)} AS qtd, total_valor, data_saida, data_retorno, data_retorno_real, retornou
+              ${qtdCol(tipo)} AS qtd, total_valor, data_saida, data_retorno, data_retorno_real, retornou,
+              gerado_por, retorno_por, retorno_em, updated_at
          FROM ${tabelaDe(tipo)} WHERE excluido = 0`
     ).all();
     return results as Record<string, unknown>[];
@@ -308,12 +309,20 @@ romaneios.get("/emitidos", async (c) => {
 romaneios.post("/emitido/:tipo/:id/retorno", async (c) => {
   const tipo = tipoOk(c.req.param("tipo"));
   const id = c.req.param("id");
-  const b = await c.req.json<{ retornou?: boolean }>().catch(() => ({}) as { retornou?: boolean });
+  const b = await c.req.json<{ retornou?: boolean; usuario?: string }>().catch(() => ({}) as { retornou?: boolean; usuario?: string });
   const v = b.retornou ? 1 : 0;
+  const quem = (b.usuario || "").trim() || null;
+  // Ao marcar retorno guarda QUEM e a DATA/HORA; ao desmarcar, limpa os dois.
   await c.env.DB.prepare(
-    `UPDATE ${tabelaDe(tipo)} SET retornou = ?, data_retorno_real = CASE WHEN ? = 1 THEN date('now') ELSE NULL END, updated_at = datetime('now') WHERE pedido_id = ?`
+    `UPDATE ${tabelaDe(tipo)}
+        SET retornou = ?,
+            data_retorno_real = CASE WHEN ? = 1 THEN date('now') ELSE NULL END,
+            retorno_em        = CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END,
+            retorno_por       = CASE WHEN ? = 1 THEN ? ELSE NULL END,
+            updated_at = datetime('now')
+      WHERE pedido_id = ?`
   )
-    .bind(v, v, id)
+    .bind(v, v, v, v, quem, id)
     .run();
   return c.json({ ok: true, retornou: !!v });
 });
@@ -429,10 +438,12 @@ romaneios.post("/avulso", async (c) => {
       prestador?: string;
       volumes?: string;
       dataRetorno?: string;
+      usuario?: string;
       linhas?: { nome?: string; cor?: string; tamanho?: string; qtd?: number | string }[];
     }>()
     .catch(() => ({}) as Record<string, never>);
   const tipo = b.tipo === "tassel" ? "tassel" : "costura";
+  const geradoPor = (b.usuario || "").trim() || null;
   const cliente = (b.cliente || "").trim() || "—";
   const numero = (b.numero || "").trim() || "AVULSO";
   const prestador = (b.prestador || "").trim();
@@ -461,10 +472,10 @@ romaneios.post("/avulso", async (c) => {
     const bytes = await gerarRomaneioTassel(info, prestador, tassel, opts);
     await c.env.BUCKET.put(`pedidos/${id}/romaneio-tassel.pdf`, bytes, { httpMetadata: { contentType: "application/pdf" } });
     await c.env.DB.prepare(
-      `INSERT INTO romaneios_tassel (pedido_id, numero, cliente, prestador, volumes, total_tasseis, total_valor, data_saida, data_retorno, linhas)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO romaneios_tassel (pedido_id, numero, cliente, prestador, volumes, total_tasseis, total_valor, data_saida, data_retorno, linhas, gerado_por)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-      .bind(id, numero, cliente, prestador || null, volumes || null, totalTasseis, totalValor, dataSaidaISO, dataRetornoISO || null, JSON.stringify(linhas))
+      .bind(id, numero, cliente, prestador || null, volumes || null, totalTasseis, totalValor, dataSaidaISO, dataRetornoISO || null, JSON.stringify(linhas), geradoPor)
       .run();
     return c.json({ ok: true, url: `/api/pedidos/${id}/pdf/romaneio-tassel`, totalValor });
   }
@@ -485,10 +496,10 @@ romaneios.post("/avulso", async (c) => {
   const bytes = await gerarRomaneioCostura(info, prestador, rom, servicos, totalValor, opts);
   await c.env.BUCKET.put(`pedidos/${id}/romaneio-costura.pdf`, bytes, { httpMetadata: { contentType: "application/pdf" } });
   await c.env.DB.prepare(
-    `INSERT INTO romaneios_costura (pedido_id, numero, cliente, costureira, volumes, total_pecas, total_valor, data_saida, data_retorno, servicos)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO romaneios_costura (pedido_id, numero, cliente, costureira, volumes, total_pecas, total_valor, data_saida, data_retorno, servicos, gerado_por)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(id, numero, cliente, prestador || null, volumes || null, totalPecas, totalValor, dataSaidaISO, dataRetornoISO || null, JSON.stringify(servicos))
+    .bind(id, numero, cliente, prestador || null, volumes || null, totalPecas, totalValor, dataSaidaISO, dataRetornoISO || null, JSON.stringify(servicos), geradoPor)
     .run();
   return c.json({ ok: true, url: `/api/pedidos/${id}/pdf/romaneio-costura`, totalValor });
 });
@@ -524,9 +535,10 @@ romaneios.post("/:id", async (c) => {
   const { ped, rom } = d;
   if (rom.totalPecas <= 0) return c.json({ error: "Pedido sem peças de produção para o romaneio." }, 400);
   const body = await c.req
-    .json<{ prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; servicos?: { nome?: string; qtd?: number | string }[] }>()
-    .catch(() => ({}) as { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; servicos?: { nome?: string; qtd?: number | string }[] });
+    .json<{ prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; usuario?: string; servicos?: { nome?: string; qtd?: number | string }[] }>()
+    .catch(() => ({}) as { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; usuario?: string; servicos?: { nome?: string; qtd?: number | string }[] });
   const prestador = (body.prestador || "").trim();
+  const geradoPor = (body.usuario || "").trim() || null;
   const volumes = (body.volumes || "").trim();
   const dataRetornoISO = (body.dataRetorno || "").trim(); // YYYY-MM-DD
   const dataSaidaISO = new Date().toISOString().slice(0, 10);
@@ -565,15 +577,15 @@ romaneios.post("/:id", async (c) => {
   if (body.registrar !== false) {
     await c.env.DB.prepare(
       `INSERT INTO romaneios_costura
-         (pedido_id, numero, cliente, costureira, volumes, total_pecas, total_valor, data_saida, data_retorno, servicos, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+         (pedido_id, numero, cliente, costureira, volumes, total_pecas, total_valor, data_saida, data_retorno, servicos, gerado_por, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(pedido_id) DO UPDATE SET
          numero = excluded.numero, cliente = excluded.cliente, costureira = excluded.costureira, volumes = excluded.volumes,
          total_pecas = excluded.total_pecas, total_valor = excluded.total_valor,
          data_saida = excluded.data_saida, data_retorno = excluded.data_retorno,
-         servicos = excluded.servicos, excluido = 0, updated_at = datetime('now')`
+         servicos = excluded.servicos, gerado_por = excluded.gerado_por, excluido = 0, updated_at = datetime('now')`
     )
-      .bind(id, numero, ped.cliente_nome, prestador || null, volumes || null, romPdf.totalPecas, totalValor, dataSaidaISO, dataRetornoISO || null, JSON.stringify(linhas))
+      .bind(id, numero, ped.cliente_nome, prestador || null, volumes || null, romPdf.totalPecas, totalValor, dataSaidaISO, dataRetornoISO || null, JSON.stringify(linhas), geradoPor)
       .run();
   }
 
@@ -588,8 +600,9 @@ romaneios.post("/:id/tassel", async (c) => {
   if (!d) return c.json({ error: "pedido não encontrado" }, 404);
   const { ped, itens, cat } = d;
   const body = await c.req
-    .json<{ prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; linhas?: { cor?: string; tamanho?: string; qtd?: number | string }[] }>()
-    .catch(() => ({}) as { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; linhas?: { cor?: string; tamanho?: string; qtd?: number | string }[] });
+    .json<{ prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; usuario?: string; linhas?: { cor?: string; tamanho?: string; qtd?: number | string }[] }>()
+    .catch(() => ({}) as { prestador?: string; volumes?: string; dataRetorno?: string; registrar?: boolean; usuario?: string; linhas?: { cor?: string; tamanho?: string; qtd?: number | string }[] });
+  const geradoPor = (body.usuario || "").trim() || null;
   // Edição: se vier `linhas`, usa o ajuste do usuário; senão, calcula do pedido.
   let tassel: { linhas: { cor: string; tamanho: "G" | "P"; tasseis: number; valorUnit: number; total: number }[]; totalTasseis: number; totalValor: number };
   if (Array.isArray(body.linhas) && body.linhas.length) {
@@ -624,15 +637,15 @@ romaneios.post("/:id/tassel", async (c) => {
   if (body.registrar !== false) {
     await c.env.DB.prepare(
       `INSERT INTO romaneios_tassel
-         (pedido_id, numero, cliente, prestador, volumes, total_tasseis, total_valor, data_saida, data_retorno, linhas, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+         (pedido_id, numero, cliente, prestador, volumes, total_tasseis, total_valor, data_saida, data_retorno, linhas, gerado_por, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(pedido_id) DO UPDATE SET
          numero = excluded.numero, cliente = excluded.cliente, prestador = excluded.prestador, volumes = excluded.volumes,
          total_tasseis = excluded.total_tasseis, total_valor = excluded.total_valor,
          data_saida = excluded.data_saida, data_retorno = excluded.data_retorno,
-         linhas = excluded.linhas, excluido = 0, updated_at = datetime('now')`
+         linhas = excluded.linhas, gerado_por = excluded.gerado_por, excluido = 0, updated_at = datetime('now')`
     )
-      .bind(id, numero, ped.cliente_nome, prestador || null, volumes || null, tassel.totalTasseis, tassel.totalValor, dataSaidaISO, dataRetornoISO || null, JSON.stringify(tassel.linhas))
+      .bind(id, numero, ped.cliente_nome, prestador || null, volumes || null, tassel.totalTasseis, tassel.totalValor, dataSaidaISO, dataRetornoISO || null, JSON.stringify(tassel.linhas), geradoPor)
       .run();
   }
   return c.json({ ok: true, url: `/api/pedidos/${id}/pdf/romaneio-tassel`, ...tassel });
