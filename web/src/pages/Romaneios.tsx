@@ -121,7 +121,7 @@ function RomaneiosPedidos({ tipo }: { tipo: "costura" | "tassel" }) {
                   <td>{p.cliente_nome}</td>
                   <td>{br(p.data_entrega)}</td>
                   <td className="num strong">{tipo === "tassel" ? p.tasselTasseis ?? 0 : p.totalPecas}</td>
-                  <td className="num">{brl(tipo === "tassel" ? p.tasselValor ?? 0 : 0)}</td>
+                  <td className="num">{brl(tipo === "tassel" ? p.tasselValor ?? 0 : p.valorEstimado ?? 0)}</td>
                   <td><button className="btn btn-soft" onClick={(e) => { e.stopPropagation(); setAberto(p); }}>Abrir romaneio</button></td>
                 </tr>
               ))

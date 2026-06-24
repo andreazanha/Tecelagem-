@@ -109,6 +109,7 @@ romaneios.get("/pedidos", async (c) => {
     porPedido.set(it.pedido_id, a);
   }
   const valoresTassel = await tabelaTassel(c.env);
+  const servicos = await servicosCostura(c.env);
   const lista = [];
   for (const p of peds) {
     const its = porPedido.get(p.id) || [];
@@ -123,6 +124,7 @@ romaneios.get("/pedidos", async (c) => {
       data_entrega: p.data_entrega,
       reposicao: !!Number(p.reposicao),
       ...rom,
+      valorEstimado: montarServicos(servicos, rom).totalValor,
       temTassel: tassel.linhas.length > 0,
       tasselTasseis: tassel.totalTasseis,
       tasselValor: tassel.totalValor,

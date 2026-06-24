@@ -173,6 +173,7 @@ export interface RomaneioPedido {
   almofadasCapas: number;
   outros: number;
   totalPecas: number;
+  valorEstimado?: number; // valor de costura estimado (serviços × peças, do cadastro)
   temTassel?: boolean;
   tasselTasseis?: number;
   tasselValor?: number;
