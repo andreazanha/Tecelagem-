@@ -431,7 +431,7 @@ export async function gerarRomaneioTassel(
   ped: PedidoInfo,
   prestador: string,
   rom: TasselRomaneio,
-  opts: { volumes?: string; dataSaida?: string; dataRetorno?: string } = {}
+  opts: { volumes?: string; dataSaida?: string; dataRetorno?: string; geradoPor?: string } = {}
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
@@ -468,7 +468,7 @@ export async function gerarRomaneioTassel(
     T("HOME DECOR", ix + 2, top + 24, 6, reg, MUTE);
     const via = ["Empresa", "Prestador", "Caixa"][n - 1] || "";
     TR(`ROMANEIO TASSEL Nº ${ped.numero}`, ix + iw, top + 13, 11, bld, INK);
-    TR(`${n}ª via (${via}) · Emitido em ${opts.dataSaida || ped.emissao}`, ix + iw, top + 24, 7.5, reg, MUTE);
+    TR(`${n}ª via (${via}) · Emitido em ${opts.dataSaida || ped.emissao}${opts.geradoPor ? ` · por ${opts.geradoPor}` : ""}`, ix + iw, top + 24, 7.5, reg, MUTE);
     seg(ix, top + 31, ix + iw, top + 31, LINEC2, 0.8);
 
     // Bloco de dados (2 colunas, compacto).
@@ -567,7 +567,7 @@ export async function gerarRomaneioCostura(
   rom: RomaneioCostura,
   servicos: ServicoLinha[] = [],
   totalValor = 0,
-  opts: { volumes?: string; dataSaida?: string; dataRetorno?: string } = {}
+  opts: { volumes?: string; dataSaida?: string; dataRetorno?: string; geradoPor?: string } = {}
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
@@ -611,7 +611,7 @@ export async function gerarRomaneioCostura(
     T("BIG TRICOT", ix, top + 20, 17, bld, INK);
     T("HOME DECOR", ix + 2, top + 31, 7, reg, MUTE);
     TR(`ROMANEIO Nº ${ped.numero}`, ix + iw, top + 18, 13, bld, INK);
-    TR(`Emitido em ${opts.dataSaida || ped.emissao}`, ix + iw, top + 31, 8, reg, MUTE);
+    TR(`Emitido em ${opts.dataSaida || ped.emissao}${opts.geradoPor ? ` · por ${opts.geradoPor}` : ""}`, ix + iw, top + 31, 8, reg, MUTE);
     seg(ix, top + 42, ix + iw, top + 42, LINEC2, 0.8);
 
     // Bloco de dados (2 colunas).
