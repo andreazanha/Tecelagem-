@@ -215,6 +215,7 @@ export function NovoPedido() {
             cliente_nome: f.cliente_nome || s.cliente_nome || "",
             data_pedido: f.data_pedido || s.data_pedido || "",
             data_entrega: f.data_entrega || s.data_entrega || "",
+            reposicao: f.reposicao || !!s.reposicao, // OF de reposição → marca o pedido como reposição de estoque
             itens: itens.length ? itens : [linhaVazia()],
           };
         });

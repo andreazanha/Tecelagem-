@@ -26,6 +26,7 @@ export interface SugestaoPedido {
   vendedor?: string;
   data_pedido?: string; // yyyy-mm-dd
   data_entrega?: string; // yyyy-mm-dd
+  reposicao?: boolean; // OF de reposição de estoque (kits → estoque, sem cliente)
   itens: ItemSugerido[];
   confianca: number; // 0..100 (estimativa grosseira)
   texto: string; // texto bruto (para conferência/depuração)
@@ -198,8 +199,46 @@ function parseERPBigTricot(text: string): SugestaoPedido {
   };
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// ORDEM DE FABRICAÇÃO (OF) — reposição de estoque de KIT (sem cliente).
+// Layout: "ORDEM DE FABRICAÇÃO <nº>" · "Produto: <cód> <NOME DO KIT> Entra:"
+//         "Cores Folhas/Pares UN Total ... R:<grade> [mult] <COR> <fp> <un> <total>"
+// Cada kit = 1 peseira/manta (peça principal pela medida) + N almofadas/capas ("+ N - 50X50").
+// ───────────────────────────────────────────────────────────────────────────
+function pareceOF(text: string): boolean {
+  return /ORDEM\s+DE\s+FABRICA[ÇC][ÃA]O/i.test(text);
+}
+
+function parseOF(text: string): SugestaoPedido {
+  const numero_erp = text.match(/ORDEM\s+DE\s+FABRICA[ÇC][ÃA]O\s+(\d+)/i)?.[1];
+  const data_pedido = dataBRtoISO(text.match(/\bData:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1]);
+  // Produto: "<código> <NOME DO KIT>" até "Entra:"
+  const mProd = text.match(/Produto:\s*([\d.\s]+?)\s+([A-Za-zÀ-ú].*?)\s+Entra:/i);
+  const codigo = (mProd?.[1] || "").replace(/\s+/g, "").replace(/\.+$/g, "").replace(/^\.+/g, "");
+  const nome = (mProd?.[2] || "").replace(/\s+/g, " ").trim();
+  const tamanho = nome.match(/(\d[\d.,]*\s*[xX]\s*\d[\d.,]*)/)?.[1]?.replace(/\s+/g, "");
+  // Grade de cores: tudo entre "Cores" e "Desenho".
+  const regiao = text.split(/\bDesenho\b/i)[0].split(/\bCores\b/i).pop() || "";
+  const itens: ItemSugerido[] = [];
+  // R:<grade> [números de multiplicador] <COR> <Folhas/Pares> <UN> <Total>  → qtd = último número.
+  const reGrade =
+    /R:\s*(\d+)\s+(?:\d+\s+)*([A-Za-zÀ-ú][A-Za-zÀ-ú ]*?)\s+((?:\d+\s+){0,3}\d+)\s*(?=R:|Desenho|Foto|Observa|$)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = reGrade.exec(regiao))) {
+    const cor = m[2].replace(/\s+/g, " ").trim();
+    const nums = m[3].trim().split(/\s+/).map(Number).filter((n) => !isNaN(n));
+    const qtd = nums.length ? nums[nums.length - 1] : 0;
+    if (nome && qtd > 0) itens.push({ produto: nome, ref: codigo || undefined, cor_grade: cor, tamanho, qtd, parte: "kit" });
+  }
+  let achados = 0;
+  for (const v of [numero_erp, data_pedido, nome]) if (v) achados++;
+  const confianca = Math.min(100, Math.round((achados / 3) * 40 + (itens.length ? 60 : 0)));
+  return { numero_erp, cliente_nome: "ESTOQUE", data_pedido, reposicao: true, itens, confianca, texto: text };
+}
+
 export function parsePedido(texto: string): SugestaoPedido {
   const text = (texto || "").replace(/\r/g, "");
+  if (pareceOF(text)) return parseOF(text);
   if (pareceERPBigTricot(text)) return parseERPBigTricot(text);
 
   const numero_erp = primeiraCaptura(text, [

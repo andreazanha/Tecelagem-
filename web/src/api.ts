@@ -251,6 +251,7 @@ export interface Sugestao {
   vendedor?: string;
   data_pedido?: string;
   data_entrega?: string;
+  reposicao?: boolean;
   itens: PedidoItem[];
   confianca: number;
   texto: string;
