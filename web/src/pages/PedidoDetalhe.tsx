@@ -23,6 +23,8 @@ export function PedidoDetalhe() {
 
   const itens = (pedido.itens as PedidoItem[]) || [];
   const totalPecas = itens.reduce((s, it) => s + (it.qtd || 0), 0);
+  const totalValor = itens.reduce((s, it) => s + (it.qtd || 0) * (it.valor_unit || 0), 0);
+  const brl = (v: number) => "R$ " + (Number(v) || 0).toFixed(2).replace(".", ",");
 
   return (
     <>
@@ -91,6 +93,8 @@ export function PedidoDetalhe() {
               <th>Cor</th>
               <th>Tamanho</th>
               <th className="num">Qtd</th>
+              <th className="num">Valor unit.</th>
+              <th className="num">Total</th>
               <th>Parte</th>
             </tr>
           </thead>
@@ -102,12 +106,23 @@ export function PedidoDetalhe() {
                 <td>{it.cor_grade || "—"}</td>
                 <td>{it.tamanho || "—"}</td>
                 <td className="num">{it.qtd}</td>
+                <td className="num">{it.valor_unit ? brl(it.valor_unit) : "—"}</td>
+                <td className="num strong">{it.valor_unit ? brl((it.qtd || 0) * (it.valor_unit || 0)) : "—"}</td>
                 <td>
                   <span className="chip">{parteLabel(it.parte)}</span>
                 </td>
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={4} className="strong">Total</td>
+              <td className="num strong">{totalPecas} pç</td>
+              <td></td>
+              <td className="num strong">{brl(totalValor)}</td>
+              <td></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 

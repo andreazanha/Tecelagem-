@@ -8,6 +8,7 @@ export interface PedidoItem {
   parte: string;
   kit?: boolean; // marcado como kit (pronta-entrega / estoque)
   origem?: string | null; // número do pedido de origem (OP que junta vários)
+  valor_unit?: number; // preço de venda unitário (qtd × valor_unit = total do item)
 }
 
 export interface Pedido {

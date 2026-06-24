@@ -9,6 +9,7 @@ export interface ItemSugerido {
   tamanho?: string; // ex.: 50X50, 90X200
   qtd: number;
   parte: string;
+  valor_unit?: number; // valor unitário lido do PDF (preço de venda)
 }
 
 // Extrai o tamanho (ex.: 50X50, 90X200, 1.20X1.80) do nome do produto.
@@ -137,7 +138,7 @@ function parseItensERP(text: string): ItemSugerido[] {
   const itens: ItemSugerido[] = [];
   const blocos = text.split(/Produto:\s*/i).slice(1);
   const reCor =
-    /(\d{4})\s+(?:\d{2,3}\s+)?([A-Za-zÀ-ú][A-Za-zÀ-ú0-9 ]*?)\s+(\d+)\s+(\d+)\s+\d{1,3}(?:\.\d{3})*,\d{2}/g;
+    /(\d{4})\s+(?:\d{2,3}\s+)?([A-Za-zÀ-ú][A-Za-zÀ-ú0-9 ]*?)\s+(\d+)\s+(\d+)\s+(\d{1,3}(?:\.\d{3})*,\d{2})/g;
   for (const bloco of blocos) {
     const mNome = bloco.match(/^\s*\d+\s+(\d+)\s+(.+?)\s+Col:/i);
     if (!mNome) continue;
@@ -155,7 +156,8 @@ function parseItensERP(text: string): ItemSugerido[] {
       achouCor = true;
       const cor = m[2].replace(/\s+/g, " ").trim();
       const qtd = parseInt(m[4], 10) || parseInt(m[3], 10) || 0;
-      itens.push({ produto, ref, cor_grade: cor, tamanho, qtd, parte });
+      const valor_unit = Number((m[5] || "").replace(/\./g, "").replace(",", ".")) || 0;
+      itens.push({ produto, ref, cor_grade: cor, tamanho, qtd, parte, valor_unit });
     }
     if (!achouCor) {
       const mTot = bloco.match(/T\.:\s*(\d+)/);

@@ -4,8 +4,10 @@ import { api, type PedidoItem, type NovoPedidoBody, type Modelo } from "../api";
 import { calcularPartes } from "../parte";
 
 function linhaVazia(): PedidoItem {
-  return { produto: "", ref: "", cor_grade: "", tamanho: "", qtd: 0, parte: "unico" };
+  return { produto: "", ref: "", cor_grade: "", tamanho: "", qtd: 0, parte: "unico", valor_unit: 0 };
 }
+
+const brl = (v: number) => "R$ " + (Number(v) || 0).toFixed(2).replace(".", ",");
 
 export function NovoPedido() {
   const nav = useNavigate();
@@ -65,7 +67,7 @@ export function NovoPedido() {
           data_tecelagem: p.data_tecelagem || "",
           observacao: p.observacao || "",
           itens: its.length
-            ? its.map((i) => ({ produto: i.produto || "", ref: i.ref || "", cor_grade: i.cor_grade || "", tamanho: i.tamanho || "", qtd: i.qtd || 0, parte: i.parte || "unico", kit: !!i.kit, origem: i.origem || "" }))
+            ? its.map((i) => ({ produto: i.produto || "", ref: i.ref || "", cor_grade: i.cor_grade || "", tamanho: i.tamanho || "", qtd: i.qtd || 0, parte: i.parte || "unico", kit: !!i.kit, origem: i.origem || "", valor_unit: i.valor_unit || 0 }))
             : [linhaVazia()],
         });
       })
@@ -197,6 +199,7 @@ export function NovoPedido() {
           tamanho: it.tamanho ?? "",
           qtd: Number(it.qtd) || 0,
           parte: it.parte || "unico",
+          valor_unit: Number(it.valor_unit) || 0, // preço lido do PDF (editável)
           origem: s.numero_erp || "", // de qual pedido este item veio
         }));
         if (add.length || s.cliente_nome) lidos++;
@@ -258,6 +261,7 @@ export function NovoPedido() {
   }
 
   const totalPecas = form.itens.reduce((s, it) => s + (Number(it.qtd) || 0), 0);
+  const totalValor = form.itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.valor_unit) || 0), 0);
 
   return (
     <form onSubmit={salvar}>
@@ -491,6 +495,8 @@ export function NovoPedido() {
               <th>Cor</th>
               <th>Tamanho</th>
               <th className="num">Qtd</th>
+              <th className="num">Valor unit.</th>
+              <th className="num">Total</th>
               <th>Parte</th>
               <th></th>
             </tr>
@@ -537,6 +543,18 @@ export function NovoPedido() {
                     onChange={(e) => setItem(i, { qtd: Number(e.target.value) })}
                   />
                 </td>
+                <td className="num">
+                  <input
+                    className="w-sm num"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={it.valor_unit ?? 0}
+                    onChange={(e) => setItem(i, { valor_unit: Number(e.target.value) })}
+                    placeholder="0,00"
+                  />
+                </td>
+                <td className="num strong">{brl((Number(it.qtd) || 0) * (Number(it.valor_unit) || 0))}</td>
                 <td>
                   <button
                     type="button"
@@ -567,6 +585,8 @@ export function NovoPedido() {
                 Total
               </td>
               <td className="num strong">{totalPecas} pç</td>
+              <td></td>
+              <td className="num strong">{brl(totalValor)}</td>
               <td colSpan={2}></td>
             </tr>
           </tfoot>
