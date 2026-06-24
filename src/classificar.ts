@@ -17,6 +17,7 @@ export interface ItemBase {
   parte?: string | null;
   kit?: boolean | number | null; // marcado como kit (pronta-entrega/estoque) na criação
   origem?: string | null; // número do pedido de origem (OP que junta vários)
+  valor_unit?: number | null; // preço de venda unitário (para o espelho do cliente)
 }
 
 export interface Bloco {
@@ -25,8 +26,9 @@ export interface Bloco {
   comp: string;
   cor: string;
   // cada linha traz o TIPO junto do tamanho (ex.: "Almofada 55X35", "Peseira 70X250")
-  sizes: { tipo: string; tamanho: string; qtd: number }[];
+  sizes: { tipo: string; tamanho: string; qtd: number; valorUnit?: number }[];
   total: number;
+  valorTotal?: number; // soma de qtd × valor_unit das linhas (espelho do cliente)
 }
 
 export interface Classificacao {
@@ -239,14 +241,18 @@ export function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
       : (it.tamanho || "—").trim() || "—";
     const sk = `${tipo}|${tamanho}`;
     const idxMap = sizeIdx.get(key)!;
+    const valor = Number(it.valor_unit) || 0;
     // Consolida: mesmo tipo+medida soma a quantidade (junta pedidos repetidos numa OP).
     if (idxMap.has(sk)) {
-      b.sizes[idxMap.get(sk)!].qtd += it.qtd;
+      const sz = b.sizes[idxMap.get(sk)!];
+      sz.qtd += it.qtd;
+      if (!sz.valorUnit && valor) sz.valorUnit = valor;
     } else {
       idxMap.set(sk, b.sizes.length);
-      b.sizes.push({ tipo, tamanho, qtd: it.qtd });
+      b.sizes.push({ tipo, tamanho, qtd: it.qtd, valorUnit: valor });
     }
     b.total += it.qtd;
+    b.valorTotal = (b.valorTotal || 0) + it.qtd * valor;
   }
   // dentro do bloco: ordena as linhas por tipo e depois por tamanho
   for (const b of map.values()) {

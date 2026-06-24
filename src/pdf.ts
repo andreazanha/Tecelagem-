@@ -271,6 +271,162 @@ export async function gerarPdfParte(
 // ── Romaneio de TASSEL — 3 vias na mesma página, só a quantidade total ───────
 const money = (v: number) => "R$ " + v.toFixed(2).replace(".", ",");
 
+// ── Espelho do Pedido (CLIENTE) — documento ÚNICO, sem Parte 1/2, com valores ──
+// Mesmo visual da Ordem de Produção, mas lista TODOS os itens num só PDF e mostra
+// Vl Unit. / Vl Total por linha e o TOTAL do pedido em R$ (para enviar ao cliente).
+export async function gerarPdfCliente(
+  ped: PedidoInfo,
+  blocos: Bloco[],
+  cores: Record<string, { hex?: string; foto?: Uint8Array }> = {}
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const reg = await doc.embedFont(StandardFonts.Helvetica);
+  const bld = await doc.embedFont(StandardFonts.HelveticaBold);
+
+  const fotos = new Map<string, PDFImage>();
+  for (const [k, v] of Object.entries(cores)) {
+    if (!v.foto || v.foto.length < 4) continue;
+    try {
+      const img = v.foto[0] === 0x89 && v.foto[1] === 0x50 ? await doc.embedPng(v.foto) : await doc.embedJpg(v.foto);
+      fotos.set(k, img);
+    } catch {
+      /* imagem inválida: ignora, cai no hex */
+    }
+  }
+
+  const M = 34;
+  const ix = M;
+  const iw = A4W - 2 * M;
+  const qx = ix + iw * 0.52; // início da área da direita (cor / quantidades)
+  // colunas de quantidade/valores (na metade direita)
+  const cQtd = qx + 14;
+  const cUnit = ix + iw * 0.78;
+  const cTot = ix + iw;
+
+  let page = doc.addPage([A4W, A4H]);
+  const T = (s: string, x: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x, y: A4H - yTop, size, font: f, color: c });
+  const TR = (s: string, xr: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x: xr - f.widthOfTextAtSize(s, size), y: A4H - yTop, size, font: f, color: c });
+  const R = (x: number, yTop: number, w: number, h: number, c = INK) =>
+    page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, color: c });
+  const RB = (x: number, yTop: number, w: number, h: number, c: ReturnType<typeof rgb>, bw = 1) =>
+    page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, borderColor: c, borderWidth: bw });
+  const L = (x1: number, y1: number, x2: number, c: ReturnType<typeof rgb>, th = 1) =>
+    page.drawLine({ start: { x: x1, y: A4H - y1 }, end: { x: x2, y: A4H - y1 }, thickness: th, color: c });
+  const Circle = (cx: number, cyTop: number, r: number, c: ReturnType<typeof rgb>) =>
+    page.drawCircle({ x: cx, y: A4H - cyTop, size: r, color: c, borderColor: hx("#94a3b8"), borderWidth: 0.7 });
+
+  function header(): number {
+    const bh = 88;
+    R(0, 0, A4W, bh, NAVY);
+    T("BIG TRICOT", ix, 44, 24, bld, WHITE);
+    T("HOME DECOR", ix + 2, 60, 8, reg, hx("#c7d2e0"));
+    T("Pedido", ix + 210, 40, 16, bld, WHITE);
+    T("Confirmação de pedido", ix + 210, 58, 10, reg, hx("#c7d2e0"));
+    TR(`Gerado em ${geradoEm()}`, ix + iw, 34, 8.5, reg, hx("#aab8cc"));
+    let y = bh + 26;
+    const info = (k: string, v: string, vc = INK) => {
+      T(k, ix, y, 8.5, bld, MUTE);
+      T(fit(v, bld, 10, iw - 140 - 4), ix + 140, y, 10, bld, vc);
+      y += 20;
+    };
+    info("CLIENTE", ped.cliente);
+    info("REPRESENTANTE", ped.representante);
+    if (ped.pedidos && ped.pedidos.trim()) {
+      info("CÓDIGO PAI", ped.numero);
+      info("PEDIDOS", ped.pedidos);
+    } else {
+      info(ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
+    }
+    T("DATAS", ix, y, 8.5, bld, MUTE);
+    T(`Emissão: ${ped.emissao}`, ix + 140, y, 10, bld);
+    T(`Entrega: ${ped.entrega}`, ix + 320, y, 10, bld);
+    y += 20;
+    if (ped.observacao && ped.observacao.trim()) {
+      y += 6;
+      T("OBSERVAÇÃO", ix, y, 8.5, bld, MUTE);
+      const linhas = wrap(ped.observacao.trim().toUpperCase(), bld, 10.5, iw - 140);
+      for (const ln of linhas) {
+        T(ln, ix + 140, y, 10.5, bld, REDC);
+        y += 15;
+      }
+      y += 5;
+    } else {
+      y += 8;
+    }
+    T("ITENS DO PEDIDO", ix, y, 13, bld, NAVY);
+    R(ix, y + 6, iw, 2.5, NAVY);
+    return y + 22;
+  }
+
+  function headerCont(): number {
+    const bh = 34;
+    R(0, 0, A4W, bh, NAVY);
+    T("BIG TRICOT", ix, 22, 13, bld, WHITE);
+    T("Pedido · Confirmação (continuação)", ix + 130, 22, 10, reg, hx("#c7d2e0"));
+    return bh + 24;
+  }
+
+  let y = header();
+  const totalPecas = blocos.reduce((a, b) => a + b.total, 0);
+  const totalValor = blocos.reduce((a, b) => a + (b.valorTotal || 0), 0);
+
+  for (const b of blocos) {
+    const blocoH = 26 + 16 + b.sizes.length * 18 + 24;
+    if (y + blocoH > A4H - 70) {
+      page = doc.addPage([A4W, A4H]);
+      y = headerCont();
+    }
+    R(ix, y, iw, 26, GREY);
+    let tx = ix + 10;
+    T("Modelo:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Modelo:", 9.5) + 6;
+    T(b.modelo, tx, y + 17, 11, bld); tx += bld.widthOfTextAtSize(b.modelo, 11) + 14;
+    T("Ref:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Ref:", 9.5) + 5;
+    T(b.ref || "—", tx, y + 17, 10, bld); tx += bld.widthOfTextAtSize(b.ref || "—", 10) + 10;
+    if (b.comp) T("· " + b.comp, tx, y + 17, 8.5, bld, REDC);
+    const corKey = (b.cor || "").toUpperCase();
+    const foto = fotos.get(corKey);
+    if (foto) {
+      page.drawImage(foto, { x: qx, y: A4H - (y + 7) - 13, width: 13, height: 13 });
+    } else {
+      Circle(qx + 6, y + 13, 6, hx(cores[corKey]?.hex || SW[corKey] || "#c9cdd3"));
+    }
+    T(b.cor, qx + 18, y + 17, 10.5, bld);
+    // cabeçalho da tabela
+    let ry = y + 26;
+    T("PRODUTO / TAMANHO", ix + 10, ry + 13, 8, bld, MUTE);
+    TR("QTD", cQtd + 26, ry + 13, 8, bld, MUTE);
+    TR("VL UNIT.", cUnit, ry + 13, 8, bld, MUTE);
+    TR("VL TOTAL", cTot, ry + 13, 8, bld, MUTE);
+    L(ix, ry + 18, ix + iw, LINEC, 1);
+    ry += 18;
+    for (const s of b.sizes) {
+      const vu = s.valorUnit || 0;
+      T(`${s.tipo ? s.tipo + " " : ""}${s.tamanho}`, ix + 10, ry + 14, 10, bld);
+      TR(String(s.qtd), cQtd + 26, ry + 14, 10, bld, QBLUE);
+      TR(vu ? money(vu) : "—", cUnit, ry + 14, 9.5, reg);
+      TR(vu ? money(s.qtd * vu) : "—", cTot, ry + 14, 9.5, bld);
+      L(ix, ry + 19, ix + iw, hx("#eef0f4"), 0.8);
+      ry += 18;
+    }
+    // subtotal do bloco
+    TR(`Subtotal: ${money(b.valorTotal || 0)}`, cTot, ry + 14, 9.5, bld, NAVY);
+    y = ry + 24;
+  }
+
+  // faixa total (peças + R$)
+  if (y + 50 > A4H - 30) {
+    page = doc.addPage([A4W, A4H]);
+    y = headerCont();
+  }
+  R(ix, y + 6, iw, 34, NAVY);
+  T(`TOTAL: ${totalPecas} ${totalPecas === 1 ? "peça" : "peças"}`, ix + 14, y + 28, 13, bld, WHITE);
+  TR(`TOTAL: ${money(totalValor)}`, ix + iw - 14, y + 28, 15, bld, WHITE);
+
+  return await doc.save();
+}
+
 export async function gerarRomaneioTassel(
   ped: PedidoInfo,
   prestador: string,
