@@ -39,6 +39,9 @@ export function PedidoDetalhe() {
           </div>
         </div>
         <div className="row-gap" style={{ alignItems: "center" }}>
+          <a href={`/api/pedidos/${pedido.id}/pdf-cliente`} target="_blank" rel="noreferrer" className="btn btn-soft">
+            💰 PDF do cliente
+          </a>
           <Link to={`/pedidos/${pedido.id}/editar`} className="btn btn-soft">✏️ Editar pedido</Link>
           <span className={"status status-" + pedido.status}>{pedido.status}</span>
         </div>

@@ -11,7 +11,7 @@ import {
   type ItemBase,
   type Catalogo,
 } from "../classificar";
-import { gerarPdfParte, mergePdfs, gerarRomaneioTassel, type PedidoInfo } from "../pdf";
+import { gerarPdfParte, gerarPdfCliente, mergePdfs, gerarRomaneioTassel, type PedidoInfo } from "../pdf";
 
 export const pedidos = new Hono<{ Bindings: Env }>();
 
@@ -789,6 +789,44 @@ pedidos.get("/:id/pdf/:tipo", async (c) => {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename="${nome}.pdf"`,
+    },
+  });
+});
+
+// ESPELHO DO PEDIDO (cliente): PDF ÚNICO com valores, gerado na hora (não salva no R2).
+pedidos.get("/:id/pdf-cliente", async (c) => {
+  const id = c.req.param("id");
+  const ped = await c.env.DB.prepare("SELECT * FROM pedidos WHERE id = ?")
+    .bind(id)
+    .first<Record<string, string>>();
+  if (!ped) return c.json({ error: "pedido não encontrado" }, 404);
+
+  const { results: itens } = await c.env.DB.prepare(
+    "SELECT produto, ref, cor_grade, tamanho, qtd, parte, origem, valor_unit FROM pedido_itens WHERE pedido_id = ?"
+  )
+    .bind(id)
+    .all<ItemBase>();
+  if (!itens.length) return c.json({ error: "pedido sem itens" }, 400);
+
+  const modelos = await catalogos(c.env);
+  const baseNum = ped.codigo_pai || ped.numero_erp || id.slice(0, 8);
+  const info: PedidoInfo = {
+    cliente: ped.cliente_nome,
+    representante: ped.vendedor || "—",
+    numero: baseNum,
+    pedidos: ped.codigo_pai ? ped.numero_erp || "" : "",
+    emissao: br(ped.data_pedido),
+    entrega: br(ped.data_entrega),
+    observacao: ped.observacao || "",
+  };
+  // documento ÚNICO: agrupa TODOS os itens juntos (sem Parte 1/2).
+  const blocos = agrupar(itens, modelos);
+  const cores = await coresParaPdf(c.env, coresUsadas(itens));
+  const pdf = await gerarPdfCliente(info, blocos, cores);
+  return new Response(pdf, {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="pedido-${baseNum}.pdf"`,
     },
   });
 });

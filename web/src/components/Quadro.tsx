@@ -276,12 +276,32 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
           <div className="breadcrumb">Produção › {cfg.titulo}</div>
         </div>
         <div className="row-gap">
-          <input
-            className="busca-ped"
-            placeholder="🔎 Pedido, código pai, terceiro ou cliente…"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-          />
+          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            <input
+              className="busca-ped"
+              type="search"
+              name="busca-producao"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              data-lpignore="true"
+              data-1p-ignore="true"
+              placeholder="🔎 Pedido, código pai, terceiro ou cliente…"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+            {busca && (
+              <button
+                type="button"
+                title="Limpar busca"
+                onClick={() => setBusca("")}
+                style={{ position: "absolute", right: 8, border: "none", background: "transparent", cursor: "pointer", fontSize: 16, color: "#94a3b8" }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
           <button className="btn" onClick={recarregar}>↻ Atualizar</button>
         </div>
       </div>
@@ -499,7 +519,11 @@ function AcaoModal({
               <label className="campo-l" htmlFor="ac-senha" style={{ marginTop: 14, display: "block" }}>SENHA</label>
               <input
                 id="ac-senha"
+                name="ac-senha-operador"
                 type="password"
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-1p-ignore="true"
                 value={senha}
                 autoFocus
                 onChange={(e) => setSenha(e.target.value)}
