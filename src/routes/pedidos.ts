@@ -733,6 +733,41 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   return c.json({ modo: cl.modo, temKit: cl.temKit, arquivos });
 });
 
+// PDF do CLIENTE (espelho do pedido): documento ÚNICO, sem Parte 1/2, com os
+// valores de venda por item e o total — para enviar ao cliente. Gerado na hora.
+pedidos.get("/:id/pdf-cliente", async (c) => {
+  const id = c.req.param("id");
+  const ped = await c.env.DB.prepare("SELECT * FROM pedidos WHERE id = ?")
+    .bind(id)
+    .first<Record<string, string>>();
+  if (!ped) return c.json({ error: "pedido não encontrado" }, 404);
+  const { results: itens } = await c.env.DB.prepare(
+    "SELECT produto, ref, cor_grade, tamanho, qtd, parte, origem, valor_unit FROM pedido_itens WHERE pedido_id = ?"
+  )
+    .bind(id)
+    .all<ItemBase>();
+  const modelos = await catalogos(c.env);
+  const blocos = agrupar(itens, modelos);
+  const baseNum = ped.codigo_pai || ped.numero_erp || id.slice(0, 8);
+  const info: PedidoInfo = {
+    cliente: ped.cliente_nome,
+    representante: ped.vendedor || "—",
+    numero: baseNum,
+    pedidos: ped.codigo_pai ? ped.numero_erp || "" : "",
+    emissao: br(ped.data_pedido),
+    entrega: br(ped.data_entrega),
+    observacao: ped.observacao || "",
+  };
+  const cores = await coresParaPdf(c.env, coresUsadas(itens));
+  const bytes = await gerarPdfCliente(info, blocos, cores);
+  return new Response(bytes, {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="pedido-${baseNum}.pdf"`,
+    },
+  });
+});
+
 // LISTA os PDFs de produção já gerados (persistente: lê do R2). Assim a tela do pedido
 // mostra os botões "Visualizar PDF" mesmo depois de recarregar.
 const TIPOS_PDF: Record<string, { nome: string; suf: string }> = {
