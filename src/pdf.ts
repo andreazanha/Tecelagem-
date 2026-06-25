@@ -271,6 +271,27 @@ export async function gerarPdfParte(
 // ── Romaneio de TASSEL — 3 vias na mesma página, só a quantidade total ───────
 const money = (v: number) => "R$ " + v.toFixed(2).replace(".", ",");
 
+// Desenha um QR Code com o canto SUPERIOR-DIREITO em (xRight, yTop) — usado no
+// romaneio para "dar baixa" pelo leitor embutido (lê o token e marca o retorno).
+function drawQRTopRight(page: PDFPage, payload: string, xRight: number, yTop: number, size: number, color = INK) {
+  if (!payload) return;
+  // Correção "L" (baixa) → menos módulos para o mesmo dado = QR mais "solto",
+  // que lê melhor mesmo pequeno (impressão digital é limpa, não precisa de redundância).
+  const qr = qrcode(0, "L");
+  qr.addData(payload);
+  qr.make();
+  const n = qr.getModuleCount();
+  const cell = size / n;
+  const x0 = xRight - size;
+  for (let r = 0; r < n; r++) {
+    for (let col = 0; col < n; col++) {
+      if (qr.isDark(r, col)) {
+        page.drawRectangle({ x: x0 + col * cell, y: A4H - (yTop + r * cell) - cell, width: cell + 0.3, height: cell + 0.3, color });
+      }
+    }
+  }
+}
+
 // ── Espelho do Pedido (CLIENTE) — documento ÚNICO, sem Parte 1/2, com valores ──
 // Mesmo visual da Ordem de Produção, mas lista TODOS os itens num só PDF e mostra
 // Vl Unit. / Vl Total por linha e o TOTAL do pedido em R$ (para enviar ao cliente).
@@ -431,7 +452,7 @@ export async function gerarRomaneioTassel(
   ped: PedidoInfo,
   prestador: string,
   rom: TasselRomaneio,
-  opts: { volumes?: string; dataSaida?: string; dataRetorno?: string; geradoPor?: string } = {}
+  opts: { volumes?: string; dataSaida?: string; dataRetorno?: string; geradoPor?: string; qrToken?: string } = {}
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
@@ -467,9 +488,11 @@ export async function gerarRomaneioTassel(
     T("BIG TRICOT", ix, top + 15, 13, bld, INK);
     T("HOME DECOR", ix + 2, top + 24, 6, reg, MUTE);
     const via = ["Empresa", "Prestador", "Caixa"][n - 1] || "";
-    TR(`ROMANEIO TASSEL Nº ${ped.numero}`, ix + iw, top + 13, 11, bld, INK);
-    TR(`${n}ª via (${via}) · Emitido em ${opts.dataSaida || ped.emissao}${opts.geradoPor ? ` · por ${opts.geradoPor}` : ""}`, ix + iw, top + 24, 7.5, reg, MUTE);
-    seg(ix, top + 31, ix + iw, top + 31, LINEC2, 0.8);
+    const qrR = opts.qrToken ? 44 : 0; // espaço reservado p/ o QR à direita
+    drawQRTopRight(page, opts.qrToken || "", ix + iw, top + 2, 40);
+    TR(`ROMANEIO TASSEL Nº ${ped.numero}`, ix + iw - qrR, top + 13, 11, bld, INK);
+    TR(`${n}ª via (${via}) · Emitido em ${opts.dataSaida || ped.emissao}${opts.geradoPor ? ` · por ${opts.geradoPor}` : ""}`, ix + iw - qrR, top + 24, 7.5, reg, MUTE);
+    seg(ix, top + 31, ix + iw - qrR - 2, top + 31, LINEC2, 0.8);
 
     // Bloco de dados (2 colunas, compacto).
     const rx = ix + iw * 0.55;
@@ -567,7 +590,7 @@ export async function gerarRomaneioCostura(
   rom: RomaneioCostura,
   servicos: ServicoLinha[] = [],
   totalValor = 0,
-  opts: { volumes?: string; dataSaida?: string; dataRetorno?: string; geradoPor?: string } = {}
+  opts: { volumes?: string; dataSaida?: string; dataRetorno?: string; geradoPor?: string; qrToken?: string } = {}
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
@@ -610,9 +633,12 @@ export async function gerarRomaneioCostura(
     // Cabeçalho branco: logo (texto) à esquerda, ROMANEIO Nº à direita.
     T("BIG TRICOT", ix, top + 20, 17, bld, INK);
     T("HOME DECOR", ix + 2, top + 31, 7, reg, MUTE);
-    TR(`ROMANEIO Nº ${ped.numero}`, ix + iw, top + 18, 13, bld, INK);
-    TR(`Emitido em ${opts.dataSaida || ped.emissao}${opts.geradoPor ? ` · por ${opts.geradoPor}` : ""}`, ix + iw, top + 31, 8, reg, MUTE);
-    seg(ix, top + 42, ix + iw, top + 42, LINEC2, 0.8);
+    const qrR = opts.qrToken ? 54 : 0; // espaço reservado p/ o QR à direita
+    drawQRTopRight(page, opts.qrToken || "", ix + iw, top + 2, 46);
+    if (opts.qrToken) TR("escaneie p/ baixa", ix + iw, top + 53, 6, reg, MUTE);
+    TR(`ROMANEIO Nº ${ped.numero}`, ix + iw - qrR, top + 18, 13, bld, INK);
+    TR(`Emitido em ${opts.dataSaida || ped.emissao}${opts.geradoPor ? ` · por ${opts.geradoPor}` : ""}`, ix + iw - qrR, top + 31, 8, reg, MUTE);
+    seg(ix, top + 42, ix + iw - qrR - 2, top + 42, LINEC2, 0.8);
 
     // Bloco de dados (2 colunas).
     const rx = ix + iw * 0.55;

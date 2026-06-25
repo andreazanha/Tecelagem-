@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Tassel, type Prestador, type Costura, type RomaneioPedido, type RomaneioData, type EmitidoRomaneio } from "../api";
 import { historico } from "../historico";
+import { ScannerBaixa } from "../components/ScannerBaixa";
 
 const brl = (v: number) => "R$ " + (Number(v) || 0).toFixed(2).replace(".", ",");
 const br = (d?: string | null) => {
@@ -474,6 +475,7 @@ function RomaneiosGerados() {
   const [fStatus, setFStatus] = useState("");
   const [busca, setBusca] = useState("");
   const [editar, setEditar] = useState<EmitidoRomaneio | null>(null);
+  const [scanner, setScanner] = useState(false);
 
   function recarregar() {
     api.listarEmitidos({ tipo: fTipo, status: fStatus }).then(setItens).catch(() => {}).finally(() => setCarregando(false));
@@ -534,7 +536,11 @@ function RomaneiosGerados() {
           <button className={"seg" + (fStatus === "retornou" ? " seg-on" : "")} onClick={() => setFStatus("retornou")}>✓ Retornaram</button>
         </div>
         <input className="busca-ped" placeholder="🔎 Nº, cliente ou prestador…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <button className="btn btn-primary" onClick={() => setScanner(true)} title="Escanear o QR do romaneio para dar baixa no certo">
+          📷 Dar baixa por QR
+        </button>
       </div>
+      {scanner && <ScannerBaixa onFechar={() => setScanner(false)} onBaixa={recarregar} />}
       <div className="card">
         <table className="table">
           <thead>

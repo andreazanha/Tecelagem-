@@ -601,7 +601,9 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ retornou, usuario: quemSou() }),
-    }).then((r) => j<{ ok: boolean; retornou: boolean }>(r)),
+    }).then((r) =>
+      j<{ ok: boolean; retornou: boolean; tipo: string; numero: string; cliente: string; pessoa: string }>(r)
+    ),
   excluirEmitido: (tipo: string, id: string, excluido: boolean) =>
     fetch(`/api/romaneios/emitido/${tipo}/${id}/excluir`, {
       method: "POST",

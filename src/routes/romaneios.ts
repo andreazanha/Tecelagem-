@@ -324,7 +324,14 @@ romaneios.post("/emitido/:tipo/:id/retorno", async (c) => {
   )
     .bind(v, v, v, v, quem, id)
     .run();
-  return c.json({ ok: true, retornou: !!v });
+  // devolve um resumo para a tela confirmar QUAL romaneio recebeu baixa (usado no leitor de QR)
+  const r = await c.env.DB.prepare(
+    `SELECT numero, cliente, ${pessoaCol(tipo)} AS pessoa FROM ${tabelaDe(tipo)} WHERE pedido_id = ?`
+  )
+    .bind(id)
+    .first<{ numero: string; cliente: string; pessoa: string }>();
+  if (!r) return c.json({ error: "romaneio não encontrado" }, 404);
+  return c.json({ ok: true, retornou: !!v, tipo, numero: r.numero, cliente: r.cliente, pessoa: r.pessoa });
 });
 
 // Soft-delete / restaurar (para o undo/redo).
@@ -342,7 +349,7 @@ async function regenerarPdf(env: Env, tipo: string, id: string) {
   const r = await env.DB.prepare(`SELECT * FROM ${tabelaDe(tipo)} WHERE pedido_id = ?`).bind(id).first<Record<string, string>>();
   if (!r) return;
   const info: PedidoInfo = { cliente: r.cliente || "—", representante: "—", numero: r.numero, emissao: br(r.data_saida), entrega: "" };
-  const opts = { volumes: r.volumes || "", dataSaida: br(r.data_saida), dataRetorno: r.data_retorno ? br(r.data_retorno) : "", geradoPor: r.gerado_por || undefined };
+  const opts = { volumes: r.volumes || "", dataSaida: br(r.data_saida), dataRetorno: r.data_retorno ? br(r.data_retorno) : "", geradoPor: r.gerado_por || undefined, qrToken: `BTROM|${tipo}|${id}` };
   if (tipo === "tassel") {
     const linhas = JSON.parse(r.linhas || "[]");
     const bytes = await gerarRomaneioTassel(info, r.prestador || "", { linhas, totalTasseis: Number(r.total_tasseis) || 0, totalValor: Number(r.total_valor) || 0 }, opts);
@@ -455,7 +462,7 @@ romaneios.post("/avulso", async (c) => {
 
   const id = `avulso-${crypto.randomUUID()}`;
   const info: PedidoInfo = { cliente, representante: "—", numero, emissao: br(dataSaidaISO), entrega: "" };
-  const opts = { volumes, dataSaida: br(dataSaidaISO), dataRetorno: dataRetornoISO ? br(dataRetornoISO) : "", geradoPor: geradoPor || undefined };
+  const opts = { volumes, dataSaida: br(dataSaidaISO), dataRetorno: dataRetornoISO ? br(dataRetornoISO) : "", geradoPor: geradoPor || undefined, qrToken: `BTROM|${tipo}|${id}` };
 
   if (tipo === "tassel") {
     const valores = await tabelaTassel(c.env);
@@ -569,6 +576,7 @@ romaneios.post("/:id", async (c) => {
     dataSaida: br(dataSaidaISO),
     dataRetorno: dataRetornoISO ? br(dataRetornoISO) : "",
     geradoPor: geradoPor || undefined,
+    qrToken: `BTROM|costura|${id}`,
   });
   await c.env.BUCKET.put(`pedidos/${id}/romaneio-costura.pdf`, bytes, {
     httpMetadata: { contentType: "application/pdf" },
@@ -632,6 +640,7 @@ romaneios.post("/:id/tassel", async (c) => {
     dataSaida: br(dataSaidaISO),
     dataRetorno: dataRetornoISO ? br(dataRetornoISO) : "",
     geradoPor: geradoPor || undefined,
+    qrToken: `BTROM|tassel|${id}`,
   });
   await c.env.BUCKET.put(`pedidos/${id}/romaneio-tassel.pdf`, bytes, {
     httpMetadata: { contentType: "application/pdf" },
