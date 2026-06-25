@@ -24,5 +24,12 @@
     }
   ],
   "ai": { "binding": "AI" },
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  // Web Push (aviso "entrou pedido novo"). Só a chave PÚBLICA fica no repo.
+  // A chave privada (VAPID_JWK) é um secret — definir uma vez no deploy:
+  //   wrangler secret put VAPID_JWK
+  "vars": {
+    "VAPID_PUBLIC": "BI98zOHBfNIegLgU1F2RireVjvhlsgeZB3JO1uaZEWj4qUnwcVu-S75I2sUxe5nqbn7HVfkc8QQnp5e8j1bcJ0U",
+    "VAPID_SUBJECT": "mailto:admin@bigtricot.com.br"
+  }
 }

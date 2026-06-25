@@ -3,6 +3,42 @@ import { NavLink, Outlet, Link, Navigate, useNavigate } from "react-router-dom";
 import { VERSION } from "../version";
 import { historico } from "../historico";
 import { getUser, setUser, pode } from "../auth";
+import { pushSuportado, pushAtivo, ativarPush, desativarPush } from "../push";
+
+// Sino de avisos: liga/desliga o Web Push de "pedido novo" neste aparelho.
+function SinoPush() {
+  const [ativo, setAtivo] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  useEffect(() => {
+    pushAtivo().then(setAtivo).catch(() => {});
+  }, []);
+  if (!pushSuportado()) return null;
+  async function alternar() {
+    setOcupado(true);
+    try {
+      if (ativo) {
+        await desativarPush();
+        setAtivo(false);
+      } else {
+        const r = await ativarPush();
+        if (r.ok) setAtivo(true);
+        else alert(r.erro || "Não foi possível ativar os avisos.");
+      }
+    } finally {
+      setOcupado(false);
+    }
+  }
+  return (
+    <button
+      className="ur-btn"
+      onClick={alternar}
+      disabled={ocupado}
+      title={ativo ? "Avisos de pedido novo LIGADOS neste aparelho. Clique para desligar." : "Receber aviso (notificação) quando entrar pedido novo, mesmo com o sistema fechado."}
+    >
+      {ativo ? "🔔 Avisos on" : "🔕 Avisos"}
+    </button>
+  );
+}
 
 function UndoRedo() {
   const [, forcar] = useReducer((x) => x + 1, 0);
@@ -102,6 +138,7 @@ export function Layout() {
         </Link>
         <div className="topbar-right">
           <UndoRedo />
+          <SinoPush />
           <button
             className="ur-btn"
             onClick={() => setTema(tema === "escuro" ? "claro" : "escuro")}

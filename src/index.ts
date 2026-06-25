@@ -7,12 +7,17 @@ import { producao } from "./routes/producao";
 import { expedicao } from "./routes/expedicao";
 import { romaneios } from "./routes/romaneios";
 import { dashboard } from "./routes/dashboard";
+import { push } from "./routes/push";
 
 export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
   ASSETS: Fetcher;
   AI: Ai;
+  // Web Push (notificação de pedido novo). Definidos em wrangler.jsonc › vars.
+  VAPID_PUBLIC?: string;
+  VAPID_JWK?: string;
+  VAPID_SUBJECT?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -36,6 +41,7 @@ app.route("/api/producao", producao);
 app.route("/api/expedicao", expedicao);
 app.route("/api/romaneios", romaneios);
 app.route("/api/dashboard", dashboard);
+app.route("/api/push", push);
 
 // Fallback: serve o SPA (assets estáticos do build do Vite).
 // IMPORTANTE: como o worker intercepta todas as rotas e busca o asset por código,

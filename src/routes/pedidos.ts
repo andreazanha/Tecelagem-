@@ -12,6 +12,7 @@ import {
   type Catalogo,
 } from "../classificar";
 import { gerarPdfParte, gerarPdfCliente, mergePdfs, gerarRomaneioTassel, type PedidoInfo } from "../pdf";
+import { enviarPushNovoPedido } from "../push-send";
 
 export const pedidos = new Hono<{ Bindings: Env }>();
 
@@ -385,6 +386,8 @@ pedidos.post("/", async (c) => {
   }
 
   await c.env.DB.batch(stmts);
+  // Avisa os aparelhos inscritos que entrou pedido novo (push, sem travar a resposta).
+  c.executionCtx.waitUntil(enviarPushNovoPedido(c.env));
   return c.json({ id, codigo_pai }, 201);
 });
 
