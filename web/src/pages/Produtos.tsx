@@ -514,8 +514,9 @@ function EntradaPedidoModal({ onFechar, onFeito }: { onFechar: () => void; onFei
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
+  const [cadastrando, setCadastrando] = useState(false);
   useEffect(() => { api.listarPedidos().then(setPedidos).catch(() => {}); }, []);
-  useEffect(() => {
+  function carregar() {
     if (!pedidoId) { setItens([]); return; }
     api.itensPedidoParaEstoque(pedidoId).then((r) => {
       setNumero(r.pedido.numero);
@@ -524,7 +525,21 @@ function EntradaPedidoModal({ onFechar, onFeito }: { onFechar: () => void; onFei
       r.itens.forEach((it, i) => (s[i] = !!it.produto_id));
       setSel(s);
     }).catch((e) => setErro((e as Error).message));
-  }, [pedidoId]);
+  }
+  useEffect(carregar, [pedidoId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const semVinc = itens.filter((it) => !it.produto_id).length;
+  async function cadastrarFaltantes() {
+    setCadastrando(true);
+    try {
+      const r = await api.cadastrarProdutosDoPedido(pedidoId);
+      carregar(); // re-casa os itens (agora com os produtos criados)
+      if (!r.criados) setErro("Todos os itens já tinham produto cadastrado.");
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setCadastrando(false);
+    }
+  }
 
   async function confirmar() {
     const escolhidos = itens
@@ -559,7 +574,14 @@ function EntradaPedidoModal({ onFechar, onFeito }: { onFechar: () => void; onFei
           </Campo>
           {itens.length > 0 && (
             <>
-              <p className="muted" style={{ fontSize: 13 }}>Itens casados por referência. Os sem produto vinculado precisam ser cadastrados antes (aba Produtos).</p>
+              <div className="row-gap" style={{ alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                <p className="muted" style={{ fontSize: 13, margin: "6px 0" }}>Itens casados por referência.{semVinc > 0 ? ` ${semVinc} sem produto no estoque.` : ""}</p>
+                {semVinc > 0 && (
+                  <button className="btn btn-soft" disabled={cadastrando} onClick={cadastrarFaltantes}>
+                    {cadastrando ? "Cadastrando…" : `＋ Cadastrar ${semVinc} produto(s) que faltam`}
+                  </button>
+                )}
+              </div>
               <table className="table">
                 <thead><tr><th></th><th>Item do pedido</th><th>Produto no estoque</th><th className="num">Qtd</th></tr></thead>
                 <tbody>

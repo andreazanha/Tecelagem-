@@ -1024,7 +1024,8 @@ function EntradaEstoqueModal({ card, onFechar, onFeito }: { card: CardProducao; 
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  useEffect(() => {
+  const [cadastrando, setCadastrando] = useState(false);
+  function carregar() {
     api
       .itensPedidoParaEstoque(card.pedido_id)
       .then((r) => {
@@ -1033,11 +1034,23 @@ function EntradaEstoqueModal({ card, onFechar, onFeito }: { card: CardProducao; 
         setProducao(r.producao || []);
       })
       .catch((e) => setErro((e as Error).message));
-  }, [card.pedido_id]);
+  }
+  useEffect(carregar, [card.pedido_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setIt = (i: number, patch: Partial<{ usar: boolean; qtdEdit: number }>) =>
     setItens((a) => a.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const semVinculo = itens.filter((it) => !it.produto_id);
+  async function cadastrarFaltantes() {
+    setCadastrando(true);
+    try {
+      await api.cadastrarProdutosDoPedido(card.pedido_id);
+      carregar();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setCadastrando(false);
+    }
+  }
 
   async function confirmar() {
     const escolhidos = itens
@@ -1087,11 +1100,13 @@ function EntradaEstoqueModal({ card, onFechar, onFeito }: { card: CardProducao; 
             <div style={{ marginTop: 10, padding: 10, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10 }}>
               <strong style={{ fontSize: 13 }}>⚠ {semVinculo.length} item(ns) sem produto cadastrado</strong>
               <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
-                Cadastre e vincule na aba <strong>Produtos</strong> para dar entrada.
                 {producao.length > 0 && (
-                  <> Onde está na produção: {producao.map((p) => `${p.parte} → ${SETOR_LABEL[p.setor] || p.setor} (${p.status})`).join(" · ")}</>
+                  <>Onde está na produção: {producao.map((p) => `${p.parte} → ${SETOR_LABEL[p.setor] || p.setor} (${p.status})`).join(" · ")}. </>
                 )}
               </div>
+              <button className="btn btn-soft" style={{ marginTop: 8 }} disabled={cadastrando} onClick={cadastrarFaltantes}>
+                {cadastrando ? "Cadastrando…" : `＋ Cadastrar ${semVinculo.length} produto(s) automaticamente`}
+              </button>
             </div>
           )}
           <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 14 }}>

@@ -13,7 +13,7 @@ import {
 } from "../classificar";
 import { gerarPdfParte, gerarPdfCliente, mergePdfs, gerarRomaneioTassel, type PedidoInfo } from "../pdf";
 import { enviarPushNovoPedido } from "../push-send";
-import { baixaProntaEntrega, localizacaoProducao } from "./produtos";
+import { baixaProntaEntrega, localizacaoProducao, cadastrarProdutosDoPedido } from "./produtos";
 
 export const pedidos = new Hono<{ Bindings: Env }>();
 
@@ -387,6 +387,9 @@ pedidos.post("/", async (c) => {
   }
 
   await c.env.DB.batch(stmts);
+  // Cadastro automático dos produtos do pedido que ainda não existem no estoque
+  // (reconhece pelo item; casado por ref/cor/tamanho). Não trava a criação se falhar.
+  await cadastrarProdutosDoPedido(c.env, id).catch(() => {});
   // Avisa os aparelhos inscritos que entrou pedido novo (push, sem travar a resposta).
   c.executionCtx.waitUntil(enviarPushNovoPedido(c.env));
   return c.json({ id, codigo_pai }, 201);

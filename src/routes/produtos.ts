@@ -325,6 +325,37 @@ produtos.post("/entrada-pedido", async (c) => {
   return c.json({ ok: true, criadas });
 });
 
+// Cria os produtos (avulsos) dos itens de um pedido que AINDA não existem no
+// catálogo (casados por ref/cor/tamanho). Não duplica. Reutilizado na criação do
+// pedido (automático ao subir/salvar o PDF) e no botão de cadastro manual.
+export async function cadastrarProdutosDoPedido(env: Env, pedidoId: string, usuario?: string | null): Promise<{ criados: number; nomes: string[] }> {
+  const { results: itens } = await env.DB.prepare(
+    "SELECT produto, ref, cor_grade, tamanho FROM pedido_itens WHERE pedido_id = ? GROUP BY produto, ref, cor_grade, tamanho"
+  ).bind(pedidoId).all<{ produto: string; ref: string | null; cor_grade: string | null; tamanho: string | null }>();
+  const { results: prods } = await env.DB.prepare("SELECT id, nome, ref, cor, tamanho FROM produtos WHERE ativo = 1").all<ProdLite>();
+  const nomes: string[] = [];
+  for (const it of itens) {
+    if (!String(it.produto || "").trim()) continue;
+    if (casarProduto(it, prods)) continue; // já existe produto vinculável
+    const id = uid();
+    await env.DB.prepare(
+      `INSERT INTO produtos (id, nome, ref, cor, tamanho, unidade, tipo, ativo) VALUES (?, ?, ?, ?, ?, 'un', 'avulso', 1)`
+    ).bind(id, it.produto.trim(), String(it.ref || "").trim() || null, String(it.cor_grade || "").trim() || null, String(it.tamanho || "").trim() || null).run();
+    prods.push({ id, nome: it.produto, ref: it.ref, cor: it.cor_grade, tamanho: it.tamanho }); // evita duplicar iguais no mesmo pedido
+    nomes.push(it.produto.trim());
+  }
+  if (nomes.length) await log(env, "produto", `Cadastro automático via pedido: ${nomes.length} produto(s)`, usuario, pedidoId);
+  return { criados: nomes.length, nomes };
+}
+
+// CADASTRO AUTOMÁTICO a partir de um pedido (botão manual / pedidos antigos).
+produtos.post("/cadastrar-do-pedido", async (c) => {
+  const b = await c.req.json<{ pedido_id?: string; usuario?: string }>().catch(() => ({}) as { pedido_id?: string; usuario?: string });
+  if (!b.pedido_id) return c.json({ error: "pedido_id é obrigatório" }, 400);
+  const r = await cadastrarProdutosDoPedido(c.env, b.pedido_id, b.usuario);
+  return c.json({ ok: true, ...r });
+});
+
 // FICHA TÉCNICA: substitui a lista de insumos do produto.
 produtos.post("/:id/ficha", async (c) => {
   const id = c.req.param("id");

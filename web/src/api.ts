@@ -759,6 +759,8 @@ export const api = {
     ),
   entradaPorPedido: (body: { pedido_id: string; pedido_numero: string; itens: { produto_id: string; qtd: number }[] }) =>
     jsonPost("/api/produtos/entrada-pedido", { ...body, usuario: quemSou() }).then((r) => j<{ ok: boolean }>(r)),
+  cadastrarProdutosDoPedido: (pedidoId: string) =>
+    jsonPost("/api/produtos/cadastrar-do-pedido", { pedido_id: pedidoId, usuario: quemSou() }).then((r) => j<{ ok: boolean; criados: number; nomes: string[] }>(r)),
   baixaPreview: (movId: string) => fetch(`/api/produtos/mov/${movId}/baixa-preview`).then((r) => j<BaixaPreview>(r)),
   baixarInsumos: (movId: string) =>
     jsonPost(`/api/produtos/mov/${movId}/baixar-insumos`, { usuario: quemSou() }).then((r) => j<{ ok: boolean; baixados: number }>(r)),
