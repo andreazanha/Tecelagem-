@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   api,
   type Produto,
@@ -25,8 +26,20 @@ const dt = (s?: string | null) => {
 };
 const nf = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(".", ","));
 
+const ABAS_VALIDAS: Aba[] = ["produtos", "estoque", "entradas", "ficha", "insumos", "historico"];
+
 export function Produtos() {
-  const [aba, setAba] = useState<Aba>(() => (localStorage.getItem("produtos-aba") as Aba) || "produtos");
+  const [sp] = useSearchParams();
+  const [aba, setAba] = useState<Aba>(() => {
+    const q = sp.get("aba") as Aba | null;
+    if (q && ABAS_VALIDAS.includes(q)) return q;
+    return (localStorage.getItem("produtos-aba") as Aba) || "produtos";
+  });
+  // atalhos do menu (?aba=insumos, ?aba=ficha…) trocam a aba mesmo já montado
+  useEffect(() => {
+    const q = sp.get("aba") as Aba | null;
+    if (q && ABAS_VALIDAS.includes(q)) setAba(q);
+  }, [sp]);
   function mudar(a: Aba) {
     setAba(a);
     localStorage.setItem("produtos-aba", a);

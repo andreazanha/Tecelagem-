@@ -1,10 +1,22 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, COMPOSICOES, type Modelo, type Cor } from "../api";
 import { getUser, PAGINAS, type Usuario } from "../auth";
 
+type AbaCad = "modelos" | "cores" | "operadores" | "usuarios";
+const ABAS_CAD: AbaCad[] = ["modelos", "cores", "operadores", "usuarios"];
+
 export function Cadastros() {
   const ehAdmin = !!getUser()?.admin;
-  const [aba, setAba] = useState<"modelos" | "cores" | "operadores" | "usuarios">("modelos");
+  const [sp] = useSearchParams();
+  const [aba, setAba] = useState<AbaCad>(() => {
+    const q = sp.get("aba") as AbaCad | null;
+    return q && ABAS_CAD.includes(q) ? q : "modelos";
+  });
+  useEffect(() => {
+    const q = sp.get("aba") as AbaCad | null;
+    if (q && ABAS_CAD.includes(q)) setAba(q);
+  }, [sp]);
   const [itens, setItens] = useState<Modelo[]>([]);
   const [busca, setBusca] = useState("");
   const [novo, setNovo] = useState<Modelo>({
