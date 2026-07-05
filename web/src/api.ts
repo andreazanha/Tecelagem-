@@ -727,7 +727,7 @@ export const api = {
     if (p?.busca) q.set("busca", p.busca);
     return fetch(`/api/produtos${q.toString() ? "?" + q : ""}`).then((r) => j<Produto[]>(r));
   },
-  obterProduto: (id: string) => fetch(`/api/produtos/${id}`).then((r) => j<Produto & { ficha: FichaItem[] }>(r)),
+  obterProduto: (id: string) => fetch(`/api/produtos/${id}`).then((r) => j<Produto & { ficha: FichaItem[]; kit: KitComponente[] }>(r)),
   salvarProduto: (p: Partial<Produto>) =>
     jsonPost("/api/produtos", { ...p, usuario: quemSou() }).then((r) => j<{ id: string }>(r)),
   ativarProduto: (id: string, ativo: boolean) =>
@@ -751,6 +751,8 @@ export const api = {
   },
   salvarFicha: (id: string, itens: FichaItem[]) =>
     jsonPost(`/api/produtos/${id}/ficha`, { itens, usuario: quemSou() }).then((r) => j<{ ok: boolean; total: number }>(r)),
+  salvarKitComposicao: (id: string, itens: KitComponente[]) =>
+    jsonPost(`/api/produtos/${id}/kit`, { itens, usuario: quemSou() }).then((r) => j<{ ok: boolean; total: number }>(r)),
   itensPedidoParaEstoque: (pedidoId: string) =>
     fetch(`/api/produtos/pedido/${pedidoId}/itens`).then((r) =>
       j<{ pedido: { id: string; numero: string }; itens: ItemPedidoEstoque[]; producao: { parte: string; setor: string; status: string }[] }>(r)
@@ -814,12 +816,20 @@ export interface Produto {
   cor?: string | null;
   tipo_fio?: string | null;
   unidade?: string;
+  tipo?: string; // 'avulso' | 'kit'
   foto_key?: string | null;
   ativo?: number;
   observacao?: string | null;
   estoque?: number;
   criado_em?: string;
   atualizado_em?: string;
+}
+export interface KitComponente {
+  id?: string;
+  componente_id?: string | null;
+  nome: string;
+  qtd: number;
+  observacao?: string | null;
 }
 export interface FichaItem {
   id?: string;

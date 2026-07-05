@@ -4,6 +4,7 @@ import {
   api,
   type Produto,
   type FichaItem,
+  type KitComponente,
   type ProdutoMov,
   type Insumo,
   type InsumoMov,
@@ -79,7 +80,7 @@ export function Produtos() {
 }
 
 // ═══════════════════════════ Aba PRODUTOS ═══════════════════════════
-const VAZIO: Partial<Produto> = { nome: "", ref: "", categoria: "", tamanho: "", cor: "", tipo_fio: "", unidade: "un", ativo: 1, observacao: "" };
+const VAZIO: Partial<Produto> = { nome: "", ref: "", categoria: "", tamanho: "", cor: "", tipo_fio: "", unidade: "un", tipo: "avulso", ativo: 1, observacao: "" };
 
 function AbaProdutos() {
   const [itens, setItens] = useState<Produto[]>([]);
@@ -121,18 +122,19 @@ function AbaProdutos() {
         <table className="table">
           <thead>
             <tr>
-              <th></th><th>Nome</th><th>Ref</th><th>Categoria</th><th>Cor</th><th>Tamanho</th>
+              <th></th><th>Nome</th><th>Tipo</th><th>Ref</th><th>Categoria</th><th>Cor</th><th>Tamanho</th>
               <th className="num">Estoque</th><th>Status</th><th></th>
             </tr>
           </thead>
           <tbody>
             {itens.length === 0 ? (
-              <tr><td colSpan={9} className="empty pad">Nenhum produto cadastrado.</td></tr>
+              <tr><td colSpan={10} className="empty pad">Nenhum produto cadastrado.</td></tr>
             ) : (
               itens.map((p) => (
                 <tr key={p.id} style={{ opacity: p.ativo ? 1 : 0.5 }}>
                   <td>{p.foto_key ? <img src={`/api/produtos/${p.id}/foto`} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 6 }} /> : <span className="muted">—</span>}</td>
                   <td className="strong">{p.nome}</td>
+                  <td><span className="chip">{p.tipo === "kit" ? "🧩 Kit" : "Avulso"}</span></td>
                   <td>{p.ref || "—"}</td>
                   <td>{p.categoria || "—"}</td>
                   <td>{p.cor || "—"}</td>
@@ -162,15 +164,35 @@ function ProdutoModal({ produto, onFechar, onSalvo }: { produto: Partial<Produto
   const [foto, setFoto] = useState<File | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  const [kitItens, setKitItens] = useState<KitComponente[]>([]);
+  const [disp, setDisp] = useState<Produto[]>([]); // produtos que podem compor o kit
   const set = (patch: Partial<Produto>) => setP((o) => ({ ...o, ...patch }));
+
+  useEffect(() => {
+    api.listarProdutos({ ativo: "1" }).then((l) => setDisp(l.filter((x) => x.id !== p.id))).catch(() => {});
+    if (p.id) api.obterProduto(p.id).then((full) => setKitItens(full.kit || [])).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const addKit = () => setKitItens((k) => [...k, { componente_id: null, nome: "", qtd: 1 }]);
+  const setKit = (i: number, patch: Partial<KitComponente>) => setKitItens((k) => k.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const rmKit = (i: number) => setKitItens((k) => k.filter((_, j) => j !== i));
+  function escolherComponente(i: number, prodId: string) {
+    const prod = disp.find((x) => x.id === prodId);
+    setKit(i, prod ? { componente_id: prodId, nome: prod.nome } : { componente_id: null });
+  }
 
   async function salvar() {
     if (!p.nome?.trim()) return setErro("Informe o nome do produto.");
+    if (p.tipo === "kit" && kitItens.filter((k) => k.nome.trim() && k.qtd > 0).length === 0)
+      return setErro("Um kit precisa de pelo menos um produto na composição.");
     setSalvando(true);
     setErro("");
     try {
       const r = await api.salvarProduto(p);
       if (foto) await api.enviarFotoProduto(r.id, foto).catch(() => {});
+      // composição do kit (limpa se virou avulso)
+      await api.salvarKitComposicao(r.id, p.tipo === "kit" ? kitItens.filter((k) => k.nome.trim() && k.qtd > 0) : []);
       onSalvo();
     } catch (e) {
       setErro((e as Error).message);
@@ -197,6 +219,12 @@ function ProdutoModal({ produto, onFechar, onSalvo }: { produto: Partial<Produto
             <Campo label="Cor"><input value={p.cor || ""} onChange={(e) => set({ cor: e.target.value })} placeholder="ROMENIA" /></Campo>
             <Campo label="Tipo de fio"><input value={p.tipo_fio || ""} onChange={(e) => set({ tipo_fio: e.target.value })} placeholder="100% poliéster" /></Campo>
             <Campo label="Unidade de medida"><input value={p.unidade || ""} onChange={(e) => set({ unidade: e.target.value })} placeholder="un, pç, kg, m" /></Campo>
+            <Campo label="Tipo de estoque">
+              <select value={p.tipo || "avulso"} onChange={(e) => set({ tipo: e.target.value })}>
+                <option value="avulso">Avulso (peça individual)</option>
+                <option value="kit">Kit (junção de produtos)</option>
+              </select>
+            </Campo>
             <Campo label="Produto ativo?">
               <select value={p.ativo ? "1" : "0"} onChange={(e) => set({ ativo: e.target.value === "1" ? 1 : 0 })}>
                 <option value="1">Ativo</option>
@@ -204,6 +232,35 @@ function ProdutoModal({ produto, onFechar, onSalvo }: { produto: Partial<Produto
               </select>
             </Campo>
           </div>
+
+          {p.tipo === "kit" && (
+            <div style={{ marginTop: 6, marginBottom: 6, border: "1px solid #e2e8f0", borderRadius: 10, padding: 10 }}>
+              <div className="row-gap" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <strong style={{ fontSize: 13 }}>🧩 Composição do kit</strong>
+                <span className="muted" style={{ fontSize: 12 }}>quais produtos formam este kit</span>
+              </div>
+              <table className="table">
+                <thead><tr><th>Produto (cadastro)</th><th>Nome</th><th className="num">Qtd</th><th></th></tr></thead>
+                <tbody>
+                  {kitItens.map((k, i) => (
+                    <tr key={i}>
+                      <td>
+                        <select value={k.componente_id || ""} onChange={(e) => escolherComponente(i, e.target.value)}>
+                          <option value="">— livre —</option>
+                          {disp.map((prod) => <option key={prod.id} value={prod.id}>{prod.nome}{prod.ref ? ` · ${prod.ref}` : ""}</option>)}
+                        </select>
+                      </td>
+                      <td><input value={k.nome} onChange={(e) => setKit(i, { nome: e.target.value })} placeholder="ex.: Peseira Aspen" /></td>
+                      <td className="num"><input type="number" min={0} step="any" value={k.qtd} onChange={(e) => setKit(i, { qtd: Number(e.target.value) })} className="w-xs num" /></td>
+                      <td><button className="icon-btn" onClick={() => rmKit(i)}>✕</button></td>
+                    </tr>
+                  ))}
+                  {kitItens.length === 0 && <tr><td colSpan={4} className="empty pad">Sem componentes. Adicione abaixo.</td></tr>}
+                </tbody>
+              </table>
+              <button className="btn btn-soft" style={{ marginTop: 6 }} onClick={addKit}>＋ Adicionar produto ao kit</button>
+            </div>
+          )}
           <Campo label="Foto do produto">
             <input type="file" accept="image/*" onChange={(e) => setFoto(e.target.files?.[0] || null)} />
             {p.id && p.foto_key && !foto && (

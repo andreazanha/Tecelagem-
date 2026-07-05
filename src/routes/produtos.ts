@@ -182,7 +182,8 @@ produtos.get("/:id", async (c) => {
   const p = await c.env.DB.prepare("SELECT * FROM produtos WHERE id = ?").bind(id).first();
   if (!p) return c.json({ error: "produto não encontrado" }, 404);
   const { results: ficha } = await c.env.DB.prepare("SELECT * FROM produto_insumos WHERE produto_id = ? ORDER BY rowid").bind(id).all();
-  return c.json({ ...p, ficha });
+  const { results: kit } = await c.env.DB.prepare("SELECT * FROM produto_kit WHERE kit_id = ? ORDER BY rowid").bind(id).all();
+  return c.json({ ...p, ficha, kit });
 });
 
 // Movimentações de estoque de um produto (extrato).
@@ -211,12 +212,13 @@ produtos.post("/", async (c) => {
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
   const existe = b.id ? await c.env.DB.prepare("SELECT id FROM produtos WHERE id = ?").bind(b.id as string).first() : null;
   const id = (b.id as string) || uid();
+  const tipo = b.tipo === "kit" ? "kit" : "avulso";
   await c.env.DB.prepare(
-    `INSERT INTO produtos (id, nome, ref, categoria, tamanho, cor, tipo_fio, unidade, ativo, observacao, atualizado_em)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `INSERT INTO produtos (id, nome, ref, categoria, tamanho, cor, tipo_fio, unidade, tipo, ativo, observacao, atualizado_em)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, ref = excluded.ref, categoria = excluded.categoria,
        tamanho = excluded.tamanho, cor = excluded.cor, tipo_fio = excluded.tipo_fio, unidade = excluded.unidade,
-       ativo = excluded.ativo, observacao = excluded.observacao, atualizado_em = datetime('now')`
+       tipo = excluded.tipo, ativo = excluded.ativo, observacao = excluded.observacao, atualizado_em = datetime('now')`
   )
     .bind(
       id,
@@ -227,6 +229,7 @@ produtos.post("/", async (c) => {
       String(b.cor || "").trim() || null,
       String(b.tipo_fio || "").trim() || null,
       String(b.unidade || "un").trim() || "un",
+      tipo,
       b.ativo === false || b.ativo === 0 ? 0 : 1,
       String(b.observacao || "").trim() || null
     )
@@ -349,6 +352,26 @@ produtos.post("/:id/ficha", async (c) => {
   }
   await c.env.DB.batch(stmts);
   await log(c.env, "ficha", `Ficha técnica atualizada: ${p.nome} (${linhas.length} insumo(s))`, b.usuario, id);
+  return c.json({ ok: true, total: linhas.length });
+});
+
+// COMPOSIÇÃO DO KIT: substitui a lista de produtos que compõem o kit.
+produtos.post("/:id/kit", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ usuario?: string; itens?: Record<string, unknown>[] }>().catch(() => ({}) as { usuario?: string; itens?: Record<string, unknown>[] });
+  const p = await c.env.DB.prepare("SELECT nome FROM produtos WHERE id = ?").bind(id).first<{ nome: string }>();
+  if (!p) return c.json({ error: "produto não encontrado" }, 404);
+  const linhas = (b.itens || []).filter((i) => String(i.nome || "").trim() && num(i.qtd) > 0);
+  const stmts: D1PreparedStatement[] = [c.env.DB.prepare("DELETE FROM produto_kit WHERE kit_id = ?").bind(id)];
+  for (const l of linhas) {
+    stmts.push(
+      c.env.DB.prepare(
+        "INSERT INTO produto_kit (id, kit_id, componente_id, nome, qtd, observacao) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(uid(), id, (l.componente_id as string) || null, String(l.nome).trim(), num(l.qtd), String(l.observacao || "").trim() || null)
+    );
+  }
+  await c.env.DB.batch(stmts);
+  await log(c.env, "produto", `Composição do kit atualizada: ${p.nome} (${linhas.length} produto(s))`, b.usuario, id);
   return c.json({ ok: true, total: linhas.length });
 });
 
