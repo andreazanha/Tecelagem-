@@ -602,3 +602,10 @@ body.dark .campo > input, body.dark .campo > select, body.dark .campo > textarea
   background: #fff7ed; border: 1px solid #fed7aa; border-radius: 7px; padding: 3px 7px;
 }
 body.dark .kcard-consol { background: #3a2a12; border-color: #7c5312; color: #fbbf24; }
+
+/* Atalho de master (teste): pular etapa direto para um setor */
+.master-pular { display: flex; align-items: center; gap: 6px; margin-right: auto; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 10px; padding: 4px 8px; }
+.master-tag { font-size: 12px; font-weight: 800; color: #7c3aed; white-space: nowrap; }
+.master-pular select { padding: 6px 8px; font-size: 13px; }
+body.dark .master-pular { background: #241a44; border-color: #4c3a80; }
+body.dark .master-tag { color: #c4b5fd; }

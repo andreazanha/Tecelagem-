@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type CardProducao, type ItemPedidoEstoque } from "../api";
 import { historico } from "../historico";
+import { getUser } from "../auth";
 
 const SETOR_LABEL: Record<string, string> = {
   tecelagem: "Tecelagem", passadoria: "Passadoria", corte: "Corte",
   costura: "Costura", revisao: "Revisão", estoque: "Estoque", expedicao: "Expedição",
 };
+// Ordem dos setores da produção (usada no atalho de master "pular etapa").
+const SETORES = ["tecelagem", "passadoria", "corte", "costura", "revisao", "estoque", "expedicao"];
 
 const TIPO: Record<string, { label: string; cls: string }> = {
   "parte-1": { label: "PARTE 1", cls: "p1" },
@@ -393,7 +396,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
       )}
 
       {aberto && (
-        <CardModal card={aberto} cfg={cfg} stLabel={stLabel} onFechar={() => setAberto(null)} onAcao={acaoCard} onPrioridade={alternarPrioridade} />
+        <CardModal card={aberto} cfg={cfg} stLabel={stLabel} onFechar={() => setAberto(null)} onAcao={acaoCard} onPrioridade={alternarPrioridade} onPular={(c, setor) => mudarGrupo([c], { status: "aguardando", setor })} />
       )}
 
       {entradaPed && (
@@ -779,6 +782,7 @@ function CardModal({
   onFechar,
   onAcao,
   onPrioridade,
+  onPular,
 }: {
   card: CardProducao;
   cfg: QuadroCfg;
@@ -786,7 +790,10 @@ function CardModal({
   onFechar: () => void;
   onAcao: (cards: CardProducao[], acao: ColCfg["acao"]) => void;
   onPrioridade: (c: CardProducao) => void;
+  onPular?: (c: CardProducao, setor: string) => void;
 }) {
+  const ehMaster = !!getUser()?.admin;
+  const [pularSetor, setPularSetor] = useState(cfg.proxSetor || "revisao");
   const [det, setDet] = useState<Awaited<ReturnType<typeof api.detalheProducao>> | null>(null);
   const [hist, setHist] = useState<Awaited<ReturnType<typeof api.historicoProducao>> | null>(null);
   const [verHist, setVerHist] = useState(false);
@@ -917,6 +924,15 @@ function CardModal({
         </div>
 
         <div className="modal-ft">
+          {ehMaster && onPular && (
+            <div className="master-pular" title="Atalho de teste (só master): move o card direto para o setor escolhido, sem passar por cada etapa">
+              <span className="master-tag">🧪 Master · pular p/</span>
+              <select value={pularSetor} onChange={(e) => setPularSetor(e.target.value)}>
+                {SETORES.map((s) => <option key={s} value={s}>{SETOR_LABEL[s]}</option>)}
+              </select>
+              <button className="btn btn-soft" onClick={() => { onPular(card, pularSetor); onFechar(); }}>Ir ▶</button>
+            </div>
+          )}
           <button className="btn" onClick={onFechar}>
             Fechar
           </button>
