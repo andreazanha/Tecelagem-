@@ -6,6 +6,7 @@ const CORTE: QuadroCfg = {
   fazerLabel: "Cortar",
   fazendoLabel: "Cortando",
   proxSetor: "costura",
+  desmembrar: true, // OP consolidada pode ser separada em um card por pedido aqui
   enviarLabel: "Enviar p/ costura ▶",
   pedeMaquina: false,
   recursoLabel: "Cortador",

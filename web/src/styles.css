@@ -595,3 +595,10 @@ body.dark .campo > input, body.dark .campo > select, body.dark .campo > textarea
   .sidebar nav.menu { display: block; overflow-y: auto; overflow-x: hidden; }
   .sidebar.min { align-items: stretch; }
 }
+
+/* Aviso em cards vindos do desmembramento de OP consolidada */
+.kcard-consol {
+  margin: 4px 0 2px; font-size: 10.5px; font-weight: 800; color: #b45309;
+  background: #fff7ed; border: 1px solid #fed7aa; border-radius: 7px; padding: 3px 7px;
+}
+body.dark .kcard-consol { background: #3a2a12; border-color: #7c5312; color: #fbbf24; }

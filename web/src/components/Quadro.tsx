@@ -13,8 +13,16 @@ const TIPO: Record<string, { label: string; cls: string }> = {
   "parte-unica": { label: "ÚNICA", cls: "unica" },
   "pronta-entrega": { label: "KIT", cls: "kit" },
 };
-const opCodigo = (c: CardProducao) =>
-  (c.parte === "pronta-entrega" ? "KIT " : "OP ") + (c.codigo_pai || c.numero_erp || c.pedido_id.slice(0, 6));
+// Parte "real" ignorando o sufixo "#op" de cards desmembrados (parte-unica#3768).
+const basePart = (p: string) => (p || "").split("#")[0];
+const opCodigo = (c: CardProducao) => {
+  const kit = basePart(c.parte) === "pronta-entrega";
+  // Card desmembrado mostra a OP de origem (número do pedido original).
+  if (c.op) return (kit ? "KIT " : "OP ") + c.op;
+  return (kit ? "KIT " : "OP ") + (c.codigo_pai || c.numero_erp || c.pedido_id.slice(0, 6));
+};
+// Card que ainda é uma OP consolidada inteira (pode ser desmembrado).
+const ehConsolidada = (c: CardProducao) => !!c.codigo_pai && (c.numero_erp || "").includes(",") && !c.op;
 const br = (d?: string | null) => {
   if (!d) return "—";
   const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -96,6 +104,7 @@ export interface QuadroCfg {
   enviarSemPessoa?: boolean; // enviar para a FILA do próximo setor (aguardando), sem escolher pessoa
   agruparPorPedido?: boolean; // junta as partes do mesmo pedido num card só (ex.: Revisão, pedido misto)
   entradaEstoque?: boolean; // mostra "📥 Dar entrada no estoque" em cards de reposição (setor Estoque)
+  desmembrar?: boolean; // mostra "🔀 Desmembrar OP" em cards de OP consolidada (setor Corte)
 }
 
 // Setores cujas colunas são PESSOAS. Costura = costureiras terceirizadas
@@ -114,9 +123,11 @@ function pessoasDeSetor(s: string): FontePessoas | null {
 function agruparPorPedido(cards: CardProducao[]): CardProducao[][] {
   const m = new Map<string, CardProducao[]>();
   for (const c of cards) {
-    const g = m.get(c.pedido_id);
+    // Cards desmembrados: agrupa por pedido + OP (cada OP é um card à parte).
+    const chave = c.pedido_id + "|" + (c.op || "");
+    const g = m.get(chave);
     if (g) g.push(c);
-    else m.set(c.pedido_id, [c]);
+    else m.set(chave, [c]);
   }
   return [...m.values()];
 }
@@ -171,6 +182,18 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     }
   }
   const mudar = (c: CardProducao, body: { status: string; setor?: string; maquina?: string; operador?: string }) => mudarGrupo([c], body);
+
+  // Desmembra uma OP consolidada em um card por pedido de origem.
+  async function desmembrar(c: CardProducao) {
+    if (!confirm(`Desmembrar a OP consolidada ${c.codigo_pai || ""} em um card separado por pedido (${c.numero_erp || ""})?`)) return;
+    try {
+      const r = await api.desmembrarProducao(c.pedido_id, c.parte);
+      recarregar();
+      if (r.criados) alert(`OP desmembrada em ${r.criados} cards.`);
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  }
 
   // Toda ação passa pelo modal (senha do operador interno + destino quando aplicável).
   function acaoCard(cards: CardProducao[], acao: Acao) {
@@ -358,6 +381,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
                   onAcao={acaoCard}
                   onPrioridade={alternarPrioridade}
                   onEntradaEstoque={cfg.entradaEstoque ? setEntradaPed : undefined}
+                  onDesmembrar={cfg.desmembrar ? desmembrar : undefined}
                 />
               );
             })}
@@ -591,6 +615,7 @@ function Coluna({
   onAcao,
   onPrioridade,
   onEntradaEstoque,
+  onDesmembrar,
 }: {
   col: ColCfg;
   cards: CardProducao[];
@@ -600,6 +625,7 @@ function Coluna({
   onAcao: (cards: CardProducao[], acao: ColCfg["acao"]) => void;
   onPrioridade: (c: CardProducao) => void;
   onEntradaEstoque?: (c: CardProducao) => void;
+  onDesmembrar?: (c: CardProducao) => void;
 }) {
   const btn = btnDe(col.acao, cfg);
   // Pedido misto: agrupa as partes do mesmo pedido num card só (ex.: na Revisão).
@@ -619,7 +645,7 @@ function Coluna({
         {grupos.map((g) => {
           const c = g[0];
           const combinado = g.length > 1;
-          const t = TIPO[c.parte] || { label: c.parte, cls: "" };
+          const t = TIPO[basePart(c.parte)] || { label: basePart(c.parte), cls: "" };
           const hdCls = combinado ? "misto" : t.cls;
           const pecas = g.reduce((s, x) => s + (x.pecas || 0), 0);
           return (
@@ -642,10 +668,15 @@ function Coluna({
                   <span className="kcard-cli">{c.cliente_nome}</span>
                   <span className={"kstatus " + c.status}>{stLabel(c.status)}</span>
                 </div>
+                {c.op && (
+                  <div className="kcard-consol" title={`Card gerado do desmembramento da OP consolidada ${c.codigo_pai || ""}`}>
+                    ⚠ Desmembrada de OP consolidada{c.codigo_pai ? ` ${c.codigo_pai}` : ""}
+                  </div>
+                )}
                 {combinado && (
                   <div className="kcard-partes">
                     {g.map((x) => {
-                      const tt = TIPO[x.parte] || { label: x.parte, cls: "" };
+                      const tt = TIPO[basePart(x.parte)] || { label: basePart(x.parte), cls: "" };
                       return <span key={x.parte} className={"kparte " + tt.cls}>{tt.label}</span>;
                     })}
                   </div>
@@ -671,6 +702,15 @@ function Coluna({
                       : "toque p/ detalhes"}
                   </span>
                   <div className="kcard-acoes">
+                    {onDesmembrar && ehConsolidada(c) && (
+                      <button
+                        className="kbtn tecer"
+                        title="Separar esta OP consolidada em um card por pedido (segue a produção independente)"
+                        onClick={(e) => { e.stopPropagation(); onDesmembrar(c); }}
+                      >
+                        🔀 Desmembrar OP
+                      </button>
+                    )}
                     {onEntradaEstoque && c.reposicao && (
                       <button
                         className="kbtn final"

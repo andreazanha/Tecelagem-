@@ -114,6 +114,7 @@ export interface CardProducao {
   data_tecelagem?: string | null;
   observacao?: string | null;
   reposicao?: boolean | number; // pedido de reposição (produzir p/ estocar)
+  op?: string | null; // OP de origem quando o card foi desmembrado de uma OP consolidada
 }
 
 // Expedição → Fiscal → Transporte
@@ -474,7 +475,9 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }).then((r) => j<{ ok: boolean }>(r)),
+    }).then((r) => j<{ ok: boolean; desmembrou?: boolean }>(r)),
+  desmembrarProducao: (pedido_id: string, parte: string) =>
+    fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/desmembrar`, { method: "POST" }).then((r) => j<{ ok: boolean; criados: number }>(r)),
   definirPrioridade: (pedido_id: string, parte: string, prioridade: number) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/prioridade`, {
       method: "POST",

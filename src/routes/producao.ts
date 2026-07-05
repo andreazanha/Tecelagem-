@@ -11,6 +11,53 @@ async function catalogoDe(env: Env) {
   return criarCatalogo(m.results as never[]);
 }
 
+// DESMEMBRA uma OP consolidada: separa o card (pedido_id, parte) em um card por
+// OP de origem (número do pedido original). Cada card vira "<parte>#<op>" e guarda
+// `op`. Segue a produção independente. Idempotente (não redivide o que já tem "#").
+type CardRow = {
+  pedido_id: string; parte: string; op: string | null; setor: string; status: string;
+  pecas: number; operador: string | null; prioridade: number; iniciado_em: string | null; finalizado_em: string | null;
+};
+async function desmembrarCard(env: Env, pedidoId: string, parteFull: string): Promise<{ ok: boolean; criados?: number; motivo?: string }> {
+  if (parteFull.includes("#")) return { ok: false, motivo: "já desmembrado" };
+  const card = await env.DB.prepare("SELECT * FROM producao WHERE pedido_id = ? AND parte = ?").bind(pedidoId, parteFull).first<CardRow>();
+  if (!card) return { ok: false, motivo: "card não encontrado" };
+  const ped = await env.DB.prepare("SELECT numero_erp, codigo_pai FROM pedidos WHERE id = ?").bind(pedidoId).first<{ numero_erp: string | null; codigo_pai: string | null }>();
+  if (!ped) return { ok: false, motivo: "pedido não encontrado" };
+  const { results: itens } = await env.DB.prepare(
+    "SELECT produto, ref, cor_grade, tamanho, qtd, parte, kit, origem FROM pedido_itens WHERE pedido_id = ?"
+  ).bind(pedidoId).all<ItemBase>();
+  const primeiro = (ped.numero_erp || "").split(",")[0].trim();
+  const origemDe = (it: ItemBase) => (it.origem || "").trim() || primeiro || (ped.codigo_pai || "");
+  const origens = [...new Set(itens.map(origemDe).filter(Boolean))];
+  if (origens.length <= 1) return { ok: false, motivo: "pedido tem uma única OP" };
+
+  const cat = await catalogoDe(env);
+  const totalParte = (cl: ReturnType<typeof classificar>): number => {
+    if (parteFull === "pronta-entrega") return cl.kits.reduce((s, b) => s + b.total, 0);
+    if (parteFull === "parte-unica") return (cl.parteUnica || []).reduce((s, b) => s + b.total, 0);
+    if (parteFull === "parte-1") return (cl.parte1 || []).reduce((s, b) => s + b.total, 0);
+    if (parteFull === "parte-2") return (cl.parte2 || []).reduce((s, b) => s + b.total, 0);
+    return 0;
+  };
+  const stmts: D1PreparedStatement[] = [env.DB.prepare("DELETE FROM producao WHERE pedido_id = ? AND parte = ?").bind(pedidoId, parteFull)];
+  let criados = 0;
+  for (const origem of origens) {
+    const pecas = totalParte(classificar(itens.filter((it) => origemDe(it) === origem), cat));
+    if (pecas <= 0) continue; // essa OP não tem peça nesta parte
+    stmts.push(
+      env.DB.prepare(
+        `INSERT INTO producao (pedido_id, parte, op, setor, status, pecas, resumo, operador, prioridade, iniciado_em, finalizado_em)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(pedidoId, `${parteFull}#${origem}`, origem, card.setor, card.status, pecas, `OP ${origem}`, card.operador, card.prioridade, card.iniciado_em, card.finalizado_em)
+    );
+    criados++;
+  }
+  if (criados <= 1) return { ok: false, motivo: "não há peças em mais de uma OP nesta parte" };
+  await env.DB.batch(stmts);
+  return { ok: true, criados };
+}
+
 // Backfill: todo pedido vira card de Tecelagem (mesmo sem ter gerado PDF).
 async function garantirCards(env: Env) {
   const { results: faltantes } = await env.DB.prepare(
@@ -95,7 +142,7 @@ producao.get("/", async (c) => {
   await corrigirKitsEstoque(c.env);
   const setor = c.req.query("setor") || "tecelagem";
   const { results } = await c.env.DB.prepare(
-    `SELECT pr.pedido_id, pr.parte, pr.setor, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
+    `SELECT pr.pedido_id, pr.parte, pr.op, pr.setor, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
             pr.prioridade, pr.iniciado_em, pr.finalizado_em,
             p.numero_erp, p.cliente_nome, p.data_pedido, p.data_entrega, p.data_tecelagem, p.codigo_terceiro, p.codigo_pai, p.observacao, p.reposicao
        FROM producao pr
@@ -183,7 +230,24 @@ producao.post("/:pedido_id/:parte", async (c) => {
       .bind(pedido_id, parte, after.setor, after.status, after.operador)
       .run();
   }
-  return c.json({ ok: true });
+
+  // AUTOMÁTICO: ao ENTRAR na Revisão, uma OP consolidada ainda inteira se desmembra
+  // sozinha em um card por OP (se já foi desmembrada no Corte, os cards têm "#" e nada muda).
+  let desmembrou = false;
+  if (b.setor === "revisao" && !parte.includes("#")) {
+    const r = await desmembrarCard(c.env, pedido_id, parte).catch(() => ({ ok: false }));
+    desmembrou = !!r.ok;
+  }
+  return c.json({ ok: true, desmembrou });
+});
+
+// DESMEMBRAR manual (botão no Corte): separa a OP consolidada em um card por OP.
+producao.post("/:pedido_id/:parte/desmembrar", async (c) => {
+  const pedido_id = c.req.param("pedido_id");
+  const parte = decodeURIComponent(c.req.param("parte"));
+  const r = await desmembrarCard(c.env, pedido_id, parte);
+  if (!r.ok) return c.json({ error: r.motivo || "não foi possível desmembrar" }, 400);
+  return c.json(r);
 });
 
 // "Passar na frente": liga/desliga a prioridade de uma parte.
