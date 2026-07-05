@@ -113,6 +113,7 @@ export interface CardProducao {
   data_entrega?: string | null;
   data_tecelagem?: string | null;
   observacao?: string | null;
+  reposicao?: boolean | number; // pedido de reposição (produzir p/ estocar)
 }
 
 // Expedição → Fiscal → Transporte
@@ -748,7 +749,9 @@ export const api = {
   salvarFicha: (id: string, itens: FichaItem[]) =>
     jsonPost(`/api/produtos/${id}/ficha`, { itens, usuario: quemSou() }).then((r) => j<{ ok: boolean; total: number }>(r)),
   itensPedidoParaEstoque: (pedidoId: string) =>
-    fetch(`/api/produtos/pedido/${pedidoId}/itens`).then((r) => j<{ pedido: { id: string; numero: string }; itens: ItemPedidoEstoque[] }>(r)),
+    fetch(`/api/produtos/pedido/${pedidoId}/itens`).then((r) =>
+      j<{ pedido: { id: string; numero: string }; itens: ItemPedidoEstoque[]; producao: { parte: string; setor: string; status: string }[] }>(r)
+    ),
   entradaPorPedido: (body: { pedido_id: string; pedido_numero: string; itens: { produto_id: string; qtd: number }[] }) =>
     jsonPost("/api/produtos/entrada-pedido", { ...body, usuario: quemSou() }).then((r) => j<{ ok: boolean }>(r)),
   baixaPreview: (movId: string) => fetch(`/api/produtos/mov/${movId}/baixa-preview`).then((r) => j<BaixaPreview>(r)),

@@ -13,6 +13,7 @@ import {
 } from "../classificar";
 import { gerarPdfParte, gerarPdfCliente, mergePdfs, gerarRomaneioTassel, type PedidoInfo } from "../pdf";
 import { enviarPushNovoPedido } from "../push-send";
+import { baixaProntaEntrega, localizacaoProducao } from "./produtos";
 
 export const pedidos = new Hono<{ Bindings: Env }>();
 
@@ -733,7 +734,19 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     }
   }
 
-  return c.json({ modo: cl.modo, temKit: cl.temKit, arquivos });
+  // BAIXA AUTOMÁTICA no estoque de produtos: pedido de CLIENTE (não-reposição) com
+  // pronta-entrega dá baixa das peças ao gerar os PDFs (idempotente). Itens sem produto
+  // vinculado são listados com a localização na produção (setor/status).
+  let baixaEstoque: Awaited<ReturnType<typeof baixaProntaEntrega>> & { producao?: unknown } | null = null;
+  if (!reposicao) {
+    const kitItens = itens.filter(ehKit);
+    if (kitItens.length) {
+      baixaEstoque = await baixaProntaEntrega(c.env, { id, numero: baseNum }, kitItens);
+      if (baixaEstoque.semVinculo.length) baixaEstoque.producao = await localizacaoProducao(c.env, id);
+    }
+  }
+
+  return c.json({ modo: cl.modo, temKit: cl.temKit, arquivos, baixaEstoque });
 });
 
 // PDF do CLIENTE (espelho do pedido): documento ÚNICO, sem Parte 1/2, com os

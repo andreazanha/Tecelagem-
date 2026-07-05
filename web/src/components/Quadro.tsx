@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type CardProducao } from "../api";
+import { api, type CardProducao, type ItemPedidoEstoque } from "../api";
 import { historico } from "../historico";
+
+const SETOR_LABEL: Record<string, string> = {
+  tecelagem: "Tecelagem", passadoria: "Passadoria", corte: "Corte",
+  costura: "Costura", revisao: "Revisão", estoque: "Estoque", expedicao: "Expedição",
+};
 
 const TIPO: Record<string, { label: string; cls: string }> = {
   "parte-1": { label: "PARTE 1", cls: "p1" },
@@ -90,6 +95,7 @@ export interface QuadroCfg {
   setorDefeito?: string; // setor para onde "Voltou com defeito" devolve a peça (ex.: Revisão → Costura)
   enviarSemPessoa?: boolean; // enviar para a FILA do próximo setor (aguardando), sem escolher pessoa
   agruparPorPedido?: boolean; // junta as partes do mesmo pedido num card só (ex.: Revisão, pedido misto)
+  entradaEstoque?: boolean; // mostra "📥 Dar entrada no estoque" em cards de reposição (setor Estoque)
 }
 
 // Setores cujas colunas são PESSOAS. Costura = costureiras terceirizadas
@@ -123,6 +129,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [carregando, setCarregando] = useState(true);
   const [aberto, setAberto] = useState<CardProducao | null>(null);
   const [acaoModal, setAcaoModal] = useState<{ cards: CardProducao[]; acao: Acao } | null>(null);
+  const [entradaPed, setEntradaPed] = useState<CardProducao | null>(null);
   const [busca, setBusca] = useState("");
 
   function recarregar() {
@@ -350,6 +357,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
                   onAbrir={setAberto}
                   onAcao={acaoCard}
                   onPrioridade={alternarPrioridade}
+                  onEntradaEstoque={cfg.entradaEstoque ? setEntradaPed : undefined}
                 />
               );
             })}
@@ -362,6 +370,10 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 
       {aberto && (
         <CardModal card={aberto} cfg={cfg} stLabel={stLabel} onFechar={() => setAberto(null)} onAcao={acaoCard} onPrioridade={alternarPrioridade} />
+      )}
+
+      {entradaPed && (
+        <EntradaEstoqueModal card={entradaPed} onFechar={() => setEntradaPed(null)} onFeito={() => { setEntradaPed(null); recarregar(); }} />
       )}
 
       {acaoModal && (
@@ -578,6 +590,7 @@ function Coluna({
   onAbrir,
   onAcao,
   onPrioridade,
+  onEntradaEstoque,
 }: {
   col: ColCfg;
   cards: CardProducao[];
@@ -586,6 +599,7 @@ function Coluna({
   onAbrir: (c: CardProducao) => void;
   onAcao: (cards: CardProducao[], acao: ColCfg["acao"]) => void;
   onPrioridade: (c: CardProducao) => void;
+  onEntradaEstoque?: (c: CardProducao) => void;
 }) {
   const btn = btnDe(col.acao, cfg);
   // Pedido misto: agrupa as partes do mesmo pedido num card só (ex.: na Revisão).
@@ -657,6 +671,15 @@ function Coluna({
                       : "toque p/ detalhes"}
                   </span>
                   <div className="kcard-acoes">
+                    {onEntradaEstoque && c.reposicao && (
+                      <button
+                        className="kbtn final"
+                        title="Dar entrada destas peças no estoque de produtos (quantidade editável)"
+                        onClick={(e) => { e.stopPropagation(); onEntradaEstoque(c); }}
+                      >
+                        📥 Entrada no estoque
+                      </button>
+                    )}
                     {col.acaoExtra && (
                       <button
                         className={"kbtn " + btnDe(col.acaoExtra, cfg).cls}
@@ -945,6 +968,96 @@ function HistoricoModal({
 
         <div className="modal-ft">
           <button className="btn" onClick={onFechar}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal "Dar entrada no estoque" (pedido de reposição, no setor Estoque).
+// Casa os itens do pedido aos produtos e permite EDITAR a quantidade (defeitos etc.).
+// Itens sem produto vinculado são listados com a localização na produção.
+function EntradaEstoqueModal({ card, onFechar, onFeito }: { card: CardProducao; onFechar: () => void; onFeito: () => void }) {
+  const [itens, setItens] = useState<(ItemPedidoEstoque & { usar: boolean; qtdEdit: number })[]>([]);
+  const [numero, setNumero] = useState("");
+  const [producao, setProducao] = useState<{ parte: string; setor: string; status: string }[]>([]);
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    api
+      .itensPedidoParaEstoque(card.pedido_id)
+      .then((r) => {
+        setNumero(r.pedido.numero);
+        setItens(r.itens.map((it) => ({ ...it, usar: !!it.produto_id, qtdEdit: it.qtd })));
+        setProducao(r.producao || []);
+      })
+      .catch((e) => setErro((e as Error).message));
+  }, [card.pedido_id]);
+
+  const setIt = (i: number, patch: Partial<{ usar: boolean; qtdEdit: number }>) =>
+    setItens((a) => a.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const semVinculo = itens.filter((it) => !it.produto_id);
+
+  async function confirmar() {
+    const escolhidos = itens
+      .filter((it) => it.usar && it.produto_id && it.qtdEdit > 0)
+      .map((it) => ({ produto_id: it.produto_id!, qtd: it.qtdEdit }));
+    if (!escolhidos.length) return setErro("Selecione ao menos um item com produto vinculado e quantidade.");
+    setSalvando(true);
+    setErro("");
+    try {
+      await api.entradaPorPedido({ pedido_id: card.pedido_id, pedido_numero: numero, itens: escolhidos });
+      onFeito();
+    } catch (e) {
+      setErro((e as Error).message);
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 680 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd unica">
+          <div className="modal-hd-top">
+            <span className="modal-pills"><span className="modal-pill">📥 Entrada no estoque — {numero}</span></span>
+            <button className="modal-x" onClick={onFechar}>✕</button>
+          </div>
+        </div>
+        <div className="pad">
+          {erro && <p className="erro">{erro}</p>}
+          <p className="muted" style={{ marginTop: 0 }}>
+            Confira e <strong>ajuste a quantidade</strong> (ex.: peça com defeito) antes de dar entrada no estoque de produtos.
+          </p>
+          <table className="table">
+            <thead><tr><th></th><th>Item do pedido</th><th>Produto no estoque</th><th className="num">Qtd</th></tr></thead>
+            <tbody>
+              {itens.map((it, i) => (
+                <tr key={i} style={{ opacity: it.produto_id ? 1 : 0.55 }}>
+                  <td><input type="checkbox" disabled={!it.produto_id} checked={it.usar} onChange={(e) => setIt(i, { usar: e.target.checked })} /></td>
+                  <td>{it.produto}{it.ref ? ` · ${it.ref}` : ""}{it.cor ? ` · ${it.cor}` : ""}{it.tamanho ? ` · ${it.tamanho}` : ""}</td>
+                  <td>{it.produto_nome ? <span className="strong">{it.produto_nome}</span> : <span className="muted">sem vínculo</span>}</td>
+                  <td className="num"><input type="number" min={0} step="any" value={it.qtdEdit} disabled={!it.produto_id} onChange={(e) => setIt(i, { qtdEdit: Number(e.target.value) })} className="w-xs num" /></td>
+                </tr>
+              ))}
+              {itens.length === 0 && <tr><td colSpan={4} className="empty pad">Sem itens.</td></tr>}
+            </tbody>
+          </table>
+          {semVinculo.length > 0 && (
+            <div style={{ marginTop: 10, padding: 10, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10 }}>
+              <strong style={{ fontSize: 13 }}>⚠ {semVinculo.length} item(ns) sem produto cadastrado</strong>
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+                Cadastre e vincule na aba <strong>Produtos</strong> para dar entrada.
+                {producao.length > 0 && (
+                  <> Onde está na produção: {producao.map((p) => `${p.parte} → ${SETOR_LABEL[p.setor] || p.setor} (${p.status})`).join(" · ")}</>
+                )}
+              </div>
+            </div>
+          )}
+          <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+            <button className="btn" onClick={onFechar}>Cancelar</button>
+            <button className="btn btn-primary" disabled={salvando} onClick={confirmar}>{salvando ? "…" : "Dar entrada no estoque"}</button>
+          </div>
         </div>
       </div>
     </div>

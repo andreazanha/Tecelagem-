@@ -15,6 +15,58 @@ async function log(env: Env, tipo: string, descricao: string, usuario?: string |
     .run();
 }
 
+const normTxt = (s: unknown) => String(s || "").trim().toLowerCase();
+type ProdLite = { id: string; nome: string; ref: string | null; cor: string | null; tamanho: string | null };
+type ItemLite = { produto?: string; ref?: string | null; cor_grade?: string | null; tamanho?: string | null; qtd?: number };
+
+// Casa um item de pedido a um produto cadastrado (pela referência; refina por cor/tamanho).
+export function casarProduto(it: ItemLite, prods: ProdLite[]): ProdLite | null {
+  let cand = prods.filter((p) => p.ref && normTxt(p.ref) === normTxt(it.ref));
+  if (cand.length > 1) {
+    const fino = cand.filter((p) => normTxt(p.cor) === normTxt(it.cor_grade) && normTxt(p.tamanho) === normTxt(it.tamanho));
+    if (fino.length) cand = fino;
+  }
+  return cand[0] || null;
+}
+
+// Onde as peças de um pedido estão na produção (setor/status de cada parte).
+export async function localizacaoProducao(env: Env, pedidoId: string) {
+  const { results } = await env.DB.prepare(
+    "SELECT parte, setor, status FROM producao WHERE pedido_id = ?"
+  ).bind(pedidoId).all<{ parte: string; setor: string; status: string }>();
+  return results;
+}
+
+// Baixa AUTOMÁTICA das peças de PRONTA ENTREGA no estoque de produtos (ao gerar os PDFs).
+// Idempotente: se já baixou este pedido, não repete. Retorna o que ficou sem vínculo.
+export async function baixaProntaEntrega(
+  env: Env,
+  pedido: { id: string; numero: string },
+  kitItens: ItemLite[]
+): Promise<{ baixados: number; jaBaixado: boolean; semVinculo: (ItemLite & { qtd: number })[] }> {
+  const ja = await env.DB.prepare("SELECT 1 FROM produto_mov WHERE pedido_id = ? AND origem = 'pronta-entrega' LIMIT 1").bind(pedido.id).first();
+  if (ja) return { baixados: 0, jaBaixado: true, semVinculo: [] };
+  const { results: prods } = await env.DB.prepare("SELECT id, nome, ref, cor, tamanho FROM produtos WHERE ativo = 1").all<ProdLite>();
+  const semVinculo: (ItemLite & { qtd: number })[] = [];
+  let baixados = 0;
+  for (const it of kitItens) {
+    const qtd = Math.max(0, Math.trunc(Number(it.qtd) || 0));
+    if (qtd <= 0) continue;
+    const match = casarProduto(it, prods);
+    if (!match) { semVinculo.push({ ...it, qtd }); continue; }
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO produto_mov (id, produto_id, tipo, origem, qtd, pedido_id, pedido_numero, observacao)
+         VALUES (?, ?, 'saida', 'pronta-entrega', ?, ?, ?, ?)`
+      ).bind(uid(), match.id, qtd, pedido.id, pedido.numero, `Baixa automática (pronta entrega) — pedido ${pedido.numero}`),
+      env.DB.prepare("UPDATE produtos SET estoque = estoque - ?, atualizado_em = datetime('now') WHERE id = ?").bind(qtd, match.id),
+    ]);
+    baixados++;
+  }
+  await log(env, "estoque", `Baixa automática pronta entrega ${pedido.numero}: ${baixados} produto(s)${semVinculo.length ? ` · ${semVinculo.length} sem vínculo` : ""}`, null, pedido.id);
+  return { baixados, jaBaixado: false, semVinculo };
+}
+
 // ══════════════════════════════ PRODUTOS ══════════════════════════════
 export const produtos = new Hono<{ Bindings: Env }>();
 
@@ -72,22 +124,9 @@ produtos.get("/pedido/:pedidoId/itens", async (c) => {
   )
     .bind(pedidoId)
     .all<{ produto: string; ref: string | null; cor_grade: string | null; tamanho: string | null; qtd: number }>();
-  const { results: prods } = await c.env.DB.prepare("SELECT id, nome, ref, cor, tamanho FROM produtos WHERE ativo = 1").all<{
-    id: string;
-    nome: string;
-    ref: string | null;
-    cor: string | null;
-    tamanho: string | null;
-  }>();
-  const norm = (s: string | null) => (s || "").trim().toLowerCase();
+  const { results: prods } = await c.env.DB.prepare("SELECT id, nome, ref, cor, tamanho FROM produtos WHERE ativo = 1").all<ProdLite>();
   const casados = itens.map((it) => {
-    // casa pela referência; se houver empate, refina por cor/tamanho
-    let cand = prods.filter((p) => p.ref && norm(p.ref) === norm(it.ref));
-    if (cand.length > 1) {
-      const fino = cand.filter((p) => norm(p.cor) === norm(it.cor_grade) && norm(p.tamanho) === norm(it.tamanho));
-      if (fino.length) cand = fino;
-    }
-    const match = cand[0];
+    const match = casarProduto(it, prods);
     return {
       ref: it.ref,
       produto: it.produto,
@@ -98,7 +137,9 @@ produtos.get("/pedido/:pedidoId/itens", async (c) => {
       produto_nome: match?.nome || null,
     };
   });
-  return c.json({ pedido: { id: ped.id, numero: ped.codigo_pai || ped.numero_erp || ped.id.slice(0, 8) }, itens: casados });
+  // localização na produção (onde estão as peças) — ajuda quando falta vínculo
+  const producao = await localizacaoProducao(c.env, pedidoId);
+  return c.json({ pedido: { id: ped.id, numero: ped.codigo_pai || ped.numero_erp || ped.id.slice(0, 8) }, itens: casados, producao });
 });
 
 // Prévia dos insumos a baixar de uma ENTRADA (ficha × quantidade da entrada).
