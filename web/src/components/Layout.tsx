@@ -111,7 +111,7 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "estoque", icon: "📊", label: "Estoque e Insumos", itens: [
-      { to: "/estoque", icon: "📦", label: "Estoque", page: "estoque" },
+      { to: "/estoque", icon: "📦", label: "Entradas", page: "estoque" },
       { to: "/produtos", icon: "🛍️", label: "Produtos", page: "produtos" },
       { to: "/produtos?aba=insumos", icon: "🧷", label: "Insumos", page: "produtos" },
       { to: "/produtos?aba=entradas", icon: "⬇️", label: "Entrada de Estoque", page: "produtos" },

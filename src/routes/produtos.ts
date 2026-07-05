@@ -2,6 +2,7 @@
 // e histórico. Tudo em tabelas novas — não toca no fluxo de pedidos/produção.
 import { Hono } from "hono";
 import type { Env } from "../index";
+import { gerarRelatorioEstoque, type LinhaEstoque } from "../pdf";
 
 const uid = () => crypto.randomUUID();
 const num = (v: unknown) => Math.max(0, Number(v) || 0);
@@ -101,6 +102,19 @@ produtos.get("/movimentacoes", async (c) => {
        ${where} ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 300`
   ).all();
   return c.json(results);
+});
+
+// RELATÓRIO DE ESTOQUE em PDF (faltas e sobras, organizado por categoria). ?so=falta
+produtos.get("/relatorio-estoque/pdf", async (c) => {
+  const so = c.req.query("so");
+  const { results } = await c.env.DB.prepare(
+    "SELECT nome, ref, categoria, cor, tamanho, tipo, unidade, estoque, estoque_min FROM produtos WHERE ativo = 1 ORDER BY categoria, nome"
+  ).all<LinhaEstoque>();
+  const linhas = so === "falta" ? results.filter((l) => (Number(l.estoque) || 0) < (Number(l.estoque_min) || 0)) : results;
+  const bytes = await gerarRelatorioEstoque(linhas);
+  return new Response(bytes, {
+    headers: { "Content-Type": "application/pdf", "Content-Disposition": 'inline; filename="relatorio-estoque.pdf"' },
+  });
 });
 
 // Histórico geral (aba "Histórico"). ?tipo=
@@ -214,11 +228,11 @@ produtos.post("/", async (c) => {
   const id = (b.id as string) || uid();
   const tipo = b.tipo === "kit" ? "kit" : "avulso";
   await c.env.DB.prepare(
-    `INSERT INTO produtos (id, nome, ref, categoria, tamanho, cor, tipo_fio, unidade, tipo, ativo, observacao, atualizado_em)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `INSERT INTO produtos (id, nome, ref, categoria, tamanho, cor, tipo_fio, unidade, tipo, estoque_min, ativo, observacao, atualizado_em)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, ref = excluded.ref, categoria = excluded.categoria,
        tamanho = excluded.tamanho, cor = excluded.cor, tipo_fio = excluded.tipo_fio, unidade = excluded.unidade,
-       tipo = excluded.tipo, ativo = excluded.ativo, observacao = excluded.observacao, atualizado_em = datetime('now')`
+       tipo = excluded.tipo, estoque_min = excluded.estoque_min, ativo = excluded.ativo, observacao = excluded.observacao, atualizado_em = datetime('now')`
   )
     .bind(
       id,
@@ -230,6 +244,7 @@ produtos.post("/", async (c) => {
       String(b.tipo_fio || "").trim() || null,
       String(b.unidade || "un").trim() || "un",
       tipo,
+      num(b.estoque_min),
       b.ativo === false || b.ativo === 0 ? 0 : 1,
       String(b.observacao || "").trim() || null
     )

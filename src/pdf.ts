@@ -1006,3 +1006,118 @@ export async function gerarReciboPagamento(d: ReciboDados): Promise<Uint8Array> 
   TR("Data: ____ / ____ / ______", ix + iw, y + 14, 10, reg, SLATE);
   return await doc.save();
 }
+
+// ── Relatório de ESTOQUE (produtos) — faltas e sobras, organizado por categoria ──
+export interface LinhaEstoque {
+  nome: string;
+  ref: string | null;
+  categoria: string | null;
+  cor: string | null;
+  tamanho: string | null;
+  tipo: string;
+  unidade: string;
+  estoque: number;
+  estoque_min: number;
+}
+const qt = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(".", ","));
+
+export async function gerarRelatorioEstoque(linhas: LinhaEstoque[]): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const reg = await doc.embedFont(StandardFonts.Helvetica);
+  const bld = await doc.embedFont(StandardFonts.HelveticaBold);
+  const M = 34;
+  const ix = M;
+  const iw = A4W - 2 * M;
+  let page = doc.addPage([A4W, A4H]);
+  let y = 0;
+  const SLATE = hx("#334155"), LINEC2 = hx("#cbd5e1"), GREY2 = hx("#eef1f5"),
+    REDBG = hx("#fef2f2"), RED = hx("#b91c1c"), GREEN2 = hx("#047857"), BLUE = hx("#1d4ed8");
+
+  const T = (s: string, x: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x, y: A4H - yTop, size, font: f, color: c });
+  const TR = (s: string, xr: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x: xr - f.widthOfTextAtSize(s, size), y: A4H - yTop, size, font: f, color: c });
+  const R = (x: number, yTop: number, w: number, h: number, c = INK) =>
+    page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, color: c });
+  const seg = (x1: number, y1: number, x2: number, c: ReturnType<typeof rgb>, th = 0.7) =>
+    page.drawLine({ start: { x: x1, y: A4H - y1 }, end: { x: x2, y: A4H - y1 }, thickness: th, color: c });
+  const quebra = (need: number) => {
+    if (y + need > A4H - 40) { page = doc.addPage([A4W, A4H]); y = 40; }
+  };
+
+  // Cabeçalho
+  R(0, 0, A4W, 60, NAVY);
+  T("BIG TRICOT", ix, 28, 17, bld, WHITE);
+  T("HOME DECOR", ix + 2, 40, 7, reg, hx("#c7d2e0"));
+  TR("RELATÓRIO DE ESTOQUE", ix + iw, 26, 13, bld, WHITE);
+  TR(`Peças em estoque · gerado ${geradoEm()}`, ix + iw, 40, 8.5, reg, hx("#c7d2e0"));
+  y = 80;
+
+  // Resumo
+  const totalPecas = linhas.reduce((s, l) => s + (Number(l.estoque) || 0), 0);
+  const faltas = linhas.filter((l) => (Number(l.estoque) || 0) < (Number(l.estoque_min) || 0));
+  const sobras = linhas.filter((l) => (Number(l.estoque_min) || 0) > 0 && (Number(l.estoque) || 0) > (Number(l.estoque_min) || 0));
+  const resumo = (x: number, n: string, l: string, cor: ReturnType<typeof rgb>) => {
+    T(n, x, y + 16, 18, bld, cor);
+    T(l, x, y + 30, 8.5, reg, MUTE);
+  };
+  R(ix, y, iw, 40, hx("#f8fafc"));
+  resumo(ix + 14, String(linhas.length), "PRODUTOS", INK);
+  resumo(ix + 150, String(faltas.length), "EM FALTA", faltas.length ? RED : INK);
+  resumo(ix + 280, String(sobras.length), "COM SOBRA", BLUE);
+  resumo(ix + 410, qt(totalPecas), "PEÇAS TOTAIS", INK);
+  y += 54;
+
+  // Colunas: Produto | Ref | Cor · Tam | Estoque | Mín | Saldo | Situação
+  const cRef = ix + iw * 0.34, cCT = ix + iw * 0.45, cEst = ix + iw * 0.70, cMin = ix + iw * 0.80, cSal = ix + iw * 0.90, cSit = ix + iw;
+
+  // Agrupa por categoria (organizado)
+  const grupos = new Map<string, LinhaEstoque[]>();
+  for (const l of linhas) {
+    const k = (l.categoria || "").trim() || "Sem categoria";
+    (grupos.get(k) || grupos.set(k, []).get(k)!).push(l);
+  }
+  const nomesCat = [...grupos.keys()].sort((a, b) => a.localeCompare(b, "pt"));
+
+  for (const cat of nomesCat) {
+    const itens = grupos.get(cat)!.sort((a, b) => a.nome.localeCompare(b.nome, "pt"));
+    quebra(40);
+    // título da categoria
+    R(ix, y, iw, 20, GREY2);
+    T(cat, ix + 8, y + 14, 11, bld, NAVY);
+    TR(`${itens.length} produto(s)`, ix + iw - 8, y + 14, 9, bld, SLATE);
+    y += 20;
+    // cabeçalho da tabela
+    T("PRODUTO", ix + 6, y + 12, 8, bld, SLATE);
+    T("REF", cRef, y + 12, 8, bld, SLATE);
+    T("COR · TAM", cCT, y + 12, 8, bld, SLATE);
+    TR("ESTOQUE", cEst, y + 12, 8, bld, SLATE);
+    TR("MÍN.", cMin, y + 12, 8, bld, SLATE);
+    TR("SALDO", cSal, y + 12, 8, bld, SLATE);
+    TR("SITUAÇÃO", cSit, y + 12, 8, bld, SLATE);
+    y += 16;
+    seg(ix, y, ix + iw, LINEC2);
+    for (const l of itens) {
+      quebra(18);
+      const est = Number(l.estoque) || 0, mn = Number(l.estoque_min) || 0, saldo = est - mn;
+      const falta = saldo < 0;
+      const sobra = mn > 0 && saldo > 0;
+      if (falta) R(ix, y, iw, 17, REDBG); // destaca linha em falta
+      T(fit(l.nome, bld, 9.5, cRef - ix - 12), ix + 6, y + 13, 9.5, bld, falta ? RED : INK);
+      T(l.tipo === "kit" ? "KIT " + (l.ref || "—") : (l.ref || "—"), cRef, y + 13, 8.5, reg, SLATE);
+      T(fit(`${l.cor || "—"}${l.tamanho ? " · " + l.tamanho : ""}`, reg, 8.5, cEst - cCT - 40), cCT, y + 13, 8.5, reg, SLATE);
+      TR(`${qt(est)} ${l.unidade || ""}`, cEst, y + 13, 9, bld, INK);
+      TR(mn ? qt(mn) : "—", cMin, y + 13, 9, reg, SLATE);
+      TR((saldo > 0 ? "+" : "") + qt(saldo), cSal, y + 13, 9, bld, falta ? RED : sobra ? BLUE : SLATE);
+      TR(falta ? "FALTA" : sobra ? "SOBRA" : "OK", cSit, y + 13, 9, bld, falta ? RED : sobra ? BLUE : GREEN2);
+      y += 17;
+      seg(ix, y, ix + iw, hx("#eef0f4"), 0.5);
+    }
+    y += 12;
+  }
+
+  if (linhas.length === 0) {
+    T("Nenhum produto ativo no estoque.", ix, y + 20, 12, reg, MUTE);
+  }
+  return await doc.save();
+}

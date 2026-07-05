@@ -80,7 +80,7 @@ export function Produtos() {
 }
 
 // ═══════════════════════════ Aba PRODUTOS ═══════════════════════════
-const VAZIO: Partial<Produto> = { nome: "", ref: "", categoria: "", tamanho: "", cor: "", tipo_fio: "", unidade: "un", tipo: "avulso", ativo: 1, observacao: "" };
+const VAZIO: Partial<Produto> = { nome: "", ref: "", categoria: "", tamanho: "", cor: "", tipo_fio: "", unidade: "un", tipo: "avulso", estoque_min: 0, ativo: 1, observacao: "" };
 
 function AbaProdutos() {
   const [itens, setItens] = useState<Produto[]>([]);
@@ -219,6 +219,7 @@ function ProdutoModal({ produto, onFechar, onSalvo }: { produto: Partial<Produto
             <Campo label="Cor"><input value={p.cor || ""} onChange={(e) => set({ cor: e.target.value })} placeholder="ROMENIA" /></Campo>
             <Campo label="Tipo de fio"><input value={p.tipo_fio || ""} onChange={(e) => set({ tipo_fio: e.target.value })} placeholder="100% poliéster" /></Campo>
             <Campo label="Unidade de medida"><input value={p.unidade || ""} onChange={(e) => set({ unidade: e.target.value })} placeholder="un, pç, kg, m" /></Campo>
+            <Campo label="Estoque mínimo"><input type="number" min={0} step="any" value={p.estoque_min ?? 0} onChange={(e) => set({ estoque_min: Number(e.target.value) })} placeholder="0 = sem alerta" /></Campo>
             <Campo label="Tipo de estoque">
               <select value={p.tipo || "avulso"} onChange={(e) => set({ tipo: e.target.value })}>
                 <option value="avulso">Avulso (peça individual)</option>
@@ -285,8 +286,10 @@ function ProdutoModal({ produto, onFechar, onSalvo }: { produto: Partial<Produto
 function AbaEstoque() {
   const [itens, setItens] = useState<Produto[]>([]);
   const [busca, setBusca] = useState("");
+  const [soFalta, setSoFalta] = useState(false);
   const [mov, setMov] = useState<Produto | null>(null);
   const [extrato, setExtrato] = useState<Produto | null>(null);
+  const lista = soFalta ? itens.filter((p) => (Number(p.estoque) || 0) < (Number(p.estoque_min) || 0)) : itens;
 
   function recarregar() {
     api.listarProdutos({ ativo: "1", busca }).then(setItens).catch(() => {});
@@ -296,29 +299,45 @@ function AbaEstoque() {
 
   return (
     <>
-      <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>Estoque atual de cada produto. Clique em <strong>Movimentar</strong> para entrada/saída avulsa, ou no produto para ver o extrato.</p>
-      <div className="row-gap" style={{ marginBottom: 12 }}>
+      <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>Estoque atual, mínimo e situação (falta / sobra) de cada produto. Clique em <strong>Movimentar</strong> para entrada/saída avulsa, ou no produto para ver o extrato.</p>
+      <div className="row-gap" style={{ marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
         <input className="busca-ped" placeholder="🔎 Buscar produto…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <label className="row-gap" style={{ gap: 6, alignItems: "center" }}>
+          <input type="checkbox" checked={soFalta} onChange={(e) => setSoFalta(e.target.checked)} /> só em falta
+        </label>
+        <a className="btn btn-primary" style={{ marginLeft: "auto" }} href="/api/produtos/relatorio-estoque/pdf" target="_blank" rel="noreferrer">
+          📄 Relatório PDF
+        </a>
       </div>
       <div className="card">
         <table className="table">
           <thead>
-            <tr><th>Produto</th><th>Ref</th><th>Cor</th><th>Tamanho</th><th className="num">Estoque atual</th><th></th></tr>
+            <tr><th>Produto</th><th>Ref</th><th>Cor</th><th>Tamanho</th><th className="num">Estoque</th><th className="num">Mínimo</th><th>Situação</th><th></th></tr>
           </thead>
           <tbody>
-            {itens.length === 0 ? (
-              <tr><td colSpan={6} className="empty pad">Nenhum produto ativo.</td></tr>
+            {lista.length === 0 ? (
+              <tr><td colSpan={8} className="empty pad">Nenhum produto.</td></tr>
             ) : (
-              itens.map((p) => (
-                <tr key={p.id}>
-                  <td className="strong link" style={{ cursor: "pointer" }} onClick={() => setExtrato(p)}>{p.nome}</td>
-                  <td>{p.ref || "—"}</td>
-                  <td>{p.cor || "—"}</td>
-                  <td>{p.tamanho || "—"}</td>
-                  <td className="num strong">{nf(Number(p.estoque) || 0)} {p.unidade || ""}</td>
-                  <td><button className="btn btn-soft" onClick={() => setMov(p)}>Movimentar</button></td>
-                </tr>
-              ))
+              lista.map((p) => {
+                const est = Number(p.estoque) || 0, mn = Number(p.estoque_min) || 0, saldo = est - mn;
+                const falta = saldo < 0, sobra = mn > 0 && saldo > 0;
+                return (
+                  <tr key={p.id} style={falta ? { background: "#fef2f2" } : undefined}>
+                    <td className="strong link" style={{ cursor: "pointer" }} onClick={() => setExtrato(p)}>{p.nome}</td>
+                    <td>{p.ref || "—"}</td>
+                    <td>{p.cor || "—"}</td>
+                    <td>{p.tamanho || "—"}</td>
+                    <td className="num strong" style={falta ? { color: "#b91c1c" } : undefined}>{nf(est)} {p.unidade || ""}</td>
+                    <td className="num">{mn ? nf(mn) : "—"}</td>
+                    <td>
+                      {falta ? <span className="status status-pendente">⚠ falta {nf(-saldo)}</span>
+                        : sobra ? <span className="chip" style={{ color: "#1d4ed8" }}>sobra +{nf(saldo)}</span>
+                          : <span className="status status-conferido">ok</span>}
+                    </td>
+                    <td><button className="btn btn-soft" onClick={() => setMov(p)}>Movimentar</button></td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

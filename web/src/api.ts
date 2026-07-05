@@ -823,6 +823,7 @@ export interface Produto {
   ativo?: number;
   observacao?: string | null;
   estoque?: number;
+  estoque_min?: number;
   criado_em?: string;
   atualizado_em?: string;
 }
