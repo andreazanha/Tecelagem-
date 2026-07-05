@@ -12,7 +12,7 @@ import {
   type Catalogo,
 } from "../classificar";
 import { gerarPdfParte, gerarPdfCliente, mergePdfs, gerarRomaneioTassel, type PedidoInfo } from "../pdf";
-import { enviarPushNovoPedido } from "../push-send";
+import { enviarPushNovoPedido, enviarPush } from "../push-send";
 import { baixaProntaEntrega, localizacaoProducao, cadastrarProdutosDoPedido } from "./produtos";
 
 export const pedidos = new Hono<{ Bindings: Env }>();
@@ -746,6 +746,14 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     if (kitItens.length) {
       baixaEstoque = await baixaProntaEntrega(c.env, { id, numero: baseNum }, kitItens);
       if (baixaEstoque.semVinculo.length) baixaEstoque.producao = await localizacaoProducao(c.env, id);
+      // Se a baixa fez algum produto atingir o mínimo, avisa por push (estoque baixo).
+      const n = baixaEstoque.alertas.length;
+      if (n) c.executionCtx.waitUntil(enviarPush(c.env, {
+        titulo: "⚠️ Estoque baixo",
+        corpo: n === 1 ? `${baixaEstoque.alertas[0].nome} precisa de reposição.` : `${n} produtos precisam de reposição.`,
+        url: "/produtos?aba=reposicao",
+        tag: "reposicao",
+      }));
     }
   }
 

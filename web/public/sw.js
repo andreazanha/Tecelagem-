@@ -8,19 +8,21 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-// Push SEM payload: o texto é fixo (o servidor só "cutuca" este aparelho).
+// Push COM payload: o servidor manda título/corpo/URL (JSON). Cai num texto
+// padrão se vier sem dados.
 self.addEventListener("push", (event) => {
-  const title = "Entrou pedido novo";
+  let d = { title: "Big Tricot", body: "Você tem um aviso no sistema.", url: "/", tag: "aviso" };
+  try { if (event.data) d = Object.assign(d, event.data.json()); } catch (e) { /* usa o padrão */ }
   const options = {
-    body: "Toque para abrir o sistema e conferir o pedido.",
+    body: d.body,
     icon: "/logo-bigtricot.png",
     badge: "/logo-bigtricot.png",
-    tag: "novo-pedido",
+    tag: d.tag || "aviso",
     renotify: true,
     requireInteraction: true,
-    data: { url: "/pedidos" },
+    data: { url: d.url || "/" },
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(self.registration.showNotification(d.title, options));
 });
 
 // Clicar na notificação foca uma aba aberta (ou abre uma nova) na lista de pedidos.
