@@ -478,6 +478,8 @@ export const api = {
     }).then((r) => j<{ ok: boolean; desmembrou?: boolean }>(r)),
   desmembrarProducao: (pedido_id: string, parte: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/desmembrar`, { method: "POST" }).then((r) => j<{ ok: boolean; criados: number }>(r)),
+  concluirProducao: (pedido_id: string, parte: string) =>
+    fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/concluir`, { method: "POST" }).then((r) => j<{ ok: boolean }>(r)),
   definirPrioridade: (pedido_id: string, parte: string, prioridade: number) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/prioridade`, {
       method: "POST",
@@ -766,6 +768,11 @@ export const api = {
     jsonPost(`/api/produtos/mov/${movId}/baixar-insumos`, { usuario: quemSou() }).then((r) => j<{ ok: boolean; baixados: number }>(r)),
   listarLogProdutos: (tipo?: string) =>
     fetch(`/api/produtos/log${tipo ? "?tipo=" + tipo : ""}`).then((r) => j<ProdutoLog[]>(r)),
+  listarReposicao: () => fetch("/api/produtos/reposicao").then((r) => j<RepAlerta[]>(r)),
+  gerarReposicao: (alertaId: string) =>
+    jsonPost(`/api/produtos/reposicao/${alertaId}/gerar`, { usuario: quemSou() }).then((r) => j<{ ok: boolean; pedido_id: string; numero: string }>(r)),
+  ignorarReposicao: (alertaId: string) =>
+    jsonPost(`/api/produtos/reposicao/${alertaId}/ignorar`, {}).then((r) => j<{ ok: boolean }>(r)),
 
   // ── Insumos ─────────────────────────────────────────────────────────────
   listarInsumos: (p?: { ativo?: string; busca?: string }) => {
@@ -824,8 +831,23 @@ export interface Produto {
   observacao?: string | null;
   estoque?: number;
   estoque_min?: number;
+  reposicao_qtd?: number;
   criado_em?: string;
   atualizado_em?: string;
+}
+export interface RepAlerta {
+  id: string;
+  produto_id: string;
+  qtd_sugerida: number;
+  estoque_no_alerta: number;
+  estoque_min: number;
+  criado_em: string;
+  produto_nome: string;
+  ref?: string | null;
+  cor?: string | null;
+  tamanho?: string | null;
+  unidade?: string | null;
+  estoque: number;
 }
 export interface KitComponente {
   id?: string;

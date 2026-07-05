@@ -1077,6 +1077,8 @@ function EntradaEstoqueModal({ card, onFechar, onFeito }: { card: CardProducao; 
     setErro("");
     try {
       await api.entradaPorPedido({ pedido_id: card.pedido_id, pedido_numero: numero, itens: escolhidos });
+      // Peças entraram no estoque → o card já cumpriu seu papel: remove do quadro.
+      await api.concluirProducao(card.pedido_id, card.parte).catch(() => {});
       onFeito();
     } catch (e) {
       setErro((e as Error).message);

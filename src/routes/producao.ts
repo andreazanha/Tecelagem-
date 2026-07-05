@@ -250,6 +250,14 @@ producao.post("/:pedido_id/:parte/desmembrar", async (c) => {
   return c.json(r);
 });
 
+// CONCLUIR: remove o card do quadro (ex.: reposição que já deu entrada no estoque).
+producao.post("/:pedido_id/:parte/concluir", async (c) => {
+  const pedido_id = c.req.param("pedido_id");
+  const parte = decodeURIComponent(c.req.param("parte"));
+  await c.env.DB.prepare("DELETE FROM producao WHERE pedido_id = ? AND parte = ?").bind(pedido_id, parte).run();
+  return c.json({ ok: true });
+});
+
 // "Passar na frente": liga/desliga a prioridade de uma parte.
 producao.post("/:pedido_id/:parte/prioridade", async (c) => {
   const pedido_id = c.req.param("pedido_id");

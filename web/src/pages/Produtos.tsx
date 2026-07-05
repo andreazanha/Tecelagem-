@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import {
   api,
   type Produto,
+  type RepAlerta,
   type FichaItem,
   type KitComponente,
   type ProdutoMov,
@@ -14,7 +15,7 @@ import {
   type Pedido,
 } from "../api";
 
-type Aba = "produtos" | "estoque" | "entradas" | "ficha" | "insumos" | "historico";
+type Aba = "produtos" | "estoque" | "reposicao" | "entradas" | "ficha" | "insumos" | "historico";
 
 const dt = (s?: string | null) => {
   if (!s) return "—";
@@ -27,7 +28,7 @@ const dt = (s?: string | null) => {
 };
 const nf = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(".", ","));
 
-const ABAS_VALIDAS: Aba[] = ["produtos", "estoque", "entradas", "ficha", "insumos", "historico"];
+const ABAS_VALIDAS: Aba[] = ["produtos", "estoque", "reposicao", "entradas", "ficha", "insumos", "historico"];
 
 export function Produtos() {
   const [sp] = useSearchParams();
@@ -45,9 +46,13 @@ export function Produtos() {
     setAba(a);
     localStorage.setItem("produtos-aba", a);
   }
+  // contador de reposições pendentes (badge na aba)
+  const [nRep, setNRep] = useState(0);
+  useEffect(() => { api.listarReposicao().then((r) => setNRep(r.length)).catch(() => {}); }, [aba]);
   const abas: { id: Aba; label: string }[] = [
     { id: "produtos", label: "📦 Produtos" },
     { id: "estoque", label: "📊 Estoque" },
+    { id: "reposicao", label: `⚠️ Reposição${nRep ? ` (${nRep})` : ""}` },
     { id: "entradas", label: "⬇️ Entradas" },
     { id: "ficha", label: "🧵 Ficha Técnica" },
     { id: "insumos", label: "🧷 Insumos" },
@@ -71,6 +76,7 @@ export function Produtos() {
 
       {aba === "produtos" && <AbaProdutos />}
       {aba === "estoque" && <AbaEstoque />}
+      {aba === "reposicao" && <AbaReposicao />}
       {aba === "entradas" && <AbaEntradas />}
       {aba === "ficha" && <AbaFicha />}
       {aba === "insumos" && <AbaInsumos />}
@@ -80,7 +86,7 @@ export function Produtos() {
 }
 
 // ═══════════════════════════ Aba PRODUTOS ═══════════════════════════
-const VAZIO: Partial<Produto> = { nome: "", ref: "", categoria: "", tamanho: "", cor: "", tipo_fio: "", unidade: "un", tipo: "avulso", estoque_min: 0, ativo: 1, observacao: "" };
+const VAZIO: Partial<Produto> = { nome: "", ref: "", categoria: "", tamanho: "", cor: "", tipo_fio: "", unidade: "un", tipo: "avulso", estoque_min: 0, reposicao_qtd: 0, ativo: 1, observacao: "" };
 
 function AbaProdutos() {
   const [itens, setItens] = useState<Produto[]>([]);
@@ -220,6 +226,7 @@ function ProdutoModal({ produto, onFechar, onSalvo }: { produto: Partial<Produto
             <Campo label="Tipo de fio"><input value={p.tipo_fio || ""} onChange={(e) => set({ tipo_fio: e.target.value })} placeholder="100% poliéster" /></Campo>
             <Campo label="Unidade de medida"><input value={p.unidade || ""} onChange={(e) => set({ unidade: e.target.value })} placeholder="un, pç, kg, m" /></Campo>
             <Campo label="Estoque mínimo"><input type="number" min={0} step="any" value={p.estoque_min ?? 0} onChange={(e) => set({ estoque_min: Number(e.target.value) })} placeholder="0 = sem alerta" /></Campo>
+            <Campo label="Qtd. de reposição"><input type="number" min={0} step="any" value={p.reposicao_qtd ?? 0} onChange={(e) => set({ reposicao_qtd: Number(e.target.value) })} placeholder="quanto produzir ao faltar" /></Campo>
             <Campo label="Tipo de estoque">
               <select value={p.tipo || "avulso"} onChange={(e) => set({ tipo: e.target.value })}>
                 <option value="avulso">Avulso (peça individual)</option>
@@ -344,6 +351,74 @@ function AbaEstoque() {
       </div>
       {mov && <MovModal alvo="produto" id={mov.id} nome={mov.nome} unidade={mov.unidade || "un"} onFechar={() => setMov(null)} onFeito={() => { setMov(null); recarregar(); }} />}
       {extrato && <ExtratoModal alvo="produto" id={extrato.id} nome={extrato.nome} onFechar={() => setExtrato(null)} />}
+    </>
+  );
+}
+
+// ═══════════════════════════ Aba REPOSIÇÃO ═══════════════════════════
+function AbaReposicao() {
+  const [itens, setItens] = useState<RepAlerta[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [ocupado, setOcupado] = useState("");
+
+  function recarregar() {
+    setCarregando(true);
+    api.listarReposicao().then(setItens).catch(() => {}).finally(() => setCarregando(false));
+  }
+  useEffect(recarregar, []);
+
+  async function gerar(a: RepAlerta) {
+    setOcupado(a.id);
+    try {
+      const r = await api.gerarReposicao(a.id);
+      alert(`Pedido de reposição ${r.numero} gerado para ${a.produto_nome}.`);
+      recarregar();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setOcupado("");
+    }
+  }
+  async function ignorar(a: RepAlerta) {
+    if (!confirm(`Ignorar o alerta de reposição de ${a.produto_nome}?`)) return;
+    await api.ignorarReposicao(a.id).catch(() => {});
+    recarregar();
+  }
+
+  return (
+    <>
+      <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>
+        Produtos que atingiram o <strong>estoque mínimo</strong>. Clique em <strong>Gerar pedido</strong> para abrir um pedido de reposição (produzir a quantidade sugerida). Defina o mínimo e a quantidade de reposição no cadastro do produto.
+      </p>
+      <div className="card">
+        <table className="table">
+          <thead>
+            <tr><th>Produto</th><th>Ref</th><th>Cor · Tam</th><th className="num">Estoque</th><th className="num">Mínimo</th><th className="num">Produzir</th><th></th></tr>
+          </thead>
+          <tbody>
+            {carregando ? (
+              <tr><td colSpan={7} className="empty pad">Carregando…</td></tr>
+            ) : itens.length === 0 ? (
+              <tr><td colSpan={7} className="empty pad">Nenhum produto precisando de reposição. 👍</td></tr>
+            ) : itens.map((a) => (
+              <tr key={a.id} style={{ background: "#fff7ed" }}>
+                <td className="strong">{a.produto_nome}</td>
+                <td>{a.ref || "—"}</td>
+                <td>{a.cor || "—"}{a.tamanho ? ` · ${a.tamanho}` : ""}</td>
+                <td className="num strong" style={{ color: "#b91c1c" }}>{nf(Number(a.estoque) || 0)} {a.unidade || ""}</td>
+                <td className="num">{nf(a.estoque_min)}</td>
+                <td className="num strong">{nf(a.qtd_sugerida)}</td>
+                <td>
+                  <div className="row-gap" style={{ gap: 6 }}>
+                    <button className="btn btn-primary" disabled={!!ocupado} onClick={() => gerar(a)}>{ocupado === a.id ? "…" : "Gerar pedido"}</button>
+                    <button className="btn btn-soft" onClick={() => ignorar(a)}>Ignorar</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }

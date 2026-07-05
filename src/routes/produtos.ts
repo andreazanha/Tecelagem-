@@ -30,6 +30,25 @@ export function casarProduto(it: ItemLite, prods: ProdLite[]): ProdLite | null {
   return cand[0] || null;
 }
 
+// Verifica se um produto atingiu o mínimo e, se sim, abre um ALERTA de reposição
+// (1 por produto em aberto). Retorna o alerta criado (para disparar o aviso/push).
+export async function verificarReposicao(env: Env, produtoId: string): Promise<{ id: string; nome: string; qtd: number; estoque: number; min: number } | null> {
+  const p = await env.DB.prepare("SELECT nome, estoque, estoque_min, reposicao_qtd, ativo FROM produtos WHERE id = ?")
+    .bind(produtoId)
+    .first<{ nome: string; estoque: number; estoque_min: number; reposicao_qtd: number; ativo: number }>();
+  if (!p || !p.ativo) return null;
+  const min = Number(p.estoque_min) || 0, est = Number(p.estoque) || 0, qtd = Number(p.reposicao_qtd) || 0;
+  if (min <= 0 || qtd <= 0 || est > min) return null; // não precisa repor
+  const ja = await env.DB.prepare("SELECT 1 FROM reposicao_alertas WHERE produto_id = ? AND status = 'pendente' LIMIT 1").bind(produtoId).first();
+  if (ja) return null; // já existe alerta em aberto
+  const id = uid();
+  await env.DB.prepare(
+    "INSERT INTO reposicao_alertas (id, produto_id, qtd_sugerida, estoque_no_alerta, estoque_min) VALUES (?, ?, ?, ?, ?)"
+  ).bind(id, produtoId, qtd, est, min).run();
+  await log(env, "estoque", `Alerta de reposição: ${p.nome} (estoque ${est} ≤ mínimo ${min}) — sugerido produzir ${qtd}`, null, produtoId);
+  return { id, nome: p.nome, qtd, estoque: est, min };
+}
+
 // Onde as peças de um pedido estão na produção (setor/status de cada parte).
 export async function localizacaoProducao(env: Env, pedidoId: string) {
   const { results } = await env.DB.prepare(
@@ -40,21 +59,33 @@ export async function localizacaoProducao(env: Env, pedidoId: string) {
 
 // Baixa AUTOMÁTICA das peças de PRONTA ENTREGA no estoque de produtos (ao gerar os PDFs).
 // Idempotente: se já baixou este pedido, não repete. Retorna o que ficou sem vínculo.
+type ProdEstoque = ProdLite & { estoque: number };
 export async function baixaProntaEntrega(
   env: Env,
   pedido: { id: string; numero: string },
   kitItens: ItemLite[]
-): Promise<{ baixados: number; jaBaixado: boolean; semVinculo: (ItemLite & { qtd: number })[] }> {
+): Promise<{
+  baixados: number;
+  jaBaixado: boolean;
+  semVinculo: (ItemLite & { qtd: number })[];
+  insuficientes: (ItemLite & { qtd: number; tinha: number; faltou: number })[];
+  alertas: { id: string; nome: string; qtd: number; estoque: number; min: number }[];
+}> {
   const ja = await env.DB.prepare("SELECT 1 FROM produto_mov WHERE pedido_id = ? AND origem = 'pronta-entrega' LIMIT 1").bind(pedido.id).first();
-  if (ja) return { baixados: 0, jaBaixado: true, semVinculo: [] };
-  const { results: prods } = await env.DB.prepare("SELECT id, nome, ref, cor, tamanho FROM produtos WHERE ativo = 1").all<ProdLite>();
+  if (ja) return { baixados: 0, jaBaixado: true, semVinculo: [], insuficientes: [], alertas: [] };
+  const { results: prods } = await env.DB.prepare("SELECT id, nome, ref, cor, tamanho, estoque FROM produtos WHERE ativo = 1").all<ProdEstoque>();
   const semVinculo: (ItemLite & { qtd: number })[] = [];
+  const insuficientes: (ItemLite & { qtd: number; tinha: number; faltou: number })[] = [];
+  const alertas: { id: string; nome: string; qtd: number; estoque: number; min: number }[] = [];
   let baixados = 0;
   for (const it of kitItens) {
     const qtd = Math.max(0, Math.trunc(Number(it.qtd) || 0));
     if (qtd <= 0) continue;
-    const match = casarProduto(it, prods);
+    const match = casarProduto(it, prods) as ProdEstoque | null;
     if (!match) { semVinculo.push({ ...it, qtd }); continue; }
+    // produto existe mas sem estoque suficiente → registra (o cliente vai saber que está em produção)
+    const tinha = Number(match.estoque) || 0;
+    if (tinha < qtd) insuficientes.push({ ...it, qtd, tinha, faltou: qtd - tinha });
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO produto_mov (id, produto_id, tipo, origem, qtd, pedido_id, pedido_numero, observacao)
@@ -62,10 +93,13 @@ export async function baixaProntaEntrega(
       ).bind(uid(), match.id, qtd, pedido.id, pedido.numero, `Baixa automática (pronta entrega) — pedido ${pedido.numero}`),
       env.DB.prepare("UPDATE produtos SET estoque = estoque - ?, atualizado_em = datetime('now') WHERE id = ?").bind(qtd, match.id),
     ]);
+    match.estoque = tinha - qtd;
     baixados++;
+    const al = await verificarReposicao(env, match.id); // bateu o mínimo? abre alerta de reposição
+    if (al) alertas.push(al);
   }
   await log(env, "estoque", `Baixa automática pronta entrega ${pedido.numero}: ${baixados} produto(s)${semVinculo.length ? ` · ${semVinculo.length} sem vínculo` : ""}`, null, pedido.id);
-  return { baixados, jaBaixado: false, semVinculo };
+  return { baixados, jaBaixado: false, semVinculo, insuficientes, alertas };
 }
 
 // ══════════════════════════════ PRODUTOS ══════════════════════════════
@@ -115,6 +149,52 @@ produtos.get("/relatorio-estoque/pdf", async (c) => {
   return new Response(bytes, {
     headers: { "Content-Type": "application/pdf", "Content-Disposition": 'inline; filename="relatorio-estoque.pdf"' },
   });
+});
+
+// Fila de REPOSIÇÃO (produtos que atingiram o mínimo e ainda não viraram pedido).
+produtos.get("/reposicao", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT a.id, a.produto_id, a.qtd_sugerida, a.estoque_no_alerta, a.estoque_min, a.status, a.pedido_id, a.criado_em,
+            p.nome AS produto_nome, p.ref, p.cor, p.tamanho, p.unidade, p.estoque
+       FROM reposicao_alertas a JOIN produtos p ON p.id = a.produto_id
+      WHERE a.status = 'pendente' ORDER BY a.criado_em DESC`
+  ).all();
+  return c.json(results);
+});
+
+// Gera o pedido de reposição (1 clique) para um alerta: 1 pedido por produto.
+produtos.post("/reposicao/:id/gerar", async (c) => {
+  const alertaId = c.req.param("id");
+  const b = await c.req.json<{ usuario?: string }>().catch(() => ({}) as { usuario?: string });
+  const a = await c.env.DB.prepare("SELECT * FROM reposicao_alertas WHERE id = ?").bind(alertaId).first<Record<string, unknown>>();
+  if (!a) return c.json({ error: "alerta não encontrado" }, 404);
+  if (a.status !== "pendente") return c.json({ error: "este alerta já foi resolvido" }, 409);
+  const p = await c.env.DB.prepare("SELECT nome, ref, cor, tamanho FROM produtos WHERE id = ?").bind(a.produto_id as string).first<{ nome: string; ref: string | null; cor: string | null; tamanho: string | null }>();
+  if (!p) return c.json({ error: "produto não encontrado" }, 404);
+  const pedidoId = uid();
+  const numero = "REP-" + pedidoId.slice(0, 6).toUpperCase();
+  const qtd = Math.max(0, Math.trunc(Number(a.qtd_sugerida) || 0));
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO pedidos (id, numero_erp, cliente_nome, tipo, reposicao, data_pedido, observacao, status)
+       VALUES (?, ?, 'REPOSIÇÃO INTERNA', 'auto', 1, date('now'), 'Reposição automática de estoque', 'novo')`
+    ).bind(pedidoId, numero),
+    c.env.DB.prepare(
+      `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, valor_unit)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'kit', 1, 0)`
+    ).bind(uid(), pedidoId, p.nome, p.ref, p.cor, p.tamanho, qtd),
+    c.env.DB.prepare("UPDATE reposicao_alertas SET status = 'gerado', pedido_id = ?, resolvido_em = datetime('now') WHERE id = ?").bind(pedidoId, alertaId),
+  ]);
+  await log(c.env, "estoque", `Pedido de reposição gerado: ${p.nome} × ${qtd} (${numero})`, b.usuario, a.produto_id as string);
+  return c.json({ ok: true, pedido_id: pedidoId, numero });
+});
+
+// Ignora um alerta de reposição.
+produtos.post("/reposicao/:id/ignorar", async (c) => {
+  await c.env.DB.prepare("UPDATE reposicao_alertas SET status = 'ignorado', resolvido_em = datetime('now') WHERE id = ? AND status = 'pendente'")
+    .bind(c.req.param("id"))
+    .run();
+  return c.json({ ok: true });
 });
 
 // Histórico geral (aba "Histórico"). ?tipo=
@@ -228,11 +308,12 @@ produtos.post("/", async (c) => {
   const id = (b.id as string) || uid();
   const tipo = b.tipo === "kit" ? "kit" : "avulso";
   await c.env.DB.prepare(
-    `INSERT INTO produtos (id, nome, ref, categoria, tamanho, cor, tipo_fio, unidade, tipo, estoque_min, ativo, observacao, atualizado_em)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `INSERT INTO produtos (id, nome, ref, categoria, tamanho, cor, tipo_fio, unidade, tipo, estoque_min, reposicao_qtd, ativo, observacao, atualizado_em)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, ref = excluded.ref, categoria = excluded.categoria,
        tamanho = excluded.tamanho, cor = excluded.cor, tipo_fio = excluded.tipo_fio, unidade = excluded.unidade,
-       tipo = excluded.tipo, estoque_min = excluded.estoque_min, ativo = excluded.ativo, observacao = excluded.observacao, atualizado_em = datetime('now')`
+       tipo = excluded.tipo, estoque_min = excluded.estoque_min, reposicao_qtd = excluded.reposicao_qtd,
+       ativo = excluded.ativo, observacao = excluded.observacao, atualizado_em = datetime('now')`
   )
     .bind(
       id,
@@ -245,6 +326,7 @@ produtos.post("/", async (c) => {
       String(b.unidade || "un").trim() || "un",
       tipo,
       num(b.estoque_min),
+      num(b.reposicao_qtd),
       b.ativo === false || b.ativo === 0 ? 0 : 1,
       String(b.observacao || "").trim() || null
     )
@@ -315,7 +397,9 @@ produtos.post("/:id/mov", async (c) => {
     c.env.DB.prepare("UPDATE produtos SET estoque = estoque + ?, atualizado_em = datetime('now') WHERE id = ?").bind(delta, id),
   ]);
   await log(c.env, "estoque", `${tipo === "entrada" ? "Entrada" : "Saída"} ${qtd} ${p.unidade} — ${p.nome} (${origem})`, b.usuario as string, id);
-  return c.json({ ok: true, mov_id: movId, estoque: Number(p.estoque) + delta });
+  // Saída pode ter atingido o mínimo → abre alerta de reposição.
+  const alerta = tipo === "saida" ? await verificarReposicao(c.env, id) : null;
+  return c.json({ ok: true, mov_id: movId, estoque: Number(p.estoque) + delta, alerta });
 });
 
 // ENTRADA POR PEDIDO: cria entradas a partir dos itens escolhidos de um pedido.
