@@ -409,8 +409,8 @@ function CoresCadastro() {
         />
       </div>
       <p className="muted" style={{ marginTop: -4, marginBottom: 16 }}>
-        Cadastre o <strong>nome da cor</strong> e a <strong>cor visual</strong> — é ela que pinta a
-        bolinha de cor no PDF de produção (cores sem cadastro saem em cinza). {cores.length} cores.
+        Cada cor pode ter uma <strong>cor sólida</strong> <em>ou</em> uma <strong>foto</strong> de amostra real.
+        No PDF de produção usa-se a foto se houver; senão a cor sólida; sem nada, sai em cinza. {cores.length} cores.
       </p>
 
       <div className="card">
@@ -418,7 +418,9 @@ function CoresCadastro() {
           <thead>
             <tr>
               <th>Cor</th>
-              <th>Cor visual</th>
+              <th>Amostra</th>
+              <th>Cor sólida</th>
+              <th>Foto (amostra real)</th>
               <th></th>
             </tr>
           </thead>
@@ -432,27 +434,15 @@ function CoresCadastro() {
                   onKeyDown={(e) => e.key === "Enter" && adicionar()}
                 />
               </td>
+              <td><span style={{ width: 34, height: 34, borderRadius: 7, border: "1px solid #e2e8f0", background: novo.hex || "#cccccc", display: "inline-block" }} /></td>
               <td>
-                <div className="row-gap" style={{ alignItems: "center" }}>
-                  <input
-                    type="color"
-                    value={novo.hex || "#cccccc"}
-                    onChange={(e) => setNovo({ ...novo, hex: e.target.value })}
-                    style={{ width: 44, height: 32, padding: 2 }}
-                  />
-                  <input
-                    className="w-sm"
-                    placeholder="#RRGGBB"
-                    value={novo.hex || ""}
-                    onChange={(e) => setNovo({ ...novo, hex: e.target.value })}
-                  />
+                <div className="row-gap" style={{ alignItems: "center", gap: 6 }}>
+                  <input type="color" value={novo.hex || "#cccccc"} onChange={(e) => setNovo({ ...novo, hex: e.target.value })} style={{ width: 40, height: 30, padding: 2 }} title="Escolher cor" />
+                  <input className="w-sm" placeholder="#RRGGBB" value={novo.hex || ""} onChange={(e) => setNovo({ ...novo, hex: e.target.value })} />
                 </div>
               </td>
-              <td>
-                <button className="btn btn-primary" onClick={adicionar}>
-                  ＋
-                </button>
-              </td>
+              <td><span className="muted" style={{ fontSize: 12 }}>cadastre a cor e depois adicione a foto</span></td>
+              <td><button className="btn btn-primary" onClick={adicionar}>＋ Adicionar</button></td>
             </tr>
 
             {filtrados.map((c) => (
@@ -460,7 +450,7 @@ function CoresCadastro() {
             ))}
             {cores.length === 0 && (
               <tr>
-                <td colSpan={3} className="empty pad">
+                <td colSpan={5} className="empty pad">
                   Nenhuma cor cadastrada ainda.
                 </td>
               </tr>
@@ -505,65 +495,51 @@ function CorRow({
     onAtualizar();
   }
 
-  const quadrado: React.CSSProperties = {
-    width: 34,
-    height: 34,
-    borderRadius: 7,
-    border: "1px solid #e2e8f0",
-    flex: "0 0 auto",
-  };
+  const temFoto = !!c.foto_key;
+  const quadrado: React.CSSProperties = { width: 36, height: 36, borderRadius: 7, border: "1px solid #e2e8f0", flex: "0 0 auto" };
 
   return (
     <tr>
       <td className="strong">{c.nome}</td>
+
+      {/* Amostra = o que realmente vai no PDF (foto se houver; senão a cor sólida) */}
       <td>
-        <div className="row-gap" style={{ alignItems: "center" }}>
-          {c.foto_key ? (
-            <img
-              src={`${api.fotoCorUrl(c.nome)}?v=${ver}`}
-              style={{ ...quadrado, objectFit: "cover" }}
-              alt={c.nome}
-            />
-          ) : (
-            <span style={{ ...quadrado, background: hex, display: "inline-block" }} />
-          )}
-          <input
-            type="color"
-            value={hex}
-            onChange={(e) => onSalvar({ ...c, hex: e.target.value })}
-            style={{ width: 40, height: 32, padding: 2 }}
-            title="Cor sólida"
-          />
-          <input
-            className="w-sm"
-            defaultValue={c.hex || ""}
-            placeholder="#RRGGBB"
-            onBlur={(e) => {
-              const v = e.target.value.trim();
-              if (v !== (c.hex || "")) onSalvar({ ...c, hex: v });
-            }}
-          />
-          <label className="btn btn-soft" style={{ cursor: "pointer" }}>
-            {subindo ? "Enviando…" : c.foto_key ? "↻ Trocar foto" : "📷 Foto"}
+        {temFoto ? (
+          <img src={`${api.fotoCorUrl(c.nome)}?v=${ver}`} style={{ ...quadrado, objectFit: "cover" }} alt={c.nome} />
+        ) : (
+          <span style={{ ...quadrado, background: hex, display: "inline-block" }} title={hex} />
+        )}
+      </td>
+
+      {/* Cor sólida — desabilitada quando há foto (a foto tem prioridade) */}
+      <td>
+        {temFoto ? (
+          <span className="muted" style={{ fontSize: 12 }}>usando a foto</span>
+        ) : (
+          <div className="row-gap" style={{ alignItems: "center", gap: 6 }}>
+            <input type="color" value={hex} onChange={(e) => onSalvar({ ...c, hex: e.target.value })} style={{ width: 40, height: 30, padding: 2 }} title="Escolher cor" />
             <input
-              type="file"
-              accept="image/*"
-              style={{ display: "none" }}
-              onChange={(e) => subirFoto(e.target.files?.[0] ?? null)}
+              className="w-sm"
+              defaultValue={c.hex || ""}
+              placeholder="#RRGGBB"
+              onBlur={(e) => { const v = e.target.value.trim(); if (v !== (c.hex || "")) onSalvar({ ...c, hex: v }); }}
             />
+          </div>
+        )}
+      </td>
+
+      {/* Foto — adicionar/trocar/remover */}
+      <td>
+        <div className="row-gap" style={{ alignItems: "center", gap: 6 }}>
+          <label className="btn btn-soft" style={{ cursor: "pointer" }}>
+            {subindo ? "Enviando…" : temFoto ? "↻ Trocar" : "📷 Adicionar"}
+            <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => subirFoto(e.target.files?.[0] ?? null)} />
           </label>
-          {c.foto_key && (
-            <button className="btn" onClick={removerFoto}>
-              Remover foto
-            </button>
-          )}
+          {temFoto && <button className="icon-btn" title="Remover foto" onClick={removerFoto}>🗑</button>}
         </div>
       </td>
-      <td>
-        <button className="icon-btn" title="Remover" onClick={() => onRemover(c)}>
-          ✕
-        </button>
-      </td>
+
+      <td><button className="icon-btn" title="Remover cor" onClick={() => onRemover(c)}>✕</button></td>
     </tr>
   );
 }
