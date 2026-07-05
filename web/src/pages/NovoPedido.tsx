@@ -452,12 +452,19 @@ export function NovoPedido() {
           </div>
 
           <div className="field">
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: "#0f172a", textTransform: "none", fontSize: 14, cursor: "pointer" }}>
-              <input type="checkbox" checked={!!form.reposicao} onChange={(e) => set("reposicao", e.target.checked)} />
-              📦 Pedido de reposição de estoque (produzir os kits)
-            </label>
-            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-              Ligado: os kits passam pela produção (Tecelagem → … → Estoque · Entrada). Desligado (pedido de cliente): a pronta-entrega já está no estoque e vai direto pro Estoque.
+            <label>Destino do pedido — vai para o estoque?</label>
+            <div className="segmented" style={{ maxWidth: 480 }}>
+              <button type="button" className={"seg" + (!form.reposicao ? " seg-on" : "")} onClick={() => set("reposicao", false)}>
+                🧑 Pedido de cliente
+              </button>
+              <button type="button" className={"seg" + (form.reposicao ? " seg-on" : "")} onClick={() => set("reposicao", true)}>
+                📦 Reposição de estoque
+              </button>
+            </div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              {form.reposicao
+                ? "Reposição: os kits passam por toda a produção e, no fim, entram no Estoque (aba Estoque · Entrada, com quantidade editável para ajustar defeitos)."
+                : "Cliente: a pronta-entrega já está no estoque e vai direto pro Estoque; ao gerar os PDFs, dá baixa automática no estoque de produtos."}
             </div>
           </div>
 
