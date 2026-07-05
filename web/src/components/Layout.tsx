@@ -95,6 +95,7 @@ const NAV = [
   { to: "/fiscal", icon: "🧾", label: "Fiscal", page: "fiscal" },
   { to: "/transporte", icon: "🚚", label: "Transporte", page: "transporte" },
   { to: "/todos-pedidos", icon: "📋", label: "Todos os Pedidos", page: "todos-pedidos" },
+  { to: "/produtos", icon: "🛒", label: "Produtos", page: "produtos" },
   { to: "/cadastros", icon: "🏷️", label: "Cadastros", page: "cadastros" },
   { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
 ];

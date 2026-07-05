@@ -2,6 +2,10 @@ import { getUser } from "./auth";
 // Nome do usuário logado (para auditoria: quem gerou / quem deu retorno).
 const quemSou = () => getUser()?.nome || undefined;
 
+// Atalho para POST com corpo JSON (usado nas rotas de produtos/insumos).
+const jsonPost = (url: string, body: unknown) =>
+  fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
 export interface PedidoItem {
   id?: string;
   produto: string;
@@ -711,6 +715,64 @@ export const api = {
       j<Sugestao>(r)
     );
   },
+
+  // ── Produtos ────────────────────────────────────────────────────────────
+  listarProdutos: (p?: { ativo?: string; busca?: string }) => {
+    const q = new URLSearchParams();
+    if (p?.ativo) q.set("ativo", p.ativo);
+    if (p?.busca) q.set("busca", p.busca);
+    return fetch(`/api/produtos${q.toString() ? "?" + q : ""}`).then((r) => j<Produto[]>(r));
+  },
+  obterProduto: (id: string) => fetch(`/api/produtos/${id}`).then((r) => j<Produto & { ficha: FichaItem[] }>(r)),
+  salvarProduto: (p: Partial<Produto>) =>
+    jsonPost("/api/produtos", { ...p, usuario: quemSou() }).then((r) => j<{ id: string }>(r)),
+  ativarProduto: (id: string, ativo: boolean) =>
+    jsonPost(`/api/produtos/${id}/ativo`, { ativo, usuario: quemSou() }).then((r) => j<{ ok: boolean }>(r)),
+  excluirProduto: (id: string) =>
+    fetch(`/api/produtos/${id}?usuario=${encodeURIComponent(quemSou() || "")}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  enviarFotoProduto: (id: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return fetch(`/api/produtos/${id}/foto`, { method: "POST", body: fd }).then((r) => j<{ ok: boolean; foto_key: string }>(r));
+  },
+  removerFotoProduto: (id: string) => fetch(`/api/produtos/${id}/foto`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  movProduto: (id: string, body: { tipo: string; origem: string; qtd: number; observacao?: string }) =>
+    jsonPost(`/api/produtos/${id}/mov`, { ...body, usuario: quemSou() }).then((r) => j<{ ok: boolean; mov_id: string; estoque: number }>(r)),
+  movsProduto: (id: string) => fetch(`/api/produtos/${id}/movs`).then((r) => j<ProdutoMov[]>(r)),
+  listarMovimentacoes: (p?: { tipo?: string; origem?: string }) => {
+    const q = new URLSearchParams();
+    if (p?.tipo) q.set("tipo", p.tipo);
+    if (p?.origem) q.set("origem", p.origem);
+    return fetch(`/api/produtos/movimentacoes${q.toString() ? "?" + q : ""}`).then((r) => j<ProdutoMov[]>(r));
+  },
+  salvarFicha: (id: string, itens: FichaItem[]) =>
+    jsonPost(`/api/produtos/${id}/ficha`, { itens, usuario: quemSou() }).then((r) => j<{ ok: boolean; total: number }>(r)),
+  itensPedidoParaEstoque: (pedidoId: string) =>
+    fetch(`/api/produtos/pedido/${pedidoId}/itens`).then((r) => j<{ pedido: { id: string; numero: string }; itens: ItemPedidoEstoque[] }>(r)),
+  entradaPorPedido: (body: { pedido_id: string; pedido_numero: string; itens: { produto_id: string; qtd: number }[] }) =>
+    jsonPost("/api/produtos/entrada-pedido", { ...body, usuario: quemSou() }).then((r) => j<{ ok: boolean }>(r)),
+  baixaPreview: (movId: string) => fetch(`/api/produtos/mov/${movId}/baixa-preview`).then((r) => j<BaixaPreview>(r)),
+  baixarInsumos: (movId: string) =>
+    jsonPost(`/api/produtos/mov/${movId}/baixar-insumos`, { usuario: quemSou() }).then((r) => j<{ ok: boolean; baixados: number }>(r)),
+  listarLogProdutos: (tipo?: string) =>
+    fetch(`/api/produtos/log${tipo ? "?tipo=" + tipo : ""}`).then((r) => j<ProdutoLog[]>(r)),
+
+  // ── Insumos ─────────────────────────────────────────────────────────────
+  listarInsumos: (p?: { ativo?: string; busca?: string }) => {
+    const q = new URLSearchParams();
+    if (p?.ativo) q.set("ativo", p.ativo);
+    if (p?.busca) q.set("busca", p.busca);
+    return fetch(`/api/insumos${q.toString() ? "?" + q : ""}`).then((r) => j<Insumo[]>(r));
+  },
+  salvarInsumo: (i: Partial<Insumo>) =>
+    jsonPost("/api/insumos", { ...i, usuario: quemSou() }).then((r) => j<{ id: string }>(r)),
+  ativarInsumo: (id: string, ativo: boolean) =>
+    jsonPost(`/api/insumos/${id}/ativo`, { ativo, usuario: quemSou() }).then((r) => j<{ ok: boolean }>(r)),
+  excluirInsumo: (id: string) =>
+    fetch(`/api/insumos/${id}?usuario=${encodeURIComponent(quemSou() || "")}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  movInsumo: (id: string, body: { tipo: string; origem: string; qtd: number; observacao?: string }) =>
+    jsonPost(`/api/insumos/${id}/mov`, { ...body, usuario: quemSou() }).then((r) => j<{ ok: boolean; estoque: number }>(r)),
+  movsInsumo: (id: string) => fetch(`/api/insumos/${id}/movs`).then((r) => j<InsumoMov[]>(r)),
 };
 
 export const TIPOS: { value: string; label: string; pe?: boolean }[] = [
@@ -734,4 +796,99 @@ export const PARTES: { value: string; label: string }[] = [
 export function tipoLabel(v: string) {
   if (v === "auto" || !v) return "Classificação automática";
   return TIPOS.find((t) => t.value === v)?.label ?? v;
+}
+
+// ── Tipos da área de Produtos ────────────────────────────────────────────────
+export interface Produto {
+  id: string;
+  nome: string;
+  ref?: string | null;
+  categoria?: string | null;
+  tamanho?: string | null;
+  cor?: string | null;
+  tipo_fio?: string | null;
+  unidade?: string;
+  foto_key?: string | null;
+  ativo?: number;
+  observacao?: string | null;
+  estoque?: number;
+  criado_em?: string;
+  atualizado_em?: string;
+}
+export interface FichaItem {
+  id?: string;
+  insumo_id?: string | null;
+  nome: string;
+  tipo?: string | null;
+  qtd_por_unidade: number;
+  unidade?: string | null;
+  observacao?: string | null;
+}
+export interface ProdutoMov {
+  id: string;
+  produto_id: string;
+  tipo: string; // entrada | saida
+  origem: string; // avulsa | pedido | ajuste
+  qtd: number;
+  pedido_id?: string | null;
+  pedido_numero?: string | null;
+  usuario?: string | null;
+  observacao?: string | null;
+  insumos_baixados?: number;
+  criado_em: string;
+  produto_nome?: string | null;
+  produto_ref?: string | null;
+  produto_unidade?: string | null;
+}
+export interface Insumo {
+  id: string;
+  nome: string;
+  categoria?: string | null;
+  unidade?: string;
+  codigo?: string | null;
+  estoque?: number;
+  estoque_min?: number;
+  ativo?: number;
+  observacao?: string | null;
+}
+export interface InsumoMov {
+  id: string;
+  insumo_id: string;
+  tipo: string;
+  origem: string;
+  qtd: number;
+  usuario?: string | null;
+  observacao?: string | null;
+  criado_em: string;
+}
+export interface ProdutoLog {
+  id: string;
+  tipo: string;
+  descricao: string;
+  usuario?: string | null;
+  ref_id?: string | null;
+  criado_em: string;
+}
+export interface ItemPedidoEstoque {
+  ref?: string | null;
+  produto: string;
+  cor?: string | null;
+  tamanho?: string | null;
+  qtd: number;
+  produto_id: string | null;
+  produto_nome: string | null;
+}
+export interface BaixaPreview {
+  ja_baixado: boolean;
+  qtd_entrada: number;
+  linhas: {
+    insumo_id?: string | null;
+    nome: string;
+    tipo?: string | null;
+    unidade?: string | null;
+    qtd_por_unidade: number;
+    qtd_total: number;
+    estoque_atual: number | null;
+    vinculado: boolean;
+  }[];
 }

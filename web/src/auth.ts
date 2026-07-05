@@ -21,6 +21,7 @@ export const PAGINAS: { key: string; label: string; tv?: boolean }[] = [
   { key: "fiscal", label: "Fiscal" },
   { key: "transporte", label: "Transporte" },
   { key: "todos-pedidos", label: "Todos os Pedidos" },
+  { key: "produtos", label: "Produtos" },
   { key: "romaneios", label: "Romaneios" },
   { key: "cadastros", label: "Cadastros" },
   { key: "tv-dashboard", label: "Painel TV (Dashboard)", tv: true },
@@ -54,7 +55,7 @@ export function primeiraPagina(u: Usuario | null): string {
     ["pedidos", "/pedidos"], ["producao", "/producao"], ["passadoria", "/passadoria"],
     ["corte", "/corte"], ["costura", "/costura"], ["revisao", "/revisao"], ["estoque", "/estoque"],
     ["expedicao", "/expedicao"], ["fiscal", "/fiscal"], ["transporte", "/transporte"],
-    ["todos-pedidos", "/todos-pedidos"], ["romaneios", "/romaneios"], ["cadastros", "/cadastros"],
+    ["todos-pedidos", "/todos-pedidos"], ["produtos", "/produtos"], ["romaneios", "/romaneios"], ["cadastros", "/cadastros"],
   ];
   for (const [k, rota] of ordem) if (u.paginas.includes(k)) return rota;
   return "/sem-acesso";

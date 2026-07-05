@@ -527,3 +527,16 @@ body.dark .rom-total td { background: #ffffff08; }
 .rom-campos label { display: flex; flex-direction: column; gap: 4px; }
 .rom-campos label span { font-size: 9.5px; font-weight: 800; color: #94a3b8; letter-spacing: .4px; }
 .rom-campos select, .rom-campos input { padding: 9px 11px; border-radius: 9px; border: 1px solid #e2e8f0; font: inherit; font-size: 14px; }
+
+/* ── Área de Produtos (formulários em modal) ─────────────────────────────── */
+.form-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 640px) { .form-grid2 { grid-template-columns: 1fr; } }
+.campo { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.campo-label { font-size: 11px; font-weight: 800; color: var(--muted); letter-spacing: .3px; }
+.campo > input, .campo > select, .campo > textarea {
+  width: 100%; padding: 9px 11px; border-radius: 9px; border: 1px solid #e2e8f0;
+  font: inherit; font-size: 14px; background: #fff; color: inherit;
+}
+body.dark .campo > input, body.dark .campo > select, body.dark .campo > textarea {
+  background: #0f172a; border-color: #334155; color: #e2e8f0;
+}
