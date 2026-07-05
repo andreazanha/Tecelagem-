@@ -213,7 +213,8 @@ function SidebarMenu({ u, min }: { u: NonNullable<ReturnType<typeof getUser>>; m
   useEffect(() => { localStorage.setItem(`menu-grupos-v2:${chave}`, JSON.stringify(abertos)); }, [abertos, chave]);
   useEffect(() => { localStorage.setItem(`menu-favs:${chave}`, JSON.stringify(favs)); }, [favs, chave]);
 
-  const toggleGrupo = (id: string) => setAbertos((a) => ({ ...a, [id]: !a[id] }));
+  // Sanfona de UMA por vez: abrir uma categoria fecha as outras.
+  const toggleGrupo = (id: string) => setAbertos((a) => (a[id] ? {} : { [id]: true }));
   const toggleFav = (to: string) => setFavs((f) => (f.includes(to) ? f.filter((x) => x !== to) : [...f, to]));
 
   // grupos com pelo menos um item visível
@@ -277,9 +278,9 @@ function SidebarMenu({ u, min }: { u: NonNullable<ReturnType<typeof getUser>>; m
           >
             <span className="nav-ic">{g.icon}</span>
             {!min && <span className="menu-grp-lbl">{g.label}</span>}
-            {!min && <span className="menu-grp-car">{abertos[g.id] ? "▾ fechar" : "▸"}</span>}
+            {!min && <span className="menu-grp-car">▸</span>}
           </button>
-          {abertos[g.id] && <div className="menu-grp-itens">{g.itens.map((it) => Item(it, g.id))}</div>}
+          <div className="menu-grp-sub"><div className="menu-grp-itens">{g.itens.map((it) => Item(it, g.id))}</div></div>
         </div>
       ))}
     </nav>
