@@ -553,13 +553,23 @@ body.dark .campo > input, body.dark .campo > select, body.dark .campo > textarea
 .menu-grp-hd {
   display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none;
   color: #8b93a7; font: inherit; font-size: 11px; font-weight: 800; letter-spacing: .5px;
-  text-transform: uppercase; padding: 10px 10px 4px; cursor: pointer;
+  text-transform: uppercase; padding: 9px 10px; margin: 2px 0; border-radius: 10px; cursor: pointer;
+  transition: background .12s, color .12s;
 }
-.menu-grp-hd:hover { color: #d7dce8; }
+.menu-grp-hd:hover { background: #ffffff12; color: #e7ebf3; }
 .menu-grp-hd .nav-ic { width: 18px; text-align: center; }
-.menu-grp-lbl { flex: 1; text-align: left; }
-.menu-grp-car { font-size: 10px; opacity: .8; }
-.menu-grp-itens { margin-bottom: 4px; }
+.menu-grp-lbl { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Grupo ABERTO: cabeçalho vira um botão de "fechar" bem visível (fundo, texto claro,
+   barra de destaque à esquerda e a etiqueta "▾ fechar"). */
+.menu-grupo.aberto > .menu-grp-hd { background: #6366f11f; color: #eef1f7; box-shadow: inset 3px 0 0 #818cf8; }
+.menu-grupo.aberto > .menu-grp-hd:hover { background: #6366f133; }
+.menu-grp-car {
+  margin-left: auto; font-size: 10px; font-weight: 800; letter-spacing: .3px;
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 999px;
+  background: #ffffff14; color: #aeb6c7;
+}
+.menu-grupo.aberto > .menu-grp-hd .menu-grp-car { background: #818cf8; color: #0f1629; }
+.menu-grp-itens { margin: 2px 0 8px; padding-left: 6px; border-left: 1px solid #ffffff12; }
 .nav-row { display: flex; align-items: center; }
 .nav-row .nav-item { flex: 1; min-width: 0; }
 .nav-lbl { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

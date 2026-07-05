@@ -654,6 +654,18 @@ function OperadoresCadastro() {
   );
 }
 
+// Telas agrupadas como no menu lateral — facilita escolher o que cada usuário acessa.
+const GRUPOS_PERM: { titulo: string; keys: string[] }[] = [
+  { titulo: "Comercial", keys: ["pedidos", "todos-pedidos"] },
+  { titulo: "Produção", keys: ["producao", "passadoria", "corte", "costura", "revisao"] },
+  { titulo: "Estoque e Insumos", keys: ["estoque", "produtos"] },
+  { titulo: "Expedição", keys: ["expedicao", "transporte", "romaneios"] },
+  { titulo: "Fiscal e Financeiro", keys: ["fiscal"] },
+  { titulo: "Cadastros", keys: ["cadastros"] },
+  { titulo: "Painéis (TV)", keys: ["tv-dashboard", "tv-tecelagem", "tv-costura", "tv-revisao", "tv-novo-pedido"] },
+];
+const labelDaPagina = (k: string) => PAGINAS.find((p) => p.key === k)?.label || k;
+
 // ── Usuários (login + permissões de telas) — somente admin ────────────────────
 function UsuariosCadastro() {
   const [itens, setItens] = useState<Usuario[]>([]);
@@ -668,6 +680,14 @@ function UsuariosCadastro() {
 
   function toggle(key: string) {
     setNovo((f) => ({ ...f, paginas: f.paginas.includes(key) ? f.paginas.filter((k) => k !== key) : [...f.paginas, key] }));
+  }
+  // marca/desmarca todas as telas de um grupo de uma vez
+  function marcarGrupo(keys: string[], on: boolean) {
+    setNovo((f) => {
+      const set = new Set(f.paginas);
+      keys.forEach((k) => (on ? set.add(k) : set.delete(k)));
+      return { ...f, paginas: [...set] };
+    });
   }
   async function salvar() {
     if (!novo.nome.trim() || !novo.usuario.trim()) return alert("Informe nome e usuário.");
@@ -710,14 +730,31 @@ function UsuariosCadastro() {
         </div>
         {!novo.admin && (
           <div style={{ marginTop: 14 }}>
-            <div className="campo-l">TELAS LIBERADAS</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6 }}>
-              {PAGINAS.map((p) => (
-                <label key={p.key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 600, background: p.tv ? "#f1f5f9" : "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px" }}>
-                  <input type="checkbox" checked={novo.paginas.includes(p.key)} onChange={() => toggle(p.key)} />
-                  {p.tv ? "📺 " : ""}{p.label}
-                </label>
-              ))}
+            <div className="campo-l">TELAS LIBERADAS PARA ESTE USUÁRIO</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 8 }}>
+              {GRUPOS_PERM.map((g) => {
+                const marcados = g.keys.filter((k) => novo.paginas.includes(k)).length;
+                const todos = marcados === g.keys.length;
+                return (
+                  <div key={g.titulo} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: "8px 10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <strong style={{ fontSize: 12.5 }}>{g.titulo}</strong>
+                      <span className="muted" style={{ fontSize: 11 }}>{marcados}/{g.keys.length}</span>
+                      <button type="button" className="btn btn-soft" style={{ marginLeft: "auto", padding: "3px 9px", fontSize: 11 }} onClick={() => marcarGrupo(g.keys, !todos)}>
+                        {todos ? "Desmarcar todos" : "Marcar todos"}
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {g.keys.map((k) => (
+                        <label key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 600, background: novo.paginas.includes(k) ? "#eef2ff" : "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px" }}>
+                          <input type="checkbox" checked={novo.paginas.includes(k)} onChange={() => toggle(k)} />
+                          {k.startsWith("tv-") ? "📺 " : ""}{labelDaPagina(k)}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

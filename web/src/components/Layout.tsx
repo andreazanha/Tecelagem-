@@ -202,15 +202,15 @@ function SidebarMenu({ u, min }: { u: NonNullable<ReturnType<typeof getUser>>; m
   const chave = u.id || u.usuario || "anon";
   const [abertos, setAbertos] = useState<Record<string, boolean>>(() => {
     try {
-      const s = JSON.parse(localStorage.getItem(`menu-grupos:${chave}`) || "null");
+      const s = JSON.parse(localStorage.getItem(`menu-grupos-v2:${chave}`) || "null");
       if (s && typeof s === "object") return s;
     } catch { /* usa padrão */ }
-    return Object.fromEntries(GRUPOS.map((g) => [g.id, true])); // padrão: todos abertos
+    return Object.fromEntries(GRUPOS.map((g) => [g.id, false])); // padrão: todos FECHADOS
   });
   const [favs, setFavs] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem(`menu-favs:${chave}`) || "[]"); } catch { return []; }
   });
-  useEffect(() => { localStorage.setItem(`menu-grupos:${chave}`, JSON.stringify(abertos)); }, [abertos, chave]);
+  useEffect(() => { localStorage.setItem(`menu-grupos-v2:${chave}`, JSON.stringify(abertos)); }, [abertos, chave]);
   useEffect(() => { localStorage.setItem(`menu-favs:${chave}`, JSON.stringify(favs)); }, [favs, chave]);
 
   const toggleGrupo = (id: string) => setAbertos((a) => ({ ...a, [id]: !a[id] }));
@@ -270,10 +270,14 @@ function SidebarMenu({ u, min }: { u: NonNullable<ReturnType<typeof getUser>>; m
       )}
       {grupos.map((g) => (
         <div className={"menu-grupo" + (abertos[g.id] ? " aberto" : "")} key={g.id}>
-          <button className="menu-grp-hd" onClick={() => toggleGrupo(g.id)} title={g.label}>
+          <button
+            className="menu-grp-hd"
+            onClick={() => toggleGrupo(g.id)}
+            title={abertos[g.id] ? `Fechar ${g.label}` : `Abrir ${g.label}`}
+          >
             <span className="nav-ic">{g.icon}</span>
             {!min && <span className="menu-grp-lbl">{g.label}</span>}
-            {!min && <span className="menu-grp-car">{abertos[g.id] ? "▾" : "▸"}</span>}
+            {!min && <span className="menu-grp-car">{abertos[g.id] ? "▾ fechar" : "▸"}</span>}
           </button>
           {abertos[g.id] && <div className="menu-grp-itens">{g.itens.map((it) => Item(it, g.id))}</div>}
         </div>
