@@ -774,6 +774,27 @@ export const api = {
   ignorarReposicao: (alertaId: string) =>
     jsonPost(`/api/produtos/reposicao/${alertaId}/ignorar`, {}).then((r) => j<{ ok: boolean }>(r)),
 
+  // ── Comercial / Representantes ───────────────────────────────────────────
+  listarRepresentantes: () => fetch("/api/representantes").then((r) => j<Representante[]>(r)),
+  salvarRepresentante: (rep: Partial<Representante>) =>
+    jsonPost("/api/representantes", rep).then((r) => j<{ id: string; nome: string }>(r)),
+  ativarRepresentante: (id: string, ativo: boolean) =>
+    jsonPost(`/api/representantes/${id}/ativo`, { ativo }).then((r) => j<{ ok: boolean }>(r)),
+  excluirRepresentante: (id: string) =>
+    fetch(`/api/representantes/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  vendasComercial: (params?: { de?: string; ate?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.de) q.set("de", params.de);
+    if (params?.ate) q.set("ate", params.ate);
+    return fetch(`/api/comercial/vendas${q.toString() ? "?" + q : ""}`).then((r) => j<ComercialVendas>(r));
+  },
+  vendasDetalhe: (vendedor: string, params?: { de?: string; ate?: string }) => {
+    const q = new URLSearchParams({ vendedor });
+    if (params?.de) q.set("de", params.de);
+    if (params?.ate) q.set("ate", params.ate);
+    return fetch(`/api/comercial/vendas/detalhe?${q}`).then((r) => j<ComercialDetalhe>(r));
+  },
+
   // ── Insumos ─────────────────────────────────────────────────────────────
   listarInsumos: (p?: { ativo?: string; busca?: string }) => {
     const q = new URLSearchParams();
@@ -848,6 +869,38 @@ export interface RepAlerta {
   tamanho?: string | null;
   unidade?: string | null;
   estoque: number;
+}
+export interface Representante {
+  id: string;
+  nome: string;
+  whatsapp?: string | null;
+  email?: string | null;
+  ativo?: number;
+  observacao?: string | null;
+}
+export interface VendaRep {
+  vendedor: string;
+  pedidos: number;
+  pecas: number;
+  valor: number;
+}
+export interface ComercialVendas {
+  lista: VendaRep[];
+  totais: { pedidos: number; pecas: number; valor: number };
+}
+export interface PedidoVenda {
+  id: string;
+  numero: string | null;
+  cliente: string;
+  data: string | null;
+  pecas: number;
+  valor: number;
+  clienteNovo: boolean;
+}
+export interface ComercialDetalhe {
+  vendedor: string;
+  pedidos: PedidoVenda[];
+  totais: { pedidos: number; pecas: number; valor: number; novos: number };
 }
 export interface KitComponente {
   id?: string;
