@@ -181,9 +181,17 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .aviso-ok { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
 .aviso-warn { background: #fff7ed; color: #b45309; border: 1px solid #fed7aa; }
 
-.segmented { display: flex; flex-wrap: wrap; gap: 8px; }
-.seg { font: inherit; font-size: 12.5px; padding: 8px 14px; border-radius: 9px; border: 1px solid #e2e8f0; background: #fff; color: #475569; cursor: pointer; }
-.seg-on { background: linear-gradient(90deg, var(--brand1), var(--brand2)); color: #fff; border: none; font-weight: 700; }
+/* Abas estilo "segmented control" moderno: um trilho único, abas inativas como
+   texto simples e a aba ativa como uma pílula elevada (só ela fica marcada). */
+.segmented { display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 4px; background: #eef1f6; border: 1px solid #e4e8ef; border-radius: 12px; }
+.seg { font: inherit; font-size: 12.5px; font-weight: 600; padding: 7px 15px; border-radius: 8px; border: none; background: transparent; color: #5b6472; cursor: pointer; white-space: nowrap; transition: background .14s, color .14s, box-shadow .14s; }
+.seg:hover:not(.seg-on) { color: #0f172a; background: #ffffffa6; }
+.seg-on { background: #fff; color: #4338ca; font-weight: 700; box-shadow: 0 1px 2px #0f172a24, 0 2px 7px #0f172a12; }
+/* Tema escuro */
+body.dark .segmented { background: #0d1526; border-color: #ffffff12; }
+body.dark .seg { color: #94a3bd; }
+body.dark .seg:hover:not(.seg-on) { color: #eaf0ff; background: #ffffff0f; }
+body.dark .seg-on { background: #212d49; color: #fff; box-shadow: 0 1px 2px #0007, inset 0 0 0 1px #ffffff1f; }
 .pe-box { margin-top: 16px; padding: 14px; border: 1px solid #a7f3d0; background: #ecfdf5; border-radius: 12px; }
 .pe-title { font-size: 11px; font-weight: 700; color: #047857; letter-spacing: .4px; text-transform: uppercase; margin-bottom: 8px; }
 
