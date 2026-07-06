@@ -481,6 +481,12 @@ export const api = {
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/desmembrar`, { method: "POST" }).then((r) => j<{ ok: boolean; criados: number }>(r)),
   concluirProducao: (pedido_id: string, parte: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/concluir`, { method: "POST" }).then((r) => j<{ ok: boolean }>(r)),
+  definirClienteCard: (pedido_id: string, parte: string, cliente: string) =>
+    fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/cliente`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cliente }),
+    }).then((r) => j<{ ok: boolean; cliente: string | null }>(r)),
   definirPrioridade: (pedido_id: string, parte: string, prioridade: number) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/prioridade`, {
       method: "POST",

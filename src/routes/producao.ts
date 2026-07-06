@@ -259,6 +259,22 @@ producao.post("/:pedido_id/:parte/desmembrar", async (c) => {
   return c.json(r);
 });
 
+// CLIENTE do card: corrige/define o cliente de um card (usado nos cards desmembrados
+// de OP consolidada — cada OP é de um cliente diferente). Vazio volta ao cliente do pedido.
+producao.post("/:pedido_id/:parte/cliente", async (c) => {
+  const pedido_id = c.req.param("pedido_id");
+  const parte = decodeURIComponent(c.req.param("parte"));
+  const b = await c.req.json<{ cliente?: string }>().catch(() => ({}) as { cliente?: string });
+  const cliente = (b.cliente || "").trim() || null;
+  await c.env.DB.prepare("UPDATE producao SET cliente = ? WHERE pedido_id = ? AND parte = ?").bind(cliente, pedido_id, parte).run();
+  // Guarda também no item de origem, para o cliente reaparecer se o card for redesmembrado.
+  const card = await c.env.DB.prepare("SELECT op FROM producao WHERE pedido_id = ? AND parte = ?").bind(pedido_id, parte).first<{ op: string | null }>();
+  if (card?.op && cliente) {
+    await c.env.DB.prepare("UPDATE pedido_itens SET origem_cliente = ? WHERE pedido_id = ? AND origem = ?").bind(cliente, pedido_id, card.op).run();
+  }
+  return c.json({ ok: true, cliente });
+});
+
 // CONCLUIR: remove o card do quadro (ex.: reposição que já deu entrada no estoque).
 producao.post("/:pedido_id/:parte/concluir", async (c) => {
   const pedido_id = c.req.param("pedido_id");

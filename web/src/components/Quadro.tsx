@@ -396,7 +396,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
       )}
 
       {aberto && (
-        <CardModal card={aberto} cfg={cfg} stLabel={stLabel} onFechar={() => setAberto(null)} onAcao={acaoCard} onPrioridade={alternarPrioridade} onPular={(c, setor) => mudarGrupo([c], { status: "aguardando", setor })} />
+        <CardModal card={aberto} cfg={cfg} stLabel={stLabel} onFechar={() => setAberto(null)} onAcao={acaoCard} onPrioridade={alternarPrioridade} onPular={(c, setor) => mudarGrupo([c], { status: "aguardando", setor })} onRecarregar={recarregar} />
       )}
 
       {entradaPed && (
@@ -783,6 +783,7 @@ function CardModal({
   onAcao,
   onPrioridade,
   onPular,
+  onRecarregar,
 }: {
   card: CardProducao;
   cfg: QuadroCfg;
@@ -791,12 +792,30 @@ function CardModal({
   onAcao: (cards: CardProducao[], acao: ColCfg["acao"]) => void;
   onPrioridade: (c: CardProducao) => void;
   onPular?: (c: CardProducao, setor: string) => void;
+  onRecarregar?: () => void;
 }) {
   const ehMaster = !!getUser()?.admin;
   const [pularSetor, setPularSetor] = useState(cfg.proxSetor || "revisao");
   const [det, setDet] = useState<Awaited<ReturnType<typeof api.detalheProducao>> | null>(null);
   const [hist, setHist] = useState<Awaited<ReturnType<typeof api.historicoProducao>> | null>(null);
   const [verHist, setVerHist] = useState(false);
+  // Edição do cliente do card (cards desmembrados de OP consolidada — 1 cliente por OP).
+  const [editCli, setEditCli] = useState<string | null>(null);
+  const [salvandoCli, setSalvandoCli] = useState(false);
+  async function salvarCliente() {
+    if (editCli === null) return;
+    setSalvandoCli(true);
+    try {
+      await api.definirClienteCard(card.pedido_id, card.parte, editCli.trim());
+      card.cliente_nome = editCli.trim() || card.cliente_nome;
+      setEditCli(null);
+      onRecarregar?.();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setSalvandoCli(false);
+    }
+  }
   useEffect(() => {
     api.detalheProducao(card.pedido_id, card.parte).then(setDet).catch(() => {});
     api.historicoProducao(card.pedido_id, card.parte).then(setHist).catch(() => {});
@@ -844,7 +863,35 @@ function CardModal({
             </button>
           </div>
           <div className="modal-hd-row">
-            <span className="modal-cli">{card.cliente_nome}</span>
+            {editCli !== null ? (
+              <span style={{ display: "flex", gap: 6, alignItems: "center", flex: 1 }}>
+                <input
+                  className="busca-ped"
+                  style={{ minWidth: 0, flex: 1, padding: "6px 10px", color: "#0f172a" }}
+                  value={editCli}
+                  autoFocus
+                  placeholder="Nome do cliente desta OP"
+                  onChange={(e) => setEditCli(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") salvarCliente(); if (e.key === "Escape") setEditCli(null); }}
+                />
+                <button className="btn btn-soft" style={{ padding: "6px 10px", fontSize: 12 }} disabled={salvandoCli} onClick={salvarCliente}>{salvandoCli ? "…" : "Salvar"}</button>
+                <button className="btn btn-soft" style={{ padding: "6px 10px", fontSize: 12 }} onClick={() => setEditCli(null)}>✕</button>
+              </span>
+            ) : (
+              <span className="modal-cli">
+                {card.cliente_nome}
+                {card.op && (
+                  <button
+                    className="modal-cli-edit"
+                    title="Corrigir o cliente desta OP (cards desmembrados são de clientes diferentes)"
+                    onClick={() => setEditCli(card.cliente_nome === `OP CONSOLIDADA` || /CONSOLIDADA/i.test(card.cliente_nome) ? "" : card.cliente_nome)}
+                    style={{ marginLeft: 8, background: "transparent", border: "none", cursor: "pointer", fontSize: 14, opacity: 0.85 }}
+                  >
+                    ✏️
+                  </button>
+                )}
+              </span>
+            )}
             <span className={"kstatus " + card.status}>
               {cfg.titulo} · {stLabel(card.status)}
             </span>
