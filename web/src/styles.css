@@ -81,14 +81,17 @@ a { color: inherit; }
 .sidebar-title { color: #fff; font-weight: 700; font-size: 15px; padding: 0 8px; }
 .sidebar-kicker { color: #5b6478; font-size: 10px; letter-spacing: 1px; padding: 2px 8px 14px; }
 .nav-item {
-  display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin: 2px 0;
-  border-radius: 10px; text-decoration: none; color: #aeb6c7; font-size: 13.5px;
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin: 1px 0;
+  border-radius: 8px; text-decoration: none; color: #98a1b5; font-size: 13.5px; font-weight: 500;
+  transition: background .13s ease, color .13s ease;
 }
-.nav-item .nav-ic { width: 18px; text-align: center; }
-.nav-item:hover { background: #ffffff0f; }
-.nav-item.active { background: #6366f11f; color: #fff; font-weight: 700; box-shadow: inset 3px 0 0 #818cf8; }
-.nav-item.disabled { color: #5b6478; cursor: default; }
-.nav-item .soon { margin-left: auto; font-size: 9px; background: #1e2942; padding: 2px 6px; border-radius: 8px; }
+.nav-item .nav-ic { width: 18px; text-align: center; opacity: .85; }
+.nav-item:hover { background: #ffffff0d; color: #eaeef6; }
+/* Item da PÁGINA ATUAL: pílula discreta com um filete de destaque — só ele marcado. */
+.nav-item.active { background: #ffffff12; color: #fff; font-weight: 600; box-shadow: inset 2px 0 0 #818cf8; }
+.nav-item.active .nav-ic { opacity: 1; }
+.nav-item.disabled { color: #56607a; cursor: default; font-weight: 500; }
+.nav-item .soon { margin-left: auto; font-size: 9px; background: #ffffff12; color: #7d879e; padding: 2px 6px; border-radius: 8px; font-weight: 700; }
 
 .content { grid-area: main; padding: 24px 28px; overflow: auto; min-height: 0; min-width: 0; }
 
@@ -581,18 +584,19 @@ body.dark .campo > input, body.dark .campo > select, body.dark .campo > textarea
 .menu-sec { font-size: 10px; letter-spacing: 1px; color: #6b7488; text-transform: uppercase; padding: 2px 10px 4px; font-weight: 800; }
 .menu-grp-hd {
   display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none;
-  color: #8b93a7; font: inherit; font-size: 11px; font-weight: 800; letter-spacing: .5px;
-  text-transform: uppercase; padding: 9px 10px; margin: 2px 0; border-radius: 10px; cursor: pointer;
+  color: #79839a; font: inherit; font-size: 10.5px; font-weight: 800; letter-spacing: .7px;
+  text-transform: uppercase; padding: 9px 10px; margin: 2px 0; border-radius: 8px; cursor: pointer;
   transition: background .12s, color .12s;
 }
-.menu-grp-hd:hover { background: #ffffff12; color: #e7ebf3; }
+.menu-grp-hd .nav-ic { opacity: .8; }
+.menu-grp-hd:hover { background: #ffffff0d; color: #cdd4e2; }
 .menu-grp-hd .nav-ic { width: 18px; text-align: center; }
 .menu-grp-lbl { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Grupo ABERTO: cabeçalho vira um botão de "fechar" bem visível (fundo, texto claro,
-   barra de destaque à esquerda e a etiqueta "▾ fechar"). */
-.menu-grupo.aberto > .menu-grp-hd { background: #6366f11f; color: #eef1f7; box-shadow: inset 3px 0 0 #818cf8; }
-.menu-grupo.aberto > .menu-grp-hd:hover { background: #6366f133; }
-.menu-grp-car { margin-left: auto; font-size: 10px; color: #aeb6c7; display: inline-flex; transition: transform .22s ease; }
+/* Grupo ABERTO: só destaca o texto e gira o cursor — discreto, sem bloco pesado. */
+.menu-grupo.aberto > .menu-grp-hd { background: transparent; color: #eaeef6; }
+.menu-grupo.aberto > .menu-grp-hd .nav-ic { opacity: 1; }
+.menu-grupo.aberto > .menu-grp-hd:hover { background: #ffffff0d; }
+.menu-grp-car { margin-left: auto; font-size: 10px; color: #6b7488; display: inline-flex; transition: transform .22s ease; }
 .menu-grupo.aberto > .menu-grp-hd .menu-grp-car { transform: rotate(90deg); color: #c2a05a; }
 /* subcategorias: abre/fecha suave (uma por vez) */
 .menu-grp-sub { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .24s ease; }
