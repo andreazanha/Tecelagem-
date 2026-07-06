@@ -389,9 +389,6 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
               );
             })}
           </div>
-          <p className="muted" style={{ marginTop: 14, fontSize: 12 }}>
-            {cfg.nota}
-          </p>
         </>
       )}
 
