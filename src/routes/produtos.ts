@@ -3,6 +3,21 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { gerarRelatorioEstoque, type LinhaEstoque } from "../pdf";
+import { enviarPush } from "../push-send";
+
+// Lembrete recorrente (chamado pelo cron): enquanto houver reposição PENDENTE,
+// reenvia o push. A mesma tag substitui o aviso anterior (não empilha).
+export async function lembreteReposicao(env: Env): Promise<void> {
+  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM reposicao_alertas WHERE status = 'pendente'").first<{ n: number }>();
+  const n = Number(row?.n) || 0;
+  if (!n) return;
+  await enviarPush(env, {
+    titulo: "⚠️ Reposição pendente",
+    corpo: n === 1 ? "1 produto aguardando pedido de reposição." : `${n} produtos aguardando pedido de reposição.`,
+    url: "/produtos?aba=reposicao",
+    tag: "reposicao",
+  });
+}
 
 const uid = () => crypto.randomUUID();
 const num = (v: unknown) => Math.max(0, Number(v) || 0);

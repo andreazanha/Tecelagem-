@@ -8,7 +8,7 @@ import { expedicao } from "./routes/expedicao";
 import { romaneios } from "./routes/romaneios";
 import { dashboard } from "./routes/dashboard";
 import { push } from "./routes/push";
-import { produtos, insumos } from "./routes/produtos";
+import { produtos, insumos, lembreteReposicao } from "./routes/produtos";
 
 export interface Env {
   DB: D1Database;
@@ -69,4 +69,11 @@ app.all("*", async (c) => {
   return res;
 });
 
-export default app;
+// Worker: além do fetch (SPA + API), um handler AGENDADO (cron) que relembra as
+// reposições pendentes por push — "várias vezes até o pedido ser gerado".
+export default {
+  fetch: (req: Request, env: Env, ctx: ExecutionContext) => app.fetch(req, env, ctx),
+  scheduled: (_event: ScheduledController, env: Env, ctx: ExecutionContext) => {
+    ctx.waitUntil(lembreteReposicao(env));
+  },
+};

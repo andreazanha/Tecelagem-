@@ -25,6 +25,8 @@
   ],
   "ai": { "binding": "AI" },
   "observability": { "enabled": true },
+  // Lembrete de reposição pendente (push). Horários em UTC ≈ 8h, 12h e 16h de Brasília.
+  "triggers": { "crons": ["0 11 * * *", "0 15 * * *", "0 19 * * *"] },
   // Web Push (aviso "entrou pedido novo"). Só a chave PÚBLICA fica no repo.
   // A chave privada (VAPID_JWK) é um secret — definir uma vez no deploy:
   //   wrangler secret put VAPID_JWK
