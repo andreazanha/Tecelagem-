@@ -201,6 +201,7 @@ export function NovoPedido() {
           parte: it.parte || "unico",
           valor_unit: Number(it.valor_unit) || 0, // preço lido do PDF (editável)
           origem: s.numero_erp || "", // de qual pedido este item veio
+          origem_cliente: s.cliente_nome || "", // cliente daquele pedido (p/ desmembrar)
         }));
         if (add.length || s.cliente_nome) lidos++;
         else falhas++;

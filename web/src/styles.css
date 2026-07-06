@@ -8,7 +8,10 @@
   --sidebar: #0f1629;
 }
 * { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
+/* A página NUNCA rola no navegador: o app ocupa a tela toda e a rolagem acontece
+   POR DENTRO (conteúdo na vertical, quadro na horizontal). Assim a barra horizontal
+   do quadro fica sempre fixa na base — igual à barra lateral. */
+html, body, #root { height: 100%; margin: 0; overflow: hidden; }
 body {
   font-family: Inter, "Segoe UI", Helvetica, Arial, sans-serif;
   color: var(--ink);
@@ -23,6 +26,7 @@ a { color: inherit; }
   grid-template-areas: "top top" "side main";
   height: 100vh; /* altura fixa: topo + barra lateral fixos; conteúdo rola por dentro
                     (assim a barra horizontal do quadro fica sempre visível na base) */
+  overflow: hidden; /* nada transborda a tela; a rolagem é interna (.content / .kanban) */
 }
 .topbar {
   grid-area: top;
@@ -81,7 +85,7 @@ a { color: inherit; }
 .nav-item.disabled { color: #5b6478; cursor: default; }
 .nav-item .soon { margin-left: auto; font-size: 9px; background: #1e2942; padding: 2px 6px; border-radius: 8px; }
 
-.content { grid-area: main; padding: 24px 28px; overflow: auto; min-height: 0; }
+.content { grid-area: main; padding: 24px 28px; overflow: auto; min-height: 0; min-width: 0; }
 
 .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 h1 { font-size: 24px; margin: 0; }

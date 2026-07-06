@@ -236,6 +236,7 @@ interface ItemIn {
   parte?: string;
   kit?: boolean;
   origem?: string;
+  origem_cliente?: string;
   valor_unit?: number | string;
 }
 interface PedidoIn {
@@ -369,8 +370,8 @@ pedidos.post("/", async (c) => {
     const parte = PARTES.includes(it.parte || "") ? (it.parte as string) : "unico";
     stmts.push(
       c.env.DB.prepare(
-        `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, origem, valor_unit)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, origem, origem_cliente, valor_unit)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         crypto.randomUUID(),
         id,
@@ -382,6 +383,7 @@ pedidos.post("/", async (c) => {
         parte,
         it.kit ? 1 : 0,
         it.origem || null,
+        (it.origem_cliente || "").trim() || null,
         Math.max(0, Number(it.valor_unit) || 0)
       )
     );
@@ -433,9 +435,9 @@ pedidos.put("/:id", async (c) => {
     const parte = PARTES.includes(it.parte || "") ? (it.parte as string) : "unico";
     stmts.push(
       c.env.DB.prepare(
-        `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, origem, valor_unit)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(crypto.randomUUID(), id, produto, it.ref || null, it.cor_grade || null, it.tamanho || null, Math.max(0, Math.trunc(Number(it.qtd) || 0)), parte, it.kit ? 1 : 0, it.origem || null, Math.max(0, Number(it.valor_unit) || 0))
+        `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, origem, origem_cliente, valor_unit)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), id, produto, it.ref || null, it.cor_grade || null, it.tamanho || null, Math.max(0, Math.trunc(Number(it.qtd) || 0)), parte, it.kit ? 1 : 0, it.origem || null, (it.origem_cliente || "").trim() || null, Math.max(0, Number(it.valor_unit) || 0))
     );
   }
   await c.env.DB.batch(stmts);

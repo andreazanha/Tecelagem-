@@ -16,6 +16,7 @@ export interface PedidoItem {
   parte: string;
   kit?: boolean; // marcado como kit (pronta-entrega / estoque)
   origem?: string | null; // número do pedido de origem (OP que junta vários)
+  origem_cliente?: string | null; // cliente do pedido de origem (p/ desmembrar mostrar o cliente)
   valor_unit?: number; // preço de venda unitário (qtd × valor_unit = total do item)
 }
 

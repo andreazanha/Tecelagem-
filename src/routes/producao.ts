@@ -22,15 +22,21 @@ async function desmembrarCard(env: Env, pedidoId: string, parteFull: string): Pr
   if (parteFull.includes("#")) return { ok: false, motivo: "já desmembrado" };
   const card = await env.DB.prepare("SELECT * FROM producao WHERE pedido_id = ? AND parte = ?").bind(pedidoId, parteFull).first<CardRow>();
   if (!card) return { ok: false, motivo: "card não encontrado" };
-  const ped = await env.DB.prepare("SELECT numero_erp, codigo_pai FROM pedidos WHERE id = ?").bind(pedidoId).first<{ numero_erp: string | null; codigo_pai: string | null }>();
+  const ped = await env.DB.prepare("SELECT numero_erp, codigo_pai, cliente_nome FROM pedidos WHERE id = ?").bind(pedidoId).first<{ numero_erp: string | null; codigo_pai: string | null; cliente_nome: string }>();
   if (!ped) return { ok: false, motivo: "pedido não encontrado" };
   const { results: itens } = await env.DB.prepare(
-    "SELECT produto, ref, cor_grade, tamanho, qtd, parte, kit, origem FROM pedido_itens WHERE pedido_id = ?"
-  ).bind(pedidoId).all<ItemBase>();
+    "SELECT produto, ref, cor_grade, tamanho, qtd, parte, kit, origem, origem_cliente FROM pedido_itens WHERE pedido_id = ?"
+  ).bind(pedidoId).all<ItemBase & { origem_cliente?: string | null }>();
   const primeiro = (ped.numero_erp || "").split(",")[0].trim();
   const origemDe = (it: ItemBase) => (it.origem || "").trim() || primeiro || (ped.codigo_pai || "");
   const origens = [...new Set(itens.map(origemDe).filter(Boolean))];
   if (origens.length <= 1) return { ok: false, motivo: "pedido tem uma única OP" };
+  // Cliente de cada OP de origem (guardado no item quando os pedidos foram juntados);
+  // se não tiver, usa o cliente do pedido consolidado.
+  const clienteDe = (origem: string): string => {
+    const it = itens.find((i) => origemDe(i) === origem && (i.origem_cliente || "").trim());
+    return (it?.origem_cliente || "").trim() || ped.cliente_nome;
+  };
 
   const cat = await catalogoDe(env);
   const totalParte = (cl: ReturnType<typeof classificar>): number => {
@@ -47,9 +53,9 @@ async function desmembrarCard(env: Env, pedidoId: string, parteFull: string): Pr
     if (pecas <= 0) continue; // essa OP não tem peça nesta parte
     stmts.push(
       env.DB.prepare(
-        `INSERT INTO producao (pedido_id, parte, op, setor, status, pecas, resumo, operador, prioridade, iniciado_em, finalizado_em)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(pedidoId, `${parteFull}#${origem}`, origem, card.setor, card.status, pecas, `OP ${origem}`, card.operador, card.prioridade, card.iniciado_em, card.finalizado_em)
+        `INSERT INTO producao (pedido_id, parte, op, setor, status, pecas, resumo, cliente, operador, prioridade, iniciado_em, finalizado_em)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(pedidoId, `${parteFull}#${origem}`, origem, card.setor, card.status, pecas, `OP ${origem}`, clienteDe(origem), card.operador, card.prioridade, card.iniciado_em, card.finalizado_em)
     );
     criados++;
   }
@@ -145,7 +151,8 @@ producao.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT pr.pedido_id, pr.parte, pr.op, pr.setor, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
             pr.prioridade, pr.iniciado_em, pr.finalizado_em,
-            p.numero_erp, p.cliente_nome, p.data_pedido, p.data_entrega, p.data_tecelagem, p.codigo_terceiro, p.codigo_pai, p.observacao, p.reposicao
+            p.numero_erp, COALESCE(NULLIF(pr.cliente, ''), p.cliente_nome) AS cliente_nome,
+            p.data_pedido, p.data_entrega, p.data_tecelagem, p.codigo_terceiro, p.codigo_pai, p.observacao, p.reposicao
        FROM producao pr
        JOIN pedidos p ON p.id = pr.pedido_id
       WHERE pr.setor = ?
@@ -163,7 +170,8 @@ producao.get("/:pedido_id/:parte", async (c) => {
   const card = await c.env.DB.prepare(
     `SELECT pr.pedido_id, pr.parte, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
             pr.prioridade, pr.iniciado_em, pr.finalizado_em,
-            p.numero_erp, p.cliente_nome, p.vendedor, p.data_pedido, p.data_entrega, p.observacao,
+            p.numero_erp, COALESCE(NULLIF(pr.cliente, ''), p.cliente_nome) AS cliente_nome,
+            p.vendedor, p.data_pedido, p.data_entrega, p.observacao,
             p.codigo_terceiro, p.codigo_pai
        FROM producao pr JOIN pedidos p ON p.id = pr.pedido_id
       WHERE pr.pedido_id = ? AND pr.parte = ?`
