@@ -242,7 +242,9 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .kanban::-webkit-scrollbar-track { background: #eef2f7; border-radius: 10px; }
 .kanban::-webkit-scrollbar-thumb { background: #b6c2d4; border-radius: 10px; border: 3px solid #eef2f7; }
 .kanban::-webkit-scrollbar-thumb:hover { background: #8d9bb3; }
-.kcol { flex: 0 0 250px; max-width: 250px; display: flex; flex-direction: column; min-height: 0; }
+/* Coluna: no mínimo a altura visível do quadro (preenche quando há poucos cards),
+   mas cresce com o conteúdo (quando é alto, o quadro inteiro rola — uma barra só). */
+.kcol { flex: 0 0 250px; max-width: 250px; display: flex; flex-direction: column; min-height: 100%; }
 /* Cabeçalho da coluna em destaque, como um "card" colorido por status. */
 .kcol-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 11px; margin-bottom: 9px; border-radius: 12px; border: 1px solid var(--line); background: #fff; box-shadow: 0 1px 3px #0f172a12; border-left: 5px solid #cbd5e1; }
 .kcol-title { font-weight: 900; font-size: 13px; color: #0f172a; }
