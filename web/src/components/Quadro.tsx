@@ -746,9 +746,14 @@ function Coluna({
         {grupos.length === 0 && (
           <div
             style={{
+              flex: 1,
+              minHeight: 90,
               border: "1.5px dashed #e2e8f0",
               borderRadius: 12,
               padding: "18px 10px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               textAlign: "center",
               color: "#cbd5e1",
               fontSize: 12,
