@@ -90,6 +90,13 @@ a { color: inherit; }
 /* Item da PÁGINA ATUAL: pílula discreta com um filete de destaque — só ele marcado. */
 .nav-item.active { background: #ffffff12; color: #fff; font-weight: 600; box-shadow: inset 2px 0 0 #818cf8; }
 .nav-item.active .nav-ic { opacity: 1; }
+/* Ícones do menu em tom MONOCROMÁTICO (visual corporativo — menos "emoji colorido").
+   Ganham cor/brilho só no hover, no item ativo e no grupo aberto. */
+.sidebar .nav-ic { filter: grayscale(1) brightness(1.7) contrast(.85); opacity: .7; transition: opacity .13s ease, filter .13s ease; }
+.sidebar .nav-item:hover .nav-ic,
+.sidebar .menu-grp-hd:hover .nav-ic { opacity: .95; }
+.sidebar .nav-item.active .nav-ic,
+.sidebar .menu-grupo.aberto > .menu-grp-hd .nav-ic { filter: none; opacity: 1; }
 .nav-item.disabled { color: #56607a; cursor: default; font-weight: 500; }
 .nav-item .soon { margin-left: auto; font-size: 9px; background: #ffffff12; color: #7d879e; padding: 2px 6px; border-radius: 8px; font-weight: 700; }
 
