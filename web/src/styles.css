@@ -235,10 +235,10 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .quadro-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 /* No quadro, encosta a barra horizontal bem na base (sem folga embaixo). */
 .content:has(.quadro-page) { padding-bottom: 6px; }
-/* Kanban: rola na HORIZONTAL (barra sempre visível embaixo). Cada coluna rola
-   seus cards na vertical por dentro — nada de cards sumindo. */
-.kanban { flex: 1 1 auto; min-height: 0; display: flex; gap: 11px; overflow-x: auto; overflow-y: hidden; padding-bottom: 6px; align-items: stretch; -webkit-overflow-scrolling: touch; }
-.kanban::-webkit-scrollbar { height: 14px; }
+/* Kanban: o QUADRO INTEIRO rola — uma única barra na DIREITA (vertical) e uma
+   embaixo (horizontal), ambas fixas. As colunas não rolam sozinhas. */
+.kanban { flex: 1 1 auto; min-height: 0; display: flex; gap: 11px; overflow: auto; padding-bottom: 2px; align-items: flex-start; -webkit-overflow-scrolling: touch; }
+.kanban::-webkit-scrollbar { height: 14px; width: 14px; }
 .kanban::-webkit-scrollbar-track { background: #eef2f7; border-radius: 10px; }
 .kanban::-webkit-scrollbar-thumb { background: #b6c2d4; border-radius: 10px; border: 3px solid #eef2f7; }
 .kanban::-webkit-scrollbar-thumb:hover { background: #8d9bb3; }
@@ -292,15 +292,8 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .ss-cfg-un { font-size: 13px; font-weight: 700; color: #8a93a6; }
 .ss-cfg-hint { margin-top: 10px; font-size: 11px; font-weight: 600; line-height: 1.45; color: #6f7892; }
 .kcol-count { background: #1e2942; color: #fff; font-size: 10.5px; font-weight: 800; border-radius: 8px; padding: 2px 7px; }
-/* Barra de rolagem VERTICAL da coluna: sempre reservada (gutter) e bem visível,
-   igual à barra horizontal do quadro — para subir/descer os cards. */
-.kcol-body { flex: 1 1 auto; overflow-y: scroll; overflow-x: hidden; min-height: 0; display: flex; flex-direction: column; gap: 9px; padding-right: 5px; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #b6c2d4 #eef2f7; }
-.kcol-body::-webkit-scrollbar { width: 12px; }
-.kcol-body::-webkit-scrollbar-track { background: #eef2f7; border-radius: 10px; }
-.kcol-body::-webkit-scrollbar-thumb { background: #b6c2d4; border-radius: 10px; border: 3px solid #eef2f7; }
-.kcol-body::-webkit-scrollbar-thumb:hover { background: #8d9bb3; }
-/* Coluna sem overflow: esconde a barra "morta" (fica cinza clarinho só quando há o que rolar). */
-.kcol-body:not(:hover)::-webkit-scrollbar-thumb { background: #c6d0de; }
+/* A coluna NÃO rola sozinha — quem rola é o quadro inteiro (uma barra na direita). */
+.kcol-body { flex: 1 1 auto; overflow: visible; min-height: 0; display: flex; flex-direction: column; gap: 9px; }
 
 .kcard { background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 6px #0f172a14; border: 1px solid var(--line); }
 .kcard-hd { display: flex; align-items: center; justify-content: space-between; padding: 8px 11px; color: #fff; }
