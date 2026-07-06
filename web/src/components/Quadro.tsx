@@ -744,23 +744,20 @@ function Coluna({
           );
         })}
         {grupos.length === 0 && (
-          <div
-            style={{
-              flex: 1,
-              minHeight: 90,
-              border: "1.5px dashed #e2e8f0",
-              borderRadius: 12,
-              padding: "18px 10px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              textAlign: "center",
-              color: "#cbd5e1",
-              fontSize: 12,
-              fontWeight: 700,
-            }}
-          >
-            vazio
+          <div style={{ flex: 1, minHeight: 80, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span
+              style={{
+                border: "1.5px dashed #e2e8f0",
+                borderRadius: 999,
+                padding: "6px 16px",
+                color: "#cbd5e1",
+                fontSize: 11.5,
+                fontWeight: 700,
+                letterSpacing: ".5px",
+              }}
+            >
+              vazio
+            </span>
           </div>
         )}
       </div>

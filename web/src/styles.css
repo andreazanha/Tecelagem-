@@ -237,11 +237,20 @@ input:focus, select:focus { outline: none; border-color: var(--brand1); box-shad
 .content:has(.quadro-page) { padding-bottom: 6px; }
 /* Kanban: o QUADRO INTEIRO rola — uma única barra na DIREITA (vertical) e uma
    embaixo (horizontal), ambas fixas. As colunas não rolam sozinhas. */
-.kanban { flex: 1 1 auto; min-height: 0; display: flex; gap: 11px; overflow: auto; padding-bottom: 2px; align-items: flex-start; -webkit-overflow-scrolling: touch; }
+/* Barra HORIZONTAL (embaixo) e VERTICAL (à direita) SEMPRE visíveis e fixas —
+   overflow scroll (não auto) reserva as duas barras mesmo com o quadro vazio. */
+.kanban { flex: 1 1 auto; min-height: 0; display: flex; gap: 11px; overflow-x: scroll; overflow-y: scroll; padding-bottom: 2px; align-items: flex-start; -webkit-overflow-scrolling: touch; }
 .kanban::-webkit-scrollbar { height: 14px; width: 14px; }
+.kanban::-webkit-scrollbar-corner { background: transparent; }
 .kanban::-webkit-scrollbar-track { background: #eef2f7; border-radius: 10px; }
 .kanban::-webkit-scrollbar-thumb { background: #b6c2d4; border-radius: 10px; border: 3px solid #eef2f7; }
 .kanban::-webkit-scrollbar-thumb:hover { background: #8d9bb3; }
+/* No tema escuro, barras visíveis sem clarão (trilho escuro, polegar cinza-azulado). */
+body.dark .kanban::-webkit-scrollbar-track { background: #0f172a; }
+body.dark .kanban::-webkit-scrollbar-thumb { background: #3b4a63; border-color: #0f172a; }
+body.dark .kanban::-webkit-scrollbar-thumb:hover { background: #55688f; }
+.kanban { scrollbar-width: thin; scrollbar-color: #b6c2d4 #eef2f7; }
+body.dark .kanban { scrollbar-color: #3b4a63 #0f172a; }
 /* Coluna: no mínimo a altura visível do quadro (preenche quando há poucos cards),
    mas cresce com o conteúdo (quando é alto, o quadro inteiro rola — uma barra só). */
 .kcol { flex: 0 0 250px; max-width: 250px; display: flex; flex-direction: column; min-height: 100%; }
