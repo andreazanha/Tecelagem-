@@ -62,7 +62,8 @@ async function desmembrarCard(env: Env, pedidoId: string, parteFull: string): Pr
 async function garantirCards(env: Env) {
   const { results: faltantes } = await env.DB.prepare(
     `SELECT p.id, p.reposicao, p.entrega_pe FROM pedidos p
-      WHERE NOT EXISTS (SELECT 1 FROM producao pr WHERE pr.pedido_id = p.id)`
+      WHERE NOT EXISTS (SELECT 1 FROM producao pr WHERE pr.pedido_id = p.id)
+        AND COALESCE(p.status, '') <> 'aguardando_aprovacao'`
   ).all<{ id: string; reposicao: number; entrega_pe: string | null }>();
   if (!faltantes.length) return;
   const cat = await catalogoDe(env);

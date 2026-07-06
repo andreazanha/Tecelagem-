@@ -59,11 +59,11 @@ export const comercial = new Hono<{ Bindings: Env }>();
 comercial.get("/vendas", async (c) => {
   const de = (c.req.query("de") || "").trim();
   const ate = (c.req.query("ate") || "").trim();
-  const cond: string[] = [];
+  const cond: string[] = ["COALESCE(p.reposicao, 0) = 0"];
   const binds: string[] = [];
   if (de) { cond.push("p.data_pedido >= ?"); binds.push(de); }
   if (ate) { cond.push("p.data_pedido <= ?"); binds.push(ate); }
-  const where = cond.length ? "WHERE " + cond.join(" AND ") : "";
+  const where = "WHERE " + cond.join(" AND ");
   const { results } = await c.env.DB.prepare(
     `SELECT p.id, p.vendedor, COALESCE(SUM(i.qtd), 0) AS pecas, COALESCE(SUM(i.qtd * i.valor_unit), 0) AS valor
        FROM pedidos p LEFT JOIN pedido_itens i ON i.pedido_id = p.id
@@ -94,11 +94,11 @@ comercial.get("/vendas/detalhe", async (c) => {
   const ate = (c.req.query("ate") || "").trim();
   if (!vend) return c.json({ error: "vendedor é obrigatório" }, 400);
 
-  const cond: string[] = [];
+  const cond: string[] = ["COALESCE(p.reposicao, 0) = 0"];
   const binds: string[] = [];
   if (de) { cond.push("p.data_pedido >= ?"); binds.push(de); }
   if (ate) { cond.push("p.data_pedido <= ?"); binds.push(ate); }
-  const where = cond.length ? "WHERE " + cond.join(" AND ") : "";
+  const where = "WHERE " + cond.join(" AND ");
   const { results } = await c.env.DB.prepare(
     `SELECT p.id, p.numero_erp, p.vendedor, p.cliente_nome, p.data_pedido,
             COALESCE(SUM(i.qtd), 0) AS pecas, COALESCE(SUM(i.qtd * i.valor_unit), 0) AS valor

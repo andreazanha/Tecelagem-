@@ -1,6 +1,6 @@
 // Área de PRODUTOS: catálogo, estoque, ficha técnica, insumos, baixa de insumos
 // e histórico. Tudo em tabelas novas — não toca no fluxo de pedidos/produção.
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { Env } from "../index";
 import { gerarRelatorioEstoque, type LinhaEstoque } from "../pdf";
 import { enviarPush } from "../push-send";
@@ -12,8 +12,8 @@ export async function lembreteReposicao(env: Env): Promise<void> {
   const n = Number(row?.n) || 0;
   if (!n) return;
   await enviarPush(env, {
-    titulo: "⚠️ Reposição pendente",
-    corpo: n === 1 ? "1 produto aguardando pedido de reposição." : `${n} produtos aguardando pedido de reposição.`,
+    titulo: "⚠️ Reposição aguardando aprovação",
+    corpo: n === 1 ? "1 pedido de reposição montado, aguardando sua aprovação." : `${n} pedidos de reposição montados, aguardando aprovação.`,
     url: "/produtos?aba=reposicao",
     tag: "reposicao",
   });
@@ -45,23 +45,71 @@ export function casarProduto(it: ItemLite, prods: ProdLite[]): ProdLite | null {
   return cand[0] || null;
 }
 
-// Verifica se um produto atingiu o mínimo e, se sim, abre um ALERTA de reposição
-// (1 por produto em aberto). Retorna o alerta criado (para disparar o aviso/push).
-export async function verificarReposicao(env: Env, produtoId: string): Promise<{ id: string; nome: string; qtd: number; estoque: number; min: number } | null> {
-  const p = await env.DB.prepare("SELECT nome, estoque, estoque_min, reposicao_qtd, ativo FROM produtos WHERE id = ?")
+// Quantidade a repor para o estoque voltar ao patamar "mínimo + reposição".
+// No mínimo, produz a reposição pré-definida; se o estoque caiu ABAIXO do mínimo,
+// produz a mais para cobrir o buraco (é isso que faz o pedido "aumentar" quando
+// o estoque baixa mais enquanto a aprovação não sai).
+function qtdRepor(min: number, qtd: number, est: number): number {
+  const alvo = min + qtd; // patamar-alvo após a reposição
+  return Math.max(1, Math.trunc(Math.max(qtd, alvo - est)));
+}
+
+// Verifica se um produto atingiu o mínimo. Se sim, MONTA automaticamente um pedido
+// de reposição (que fica AGUARDANDO APROVAÇÃO humana, fora da produção) e abre um
+// alerta ligado a ele. Se já existe um alerta pendente e o estoque caiu mais, apenas
+// ATUALIZA a quantidade do pedido montado. Retorna o alerta (p/ o aviso/push).
+export async function verificarReposicao(
+  env: Env,
+  produtoId: string
+): Promise<{ id: string; nome: string; qtd: number; estoque: number; min: number; atualizado?: boolean } | null> {
+  const p = await env.DB.prepare("SELECT nome, ref, cor, tamanho, estoque, estoque_min, reposicao_qtd, ativo FROM produtos WHERE id = ?")
     .bind(produtoId)
-    .first<{ nome: string; estoque: number; estoque_min: number; reposicao_qtd: number; ativo: number }>();
+    .first<{ nome: string; ref: string | null; cor: string | null; tamanho: string | null; estoque: number; estoque_min: number; reposicao_qtd: number; ativo: number }>();
   if (!p || !p.ativo) return null;
-  const min = Number(p.estoque_min) || 0, est = Number(p.estoque) || 0, qtd = Number(p.reposicao_qtd) || 0;
-  if (min <= 0 || qtd <= 0 || est > min) return null; // não precisa repor
-  const ja = await env.DB.prepare("SELECT 1 FROM reposicao_alertas WHERE produto_id = ? AND status = 'pendente' LIMIT 1").bind(produtoId).first();
-  if (ja) return null; // já existe alerta em aberto
-  const id = uid();
-  await env.DB.prepare(
-    "INSERT INTO reposicao_alertas (id, produto_id, qtd_sugerida, estoque_no_alerta, estoque_min) VALUES (?, ?, ?, ?, ?)"
-  ).bind(id, produtoId, qtd, est, min).run();
-  await log(env, "estoque", `Alerta de reposição: ${p.nome} (estoque ${est} ≤ mínimo ${min}) — sugerido produzir ${qtd}`, null, produtoId);
-  return { id, nome: p.nome, qtd, estoque: est, min };
+  const min = Number(p.estoque_min) || 0, est = Number(p.estoque) || 0, base = Number(p.reposicao_qtd) || 0;
+  if (min <= 0 || base <= 0 || est > min) return null; // não precisa repor
+  const qtd = qtdRepor(min, base, est);
+
+  const ja = await env.DB.prepare(
+    "SELECT id, pedido_id, qtd_sugerida FROM reposicao_alertas WHERE produto_id = ? AND status = 'pendente' LIMIT 1"
+  ).bind(produtoId).first<{ id: string; pedido_id: string | null; qtd_sugerida: number }>();
+
+  if (ja) {
+    // Já tem um pedido montado aguardando aprovação. Se o estoque baixou mais e a
+    // quantidade necessária cresceu, atualiza o pedido (e o alerta).
+    if (qtd > (Number(ja.qtd_sugerida) || 0)) {
+      const stmts = [
+        env.DB.prepare("UPDATE reposicao_alertas SET qtd_sugerida = ?, estoque_no_alerta = ? WHERE id = ?").bind(qtd, est, ja.id),
+      ];
+      if (ja.pedido_id) {
+        stmts.push(env.DB.prepare("UPDATE pedido_itens SET qtd = ? WHERE pedido_id = ?").bind(qtd, ja.pedido_id));
+      }
+      await env.DB.batch(stmts);
+      await log(env, "estoque", `Reposição atualizada: ${p.nome} agora produzir ${qtd} (estoque caiu para ${est}, aguardando aprovação)`, null, produtoId);
+      return { id: ja.id, nome: p.nome, qtd, estoque: est, min, atualizado: true };
+    }
+    return null; // sem mudança
+  }
+
+  // Monta o pedido de reposição (aguardando aprovação — fora da produção até aprovar).
+  const alertaId = uid();
+  const pedidoId = uid();
+  const numero = "REP-" + pedidoId.slice(0, 6).toUpperCase();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO pedidos (id, numero_erp, cliente_nome, tipo, reposicao, data_pedido, observacao, status)
+       VALUES (?, ?, 'REPOSIÇÃO INTERNA', 'auto', 1, date('now'), 'Reposição automática de estoque (aguardando aprovação)', 'aguardando_aprovacao')`
+    ).bind(pedidoId, numero),
+    env.DB.prepare(
+      `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, valor_unit)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'kit', 1, 0)`
+    ).bind(uid(), pedidoId, p.nome, p.ref, p.cor, p.tamanho, qtd),
+    env.DB.prepare(
+      "INSERT INTO reposicao_alertas (id, produto_id, qtd_sugerida, estoque_no_alerta, estoque_min, pedido_id) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(alertaId, produtoId, qtd, est, min, pedidoId),
+  ]);
+  await log(env, "estoque", `Reposição montada: ${p.nome} × ${qtd} (${numero}) — estoque ${est} ≤ mínimo ${min}, aguardando aprovação`, null, produtoId);
+  return { id: alertaId, nome: p.nome, qtd, estoque: est, min };
 }
 
 // Onde as peças de um pedido estão na produção (setor/status de cada parte).
@@ -166,49 +214,76 @@ produtos.get("/relatorio-estoque/pdf", async (c) => {
   });
 });
 
-// Fila de REPOSIÇÃO (produtos que atingiram o mínimo e ainda não viraram pedido).
+// Fila de REPOSIÇÃO: pedidos já MONTADOS aguardando aprovação humana.
 produtos.get("/reposicao", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT a.id, a.produto_id, a.qtd_sugerida, a.estoque_no_alerta, a.estoque_min, a.status, a.pedido_id, a.criado_em,
-            p.nome AS produto_nome, p.ref, p.cor, p.tamanho, p.unidade, p.estoque
+            p.nome AS produto_nome, p.ref, p.cor, p.tamanho, p.unidade, p.estoque,
+            ped.numero_erp AS pedido_numero
        FROM reposicao_alertas a JOIN produtos p ON p.id = a.produto_id
+       LEFT JOIN pedidos ped ON ped.id = a.pedido_id
       WHERE a.status = 'pendente' ORDER BY a.criado_em DESC`
   ).all();
   return c.json(results);
 });
 
-// Gera o pedido de reposição (1 clique) para um alerta: 1 pedido por produto.
-produtos.post("/reposicao/:id/gerar", async (c) => {
+// APROVA a reposição montada: libera o pedido para a produção (status → novo).
+// (Mantém o caminho antigo /gerar como sinônimo.)
+async function aprovarReposicao(c: Context<{ Bindings: Env }>) {
   const alertaId = c.req.param("id");
   const b = await c.req.json<{ usuario?: string }>().catch(() => ({}) as { usuario?: string });
   const a = await c.env.DB.prepare("SELECT * FROM reposicao_alertas WHERE id = ?").bind(alertaId).first<Record<string, unknown>>();
   if (!a) return c.json({ error: "alerta não encontrado" }, 404);
-  if (a.status !== "pendente") return c.json({ error: "este alerta já foi resolvido" }, 409);
-  const p = await c.env.DB.prepare("SELECT nome, ref, cor, tamanho FROM produtos WHERE id = ?").bind(a.produto_id as string).first<{ nome: string; ref: string | null; cor: string | null; tamanho: string | null }>();
-  if (!p) return c.json({ error: "produto não encontrado" }, 404);
-  const pedidoId = uid();
-  const numero = "REP-" + pedidoId.slice(0, 6).toUpperCase();
+  if (a.status !== "pendente") return c.json({ error: "esta reposição já foi resolvida" }, 409);
+  const p = await c.env.DB.prepare("SELECT nome FROM produtos WHERE id = ?").bind(a.produto_id as string).first<{ nome: string }>();
+  let pedidoId = a.pedido_id as string | null;
+  let numero = "";
   const qtd = Math.max(0, Math.trunc(Number(a.qtd_sugerida) || 0));
-  await c.env.DB.batch([
-    c.env.DB.prepare(
-      `INSERT INTO pedidos (id, numero_erp, cliente_nome, tipo, reposicao, data_pedido, observacao, status)
-       VALUES (?, ?, 'REPOSIÇÃO INTERNA', 'auto', 1, date('now'), 'Reposição automática de estoque', 'novo')`
-    ).bind(pedidoId, numero),
-    c.env.DB.prepare(
-      `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, valor_unit)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'kit', 1, 0)`
-    ).bind(uid(), pedidoId, p.nome, p.ref, p.cor, p.tamanho, qtd),
-    c.env.DB.prepare("UPDATE reposicao_alertas SET status = 'gerado', pedido_id = ?, resolvido_em = datetime('now') WHERE id = ?").bind(pedidoId, alertaId),
-  ]);
-  await log(c.env, "estoque", `Pedido de reposição gerado: ${p.nome} × ${qtd} (${numero})`, b.usuario, a.produto_id as string);
-  return c.json({ ok: true, pedido_id: pedidoId, numero });
-});
 
-// Ignora um alerta de reposição.
+  if (pedidoId) {
+    // Pedido já montado: só libera para a produção.
+    const ped = await c.env.DB.prepare("SELECT numero_erp FROM pedidos WHERE id = ?").bind(pedidoId).first<{ numero_erp: string | null }>();
+    numero = ped?.numero_erp || "REP-" + pedidoId.slice(0, 6).toUpperCase();
+    await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE pedidos SET status = 'novo', observacao = 'Reposição automática de estoque' WHERE id = ?").bind(pedidoId),
+      c.env.DB.prepare("UPDATE reposicao_alertas SET status = 'gerado', resolvido_em = datetime('now') WHERE id = ?").bind(alertaId),
+    ]);
+  } else {
+    // Alerta antigo sem pedido montado: cria o pedido já liberado.
+    const prod = await c.env.DB.prepare("SELECT nome, ref, cor, tamanho FROM produtos WHERE id = ?").bind(a.produto_id as string).first<{ nome: string; ref: string | null; cor: string | null; tamanho: string | null }>();
+    if (!prod) return c.json({ error: "produto não encontrado" }, 404);
+    pedidoId = uid();
+    numero = "REP-" + pedidoId.slice(0, 6).toUpperCase();
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        `INSERT INTO pedidos (id, numero_erp, cliente_nome, tipo, reposicao, data_pedido, observacao, status)
+         VALUES (?, ?, 'REPOSIÇÃO INTERNA', 'auto', 1, date('now'), 'Reposição automática de estoque', 'novo')`
+      ).bind(pedidoId, numero),
+      c.env.DB.prepare(
+        `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, valor_unit)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'kit', 1, 0)`
+      ).bind(uid(), pedidoId, prod.nome, prod.ref, prod.cor, prod.tamanho, qtd),
+      c.env.DB.prepare("UPDATE reposicao_alertas SET status = 'gerado', pedido_id = ?, resolvido_em = datetime('now') WHERE id = ?").bind(pedidoId, alertaId),
+    ]);
+  }
+  await log(c.env, "estoque", `Reposição aprovada: ${p?.nome || ""} × ${qtd} (${numero}) — liberada para produção`, b.usuario, a.produto_id as string);
+  return c.json({ ok: true, pedido_id: pedidoId, numero });
+}
+produtos.post("/reposicao/:id/aprovar", aprovarReposicao);
+produtos.post("/reposicao/:id/gerar", aprovarReposicao);
+
+// Ignora/cancela a reposição: descarta o pedido montado (ainda não estava na produção).
 produtos.post("/reposicao/:id/ignorar", async (c) => {
-  await c.env.DB.prepare("UPDATE reposicao_alertas SET status = 'ignorado', resolvido_em = datetime('now') WHERE id = ? AND status = 'pendente'")
-    .bind(c.req.param("id"))
-    .run();
+  const alertaId = c.req.param("id");
+  const a = await c.env.DB.prepare("SELECT pedido_id FROM reposicao_alertas WHERE id = ? AND status = 'pendente'").bind(alertaId).first<{ pedido_id: string | null }>();
+  const stmts = [
+    c.env.DB.prepare("UPDATE reposicao_alertas SET status = 'ignorado', resolvido_em = datetime('now') WHERE id = ? AND status = 'pendente'").bind(alertaId),
+  ];
+  if (a?.pedido_id) {
+    stmts.push(c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id = ?").bind(a.pedido_id));
+    stmts.push(c.env.DB.prepare("DELETE FROM pedidos WHERE id = ? AND status = 'aguardando_aprovacao'").bind(a.pedido_id));
+  }
+  await c.env.DB.batch(stmts);
   return c.json({ ok: true });
 });
 

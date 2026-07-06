@@ -769,8 +769,8 @@ export const api = {
   listarLogProdutos: (tipo?: string) =>
     fetch(`/api/produtos/log${tipo ? "?tipo=" + tipo : ""}`).then((r) => j<ProdutoLog[]>(r)),
   listarReposicao: () => fetch("/api/produtos/reposicao").then((r) => j<RepAlerta[]>(r)),
-  gerarReposicao: (alertaId: string) =>
-    jsonPost(`/api/produtos/reposicao/${alertaId}/gerar`, { usuario: quemSou() }).then((r) => j<{ ok: boolean; pedido_id: string; numero: string }>(r)),
+  aprovarReposicao: (alertaId: string) =>
+    jsonPost(`/api/produtos/reposicao/${alertaId}/aprovar`, { usuario: quemSou() }).then((r) => j<{ ok: boolean; pedido_id: string; numero: string }>(r)),
   ignorarReposicao: (alertaId: string) =>
     jsonPost(`/api/produtos/reposicao/${alertaId}/ignorar`, {}).then((r) => j<{ ok: boolean }>(r)),
 
@@ -869,6 +869,8 @@ export interface RepAlerta {
   tamanho?: string | null;
   unidade?: string | null;
   estoque: number;
+  pedido_id?: string | null;
+  pedido_numero?: string | null;
 }
 export interface Representante {
   id: string;

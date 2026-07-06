@@ -367,11 +367,11 @@ function AbaReposicao() {
   }
   useEffect(recarregar, []);
 
-  async function gerar(a: RepAlerta) {
+  async function aprovar(a: RepAlerta) {
     setOcupado(a.id);
     try {
-      const r = await api.gerarReposicao(a.id);
-      alert(`Pedido de reposição ${r.numero} gerado para ${a.produto_nome}.`);
+      const r = await api.aprovarReposicao(a.id);
+      alert(`Reposição ${r.numero} aprovada — ${a.produto_nome} liberado para produção.`);
       recarregar();
     } catch (e) {
       alert((e as Error).message);
@@ -380,7 +380,7 @@ function AbaReposicao() {
     }
   }
   async function ignorar(a: RepAlerta) {
-    if (!confirm(`Ignorar o alerta de reposição de ${a.produto_nome}?`)) return;
+    if (!confirm(`Cancelar a reposição de ${a.produto_nome}? O pedido montado será descartado.`)) return;
     await api.ignorarReposicao(a.id).catch(() => {});
     recarregar();
   }
@@ -388,30 +388,31 @@ function AbaReposicao() {
   return (
     <>
       <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>
-        Produtos que atingiram o <strong>estoque mínimo</strong>. Clique em <strong>Gerar pedido</strong> para abrir um pedido de reposição (produzir a quantidade sugerida). Defina o mínimo e a quantidade de reposição no cadastro do produto.
+        Quando um produto atinge o <strong>estoque mínimo</strong>, o sistema já <strong>monta o pedido de reposição</strong> automaticamente (na quantidade necessária) — mas ele só entra na produção depois que você <strong>aprovar</strong>. Se o estoque continuar caindo enquanto a aprovação não sai, a quantidade do pedido é <strong>atualizada sozinha</strong>. Defina o mínimo e a quantidade de reposição no cadastro do produto.
       </p>
       <div className="card">
         <table className="table">
           <thead>
-            <tr><th>Produto</th><th>Ref</th><th>Cor · Tam</th><th className="num">Estoque</th><th className="num">Mínimo</th><th className="num">Produzir</th><th></th></tr>
+            <tr><th>Produto</th><th>Ref</th><th>Cor · Tam</th><th>Pedido</th><th className="num">Estoque</th><th className="num">Mínimo</th><th className="num">Produzir</th><th></th></tr>
           </thead>
           <tbody>
             {carregando ? (
-              <tr><td colSpan={7} className="empty pad">Carregando…</td></tr>
+              <tr><td colSpan={8} className="empty pad">Carregando…</td></tr>
             ) : itens.length === 0 ? (
-              <tr><td colSpan={7} className="empty pad">Nenhum produto precisando de reposição. 👍</td></tr>
+              <tr><td colSpan={8} className="empty pad">Nenhuma reposição aguardando aprovação. 👍</td></tr>
             ) : itens.map((a) => (
               <tr key={a.id} style={{ background: "#fff7ed" }}>
                 <td className="strong">{a.produto_nome}</td>
                 <td>{a.ref || "—"}</td>
                 <td>{a.cor || "—"}{a.tamanho ? ` · ${a.tamanho}` : ""}</td>
+                <td>{a.pedido_numero || "—"}</td>
                 <td className="num strong" style={{ color: "#b91c1c" }}>{nf(Number(a.estoque) || 0)} {a.unidade || ""}</td>
                 <td className="num">{nf(a.estoque_min)}</td>
                 <td className="num strong">{nf(a.qtd_sugerida)}</td>
                 <td>
                   <div className="row-gap" style={{ gap: 6 }}>
-                    <button className="btn btn-primary" disabled={!!ocupado} onClick={() => gerar(a)}>{ocupado === a.id ? "…" : "Gerar pedido"}</button>
-                    <button className="btn btn-soft" onClick={() => ignorar(a)}>Ignorar</button>
+                    <button className="btn btn-primary" disabled={!!ocupado} onClick={() => aprovar(a)}>{ocupado === a.id ? "…" : "Aprovar"}</button>
+                    <button className="btn btn-soft" onClick={() => ignorar(a)}>Cancelar</button>
                   </div>
                 </td>
               </tr>
