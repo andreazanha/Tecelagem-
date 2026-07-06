@@ -8,10 +8,11 @@
   --sidebar: #0f1629;
 }
 * { box-sizing: border-box; }
-/* A página NUNCA rola no navegador: o app ocupa a tela toda e a rolagem acontece
-   POR DENTRO (conteúdo na vertical, quadro na horizontal). Assim a barra horizontal
-   do quadro fica sempre fixa na base — igual à barra lateral. */
-html, body, #root { height: 100%; margin: 0; overflow: hidden; }
+/* A página não rola no navegador: o app ocupa a tela toda e a rolagem acontece
+   POR DENTRO — o conteúdo rola na vertical (barra à direita) e o quadro na
+   horizontal (barra embaixo), ambas SEMPRE visíveis e fixas. */
+html, body { height: 100%; margin: 0; overflow: hidden; }
+#root { height: 100%; }
 body {
   font-family: Inter, "Segoe UI", Helvetica, Arial, sans-serif;
   color: var(--ink);
@@ -71,6 +72,10 @@ a { color: inherit; }
 .sidebar {
   grid-area: side; background: var(--sidebar); color: #aeb6c7; padding: 18px 14px;
   display: flex; flex-direction: column;
+  min-height: 0; /* trava a barra lateral na altura da tela; o menu rola por dentro
+                    (senão a lateral cresce, empurra o app além da tela e some a barra
+                    de baixo do quadro) */
+  overflow: hidden;
 }
 .sidebar-version { margin-top: auto; padding: 10px 8px 0; color: #5b6478; font-size: 11px; font-weight: 700; letter-spacing: .5px; }
 .sidebar-title { color: #fff; font-weight: 700; font-size: 15px; padding: 0 8px; }
