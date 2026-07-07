@@ -297,6 +297,7 @@ export function Layout() {
   const u = getUser();
   const nav = useNavigate();
   const [ssMin, setSsMin] = useState(() => Number(localStorage.getItem("ssMin") || "0"));
+  const [ssOpen, setSsOpen] = useState(false);
   function mudarSs(v: number) {
     const n = Math.max(0, Math.min(240, Math.floor(v) || 0));
     setSsMin(n);
@@ -364,17 +365,32 @@ export function Layout() {
           </button>
         </div>
         <SidebarMenu u={u} min={menuMin} />
-        {!menuMin && (
-          <div className="ss-cfg" title="Após esse tempo sem uso, entra em modo TV (Painel). 0 = desligado.">
-            <div className="ss-cfg-top">💤 Protetor de tela</div>
-            <div className="ss-cfg-row">
-              <input type="number" min={0} max={240} value={ssMin} onChange={(e) => mudarSs(Number(e.target.value))} />
-              <span className="ss-cfg-un">minutos</span>
-            </div>
-            <div className="ss-cfg-hint">0 = desligado · abre o Painel TV após esse tempo parado</div>
+        {/* Rodapé discreto: mini-botão do protetor de tela + versão. */}
+        <div className="sidebar-foot">
+          <div className="ss-wrap">
+            <button
+              className={"ss-mini" + (ssOpen ? " on" : "")}
+              onClick={() => setSsOpen((o) => !o)}
+              title="Protetor de tela: após esse tempo sem uso, abre o Painel TV. Clique para ajustar."
+            >
+              💤{!menuMin && <span className="ss-mini-v">{ssMin > 0 ? `${ssMin} min` : "off"}</span>}
+            </button>
+            {ssOpen && (
+              <>
+                <div className="ss-pop-bg" onClick={() => setSsOpen(false)} />
+                <div className="ss-pop" onClick={(e) => e.stopPropagation()}>
+                  <div className="ss-pop-top">💤 Protetor de tela</div>
+                  <div className="ss-pop-row">
+                    <input type="number" min={0} max={240} value={ssMin} onChange={(e) => mudarSs(Number(e.target.value))} autoFocus />
+                    <span>minutos</span>
+                  </div>
+                  <div className="ss-pop-hint">0 = desligado. Abre o Painel TV após esse tempo parado.</div>
+                </div>
+              </>
+            )}
           </div>
-        )}
-        <div className="sidebar-version">{menuMin ? "·" : VERSION}</div>
+          {!menuMin && <span className="sidebar-version">{VERSION}</span>}
+        </div>
       </aside>
 
       <main className="content">
