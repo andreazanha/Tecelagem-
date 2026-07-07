@@ -392,8 +392,13 @@ function CoresCadastro() {
     setNovo({ nome: "", hex: "#cccccc" });
   }
   async function remover(c: Cor) {
-    await api.excluirCor(c.nome);
-    recarregar();
+    if (!confirm(`Excluir a cor "${c.nome}"? Isso não afeta pedidos/produtos já cadastrados.`)) return;
+    try {
+      await api.excluirCor(c.nome);
+      recarregar();
+    } catch (e) {
+      alert("Não foi possível excluir a cor: " + (e as Error).message);
+    }
   }
 
   const filtrados = cores.filter((c) => c.nome.toLowerCase().includes(busca.toLowerCase()));
@@ -421,7 +426,7 @@ function CoresCadastro() {
               <th>Amostra</th>
               <th>Cor sólida</th>
               <th>Foto (amostra real)</th>
-              <th></th>
+              <th>Excluir</th>
             </tr>
           </thead>
           <tbody>
@@ -539,7 +544,7 @@ function CorRow({
         </div>
       </td>
 
-      <td><button className="icon-btn" title="Remover cor" onClick={() => onRemover(c)}>✕</button></td>
+      <td><button className="btn btn-soft" title="Excluir esta cor" onClick={() => onRemover(c)} style={{ color: "#b91c1c" }}>🗑 Excluir</button></td>
     </tr>
   );
 }
