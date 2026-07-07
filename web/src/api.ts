@@ -835,6 +835,10 @@ export const api = {
   addInsumoCor: (nome: string) => jsonPost("/api/insumos/cores", { nome }).then((r) => j<{ id: string; nome: string }>(r)),
   excluirInsumoCor: (nome: string) => fetch(`/api/insumos/cores/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
 
+  // ── Assistente (IA) ─────────────────────────────────────────────────────
+  perguntarAssistente: (pergunta: string) =>
+    jsonPost("/api/assistente", { pergunta }).then((r) => j<{ resposta: string; dados: string }>(r)),
+
   // ── Fornecedores ────────────────────────────────────────────────────────
   listarFornecedores: () => fetch("/api/fornecedores").then((r) => j<Fornecedor[]>(r)),
   salvarFornecedor: (f: Partial<Fornecedor>) => jsonPost("/api/fornecedores", f).then((r) => j<{ id: string; nome: string }>(r)),

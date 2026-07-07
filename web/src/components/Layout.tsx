@@ -5,6 +5,7 @@ import { historico } from "../historico";
 import { getUser, setUser, pode } from "../auth";
 import { pushSuportado, pushAtivo, ativarPush, desativarPush } from "../push";
 import { Icon } from "./Icon";
+import { Assistente } from "./Assistente";
 
 // Sino de avisos: liga/desliga o Web Push de "pedido novo" neste aparelho.
 function SinoPush() {
@@ -396,6 +397,8 @@ export function Layout() {
       <main className="content">
         <Outlet />
       </main>
+
+      <Assistente />
     </div>
   );
 }
