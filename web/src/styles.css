@@ -87,8 +87,8 @@ a { color: inherit; }
 }
 .nav-item .nav-ic { width: 18px; text-align: center; opacity: .85; }
 .nav-item:hover { background: #ffffff0d; color: #eaeef6; }
-/* Item da PÁGINA ATUAL: pílula discreta com um filete de destaque — só ele marcado. */
-.nav-item.active { background: #ffffff12; color: #fff; font-weight: 600; box-shadow: inset 2px 0 0 #818cf8; }
+/* Item da PÁGINA ATUAL: pílula com leve tom da marca + filete — só ele marcado. */
+.nav-item.active { background: #6366f126; color: #fff; font-weight: 600; box-shadow: inset 2px 0 0 #818cf8; }
 .nav-item.active .nav-ic { opacity: 1; }
 /* Ícones do menu em tom MONOCROMÁTICO (visual corporativo — menos "emoji colorido").
    Ganham cor/brilho só no hover, no item ativo e no grupo aberto. */
