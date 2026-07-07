@@ -18,6 +18,10 @@ const TIPO: Record<string, { label: string; cls: string }> = {
 };
 // Parte "real" ignorando o sufixo "#op" de cards desmembrados (parte-unica#3768).
 const basePart = (p: string) => (p || "").split("#")[0];
+// Verbo do setor para o selo de prioridade de estoque ("TECER 1º", "CORTAR 1º"…).
+const verboSetor = (setor?: string) =>
+  setor === "tecelagem" ? "TECER" : setor === "corte" ? "CORTAR" : setor === "costura" ? "COSTURAR"
+  : setor === "passadoria" ? "PASSAR" : setor === "revisao" ? "REVISAR" : "FAZER";
 const opCodigo = (c: CardProducao) => {
   const kit = basePart(c.parte) === "pronta-entrega";
   // Card desmembrado mostra a OP de origem (número do pedido original).
@@ -684,6 +688,15 @@ function Coluna({
                 <div className="kcard-prod">
                   {pecas} pç{combinado ? ` · ${g.length} partes` : c.resumo ? ` · ${c.resumo}` : ""}
                 </div>
+                {!!c.reposicao && c.est_rank ? (
+                  <div className={"kcard-estoque urg-" + (c.est_urgencia || "ok")}>
+                    <span className="ke-rank">{c.est_rank === 1 ? `${verboSetor(cfg.setor)} 1º` : `${c.est_rank}º`}</span>
+                    <span className="ke-info">
+                      Estoque {c.est_estoque}/{c.est_min}
+                      {c.est_min ? ` · ${Math.round(((c.est_estoque || 0) / c.est_min) * 100)}%` : ""}
+                    </span>
+                  </div>
+                ) : null}
                 {c.observacao && <div className="kcard-obs">📝 {c.observacao}</div>}
                 <div className="kcard-boxes">
                   <div className="kbox ped">

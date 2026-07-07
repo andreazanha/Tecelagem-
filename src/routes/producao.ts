@@ -1,8 +1,55 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { classificar, criarCatalogo, type ItemBase } from "../classificar";
+import { casarProduto } from "./produtos";
 
 export const producao = new Hono<{ Bindings: Env }>();
+
+// INTELIGÊNCIA DE ESTOQUE: para os cards de REPOSIÇÃO (produção p/ estocar),
+// compara o estoque atual × mínimo do produto e sugere a ORDEM de produção
+// (o mais em falta primeiro) — evita fazer tudo misturado.
+type CardStock = Record<string, unknown> & { pedido_id: string; reposicao?: number | boolean };
+async function enriquecerEstoque(env: Env, cards: CardStock[]): Promise<CardStock[]> {
+  const rep = cards.filter((c) => Number(c.reposicao) === 1);
+  if (!rep.length) return cards;
+  const ids = [...new Set(rep.map((c) => c.pedido_id))];
+  const ph = ids.map(() => "?").join(",");
+  const { results: itens } = await env.DB.prepare(
+    `SELECT pedido_id, produto, ref, cor_grade, tamanho, qtd FROM pedido_itens WHERE pedido_id IN (${ph})`
+  ).bind(...ids).all<{ pedido_id: string; produto: string; ref: string | null; cor_grade: string | null; tamanho: string | null; qtd: number }>();
+  const { results: prods } = await env.DB.prepare(
+    "SELECT id, nome, ref, cor, tamanho, estoque, estoque_min FROM produtos WHERE ativo = 1"
+  ).all<{ id: string; nome: string; ref: string | null; cor: string | null; tamanho: string | null; estoque: number; estoque_min: number }>();
+
+  // por pedido, acha o produto mais crítico (menor cobertura) entre seus itens
+  const info = new Map<string, { estoque: number; min: number; cobertura: number; nome: string }>();
+  for (const pid of ids) {
+    let pior: { estoque: number; min: number; cobertura: number; nome: string } | null = null;
+    for (const it of itens.filter((x) => x.pedido_id === pid)) {
+      const p = casarProduto(it, prods) as (typeof prods)[number] | null;
+      if (!p) continue;
+      const est = Number(p.estoque) || 0, min = Number(p.estoque_min) || 0;
+      const cob = min > 0 ? est / min : est > 0 ? 999 : 0;
+      if (!pior || cob < pior.cobertura) pior = { estoque: est, min, cobertura: cob, nome: p.nome };
+    }
+    if (pior) info.set(pid, pior);
+  }
+  // ranqueia: abaixo do mínimo primeiro, menor cobertura, maior déficit
+  const rank = rep.filter((c) => info.has(c.pedido_id)).map((c) => ({ c, ...info.get(c.pedido_id)! }));
+  rank.sort((a, b) => {
+    const aB = a.min > 0 && a.estoque <= a.min, bB = b.min > 0 && b.estoque <= b.min;
+    if (aB !== bB) return aB ? -1 : 1;
+    if (a.cobertura !== b.cobertura) return a.cobertura - b.cobertura;
+    return b.min - b.estoque - (a.min - a.estoque);
+  });
+  rank.forEach((r, i) => {
+    r.c.est_estoque = r.estoque;
+    r.c.est_min = r.min;
+    r.c.est_rank = i + 1;
+    r.c.est_urgencia = r.estoque <= 0 ? "critico" : r.min > 0 && r.estoque <= r.min ? "baixo" : r.min > 0 && r.estoque <= r.min * 1.5 ? "atencao" : "ok";
+  });
+  return cards;
+}
 
 async function catalogoDe(env: Env) {
   const m = await env.DB.prepare(
@@ -160,7 +207,8 @@ producao.get("/", async (c) => {
   )
     .bind(setor)
     .all();
-  return c.json(results);
+  const enriquecido = await enriquecerEstoque(c.env, results as CardStock[]);
+  return c.json(enriquecido);
 });
 
 // DETALHE de uma parte (para o popup): dados + os blocos (modelo/cor/tamanhos) daquela parte.

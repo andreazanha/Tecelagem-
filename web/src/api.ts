@@ -116,6 +116,11 @@ export interface CardProducao {
   observacao?: string | null;
   reposicao?: boolean | number; // pedido de reposição (produzir p/ estocar)
   op?: string | null; // OP de origem quando o card foi desmembrado de uma OP consolidada
+  // Inteligência de estoque (só em cards de reposição): situação do produto + ordem sugerida.
+  est_estoque?: number;
+  est_min?: number;
+  est_rank?: number; // 1 = fazer primeiro (mais em falta)
+  est_urgencia?: "critico" | "baixo" | "atencao" | "ok";
 }
 
 // Expedição → Fiscal → Transporte
