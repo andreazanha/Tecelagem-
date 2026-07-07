@@ -75,14 +75,21 @@ assistente.post("/", async (c) => {
     "Use SOMENTE os dados do RETRATO abaixo — nunca invente números, nomes ou datas. Se a resposta não estiver nos dados, diga que não tem essa informação no sistema. " +
     `Hoje é ${hoje}.\n\nRETRATO ATUAL DO SISTEMA:\n${dados}`;
 
-  try {
-    const res = await (c.env.AI as unknown as { run: (m: string, o: unknown) => Promise<{ response?: string }> }).run(
-      "@cf/meta/llama-3.1-8b-instruct",
-      { messages: [{ role: "system", content: sistema }, { role: "user", content: pergunta }], max_tokens: 512 }
-    );
-    const resposta = (res?.response || "").trim() || "Não consegui gerar uma resposta agora.";
-    return c.json({ resposta, dados });
-  } catch (e) {
-    return c.json({ error: "IA indisponível: " + (e as Error).message, dados }, 502);
+  const AI = c.env.AI as unknown as { run: (m: string, o: unknown) => Promise<{ response?: string }> };
+  if (!AI?.run) return c.json({ error: "IA não está disponível neste ambiente (binding AI ausente).", dados }, 502);
+  const messages = [{ role: "system", content: sistema }, { role: "user", content: pergunta }];
+  // Tenta alguns modelos (o disponível varia por conta/região).
+  const modelos = ["@cf/meta/llama-3.1-8b-instruct", "@cf/meta/llama-3-8b-instruct", "@cf/mistral/mistral-7b-instruct-v0.1", "@cf/qwen/qwen1.5-7b-chat-awq"];
+  let ultimoErro = "";
+  for (const modelo of modelos) {
+    try {
+      const res = await AI.run(modelo, { messages, max_tokens: 512 });
+      const resposta = (res?.response || "").trim();
+      if (resposta) return c.json({ resposta, dados, modelo });
+      ultimoErro = "resposta vazia";
+    } catch (e) {
+      ultimoErro = (e as Error).message || String(e);
+    }
   }
+  return c.json({ error: "IA indisponível (" + ultimoErro + ")", dados }, 502);
 });
