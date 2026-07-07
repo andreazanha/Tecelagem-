@@ -85,17 +85,18 @@ a { color: inherit; }
   border-radius: 8px; text-decoration: none; color: #98a1b5; font-size: 13.5px; font-weight: 500;
   transition: background .13s ease, color .13s ease;
 }
-.nav-item .nav-ic { width: 18px; text-align: center; opacity: .85; }
-.nav-item:hover { background: #ffffff0d; color: #eaeef6; }
-/* Item da PÁGINA ATUAL: pílula com leve tom da marca + filete — só ele marcado. */
-.nav-item.active { background: #6366f126; color: #fff; font-weight: 600; box-shadow: inset 2px 0 0 #818cf8; }
-.nav-item.active .nav-ic { opacity: 1; }
-/* Ícones de LINHA (SVG, currentColor): herdam a cor do item — cinza discreto quando
-   inativo, claros no item da página atual e no grupo aberto. Visual corporativo. */
-.sidebar .nav-ic { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; opacity: .9; }
-.sidebar .nav-ic svg { width: 18px; height: 18px; }
+.nav-item:hover { color: #eaeef6; }
+/* Item da PÁGINA ATUAL: sem pílula na linha — o destaque é o TILE do ícone (degradê). */
+.nav-item.active { background: transparent; color: #fff; font-weight: 700; }
 .nav-item.disabled { color: #56607a; cursor: default; font-weight: 500; }
 .nav-item .soon { margin-left: auto; font-size: 9px; background: #ffffff12; color: #7d879e; padding: 2px 6px; border-radius: 8px; font-weight: 700; }
+/* Ícones de LINHA (SVG) dentro de um TILE arredondado (estilo app). Inativo = tile
+   discreto + ícone cinza; item da página atual = tile em degradê da marca + ícone branco. */
+.sidebar .nav-ic { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px; border-radius: 9px; background: #ffffff0f; color: #aeb6c7; transition: background .14s ease, color .14s ease; }
+.sidebar .nav-ic svg { width: 16px; height: 16px; }
+.sidebar .nav-item:hover .nav-ic { background: #ffffff1c; color: #eaeef6; }
+.sidebar .nav-item.active .nav-ic { background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; box-shadow: 0 4px 12px #4f46e544; }
+.sidebar .menu-grupo.aberto > .menu-grp-hd .nav-ic { color: #eaeef6; }
 
 .content { grid-area: main; padding: 24px 28px; overflow: auto; min-height: 0; min-width: 0; }
 

@@ -198,6 +198,10 @@ function itemAtivo(to: string, loc: ReturnType<typeof useLocation>): number {
   return -1;
 }
 
+// className como FUNÇÃO (não string) no NavLink: impede o react-router de marcar
+// sozinho todos os links do mesmo caminho (/produtos?aba=…) — só o nosso `ativo` vale.
+const navClasse = (ativo: boolean) => () => "nav-item" + (ativo ? " active" : "");
+
 // Menu lateral em grupos sanfonados + favoritos, com memória por usuário.
 function SidebarMenu({ u, min }: { u: NonNullable<ReturnType<typeof getUser>>; min: boolean }) {
   const loc = useLocation();
@@ -248,7 +252,7 @@ function SidebarMenu({ u, min }: { u: NonNullable<ReturnType<typeof getUser>>; m
         {desativado ? (
           <span className="nav-item disabled" title={it.label + (it.soon ? " — em breve" : "")}>{inner}</span>
         ) : (
-          <NavLink to={it.to!} className={"nav-item" + (ativo ? " active" : "")} title={it.label}>{inner}</NavLink>
+          <NavLink to={it.to!} className={navClasse(ativo)} title={it.label}>{inner}</NavLink>
         )}
         {!min && !desativado && (
           <button
