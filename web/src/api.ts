@@ -813,8 +813,8 @@ export const api = {
   },
   salvarInsumo: (i: Partial<Insumo>) =>
     jsonPost("/api/insumos", { ...i, usuario: quemSou() }).then((r) => j<{ id: string }>(r)),
-  cadastrarInsumosPorCores: (body: { base: string; cores: string[]; categoria?: string; unidade?: string; estoque_min?: number; codigo?: string; observacao?: string }) =>
-    jsonPost("/api/insumos/bulk-cores", { ...body, usuario: quemSou() }).then((r) => j<{ ok: boolean; criados: string[]; pulados: string[] }>(r)),
+  cadastrarInsumosPorCores: (body: { base: string; cores: string[]; categoria?: string; unidade?: string; estoque_min?: number; codigo?: string; fornecedor_id?: string | null; observacao?: string }) =>
+    jsonPost("/api/insumos/bulk-cores", { ...body, usuario: quemSou() }).then((r) => j<{ ok: boolean; criados: { nome: string; cor: string }[]; pulados: number }>(r)),
   ativarInsumo: (id: string, ativo: boolean) =>
     jsonPost(`/api/insumos/${id}/ativo`, { ativo, usuario: quemSou() }).then((r) => j<{ ok: boolean }>(r)),
   excluirInsumo: (id: string) =>
@@ -822,6 +822,18 @@ export const api = {
   movInsumo: (id: string, body: { tipo: string; origem: string; qtd: number; observacao?: string }) =>
     jsonPost(`/api/insumos/${id}/mov`, { ...body, usuario: quemSou() }).then((r) => j<{ ok: boolean; estoque: number }>(r)),
   movsInsumo: (id: string) => fetch(`/api/insumos/${id}/movs`).then((r) => j<InsumoMov[]>(r)),
+  // listas próprias do insumo (categorias e cores, separadas das cores de produto)
+  listarInsumoCategorias: () => fetch("/api/insumos/categorias").then((r) => j<{ id: string; nome: string }[]>(r)),
+  addInsumoCategoria: (nome: string) => jsonPost("/api/insumos/categorias", { nome }).then((r) => j<{ id: string; nome: string }>(r)),
+  excluirInsumoCategoria: (nome: string) => fetch(`/api/insumos/categorias/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  listarInsumoCores: () => fetch("/api/insumos/cores").then((r) => j<{ id: string; nome: string }[]>(r)),
+  addInsumoCor: (nome: string) => jsonPost("/api/insumos/cores", { nome }).then((r) => j<{ id: string; nome: string }>(r)),
+  excluirInsumoCor: (nome: string) => fetch(`/api/insumos/cores/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+
+  // ── Fornecedores ────────────────────────────────────────────────────────
+  listarFornecedores: () => fetch("/api/fornecedores").then((r) => j<Fornecedor[]>(r)),
+  salvarFornecedor: (f: Partial<Fornecedor>) => jsonPost("/api/fornecedores", f).then((r) => j<{ id: string; nome: string }>(r)),
+  excluirFornecedor: (id: string) => fetch(`/api/fornecedores/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
 };
 
 export const TIPOS: { value: string; label: string; pe?: boolean }[] = [
@@ -951,12 +963,25 @@ export interface Insumo {
   id: string;
   nome: string;
   categoria?: string | null;
+  cor?: string | null;
   unidade?: string;
   codigo?: string | null;
   estoque?: number;
   estoque_min?: number;
+  fornecedor_id?: string | null;
+  fornecedor_nome?: string | null;
   ativo?: number;
   observacao?: string | null;
+}
+export interface Fornecedor {
+  id: string;
+  nome: string;
+  contato?: string | null;
+  telefone?: string | null;
+  email?: string | null;
+  cnpj?: string | null;
+  observacao?: string | null;
+  ativo?: number;
 }
 export interface InsumoMov {
   id: string;

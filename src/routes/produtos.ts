@@ -21,6 +21,7 @@ export async function lembreteReposicao(env: Env): Promise<void> {
 
 const uid = () => crypto.randomUUID();
 const num = (v: unknown) => Math.max(0, Number(v) || 0);
+const str = (v: unknown) => String(v ?? "").trim() || null;
 
 // Grava uma linha no histórico da área de produtos (data/usuário/descrição).
 async function log(env: Env, tipo: string, descricao: string, usuario?: string | null, refId?: string | null) {
@@ -679,15 +680,35 @@ export const insumos = new Hono<{ Bindings: Env }>();
 insumos.get("/", async (c) => {
   const ativo = c.req.query("ativo") ?? "todos";
   const busca = (c.req.query("busca") || "").trim().toLowerCase();
-  let sql = "SELECT * FROM insumos";
-  if (ativo === "1" || ativo === "0") sql += ` WHERE ativo = ${ativo === "1" ? 1 : 0}`;
-  sql += " ORDER BY nome";
+  let sql = "SELECT i.*, f.nome AS fornecedor_nome FROM insumos i LEFT JOIN fornecedores f ON f.id = i.fornecedor_id";
+  if (ativo === "1" || ativo === "0") sql += ` WHERE i.ativo = ${ativo === "1" ? 1 : 0}`;
+  sql += " ORDER BY i.nome";
   const { results } = await c.env.DB.prepare(sql).all<Record<string, unknown>>();
   const lista = busca
-    ? results.filter((i) => `${i.nome} ${i.categoria || ""} ${i.codigo || ""}`.toLowerCase().includes(busca))
+    ? results.filter((i) => `${i.nome} ${i.categoria || ""} ${i.cor || ""} ${i.codigo || ""} ${i.fornecedor_nome || ""}`.toLowerCase().includes(busca))
     : results;
   return c.json(lista);
 });
+
+// ── Listas próprias do insumo: CATEGORIAS e CORES (separadas das cores de produto) ──
+for (const [rota, tabela] of [["categorias", "insumo_categorias"], ["cores", "insumo_cores"]] as const) {
+  insumos.get(`/${rota}`, async (c) => {
+    const { results } = await c.env.DB.prepare(`SELECT id, nome FROM ${tabela} ORDER BY nome`).all();
+    return c.json(results);
+  });
+  insumos.post(`/${rota}`, async (c) => {
+    const b = await c.req.json<{ nome?: string }>().catch(() => ({}) as { nome?: string });
+    const nome = String(b.nome || "").trim();
+    if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
+    await c.env.DB.prepare(`INSERT INTO ${tabela} (id, nome) VALUES (?, ?) ON CONFLICT(nome) DO NOTHING`).bind(uid(), nome).run();
+    const row = await c.env.DB.prepare(`SELECT id, nome FROM ${tabela} WHERE nome = ?`).bind(nome).first();
+    return c.json(row, 201);
+  });
+  insumos.delete(`/${rota}/:nome`, async (c) => {
+    await c.env.DB.prepare(`DELETE FROM ${tabela} WHERE nome = ?`).bind(decodeURIComponent(c.req.param("nome"))).run();
+    return c.json({ ok: true });
+  });
+}
 
 insumos.get("/:id/movs", async (c) => {
   const { results } = await c.env.DB.prepare(
@@ -705,19 +726,21 @@ insumos.post("/", async (c) => {
   const existe = b.id ? await c.env.DB.prepare("SELECT id FROM insumos WHERE id = ?").bind(b.id as string).first() : null;
   const id = (b.id as string) || uid();
   await c.env.DB.prepare(
-    `INSERT INTO insumos (id, nome, categoria, unidade, codigo, estoque_min, ativo, observacao, atualizado_em)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, categoria = excluded.categoria, unidade = excluded.unidade,
-       codigo = excluded.codigo, estoque_min = excluded.estoque_min, ativo = excluded.ativo,
+    `INSERT INTO insumos (id, nome, categoria, cor, unidade, codigo, estoque_min, fornecedor_id, ativo, observacao, atualizado_em)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, categoria = excluded.categoria, cor = excluded.cor, unidade = excluded.unidade,
+       codigo = excluded.codigo, estoque_min = excluded.estoque_min, fornecedor_id = excluded.fornecedor_id, ativo = excluded.ativo,
        observacao = excluded.observacao, atualizado_em = datetime('now')`
   )
     .bind(
       id,
       nome,
       String(b.categoria || "").trim() || null,
+      String(b.cor || "").trim() || null,
       String(b.unidade || "un").trim() || "un",
       String(b.codigo || "").trim() || null,
       num(b.estoque_min),
+      String(b.fornecedor_id || "").trim() || null,
       b.ativo === false || b.ativo === 0 ? 0 : 1,
       String(b.observacao || "").trim() || null
     )
@@ -726,42 +749,42 @@ insumos.post("/", async (c) => {
   return c.json({ id, nome }, existe ? 200 : 201);
 });
 
-// CADASTRO RÁPIDO por cores: cria de uma vez um insumo por cor (ex.: "Zíper Preto",
-// "Zíper Branco"…) com os mesmos dados-base. Pula os que já existem (mesmo nome).
+// CADASTRO RÁPIDO por cores: cria de uma vez um insumo por cor. O nome fica igual
+// (ex.: "Zíper") e a COR vai no campo próprio — pula os que já existem (nome+cor).
 insumos.post("/bulk-cores", async (c) => {
-  const b = await c.req.json<{ base?: string; cores?: string[]; categoria?: string; unidade?: string; estoque_min?: number; codigo?: string; observacao?: string; usuario?: string }>().catch(() => ({}) as Record<string, never>);
+  const b = await c.req.json<{ base?: string; cores?: string[]; categoria?: string; unidade?: string; estoque_min?: number; codigo?: string; fornecedor_id?: string; observacao?: string; usuario?: string }>().catch(() => ({}) as Record<string, never>);
   const base = String(b.base || "").trim();
   if (!base) return c.json({ error: "informe o nome-base (ex.: Zíper)" }, 400);
   const cores = [...new Set((b.cores || []).map((x) => String(x || "").trim()).filter(Boolean))];
   if (!cores.length) return c.json({ error: "selecione ao menos uma cor" }, 400);
 
-  // nomes que já existem (case-insensitive) para não duplicar
-  const { results: existentes } = await c.env.DB.prepare("SELECT nome FROM insumos").all<{ nome: string }>();
-  const jaTem = new Set(existentes.map((x) => x.nome.trim().toLowerCase()));
+  const chave = (n: unknown, co: unknown) => `${String(n || "").trim()}|${String(co || "").trim()}`.toLowerCase();
+  const { results: existentes } = await c.env.DB.prepare("SELECT nome, cor FROM insumos").all<{ nome: string; cor: string | null }>();
+  const jaTem = new Set(existentes.map((x) => chave(x.nome, x.cor)));
 
   const categoria = String(b.categoria || "").trim() || null;
   const unidade = String(b.unidade || "un").trim() || "un";
   const estMin = num(b.estoque_min);
   const obs = String(b.observacao || "").trim() || null;
   const codigo = String(b.codigo || "").trim();
+  const fornecedor = String(b.fornecedor_id || "").trim() || null;
 
   const stmts: D1PreparedStatement[] = [];
-  const criados: string[] = [];
-  const pulados: string[] = [];
+  const criados: { nome: string; cor: string }[] = [];
+  let pulados = 0;
   for (const cor of cores) {
-    const nome = `${base} ${cor}`.replace(/\s+/g, " ").trim();
-    if (jaTem.has(nome.toLowerCase())) { pulados.push(nome); continue; }
-    jaTem.add(nome.toLowerCase());
+    if (jaTem.has(chave(base, cor))) { pulados++; continue; }
+    jaTem.add(chave(base, cor));
     stmts.push(
       c.env.DB.prepare(
-        `INSERT INTO insumos (id, nome, categoria, unidade, codigo, estoque_min, ativo, observacao, atualizado_em)
-         VALUES (?, ?, ?, ?, ?, ?, 1, ?, datetime('now'))`
-      ).bind(uid(), nome, categoria, unidade, codigo ? `${codigo}-${cor}` : null, estMin, obs)
+        `INSERT INTO insumos (id, nome, categoria, cor, unidade, codigo, estoque_min, fornecedor_id, ativo, observacao, atualizado_em)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, datetime('now'))`
+      ).bind(uid(), base, categoria, cor, unidade, codigo ? `${codigo}-${cor}` : null, estMin, fornecedor, obs)
     );
-    criados.push(nome);
+    criados.push({ nome: base, cor });
   }
   if (stmts.length) await c.env.DB.batch(stmts);
-  await log(c.env, "insumo", `Cadastro rápido: ${base} em ${criados.length} cor(es)${pulados.length ? ` (${pulados.length} já existiam)` : ""}`, b.usuario, null);
+  await log(c.env, "insumo", `Cadastro rápido: ${base} em ${criados.length} cor(es)${pulados ? ` (${pulados} já existiam)` : ""}`, b.usuario, null);
   return c.json({ ok: true, criados, pulados });
 });
 
@@ -802,4 +825,40 @@ insumos.post("/:id/mov", async (c) => {
   ]);
   await log(c.env, "insumo", `${tipo === "entrada" ? "Entrada" : "Saída"} ${qtd} ${i.unidade} — ${i.nome} (${origem})`, b.usuario as string, id);
   return c.json({ ok: true, estoque: Number(i.estoque) + delta });
+});
+
+// ── FORNECEDORES (base para ordem de compra) ─────────────────────────────────
+export const fornecedores = new Hono<{ Bindings: Env }>();
+
+fornecedores.get("/", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, nome, contato, telefone, email, cnpj, observacao, ativo FROM fornecedores ORDER BY nome"
+  ).all();
+  return c.json(results);
+});
+
+fornecedores.post("/", async (c) => {
+  const b = await c.req.json<{ id?: string; nome?: string; contato?: string; telefone?: string; email?: string; cnpj?: string; observacao?: string; ativo?: boolean | number }>().catch(() => ({}) as Record<string, never>);
+  const nome = String(b.nome || "").trim();
+  if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
+  const existe = b.id ? await c.env.DB.prepare("SELECT id FROM fornecedores WHERE id = ?").bind(b.id).first() : null;
+  const id = b.id || uid();
+  await c.env.DB.prepare(
+    `INSERT INTO fornecedores (id, nome, contato, telefone, email, cnpj, observacao, ativo)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, contato = excluded.contato, telefone = excluded.telefone,
+       email = excluded.email, cnpj = excluded.cnpj, observacao = excluded.observacao, ativo = excluded.ativo`
+  )
+    .bind(id, nome, str(b.contato), str(b.telefone), str(b.email), str(b.cnpj), str(b.observacao), b.ativo === false || b.ativo === 0 ? 0 : 1)
+    .run();
+  return c.json({ id, nome }, existe ? 200 : 201);
+});
+
+fornecedores.delete("/:id", async (c) => {
+  const id = c.req.param("id");
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE insumos SET fornecedor_id = NULL WHERE fornecedor_id = ?").bind(id),
+    c.env.DB.prepare("DELETE FROM fornecedores WHERE id = ?").bind(id),
+  ]);
+  return c.json({ ok: true });
 });

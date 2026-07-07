@@ -8,7 +8,7 @@ import { expedicao } from "./routes/expedicao";
 import { romaneios } from "./routes/romaneios";
 import { dashboard } from "./routes/dashboard";
 import { push } from "./routes/push";
-import { produtos, insumos, lembreteReposicao } from "./routes/produtos";
+import { produtos, insumos, fornecedores, lembreteReposicao } from "./routes/produtos";
 import { representantes, comercial } from "./routes/comercial";
 
 export interface Env {
@@ -46,6 +46,7 @@ app.route("/api/dashboard", dashboard);
 app.route("/api/push", push);
 app.route("/api/produtos", produtos);
 app.route("/api/insumos", insumos);
+app.route("/api/fornecedores", fornecedores);
 app.route("/api/representantes", representantes);
 app.route("/api/comercial", comercial);
 

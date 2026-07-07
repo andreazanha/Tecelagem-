@@ -8,6 +8,7 @@ import {
   type KitComponente,
   type ProdutoMov,
   type Insumo,
+  type Fornecedor,
   type InsumoMov,
   type ProdutoLog,
   type ItemPedidoEstoque,
@@ -970,6 +971,7 @@ function AbaInsumos() {
   const [mov, setMov] = useState<Insumo | null>(null);
   const [extrato, setExtrato] = useState<Insumo | null>(null);
   const [cores, setCores] = useState(false);
+  const [listas, setListas] = useState(false);
 
   function recarregar() { api.listarInsumos({ busca }).then(setItens).catch(() => {}); }
   useEffect(recarregar, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -985,24 +987,27 @@ function AbaInsumos() {
     <>
       <div className="row-gap" style={{ marginBottom: 12, alignItems: "center" }}>
         <input className="busca-ped" placeholder="🔎 Nome, categoria ou código…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <button className="btn btn-soft" onClick={() => setCores(true)} style={{ marginLeft: "auto" }} title="Cadastrar um insumo em várias cores de uma vez (ex.: Zíper Preto, Branco, Vermelho…)">🎨 Cadastro por cores</button>
+        <button className="btn btn-soft" onClick={() => setListas(true)} style={{ marginLeft: "auto" }} title="Gerenciar as categorias e cores próprias dos insumos">🗂️ Categorias e cores</button>
+        <button className="btn btn-soft" onClick={() => setCores(true)} title="Cadastrar um insumo em várias cores de uma vez (ex.: Zíper em Preto, Branco, Vermelho…)">🎨 Cadastro por cores</button>
         <button className="btn btn-primary" onClick={() => setEdit({ ...INSUMO_VAZIO })}>＋ Novo insumo</button>
       </div>
       <div className="card">
         <table className="table">
           <thead>
-            <tr><th>Nome</th><th>Categoria</th><th>Código</th><th className="num">Estoque</th><th className="num">Mínimo</th><th>Status</th><th></th></tr>
+            <tr><th>Nome</th><th>Categoria</th><th>Cor</th><th>Código</th><th>Fornecedor</th><th className="num">Estoque</th><th className="num">Mínimo</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
             {itens.length === 0 ? (
-              <tr><td colSpan={7} className="empty pad">Nenhum insumo cadastrado.</td></tr>
+              <tr><td colSpan={9} className="empty pad">Nenhum insumo cadastrado.</td></tr>
             ) : itens.map((i) => {
               const baixo = (Number(i.estoque) || 0) <= (Number(i.estoque_min) || 0) && (Number(i.estoque_min) || 0) > 0;
               return (
                 <tr key={i.id} style={{ opacity: i.ativo ? 1 : 0.5 }}>
                   <td className="strong link" style={{ cursor: "pointer" }} onClick={() => setExtrato(i)}>{i.nome}</td>
                   <td>{i.categoria || "—"}</td>
+                  <td>{i.cor || "—"}</td>
                   <td>{i.codigo || "—"}</td>
+                  <td>{i.fornecedor_nome || "—"}</td>
                   <td className="num strong" style={baixo ? { color: "#b91c1c" } : undefined}>{nf(Number(i.estoque) || 0)} {i.unidade} {baixo ? "⚠️" : ""}</td>
                   <td className="num">{nf(Number(i.estoque_min) || 0)}</td>
                   <td><span className={"status status-" + (i.ativo ? "conferido" : "pendente")}>{i.ativo ? "ativo" : "inativo"}</span></td>
@@ -1019,6 +1024,7 @@ function AbaInsumos() {
           </tbody>
         </table>
       </div>
+      {listas && <ListasInsumoModal onFechar={() => setListas(false)} />}
       {cores && <InsumoCoresModal onFechar={() => setCores(false)} onSalvo={() => { setCores(false); recarregar(); }} />}
       {edit && <InsumoModal insumo={edit} onFechar={() => setEdit(null)} onSalvo={() => { setEdit(null); recarregar(); }} />}
       {mov && <MovModal alvo="insumo" id={mov.id} nome={mov.nome} unidade={mov.unidade || "un"} onFechar={() => setMov(null)} onFeito={() => { setMov(null); recarregar(); }} />}
@@ -1027,29 +1033,147 @@ function AbaInsumos() {
   );
 }
 
+// Gerenciar as listas próprias de insumo: categorias, cores e fornecedores.
+function ListasInsumoModal({ onFechar }: { onFechar: () => void }) {
+  const [aba, setAba] = useState<"categorias" | "cores" | "fornecedores">("categorias");
+  const [cats, setCats] = useState<string[]>([]);
+  const [cores, setCores] = useState<string[]>([]);
+  const [forns, setForns] = useState<Fornecedor[]>([]);
+  const [novo, setNovo] = useState("");
+
+  function carregar() {
+    api.listarInsumoCategorias().then((l) => setCats(l.map((x) => x.nome))).catch(() => {});
+    api.listarInsumoCores().then((l) => setCores(l.map((x) => x.nome))).catch(() => {});
+    api.listarFornecedores().then(setForns).catch(() => {});
+  }
+  useEffect(carregar, []);
+
+  async function add() {
+    const n = novo.trim();
+    if (!n) return;
+    try {
+      if (aba === "categorias") await api.addInsumoCategoria(n);
+      else if (aba === "cores") await api.addInsumoCor(n);
+      else await api.salvarFornecedor({ nome: n });
+      setNovo("");
+      carregar();
+    } catch (e) { alert((e as Error).message); }
+  }
+  async function del(nomeOuId: string, label: string) {
+    if (!confirm(`Excluir "${label}"?`)) return;
+    try {
+      if (aba === "categorias") await api.excluirInsumoCategoria(nomeOuId);
+      else if (aba === "cores") await api.excluirInsumoCor(nomeOuId);
+      else await api.excluirFornecedor(nomeOuId);
+      carregar();
+    } catch (e) { alert((e as Error).message); }
+  }
+
+  const abas: { id: typeof aba; label: string }[] = [
+    { id: "categorias", label: "🗂️ Categorias" },
+    { id: "cores", label: "🎨 Cores" },
+    { id: "fornecedores", label: "🚚 Fornecedores" },
+  ];
+  const lista = aba === "categorias" ? cats : aba === "cores" ? cores : forns.map((f) => f.nome);
+
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">Listas do insumo</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
+        <div className="pad">
+          <div className="segmented" style={{ marginBottom: 14 }}>
+            {abas.map((a) => <button key={a.id} type="button" className={"seg" + (aba === a.id ? " seg-on" : "")} onClick={() => setAba(a.id)}>{a.label}</button>)}
+          </div>
+          <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>
+            {aba === "cores" ? "Cores próprias dos insumos (separadas das cores de produto)." : aba === "categorias" ? "Categorias de insumo (viram opção no cadastro)." : "Fornecedores (para vincular ao insumo e futura ordem de compra)."}
+          </p>
+          <div className="row-gap" style={{ gap: 6, marginBottom: 12 }}>
+            <input value={novo} onChange={(e) => setNovo(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} placeholder={aba === "fornecedores" ? "Nome do fornecedor" : "Nome da " + (aba === "cores" ? "cor" : "categoria")} style={{ flex: 1 }} />
+            <button className="btn btn-primary" onClick={add}>＋ Adicionar</button>
+          </div>
+          {lista.length === 0 ? (
+            <p className="muted">Nada cadastrado ainda.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 320, overflow: "auto" }}>
+              {aba === "fornecedores"
+                ? forns.map((f) => (
+                    <div key={f.id} className="lista-row"><span>{f.nome}{f.telefone ? <span className="muted"> · {f.telefone}</span> : null}</span><button className="btn btn-soft" style={{ color: "#b91c1c" }} onClick={() => del(f.id, f.nome)}>🗑</button></div>
+                  ))
+                : (lista as string[]).map((n) => (
+                    <div key={n} className="lista-row"><span>{n}</span><button className="btn btn-soft" style={{ color: "#b91c1c" }} onClick={() => del(n, n)}>🗑</button></div>
+                  ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InsumoModal({ insumo, onFechar, onSalvo }: { insumo: Partial<Insumo>; onFechar: () => void; onSalvo: () => void }) {
   const [i, setI] = useState<Partial<Insumo>>(insumo);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [cats, setCats] = useState<string[]>([]);
+  const [cores, setCores] = useState<string[]>([]);
+  const [forns, setForns] = useState<Fornecedor[]>([]);
   const set = (patch: Partial<Insumo>) => setI((o) => ({ ...o, ...patch }));
+
+  function carregarListas() {
+    api.listarInsumoCategorias().then((l) => setCats(l.map((x) => x.nome))).catch(() => {});
+    api.listarInsumoCores().then((l) => setCores(l.map((x) => x.nome))).catch(() => {});
+    api.listarFornecedores().then(setForns).catch(() => {});
+  }
+  useEffect(carregarListas, []);
+
+  async function novoFornecedor() {
+    const nome = prompt("Nome do novo fornecedor:");
+    if (!nome?.trim()) return;
+    try { const f = await api.salvarFornecedor({ nome: nome.trim() }); await api.listarFornecedores().then(setForns); set({ fornecedor_id: f.id }); }
+    catch (e) { alert((e as Error).message); }
+  }
+
   async function salvar() {
     if (!i.nome?.trim()) return setErro("Informe o nome do insumo.");
     setSalvando(true);
     setErro("");
-    try { await api.salvarInsumo(i); onSalvo(); } catch (e) { setErro((e as Error).message); setSalvando(false); }
+    try {
+      // categoria/cor digitadas que ainda não existem → registra na lista própria
+      const cat = (i.categoria || "").trim(); const cor = (i.cor || "").trim();
+      if (cat && !cats.some((x) => x.toLowerCase() === cat.toLowerCase())) await api.addInsumoCategoria(cat).catch(() => {});
+      if (cor && !cores.some((x) => x.toLowerCase() === cor.toLowerCase())) await api.addInsumoCor(cor).catch(() => {});
+      await api.salvarInsumo(i);
+      onSalvo();
+    } catch (e) { setErro((e as Error).message); setSalvando(false); }
   }
   return (
     <div className="modal-bg" onClick={onFechar}>
-      <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card" style={{ maxWidth: 600 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">{i.id ? "Editar insumo" : "Novo insumo"}</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
         <div className="pad">
           {erro && <p className="erro">{erro}</p>}
           <div className="form-grid2">
             <Campo label="Nome do insumo *"><input value={i.nome || ""} onChange={(e) => set({ nome: e.target.value })} placeholder="ex.: Zíper 50cm" /></Campo>
-            <Campo label="Categoria"><input value={i.categoria || ""} onChange={(e) => set({ categoria: e.target.value })} placeholder="Aviamento, Embalagem…" /></Campo>
-            <Campo label="Código interno"><input value={i.codigo || ""} onChange={(e) => set({ codigo: e.target.value })} /></Campo>
-            <Campo label="Unidade de medida"><input value={i.unidade || ""} onChange={(e) => set({ unidade: e.target.value })} placeholder="un, m, g, kg" /></Campo>
+            <Campo label="Categoria">
+              <input list="ins-cats" value={i.categoria || ""} onChange={(e) => set({ categoria: e.target.value })} placeholder="Aviamento, Zíper…" />
+              <datalist id="ins-cats">{cats.map((c) => <option key={c} value={c} />)}</datalist>
+            </Campo>
+            <Campo label="Cor (do insumo)">
+              <input list="ins-cores" value={i.cor || ""} onChange={(e) => set({ cor: e.target.value })} placeholder="Preto, Marinho…" />
+              <datalist id="ins-cores">{cores.map((c) => <option key={c} value={c} />)}</datalist>
+            </Campo>
+            <Campo label="Código"><input value={i.codigo || ""} onChange={(e) => set({ codigo: e.target.value })} placeholder="ex.: ZIP50-PRETO" /></Campo>
+            <Campo label="Medida (unidade)"><input value={i.unidade || ""} onChange={(e) => set({ unidade: e.target.value })} placeholder="un, m, cm, g, kg" /></Campo>
             <Campo label="Estoque mínimo"><input type="number" min={0} step="any" value={i.estoque_min ?? 0} onChange={(e) => set({ estoque_min: Number(e.target.value) })} /></Campo>
+            <Campo label="Fornecedor">
+              <div className="row-gap" style={{ gap: 6 }}>
+                <select value={i.fornecedor_id || ""} onChange={(e) => set({ fornecedor_id: e.target.value || null })} style={{ flex: 1 }}>
+                  <option value="">— sem fornecedor —</option>
+                  {forns.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                </select>
+                <button className="btn btn-soft" type="button" onClick={novoFornecedor} title="Cadastrar novo fornecedor">＋</button>
+              </div>
+            </Campo>
             <Campo label="Ativo?">
               <select value={i.ativo ? "1" : "0"} onChange={(e) => set({ ativo: e.target.value === "1" ? 1 : 0 })}>
                 <option value="1">Ativo</option><option value="0">Inativo</option>
@@ -1080,9 +1204,9 @@ function InsumoCoresModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo
   const [nova, setNova] = useState("");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
-  const [res, setRes] = useState<{ criados: string[]; pulados: string[] } | null>(null);
+  const [res, setRes] = useState<{ criados: { nome: string; cor: string }[]; pulados: number } | null>(null);
 
-  useEffect(() => { api.listarCores().then((cs) => setCoresCat(cs.map((c) => c.nome))).catch(() => {}); }, []);
+  useEffect(() => { api.listarInsumoCores().then((cs) => setCoresCat(cs.map((c) => c.nome))).catch(() => {}); }, []);
 
   const toggle = (cor: string) => setSel((s) => (s.includes(cor) ? s.filter((x) => x !== cor) : [...s, cor]));
   function addNova() {
@@ -1090,6 +1214,7 @@ function InsumoCoresModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo
     if (!n) return;
     setSel((s) => (s.includes(n) ? s : [...s, n]));
     setCoresCat((c) => (c.some((x) => x.toLowerCase() === n.toLowerCase()) ? c : [...c, n]));
+    api.addInsumoCor(n).catch(() => {}); // registra a cor na lista própria de insumos
     setNova("");
   }
   async function salvar() {
@@ -1108,8 +1233,8 @@ function InsumoCoresModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo
         <div className="modal-card" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
           <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">🎨 Cadastro por cores</span></span><button className="modal-x" onClick={onSalvo}>✕</button></div></div>
           <div className="pad">
-            <p><strong>{res.criados.length}</strong> insumo(s) criado(s).{res.pulados.length ? ` ${res.pulados.length} já existiam (não dupliquei).` : ""}</p>
-            {res.criados.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>{res.criados.map((n) => <span key={n} className="cor-chip on">{n}</span>)}</div>}
+            <p><strong>{res.criados.length}</strong> insumo(s) criado(s).{res.pulados ? ` ${res.pulados} já existiam (não dupliquei).` : ""}</p>
+            {res.criados.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>{res.criados.map((v) => <span key={v.cor} className="cor-chip on">{v.nome} · {v.cor}</span>)}</div>}
             <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16 }}><button className="btn btn-primary" onClick={onSalvo}>Concluir</button></div>
           </div>
         </div>
@@ -1117,14 +1242,14 @@ function InsumoCoresModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo
     );
   }
 
-  const preview = sel.slice(0, 8).map((c) => `${base.trim()} ${c}`.replace(/\s+/g, " ").trim());
+  const preview = sel.slice(0, 8).map((c) => `${base.trim()} · ${c}`);
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">🎨 Cadastro rápido por cores</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
         <div className="pad">
           {erro && <p className="erro">{erro}</p>}
-          <p className="muted" style={{ marginTop: 0 }}>Cadastre um insumo em <strong>várias cores de uma vez</strong>. Ex.: base <strong>Zíper</strong> + cores → cria “Zíper Preto”, “Zíper Branco”… sem repetir o cadastro.</p>
+          <p className="muted" style={{ marginTop: 0 }}>Cadastre um insumo em <strong>várias cores de uma vez</strong>. O nome fica igual (ex.: <strong>Zíper</strong>) e cada cor vira um registro no <strong>campo cor</strong>. Cores próprias de insumo (não são as de produto).</p>
           <div className="form-grid2">
             <Campo label="Nome-base *"><input value={base} onChange={(e) => setBase(e.target.value)} placeholder="Zíper" /></Campo>
             <Campo label="Categoria"><input value={categoria} onChange={(e) => setCategoria(e.target.value)} placeholder="Aviamento" /></Campo>
