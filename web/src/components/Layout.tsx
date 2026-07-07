@@ -4,6 +4,7 @@ import { VERSION } from "../version";
 import { historico } from "../historico";
 import { getUser, setUser, pode } from "../auth";
 import { pushSuportado, pushAtivo, ativarPush, desativarPush } from "../push";
+import { Icon } from "./Icon";
 
 // Sino de avisos: liga/desliga o Web Push de "pedido novo" neste aparelho.
 function SinoPush() {
@@ -237,7 +238,7 @@ function SidebarMenu({ u, min }: { u: NonNullable<ReturnType<typeof getUser>>; m
     const ativo = !!it.to && it.to === ativoTo;
     const inner = (
       <>
-        <span className="nav-ic">{it.icon}</span>
+        <span className="nav-ic"><Icon emoji={it.icon} /></span>
         {!min && <span className="nav-lbl">{it.label}</span>}
         {!min && it.soon && <span className="soon">em breve</span>}
       </>
@@ -277,7 +278,7 @@ function SidebarMenu({ u, min }: { u: NonNullable<ReturnType<typeof getUser>>; m
             onClick={() => toggleGrupo(g.id)}
             title={abertos[g.id] ? `Fechar ${g.label}` : `Abrir ${g.label}`}
           >
-            <span className="nav-ic">{g.icon}</span>
+            <span className="nav-ic"><Icon emoji={g.icon} /></span>
             {!min && <span className="menu-grp-lbl">{g.label}</span>}
             {!min && <span className="menu-grp-car">▸</span>}
           </button>
