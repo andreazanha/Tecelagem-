@@ -100,6 +100,13 @@ a { color: inherit; }
 
 .content { grid-area: main; padding: 24px 28px; overflow: auto; min-height: 0; min-width: 0; }
 
+/* Chips de cor (cadastro rápido de insumo por cores) */
+.cor-chip { font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 12px; border-radius: 999px; border: 1px solid #d7deea; background: #fff; color: #475569; cursor: pointer; transition: all .12s; }
+.cor-chip:hover { border-color: #a9b6cc; }
+.cor-chip.on { background: linear-gradient(100deg, var(--brand1), var(--brand2)); border-color: transparent; color: #fff; }
+body.dark .cor-chip { background: #131c30; border-color: #ffffff1f; color: #c7d0e0; }
+body.dark .cor-chip.on { background: linear-gradient(100deg, #4f46e5, #7c3aed); border-color: transparent; color: #fff; }
+
 .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 h1 { font-size: 24px; margin: 0; }
 h2 { font-size: 15px; margin: 0 0 12px; }

@@ -811,6 +811,8 @@ export const api = {
   },
   salvarInsumo: (i: Partial<Insumo>) =>
     jsonPost("/api/insumos", { ...i, usuario: quemSou() }).then((r) => j<{ id: string }>(r)),
+  cadastrarInsumosPorCores: (body: { base: string; cores: string[]; categoria?: string; unidade?: string; estoque_min?: number; codigo?: string; observacao?: string }) =>
+    jsonPost("/api/insumos/bulk-cores", { ...body, usuario: quemSou() }).then((r) => j<{ ok: boolean; criados: string[]; pulados: string[] }>(r)),
   ativarInsumo: (id: string, ativo: boolean) =>
     jsonPost(`/api/insumos/${id}/ativo`, { ativo, usuario: quemSou() }).then((r) => j<{ ok: boolean }>(r)),
   excluirInsumo: (id: string) =>

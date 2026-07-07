@@ -859,6 +859,7 @@ function AbaInsumos() {
   const [edit, setEdit] = useState<Partial<Insumo> | null>(null);
   const [mov, setMov] = useState<Insumo | null>(null);
   const [extrato, setExtrato] = useState<Insumo | null>(null);
+  const [cores, setCores] = useState(false);
 
   function recarregar() { api.listarInsumos({ busca }).then(setItens).catch(() => {}); }
   useEffect(recarregar, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -874,7 +875,8 @@ function AbaInsumos() {
     <>
       <div className="row-gap" style={{ marginBottom: 12, alignItems: "center" }}>
         <input className="busca-ped" placeholder="🔎 Nome, categoria ou código…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <button className="btn btn-primary" onClick={() => setEdit({ ...INSUMO_VAZIO })} style={{ marginLeft: "auto" }}>＋ Novo insumo</button>
+        <button className="btn btn-soft" onClick={() => setCores(true)} style={{ marginLeft: "auto" }} title="Cadastrar um insumo em várias cores de uma vez (ex.: Zíper Preto, Branco, Vermelho…)">🎨 Cadastro por cores</button>
+        <button className="btn btn-primary" onClick={() => setEdit({ ...INSUMO_VAZIO })}>＋ Novo insumo</button>
       </div>
       <div className="card">
         <table className="table">
@@ -907,6 +909,7 @@ function AbaInsumos() {
           </tbody>
         </table>
       </div>
+      {cores && <InsumoCoresModal onFechar={() => setCores(false)} onSalvo={() => { setCores(false); recarregar(); }} />}
       {edit && <InsumoModal insumo={edit} onFechar={() => setEdit(null)} onSalvo={() => { setEdit(null); recarregar(); }} />}
       {mov && <MovModal alvo="insumo" id={mov.id} nome={mov.nome} unidade={mov.unidade || "un"} onFechar={() => setMov(null)} onFeito={() => { setMov(null); recarregar(); }} />}
       {extrato && <ExtratoModal alvo="insumo" id={extrato.id} nome={extrato.nome} onFechar={() => setExtrato(null)} />}
@@ -948,6 +951,97 @@ function InsumoModal({ insumo, onFechar, onSalvo }: { insumo: Partial<Insumo>; o
           <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 14 }}>
             <button className="btn" onClick={onFechar}>Cancelar</button>
             <button className="btn btn-primary" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar insumo"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Cadastro RÁPIDO de um insumo em várias cores (ex.: Zíper Preto, Branco, Vermelho…).
+function InsumoCoresModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => void }) {
+  const [base, setBase] = useState("Zíper");
+  const [categoria, setCategoria] = useState("Aviamento");
+  const [unidade, setUnidade] = useState("un");
+  const [estMin, setEstMin] = useState(0);
+  const [codigo, setCodigo] = useState("");
+  const [coresCat, setCoresCat] = useState<string[]>([]);
+  const [sel, setSel] = useState<string[]>([]);
+  const [nova, setNova] = useState("");
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [res, setRes] = useState<{ criados: string[]; pulados: string[] } | null>(null);
+
+  useEffect(() => { api.listarCores().then((cs) => setCoresCat(cs.map((c) => c.nome))).catch(() => {}); }, []);
+
+  const toggle = (cor: string) => setSel((s) => (s.includes(cor) ? s.filter((x) => x !== cor) : [...s, cor]));
+  function addNova() {
+    const n = nova.trim();
+    if (!n) return;
+    setSel((s) => (s.includes(n) ? s : [...s, n]));
+    setCoresCat((c) => (c.some((x) => x.toLowerCase() === n.toLowerCase()) ? c : [...c, n]));
+    setNova("");
+  }
+  async function salvar() {
+    if (!base.trim()) return setErro("Informe o nome-base (ex.: Zíper).");
+    if (!sel.length) return setErro("Selecione ao menos uma cor.");
+    setSalvando(true); setErro("");
+    try {
+      const r = await api.cadastrarInsumosPorCores({ base: base.trim(), cores: sel, categoria, unidade, estoque_min: estMin, codigo });
+      setRes({ criados: r.criados, pulados: r.pulados });
+    } catch (e) { setErro((e as Error).message); setSalvando(false); }
+  }
+
+  if (res) {
+    return (
+      <div className="modal-bg" onClick={onSalvo}>
+        <div className="modal-card" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">🎨 Cadastro por cores</span></span><button className="modal-x" onClick={onSalvo}>✕</button></div></div>
+          <div className="pad">
+            <p><strong>{res.criados.length}</strong> insumo(s) criado(s).{res.pulados.length ? ` ${res.pulados.length} já existiam (não dupliquei).` : ""}</p>
+            {res.criados.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>{res.criados.map((n) => <span key={n} className="cor-chip on">{n}</span>)}</div>}
+            <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16 }}><button className="btn btn-primary" onClick={onSalvo}>Concluir</button></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const preview = sel.slice(0, 8).map((c) => `${base.trim()} ${c}`.replace(/\s+/g, " ").trim());
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">🎨 Cadastro rápido por cores</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
+        <div className="pad">
+          {erro && <p className="erro">{erro}</p>}
+          <p className="muted" style={{ marginTop: 0 }}>Cadastre um insumo em <strong>várias cores de uma vez</strong>. Ex.: base <strong>Zíper</strong> + cores → cria “Zíper Preto”, “Zíper Branco”… sem repetir o cadastro.</p>
+          <div className="form-grid2">
+            <Campo label="Nome-base *"><input value={base} onChange={(e) => setBase(e.target.value)} placeholder="Zíper" /></Campo>
+            <Campo label="Categoria"><input value={categoria} onChange={(e) => setCategoria(e.target.value)} placeholder="Aviamento" /></Campo>
+            <Campo label="Unidade"><input value={unidade} onChange={(e) => setUnidade(e.target.value)} placeholder="un" /></Campo>
+            <Campo label="Estoque mínimo (cada)"><input type="number" min={0} step="any" value={estMin} onChange={(e) => setEstMin(Number(e.target.value))} /></Campo>
+            <Campo label="Código base (opcional)"><input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="ZIP50" /></Campo>
+          </div>
+          <div style={{ marginTop: 6 }}>
+            <div className="campo-l" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>CORES — {sel.length} selecionada(s)</span>
+              {sel.length > 0 && <button className="btn btn-soft" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => setSel([])}>limpar</button>}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "8px 0" }}>
+              {coresCat.length === 0 ? <span className="muted" style={{ fontSize: 12 }}>Nenhuma cor no cadastro — digite abaixo.</span>
+                : coresCat.map((c) => <button key={c} type="button" onClick={() => toggle(c)} className={"cor-chip" + (sel.includes(c) ? " on" : "")}>{c}</button>)}
+            </div>
+            <div className="row-gap" style={{ gap: 6 }}>
+              <input value={nova} onChange={(e) => setNova(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addNova(); } }} placeholder="+ nova cor (não cadastrada)" style={{ flex: 1 }} />
+              <button className="btn btn-soft" onClick={addNova}>Adicionar</button>
+            </div>
+          </div>
+          {sel.length > 0 && (
+            <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>Vai criar: {preview.map((n) => <span key={n} className="cor-chip on" style={{ marginRight: 4 }}>{n}</span>)}{sel.length > preview.length ? ` +${sel.length - preview.length}` : ""}</p>
+          )}
+          <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+            <button className="btn" onClick={onFechar}>Cancelar</button>
+            <button className="btn btn-primary" disabled={salvando || !sel.length} onClick={salvar}>{salvando ? "Criando…" : `Criar ${sel.length || ""} insumo(s)`}</button>
           </div>
         </div>
       </div>

@@ -679,6 +679,45 @@ insumos.post("/", async (c) => {
   return c.json({ id, nome }, existe ? 200 : 201);
 });
 
+// CADASTRO RÁPIDO por cores: cria de uma vez um insumo por cor (ex.: "Zíper Preto",
+// "Zíper Branco"…) com os mesmos dados-base. Pula os que já existem (mesmo nome).
+insumos.post("/bulk-cores", async (c) => {
+  const b = await c.req.json<{ base?: string; cores?: string[]; categoria?: string; unidade?: string; estoque_min?: number; codigo?: string; observacao?: string; usuario?: string }>().catch(() => ({}) as Record<string, never>);
+  const base = String(b.base || "").trim();
+  if (!base) return c.json({ error: "informe o nome-base (ex.: Zíper)" }, 400);
+  const cores = [...new Set((b.cores || []).map((x) => String(x || "").trim()).filter(Boolean))];
+  if (!cores.length) return c.json({ error: "selecione ao menos uma cor" }, 400);
+
+  // nomes que já existem (case-insensitive) para não duplicar
+  const { results: existentes } = await c.env.DB.prepare("SELECT nome FROM insumos").all<{ nome: string }>();
+  const jaTem = new Set(existentes.map((x) => x.nome.trim().toLowerCase()));
+
+  const categoria = String(b.categoria || "").trim() || null;
+  const unidade = String(b.unidade || "un").trim() || "un";
+  const estMin = num(b.estoque_min);
+  const obs = String(b.observacao || "").trim() || null;
+  const codigo = String(b.codigo || "").trim();
+
+  const stmts: D1PreparedStatement[] = [];
+  const criados: string[] = [];
+  const pulados: string[] = [];
+  for (const cor of cores) {
+    const nome = `${base} ${cor}`.replace(/\s+/g, " ").trim();
+    if (jaTem.has(nome.toLowerCase())) { pulados.push(nome); continue; }
+    jaTem.add(nome.toLowerCase());
+    stmts.push(
+      c.env.DB.prepare(
+        `INSERT INTO insumos (id, nome, categoria, unidade, codigo, estoque_min, ativo, observacao, atualizado_em)
+         VALUES (?, ?, ?, ?, ?, ?, 1, ?, datetime('now'))`
+      ).bind(uid(), nome, categoria, unidade, codigo ? `${codigo}-${cor}` : null, estMin, obs)
+    );
+    criados.push(nome);
+  }
+  if (stmts.length) await c.env.DB.batch(stmts);
+  await log(c.env, "insumo", `Cadastro rápido: ${base} em ${criados.length} cor(es)${pulados.length ? ` (${pulados.length} já existiam)` : ""}`, b.usuario, null);
+  return c.json({ ok: true, criados, pulados });
+});
+
 insumos.post("/:id/ativo", async (c) => {
   const id = c.req.param("id");
   const b = await c.req.json<{ ativo?: boolean; usuario?: string }>().catch(() => ({}) as { ativo?: boolean; usuario?: string });
