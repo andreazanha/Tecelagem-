@@ -93,6 +93,7 @@ function AbaProdutos() {
   const [busca, setBusca] = useState("");
   const [soAtivos, setSoAtivos] = useState(false);
   const [edit, setEdit] = useState<Partial<Produto> | null>(null);
+  const [variacoes, setVariacoes] = useState(false);
 
   function recarregar() {
     api.listarProdutos({ ativo: soAtivos ? "1" : "todos", busca }).then(setItens).catch(() => {});
@@ -120,7 +121,8 @@ function AbaProdutos() {
         <label className="row-gap" style={{ gap: 6, alignItems: "center" }}>
           <input type="checkbox" checked={soAtivos} onChange={(e) => setSoAtivos(e.target.checked)} /> só ativos
         </label>
-        <button className="btn btn-primary" onClick={() => setEdit({ ...VAZIO })} style={{ marginLeft: "auto" }}>
+        <button className="btn btn-soft" onClick={() => setVariacoes(true)} style={{ marginLeft: "auto" }} title="Cadastrar um produto em várias cores e/ou tamanhos de uma vez">🎨 Variações (cores/tamanhos)</button>
+        <button className="btn btn-primary" onClick={() => setEdit({ ...VAZIO })}>
           ＋ Novo produto
         </button>
       </div>
@@ -160,8 +162,116 @@ function AbaProdutos() {
           </tbody>
         </table>
       </div>
+      {variacoes && <ProdutoVariacoesModal onFechar={() => setVariacoes(false)} onSalvo={() => { setVariacoes(false); recarregar(); }} />}
       {edit && <ProdutoModal produto={edit} onFechar={() => setEdit(null)} onSalvo={() => { setEdit(null); recarregar(); }} />}
     </>
+  );
+}
+
+// Cadastro RÁPIDO de um produto em várias CORES e/ou TAMANHOS (cria a combinação).
+function ProdutoVariacoesModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => void }) {
+  const [nome, setNome] = useState("");
+  const [ref, setRef] = useState("");
+  const [categoria, setCategoria] = useState("");
+  const [unidade, setUnidade] = useState("un");
+  const [tipo, setTipo] = useState<"avulso" | "kit">("avulso");
+  const [estMin, setEstMin] = useState(0);
+  const [coresCat, setCoresCat] = useState<string[]>([]);
+  const [cores, setCores] = useState<string[]>([]);
+  const [novaCor, setNovaCor] = useState("");
+  const [tamanhos, setTamanhos] = useState<string[]>([]);
+  const [novoTam, setNovoTam] = useState("");
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [res, setRes] = useState<{ criados: { cor: string | null; tamanho: string | null }[]; pulados: number } | null>(null);
+
+  useEffect(() => { api.listarCores().then((cs) => setCoresCat(cs.map((c) => c.nome))).catch(() => {}); }, []);
+
+  const togCor = (c: string) => setCores((s) => (s.includes(c) ? s.filter((x) => x !== c) : [...s, c]));
+  function addCor() { const n = novaCor.trim(); if (!n) return; setCores((s) => (s.includes(n) ? s : [...s, n])); setCoresCat((c) => (c.some((x) => x.toLowerCase() === n.toLowerCase()) ? c : [...c, n])); setNovaCor(""); }
+  const togTam = (t: string) => setTamanhos((s) => (s.includes(t) ? s.filter((x) => x !== t) : [...s, t]));
+  function addTam() { const n = novoTam.trim(); if (!n) return; setTamanhos((s) => (s.includes(n) ? s : [...s, n])); setNovoTam(""); }
+
+  const totalCombos = (cores.length || 1) * (tamanhos.length || 1);
+  async function salvar() {
+    if (!nome.trim()) return setErro("Informe o nome do produto.");
+    if (!cores.length && !tamanhos.length) return setErro("Escolha pelo menos uma cor ou um tamanho.");
+    setSalvando(true); setErro("");
+    try {
+      const r = await api.cadastrarProdutosPorVariacoes({ nome: nome.trim(), ref, categoria, unidade, tipo, estoque_min: estMin, cores, tamanhos });
+      setRes({ criados: r.criados, pulados: r.pulados });
+    } catch (e) { setErro((e as Error).message); setSalvando(false); }
+  }
+
+  const rotulo = (cor: string | null, tam: string | null) => [cor, tam].filter(Boolean).join(" · ") || "(sem variação)";
+
+  if (res) {
+    return (
+      <div className="modal-bg" onClick={onSalvo}>
+        <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">🎨 Variações de {nome}</span></span><button className="modal-x" onClick={onSalvo}>✕</button></div></div>
+          <div className="pad">
+            <p><strong>{res.criados.length}</strong> produto(s) criado(s).{res.pulados ? ` ${res.pulados} já existiam (não dupliquei).` : ""}</p>
+            {res.criados.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>{res.criados.map((v, k) => <span key={k} className="cor-chip on">{rotulo(v.cor, v.tamanho)}</span>)}</div>}
+            <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16 }}><button className="btn btn-primary" onClick={onSalvo}>Concluir</button></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">🎨 Cadastro por variações</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
+        <div className="pad">
+          {erro && <p className="erro">{erro}</p>}
+          <p className="muted" style={{ marginTop: 0 }}>Cria um produto por combinação de <strong>cor × tamanho</strong> — de uma vez. Os dados abaixo valem para todas as variações.</p>
+          <div className="form-grid2">
+            <Campo label="Nome do produto *"><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex.: Almofada Wave" /></Campo>
+            <Campo label="Referência"><input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="ex.: 1075" /></Campo>
+            <Campo label="Categoria"><input value={categoria} onChange={(e) => setCategoria(e.target.value)} placeholder="Almofada, Manta…" /></Campo>
+            <Campo label="Unidade"><input value={unidade} onChange={(e) => setUnidade(e.target.value)} placeholder="un" /></Campo>
+            <Campo label="Tipo"><select value={tipo} onChange={(e) => setTipo(e.target.value as "avulso" | "kit")}><option value="avulso">Avulso</option><option value="kit">Kit</option></select></Campo>
+            <Campo label="Estoque mínimo (cada)"><input type="number" min={0} step="any" value={estMin} onChange={(e) => setEstMin(Number(e.target.value))} /></Campo>
+          </div>
+
+          <div style={{ marginTop: 4 }}>
+            <div className="campo-l" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>CORES — {cores.length}</span>{cores.length > 0 && <button className="btn btn-soft" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => setCores([])}>limpar</button>}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "8px 0" }}>
+              {coresCat.length === 0 ? <span className="muted" style={{ fontSize: 12 }}>Nenhuma cor no cadastro — digite abaixo.</span>
+                : coresCat.map((c) => <button key={c} type="button" onClick={() => togCor(c)} className={"cor-chip" + (cores.includes(c) ? " on" : "")}>{c}</button>)}
+            </div>
+            <div className="row-gap" style={{ gap: 6 }}>
+              <input value={novaCor} onChange={(e) => setNovaCor(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCor(); } }} placeholder="+ nova cor" style={{ flex: 1 }} />
+              <button className="btn btn-soft" onClick={addCor}>Adicionar</button>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <div className="campo-l" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>TAMANHOS — {tamanhos.length}</span>{tamanhos.length > 0 && <button className="btn btn-soft" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => setTamanhos([])}>limpar</button>}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "8px 0" }}>
+              {["50X50", "45X45", "1.20X1.80", "70X250", "0.90X1.20"].map((t) => <button key={t} type="button" onClick={() => togTam(t)} className={"cor-chip" + (tamanhos.includes(t) ? " on" : "")}>{t}</button>)}
+              {tamanhos.filter((t) => !["50X50", "45X45", "1.20X1.80", "70X250", "0.90X1.20"].includes(t)).map((t) => <button key={t} type="button" onClick={() => togTam(t)} className="cor-chip on">{t}</button>)}
+            </div>
+            <div className="row-gap" style={{ gap: 6 }}>
+              <input value={novoTam} onChange={(e) => setNovoTam(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTam(); } }} placeholder="+ novo tamanho (ex.: 40X60)" style={{ flex: 1 }} />
+              <button className="btn btn-soft" onClick={addTam}>Adicionar</button>
+            </div>
+          </div>
+
+          <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>Vai criar <strong>{totalCombos}</strong> produto(s){cores.length && tamanhos.length ? ` (${cores.length} cor × ${tamanhos.length} tam)` : ""}.</p>
+          <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 10 }}>
+            <button className="btn" onClick={onFechar}>Cancelar</button>
+            <button className="btn btn-primary" disabled={salvando || (!cores.length && !tamanhos.length)} onClick={salvar}>{salvando ? "Criando…" : `Criar ${totalCombos} produto(s)`}</button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

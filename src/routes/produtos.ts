@@ -389,6 +389,53 @@ produtos.get("/:id/foto", async (c) => {
   });
 });
 
+// CADASTRO RÁPIDO por VARIAÇÕES: cria de uma vez um produto por combinação de
+// COR × TAMANHO (mesmo nome/ref/categoria). Pula os que já existem
+// (nome+ref+tamanho+cor). Aceita só cores, só tamanhos, ou os dois (faz o cruzamento).
+produtos.post("/bulk-cores", async (c) => {
+  const b = await c.req.json<{ nome?: string; ref?: string; categoria?: string; unidade?: string; tipo?: string; estoque_min?: number; reposicao_qtd?: number; cores?: string[]; tamanhos?: string[]; usuario?: string }>().catch(() => ({}) as Record<string, never>);
+  const nome = String(b.nome || "").trim();
+  if (!nome) return c.json({ error: "informe o nome do produto" }, 400);
+  const cores = [...new Set((b.cores || []).map((x) => String(x || "").trim()).filter(Boolean))];
+  const tamanhos = [...new Set((b.tamanhos || []).map((x) => String(x || "").trim()).filter(Boolean))];
+  if (!cores.length && !tamanhos.length) return c.json({ error: "selecione pelo menos uma cor ou um tamanho" }, 400);
+
+  const ref = String(b.ref || "").trim() || null;
+  const categoria = String(b.categoria || "").trim() || null;
+  const unidade = String(b.unidade || "un").trim() || "un";
+  const tipo = b.tipo === "kit" ? "kit" : "avulso";
+  const estMin = num(b.estoque_min);
+  const repo = num(b.reposicao_qtd);
+
+  // se um dos eixos ficar vazio, usa [null] para não multiplicar por zero
+  const listaCor: (string | null)[] = cores.length ? cores : [null];
+  const listaTam: (string | null)[] = tamanhos.length ? tamanhos : [null];
+
+  const chave = (n: unknown, r: unknown, t: unknown, co: unknown) => `${String(n || "").trim()}|${String(r || "").trim()}|${String(t || "").trim()}|${String(co || "").trim()}`.toLowerCase();
+  const { results: existentes } = await c.env.DB.prepare("SELECT nome, ref, tamanho, cor FROM produtos").all<{ nome: string; ref: string | null; tamanho: string | null; cor: string | null }>();
+  const jaTem = new Set(existentes.map((p) => chave(p.nome, p.ref, p.tamanho, p.cor)));
+
+  const stmts: D1PreparedStatement[] = [];
+  const criados: { nome: string; cor: string | null; tamanho: string | null }[] = [];
+  let pulados = 0;
+  for (const cor of listaCor) {
+    for (const tam of listaTam) {
+      if (jaTem.has(chave(nome, ref, tam, cor))) { pulados++; continue; }
+      jaTem.add(chave(nome, ref, tam, cor));
+      stmts.push(
+        c.env.DB.prepare(
+          `INSERT INTO produtos (id, nome, ref, categoria, tamanho, cor, unidade, tipo, estoque_min, reposicao_qtd, ativo, atualizado_em)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'))`
+        ).bind(uid(), nome, ref, categoria, tam, cor, unidade, tipo, estMin, repo)
+      );
+      criados.push({ nome, cor, tamanho: tam });
+    }
+  }
+  if (stmts.length) await c.env.DB.batch(stmts);
+  await log(c.env, "produto", `Cadastro rápido: ${nome} em ${criados.length} variação(ões)${pulados ? ` (${pulados} já existiam)` : ""}`, b.usuario, null);
+  return c.json({ ok: true, criados, pulados });
+});
+
 // CRIA/ATUALIZA produto (upsert por id).
 produtos.post("/", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);

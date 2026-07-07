@@ -739,6 +739,8 @@ export const api = {
   obterProduto: (id: string) => fetch(`/api/produtos/${id}`).then((r) => j<Produto & { ficha: FichaItem[]; kit: KitComponente[] }>(r)),
   salvarProduto: (p: Partial<Produto>) =>
     jsonPost("/api/produtos", { ...p, usuario: quemSou() }).then((r) => j<{ id: string }>(r)),
+  cadastrarProdutosPorVariacoes: (body: { nome: string; ref?: string; categoria?: string; unidade?: string; tipo?: string; estoque_min?: number; reposicao_qtd?: number; cores: string[]; tamanhos: string[] }) =>
+    jsonPost("/api/produtos/bulk-cores", { ...body, usuario: quemSou() }).then((r) => j<{ ok: boolean; criados: { nome: string; cor: string | null; tamanho: string | null }[]; pulados: number }>(r)),
   ativarProduto: (id: string, ativo: boolean) =>
     jsonPost(`/api/produtos/${id}/ativo`, { ativo, usuario: quemSou() }).then((r) => j<{ ok: boolean }>(r)),
   excluirProduto: (id: string) =>
