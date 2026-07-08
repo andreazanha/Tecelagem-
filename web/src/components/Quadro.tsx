@@ -112,6 +112,30 @@ export interface QuadroCfg {
   agruparPorPedido?: boolean; // junta as partes do mesmo pedido num card só (ex.: Revisão, pedido misto)
   entradaEstoque?: boolean; // mostra "📥 Dar entrada no estoque" em cards de reposição (setor Estoque)
   desmembrar?: boolean; // mostra "🔀 Desmembrar OP" em cards de OP consolidada (setor Corte)
+  painel?: boolean; // habilita o modo "Painel" (Tecelagem: filas por galga + em produção)
+}
+
+// Galga (máquina) de um card: usa o valor calculado pelo backend (por produto);
+// se faltar, cai no padrão parte-1 → 3, o resto → 7.
+function galgaDe(c: CardProducao): 3 | 7 {
+  if (c.galga === 3 || c.galga === 7) return c.galga;
+  return basePart(c.parte) === "parte-1" ? 3 : 7;
+}
+// Ordena a fila: prioridade (★) primeiro, depois urgência de estoque (rank) e entrega.
+function ordenarFila(a: CardProducao, b: CardProducao): number {
+  if (!!b.prioridade !== !!a.prioridade) return b.prioridade ? 1 : -1;
+  const ra = a.est_rank ?? 9999, rb = b.est_rank ?? 9999;
+  if (ra !== rb) return ra - rb;
+  const da = a.data_entrega || "9999", db = b.data_entrega || "9999";
+  return da < db ? -1 : da > db ? 1 : 0;
+}
+// "há Xh" desde o início da tecelagem (para os cards em produção).
+function desde(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso.replace(" ", "T") + (iso.includes("Z") ? "" : "Z"));
+  if (isNaN(+d)) return "";
+  const min = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
+  return "há " + dur(min);
 }
 
 // Setores cujas colunas são PESSOAS. Costura = costureiras terceirizadas
@@ -149,6 +173,16 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [acaoModal, setAcaoModal] = useState<{ cards: CardProducao[]; acao: Acao } | null>(null);
   const [entradaPed, setEntradaPed] = useState<CardProducao | null>(null);
   const [busca, setBusca] = useState("");
+  // Modo de visualização (só onde cfg.painel): "painel" (novo) x "kanban" (antigo).
+  const [modo, setModo] = useState<"painel" | "kanban">(() =>
+    cfg.painel && localStorage.getItem("tec-modo") !== "kanban" ? "painel" : "kanban"
+  );
+  function trocarModo(m: "painel" | "kanban") {
+    setModo(m);
+    localStorage.setItem("tec-modo", m);
+  }
+  // Fila aberta pelo botão grande: por galga (Tecer) ou envio p/ passadoria.
+  const [fila, setFila] = useState<{ galga?: 3 | 7; envio?: boolean } | null>(null);
 
   function recarregar() {
     api
@@ -339,6 +373,12 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
               </button>
             )}
           </div>
+          {cfg.painel && (
+            <div className="modo-seg" role="tablist" aria-label="Modo de visualização">
+              <button className={"modo-seg-b" + (modo === "painel" ? " on" : "")} onClick={() => trocarModo("painel")}>▦ Painel</button>
+              <button className={"modo-seg-b" + (modo === "kanban" ? " on" : "")} onClick={() => trocarModo("kanban")}>☰ Kanban</button>
+            </div>
+          )}
           <button className="btn" onClick={recarregar}>↻ Atualizar</button>
         </div>
       </div>
@@ -363,6 +403,8 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 
       {carregando ? (
         <div className="card pad">Carregando…</div>
+      ) : cfg.painel && modo === "painel" ? (
+        <PainelTec cards={filtrados} onAbrir={setAberto} onAbrirFila={setFila} />
       ) : (
         <>
           <div className="kanban">
@@ -404,6 +446,19 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
         <EntradaEstoqueModal card={entradaPed} onFechar={() => setEntradaPed(null)} onFeito={() => { setEntradaPed(null); recarregar(); }} />
       )}
 
+      {fila && (
+        <FilaModal
+          cfg={cfg}
+          galga={fila.galga}
+          envio={fila.envio}
+          cards={cards}
+          onFechar={() => setFila(null)}
+          onAbrir={(c) => { setFila(null); setAberto(c); }}
+          onAcao={(c, acao) => { setFila(null); acaoCard([c], acao); }}
+          onPrioridade={alternarPrioridade}
+        />
+      )}
+
       {acaoModal && (
         <AcaoModal
           card={acaoModal.cards[0]}
@@ -420,6 +475,210 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// Etiqueta de origem do card (OP consolidada / kit de reposição) para o Painel.
+function TagCard({ c }: { c: CardProducao }) {
+  if (basePart(c.parte) === "pronta-entrega") return <span className="tp-tag kit">kit</span>;
+  if (ehConsolidada(c)) return <span className="tp-tag cons">consolidada</span>;
+  return null;
+}
+
+// ── PAINEL da Tecelagem ───────────────────────────────────────────────────────
+// Topo: 3 botões grandes (fila galga 3, fila galga 7, enviar p/ passadoria).
+// Abaixo: 2 colunas com os pedidos JÁ INICIADOS (tecendo agora) em cada galga.
+function PainelTec({
+  cards,
+  onAbrir,
+  onAbrirFila,
+}: {
+  cards: CardProducao[];
+  onAbrir: (c: CardProducao) => void;
+  onAbrirFila: (f: { galga?: 3 | 7; envio?: boolean }) => void;
+}) {
+  const aguardando = cards.filter((c) => c.status === "aguardando");
+  const fazendo = cards.filter((c) => c.status === "fazendo");
+  const prontos = cards.filter((c) => c.status === "pronto");
+  const filaG3 = aguardando.filter((c) => galgaDe(c) === 3);
+  const filaG7 = aguardando.filter((c) => galgaDe(c) === 7);
+  const crit = (arr: CardProducao[]) => arr.filter((c) => c.est_urgencia === "critico").length;
+  const colG3 = fazendo.filter((c) => galgaDe(c) === 3).sort(ordenarFila);
+  const colG7 = fazendo.filter((c) => galgaDe(c) === 7).sort(ordenarFila);
+  const subFila = (arr: CardProducao[]) => {
+    const n = crit(arr);
+    return (n ? `${n} crítico${n > 1 ? "s" : ""} · ` : "") + "na fila p/ tecer";
+  };
+  return (
+    <div className="painel">
+      <div className="tp-tiles">
+        <button className="tp-tile g3" onClick={() => onAbrirFila({ galga: 3 })}>
+          <span className="tp-ic">🧵</span>
+          <span className="tp-body">
+            <span className="tp-n">{filaG3.length}</span>
+            <span className="tp-l">Pedidos galga 3</span>
+            <span className="tp-sub">{subFila(filaG3)}</span>
+          </span>
+          <span className="tp-go">ver fila ›</span>
+        </button>
+        <button className="tp-tile g7" onClick={() => onAbrirFila({ galga: 7 })}>
+          <span className="tp-ic">🧶</span>
+          <span className="tp-body">
+            <span className="tp-n">{filaG7.length}</span>
+            <span className="tp-l">Pedidos galga 7</span>
+            <span className="tp-sub">{subFila(filaG7)}</span>
+          </span>
+          <span className="tp-go">ver fila ›</span>
+        </button>
+        <button className="tp-tile go" onClick={() => onAbrirFila({ envio: true })}>
+          <span className="tp-ic">➡️</span>
+          <span className="tp-body">
+            <span className="tp-n">{prontos.length}</span>
+            <span className="tp-l">Enviar p/ passadoria</span>
+            <span className="tp-sub">tecidos, prontos p/ seguir</span>
+          </span>
+          <span className="tp-go">enviar ›</span>
+        </button>
+      </div>
+      <div className="tp-sec">Tecendo agora</div>
+      <div className="tp-cols">
+        <PainelCol titulo="Galga 3" cls="g3" cards={colG3} onAbrir={onAbrir} />
+        <PainelCol titulo="Galga 7" cls="g7" cards={colG7} onAbrir={onAbrir} />
+      </div>
+    </div>
+  );
+}
+
+function PainelCol({
+  titulo,
+  cls,
+  cards,
+  onAbrir,
+}: {
+  titulo: string;
+  cls: string;
+  cards: CardProducao[];
+  onAbrir: (c: CardProducao) => void;
+}) {
+  return (
+    <div className="tp-col">
+      <div className={"tp-colh " + cls}>
+        <span className="tp-colic">🧵</span>
+        <span className="tp-colt">{titulo}</span>
+        <span className="tp-colc">{cards.length} tecendo</span>
+      </div>
+      <div className="tp-colbody">
+        {!cards.length ? (
+          <div className="tp-vaz">nenhum pedido em produção nesta máquina</div>
+        ) : (
+          cards.map((c) => (
+            <div key={c.pedido_id + c.parte} className="tp-card" onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
+              <div className="tp-ctop">
+                <b>{opCodigo(c)}</b>
+                <TagCard c={c} />
+                {!!c.prioridade && <span className="tp-live prio">★ na frente</span>}
+                <span className="tp-live">● tecendo</span>
+              </div>
+              <div className="tp-ccli">{c.cliente_nome}</div>
+              <div className="tp-cmeta">
+                {c.pecas} pç · 👤 {c.operador || "—"}{desde(c.iniciado_em) ? " · " + desde(c.iniciado_em) : ""}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Fila aberta pelos botões grandes: por galga (Tecer) ou envio p/ passadoria.
+function FilaModal({
+  cfg,
+  galga,
+  envio,
+  cards,
+  onFechar,
+  onAbrir,
+  onAcao,
+  onPrioridade,
+}: {
+  cfg: QuadroCfg;
+  galga?: 3 | 7;
+  envio?: boolean;
+  cards: CardProducao[];
+  onFechar: () => void;
+  onAbrir: (c: CardProducao) => void;
+  onAcao: (c: CardProducao, acao: Acao) => void;
+  onPrioridade: (c: CardProducao) => void;
+}) {
+  const lista = (
+    envio
+      ? cards.filter((c) => c.status === "pronto")
+      : cards.filter((c) => c.status === "aguardando" && galgaDe(c) === galga)
+  ).sort(ordenarFila);
+  const titulo = envio ? "Enviar para Passadoria" : `Fila da Galga ${galga}`;
+  const sub = envio
+    ? `${lista.length} pedido(s) tecido(s) · prontos p/ seguir`
+    : `${lista.length} pedido(s) esperando · ordenados por prioridade`;
+  const cls = envio ? "go" : galga === 3 ? "g3" : "g7";
+  const btnLabel = envio ? "Enviar ▸" : "Tecer ▸";
+  const acao: Acao = envio ? "enviar" : "fazer";
+  const temUrg = !envio && lista.some((c) => c.est_urgencia === "critico" || c.est_urgencia === "baixo");
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card fila-modal" onClick={(e) => e.stopPropagation()}>
+        <div className={"fila-hd " + cls}>
+          <div className="fila-hd-l">
+            <span className="fila-ic">{envio ? "➡️" : "🧵"}</span>
+            <div>
+              <div className="fila-t">{titulo}</div>
+              <div className="fila-s">{sub}</div>
+            </div>
+          </div>
+          <button className="modal-x" onClick={onFechar}>✕</button>
+        </div>
+        <div className="fila-bd">
+          {temUrg && (
+            <div className="fila-hint">💡 Ordem sugerida: primeiro os de estoque abaixo do mínimo e entregas mais próximas.</div>
+          )}
+          {!lista.length ? (
+            <div className="fila-vaz">Nada na fila.</div>
+          ) : (
+            lista.map((c, i) => {
+              const urg = c.est_urgencia === "critico" ? "crit" : c.est_urgencia === "baixo" ? "baixo" : "";
+              return (
+                <div key={c.pedido_id + c.parte} className={"fila-row" + (urg ? " " + urg : "")}>
+                  <div className="fila-k">{i + 1}</div>
+                  <div className="fila-main" onClick={() => onAbrir(c)}>
+                    <div className="fila-top">
+                      <b>{opCodigo(c)}</b>
+                      <TagCard c={c} />
+                      {urg === "crit" && <span className="fila-selo crit">CRÍTICO</span>}
+                      {urg === "baixo" && <span className="fila-selo baixo">BAIXO</span>}
+                    </div>
+                    <div className="fila-cli">{c.cliente_nome}</div>
+                    <div className="fila-meta">
+                      {c.pecas} pç · entrega {br(c.data_entrega)}
+                      {c.est_min ? ` · estoque ${c.est_estoque ?? 0}/${c.est_min}` : ""}
+                    </div>
+                  </div>
+                  {!envio && !cfg.semPrioridade && (
+                    <button
+                      className={"fila-star" + (c.prioridade ? " on" : "")}
+                      title={c.prioridade ? "Tirar da frente" : "Passar na frente"}
+                      onClick={() => onPrioridade(c)}
+                    >
+                      {c.prioridade ? "★" : "☆"}
+                    </button>
+                  )}
+                  <button className={"fila-btn " + cls} onClick={() => onAcao(c, acao)}>{btnLabel}</button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -833,7 +1092,9 @@ function CardModal({
     api.historicoProducao(card.pedido_id, card.parte).then(setHist).catch(() => {});
   }, [card.pedido_id, card.parte]);
 
-  const t = TIPO[card.parte] || { label: card.parte, cls: "" };
+  const t = TIPO[basePart(card.parte)] || { label: card.parte, cls: "" };
+  // Na Tecelagem o "tipo" vira a galga (máquina) definida pelo produto.
+  const tipoLabel = cfg.setor === "tecelagem" ? "GALGA " + galgaDe(card) : t.label;
   const origem =
     card.status === "fazendo" ? `${cfg.titulo} · ${card.maquina || card.operador || "—"}` : cfg.titulo;
 
@@ -868,7 +1129,7 @@ function CardModal({
           <div className="modal-hd-top">
             <span className="modal-pills">
               <span className="modal-pill">{opCodigo(card)}</span>
-              <span className="modal-pill">{t.label}</span>
+              <span className="modal-pill">{tipoLabel}</span>
             </span>
             <button className="modal-x" onClick={onFechar}>
               ✕
@@ -926,7 +1187,7 @@ function CardModal({
           </div>
 
           <div className="modal-grid">
-            <Campo l="TIPO" v={t.label} />
+            <Campo l="TIPO" v={tipoLabel} />
             <Campo l="QUANTIDADE" v={`${card.pecas} peças`} />
             <Campo l="RESPONSÁVEL" v={card.operador || "—"} />
             <Campo l="VENDEDOR" v={limparVendedor(det?.vendedor)} />

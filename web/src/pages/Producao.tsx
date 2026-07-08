@@ -3,6 +3,7 @@ import { Quadro, type QuadroCfg } from "../components/Quadro";
 const TECELAGEM: QuadroCfg = {
   setor: "tecelagem",
   titulo: "Tecelagem",
+  painel: true,
   fazerLabel: "Tecer",
   fazendoLabel: "Tecendo",
   proxSetor: "passadoria",

@@ -121,6 +121,7 @@ export interface CardProducao {
   est_min?: number;
   est_rank?: number; // 1 = fazer primeiro (mais em falta)
   est_urgencia?: "critico" | "baixo" | "atencao" | "ok";
+  galga?: 3 | 7; // máquina (galga) sugerida pelo produto — só na Tecelagem
 }
 
 // Expedição → Fiscal → Transporte

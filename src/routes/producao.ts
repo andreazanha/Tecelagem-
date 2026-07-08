@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
-import { classificar, criarCatalogo, type ItemBase } from "../classificar";
+import { classificar, criarCatalogo, resolverModelo, ehKit, type ItemBase } from "../classificar";
 import { casarProduto } from "./produtos";
 
 export const producao = new Hono<{ Bindings: Env }>();
@@ -8,7 +8,7 @@ export const producao = new Hono<{ Bindings: Env }>();
 // INTELIGÊNCIA DE ESTOQUE: para os cards de REPOSIÇÃO (produção p/ estocar),
 // compara o estoque atual × mínimo do produto e sugere a ORDEM de produção
 // (o mais em falta primeiro) — evita fazer tudo misturado.
-type CardStock = Record<string, unknown> & { pedido_id: string; reposicao?: number | boolean };
+type CardStock = Record<string, unknown> & { pedido_id: string; parte?: string; reposicao?: number | boolean; galga?: 3 | 7 };
 async function enriquecerEstoque(env: Env, cards: CardStock[]): Promise<CardStock[]> {
   const rep = cards.filter((c) => Number(c.reposicao) === 1);
   if (!rep.length) return cards;
@@ -49,6 +49,49 @@ async function enriquecerEstoque(env: Env, cards: CardStock[]): Promise<CardStoc
     r.c.est_urgencia = r.estoque <= 0 ? "critico" : r.min > 0 && r.estoque <= r.min ? "baixo" : r.min > 0 && r.estoque <= r.min * 1.5 ? "atencao" : "ok";
   });
   return cards;
+}
+
+// GALGA de cada card (3 ou 7), decidida PELO PRODUTO (catálogo de modelos):
+//  • parte-1 → galga 3  •  parte-2 → galga 7
+//  • parte-unica / kit (pronta-entrega) → resolve os modelos: se a maioria das peças
+//    é de modelo da galga 3 (parte 1) → 3, senão → 7. Assim a "parte única" cai
+//    sozinha na máquina certa, sem categoria à parte.
+async function enriquecerGalga(env: Env, cards: CardStock[]): Promise<void> {
+  const ids = [...new Set(cards.map((c) => c.pedido_id))];
+  if (!ids.length) return;
+  const ph = ids.map(() => "?").join(",");
+  const { results: itens } = await env.DB.prepare(
+    `SELECT pedido_id, produto, ref, cor_grade, tamanho, qtd, kit, origem FROM pedido_itens WHERE pedido_id IN (${ph})`
+  )
+    .bind(...ids)
+    .all<ItemBase & { pedido_id: string }>();
+  const cat = await catalogoDe(env);
+  const porPedido = new Map<string, (ItemBase & { pedido_id: string })[]>();
+  for (const it of itens) {
+    const g = porPedido.get(it.pedido_id) || [];
+    g.push(it);
+    porPedido.set(it.pedido_id, g);
+  }
+  const galgaDeItens = (arr: ItemBase[], kit: boolean): 3 | 7 => {
+    let p1 = 0,
+      p2 = 0;
+    for (const it of arr.filter((x) => ehKit(x) === kit)) {
+      const parte = resolverModelo(it, cat)?.parte;
+      const q = Number(it.qtd) || 1;
+      if (parte === 1) p1 += q;
+      else p2 += q;
+    }
+    return p1 > 0 && p1 >= p2 ? 3 : 7;
+  };
+  for (const c of cards) {
+    const base = String(c.parte).split("#")[0];
+    if (base === "parte-1") c.galga = 3;
+    else if (base === "parte-2") c.galga = 7;
+    else {
+      const arr = porPedido.get(c.pedido_id) || [];
+      c.galga = galgaDeItens(arr, base === "pronta-entrega");
+    }
+  }
 }
 
 async function catalogoDe(env: Env) {
@@ -208,6 +251,8 @@ producao.get("/", async (c) => {
     .bind(setor)
     .all();
   const enriquecido = await enriquecerEstoque(c.env, results as CardStock[]);
+  // Galga por produto só faz sentido na Tecelagem (onde o Painel separa por máquina).
+  if (setor === "tecelagem") await enriquecerGalga(c.env, enriquecido);
   return c.json(enriquecido);
 });
 
