@@ -123,6 +123,8 @@ function galgaDe(c: CardProducao): 3 | 7 {
   if (c.galga === 3 || c.galga === 7) return c.galga;
   return basePart(c.parte) === "parte-1" ? 3 : 7;
 }
+// Card de reposição (produzir p/ estocar) — fila separada dos pedidos de cliente.
+const ehRep = (c: CardProducao) => Number(c.reposicao) === 1;
 // Ordena a fila: prioridade (★) primeiro, depois urgência de estoque (rank) e entrega.
 function ordenarFila(a: CardProducao, b: CardProducao): number {
   if (!!b.prioridade !== !!a.prioridade) return b.prioridade ? 1 : -1;
@@ -175,16 +177,8 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [acaoModal, setAcaoModal] = useState<{ cards: CardProducao[]; acao: Acao } | null>(null);
   const [entradaPed, setEntradaPed] = useState<CardProducao | null>(null);
   const [busca, setBusca] = useState("");
-  // Modo de visualização (só onde cfg.painel): "painel" (novo) x "kanban" (antigo).
-  const [modo, setModo] = useState<"painel" | "kanban">(() =>
-    cfg.painel && localStorage.getItem("tec-modo") !== "kanban" ? "painel" : "kanban"
-  );
-  function trocarModo(m: "painel" | "kanban") {
-    setModo(m);
-    localStorage.setItem("tec-modo", m);
-  }
-  // Fila aberta pelo botão grande: por galga (Tecer), todas (Passar) ou envio.
-  const [fila, setFila] = useState<{ galga?: 3 | 7; envio?: boolean; todas?: boolean } | null>(null);
+  // Fila aberta pelo botão grande: por galga (Tecer), todas (Passar), reposição ou envio.
+  const [fila, setFila] = useState<{ galga?: 3 | 7; envio?: boolean; todas?: boolean; reposicao?: boolean } | null>(null);
 
   function recarregar() {
     api
@@ -375,12 +369,6 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
               </button>
             )}
           </div>
-          {cfg.painel && (
-            <div className="modo-seg" role="tablist" aria-label="Modo de visualização">
-              <button className={"modo-seg-b" + (modo === "painel" ? " on" : "")} onClick={() => trocarModo("painel")}>▦ Painel</button>
-              <button className={"modo-seg-b" + (modo === "kanban" ? " on" : "")} onClick={() => trocarModo("kanban")}>☰ Kanban</button>
-            </div>
-          )}
           <button className="btn" onClick={recarregar}>↻ Atualizar</button>
         </div>
       </div>
@@ -405,7 +393,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 
       {carregando ? (
         <div className="card pad">Carregando…</div>
-      ) : cfg.painel && modo === "painel" ? (
+      ) : cfg.painel ? (
         <PainelTec cfg={cfg} cards={filtrados} onAbrir={setAberto} onAbrirFila={setFila} onAcao={acaoCard} />
       ) : (
         <>
@@ -454,6 +442,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
           galga={fila.galga}
           envio={fila.envio}
           todas={fila.todas}
+          reposicao={fila.reposicao}
           cards={cards}
           onFechar={() => setFila(null)}
           onAbrir={(c) => { setFila(null); setAberto(c); }}
@@ -482,8 +471,9 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   );
 }
 
-// Etiqueta de origem do card (OP consolidada / kit de reposição) para o Painel.
+// Etiqueta de origem do card (reposição / OP consolidada / kit) para o Painel.
 function TagCard({ c }: { c: CardProducao }) {
+  if (ehRep(c)) return <span className="tp-tag rep">reposição</span>;
   if (basePart(c.parte) === "pronta-entrega") return <span className="tp-tag kit">kit</span>;
   if (ehConsolidada(c)) return <span className="tp-tag cons">consolidada</span>;
   return null;
@@ -508,7 +498,7 @@ function PainelTec({
   cfg: QuadroCfg;
   cards: CardProducao[];
   onAbrir: (c: CardProducao) => void;
-  onAbrirFila: (f: { galga?: 3 | 7; envio?: boolean; todas?: boolean }) => void;
+  onAbrirFila: (f: { galga?: 3 | 7; envio?: boolean; todas?: boolean; reposicao?: boolean }) => void;
   onAcao: (cards: CardProducao[], acao: Acao) => void;
 }) {
   const ic = cfg.painelIcone || "🧵";
@@ -517,22 +507,39 @@ function PainelTec({
   const aguardando = cards.filter((c) => c.status === "aguardando");
   const fazendo = cards.filter((c) => c.status === "fazendo").sort(ordenarFila);
   const prontos = cards.filter((c) => c.status === "pronto");
+  // Reposição (produzir p/ estocar) tem menu próprio; as filas de cliente a excluem.
+  const filaRep = aguardando.filter(ehRep);
+  const critRep = filaRep.filter((c) => c.est_urgencia === "critico").length;
+  const subRep = (critRep ? `${critRep} crítico${critRep > 1 ? "s" : ""} · ` : "") + "produzir p/ estocar";
+  const repTile = (
+    <button className="tp-tile rep" onClick={() => onAbrirFila({ reposicao: true })}>
+      <span className="tp-ic">🔄</span>
+      <span className="tp-body">
+        <span className="tp-n">{filaRep.length}</span>
+        <span className="tp-l">Reposição de estoque</span>
+        <span className="tp-sub">{subRep}</span>
+      </span>
+      <span className="tp-go">ver fila ›</span>
+    </button>
+  );
 
   // Passadoria: 1 menu + lista única com Finalizar (vai direto p/ o próximo setor).
   if (cfg.painelUnico) {
     const acaoFin: Acao = cfg.acaoFazendo || "finalizar";
+    const filaPassar = aguardando.filter((c) => !ehRep(c));
     return (
       <div className="painel">
-        <div className="tp-tiles um">
+        <div className="tp-tiles dois">
           <button className="tp-tile uni" onClick={() => onAbrirFila({ todas: true })}>
             <span className="tp-ic">{ic}</span>
             <span className="tp-body">
-              <span className="tp-n">{aguardando.length}</span>
+              <span className="tp-n">{filaPassar.length}</span>
               <span className="tp-l">A {verbo}</span>
               <span className="tp-sub">galga 3 e 7 · na fila p/ {verbo}</span>
             </span>
             <span className="tp-go">ver fila ›</span>
           </button>
+          {repTile}
         </div>
         <div className="tp-sec">{gerundio} agora · finalizar envia direto p/ o {cfg.proxSetor || "próximo setor"}</div>
         <div className="tp-lista">
@@ -563,9 +570,9 @@ function PainelTec({
     );
   }
 
-  // Tecelagem: filas por galga + colunas por galga.
-  const filaG3 = aguardando.filter((c) => galgaDe(c) === 3);
-  const filaG7 = aguardando.filter((c) => galgaDe(c) === 7);
+  // Tecelagem: filas por galga (só cliente) + reposição + enviar; colunas por galga.
+  const filaG3 = aguardando.filter((c) => !ehRep(c) && galgaDe(c) === 3);
+  const filaG7 = aguardando.filter((c) => !ehRep(c) && galgaDe(c) === 7);
   const crit = (arr: CardProducao[]) => arr.filter((c) => c.est_urgencia === "critico").length;
   const colG3 = fazendo.filter((c) => galgaDe(c) === 3);
   const colG7 = fazendo.filter((c) => galgaDe(c) === 7);
@@ -575,7 +582,7 @@ function PainelTec({
   };
   return (
     <div className="painel">
-      <div className="tp-tiles">
+      <div className="tp-tiles quatro">
         <button className="tp-tile g3" onClick={() => onAbrirFila({ galga: 3 })}>
           <span className="tp-ic">🧵</span>
           <span className="tp-body">
@@ -594,12 +601,13 @@ function PainelTec({
           </span>
           <span className="tp-go">ver fila ›</span>
         </button>
+        {repTile}
         <button className="tp-tile go" onClick={() => onAbrirFila({ envio: true })}>
           <span className="tp-ic">➡️</span>
           <span className="tp-body">
             <span className="tp-n">{prontos.length}</span>
             <span className="tp-l">Enviar p/ {cfg.proxSetor || "próximo"}</span>
-            <span className="tp-sub">tecidos, prontos p/ seguir</span>
+            <span className="tp-sub">prontos p/ seguir</span>
           </span>
           <span className="tp-go">enviar ›</span>
         </button>
@@ -663,6 +671,7 @@ function FilaModal({
   galga,
   envio,
   todas,
+  reposicao,
   cards,
   onFechar,
   onAbrir,
@@ -673,6 +682,7 @@ function FilaModal({
   galga?: 3 | 7;
   envio?: boolean;
   todas?: boolean;
+  reposicao?: boolean;
   cards: CardProducao[];
   onFechar: () => void;
   onAbrir: (c: CardProducao) => void;
@@ -680,25 +690,37 @@ function FilaModal({
   onPrioridade: (c: CardProducao) => void;
 }) {
   const verbo = cfg.fazerLabel; // "Tecer" | "Passar"
+  // Filas de cliente (galga/todas) sempre EXCLUEM reposição; a reposição tem fila própria.
   const lista = (
     envio
       ? cards.filter((c) => c.status === "pronto")
-      : cards.filter((c) => c.status === "aguardando" && (todas || galgaDe(c) === galga))
+      : reposicao
+        ? cards.filter((c) => c.status === "aguardando" && ehRep(c))
+        : cards.filter((c) => c.status === "aguardando" && !ehRep(c) && (todas || galgaDe(c) === galga))
   ).sort(ordenarFila);
-  const titulo = envio ? `Enviar para ${tituloSetor(cfg.proxSetor || "")}` : todas ? `Fila — A ${verbo.toLowerCase()}` : `Fila da Galga ${galga}`;
+  const titulo = envio
+    ? `Enviar para ${tituloSetor(cfg.proxSetor || "")}`
+    : reposicao
+      ? "Reposição de estoque"
+      : todas
+        ? `Fila — A ${verbo.toLowerCase()}`
+        : `Fila da Galga ${galga}`;
   const sub = envio
     ? `${lista.length} pedido(s) · prontos p/ seguir`
-    : `${lista.length} pedido(s) esperando · ordenados por prioridade`;
-  const cls = envio ? "go" : todas ? "uni" : galga === 3 ? "g3" : "g7";
+    : reposicao
+      ? `${lista.length} pedido(s) · produzir p/ estocar (mais em falta primeiro)`
+      : `${lista.length} pedido(s) esperando · ordenados por prioridade`;
+  const cls = envio ? "go" : reposicao ? "rep" : todas ? "uni" : galga === 3 ? "g3" : "g7";
   const btnLabel = envio ? "Enviar ▸" : verbo + " ▸";
   const acao: Acao = envio ? "enviar" : "fazer";
   const temUrg = !envio && lista.some((c) => c.est_urgencia === "critico" || c.est_urgencia === "baixo");
+  const chipGalga = todas || envio || reposicao; // filas mistas mostram a galga por pedido
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card fila-modal" onClick={(e) => e.stopPropagation()}>
         <div className={"fila-hd " + cls}>
           <div className="fila-hd-l">
-            <span className="fila-ic">{envio ? "➡️" : cfg.painelIcone || "🧵"}</span>
+            <span className="fila-ic">{envio ? "➡️" : reposicao ? "🔄" : cfg.painelIcone || "🧵"}</span>
             <div>
               <div className="fila-t">{titulo}</div>
               <div className="fila-s">{sub}</div>
@@ -721,7 +743,7 @@ function FilaModal({
                   <div className="fila-main" onClick={() => onAbrir(c)}>
                     <div className="fila-top">
                       <b>{opCodigo(c)}</b>
-                      {(todas || envio) && <GalgaChip c={c} />}
+                      {chipGalga && <GalgaChip c={c} />}
                       <TagCard c={c} />
                       {urg === "crit" && <span className="fila-selo crit">CRÍTICO</span>}
                       {urg === "baixo" && <span className="fila-selo baixo">BAIXO</span>}
