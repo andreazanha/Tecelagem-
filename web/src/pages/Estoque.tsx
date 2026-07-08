@@ -5,6 +5,9 @@ import { Quadro, type QuadroCfg } from "../components/Quadro";
 const ESTOQUE: QuadroCfg = {
   setor: "estoque",
   titulo: "Estoque",
+  painel: true,
+  painelEstoque: true,
+  painelIcone: "📦",
   fazerLabel: "Separar",
   fazendoLabel: "Separando",
   proxSetor: "revisao",
