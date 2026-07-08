@@ -829,3 +829,10 @@ body.dark .tp-lcli { color: #c7d0e0; }
 .tp-tile.prio { background: linear-gradient(130deg, #b45309, #f59e0b); }
 .fila-hd.prio { background: linear-gradient(130deg, #b45309, #f59e0b); }
 .fila-btn.prio { background: #d97706; }
+
+/* Painel do Corte: a cortar (cliente/reposição) + cortados */
+.tp-tile.cut { background: linear-gradient(130deg, #0e7490, #0891b2); }
+.tp-tile.done { background: linear-gradient(130deg, #065f46, #059669); }
+.tp-tile.donerep { background: linear-gradient(130deg, #7c2d12, #c2410c); }
+.fila-hd.donerep { background: linear-gradient(130deg, #7c2d12, #c2410c); }
+.fila-btn.donerep { background: #c2410c; }

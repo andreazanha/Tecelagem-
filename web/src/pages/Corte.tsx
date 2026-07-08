@@ -3,6 +3,9 @@ import { Quadro, type QuadroCfg } from "../components/Quadro";
 const CORTE: QuadroCfg = {
   setor: "corte",
   titulo: "Corte",
+  painel: true,
+  painelCorte: true,
+  painelIcone: "✂️",
   fazerLabel: "Cortar",
   fazendoLabel: "Cortando",
   proxSetor: "costura",

@@ -114,6 +114,7 @@ export interface QuadroCfg {
   desmembrar?: boolean; // mostra "🔀 Desmembrar OP" em cards de OP consolidada (setor Corte)
   painel?: boolean; // habilita o modo "Painel" (Tecelagem: filas por galga + em produção)
   painelUnico?: boolean; // Painel com 1 menu (galga 3+7 juntas) + lista única c/ Finalizar (Passadoria)
+  painelCorte?: boolean; // Painel do Corte: a cortar (cliente/reposição) + cortados + lista
   painelIcone?: string; // emoji do menu/colunas do painel (default 🧵)
 }
 
@@ -429,7 +430,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
       )}
 
       {aberto && (
-        <CardModal card={aberto} cfg={cfg} stLabel={stLabel} onFechar={() => setAberto(null)} onAcao={acaoCard} onPrioridade={alternarPrioridade} onPular={(c, setor) => mudarGrupo([c], { status: "aguardando", setor })} onRecarregar={recarregar} />
+        <CardModal card={aberto} cfg={cfg} stLabel={stLabel} onFechar={() => setAberto(null)} onAcao={acaoCard} onPrioridade={alternarPrioridade} onPular={(c, setor) => mudarGrupo([c], { status: "aguardando", setor })} onRecarregar={recarregar} onDesmembrar={cfg.desmembrar ? desmembrar : undefined} />
       )}
 
       {entradaPed && (
@@ -574,6 +575,85 @@ function PainelTec({
     );
   }
 
+  // Corte: as partes 1 e 2 já se uniram; separa cliente × reposição no "a cortar"
+  // e nos "cortados". Finalizar marca como cortado; enviar escolhe a costureira.
+  if (cfg.painelCorte) {
+    const acaoFin: Acao = cfg.acaoFazendo || "finalizar";
+    const filaPrioC = aguardando.filter((c) => !!c.prioridade);
+    const aCortar = aguardando.filter((c) => !ehRep(c) && !c.prioridade);
+    const cortadosCli = prontos.filter((c) => !ehRep(c));
+    const cortadosRep = prontos.filter((c) => ehRep(c));
+    return (
+      <div className="painel">
+        <div className="tp-tiles quatro">
+          {temUrgentes && (
+            <button className="tp-tile prio span" onClick={() => onAbrirFila({ prioridade: true })}>
+              <span className="tp-ic">★</span>
+              <span className="tp-body">
+                <span className="tp-n">{filaPrioC.length}</span>
+                <span className="tp-l">Urgentes</span>
+                <span className="tp-sub">passar na frente · clientes atrasados</span>
+              </span>
+              <span className="tp-go">ver fila ›</span>
+            </button>
+          )}
+          <button className="tp-tile cut" onClick={() => onAbrirFila({ todas: true })}>
+            <span className="tp-ic">✂️</span>
+            <span className="tp-body">
+              <span className="tp-n">{aCortar.length}</span>
+              <span className="tp-l">Aguardando corte</span>
+              <span className="tp-sub">pedidos de cliente</span>
+            </span>
+            <span className="tp-go">ver fila ›</span>
+          </button>
+          {repTile}
+          <button className="tp-tile done" onClick={() => onAbrirFila({ envio: true, reposicao: false })}>
+            <span className="tp-ic">➡️</span>
+            <span className="tp-body">
+              <span className="tp-n">{cortadosCli.length}</span>
+              <span className="tp-l">Pedidos cortados</span>
+              <span className="tp-sub">enviar p/ costureira</span>
+            </span>
+            <span className="tp-go">enviar ›</span>
+          </button>
+          <button className="tp-tile donerep" onClick={() => onAbrirFila({ envio: true, reposicao: true })}>
+            <span className="tp-ic">➡️</span>
+            <span className="tp-body">
+              <span className="tp-n">{cortadosRep.length}</span>
+              <span className="tp-l">Reposição cortada</span>
+              <span className="tp-sub">enviar p/ costureira</span>
+            </span>
+            <span className="tp-go">enviar ›</span>
+          </button>
+        </div>
+        <div className="tp-sec">{gerundio} agora · finalizar marca como cortado</div>
+        <div className="tp-lista">
+          {!fazendo.length ? (
+            <div className="tp-vaz">ninguém {gerundio.toLowerCase()} agora</div>
+          ) : (
+            fazendo.map((c) => (
+              <div key={c.pedido_id + c.parte} className="tp-lrow">
+                <div className="tp-lmain" onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
+                  <div className="tp-ltop">
+                    <b>{opCodigo(c)}</b>
+                    <TagCard c={c} />
+                    {!!c.prioridade && <span className="tp-live prio">★ na frente</span>}
+                    <span className="tp-live">● {gerundio.toLowerCase()}</span>
+                  </div>
+                  <div className="tp-lcli">{c.cliente_nome}</div>
+                  <div className="tp-lmeta">
+                    {c.pecas} pç · 👤 {c.operador || "—"}{desde(c.iniciado_em) ? " · " + desde(c.iniciado_em) : ""}
+                  </div>
+                </div>
+                <button className="tp-fin" onClick={() => onAcao([c], acaoFin)}>Finalizar ✓</button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // Tecelagem: urgentes + filas por galga (só cliente, sem prioritários) + reposição + enviar.
   const filaPrio = aguardando.filter((c) => !!c.prioridade);
   const filaG3 = aguardando.filter((c) => !ehRep(c) && !c.prioridade && galgaDe(c) === 3);
@@ -688,6 +768,7 @@ function FilaModal({
   envio,
   todas,
   reposicao,
+  prioridade,
   cards,
   onFechar,
   onAbrir,
@@ -706,14 +787,18 @@ function FilaModal({
   onAcao: (c: CardProducao, acao: Acao) => void;
   onPrioridade: (c: CardProducao) => void;
 }) {
-  const verbo = cfg.fazerLabel; // "Tecer" | "Passar"
-  // Onde há menu "Urgentes" (Tecelagem), os prioritários saem das demais filas.
+  const verbo = cfg.fazerLabel; // "Tecer" | "Passar" | "Cortar"
+  const proxNome = tituloSetor(cfg.proxSetor || "");
+  // Onde há menu "Urgentes" (Tecelagem/Corte), os prioritários saem das demais filas.
   const temUrgentes = !cfg.painelUnico && !cfg.semPrioridade;
   const semPrio = (c: CardProducao) => !temUrgentes || !c.prioridade;
+  // No Corte (partes já unidas) não faz sentido mostrar galga.
+  const usaGalga = !!cfg.painel && !cfg.painelCorte;
   // Filas de cliente (galga/todas) sempre EXCLUEM reposição; a reposição tem fila própria.
+  // No "enviar" o Corte separa cortados de cliente (reposicao=false) × reposição (true).
   const lista = (
     envio
-      ? cards.filter((c) => c.status === "pronto")
+      ? cards.filter((c) => c.status === "pronto" && (reposicao === undefined || ehRep(c) === reposicao))
       : prioridade
         ? cards.filter((c) => c.status === "aguardando" && !!c.prioridade)
         : reposicao
@@ -721,7 +806,11 @@ function FilaModal({
           : cards.filter((c) => c.status === "aguardando" && !ehRep(c) && semPrio(c) && (todas || galgaDe(c) === galga))
   ).sort(ordenarFila);
   const titulo = envio
-    ? `Enviar para ${tituloSetor(cfg.proxSetor || "")}`
+    ? reposicao === true
+      ? `Reposição cortada — enviar p/ ${proxNome}`
+      : reposicao === false
+        ? `Pedidos cortados — enviar p/ ${proxNome}`
+        : `Enviar para ${proxNome}`
     : prioridade
       ? "Urgentes · passar na frente"
       : reposicao
@@ -736,11 +825,11 @@ function FilaModal({
       : reposicao
         ? `${lista.length} pedido(s) · produzir p/ estocar (mais em falta primeiro)`
         : `${lista.length} pedido(s) esperando · ordenados por prioridade`;
-  const cls = envio ? "go" : prioridade ? "prio" : reposicao ? "rep" : todas ? "uni" : galga === 3 ? "g3" : "g7";
+  const cls = envio ? (reposicao === true ? "donerep" : "go") : prioridade ? "prio" : reposicao ? "rep" : todas ? "uni" : galga === 3 ? "g3" : "g7";
   const btnLabel = envio ? "Enviar ▸" : verbo + " ▸";
   const acao: Acao = envio ? "enviar" : "fazer";
   const temUrg = !envio && !prioridade && lista.some((c) => c.est_urgencia === "critico" || c.est_urgencia === "baixo");
-  const chipGalga = todas || envio || reposicao || prioridade; // filas mistas mostram a galga por pedido
+  const chipGalga = usaGalga && (todas || envio || reposicao || prioridade); // filas mistas mostram a galga por pedido
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card fila-modal" onClick={(e) => e.stopPropagation()}>
@@ -1172,6 +1261,7 @@ function CardModal({
   onPrioridade,
   onPular,
   onRecarregar,
+  onDesmembrar,
 }: {
   card: CardProducao;
   cfg: QuadroCfg;
@@ -1181,6 +1271,7 @@ function CardModal({
   onPrioridade: (c: CardProducao) => void;
   onPular?: (c: CardProducao, setor: string) => void;
   onRecarregar?: () => void;
+  onDesmembrar?: (c: CardProducao) => void;
 }) {
   const ehMaster = !!getUser()?.admin;
   const [pularSetor, setPularSetor] = useState(cfg.proxSetor || "revisao");
@@ -1373,6 +1464,11 @@ function CardModal({
           <button className="btn" onClick={onFechar}>
             Fechar
           </button>
+          {onDesmembrar && ehConsolidada(card) && (
+            <button className="btn btn-soft" onClick={() => { onDesmembrar(card); onFechar(); }} title="Separa a OP consolidada em um card por pedido de origem">
+              🔀 Desmembrar OP
+            </button>
+          )}
           {!cfg.semPrioridade && (
             <button
               className={"btn btn-prio" + (card.prioridade ? " on" : "")}
