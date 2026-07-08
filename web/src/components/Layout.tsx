@@ -37,7 +37,7 @@ function SinoPush() {
       disabled={ocupado}
       title={ativo ? "Avisos de pedido novo LIGADOS neste aparelho. Clique para desligar." : "Receber aviso (notificação) quando entrar pedido novo, mesmo com o sistema fechado."}
     >
-      {ativo ? "🔔 Avisos on" : "🔕 Avisos"}
+      {ativo ? "🔔" : "🔕"}
     </button>
   );
 }
@@ -66,20 +66,20 @@ function UndoRedo() {
   return (
     <div className="undoredo">
       <button
-        className="ur-btn"
+        className="ur-btn ur-ico"
         disabled={!historico.podeDesfazer()}
         title={historico.podeDesfazer() ? `Desfazer ${historico.rotuloDesfazer()} (Ctrl+Z)` : "Nada para desfazer"}
         onClick={() => historico.desfazer().catch((e) => alert((e as Error).message))}
       >
-        ↶ Desfazer
+        ↶
       </button>
       <button
-        className="ur-btn"
+        className="ur-btn ur-ico"
         disabled={!historico.podeRefazer()}
         title={historico.podeRefazer() ? `Refazer ${historico.rotuloRefazer()} (Ctrl+Y)` : "Nada para refazer"}
         onClick={() => historico.refazer().catch((e) => alert((e as Error).message))}
       >
-        ↷ Refazer
+        ↷
       </button>
     </div>
   );
@@ -113,7 +113,7 @@ const GRUPOS: MenuGrupo[] = [
     ],
   },
   {
-    id: "estoque", icon: "📊", label: "Estoque e Insumos", itens: [
+    id: "estoque", icon: "📊", label: "Estoque", itens: [
       { to: "/estoque", icon: "📦", label: "Entradas", page: "estoque" },
       { to: "/produtos", icon: "🛍️", label: "Produtos", page: "produtos" },
       { to: "/produtos?aba=estoque", icon: "📊", label: "Estoque de Produtos", page: "produtos" },
@@ -132,7 +132,7 @@ const GRUPOS: MenuGrupo[] = [
     ],
   },
   {
-    id: "fiscal", icon: "🧾", label: "Fiscal e Financeiro", itens: [
+    id: "fiscal", icon: "🧾", label: "Fiscal", itens: [
       { to: "/fiscal", icon: "🧾", label: "Fiscal", page: "fiscal" },
       { icon: "📄", label: "Notas Fiscais", soon: true },
       { icon: "💰", label: "Contas a Receber", soon: true },
@@ -202,96 +202,105 @@ function itemAtivo(to: string, loc: ReturnType<typeof useLocation>): number {
 
 // className como FUNÇÃO (não string) no NavLink: impede o react-router de marcar
 // sozinho todos os links do mesmo caminho (/produtos?aba=…) — só o nosso `ativo` vale.
-const navClasse = (ativo: boolean) => () => "nav-item" + (ativo ? " active" : "");
+const ddClasse = (ativo: boolean) => () => "topnav-dd-i" + (ativo ? " active" : "");
 
-// Menu lateral em grupos sanfonados + favoritos, com memória por usuário.
-function SidebarMenu({ u, min }: { u: NonNullable<ReturnType<typeof getUser>>; min: boolean }) {
+// Menu no TOPO: grupos como abas horizontais na barra azul; cada grupo abre um
+// dropdown com seus itens. Sem barra lateral — o conteúdo usa a largura toda.
+function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
   const loc = useLocation();
-  const chave = u.id || u.usuario || "anon";
-  const [abertos, setAbertos] = useState<Record<string, boolean>>(() => {
-    try {
-      const s = JSON.parse(localStorage.getItem(`menu-grupos-v2:${chave}`) || "null");
-      if (s && typeof s === "object") return s;
-    } catch { /* usa padrão */ }
-    return Object.fromEntries(GRUPOS.map((g) => [g.id, false])); // padrão: todos FECHADOS
-  });
-  const [favs, setFavs] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(`menu-favs:${chave}`) || "[]"); } catch { return []; }
-  });
-  useEffect(() => { localStorage.setItem(`menu-grupos-v2:${chave}`, JSON.stringify(abertos)); }, [abertos, chave]);
-  useEffect(() => { localStorage.setItem(`menu-favs:${chave}`, JSON.stringify(favs)); }, [favs, chave]);
+  const [aberto, setAberto] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Sanfona de UMA por vez: abrir uma categoria fecha as outras.
-  const toggleGrupo = (id: string) => setAbertos((a) => (a[id] ? {} : { [id]: true }));
-  const toggleFav = (to: string) => setFavs((f) => (f.includes(to) ? f.filter((x) => x !== to) : [...f, to]));
+  // Fecha ao navegar (troca de rota/aba).
+  useEffect(() => { setAberto(null); setMobileOpen(false); }, [loc.pathname, loc.search]);
+  // Fecha o dropdown ao clicar fora do menu.
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!(e.target as HTMLElement).closest?.(".topnav")) setAberto(null);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
 
-  // grupos com pelo menos um item visível
   const grupos = GRUPOS.map((g) => ({ ...g, itens: g.itens.filter((it) => itemVisivel(u, it)) })).filter((g) => g.itens.length);
   const comLink = GRUPOS.flatMap((g) => g.itens).filter((it) => it.to);
-  const favItens = favs.map((to) => comLink.find((it) => it.to === to)).filter((it): it is MenuItem => !!it && itemVisivel(u, it));
 
-  // qual item está ativo agora (um só)
+  // qual item está ativo agora (um só) e a que grupo ele pertence
   let ativoTo = "";
   let melhor = 0;
   for (const it of comLink) {
     const s = itemAtivo(it.to!, loc);
     if (s > melhor) { melhor = s; ativoTo = it.to!; }
   }
+  const grupoAtivo = grupos.find((g) => g.itens.some((it) => it.to === ativoTo))?.id;
 
-  const Item = (it: MenuItem, ctx: string) => {
+  const DDItem = (it: MenuItem, ctx: string) => {
     const desativado = it.soon || !it.to;
-    const fav = !!it.to && favs.includes(it.to);
     const ativo = !!it.to && it.to === ativoTo;
     const inner = (
       <>
-        <span className="nav-ic"><Icon emoji={it.icon} /></span>
-        {!min && <span className="nav-lbl">{it.label}</span>}
-        {!min && it.soon && <span className="soon">em breve</span>}
+        <span className="tn-dd-ic"><Icon emoji={it.icon} /></span>
+        <span className="tn-dd-lbl">{it.label}</span>
+        {it.soon && <span className="tn-soon">em breve</span>}
       </>
     );
-    return (
-      <div className={"nav-row" + (min ? " min" : "")} key={ctx + it.label}>
-        {desativado ? (
-          <span className="nav-item disabled" title={it.label + (it.soon ? " — em breve" : "")}>{inner}</span>
-        ) : (
-          <NavLink to={it.to!} className={navClasse(ativo)} title={it.label}>{inner}</NavLink>
-        )}
-        {!min && !desativado && (
-          <button
-            className={"fav-star" + (fav ? " on" : "")}
-            title={fav ? "Remover dos favoritos" : "Fixar nos favoritos"}
-            onClick={() => toggleFav(it.to!)}
-          >
-            {fav ? "★" : "☆"}
-          </button>
-        )}
-      </div>
+    return desativado ? (
+      <span className="topnav-dd-i disabled" key={ctx + it.label} title={it.label + (it.soon ? " — em breve" : "")}>{inner}</span>
+    ) : (
+      <NavLink to={it.to!} key={ctx + it.label} className={ddClasse(ativo)} title={it.label}>{inner}</NavLink>
     );
   };
 
   return (
-    <nav className="menu">
-      {favItens.length > 0 && (
-        <div className="menu-favs">
-          {!min && <div className="menu-sec">★ Favoritos</div>}
-          {favItens.map((it) => Item(it, "fav-"))}
+    <nav className={"topnav" + (mobileOpen ? " open" : "")}>
+      <button className="topnav-burger" onClick={() => setMobileOpen((v) => !v)} title="Menu" aria-label="Abrir menu">☰</button>
+      <div className="topnav-groups">
+        {grupos.map((g) => (
+          <div className={"topnav-grp" + (aberto === g.id ? " open" : "")} key={g.id}>
+            <button
+              className={"topnav-btn" + (grupoAtivo === g.id ? " on" : "")}
+              onClick={() => setAberto((a) => (a === g.id ? null : g.id))}
+              title={g.label}
+            >
+              <span className="tn-ic"><Icon emoji={g.icon} /></span>
+              {g.label && <span className="tn-lbl">{g.label}</span>}
+              <span className="tn-car">▾</span>
+            </button>
+            {aberto === g.id && (
+              <div className="topnav-dd">{g.itens.map((it) => DDItem(it, g.id))}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+// Menu "Painel TV" no topo: um botão que abre a lista de telas de TV.
+function TvMenu({ tvs }: { tvs: typeof TVS }) {
+  const [aberto, setAberto] = useState(false);
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!(e.target as HTMLElement).closest?.(".tvmenu")) setAberto(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+  if (!tvs.length) return null;
+  return (
+    <div className="tvmenu">
+      <button className="ur-btn" onClick={() => setAberto((v) => !v)} title="Painéis de TV">📺 TV ▾</button>
+      {aberto && (
+        <div className="topnav-dd tv">
+          {tvs.map((t) => (
+            <a key={t.to} className="topnav-dd-i" href={t.to} target="_blank" rel="noopener noreferrer" onClick={() => setAberto(false)}>
+              <span className="tn-dd-ic"><Icon emoji={t.icon} /></span>
+              <span className="tn-dd-lbl">{t.label}</span>
+            </a>
+          ))}
         </div>
       )}
-      {grupos.map((g) => (
-        <div className={"menu-grupo" + (abertos[g.id] ? " aberto" : "")} key={g.id}>
-          <button
-            className="menu-grp-hd"
-            onClick={() => toggleGrupo(g.id)}
-            title={abertos[g.id] ? `Fechar ${g.label}` : `Abrir ${g.label}`}
-          >
-            <span className="nav-ic"><Icon emoji={g.icon} /></span>
-            {!min && <span className="menu-grp-lbl">{g.label}</span>}
-            {!min && <span className="menu-grp-car">▸</span>}
-          </button>
-          <div className="menu-grp-sub"><div className="menu-grp-itens">{g.itens.map((it) => Item(it, g.id))}</div></div>
-        </div>
-      ))}
-    </nav>
+    </div>
   );
 }
 
@@ -311,14 +320,6 @@ export function Layout() {
     document.body.classList.toggle("dark", tema === "escuro");
     localStorage.setItem("tema", tema);
   }, [tema]);
-  // Menu recolhido (só ícones) — por dispositivo.
-  const [menuMin, setMenuMin] = useState(() => localStorage.getItem("menu-min") === "1");
-  function alternarMenu() {
-    setMenuMin((v) => {
-      localStorage.setItem("menu-min", v ? "0" : "1");
-      return !v;
-    });
-  }
   function sair() {
     setUser(null);
     nav("/login", { replace: true });
@@ -327,12 +328,12 @@ export function Layout() {
   const tvsVisiveis = TVS.filter((t) => pode(u, t.page));
   const iniciais = u.nome.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
   return (
-    <div className={"app" + (menuMin ? " menu-min" : "")}>
+    <div className="app topnav-app">
       <header className="topbar">
-        <Link to="/" className="brand">
+        <Link to="/" className="brand" title="Início">
           <img className="brand-logo" src="/logo-bigtricot.png" alt="Big Tricot Home Decor" />
-          <span className="brand-sub">Rolagem de Fase</span>
         </Link>
+        <TopNav u={u} />
         <div className="topbar-right">
           <UndoRedo />
           <SinoPush />
@@ -343,44 +344,20 @@ export function Layout() {
           >
             {tema === "escuro" ? "☀️ Claro" : "🌙 Escuro"}
           </button>
-          {tvsVisiveis.map((t) => (
-            <a key={t.to} className={t.cls} href={t.to} target="_blank" rel="noopener noreferrer" title={t.label}>
-              {t.icon} {t.label}
-            </a>
-          ))}
-          <span className="user">{u.nome}</span>
-          <span className="avatar">{iniciais || "?"}</span>
-          <button className="ur-btn" onClick={sair} title="Sair">Sair</button>
-        </div>
-      </header>
-
-      <aside className={"sidebar" + (menuMin ? " min" : "")}>
-        <div className="sidebar-head">
-          {!menuMin && (
-            <div>
-              <div className="sidebar-title">Big Tricot</div>
-              <div className="sidebar-kicker">Cadastro &amp; Produção</div>
-            </div>
-          )}
-          <button className="menu-collapse" onClick={alternarMenu} title={menuMin ? "Expandir menu" : "Recolher menu (só ícones)"}>
-            {menuMin ? "»" : "«"}
-          </button>
-        </div>
-        <SidebarMenu u={u} min={menuMin} />
-        {/* Rodapé discreto: mini-botão do protetor de tela + versão. */}
-        <div className="sidebar-foot">
+          <TvMenu tvs={tvsVisiveis} />
+          {/* Protetor de tela (abre para baixo aqui no topo). */}
           <div className="ss-wrap">
             <button
-              className={"ss-mini" + (ssOpen ? " on" : "")}
+              className={"ur-btn ss-mini" + (ssOpen ? " on" : "")}
               onClick={() => setSsOpen((o) => !o)}
               title="Protetor de tela: após esse tempo sem uso, abre o Painel TV. Clique para ajustar."
             >
-              💤{!menuMin && <span className="ss-mini-v">{ssMin > 0 ? `${ssMin} min` : "off"}</span>}
+              💤<span className="ss-mini-v">{ssMin > 0 ? `${ssMin} min` : "off"}</span>
             </button>
             {ssOpen && (
               <>
                 <div className="ss-pop-bg" onClick={() => setSsOpen(false)} />
-                <div className="ss-pop" onClick={(e) => e.stopPropagation()}>
+                <div className="ss-pop down" onClick={(e) => e.stopPropagation()}>
                   <div className="ss-pop-top">💤 Protetor de tela</div>
                   <div className="ss-pop-row">
                     <input type="number" min={0} max={240} value={ssMin} onChange={(e) => mudarSs(Number(e.target.value))} autoFocus />
@@ -391,9 +368,10 @@ export function Layout() {
               </>
             )}
           </div>
-          {!menuMin && <span className="sidebar-version">{VERSION}</span>}
+          <span className="avatar" title={`${u.nome} · ${VERSION}`}>{iniciais || "?"}</span>
+          <button className="ur-btn" onClick={sair} title="Sair">Sair</button>
         </div>
-      </aside>
+      </header>
 
       <main className="content">
         <Outlet />
