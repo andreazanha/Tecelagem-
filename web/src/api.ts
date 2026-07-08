@@ -124,6 +124,47 @@ export interface ClienteFicha extends ClienteCrm {
   historico: ClientePedido[];
 }
 
+// ── CRM Funil de vendas ──────────────────────────────────────────────────────
+export type FunilEtapa =
+  | "novo-lead" | "primeiro-contato" | "negociacao" | "aguardando-retorno"
+  | "pedido-andamento" | "pos-venda" | "ativo" | "inativo" | "perdido";
+export interface FunilCard {
+  id: string;
+  cliente_id: string | null;
+  nome: string;
+  cidade: string | null;
+  uf: string | null;
+  whatsapp: string | null;
+  etapa: FunilEtapa;
+  responsavel: string | null;
+  valor_estimado: number | null;
+  probabilidade: number | null;
+  retorno_em: string | null;
+  motivo_perdido: string | null;
+  tentativas: number;
+  diasParado: number;
+  proxTarefa: { titulo: string; vence_em: string | null } | null;
+  semTarefa: boolean;
+  alerta: boolean;
+  vermelho: boolean;
+  retornoVencido: boolean;
+  diasSemComprar: number | null;
+  faixa: string | null;
+  pedido: { numero: string | null; valor: number; setor: string | null; previsao: string | null } | null;
+}
+export interface FunilResumo { parados: number; semTarefa: number; retornos: number; alertas: number }
+export interface FunilBoard { etapas: FunilEtapa[]; cards: FunilCard[]; resumo: FunilResumo }
+export interface FunilTarefa { id: string; titulo: string; vence_em: string | null; responsavel: string | null; feita: number; criado_em: string; feito_em: string | null }
+export interface FunilEvento { id: string; tipo: string; texto: string | null; autor: string | null; criado_em: string }
+export interface FunilCardDetalhe extends Omit<FunilCard, "diasParado" | "proxTarefa" | "semTarefa" | "alerta" | "vermelho" | "retornoVencido" | "diasSemComprar" | "faixa" | "pedido"> {
+  criado_em: string;
+  movido_em: string;
+  pedido_id: string | null;
+  tarefas: FunilTarefa[];
+  timeline: FunilEvento[];
+  pedidos: { id: string; numero: string | null; data: string | null; valor: number }[];
+}
+
 export interface CardProducao {
   pedido_id: string;
   parte: string; // parte-1 | parte-2 | parte-unica | pronta-entrega
@@ -428,6 +469,19 @@ export const api = {
   obterCliente: (id: string) => fetch(`/api/clientes/${id}`).then((r) => j<ClienteFicha>(r)),
   salvarCliente: (b: Partial<ClienteCrm>) =>
     jsonPost("/api/clientes", b).then((r) => j<{ id: string; nome: string }>(r)),
+  // CRM Funil de vendas
+  funilBoard: () => fetch("/api/funil").then((r) => j<FunilBoard>(r)),
+  funilCard: (id: string) => fetch(`/api/funil/${id}`).then((r) => j<FunilCardDetalhe>(r)),
+  criarCard: (b: { nome: string; whatsapp: string; cidade?: string; uf?: string; responsavel?: string; cliente_id?: string }) =>
+    jsonPost("/api/funil", b).then((r) => j<{ id: string; nome: string }>(r)),
+  atualizarCard: (id: string, b: Record<string, unknown>) =>
+    fetch(`/api/funil/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then((r) => j<{ ok: boolean }>(r)),
+  addTarefaFunil: (id: string, b: { titulo: string; vence_em?: string; responsavel?: string }) =>
+    jsonPost(`/api/funil/${id}/tarefa`, b).then((r) => j<{ id: string }>(r)),
+  concluirTarefaFunil: (tid: string) =>
+    jsonPost(`/api/funil/tarefa/${tid}/concluir`, {}).then((r) => j<{ ok: boolean }>(r)),
+  addEventoFunil: (id: string, b: { tipo: string; texto: string; autor?: string }) =>
+    jsonPost(`/api/funil/${id}/evento`, b).then((r) => j<{ ok: boolean }>(r)),
   listarModelos: () => fetch("/api/modelos").then((r) => j<Modelo[]>(r)),
   salvarModelo: (m: Modelo, de?: string) =>
     fetch("/api/modelos", {

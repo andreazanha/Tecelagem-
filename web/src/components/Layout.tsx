@@ -99,6 +99,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/todos-pedidos", icon: "📋", label: "Todos os Pedidos", page: "todos-pedidos" },
       { to: "/pedidos/novo", icon: "➕", label: "Novo Pedido", page: "pedidos" },
       { to: "/clientes", icon: "👥", label: "Clientes", page: "comercial" },
+      { to: "/funil", icon: "🎯", label: "Funil de Vendas", page: "comercial" },
       { to: "/comercial", icon: "🧑‍💼", label: "Representantes", page: "comercial" },
       { to: "/comercial", icon: "💵", label: "Vendas (Dashboard)", page: "comercial" },
     ],
