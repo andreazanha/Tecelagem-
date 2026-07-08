@@ -116,6 +116,7 @@ export interface QuadroCfg {
   painelUnico?: boolean; // Painel com 1 menu (galga 3+7 juntas) + lista única c/ Finalizar (Passadoria)
   painelCorte?: boolean; // Painel do Corte: a cortar (cliente/reposição) + cortados + lista
   painelPessoas?: boolean; // Painel por pessoa (Costura): 1 menu por costureira + OPs dela
+  painelPE?: boolean; // mostra os menus de pronta-entrega (Revisão): "Pronta entrega" + "Vão unir"
   painelIcone?: string; // emoji do menu/colunas do painel (default 🧵)
 }
 
@@ -180,7 +181,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [entradaPed, setEntradaPed] = useState<CardProducao | null>(null);
   const [busca, setBusca] = useState("");
   // Fila aberta pelo botão grande: por galga, todas, reposição, prioridade, envio, pessoa ou defeito.
-  const [fila, setFila] = useState<{ galga?: 3 | 7; envio?: boolean; todas?: boolean; reposicao?: boolean; prioridade?: boolean; operador?: string; defeito?: boolean; entrada?: boolean } | null>(null);
+  const [fila, setFila] = useState<{ galga?: 3 | 7; envio?: boolean; todas?: boolean; reposicao?: boolean; prioridade?: boolean; operador?: string; defeito?: boolean; entrada?: boolean; pe?: "separado" | "junto" } | null>(null);
 
   function recarregar() {
     api
@@ -449,6 +450,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
           operador={fila.operador}
           defeito={fila.defeito}
           entrada={fila.entrada}
+          pe={fila.pe}
           cards={cards}
           onFechar={() => setFila(null)}
           onAbrir={(c) => { setFila(null); setAberto(c); }}
@@ -504,7 +506,7 @@ function PainelTec({
   cfg: QuadroCfg;
   cards: CardProducao[];
   onAbrir: (c: CardProducao) => void;
-  onAbrirFila: (f: { galga?: 3 | 7; envio?: boolean; todas?: boolean; reposicao?: boolean; prioridade?: boolean; operador?: string; defeito?: boolean; entrada?: boolean }) => void;
+  onAbrirFila: (f: { galga?: 3 | 7; envio?: boolean; todas?: boolean; reposicao?: boolean; prioridade?: boolean; operador?: string; defeito?: boolean; entrada?: boolean; pe?: "separado" | "junto" }) => void;
   onAcao: (cards: CardProducao[], acao: Acao) => void;
 }) {
   const ic = cfg.painelIcone || "🧵";
@@ -541,6 +543,8 @@ function PainelTec({
     const emDefeito = cards.filter((c) => c.status === "defeito");
     const filaPrioP = aguardando.filter((c) => !!c.prioridade);
     const filaEntrada = aguardando.filter((c) => !temUrgentes || !c.prioridade);
+    const filaPE = cards.filter((c) => c.pe_tipo === "separado"); // kits do estoque (separado)
+    const filaUne = cards.filter((c) => !!c.une_pe); // pedidos misto que se unem ao kit (junto)
     const plural = cfg.recursoLabel ? cfg.recursoLabel + "s" : "Pessoas";
     const iniciais = (nome: string) =>
       nome.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
@@ -570,6 +574,28 @@ function PainelTec({
                 <span className="tp-go">ver fila ›</span>
               </button>
             )}
+          </div>
+        )}
+        {cfg.painelPE && (
+          <div className="tp-tiles dois" style={{ marginBottom: 18 }}>
+            <button className="tp-tile pe" onClick={() => onAbrirFila({ pe: "separado" })}>
+              <span className="tp-ic">📦</span>
+              <span className="tp-body">
+                <span className="tp-n">{filaPE.length}</span>
+                <span className="tp-l">Pronta entrega</span>
+                <span className="tp-sub">produtos saem do estoque · enviar à parte</span>
+              </span>
+              <span className="tp-go">ver fila ›</span>
+            </button>
+            <button className="tp-tile mix" onClick={() => onAbrirFila({ pe: "junto" })}>
+              <span className="tp-ic">🔗</span>
+              <span className="tp-body">
+                <span className="tp-n">{filaUne.length}</span>
+                <span className="tp-l">Vão unir com pronta entrega</span>
+                <span className="tp-sub">produção + kit do estoque (junto)</span>
+              </span>
+              <span className="tp-go">ver fila ›</span>
+            </button>
           </div>
         )}
         <div className="tp-sec">{plural} · clique p/ ver as OPs</div>
@@ -852,6 +878,7 @@ function FilaModal({
   operador,
   defeito,
   entrada,
+  pe,
   cards,
   onFechar,
   onAbrir,
@@ -867,6 +894,7 @@ function FilaModal({
   operador?: string;
   defeito?: boolean;
   entrada?: boolean;
+  pe?: "separado" | "junto";
   cards: CardProducao[];
   onFechar: () => void;
   onAbrir: (c: CardProducao) => void;
@@ -874,7 +902,7 @@ function FilaModal({
   onPrioridade: (c: CardProducao) => void;
 }) {
   const verbo = cfg.fazerLabel; // "Tecer" | "Passar" | "Cortar"
-  const proxNome = tituloSetor(cfg.proxSetor || "");
+  const proxNome = SETOR_LABEL[cfg.proxSetor || ""] || tituloSetor(cfg.proxSetor || "");
   // Onde há menu "Urgentes" (Tecelagem/Corte), os prioritários saem das demais filas.
   const temUrgentes = !cfg.painelUnico && !cfg.semPrioridade;
   const semPrio = (c: CardProducao) => !temUrgentes || !c.prioridade;
@@ -884,13 +912,17 @@ function FilaModal({
   // No "enviar" o Corte separa cortados de cliente (reposicao=false) × reposição (true).
   const pessoa = operador !== undefined; // modo Costura/Revisão: OPs de uma pessoa
   const lista = (
-    pessoa
-      ? cards.filter((c) => c.status === "fazendo" && (c.operador || "") === operador)
-      : defeito
-        ? cards.filter((c) => c.status === "defeito")
-        : entrada
-          ? cards.filter((c) => c.status === "aguardando" && semPrio(c))
-          : envio
+    pe === "separado"
+      ? cards.filter((c) => c.pe_tipo === "separado")
+      : pe === "junto"
+        ? cards.filter((c) => !!c.une_pe)
+        : pessoa
+          ? cards.filter((c) => c.status === "fazendo" && (c.operador || "") === operador)
+          : defeito
+            ? cards.filter((c) => c.status === "defeito")
+            : entrada
+              ? cards.filter((c) => c.status === "aguardando" && semPrio(c))
+              : envio
             ? cards.filter((c) => c.status === "pronto" && (reposicao === undefined || ehRep(c) === reposicao))
             : prioridade
               ? cards.filter((c) => c.status === "aguardando" && !!c.prioridade)
@@ -898,7 +930,11 @@ function FilaModal({
                 ? cards.filter((c) => c.status === "aguardando" && ehRep(c) && semPrio(c))
                 : cards.filter((c) => c.status === "aguardando" && !ehRep(c) && semPrio(c) && (todas || galgaDe(c) === galga))
   ).sort(ordenarFila);
-  const titulo = pessoa
+  const titulo = pe === "separado"
+    ? "Pronta entrega — do estoque"
+    : pe === "junto"
+      ? "Vão unir com pronta entrega"
+      : pessoa
     ? operador || cfg.recursoLabel || "Pessoa"
     : defeito
       ? "Voltou com defeito"
@@ -917,7 +953,11 @@ function FilaModal({
             : todas
               ? `Fila — A ${verbo.toLowerCase()}`
               : `Fila da Galga ${galga}`;
-  const sub = pessoa
+  const sub = pe === "separado"
+    ? `${lista.length} kit(s) · enviar p/ ${proxNome}`
+    : pe === "junto"
+      ? `${lista.length} pedido(s) · unem c/ o kit e vão p/ ${proxNome}`
+      : pessoa
     ? `${lista.length} OP(s) · finalizar e enviar p/ ${proxNome}`
     : defeito
       ? `${lista.length} OP(s) · refazer ou reenviar`
@@ -930,10 +970,10 @@ function FilaModal({
             : reposicao
               ? `${lista.length} pedido(s) · produzir p/ estocar (mais em falta primeiro)`
               : `${lista.length} pedido(s) esperando · ordenados por prioridade`;
-  const cls = pessoa ? "pessoa" : defeito ? "def" : entrada ? "entrada" : envio ? (reposicao === true ? "donerep" : "go") : prioridade ? "prio" : reposicao ? "rep" : todas ? "uni" : galga === 3 ? "g3" : "g7";
+  const cls = pe === "separado" ? "pe" : pe === "junto" ? "mix" : pessoa ? "pessoa" : defeito ? "def" : entrada ? "entrada" : envio ? (reposicao === true ? "donerep" : "go") : prioridade ? "prio" : reposicao ? "rep" : todas ? "uni" : galga === 3 ? "g3" : "g7";
   const btnLabel = envio ? "Enviar ▸" : verbo + " ▸";
   const acao: Acao = envio ? "enviar" : "fazer";
-  const temUrg = !envio && !prioridade && !pessoa && !defeito && !entrada && lista.some((c) => c.est_urgencia === "critico" || c.est_urgencia === "baixo");
+  const temUrg = !envio && !prioridade && !pessoa && !defeito && !entrada && !pe && lista.some((c) => c.est_urgencia === "critico" || c.est_urgencia === "baixo");
   const chipGalga = usaGalga && (todas || envio || reposicao || prioridade); // filas mistas mostram a galga por pedido
   // Rótulo do "enviar" por card (kits podem ir p/ estoque em vez do próximo setor).
   const envLabel = (c: CardProducao) =>
@@ -943,7 +983,7 @@ function FilaModal({
       <div className="modal-card fila-modal" onClick={(e) => e.stopPropagation()}>
         <div className={"fila-hd " + cls}>
           <div className="fila-hd-l">
-            <span className="fila-ic">{defeito ? "⚠" : pessoa ? cfg.painelIcone || "🪡" : entrada ? cfg.painelIcone || "🔍" : envio ? "➡️" : prioridade ? "★" : reposicao ? "🔄" : cfg.painelIcone || "🧵"}</span>
+            <span className="fila-ic">{pe === "separado" ? "📦" : pe === "junto" ? "🔗" : defeito ? "⚠" : pessoa ? cfg.painelIcone || "🪡" : entrada ? cfg.painelIcone || "🔍" : envio ? "➡️" : prioridade ? "★" : reposicao ? "🔄" : cfg.painelIcone || "🧵"}</span>
             <div>
               <div className="fila-t">{titulo}</div>
               <div className="fila-s">{sub}</div>
@@ -974,12 +1014,21 @@ function FilaModal({
                     <div className="fila-cli">{c.cliente_nome}</div>
                     <div className="fila-meta">
                       {c.pecas} pç
-                      {pessoa || defeito
+                      {pe === "separado" ? " · sai do estoque" : ""}
+                      {pessoa || defeito || pe
                         ? desde(c.iniciado_em) ? ` · ${desde(c.iniciado_em)}` : ""
                         : ` · entrega ${br(c.data_entrega)}${c.est_min ? ` · estoque ${c.est_estoque ?? 0}/${c.est_min}` : ""}`}
                     </div>
                   </div>
-                  {pessoa || defeito ? (
+                  {pe ? (
+                    <div className="fila-acts">
+                      {pe === "junto" && c.status !== "fazendo" ? (
+                        <span className="fila-espera">em revisão</span>
+                      ) : (
+                        <button className="fila-btn go" onClick={() => onAcao(c, "enviar")}>Enviar p/ {proxNome} ▸</button>
+                      )}
+                    </div>
+                  ) : pessoa || defeito ? (
                     <div className="fila-acts">
                       {pessoa && cfg.defeito && (
                         <button className="fila-def" onClick={() => onAcao(c, "defeito")}>⚠ Defeito</button>

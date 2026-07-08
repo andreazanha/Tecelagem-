@@ -8,7 +8,7 @@ export const producao = new Hono<{ Bindings: Env }>();
 // INTELIGÊNCIA DE ESTOQUE: para os cards de REPOSIÇÃO (produção p/ estocar),
 // compara o estoque atual × mínimo do produto e sugere a ORDEM de produção
 // (o mais em falta primeiro) — evita fazer tudo misturado.
-type CardStock = Record<string, unknown> & { pedido_id: string; parte?: string; reposicao?: number | boolean; galga?: 3 | 7 };
+type CardStock = Record<string, unknown> & { pedido_id: string; parte?: string; reposicao?: number | boolean; galga?: 3 | 7; une_pe?: number; pe_tipo?: string };
 async function enriquecerEstoque(env: Env, cards: CardStock[]): Promise<CardStock[]> {
   const rep = cards.filter((c) => Number(c.reposicao) === 1);
   if (!rep.length) return cards;
@@ -91,6 +91,39 @@ async function enriquecerGalga(env: Env, cards: CardStock[]): Promise<void> {
       const arr = porPedido.get(c.pedido_id) || [];
       c.galga = galgaDeItens(arr, base === "pronta-entrega");
     }
+  }
+}
+
+// PRONTA-ENTREGA na Revisão:
+//  • Marca `une_pe` nos cards cujo pedido tem um kit JUNTO (misto que se une à
+//    produção na revisão e segue junto p/ a expedição).
+//  • Traz também os kits SEPARADO (pronta-entrega-sep, ainda no Estoque) como
+//    itens do menu "Pronta entrega" (produtos que saem do estoque, enviados à parte).
+async function enriquecerRevisaoPE(env: Env, cards: CardStock[]): Promise<void> {
+  const ids = [...new Set(cards.map((c) => c.pedido_id))];
+  if (ids.length) {
+    const ph = ids.map(() => "?").join(",");
+    const { results: junto } = await env.DB.prepare(
+      `SELECT DISTINCT pedido_id FROM producao WHERE parte = 'pronta-entrega' AND pedido_id IN (${ph})`
+    )
+      .bind(...ids)
+      .all<{ pedido_id: string }>();
+    const setJunto = new Set(junto.map((r) => r.pedido_id));
+    for (const c of cards) if (setJunto.has(c.pedido_id)) c.une_pe = 1;
+  }
+  // Kits SEPARADO ainda no Estoque → entram no menu "Pronta entrega".
+  const { results: sep } = await env.DB.prepare(
+    `SELECT pr.pedido_id, pr.parte, pr.op, pr.setor, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
+            pr.prioridade, pr.iniciado_em, pr.finalizado_em,
+            p.numero_erp, COALESCE(NULLIF(pr.cliente, ''), p.cliente_nome) AS cliente_nome,
+            p.data_pedido, p.data_entrega, p.data_tecelagem, p.codigo_terceiro, p.codigo_pai, p.observacao, p.reposicao
+       FROM producao pr JOIN pedidos p ON p.id = pr.pedido_id
+      WHERE pr.parte = 'pronta-entrega-sep' AND pr.setor = 'estoque'
+      ORDER BY (p.data_entrega IS NULL), p.data_entrega, p.numero_erp`
+  ).all<CardStock>();
+  for (const r of sep) {
+    r.pe_tipo = "separado";
+    cards.push(r);
   }
 }
 
@@ -255,6 +288,7 @@ producao.get("/", async (c) => {
   if (["tecelagem", "passadoria", "corte", "costura", "revisao"].includes(setor)) {
     await enriquecerGalga(c.env, enriquecido);
   }
+  if (setor === "revisao") await enriquecerRevisaoPE(c.env, enriquecido);
   return c.json(enriquecido);
 });
 

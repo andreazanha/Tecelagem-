@@ -122,6 +122,8 @@ export interface CardProducao {
   est_rank?: number; // 1 = fazer primeiro (mais em falta)
   est_urgencia?: "critico" | "baixo" | "atencao" | "ok";
   galga?: 3 | 7; // máquina (galga) sugerida pelo produto — só na Tecelagem
+  une_pe?: number; // 1 = pedido misto que se une ao kit de pronta-entrega (junto) na Revisão
+  pe_tipo?: string; // "separado" = kit de pronta-entrega vindo do estoque (menu Pronta entrega)
 }
 
 // Expedição → Fiscal → Transporte

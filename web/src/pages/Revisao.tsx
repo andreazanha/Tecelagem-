@@ -10,6 +10,7 @@ const BASE: Omit<QuadroCfg, "colunas"> = {
   titulo: "Revisão",
   painel: true,
   painelPessoas: true,
+  painelPE: true,
   painelIcone: "🔍",
   fazerLabel: "Revisar",
   fazendoLabel: "Revisando",

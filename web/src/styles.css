@@ -859,3 +859,11 @@ body.dark .fila-def { background: #2a1416; border-color: #7f1d1d; color: #fca5a5
 .tp-tile.entrada { background: linear-gradient(130deg, #0369a1, #0ea5e9); }
 .fila-hd.entrada { background: linear-gradient(130deg, #0369a1, #0ea5e9); }
 .fila-btn.entrada { background: #0284c7; }
+
+/* Menus de pronta-entrega na Revisão */
+.tp-tile.pe { background: linear-gradient(130deg, #0d9488, #14b8a6); }
+.tp-tile.mix { background: linear-gradient(130deg, #b45309, #d97706); }
+.fila-hd.pe { background: linear-gradient(130deg, #0d9488, #14b8a6); }
+.fila-hd.mix { background: linear-gradient(130deg, #b45309, #d97706); }
+.fila-espera { font-size: 12px; font-weight: 700; color: #94a3b8; padding: 8px 12px; }
+body.dark .fila-espera { color: #5b6478; }
