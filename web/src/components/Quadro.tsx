@@ -177,8 +177,8 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [acaoModal, setAcaoModal] = useState<{ cards: CardProducao[]; acao: Acao } | null>(null);
   const [entradaPed, setEntradaPed] = useState<CardProducao | null>(null);
   const [busca, setBusca] = useState("");
-  // Fila aberta pelo botão grande: por galga (Tecer), todas (Passar), reposição ou envio.
-  const [fila, setFila] = useState<{ galga?: 3 | 7; envio?: boolean; todas?: boolean; reposicao?: boolean } | null>(null);
+  // Fila aberta pelo botão grande: por galga (Tecer), todas (Passar), reposição, prioridade ou envio.
+  const [fila, setFila] = useState<{ galga?: 3 | 7; envio?: boolean; todas?: boolean; reposicao?: boolean; prioridade?: boolean } | null>(null);
 
   function recarregar() {
     api
@@ -443,6 +443,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
           envio={fila.envio}
           todas={fila.todas}
           reposicao={fila.reposicao}
+          prioridade={fila.prioridade}
           cards={cards}
           onFechar={() => setFila(null)}
           onAbrir={(c) => { setFila(null); setAberto(c); }}
@@ -498,7 +499,7 @@ function PainelTec({
   cfg: QuadroCfg;
   cards: CardProducao[];
   onAbrir: (c: CardProducao) => void;
-  onAbrirFila: (f: { galga?: 3 | 7; envio?: boolean; todas?: boolean; reposicao?: boolean }) => void;
+  onAbrirFila: (f: { galga?: 3 | 7; envio?: boolean; todas?: boolean; reposicao?: boolean; prioridade?: boolean }) => void;
   onAcao: (cards: CardProducao[], acao: Acao) => void;
 }) {
   const ic = cfg.painelIcone || "🧵";
@@ -507,8 +508,11 @@ function PainelTec({
   const aguardando = cards.filter((c) => c.status === "aguardando");
   const fazendo = cards.filter((c) => c.status === "fazendo").sort(ordenarFila);
   const prontos = cards.filter((c) => c.status === "pronto");
+  // Só a Tecelagem (painel por galga) tem o menu "Urgentes"; ali os prioritários
+  // saem das demais filas. Na Passadoria (menu único) a prioridade fica embutida.
+  const temUrgentes = !cfg.painelUnico && !cfg.semPrioridade;
   // Reposição (produzir p/ estocar) tem menu próprio; as filas de cliente a excluem.
-  const filaRep = aguardando.filter(ehRep);
+  const filaRep = aguardando.filter((c) => ehRep(c) && (!temUrgentes || !c.prioridade));
   const critRep = filaRep.filter((c) => c.est_urgencia === "critico").length;
   const subRep = (critRep ? `${critRep} crítico${critRep > 1 ? "s" : ""} · ` : "") + "produzir p/ estocar";
   const repTile = (
@@ -570,9 +574,10 @@ function PainelTec({
     );
   }
 
-  // Tecelagem: filas por galga (só cliente) + reposição + enviar; colunas por galga.
-  const filaG3 = aguardando.filter((c) => !ehRep(c) && galgaDe(c) === 3);
-  const filaG7 = aguardando.filter((c) => !ehRep(c) && galgaDe(c) === 7);
+  // Tecelagem: urgentes + filas por galga (só cliente, sem prioritários) + reposição + enviar.
+  const filaPrio = aguardando.filter((c) => !!c.prioridade);
+  const filaG3 = aguardando.filter((c) => !ehRep(c) && !c.prioridade && galgaDe(c) === 3);
+  const filaG7 = aguardando.filter((c) => !ehRep(c) && !c.prioridade && galgaDe(c) === 7);
   const crit = (arr: CardProducao[]) => arr.filter((c) => c.est_urgencia === "critico").length;
   const colG3 = fazendo.filter((c) => galgaDe(c) === 3);
   const colG7 = fazendo.filter((c) => galgaDe(c) === 7);
@@ -583,6 +588,17 @@ function PainelTec({
   return (
     <div className="painel">
       <div className="tp-tiles quatro">
+        {temUrgentes && (
+          <button className="tp-tile prio span" onClick={() => onAbrirFila({ prioridade: true })}>
+            <span className="tp-ic">★</span>
+            <span className="tp-body">
+              <span className="tp-n">{filaPrio.length}</span>
+              <span className="tp-l">Urgentes</span>
+              <span className="tp-sub">passar na frente · clientes atrasados</span>
+            </span>
+            <span className="tp-go">ver fila ›</span>
+          </button>
+        )}
         <button className="tp-tile g3" onClick={() => onAbrirFila({ galga: 3 })}>
           <span className="tp-ic">🧵</span>
           <span className="tp-body">
@@ -683,6 +699,7 @@ function FilaModal({
   envio?: boolean;
   todas?: boolean;
   reposicao?: boolean;
+  prioridade?: boolean;
   cards: CardProducao[];
   onFechar: () => void;
   onAbrir: (c: CardProducao) => void;
@@ -690,37 +707,46 @@ function FilaModal({
   onPrioridade: (c: CardProducao) => void;
 }) {
   const verbo = cfg.fazerLabel; // "Tecer" | "Passar"
+  // Onde há menu "Urgentes" (Tecelagem), os prioritários saem das demais filas.
+  const temUrgentes = !cfg.painelUnico && !cfg.semPrioridade;
+  const semPrio = (c: CardProducao) => !temUrgentes || !c.prioridade;
   // Filas de cliente (galga/todas) sempre EXCLUEM reposição; a reposição tem fila própria.
   const lista = (
     envio
       ? cards.filter((c) => c.status === "pronto")
-      : reposicao
-        ? cards.filter((c) => c.status === "aguardando" && ehRep(c))
-        : cards.filter((c) => c.status === "aguardando" && !ehRep(c) && (todas || galgaDe(c) === galga))
+      : prioridade
+        ? cards.filter((c) => c.status === "aguardando" && !!c.prioridade)
+        : reposicao
+          ? cards.filter((c) => c.status === "aguardando" && ehRep(c) && semPrio(c))
+          : cards.filter((c) => c.status === "aguardando" && !ehRep(c) && semPrio(c) && (todas || galgaDe(c) === galga))
   ).sort(ordenarFila);
   const titulo = envio
     ? `Enviar para ${tituloSetor(cfg.proxSetor || "")}`
-    : reposicao
-      ? "Reposição de estoque"
-      : todas
-        ? `Fila — A ${verbo.toLowerCase()}`
-        : `Fila da Galga ${galga}`;
+    : prioridade
+      ? "Urgentes · passar na frente"
+      : reposicao
+        ? "Reposição de estoque"
+        : todas
+          ? `Fila — A ${verbo.toLowerCase()}`
+          : `Fila da Galga ${galga}`;
   const sub = envio
     ? `${lista.length} pedido(s) · prontos p/ seguir`
-    : reposicao
-      ? `${lista.length} pedido(s) · produzir p/ estocar (mais em falta primeiro)`
-      : `${lista.length} pedido(s) esperando · ordenados por prioridade`;
-  const cls = envio ? "go" : reposicao ? "rep" : todas ? "uni" : galga === 3 ? "g3" : "g7";
+    : prioridade
+      ? `${lista.length} pedido(s) marcado(s) p/ furar a fila`
+      : reposicao
+        ? `${lista.length} pedido(s) · produzir p/ estocar (mais em falta primeiro)`
+        : `${lista.length} pedido(s) esperando · ordenados por prioridade`;
+  const cls = envio ? "go" : prioridade ? "prio" : reposicao ? "rep" : todas ? "uni" : galga === 3 ? "g3" : "g7";
   const btnLabel = envio ? "Enviar ▸" : verbo + " ▸";
   const acao: Acao = envio ? "enviar" : "fazer";
-  const temUrg = !envio && lista.some((c) => c.est_urgencia === "critico" || c.est_urgencia === "baixo");
-  const chipGalga = todas || envio || reposicao; // filas mistas mostram a galga por pedido
+  const temUrg = !envio && !prioridade && lista.some((c) => c.est_urgencia === "critico" || c.est_urgencia === "baixo");
+  const chipGalga = todas || envio || reposicao || prioridade; // filas mistas mostram a galga por pedido
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card fila-modal" onClick={(e) => e.stopPropagation()}>
         <div className={"fila-hd " + cls}>
           <div className="fila-hd-l">
-            <span className="fila-ic">{envio ? "➡️" : reposicao ? "🔄" : cfg.painelIcone || "🧵"}</span>
+            <span className="fila-ic">{envio ? "➡️" : prioridade ? "★" : reposicao ? "🔄" : cfg.painelIcone || "🧵"}</span>
             <div>
               <div className="fila-t">{titulo}</div>
               <div className="fila-s">{sub}</div>
