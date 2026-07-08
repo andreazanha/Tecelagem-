@@ -8,6 +8,7 @@ import { PedidoDetalhe } from "./pages/PedidoDetalhe";
 import { Cadastros } from "./pages/Cadastros";
 import { Produtos } from "./pages/Produtos";
 import { Comercial } from "./pages/Comercial";
+import { Clientes, ClienteFicha } from "./pages/Clientes";
 import { Romaneios } from "./pages/Romaneios";
 import { Producao } from "./pages/Producao";
 import { Passadoria } from "./pages/Passadoria";
@@ -94,6 +95,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/cadastros" element={<Protegido page="cadastros"><Cadastros /></Protegido>} />
           <Route path="/produtos" element={<Protegido page="produtos"><Produtos /></Protegido>} />
           <Route path="/comercial" element={<Protegido page="comercial"><Comercial /></Protegido>} />
+          <Route path="/clientes" element={<Protegido page="comercial"><Clientes /></Protegido>} />
+          <Route path="/clientes/:id" element={<Protegido page="comercial"><ClienteFicha /></Protegido>} />
+
           <Route path="/romaneios" element={<Protegido page="romaneios"><Romaneios /></Protegido>} />
           <Route path="/producao" element={<Protegido page="producao"><Producao /></Protegido>} />
           <Route path="/passadoria" element={<Protegido page="passadoria"><Passadoria /></Protegido>} />

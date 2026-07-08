@@ -1,29 +1,118 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
+import { limparVendedor } from "./comercial";
 
 export const clientes = new Hono<{ Bindings: Env }>();
 
-// Lista de clientes (para autocompletar no formulário)
+const str = (v: unknown) => String(v ?? "").trim() || null;
+
+type ClienteRow = {
+  id: string; nome: string; contato: string | null; whatsapp: string | null; email: string | null;
+  cidade: string | null; uf: string | null; cnpj: string | null; representante: string | null;
+  observacao: string | null; created_at?: string | null;
+};
+
+// Último vendedor conhecido de cada cliente (fallback do representante quando o
+// cadastro não tem representante definido). Mapa nome → vendedor (limpo).
+async function ultimoVendedorPorCliente(env: Env): Promise<Map<string, string>> {
+  const { results } = await env.DB.prepare(
+    `SELECT cliente_nome AS nome, vendedor FROM pedidos
+      WHERE COALESCE(vendedor,'') <> '' AND COALESCE(reposicao,0)=0
+      ORDER BY (data_pedido IS NULL), data_pedido ASC`
+  ).all<{ nome: string; vendedor: string | null }>();
+  const m = new Map<string, string>();
+  for (const r of results) { const v = limparVendedor(r.vendedor); if (v) m.set(r.nome, v); } // último ganha
+  return m;
+}
+
+// LISTA. Sem `?crm` mantém o formato leve (id+nome) usado no autocomplete do pedido.
+// Com `?crm=1` traz os campos + estatísticas (pedidos, total, última compra, representante).
 clientes.get("/", async (c) => {
-  const { results } = await c.env.DB.prepare(
-    "SELECT id, nome FROM clientes ORDER BY nome"
-  ).all();
-  return c.json(results);
+  if (!c.req.query("crm")) {
+    const { results } = await c.env.DB.prepare("SELECT id, nome FROM clientes ORDER BY nome").all();
+    return c.json(results);
+  }
+  const { results: cli } = await c.env.DB.prepare(
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, observacao, created_at FROM clientes ORDER BY nome"
+  ).all<ClienteRow>();
+  const { results: stats } = await c.env.DB.prepare(
+    `SELECT p.cliente_nome AS nome, COUNT(DISTINCT p.id) AS pedidos,
+            COALESCE(SUM(i.qtd * i.valor_unit), 0) AS total, MAX(p.data_pedido) AS ultima
+       FROM pedidos p LEFT JOIN pedido_itens i ON i.pedido_id = p.id
+      WHERE COALESCE(p.reposicao,0)=0
+      GROUP BY p.cliente_nome`
+  ).all<{ nome: string; pedidos: number; total: number; ultima: string | null }>();
+  const smap = new Map(stats.map((s) => [s.nome, s]));
+  const vmap = await ultimoVendedorPorCliente(c.env);
+  const lista = cli.map((c0) => {
+    const s = smap.get(c0.nome);
+    const pedidos = s?.pedidos || 0;
+    const total = Number(s?.total) || 0;
+    return {
+      ...c0,
+      representante: c0.representante || vmap.get(c0.nome) || null,
+      pedidos, total, ultima: s?.ultima || null,
+      ticket: pedidos ? total / pedidos : 0,
+    };
+  });
+  return c.json(lista);
 });
 
-// Cria cliente (idempotente por nome)
+// FICHA 360: dados do cliente + histórico de pedidos (não-reposição) + KPIs.
+clientes.get("/:id", async (c) => {
+  const id = c.req.param("id");
+  const cli = await c.env.DB.prepare(
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, observacao, created_at FROM clientes WHERE id = ?"
+  ).bind(id).first<ClienteRow>();
+  if (!cli) return c.json({ error: "cliente não encontrado" }, 404);
+
+  const { results: peds } = await c.env.DB.prepare(
+    `SELECT p.id, p.numero_erp, p.data_pedido, p.status,
+            COALESCE(SUM(i.qtd * i.valor_unit), 0) AS valor
+       FROM pedidos p LEFT JOIN pedido_itens i ON i.pedido_id = p.id
+      WHERE p.cliente_nome = ? AND COALESCE(p.reposicao,0)=0
+      GROUP BY p.id
+      ORDER BY (p.data_pedido IS NULL), p.data_pedido DESC`
+  ).bind(cli.nome).all<{ id: string; numero_erp: string | null; data_pedido: string | null; status: string; valor: number }>();
+
+  // Situação de cada pedido pela produção: tudo na expedição → entregue; senão em produção.
+  const situ = new Map<string, string>();
+  if (peds.length) {
+    const ph = peds.map(() => "?").join(",");
+    const { results: pr } = await c.env.DB.prepare(
+      `SELECT pedido_id, COUNT(*) AS tot, SUM(CASE WHEN setor='expedicao' THEN 1 ELSE 0 END) AS exp
+         FROM producao WHERE pedido_id IN (${ph}) GROUP BY pedido_id`
+    ).bind(...peds.map((p) => p.id)).all<{ pedido_id: string; tot: number; exp: number }>();
+    for (const r of pr) situ.set(r.pedido_id, r.tot > 0 && r.exp === r.tot ? "entregue" : "producao");
+  }
+  const pedidos = peds.map((p) => ({
+    id: p.id, numero: p.numero_erp, data: p.data_pedido, valor: Number(p.valor) || 0,
+    situacao: situ.get(p.id) || (p.status === "novo" ? "novo" : "producao"),
+  }));
+  const total = pedidos.reduce((s, p) => s + p.valor, 0);
+  const kpis = { total, pedidos: pedidos.length, ticket: pedidos.length ? total / pedidos.length : 0, ultima: pedidos[0]?.data || null };
+  const vmap = await ultimoVendedorPorCliente(c.env);
+  return c.json({ ...cli, representante: cli.representante || vmap.get(cli.nome) || null, kpis, historico: pedidos });
+});
+
+// CRIA/ATUALIZA. Sem id, procura por nome (mantém 1 registro por cliente).
 clientes.post("/", async (c) => {
-  const body = await c.req.json<{ nome?: string }>();
-  const nome = (body.nome || "").trim();
+  const b = await c.req.json<Partial<ClienteRow>>().catch(() => ({}) as Partial<ClienteRow>);
+  const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
-  const id = crypto.randomUUID();
+  let id = b.id;
+  if (!id) {
+    const ex = await c.env.DB.prepare("SELECT id FROM clientes WHERE nome = ?").bind(nome).first<{ id: string }>();
+    id = ex?.id || crypto.randomUUID();
+  }
   await c.env.DB.prepare(
-    "INSERT INTO clientes (id, nome) VALUES (?, ?) ON CONFLICT(nome) DO NOTHING"
+    `INSERT INTO clientes (id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, observacao)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET nome=excluded.nome, contato=excluded.contato, whatsapp=excluded.whatsapp,
+       email=excluded.email, cidade=excluded.cidade, uf=excluded.uf, cnpj=excluded.cnpj,
+       representante=excluded.representante, observacao=excluded.observacao`
   )
-    .bind(id, nome)
+    .bind(id, nome, str(b.contato), str(b.whatsapp), str(b.email), str(b.cidade), str(b.uf), str(b.cnpj), str(b.representante), str(b.observacao))
     .run();
-  const row = await c.env.DB.prepare("SELECT id, nome FROM clientes WHERE nome = ?")
-    .bind(nome)
-    .first();
-  return c.json(row, 201);
+  return c.json({ id, nome });
 });

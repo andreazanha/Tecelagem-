@@ -94,6 +94,36 @@ export interface Costura {
   agrupamento?: string; // peseira_manta | almofada_capa | todas
 }
 
+// CRM — cadastro de cliente enriquecido + estatísticas.
+export interface ClienteCrm {
+  id: string;
+  nome: string;
+  contato?: string | null;
+  whatsapp?: string | null;
+  email?: string | null;
+  cidade?: string | null;
+  uf?: string | null;
+  cnpj?: string | null;
+  representante?: string | null;
+  observacao?: string | null;
+  created_at?: string | null;
+  pedidos?: number;
+  total?: number;
+  ultima?: string | null;
+  ticket?: number;
+}
+export interface ClientePedido {
+  id: string;
+  numero: string | null;
+  data: string | null;
+  valor: number;
+  situacao: string;
+}
+export interface ClienteFicha extends ClienteCrm {
+  kpis: { total: number; pedidos: number; ticket: number; ultima: string | null };
+  historico: ClientePedido[];
+}
+
 export interface CardProducao {
   pedido_id: string;
   parte: string; // parte-1 | parte-2 | parte-unica | pronta-entrega
@@ -393,6 +423,11 @@ export const api = {
       j<{ arquivos: { nome: string; url: string }[] }>(r)
     ),
   listarClientes: () => fetch("/api/clientes").then((r) => j<{ id: string; nome: string }[]>(r)),
+  // CRM: lista com estatísticas, ficha 360 e salvar.
+  listarClientesCrm: () => fetch("/api/clientes?crm=1").then((r) => j<ClienteCrm[]>(r)),
+  obterCliente: (id: string) => fetch(`/api/clientes/${id}`).then((r) => j<ClienteFicha>(r)),
+  salvarCliente: (b: Partial<ClienteCrm>) =>
+    jsonPost("/api/clientes", b).then((r) => j<{ id: string; nome: string }>(r)),
   listarModelos: () => fetch("/api/modelos").then((r) => j<Modelo[]>(r)),
   salvarModelo: (m: Modelo, de?: string) =>
     fetch("/api/modelos", {
