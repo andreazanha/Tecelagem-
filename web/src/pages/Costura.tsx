@@ -8,6 +8,9 @@ import { api } from "../api";
 const BASE: Omit<QuadroCfg, "colunas"> = {
   setor: "costura",
   titulo: "Costura",
+  painel: true,
+  painelPessoas: true,
+  painelIcone: "🪡",
   fazerLabel: "Pegar costura",
   fazendoLabel: "Costurando",
   proxSetor: "revisao",

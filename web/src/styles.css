@@ -836,3 +836,21 @@ body.dark .tp-lcli { color: #c7d0e0; }
 .tp-tile.donerep { background: linear-gradient(130deg, #7c2d12, #c2410c); }
 .fila-hd.donerep { background: linear-gradient(130deg, #7c2d12, #c2410c); }
 .fila-btn.donerep { background: #c2410c; }
+
+/* Painel por pessoa (Costura): menus grandes preenchendo a tela */
+.tp-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-content: start; }
+.tp-ptile { display: flex; align-items: center; gap: 15px; padding: 20px 22px; min-height: 104px; border-radius: 18px; border: none; cursor: pointer; text-align: left; color: #fff; position: relative; box-shadow: 0 6px 18px #0f172a1f; background: linear-gradient(130deg, #4338ca, #6366f1); transition: transform .08s, box-shadow .12s; }
+.tp-ptile:hover { transform: translateY(-1px); box-shadow: 0 10px 26px #0f172a2b; }
+.tp-ptile.def { background: linear-gradient(130deg, #9f1239, #e11d48); }
+.tp-pav { width: 54px; height: 54px; border-radius: 15px; background: #ffffff2e; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 19px; flex: none; }
+.tp-pbody { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.tp-pn { font-size: 32px; font-weight: 800; line-height: 1; }
+.tp-pl { font-size: 16px; font-weight: 800; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tp-psub { font-size: 12.5px; color: #ffffffcc; font-weight: 600; margin-top: 2px; }
+.tp-pgo { position: absolute; right: 18px; bottom: 14px; font-size: 11px; font-weight: 800; color: #ffffffcc; letter-spacing: .3px; }
+.fila-hd.pessoa { background: linear-gradient(130deg, #4338ca, #6366f1); }
+.fila-hd.def { background: linear-gradient(130deg, #9f1239, #e11d48); }
+.fila-acts { display: flex; gap: 8px; flex: none; align-items: center; }
+.fila-def { flex: none; border: 1px solid #fecaca; background: #fff5f5; color: #b91c1c; border-radius: 11px; padding: 10px 12px; font-size: 12.5px; font-weight: 800; cursor: pointer; }
+.fila-def:hover { background: #fee2e2; }
+body.dark .fila-def { background: #2a1416; border-color: #7f1d1d; color: #fca5a5; }
