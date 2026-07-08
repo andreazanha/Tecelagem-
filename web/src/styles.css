@@ -854,3 +854,8 @@ body.dark .tp-lcli { color: #c7d0e0; }
 .fila-def { flex: none; border: 1px solid #fecaca; background: #fff5f5; color: #b91c1c; border-radius: 11px; padding: 10px 12px; font-size: 12.5px; font-weight: 800; cursor: pointer; }
 .fila-def:hover { background: #fee2e2; }
 body.dark .fila-def { background: #2a1416; border-color: #7f1d1d; color: #fca5a5; }
+
+/* "Aguardando p/ revisar" (fila de entrada da Revisão) */
+.tp-tile.entrada { background: linear-gradient(130deg, #0369a1, #0ea5e9); }
+.fila-hd.entrada { background: linear-gradient(130deg, #0369a1, #0ea5e9); }
+.fila-btn.entrada { background: #0284c7; }
