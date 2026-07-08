@@ -251,8 +251,10 @@ producao.get("/", async (c) => {
     .bind(setor)
     .all();
   const enriquecido = await enriquecerEstoque(c.env, results as CardStock[]);
-  // Galga por produto só faz sentido na Tecelagem (onde o Painel separa por máquina).
-  if (setor === "tecelagem") await enriquecerGalga(c.env, enriquecido);
+  // Galga por produto: usada pelo Painel (Tecelagem/Passadoria) e telas que separam por parte.
+  if (["tecelagem", "passadoria", "corte", "costura", "revisao"].includes(setor)) {
+    await enriquecerGalga(c.env, enriquecido);
+  }
   return c.json(enriquecido);
 });
 

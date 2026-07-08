@@ -3,6 +3,9 @@ import { Quadro, type QuadroCfg } from "../components/Quadro";
 const PASSADORIA: QuadroCfg = {
   setor: "passadoria",
   titulo: "Passadoria",
+  painel: true,
+  painelUnico: true,
+  painelIcone: "🔥",
   fazerLabel: "Passar",
   fazendoLabel: "Passando",
   proxSetor: "corte",
