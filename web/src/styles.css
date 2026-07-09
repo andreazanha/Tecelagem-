@@ -1152,3 +1152,7 @@ body.dark .topnav-sub { background: #0f1629; border-color: #ffffff14; }
   .topnav-dd-i.has-sub { flex-wrap: wrap; }
   .topnav-dd-i.has-sub .tn-sub-car { display: none; }
 }
+
+/* Estoque de material abaixo do mínimo (destaque para repor/comprar). */
+.mat-saldo-baixo { color: #b91c1c; font-weight: 800; }
+body.dark .mat-saldo-baixo { color: #fca5a5; }

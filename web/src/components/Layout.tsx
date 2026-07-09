@@ -3,6 +3,7 @@ import { NavLink, Outlet, Link, Navigate, useNavigate, useLocation } from "react
 import { VERSION } from "../version";
 import { historico } from "../historico";
 import { getUser, setUser, pode } from "../auth";
+import { api, type MaterialCategoriaDef } from "../api";
 import { pushSuportado, pushAtivo, ativarPush, desativarPush } from "../push";
 import { Icon } from "./Icon";
 import { Assistente } from "./Assistente";
@@ -87,7 +88,7 @@ function UndoRedo() {
 
 // Item do menu. `page` = permissão da tela (se ausente e sem `soon`, é livre).
 // `soon` = página ainda não existe → aparece só para admin, desabilitada (sem 404).
-interface MenuItem { to?: string; icon: string; label: string; page?: string; soon?: boolean; children?: MenuItem[] }
+interface MenuItem { to?: string; icon: string; label: string; page?: string; soon?: boolean; children?: MenuItem[]; dyn?: string }
 interface MenuGrupo { id: string; icon: string; label: string; itens: MenuItem[] }
 
 // Menu em grupos sanfonados. Itens existentes apontam para rotas reais (alguns
@@ -144,18 +145,9 @@ const GRUPOS: MenuGrupo[] = [
   {
     id: "cadastros", icon: "🗂️", label: "Cadastros", itens: [
       { to: "/cadastros?aba=produtos", icon: "📦", label: "Produtos", page: "cadastros" },
-      { to: "/cadastros?aba=tipos-fio", icon: "🎨", label: "Fios", page: "cadastros" },
       { to: "/cadastros?aba=tamanhos", icon: "📏", label: "Tamanhos", page: "cadastros" },
-      {
-        icon: "🧷", label: "Materiais", page: "cadastros", children: [
-          { to: "/cadastros?aba=materiais&mat=forro", icon: "🧵", label: "Forro", page: "cadastros" },
-          { to: "/cadastros?aba=materiais&mat=ziper", icon: "🤐", label: "Zíper", page: "cadastros" },
-          { to: "/cadastros?aba=materiais&mat=etiqueta", icon: "🏷️", label: "Etiqueta", page: "cadastros" },
-          { to: "/cadastros?aba=materiais&mat=encarte", icon: "📄", label: "Encarte", page: "cadastros" },
-          { to: "/cadastros?aba=materiais&mat=embalagem", icon: "📦", label: "Embalagem", page: "cadastros" },
-          { to: "/cadastros?aba=materiais&mat=refil", icon: "🛏️", label: "Refil", page: "cadastros" },
-        ],
-      },
+      // Materiais: submenu dinâmico (Fios + insumos cadastrados + Compras), montado em TopNav.
+      { icon: "🧷", label: "Materiais", page: "cadastros", dyn: "materiais", children: [] },
       { to: "/cadastros?aba=fornecedores", icon: "🚛", label: "Fornecedores", page: "cadastros" },
       { to: "/cadastros?aba=usuarios", icon: "🔐", label: "Usuários", page: "cadastros" },
     ],
@@ -220,6 +212,16 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
   const loc = useLocation();
   const [aberto, setAberto] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Insumos (categorias de material) cadastrados → viram sub-itens do menu Materiais.
+  const [insumos, setInsumos] = useState<MaterialCategoriaDef[]>([]);
+  useEffect(() => { api.listarCategoriasMaterial().then(setInsumos).catch(() => {}); }, []);
+  // Monta os filhos do menu Materiais: Fios + cada insumo cadastrado + Compras.
+  const matChildren = (): MenuItem[] => [
+    { to: "/cadastros?aba=tipos-fio", icon: "🎨", label: "Fios", page: "cadastros" },
+    ...insumos.map((c) => ({ to: `/cadastros?aba=materiais&mat=${c.slug}`, icon: c.icone || "🔹", label: c.nome, page: "cadastros" })),
+    { to: "/cadastros?aba=materiais&mat=__compras", icon: "🛒", label: "Compras", page: "cadastros" },
+  ];
+  const comDyn = (it: MenuItem): MenuItem => (it.dyn === "materiais" ? { ...it, children: matChildren() } : it);
 
   // Fecha ao navegar (troca de rota/aba).
   useEffect(() => { setAberto(null); setMobileOpen(false); }, [loc.pathname, loc.search]);
@@ -232,8 +234,9 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  const grupos = GRUPOS.map((g) => ({ ...g, itens: g.itens.filter((it) => itemVisivel(u, it)) })).filter((g) => g.itens.length);
-  const comLink = GRUPOS.flatMap((g) => g.itens).filter((it) => it.to);
+  const grupos = GRUPOS.map((g) => ({ ...g, itens: g.itens.map(comDyn).filter((it) => itemVisivel(u, it)) })).filter((g) => g.itens.length);
+  // inclui os filhos (submenus) na detecção de item ativo
+  const comLink = GRUPOS.flatMap((g) => g.itens.map(comDyn)).flatMap((it) => [it, ...(it.children || [])]).filter((it) => it.to);
 
   // qual item está ativo agora (um só) e a que grupo ele pertence
   let ativoTo = "";
@@ -242,7 +245,7 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
     const s = itemAtivo(it.to!, loc);
     if (s > melhor) { melhor = s; ativoTo = it.to!; }
   }
-  const grupoAtivo = grupos.find((g) => g.itens.some((it) => it.to === ativoTo))?.id;
+  const grupoAtivo = grupos.find((g) => g.itens.some((it) => it.to === ativoTo || (it.children || []).some((ch) => ch.to === ativoTo)))?.id;
 
   const DDItem = (it: MenuItem, ctx: string) => {
     const inner = (
@@ -254,8 +257,9 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
     );
     // Item com submenu: abre um segundo nível ao passar o mouse.
     if (it.children && it.children.length) {
+      const subAtivo = it.children.some((ch) => !!ch.to && ch.to === ativoTo);
       return (
-        <div className="topnav-dd-i has-sub" key={ctx + it.label} title={it.label}>
+        <div className={"topnav-dd-i has-sub" + (subAtivo ? " active" : "")} key={ctx + it.label} title={it.label}>
           {inner}
           <span className="tn-sub-car">▸</span>
           <div className="topnav-sub">{it.children.map((ch) => DDItem(ch, ctx + it.label))}</div>

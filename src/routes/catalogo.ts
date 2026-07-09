@@ -180,7 +180,7 @@ export const tiposFio = new Hono<{ Bindings: Env }>();
 
 tiposFio.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT t.id, t.nome, t.cor, t.fornecedor_id, f.nome AS fornecedor_nome
+    `SELECT t.id, t.nome, t.cor, t.preco, t.fornecedor_id, f.nome AS fornecedor_nome
        FROM tipos_fio t LEFT JOIN fornecedores f ON f.id = t.fornecedor_id
       ORDER BY t.nome`
   ).all();
@@ -188,19 +188,20 @@ tiposFio.get("/", async (c) => {
 });
 
 tiposFio.post("/", async (c) => {
-  const b = await c.req.json<{ id?: string; nome?: string; fornecedor_id?: string; cor?: string }>().catch(() => ({}) as Record<string, string>);
+  const b = await c.req.json<{ id?: string; nome?: string; fornecedor_id?: string; cor?: string; preco?: number }>().catch(() => ({}) as Record<string, string>);
   const nome = String(b.nome ?? "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
   const id = b.id || crypto.randomUUID();
   const forn = String(b.fornecedor_id ?? "").trim() || null;
   const corRaw = String(b.cor ?? "").trim();
   const cor = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(corRaw) ? corRaw : null;
+  const preco = b.preco == null || isNaN(Number(b.preco)) ? null : Number(b.preco);
   await c.env.DB.prepare(
-    `INSERT INTO tipos_fio (id, nome, fornecedor_id, cor) VALUES (?, ?, ?, ?)
+    `INSERT INTO tipos_fio (id, nome, fornecedor_id, cor, preco) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, fornecedor_id = excluded.fornecedor_id,
-       cor = COALESCE(excluded.cor, tipos_fio.cor)`
-  ).bind(id, nome, forn, cor).run();
-  return c.json({ id, nome, fornecedor_id: forn, cor });
+       cor = COALESCE(excluded.cor, tipos_fio.cor), preco = excluded.preco`
+  ).bind(id, nome, forn, cor, preco).run();
+  return c.json({ id, nome, fornecedor_id: forn, cor, preco });
 });
 
 tiposFio.delete("/:id", async (c) => {

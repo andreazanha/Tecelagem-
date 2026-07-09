@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type Material, type MaterialCategoria } from "../api";
+import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type Material, type MaterialCategoriaDef, type CompraSugestao } from "../api";
 import { getUser, PAGINAS, type Usuario } from "../auth";
 
 type AbaCad = "produtos" | "tipos-fio" | "tamanhos" | "materiais" | "fornecedores" | "operadores" | "usuarios";
@@ -37,34 +37,12 @@ export function Cadastros() {
     if (q && ABAS_CAD.includes(q)) setAba(q);
   }, [sp]);
 
-  const segs: { id: AbaCad; label: string; adminOnly?: boolean }[] = [
-    { id: "produtos", label: "Produtos" },
-    { id: "tipos-fio", label: "Fios" },
-    { id: "tamanhos", label: "Tamanhos" },
-    { id: "materiais", label: "Materiais" },
-    { id: "fornecedores", label: "Fornecedores" },
-    { id: "operadores", label: "Operadores" },
-    { id: "usuarios", label: "Usuários", adminOnly: true },
-  ];
-
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Cadastros</h1>
           <div className="breadcrumb">Configuração › {ABA_LABEL[aba]}</div>
-        </div>
-        <div className="segmented" style={{ flexWrap: "wrap" }}>
-          {segs.filter((s) => !s.adminOnly || ehAdmin).map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className={"seg" + (aba === s.id ? " seg-on" : "")}
-              onClick={() => setAba(s.id)}
-            >
-              {s.label}
-            </button>
-          ))}
         </div>
       </div>
 
@@ -752,43 +730,103 @@ function AbaTamanhos() {
 }
 
 // ═══════════════════════════ Aba MATERIAIS ═══════════════════════════
-const MAT_CATS: { id: MaterialCategoria; label: string; cor: string }[] = [
-  { id: "forro", label: "Forro", cor: "#0891b2" },
-  { id: "ziper", label: "Zíper", cor: "#7c3aed" },
-  { id: "etiqueta", label: "Etiqueta", cor: "#ca8a04" },
-  { id: "encarte", label: "Encarte", cor: "#16a34a" },
-  { id: "embalagem", label: "Embalagem", cor: "#ea580c" },
-  { id: "refil", label: "Refil", cor: "#db2777" },
-];
+const UNIDADES = ["un", "cm", "m", "kg", "g", "par", "rolo"];
+const CORES_INSUMO = ["#0891b2", "#7c3aed", "#ca8a04", "#16a34a", "#ea580c", "#db2777", "#2563eb", "#dc2626", "#64748b"];
+const nBR = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+const rBR = (v: number) => "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function AbaMateriais() {
-  // Cadastro SEPARADO por material (sub-aba): cada material tem sua própria tela
-  // e lista — base pro controle de estoque de cada um. O submenu do topo faz
-  // deep-link via ?mat=<categoria> pra abrir direto a tela certa.
+  // Insumos CADASTRÁVEIS: cada categoria é uma sub-aba (dinâmica) com sua própria
+  // tela e controle de estoque. O submenu do topo faz deep-link via ?mat=<slug>.
+  // ?mat=__compras abre a lista de compras (saldo abaixo do mínimo).
   const [sp] = useSearchParams();
-  const matParam = MAT_CATS.find((c) => c.id === sp.get("mat"))?.id;
-  const [cat, setCat] = useState<MaterialCategoria>(matParam || "forro");
-  useEffect(() => {
-    const q = MAT_CATS.find((c) => c.id === sp.get("mat"))?.id;
-    if (q) setCat(q);
-  }, [sp]);
-  const meta = MAT_CATS.find((c) => c.id === cat)!;
+  const [cats, setCats] = useState<MaterialCategoriaDef[]>([]);
+  const [cat, setCat] = useState<string>(sp.get("mat") || "");
+  const [modal, setModal] = useState<MaterialCategoriaDef | "novo" | null>(null);
+
+  function recarregarCats() { return api.listarCategoriasMaterial().then((cs) => { setCats(cs); return cs; }); }
+  useEffect(() => { recarregarCats().then((cs) => { if (!sp.get("mat") && cs[0]) setCat(cs[0].slug); }); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { const q = sp.get("mat"); if (q) setCat(q); }, [sp]);
+
+  const meta = cats.find((c) => c.slug === cat) || null;
   return (
     <>
       <div className="segmented" style={{ marginBottom: 16, flexWrap: "wrap" }}>
-        {MAT_CATS.map((c) => (
-          <button type="button" key={c.id} className={"seg" + (cat === c.id ? " seg-on" : "")} onClick={() => setCat(c.id)}>
-            <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: c.cor, marginRight: 7 }} />{c.label}
+        {cats.map((c) => (
+          <button type="button" key={c.slug} className={"seg" + (cat === c.slug ? " seg-on" : "")} onClick={() => setCat(c.slug)}>
+            <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: c.cor || "#64748b", marginRight: 7 }} />{c.nome}
           </button>
         ))}
+        <button type="button" className={"seg" + (cat === "__compras" ? " seg-on" : "")} onClick={() => setCat("__compras")}>🛒 Compras</button>
+        <button type="button" className="seg" style={{ fontWeight: 700, color: "#4338ca" }} onClick={() => setModal("novo")}>＋ Novo insumo</button>
       </div>
-      <CadastroMaterial key={cat} categoria={cat} label={meta.label} cor={meta.cor} />
+
+      {cat === "__compras" ? (
+        <ComprasMateriais />
+      ) : meta ? (
+        <CadastroMaterial
+          key={meta.slug} cat={meta}
+          onEditarCat={() => setModal(meta)}
+          onExcluirCat={async () => {
+            if (!confirm(`Excluir o insumo "${meta.nome}"? (só se estiver vazio)`)) return;
+            try { await api.excluirCategoriaMaterial(meta.id); const cs = await recarregarCats(); setCat(cs[0]?.slug || ""); }
+            catch (e) { alert((e as Error).message); }
+          }}
+        />
+      ) : (
+        <div className="card pad muted">Escolha um insumo acima ou crie um novo.</div>
+      )}
+
+      {modal && (
+        <InsumoModal
+          cat={modal === "novo" ? null : modal}
+          onFechar={() => setModal(null)}
+          onSalvo={(slug) => { setModal(null); recarregarCats(); setCat(slug); }}
+        />
+      )}
     </>
   );
 }
 
-// Uma tela de cadastro para UM material (forro, zíper, etc.). Só desse material.
-function CadastroMaterial({ categoria, label, cor: catCor }: { categoria: MaterialCategoria; label: string; cor: string }) {
+// Modal de cadastro/edição de um INSUMO (categoria de material).
+function InsumoModal({ cat, onFechar, onSalvo }: { cat: MaterialCategoriaDef | null; onFechar: () => void; onSalvo: (slug: string) => void }) {
+  const [nome, setNome] = useState(cat?.nome || "");
+  const [cor, setCor] = useState(cat?.cor || CORES_INSUMO[0]);
+  const [icone, setIcone] = useState(cat?.icone || "");
+  async function salvar() {
+    if (!nome.trim()) return alert("Informe o nome do insumo.");
+    try { const r = await api.salvarCategoriaMaterial({ id: cat?.id, nome: nome.trim(), cor, icone: icone.trim() || null }); onSalvo(r.slug); }
+    catch (e) { alert((e as Error).message); }
+  }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginTop: 0 }}>{cat ? "Editar insumo" : "Novo insumo"}</h2>
+        <p className="muted" style={{ marginTop: -4 }}>Ele aparece sozinho no menu Materiais e como sub-aba.</p>
+        <label className="campo"><span className="campo-label">Nome</span>
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex.: Botão, Linha, Viés" autoFocus /></label>
+        <label className="campo"><span className="campo-label">Ícone (emoji, opcional)</span>
+          <input value={icone} onChange={(e) => setIcone(e.target.value)} placeholder="ex.: 🔘" style={{ width: 90 }} /></label>
+        <div className="campo"><span className="campo-label">Cor</span>
+          <div className="row-gap" style={{ flexWrap: "wrap", gap: 6 }}>
+            {CORES_INSUMO.map((c) => (
+              <button key={c} type="button" onClick={() => setCor(c)} title={c}
+                style={{ width: 26, height: 26, borderRadius: "50%", background: c, border: cor === c ? "3px solid #0f172a" : "2px solid #fff", boxShadow: "0 0 0 1px #d7dbe3", cursor: "pointer" }} />
+            ))}
+          </div>
+        </div>
+        <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 18 }}>
+          <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
+          <button className="btn btn-primary" onClick={salvar}>{cat ? "Salvar" : "Criar insumo"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Tela de cadastro + ESTOQUE de UM insumo. Controla saldo/mínimo/preço p/ compras.
+function CadastroMaterial({ cat, onEditarCat, onExcluirCat }: { cat: MaterialCategoriaDef; onEditarCat: () => void; onExcluirCat: () => void }) {
+  const categoria = cat.slug, label = cat.nome, catCor = cat.cor || "#64748b";
   const [itens, setItens] = useState<Material[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
@@ -798,13 +836,23 @@ function CadastroMaterial({ categoria, label, cor: catCor }: { categoria: Materi
   const [cor, setCor] = useState("");
   const [corHex, setCorHex] = useState("#333333");
   const [codigo, setCodigo] = useState("");
+  const [unidade, setUnidade] = useState("un");
+  const [preco, setPreco] = useState("");
+  const [minimo, setMinimo] = useState("");
+  const [novoForn, setNovoForn] = useState(false);
+  const [entrada, setEntrada] = useState<Material | null>(null);
   const isZip = categoria === "ziper";
 
   function recarregar() { api.listarMateriais(categoria).then(setItens).catch(() => {}); }
-  useEffect(() => { recarregar(); api.listarFornecedores().then(setFornecedores).catch(() => {}); /* eslint-disable-next-line */ }, [categoria]);
+  function recarregarForn() { return api.listarFornecedores().then(setFornecedores).catch(() => {}); }
+  useEffect(() => { recarregar(); recarregarForn(); /* eslint-disable-next-line */ }, [categoria]);
 
-  function limpar() { setEditId(null); setNome(""); setTamanho(""); setFornId(""); setCor(""); setCorHex("#333333"); setCodigo(""); }
-  function editar(m: Material) { setEditId(m.id); setNome(m.nome); setTamanho(m.tamanho || ""); setFornId(m.fornecedor_id || ""); setCor(m.cor || ""); setCorHex(m.cor_hex || "#333333"); setCodigo(m.codigo || ""); }
+  function limpar() { setEditId(null); setNome(""); setTamanho(""); setFornId(""); setCor(""); setCorHex("#333333"); setCodigo(""); setUnidade("un"); setPreco(""); setMinimo(""); }
+  function editar(m: Material) {
+    setEditId(m.id); setNome(m.nome); setTamanho(m.tamanho || ""); setFornId(m.fornecedor_id || "");
+    setCor(m.cor || ""); setCorHex(m.cor_hex || "#333333"); setCodigo(m.codigo || "");
+    setUnidade(m.unidade || "un"); setPreco(m.preco != null ? String(m.preco) : ""); setMinimo(m.minimo != null ? String(m.minimo) : "");
+  }
 
   async function salvar() {
     if (!nome.trim()) return alert("Informe o nome do material.");
@@ -812,6 +860,7 @@ function CadastroMaterial({ categoria, label, cor: catCor }: { categoria: Materi
       await api.salvarMaterial({
         id: editId || undefined, categoria, nome: nome.trim(), tamanho: tamanho.trim() || null, fornecedor_id: fornId || null,
         cor: isZip ? (cor.trim() || null) : null, cor_hex: isZip ? corHex : null, codigo: isZip ? (codigo.trim() || null) : null,
+        unidade, preco: preco.trim() ? Number(preco.replace(",", ".")) : null, minimo: minimo.trim() ? Number(minimo.replace(",", ".")) : 0,
       });
       limpar(); recarregar();
     } catch (e) { alert((e as Error).message); }
@@ -821,22 +870,38 @@ function CadastroMaterial({ categoria, label, cor: catCor }: { categoria: Materi
     try { await api.excluirMaterial(m.id); if (editId === m.id) limpar(); recarregar(); } catch (e) { alert((e as Error).message); }
   }
 
+  const colSpan = isZip ? 7 : 6;
   return (
     <>
       <div className="card pad" style={{ marginBottom: 16 }}>
-        <h2>{editId ? `Editar ${label.toLowerCase()}` : `Novo ${label.toLowerCase()}`}</h2>
+        <div className="row-gap" style={{ alignItems: "center" }}>
+          <h2 style={{ margin: 0 }}>{editId ? `Editar ${label.toLowerCase()}` : `Novo ${label.toLowerCase()}`}</h2>
+          <span style={{ marginLeft: "auto" }} />
+          <button className="btn btn-soft" title="Renomear insumo" onClick={onEditarCat}>✎ Insumo</button>
+          <button className="btn" title="Excluir insumo" onClick={onExcluirCat}>🗑</button>
+        </div>
         <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
-          <label className="fld">Nome<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder={`ex.: ${label} branco`} style={{ minWidth: 200 }} /></label>
-          <label className="fld">Tamanho<input value={tamanho} onChange={(e) => setTamanho(e.target.value)} placeholder="ex.: 90X200" style={{ width: 130 }} /></label>
-          <label className="fld">Fornecedor
-            <select value={fornId} onChange={(e) => setFornId(e.target.value)} style={{ minWidth: 170 }}>
-              <option value="">Sem fornecedor</option>
-              {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+          <label className="fld">Nome<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder={`ex.: ${label} branco`} style={{ minWidth: 190 }} /></label>
+          <label className="fld">Tamanho<input value={tamanho} onChange={(e) => setTamanho(e.target.value)} placeholder="ex.: 90X200" style={{ width: 120 }} /></label>
+          <label className="fld">Unidade
+            <select value={unidade} onChange={(e) => setUnidade(e.target.value)} style={{ width: 90 }}>
+              {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
           </label>
+          <label className="fld">Preço (R$)<input value={preco} onChange={(e) => setPreco(e.target.value)} placeholder="0,00" inputMode="decimal" style={{ width: 100 }} /></label>
+          <label className="fld">Estoque mín.<input value={minimo} onChange={(e) => setMinimo(e.target.value)} placeholder="0" inputMode="decimal" style={{ width: 90 }} /></label>
+          <label className="fld">Fornecedor
+            <div className="row-gap" style={{ gap: 4 }}>
+              <select value={fornId} onChange={(e) => setFornId(e.target.value)} style={{ minWidth: 150 }}>
+                <option value="">Sem fornecedor</option>
+                {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+              </select>
+              <button type="button" className="btn btn-soft" title="Novo fornecedor" onClick={() => setNovoForn(true)} style={{ padding: "8px 11px" }}>＋</button>
+            </div>
+          </label>
           {isZip && <>
-            <label className="fld">Cor<input value={cor} onChange={(e) => setCor(e.target.value)} placeholder="ex.: Preto" style={{ width: 120 }} /></label>
-            <label className="fld">Código<input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Z5-PT" style={{ width: 110 }} /></label>
+            <label className="fld">Cor<input value={cor} onChange={(e) => setCor(e.target.value)} placeholder="ex.: Preto" style={{ width: 110 }} /></label>
+            <label className="fld">Código<input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Z5-PT" style={{ width: 100 }} /></label>
             <label className="fld">Amostra<input type="color" value={corHex} onChange={(e) => setCorHex(e.target.value)} style={{ width: 46, height: 36, padding: 2 }} /></label>
           </>}
           <button className="btn btn-primary" onClick={salvar}>{editId ? "Salvar" : "＋ Adicionar"}</button>
@@ -850,27 +915,157 @@ function CadastroMaterial({ categoria, label, cor: catCor }: { categoria: Materi
           <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>{itens.length} item(ns)</span>
         </div>
         <table className="table">
-          <thead><tr><th>Material</th>{isZip && <th>Cor / Código</th>}<th>Tamanho</th><th>Fornecedor</th><th></th></tr></thead>
+          <thead><tr><th>Material</th>{isZip && <th>Cor / Código</th>}<th>Tamanho</th><th className="num">Estoque</th><th className="num">Preço</th><th>Fornecedor</th><th></th></tr></thead>
           <tbody>
             {itens.length === 0 ? (
-              <tr><td colSpan={isZip ? 5 : 4} className="empty pad">Nenhum {label.toLowerCase()} cadastrado ainda.</td></tr>
-            ) : itens.map((m) => (
-              <tr key={m.id}>
-                <td className="strong">{m.nome}</td>
-                {isZip && (
-                  <td><span className="cad-sw" style={{ background: m.cor_hex || "#e2e8f0", marginRight: 7 }} />{m.cor || "—"} {m.codigo && <span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{m.codigo}</span>}</td>
-                )}
-                <td className="strong">{m.tamanho || "—"}</td>
-                <td>{m.fornecedor_nome || "—"}</td>
-                <td style={{ whiteSpace: "nowrap" }}>
-                  <button className="icon-btn" title="Editar" onClick={() => editar(m)}>✎</button>
-                  <button className="icon-btn" title="Excluir" onClick={() => remover(m)}>✕</button>
-                </td>
-              </tr>
-            ))}
+              <tr><td colSpan={colSpan} className="empty pad">Nenhum {label.toLowerCase()} cadastrado ainda.</td></tr>
+            ) : itens.map((m) => {
+              const saldo = m.saldo || 0, min = m.minimo || 0, baixo = min > 0 && saldo < min;
+              return (
+                <tr key={m.id}>
+                  <td className="strong">{m.nome}</td>
+                  {isZip && (
+                    <td><span className="cad-sw" style={{ background: m.cor_hex || "#e2e8f0", marginRight: 7 }} />{m.cor || "—"} {m.codigo && <span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{m.codigo}</span>}</td>
+                  )}
+                  <td className="strong">{m.tamanho || "—"}</td>
+                  <td className="num">
+                    <span className={baixo ? "mat-saldo-baixo" : ""}>{nBR(saldo)} {m.unidade || ""}</span>
+                    {min > 0 && <div className="muted" style={{ fontSize: 10.5 }}>mín {nBR(min)}{baixo ? " · repor" : ""}</div>}
+                  </td>
+                  <td className="num">{m.preco != null ? rBR(m.preco) : "—"}</td>
+                  <td>{m.fornecedor_nome || "—"}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <button className="icon-btn" title="Entrada de estoque" onClick={() => setEntrada(m)}>📥</button>
+                    <button className="icon-btn" title="Editar" onClick={() => editar(m)}>✎</button>
+                    <button className="icon-btn" title="Excluir" onClick={() => remover(m)}>✕</button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
+
+      {novoForn && <FornecedorRapido onFechar={() => setNovoForn(false)} onSalvo={async (id) => { setNovoForn(false); await recarregarForn(); setFornId(id); }} />}
+      {entrada && <MovEstoqueModal material={entrada} onFechar={() => setEntrada(null)} onSalvo={() => { setEntrada(null); recarregar(); }} />}
+    </>
+  );
+}
+
+// Modal rápido: cadastra um fornecedor sem sair da tela de material.
+function FornecedorRapido({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: (id: string) => void }) {
+  const [nome, setNome] = useState("");
+  const [contato, setContato] = useState("");
+  async function salvar() {
+    if (!nome.trim()) return alert("Informe o nome do fornecedor.");
+    try { const r = await api.salvarFornecedor({ nome: nome.trim(), contato: contato.trim() || null, ativo: 1 }); onSalvo(r.id); }
+    catch (e) { alert((e as Error).message); }
+  }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginTop: 0 }}>Novo fornecedor</h2>
+        <label className="campo"><span className="campo-label">Nome</span>
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex.: Coats" autoFocus /></label>
+        <label className="campo"><span className="campo-label">Contato (opcional)</span>
+          <input value={contato} onChange={(e) => setContato(e.target.value)} placeholder="telefone / e-mail" /></label>
+        <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+          <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
+          <button className="btn btn-primary" onClick={salvar}>Salvar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal de movimentação de estoque (entrada de compra / baixa / ajuste).
+function MovEstoqueModal({ material, onFechar, onSalvo }: { material: Material; onFechar: () => void; onSalvo: () => void }) {
+  const [tipo, setTipo] = useState<"entrada" | "baixa" | "ajuste">("entrada");
+  const [qtd, setQtd] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const un = material.unidade || "";
+  async function salvar() {
+    const q = Number(qtd.replace(",", "."));
+    if (!q || isNaN(q)) return alert("Informe a quantidade.");
+    try { await api.movMaterial(material.id, { tipo, quantidade: q, motivo: motivo.trim() || undefined }); onSalvo(); }
+    catch (e) { alert((e as Error).message); }
+  }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 430 }} onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginTop: 0 }}>Estoque · {material.nome}</h2>
+        <p className="muted" style={{ marginTop: -4 }}>Saldo atual: <strong>{nBR(material.saldo || 0)} {un}</strong></p>
+        <div className="segmented" style={{ marginBottom: 12 }}>
+          {(["entrada", "baixa", "ajuste"] as const).map((t) => (
+            <button key={t} type="button" className={"seg" + (tipo === t ? " seg-on" : "")} onClick={() => setTipo(t)}>
+              {t === "entrada" ? "📥 Entrada" : t === "baixa" ? "📤 Baixa" : "⚖️ Ajuste"}
+            </button>
+          ))}
+        </div>
+        <label className="campo"><span className="campo-label">{tipo === "ajuste" ? `Novo saldo (${un})` : `Quantidade (${un})`}</span>
+          <input value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="0" inputMode="decimal" autoFocus /></label>
+        <label className="campo"><span className="campo-label">Motivo (opcional)</span>
+          <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder={tipo === "entrada" ? "ex.: compra NF 123" : "ex.: perda / acerto"} /></label>
+        <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+          <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
+          <button className="btn btn-primary" onClick={salvar}>Confirmar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Lista de COMPRAS: materiais abaixo do mínimo, agrupados por fornecedor.
+function ComprasMateriais() {
+  const [itens, setItens] = useState<CompraSugestao[]>([]);
+  const [carregou, setCarregou] = useState(false);
+  useEffect(() => { api.comprasMateriais().then((r) => { setItens(r); setCarregou(true); }).catch(() => setCarregou(true)); }, []);
+
+  // agrupa por fornecedor (mantém ordem de chegada, que já vem ordenada)
+  const grupos: { forn: string; itens: CompraSugestao[] }[] = [];
+  for (const m of itens) {
+    const forn = m.fornecedor_nome || "Sem fornecedor";
+    let g = grupos.find((x) => x.forn === forn);
+    if (!g) { g = { forn, itens: [] }; grupos.push(g); }
+    g.itens.push(m);
+  }
+  const custoItem = (m: CompraSugestao) => (m.preco || 0) * (m.faltam || 0);
+  const totalGeral = itens.reduce((s, m) => s + custoItem(m), 0);
+
+  if (carregou && itens.length === 0)
+    return <div className="card pad empty">Nenhum material abaixo do estoque mínimo. Tudo em dia. ✅</div>;
+
+  return (
+    <>
+      <div className="row-gap" style={{ alignItems: "center", marginBottom: 12 }}>
+        <h2 style={{ margin: 0 }}>Compras sugeridas</h2>
+        <span className="muted" style={{ marginLeft: "auto" }}>Estimativa total: <strong>{rBR(totalGeral)}</strong></span>
+      </div>
+      {grupos.map((g) => {
+        const total = g.itens.reduce((s, m) => s + custoItem(m), 0);
+        return (
+          <div className="card" key={g.forn} style={{ marginBottom: 14 }}>
+            <div className="row-gap" style={{ alignItems: "center", gap: 10, padding: "10px 12px" }}>
+              <span className="chip chip-kit">🚛 {g.forn}</span>
+              <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>{g.itens.length} item(ns) · {rBR(total)}</span>
+            </div>
+            <table className="table">
+              <thead><tr><th>Material</th><th className="num">Saldo</th><th className="num">Mínimo</th><th className="num">Comprar</th><th className="num">Custo est.</th></tr></thead>
+              <tbody>
+                {g.itens.map((m) => (
+                  <tr key={m.id}>
+                    <td className="strong">{m.nome}{m.tamanho ? ` · ${m.tamanho}` : ""}</td>
+                    <td className="num"><span className="mat-saldo-baixo">{nBR(m.saldo || 0)} {m.unidade || ""}</span></td>
+                    <td className="num">{nBR(m.minimo || 0)}</td>
+                    <td className="num strong">{nBR(m.faltam || 0)} {m.unidade || ""}</td>
+                    <td className="num">{m.preco != null ? rBR(custoItem(m)) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
     </>
   );
 }

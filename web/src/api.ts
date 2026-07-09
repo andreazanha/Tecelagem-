@@ -88,6 +88,7 @@ export interface TipoFio {
   id: string;
   nome: string;
   cor?: string | null;
+  preco?: number | null; // custo por kg
   fornecedor_id: string | null;
   fornecedor_nome?: string | null;
 }
@@ -98,8 +99,17 @@ export interface Tamanho {
   ordem: number;
 }
 
-// Materiais (insumos da ficha técnica): forro, zíper, etiqueta, encarte, embalagem, refil.
-export type MaterialCategoria = "forro" | "ziper" | "etiqueta" | "encarte" | "embalagem" | "refil";
+// Materiais (insumos). Categorias agora são CADASTRÁVEIS (slug livre).
+export type MaterialCategoria = string;
+export interface MaterialCategoriaDef {
+  id: string;
+  slug: string;
+  nome: string;
+  cor?: string | null;
+  icone?: string | null;
+  ordem: number;
+  itens?: number; // quantos materiais nessa categoria
+}
 export interface Material {
   id: string;
   categoria: MaterialCategoria;
@@ -110,6 +120,14 @@ export interface Material {
   cor?: string | null;
   cor_hex?: string | null;
   codigo?: string | null;
+  unidade?: string | null;   // un|cm|kg|m
+  preco?: number | null;     // custo por unidade
+  saldo?: number;            // estoque atual
+  minimo?: number;           // estoque mínimo (dispara compra)
+}
+// Sugestão de compra: material com saldo abaixo do mínimo.
+export interface CompraSugestao extends Material {
+  faltam: number;
 }
 
 export interface Tassel {
@@ -579,7 +597,7 @@ export const api = {
   atribuirFioCores: (fio_id: string | null, cores: string[]) =>
     jsonPost("/api/cores/atribuir-fio", { fio_id, cores }).then((r) => j<{ ok: boolean; atualizadas: number }>(r)),
   listarTiposFio: () => fetch("/api/tipos-fio").then((r) => j<TipoFio[]>(r)),
-  salvarTipoFio: (b: { id?: string; nome: string; fornecedor_id: string | null; cor?: string | null }) =>
+  salvarTipoFio: (b: { id?: string; nome: string; fornecedor_id: string | null; cor?: string | null; preco?: number | null }) =>
     jsonPost("/api/tipos-fio", b).then((r) => j<TipoFio>(r)),
   excluirTipoFio: (id: string) =>
     fetch(`/api/tipos-fio/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) =>
@@ -596,6 +614,19 @@ export const api = {
     jsonPost("/api/materiais", b).then((r) => j<{ id: string }>(r)),
   excluirMaterial: (id: string) =>
     fetch(`/api/materiais/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  // Insumos (categorias dinâmicas de material)
+  listarCategoriasMaterial: () =>
+    fetch("/api/materiais/categorias").then((r) => j<MaterialCategoriaDef[]>(r)),
+  salvarCategoriaMaterial: (b: { id?: string; nome: string; cor?: string | null; icone?: string | null; ordem?: number }) =>
+    jsonPost("/api/materiais/categorias", b).then((r) => j<MaterialCategoriaDef>(r)),
+  excluirCategoriaMaterial: (id: string) =>
+    fetch(`/api/materiais/categorias/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  // Movimenta estoque do material (entrada de compra, baixa, ajuste)
+  movMaterial: (id: string, b: { tipo: "entrada" | "baixa" | "ajuste"; quantidade: number; motivo?: string }) =>
+    jsonPost(`/api/materiais/${encodeURIComponent(id)}/mov`, b).then((r) => j<{ id: string; saldo: number }>(r)),
+  // Sugestão de compras (saldo abaixo do mínimo)
+  comprasMateriais: () =>
+    fetch("/api/materiais/compras").then((r) => j<CompraSugestao[]>(r)),
   excluirTamanho: (id: string) =>
     fetch(`/api/tamanhos/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) =>
       j<{ ok: boolean }>(r)
