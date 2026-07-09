@@ -106,25 +106,19 @@ function AbaProdutos() {
 
   return (
     <>
-      <div className="row-gap" style={{ marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <input className="busca-ped" placeholder="🔎 Buscar produto…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={novaColecao}>＋ Nova coleção</button>
-        <button className="btn btn-primary" onClick={() => setModal({ nome: null })}>＋ Novo produto</button>
-      </div>
-      <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>
-        Coleções de produtos. Clique numa coleção para ver os produtos dela; clique de novo para ocultar e escolher outra. {produtos.length} produtos no total.
-      </p>
-
-      {/* Menu horizontal de coleções (abas) */}
-      <div className="segmented" style={{ flexWrap: "wrap", marginBottom: 14 }}>
+      {/* Tudo na mesma linha: buscar + coleções (botões padronizados) + ações */}
+      <div className="row-gap" style={{ marginBottom: 14, flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+        <input className="busca-ped" placeholder="🔎 Buscar produto…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ minWidth: 220 }} />
         {colecoes.map((col) => (
-          <button type="button" key={col.id} className={"seg" + (aberta === col.id ? " seg-on" : "")} onClick={() => abrir(col.id)}>
-            {col.nome} <span className="muted" style={{ fontWeight: 500 }}>({col.produtos ?? 0})</span>
+          <button type="button" key={col.id} className={"btn " + (aberta === col.id ? "btn-primary" : "btn-soft")} onClick={() => abrir(col.id)}>
+            {col.nome} ({col.produtos ?? 0})
           </button>
         ))}
-        <button type="button" className={"seg" + (aberta === "__todos__" ? " seg-on" : "")} onClick={() => abrir("__todos__")}>
-          Todos os produtos <span className="muted" style={{ fontWeight: 500 }}>({produtos.length})</span>
+        <button type="button" className={"btn " + (aberta === "__todos__" ? "btn-primary" : "btn-soft")} onClick={() => abrir("__todos__")}>
+          Todos os produtos ({produtos.length})
         </button>
+        <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={novaColecao}>＋ Nova coleção</button>
+        <button className="btn btn-primary" onClick={() => setModal({ nome: null })}>＋ Novo produto</button>
       </div>
 
       {/* Produtos da coleção escolhida */}
