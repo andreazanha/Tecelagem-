@@ -73,38 +73,63 @@ funil.get("/", async (c) => {
   const proxTarefa = new Map<string, { titulo: string; vence_em: string | null }>();
   for (const t of tar) if (!proxTarefa.has(t.card_id)) proxTarefa.set(t.card_id, { titulo: t.titulo, vence_em: t.vence_em });
 
-  // Ativo/Inativo: dias sem comprar (última compra não-reposição pelo nome).
-  const nomesAtivos = [...new Set(cards.filter((k) => k.etapa === "ativo" || k.etapa === "inativo").map((k) => k.nome))];
-  const ultimaCompra = new Map<string, string>();
-  if (nomesAtivos.length) {
-    const ph = nomesAtivos.map(() => "?").join(",");
+  // Compras reais de cada cliente vinculado (para as regras automáticas):
+  // nº de pedidos, data da última compra e quando o último pedido foi lançado.
+  const nomesVinc = [...new Set(cards.filter((k) => k.cliente_id).map((k) => k.nome))];
+  const compras = new Map<string, { n: number; ultima: string | null; ultimoCriado: string | null }>();
+  if (nomesVinc.length) {
+    const ph = nomesVinc.map(() => "?").join(",");
     const { results } = await c.env.DB.prepare(
-      `SELECT cliente_nome AS nome, MAX(data_pedido) AS ultima FROM pedidos
-        WHERE cliente_nome IN (${ph}) AND COALESCE(reposicao,0)=0 AND COALESCE(tipo,'') <> 'estoque' GROUP BY cliente_nome`
-    ).bind(...nomesAtivos).all<{ nome: string; ultima: string | null }>();
-    for (const r of results) if (r.ultima) ultimaCompra.set(r.nome, r.ultima);
+      `SELECT cliente_nome AS nome, COUNT(*) AS n, MAX(data_pedido) AS ultima, MAX(created_at) AS ultimoCriado
+         FROM pedidos WHERE cliente_nome IN (${ph}) AND COALESCE(reposicao,0)=0 AND COALESCE(tipo,'') <> 'estoque'
+        GROUP BY cliente_nome`
+    ).bind(...nomesVinc).all<{ nome: string; n: number; ultima: string | null; ultimoCriado: string | null }>();
+    for (const r of results) compras.set(r.nome, { n: r.n, ultima: r.ultima, ultimoCriado: r.ultimoCriado });
   }
 
+  const PROSPECT = new Set(["novo-lead", "primeiro-contato", "negociacao", "aguardando-retorno"]);
+  // Tarefa-padrão + texto do log ao entrar em cada etapa por automação.
+  const MOVE: Record<string, { tarefa: string; prazo: string; log: string }> = {
+    "pos-venda": { tarefa: "Confirmar recebimento (pós-venda)", prazo: "+2 day", log: "Converteu (novo pedido) → Pós-venda" },
+    "ativo-reativado": { tarefa: "Retomar relacionamento", prazo: "+3 day", log: "Reativado (comprou de novo) → Ativo" },
+    "ativo-posvenda": { tarefa: "Acompanhamento periódico", prazo: "+30 day", log: "Pós-venda concluída → Ativo" },
+    "inativo": { tarefa: "Campanha de reativação", prazo: "+2 day", log: "120+ dias sem comprar → Inativo" },
+  };
+
   const hoje = hojeISO();
-  const auto: string[] = []; // ids que migraram p/ inativo (persistir + logar)
+  const auto: { id: string; etapa: Etapa; chave: string }[] = [];
   const out = cards.map((k) => {
-    const px = proxTarefa.get(k.id) || null;
-    const semTarefa = k.etapa !== "perdido" && !px;
     let diasParado = diasDesde(k.movido_em);
-    let etapa = k.etapa;
+    let etapa: Etapa = k.etapa as Etapa;
     let diasSemComprar: number | null = null;
     let faixa: string | null = null;
+    const info = k.cliente_id ? compras.get(k.nome) : undefined;
 
     if (etapa === "ativo" || etapa === "inativo") {
-      const uc = ultimaCompra.get(k.nome);
+      const uc = info?.ultima || null;
       diasSemComprar = uc ? diasDesde(uc) : null;
       if (diasSemComprar != null) {
         if (diasSemComprar >= 180) faixa = "prioridade";
         else if (diasSemComprar >= 120) faixa = "inativo";
         else if (diasSemComprar >= 90) faixa = "atencao";
-        if (etapa === "ativo" && diasSemComprar >= 120) { etapa = "inativo"; auto.push(k.id); }
       }
     }
+
+    // ── Movimentação automática (uma transição por abertura) ──
+    let chave = "";
+    if (info && PROSPECT.has(etapa) && info.ultimoCriado && k.criado_em && info.ultimoCriado > k.criado_em) {
+      etapa = "pos-venda"; chave = "pos-venda"; // prospect que comprou depois de virar lead
+    } else if (etapa === "inativo" && diasSemComprar != null && diasSemComprar < 90) {
+      etapa = "ativo"; chave = "ativo-reativado"; // voltou a comprar
+    } else if (etapa === "ativo" && diasSemComprar != null && diasSemComprar >= 120) {
+      etapa = "inativo"; chave = "inativo"; // esfriou
+    } else if (etapa === "pos-venda" && diasParado > 15) {
+      etapa = "ativo"; chave = "ativo-posvenda"; // pós-venda madura
+    }
+    if (chave) { auto.push({ id: k.id, etapa, chave }); diasParado = 0; }
+
+    const proxTar = chave ? { titulo: MOVE[chave].tarefa, vence_em: null } : proxTarefa.get(k.id) || null;
+    const semTarefa = etapa !== "perdido" && !proxTar;
     const retornoVencido = etapa === "aguardando-retorno" && !!k.retorno_em && k.retorno_em <= hoje;
     const alerta = semTarefa || retornoVencido || (etapa === "negociacao" && diasParado > 7) || diasParado > 15;
     const vermelho = (etapa === "negociacao" && diasParado >= 7) || diasParado > 15;
@@ -113,15 +138,19 @@ funil.get("/", async (c) => {
       id: k.id, cliente_id: k.cliente_id, nome: k.nome, cidade: k.cidade, uf: k.uf, whatsapp: k.whatsapp,
       etapa, responsavel: k.responsavel, valor_estimado: k.valor_estimado, probabilidade: k.probabilidade,
       retorno_em: k.retorno_em, motivo_perdido: k.motivo_perdido, tentativas: k.tentativas,
-      diasParado, proxTarefa: px, semTarefa, alerta, vermelho, retornoVencido,
+      diasParado, proxTarefa: proxTar, semTarefa, alerta, vermelho, retornoVencido,
       diasSemComprar, faixa,
     };
   });
 
-  // Persiste as migrações automáticas p/ inativo (recalcula ao abrir).
-  for (const id of auto) {
-    await c.env.DB.prepare("UPDATE funil_cards SET etapa='inativo', movido_em=datetime('now') WHERE id=?").bind(id).run();
-    await logar(c.env, id, "etapa", "Movido automaticamente para Inativo (120+ dias sem comprar)");
+  // Persiste as transições automáticas (move, cria tarefa-padrão e loga).
+  for (const a of auto) {
+    const m = MOVE[a.chave];
+    await c.env.DB.prepare("UPDATE funil_cards SET etapa=?, movido_em=datetime('now') WHERE id=?").bind(a.etapa, a.id).run();
+    await c.env.DB.prepare(
+      "INSERT INTO funil_tarefas (id, card_id, titulo, vence_em) VALUES (?, ?, ?, date('now', ?))"
+    ).bind(uid(), a.id, m.tarefa, m.prazo).run();
+    await logar(c.env, a.id, "etapa", "Automático: " + m.log);
   }
 
   const resumo = {
