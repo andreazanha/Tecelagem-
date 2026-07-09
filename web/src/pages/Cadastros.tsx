@@ -165,6 +165,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [cores, setCores] = useState<Cor[]>([]);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [busca, setBusca] = useState("");
+  const [fioAberto, setFioAberto] = useState<string | null>(null); // tipo de fio expandido
   const [tamCat, setTamCat] = useState<Tamanho[]>([]);
   const [selTam, setSelTam] = useState<Record<string, boolean>>({});
   const [pesos, setPesos] = useState<Record<string, string>>({});
@@ -300,33 +301,41 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             />
           </div>
           {grupos.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Nenhuma cor cadastrada. Cadastre na aba Cores.</p>}
+          <p className="muted" style={{ fontSize: 12.5, marginTop: -2 }}>Entre num tipo de fio para ver e selecionar as cores dele.</p>
           {grupos.map((g, gi) => {
-            const todas = g.cores.every((c) => sel.has(c.nome));
+            const todas = g.cores.length > 0 && g.cores.every((c) => sel.has(c.nome));
+            const nSel = g.cores.filter((c) => sel.has(c.nome)).length;
+            const aberto = fioAberto === (g.fio || "—") || !!busca.trim(); // busca ativa expande tudo
             return (
-              <div className="cad-grp" key={gi}>
-                <div className="cad-grp-h">
+              <div className={"cad-grp" + (aberto ? " aberto" : "")} key={gi}>
+                <div className="cad-grp-h" style={{ cursor: "pointer" }} onClick={() => setFioAberto((f) => (f === (g.fio || "—") ? null : g.fio || "—"))}>
+                  <span style={{ fontWeight: 800, color: "#64748b", width: 16 }}>{aberto ? "▾" : "▸"}</span>
                   <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>🧵 {g.fio || "Sem tipo de fio"}</span>
                   {g.fornecedor && <span className="muted" style={{ fontSize: 12 }}>fornecedor: {g.fornecedor}</span>}
-                  <button type="button" className="btn btn-soft" style={{ marginLeft: "auto", padding: "3px 10px", fontSize: 11 }} onClick={() => toggleGrupo(g.cores)}>
+                  <span className="muted" style={{ fontSize: 12 }}>{g.cores.length} cor(es)</span>
+                  {nSel > 0 && <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>{nSel} ✓</span>}
+                  <button type="button" className="btn btn-soft" style={{ marginLeft: "auto", padding: "3px 10px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); toggleGrupo(g.cores); }}>
                     {todas ? "desmarcar todas" : "selecionar todas"}
                   </button>
                 </div>
-                <div className="cad-tiles">
-                  {g.cores.map((c) => {
-                    const on = sel.has(c.nome);
-                    return (
-                      <button type="button" key={c.nome} className={"cad-tile" + (on ? " on" : "")} onClick={() => toggleCor(c.nome)}>
-                        <span className="cad-sw" style={{ background: c.hex || "#e2e8f0" }} />
-                        <span style={{ textAlign: "left" }}>
-                          <span className="cad-tile-nm">{c.nome}</span>
-                          <br />
-                          <span className="cad-tile-cd">{c.codigo || "—"}</span>
-                        </span>
-                        {on && <span className="cad-tile-ck">✓</span>}
-                      </button>
-                    );
-                  })}
-                </div>
+                {aberto && (
+                  <div className="cad-tiles">
+                    {g.cores.map((c) => {
+                      const on = sel.has(c.nome);
+                      return (
+                        <button type="button" key={c.nome} className={"cad-tile" + (on ? " on" : "")} onClick={() => toggleCor(c.nome)}>
+                          <span className="cad-sw" style={{ background: c.hex || "#e2e8f0" }} />
+                          <span style={{ textAlign: "left" }}>
+                            <span className="cad-tile-nm">{c.nome}</span>
+                            <br />
+                            <span className="cad-tile-cd">{c.codigo || "—"}</span>
+                          </span>
+                          {on && <span className="cad-tile-ck">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
