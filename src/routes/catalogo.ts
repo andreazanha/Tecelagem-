@@ -25,7 +25,7 @@ modelos.post("/", async (c) => {
     tassel_almofada?: number;
     cores?: string[]; // cores do produto (nomes)
     tamanhos?: { tamanho?: string; peso?: number; tempo?: number }[]; // tamanhos + fio(kg)/peça + tempo
-    materiais?: { material_id?: string; quantidade?: number }[]; // ficha técnica: consumo por peça
+    materiais?: { tamanho?: string; material_id?: string; quantidade?: number }[]; // ficha técnica por tamanho
   }>();
   const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
@@ -77,16 +77,19 @@ modelos.post("/", async (c) => {
       stmts.push(c.env.DB.prepare("INSERT INTO modelo_tamanhos (modelo_nome, tamanho, peso, tempo) VALUES (?, ?, ?, ?)").bind(nome, tam, peso, tempo));
     }
   }
-  // Materiais da ficha técnica (substitui o conjunto quando enviado).
+  // Materiais da ficha técnica POR TAMANHO (substitui o conjunto quando enviado).
   if (Array.isArray(b.materiais)) {
     stmts.push(c.env.DB.prepare("DELETE FROM modelo_materiais WHERE modelo_nome = ?").bind(nome));
     const vistos = new Set<string>();
     for (const mt of b.materiais) {
+      const tam = (mt.tamanho || "").trim().toUpperCase();
       const mid = (mt.material_id || "").trim();
-      if (!mid || vistos.has(mid)) continue;
-      vistos.add(mid);
+      if (!tam || !mid) continue;
+      const chave = `${tam}::${mid}`;
+      if (vistos.has(chave)) continue;
+      vistos.add(chave);
       const q = mt.quantidade == null || isNaN(Number(mt.quantidade)) ? null : Number(mt.quantidade);
-      stmts.push(c.env.DB.prepare("INSERT INTO modelo_materiais (modelo_nome, material_id, quantidade) VALUES (?, ?, ?)").bind(nome, mid, q));
+      stmts.push(c.env.DB.prepare("INSERT INTO modelo_materiais (modelo_nome, tamanho, material_id, quantidade) VALUES (?, ?, ?, ?)").bind(nome, tam, mid, q));
     }
   }
   await c.env.DB.batch(stmts);
@@ -107,9 +110,9 @@ modelos.get("/:nome", async (c) => {
   const { results: cores } = await c.env.DB.prepare("SELECT cor_nome FROM modelo_cores WHERE modelo_nome = ?").bind(nome).all<{ cor_nome: string }>();
   const { results: tamanhos } = await c.env.DB.prepare("SELECT tamanho, peso, tempo FROM modelo_tamanhos WHERE modelo_nome = ?").bind(nome).all();
   const { results: materiais } = await c.env.DB.prepare(
-    `SELECT mm.material_id, mm.quantidade, m.categoria, m.nome, m.unidade, m.cor, m.codigo
+    `SELECT mm.tamanho, mm.material_id, mm.quantidade, m.categoria, m.nome, m.unidade, m.cor, m.codigo
        FROM modelo_materiais mm JOIN materiais m ON m.id = mm.material_id
-      WHERE mm.modelo_nome = ? ORDER BY m.categoria, m.nome`
+      WHERE mm.modelo_nome = ? ORDER BY m.categoria, mm.tamanho, m.nome`
   ).bind(nome).all();
   return c.json({ ...m, cores: cores.map((x) => x.cor_nome), tamanhos, materiais });
 });

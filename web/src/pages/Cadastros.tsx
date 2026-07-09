@@ -150,11 +150,12 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [tempos, setTempos] = useState<Record<string, string>>({});
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
-  const [salvo, setSalvo] = useState(false); // "✓ salvo" — continua na tela após salvar
-  const [refNome, setRefNome] = useState(nomeEdit); // nome já gravado (p/ renomear e título)
   const [matCat, setMatCat] = useState<Material[]>([]); // catálogo de materiais (insumos)
   const [matDefs, setMatDefs] = useState<MaterialCategoriaDef[]>([]); // categorias (rótulos)
-  const [matSel, setMatSel] = useState<Record<string, string>>({}); // material_id → consumo por peça
+  // Ficha técnica POR TAMANHO: colunas de material + item escolhido por (tamanho, categoria)
+  const [fichaCols, setFichaCols] = useState<string[]>([]);
+  const [fichaItem, setFichaItem] = useState<Record<string, string>>({}); // `${tam}||${cat}` → material_id
+  const [novoMat, setNovoMat] = useState(false); // modal p/ criar novo tipo de material
 
   useEffect(() => {
     Promise.all([api.listarCores(), api.listarTamanhos(), api.listarMateriais(), api.listarCategoriasMaterial()])
@@ -174,18 +175,21 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           stp[t.tamanho] = t.tempo != null ? String(t.tempo) : "";
         });
         setSelTam(st); setPesos(sp); setTempos(stp);
-        const sm: Record<string, string> = {};
-        (m.materiais || []).forEach((mt) => { sm[mt.material_id] = mt.quantidade != null ? String(mt.quantidade) : ""; });
-        setMatSel(sm);
+        const fc: string[] = [], fi: Record<string, string> = {};
+        (m.materiais || []).forEach((mt) => {
+          const cat = mt.categoria || "";
+          if (cat && !fc.includes(cat)) fc.push(cat);
+          fi[`${mt.tamanho}||${cat}`] = mt.material_id;
+        });
+        setFichaCols(fc); setFichaItem(fi);
       }).catch((e) => setErro((e as Error).message));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nomeEdit]);
   const catNome = (slug?: string) => matDefs.find((d) => d.slug === slug)?.nome || slug || "";
 
-  const toggleCor = (n: string) => { setSalvo(false); setSel((prev) => { const s = new Set(prev); s.has(n) ? s.delete(n) : s.add(n); return s; }); };
+  const toggleCor = (n: string) => setSel((prev) => { const s = new Set(prev); s.has(n) ? s.delete(n) : s.add(n); return s; });
   function toggleGrupo(gcores: Cor[]) {
-    setSalvo(false);
     const todas = gcores.every((c) => sel.has(c.nome));
     setSel((prev) => {
       const s = new Set(prev);
@@ -253,19 +257,20 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         peso: pesos[t.nome] && pesos[t.nome].trim() !== "" ? Number(pesos[t.nome].replace(",", ".")) : null,
         tempo: tempos[t.nome] && tempos[t.nome].trim() !== "" ? Number(tempos[t.nome].replace(",", ".")) : null,
       }));
-    const materiais = Object.entries(matSel).map(([material_id, q]) => ({
-      material_id,
-      quantidade: q && q.trim() !== "" ? Number(q.replace(",", ".")) : null,
-    }));
+    // Ficha por tamanho: para cada material-coluna e cada tamanho, o item escolhido.
+    const tamsSel = linhasTam.filter((t) => selTam[t.nome]).map((t) => t.nome);
+    const materiais: { tamanho: string; material_id: string; quantidade: number | null }[] = [];
+    for (const cat of fichaCols)
+      for (const tam of tamsSel) {
+        const mid = fichaItem[`${tam}||${cat}`];
+        if (mid) materiais.push({ tamanho: tam, material_id: mid, quantidade: 1 });
+      }
     try {
       await api.salvarModelo(
         { nome: nome.trim(), parte, ref: ref.trim(), composicao: composicao.trim(), cores: [...sel], tamanhos, materiais },
-        refNome || undefined
+        nomeEdit || undefined
       );
-      onSalvo();                 // recarrega a lista no fundo (sem fechar)
-      setRefNome(nome.trim());   // vira edição desse produto
-      setSalvo(true);            // continua na tela do cadastro, com "✓ salvo"
-      setSalvando(false);
+      onSalvo(); // fecha o modal e recarrega a lista
     } catch (e) {
       setErro((e as Error).message);
       setSalvando(false);
@@ -277,7 +282,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
       <div className="modal-card" style={{ maxWidth: 900, width: "min(900px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica">
           <div className="modal-hd-top">
-            <span className="modal-pills"><span className="modal-pill">{refNome ? "Editar produto" : "Novo produto"}</span></span>
+            <span className="modal-pills"><span className="modal-pill">{nomeEdit ? "Editar produto" : "Novo produto"}</span></span>
             <button className="modal-x" onClick={onFechar}>✕</button>
           </div>
         </div>
@@ -312,7 +317,6 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             <Campo label="Tamanho">
               <select value="__pick__" onChange={(e) => {
                 const v = e.target.value;
-                setSalvo(false);
                 if (v === "__novo__") { novoTamanho(); return; }
                 if (v === "__todos__") { setSelTam((s) => { const n = { ...s }; linhasTam.forEach((t) => (n[t.nome] = true)); return n; }); return; }
                 if (v && v !== "__pick__") setSelTam((s) => ({ ...s, [v]: true }));
@@ -367,88 +371,92 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
                 );
               })()}
 
-              {/* Tamanhos escolhidos (peso/tempo por tamanho) */}
-              {nTam > 0 && (
-                <div className="card" style={{ marginTop: 10 }}>
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Tamanho</th>
-                        <th className="num">Peso (por peça)</th>
-                        <th className="num">Tempo de produção</th>
-                        <th style={{ width: 40 }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {linhasTam.filter((t) => selTam[t.nome]).map((t) => (
-                        <tr key={t.id}>
-                          <td className="strong">{t.nome}</td>
-                          <td className="num">
-                            <span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
-                              <input className="w-xs num" type="number" min={0} step="any" value={pesos[t.nome] ?? ""} onChange={(e) => setPesos((p) => ({ ...p, [t.nome]: e.target.value }))} />
-                              <span className="muted" style={{ fontSize: 12 }}>kg</span>
-                            </span>
-                          </td>
-                          <td className="num">
-                            <span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
-                              <input className="w-xs num" type="number" min={0} step="any" value={tempos[t.nome] ?? ""} onChange={(e) => setTempos((p) => ({ ...p, [t.nome]: e.target.value }))} />
-                              <span className="muted" style={{ fontSize: 12 }}>min</span>
-                            </span>
-                          </td>
-                          <td><button type="button" className="icon-btn" title="Remover tamanho" onClick={() => setSelTam((s) => ({ ...s, [t.nome]: false }))}>✕</button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </>
           )}
 
-          {/* 3. Ficha técnica: materiais que o produto consome (mesma lógica dos seletores) */}
-          <div className="campo-l" style={{ margin: "16px 0 8px" }}>3 · FICHA TÉCNICA — MATERIAIS</div>
-          <Campo label="Material">
-            <select value="__pick__" onChange={(e) => {
-              const id = e.target.value;
-              if (id && id !== "__pick__") { setSalvo(false); setMatSel((s) => ({ ...s, [id]: "" })); }
+          {/* 3. Tamanhos e ficha técnica — matriz: cada linha um tamanho; colunas = fio, tempo e materiais */}
+          <div className="campo-l" style={{ margin: "16px 0 8px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span>3 · TAMANHOS E FICHA TÉCNICA</span>
+            <select value="__pick__" style={{ marginLeft: "auto", maxWidth: 240, textTransform: "none", fontWeight: 600 }} onChange={(e) => {
+              const v = e.target.value;
+              if (v === "__novo__") { setNovoMat(true); return; }
+              if (v && v !== "__pick__") setFichaCols((cs) => (cs.includes(v) ? cs : [...cs, v]));
             }}>
-              <option value="__pick__">＋ adicionar material (forro, etiqueta, zíper…)</option>
-              {matCat.filter((m) => matSel[m.id] === undefined).map((m) => (
-                <option key={m.id} value={m.id}>{catNome(m.categoria)} · {m.nome}{m.cor ? ` (${m.cor})` : ""}</option>
-              ))}
+              <option value="__pick__">＋ material (coluna)</option>
+              {matDefs.filter((d) => !fichaCols.includes(d.slug)).map((d) => <option key={d.slug} value={d.slug}>{d.nome}</option>)}
+              <option value="__novo__">＋ criar novo material…</option>
             </select>
-          </Campo>
-          {Object.keys(matSel).length > 0 && (
-            <div className="card">
-              <table className="table">
-                <thead><tr><th>Material</th><th className="num">Consumo (por peça)</th><th style={{ width: 40 }}></th></tr></thead>
+          </div>
+          {nTam === 0 ? (
+            <p className="muted" style={{ fontSize: 13 }}>Adicione tamanhos no seletor <strong>Tamanho</strong> acima — cada tamanho vira uma linha aqui.</p>
+          ) : (
+            <div className="card" style={{ overflowX: "auto" }}>
+              <table className="table" style={{ minWidth: 460 + fichaCols.length * 168 }}>
+                <thead>
+                  <tr>
+                    <th>Tamanho</th>
+                    <th className="num">Fio (kg)</th>
+                    <th className="num">Tempo (min)</th>
+                    {fichaCols.map((cat) => (
+                      <th key={cat} style={{ color: "#4338ca" }}>
+                        {catNome(cat)}
+                        <button type="button" className="icon-btn" title="Remover coluna" style={{ marginLeft: 4 }}
+                          onClick={() => { setFichaCols((cs) => cs.filter((x) => x !== cat)); setFichaItem((fi) => { const n = { ...fi }; Object.keys(n).forEach((k) => { if (k.endsWith("||" + cat)) delete n[k]; }); return n; }); }}>✕</button>
+                      </th>
+                    ))}
+                    <th style={{ width: 40 }}></th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {matCat.filter((m) => matSel[m.id] !== undefined).map((m) => (
-                    <tr key={m.id}>
-                      <td className="strong">{m.nome} <span className="chip">{catNome(m.categoria)}</span>{m.cor ? <span className="muted" style={{ fontSize: 12 }}> · {m.cor}</span> : null}</td>
+                  {linhasTam.filter((t) => selTam[t.nome]).map((t) => (
+                    <tr key={t.id}>
+                      <td className="strong">{t.nome}</td>
                       <td className="num">
                         <span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
-                          <input className="w-xs num" type="number" min={0} step="any" value={matSel[m.id]} onChange={(e) => { setSalvo(false); setMatSel((s) => ({ ...s, [m.id]: e.target.value })); }} />
-                          <span className="muted" style={{ fontSize: 12 }}>{m.unidade || "un"}</span>
+                          <input className="w-xs num" type="number" min={0} step="any" value={pesos[t.nome] ?? ""} onChange={(e) => setPesos((p) => ({ ...p, [t.nome]: e.target.value }))} />
+                          <span className="muted" style={{ fontSize: 12 }}>kg</span>
                         </span>
                       </td>
-                      <td><button type="button" className="icon-btn" title="Remover material" onClick={() => { setSalvo(false); setMatSel((s) => { const n = { ...s }; delete n[m.id]; return n; }); }}>✕</button></td>
+                      <td className="num">
+                        <span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
+                          <input className="w-xs num" type="number" min={0} step="any" value={tempos[t.nome] ?? ""} onChange={(e) => setTempos((p) => ({ ...p, [t.nome]: e.target.value }))} />
+                          <span className="muted" style={{ fontSize: 12 }}>min</span>
+                        </span>
+                      </td>
+                      {fichaCols.map((cat) => {
+                        const k = `${t.nome}||${cat}`;
+                        return (
+                          <td key={cat}>
+                            <select value={fichaItem[k] || ""} onChange={(e) => setFichaItem((fi) => ({ ...fi, [k]: e.target.value }))} style={{ minWidth: 150 }}>
+                              <option value="">— não usa —</option>
+                              {matCat.filter((m) => m.categoria === cat).map((m) => <option key={m.id} value={m.id}>{m.nome}{m.cor ? ` (${m.cor})` : ""}</option>)}
+                            </select>
+                          </td>
+                        );
+                      })}
+                      <td><button type="button" className="icon-btn" title="Remover tamanho" onClick={() => setSelTam((s) => ({ ...s, [t.nome]: false }))}>✕</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
+          {novoMat && (
+            <InsumoModal cat={null} onFechar={() => setNovoMat(false)} onSalvo={(slug) => {
+              setNovoMat(false);
+              Promise.all([api.listarMateriais(), api.listarCategoriasMaterial()]).then(([ms, mc]) => { setMatCat(ms); setMatDefs(mc); }).catch(() => {});
+              setFichaCols((cs) => (cs.includes(slug) ? cs : [...cs, slug]));
+            }} />
+          )}
 
           {/* Footer */}
           <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16, alignItems: "center" }}>
             <span className="muted" style={{ marginRight: "auto", fontSize: 13 }}>
-              {salvo && <span style={{ color: "#16a34a", fontWeight: 800, marginRight: 12 }}>✓ Salvo</span>}
               <strong>{nCores}</strong> cores × <strong>{nTam}</strong> tamanhos = <strong>{nCores * nTam}</strong> variações
             </span>
-            <button className="btn" onClick={onFechar}>Fechar</button>
+            <button className="btn" onClick={onFechar}>Cancelar</button>
             <button className="btn btn-primary" style={{ background: "#16a34a" }} disabled={salvando} onClick={salvar}>
-              {salvando ? "Salvando…" : salvo ? "✔ Salvar alterações" : "✔ Salvar produto"}
+              {salvando ? "Salvando…" : "✔ Salvar produto"}
             </button>
           </div>
         </div>
