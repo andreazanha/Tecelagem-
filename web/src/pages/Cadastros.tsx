@@ -112,73 +112,77 @@ function AbaProdutos() {
         <button className="btn btn-primary" onClick={() => setModal({ nome: null })}>＋ Novo produto</button>
       </div>
       <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>
-        Coleções de produtos. Clique numa coleção para ver os produtos dela; clique de novo para fechar e abrir outra. {produtos.length} produtos no total.
+        Coleções de produtos. Clique numa coleção para ver os produtos dela; clique de novo para ocultar e escolher outra. {produtos.length} produtos no total.
       </p>
 
-      <div className="fio-lista">
-        {colecoes.map((col) => {
-          const on = aberta === col.id;
-          const lista = prods[col.id] || [];
-          return (
-            <div className={"fio-item" + (on ? " aberto" : "")} key={col.id}>
-              <div className="fio-item-h" onClick={() => abrir(col.id)}>
-                <span className="fio-item-car">{on ? "▾" : "▸"}</span>
-                <span className="fio-item-nm">{col.nome}</span>
-                <span className="muted" style={{ fontSize: 12 }}>{col.produtos ?? 0} produto(s)</span>
-                <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
-                  <button className="btn btn-soft" style={{ padding: "3px 10px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); if (!prods[col.id]) carregarProds(col.id); setGerenciar(col); }}>Gerenciar produtos</button>
-                  <button className="icon-btn" title="Renomear" onClick={(e) => { e.stopPropagation(); renomearColecao(col); }}>✎</button>
-                  <button className="icon-btn" title="Excluir coleção" onClick={(e) => { e.stopPropagation(); excluirColecao(col); }}>🗑</button>
-                </span>
-              </div>
-              {on && (
-                <table className="table">
-                  <thead><tr><th>Produto</th><th>Código</th><th>Tipo de fio</th><th></th></tr></thead>
-                  <tbody>
-                    {lista.length === 0 ? (
-                      <tr><td colSpan={4} className="empty pad">Nenhum produto nesta coleção. Use "Gerenciar produtos".</td></tr>
-                    ) : lista.map((p) => (
-                      <tr key={p.modelo_nome} style={{ cursor: "pointer" }} onClick={() => setModal({ nome: p.modelo_nome })}>
-                        <td className="strong">{p.modelo_nome}</td>
-                        <td>{p.ref || "—"}</td>
-                        <td>{p.fio_nome ? <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{p.fio_nome}</span> : "—"}</td>
-                        <td><button className="icon-btn" title="Editar" onClick={(e) => { e.stopPropagation(); setModal({ nome: p.modelo_nome }); }}>✎</button></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          );
-        })}
+      {/* Menu horizontal de coleções (abas) */}
+      <div className="segmented" style={{ flexWrap: "wrap", marginBottom: 14 }}>
+        {colecoes.map((col) => (
+          <button type="button" key={col.id} className={"seg" + (aberta === col.id ? " seg-on" : "")} onClick={() => abrir(col.id)}>
+            {col.nome} <span className="muted" style={{ fontWeight: 500 }}>({col.produtos ?? 0})</span>
+          </button>
+        ))}
+        <button type="button" className={"seg" + (aberta === "__todos__" ? " seg-on" : "")} onClick={() => abrir("__todos__")}>
+          Todos os produtos <span className="muted" style={{ fontWeight: 500 }}>({produtos.length})</span>
+        </button>
+      </div>
 
-        {/* Todos os produtos (para editar qualquer um, mesmo fora de coleção) */}
-        <div className={"fio-item" + (aberta === "__todos__" ? " aberto" : "")}>
-          <div className="fio-item-h" onClick={() => abrir("__todos__")}>
-            <span className="fio-item-car">{aberta === "__todos__" ? "▾" : "▸"}</span>
-            <span className="fio-item-nm">Todos os produtos</span>
-            <span className="muted" style={{ fontSize: 12 }}>{produtos.length}</span>
-          </div>
-          {aberta === "__todos__" && (
+      {/* Produtos da coleção escolhida */}
+      {aberta && aberta !== "__todos__" && (() => {
+        const col = colecoes.find((c) => c.id === aberta);
+        if (!col) return null;
+        const lista = prods[col.id] || [];
+        return (
+          <div className="card">
+            <div className="row-gap" style={{ alignItems: "center", gap: 10, padding: "10px 12px", flexWrap: "wrap" }}>
+              <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{col.nome}</span>
+              <span className="muted" style={{ fontSize: 12 }}>{col.produtos ?? 0} produto(s)</span>
+              <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+                <button className="btn btn-soft" style={{ padding: "4px 12px", fontSize: 12 }} onClick={() => { if (!prods[col.id]) carregarProds(col.id); setGerenciar(col); }}>Gerenciar produtos</button>
+                <button className="icon-btn" title="Renomear coleção" onClick={() => renomearColecao(col)}>✎</button>
+                <button className="icon-btn" title="Excluir coleção" onClick={() => excluirColecao(col)}>🗑</button>
+              </span>
+            </div>
             <table className="table">
-              <thead><tr><th>Produto</th><th>Código</th><th>Galga / Parte</th><th>Composição</th><th></th></tr></thead>
+              <thead><tr><th>Produto</th><th>Código</th><th>Tipo de fio</th><th></th></tr></thead>
               <tbody>
-                {prodFiltrados.length === 0 ? (
-                  <tr><td colSpan={5} className="empty pad">Nenhum produto{filtro ? " com esse filtro" : ""}.</td></tr>
-                ) : prodFiltrados.map((m) => (
-                  <tr key={m.nome} style={{ cursor: "pointer" }} onClick={() => setModal({ nome: m.nome })}>
-                    <td className="strong">{m.nome}</td>
-                    <td>{m.ref || "—"}</td>
-                    <td><span className="chip">{m.parte === 1 ? "Galga 3 · Parte 1" : "Galga 7 · Parte 2"}</span></td>
-                    <td>{m.composicao || "—"}</td>
-                    <td><button className="icon-btn" title="Excluir" onClick={(e) => { e.stopPropagation(); excluirProduto(m); }}>✕</button></td>
+                {lista.length === 0 ? (
+                  <tr><td colSpan={4} className="empty pad">Nenhum produto nesta coleção. Use "Gerenciar produtos".</td></tr>
+                ) : lista.map((p) => (
+                  <tr key={p.modelo_nome} style={{ cursor: "pointer" }} onClick={() => setModal({ nome: p.modelo_nome })}>
+                    <td className="strong">{p.modelo_nome}</td>
+                    <td>{p.ref || "—"}</td>
+                    <td>{p.fio_nome ? <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{p.fio_nome}</span> : "—"}</td>
+                    <td><button className="icon-btn" title="Editar" onClick={(e) => { e.stopPropagation(); setModal({ nome: p.modelo_nome }); }}>✎</button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
+          </div>
+        );
+      })()}
+
+      {/* Todos os produtos (editar qualquer um, mesmo fora de coleção) */}
+      {aberta === "__todos__" && (
+        <div className="card">
+          <table className="table">
+            <thead><tr><th>Produto</th><th>Código</th><th>Galga / Parte</th><th>Composição</th><th></th></tr></thead>
+            <tbody>
+              {prodFiltrados.length === 0 ? (
+                <tr><td colSpan={5} className="empty pad">Nenhum produto{filtro ? " com esse filtro" : ""}.</td></tr>
+              ) : prodFiltrados.map((m) => (
+                <tr key={m.nome} style={{ cursor: "pointer" }} onClick={() => setModal({ nome: m.nome })}>
+                  <td className="strong">{m.nome}</td>
+                  <td>{m.ref || "—"}</td>
+                  <td><span className="chip">{m.parte === 1 ? "Galga 3 · Parte 1" : "Galga 7 · Parte 2"}</span></td>
+                  <td>{m.composicao || "—"}</td>
+                  <td><button className="icon-btn" title="Excluir" onClick={(e) => { e.stopPropagation(); excluirProduto(m); }}>✕</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </div>
+      )}
 
       {modal && (
         <ProdutoFormModal
