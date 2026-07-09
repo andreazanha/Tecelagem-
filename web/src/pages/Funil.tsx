@@ -60,7 +60,11 @@ export function Funil() {
     try {
       const r = await api.sincronizarFunil();
       recarregar();
-      alert(r.criados ? `${r.criados} cliente(s) trazido(s) para o funil.` : "Todos os clientes já estão no funil.");
+      const partes = [
+        r.criados ? `${r.criados} cliente(s) trazido(s)` : "",
+        r.removidos ? `${r.removidos} interno(s) removido(s)` : "",
+      ].filter(Boolean);
+      alert(partes.length ? partes.join(" · ") + "." : "Todos os clientes já estão no funil.");
     } catch (e) { alert((e as Error).message); } finally { setSincronizando(false); }
   }
 
@@ -215,6 +219,13 @@ function CardDetalhe({ id, onFechar, onMudou }: { id: string; onFechar: () => vo
     finally { setBusy(false); }
   }
   async function concluir(tid: string) { await api.concluirTarefaFunil(tid); carregar(); onMudou(); }
+  async function excluir() {
+    if (!d) return;
+    if (!confirm(`Excluir o cartão "${d.nome}" do funil? (não apaga o cliente da base)`)) return;
+    setBusy(true);
+    try { await api.excluirCard(id); onFechar(); onMudou(); }
+    catch (e) { alert((e as Error).message); } finally { setBusy(false); }
+  }
   async function addEvento() {
     if (!evTexto.trim()) return;
     setBusy(true);
@@ -230,7 +241,10 @@ function CardDetalhe({ id, onFechar, onMudou }: { id: string; onFechar: () => vo
         <div className="modal-hd" style={{ background: `linear-gradient(130deg,${cor},#4f46e5)` }}>
           <div className="modal-hd-top">
             <span className="modal-pills"><span className="modal-pill">{d ? LABEL[d.etapa] : "…"}</span></span>
-            <button className="modal-x" onClick={onFechar}>✕</button>
+            <span style={{ display: "flex", gap: 8 }}>
+              {d && <button className="modal-x" title="Excluir cartão" disabled={busy} onClick={excluir}>🗑️</button>}
+              <button className="modal-x" onClick={onFechar}>✕</button>
+            </span>
           </div>
           <div className="modal-hd-title">{d?.nome || "Carregando…"}</div>
           <div className="modal-hd-sub">{d ? ([d.cidade, d.uf].filter(Boolean).join(" · ") || "—") : ""}{d?.responsavel ? ` · 🧑 ${d.responsavel}` : ""}</div>

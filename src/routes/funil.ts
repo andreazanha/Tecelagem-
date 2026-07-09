@@ -20,6 +20,20 @@ const ehEtapa = (e: string): e is Etapa => (ETAPAS as readonly string[]).include
 
 const MOTIVOS = ["preco", "concorrencia", "sem-interesse", "fechou-loja", "inadimplencia", "nao-respondeu", "outro"];
 
+// "Clientes" internos criados por pedidos de estoque / OPs consolidadas /
+// reposição — NÃO são clientes reais, não entram no funil.
+export function ehClienteInterno(nome?: string | null): boolean {
+  const n = (nome || "").trim().toUpperCase();
+  if (!n) return true;
+  return n === "ESTOQUE" || /CONSOLIDAD/.test(n) || /BIG\s*TRICOT/.test(n) || /REPOSI[ÇC]/.test(n);
+}
+
+async function apagarCard(env: Env, id: string) {
+  await env.DB.prepare("DELETE FROM funil_tarefas WHERE card_id = ?").bind(id).run();
+  await env.DB.prepare("DELETE FROM funil_eventos WHERE card_id = ?").bind(id).run();
+  await env.DB.prepare("DELETE FROM funil_cards WHERE id = ?").bind(id).run();
+}
+
 // datas do SQLite ("YYYY-MM-DD HH:MM:SS", UTC) → ms; aceita data pura também.
 function ms(s?: string | null): number | null {
   if (!s) return null;
@@ -131,10 +145,10 @@ funil.get("/:id", async (c) => {
     "SELECT id, tipo, texto, autor, criado_em FROM funil_eventos WHERE card_id = ? ORDER BY criado_em DESC, rowid DESC"
   ).bind(id).all();
   // Histórico de pedidos — SÓ para cartão vinculado a um cliente da base
-  // (cliente_id). Lead criado na mão não tem vínculo → não puxa pedido de
-  // homônimo. Casa o histórico pelo nome do cliente vinculado.
+  // (cliente_id) E fora do estágio "Novo Lead" (prospect não mostra pedido).
+  // Lead criado na mão não tem vínculo → não puxa pedido de homônimo.
   let pedidos: { id: string; numero: string | null; data: string | null; valor: number; situacao: string }[] = [];
-  if (card.cliente_id) {
+  if (card.cliente_id && card.etapa !== "novo-lead") {
     const cli = await c.env.DB.prepare("SELECT nome FROM clientes WHERE id = ?").bind(card.cliente_id).first<{ nome: string }>();
     const nomeCli = cli?.nome || card.nome;
     const { results: peds } = await c.env.DB.prepare(
@@ -170,25 +184,43 @@ funil.post("/sincronizar", async (c) => {
   const { results: clientes } = await c.env.DB.prepare(
     "SELECT id, nome, cidade, uf, whatsapp, representante FROM clientes"
   ).all<{ id: string; nome: string; cidade: string | null; uf: string | null; whatsapp: string | null; representante: string | null }>();
-  const { results: existentes } = await c.env.DB.prepare("SELECT nome FROM funil_cards").all<{ nome: string }>();
-  const jaTem = new Set(existentes.map((e) => e.nome));
+  // Clientes que já são de um REPRESENTANTE não entram no funil de prospecção
+  // (têm vendedor no pedido ou representante no cadastro).
+  const { results: comVend } = await c.env.DB.prepare(
+    "SELECT DISTINCT cliente_nome AS nome FROM pedidos WHERE COALESCE(vendedor,'') <> ''"
+  ).all<{ nome: string }>();
+  const deRep = new Set(comVend.map((r) => r.nome));
+  for (const cli of clientes) if (str(cli.representante)) deRep.add(cli.nome);
+  const fora = (nome: string) => ehClienteInterno(nome) || deRep.has(nome);
+
+  const { results: existentes } = await c.env.DB.prepare("SELECT id, nome FROM funil_cards").all<{ id: string; nome: string }>();
+  // Limpa cartões que não deveriam estar aqui (internos ou de representante).
+  let removidos = 0;
+  for (const e of existentes) if (fora(e.nome)) { await apagarCard(c.env, e.id); removidos++; }
+  const jaTem = new Set(existentes.filter((e) => !fora(e.nome)).map((e) => e.nome));
 
   const { results: ult } = await c.env.DB.prepare(
-    "SELECT cliente_nome AS nome, MAX(data_pedido) AS ultima FROM pedidos WHERE COALESCE(reposicao,0)=0 AND COALESCE(tipo,'') <> 'estoque' GROUP BY cliente_nome"
-  ).all<{ nome: string; ultima: string | null }>();
-  const ultimaMap = new Map(ult.map((r) => [r.nome, r.ultima] as const));
+    "SELECT cliente_nome AS nome, COUNT(*) AS n, MAX(data_pedido) AS ultima FROM pedidos WHERE COALESCE(reposicao,0)=0 AND COALESCE(tipo,'') <> 'estoque' GROUP BY cliente_nome"
+  ).all<{ nome: string; n: number; ultima: string | null }>();
+  const compras = new Map(ult.map((r) => [r.nome, r] as const));
 
   let criados = 0;
   for (const cli of clientes) {
+    if (fora(cli.nome)) continue; // pula internos e clientes de representante
     if (jaTem.has(cli.nome)) continue;
     const id = uid();
     const resp = str(cli.representante);
-    const ultima = ultimaMap.get(cli.nome);
-    const dias = ultima ? diasDesde(ultima) : null;
+    const info = compras.get(cli.nome);
     let etapa: Etapa, tarefa: string, prazo: string;
-    if (dias == null) { etapa = "novo-lead"; tarefa = "1º contato"; prazo = "+1 day"; }
-    else if (dias >= 120) { etapa = "inativo"; tarefa = "Campanha de reativação"; prazo = "+2 day"; }
-    else { etapa = "ativo"; tarefa = "Acompanhamento periódico"; prazo = "+30 day"; }
+    if (!info || info.n === 0) {
+      // Sem nenhum pedido real → prospect.
+      etapa = "novo-lead"; tarefa = "1º contato"; prazo = "+1 day";
+    } else {
+      // Já comprou → é cliente. Sem data no pedido, trata como compra recente.
+      const dias = info.ultima ? diasDesde(info.ultima) : 0;
+      if (dias >= 120) { etapa = "inativo"; tarefa = "Campanha de reativação"; prazo = "+2 day"; }
+      else { etapa = "ativo"; tarefa = "Acompanhamento periódico"; prazo = "+30 day"; }
+    }
     await c.env.DB.prepare(
       "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     ).bind(id, cli.id, cli.nome, str(cli.cidade), str(cli.uf), str(cli.whatsapp), etapa, resp).run();
@@ -198,7 +230,13 @@ funil.post("/sincronizar", async (c) => {
     await logar(c.env, id, "etapa", "Sincronizado da base de clientes");
     criados++;
   }
-  return c.json({ criados, ignorados: clientes.length - criados });
+  return c.json({ criados, removidos, ignorados: clientes.length - criados });
+});
+
+// ── APAGAR cartão ────────────────────────────────────────────────────────────────
+funil.delete("/:id", async (c) => {
+  await apagarCard(c.env, c.req.param("id"));
+  return c.json({ ok: true });
 });
 
 // ── CRIA lead ──────────────────────────────────────────────────────────────────

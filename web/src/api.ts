@@ -469,7 +469,8 @@ export const api = {
     jsonPost("/api/clientes", b).then((r) => j<{ id: string; nome: string }>(r)),
   // CRM Funil de vendas
   funilBoard: () => fetch("/api/funil").then((r) => j<FunilBoard>(r)),
-  sincronizarFunil: () => jsonPost("/api/funil/sincronizar", {}).then((r) => j<{ criados: number; ignorados: number }>(r)),
+  sincronizarFunil: () => jsonPost("/api/funil/sincronizar", {}).then((r) => j<{ criados: number; removidos: number; ignorados: number }>(r)),
+  excluirCard: (id: string) => fetch(`/api/funil/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   funilCard: (id: string) => fetch(`/api/funil/${id}`).then((r) => j<FunilCardDetalhe>(r)),
   criarCard: (b: { nome: string; whatsapp: string; cidade?: string; uf?: string; responsavel?: string; cliente_id?: string }) =>
     jsonPost("/api/funil", b).then((r) => j<{ id: string; nome: string }>(r)),
