@@ -151,6 +151,18 @@ export interface FunilCard {
   diasSemComprar: number | null;
   faixa: string | null;
 }
+// ── Robô de atendimento (WhatsApp) ───────────────────────────────────────────
+export interface AtendColuna { id: string; label: string; cor: string }
+export interface AtendConversa {
+  id: string; telefone: string; nome: string | null; estado: string; coluna: string;
+  setor: string | null; cnpj: string | null; cidade: string | null; uf: string | null;
+  lojista: number | null; responsavel: string | null; atualizado_em: string; ultima_msg: string | null;
+}
+export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; criado_em: string }
+export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
+export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; mensagens: AtendMensagem[] }
+export interface AtendResposta { conversa_id: string; estado: string; coluna: string; respostas: { tipo: string; texto: string }[]; notificarHumano: boolean }
+
 export interface FunilResumo { parados: number; semTarefa: number; retornos: number; alertas: number }
 export interface FunilBoard { etapas: FunilEtapa[]; cards: FunilCard[]; resumo: FunilResumo }
 export interface FunilTarefa { id: string; titulo: string; vence_em: string | null; responsavel: string | null; feita: number; criado_em: string; feito_em: string | null }
@@ -471,6 +483,15 @@ export const api = {
   funilBoard: () => fetch("/api/funil").then((r) => j<FunilBoard>(r)),
   sincronizarFunil: () => jsonPost("/api/funil/sincronizar", {}).then((r) => j<{ criados: number; removidos: number; ignorados: number }>(r)),
   excluirCard: (id: string) => fetch(`/api/funil/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  // Robô de atendimento (WhatsApp)
+  atendBoard: () => fetch("/api/atendimento").then((r) => j<AtendBoard>(r)),
+  atendConversa: (id: string) => fetch(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),
+  atendEntrada: (b: { telefone: string; texto: string }) =>
+    jsonPost("/api/atendimento/entrada", b).then((r) => j<AtendResposta>(r)),
+  atendAssumir: (id: string, responsavel: string) =>
+    jsonPost(`/api/atendimento/${id}/assumir`, { responsavel }).then((r) => j<{ ok: boolean }>(r)),
+  atendEnviar: (id: string, b: { texto: string; autor?: string }) =>
+    jsonPost(`/api/atendimento/${id}/enviar`, b).then((r) => j<{ ok: boolean }>(r)),
   funilCard: (id: string) => fetch(`/api/funil/${id}`).then((r) => j<FunilCardDetalhe>(r)),
   criarCard: (b: { nome: string; whatsapp: string; cidade?: string; uf?: string; responsavel?: string; cliente_id?: string }) =>
     jsonPost("/api/funil", b).then((r) => j<{ id: string; nome: string }>(r)),

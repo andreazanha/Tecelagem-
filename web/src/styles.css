@@ -1062,3 +1062,47 @@ body.dark .fx-col.drag-over { background: #172a45; border-color: #3b82f6; }
 .fx-peds tr { cursor: pointer; }
 .fx-peds tr:hover { background: #f1f5ff; }
 body.dark .fx-peds tr:hover { background: #1b2740; }
+
+/* ══ Atendimento — robô do WhatsApp ═══════════════════════════════════════════ */
+.at-status { font-size: 12px; font-weight: 700; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; border-radius: 20px; padding: 6px 12px; }
+body.dark .at-status { background: #2a2410; border-color: #5c4a12; color: #fcd34d; }
+.at-prev { font-size: 11.5px; color: var(--muted); margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-badge { font-size: 10px; font-weight: 800; background: #eef2f7; color: #334155; border-radius: 6px; padding: 2px 7px; }
+body.dark .at-badge { background: #243044; color: #c7d2e0; }
+/* modal conversa */
+.at-modal { max-width: 900px; width: 95vw; padding: 0; overflow: hidden; }
+.at-thd { display: flex; align-items: center; gap: 11px; padding: 12px 14px; background: #075e54; color: #fff; }
+.at-thd .at-av { width: 40px; height: 40px; border-radius: 50%; background: #25d366; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
+.at-thd .info { flex: 1; } .at-thd .info .nm { font-weight: 800; font-size: 14.5px; } .at-thd .info .sub { font-size: 11.5px; color: #bfeee4; }
+.at-thd .modal-x { color: #fff; }
+.at-chip { font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 7px; text-transform: capitalize; }
+.at-body { display: grid; grid-template-columns: 1fr 250px; min-height: 460px; max-height: 66vh; }
+.at-msgs { background: #e5ddd3; padding: 14px 16px; display: flex; flex-direction: column; gap: 7px; overflow-y: auto; }
+body.dark .at-msgs { background: #0c1a17; }
+.at-b { max-width: 78%; padding: 7px 10px 6px; border-radius: 9px; font-size: 13px; line-height: 1.42; box-shadow: 0 1px .5px #0002; white-space: pre-wrap; position: relative; }
+.at-b.in { align-self: flex-start; background: #fff; border-top-left-radius: 2px; }
+.at-b.out { align-self: flex-end; background: #d9fdd3; border-top-right-radius: 2px; }
+body.dark .at-b.in { background: #1f2c34; color: #e7ebf3; } body.dark .at-b.out { background: #144d37; color: #e7ebf3; }
+.at-aut { font-size: 10px; font-weight: 800; color: #16a34a; margin-bottom: 2px; }
+.at-tm { font-size: 9.5px; color: #667781; float: right; margin: 6px 0 -2px 10px; }
+.at-file { font-weight: 700; color: #0b3d2e; } body.dark .at-file { color: #86efac; }
+.at-sys { align-self: center; background: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+body.dark .at-sys { background: #12233f; color: #93c5fd; }
+.at-ctx { border-left: 1px solid var(--line); padding: 14px; overflow-y: auto; }
+body.dark .at-ctx { border-color: #26324a; }
+.at-block-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-bottom: 8px; }
+.at-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid #eef1f6; }
+body.dark .at-row { border-color: #1b2536; }
+.at-compose { display: flex; gap: 10px; align-items: center; background: #f0f2f5; border-top: 1px solid var(--line); padding: 10px 14px; }
+body.dark .at-compose { background: #111826; border-color: #26324a; }
+.at-compose input { flex: 1; border: 1px solid var(--line); border-radius: 22px; padding: 10px 15px; font-size: 13.5px; background: #fff; }
+body.dark .at-compose input { background: #0b1220; border-color: #ffffff1a; color: #e7ebf3; }
+.at-send { width: 42px; height: 42px; border-radius: 50%; background: #25d366; color: #fff; border: none; font-size: 17px; cursor: pointer; flex: 0 0 auto; }
+.at-send:disabled { opacity: .5; }
+/* simulador */
+.at-sim { max-width: 460px; width: 94vw; padding: 0; overflow: hidden; }
+.at-siminput { border: none; border-radius: 6px; padding: 2px 7px; font-size: 12px; width: 130px; margin-left: 4px; }
+.at-simscr { background: #e5ddd3; padding: 14px; display: flex; flex-direction: column; gap: 7px; height: 46vh; overflow-y: auto; }
+body.dark .at-simscr { background: #0c1a17; }
+.at-simatalhos { display: flex; gap: 6px; flex-wrap: wrap; padding: 9px 12px; background: #fff; border-top: 1px solid var(--line); }
+body.dark .at-simatalhos { background: #18202f; border-color: #26324a; }
