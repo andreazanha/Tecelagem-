@@ -1106,3 +1106,9 @@ body.dark .at-compose input { background: #0b1220; border-color: #ffffff1a; colo
 body.dark .at-simscr { background: #0c1a17; }
 .at-simatalhos { display: flex; gap: 6px; flex-wrap: wrap; padding: 9px 12px; background: #fff; border-top: 1px solid var(--line); }
 body.dark .at-simatalhos { background: #18202f; border-color: #26324a; }
+
+/* Linha de produto em FALTA na aba Estoque — legível em tema claro e escuro. */
+tr.prod-falta > td { background: #fef2f2; color: #991b1b; }
+tr.prod-falta > td.strong, tr.prod-falta > td.link { color: #991b1b !important; }
+body.dark tr.prod-falta > td { background: #3a1a1c; color: #fca5a5; }
+body.dark tr.prod-falta > td.strong, body.dark tr.prod-falta > td.link { color: #fecaca !important; }

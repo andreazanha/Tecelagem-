@@ -454,12 +454,12 @@ function AbaEstoque() {
                 const est = Number(p.estoque) || 0, mn = Number(p.estoque_min) || 0, saldo = est - mn;
                 const falta = saldo < 0, sobra = mn > 0 && saldo > 0;
                 return (
-                  <tr key={p.id} style={falta ? { background: "#fef2f2" } : undefined}>
+                  <tr key={p.id} className={falta ? "prod-falta" : undefined}>
                     <td className="strong link" style={{ cursor: "pointer" }} onClick={() => setExtrato(p)}>{p.nome}</td>
                     <td>{p.ref || "—"}</td>
                     <td>{p.cor || "—"}</td>
                     <td>{p.tamanho || "—"}</td>
-                    <td className="num strong" style={falta ? { color: "#b91c1c" } : undefined}>{nf(est)} {p.unidade || ""}</td>
+                    <td className="num strong">{nf(est)} {p.unidade || ""}</td>
                     <td className="num">{mn ? nf(mn) : "—"}</td>
                     <td>
                       {falta ? <span className="status status-pendente">⚠ falta {nf(-saldo)}</span>
