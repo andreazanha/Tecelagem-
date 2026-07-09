@@ -94,25 +94,91 @@ export const cores = new Hono<{ Bindings: Env }>();
 
 cores.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT nome, hex, foto_key FROM cores ORDER BY nome"
+    `SELECT c.nome, c.hex, c.foto_key, c.codigo, c.fio_id,
+            f.nome AS fio_nome, f.fornecedor_id, fo.nome AS fornecedor_nome
+       FROM cores c
+       LEFT JOIN tipos_fio f ON f.id = c.fio_id
+       LEFT JOIN fornecedores fo ON fo.id = f.fornecedor_id
+      ORDER BY c.nome`
   ).all();
   return c.json(results);
 });
 
 cores.post("/", async (c) => {
-  const b = await c.req.json<{ nome?: string; hex?: string }>();
+  const b = await c.req.json<{ nome?: string; de?: string; hex?: string; codigo?: string; fio_id?: string }>();
   const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
-  // valida hex (#RGB ou #RRGGBB); vazio = sem cor definida
+  const de = (b.de || "").trim();
+  // valida hex (#RGB ou #RRGGBB); vazio = mantém o que já tinha
   const hexRaw = (b.hex || "").trim();
   const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hexRaw) ? hexRaw : null;
+  const codigo = (b.codigo || "").trim() || null;
+  const fioId = (b.fio_id || "").trim() || null;
   await c.env.DB.prepare(
-    `INSERT INTO cores (nome, hex) VALUES (?, ?)
-     ON CONFLICT(nome) DO UPDATE SET hex = excluded.hex`
+    `INSERT INTO cores (nome, hex, codigo, fio_id) VALUES (?, ?, ?, ?)
+     ON CONFLICT(nome) DO UPDATE SET
+       hex = COALESCE(excluded.hex, cores.hex), codigo = excluded.codigo, fio_id = excluded.fio_id`
   )
-    .bind(nome, hex)
+    .bind(nome, hex, codigo, fioId)
     .run();
-  return c.json({ nome, hex }, 201);
+  if (de && de !== nome) await c.env.DB.prepare("DELETE FROM cores WHERE nome = ?").bind(de).run();
+  return c.json({ nome, hex, codigo, fio_id: fioId }, 201);
+});
+
+// ── Tipos de fio (nome + fornecedor, para ordem de compras) ───────────────────
+export const tiposFio = new Hono<{ Bindings: Env }>();
+
+tiposFio.get("/", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT t.id, t.nome, t.fornecedor_id, f.nome AS fornecedor_nome
+       FROM tipos_fio t LEFT JOIN fornecedores f ON f.id = t.fornecedor_id
+      ORDER BY t.nome`
+  ).all();
+  return c.json(results);
+});
+
+tiposFio.post("/", async (c) => {
+  const b = await c.req.json<{ id?: string; nome?: string; fornecedor_id?: string }>().catch(() => ({}) as Record<string, string>);
+  const nome = (b.nome || "").trim();
+  if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
+  const id = b.id || crypto.randomUUID();
+  const forn = (b.fornecedor_id || "").trim() || null;
+  await c.env.DB.prepare(
+    `INSERT INTO tipos_fio (id, nome, fornecedor_id) VALUES (?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, fornecedor_id = excluded.fornecedor_id`
+  ).bind(id, nome, forn).run();
+  return c.json({ id, nome, fornecedor_id: forn });
+});
+
+tiposFio.delete("/:id", async (c) => {
+  await c.env.DB.prepare("DELETE FROM tipos_fio WHERE id = ?").bind(c.req.param("id")).run();
+  return c.json({ ok: true });
+});
+
+// ── Tamanhos (cada modelo tem vários) ─────────────────────────────────────────
+export const tamanhos = new Hono<{ Bindings: Env }>();
+
+tamanhos.get("/", async (c) => {
+  const { results } = await c.env.DB.prepare("SELECT id, nome, ordem FROM tamanhos ORDER BY ordem, nome").all();
+  return c.json(results);
+});
+
+tamanhos.post("/", async (c) => {
+  const b = await c.req.json<{ id?: string; nome?: string; ordem?: number }>().catch(() => ({}) as Record<string, unknown>);
+  const nome = String(b.nome || "").trim().toUpperCase();
+  if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
+  const id = (b.id as string) || crypto.randomUUID();
+  const ordem = Math.trunc(Number(b.ordem) || 0);
+  await c.env.DB.prepare(
+    `INSERT INTO tamanhos (id, nome, ordem) VALUES (?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, ordem = excluded.ordem`
+  ).bind(id, nome, ordem).run();
+  return c.json({ id, nome, ordem });
+});
+
+tamanhos.delete("/:id", async (c) => {
+  await c.env.DB.prepare("DELETE FROM tamanhos WHERE id = ?").bind(c.req.param("id")).run();
+  return c.json({ ok: true });
 });
 
 cores.delete("/:nome", async (c) => {
