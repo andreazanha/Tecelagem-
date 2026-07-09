@@ -23,6 +23,8 @@ modelos.post("/", async (c) => {
     composicao?: string;
     tassel_peseira?: number;
     tassel_almofada?: number;
+    cores?: string[]; // cores do produto (nomes)
+    tamanhos?: { tamanho?: string; peso?: number; tempo?: number }[]; // tamanhos + fio(kg)/peça + tempo
   }>();
   const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
@@ -50,6 +52,28 @@ modelos.post("/", async (c) => {
   ];
   if (de && de !== nome) {
     stmts.push(c.env.DB.prepare("DELETE FROM modelos WHERE nome = ?").bind(de));
+    // move as cores/tamanhos do nome antigo para o novo (não perde ao renomear)
+    stmts.push(c.env.DB.prepare("UPDATE modelo_cores SET modelo_nome = ? WHERE modelo_nome = ?").bind(nome, de));
+    stmts.push(c.env.DB.prepare("UPDATE modelo_tamanhos SET modelo_nome = ? WHERE modelo_nome = ?").bind(nome, de));
+  }
+  // Cores do produto (substitui o conjunto quando enviado).
+  if (Array.isArray(b.cores)) {
+    stmts.push(c.env.DB.prepare("DELETE FROM modelo_cores WHERE modelo_nome = ?").bind(nome));
+    for (const cor of [...new Set(b.cores.map((x) => (x || "").trim()).filter(Boolean))])
+      stmts.push(c.env.DB.prepare("INSERT INTO modelo_cores (modelo_nome, cor_nome) VALUES (?, ?)").bind(nome, cor));
+  }
+  // Tamanhos do produto + fio(kg)/peça + tempo (substitui o conjunto quando enviado).
+  if (Array.isArray(b.tamanhos)) {
+    stmts.push(c.env.DB.prepare("DELETE FROM modelo_tamanhos WHERE modelo_nome = ?").bind(nome));
+    const vistos = new Set<string>();
+    for (const t of b.tamanhos) {
+      const tam = (t.tamanho || "").trim().toUpperCase();
+      if (!tam || vistos.has(tam)) continue;
+      vistos.add(tam);
+      const peso = t.peso == null || isNaN(Number(t.peso)) ? null : Number(t.peso);
+      const tempo = t.tempo == null || isNaN(Number(t.tempo)) ? null : Math.trunc(Number(t.tempo));
+      stmts.push(c.env.DB.prepare("INSERT INTO modelo_tamanhos (modelo_nome, tamanho, peso, tempo) VALUES (?, ?, ?, ?)").bind(nome, tam, peso, tempo));
+    }
   }
   await c.env.DB.batch(stmts);
 
@@ -57,6 +81,18 @@ modelos.post("/", async (c) => {
     { nome, parte, ref: b.ref || null, composicao: b.composicao || null, tassel_peseira: tp, tassel_almofada: ta },
     201
   );
+});
+
+// DETALHE do produto (modelo) com suas cores e seus tamanhos (fio/peça + tempo).
+modelos.get("/:nome", async (c) => {
+  const nome = decodeURIComponent(c.req.param("nome"));
+  const m = await c.env.DB.prepare(
+    "SELECT nome, parte, ref, composicao, tassel_peseira, tassel_almofada FROM modelos WHERE nome = ?"
+  ).bind(nome).first();
+  if (!m) return c.json({ error: "produto não encontrado" }, 404);
+  const { results: cores } = await c.env.DB.prepare("SELECT cor_nome FROM modelo_cores WHERE modelo_nome = ?").bind(nome).all<{ cor_nome: string }>();
+  const { results: tamanhos } = await c.env.DB.prepare("SELECT tamanho, peso, tempo FROM modelo_tamanhos WHERE modelo_nome = ?").bind(nome).all();
+  return c.json({ ...m, cores: cores.map((x) => x.cor_nome), tamanhos });
 });
 
 // IMPORTAÇÃO em lote (nome + código). Cria os modelos que faltam e atualiza o código dos
@@ -83,9 +119,12 @@ modelos.post("/bulk", async (c) => {
 });
 
 modelos.delete("/:nome", async (c) => {
-  await c.env.DB.prepare("DELETE FROM modelos WHERE nome = ?")
-    .bind(decodeURIComponent(c.req.param("nome")))
-    .run();
+  const nome = decodeURIComponent(c.req.param("nome"));
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM modelos WHERE nome = ?").bind(nome),
+    c.env.DB.prepare("DELETE FROM modelo_cores WHERE modelo_nome = ?").bind(nome),
+    c.env.DB.prepare("DELETE FROM modelo_tamanhos WHERE modelo_nome = ?").bind(nome),
+  ]);
   return c.json({ ok: true });
 });
 
