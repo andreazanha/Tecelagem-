@@ -393,6 +393,7 @@ export function Layout() {
             )}
           </div>
           <span className="avatar" title={`${u.nome} · ${VERSION}`}>{iniciais || "?"}</span>
+          <span className="app-ver" title="Versão do sistema">{VERSION}</span>
           <button className="ur-btn" onClick={sair} title="Sair">Sair</button>
         </div>
       </header>

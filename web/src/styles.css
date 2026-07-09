@@ -1156,3 +1156,6 @@ body.dark .topnav-sub { background: #0f1629; border-color: #ffffff14; }
 /* Estoque de material abaixo do mínimo (destaque para repor/comprar). */
 .mat-saldo-baixo { color: #b91c1c; font-weight: 800; }
 body.dark .mat-saldo-baixo { color: #fca5a5; }
+
+/* Versão visível no topo, ao lado do avatar. */
+.app-ver { font-size: 11px; font-weight: 700; color: #ffffffcc; background: #ffffff22; padding: 3px 8px; border-radius: 8px; white-space: nowrap; }
