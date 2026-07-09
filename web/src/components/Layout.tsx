@@ -96,7 +96,6 @@ const GRUPOS: MenuGrupo[] = [
   {
     id: "comercial", icon: "🛒", label: "Comercial", itens: [
       { to: "/pedidos", icon: "📦", label: "Pedidos", page: "pedidos" },
-      { to: "/todos-pedidos", icon: "📋", label: "Todos os Pedidos", page: "todos-pedidos" },
       { to: "/pedidos/novo", icon: "➕", label: "Novo Pedido", page: "pedidos" },
       { to: "/clientes", icon: "👥", label: "Clientes", page: "comercial" },
       { to: "/funil", icon: "🎯", label: "Funil de Vendas", page: "comercial" },
@@ -155,6 +154,7 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "relatorios", icon: "📈", label: "Relatórios", itens: [
+      { to: "/todos-pedidos", icon: "📋", label: "Todos os Pedidos", page: "todos-pedidos" },
       { to: "/dashboard", icon: "📺", label: "Painel Geral", page: "tv-dashboard" },
       { icon: "🏭", label: "Produção", soon: true },
       { icon: "⏰", label: "Atrasos", soon: true },
