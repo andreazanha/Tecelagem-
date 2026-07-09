@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, type FunilCard, type FunilBoard, type FunilCardDetalhe, type FunilEtapa } from "../api";
 
 const brl = (n?: number | null) => "R$ " + (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
@@ -35,6 +36,11 @@ const MOTIVOS: { id: string; label: string }[] = [
   { id: "outro", label: "Outro" },
 ];
 const EV_ICON: Record<string, string> = { ligacao: "📞", whatsapp: "💬", email: "✉️", etapa: "➡️", tarefa: "✅", pedido: "🧾", obs: "📝" };
+const SIT: Record<string, { l: string; c: string }> = {
+  entregue: { l: "Entregue", c: "st-entregue" },
+  producao: { l: "Em produção", c: "st-producao" },
+  novo: { l: "Novo", c: "st-novo" },
+};
 
 // ── QUADRO do funil ────────────────────────────────────────────────────────────
 export function Funil() {
@@ -174,6 +180,7 @@ function CardMini({ c, onAbrir, onDragStart, onDragEnd }: { c: FunilCard; onAbri
 
 // ── Detalhe do cartão (mover etapa, tarefas, timeline, histórico) ────────────────
 function CardDetalhe({ id, onFechar, onMudou }: { id: string; onFechar: () => void; onMudou: () => void }) {
+  const nav = useNavigate();
   const [d, setD] = useState<FunilCardDetalhe | null>(null);
   const [etapa, setEtapa] = useState<FunilEtapa>("novo-lead");
   const [motivo, setMotivo] = useState("");
@@ -279,14 +286,22 @@ function CardDetalhe({ id, onFechar, onMudou }: { id: string; onFechar: () => vo
                 </div>
               </div>
 
-              {/* Histórico de pedidos */}
+              {/* Histórico de pedidos (só clientes vinculados à base) */}
               {d.pedidos.length > 0 && (
                 <div className="fx-block">
                   <div className="fx-block-h">Pedidos do cliente</div>
-                  <table className="crm"><tbody>
-                    {d.pedidos.map((p) => (
-                      <tr key={p.id}><td>{dataBr(p.data)}</td><td>{p.numero ? "#" + p.numero : "—"}</td><td className="money">{brl(p.valor)}</td></tr>
-                    ))}
+                  <table className="crm fx-peds"><tbody>
+                    {d.pedidos.map((p) => {
+                      const s = SIT[p.situacao] || { l: p.situacao, c: "st-producao" };
+                      return (
+                        <tr key={p.id} onClick={() => nav(`/pedidos/${p.id}`)} title="Abrir pedido">
+                          <td>{dataBr(p.data)}</td>
+                          <td>{p.numero ? "#" + p.numero : "—"}</td>
+                          <td className="money">{brl(p.valor)}</td>
+                          <td><span className={"stpill " + s.c}>{s.l}</span></td>
+                        </tr>
+                      );
+                    })}
                   </tbody></table>
                 </div>
               )}

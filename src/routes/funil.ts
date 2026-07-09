@@ -130,13 +130,35 @@ funil.get("/:id", async (c) => {
   const { results: timeline } = await c.env.DB.prepare(
     "SELECT id, tipo, texto, autor, criado_em FROM funil_eventos WHERE card_id = ? ORDER BY criado_em DESC, rowid DESC"
   ).bind(id).all();
-  // Histórico de pedidos do cliente (se o nome bate com a base).
-  const { results: pedidos } = await c.env.DB.prepare(
-    `SELECT p.id, p.numero_erp AS numero, p.data_pedido AS data, COALESCE(SUM(i.qtd*i.valor_unit),0) AS valor
-       FROM pedidos p LEFT JOIN pedido_itens i ON i.pedido_id = p.id
-      WHERE p.cliente_nome = ? AND COALESCE(p.reposicao,0)=0 AND COALESCE(p.tipo,'') <> 'estoque'
-      GROUP BY p.id ORDER BY (p.data_pedido IS NULL), p.data_pedido DESC`
-  ).bind(card.nome).all();
+  // Histórico de pedidos — SÓ para cartão vinculado a um cliente da base
+  // (cliente_id). Lead criado na mão não tem vínculo → não puxa pedido de
+  // homônimo. Casa o histórico pelo nome do cliente vinculado.
+  let pedidos: { id: string; numero: string | null; data: string | null; valor: number; situacao: string }[] = [];
+  if (card.cliente_id) {
+    const cli = await c.env.DB.prepare("SELECT nome FROM clientes WHERE id = ?").bind(card.cliente_id).first<{ nome: string }>();
+    const nomeCli = cli?.nome || card.nome;
+    const { results: peds } = await c.env.DB.prepare(
+      `SELECT p.id, p.numero_erp AS numero, p.data_pedido AS data, p.status,
+              COALESCE(SUM(i.qtd*i.valor_unit),0) AS valor
+         FROM pedidos p LEFT JOIN pedido_itens i ON i.pedido_id = p.id
+        WHERE p.cliente_nome = ? AND COALESCE(p.reposicao,0)=0 AND COALESCE(p.tipo,'') <> 'estoque'
+        GROUP BY p.id ORDER BY (p.data_pedido IS NULL), p.data_pedido DESC`
+    ).bind(nomeCli).all<{ id: string; numero: string | null; data: string | null; status: string; valor: number }>();
+    // Situação: tudo na expedição → entregue; senão em produção.
+    const situ = new Map<string, string>();
+    if (peds.length) {
+      const ph = peds.map(() => "?").join(",");
+      const { results: pr } = await c.env.DB.prepare(
+        `SELECT pedido_id, COUNT(*) AS tot, SUM(CASE WHEN setor='expedicao' THEN 1 ELSE 0 END) AS exp
+           FROM producao WHERE pedido_id IN (${ph}) GROUP BY pedido_id`
+      ).bind(...peds.map((p) => p.id)).all<{ pedido_id: string; tot: number; exp: number }>();
+      for (const r of pr) situ.set(r.pedido_id, r.tot > 0 && r.exp === r.tot ? "entregue" : "producao");
+    }
+    pedidos = peds.map((p) => ({
+      id: p.id, numero: p.numero, data: p.data, valor: Number(p.valor) || 0,
+      situacao: situ.get(p.id) || (p.status === "novo" ? "novo" : "producao"),
+    }));
+  }
   return c.json({ ...card, tarefas, timeline, pedidos });
 });
 

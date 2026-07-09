@@ -160,7 +160,7 @@ export interface FunilCardDetalhe extends Omit<FunilCard, "diasParado" | "proxTa
   movido_em: string;
   tarefas: FunilTarefa[];
   timeline: FunilEvento[];
-  pedidos: { id: string; numero: string | null; data: string | null; valor: number }[];
+  pedidos: { id: string; numero: string | null; data: string | null; valor: number; situacao: string }[];
 }
 
 export interface CardProducao {
