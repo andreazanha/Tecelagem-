@@ -281,32 +281,45 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             <Campo label="Composição"><input value={composicao} onChange={(e) => setComposicao(e.target.value)} placeholder="ex.: 100% POLIÉSTER" /></Campo>
           </div>
 
-          {/* 2. Cores deste produto */}
+          {/* 2. Cores e tamanhos do produto — seletores lado a lado (padrão da Galga) */}
           <div className="campo-l" style={{ margin: "14px 0 8px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span>2 · CORES DESTE PRODUTO</span>
-            <span className="chip">{nCores} selecionada(s)</span>
+            <span>2 · CORES E TAMANHOS DO PRODUTO</span>
+            <span className="chip">{nCores} cor(es)</span>
+            <span className="chip">{nTam} tamanho(s)</span>
             {fiosLista.length > 0 && (
               <input
-                placeholder="🔎 filtrar por nome ou código…"
+                placeholder="🔎 filtrar cor por nome ou código…"
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
-                style={{ marginLeft: "auto", minWidth: 220, textTransform: "none", fontWeight: 500 }}
+                style={{ marginLeft: "auto", minWidth: 200, textTransform: "none", fontWeight: 500 }}
               />
             )}
           </div>
-          {fiosLista.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Nenhuma cor cadastrada. Cadastre em Fios.</p>}
+          {/* Tipo de fio | Tamanho, lado a lado */}
+          <div className="form-grid2">
+            <Campo label="Tipo de fio">
+              <select value={fioSel ?? "__pick__"} onChange={(e) => setFioSel(e.target.value === "__pick__" ? null : e.target.value)} disabled={fiosLista.length === 0}>
+                <option value="__pick__">{fiosLista.length === 0 ? "nenhuma cor cadastrada" : "— escolha o tipo de fio —"}</option>
+                {fiosLista.map((f) => {
+                  const nsel = selDoFio(f.fio);
+                  return <option key={f.fio || "—"} value={f.fio}>{(f.fio || "Sem tipo de fio")} ({f.total} cor{f.total === 1 ? "" : "es"}){nsel > 0 ? ` · ${nsel} marcada${nsel === 1 ? "" : "s"}` : ""}</option>;
+                })}
+              </select>
+            </Campo>
+            <Campo label="Tamanho">
+              <select value="__pick__" onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__novo__") { novoTamanho(); return; }
+                if (v && v !== "__pick__") setSelTam((s) => ({ ...s, [v]: true }));
+              }}>
+                <option value="__pick__">＋ adicionar tamanho…</option>
+                {linhasTam.filter((t) => !selTam[t.nome]).map((t) => <option key={t.id} value={t.nome}>{t.nome}</option>)}
+                <option value="__novo__">＋ novo tamanho…</option>
+              </select>
+            </Campo>
+          </div>
           {fiosLista.length > 0 && (
             <>
-              {/* Escolhe o tipo de fio num seletor (igual ao da Galga). Depois abre as cores. */}
-              <Campo label="Tipo de fio">
-                <select value={fioSel ?? "__pick__"} onChange={(e) => setFioSel(e.target.value === "__pick__" ? null : e.target.value)}>
-                  <option value="__pick__">— escolha o tipo de fio —</option>
-                  {fiosLista.map((f) => {
-                    const nsel = selDoFio(f.fio);
-                    return <option key={f.fio || "—"} value={f.fio}>{(f.fio || "Sem tipo de fio")} ({f.total} cor{f.total === 1 ? "" : "es"}){nsel > 0 ? ` · ${nsel} marcada${nsel === 1 ? "" : "s"}` : ""}</option>;
-                  })}
-                </select>
-              </Campo>
               {nForaFio > 0 && fioSel !== null && (
                 <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                   ⚠️ {nForaFio} cor(es) marcada(s) em outro tipo de fio.
@@ -347,52 +360,44 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
                   </div>
                 );
               })()}
+
+              {/* Tamanhos escolhidos (peso/tempo por tamanho) */}
+              {nTam > 0 && (
+                <div className="card" style={{ marginTop: 10 }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Tamanho</th>
+                        <th className="num">Peso (por peça)</th>
+                        <th className="num">Tempo de produção</th>
+                        <th style={{ width: 40 }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {linhasTam.filter((t) => selTam[t.nome]).map((t) => (
+                        <tr key={t.id}>
+                          <td className="strong">{t.nome}</td>
+                          <td className="num">
+                            <span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
+                              <input className="w-xs num" type="number" min={0} step="any" value={pesos[t.nome] ?? ""} onChange={(e) => setPesos((p) => ({ ...p, [t.nome]: e.target.value }))} />
+                              <span className="muted" style={{ fontSize: 12 }}>kg</span>
+                            </span>
+                          </td>
+                          <td className="num">
+                            <span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
+                              <input className="w-xs num" type="number" min={0} step="any" value={tempos[t.nome] ?? ""} onChange={(e) => setTempos((p) => ({ ...p, [t.nome]: e.target.value }))} />
+                              <span className="muted" style={{ fontSize: 12 }}>min</span>
+                            </span>
+                          </td>
+                          <td><button type="button" className="icon-btn" title="Remover tamanho" onClick={() => setSelTam((s) => ({ ...s, [t.nome]: false }))}>✕</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </>
           )}
-
-          {/* 3. Tamanhos, peso e tempo */}
-          <div className="campo-l" style={{ margin: "14px 0 8px", display: "flex", alignItems: "center", gap: 10 }}>
-            <span>3 · TAMANHOS, PESO E TEMPO</span>
-            <span className="chip">{nTam} selecionado(s)</span>
-            <button type="button" className="btn btn-soft" style={{ marginLeft: "auto", padding: "3px 10px", fontSize: 11 }} onClick={novoTamanho}>＋ novo tamanho</button>
-          </div>
-          <div className="card">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th style={{ width: 40 }}></th>
-                  <th>Tamanho</th>
-                  <th className="num">Peso (por peça)</th>
-                  <th className="num">Tempo de produção</th>
-                </tr>
-              </thead>
-              <tbody>
-                {linhasTam.length === 0 ? (
-                  <tr><td colSpan={4} className="empty pad">Nenhum tamanho cadastrado. Use “＋ novo tamanho”.</td></tr>
-                ) : linhasTam.map((t) => {
-                  const on = !!selTam[t.nome];
-                  return (
-                    <tr key={t.id} style={{ opacity: on ? 1 : 0.5 }}>
-                      <td><input type="checkbox" checked={on} onChange={(e) => setSelTam((s) => ({ ...s, [t.nome]: e.target.checked }))} /></td>
-                      <td className="strong">{t.nome}</td>
-                      <td className="num">
-                        <span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
-                          <input className="w-xs num" type="number" min={0} step="any" disabled={!on} value={pesos[t.nome] ?? ""} onChange={(e) => setPesos((p) => ({ ...p, [t.nome]: e.target.value }))} />
-                          <span className="muted" style={{ fontSize: 12 }}>kg</span>
-                        </span>
-                      </td>
-                      <td className="num">
-                        <span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
-                          <input className="w-xs num" type="number" min={0} step="any" disabled={!on} value={tempos[t.nome] ?? ""} onChange={(e) => setTempos((p) => ({ ...p, [t.nome]: e.target.value }))} />
-                          <span className="muted" style={{ fontSize: 12 }}>min</span>
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
 
           {/* Footer */}
           <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16, alignItems: "center" }}>
