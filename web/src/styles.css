@@ -1160,22 +1160,19 @@ body.dark .mat-saldo-baixo { color: #fca5a5; }
 /* Versão visível no topo, ao lado do avatar. */
 .app-ver { font-size: 11px; font-weight: 700; color: #ffffffcc; background: #ffffff22; padding: 3px 8px; border-radius: 8px; white-space: nowrap; }
 
-/* Menu "Tipo de fio" no cadastro de produto: fechado por padrão, abre no clique. */
-.fio-drop { position: relative; display: inline-block; margin-bottom: 10px; }
-.fio-drop-btn { display: inline-flex; align-items: center; gap: 8px; font: inherit; cursor: pointer;
-  background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px; min-width: 240px; }
-.fio-drop-btn:hover { border-color: #c7d2fe; }
-.fio-drop-lbl { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
-.fio-drop-btn strong { color: var(--ink); }
-.fio-drop-car { margin-left: auto; font-size: 10px; color: var(--muted); }
-.fio-drop-list { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 100%;
-  background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 50px #0f172a2e; padding: 6px; }
-.fio-drop-i { display: flex; align-items: center; gap: 10px; width: 100%; font: inherit; text-align: left;
-  cursor: pointer; background: transparent; border: none; border-radius: 8px; padding: 9px 11px; white-space: nowrap; }
-.fio-drop-i:hover { background: #f4f6fb; }
-.fio-drop-i.on { background: #eef2ff; }
-.fio-drop-nm { font-weight: 700; }
-body.dark .fio-drop-btn, body.dark .fio-drop-list { background: #0e1426; border-color: #ffffff14; }
-body.dark .fio-drop-btn strong, body.dark .fio-drop-nm { color: var(--ink); }
-body.dark .fio-drop-i:hover { background: #ffffff0f; }
-body.dark .fio-drop-i.on { background: #212d49; }
+
+/* Lista de tipos de fio no cadastro de produto: cada fio é uma linha; clicar
+   abre as cores dele numa lista (igual à de tamanhos). Cores ficam ocultas. */
+.fio-lista { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.fio-item + .fio-item { border-top: 1px solid var(--line); }
+.fio-item-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; background: #fff; }
+.fio-item-h:hover { background: #f7f8fc; }
+.fio-item.aberto > .fio-item-h { background: #eef2ff; }
+.fio-item-car { font-weight: 800; color: #64748b; width: 14px; }
+.fio-item-nm { font-weight: 800; }
+.fio-item > .table { border-top: 1px solid var(--line); }
+.fio-item > .table td { cursor: pointer; }
+body.dark .fio-lista, body.dark .fio-item + .fio-item, body.dark .fio-item > .table { border-color: #ffffff14; }
+body.dark .fio-item-h { background: #0e1426; }
+body.dark .fio-item-h:hover { background: #ffffff0d; }
+body.dark .fio-item.aberto > .fio-item-h { background: #212d49; }
