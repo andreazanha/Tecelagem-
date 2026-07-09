@@ -38,13 +38,13 @@ export function Cadastros() {
   }, [sp]);
 
   const segs: { id: AbaCad; label: string; adminOnly?: boolean }[] = [
-    { id: "produtos", label: "📦 Produtos" },
-    { id: "cores", label: "🎨 Cores" },
-    { id: "tipos-fio", label: "🧵 Tipos de fio" },
-    { id: "tamanhos", label: "📏 Tamanhos" },
-    { id: "fornecedores", label: "🚛 Fornecedores" },
-    { id: "operadores", label: "👤 Operadores" },
-    { id: "usuarios", label: "🔐 Usuários", adminOnly: true },
+    { id: "produtos", label: "Produtos" },
+    { id: "cores", label: "Cores" },
+    { id: "tipos-fio", label: "Tipos de fio" },
+    { id: "tamanhos", label: "Tamanhos" },
+    { id: "fornecedores", label: "Fornecedores" },
+    { id: "operadores", label: "Operadores" },
+    { id: "usuarios", label: "Usuários", adminOnly: true },
   ];
 
   return (
@@ -310,7 +310,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
               <div className={"cad-grp" + (aberto ? " aberto" : "")} key={gi}>
                 <div className="cad-grp-h" style={{ cursor: "pointer" }} onClick={() => setFioAberto((f) => (f === (g.fio || "—") ? null : g.fio || "—"))}>
                   <span style={{ fontWeight: 800, color: "#64748b", width: 16 }}>{aberto ? "▾" : "▸"}</span>
-                  <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>🧵 {g.fio || "Sem tipo de fio"}</span>
+                  <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{g.fio || "Sem tipo de fio"}</span>
                   {g.fornecedor && <span className="muted" style={{ fontSize: 12 }}>fornecedor: {g.fornecedor}</span>}
                   <span className="muted" style={{ fontSize: 12 }}>{g.cores.length} cor(es)</span>
                   {nSel > 0 && <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>{nSel} ✓</span>}
@@ -435,7 +435,7 @@ function AbaCores() {
     <>
       <div className="row-gap" style={{ marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         <input className="busca-ped" placeholder="🔎 Buscar cor ou código…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={() => setAgrupar(true)}>🧵 Agrupar cores num tipo de fio</button>
+        <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={() => setAgrupar(true)}>Agrupar cores num tipo de fio</button>
         <button className="btn btn-primary" onClick={() => setModal({ cor: null })}>＋ Nova cor</button>
       </div>
       <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>
@@ -446,7 +446,7 @@ function AbaCores() {
       {grupos.map((g, gi) => (
         <div className="card" key={gi} style={{ marginBottom: 12 }}>
           <div className="row-gap" style={{ alignItems: "center", gap: 10, padding: "10px 12px", flexWrap: "wrap" }}>
-            <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>🧵 {g.fio || "Sem tipo de fio"}</span>
+            <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{g.fio || "Sem tipo de fio"}</span>
             {g.fornecedor && <span className="muted" style={{ fontSize: 12 }}>fornecedor: {g.fornecedor}</span>}
             <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>{g.cores.length} cor(es)</span>
           </div>
@@ -634,11 +634,15 @@ function CorModal({ cor, onFechar, onSalvo }: { cor: Cor | null; onFechar: () =>
 }
 
 // ═══════════════════════════ Aba TIPOS DE FIO ═══════════════════════════
+const CORES_FIO = ["#2563eb", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#dc2626", "#ca8a04", "#64748b"];
+
 function AbaTiposFio() {
   const [itens, setItens] = useState<TipoFio[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const [editId, setEditId] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [fornId, setFornId] = useState("");
+  const [cor, setCor] = useState(CORES_FIO[0]);
 
   function recarregar() {
     api.listarTiposFio().then(setItens).catch(() => {});
@@ -648,11 +652,14 @@ function AbaTiposFio() {
     api.listarFornecedores().then(setFornecedores).catch(() => {});
   }, []);
 
-  async function adicionar() {
+  function limpar() { setEditId(null); setNome(""); setFornId(""); setCor(CORES_FIO[0]); }
+  function editar(t: TipoFio) { setEditId(t.id); setNome(t.nome); setFornId(t.fornecedor_id || ""); setCor(t.cor || CORES_FIO[0]); }
+
+  async function salvar() {
     if (!nome.trim()) return alert("Informe o nome do tipo de fio.");
     try {
-      await api.salvarTipoFio({ nome: nome.trim(), fornecedor_id: fornId || null });
-      setNome(""); setFornId("");
+      await api.salvarTipoFio({ id: editId || undefined, nome: nome.trim(), fornecedor_id: fornId || null, cor });
+      limpar();
       recarregar();
     } catch (e) {
       alert((e as Error).message);
@@ -660,20 +667,33 @@ function AbaTiposFio() {
   }
   async function remover(t: TipoFio) {
     if (!confirm(`Excluir o tipo de fio "${t.nome}"?`)) return;
-    try { await api.excluirTipoFio(t.id); recarregar(); } catch (e) { alert((e as Error).message); }
+    try { await api.excluirTipoFio(t.id); if (editId === t.id) limpar(); recarregar(); } catch (e) { alert((e as Error).message); }
   }
 
   return (
     <>
       <div className="card pad" style={{ marginBottom: 16 }}>
-        <h2>Novo tipo de fio</h2>
+        <h2>{editId ? "Editar tipo de fio" : "Novo tipo de fio"}</h2>
         <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <input placeholder="Nome (ex.: Poliéster 400)" value={nome} onChange={(e) => setNome(e.target.value)} onKeyDown={(e) => e.key === "Enter" && adicionar()} style={{ minWidth: 220 }} />
-          <select value={fornId} onChange={(e) => setFornId(e.target.value)} style={{ minWidth: 200 }}>
-            <option value="">Sem fornecedor</option>
-            {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
-          </select>
-          <button className="btn btn-primary" onClick={adicionar}>＋ Adicionar</button>
+          <label className="fld"><span className="fld-l">Nome</span>
+            <input placeholder="ex.: Poliéster 400" value={nome} onChange={(e) => setNome(e.target.value)} onKeyDown={(e) => e.key === "Enter" && salvar()} style={{ minWidth: 220 }} />
+          </label>
+          <label className="fld"><span className="fld-l">Fornecedor</span>
+            <select value={fornId} onChange={(e) => setFornId(e.target.value)} style={{ minWidth: 200 }}>
+              <option value="">Sem fornecedor</option>
+              {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+            </select>
+          </label>
+          <div className="fld"><span className="fld-l">Ícone de cor</span>
+            <div className="row-gap" style={{ gap: 6 }}>
+              {CORES_FIO.map((h) => (
+                <button type="button" key={h} onClick={() => setCor(h)} title={h}
+                  style={{ width: 26, height: 26, borderRadius: 7, background: h, cursor: "pointer", border: "2px solid #fff", boxShadow: cor === h ? "0 0 0 2px #0f172a" : "0 0 0 1px #cbd5e1" }} />
+              ))}
+            </div>
+          </div>
+          <button className="btn btn-primary" onClick={salvar}>{editId ? "Salvar" : "＋ Adicionar"}</button>
+          {editId && <button className="btn" onClick={limpar}>Cancelar</button>}
         </div>
       </div>
 
@@ -685,9 +705,17 @@ function AbaTiposFio() {
               <tr><td colSpan={3} className="empty pad">Nenhum tipo de fio cadastrado ainda.</td></tr>
             ) : itens.map((t) => (
               <tr key={t.id}>
-                <td className="strong">{t.nome}</td>
+                <td>
+                  <span className="row-gap" style={{ alignItems: "center", gap: 10 }}>
+                    <span style={{ width: 22, height: 22, borderRadius: 6, background: t.cor || "#e2e8f0", boxShadow: "0 0 0 1px #0002", flex: "0 0 auto" }} />
+                    <span className="strong">{t.nome}</span>
+                  </span>
+                </td>
                 <td>{t.fornecedor_nome || "—"}</td>
-                <td><button className="icon-btn" title="Remover" onClick={() => remover(t)}>✕</button></td>
+                <td style={{ whiteSpace: "nowrap" }}>
+                  <button className="icon-btn" title="Editar" onClick={() => editar(t)}>✎</button>
+                  <button className="icon-btn" title="Remover" onClick={() => remover(t)}>✕</button>
+                </td>
               </tr>
             ))}
           </tbody>

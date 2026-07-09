@@ -87,6 +87,7 @@ export interface ModeloDetalhe extends Modelo {
 export interface TipoFio {
   id: string;
   nome: string;
+  cor?: string | null;
   fornecedor_id: string | null;
   fornecedor_nome?: string | null;
 }
@@ -564,7 +565,7 @@ export const api = {
   atribuirFioCores: (fio_id: string | null, cores: string[]) =>
     jsonPost("/api/cores/atribuir-fio", { fio_id, cores }).then((r) => j<{ ok: boolean; atualizadas: number }>(r)),
   listarTiposFio: () => fetch("/api/tipos-fio").then((r) => j<TipoFio[]>(r)),
-  salvarTipoFio: (b: { id?: string; nome: string; fornecedor_id: string | null }) =>
+  salvarTipoFio: (b: { id?: string; nome: string; fornecedor_id: string | null; cor?: string | null }) =>
     jsonPost("/api/tipos-fio", b).then((r) => j<TipoFio>(r)),
   excluirTipoFio: (id: string) =>
     fetch(`/api/tipos-fio/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) =>
