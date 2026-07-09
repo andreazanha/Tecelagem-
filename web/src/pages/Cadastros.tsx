@@ -395,6 +395,7 @@ function AbaCores() {
   const [cores, setCores] = useState<Cor[]>([]);
   const [busca, setBusca] = useState("");
   const [modal, setModal] = useState<{ cor: Cor | null } | null>(null);
+  const [agrupar, setAgrupar] = useState(false);
 
   function recarregar() {
     api.listarCores().then(setCores).catch(() => {});
@@ -425,7 +426,8 @@ function AbaCores() {
     <>
       <div className="row-gap" style={{ marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         <input className="busca-ped" placeholder="🔎 Buscar cor ou código…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <button className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={() => setModal({ cor: null })}>＋ Nova cor</button>
+        <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={() => setAgrupar(true)}>🧵 Agrupar cores num tipo de fio</button>
+        <button className="btn btn-primary" onClick={() => setModal({ cor: null })}>＋ Nova cor</button>
       </div>
       <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>
         Cores agrupadas por <strong>tipo de fio</strong>. {cores.length} cores.
@@ -467,7 +469,73 @@ function AbaCores() {
       ))}
 
       {modal && <CorModal cor={modal.cor} onFechar={() => setModal(null)} onSalvo={() => { setModal(null); recarregar(); }} />}
+      {agrupar && <AgruparFioModal cores={cores} onFechar={() => setAgrupar(false)} onSalvo={() => { setAgrupar(false); recarregar(); }} />}
     </>
+  );
+}
+
+// Selecionar várias cores e jogar dentro de um tipo de fio de uma vez.
+function AgruparFioModal({ cores, onFechar, onSalvo }: { cores: Cor[]; onFechar: () => void; onSalvo: () => void }) {
+  const [tipos, setTipos] = useState<TipoFio[]>([]);
+  const [fioId, setFioId] = useState("");
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [busca, setBusca] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => { api.listarTiposFio().then(setTipos).catch(() => {}); }, []);
+
+  const q = busca.trim().toLowerCase();
+  const lista = cores.filter((c) => !q || `${c.nome} ${c.codigo || ""} ${c.fio_nome || ""}`.toLowerCase().includes(q));
+  const toggle = (nome: string) => setSel((s) => { const n = new Set(s); n.has(nome) ? n.delete(nome) : n.add(nome); return n; });
+
+  async function salvar() {
+    if (!fioId) return alert("Escolha o tipo de fio.");
+    if (!sel.size) return alert("Selecione ao menos uma cor.");
+    setSalvando(true);
+    try {
+      const r = await api.atribuirFioCores(fioId, [...sel]);
+      onSalvo();
+      alert(`${r.atualizadas} cor(es) movida(s) para o tipo de fio.`);
+    } catch (e) { alert((e as Error).message); setSalvando(false); }
+  }
+
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd unica">
+          <div className="modal-hd-top">
+            <span className="modal-pills"><span className="modal-pill">Agrupar cores num tipo de fio</span></span>
+            <button className="modal-x" onClick={onFechar}>✕</button>
+          </div>
+        </div>
+        <div className="pad">
+          <Campo label="Tipo de fio de destino *">
+            <select value={fioId} onChange={(e) => setFioId(e.target.value)}>
+              <option value="">— escolha o tipo de fio —</option>
+              {tipos.map((t) => <option key={t.id} value={t.id}>{t.nome}{t.fornecedor_nome ? ` · ${t.fornecedor_nome}` : ""}</option>)}
+            </select>
+          </Campo>
+          <input className="busca-ped" style={{ width: "100%", margin: "8px 0" }} placeholder="🔎 Buscar cor…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <div className="cad-tiles" style={{ maxHeight: "46vh", overflowY: "auto" }}>
+            {lista.map((c) => (
+              <div key={c.nome} className={"cad-tile" + (sel.has(c.nome) ? " on" : "")} onClick={() => toggle(c.nome)}>
+                <span className="cad-tile-ck">✓</span>
+                <span className="cad-sw" style={{ background: c.hex || "#e2e8f0", width: 40, height: 40 }} />
+                <span className="cad-tile-nm">{c.nome}</span>
+                <span className="cad-tile-cd">{c.codigo || ""}</span>
+              </div>
+            ))}
+            {lista.length === 0 && <p className="muted pad">Nenhuma cor.</p>}
+          </div>
+          <div className="row-gap" style={{ justifyContent: "space-between", marginTop: 14, alignItems: "center" }}>
+            <span className="muted" style={{ fontSize: 13 }}>{sel.size} cor(es) selecionada(s)</span>
+            <span className="row-gap">
+              <button className="btn" onClick={onFechar}>Cancelar</button>
+              <button className="btn btn-primary" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Mover para o fio"}</button>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -623,23 +691,26 @@ function AbaTiposFio() {
 // ═══════════════════════════ Aba TAMANHOS ═══════════════════════════
 function AbaTamanhos() {
   const [itens, setItens] = useState<Tamanho[]>([]);
-  const [nome, setNome] = useState("");
-  const [ordem, setOrdem] = useState("");
+  const [colar, setColar] = useState("");
+  const [processando, setProcessando] = useState(false);
 
   function recarregar() {
     api.listarTamanhos().then((ts) => setItens([...ts].sort((a, b) => a.ordem - b.ordem))).catch(() => {});
   }
   useEffect(recarregar, []);
 
-  async function adicionar() {
-    if (!nome.trim()) return alert("Informe o nome do tamanho.");
-    const ord = ordem.trim() === "" ? itens.reduce((mx, t) => Math.max(mx, t.ordem), 0) + 1 : Number(ordem);
+  async function processar() {
+    if (!colar.trim()) return;
+    setProcessando(true);
     try {
-      await api.salvarTamanho({ nome: nome.trim().toUpperCase(), ordem: ord });
-      setNome(""); setOrdem("");
+      const r = await api.bulkTamanhos(colar);
+      setColar("");
       recarregar();
+      alert(`${r.criados} tamanho(s) adicionado(s) e ordenado(s).${r.ignorados ? ` ${r.ignorados} já existia(m).` : ""}`);
     } catch (e) {
       alert((e as Error).message);
+    } finally {
+      setProcessando(false);
     }
   }
   async function remover(t: Tamanho) {
@@ -650,11 +721,17 @@ function AbaTamanhos() {
   return (
     <>
       <div className="card pad" style={{ marginBottom: 16 }}>
-        <h2>Novo tamanho</h2>
-        <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <input placeholder="Nome (ex.: 50X50)" value={nome} onChange={(e) => setNome(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && adicionar()} style={{ minWidth: 200 }} />
-          <input type="number" placeholder="Ordem" value={ordem} onChange={(e) => setOrdem(e.target.value)} style={{ width: 120 }} />
-          <button className="btn btn-primary" onClick={adicionar}>＋ Adicionar</button>
+        <h2>Digite ou cole os tamanhos</h2>
+        <p className="muted" style={{ marginTop: 4, marginBottom: 10 }}>Separe do jeito que quiser (vírgula, espaço, linha). Eu padronizo (50X50) e <strong>coloco em ordem</strong> automaticamente.</p>
+        <textarea
+          value={colar}
+          onChange={(e) => setColar(e.target.value)}
+          placeholder={"ex.: 50x50, 90x200, 1.20x1.80\n45x45  0.90x1.20  70x250"}
+          rows={3}
+          style={{ width: "100%", resize: "vertical" }}
+        />
+        <div className="row-gap" style={{ marginTop: 10, justifyContent: "flex-end" }}>
+          <button className="btn btn-primary" disabled={processando || !colar.trim()} onClick={processar}>{processando ? "Processando…" : "✓ Adicionar e ordenar"}</button>
         </div>
       </div>
 

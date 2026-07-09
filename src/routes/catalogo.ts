@@ -164,6 +164,17 @@ cores.post("/", async (c) => {
   return c.json({ nome, hex, codigo, fio_id: fioId }, 201);
 });
 
+// ATRIBUIR várias cores a um tipo de fio de uma vez (fio_id vazio = tira do fio).
+cores.post("/atribuir-fio", async (c) => {
+  const b = await c.req.json<{ fio_id?: string; cores?: string[] }>().catch(() => ({}) as Record<string, unknown>);
+  const fioId = String(b.fio_id ?? "").trim() || null;
+  const nomes = (Array.isArray(b.cores) ? b.cores : []).map((x) => String(x || "").trim()).filter(Boolean);
+  if (!nomes.length) return c.json({ error: "selecione ao menos uma cor" }, 400);
+  const ph = nomes.map(() => "?").join(",");
+  await c.env.DB.prepare(`UPDATE cores SET fio_id = ? WHERE nome IN (${ph})`).bind(fioId, ...nomes).run();
+  return c.json({ ok: true, atualizadas: nomes.length });
+});
+
 // ── Tipos de fio (nome + fornecedor, para ordem de compras) ───────────────────
 export const tiposFio = new Hono<{ Bindings: Env }>();
 
@@ -218,6 +229,42 @@ tamanhos.post("/", async (c) => {
 tamanhos.delete("/:id", async (c) => {
   await c.env.DB.prepare("DELETE FROM tamanhos WHERE id = ?").bind(c.req.param("id")).run();
   return c.json({ ok: true });
+});
+
+// Normaliza um tamanho "AxB" (aceita x/X/*, vírgula ou ponto, espaços) → "50X50".
+export function normalizarTamanho(raw: string): string | null {
+  const m = String(raw || "").match(/(\d+(?:[.,]\d+)?)\s*[x×*]\s*(\d+(?:[.,]\d+)?)/i);
+  if (!m) return null;
+  const fmt = (s: string) => s.replace(",", "."); // mantém a notação (1.20, 0.90)
+  return `${fmt(m[1])}X${fmt(m[2])}`.toUpperCase();
+}
+// Área em cm² (detecta metro: valor < 10 → ×100) para ordenar do menor pro maior.
+export function areaTamanho(nome: string): number {
+  const m = String(nome || "").match(/([\d.]+)\s*X\s*([\d.]+)/i);
+  if (!m) return Number.MAX_SAFE_INTEGER;
+  const cm = (v: string) => { const n = parseFloat(v); return isNaN(n) ? 0 : n < 10 ? n * 100 : n; };
+  return cm(m[1]) * cm(m[2]);
+}
+
+// COLAR/DIGITAR VÁRIOS: extrai os tamanhos de um texto solto, normaliza, junta
+// com os já cadastrados, ordena por tamanho real e reatribui a ordem.
+tamanhos.post("/bulk", async (c) => {
+  const b = await c.req.json<{ texto?: string; nomes?: string[] }>().catch(() => ({}) as Record<string, unknown>);
+  const brutos = Array.isArray(b.nomes) ? b.nomes : (String(b.texto || "").match(/\d+(?:[.,]\d+)?\s*[x×*]\s*\d+(?:[.,]\d+)?/gi) || []);
+  const novos = [...new Set(brutos.map((x) => normalizarTamanho(String(x))).filter((x): x is string => !!x))];
+  if (!novos.length) return c.json({ error: "nenhum tamanho reconhecido", exemplo: "50x50, 90x200, 1.20x1.80" }, 400);
+
+  const { results: exist } = await c.env.DB.prepare("SELECT id, nome FROM tamanhos").all<{ id: string; nome: string }>();
+  const idPorNome = new Map(exist.map((t) => [t.nome, t.id]));
+  const todos = [...new Set([...exist.map((t) => t.nome), ...novos])].sort((a, b2) => areaTamanho(a) - areaTamanho(b2));
+  const stmts = todos.map((nome, i) =>
+    c.env.DB.prepare(
+      "INSERT INTO tamanhos (id, nome, ordem) VALUES (?, ?, ?) ON CONFLICT(nome) DO UPDATE SET ordem = excluded.ordem"
+    ).bind(idPorNome.get(nome) || crypto.randomUUID(), nome, i + 1)
+  );
+  await c.env.DB.batch(stmts);
+  const criados = novos.filter((n) => !idPorNome.has(n)).length;
+  return c.json({ total: todos.length, criados, ignorados: novos.length - criados, ordenados: todos });
 });
 
 cores.delete("/:nome", async (c) => {

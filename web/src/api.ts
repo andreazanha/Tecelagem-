@@ -561,6 +561,8 @@ export const api = {
     fetch(`/api/cores/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) =>
       j<{ ok: boolean }>(r)
     ),
+  atribuirFioCores: (fio_id: string | null, cores: string[]) =>
+    jsonPost("/api/cores/atribuir-fio", { fio_id, cores }).then((r) => j<{ ok: boolean; atualizadas: number }>(r)),
   listarTiposFio: () => fetch("/api/tipos-fio").then((r) => j<TipoFio[]>(r)),
   salvarTipoFio: (b: { id?: string; nome: string; fornecedor_id: string | null }) =>
     jsonPost("/api/tipos-fio", b).then((r) => j<TipoFio>(r)),
@@ -571,6 +573,8 @@ export const api = {
   listarTamanhos: () => fetch("/api/tamanhos").then((r) => j<Tamanho[]>(r)),
   salvarTamanho: (b: { id?: string; nome: string; ordem: number }) =>
     jsonPost("/api/tamanhos", b).then((r) => j<Tamanho>(r)),
+  bulkTamanhos: (texto: string) =>
+    jsonPost("/api/tamanhos/bulk", { texto }).then((r) => j<{ total: number; criados: number; ignorados: number; ordenados: string[] }>(r)),
   excluirTamanho: (id: string) =>
     fetch(`/api/tamanhos/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) =>
       j<{ ok: boolean }>(r)
