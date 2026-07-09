@@ -143,14 +143,12 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "cadastros", icon: "🗂️", label: "Cadastros", itens: [
-      { icon: "👥", label: "Clientes", soon: true },
-      { to: "/produtos", icon: "🛍️", label: "Produtos", page: "produtos" },
+      { to: "/cadastros?aba=produtos", icon: "📦", label: "Produtos", page: "cadastros" },
       { to: "/cadastros?aba=cores", icon: "🎨", label: "Cores", page: "cadastros" },
-      { icon: "📏", label: "Tamanhos", soon: true },
+      { to: "/cadastros?aba=tipos-fio", icon: "🧵", label: "Tipos de fio", page: "cadastros" },
+      { to: "/cadastros?aba=tamanhos", icon: "📏", label: "Tamanhos", page: "cadastros" },
+      { to: "/cadastros?aba=fornecedores", icon: "🚛", label: "Fornecedores", page: "cadastros" },
       { to: "/cadastros?aba=usuarios", icon: "🔐", label: "Usuários", page: "cadastros" },
-      { icon: "🪡", label: "Costureiras", soon: true },
-      { icon: "🤝", label: "Terceiros", soon: true },
-      { icon: "🚛", label: "Fornecedores", soon: true },
     ],
   },
   {

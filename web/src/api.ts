@@ -70,6 +70,31 @@ export interface Cor {
   nome: string;
   hex?: string | null; // cor visual da bolinha do PDF (ex.: #7a5230)
   foto_key?: string | null; // se tiver foto da cor (amostra real)
+  codigo?: string | null; // código da cor (fio)
+  fio_id?: string | null; // tipo de fio vinculado
+  fio_nome?: string | null; // nome do tipo de fio
+  fornecedor_id?: string | null; // fornecedor (via tipo de fio)
+  fornecedor_nome?: string | null;
+}
+
+// Detalhe de um produto/modelo: além dos dados básicos, as cores selecionadas
+// e os tamanhos com peso (kg de fio por peça) e tempo (min de produção).
+export interface ModeloDetalhe extends Modelo {
+  cores: string[];
+  tamanhos: { tamanho: string; peso: number | null; tempo: number | null }[];
+}
+
+export interface TipoFio {
+  id: string;
+  nome: string;
+  fornecedor_id: string | null;
+  fornecedor_nome?: string | null;
+}
+
+export interface Tamanho {
+  id: string;
+  nome: string;
+  ordem: number;
 }
 
 export interface Tassel {
@@ -504,7 +529,12 @@ export const api = {
   addEventoFunil: (id: string, b: { tipo: string; texto: string; autor?: string }) =>
     jsonPost(`/api/funil/${id}/evento`, b).then((r) => j<{ ok: boolean }>(r)),
   listarModelos: () => fetch("/api/modelos").then((r) => j<Modelo[]>(r)),
-  salvarModelo: (m: Modelo, de?: string) =>
+  obterModelo: (nome: string) =>
+    fetch(`/api/modelos/${encodeURIComponent(nome)}`).then((r) => j<ModeloDetalhe>(r)),
+  salvarModelo: (
+    m: Modelo & { cores?: string[]; tamanhos?: { tamanho: string; peso: number | null; tempo: number | null }[] },
+    de?: string
+  ) =>
     fetch("/api/modelos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -521,7 +551,7 @@ export const api = {
       j<{ ok: boolean }>(r)
     ),
   listarCores: () => fetch("/api/cores").then((r) => j<Cor[]>(r)),
-  salvarCor: (cor: Cor) =>
+  salvarCor: (cor: Cor & { de?: string }) =>
     fetch("/api/cores", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -529,6 +559,20 @@ export const api = {
     }).then((r) => j<Cor>(r)),
   excluirCor: (nome: string) =>
     fetch(`/api/cores/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) =>
+      j<{ ok: boolean }>(r)
+    ),
+  listarTiposFio: () => fetch("/api/tipos-fio").then((r) => j<TipoFio[]>(r)),
+  salvarTipoFio: (b: { id?: string; nome: string; fornecedor_id: string | null }) =>
+    jsonPost("/api/tipos-fio", b).then((r) => j<TipoFio>(r)),
+  excluirTipoFio: (id: string) =>
+    fetch(`/api/tipos-fio/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) =>
+      j<{ ok: boolean }>(r)
+    ),
+  listarTamanhos: () => fetch("/api/tamanhos").then((r) => j<Tamanho[]>(r)),
+  salvarTamanho: (b: { id?: string; nome: string; ordem: number }) =>
+    jsonPost("/api/tamanhos", b).then((r) => j<Tamanho>(r)),
+  excluirTamanho: (id: string) =>
+    fetch(`/api/tamanhos/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) =>
       j<{ ok: boolean }>(r)
     ),
   enviarFotoCor: (nome: string, file: File) => {
