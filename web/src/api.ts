@@ -584,6 +584,8 @@ export const api = {
       j<{ ok: boolean }>(r)
     ),
   listarCores: () => fetch("/api/cores").then((r) => j<Cor[]>(r)),
+  bulkCores: (texto: string, fio_id: string | null) =>
+    jsonPost("/api/cores/bulk", { texto, fio_id }).then((r) => j<{ total: number; criados: number; ignorados: number; cores: string[] }>(r)),
   salvarCor: (cor: Cor & { de?: string }) =>
     fetch("/api/cores", {
       method: "POST",

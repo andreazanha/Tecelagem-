@@ -175,6 +175,42 @@ cores.post("/atribuir-fio", async (c) => {
   return c.json({ ok: true, atualizadas: nomes.length });
 });
 
+// COLAR/DIGITAR VÁRIAS cores de uma vez. Cada linha vira uma cor; se tiver
+// separador (tab da planilha, ; ou ,) a 2ª parte é o código. Todas entram no
+// tipo de fio informado (fio_id). Nome que já existe só atualiza código/fio.
+cores.post("/bulk", async (c) => {
+  const b = await c.req.json<{ texto?: string; fio_id?: string }>().catch(() => ({}) as Record<string, unknown>);
+  const fioId = String(b.fio_id ?? "").trim() || null;
+  const linhas = String(b.texto || "").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
+  const parsed: { nome: string; codigo: string | null }[] = [];
+  const vistos = new Set<string>();
+  for (const linha of linhas) {
+    const partes = linha.split(/[\t;,]/).map((s) => s.trim()).filter(Boolean);
+    const nome = partes[0] || "";
+    if (!nome) continue;
+    const chave = nome.toLowerCase();
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    parsed.push({ nome, codigo: partes[1] || null });
+  }
+  if (!parsed.length) return c.json({ error: "nenhuma cor reconhecida", exemplo: "ROMENIA 1075 / uma por linha" }, 400);
+
+  const nomes = parsed.map((p) => p.nome);
+  const ph = nomes.map(() => "?").join(",");
+  const { results: exist } = await c.env.DB.prepare(`SELECT nome FROM cores WHERE nome IN (${ph})`).bind(...nomes).all<{ nome: string }>();
+  const jaTinha = new Set(exist.map((x) => x.nome));
+
+  const stmts = parsed.map((p) =>
+    c.env.DB.prepare(
+      `INSERT INTO cores (nome, codigo, fio_id) VALUES (?, ?, ?)
+       ON CONFLICT(nome) DO UPDATE SET codigo = COALESCE(excluded.codigo, cores.codigo), fio_id = excluded.fio_id`
+    ).bind(p.nome, p.codigo, fioId)
+  );
+  await c.env.DB.batch(stmts);
+  const criados = parsed.filter((p) => !jaTinha.has(p.nome)).length;
+  return c.json({ total: parsed.length, criados, ignorados: parsed.length - criados, cores: nomes }, 201);
+});
+
 // ── Tipos de fio (nome + fornecedor, para ordem de compras) ───────────────────
 export const tiposFio = new Hono<{ Bindings: Env }>();
 

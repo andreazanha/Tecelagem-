@@ -302,7 +302,6 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
                       const on = sel.has(c.nome);
                       return (
                         <button type="button" key={c.nome} className={"cad-tile" + (on ? " on" : "")} onClick={() => toggleCor(c.nome)}>
-                          <span className="cad-sw" style={{ background: c.hex || "#e2e8f0" }} />
                           <span style={{ textAlign: "left" }}>
                             <span className="cad-tile-nm">{c.nome}</span>
                             <br />
@@ -388,10 +387,26 @@ function AbaFiosCores() {
   const [modalCor, setModalCor] = useState<{ cor: Cor | null; fioInicial?: string } | null>(null);
   const [agrupar, setAgrupar] = useState(false);
   const [fioForm, setFioForm] = useState<{ id: string | null; nome: string; fornId: string; cor: string } | null>(null);
+  const [colar, setColar] = useState("");
+  const [processando, setProcessando] = useState(false);
 
   function recarregar() {
     api.listarTiposFio().then(setTipos).catch(() => {});
     api.listarCores().then(setCores).catch(() => {});
+  }
+  async function processarColar(fioId: string) {
+    if (!colar.trim()) return;
+    setProcessando(true);
+    try {
+      const r = await api.bulkCores(colar, fioId || null);
+      setColar("");
+      recarregar();
+      alert(`${r.criados} cor(es) adicionada(s).${r.ignorados ? ` ${r.ignorados} já existia(m) e foram atualizadas.` : ""}`);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setProcessando(false);
+    }
   }
   useEffect(() => { recarregar(); api.listarFornecedores().then(setFornecedores).catch(() => {}); }, []);
 
@@ -420,6 +435,25 @@ function AbaFiosCores() {
     return (
       <>
         <button className="btn" style={{ marginBottom: 12 }} onClick={() => setAberto(null)}>← Tipos de fio</button>
+
+        <div className="card pad" style={{ marginBottom: 14 }}>
+          <h2 style={{ marginTop: 0 }}>Colar várias cores {fio ? `em ${fio.nome}` : ""}</h2>
+          <p className="muted" style={{ marginTop: 4, marginBottom: 10 }}>
+            Uma cor por linha. Se colar da planilha (nome numa coluna e código na outra), eu separo sozinho.
+            Todas entram <strong>{fio ? `no fio ${fio.nome}` : "sem tipo de fio"}</strong>.
+          </p>
+          <textarea
+            value={colar}
+            onChange={(e) => setColar(e.target.value)}
+            placeholder={"ROMENIA\nAZUL MARINHO 1075\nPRETO; PT-01\nVERDE, 2043"}
+            rows={4}
+            style={{ width: "100%", resize: "vertical" }}
+          />
+          <div className="row-gap" style={{ marginTop: 10, justifyContent: "flex-end" }}>
+            <button className="btn btn-primary" disabled={processando || !colar.trim()} onClick={() => processarColar(aberto)}>{processando ? "Processando…" : "✓ Adicionar cores"}</button>
+          </div>
+        </div>
+
         <div className="card">
           <div className="row-gap" style={{ alignItems: "center", gap: 12, padding: "12px 14px", flexWrap: "wrap" }}>
             <span style={{ width: 26, height: 26, borderRadius: 8, background: fio?.cor || "#94a3b8", boxShadow: "0 0 0 1px #0002", flex: "0 0 auto" }} />
@@ -435,7 +469,7 @@ function AbaFiosCores() {
                 <tr><td colSpan={3} className="empty pad">Nenhuma cor nesse tipo de fio ainda.</td></tr>
               ) : lista.map((c) => (
                 <tr key={c.nome}>
-                  <td><span className="row-gap" style={{ alignItems: "center", gap: 8 }}><span className="cad-sw" style={{ background: c.hex || "#e2e8f0" }} /><span className="strong">{c.nome}</span></span></td>
+                  <td><span className="strong">{c.nome}</span></td>
                   <td><span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{c.codigo || "—"}</span></td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button className="icon-btn" title="Editar" onClick={() => setModalCor({ cor: c })}>✎</button>
@@ -554,7 +588,6 @@ function AgruparFioModal({ cores, onFechar, onSalvo }: { cores: Cor[]; onFechar:
             {lista.map((c) => (
               <div key={c.nome} className={"cad-tile" + (sel.has(c.nome) ? " on" : "")} onClick={() => toggle(c.nome)}>
                 <span className="cad-tile-ck">✓</span>
-                <span className="cad-sw" style={{ background: c.hex || "#e2e8f0", width: 40, height: 40 }} />
                 <span className="cad-tile-nm">{c.nome}</span>
                 <span className="cad-tile-cd">{c.codigo || ""}</span>
               </div>
@@ -578,7 +611,6 @@ function CorModal({ cor, fioInicial, onFechar, onSalvo }: { cor: Cor | null; fio
   const [nome, setNome] = useState(cor?.nome || "");
   const [codigo, setCodigo] = useState(cor?.codigo || "");
   const [fioId, setFioId] = useState(cor?.fio_id || fioInicial || "");
-  const [hex, setHex] = useState(cor?.hex || "#cccccc");
   const [tipos, setTipos] = useState<TipoFio[]>([]);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -609,7 +641,6 @@ function CorModal({ cor, fioInicial, onFechar, onSalvo }: { cor: Cor | null; fio
         nome: nome.trim(),
         de: cor && cor.nome !== nome.trim() ? cor.nome : undefined,
         codigo: codigo.trim() || null,
-        hex,
         fio_id: fioId || null,
       });
       onSalvo();
@@ -641,12 +672,6 @@ function CorModal({ cor, fioInicial, onFechar, onSalvo }: { cor: Cor | null; fio
                 {tipos.map((t) => <option key={t.id} value={t.id}>{t.nome}{t.fornecedor_nome ? ` · ${t.fornecedor_nome}` : ""}</option>)}
               </select>
               <button className="btn btn-soft" type="button" title="Adicionar tipo de fio" onClick={addTipoFio}>＋</button>
-            </div>
-          </Campo>
-          <Campo label="Cor (visual)">
-            <div className="row-gap" style={{ alignItems: "center", gap: 6 }}>
-              <input type="color" value={hex} onChange={(e) => setHex(e.target.value)} style={{ width: 44, height: 32, padding: 2 }} />
-              <input value={hex} onChange={(e) => setHex(e.target.value)} placeholder="#RRGGBB" style={{ flex: 1 }} />
             </div>
           </Campo>
           <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 14 }}>
