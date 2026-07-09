@@ -144,6 +144,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [busca, setBusca] = useState("");
   const [fioSel, setFioSel] = useState<string | null>(null); // tipo de fio ABERTO (lista de cores dele)
+  const [abrirCores, setAbrirCores] = useState(false); // seção de cores recolhida por padrão
+  const [abrirTam, setAbrirTam] = useState(false); // seção de tamanhos recolhida por padrão
   const [tamCat, setTamCat] = useState<Tamanho[]>([]);
   const [selTam, setSelTam] = useState<Record<string, boolean>>({});
   const [pesos, setPesos] = useState<Record<string, string>>({});
@@ -281,19 +283,23 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             <Campo label="Composição"><input value={composicao} onChange={(e) => setComposicao(e.target.value)} placeholder="ex.: 100% POLIÉSTER" /></Campo>
           </div>
 
-          {/* 2. Cores deste produto */}
-          <div className="campo-l" style={{ margin: "14px 0 8px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {/* 2. Cores deste produto — seção recolhida por padrão */}
+          <div className="sec-toggle" style={{ margin: "14px 0 8px" }} onClick={() => setAbrirCores((v) => !v)}>
+            <span className="sec-car">{abrirCores ? "▾" : "▸"}</span>
             <span>2 · CORES DESTE PRODUTO</span>
             <span className="chip">{nCores} selecionada(s)</span>
-            <input
-              placeholder="🔎 filtrar por nome ou código…"
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              style={{ marginLeft: "auto", minWidth: 220, textTransform: "none", fontWeight: 500 }}
-            />
+            {abrirCores && fiosLista.length > 0 && (
+              <input
+                placeholder="🔎 filtrar por nome ou código…"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                style={{ marginLeft: "auto", minWidth: 220, textTransform: "none", fontWeight: 500 }}
+              />
+            )}
           </div>
-          {fiosLista.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Nenhuma cor cadastrada. Cadastre em Fios.</p>}
-          {fiosLista.length > 0 && (
+          {abrirCores && fiosLista.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Nenhuma cor cadastrada. Cadastre em Fios.</p>}
+          {abrirCores && fiosLista.length > 0 && (
             <>
               <p className="muted" style={{ fontSize: 12.5, marginTop: -2 }}>Clique num <strong>tipo de fio</strong> para abrir as cores dele e marcar as que o produto tem.</p>
               {nForaFio > 0 && fioSel !== null && (
@@ -350,11 +356,16 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             </>
           )}
 
-          {/* 3. Tamanhos, peso e tempo */}
-          <div className="campo-l" style={{ margin: "14px 0 8px", display: "flex", alignItems: "center", gap: 10 }}>
+          {/* 3. Tamanhos, peso e tempo — seção recolhida por padrão */}
+          <div className="sec-toggle" style={{ margin: "14px 0 8px" }} onClick={() => setAbrirTam((v) => !v)}>
+            <span className="sec-car">{abrirTam ? "▾" : "▸"}</span>
             <span>3 · TAMANHOS, PESO E TEMPO</span>
-            <button type="button" className="btn btn-soft" style={{ marginLeft: "auto", padding: "3px 10px", fontSize: 11 }} onClick={novoTamanho}>＋ novo tamanho</button>
+            <span className="chip">{nTam} selecionado(s)</span>
+            {abrirTam && (
+              <button type="button" className="btn btn-soft" style={{ marginLeft: "auto", padding: "3px 10px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); novoTamanho(); }}>＋ novo tamanho</button>
+            )}
           </div>
+          {abrirTam && (
           <div className="card">
             <table className="table">
               <thead>
@@ -392,6 +403,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
               </tbody>
             </table>
           </div>
+          )}
 
           {/* Footer */}
           <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16, alignItems: "center" }}>
