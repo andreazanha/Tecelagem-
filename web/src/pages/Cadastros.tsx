@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type Material, type MaterialCategoriaDef, type CompraSugestao } from "../api";
+import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type Material, type MaterialCategoriaDef, type CompraSugestao, type Colecao, type ColecaoProduto } from "../api";
 import { getUser, PAGINAS, type Usuario } from "../auth";
 
 type AbaCad = "produtos" | "tipos-fio" | "tamanhos" | "materiais" | "fornecedores" | "operadores" | "usuarios";
@@ -59,79 +59,192 @@ export function Cadastros() {
 
 // ═══════════════════════════ Aba PRODUTOS (modelos) ═══════════════════════════
 function AbaProdutos() {
-  const [itens, setItens] = useState<Modelo[]>([]);
+  const [colecoes, setColecoes] = useState<Colecao[]>([]);
+  const [produtos, setProdutos] = useState<Modelo[]>([]);
+  const [tipos, setTipos] = useState<TipoFio[]>([]);
+  const [aberta, setAberta] = useState<string | null>(null); // id da coleção aberta ("__todos__" = todos)
+  const [prods, setProds] = useState<Record<string, ColecaoProduto[]>>({});
+  const [modal, setModal] = useState<{ nome: string | null } | null>(null); // editar/novo produto
+  const [gerenciar, setGerenciar] = useState<Colecao | null>(null); // modal "produtos da coleção"
   const [busca, setBusca] = useState("");
-  // null = fechado; { nome: null } = novo; { nome: "X" } = editar
-  const [modal, setModal] = useState<{ nome: string | null } | null>(null);
 
   function recarregar() {
-    api.listarModelos().then(setItens).catch(() => {});
+    api.listarColecoes().then(setColecoes).catch(() => {});
+    api.listarModelos().then(setProdutos).catch(() => {});
   }
-  useEffect(recarregar, []);
+  useEffect(() => { recarregar(); api.listarTiposFio().then(setTipos).catch(() => {}); }, []);
 
-  async function remover(m: Modelo) {
-    if (!confirm(`Excluir o produto "${m.nome}"?`)) return;
-    try {
-      await api.excluirModelo(m.nome);
-      recarregar();
-    } catch (e) {
-      alert((e as Error).message);
-    }
+  function carregarProds(id: string) {
+    api.produtosDaColecao(id).then((ps) => setProds((p) => ({ ...p, [id]: ps }))).catch(() => {});
+  }
+  function abrir(id: string) {
+    if (aberta === id) { setAberta(null); return; }
+    setAberta(id);
+    if (id !== "__todos__" && !prods[id]) carregarProds(id);
+  }
+  async function novaColecao() {
+    const nome = prompt("Nome da nova coleção:");
+    if (!nome || !nome.trim()) return;
+    try { await api.salvarColecao({ nome: nome.trim(), ordem: colecoes.length + 1 }); recarregar(); } catch (e) { alert((e as Error).message); }
+  }
+  async function renomearColecao(col: Colecao) {
+    const nome = prompt("Novo nome da coleção:", col.nome);
+    if (!nome || !nome.trim()) return;
+    try { await api.salvarColecao({ id: col.id, nome: nome.trim(), ordem: col.ordem }); recarregar(); } catch (e) { alert((e as Error).message); }
+  }
+  async function excluirColecao(col: Colecao) {
+    if (!confirm(`Excluir a coleção "${col.nome}"? Os produtos NÃO são apagados, só saem da coleção.`)) return;
+    try { await api.excluirColecao(col.id); recarregar(); } catch (e) { alert((e as Error).message); }
+  }
+  async function excluirProduto(m: { nome: string }) {
+    if (!confirm(`Excluir o produto "${m.nome}"? (sai de todas as coleções)`)) return;
+    try { await api.excluirModelo(m.nome); recarregar(); if (aberta && aberta !== "__todos__") carregarProds(aberta); } catch (e) { alert((e as Error).message); }
   }
 
-  const filtrados = itens.filter((m) => `${m.nome} ${m.ref || ""}`.toLowerCase().includes(busca.toLowerCase()));
-  const p1 = itens.filter((m) => m.parte === 1).length;
+  const filtro = busca.trim().toLowerCase();
+  const prodFiltrados = produtos.filter((m) => `${m.nome} ${m.ref || ""}`.toLowerCase().includes(filtro));
 
   return (
     <>
       <div className="row-gap" style={{ marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         <input className="busca-ped" placeholder="🔎 Buscar produto…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <button className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={() => setModal({ nome: null })}>
-          ＋ Novo produto
-        </button>
+        <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={novaColecao}>＋ Nova coleção</button>
+        <button className="btn btn-primary" onClick={() => setModal({ nome: null })}>＋ Novo produto</button>
       </div>
       <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>
-        Cadastro oficial de produtos: dados, cores por tipo de fio, tamanhos com peso (kg de fio por peça) e tempo de produção.
-        Clique numa linha para editar. {itens.length} produtos · {p1} na Galga 3 (Parte 1).
+        Coleções de produtos. Clique numa coleção para ver os produtos dela; clique de novo para fechar e abrir outra. {produtos.length} produtos no total.
       </p>
 
-      <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Produto</th>
-              <th>Código</th>
-              <th>Galga / Parte</th>
-              <th>Composição</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtrados.length === 0 ? (
-              <tr><td colSpan={5} className="empty pad">Nenhum produto cadastrado ainda.</td></tr>
-            ) : filtrados.map((m) => (
-              <tr key={m.nome} style={{ cursor: "pointer" }} onClick={() => setModal({ nome: m.nome })}>
-                <td className="strong">{m.nome}</td>
-                <td>{m.ref || "—"}</td>
-                <td><span className="chip">{m.parte === 1 ? "Galga 3 · Parte 1" : "Galga 7 · Parte 2"}</span></td>
-                <td>{m.composicao || "—"}</td>
-                <td>
-                  <button className="icon-btn" title="Excluir" onClick={(e) => { e.stopPropagation(); remover(m); }}>✕</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="fio-lista">
+        {colecoes.map((col) => {
+          const on = aberta === col.id;
+          const lista = prods[col.id] || [];
+          return (
+            <div className={"fio-item" + (on ? " aberto" : "")} key={col.id}>
+              <div className="fio-item-h" onClick={() => abrir(col.id)}>
+                <span className="fio-item-car">{on ? "▾" : "▸"}</span>
+                <span className="fio-item-nm">{col.nome}</span>
+                <span className="muted" style={{ fontSize: 12 }}>{col.produtos ?? 0} produto(s)</span>
+                <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+                  <button className="btn btn-soft" style={{ padding: "3px 10px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); if (!prods[col.id]) carregarProds(col.id); setGerenciar(col); }}>Gerenciar produtos</button>
+                  <button className="icon-btn" title="Renomear" onClick={(e) => { e.stopPropagation(); renomearColecao(col); }}>✎</button>
+                  <button className="icon-btn" title="Excluir coleção" onClick={(e) => { e.stopPropagation(); excluirColecao(col); }}>🗑</button>
+                </span>
+              </div>
+              {on && (
+                <table className="table">
+                  <thead><tr><th>Produto</th><th>Código</th><th>Tipo de fio</th><th></th></tr></thead>
+                  <tbody>
+                    {lista.length === 0 ? (
+                      <tr><td colSpan={4} className="empty pad">Nenhum produto nesta coleção. Use "Gerenciar produtos".</td></tr>
+                    ) : lista.map((p) => (
+                      <tr key={p.modelo_nome} style={{ cursor: "pointer" }} onClick={() => setModal({ nome: p.modelo_nome })}>
+                        <td className="strong">{p.modelo_nome}</td>
+                        <td>{p.ref || "—"}</td>
+                        <td>{p.fio_nome ? <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{p.fio_nome}</span> : "—"}</td>
+                        <td><button className="icon-btn" title="Editar" onClick={(e) => { e.stopPropagation(); setModal({ nome: p.modelo_nome }); }}>✎</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Todos os produtos (para editar qualquer um, mesmo fora de coleção) */}
+        <div className={"fio-item" + (aberta === "__todos__" ? " aberto" : "")}>
+          <div className="fio-item-h" onClick={() => abrir("__todos__")}>
+            <span className="fio-item-car">{aberta === "__todos__" ? "▾" : "▸"}</span>
+            <span className="fio-item-nm">Todos os produtos</span>
+            <span className="muted" style={{ fontSize: 12 }}>{produtos.length}</span>
+          </div>
+          {aberta === "__todos__" && (
+            <table className="table">
+              <thead><tr><th>Produto</th><th>Código</th><th>Galga / Parte</th><th>Composição</th><th></th></tr></thead>
+              <tbody>
+                {prodFiltrados.length === 0 ? (
+                  <tr><td colSpan={5} className="empty pad">Nenhum produto{filtro ? " com esse filtro" : ""}.</td></tr>
+                ) : prodFiltrados.map((m) => (
+                  <tr key={m.nome} style={{ cursor: "pointer" }} onClick={() => setModal({ nome: m.nome })}>
+                    <td className="strong">{m.nome}</td>
+                    <td>{m.ref || "—"}</td>
+                    <td><span className="chip">{m.parte === 1 ? "Galga 3 · Parte 1" : "Galga 7 · Parte 2"}</span></td>
+                    <td>{m.composicao || "—"}</td>
+                    <td><button className="icon-btn" title="Excluir" onClick={(e) => { e.stopPropagation(); excluirProduto(m); }}>✕</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
       {modal && (
         <ProdutoFormModal
           nomeEdit={modal.nome}
           onFechar={() => setModal(null)}
-          onSalvo={() => recarregar()}
+          onSalvo={() => { setModal(null); recarregar(); if (aberta && aberta !== "__todos__") carregarProds(aberta); }}
+        />
+      )}
+      {gerenciar && (
+        <GerenciarProdutosModal
+          colecao={gerenciar}
+          produtos={produtos}
+          tipos={tipos}
+          atuais={prods[gerenciar.id] || []}
+          onFechar={() => setGerenciar(null)}
+          onSalvo={() => { const id = gerenciar.id; setGerenciar(null); recarregar(); carregarProds(id); }}
         />
       )}
     </>
+  );
+}
+
+// Modal "Produtos da coleção": marca quais produtos entram e, por produto, o tipo de fio.
+function GerenciarProdutosModal({ colecao, produtos, tipos, atuais, onFechar, onSalvo }: { colecao: Colecao; produtos: Modelo[]; tipos: TipoFio[]; atuais: ColecaoProduto[]; onFechar: () => void; onSalvo: () => void }) {
+  const [sel, setSel] = useState<Record<string, string>>(() => { const m: Record<string, string> = {}; atuais.forEach((p) => { m[p.modelo_nome] = p.fio_id || ""; }); return m; });
+  const [busca, setBusca] = useState("");
+  function toggle(nome: string) { setSel((s) => { const n = { ...s }; if (nome in n) delete n[nome]; else n[nome] = ""; return n; }); }
+  async function salvar() {
+    const arr = Object.entries(sel).map(([modelo_nome, fio_id]) => ({ modelo_nome, fio_id: fio_id || null }));
+    try { await api.salvarProdutosColecao(colecao.id, arr); onSalvo(); } catch (e) { alert((e as Error).message); }
+  }
+  const filtro = busca.trim().toLowerCase();
+  const lista = produtos.filter((m) => `${m.nome} ${m.ref || ""}`.toLowerCase().includes(filtro));
+  const n = Object.keys(sel).length;
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 560, width: "min(560px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginTop: 0 }}>Produtos da coleção · {colecao.nome}</h2>
+        <p className="muted" style={{ marginTop: -6 }}>Marque os produtos e, se quiser, o tipo de fio de cada um nesta coleção.</p>
+        <input className="busca-ped" style={{ width: "100%", marginBottom: 10 }} placeholder="🔎 Buscar produto…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <div style={{ maxHeight: "48vh", overflowY: "auto", border: "1px solid var(--line)", borderRadius: 12 }}>
+          {lista.map((m) => {
+            const on = m.nome in sel;
+            return (
+              <div key={m.nome} className="row-gap" style={{ alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: "1px solid #f3f4f8", cursor: "pointer", background: on ? "#eef2ff55" : undefined }} onClick={() => toggle(m.nome)}>
+                <input type="checkbox" checked={on} readOnly />
+                <span className="strong">{m.nome}</span>
+                <span className="muted" style={{ fontSize: 12 }}>{m.ref || ""}</span>
+                {on && (
+                  <select value={sel[m.nome]} onClick={(e) => e.stopPropagation()} onChange={(e) => setSel((s) => ({ ...s, [m.nome]: e.target.value }))} style={{ marginLeft: "auto", minWidth: 150 }}>
+                    <option value="">— fio (opcional) —</option>
+                    {tipos.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                  </select>
+                )}
+              </div>
+            );
+          })}
+          {lista.length === 0 && <p className="muted pad" style={{ margin: 0 }}>Nenhum produto.</p>}
+        </div>
+        <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 14, alignItems: "center" }}>
+          <span className="muted" style={{ marginRight: "auto", fontSize: 13 }}>{n} produto(s) na coleção</span>
+          <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
+          <button className="btn btn-primary" onClick={salvar}>Salvar</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

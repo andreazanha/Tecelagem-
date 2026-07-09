@@ -89,6 +89,20 @@ export interface ModeloMaterial {
   cor?: string | null;
   codigo?: string | null;
 }
+export interface Colecao {
+  id: string;
+  nome: string;
+  ordem: number;
+  produtos?: number;
+}
+export interface ColecaoProduto {
+  modelo_nome: string;
+  fio_id: string | null;
+  fio_nome?: string | null;
+  ref?: string | null;
+  parte?: number;
+  composicao?: string | null;
+}
 export interface ModeloDetalhe extends Modelo {
   cores: string[];
   tamanhos: { tamanho: string; peso: number | null; tempo: number | null }[];
@@ -594,6 +608,16 @@ export const api = {
     fetch(`/api/modelos/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) =>
       j<{ ok: boolean }>(r)
     ),
+  // ── Coleções ──────────────────────────────────────────────────────────────
+  listarColecoes: () => fetch("/api/colecoes").then((r) => j<Colecao[]>(r)),
+  salvarColecao: (b: { id?: string; nome: string; ordem?: number }) =>
+    jsonPost("/api/colecoes", b).then((r) => j<Colecao>(r)),
+  excluirColecao: (id: string) =>
+    fetch(`/api/colecoes/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  produtosDaColecao: (id: string) =>
+    fetch(`/api/colecoes/${encodeURIComponent(id)}/produtos`).then((r) => j<ColecaoProduto[]>(r)),
+  salvarProdutosColecao: (id: string, produtos: { modelo_nome: string; fio_id?: string | null }[]) =>
+    jsonPost(`/api/colecoes/${encodeURIComponent(id)}/produtos`, { produtos }).then((r) => j<{ ok: boolean; total: number }>(r)),
   listarCores: () => fetch("/api/cores").then((r) => j<Cor[]>(r)),
   bulkCores: (texto: string, fio_id: string | null) =>
     jsonPost("/api/cores/bulk", { texto, fio_id }).then((r) => j<{ total: number; criados: number; ignorados: number; cores: string[] }>(r)),
