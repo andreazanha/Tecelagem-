@@ -11,6 +11,7 @@ import { push } from "./routes/push";
 import { produtos, insumos, fornecedores, lembreteReposicao } from "./routes/produtos";
 import { representantes, comercial } from "./routes/comercial";
 import { funil } from "./routes/funil";
+import { atendimento, followupAtendimento } from "./routes/atendimento";
 import { assistente } from "./routes/assistente";
 
 export interface Env {
@@ -52,6 +53,7 @@ app.route("/api/fornecedores", fornecedores);
 app.route("/api/representantes", representantes);
 app.route("/api/comercial", comercial);
 app.route("/api/funil", funil);
+app.route("/api/atendimento", atendimento);
 app.route("/api/assistente", assistente);
 
 // Fallback: serve o SPA (assets estáticos do build do Vite).
@@ -83,5 +85,6 @@ export default {
   fetch: (req: Request, env: Env, ctx: ExecutionContext) => app.fetch(req, env, ctx),
   scheduled: (_event: ScheduledController, env: Env, ctx: ExecutionContext) => {
     ctx.waitUntil(lembreteReposicao(env));
+    ctx.waitUntil(followupAtendimento(env)); // retomada 24h do robô de atendimento
   },
 };
