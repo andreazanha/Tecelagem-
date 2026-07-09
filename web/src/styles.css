@@ -1130,3 +1130,12 @@ body.dark .cad-tile:hover { border-color: #ffffff33; }
 body.dark .cad-tile.on { background: #1e1b4b; border-color: #6366f1; }
 body.dark .cad-tile-nm { color: #e7ebf3; }
 body.dark .cad-sw { border-color: #ffffff26; }
+
+/* Cadastro de tipos de fio → cards (entra num fio pra ver as cores). */
+.cad-fios { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.cad-fio-card { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 13px 14px; cursor: pointer; box-shadow: 0 1px 2px #0f172a10; }
+.cad-fio-card:hover { box-shadow: 0 3px 10px #0f172a1f; border-color: #cbd5e1; }
+body.dark .cad-fio-card { background: #18202f; border-color: #26324a; }
+.cad-fio-card .ic { width: 30px; height: 30px; border-radius: 9px; box-shadow: 0 0 0 1px #0002; flex: 0 0 auto; }
+.cad-fio-card .nm { font-weight: 800; font-size: 14px; }
+.cad-fio-card .sub { font-size: 12px; color: var(--muted); margin-top: 1px; }

@@ -3,12 +3,11 @@ import { useSearchParams } from "react-router-dom";
 import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type Material, type MaterialCategoria } from "../api";
 import { getUser, PAGINAS, type Usuario } from "../auth";
 
-type AbaCad = "produtos" | "cores" | "tipos-fio" | "tamanhos" | "materiais" | "fornecedores" | "operadores" | "usuarios";
-const ABAS_CAD: AbaCad[] = ["produtos", "cores", "tipos-fio", "tamanhos", "materiais", "fornecedores", "operadores", "usuarios"];
+type AbaCad = "produtos" | "tipos-fio" | "tamanhos" | "materiais" | "fornecedores" | "operadores" | "usuarios";
+const ABAS_CAD: AbaCad[] = ["produtos", "tipos-fio", "tamanhos", "materiais", "fornecedores", "operadores", "usuarios"];
 const ABA_LABEL: Record<AbaCad, string> = {
   produtos: "Produtos",
-  cores: "Cores",
-  "tipos-fio": "Tipos de fio",
+  "tipos-fio": "Cores e fios",
   tamanhos: "Tamanhos",
   materiais: "Materiais",
   fornecedores: "Fornecedores",
@@ -40,8 +39,7 @@ export function Cadastros() {
 
   const segs: { id: AbaCad; label: string; adminOnly?: boolean }[] = [
     { id: "produtos", label: "Produtos" },
-    { id: "cores", label: "Cores" },
-    { id: "tipos-fio", label: "Tipos de fio" },
+    { id: "tipos-fio", label: "Cores e fios" },
     { id: "tamanhos", label: "Tamanhos" },
     { id: "materiais", label: "Materiais" },
     { id: "fornecedores", label: "Fornecedores" },
@@ -71,8 +69,7 @@ export function Cadastros() {
       </div>
 
       {aba === "produtos" && <AbaProdutos />}
-      {aba === "cores" && <AbaCores />}
-      {aba === "tipos-fio" && <AbaTiposFio />}
+      {aba === "tipos-fio" && <AbaFiosCores />}
       {aba === "tamanhos" && <AbaTamanhos />}
       {aba === "materiais" && <AbaMateriais />}
       {aba === "fornecedores" && <AbaFornecedores />}
@@ -402,85 +399,133 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   );
 }
 
-// ═══════════════════════════ Aba CORES ═══════════════════════════
-function AbaCores() {
+// ═══════════════════════════ Aba TIPOS DE FIO + CORES ═══════════════════════════
+// Uma tela só: lista de tipos de fio; ao entrar num tipo de fio aparecem todas
+// as cores daquele fio (cadastro/edição das cores lá dentro).
+function AbaFiosCores() {
+  const [tipos, setTipos] = useState<TipoFio[]>([]);
   const [cores, setCores] = useState<Cor[]>([]);
-  const [busca, setBusca] = useState("");
-  const [modal, setModal] = useState<{ cor: Cor | null } | null>(null);
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const [aberto, setAberto] = useState<string | null>(null); // fio id aberto; "" = sem fio; null = lista
+  const [modalCor, setModalCor] = useState<{ cor: Cor | null; fioInicial?: string } | null>(null);
   const [agrupar, setAgrupar] = useState(false);
+  const [fioForm, setFioForm] = useState<{ id: string | null; nome: string; fornId: string; cor: string } | null>(null);
 
   function recarregar() {
+    api.listarTiposFio().then(setTipos).catch(() => {});
     api.listarCores().then(setCores).catch(() => {});
   }
-  useEffect(recarregar, []);
+  useEffect(() => { recarregar(); api.listarFornecedores().then(setFornecedores).catch(() => {}); }, []);
 
-  async function remover(c: Cor) {
+  const coresDoFio = (fioId: string) => cores.filter((c) => (fioId === "" ? !c.fio_id : c.fio_id === fioId));
+
+  async function removerCor(c: Cor) {
     if (!confirm(`Excluir a cor "${c.nome}"?`)) return;
+    try { await api.excluirCor(c.nome); recarregar(); } catch (e) { alert((e as Error).message); }
+  }
+  async function salvarFio() {
+    if (!fioForm || !fioForm.nome.trim()) return alert("Informe o nome do tipo de fio.");
     try {
-      await api.excluirCor(c.nome);
-      recarregar();
-    } catch (e) {
-      alert("Não foi possível excluir a cor: " + (e as Error).message);
-    }
+      await api.salvarTipoFio({ id: fioForm.id || undefined, nome: fioForm.nome.trim(), fornecedor_id: fioForm.fornId || null, cor: fioForm.cor });
+      setFioForm(null); recarregar();
+    } catch (e) { alert((e as Error).message); }
+  }
+  async function removerFio(t: TipoFio) {
+    if (!confirm(`Excluir o tipo de fio "${t.nome}"? As cores dele ficam sem tipo de fio.`)) return;
+    try { await api.excluirTipoFio(t.id); recarregar(); } catch (e) { alert((e as Error).message); }
   }
 
-  const filtro = busca.trim().toLowerCase();
-  const filtradas = cores.filter((c) => !filtro || `${c.nome} ${c.codigo || ""}`.toLowerCase().includes(filtro));
-  const grupos: { fio: string; fornecedor: string | null; cores: Cor[] }[] = [];
-  const idx = new Map<string, number>();
-  for (const c of filtradas) {
-    const key = c.fio_nome || "";
-    if (!idx.has(key)) { idx.set(key, grupos.length); grupos.push({ fio: key, fornecedor: c.fornecedor_nome || null, cores: [] }); }
-    grupos[idx.get(key)!].cores.push(c);
-  }
-
-  return (
-    <>
-      <div className="row-gap" style={{ marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <input className="busca-ped" placeholder="🔎 Buscar cor ou código…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={() => setAgrupar(true)}>Agrupar cores num tipo de fio</button>
-        <button className="btn btn-primary" onClick={() => setModal({ cor: null })}>＋ Nova cor</button>
-      </div>
-      <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>
-        Cores agrupadas por <strong>tipo de fio</strong>. {cores.length} cores.
-      </p>
-
-      {grupos.length === 0 && <div className="card"><p className="empty pad">Nenhuma cor cadastrada ainda.</p></div>}
-      {grupos.map((g, gi) => (
-        <div className="card" key={gi} style={{ marginBottom: 12 }}>
-          <div className="row-gap" style={{ alignItems: "center", gap: 10, padding: "10px 12px", flexWrap: "wrap" }}>
-            <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{g.fio || "Sem tipo de fio"}</span>
-            {g.fornecedor && <span className="muted" style={{ fontSize: 12 }}>fornecedor: {g.fornecedor}</span>}
-            <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>{g.cores.length} cor(es)</span>
+  // ── DETALHE: dentro de um tipo de fio → suas cores ──
+  if (aberto !== null) {
+    const fio = tipos.find((t) => t.id === aberto);
+    const lista = coresDoFio(aberto);
+    return (
+      <>
+        <button className="btn" style={{ marginBottom: 12 }} onClick={() => setAberto(null)}>← Tipos de fio</button>
+        <div className="card">
+          <div className="row-gap" style={{ alignItems: "center", gap: 12, padding: "12px 14px", flexWrap: "wrap" }}>
+            <span style={{ width: 26, height: 26, borderRadius: 8, background: fio?.cor || "#94a3b8", boxShadow: "0 0 0 1px #0002", flex: "0 0 auto" }} />
+            <span style={{ fontWeight: 800, fontSize: 16 }}>{fio ? fio.nome : "Sem tipo de fio"}</span>
+            {fio?.fornecedor_nome && <span className="muted" style={{ fontSize: 12 }}>fornecedor: {fio.fornecedor_nome}</span>}
+            <span className="muted" style={{ fontSize: 12 }}>{lista.length} cor(es)</span>
+            <button className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={() => setModalCor({ cor: null, fioInicial: aberto || undefined })}>＋ Nova cor</button>
           </div>
           <table className="table">
-            <thead>
-              <tr><th>Cor</th><th>Código</th><th>Tipo de fio</th><th>Fornecedor</th><th></th></tr>
-            </thead>
+            <thead><tr><th>Cor</th><th>Código</th><th></th></tr></thead>
             <tbody>
-              {g.cores.map((c) => (
+              {lista.length === 0 ? (
+                <tr><td colSpan={3} className="empty pad">Nenhuma cor nesse tipo de fio ainda.</td></tr>
+              ) : lista.map((c) => (
                 <tr key={c.nome}>
-                  <td>
-                    <span className="row-gap" style={{ alignItems: "center", gap: 8 }}>
-                      <span className="cad-sw" style={{ background: c.hex || "#e2e8f0" }} />
-                      <span className="strong">{c.nome}</span>
-                    </span>
-                  </td>
+                  <td><span className="row-gap" style={{ alignItems: "center", gap: 8 }}><span className="cad-sw" style={{ background: c.hex || "#e2e8f0" }} /><span className="strong">{c.nome}</span></span></td>
                   <td><span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{c.codigo || "—"}</span></td>
-                  <td><span className="chip">{c.fio_nome || "—"}</span></td>
-                  <td>{c.fornecedor_nome || "—"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    <button className="icon-btn" title="Editar" onClick={() => setModal({ cor: c })}>✎</button>
-                    <button className="icon-btn" title="Excluir" onClick={() => remover(c)}>✕</button>
+                    <button className="icon-btn" title="Editar" onClick={() => setModalCor({ cor: c })}>✎</button>
+                    <button className="icon-btn" title="Excluir" onClick={() => removerCor(c)}>✕</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      ))}
+        {modalCor && <CorModal cor={modalCor.cor} fioInicial={modalCor.fioInicial} onFechar={() => setModalCor(null)} onSalvo={() => { setModalCor(null); recarregar(); }} />}
+      </>
+    );
+  }
 
-      {modal && <CorModal cor={modal.cor} onFechar={() => setModal(null)} onSalvo={() => { setModal(null); recarregar(); }} />}
+  // ── LISTA: cards de tipos de fio ──
+  const semFio = coresDoFio("");
+  return (
+    <>
+      <div className="row-gap" style={{ marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <p className="muted" style={{ margin: 0 }}>Entre num tipo de fio para ver e cadastrar as cores dele.</p>
+        <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={() => setAgrupar(true)}>Agrupar cores</button>
+        <button className="btn btn-primary" onClick={() => setFioForm({ id: null, nome: "", fornId: "", cor: CORES_FIO[0] })}>＋ Novo tipo de fio</button>
+      </div>
+
+      {fioForm && (
+        <div className="card pad" style={{ marginBottom: 14 }}>
+          <h2>{fioForm.id ? "Editar tipo de fio" : "Novo tipo de fio"}</h2>
+          <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
+            <label className="fld">Nome<input autoFocus value={fioForm.nome} onChange={(e) => setFioForm({ ...fioForm, nome: e.target.value })} onKeyDown={(e) => e.key === "Enter" && salvarFio()} style={{ minWidth: 200 }} /></label>
+            <label className="fld">Fornecedor
+              <select value={fioForm.fornId} onChange={(e) => setFioForm({ ...fioForm, fornId: e.target.value })} style={{ minWidth: 180 }}>
+                <option value="">Sem fornecedor</option>
+                {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+              </select>
+            </label>
+            <div className="fld">Ícone de cor
+              <div className="row-gap" style={{ gap: 6 }}>
+                {CORES_FIO.map((h) => <button type="button" key={h} onClick={() => setFioForm({ ...fioForm, cor: h })} style={{ width: 26, height: 26, borderRadius: 7, background: h, cursor: "pointer", border: "2px solid #fff", boxShadow: fioForm.cor === h ? "0 0 0 2px #0f172a" : "0 0 0 1px #cbd5e1" }} />)}
+              </div>
+            </div>
+            <button className="btn btn-primary" onClick={salvarFio}>{fioForm.id ? "Salvar" : "Adicionar"}</button>
+            <button className="btn" onClick={() => setFioForm(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      <div className="cad-fios">
+        {tipos.map((t) => (
+          <div className="cad-fio-card" key={t.id} onClick={() => setAberto(t.id)}>
+            <span className="ic" style={{ background: t.cor || "#94a3b8" }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="nm">{t.nome}</div>
+              <div className="sub">{t.fornecedor_nome || "sem fornecedor"} · {coresDoFio(t.id).length} cor(es)</div>
+            </div>
+            <button className="icon-btn" title="Editar" onClick={(e) => { e.stopPropagation(); setFioForm({ id: t.id, nome: t.nome, fornId: t.fornecedor_id || "", cor: t.cor || CORES_FIO[0] }); }}>✎</button>
+            <button className="icon-btn" title="Excluir" onClick={(e) => { e.stopPropagation(); removerFio(t); }}>✕</button>
+          </div>
+        ))}
+        {semFio.length > 0 && (
+          <div className="cad-fio-card" onClick={() => setAberto("")}>
+            <span className="ic" style={{ background: "#94a3b8" }} />
+            <div style={{ flex: 1 }}><div className="nm">Sem tipo de fio</div><div className="sub">{semFio.length} cor(es)</div></div>
+          </div>
+        )}
+        {tipos.length === 0 && semFio.length === 0 && <div className="card" style={{ gridColumn: "1/-1" }}><p className="empty pad">Nenhum tipo de fio ainda. Crie um acima.</p></div>}
+      </div>
+
       {agrupar && <AgruparFioModal cores={cores} onFechar={() => setAgrupar(false)} onSalvo={() => { setAgrupar(false); recarregar(); }} />}
     </>
   );
@@ -551,10 +596,10 @@ function AgruparFioModal({ cores, onFechar, onSalvo }: { cores: Cor[]; onFechar:
   );
 }
 
-function CorModal({ cor, onFechar, onSalvo }: { cor: Cor | null; onFechar: () => void; onSalvo: () => void }) {
+function CorModal({ cor, fioInicial, onFechar, onSalvo }: { cor: Cor | null; fioInicial?: string; onFechar: () => void; onSalvo: () => void }) {
   const [nome, setNome] = useState(cor?.nome || "");
   const [codigo, setCodigo] = useState(cor?.codigo || "");
-  const [fioId, setFioId] = useState(cor?.fio_id || "");
+  const [fioId, setFioId] = useState(cor?.fio_id || fioInicial || "");
   const [hex, setHex] = useState(cor?.hex || "#cccccc");
   const [tipos, setTipos] = useState<TipoFio[]>([]);
   const [erro, setErro] = useState("");
@@ -638,95 +683,6 @@ function CorModal({ cor, onFechar, onSalvo }: { cor: Cor | null; onFechar: () =>
 
 // ═══════════════════════════ Aba TIPOS DE FIO ═══════════════════════════
 const CORES_FIO = ["#2563eb", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#dc2626", "#ca8a04", "#64748b"];
-
-function AbaTiposFio() {
-  const [itens, setItens] = useState<TipoFio[]>([]);
-  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [nome, setNome] = useState("");
-  const [fornId, setFornId] = useState("");
-  const [cor, setCor] = useState(CORES_FIO[0]);
-
-  function recarregar() {
-    api.listarTiposFio().then(setItens).catch(() => {});
-  }
-  useEffect(() => {
-    recarregar();
-    api.listarFornecedores().then(setFornecedores).catch(() => {});
-  }, []);
-
-  function limpar() { setEditId(null); setNome(""); setFornId(""); setCor(CORES_FIO[0]); }
-  function editar(t: TipoFio) { setEditId(t.id); setNome(t.nome); setFornId(t.fornecedor_id || ""); setCor(t.cor || CORES_FIO[0]); }
-
-  async function salvar() {
-    if (!nome.trim()) return alert("Informe o nome do tipo de fio.");
-    try {
-      await api.salvarTipoFio({ id: editId || undefined, nome: nome.trim(), fornecedor_id: fornId || null, cor });
-      limpar();
-      recarregar();
-    } catch (e) {
-      alert((e as Error).message);
-    }
-  }
-  async function remover(t: TipoFio) {
-    if (!confirm(`Excluir o tipo de fio "${t.nome}"?`)) return;
-    try { await api.excluirTipoFio(t.id); if (editId === t.id) limpar(); recarregar(); } catch (e) { alert((e as Error).message); }
-  }
-
-  return (
-    <>
-      <div className="card pad" style={{ marginBottom: 16 }}>
-        <h2>{editId ? "Editar tipo de fio" : "Novo tipo de fio"}</h2>
-        <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <label className="fld"><span className="fld-l">Nome</span>
-            <input placeholder="ex.: Poliéster 400" value={nome} onChange={(e) => setNome(e.target.value)} onKeyDown={(e) => e.key === "Enter" && salvar()} style={{ minWidth: 220 }} />
-          </label>
-          <label className="fld"><span className="fld-l">Fornecedor</span>
-            <select value={fornId} onChange={(e) => setFornId(e.target.value)} style={{ minWidth: 200 }}>
-              <option value="">Sem fornecedor</option>
-              {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
-            </select>
-          </label>
-          <div className="fld"><span className="fld-l">Ícone de cor</span>
-            <div className="row-gap" style={{ gap: 6 }}>
-              {CORES_FIO.map((h) => (
-                <button type="button" key={h} onClick={() => setCor(h)} title={h}
-                  style={{ width: 26, height: 26, borderRadius: 7, background: h, cursor: "pointer", border: "2px solid #fff", boxShadow: cor === h ? "0 0 0 2px #0f172a" : "0 0 0 1px #cbd5e1" }} />
-              ))}
-            </div>
-          </div>
-          <button className="btn btn-primary" onClick={salvar}>{editId ? "Salvar" : "＋ Adicionar"}</button>
-          {editId && <button className="btn" onClick={limpar}>Cancelar</button>}
-        </div>
-      </div>
-
-      <div className="card">
-        <table className="table">
-          <thead><tr><th>Tipo de fio</th><th>Fornecedor</th><th></th></tr></thead>
-          <tbody>
-            {itens.length === 0 ? (
-              <tr><td colSpan={3} className="empty pad">Nenhum tipo de fio cadastrado ainda.</td></tr>
-            ) : itens.map((t) => (
-              <tr key={t.id}>
-                <td>
-                  <span className="row-gap" style={{ alignItems: "center", gap: 10 }}>
-                    <span style={{ width: 22, height: 22, borderRadius: 6, background: t.cor || "#e2e8f0", boxShadow: "0 0 0 1px #0002", flex: "0 0 auto" }} />
-                    <span className="strong">{t.nome}</span>
-                  </span>
-                </td>
-                <td>{t.fornecedor_nome || "—"}</td>
-                <td style={{ whiteSpace: "nowrap" }}>
-                  <button className="icon-btn" title="Editar" onClick={() => editar(t)}>✎</button>
-                  <button className="icon-btn" title="Remover" onClick={() => remover(t)}>✕</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-}
 
 // ═══════════════════════════ Aba TAMANHOS ═══════════════════════════
 function AbaTamanhos() {
