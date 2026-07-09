@@ -143,7 +143,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [cores, setCores] = useState<Cor[]>([]);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [busca, setBusca] = useState("");
-  const [fioAberto, setFioAberto] = useState<string | null>(null); // tipo de fio expandido
+  const [fioSel, setFioSel] = useState<string | null>(null); // tipo de fio ESCOLHIDO do produto (um só)
   const [tamCat, setTamCat] = useState<Tamanho[]>([]);
   const [selTam, setSelTam] = useState<Record<string, boolean>>({});
   const [pesos, setPesos] = useState<Record<string, string>>({});
@@ -173,6 +173,17 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nomeEdit]);
+
+  // Ao abrir um produto já cadastrado, seleciona sozinho o tipo de fio com mais
+  // cores marcadas (o "fio do produto"). Só roda uma vez, até o usuário escolher.
+  useEffect(() => {
+    if (fioSel !== null || cores.length === 0 || sel.size === 0) return;
+    const cont = new Map<string, number>();
+    for (const c of cores) if (sel.has(c.nome)) cont.set(c.fio_nome || "", (cont.get(c.fio_nome || "") || 0) + 1);
+    let best: string | null = null, bn = -1;
+    for (const [k, v] of cont) if (v > bn) { bn = v; best = k; }
+    if (best !== null) setFioSel(best);
+  }, [cores, sel, fioSel]);
 
   const toggleCor = (n: string) => setSel((prev) => { const s = new Set(prev); s.has(n) ? s.delete(n) : s.add(n); return s; });
   function toggleGrupo(gcores: Cor[]) {
@@ -210,6 +221,24 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     const key = c.fio_nome || "";
     if (!idx.has(key)) { idx.set(key, grupos.length); grupos.push({ fio: key, fornecedor: c.fornecedor_nome || null, cores: [] }); }
     grupos[idx.get(key)!].cores.push(c);
+  }
+  // Lista de tipos de fio (a partir de TODAS as cores, sem o filtro, pra os
+  // botões não sumirem ao filtrar). O produto usa UM tipo de fio só.
+  const fiosLista: { fio: string; fornecedor: string | null; total: number }[] = [];
+  const idxF = new Map<string, number>();
+  for (const c of cores) {
+    const key = c.fio_nome || "";
+    if (!idxF.has(key)) { idxF.set(key, fiosLista.length); fiosLista.push({ fio: key, fornecedor: c.fornecedor_nome || null, total: 0 }); }
+    fiosLista[idxF.get(key)!].total++;
+  }
+  const fioAtivo = fioSel ?? (fiosLista[0]?.fio ?? null);
+  const grupoAtivo = grupos.find((g) => g.fio === fioAtivo);
+  const coresAtivo = grupoAtivo ? grupoAtivo.cores : [];
+  const selDoFio = (fio: string) => cores.filter((c) => (c.fio_nome || "") === fio && sel.has(c.nome)).length;
+  const nNoFio = fioAtivo != null ? selDoFio(fioAtivo) : 0;
+  const nForaFio = sel.size - nNoFio; // cores marcadas em outros fios (não deveria ter)
+  function manterSoDoFio() {
+    setSel((prev) => new Set([...prev].filter((n) => (cores.find((c) => c.nome === n)?.fio_nome || "") === fioAtivo)));
   }
 
   // tamanhos a exibir: catálogo ∪ selecionados que não estão mais no catálogo
@@ -278,44 +307,58 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
               style={{ marginLeft: "auto", minWidth: 220, textTransform: "none", fontWeight: 500 }}
             />
           </div>
-          {grupos.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Nenhuma cor cadastrada. Cadastre na aba Cores.</p>}
-          <p className="muted" style={{ fontSize: 12.5, marginTop: -2 }}>Entre num tipo de fio para ver e selecionar as cores dele.</p>
-          {grupos.map((g, gi) => {
-            const todas = g.cores.length > 0 && g.cores.every((c) => sel.has(c.nome));
-            const nSel = g.cores.filter((c) => sel.has(c.nome)).length;
-            const aberto = fioAberto === (g.fio || "—") || !!busca.trim(); // busca ativa expande tudo
-            return (
-              <div className={"cad-grp" + (aberto ? " aberto" : "")} key={gi}>
-                <div className="cad-grp-h" style={{ cursor: "pointer" }} onClick={() => setFioAberto((f) => (f === (g.fio || "—") ? null : g.fio || "—"))}>
-                  <span style={{ fontWeight: 800, color: "#64748b", width: 16 }}>{aberto ? "▾" : "▸"}</span>
-                  <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{g.fio || "Sem tipo de fio"}</span>
-                  {g.fornecedor && <span className="muted" style={{ fontSize: 12 }}>fornecedor: {g.fornecedor}</span>}
-                  <span className="muted" style={{ fontSize: 12 }}>{g.cores.length} cor(es)</span>
-                  {nSel > 0 && <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>{nSel} ✓</span>}
-                  <button type="button" className="btn btn-soft" style={{ marginLeft: "auto", padding: "3px 10px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); toggleGrupo(g.cores); }}>
-                    {todas ? "desmarcar todas" : "selecionar todas"}
+          {fiosLista.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Nenhuma cor cadastrada. Cadastre em Fios.</p>}
+          {fiosLista.length > 0 && (
+            <>
+              <p className="muted" style={{ fontSize: 12.5, marginTop: -2 }}>Escolha o <strong>tipo de fio do produto</strong> e selecione as cores dele.</p>
+              {/* Seletor de UM tipo de fio */}
+              <div className="segmented" style={{ flexWrap: "wrap", marginBottom: 10 }}>
+                {fiosLista.map((f) => {
+                  const nsel = selDoFio(f.fio);
+                  return (
+                    <button type="button" key={f.fio || "—"} className={"seg" + (f.fio === fioAtivo ? " seg-on" : "")} onClick={() => setFioSel(f.fio)}>
+                      {f.fio || "Sem tipo de fio"} <span className="muted" style={{ fontWeight: 500 }}>({f.total})</span>
+                      {nsel > 0 && <span className="chip" style={{ marginLeft: 6, background: "#dcfce7", color: "#166534" }}>{nsel} ✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {nForaFio > 0 && (
+                <p className="muted" style={{ fontSize: 12, marginTop: -2 }}>
+                  ⚠️ {nForaFio} cor(es) marcada(s) em outro tipo de fio.
+                  <button type="button" className="btn btn-soft" style={{ marginLeft: 8, padding: "2px 9px", fontSize: 11 }} onClick={manterSoDoFio}>manter só deste fio</button>
+                </p>
+              )}
+              {/* Cores do fio escolhido */}
+              <div className="cad-grp aberto">
+                <div className="cad-grp-h">
+                  <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{fioAtivo || "Sem tipo de fio"}</span>
+                  {grupoAtivo?.fornecedor && <span className="muted" style={{ fontSize: 12 }}>fornecedor: {grupoAtivo.fornecedor}</span>}
+                  <span className="muted" style={{ fontSize: 12 }}>{coresAtivo.length} cor(es)</span>
+                  {nNoFio > 0 && <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>{nNoFio} ✓</span>}
+                  <button type="button" className="btn btn-soft" style={{ marginLeft: "auto", padding: "3px 10px", fontSize: 11 }} onClick={() => toggleGrupo(coresAtivo)}>
+                    {coresAtivo.length > 0 && coresAtivo.every((c) => sel.has(c.nome)) ? "desmarcar todas" : "selecionar todas"}
                   </button>
                 </div>
-                {aberto && (
-                  <div className="cad-tiles">
-                    {g.cores.map((c) => {
-                      const on = sel.has(c.nome);
-                      return (
-                        <button type="button" key={c.nome} className={"cad-tile" + (on ? " on" : "")} onClick={() => toggleCor(c.nome)}>
-                          <span style={{ textAlign: "left" }}>
-                            <span className="cad-tile-nm">{c.nome}</span>
-                            <br />
-                            <span className="cad-tile-cd">{c.codigo || "—"}</span>
-                          </span>
-                          {on && <span className="cad-tile-ck">✓</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                <div className="cad-tiles">
+                  {coresAtivo.map((c) => {
+                    const on = sel.has(c.nome);
+                    return (
+                      <button type="button" key={c.nome} className={"cad-tile" + (on ? " on" : "")} onClick={() => toggleCor(c.nome)}>
+                        <span style={{ textAlign: "left" }}>
+                          <span className="cad-tile-nm">{c.nome}</span>
+                          <br />
+                          <span className="cad-tile-cd">{c.codigo || "—"}</span>
+                        </span>
+                        {on && <span className="cad-tile-ck">✓</span>}
+                      </button>
+                    );
+                  })}
+                  {coresAtivo.length === 0 && <p className="muted pad" style={{ margin: 0 }}>Nenhuma cor nesse tipo de fio{filtro ? " com esse filtro" : ""}.</p>}
+                </div>
               </div>
-            );
-          })}
+            </>
+          )}
 
           {/* 3. Tamanhos, peso e tempo */}
           <div className="campo-l" style={{ margin: "14px 0 8px", display: "flex", alignItems: "center", gap: 10 }}>
