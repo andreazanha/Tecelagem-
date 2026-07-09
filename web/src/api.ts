@@ -127,7 +127,7 @@ export interface ClienteFicha extends ClienteCrm {
 // ── CRM Funil de vendas ──────────────────────────────────────────────────────
 export type FunilEtapa =
   | "novo-lead" | "primeiro-contato" | "negociacao" | "aguardando-retorno"
-  | "pedido-andamento" | "pos-venda" | "ativo" | "inativo" | "perdido";
+  | "pos-venda" | "ativo" | "inativo" | "perdido";
 export interface FunilCard {
   id: string;
   cliente_id: string | null;
@@ -150,16 +150,14 @@ export interface FunilCard {
   retornoVencido: boolean;
   diasSemComprar: number | null;
   faixa: string | null;
-  pedido: { numero: string | null; valor: number; setor: string | null; previsao: string | null } | null;
 }
 export interface FunilResumo { parados: number; semTarefa: number; retornos: number; alertas: number }
 export interface FunilBoard { etapas: FunilEtapa[]; cards: FunilCard[]; resumo: FunilResumo }
 export interface FunilTarefa { id: string; titulo: string; vence_em: string | null; responsavel: string | null; feita: number; criado_em: string; feito_em: string | null }
 export interface FunilEvento { id: string; tipo: string; texto: string | null; autor: string | null; criado_em: string }
-export interface FunilCardDetalhe extends Omit<FunilCard, "diasParado" | "proxTarefa" | "semTarefa" | "alerta" | "vermelho" | "retornoVencido" | "diasSemComprar" | "faixa" | "pedido"> {
+export interface FunilCardDetalhe extends Omit<FunilCard, "diasParado" | "proxTarefa" | "semTarefa" | "alerta" | "vermelho" | "retornoVencido" | "diasSemComprar" | "faixa"> {
   criado_em: string;
   movido_em: string;
-  pedido_id: string | null;
   tarefas: FunilTarefa[];
   timeline: FunilEvento[];
   pedidos: { id: string; numero: string | null; data: string | null; valor: number }[];

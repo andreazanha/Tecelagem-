@@ -22,7 +22,6 @@ const ETAPAS_META: { id: FunilEtapa; label: string; cor: string }[] = [
   { id: "primeiro-contato", label: "Primeiro Contato", cor: "#8b5cf6" },
   { id: "negociacao", label: "Negociação", cor: "#f59e0b" },
   { id: "aguardando-retorno", label: "Aguardando Retorno", cor: "#0ea5e9" },
-  { id: "pedido-andamento", label: "Pedido em Andamento", cor: "#6366f1" },
   { id: "pos-venda", label: "Pós-venda", cor: "#14b8a6" },
   { id: "ativo", label: "Cliente Ativo", cor: "#22c55e" },
   { id: "inativo", label: "Inativo", cor: "#94a3b8" },
@@ -35,9 +34,6 @@ const MOTIVOS: { id: string; label: string }[] = [
   { id: "inadimplencia", label: "Inadimplência" }, { id: "nao-respondeu", label: "Não respondeu" },
   { id: "outro", label: "Outro" },
 ];
-const SETOR_LABEL: Record<string, string> = {
-  tecelagem: "Tecelagem", passadoria: "Passadoria", corte: "Corte", costura: "Costura", revisao: "Revisão", expedicao: "Expedição",
-};
 const EV_ICON: Record<string, string> = { ligacao: "📞", whatsapp: "💬", email: "✉️", etapa: "➡️", tarefa: "✅", pedido: "🧾", obs: "📝" };
 
 // ── QUADRO do funil ────────────────────────────────────────────────────────────
@@ -164,12 +160,6 @@ function CardMini({ c, onAbrir, onDragStart, onDragEnd }: { c: FunilCard; onAbri
         )}
         <span className={"fx-chip dias" + (c.diasParado >= 7 ? " warn" : "")}>⏱ {c.diasParado}d parado</span>
       </div>
-      {c.pedido && (
-        <div className="fx-prod">
-          {c.pedido.numero ? "#" + c.pedido.numero + " · " : ""}{brl(c.pedido.valor)}
-          {c.pedido.setor ? <><br />🧵 {SETOR_LABEL[c.pedido.setor] || c.pedido.setor}{c.pedido.previsao ? " · prev. " + dataBr(c.pedido.previsao) : ""}</> : null}
-        </div>
-      )}
       <div className={"fx-task" + (c.semTarefa ? " miss" : "")}>
         {c.semTarefa ? "⚠️ Sem próxima tarefa" : <>📋 {c.proxTarefa?.titulo}{c.proxTarefa?.vence_em ? ` · ${dataBr(c.proxTarefa.vence_em)}` : ""}</>}
       </div>

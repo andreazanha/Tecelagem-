@@ -9,10 +9,11 @@ const uid = () => crypto.randomUUID();
 const str = (v: unknown) => String(v ?? "").trim() || null;
 const num = (v: unknown) => (v === "" || v == null || isNaN(Number(v)) ? null : Number(v));
 
-// Etapas na ordem do quadro. `req` = exige próxima tarefa (todas menos "perdido").
+// Etapas na ordem do quadro. Funil é de relacionamento/venda — o acompanhamento
+// de produção de um pedido fica nos painéis, não aqui.
 export const ETAPAS = [
   "novo-lead", "primeiro-contato", "negociacao", "aguardando-retorno",
-  "pedido-andamento", "pos-venda", "ativo", "inativo", "perdido",
+  "pos-venda", "ativo", "inativo", "perdido",
 ] as const;
 type Etapa = (typeof ETAPAS)[number];
 const ehEtapa = (e: string): e is Etapa => (ETAPAS as readonly string[]).includes(e);
@@ -58,29 +59,6 @@ funil.get("/", async (c) => {
   const proxTarefa = new Map<string, { titulo: string; vence_em: string | null }>();
   for (const t of tar) if (!proxTarefa.has(t.card_id)) proxTarefa.set(t.card_id, { titulo: t.titulo, vence_em: t.vence_em });
 
-  // Pedido em andamento: valor + fase da produção mais avançada.
-  const pedIds = cards.filter((k) => k.etapa === "pedido-andamento" && k.pedido_id).map((k) => k.pedido_id!);
-  const pedInfo = new Map<string, { numero: string | null; valor: number; setor: string | null; previsao: string | null }>();
-  if (pedIds.length) {
-    const ph = pedIds.map(() => "?").join(",");
-    const { results: pr } = await c.env.DB.prepare(
-      `SELECT p.id, p.numero_erp, p.data_entrega,
-              COALESCE(SUM(i.qtd * i.valor_unit), 0) AS valor
-         FROM pedidos p LEFT JOIN pedido_itens i ON i.pedido_id = p.id
-        WHERE p.id IN (${ph}) GROUP BY p.id`
-    ).bind(...pedIds).all<{ id: string; numero_erp: string | null; data_entrega: string | null; valor: number }>();
-    const ORD = ["tecelagem", "passadoria", "corte", "costura", "revisao", "expedicao"];
-    const { results: fases } = await c.env.DB.prepare(
-      `SELECT pedido_id, setor FROM producao WHERE pedido_id IN (${ph})`
-    ).bind(...pedIds).all<{ pedido_id: string; setor: string }>();
-    const setorDe = new Map<string, string>();
-    for (const f of fases) {
-      const cur = setorDe.get(f.pedido_id);
-      if (!cur || ORD.indexOf(f.setor) < ORD.indexOf(cur)) setorDe.set(f.pedido_id, f.setor); // fase mais atrasada = a que falta
-    }
-    for (const p of pr) pedInfo.set(p.id, { numero: p.numero_erp, valor: Number(p.valor) || 0, setor: setorDe.get(p.id) || null, previsao: p.data_entrega });
-  }
-
   // Ativo/Inativo: dias sem comprar (última compra não-reposição pelo nome).
   const nomesAtivos = [...new Set(cards.filter((k) => k.etapa === "ativo" || k.etapa === "inativo").map((k) => k.nome))];
   const ultimaCompra = new Map<string, string>();
@@ -88,7 +66,7 @@ funil.get("/", async (c) => {
     const ph = nomesAtivos.map(() => "?").join(",");
     const { results } = await c.env.DB.prepare(
       `SELECT cliente_nome AS nome, MAX(data_pedido) AS ultima FROM pedidos
-        WHERE cliente_nome IN (${ph}) AND COALESCE(reposicao,0)=0 GROUP BY cliente_nome`
+        WHERE cliente_nome IN (${ph}) AND COALESCE(reposicao,0)=0 AND COALESCE(tipo,'') <> 'estoque' GROUP BY cliente_nome`
     ).bind(...nomesAtivos).all<{ nome: string; ultima: string | null }>();
     for (const r of results) if (r.ultima) ultimaCompra.set(r.nome, r.ultima);
   }
@@ -123,7 +101,6 @@ funil.get("/", async (c) => {
       retorno_em: k.retorno_em, motivo_perdido: k.motivo_perdido, tentativas: k.tentativas,
       diasParado, proxTarefa: px, semTarefa, alerta, vermelho, retornoVencido,
       diasSemComprar, faixa,
-      pedido: k.pedido_id ? pedInfo.get(k.pedido_id) || null : null,
     };
   });
 
@@ -157,7 +134,7 @@ funil.get("/:id", async (c) => {
   const { results: pedidos } = await c.env.DB.prepare(
     `SELECT p.id, p.numero_erp AS numero, p.data_pedido AS data, COALESCE(SUM(i.qtd*i.valor_unit),0) AS valor
        FROM pedidos p LEFT JOIN pedido_itens i ON i.pedido_id = p.id
-      WHERE p.cliente_nome = ? AND COALESCE(p.reposicao,0)=0
+      WHERE p.cliente_nome = ? AND COALESCE(p.reposicao,0)=0 AND COALESCE(p.tipo,'') <> 'estoque'
       GROUP BY p.id ORDER BY (p.data_pedido IS NULL), p.data_pedido DESC`
   ).bind(card.nome).all();
   return c.json({ ...card, tarefas, timeline, pedidos });
@@ -165,8 +142,8 @@ funil.get("/:id", async (c) => {
 
 // ── SINCRONIZAR clientes da base → cartões ──────────────────────────────────────
 // Cria um cartão para cada cliente que ainda não tem, já posicionado pela última
-// compra: em produção → Pedido em Andamento; <120d → Ativo; 120d+ → Inativo; sem
-// compra → Novo Lead. Cada cartão ganha uma tarefa-padrão (não fica em alerta).
+// compra: <120d → Ativo; 120d+ → Inativo; sem compra → Novo Lead. Cada cartão
+// ganha uma tarefa-padrão (não fica em alerta). Pedidos de estoque são ignorados.
 funil.post("/sincronizar", async (c) => {
   const { results: clientes } = await c.env.DB.prepare(
     "SELECT id, nome, cidade, uf, whatsapp, representante FROM clientes"
@@ -175,41 +152,24 @@ funil.post("/sincronizar", async (c) => {
   const jaTem = new Set(existentes.map((e) => e.nome));
 
   const { results: ult } = await c.env.DB.prepare(
-    "SELECT cliente_nome AS nome, MAX(data_pedido) AS ultima FROM pedidos WHERE COALESCE(reposicao,0)=0 GROUP BY cliente_nome"
+    "SELECT cliente_nome AS nome, MAX(data_pedido) AS ultima FROM pedidos WHERE COALESCE(reposicao,0)=0 AND COALESCE(tipo,'') <> 'estoque' GROUP BY cliente_nome"
   ).all<{ nome: string; ultima: string | null }>();
   const ultimaMap = new Map(ult.map((r) => [r.nome, r.ultima] as const));
-
-  // Pedido em produção mais recente por cliente (tem produção e nem tudo na expedição).
-  const { results: prod } = await c.env.DB.prepare(
-    `SELECT p.id, p.cliente_nome AS nome, p.data_pedido,
-            COUNT(pr.rowid) AS tot, SUM(CASE WHEN pr.setor='expedicao' THEN 1 ELSE 0 END) AS exp
-       FROM pedidos p JOIN producao pr ON pr.pedido_id = p.id
-      WHERE COALESCE(p.reposicao,0)=0
-      GROUP BY p.id HAVING tot > 0 AND exp < tot
-      ORDER BY (p.data_pedido IS NULL), p.data_pedido DESC`
-  ).all<{ id: string; nome: string; data_pedido: string | null; tot: number; exp: number }>();
-  const emProducao = new Map<string, string>(); // nome → pedido_id (o mais recente)
-  for (const p of prod) if (!emProducao.has(p.nome)) emProducao.set(p.nome, p.id);
 
   let criados = 0;
   for (const cli of clientes) {
     if (jaTem.has(cli.nome)) continue;
     const id = uid();
     const resp = str(cli.representante);
-    let etapa: Etapa, pedidoId: string | null = null, tarefa: string, prazo: string;
-    if (emProducao.has(cli.nome)) {
-      etapa = "pedido-andamento"; pedidoId = emProducao.get(cli.nome)!;
-      tarefa = "Acompanhar produção"; prazo = "+3 day";
-    } else {
-      const ultima = ultimaMap.get(cli.nome);
-      const dias = ultima ? diasDesde(ultima) : null;
-      if (dias == null) { etapa = "novo-lead"; tarefa = "1º contato"; prazo = "+1 day"; }
-      else if (dias >= 120) { etapa = "inativo"; tarefa = "Campanha de reativação"; prazo = "+2 day"; }
-      else { etapa = "ativo"; tarefa = "Acompanhamento periódico"; prazo = "+30 day"; }
-    }
+    const ultima = ultimaMap.get(cli.nome);
+    const dias = ultima ? diasDesde(ultima) : null;
+    let etapa: Etapa, tarefa: string, prazo: string;
+    if (dias == null) { etapa = "novo-lead"; tarefa = "1º contato"; prazo = "+1 day"; }
+    else if (dias >= 120) { etapa = "inativo"; tarefa = "Campanha de reativação"; prazo = "+2 day"; }
+    else { etapa = "ativo"; tarefa = "Acompanhamento periódico"; prazo = "+30 day"; }
     await c.env.DB.prepare(
-      "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel, pedido_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(id, cli.id, cli.nome, str(cli.cidade), str(cli.uf), str(cli.whatsapp), etapa, resp, pedidoId).run();
+      "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(id, cli.id, cli.nome, str(cli.cidade), str(cli.uf), str(cli.whatsapp), etapa, resp).run();
     await c.env.DB.prepare(
       `INSERT INTO funil_tarefas (id, card_id, titulo, vence_em, responsavel) VALUES (?, ?, ?, date('now', ?), ?)`
     ).bind(uid(), id, tarefa, prazo, resp).run();
@@ -269,7 +229,6 @@ funil.patch("/:id", async (c) => {
   if (b.probabilidade !== undefined) set("probabilidade", num(b.probabilidade));
   if (b.retorno_em !== undefined) set("retorno_em", str(b.retorno_em));
   if (b.motivo_perdido !== undefined) set("motivo_perdido", str(b.motivo_perdido));
-  if (b.pedido_id !== undefined) set("pedido_id", str(b.pedido_id));
   if (b.cidade !== undefined) set("cidade", str(b.cidade));
   if (b.uf !== undefined) set("uf", str(b.uf));
   if (b.whatsapp !== undefined) set("whatsapp", str(b.whatsapp));

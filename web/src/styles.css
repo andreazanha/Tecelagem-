@@ -1028,8 +1028,6 @@ body.dark .fx-task.miss { color: #fbbf24; }
 .fx-foot { display: flex; align-items: center; gap: 6px; margin-top: 9px; }
 .fx-av { width: 22px; height: 22px; border-radius: 50%; background: #1e40af; color: #fff; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 .fx-wa { margin-left: auto; font-size: 14px; text-decoration: none; }
-.fx-prod { font-size: 11px; margin-top: 8px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 6px 8px; color: #1e40af; }
-body.dark .fx-prod { background: #12233f; border-color: #1e3a6b; color: #93c5fd; }
 
 /* Detalhe do cartão (modal) */
 .modal-hd-title { font-size: 18px; font-weight: 800; margin-top: 6px; }
