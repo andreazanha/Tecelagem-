@@ -79,9 +79,19 @@ export interface Cor {
 
 // Detalhe de um produto/modelo: além dos dados básicos, as cores selecionadas
 // e os tamanhos com peso (kg de fio por peça) e tempo (min de produção).
+export interface ModeloMaterial {
+  material_id: string;
+  quantidade: number | null;
+  categoria?: string;
+  nome?: string;
+  unidade?: string | null;
+  cor?: string | null;
+  codigo?: string | null;
+}
 export interface ModeloDetalhe extends Modelo {
   cores: string[];
   tamanhos: { tamanho: string; peso: number | null; tempo: number | null }[];
+  materiais: ModeloMaterial[];
 }
 
 export interface TipoFio {
@@ -565,7 +575,7 @@ export const api = {
   obterModelo: (nome: string) =>
     fetch(`/api/modelos/${encodeURIComponent(nome)}`).then((r) => j<ModeloDetalhe>(r)),
   salvarModelo: (
-    m: Modelo & { cores?: string[]; tamanhos?: { tamanho: string; peso: number | null; tempo: number | null }[] },
+    m: Modelo & { cores?: string[]; tamanhos?: { tamanho: string; peso: number | null; tempo: number | null }[]; materiais?: { material_id: string; quantidade: number | null }[] },
     de?: string
   ) =>
     fetch("/api/modelos", {

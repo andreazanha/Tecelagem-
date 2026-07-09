@@ -152,10 +152,13 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false); // "✓ salvo" — continua na tela após salvar
   const [refNome, setRefNome] = useState(nomeEdit); // nome já gravado (p/ renomear e título)
+  const [matCat, setMatCat] = useState<Material[]>([]); // catálogo de materiais (insumos)
+  const [matDefs, setMatDefs] = useState<MaterialCategoriaDef[]>([]); // categorias (rótulos)
+  const [matSel, setMatSel] = useState<Record<string, string>>({}); // material_id → consumo por peça
 
   useEffect(() => {
-    Promise.all([api.listarCores(), api.listarTamanhos()])
-      .then(([cs, ts]) => { setCores(cs); setTamCat(ts); })
+    Promise.all([api.listarCores(), api.listarTamanhos(), api.listarMateriais(), api.listarCategoriasMaterial()])
+      .then(([cs, ts, ms, mc]) => { setCores(cs); setTamCat(ts); setMatCat(ms); setMatDefs(mc); })
       .catch(() => {});
     if (nomeEdit) {
       api.obterModelo(nomeEdit).then((m) => {
@@ -171,10 +174,14 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           stp[t.tamanho] = t.tempo != null ? String(t.tempo) : "";
         });
         setSelTam(st); setPesos(sp); setTempos(stp);
+        const sm: Record<string, string> = {};
+        (m.materiais || []).forEach((mt) => { sm[mt.material_id] = mt.quantidade != null ? String(mt.quantidade) : ""; });
+        setMatSel(sm);
       }).catch((e) => setErro((e as Error).message));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nomeEdit]);
+  const catNome = (slug?: string) => matDefs.find((d) => d.slug === slug)?.nome || slug || "";
 
   const toggleCor = (n: string) => { setSalvo(false); setSel((prev) => { const s = new Set(prev); s.has(n) ? s.delete(n) : s.add(n); return s; }); };
   function toggleGrupo(gcores: Cor[]) {
@@ -246,9 +253,13 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         peso: pesos[t.nome] && pesos[t.nome].trim() !== "" ? Number(pesos[t.nome].replace(",", ".")) : null,
         tempo: tempos[t.nome] && tempos[t.nome].trim() !== "" ? Number(tempos[t.nome].replace(",", ".")) : null,
       }));
+    const materiais = Object.entries(matSel).map(([material_id, q]) => ({
+      material_id,
+      quantidade: q && q.trim() !== "" ? Number(q.replace(",", ".")) : null,
+    }));
     try {
       await api.salvarModelo(
-        { nome: nome.trim(), parte, ref: ref.trim(), composicao: composicao.trim(), cores: [...sel], tamanhos },
+        { nome: nome.trim(), parte, ref: ref.trim(), composicao: composicao.trim(), cores: [...sel], tamanhos, materiais },
         refNome || undefined
       );
       onSalvo();                 // recarrega a lista no fundo (sem fechar)
@@ -392,6 +403,41 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
                 </div>
               )}
             </>
+          )}
+
+          {/* 3. Ficha técnica: materiais que o produto consome (mesma lógica dos seletores) */}
+          <div className="campo-l" style={{ margin: "16px 0 8px" }}>3 · FICHA TÉCNICA — MATERIAIS</div>
+          <Campo label="Material">
+            <select value="__pick__" onChange={(e) => {
+              const id = e.target.value;
+              if (id && id !== "__pick__") { setSalvo(false); setMatSel((s) => ({ ...s, [id]: "" })); }
+            }}>
+              <option value="__pick__">＋ adicionar material (forro, etiqueta, zíper…)</option>
+              {matCat.filter((m) => matSel[m.id] === undefined).map((m) => (
+                <option key={m.id} value={m.id}>{catNome(m.categoria)} · {m.nome}{m.cor ? ` (${m.cor})` : ""}</option>
+              ))}
+            </select>
+          </Campo>
+          {Object.keys(matSel).length > 0 && (
+            <div className="card">
+              <table className="table">
+                <thead><tr><th>Material</th><th className="num">Consumo (por peça)</th><th style={{ width: 40 }}></th></tr></thead>
+                <tbody>
+                  {matCat.filter((m) => matSel[m.id] !== undefined).map((m) => (
+                    <tr key={m.id}>
+                      <td className="strong">{m.nome} <span className="chip">{catNome(m.categoria)}</span>{m.cor ? <span className="muted" style={{ fontSize: 12 }}> · {m.cor}</span> : null}</td>
+                      <td className="num">
+                        <span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
+                          <input className="w-xs num" type="number" min={0} step="any" value={matSel[m.id]} onChange={(e) => { setSalvo(false); setMatSel((s) => ({ ...s, [m.id]: e.target.value })); }} />
+                          <span className="muted" style={{ fontSize: 12 }}>{m.unidade || "un"}</span>
+                        </span>
+                      </td>
+                      <td><button type="button" className="icon-btn" title="Remover material" onClick={() => { setSalvo(false); setMatSel((s) => { const n = { ...s }; delete n[m.id]; return n; }); }}>✕</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
 
           {/* Footer */}
