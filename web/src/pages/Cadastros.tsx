@@ -106,19 +106,22 @@ function AbaProdutos() {
 
   return (
     <>
-      {/* Tudo na mesma linha: buscar + coleções (botões padronizados) + ações */}
-      <div className="row-gap" style={{ marginBottom: 14, flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-        <input className="busca-ped" placeholder="🔎 Buscar produto…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ minWidth: 220 }} />
+      {/* Nova coleção de um lado, buscar preenchendo */}
+      <div className="row-gap" style={{ marginBottom: 10, alignItems: "center", gap: 8 }}>
+        <button className="btn btn-soft" onClick={novaColecao}>＋ Nova coleção</button>
+        <input className="busca-ped" placeholder="🔎 Buscar produto…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ flex: 1 }} />
+      </div>
+      {/* Coleções + Novo produto: botões do mesmo tamanho (flex igual) */}
+      <div className="row-gap" style={{ marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         {colecoes.map((col) => (
-          <button type="button" key={col.id} className={"btn " + (aberta === col.id ? "btn-primary" : "btn-soft")} onClick={() => abrir(col.id)}>
+          <button type="button" key={col.id} className={"btn " + (aberta === col.id ? "btn-primary" : "btn-soft")} style={{ flex: 1, minWidth: 120 }} onClick={() => abrir(col.id)}>
             {col.nome} ({col.produtos ?? 0})
           </button>
         ))}
-        <button type="button" className={"btn " + (aberta === "__todos__" ? "btn-primary" : "btn-soft")} onClick={() => abrir("__todos__")}>
+        <button type="button" className={"btn " + (aberta === "__todos__" ? "btn-primary" : "btn-soft")} style={{ flex: 1, minWidth: 120 }} onClick={() => abrir("__todos__")}>
           Todos os produtos ({produtos.length})
         </button>
-        <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={novaColecao}>＋ Nova coleção</button>
-        <button className="btn btn-primary" onClick={() => setModal({ nome: null })}>＋ Novo produto</button>
+        <button className="btn btn-primary" style={{ flex: 1, minWidth: 120 }} onClick={() => setModal({ nome: null })}>＋ Novo produto</button>
       </div>
 
       {/* Produtos da coleção escolhida */}
