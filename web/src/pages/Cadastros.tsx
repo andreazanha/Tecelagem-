@@ -7,7 +7,7 @@ type AbaCad = "produtos" | "tipos-fio" | "tamanhos" | "materiais" | "fornecedore
 const ABAS_CAD: AbaCad[] = ["produtos", "tipos-fio", "tamanhos", "materiais", "fornecedores", "operadores", "usuarios"];
 const ABA_LABEL: Record<AbaCad, string> = {
   produtos: "Produtos",
-  "tipos-fio": "Cores e fios",
+  "tipos-fio": "Fios",
   tamanhos: "Tamanhos",
   materiais: "Materiais",
   fornecedores: "Fornecedores",
@@ -39,7 +39,7 @@ export function Cadastros() {
 
   const segs: { id: AbaCad; label: string; adminOnly?: boolean }[] = [
     { id: "produtos", label: "Produtos" },
-    { id: "tipos-fio", label: "Cores e fios" },
+    { id: "tipos-fio", label: "Fios" },
     { id: "tamanhos", label: "Tamanhos" },
     { id: "materiais", label: "Materiais" },
     { id: "fornecedores", label: "Fornecedores" },
@@ -763,8 +763,15 @@ const MAT_CATS: { id: MaterialCategoria; label: string; cor: string }[] = [
 
 function AbaMateriais() {
   // Cadastro SEPARADO por material (sub-aba): cada material tem sua própria tela
-  // e lista — base pro controle de estoque de cada um.
-  const [cat, setCat] = useState<MaterialCategoria>("forro");
+  // e lista — base pro controle de estoque de cada um. O submenu do topo faz
+  // deep-link via ?mat=<categoria> pra abrir direto a tela certa.
+  const [sp] = useSearchParams();
+  const matParam = MAT_CATS.find((c) => c.id === sp.get("mat"))?.id;
+  const [cat, setCat] = useState<MaterialCategoria>(matParam || "forro");
+  useEffect(() => {
+    const q = MAT_CATS.find((c) => c.id === sp.get("mat"))?.id;
+    if (q) setCat(q);
+  }, [sp]);
   const meta = MAT_CATS.find((c) => c.id === cat)!;
   return (
     <>

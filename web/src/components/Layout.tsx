@@ -87,7 +87,7 @@ function UndoRedo() {
 
 // Item do menu. `page` = permissão da tela (se ausente e sem `soon`, é livre).
 // `soon` = página ainda não existe → aparece só para admin, desabilitada (sem 404).
-interface MenuItem { to?: string; icon: string; label: string; page?: string; soon?: boolean }
+interface MenuItem { to?: string; icon: string; label: string; page?: string; soon?: boolean; children?: MenuItem[] }
 interface MenuGrupo { id: string; icon: string; label: string; itens: MenuItem[] }
 
 // Menu em grupos sanfonados. Itens existentes apontam para rotas reais (alguns
@@ -144,9 +144,18 @@ const GRUPOS: MenuGrupo[] = [
   {
     id: "cadastros", icon: "🗂️", label: "Cadastros", itens: [
       { to: "/cadastros?aba=produtos", icon: "📦", label: "Produtos", page: "cadastros" },
-      { to: "/cadastros?aba=tipos-fio", icon: "🎨", label: "Cores e fios", page: "cadastros" },
+      { to: "/cadastros?aba=tipos-fio", icon: "🎨", label: "Fios", page: "cadastros" },
       { to: "/cadastros?aba=tamanhos", icon: "📏", label: "Tamanhos", page: "cadastros" },
-      { to: "/cadastros?aba=materiais", icon: "🧷", label: "Materiais", page: "cadastros" },
+      {
+        icon: "🧷", label: "Materiais", page: "cadastros", children: [
+          { to: "/cadastros?aba=materiais&mat=forro", icon: "🧵", label: "Forro", page: "cadastros" },
+          { to: "/cadastros?aba=materiais&mat=ziper", icon: "🤐", label: "Zíper", page: "cadastros" },
+          { to: "/cadastros?aba=materiais&mat=etiqueta", icon: "🏷️", label: "Etiqueta", page: "cadastros" },
+          { to: "/cadastros?aba=materiais&mat=encarte", icon: "📄", label: "Encarte", page: "cadastros" },
+          { to: "/cadastros?aba=materiais&mat=embalagem", icon: "📦", label: "Embalagem", page: "cadastros" },
+          { to: "/cadastros?aba=materiais&mat=refil", icon: "🛏️", label: "Refil", page: "cadastros" },
+        ],
+      },
       { to: "/cadastros?aba=fornecedores", icon: "🚛", label: "Fornecedores", page: "cadastros" },
       { to: "/cadastros?aba=usuarios", icon: "🔐", label: "Usuários", page: "cadastros" },
     ],
@@ -236,8 +245,6 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
   const grupoAtivo = grupos.find((g) => g.itens.some((it) => it.to === ativoTo))?.id;
 
   const DDItem = (it: MenuItem, ctx: string) => {
-    const desativado = it.soon || !it.to;
-    const ativo = !!it.to && it.to === ativoTo;
     const inner = (
       <>
         <span className="tn-dd-ic"><Icon emoji={it.icon} /></span>
@@ -245,6 +252,18 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
         {it.soon && <span className="tn-soon">em breve</span>}
       </>
     );
+    // Item com submenu: abre um segundo nível ao passar o mouse.
+    if (it.children && it.children.length) {
+      return (
+        <div className="topnav-dd-i has-sub" key={ctx + it.label} title={it.label}>
+          {inner}
+          <span className="tn-sub-car">▸</span>
+          <div className="topnav-sub">{it.children.map((ch) => DDItem(ch, ctx + it.label))}</div>
+        </div>
+      );
+    }
+    const desativado = it.soon || !it.to;
+    const ativo = !!it.to && it.to === ativoTo;
     return desativado ? (
       <span className="topnav-dd-i disabled" key={ctx + it.label} title={it.label + (it.soon ? " — em breve" : "")}>{inner}</span>
     ) : (

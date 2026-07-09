@@ -1139,3 +1139,16 @@ body.dark .cad-fio-card { background: #18202f; border-color: #26324a; }
 .cad-fio-card .ic { width: 30px; height: 30px; border-radius: 9px; box-shadow: 0 0 0 1px #0002; flex: 0 0 auto; }
 .cad-fio-card .nm { font-weight: 800; font-size: 14px; }
 .cad-fio-card .sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
+/* Submenu (2º nível) do menu do topo — abre ao passar o mouse. */
+.topnav-dd-i.has-sub { position: relative; }
+.topnav-dd-i.has-sub .tn-sub-car { margin-left: auto; font-size: 11px; opacity: .55; }
+.topnav-sub { display: none; position: absolute; left: calc(100% + 4px); top: -7px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 50px #0f172a2e; padding: 7px; min-width: 210px; z-index: 61; }
+.topnav-dd-i.has-sub:hover > .topnav-sub, .topnav-sub:hover { display: block; }
+body.dark .topnav-sub { background: #0f1629; border-color: #ffffff14; }
+/* No mobile (menu empilhado) o submenu vira lista aberta abaixo. */
+@media (max-width: 1280px) {
+  .topnav-sub { display: block; position: static; box-shadow: none; border: none; padding: 0 0 0 22px; min-width: 0; }
+  .topnav-dd-i.has-sub { flex-wrap: wrap; }
+  .topnav-dd-i.has-sub .tn-sub-car { display: none; }
+}
