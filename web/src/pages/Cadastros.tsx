@@ -301,58 +301,56 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           {abrirCores && fiosLista.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Nenhuma cor cadastrada. Cadastre em Fios.</p>}
           {abrirCores && fiosLista.length > 0 && (
             <>
-              <p className="muted" style={{ fontSize: 12.5, marginTop: -2 }}>Clique num <strong>tipo de fio</strong> para abrir as cores dele e marcar as que o produto tem.</p>
+              {/* Escolhe o tipo de fio num seletor (igual ao da Galga). Depois abre as cores. */}
+              <Campo label="Tipo de fio">
+                <select value={fioSel ?? "__pick__"} onChange={(e) => setFioSel(e.target.value === "__pick__" ? null : e.target.value)}>
+                  <option value="__pick__">— escolha o tipo de fio —</option>
+                  {fiosLista.map((f) => {
+                    const nsel = selDoFio(f.fio);
+                    return <option key={f.fio || "—"} value={f.fio}>{(f.fio || "Sem tipo de fio")} ({f.total} cor{f.total === 1 ? "" : "es"}){nsel > 0 ? ` · ${nsel} marcada${nsel === 1 ? "" : "s"}` : ""}</option>;
+                  })}
+                </select>
+              </Campo>
               {nForaFio > 0 && fioSel !== null && (
                 <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                   ⚠️ {nForaFio} cor(es) marcada(s) em outro tipo de fio.
                   <button type="button" className="btn btn-soft" style={{ marginLeft: 8, padding: "2px 9px", fontSize: 11 }} onClick={manterSoDoFio}>manter só deste fio</button>
                 </p>
               )}
-              {/* LISTA de tipos de fio; clicar abre as cores do fio (uma lista, igual tamanhos) */}
-              <div className="fio-lista">
-                {fiosLista.map((f) => {
-                  const abertoFio = fioSel === f.fio;
-                  const g = grupos.find((gg) => gg.fio === f.fio);
-                  const coresF = g ? g.cores : [];
-                  const nsel = selDoFio(f.fio);
-                  const todasMarc = coresF.length > 0 && coresF.every((c) => sel.has(c.nome));
-                  return (
-                    <div className={"fio-item" + (abertoFio ? " aberto" : "")} key={f.fio || "—"}>
-                      <div className="fio-item-h" onClick={() => setFioSel(abertoFio ? null : f.fio)}>
-                        <span className="fio-item-car">{abertoFio ? "▾" : "▸"}</span>
-                        <span className="fio-item-nm">{f.fio || "Sem tipo de fio"}</span>
-                        {f.fornecedor && <span className="muted" style={{ fontSize: 12 }}>· {f.fornecedor}</span>}
-                        <span className="muted" style={{ fontSize: 12 }}>{f.total} cor(es)</span>
-                        {nsel > 0 && <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>{nsel} ✓</span>}
-                        {abertoFio && (
-                          <button type="button" className="btn btn-soft" style={{ marginLeft: "auto", padding: "3px 10px", fontSize: 11 }}
-                            onClick={(e) => { e.stopPropagation(); toggleGrupo(coresF); }}>
-                            {todasMarc ? "desmarcar todas" : "selecionar todas"}
-                          </button>
-                        )}
-                      </div>
-                      {abertoFio && (
-                        <table className="table">
-                          <tbody>
-                            {coresF.length === 0 ? (
-                              <tr><td colSpan={3} className="empty pad">Nenhuma cor nesse tipo de fio{filtro ? " com esse filtro" : ""}.</td></tr>
-                            ) : coresF.map((c) => {
-                              const on = sel.has(c.nome);
-                              return (
-                                <tr key={c.nome} style={{ opacity: on ? 1 : 0.6, cursor: "pointer" }} onClick={() => toggleCor(c.nome)}>
-                                  <td style={{ width: 40 }}><input type="checkbox" checked={on} readOnly /></td>
-                                  <td className="strong">{c.nome}</td>
-                                  <td><span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{c.codigo || "—"}</span></td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      )}
+              {/* Cores do tipo de fio escolhido, em lista com caixinha */}
+              {fioSel !== null && (() => {
+                const g = grupos.find((gg) => gg.fio === fioSel);
+                const coresF = g ? g.cores : [];
+                const todasMarc = coresF.length > 0 && coresF.every((c) => sel.has(c.nome));
+                return (
+                  <div className="card" style={{ marginTop: 10 }}>
+                    <div className="fio-item-h" style={{ cursor: "default" }}>
+                      <span className="fio-item-nm">{fioSel || "Sem tipo de fio"}</span>
+                      <span className="muted" style={{ fontSize: 12 }}>{coresF.length} cor(es)</span>
+                      {selDoFio(fioSel) > 0 && <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>{selDoFio(fioSel)} ✓</span>}
+                      <button type="button" className="btn btn-soft" style={{ marginLeft: "auto", padding: "3px 10px", fontSize: 11 }} onClick={() => toggleGrupo(coresF)}>
+                        {todasMarc ? "desmarcar todas" : "selecionar todas"}
+                      </button>
                     </div>
-                  );
-                })}
-              </div>
+                    <table className="table">
+                      <tbody>
+                        {coresF.length === 0 ? (
+                          <tr><td colSpan={3} className="empty pad">Nenhuma cor nesse tipo de fio{filtro ? " com esse filtro" : ""}.</td></tr>
+                        ) : coresF.map((c) => {
+                          const on = sel.has(c.nome);
+                          return (
+                            <tr key={c.nome} style={{ opacity: on ? 1 : 0.6, cursor: "pointer" }} onClick={() => toggleCor(c.nome)}>
+                              <td style={{ width: 40 }}><input type="checkbox" checked={on} readOnly /></td>
+                              <td className="strong">{c.nome}</td>
+                              <td><span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{c.codigo || "—"}</span></td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </>
           )}
 
