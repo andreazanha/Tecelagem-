@@ -46,9 +46,33 @@ export function Funil() {
   const [filtro, setFiltro] = useState<string>("todos"); // todos | alerta | <responsavel>
   const [abrir, setAbrir] = useState<string | null>(null); // card id detalhe
   const [novo, setNovo] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [arrastando, setArrastando] = useState<string | null>(null); // card id em drag
+  const [sobre, setSobre] = useState<string | null>(null); // etapa alvo do drag
 
   function recarregar() { api.funilBoard().then(setBoard).catch(() => {}); }
   useEffect(() => { recarregar(); }, []);
+
+  async function sincronizar() {
+    setSincronizando(true);
+    try {
+      const r = await api.sincronizarFunil();
+      recarregar();
+      alert(r.criados ? `${r.criados} cliente(s) trazido(s) para o funil.` : "Todos os clientes já estão no funil.");
+    } catch (e) { alert((e as Error).message); } finally { setSincronizando(false); }
+  }
+
+  // Arrastar cartão para outra etapa. Etapas que exigem dado extra (Perdido →
+  // motivo, Aguardando Retorno → data) abrem o detalhe já na etapa escolhida.
+  async function soltarEm(etapaAlvo: FunilEtapa) {
+    const id = arrastando; setArrastando(null); setSobre(null);
+    if (!id) return;
+    const c = (board?.cards || []).find((k) => k.id === id);
+    if (!c || c.etapa === etapaAlvo) return;
+    if (etapaAlvo === "perdido" || etapaAlvo === "aguardando-retorno") { setAbrir(id); return; }
+    try { await api.atualizarCard(id, { etapa: etapaAlvo }); recarregar(); }
+    catch (e) { alert((e as Error).message); }
+  }
 
   const responsaveis = useMemo(
     () => [...new Set((board?.cards || []).map((c) => c.responsavel).filter(Boolean) as string[])].sort(),
@@ -72,6 +96,7 @@ export function Funil() {
             <span key={rp} className={"fx-pill" + (filtro === rp ? " on" : "")} onClick={() => setFiltro(rp)}>{rp}</span>
           ))}
           <span className={"fx-pill" + (filtro === "alerta" ? " on" : "")} onClick={() => setFiltro("alerta")}>⚠️ Em alerta</span>
+          <button className="btn" disabled={sincronizando} onClick={sincronizar}>{sincronizando ? "Sincronizando…" : "🔄 Sincronizar clientes"}</button>
           <button className="btn btn-primary" onClick={() => setNovo(true)}>＋ Novo lead</button>
         </div>
       </div>
@@ -94,9 +119,20 @@ export function Funil() {
             const cards = visiveis.filter((c) => c.etapa === et.id)
               .sort((a, b) => Number(b.alerta) - Number(a.alerta) || b.diasParado - a.diasParado);
             return (
-              <div className="fx-col" key={et.id}>
+              <div
+                className={"fx-col" + (sobre === et.id ? " drag-over" : "")}
+                key={et.id}
+                onDragOver={(e) => { if (arrastando) { e.preventDefault(); setSobre(et.id); } }}
+                onDragLeave={() => setSobre((s) => (s === et.id ? null : s))}
+                onDrop={() => soltarEm(et.id)}
+              >
                 <div className="fx-hd"><span className="fx-dot" style={{ background: et.cor }} />{et.label}<span className="ct">{cards.length}</span></div>
-                {cards.map((c) => <CardMini key={c.id} c={c} onAbrir={() => setAbrir(c.id)} />)}
+                {cards.map((c) => (
+                  <CardMini
+                    key={c.id} c={c} onAbrir={() => setAbrir(c.id)}
+                    onDragStart={() => setArrastando(c.id)} onDragEnd={() => { setArrastando(null); setSobre(null); }}
+                  />
+                ))}
               </div>
             );
           })}
@@ -109,11 +145,11 @@ export function Funil() {
   );
 }
 
-function CardMini({ c, onAbrir }: { c: FunilCard; onAbrir: () => void }) {
+function CardMini({ c, onAbrir, onDragStart, onDragEnd }: { c: FunilCard; onAbrir: () => void; onDragStart: () => void; onDragEnd: () => void }) {
   const wa = waHref(c.whatsapp);
   const cls = c.vermelho ? "red" : c.semTarefa ? "alert" : "";
   return (
-    <div className={"fx-card " + cls} onClick={onAbrir}>
+    <div className={"fx-card " + cls} onClick={onAbrir} draggable onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="fx-nm">{c.nome}</div>
       <div className="fx-sub">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div>
       <div className="fx-chips">

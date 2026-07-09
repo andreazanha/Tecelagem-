@@ -163,6 +163,62 @@ funil.get("/:id", async (c) => {
   return c.json({ ...card, tarefas, timeline, pedidos });
 });
 
+// ── SINCRONIZAR clientes da base → cartões ──────────────────────────────────────
+// Cria um cartão para cada cliente que ainda não tem, já posicionado pela última
+// compra: em produção → Pedido em Andamento; <120d → Ativo; 120d+ → Inativo; sem
+// compra → Novo Lead. Cada cartão ganha uma tarefa-padrão (não fica em alerta).
+funil.post("/sincronizar", async (c) => {
+  const { results: clientes } = await c.env.DB.prepare(
+    "SELECT id, nome, cidade, uf, whatsapp, representante FROM clientes"
+  ).all<{ id: string; nome: string; cidade: string | null; uf: string | null; whatsapp: string | null; representante: string | null }>();
+  const { results: existentes } = await c.env.DB.prepare("SELECT nome FROM funil_cards").all<{ nome: string }>();
+  const jaTem = new Set(existentes.map((e) => e.nome));
+
+  const { results: ult } = await c.env.DB.prepare(
+    "SELECT cliente_nome AS nome, MAX(data_pedido) AS ultima FROM pedidos WHERE COALESCE(reposicao,0)=0 GROUP BY cliente_nome"
+  ).all<{ nome: string; ultima: string | null }>();
+  const ultimaMap = new Map(ult.map((r) => [r.nome, r.ultima] as const));
+
+  // Pedido em produção mais recente por cliente (tem produção e nem tudo na expedição).
+  const { results: prod } = await c.env.DB.prepare(
+    `SELECT p.id, p.cliente_nome AS nome, p.data_pedido,
+            COUNT(pr.rowid) AS tot, SUM(CASE WHEN pr.setor='expedicao' THEN 1 ELSE 0 END) AS exp
+       FROM pedidos p JOIN producao pr ON pr.pedido_id = p.id
+      WHERE COALESCE(p.reposicao,0)=0
+      GROUP BY p.id HAVING tot > 0 AND exp < tot
+      ORDER BY (p.data_pedido IS NULL), p.data_pedido DESC`
+  ).all<{ id: string; nome: string; data_pedido: string | null; tot: number; exp: number }>();
+  const emProducao = new Map<string, string>(); // nome → pedido_id (o mais recente)
+  for (const p of prod) if (!emProducao.has(p.nome)) emProducao.set(p.nome, p.id);
+
+  let criados = 0;
+  for (const cli of clientes) {
+    if (jaTem.has(cli.nome)) continue;
+    const id = uid();
+    const resp = str(cli.representante);
+    let etapa: Etapa, pedidoId: string | null = null, tarefa: string, prazo: string;
+    if (emProducao.has(cli.nome)) {
+      etapa = "pedido-andamento"; pedidoId = emProducao.get(cli.nome)!;
+      tarefa = "Acompanhar produção"; prazo = "+3 day";
+    } else {
+      const ultima = ultimaMap.get(cli.nome);
+      const dias = ultima ? diasDesde(ultima) : null;
+      if (dias == null) { etapa = "novo-lead"; tarefa = "1º contato"; prazo = "+1 day"; }
+      else if (dias >= 120) { etapa = "inativo"; tarefa = "Campanha de reativação"; prazo = "+2 day"; }
+      else { etapa = "ativo"; tarefa = "Acompanhamento periódico"; prazo = "+30 day"; }
+    }
+    await c.env.DB.prepare(
+      "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel, pedido_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(id, cli.id, cli.nome, str(cli.cidade), str(cli.uf), str(cli.whatsapp), etapa, resp, pedidoId).run();
+    await c.env.DB.prepare(
+      `INSERT INTO funil_tarefas (id, card_id, titulo, vence_em, responsavel) VALUES (?, ?, ?, date('now', ?), ?)`
+    ).bind(uid(), id, tarefa, prazo, resp).run();
+    await logar(c.env, id, "etapa", "Sincronizado da base de clientes");
+    criados++;
+  }
+  return c.json({ criados, ignorados: clientes.length - criados });
+});
+
 // ── CRIA lead ──────────────────────────────────────────────────────────────────
 // Obrigatório nome + whatsapp (telefone). Já cria a tarefa de 1º contato em 24h.
 funil.post("/", async (c) => {
