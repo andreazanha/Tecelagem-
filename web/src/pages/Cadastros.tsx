@@ -281,22 +281,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             <Campo label="Composição"><input value={composicao} onChange={(e) => setComposicao(e.target.value)} placeholder="ex.: 100% POLIÉSTER" /></Campo>
           </div>
 
-          {/* 2. Cores e tamanhos do produto — seletores lado a lado (padrão da Galga) */}
-          <div className="campo-l" style={{ margin: "14px 0 8px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span>2 · CORES E TAMANHOS DO PRODUTO</span>
-            <span className="chip">{nCores} cor(es)</span>
-            <span className="chip">{nTam} tamanho(s)</span>
-            {fiosLista.length > 0 && (
-              <input
-                placeholder="🔎 filtrar cor por nome ou código…"
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                style={{ marginLeft: "auto", minWidth: 200, textTransform: "none", fontWeight: 500 }}
-              />
-            )}
-          </div>
-          {/* Tipo de fio | Tamanho, lado a lado */}
-          <div className="form-grid2">
+          {/* Cores e tamanhos do produto — seletores lado a lado (padrão da Galga) */}
+          <div className="form-grid2" style={{ marginTop: 14 }}>
             <Campo label="Tipo de fio">
               <select value={fioSel ?? "__pick__"} onChange={(e) => setFioSel(e.target.value === "__pick__" ? null : e.target.value)} disabled={fiosLista.length === 0}>
                 <option value="__pick__">{fiosLista.length === 0 ? "nenhuma cor cadastrada" : "— escolha o tipo de fio —"}</option>
@@ -310,9 +296,11 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
               <select value="__pick__" onChange={(e) => {
                 const v = e.target.value;
                 if (v === "__novo__") { novoTamanho(); return; }
+                if (v === "__todos__") { setSelTam((s) => { const n = { ...s }; linhasTam.forEach((t) => (n[t.nome] = true)); return n; }); return; }
                 if (v && v !== "__pick__") setSelTam((s) => ({ ...s, [v]: true }));
               }}>
                 <option value="__pick__">＋ adicionar tamanho…</option>
+                <option value="__todos__">✓ todos os tamanhos</option>
                 {linhasTam.filter((t) => !selTam[t.nome]).map((t) => <option key={t.id} value={t.nome}>{t.nome}</option>)}
                 <option value="__novo__">＋ novo tamanho…</option>
               </select>
