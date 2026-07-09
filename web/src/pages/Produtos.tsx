@@ -43,10 +43,6 @@ export function Produtos() {
     const q = sp.get("aba") as Aba | null;
     if (q && ABAS_VALIDAS.includes(q)) setAba(q);
   }, [sp]);
-  function mudar(a: Aba) {
-    setAba(a);
-    localStorage.setItem("produtos-aba", a);
-  }
   // contador de reposições pendentes (badge na aba)
   const [nRep, setNRep] = useState(0);
   useEffect(() => { api.listarReposicao().then((r) => setNRep(r.length)).catch(() => {}); }, [aba]);
@@ -65,13 +61,6 @@ export function Produtos() {
         <div>
           <h1>Produtos</h1>
           <div className="breadcrumb">Cadastro &amp; Estoque › {abas.find((a) => a.id === aba)?.label.replace(/^\S+\s/, "")}</div>
-        </div>
-        <div className="segmented" style={{ flexWrap: "wrap" }}>
-          {abas.map((a) => (
-            <button key={a.id} type="button" className={"seg" + (aba === a.id ? " seg-on" : "")} onClick={() => mudar(a.id)}>
-              {a.label}
-            </button>
-          ))}
         </div>
       </div>
 
