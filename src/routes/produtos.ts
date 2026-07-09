@@ -177,6 +177,8 @@ produtos.get("/", async (c) => {
   const binds: unknown[] = [];
   const cond: string[] = [];
   if (ativo === "1" || ativo === "0") cond.push(`ativo = ${ativo === "1" ? 1 : 0}`);
+  // ?estoque=1 → só os produtos que controlam estoque (selecionados) + kits (pronta-entrega).
+  if (c.req.query("estoque") === "1") cond.push("(controla_estoque = 1 OR tipo = 'kit')");
   if (cond.length) sql += " WHERE " + cond.join(" AND ");
   sql += " ORDER BY nome";
   const { results } = await c.env.DB.prepare(sql).bind(...binds).all<Record<string, unknown>>();
@@ -445,13 +447,15 @@ produtos.post("/", async (c) => {
   const existe = b.id ? await c.env.DB.prepare("SELECT id FROM produtos WHERE id = ?").bind(b.id as string).first() : null;
   const id = (b.id as string) || uid();
   const tipo = b.tipo === "kit" ? "kit" : "avulso";
+  // Kit é pronta-entrega por natureza → sempre controla estoque.
+  const controla = tipo === "kit" || b.controla_estoque === true || b.controla_estoque === 1 ? 1 : 0;
   await c.env.DB.prepare(
-    `INSERT INTO produtos (id, nome, ref, categoria, tamanho, cor, tipo_fio, unidade, tipo, estoque_min, reposicao_qtd, ativo, observacao, atualizado_em)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `INSERT INTO produtos (id, nome, ref, categoria, tamanho, cor, tipo_fio, unidade, tipo, estoque_min, reposicao_qtd, controla_estoque, ativo, observacao, atualizado_em)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, ref = excluded.ref, categoria = excluded.categoria,
        tamanho = excluded.tamanho, cor = excluded.cor, tipo_fio = excluded.tipo_fio, unidade = excluded.unidade,
        tipo = excluded.tipo, estoque_min = excluded.estoque_min, reposicao_qtd = excluded.reposicao_qtd,
-       ativo = excluded.ativo, observacao = excluded.observacao, atualizado_em = datetime('now')`
+       controla_estoque = excluded.controla_estoque, ativo = excluded.ativo, observacao = excluded.observacao, atualizado_em = datetime('now')`
   )
     .bind(
       id,
@@ -465,6 +469,7 @@ produtos.post("/", async (c) => {
       tipo,
       num(b.estoque_min),
       num(b.reposicao_qtd),
+      controla,
       b.ativo === false || b.ativo === 0 ? 0 : 1,
       String(b.observacao || "").trim() || null
     )
@@ -482,6 +487,17 @@ produtos.post("/:id/ativo", async (c) => {
   await c.env.DB.prepare("UPDATE produtos SET ativo = ?, atualizado_em = datetime('now') WHERE id = ?").bind(v, id).run();
   await log(c.env, "produto", `Produto ${v ? "ativado" : "desativado"}: ${p?.nome || id}`, b.usuario, id);
   return c.json({ ok: true, ativo: !!v });
+});
+
+// Marca/desmarca um produto como parte do estoque de pronta-entrega.
+produtos.post("/:id/estoque-flag", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ on?: boolean; usuario?: string }>().catch(() => ({}) as { on?: boolean; usuario?: string });
+  const v = b.on ? 1 : 0;
+  const p = await c.env.DB.prepare("SELECT nome FROM produtos WHERE id = ?").bind(id).first<{ nome: string }>();
+  await c.env.DB.prepare("UPDATE produtos SET controla_estoque = ?, atualizado_em = datetime('now') WHERE id = ?").bind(v, id).run();
+  await log(c.env, "estoque", `${p?.nome || id} ${v ? "adicionado ao" : "removido do"} estoque de pronta-entrega`, b.usuario, id);
+  return c.json({ ok: true, controla_estoque: !!v });
 });
 
 // EXCLUI produto (mantém as movimentações no histórico).

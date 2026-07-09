@@ -848,12 +848,15 @@ export const api = {
   },
 
   // ── Produtos ────────────────────────────────────────────────────────────
-  listarProdutos: (p?: { ativo?: string; busca?: string }) => {
+  listarProdutos: (p?: { ativo?: string; busca?: string; estoque?: string }) => {
     const q = new URLSearchParams();
     if (p?.ativo) q.set("ativo", p.ativo);
     if (p?.busca) q.set("busca", p.busca);
+    if (p?.estoque) q.set("estoque", p.estoque);
     return fetch(`/api/produtos${q.toString() ? "?" + q : ""}`).then((r) => j<Produto[]>(r));
   },
+  toggleEstoqueProduto: (id: string, on: boolean) =>
+    jsonPost(`/api/produtos/${id}/estoque-flag`, { on, usuario: quemSou() }).then((r) => j<{ ok: boolean; controla_estoque: boolean }>(r)),
   obterProduto: (id: string) => fetch(`/api/produtos/${id}`).then((r) => j<Produto & { ficha: FichaItem[]; kit: KitComponente[] }>(r)),
   salvarProduto: (p: Partial<Produto>) =>
     jsonPost("/api/produtos", { ...p, usuario: quemSou() }).then((r) => j<{ id: string }>(r)),
@@ -998,6 +1001,7 @@ export interface Produto {
   estoque?: number;
   estoque_min?: number;
   reposicao_qtd?: number;
+  controla_estoque?: number;
   criado_em?: string;
   atualizado_em?: string;
 }

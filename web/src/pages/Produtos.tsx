@@ -350,6 +350,12 @@ function ProdutoModal({ produto, onFechar, onSalvo }: { produto: Partial<Produto
                 <option value="0">Inativo</option>
               </select>
             </Campo>
+            <Campo label="Controla estoque (pronta-entrega)?">
+              <select value={p.tipo === "kit" || Number(p.controla_estoque) === 1 ? "1" : "0"} disabled={p.tipo === "kit"} onChange={(e) => set({ controla_estoque: e.target.value === "1" ? 1 : 0 })}>
+                <option value="1">Sim — aparece no estoque</option>
+                <option value="0">Não — fora do estoque</option>
+              </select>
+            </Campo>
           </div>
 
           {p.tipo === "kit" && (
@@ -407,23 +413,31 @@ function AbaEstoque() {
   const [soFalta, setSoFalta] = useState(false);
   const [mov, setMov] = useState<Produto | null>(null);
   const [extrato, setExtrato] = useState<Produto | null>(null);
+  const [selecionar, setSelecionar] = useState(false);
   const lista = soFalta ? itens.filter((p) => (Number(p.estoque) || 0) < (Number(p.estoque_min) || 0)) : itens;
 
   function recarregar() {
-    api.listarProdutos({ ativo: "1", busca }).then(setItens).catch(() => {});
+    api.listarProdutos({ ativo: "1", busca, estoque: "1" }).then(setItens).catch(() => {});
   }
   useEffect(recarregar, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const t = setTimeout(recarregar, 250); return () => clearTimeout(t); }, [busca]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function tirar(p: Produto) {
+    if (!confirm(`Tirar "${p.nome}" do estoque de pronta-entrega? (o produto continua no cadastro)`)) return;
+    await api.toggleEstoqueProduto(p.id, false).catch(() => {});
+    recarregar();
+  }
+
   return (
     <>
-      <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>Estoque atual, mínimo e situação (falta / sobra) de cada produto. Clique em <strong>Movimentar</strong> para entrada/saída avulsa, ou no produto para ver o extrato.</p>
+      <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>Só os produtos <strong>selecionados</strong> como pronta-entrega (e os kits) aparecem aqui. Clique em <strong>Movimentar</strong> para entrada/saída, ou no produto para ver o extrato.</p>
       <div className="row-gap" style={{ marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
         <input className="busca-ped" placeholder="🔎 Buscar produto…" value={busca} onChange={(e) => setBusca(e.target.value)} />
         <label className="row-gap" style={{ gap: 6, alignItems: "center" }}>
           <input type="checkbox" checked={soFalta} onChange={(e) => setSoFalta(e.target.checked)} /> só em falta
         </label>
-        <a className="btn btn-primary" style={{ marginLeft: "auto" }} href="/api/produtos/relatorio-estoque/pdf" target="_blank" rel="noreferrer">
+        <button className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={() => setSelecionar(true)}>＋ Selecionar produtos</button>
+        <a className="btn" href="/api/produtos/relatorio-estoque/pdf" target="_blank" rel="noreferrer">
           📄 Relatório PDF
         </a>
       </div>
@@ -452,7 +466,10 @@ function AbaEstoque() {
                         : sobra ? <span className="chip" style={{ color: "#1d4ed8" }}>sobra +{nf(saldo)}</span>
                           : <span className="status status-conferido">ok</span>}
                     </td>
-                    <td><button className="btn btn-soft" onClick={() => setMov(p)}>Movimentar</button></td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      <button className="btn btn-soft" onClick={() => setMov(p)}>Movimentar</button>
+                      {p.tipo !== "kit" && <button className="btn btn-soft" title="Tirar do estoque" style={{ marginLeft: 6 }} onClick={() => tirar(p)}>✕</button>}
+                    </td>
                   </tr>
                 );
               })
@@ -462,7 +479,62 @@ function AbaEstoque() {
       </div>
       {mov && <MovModal alvo="produto" id={mov.id} nome={mov.nome} unidade={mov.unidade || "un"} onFechar={() => setMov(null)} onFeito={() => { setMov(null); recarregar(); }} />}
       {extrato && <ExtratoModal alvo="produto" id={extrato.id} nome={extrato.nome} onFechar={() => setExtrato(null)} />}
+      {selecionar && <SelecionarEstoque onFechar={() => setSelecionar(false)} onFeito={() => { setSelecionar(false); recarregar(); }} />}
     </>
+  );
+}
+
+// Selecionar quais produtos fazem parte do estoque de pronta-entrega.
+function SelecionarEstoque({ onFechar, onFeito }: { onFechar: () => void; onFeito: () => void }) {
+  const [todos, setTodos] = useState<Produto[]>([]);
+  const [busca, setBusca] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => { api.listarProdutos({ ativo: "1" }).then(setTodos).catch(() => {}); }, []);
+
+  const q = busca.trim().toLowerCase();
+  const lista = q ? todos.filter((p) => `${p.nome} ${p.ref || ""} ${p.cor || ""}`.toLowerCase().includes(q)) : todos;
+
+  async function toggle(p: Produto) {
+    if (p.tipo === "kit") return; // kit é sempre pronta-entrega
+    const on = !(Number(p.controla_estoque) === 1);
+    setTodos((ts) => ts.map((x) => (x.id === p.id ? { ...x, controla_estoque: on ? 1 : 0 } : x)));
+    setSalvando(true);
+    try { await api.toggleEstoqueProduto(p.id, on); } catch { /* revert on error */ setTodos((ts) => ts.map((x) => (x.id === p.id ? { ...x, controla_estoque: on ? 0 : 1 } : x))); }
+    finally { setSalvando(false); }
+  }
+
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd" style={{ background: "linear-gradient(130deg,#0ea5e9,#2563eb)" }}>
+          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">Produtos no estoque de pronta-entrega</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
+        </div>
+        <div className="modal-bd">
+          <input className="busca-ped" style={{ width: "100%", marginBottom: 10 }} placeholder="🔎 Buscar produto…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <div style={{ maxHeight: "52vh", overflowY: "auto" }}>
+            <table className="table">
+              <tbody>
+                {lista.map((p) => {
+                  const on = p.tipo === "kit" || Number(p.controla_estoque) === 1;
+                  return (
+                    <tr key={p.id} onClick={() => toggle(p)} style={{ cursor: p.tipo === "kit" ? "default" : "pointer" }}>
+                      <td style={{ width: 34 }}><input type="checkbox" checked={on} disabled={p.tipo === "kit"} readOnly /></td>
+                      <td className="strong">{p.nome}{p.tipo === "kit" && <span className="chip" style={{ marginLeft: 6 }}>🧩 kit</span>}</td>
+                      <td className="muted">{[p.cor, p.tamanho].filter(Boolean).join(" · ") || "—"}</td>
+                    </tr>
+                  );
+                })}
+                {lista.length === 0 && <tr><td className="empty pad">Nenhum produto.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="modal-ft">
+          <span className="muted" style={{ marginRight: "auto", fontSize: 12 }}>{salvando ? "Salvando…" : "Marque os que ficam no estoque. Kits entram automático."}</span>
+          <button className="kbtn go" onClick={onFeito}>Concluir</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
