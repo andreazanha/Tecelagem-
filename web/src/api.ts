@@ -98,6 +98,20 @@ export interface Tamanho {
   ordem: number;
 }
 
+// Materiais (insumos da ficha técnica): forro, zíper, etiqueta, encarte, embalagem, refil.
+export type MaterialCategoria = "forro" | "ziper" | "etiqueta" | "encarte" | "embalagem" | "refil";
+export interface Material {
+  id: string;
+  categoria: MaterialCategoria;
+  nome: string;
+  tamanho?: string | null;
+  fornecedor_id?: string | null;
+  fornecedor_nome?: string | null;
+  cor?: string | null;
+  cor_hex?: string | null;
+  codigo?: string | null;
+}
+
 export interface Tassel {
   cor: string;
   tamanho: string; // G | P | ...
@@ -576,6 +590,12 @@ export const api = {
     jsonPost("/api/tamanhos", b).then((r) => j<Tamanho>(r)),
   bulkTamanhos: (texto: string) =>
     jsonPost("/api/tamanhos/bulk", { texto }).then((r) => j<{ total: number; criados: number; ignorados: number; ordenados: string[] }>(r)),
+  listarMateriais: (categoria?: string) =>
+    fetch("/api/materiais" + (categoria ? `?categoria=${categoria}` : "")).then((r) => j<Material[]>(r)),
+  salvarMaterial: (b: Partial<Material>) =>
+    jsonPost("/api/materiais", b).then((r) => j<{ id: string }>(r)),
+  excluirMaterial: (id: string) =>
+    fetch(`/api/materiais/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   excluirTamanho: (id: string) =>
     fetch(`/api/tamanhos/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) =>
       j<{ ok: boolean }>(r)

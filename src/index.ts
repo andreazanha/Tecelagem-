@@ -11,6 +11,7 @@ import { push } from "./routes/push";
 import { produtos, insumos, fornecedores, lembreteReposicao } from "./routes/produtos";
 import { representantes, comercial } from "./routes/comercial";
 import { funil } from "./routes/funil";
+import { materiais } from "./routes/materiais";
 import { atendimento, followupAtendimento } from "./routes/atendimento";
 import { assistente } from "./routes/assistente";
 
@@ -39,6 +40,7 @@ app.route("/api/modelos", modelos);
 app.route("/api/cores", cores);
 app.route("/api/tipos-fio", tiposFio);
 app.route("/api/tamanhos", tamanhos);
+app.route("/api/materiais", materiais);
 app.route("/api/tasseis", tasseis);
 app.route("/api/prestadores", prestadores);
 app.route("/api/costura", costura);

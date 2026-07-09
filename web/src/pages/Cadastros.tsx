@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor } from "../api";
+import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type Material, type MaterialCategoria } from "../api";
 import { getUser, PAGINAS, type Usuario } from "../auth";
 
-type AbaCad = "produtos" | "cores" | "tipos-fio" | "tamanhos" | "fornecedores" | "operadores" | "usuarios";
-const ABAS_CAD: AbaCad[] = ["produtos", "cores", "tipos-fio", "tamanhos", "fornecedores", "operadores", "usuarios"];
+type AbaCad = "produtos" | "cores" | "tipos-fio" | "tamanhos" | "materiais" | "fornecedores" | "operadores" | "usuarios";
+const ABAS_CAD: AbaCad[] = ["produtos", "cores", "tipos-fio", "tamanhos", "materiais", "fornecedores", "operadores", "usuarios"];
 const ABA_LABEL: Record<AbaCad, string> = {
   produtos: "Produtos",
   cores: "Cores",
   "tipos-fio": "Tipos de fio",
   tamanhos: "Tamanhos",
+  materiais: "Materiais",
   fornecedores: "Fornecedores",
   operadores: "Operadores",
   usuarios: "Usuários",
@@ -42,6 +43,7 @@ export function Cadastros() {
     { id: "cores", label: "Cores" },
     { id: "tipos-fio", label: "Tipos de fio" },
     { id: "tamanhos", label: "Tamanhos" },
+    { id: "materiais", label: "Materiais" },
     { id: "fornecedores", label: "Fornecedores" },
     { id: "operadores", label: "Operadores" },
     { id: "usuarios", label: "Usuários", adminOnly: true },
@@ -72,6 +74,7 @@ export function Cadastros() {
       {aba === "cores" && <AbaCores />}
       {aba === "tipos-fio" && <AbaTiposFio />}
       {aba === "tamanhos" && <AbaTamanhos />}
+      {aba === "materiais" && <AbaMateriais />}
       {aba === "fornecedores" && <AbaFornecedores />}
       {aba === "operadores" && <OperadoresCadastro />}
       {aba === "usuarios" && ehAdmin && <UsuariosCadastro />}
@@ -783,6 +786,123 @@ function AbaTamanhos() {
                 <td className="num">{t.ordem}</td>
                 <td className="strong">{t.nome}</td>
                 <td><button className="icon-btn" title="Remover" onClick={() => remover(t)}>✕</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// ═══════════════════════════ Aba MATERIAIS ═══════════════════════════
+const MAT_CATS: { id: MaterialCategoria; label: string; cor: string }[] = [
+  { id: "forro", label: "Forro", cor: "#0891b2" },
+  { id: "ziper", label: "Zíper", cor: "#7c3aed" },
+  { id: "etiqueta", label: "Etiqueta", cor: "#ca8a04" },
+  { id: "encarte", label: "Encarte", cor: "#16a34a" },
+  { id: "embalagem", label: "Embalagem", cor: "#ea580c" },
+  { id: "refil", label: "Refil", cor: "#db2777" },
+];
+
+function AbaMateriais() {
+  // Cadastro SEPARADO por material (sub-aba): cada material tem sua própria tela
+  // e lista — base pro controle de estoque de cada um.
+  const [cat, setCat] = useState<MaterialCategoria>("forro");
+  const meta = MAT_CATS.find((c) => c.id === cat)!;
+  return (
+    <>
+      <div className="segmented" style={{ marginBottom: 16, flexWrap: "wrap" }}>
+        {MAT_CATS.map((c) => (
+          <button type="button" key={c.id} className={"seg" + (cat === c.id ? " seg-on" : "")} onClick={() => setCat(c.id)}>
+            <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: c.cor, marginRight: 7 }} />{c.label}
+          </button>
+        ))}
+      </div>
+      <CadastroMaterial key={cat} categoria={cat} label={meta.label} cor={meta.cor} />
+    </>
+  );
+}
+
+// Uma tela de cadastro para UM material (forro, zíper, etc.). Só desse material.
+function CadastroMaterial({ categoria, label, cor: catCor }: { categoria: MaterialCategoria; label: string; cor: string }) {
+  const [itens, setItens] = useState<Material[]>([]);
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [nome, setNome] = useState("");
+  const [tamanho, setTamanho] = useState("");
+  const [fornId, setFornId] = useState("");
+  const [cor, setCor] = useState("");
+  const [corHex, setCorHex] = useState("#333333");
+  const [codigo, setCodigo] = useState("");
+  const isZip = categoria === "ziper";
+
+  function recarregar() { api.listarMateriais(categoria).then(setItens).catch(() => {}); }
+  useEffect(() => { recarregar(); api.listarFornecedores().then(setFornecedores).catch(() => {}); /* eslint-disable-next-line */ }, [categoria]);
+
+  function limpar() { setEditId(null); setNome(""); setTamanho(""); setFornId(""); setCor(""); setCorHex("#333333"); setCodigo(""); }
+  function editar(m: Material) { setEditId(m.id); setNome(m.nome); setTamanho(m.tamanho || ""); setFornId(m.fornecedor_id || ""); setCor(m.cor || ""); setCorHex(m.cor_hex || "#333333"); setCodigo(m.codigo || ""); }
+
+  async function salvar() {
+    if (!nome.trim()) return alert("Informe o nome do material.");
+    try {
+      await api.salvarMaterial({
+        id: editId || undefined, categoria, nome: nome.trim(), tamanho: tamanho.trim() || null, fornecedor_id: fornId || null,
+        cor: isZip ? (cor.trim() || null) : null, cor_hex: isZip ? corHex : null, codigo: isZip ? (codigo.trim() || null) : null,
+      });
+      limpar(); recarregar();
+    } catch (e) { alert((e as Error).message); }
+  }
+  async function remover(m: Material) {
+    if (!confirm(`Excluir "${m.nome}${m.tamanho ? " " + m.tamanho : ""}"?`)) return;
+    try { await api.excluirMaterial(m.id); if (editId === m.id) limpar(); recarregar(); } catch (e) { alert((e as Error).message); }
+  }
+
+  return (
+    <>
+      <div className="card pad" style={{ marginBottom: 16 }}>
+        <h2>{editId ? `Editar ${label.toLowerCase()}` : `Novo ${label.toLowerCase()}`}</h2>
+        <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
+          <label className="fld">Nome<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder={`ex.: ${label} branco`} style={{ minWidth: 200 }} /></label>
+          <label className="fld">Tamanho<input value={tamanho} onChange={(e) => setTamanho(e.target.value)} placeholder="ex.: 90X200" style={{ width: 130 }} /></label>
+          <label className="fld">Fornecedor
+            <select value={fornId} onChange={(e) => setFornId(e.target.value)} style={{ minWidth: 170 }}>
+              <option value="">Sem fornecedor</option>
+              {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+            </select>
+          </label>
+          {isZip && <>
+            <label className="fld">Cor<input value={cor} onChange={(e) => setCor(e.target.value)} placeholder="ex.: Preto" style={{ width: 120 }} /></label>
+            <label className="fld">Código<input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Z5-PT" style={{ width: 110 }} /></label>
+            <label className="fld">Amostra<input type="color" value={corHex} onChange={(e) => setCorHex(e.target.value)} style={{ width: 46, height: 36, padding: 2 }} /></label>
+          </>}
+          <button className="btn btn-primary" onClick={salvar}>{editId ? "Salvar" : "＋ Adicionar"}</button>
+          {editId && <button className="btn" onClick={limpar}>Cancelar</button>}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="row-gap" style={{ alignItems: "center", gap: 10, padding: "10px 12px" }}>
+          <span className="chip" style={{ background: catCor, color: "#fff" }}>{label}</span>
+          <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>{itens.length} item(ns)</span>
+        </div>
+        <table className="table">
+          <thead><tr><th>Material</th>{isZip && <th>Cor / Código</th>}<th>Tamanho</th><th>Fornecedor</th><th></th></tr></thead>
+          <tbody>
+            {itens.length === 0 ? (
+              <tr><td colSpan={isZip ? 5 : 4} className="empty pad">Nenhum {label.toLowerCase()} cadastrado ainda.</td></tr>
+            ) : itens.map((m) => (
+              <tr key={m.id}>
+                <td className="strong">{m.nome}</td>
+                {isZip && (
+                  <td><span className="cad-sw" style={{ background: m.cor_hex || "#e2e8f0", marginRight: 7 }} />{m.cor || "—"} {m.codigo && <span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{m.codigo}</span>}</td>
+                )}
+                <td className="strong">{m.tamanho || "—"}</td>
+                <td>{m.fornecedor_nome || "—"}</td>
+                <td style={{ whiteSpace: "nowrap" }}>
+                  <button className="icon-btn" title="Editar" onClick={() => editar(m)}>✎</button>
+                  <button className="icon-btn" title="Excluir" onClick={() => remover(m)}>✕</button>
+                </td>
               </tr>
             ))}
           </tbody>

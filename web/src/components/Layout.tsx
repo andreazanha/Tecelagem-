@@ -147,6 +147,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/cadastros?aba=cores", icon: "🎨", label: "Cores", page: "cadastros" },
       { to: "/cadastros?aba=tipos-fio", icon: "🧵", label: "Tipos de fio", page: "cadastros" },
       { to: "/cadastros?aba=tamanhos", icon: "📏", label: "Tamanhos", page: "cadastros" },
+      { to: "/cadastros?aba=materiais", icon: "🧷", label: "Materiais", page: "cadastros" },
       { to: "/cadastros?aba=fornecedores", icon: "🚛", label: "Fornecedores", page: "cadastros" },
       { to: "/cadastros?aba=usuarios", icon: "🔐", label: "Usuários", page: "cadastros" },
     ],
