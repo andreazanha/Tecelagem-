@@ -241,6 +241,21 @@ materiais.post("/:id/mov", async (c) => {
   return c.json({ id, saldo: novo });
 });
 
+// Excluir TODOS os materiais de um tipo (categoria). Uso: limpar e recadastrar.
+materiais.post("/excluir-todos", async (c) => {
+  const b = await c.req.json<{ categoria?: string }>().catch(() => ({}) as Record<string, unknown>);
+  const categoria = String(b.categoria ?? "").trim().toLowerCase();
+  if (!categoria) return c.json({ error: "categoria é obrigatória" }, 400);
+  const { results } = await c.env.DB.prepare("SELECT id FROM materiais WHERE categoria = ?").bind(categoria).all<{ id: string }>();
+  const ids = results.map((r) => r.id);
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM materiais WHERE categoria = ?").bind(categoria),
+    ...ids.map((id) => c.env.DB.prepare("DELETE FROM material_mov WHERE material_id = ?").bind(id)),
+    ...ids.map((id) => c.env.DB.prepare("DELETE FROM modelo_materiais WHERE material_id = ?").bind(id)),
+  ]);
+  return c.json({ ok: true, excluidos: ids.length });
+});
+
 materiais.delete("/:id", async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare("DELETE FROM materiais WHERE id = ?").bind(c.req.param("id")),

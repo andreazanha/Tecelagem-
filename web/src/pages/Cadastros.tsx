@@ -1255,7 +1255,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const bulkEx = bulkCols.map((campo) => {
     if (campo === "nome") return `${cat.nome} branco`;
     if (campo === "codigo_interno") return "SKU-01";
-    if (campo === "tamanho") return "90x200";
+    if (campo === "tamanho") return ""; // deixa em branco no exemplo
     if (campo === "cor") return "Branco";
     if (campo === "codigo") return "P-101";
     if (campo === "unidade") return "un";
@@ -1282,6 +1282,25 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const [novoForn, setNovoForn] = useState(false);
   const [entrada, setEntrada] = useState<Material | null>(null);
   const [colar, setColar] = useState(false);
+
+  // Desfazer a última importação MESMO depois de fechar o modal: guardo os ids
+  // criados no localStorage (por tipo). Some quando é desfeita ou substituída.
+  const undoKey = `mat-undo-${categoria}`;
+  const [undoIds, setUndoIds] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(undoKey) || "[]"); } catch { return []; } });
+  function salvarUndo(ids: string[]) { setUndoIds(ids); localStorage.setItem(undoKey, JSON.stringify(ids)); }
+  function limparUndo() { setUndoIds([]); localStorage.removeItem(undoKey); }
+  async function desfazerImport() {
+    if (!undoIds.length) return;
+    if (!confirm(`Desfazer a última importação? Isso apaga os ${undoIds.length} ${label.toLowerCase()}(s) que ela criou.`)) return;
+    try { await Promise.all(undoIds.map((id) => api.excluirMaterial(id))); limparUndo(); recarregar(); onMudou?.(); }
+    catch (e) { alert((e as Error).message); }
+  }
+  async function excluirTodos() {
+    if (!itens.length) return;
+    if (!confirm(`Excluir TODOS os ${itens.length} ${label.toLowerCase()}(s) deste tipo? Não dá pra desfazer.`)) return;
+    try { await api.excluirTodosMateriais(categoria); limparUndo(); recarregar(); onMudou?.(); }
+    catch (e) { alert((e as Error).message); }
+  }
 
   function parseExtra(m: Material): Record<string, string> {
     if (!m.extra) return {};
@@ -1323,14 +1342,19 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
     try { await api.excluirMaterial(m.id); if (editId === m.id) limpar(); recarregar(); onMudou?.(); } catch (e) { alert((e as Error).message); }
   }
 
-  const colSpan = 7 + (temCor ? 1 : 0) + camposExtra.length;
+  const colSpan = 7 + (temCor ? 2 : 0) + camposExtra.length;
   return (
     <>
       <div className="card pad" style={{ marginBottom: 16 }}>
         <div className="row-gap" style={{ alignItems: "center" }}>
           <h2 style={{ margin: 0 }}>{editId ? `Editar ${label.toLowerCase()}` : `Novo ${label.toLowerCase()}`}</h2>
           <span style={{ marginLeft: "auto" }} />
+          {undoIds.length > 0 && (
+            <button className="btn btn-soft" title="Desfazer a última importação (apaga só o que ela criou)" onClick={desfazerImport}
+              style={{ color: "#b91c1c", borderColor: "#fca5a5" }}>↩️ Desfazer importação ({undoIds.length})</button>
+          )}
           <button className="btn btn-soft" title="Colar vários de uma vez" onClick={() => setColar(true)}>📋 Colar em massa</button>
+          {itens.length > 0 && <button className="btn btn-soft" title="Excluir todos deste tipo" onClick={excluirTodos} style={{ color: "#b91c1c" }}>🗑 Excluir todos</button>}
           <button className="btn btn-soft" title="Renomear insumo" onClick={onEditarCat}>✎ Insumo</button>
           <button className="btn" title="Excluir insumo" onClick={onExcluirCat}>🗑</button>
         </div>
@@ -1384,7 +1408,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
         <table className="table">
           <thead><tr>
             <th>Material</th>
-            {temCor && <th>Cor / Código</th>}
+            {temCor && <><th>Cor</th><th>Código</th></>}
             <th>Tamanho</th>
             {camposExtra.map((cp) => <th key={cp.key}>{cp.label}</th>)}
             <th className="num">Estoque</th><th className="num">Preço</th><th>Fornecedor</th><th></th>
@@ -1403,9 +1427,10 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
                     {m.codigo_interno && <span className="muted" style={{ fontSize: 10.5, marginLeft: 6, fontFamily: "ui-monospace, monospace" }}>{m.codigo_interno}</span>}
                     {inativo && <span className="chip" style={{ marginLeft: 6, background: "#e2e8f0", color: "#475569" }}>inativo</span>}
                   </td>
-                  {temCor && (
-                    <td><span className="cad-sw" style={{ background: m.cor_hex || "#e2e8f0", marginRight: 7 }} />{m.cor || "—"} {m.codigo && <span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{m.codigo}</span>}</td>
-                  )}
+                  {temCor && (<>
+                    <td><span className="cad-sw" style={{ background: m.cor_hex || "#e2e8f0", marginRight: 7 }} />{m.cor || "—"}</td>
+                    <td>{m.codigo ? <span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{m.codigo}</span> : "—"}</td>
+                  </>)}
                   <td className="strong">{m.tamanho || "—"}</td>
                   {camposExtra.map((cp) => <td key={cp.key}>{mx[cp.key] || "—"}</td>)}
                   <td className="num">
@@ -1432,8 +1457,8 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
         titulo={`Colar ${label.toLowerCase()} em massa`}
         colunas={bulkLabel}
         exemplo={bulkEx}
-        onColar={(texto) => api.bulkMateriais(categoria, texto, bulkCols)}
-        onUndo={(ids) => Promise.all(ids.map((id) => api.excluirMaterial(id))).then(() => {})}
+        onColar={async (texto) => { const r = await api.bulkMateriais(categoria, texto, bulkCols); if (r.ids?.length) salvarUndo(r.ids); return r; }}
+        onUndo={(ids) => Promise.all(ids.map((id) => api.excluirMaterial(id))).then(() => { limparUndo(); })}
         onFechar={() => setColar(false)}
         onSalvo={() => { recarregar(); onMudou?.(); }}
       />}
