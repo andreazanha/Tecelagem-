@@ -1009,8 +1009,25 @@ function AbaTamanhos() {
 }
 
 // ═══════════════════════════ Aba MATERIAIS ═══════════════════════════
-const UNIDADES = ["un", "cm", "m", "kg", "g", "par", "rolo"];
+const UNIDADES = ["un", "kg", "g", "m", "cm", "par", "rolo", "pacote", "caixa"];
 const CORES_INSUMO = ["#0891b2", "#7c3aed", "#ca8a04", "#16a34a", "#ea580c", "#db2777", "#2563eb", "#dc2626", "#64748b"];
+
+// Campos específicos por TIPO de material. `cor` mostra o bloco cor+código+amostra;
+// `campos` são atributos escalares guardados em `extra` (JSON). Tipos sem config
+// (inclusive os criados pelo usuário) usam apenas os campos comuns.
+type CampoExtra = { key: string; label: string; ph?: string; width?: number };
+const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: CampoExtra[] }> = {
+  ziper:     { cor: true,  campos: [{ key: "comprimento", label: "Comprimento", ph: "ex.: 40 cm", width: 110 }] },
+  forro:     { cor: true,  campos: [{ key: "largura", label: "Largura", ph: "ex.: 1,40 m", width: 100 }, { key: "gramatura", label: "Gramatura", ph: "ex.: 180 g/m²", width: 110 }] },
+  refil:     { campos: [{ key: "medida", label: "Medida", ph: "ex.: 50x50", width: 100 }] },
+  etiqueta:  { campos: [{ key: "texto", label: "Texto / composição", ph: "ex.: 100% algodão", width: 200 }] },
+  encarte:   { campos: [{ key: "modelo", label: "Modelo", ph: "ex.: A6 frente/verso", width: 160 }] },
+  embalagem: { campos: [{ key: "dimensao", label: "Dimensão", ph: "ex.: 30x40", width: 120 }] },
+  tag:       { campos: [{ key: "modelo", label: "Modelo", ph: "ex.: Kraft redonda", width: 160 }] },
+  tabuleiro: { campos: [{ key: "medida", label: "Medida", ph: "ex.: 45x45", width: 110 }] },
+  tassel:    { cor: true },
+  linha:     { cor: true },
+};
 const nBR = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 const rBR = (v: number) => "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -1022,14 +1039,25 @@ function AbaMateriais() {
   const [cats, setCats] = useState<MaterialCategoriaDef[]>([]);
   const [cat, setCat] = useState<string>(sp.get("mat") || "");
   const [modal, setModal] = useState<MaterialCategoriaDef | "novo" | null>(null);
+  const [todos, setTodos] = useState<Material[]>([]);
 
   function recarregarCats() { return api.listarCategoriasMaterial().then((cs) => { setCats(cs); return cs; }); }
-  useEffect(() => { recarregarCats().then((cs) => { if (!sp.get("mat") && cs[0]) setCat(cs[0].slug); }); /* eslint-disable-next-line */ }, []);
+  function recarregarKpis() { api.listarMateriais().then(setTodos).catch(() => {}); }
+  useEffect(() => { recarregarCats().then((cs) => { if (!sp.get("mat") && cs[0]) setCat(cs[0].slug); }); recarregarKpis(); /* eslint-disable-next-line */ }, []);
   useEffect(() => { const q = sp.get("mat"); if (q) setCat(q); }, [sp]);
+
+  const nAtivos = todos.filter((m) => m.status !== "inativo").length;
+  const nBaixo = todos.filter((m) => (m.minimo || 0) > 0 && (m.saldo || 0) < (m.minimo || 0)).length;
+  const valorEstoque = todos.reduce((s, m) => s + (m.saldo || 0) * (m.preco || 0), 0);
 
   const meta = cats.find((c) => c.slug === cat) || null;
   return (
     <>
+      <div className="prod-kpis" style={{ marginBottom: 16 }}>
+        <div className="kpi"><div className="kpi-v">{nAtivos}</div><div className="kpi-l">Materiais ativos</div></div>
+        <div className="kpi"><div className="kpi-v" style={{ color: nBaixo ? "#dc2626" : undefined }}>{nBaixo}</div><div className="kpi-l">Abaixo do mínimo</div></div>
+        <div className="kpi"><div className="kpi-v">{rBR(valorEstoque)}</div><div className="kpi-l">Valor em estoque</div></div>
+      </div>
       <div className="segmented" style={{ marginBottom: 16, flexWrap: "wrap" }}>
         {cats.map((c) => (
           <button type="button" key={c.slug} className={"seg" + (cat === c.slug ? " seg-on" : "")} onClick={() => setCat(c.slug)}>
@@ -1044,7 +1072,7 @@ function AbaMateriais() {
         <ComprasMateriais />
       ) : meta ? (
         <CadastroMaterial
-          key={meta.slug} cat={meta}
+          key={meta.slug} cat={meta} onMudou={recarregarKpis}
           onEditarCat={() => setModal(meta)}
           onExcluirCat={async () => {
             if (!confirm(`Excluir o insumo "${meta.nome}"? (só se estiver vazio)`)) return;
@@ -1104,8 +1132,11 @@ function InsumoModal({ cat, onFechar, onSalvo }: { cat: MaterialCategoriaDef | n
 }
 
 // Tela de cadastro + ESTOQUE de UM insumo. Controla saldo/mínimo/preço p/ compras.
-function CadastroMaterial({ cat, onEditarCat, onExcluirCat }: { cat: MaterialCategoriaDef; onEditarCat: () => void; onExcluirCat: () => void }) {
+function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: MaterialCategoriaDef; onEditarCat: () => void; onExcluirCat: () => void; onMudou?: () => void }) {
   const categoria = cat.slug, label = cat.nome, catCor = cat.cor || "#64748b";
+  const cfg = CAMPOS_POR_TIPO[categoria] || {};
+  const temCor = !!cfg.cor;
+  const camposExtra = cfg.campos || [];
   const [itens, setItens] = useState<Material[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
@@ -1118,38 +1149,54 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat }: { cat: MaterialCat
   const [unidade, setUnidade] = useState("un");
   const [preco, setPreco] = useState("");
   const [minimo, setMinimo] = useState("");
+  const [codInterno, setCodInterno] = useState("");
+  const [status, setStatus] = useState("ativo");
+  const [obs, setObs] = useState("");
+  const [extra, setExtra] = useState<Record<string, string>>({});
   const [novoForn, setNovoForn] = useState(false);
   const [entrada, setEntrada] = useState<Material | null>(null);
-  const isZip = categoria === "ziper";
 
+  function parseExtra(m: Material): Record<string, string> {
+    if (!m.extra) return {};
+    try { const o = JSON.parse(m.extra); return o && typeof o === "object" ? o : {}; } catch { return {}; }
+  }
   function recarregar() { api.listarMateriais(categoria).then(setItens).catch(() => {}); }
   function recarregarForn() { return api.listarFornecedores().then(setFornecedores).catch(() => {}); }
   useEffect(() => { recarregar(); recarregarForn(); /* eslint-disable-next-line */ }, [categoria]);
 
-  function limpar() { setEditId(null); setNome(""); setTamanho(""); setFornId(""); setCor(""); setCorHex("#333333"); setCodigo(""); setUnidade("un"); setPreco(""); setMinimo(""); }
+  function limpar() {
+    setEditId(null); setNome(""); setTamanho(""); setFornId(""); setCor(""); setCorHex("#333333"); setCodigo("");
+    setUnidade("un"); setPreco(""); setMinimo(""); setCodInterno(""); setStatus("ativo"); setObs(""); setExtra({});
+  }
   function editar(m: Material) {
     setEditId(m.id); setNome(m.nome); setTamanho(m.tamanho || ""); setFornId(m.fornecedor_id || "");
     setCor(m.cor || ""); setCorHex(m.cor_hex || "#333333"); setCodigo(m.codigo || "");
     setUnidade(m.unidade || "un"); setPreco(m.preco != null ? String(m.preco) : ""); setMinimo(m.minimo != null ? String(m.minimo) : "");
+    setCodInterno(m.codigo_interno || ""); setStatus(m.status === "inativo" ? "inativo" : "ativo"); setObs(m.obs || ""); setExtra(parseExtra(m));
   }
 
   async function salvar() {
     if (!nome.trim()) return alert("Informe o nome do material.");
+    // extra: só as chaves configuradas para este tipo, sem valores vazios.
+    const extraLimpo: Record<string, string> = {};
+    for (const cp of camposExtra) { const v = (extra[cp.key] || "").trim(); if (v) extraLimpo[cp.key] = v; }
     try {
       await api.salvarMaterial({
         id: editId || undefined, categoria, nome: nome.trim(), tamanho: tamanho.trim() || null, fornecedor_id: fornId || null,
-        cor: isZip ? (cor.trim() || null) : null, cor_hex: isZip ? corHex : null, codigo: isZip ? (codigo.trim() || null) : null,
+        cor: temCor ? (cor.trim() || null) : null, cor_hex: temCor ? corHex : null, codigo: temCor ? (codigo.trim() || null) : null,
         unidade, preco: preco.trim() ? Number(preco.replace(",", ".")) : null, minimo: minimo.trim() ? Number(minimo.replace(",", ".")) : 0,
+        codigo_interno: codInterno.trim() || null, status, obs: obs.trim() || null,
+        extra: JSON.stringify(extraLimpo),
       });
-      limpar(); recarregar();
+      limpar(); recarregar(); onMudou?.();
     } catch (e) { alert((e as Error).message); }
   }
   async function remover(m: Material) {
     if (!confirm(`Excluir "${m.nome}${m.tamanho ? " " + m.tamanho : ""}"?`)) return;
-    try { await api.excluirMaterial(m.id); if (editId === m.id) limpar(); recarregar(); } catch (e) { alert((e as Error).message); }
+    try { await api.excluirMaterial(m.id); if (editId === m.id) limpar(); recarregar(); onMudou?.(); } catch (e) { alert((e as Error).message); }
   }
 
-  const colSpan = isZip ? 7 : 6;
+  const colSpan = 7 + (temCor ? 1 : 0) + camposExtra.length;
   return (
     <>
       <div className="card pad" style={{ marginBottom: 16 }}>
@@ -1161,7 +1208,18 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat }: { cat: MaterialCat
         </div>
         <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
           <label className="fld">Nome<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder={`ex.: ${label} branco`} style={{ minWidth: 190 }} /></label>
+          <label className="fld">Cód. interno<input value={codInterno} onChange={(e) => setCodInterno(e.target.value)} placeholder="SKU" style={{ width: 100 }} /></label>
           <label className="fld">Tamanho<input value={tamanho} onChange={(e) => setTamanho(e.target.value)} placeholder="ex.: 90X200" style={{ width: 120 }} /></label>
+          {temCor && <>
+            <label className="fld">Cor<input value={cor} onChange={(e) => setCor(e.target.value)} placeholder="ex.: Preto" style={{ width: 110 }} /></label>
+            <label className="fld">Código<input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Z5-PT" style={{ width: 100 }} /></label>
+            <label className="fld">Amostra<input type="color" value={corHex} onChange={(e) => setCorHex(e.target.value)} style={{ width: 46, height: 36, padding: 2 }} /></label>
+          </>}
+          {camposExtra.map((cp) => (
+            <label className="fld" key={cp.key}>{cp.label}
+              <input value={extra[cp.key] || ""} onChange={(e) => setExtra((x) => ({ ...x, [cp.key]: e.target.value }))} placeholder={cp.ph} style={{ width: cp.width || 130 }} />
+            </label>
+          ))}
           <label className="fld">Unidade
             <select value={unidade} onChange={(e) => setUnidade(e.target.value)} style={{ width: 90 }}>
               {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
@@ -1178,11 +1236,13 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat }: { cat: MaterialCat
               <button type="button" className="btn btn-soft" title="Novo fornecedor" onClick={() => setNovoForn(true)} style={{ padding: "8px 11px" }}>＋</button>
             </div>
           </label>
-          {isZip && <>
-            <label className="fld">Cor<input value={cor} onChange={(e) => setCor(e.target.value)} placeholder="ex.: Preto" style={{ width: 110 }} /></label>
-            <label className="fld">Código<input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Z5-PT" style={{ width: 100 }} /></label>
-            <label className="fld">Amostra<input type="color" value={corHex} onChange={(e) => setCorHex(e.target.value)} style={{ width: 46, height: 36, padding: 2 }} /></label>
-          </>}
+          <label className="fld">Status
+            <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 100 }}>
+              <option value="ativo">Ativo</option>
+              <option value="inativo">Inativo</option>
+            </select>
+          </label>
+          <label className="fld" style={{ flex: 1, minWidth: 180 }}>Observações<input value={obs} onChange={(e) => setObs(e.target.value)} placeholder="opcional" /></label>
           <button className="btn btn-primary" onClick={salvar}>{editId ? "Salvar" : "＋ Adicionar"}</button>
           {editId && <button className="btn" onClick={limpar}>Cancelar</button>}
         </div>
@@ -1194,19 +1254,32 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat }: { cat: MaterialCat
           <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>{itens.length} item(ns)</span>
         </div>
         <table className="table">
-          <thead><tr><th>Material</th>{isZip && <th>Cor / Código</th>}<th>Tamanho</th><th className="num">Estoque</th><th className="num">Preço</th><th>Fornecedor</th><th></th></tr></thead>
+          <thead><tr>
+            <th>Material</th>
+            {temCor && <th>Cor / Código</th>}
+            <th>Tamanho</th>
+            {camposExtra.map((cp) => <th key={cp.key}>{cp.label}</th>)}
+            <th className="num">Estoque</th><th className="num">Preço</th><th>Fornecedor</th><th></th>
+          </tr></thead>
           <tbody>
             {itens.length === 0 ? (
               <tr><td colSpan={colSpan} className="empty pad">Nenhum {label.toLowerCase()} cadastrado ainda.</td></tr>
             ) : itens.map((m) => {
               const saldo = m.saldo || 0, min = m.minimo || 0, baixo = min > 0 && saldo < min;
+              const mx = (() => { try { return m.extra ? JSON.parse(m.extra) : {}; } catch { return {}; } })();
+              const inativo = m.status === "inativo";
               return (
-                <tr key={m.id}>
-                  <td className="strong">{m.nome}</td>
-                  {isZip && (
+                <tr key={m.id} style={inativo ? { opacity: 0.55 } : undefined}>
+                  <td className="strong">
+                    {m.nome}
+                    {m.codigo_interno && <span className="muted" style={{ fontSize: 10.5, marginLeft: 6, fontFamily: "ui-monospace, monospace" }}>{m.codigo_interno}</span>}
+                    {inativo && <span className="chip" style={{ marginLeft: 6, background: "#e2e8f0", color: "#475569" }}>inativo</span>}
+                  </td>
+                  {temCor && (
                     <td><span className="cad-sw" style={{ background: m.cor_hex || "#e2e8f0", marginRight: 7 }} />{m.cor || "—"} {m.codigo && <span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{m.codigo}</span>}</td>
                   )}
                   <td className="strong">{m.tamanho || "—"}</td>
+                  {camposExtra.map((cp) => <td key={cp.key}>{mx[cp.key] || "—"}</td>)}
                   <td className="num">
                     <span className={baixo ? "mat-saldo-baixo" : ""}>{nBR(saldo)} {m.unidade || ""}</span>
                     {min > 0 && <div className="muted" style={{ fontSize: 10.5 }}>mín {nBR(min)}{baixo ? " · repor" : ""}</div>}
@@ -1226,7 +1299,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat }: { cat: MaterialCat
       </div>
 
       {novoForn && <FornecedorRapido onFechar={() => setNovoForn(false)} onSalvo={async (id) => { setNovoForn(false); await recarregarForn(); setFornId(id); }} />}
-      {entrada && <MovEstoqueModal material={entrada} onFechar={() => setEntrada(null)} onSalvo={() => { setEntrada(null); recarregar(); }} />}
+      {entrada && <MovEstoqueModal material={entrada} onFechar={() => setEntrada(null)} onSalvo={() => { setEntrada(null); recarregar(); onMudou?.(); }} />}
     </>
   );
 }

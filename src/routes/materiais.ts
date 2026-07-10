@@ -94,15 +94,49 @@ materiais.post("/", async (c) => {
   const id = (b.id as string) || uid();
   const hexRaw = String(b.cor_hex ?? "").trim();
   const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hexRaw) ? hexRaw : null;
+  const status = String(b.status ?? "ativo").trim() === "inativo" ? "inativo" : "ativo";
+  // extra: campos específicos do tipo (JSON). Aceita objeto ou string já serializada.
+  let extra: string | null = null;
+  if (b.extra != null) {
+    try { extra = typeof b.extra === "string" ? (b.extra.trim() || null) : JSON.stringify(b.extra); }
+    catch { extra = null; }
+  }
   await c.env.DB.prepare(
-    `INSERT INTO materiais (id, categoria, nome, tamanho, fornecedor_id, cor, cor_hex, codigo, unidade, preco, minimo, saldo)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT saldo FROM materiais WHERE id = ?), 0))
+    `INSERT INTO materiais (id, categoria, nome, tamanho, fornecedor_id, cor, cor_hex, codigo, unidade, preco, minimo,
+       codigo_interno, status, obs, extra, saldo)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT saldo FROM materiais WHERE id = ?), 0))
      ON CONFLICT(id) DO UPDATE SET categoria=excluded.categoria, nome=excluded.nome, tamanho=excluded.tamanho,
        fornecedor_id=excluded.fornecedor_id, cor=excluded.cor, cor_hex=excluded.cor_hex, codigo=excluded.codigo,
-       unidade=excluded.unidade, preco=excluded.preco, minimo=excluded.minimo`
+       unidade=excluded.unidade, preco=excluded.preco, minimo=excluded.minimo,
+       codigo_interno=excluded.codigo_interno, status=excluded.status, obs=excluded.obs, extra=excluded.extra`
   ).bind(id, categoria, nome, str(b.tamanho), str(b.fornecedor_id), str(b.cor), hex, str(b.codigo),
-         str(b.unidade), num(b.preco), num(b.minimo) ?? 0, id).run();
+         str(b.unidade), num(b.preco), num(b.minimo) ?? 0, str(b.codigo_interno), status, str(b.obs), extra, id).run();
   return c.json({ id });
+});
+
+// ── Mapa de refil: medida do produto → medida do refil (base da ficha) ─────────
+materiais.get("/refil-mapa", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT medida_produto, medida_refil FROM refil_mapa ORDER BY medida_produto"
+  ).all();
+  return c.json(results);
+});
+
+materiais.post("/refil-mapa", async (c) => {
+  const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
+  const medida = String(b.medida_produto ?? "").trim();
+  if (!medida) return c.json({ error: "medida_produto é obrigatória" }, 400);
+  const refil = str(b.medida_refil); // NULL = sem refil
+  await c.env.DB.prepare(
+    `INSERT INTO refil_mapa (medida_produto, medida_refil) VALUES (?, ?)
+     ON CONFLICT(medida_produto) DO UPDATE SET medida_refil = excluded.medida_refil`
+  ).bind(medida, refil).run();
+  return c.json({ medida_produto: medida, medida_refil: refil });
+});
+
+materiais.delete("/refil-mapa/:medida", async (c) => {
+  await c.env.DB.prepare("DELETE FROM refil_mapa WHERE medida_produto = ?").bind(c.req.param("medida")).run();
+  return c.json({ ok: true });
 });
 
 // Movimenta o estoque do material (entrada de compra, baixa manual, ajuste).

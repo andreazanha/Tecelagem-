@@ -149,6 +149,15 @@ export interface Material {
   preco?: number | null;     // custo por unidade
   saldo?: number;            // estoque atual
   minimo?: number;           // estoque mínimo (dispara compra)
+  codigo_interno?: string | null; // SKU interno
+  status?: string | null;    // ativo|inativo
+  obs?: string | null;       // observações
+  extra?: string | null;     // JSON dos campos específicos do tipo
+}
+// Mapa de refil: dada a medida do produto, qual refil usar (NULL = sem refil).
+export interface RefilMapa {
+  medida_produto: string;
+  medida_refil: string | null;
 }
 // Sugestão de compra: material com saldo abaixo do mínimo.
 export interface CompraSugestao extends Material {
@@ -664,6 +673,13 @@ export const api = {
   // Sugestão de compras (saldo abaixo do mínimo)
   comprasMateriais: () =>
     fetch("/api/materiais/compras").then((r) => j<CompraSugestao[]>(r)),
+  // Mapa de refil (medida do produto → medida do refil)
+  listarRefilMapa: () =>
+    fetch("/api/materiais/refil-mapa").then((r) => j<RefilMapa[]>(r)),
+  salvarRefilMapa: (b: RefilMapa) =>
+    jsonPost("/api/materiais/refil-mapa", b).then((r) => j<RefilMapa>(r)),
+  excluirRefilMapa: (medida: string) =>
+    fetch(`/api/materiais/refil-mapa/${encodeURIComponent(medida)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   excluirTamanho: (id: string) =>
     fetch(`/api/tamanhos/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) =>
       j<{ ok: boolean }>(r)
