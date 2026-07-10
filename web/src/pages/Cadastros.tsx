@@ -1690,10 +1690,10 @@ function AlterarMassaModal({ colunas, ids, fornecedores, onFechar, onSalvo }: {
               <option value="ativo">Ativo</option><option value="inativo">Inativo</option>
             </select>
           ) : campo === "fornecedor" ? (
-            <select value={valor} onChange={(e) => setValor(e.target.value)}>
-              <option value="">Sem fornecedor</option>
-              {fornecedores.map((f) => <option key={f.id} value={f.nome}>{f.nome}</option>)}
-            </select>
+            <>
+              <input list="forn-massa" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="digite ou escolha (cria se for novo)" spellCheck lang="pt-BR" autoFocus />
+              <datalist id="forn-massa">{fornecedores.map((f) => <option key={f.id} value={f.nome} />)}</datalist>
+            </>
           ) : (
             <input value={valor} onChange={(e) => setValor(e.target.value)}
               inputMode={campo === "preco" || campo === "minimo" ? "decimal" : undefined}
@@ -1711,7 +1711,7 @@ function AlterarMassaModal({ colunas, ids, fornecedores, onFechar, onSalvo }: {
 }
 
 // ── Ordem de compra: nossos dados (persistidos), fornecedor e itens → impressão ──
-type Empresa = { nome: string; cnpj: string; endereco: string; telefone: string; email: string };
+type Empresa = { nome: string; cnpj: string; endereco: string; telefone: string; email: string; logo: string };
 const EMPRESA_KEY = "empresa-compras";
 const EMPRESA_PADRAO: Empresa = {
   nome: "Big Tricot LTDA",
@@ -1719,6 +1719,7 @@ const EMPRESA_PADRAO: Empresa = {
   endereco: "R. Iracy da Costa Pereira, 264 – Dei Fiori – Monte Sião/MG – CEP 37580-000",
   telefone: "(35) 3633-0984",
   email: "",
+  logo: "",
 };
 function getEmpresa(): Empresa {
   try {
@@ -1764,7 +1765,7 @@ function imprimirOrdemCompra(emp: Empresa, forn: Fornecedor | null, fornNome: st
   </style></head><body>
     <div class="top">
       <div>
-        <div class="logo">BIG TRICOT</div><div class="logosub">HOME DECOR</div>
+        ${emp.logo ? `<img src="${escHtml(emp.logo)}" alt="logo" style="max-height:74px;max-width:260px;margin-bottom:6px">` : `<div class="logo">BIG TRICOT</div><div class="logosub">HOME DECOR</div>`}
         <div class="rz">${escHtml(emp.nome || "Big Tricot LTDA")}</div>
         ${li("CNPJ", emp.cnpj)}${emp.endereco ? `<div>${escHtml(emp.endereco)}</div>` : ""}<div>${[emp.telefone, emp.email].filter(Boolean).map(escHtml).join(" · ")}</div>
       </div>
@@ -1793,6 +1794,21 @@ function EmpresaModal({ onFechar }: { onFechar: () => void }) {
       <div className="modal-card" style={{ maxWidth: 460 }} onClick={(ev) => ev.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>Nossos dados (cabeçalho da ordem)</h2>
         <p className="muted" style={{ marginTop: -4 }}>Aparecem no topo de toda ordem de compra. Ficam salvos neste navegador.</p>
+        <div className="campo"><span className="campo-label">Logotipo</span>
+          <div className="row-gap" style={{ alignItems: "center", gap: 12 }}>
+            {e.logo
+              ? <img src={e.logo} alt="logo" style={{ maxHeight: 54, maxWidth: 180, border: "1px solid #e2e8f0", borderRadius: 6, padding: 4 }} />
+              : <span className="muted" style={{ fontSize: 12 }}>Nenhum (usa o texto BIG TRICOT)</span>}
+            <label className="btn btn-soft" style={{ cursor: "pointer" }}>
+              {e.logo ? "Trocar" : "Enviar logo"}
+              <input type="file" accept="image/*" style={{ display: "none" }} onChange={(ev) => {
+                const file = ev.target.files?.[0]; if (!file) return;
+                const rd = new FileReader(); rd.onload = () => set({ logo: String(rd.result || "") }); rd.readAsDataURL(file);
+              }} />
+            </label>
+            {e.logo && <button type="button" className="btn btn-soft" onClick={() => set({ logo: "" })}>Remover</button>}
+          </div>
+        </div>
         <label className="campo"><span className="campo-label">Nome / Razão social</span><input value={e.nome} onChange={(ev) => set({ nome: ev.target.value })} spellCheck lang="pt-BR" /></label>
         <label className="campo"><span className="campo-label">CNPJ</span><input value={e.cnpj} onChange={(ev) => set({ cnpj: ev.target.value })} placeholder="00.000.000/0001-00" /></label>
         <label className="campo"><span className="campo-label">Endereço</span><input value={e.endereco} onChange={(ev) => set({ endereco: ev.target.value })} spellCheck lang="pt-BR" /></label>
