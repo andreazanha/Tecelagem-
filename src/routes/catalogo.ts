@@ -293,12 +293,12 @@ tiposFio.post("/bulk", async (c) => {
 
   const { results: exist } = await c.env.DB.prepare("SELECT nome FROM tipos_fio").all<{ nome: string }>();
   const jaTinha = new Set(exist.map((x) => x.nome.toLowerCase()));
-  const novos = parsed.filter((p) => !jaTinha.has(p.nome.toLowerCase()));
+  const novos = parsed.filter((p) => !jaTinha.has(p.nome.toLowerCase())).map((p) => ({ ...p, id: crypto.randomUUID() }));
   const stmts = novos.map((p) =>
-    c.env.DB.prepare("INSERT INTO tipos_fio (id, nome, cor, preco) VALUES (?, ?, ?, ?)").bind(crypto.randomUUID(), p.nome, p.cor, p.preco)
+    c.env.DB.prepare("INSERT INTO tipos_fio (id, nome, cor, preco) VALUES (?, ?, ?, ?)").bind(p.id, p.nome, p.cor, p.preco)
   );
   if (stmts.length) await c.env.DB.batch(stmts);
-  return c.json({ total, criados: novos.length, ignorados: total - novos.length }, 201);
+  return c.json({ total, criados: novos.length, ignorados: total - novos.length, ids: novos.map((p) => p.id) }, 201);
 });
 
 // ── Tamanhos (cada modelo tem vários) ─────────────────────────────────────────
@@ -564,15 +564,15 @@ operadores.post("/bulk", async (c) => {
 
   const { results: exist } = await c.env.DB.prepare("SELECT nome FROM operadores").all<{ nome: string }>();
   const jaTinha = new Set(exist.map((x) => x.nome.toLowerCase()));
-  const stmts = parsed.map((p) =>
-    c.env.DB.prepare(
-      `INSERT INTO operadores (id, nome, senha, setor) VALUES (?, ?, ?, ?)
-       ON CONFLICT(nome) DO UPDATE SET senha = excluded.senha, setor = excluded.setor`
-    ).bind(crypto.randomUUID(), p.nome, p.senha, p.setor)
-  );
+  // Novos = INSERT (podem ser desfeitos); existentes = UPDATE (edição, sem undo).
+  const novos = parsed.filter((p) => !jaTinha.has(p.nome.toLowerCase())).map((p) => ({ ...p, id: crypto.randomUUID() }));
+  const editar = parsed.filter((p) => jaTinha.has(p.nome.toLowerCase()));
+  const stmts = [
+    ...novos.map((p) => c.env.DB.prepare("INSERT INTO operadores (id, nome, senha, setor) VALUES (?, ?, ?, ?)").bind(p.id, p.nome, p.senha, p.setor)),
+    ...editar.map((p) => c.env.DB.prepare("UPDATE operadores SET senha = ?, setor = ? WHERE nome = ?").bind(p.senha, p.setor, p.nome)),
+  ];
   await c.env.DB.batch(stmts);
-  const criados = parsed.filter((p) => !jaTinha.has(p.nome.toLowerCase())).length;
-  return c.json({ total, criados, ignorados: total - criados, sem_senha: semSenha }, 201);
+  return c.json({ total, criados: novos.length, ignorados: total - novos.length, sem_senha: semSenha, ids: novos.map((p) => p.id) }, 201);
 });
 
 // ── Usuários (login + permissões de telas) ────────────────────────────────────

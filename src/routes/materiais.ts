@@ -148,23 +148,57 @@ materiais.delete("/refil-mapa/:medida", async (c) => {
 // COLAR EM MASSA: uma linha = um material. Colunas por Tab/;/, na ordem
 // nome · tamanho · unidade · preço · estoque mínimo. Só o nome é obrigatório.
 materiais.post("/bulk", async (c) => {
-  const b = await c.req.json<{ categoria?: string; texto?: string }>().catch(() => ({}) as Record<string, unknown>);
+  const b = await c.req.json<{ categoria?: string; texto?: string; colunas?: string[] }>().catch(() => ({}) as Record<string, unknown>);
   const categoria = String(b.categoria ?? "").trim().toLowerCase();
   if (!(await slugsValidos(c.env)).has(categoria)) return c.json({ error: "categoria inválida" }, 400);
-  const linhas = String(b.texto || "").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
-  const parsed: { nome: string; tamanho: string | null; unidade: string | null; preco: number | null; minimo: number }[] = [];
+  // colunas: ordem dos campos de CADA linha, igual à tela do tipo. Ex. do zíper:
+  // ["nome","codigo_interno","tamanho","cor","codigo","extra:comprimento","unidade","preco","minimo","status"].
+  // extra:<chave> vai para o JSON `extra` (campos específicos do tipo). Sem `colunas`,
+  // usa o formato simples antigo (compatível).
+  const colunas = Array.isArray(b.colunas) && b.colunas.length ? b.colunas.map(String) : ["nome", "tamanho", "unidade", "preco", "minimo"];
+  const rawLinhas = String(b.texto || "").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
+  const md = rawLinhas.some((l) => l.includes("|")); // tabela colada com "|"
+  const splitRow = (l: string): string[] => {
+    if (md) {
+      const cells = l.split("|").map((s) => s.trim());
+      if (cells.length && cells[0] === "") cells.shift();
+      if (cells.length && cells[cells.length - 1] === "") cells.pop();
+      return cells;
+    }
+    return colsBulk(l);
+  };
+  const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+  const isSep = (cells: string[]) => cells.length > 0 && cells.every((x) => x === "" || /^:?-+:?$/.test(x));
+
+  type Mat = { nome: string; tamanho: string | null; unidade: string | null; preco: number | null; minimo: number;
+    codigo_interno: string | null; cor: string | null; codigo: string | null; status: string; extra: Record<string, string> };
+  const parsed: Mat[] = [];
   const vistos = new Set<string>();
-  let total = 0; // linhas com nome (base para "ignorados")
-  for (const linha of linhas) {
-    const p = colsBulk(linha);
-    const nome = p[0] || "";
-    if (!nome) continue;
+  let total = 0, headerPulado = false;
+  for (const linha of rawLinhas) {
+    const cells = splitRow(linha);
+    if (isSep(cells)) continue; // linha "---" de markdown
+    const m: Mat = { nome: "", tamanho: null, unidade: null, preco: null, minimo: 0, codigo_interno: null, cor: null, codigo: null, status: "ativo", extra: {} };
+    colunas.forEach((campo, i) => {
+      const v = (cells[i] || "").trim();
+      if (campo === "nome") m.nome = v;
+      else if (campo === "tamanho") m.tamanho = v || null;
+      else if (campo === "unidade") m.unidade = v ? v.toLowerCase() : null;
+      else if (campo === "preco") m.preco = num(v.replace(",", "."));
+      else if (campo === "minimo") m.minimo = num(v.replace(",", ".")) ?? 0;
+      else if (campo === "codigo_interno") m.codigo_interno = v || null;
+      else if (campo === "cor") m.cor = v || null;
+      else if (campo === "codigo") m.codigo = v || null;
+      else if (campo === "status") m.status = /inativ/i.test(v) ? "inativo" : "ativo";
+      else if (campo.startsWith("extra:")) { if (v) m.extra[campo.slice(6)] = v; }
+    });
+    if (!m.nome) continue;
+    if (!headerPulado && norm(m.nome) === "nome") { headerPulado = true; continue; } // pula cabeçalho colado junto
     total++;
-    const tamanho = p[1] || null;
-    const chave = (nome + "||" + (tamanho || "")).toLowerCase();
+    const chave = (m.nome + "||" + (m.tamanho || "")).toLowerCase();
     if (vistos.has(chave)) continue; // duplicata na própria colagem
     vistos.add(chave);
-    parsed.push({ nome, tamanho, unidade: p[2] || null, preco: num((p[3] || "").replace(",", ".")), minimo: num((p[4] || "").replace(",", ".")) ?? 0 });
+    parsed.push(m);
   }
   if (!total) return c.json({ error: "nenhum material reconhecido", exemplo: "Zíper preto;40;un;1,50;10" }, 400);
 
@@ -174,15 +208,16 @@ materiais.post("/bulk", async (c) => {
   ).bind(categoria).all<{ nome: string; tamanho: string | null }>();
   const jaTinha = new Set(exist.map((x) => (x.nome + "||" + (x.tamanho || "")).toLowerCase()));
 
-  const novos = parsed.filter((p) => !jaTinha.has((p.nome + "||" + (p.tamanho || "")).toLowerCase()));
+  const novos = parsed.filter((p) => !jaTinha.has((p.nome + "||" + (p.tamanho || "")).toLowerCase())).map((p) => ({ ...p, id: uid() }));
   const stmts = novos.map((p) =>
     c.env.DB.prepare(
-      `INSERT INTO materiais (id, categoria, nome, tamanho, unidade, preco, minimo, status, saldo)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'ativo', 0)`
-    ).bind(uid(), categoria, p.nome, p.tamanho, p.unidade, p.preco, p.minimo)
+      `INSERT INTO materiais (id, categoria, nome, tamanho, unidade, preco, minimo, codigo_interno, cor, codigo, status, extra, saldo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+    ).bind(p.id, categoria, p.nome, p.tamanho, p.unidade, p.preco, p.minimo, p.codigo_interno, p.cor, p.codigo, p.status,
+           Object.keys(p.extra).length ? JSON.stringify(p.extra) : null)
   );
   if (stmts.length) await c.env.DB.batch(stmts);
-  return c.json({ total, criados: novos.length, ignorados: total - novos.length }, 201);
+  return c.json({ total, criados: novos.length, ignorados: total - novos.length, ids: novos.map((p) => p.id) }, 201);
 });
 
 // Movimenta o estoque do material (entrada de compra, baixa manual, ajuste).

@@ -165,6 +165,7 @@ export interface BulkResult {
   criados: number;
   ignorados: number;
   sem_senha?: number; // só operadores
+  ids: string[];      // ids dos registros CRIADOS (para desfazer)
 }
 // Sugestão de compra: material com saldo abaixo do mínimo.
 export interface CompraSugestao extends Material {
@@ -688,8 +689,8 @@ export const api = {
   excluirRefilMapa: (medida: string) =>
     fetch(`/api/materiais/refil-mapa/${encodeURIComponent(medida)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   // Colar em massa (uma linha = um registro; colunas por Tab/;/,)
-  bulkMateriais: (categoria: string, texto: string) =>
-    jsonPost("/api/materiais/bulk", { categoria, texto }).then((r) => j<BulkResult>(r)),
+  bulkMateriais: (categoria: string, texto: string, colunas?: string[]) =>
+    jsonPost("/api/materiais/bulk", { categoria, texto, colunas }).then((r) => j<BulkResult>(r)),
   bulkTiposFio: (texto: string) =>
     jsonPost("/api/tipos-fio/bulk", { texto }).then((r) => j<BulkResult>(r)),
   bulkOperadores: (texto: string) =>

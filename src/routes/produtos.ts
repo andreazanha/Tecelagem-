@@ -892,13 +892,13 @@ fornecedores.post("/bulk", async (c) => {
 
   const { results: exist } = await c.env.DB.prepare("SELECT nome FROM fornecedores").all<{ nome: string }>();
   const jaTinha = new Set(exist.map((x) => x.nome.toLowerCase()));
-  const novos = parsed.filter((p) => !jaTinha.has(p.nome.toLowerCase()));
+  const novos = parsed.filter((p) => !jaTinha.has(p.nome.toLowerCase())).map((p) => ({ ...p, id: uid() }));
   const stmts = novos.map((p) =>
     c.env.DB.prepare("INSERT INTO fornecedores (id, nome, contato, telefone, email, ativo) VALUES (?, ?, ?, ?, ?, 1)")
-      .bind(uid(), p.nome, p.contato, p.telefone, p.email)
+      .bind(p.id, p.nome, p.contato, p.telefone, p.email)
   );
   if (stmts.length) await c.env.DB.batch(stmts);
-  return c.json({ total, criados: novos.length, ignorados: total - novos.length }, 201);
+  return c.json({ total, criados: novos.length, ignorados: total - novos.length, ids: novos.map((p) => p.id) }, 201);
 });
 
 fornecedores.delete("/:id", async (c) => {

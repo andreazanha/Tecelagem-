@@ -26,48 +26,102 @@ function Campo({ label, children }: { label: string; children: React.ReactNode }
 }
 
 // Modal reutilizável: COLAR EM MASSA. Cada linha vira um registro; colunas por
-// Tab/;/, (igual planilha). Mostra o formato esperado e um preview antes de salvar.
-function ColarEmMassa({ titulo, colunas, exemplo, onColar, onFechar, onSalvo }: {
+// Tab/;/, (igual planilha). Mostra o formato esperado, um preview antes de salvar
+// e, DEPOIS de salvar, um botão DESFAZER que apaga exatamente o que foi criado.
+function ColarEmMassa({ titulo, colunas, exemplo, onColar, onUndo, onFechar, onSalvo }: {
   titulo: string;
   colunas: string;   // ex.: "nome · tamanho · unidade · preço · estoque mín."
   exemplo: string;   // ex.: "Zíper preto;40;un;1,50;10"
   onColar: (texto: string) => Promise<BulkResult>;
+  onUndo: (ids: string[]) => Promise<void>; // apaga os registros criados
   onFechar: () => void;
   onSalvo: () => void;
 }) {
   const [texto, setTexto] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [res, setRes] = useState<BulkResult | null>(null); // resultado após salvar
+  const [desfazendo, setDesfazendo] = useState(false);
+  const [desfeito, setDesfeito] = useState(false);
   const linhas = texto.split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean).length;
+
   async function salvar() {
     if (!linhas) return alert("Cole ao menos uma linha.");
     setSalvando(true);
     try {
       const r = await onColar(texto);
+      setRes(r);        // fica no modal mostrando o resultado + Desfazer
       onSalvo();
-      alert(`Pronto! ${r.criados} cadastrado(s), ${r.ignorados} ignorado(s)` + (r.sem_senha ? `, ${r.sem_senha} sem senha` : "") + ".");
-      onFechar();
-    } catch (e) { alert((e as Error).message); setSalvando(false); }
+    } catch (e) { alert((e as Error).message); }
+    finally { setSalvando(false); }
   }
+  async function desfazer() {
+    if (!res?.ids.length) return;
+    if (!confirm(`Desfazer? Isso apaga os ${res.ids.length} registro(s) que esta colagem criou.`)) return;
+    setDesfazendo(true);
+    try {
+      await onUndo(res.ids);
+      setDesfeito(true);
+      onSalvo();        // atualiza a lista atrás do modal
+    } catch (e) { alert((e as Error).message); }
+    finally { setDesfazendo(false); }
+  }
+
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>📋 {titulo}</h2>
-        <p className="muted" style={{ marginTop: -4 }}>
-          Uma linha = um registro. Colunas separadas por <strong>Tab</strong>, <strong>;</strong> ou <strong>,</strong> — dá pra colar direto de uma planilha.
-        </p>
-        <div className="card pad" style={{ background: "var(--bg-soft, #f8fafc)", fontSize: 13, marginBottom: 10 }}>
-          <div><strong>Ordem das colunas:</strong> {colunas}</div>
-          <div className="muted" style={{ marginTop: 4, fontFamily: "ui-monospace, monospace" }}>ex.: {exemplo}</div>
-        </div>
-        <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={10} placeholder={exemplo} autoFocus
-          style={{ width: "100%", fontFamily: "ui-monospace, monospace", fontSize: 13, padding: 10, boxSizing: "border-box" }} />
-        <div className="row-gap" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
-          <span className="muted" style={{ fontSize: 13 }}>{linhas} linha(s)</span>
-          <div className="row-gap">
-            <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
-            <button className="btn btn-primary" onClick={salvar} disabled={salvando || !linhas}>{salvando ? "Salvando…" : "Cadastrar todos"}</button>
-          </div>
-        </div>
+
+        {res ? (
+          // ── Resultado + DESFAZER ──
+          <>
+            {desfeito ? (
+              <div className="card pad" style={{ background: "var(--bg-soft, #f8fafc)", textAlign: "center" }}>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>↩️ Colagem desfeita</div>
+                <div className="muted" style={{ marginTop: 4 }}>Os {res.ids.length} registro(s) criado(s) foram apagados.</div>
+              </div>
+            ) : (
+              <>
+                <div className="card pad" style={{ background: "var(--bg-soft, #f8fafc)", fontSize: 14 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>✓ {res.criados} cadastrado(s)</div>
+                  <div className="muted" style={{ marginTop: 4 }}>
+                    {res.ignorados > 0 && <>{res.ignorados} ignorado(s) (repetido ou já existia). </>}
+                    {res.sem_senha ? <>{res.sem_senha} sem senha. </> : null}
+                  </div>
+                </div>
+                <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>
+                  Ficou errado? <strong>Desfazer</strong> apaga só o que esta colagem criou — o que já existia não é tocado.
+                </p>
+              </>
+            )}
+            <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+              {!desfeito && res.criados > 0 && (
+                <button className="btn" onClick={desfazer} disabled={desfazendo}
+                  style={{ color: "#b91c1c", borderColor: "#fca5a5" }}>{desfazendo ? "Desfazendo…" : "↩️ Desfazer"}</button>
+              )}
+              <button className="btn btn-primary" onClick={onFechar}>Concluir</button>
+            </div>
+          </>
+        ) : (
+          // ── Entrada de texto ──
+          <>
+            <p className="muted" style={{ marginTop: -4 }}>
+              Uma linha = um registro. Colunas separadas por <strong>Tab</strong>, <strong>;</strong> ou <strong>,</strong> — dá pra colar direto de uma planilha.
+            </p>
+            <div className="card pad" style={{ background: "var(--bg-soft, #f8fafc)", fontSize: 13, marginBottom: 10 }}>
+              <div><strong>Ordem das colunas:</strong> {colunas}</div>
+              <div className="muted" style={{ marginTop: 4, fontFamily: "ui-monospace, monospace" }}>ex.: {exemplo}</div>
+            </div>
+            <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={10} placeholder={exemplo} autoFocus
+              style={{ width: "100%", fontFamily: "ui-monospace, monospace", fontSize: 13, padding: 10, boxSizing: "border-box" }} />
+            <div className="row-gap" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+              <span className="muted" style={{ fontSize: 13 }}>{linhas} linha(s)</span>
+              <div className="row-gap">
+                <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
+                <button className="btn btn-primary" onClick={salvar} disabled={salvando || !linhas}>{salvando ? "Salvando…" : "Cadastrar todos"}</button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -848,6 +902,7 @@ function AbaFiosCores() {
         colunas="nome · cor (hex) · preço (por kg)"
         exemplo="Polisoft;#7c3aed;28,50"
         onColar={api.bulkTiposFio}
+        onUndo={(ids) => Promise.all(ids.map((id) => api.excluirTipoFio(id))).then(() => {})}
         onFechar={() => setColarFio(false)}
         onSalvo={recarregar}
       />}
@@ -1194,6 +1249,20 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const cfg = CAMPOS_POR_TIPO[categoria] || {};
   const temCor = !!cfg.cor;
   const camposExtra = cfg.campos || [];
+  // Colar em massa: as colunas do colar = as colunas visíveis do tipo, na mesma ordem.
+  const bulkCols = ["nome", "codigo_interno", "tamanho", ...(temCor ? ["cor", "codigo"] : []), ...camposExtra.map((cp) => "extra:" + cp.key), "unidade", "preco", "minimo", "status"];
+  const bulkLabel = ["nome", "cód. interno", "tamanho", ...(temCor ? ["cor", "código"] : []), ...camposExtra.map((cp) => cp.label.toLowerCase()), "unidade", "preço", "est. mín.", "status"].join(" · ");
+  const bulkEx = bulkCols.map((campo) => {
+    if (campo === "nome") return `${cat.nome} branco`;
+    if (campo === "codigo_interno") return "SKU-01";
+    if (campo === "tamanho") return "90x200";
+    if (campo === "cor") return "Branco";
+    if (campo === "codigo") return "P-101";
+    if (campo === "unidade") return "un";
+    if (campo === "status") return "ativo";
+    if (campo.startsWith("extra:")) return (camposExtra.find((c) => "extra:" + c.key === campo)?.ph || "").replace(/^ex\.:\s*/, "");
+    return "";
+  }).join(";");
   const [itens, setItens] = useState<Material[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
@@ -1361,9 +1430,10 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
       {entrada && <MovEstoqueModal material={entrada} onFechar={() => setEntrada(null)} onSalvo={() => { setEntrada(null); recarregar(); onMudou?.(); }} />}
       {colar && <ColarEmMassa
         titulo={`Colar ${label.toLowerCase()} em massa`}
-        colunas="nome · tamanho · unidade · preço · estoque mín."
-        exemplo={`${label} branco;90X200;m;12,90;5`}
-        onColar={(texto) => api.bulkMateriais(categoria, texto)}
+        colunas={bulkLabel}
+        exemplo={bulkEx}
+        onColar={(texto) => api.bulkMateriais(categoria, texto, bulkCols)}
+        onUndo={(ids) => Promise.all(ids.map((id) => api.excluirMaterial(id))).then(() => {})}
         onFechar={() => setColar(false)}
         onSalvo={() => { recarregar(); onMudou?.(); }}
       />}
@@ -1542,6 +1612,7 @@ function AbaFornecedores() {
         colunas="nome · contato · telefone · e-mail"
         exemplo="Coats;João;(11) 99999-0000;joao@coats.com"
         onColar={api.bulkFornecedores}
+        onUndo={(ids) => Promise.all(ids.map((id) => api.excluirFornecedor(id))).then(() => {})}
         onFechar={() => setColar(false)}
         onSalvo={recarregar}
       />}
@@ -1688,6 +1759,7 @@ function OperadoresCadastro() {
         colunas="nome · senha · setor"
         exemplo="Maria;1234;costura"
         onColar={api.bulkOperadores}
+        onUndo={(ids) => Promise.all(ids.map((id) => api.removerOperador(id))).then(() => {})}
         onFechar={() => setColar(false)}
         onSalvo={recarregar}
       />}
