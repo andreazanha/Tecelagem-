@@ -86,6 +86,22 @@ async function vapidJwt(env: Env, aud: string): Promise<string | null> {
 export async function enviarPush(env: Env, aviso: { titulo: string; corpo: string; url?: string; tag?: string }): Promise<void> {
   if (!env.VAPID_PUBLIC || !env.VAPID_JWK) return; // não configurado
   const { results } = await env.DB.prepare("SELECT endpoint, p256dh, auth FROM push_subscriptions").all<Sub>();
+  await enviarParaSubs(env, results, aviso);
+}
+
+// Envia só para os aparelhos de usuários específicos (ex.: @menção, mensagem direta).
+export async function enviarPushPara(env: Env, alvos: string[], aviso: { titulo: string; corpo: string; url?: string; tag?: string }): Promise<void> {
+  if (!env.VAPID_PUBLIC || !env.VAPID_JWK) return;
+  const nomes = [...new Set(alvos.map((a) => (a || "").trim()).filter(Boolean))];
+  if (!nomes.length) return;
+  const ph = nomes.map(() => "?").join(",");
+  const { results } = await env.DB.prepare(
+    `SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE usuario IN (${ph})`
+  ).bind(...nomes).all<Sub>();
+  await enviarParaSubs(env, results, aviso);
+}
+
+async function enviarParaSubs(env: Env, results: Sub[], aviso: { titulo: string; corpo: string; url?: string; tag?: string }): Promise<void> {
   if (!results.length) return;
   const payload = te.encode(JSON.stringify({ title: aviso.titulo, body: aviso.corpo, url: aviso.url || "/", tag: aviso.tag || "aviso" }));
   const jwtPorAud = new Map<string, string>();

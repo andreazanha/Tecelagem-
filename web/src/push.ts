@@ -35,10 +35,12 @@ export async function ativarPush(): Promise<{ ok: boolean; erro?: string }> {
       (await reg.pushManager.getSubscription()) ||
       (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlParaBuffer(r.key) }));
     const j = sub.toJSON();
+    let usuario: string | undefined;
+    try { usuario = JSON.parse(localStorage.getItem("usuario") || "null")?.nome; } catch { /* ignore */ }
     await fetch("/api/push/subscribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ endpoint: j.endpoint, keys: j.keys }),
+      body: JSON.stringify({ endpoint: j.endpoint, keys: j.keys, usuario }),
     });
     return { ok: true };
   } catch (e) {

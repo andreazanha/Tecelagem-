@@ -120,8 +120,10 @@ export interface ChatMensagem {
   canal: string;
   autor: string;
   texto: string;
+  imagem_key?: string | null;
   criado_em: string;
 }
+export interface ChatDM { canal: string; outro: string }
 export interface TipoFio {
   id: string;
   nome: string;
@@ -669,6 +671,13 @@ export const api = {
     jsonPost(`/api/chat/${encodeURIComponent(canal)}`, { autor, texto }).then((r) => j<{ id: string }>(r)),
   naoLidasChat: (desde: string, autor: string) =>
     fetch(`/api/chat/nao-lidas?desde=${encodeURIComponent(desde)}&autor=${encodeURIComponent(autor)}`).then((r) => j<{ nao_lidas: number }>(r)),
+  contatosChat: () => fetch("/api/chat/contatos").then((r) => j<string[]>(r)),
+  dmsChat: (me: string) => fetch(`/api/chat/dms?me=${encodeURIComponent(me)}`).then((r) => j<ChatDM[]>(r)),
+  enviarFotoChat: (canal: string, autor: string, file: File, texto?: string) => {
+    const fd = new FormData();
+    fd.append("file", file); fd.append("autor", autor); if (texto) fd.append("texto", texto);
+    return fetch(`/api/chat/${encodeURIComponent(canal)}/foto`, { method: "POST", body: fd }).then((r) => j<{ id: string; imagem_key: string }>(r));
+  },
   listarTiposFio: () => fetch("/api/tipos-fio").then((r) => j<TipoFio[]>(r)),
   salvarTipoFio: (b: { id?: string; nome: string; fornecedor_id: string | null; cor?: string | null; preco?: number | null }) =>
     jsonPost("/api/tipos-fio", b).then((r) => j<TipoFio>(r)),
