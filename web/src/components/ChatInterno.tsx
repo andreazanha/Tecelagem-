@@ -21,11 +21,30 @@ const MUTE_KEY = "chat-mudo";
 // Beep curto (dois toques) via Web Audio — sem arquivo. Requer que o usuário já
 // tenha interagido com a página (política de autoplay); se bloquear, ignora.
 let _ac: AudioContext | null = null;
-function beep() {
+function garanteAudio(): AudioContext | null {
   try {
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return null;
     _ac = _ac || new AC();
     if (_ac.state === "suspended") _ac.resume();
+    return _ac;
+  } catch { return null; }
+}
+// Destrava o áudio DENTRO de um gesto do usuário (política mobile): cria/retoma o
+// contexto e toca um blip inaudível. Depois disso, os beeps de aviso funcionam.
+function desbloquearAudio() {
+  const ac = garanteAudio();
+  if (!ac) return;
+  try {
+    const o = ac.createOscillator(), g = ac.createGain();
+    g.gain.value = 0; o.connect(g); g.connect(ac.destination);
+    o.start(); o.stop(ac.currentTime + 0.02);
+  } catch { /* ignore */ }
+}
+function beep() {
+  try {
+    _ac = garanteAudio();
+    if (!_ac) return;
     const notas = [880, 1175];
     notas.forEach((f, i) => {
       const o = _ac!.createOscillator(), g = _ac!.createGain();
@@ -62,6 +81,12 @@ export function ChatInterno() {
   const ultimoMsgId = useRef<string>("");
   const mudoRef = useRef(mudo);
   useEffect(() => { mudoRef.current = mudo; }, [mudo]);
+  // Destrava o áudio no 1º toque na página (necessário no celular).
+  useEffect(() => {
+    const h = () => desbloquearAudio();
+    window.addEventListener("pointerdown", h, { once: true });
+    return () => window.removeEventListener("pointerdown", h);
+  }, []);
   function toggleMudo() { setMudo((m) => { const n = !m; localStorage.setItem(MUTE_KEY, n ? "1" : "0"); return n; }); }
   async function ativarAvisos() {
     setAtivandoAviso(true);
@@ -154,7 +179,7 @@ export function ChatInterno() {
   if (!nome) return null;
   return (
     <>
-      <button className="chat-fab" onClick={() => setOpen((o) => !o)} title="Chat da equipe" aria-label="Chat da equipe" style={{ position: "fixed" }}>
+      <button className="chat-fab" onClick={() => { desbloquearAudio(); setOpen((o) => !o); }} title="Chat da equipe" aria-label="Chat da equipe" style={{ position: "fixed" }}>
         💬{naoLidas > 0 && <span className="chat-badge">{naoLidas > 99 ? "99+" : naoLidas}</span>}
       </button>
       {toast && !open && (
