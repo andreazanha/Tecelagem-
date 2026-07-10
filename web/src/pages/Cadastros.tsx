@@ -67,9 +67,21 @@ function AbaProdutos() {
   const [modal, setModal] = useState<{ nome: string | null } | null>(null); // editar/novo produto
   const [gerenciar, setGerenciar] = useState<Colecao | null>(null); // modal "produtos da coleção"
   const [busca, setBusca] = useState("");
+  const [ativos, setAtivos] = useState(0); // produtos distintos que estão em ≥1 coleção
 
   function recarregar() {
-    api.listarColecoes().then(setColecoes).catch(() => {});
+    api.listarColecoes().then((cs) => {
+      setColecoes(cs);
+      // pré-carrega os produtos de cada coleção: conta "ativos" (distintos) e deixa a abertura instantânea
+      Promise.all(cs.map((c) => api.produtosDaColecao(c.id).then((ps): [string, ColecaoProduto[]] => [c.id, ps]).catch((): [string, ColecaoProduto[]] => [c.id, []])))
+        .then((pares) => {
+          const mapa: Record<string, ColecaoProduto[]> = {};
+          const set = new Set<string>();
+          pares.forEach(([id, ps]) => { mapa[id] = ps; ps.forEach((p) => set.add(p.modelo_nome)); });
+          setProds(mapa);
+          setAtivos(set.size);
+        }).catch(() => {});
+    }).catch(() => {});
     api.listarModelos().then(setProdutos).catch(() => {});
   }
   useEffect(() => { recarregar(); api.listarTiposFio().then(setTipos).catch(() => {}); }, []);
@@ -104,8 +116,32 @@ function AbaProdutos() {
   const filtro = busca.trim().toLowerCase();
   const prodFiltrados = produtos.filter((m) => `${m.nome} ${m.ref || ""}`.toLowerCase().includes(filtro));
 
+  // Indicadores do topo
+  const total = produtos.length;
+  const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+  const pronta = colecoes.find((c) => c.nome.toLowerCase() === "pronta entrega")?.produtos ?? 0;
+  const KPIS = [
+    { ic: "📦", cor: "#7c3aed", bg: "#ede9fe", lbl: "Total de produtos", num: total, sub: "100% do catálogo" },
+    { ic: "🟢", cor: "#16a34a", bg: "#dcfce7", lbl: "Pronta entrega", num: pronta, sub: `${pct(pronta)}% do total` },
+    { ic: "🗂️", cor: "#2563eb", bg: "#dbeafe", lbl: "Coleções", num: colecoes.length, sub: "Ativas" },
+    { ic: "✅", cor: "#ea580c", bg: "#ffedd5", lbl: "Produtos ativos", num: ativos, sub: `${pct(ativos)}% do total` },
+  ];
+
   return (
     <>
+      <div className="prod-kpis">
+        {KPIS.map((k) => (
+          <div className="kpi" key={k.lbl}>
+            <span className="kpi-ic" style={{ background: k.bg, color: k.cor }}>{k.ic}</span>
+            <div>
+              <div className="kpi-lbl">{k.lbl}</div>
+              <div className="kpi-num">{k.num}</div>
+              <div className="kpi-sub">{k.sub}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Nova coleção de um lado, buscar preenchendo */}
       <div className="row-gap" style={{ marginBottom: 10, alignItems: "center", gap: 8 }}>
         <button className="btn btn-soft" onClick={novaColecao}>＋ Nova coleção</button>
