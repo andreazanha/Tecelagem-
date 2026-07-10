@@ -308,6 +308,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [fichaCols, setFichaCols] = useState<string[]>([]);
   const [fichaItem, setFichaItem] = useState<Record<string, string>>({}); // `${tam}||${cat}` → material_id
   const [novoMat, setNovoMat] = useState(false); // modal p/ criar novo tipo de material
+  const [abrirTam, setAbrirTam] = useState(false); // seção Tamanhos/ficha recolhida por padrão
 
   useEffect(() => {
     Promise.all([api.listarCores(), api.listarTamanhos(), api.listarMateriais(), api.listarCategoriasMaterial()])
@@ -531,20 +532,26 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             </>
           )}
 
-          {/* 3. Tamanhos e ficha técnica — matriz: cada linha um tamanho; colunas = fio, tempo e materiais */}
-          <div className="campo-l" style={{ margin: "16px 0 8px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span>3 · TAMANHOS E FICHA TÉCNICA</span>
-            <select value="__pick__" style={{ marginLeft: "auto", maxWidth: 240, textTransform: "none", fontWeight: 600 }} onChange={(e) => {
-              const v = e.target.value;
-              if (v === "__novo__") { setNovoMat(true); return; }
-              if (v && v !== "__pick__") setFichaCols((cs) => (cs.includes(v) ? cs : [...cs, v]));
-            }}>
-              <option value="__pick__">＋ material (coluna)</option>
-              {matDefs.filter((d) => !fichaCols.includes(d.slug)).map((d) => <option key={d.slug} value={d.slug}>{d.nome}</option>)}
-              <option value="__novo__">＋ criar novo material…</option>
-            </select>
+          {/* 3. Tamanhos e ficha técnica — recolhida por padrão; clica pra abrir a matriz */}
+          <div className="sec-toggle" style={{ margin: "16px 0 8px" }}>
+            <span onClick={() => setAbrirTam((v) => !v)} style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <span className="sec-car">{abrirTam ? "▾" : "▸"}</span>
+              3 · TAMANHOS E FICHA TÉCNICA
+              <span className="chip">{nTam} tamanho(s)</span>
+            </span>
+            {abrirTam && (
+              <select value="__pick__" style={{ marginLeft: "auto", maxWidth: 240, textTransform: "none", fontWeight: 600 }} onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__novo__") { setNovoMat(true); return; }
+                if (v && v !== "__pick__") setFichaCols((cs) => (cs.includes(v) ? cs : [...cs, v]));
+              }}>
+                <option value="__pick__">＋ material (coluna)</option>
+                {matDefs.filter((d) => !fichaCols.includes(d.slug)).map((d) => <option key={d.slug} value={d.slug}>{d.nome}</option>)}
+                <option value="__novo__">＋ criar novo material…</option>
+              </select>
+            )}
           </div>
-          {nTam === 0 ? (
+          {abrirTam && (nTam === 0 ? (
             <p className="muted" style={{ fontSize: 13 }}>Adicione tamanhos no seletor <strong>Tamanho</strong> acima — cada tamanho vira uma linha aqui.</p>
           ) : (
             <div className="card" style={{ overflowX: "auto" }}>
@@ -597,7 +604,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
                 </tbody>
               </table>
             </div>
-          )}
+          ))}
           {novoMat && (
             <InsumoModal cat={null} onFechar={() => setNovoMat(false)} onSalvo={(slug) => {
               setNovoMat(false);
