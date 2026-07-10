@@ -20,6 +20,15 @@ export const colsBulk = (linha: string): string[] =>
 // Identidade de um material para deduplicar na colagem (nome+tamanho+cor+código).
 const chaveMat = (m: { nome: string; tamanho?: string | null; cor?: string | null; codigo?: string | null }) =>
   (m.nome + "||" + (m.tamanho || "") + "||" + (m.cor || "") + "||" + (m.codigo || "")).toLowerCase();
+
+// Preço colado pode vir com "R$", espaços e milhar: "R$ 2.350,75" → 2350.75; "2,35" → 2.35.
+const parseMoeda = (v: string): number | null => {
+  let s = String(v || "").replace(/[^\d.,-]/g, "");
+  if (!s) return null;
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", "."); // vírgula = decimal; ponto = milhar
+  const n = Number(s);
+  return isNaN(n) ? null : n;
+};
 const slugify = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
@@ -175,25 +184,27 @@ materiais.post("/bulk", async (c) => {
   const isSep = (cells: string[]) => cells.length > 0 && cells.every((x) => x === "" || /^:?-+:?$/.test(x));
 
   type Mat = { nome: string; tamanho: string | null; unidade: string | null; preco: number | null; minimo: number;
-    codigo_interno: string | null; cor: string | null; codigo: string | null; status: string; obs: string | null; extra: Record<string, string> };
+    codigo_interno: string | null; cor: string | null; codigo: string | null; status: string; obs: string | null;
+    fornecedor_nome: string | null; fornecedor_id: string | null; extra: Record<string, string> };
   const parsed: Mat[] = [];
   const vistos = new Set<string>();
   let total = 0, headerPulado = false;
   for (const linha of rawLinhas) {
     const cells = splitRow(linha);
     if (isSep(cells)) continue; // linha "---" de markdown
-    const m: Mat = { nome: "", tamanho: null, unidade: null, preco: null, minimo: 0, codigo_interno: null, cor: null, codigo: null, status: "ativo", obs: null, extra: {} };
+    const m: Mat = { nome: "", tamanho: null, unidade: null, preco: null, minimo: 0, codigo_interno: null, cor: null, codigo: null, status: "ativo", obs: null, fornecedor_nome: null, fornecedor_id: null, extra: {} };
     colunas.forEach((campo, i) => {
       const v = (cells[i] || "").trim();
       if (campo === "nome") m.nome = v;
       else if (campo === "tamanho") m.tamanho = v || null;
       else if (campo === "unidade") m.unidade = v ? v.toLowerCase() : null;
-      else if (campo === "preco") m.preco = num(v.replace(",", "."));
-      else if (campo === "minimo") m.minimo = num(v.replace(",", ".")) ?? 0;
+      else if (campo === "preco") m.preco = parseMoeda(v);
+      else if (campo === "minimo") m.minimo = parseMoeda(v) ?? 0;
       else if (campo === "codigo_interno") m.codigo_interno = v || null;
       else if (campo === "cor") m.cor = v || null;
       else if (campo === "codigo") m.codigo = v || null;
       else if (campo === "obs") m.obs = v || null;
+      else if (campo === "fornecedor") m.fornecedor_nome = v || null;
       else if (campo === "status") m.status = /inativ/i.test(v) ? "inativo" : "ativo";
       else if (campo.startsWith("extra:")) { if (v) m.extra[campo.slice(6)] = v; }
     });
@@ -215,11 +226,23 @@ materiais.post("/bulk", async (c) => {
   const jaTinha = new Set(exist.map((x) => chaveMat(x)));
 
   const novos = parsed.filter((p) => !jaTinha.has(chaveMat(p))).map((p) => ({ ...p, id: uid() }));
+
+  // Fornecedor por NOME: acha o existente (case-insensitive) ou cria na hora.
+  const nomesForn = [...new Set(novos.map((p) => p.fornecedor_nome).filter((n): n is string => !!n).map((n) => n.trim()))];
+  if (nomesForn.length) {
+    const { results: fs } = await c.env.DB.prepare("SELECT id, nome FROM fornecedores").all<{ id: string; nome: string }>();
+    const byNome = new Map(fs.map((f) => [f.nome.toLowerCase(), f.id]));
+    const novosForn = nomesForn.filter((n) => !byNome.has(n.toLowerCase())).map((n) => ({ id: uid(), nome: n }));
+    novosForn.forEach((f) => byNome.set(f.nome.toLowerCase(), f.id));
+    if (novosForn.length) await c.env.DB.batch(novosForn.map((f) => c.env.DB.prepare("INSERT INTO fornecedores (id, nome, ativo) VALUES (?, ?, 1)").bind(f.id, f.nome)));
+    for (const p of novos) if (p.fornecedor_nome) p.fornecedor_id = byNome.get(p.fornecedor_nome.trim().toLowerCase()) || null;
+  }
+
   const stmts = novos.map((p) =>
     c.env.DB.prepare(
-      `INSERT INTO materiais (id, categoria, nome, tamanho, unidade, preco, minimo, codigo_interno, cor, codigo, status, obs, extra, saldo)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
-    ).bind(p.id, categoria, p.nome, p.tamanho, p.unidade, p.preco, p.minimo, p.codigo_interno, p.cor, p.codigo, p.status, p.obs,
+      `INSERT INTO materiais (id, categoria, nome, tamanho, unidade, preco, minimo, codigo_interno, cor, codigo, status, obs, fornecedor_id, extra, saldo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+    ).bind(p.id, categoria, p.nome, p.tamanho, p.unidade, p.preco, p.minimo, p.codigo_interno, p.cor, p.codigo, p.status, p.obs, p.fornecedor_id,
            Object.keys(p.extra).length ? JSON.stringify(p.extra) : null)
   );
   if (stmts.length) await c.env.DB.batch(stmts);

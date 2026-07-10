@@ -1139,6 +1139,7 @@ const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; coluna
     { key: "extra:comprimento", label: "Comprimento", ph: "ex.: 50 cm", width: 110 },
     { key: "unidade", label: "Un", width: 80 },
     { key: "preco", label: "Preço (R$)", ph: "0,64", width: 100 },
+    { key: "minimo", label: "Estoque mín.", width: 90 },
     { key: "status", label: "Status", width: 100 },
   ] },
   etiqueta: { colunas: [
@@ -1146,9 +1147,22 @@ const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; coluna
     { key: "tamanho", label: "Tamanho", ph: "ex.: 20X75 MM", width: 130 },
     { key: "unidade", label: "Un", width: 80 },
     { key: "preco", label: "Preço (R$)", ph: "0,14", width: 100 },
+    { key: "minimo", label: "Estoque mín.", width: 90 },
     { key: "status", label: "Status", width: 100 },
   ] },
-  forro:     { cor: true,  campos: [{ key: "extra:largura", label: "Largura", ph: "ex.: 1,40 m", width: 100 }, { key: "extra:gramatura", label: "Gramatura", ph: "ex.: 180 g/m²", width: 110 }] },
+  forro: { colunas: [
+    { key: "nome", label: "Nome", ph: "ex.: Forro TNT", width: 180 },
+    { key: "tamanho", label: "Tamanho", ph: "ex.: 50x50", width: 110 },
+    { key: "extra:largura", label: "Largura", ph: "ex.: 50 cm", width: 100 },
+    { key: "extra:comprimento", label: "Comprimento", ph: "ex.: 50 cm", width: 110 },
+    { key: "cor", label: "Cor do Tricô", ph: "ex.: Terracota", width: 140 },
+    { key: "extra:cor_forro", label: "Cor do Forro", ph: "ex.: Terracota", width: 140 },
+    { key: "preco", label: "Valor Unitário", ph: "R$ 2,35", width: 120 },
+    { key: "unidade", label: "Unidade", width: 90 },
+    { key: "fornecedor", label: "Fornecedor", width: 160 },
+    { key: "minimo", label: "Estoque mín.", width: 90 },
+    { key: "status", label: "Status", width: 100 },
+  ] },
   refil:     { campos: [{ key: "extra:medida", label: "Medida", ph: "ex.: 50x50", width: 100 }] },
   encarte:   { campos: [{ key: "extra:modelo", label: "Modelo", ph: "ex.: A6 frente/verso", width: 160 }] },
   embalagem: { campos: [{ key: "extra:dimensao", label: "Dimensão", ph: "ex.: 30x40", width: 120 }] },
@@ -1181,6 +1195,8 @@ function exemploColuna(c: ColDef, tipoNome: string): string {
     case "codigo_interno": return "SKU-01";
     case "unidade": return "un";
     case "preco": return c.ph || "0,00";
+    case "minimo": return "";
+    case "fornecedor": return "Forros Brasil";
     case "status": return "ativo";
     default: return c.key.startsWith("extra:") ? (c.ph || "").replace(/^ex\.:\s*/, "") : "";
   }
@@ -1295,11 +1311,10 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const colunas: ColDef[] = cfg.colunas || colunasPadrao(cfg);
   const temCor = colunas.some((c) => c.key === "cor");
   const extraKeys = colunas.filter((c) => c.key.startsWith("extra:")).map((c) => c.key.slice(6));
-  // Colar em massa: mesmas colunas do tipo, menos "fornecedor" (é relacional).
-  const bulkColDefs = colunas.filter((c) => c.key !== "fornecedor");
-  const bulkCols = bulkColDefs.map((c) => c.key);
-  const bulkLabel = bulkColDefs.map((c) => c.label.toLowerCase()).join(" · ");
-  const bulkEx = bulkColDefs.map((c) => exemploColuna(c, cat.nome)).join(";");
+  // Colar em massa: mesmas colunas do tipo (fornecedor entra por NOME — cria se não existir).
+  const bulkCols = colunas.map((c) => c.key);
+  const bulkLabel = colunas.map((c) => c.label.toLowerCase()).join(" · ");
+  const bulkEx = colunas.map((c) => exemploColuna(c, cat.nome)).join(";");
   const [itens, setItens] = useState<Material[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
