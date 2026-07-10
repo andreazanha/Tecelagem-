@@ -387,16 +387,36 @@ function GerenciarProdutosModal({ colecao, produtos, tipos, atuais, onFechar, on
   );
 }
 
-// Seletor "Aplicar em": Todos os tamanhos ou um/vários específicos (chips).
+// Seletor "Aplicar em": botão compacto (resumo) que abre um menu suspenso com
+// "Todos os tamanhos" + as caixinhas por tamanho. Posição fixa p/ não ser cortado.
 function AplicarEm({ todos, aplicar, tamanhos, onTodos, onTam }: { todos: boolean; aplicar: Set<string>; tamanhos: string[]; onTodos: () => void; onTam: (t: string) => void }) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const abrir = (e: React.MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setPos({ top: r.bottom + 4, left: r.left }); };
+  const sel = [...aplicar].filter((t) => tamanhos.includes(t));
+  const resumo = todos ? "Todos" : sel.length === 0 ? "Escolher…" : sel.length <= 2 ? sel.join(", ") : `${sel.length} tamanhos`;
   return (
-    <div className="row-gap" style={{ gap: 4, flexWrap: "wrap", maxWidth: 230 }}>
-      <button type="button" onClick={onTodos} className="chip" style={{ cursor: "pointer", border: "none", background: todos ? "#4338ca" : "#eef2ff", color: todos ? "#fff" : "#3730a3" }}>Todos</button>
-      {tamanhos.map((t) => {
-        const on = !todos && aplicar.has(t);
-        return <button type="button" key={t} onClick={() => onTam(t)} className="chip" style={{ cursor: "pointer", border: "none", background: on ? "#16a34a" : "#f1f5f9", color: on ? "#fff" : "#475569" }}>{t}</button>;
-      })}
-    </div>
+    <>
+      <button type="button" className="btn btn-soft" onClick={abrir} title={todos ? "Todos os tamanhos" : sel.join(", ")}
+        style={{ maxWidth: 150, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", padding: "6px 10px" }}>
+        {resumo} ▾
+      </button>
+      {pos && (<>
+        <div onClick={() => setPos(null)} style={{ position: "fixed", inset: 0, zIndex: 60 }} />
+        <div className="card" style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 61, minWidth: 170, maxHeight: 260, overflowY: "auto", padding: 6, boxShadow: "0 8px 24px #0004" }}>
+          <label className="row-gap" style={{ gap: 7, padding: "5px 7px", cursor: "pointer", fontWeight: 700 }}>
+            <input type="checkbox" checked={todos} onChange={onTodos} /> <span>Todos os tamanhos</span>
+          </label>
+          <div style={{ borderTop: "1px solid #e5e7eb", margin: "4px 0" }} />
+          {tamanhos.length === 0
+            ? <div className="muted" style={{ padding: "5px 7px", fontSize: 12 }}>Selecione tamanhos do produto na aba Cores &amp; Tamanhos.</div>
+            : tamanhos.map((t) => (
+                <label key={t} className="row-gap" style={{ gap: 7, padding: "5px 7px", cursor: "pointer" }}>
+                  <input type="checkbox" checked={!todos && aplicar.has(t)} onChange={() => onTam(t)} /> <span>{t}</span>
+                </label>
+              ))}
+        </div>
+      </>)}
+    </>
   );
 }
 
