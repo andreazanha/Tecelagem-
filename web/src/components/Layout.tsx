@@ -7,6 +7,7 @@ import { api, type MaterialCategoriaDef } from "../api";
 import { pushSuportado, pushAtivo, ativarPush, desativarPush } from "../push";
 import { Icon } from "./Icon";
 import { Assistente } from "./Assistente";
+import { ChatInterno } from "./ChatInterno";
 
 // Sino de avisos: liga/desliga o Web Push de "pedido novo" neste aparelho.
 function SinoPush() {
@@ -403,6 +404,7 @@ export function Layout() {
       </main>
 
       <Assistente />
+      <ChatInterno />
     </div>
   );
 }

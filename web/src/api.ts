@@ -115,6 +115,13 @@ export interface ModeloDetalhe extends Modelo {
   materiais: ModeloMaterial[];
 }
 
+export interface ChatMensagem {
+  id: string;
+  canal: string;
+  autor: string;
+  texto: string;
+  criado_em: string;
+}
 export interface TipoFio {
   id: string;
   nome: string;
@@ -656,6 +663,12 @@ export const api = {
     ),
   atribuirFioCores: (fio_id: string | null, cores: string[]) =>
     jsonPost("/api/cores/atribuir-fio", { fio_id, cores }).then((r) => j<{ ok: boolean; atualizadas: number }>(r)),
+  // Chat interno da equipe
+  listarChat: (canal: string) => fetch(`/api/chat/${encodeURIComponent(canal)}`).then((r) => j<ChatMensagem[]>(r)),
+  enviarChat: (canal: string, autor: string, texto: string) =>
+    jsonPost(`/api/chat/${encodeURIComponent(canal)}`, { autor, texto }).then((r) => j<{ id: string }>(r)),
+  naoLidasChat: (desde: string, autor: string) =>
+    fetch(`/api/chat/nao-lidas?desde=${encodeURIComponent(desde)}&autor=${encodeURIComponent(autor)}`).then((r) => j<{ nao_lidas: number }>(r)),
   listarTiposFio: () => fetch("/api/tipos-fio").then((r) => j<TipoFio[]>(r)),
   salvarTipoFio: (b: { id?: string; nome: string; fornecedor_id: string | null; cor?: string | null; preco?: number | null }) =>
     jsonPost("/api/tipos-fio", b).then((r) => j<TipoFio>(r)),

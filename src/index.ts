@@ -13,6 +13,7 @@ import { representantes, comercial } from "./routes/comercial";
 import { funil } from "./routes/funil";
 import { materiais } from "./routes/materiais";
 import { colecoes } from "./routes/colecoes";
+import { chat } from "./routes/chat";
 import { atendimento, followupAtendimento } from "./routes/atendimento";
 import { assistente } from "./routes/assistente";
 
@@ -43,6 +44,7 @@ app.route("/api/tipos-fio", tiposFio);
 app.route("/api/tamanhos", tamanhos);
 app.route("/api/materiais", materiais);
 app.route("/api/colecoes", colecoes);
+app.route("/api/chat", chat);
 app.route("/api/tasseis", tasseis);
 app.route("/api/prestadores", prestadores);
 app.route("/api/costura", costura);
