@@ -185,7 +185,7 @@ function AbaProdutos() {
         <ProdutoFormModal
           nomeEdit={modal.nome}
           onFechar={() => setModal(null)}
-          onSalvo={() => { setModal(null); recarregar(); if (aberta && aberta !== "__todos__") carregarProds(aberta); }}
+          onSalvo={() => { recarregar(); if (aberta && aberta !== "__todos__") carregarProds(aberta); }}
         />
       )}
       {gerenciar && (
@@ -264,6 +264,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [tempos, setTempos] = useState<Record<string, string>>({});
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false); // "✓ salvo" — continua na tela após salvar
+  const [refNome, setRefNome] = useState(nomeEdit); // nome já gravado (título + renomear)
   const [matCat, setMatCat] = useState<Material[]>([]); // catálogo de materiais (insumos)
   const [matDefs, setMatDefs] = useState<MaterialCategoriaDef[]>([]); // categorias (rótulos)
   // Ficha técnica POR TAMANHO: colunas de material + item escolhido por (tamanho, categoria)
@@ -302,8 +304,9 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   }, [nomeEdit]);
   const catNome = (slug?: string) => matDefs.find((d) => d.slug === slug)?.nome || slug || "";
 
-  const toggleCor = (n: string) => setSel((prev) => { const s = new Set(prev); s.has(n) ? s.delete(n) : s.add(n); return s; });
+  const toggleCor = (n: string) => { setSalvo(false); setSel((prev) => { const s = new Set(prev); s.has(n) ? s.delete(n) : s.add(n); return s; }); };
   function toggleGrupo(gcores: Cor[]) {
+    setSalvo(false);
     const todas = gcores.every((c) => sel.has(c.nome));
     setSel((prev) => {
       const s = new Set(prev);
@@ -382,9 +385,12 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     try {
       await api.salvarModelo(
         { nome: nome.trim(), parte, ref: ref.trim(), composicao: composicao.trim(), cores: [...sel], tamanhos, materiais },
-        nomeEdit || undefined
+        refNome || undefined
       );
-      onSalvo(); // fecha o modal e recarrega a lista
+      onSalvo();               // recarrega a lista no fundo (sem fechar)
+      setRefNome(nome.trim()); // vira edição desse produto
+      setSalvo(true);          // continua na tela do cadastro, com "✓ salvo"
+      setSalvando(false);
     } catch (e) {
       setErro((e as Error).message);
       setSalvando(false);
@@ -396,7 +402,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
       <div className="modal-card" style={{ maxWidth: 900, width: "min(900px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica">
           <div className="modal-hd-top">
-            <span className="modal-pills"><span className="modal-pill">{nomeEdit ? "Editar produto" : "Novo produto"}</span></span>
+            <span className="modal-pills"><span className="modal-pill">{refNome ? "Editar produto" : "Novo produto"}</span></span>
             <button className="modal-x" onClick={onFechar}>✕</button>
           </div>
         </div>
@@ -431,6 +437,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             <Campo label="Tamanho">
               <select value="__pick__" onChange={(e) => {
                 const v = e.target.value;
+                setSalvo(false);
                 if (v === "__novo__") { novoTamanho(); return; }
                 if (v === "__todos__") { setSelTam((s) => { const n = { ...s }; linhasTam.forEach((t) => (n[t.nome] = true)); return n; }); return; }
                 if (v && v !== "__pick__") setSelTam((s) => ({ ...s, [v]: true }));
@@ -527,13 +534,13 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
                       <td className="strong">{t.nome}</td>
                       <td className="num">
                         <span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
-                          <input className="w-xs num" type="number" min={0} step="any" value={pesos[t.nome] ?? ""} onChange={(e) => setPesos((p) => ({ ...p, [t.nome]: e.target.value }))} />
+                          <input className="w-xs num" type="number" min={0} step="any" value={pesos[t.nome] ?? ""} onChange={(e) => { setSalvo(false); setPesos((p) => ({ ...p, [t.nome]: e.target.value })); }} />
                           <span className="muted" style={{ fontSize: 12 }}>kg</span>
                         </span>
                       </td>
                       <td className="num">
                         <span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
-                          <input className="w-xs num" type="number" min={0} step="any" value={tempos[t.nome] ?? ""} onChange={(e) => setTempos((p) => ({ ...p, [t.nome]: e.target.value }))} />
+                          <input className="w-xs num" type="number" min={0} step="any" value={tempos[t.nome] ?? ""} onChange={(e) => { setSalvo(false); setTempos((p) => ({ ...p, [t.nome]: e.target.value })); }} />
                           <span className="muted" style={{ fontSize: 12 }}>min</span>
                         </span>
                       </td>
@@ -541,7 +548,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
                         const k = `${t.nome}||${cat}`;
                         return (
                           <td key={cat}>
-                            <select value={fichaItem[k] || ""} onChange={(e) => setFichaItem((fi) => ({ ...fi, [k]: e.target.value }))} style={{ minWidth: 150 }}>
+                            <select value={fichaItem[k] || ""} onChange={(e) => { setSalvo(false); setFichaItem((fi) => ({ ...fi, [k]: e.target.value })); }} style={{ minWidth: 150 }}>
                               <option value="">— não usa —</option>
                               {matCat.filter((m) => m.categoria === cat).map((m) => <option key={m.id} value={m.id}>{m.nome}{m.cor ? ` (${m.cor})` : ""}</option>)}
                             </select>
@@ -566,11 +573,12 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           {/* Footer */}
           <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16, alignItems: "center" }}>
             <span className="muted" style={{ marginRight: "auto", fontSize: 13 }}>
+              {salvo && <span style={{ color: "#16a34a", fontWeight: 800, marginRight: 12 }}>✓ Salvo</span>}
               <strong>{nCores}</strong> cores × <strong>{nTam}</strong> tamanhos = <strong>{nCores * nTam}</strong> variações
             </span>
-            <button className="btn" onClick={onFechar}>Cancelar</button>
+            <button className="btn" onClick={onFechar}>Fechar</button>
             <button className="btn btn-primary" style={{ background: "#16a34a" }} disabled={salvando} onClick={salvar}>
-              {salvando ? "Salvando…" : "✔ Salvar produto"}
+              {salvando ? "Salvando…" : salvo ? "✔ Salvar alterações" : "✔ Salvar produto"}
             </button>
           </div>
         </div>
