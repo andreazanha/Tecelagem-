@@ -1171,6 +1171,7 @@ const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; coluna
     { key: "unidade", label: "Un", width: 80 },
     { key: "preco", label: "Preço (R$)", width: 100 },
     { key: "minimo", label: "Estoque mín.", width: 90 },
+    { key: "fornecedor", label: "Fornecedor", width: 160 },
     { key: "status", label: "Status", width: 100 },
   ] },
   encarte: { colunas: [
@@ -1710,14 +1711,28 @@ function AlterarMassaModal({ colunas, ids, fornecedores, onFechar, onSalvo }: {
 // ── Ordem de compra: nossos dados (persistidos), fornecedor e itens → impressão ──
 type Empresa = { nome: string; cnpj: string; endereco: string; telefone: string; email: string };
 const EMPRESA_KEY = "empresa-compras";
+const EMPRESA_PADRAO: Empresa = {
+  nome: "Big Tricot LTDA",
+  cnpj: "37.177.019/0001-18",
+  endereco: "R. Iracy da Costa Pereira, 264 – Dei Fiori – Monte Sião/MG – CEP 37580-000",
+  telefone: "(35) 3633-0984",
+  email: "",
+};
 function getEmpresa(): Empresa {
-  const base: Empresa = { nome: "Big Tricot", cnpj: "", endereco: "", telefone: "", email: "" };
-  try { const e = JSON.parse(localStorage.getItem(EMPRESA_KEY) || "null"); if (e && typeof e === "object") return { ...base, ...e }; } catch { /* ignore */ }
-  return base;
+  try {
+    const e = JSON.parse(localStorage.getItem(EMPRESA_KEY) || "null");
+    if (e && typeof e === "object") {
+      // só sobrescreve o padrão com campos NÃO vazios que o usuário salvou
+      const merged = { ...EMPRESA_PADRAO };
+      for (const k of Object.keys(EMPRESA_PADRAO) as (keyof Empresa)[]) if (e[k]) merged[k] = e[k];
+      return merged;
+    }
+  } catch { /* ignore */ }
+  return { ...EMPRESA_PADRAO };
 }
 const escHtml = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 
-function imprimirOrdemCompra(emp: Empresa, forn: Fornecedor | null, fornNome: string, itens: CompraSugestao[]) {
+function imprimirOrdemCompra(emp: Empresa, forn: Fornecedor | null, fornNome: string, itens: CompraSugestao[], autoPrint = true) {
   const hoje = new Date();
   const p2 = (n: number) => String(n).padStart(2, "0");
   const data = `${p2(hoje.getDate())}/${p2(hoje.getMonth() + 1)}/${hoje.getFullYear()}`;
@@ -1731,7 +1746,9 @@ function imprimirOrdemCompra(emp: Empresa, forn: Fornecedor | null, fornNome: st
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${numero}</title><style>
     *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1f2937;margin:24px;font-size:13px}
     .top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #4338ca;padding-bottom:12px}
-    .top h1{margin:0;font-size:22px;color:#4338ca}.oc{text-align:right}.oc .t{font-size:18px;font-weight:800}
+    .logo{font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:26px;letter-spacing:1px;color:#4338ca;line-height:1}
+    .logosub{font-size:10px;letter-spacing:4px;color:#6b7280;margin:2px 0 8px}
+    .rz{font-weight:700;font-size:15px}.oc{text-align:right}.oc .t{font-size:18px;font-weight:800}
     .box{border:1px solid #d1d5db;border-radius:8px;padding:12px 14px;margin-top:16px}
     .box h2{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280}
     .lbl{color:#6b7280}table{width:100%;border-collapse:collapse;margin-top:16px}
@@ -1744,7 +1761,11 @@ function imprimirOrdemCompra(emp: Empresa, forn: Fornecedor | null, fornNome: st
     @media print{body{margin:0}.noprint{display:none}}
   </style></head><body>
     <div class="top">
-      <div><h1>${escHtml(emp.nome || "Big Tricot")}</h1>${li("CNPJ", emp.cnpj)}${emp.endereco ? `<div>${escHtml(emp.endereco)}</div>` : ""}<div>${[emp.telefone, emp.email].filter(Boolean).map(escHtml).join(" · ")}</div></div>
+      <div>
+        <div class="logo">BIG TRICOT</div><div class="logosub">HOME DECOR</div>
+        <div class="rz">${escHtml(emp.nome || "Big Tricot LTDA")}</div>
+        ${li("CNPJ", emp.cnpj)}${emp.endereco ? `<div>${escHtml(emp.endereco)}</div>` : ""}<div>${[emp.telefone, emp.email].filter(Boolean).map(escHtml).join(" · ")}</div>
+      </div>
       <div class="oc"><div class="t">ORDEM DE COMPRA</div><div class="lbl">Nº ${numero}</div><div class="lbl">Data: ${data}</div></div>
     </div>
     <div class="box"><h2>Fornecedor</h2><div><strong>${escHtml(fornNome)}</strong></div>${li("Contato", forn?.contato)}${li("Telefone", forn?.telefone)}${li("E-mail", forn?.email)}${li("CNPJ", forn?.cnpj)}</div>
@@ -1757,7 +1778,7 @@ function imprimirOrdemCompra(emp: Empresa, forn: Fornecedor | null, fornNome: st
   const w = window.open("", "_blank");
   if (!w) { alert("Permita pop-ups para gerar a ordem de compra."); return; }
   w.document.write(html); w.document.close(); w.focus();
-  setTimeout(() => { try { w.print(); } catch { /* ignore */ } }, 400);
+  if (autoPrint) setTimeout(() => { try { w.print(); } catch { /* ignore */ } }, 400);
 }
 
 // Modal: edita e persiste os NOSSOS dados usados no cabeçalho da ordem de compra.
@@ -1790,10 +1811,21 @@ function ComprasMateriais() {
   const [carregou, setCarregou] = useState(false);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [empresaModal, setEmpresaModal] = useState(false);
+  const [qtd, setQtd] = useState<Record<string, string>>({}); // "comprar" editável por item
+  const [fora, setFora] = useState<Set<string>>(new Set());   // itens desmarcados (não comprar)
   useEffect(() => {
     api.comprasMateriais().then((r) => { setItens(r); setCarregou(true); }).catch(() => setCarregou(true));
     api.listarFornecedores().then(setFornecedores).catch(() => {});
   }, []);
+
+  const incluido = (m: CompraSugestao) => !fora.has(m.id);
+  const toggle = (id: string) => setFora((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const qtdDe = (m: CompraSugestao) => {
+    const raw = qtd[m.id];
+    const n = raw != null ? Number(raw.replace(",", ".")) : (m.faltam || 0);
+    return isNaN(n) ? 0 : n;
+  };
+  const custoItem = (m: CompraSugestao) => incluido(m) ? (m.preco || 0) * qtdDe(m) : 0;
 
   // agrupa por fornecedor (mantém ordem de chegada, que já vem ordenada)
   const grupos: { forn: string; itens: CompraSugestao[] }[] = [];
@@ -1803,44 +1835,58 @@ function ComprasMateriais() {
     if (!g) { g = { forn, itens: [] }; grupos.push(g); }
     g.itens.push(m);
   }
-  const custoItem = (m: CompraSugestao) => (m.preco || 0) * (m.faltam || 0);
   const totalGeral = itens.reduce((s, m) => s + custoItem(m), 0);
+
+  // Monta a ordem do grupo com o que está marcado e a quantidade editada.
+  function gerar(g: { forn: string; itens: CompraSugestao[] }, autoPrint: boolean) {
+    const escolhidos = g.itens.filter(incluido).map((m) => ({ ...m, faltam: qtdDe(m) })).filter((m) => m.faltam > 0);
+    if (!escolhidos.length) { alert("Marque ao menos um item (com quantidade maior que zero)."); return; }
+    const fid = g.itens[0]?.fornecedor_id;
+    const f = fid ? fornecedores.find((x) => x.id === fid) || null : null;
+    imprimirOrdemCompra(getEmpresa(), f, g.forn, escolhidos, autoPrint);
+  }
 
   if (carregou && itens.length === 0)
     return <div className="card pad empty">Nenhum material abaixo do estoque mínimo. Tudo em dia. ✅</div>;
 
   return (
     <>
-      <div className="row-gap" style={{ alignItems: "center", marginBottom: 12 }}>
+      <div className="row-gap" style={{ alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0 }}>Compras sugeridas</h2>
+        <span className="muted" style={{ fontSize: 12 }}>Edite as quantidades e marque o que comprar.</span>
         <button className="btn btn-soft" style={{ marginLeft: "auto" }} title="Editar os dados que aparecem no cabeçalho da ordem" onClick={() => setEmpresaModal(true)}>✎ Nossos dados</button>
         <span className="muted">Estimativa total: <strong>{rBR(totalGeral)}</strong></span>
       </div>
       {grupos.map((g) => {
         const total = g.itens.reduce((s, m) => s + custoItem(m), 0);
+        const nSel = g.itens.filter(incluido).length;
         return (
           <div className="card" key={g.forn} style={{ marginBottom: 14 }}>
-            <div className="row-gap" style={{ alignItems: "center", gap: 10, padding: "10px 12px" }}>
+            <div className="row-gap" style={{ alignItems: "center", gap: 10, padding: "10px 12px", flexWrap: "wrap" }}>
               <span className="chip chip-kit">🚛 {g.forn}</span>
-              <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>{g.itens.length} item(ns) · {rBR(total)}</span>
-              <button className="btn btn-soft" title="Gerar ordem de compra deste fornecedor" onClick={() => {
-                const fid = g.itens[0]?.fornecedor_id;
-                const f = fid ? fornecedores.find((x) => x.id === fid) || null : null;
-                imprimirOrdemCompra(getEmpresa(), f, g.forn, g.itens);
-              }}>🧾 Ordem de compra</button>
+              <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>{nSel}/{g.itens.length} item(ns) · {rBR(total)}</span>
+              <button className="btn btn-soft" title="Abrir sem imprimir (visualizar/editar)" onClick={() => gerar(g, false)}>👁 Visualizar</button>
+              <button className="btn btn-primary" title="Gerar e imprimir a ordem de compra" onClick={() => gerar(g, true)}>🧾 Ordem de compra</button>
             </div>
             <table className="table">
-              <thead><tr><th>Material</th><th className="num">Saldo</th><th className="num">Mínimo</th><th className="num">Comprar</th><th className="num">Custo est.</th></tr></thead>
+              <thead><tr><th style={{ width: 30 }}></th><th>Material</th><th className="num">Saldo</th><th className="num">Mínimo</th><th className="num">Comprar</th><th className="num">Custo est.</th></tr></thead>
               <tbody>
-                {g.itens.map((m) => (
-                  <tr key={m.id}>
-                    <td className="strong">{m.nome}{m.tamanho ? ` · ${m.tamanho}` : ""}</td>
-                    <td className="num"><span className="mat-saldo-baixo">{nBR(m.saldo || 0)} {m.unidade || ""}</span></td>
-                    <td className="num">{nBR(m.minimo || 0)}</td>
-                    <td className="num strong">{nBR(m.faltam || 0)} {m.unidade || ""}</td>
-                    <td className="num">{m.preco != null ? rBR(custoItem(m)) : "—"}</td>
-                  </tr>
-                ))}
+                {g.itens.map((m) => {
+                  const on = incluido(m);
+                  return (
+                    <tr key={m.id} style={on ? undefined : { opacity: 0.5 }}>
+                      <td><input type="checkbox" checked={on} onChange={() => toggle(m.id)} /></td>
+                      <td className="strong">{m.nome}{m.tamanho ? ` · ${m.tamanho}` : ""}{m.cor ? ` · ${m.cor}` : ""}</td>
+                      <td className="num"><span className="mat-saldo-baixo">{nBR(m.saldo || 0)} {m.unidade || ""}</span></td>
+                      <td className="num">{nBR(m.minimo || 0)}</td>
+                      <td className="num">
+                        <input value={qtd[m.id] ?? String(m.faltam ?? 0)} onChange={(e) => setQtd((q) => ({ ...q, [m.id]: e.target.value }))}
+                          inputMode="decimal" disabled={!on} style={{ width: 64, textAlign: "right" }} /> <span className="muted" style={{ fontSize: 11 }}>{m.unidade || ""}</span>
+                      </td>
+                      <td className="num">{m.preco != null ? rBR(custoItem(m)) : "—"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
