@@ -1131,7 +1131,7 @@ const CORES_INSUMO = ["#0891b2", "#7c3aed", "#ca8a04", "#16a34a", "#ea580c", "#d
 // extra:<chave> (campo próprio do tipo, guardado no JSON `extra`).
 // Tipos com `colunas` mostram SÓ essas colunas; os demais usam colunasPadrao().
 type ColDef = { key: string; label: string; ph?: string; width?: number };
-const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; colunas?: ColDef[] }> = {
+const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; colunas?: ColDef[]; nomeTemplate?: string }> = {
   ziper: { colunas: [
     { key: "nome", label: "Nome", ph: "ex.: Zíper Invisível", width: 190 },
     { key: "cor", label: "Cor do tricô", ph: "ex.: Off White", width: 150 },
@@ -1163,7 +1163,15 @@ const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; coluna
     { key: "minimo", label: "Estoque mín.", width: 90 },
     { key: "status", label: "Status", width: 100 },
   ] },
-  refil:     { campos: [{ key: "extra:medida", label: "Medida", ph: "ex.: 50x50", width: 100 }] },
+  refil: { nomeTemplate: "Refil {tamanho}", colunas: [
+    { key: "extra:almofada", label: "Tamanho da almofada", ph: "ex.: 45x45", width: 160 },
+    { key: "tamanho", label: "Tamanho do refil", ph: "ex.: 50x50 (ou 'Não usa refil')", width: 200 },
+    { key: "extra:peso", label: "Peso", ph: "ex.: 300 g", width: 100 },
+    { key: "unidade", label: "Un", width: 80 },
+    { key: "preco", label: "Preço (R$)", width: 100 },
+    { key: "minimo", label: "Estoque mín.", width: 90 },
+    { key: "status", label: "Status", width: 100 },
+  ] },
   encarte:   { campos: [{ key: "extra:modelo", label: "Modelo", ph: "ex.: A6 frente/verso", width: 160 }] },
   embalagem: { campos: [{ key: "extra:dimensao", label: "Dimensão", ph: "ex.: 30x40", width: 120 }] },
   tag:       { campos: [{ key: "extra:modelo", label: "Modelo", ph: "ex.: Kraft redonda", width: 160 }] },
@@ -1311,8 +1319,10 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const colunas: ColDef[] = cfg.colunas || colunasPadrao(cfg);
   const temCor = colunas.some((c) => c.key === "cor");
   const extraKeys = colunas.filter((c) => c.key.startsWith("extra:")).map((c) => c.key.slice(6));
+  const semNome = !colunas.some((c) => c.key === "nome"); // tipos com nome automático (refil)
   // Colar em massa: mesmas colunas do tipo (fornecedor entra por NOME — cria se não existir).
   const bulkCols = colunas.map((c) => c.key);
+  const bulkLabels = colunas.map((c) => c.label);
   const bulkLabel = colunas.map((c) => c.label.toLowerCase()).join(" · ");
   const bulkEx = colunas.map((c) => exemploColuna(c, cat.nome)).join(";");
   const [itens, setItens] = useState<Material[]>([]);
@@ -1382,14 +1392,21 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
     ({ nome: setNome, codigo_interno: setCodInterno, tamanho: setTamanho, cor: setCor, codigo: setCodigo, unidade: setUnidade, preco: setPreco, minimo: setMinimo, status: setStatus, obs: setObs } as Record<string, (v: string) => void>)[key]?.(v);
   }
 
+  // Nome final: manual (coluna "nome") ou automático via template (ex.: "Refil {tamanho}").
+  function nomeFinal(): string {
+    if (!semNome) return nome.trim();
+    if (!cfg.nomeTemplate) return "";
+    return cfg.nomeTemplate.replace(/\{(\w+)\}/g, (_s, k: string) => getV(k) || getV("extra:" + k)).trim();
+  }
   async function salvar() {
-    if (!nome.trim()) return alert("Informe o nome do material.");
+    const nomeM = nomeFinal();
+    if (!nomeM) return alert(semNome ? `Preencha os campos do ${label.toLowerCase()}.` : "Informe o nome do material.");
     // extra: só as chaves de coluna deste tipo, sem valores vazios.
     const extraLimpo: Record<string, string> = {};
     for (const k of extraKeys) { const v = (extra[k] || "").trim(); if (v) extraLimpo[k] = v; }
     try {
       await api.salvarMaterial({
-        id: editId || undefined, categoria, nome: nome.trim(), tamanho: tamanho.trim() || null, fornecedor_id: fornId || null,
+        id: editId || undefined, categoria, nome: nomeM, tamanho: tamanho.trim() || null, fornecedor_id: fornId || null,
         cor: temCor ? (cor.trim() || null) : null, cor_hex: null, codigo: temCor ? (codigo.trim() || null) : null,
         unidade, preco: preco.trim() ? Number(preco.replace(",", ".")) : null, minimo: minimo.trim() ? Number(minimo.replace(",", ".")) : 0,
         codigo_interno: codInterno.trim() || null, status, obs: obs.trim() || null,
@@ -1515,7 +1532,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
         titulo={`Colar ${label.toLowerCase()} em massa`}
         colunas={bulkLabel}
         exemplo={bulkEx}
-        onColar={async (texto) => { const r = await api.bulkMateriais(categoria, texto, bulkCols); if (r.ids?.length) salvarUndo(r.ids); return r; }}
+        onColar={async (texto) => { const r = await api.bulkMateriais(categoria, texto, { colunas: bulkCols, labels: bulkLabels, nomeTemplate: cfg.nomeTemplate }); if (r.ids?.length) salvarUndo(r.ids); return r; }}
         onUndo={(ids) => Promise.all(ids.map((id) => api.excluirMaterial(id))).then(() => { limparUndo(); })}
         onFechar={() => setColar(false)}
         onSalvo={() => { recarregar(); onMudou?.(); }}

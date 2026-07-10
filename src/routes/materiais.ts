@@ -161,9 +161,12 @@ materiais.delete("/refil-mapa/:medida", async (c) => {
 // COLAR EM MASSA: uma linha = um material. Colunas por Tab/;/, na ordem
 // nome · tamanho · unidade · preço · estoque mínimo. Só o nome é obrigatório.
 materiais.post("/bulk", async (c) => {
-  const b = await c.req.json<{ categoria?: string; texto?: string; colunas?: string[] }>().catch(() => ({}) as Record<string, unknown>);
+  const b = await c.req.json<{ categoria?: string; texto?: string; colunas?: string[]; labels?: string[]; nomeTemplate?: string }>().catch(() => ({}) as Record<string, unknown>);
   const categoria = String(b.categoria ?? "").trim().toLowerCase();
   if (!(await slugsValidos(c.env)).has(categoria)) return c.json({ error: "categoria inválida" }, 400);
+  const labels = Array.isArray(b.labels) ? b.labels.map(String) : [];
+  // Nome derivado quando o tipo não tem coluna "nome" (ex.: refil → "Refil {tamanho}").
+  const nomeTemplate = typeof b.nomeTemplate === "string" ? b.nomeTemplate : "";
   // colunas: ordem dos campos de CADA linha, igual à tela do tipo. Ex. do zíper:
   // ["nome","codigo_interno","tamanho","cor","codigo","extra:comprimento","unidade","preco","minimo","status"].
   // extra:<chave> vai para o JSON `extra` (campos específicos do tipo). Sem `colunas`,
@@ -192,6 +195,11 @@ materiais.post("/bulk", async (c) => {
   for (const linha of rawLinhas) {
     const cells = splitRow(linha);
     if (isSep(cells)) continue; // linha "---" de markdown
+    // Pula o cabeçalho colado junto: 1ª linha cujo 1º campo bate com o rótulo (ou é "nome").
+    if (!headerPulado) {
+      const c0 = norm(cells[0] || "");
+      if (c0 === "nome" || (labels[0] && c0 === norm(labels[0]))) { headerPulado = true; continue; }
+    }
     const m: Mat = { nome: "", tamanho: null, unidade: null, preco: null, minimo: 0, codigo_interno: null, cor: null, codigo: null, status: "ativo", obs: null, fornecedor_nome: null, fornecedor_id: null, extra: {} };
     colunas.forEach((campo, i) => {
       const v = (cells[i] || "").trim();
@@ -208,8 +216,16 @@ materiais.post("/bulk", async (c) => {
       else if (campo === "status") m.status = /inativ/i.test(v) ? "inativo" : "ativo";
       else if (campo.startsWith("extra:")) { if (v) m.extra[campo.slice(6)] = v; }
     });
+    // "Não usa refil" / "sem refil" não é item de estoque — ignora.
+    if (m.tamanho && /n[ãa]o usa|sem refil/i.test(m.tamanho)) continue;
+    // Nome automático quando o tipo não tem coluna "nome" (ex.: "Refil {tamanho}").
+    if (!m.nome && nomeTemplate) {
+      m.nome = nomeTemplate.replace(/\{(\w+)\}/g, (_s, k: string) => {
+        const direto = (m as unknown as Record<string, unknown>)[k];
+        return String((typeof direto === "string" && direto) || m.extra[k] || "");
+      }).trim();
+    }
     if (!m.nome) continue;
-    if (!headerPulado && norm(m.nome) === "nome") { headerPulado = true; continue; } // pula cabeçalho colado junto
     total++;
     const chave = chaveMat(m);
     if (vistos.has(chave)) continue; // duplicata na própria colagem
