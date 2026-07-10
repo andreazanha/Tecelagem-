@@ -4,6 +4,7 @@ import { Hono, type Context } from "hono";
 import type { Env } from "../index";
 import { gerarRelatorioEstoque, type LinhaEstoque } from "../pdf";
 import { enviarPush } from "../push-send";
+import { colsBulk } from "./materiais";
 
 // Lembrete recorrente (chamado pelo cron): enquanto houver reposição PENDENTE,
 // reenvia o push. A mesma tag substitui o aviso anterior (não empilha).
@@ -868,6 +869,36 @@ fornecedores.post("/", async (c) => {
     .bind(id, nome, str(b.contato), str(b.telefone), str(b.email), str(b.cnpj), str(b.observacao), b.ativo === false || b.ativo === 0 ? 0 : 1)
     .run();
   return c.json({ id, nome }, existe ? 200 : 201);
+});
+
+// COLAR EM MASSA: uma linha = um fornecedor. Colunas por Tab/;/, na ordem
+// nome · contato · telefone · email. Só o nome é obrigatório; nome repetido é ignorado.
+fornecedores.post("/bulk", async (c) => {
+  const b = await c.req.json<{ texto?: string }>().catch(() => ({}) as Record<string, unknown>);
+  const linhas = String(b.texto || "").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
+  const parsed: { nome: string; contato: string | null; telefone: string | null; email: string | null }[] = [];
+  const vistos = new Set<string>();
+  let total = 0;
+  for (const linha of linhas) {
+    const p = colsBulk(linha);
+    const nome = p[0] || "";
+    if (!nome) continue;
+    total++;
+    if (vistos.has(nome.toLowerCase())) continue;
+    vistos.add(nome.toLowerCase());
+    parsed.push({ nome, contato: p[1] || null, telefone: p[2] || null, email: p[3] || null });
+  }
+  if (!total) return c.json({ error: "nenhum fornecedor reconhecido", exemplo: "Coats;João;(11) 99999-0000;joao@coats.com" }, 400);
+
+  const { results: exist } = await c.env.DB.prepare("SELECT nome FROM fornecedores").all<{ nome: string }>();
+  const jaTinha = new Set(exist.map((x) => x.nome.toLowerCase()));
+  const novos = parsed.filter((p) => !jaTinha.has(p.nome.toLowerCase()));
+  const stmts = novos.map((p) =>
+    c.env.DB.prepare("INSERT INTO fornecedores (id, nome, contato, telefone, email, ativo) VALUES (?, ?, ?, ?, ?, 1)")
+      .bind(uid(), p.nome, p.contato, p.telefone, p.email)
+  );
+  if (stmts.length) await c.env.DB.batch(stmts);
+  return c.json({ total, criados: novos.length, ignorados: total - novos.length }, 201);
 });
 
 fornecedores.delete("/:id", async (c) => {

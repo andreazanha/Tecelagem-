@@ -159,6 +159,13 @@ export interface RefilMapa {
   medida_produto: string;
   medida_refil: string | null;
 }
+// Resultado do "colar em massa" (uma linha = um registro).
+export interface BulkResult {
+  total: number;
+  criados: number;
+  ignorados: number;
+  sem_senha?: number; // só operadores
+}
 // Sugestão de compra: material com saldo abaixo do mínimo.
 export interface CompraSugestao extends Material {
   faltam: number;
@@ -680,6 +687,15 @@ export const api = {
     jsonPost("/api/materiais/refil-mapa", b).then((r) => j<RefilMapa>(r)),
   excluirRefilMapa: (medida: string) =>
     fetch(`/api/materiais/refil-mapa/${encodeURIComponent(medida)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  // Colar em massa (uma linha = um registro; colunas por Tab/;/,)
+  bulkMateriais: (categoria: string, texto: string) =>
+    jsonPost("/api/materiais/bulk", { categoria, texto }).then((r) => j<BulkResult>(r)),
+  bulkTiposFio: (texto: string) =>
+    jsonPost("/api/tipos-fio/bulk", { texto }).then((r) => j<BulkResult>(r)),
+  bulkOperadores: (texto: string) =>
+    jsonPost("/api/operadores/bulk", { texto }).then((r) => j<BulkResult>(r)),
+  bulkFornecedores: (texto: string) =>
+    jsonPost("/api/fornecedores/bulk", { texto }).then((r) => j<BulkResult>(r)),
   excluirTamanho: (id: string) =>
     fetch(`/api/tamanhos/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) =>
       j<{ ok: boolean }>(r)

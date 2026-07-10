@@ -10,6 +10,12 @@ export const materiais = new Hono<{ Bindings: Env }>();
 const uid = () => crypto.randomUUID();
 const str = (v: unknown) => String(v ?? "").trim() || null;
 const num = (v: unknown) => (v == null || isNaN(Number(v)) ? null : Number(v));
+// Colar em massa: separa as colunas de UMA linha. "Fareja" o separador (Tab tem
+// prioridade, depois ";", só então ","), para NÃO quebrar preços com vírgula
+// decimal (ex.: "1,50") quando a linha usa ";" ou Tab entre as colunas.
+export const colsBulk = (linha: string): string[] =>
+  (linha.includes("\t") ? linha.split("\t") : linha.includes(";") ? linha.split(";") : linha.split(","))
+    .map((s) => s.trim());
 const slugify = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
@@ -137,6 +143,46 @@ materiais.post("/refil-mapa", async (c) => {
 materiais.delete("/refil-mapa/:medida", async (c) => {
   await c.env.DB.prepare("DELETE FROM refil_mapa WHERE medida_produto = ?").bind(c.req.param("medida")).run();
   return c.json({ ok: true });
+});
+
+// COLAR EM MASSA: uma linha = um material. Colunas por Tab/;/, na ordem
+// nome · tamanho · unidade · preço · estoque mínimo. Só o nome é obrigatório.
+materiais.post("/bulk", async (c) => {
+  const b = await c.req.json<{ categoria?: string; texto?: string }>().catch(() => ({}) as Record<string, unknown>);
+  const categoria = String(b.categoria ?? "").trim().toLowerCase();
+  if (!(await slugsValidos(c.env)).has(categoria)) return c.json({ error: "categoria inválida" }, 400);
+  const linhas = String(b.texto || "").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
+  const parsed: { nome: string; tamanho: string | null; unidade: string | null; preco: number | null; minimo: number }[] = [];
+  const vistos = new Set<string>();
+  let total = 0; // linhas com nome (base para "ignorados")
+  for (const linha of linhas) {
+    const p = colsBulk(linha);
+    const nome = p[0] || "";
+    if (!nome) continue;
+    total++;
+    const tamanho = p[1] || null;
+    const chave = (nome + "||" + (tamanho || "")).toLowerCase();
+    if (vistos.has(chave)) continue; // duplicata na própria colagem
+    vistos.add(chave);
+    parsed.push({ nome, tamanho, unidade: p[2] || null, preco: num((p[3] || "").replace(",", ".")), minimo: num((p[4] || "").replace(",", ".")) ?? 0 });
+  }
+  if (!total) return c.json({ error: "nenhum material reconhecido", exemplo: "Zíper preto;40;un;1,50;10" }, 400);
+
+  // Já existentes (mesma categoria + nome + tamanho) contam como ignorados.
+  const { results: exist } = await c.env.DB.prepare(
+    "SELECT nome, tamanho FROM materiais WHERE categoria = ?"
+  ).bind(categoria).all<{ nome: string; tamanho: string | null }>();
+  const jaTinha = new Set(exist.map((x) => (x.nome + "||" + (x.tamanho || "")).toLowerCase()));
+
+  const novos = parsed.filter((p) => !jaTinha.has((p.nome + "||" + (p.tamanho || "")).toLowerCase()));
+  const stmts = novos.map((p) =>
+    c.env.DB.prepare(
+      `INSERT INTO materiais (id, categoria, nome, tamanho, unidade, preco, minimo, status, saldo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'ativo', 0)`
+    ).bind(uid(), categoria, p.nome, p.tamanho, p.unidade, p.preco, p.minimo)
+  );
+  if (stmts.length) await c.env.DB.batch(stmts);
+  return c.json({ total, criados: novos.length, ignorados: total - novos.length }, 201);
 });
 
 // Movimenta o estoque do material (entrada de compra, baixa manual, ajuste).

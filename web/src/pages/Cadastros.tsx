@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type Material, type MaterialCategoriaDef, type CompraSugestao, type Colecao, type ColecaoProduto } from "../api";
+import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type Material, type MaterialCategoriaDef, type CompraSugestao, type Colecao, type ColecaoProduto, type BulkResult } from "../api";
 import { getUser, PAGINAS, type Usuario } from "../auth";
 
 type AbaCad = "produtos" | "tipos-fio" | "tamanhos" | "materiais" | "fornecedores" | "operadores" | "usuarios";
@@ -22,6 +22,54 @@ function Campo({ label, children }: { label: string; children: React.ReactNode }
       <span className="campo-label">{label}</span>
       {children}
     </label>
+  );
+}
+
+// Modal reutilizável: COLAR EM MASSA. Cada linha vira um registro; colunas por
+// Tab/;/, (igual planilha). Mostra o formato esperado e um preview antes de salvar.
+function ColarEmMassa({ titulo, colunas, exemplo, onColar, onFechar, onSalvo }: {
+  titulo: string;
+  colunas: string;   // ex.: "nome · tamanho · unidade · preço · estoque mín."
+  exemplo: string;   // ex.: "Zíper preto;40;un;1,50;10"
+  onColar: (texto: string) => Promise<BulkResult>;
+  onFechar: () => void;
+  onSalvo: () => void;
+}) {
+  const [texto, setTexto] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const linhas = texto.split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean).length;
+  async function salvar() {
+    if (!linhas) return alert("Cole ao menos uma linha.");
+    setSalvando(true);
+    try {
+      const r = await onColar(texto);
+      onSalvo();
+      alert(`Pronto! ${r.criados} cadastrado(s), ${r.ignorados} ignorado(s)` + (r.sem_senha ? `, ${r.sem_senha} sem senha` : "") + ".");
+      onFechar();
+    } catch (e) { alert((e as Error).message); setSalvando(false); }
+  }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginTop: 0 }}>📋 {titulo}</h2>
+        <p className="muted" style={{ marginTop: -4 }}>
+          Uma linha = um registro. Colunas separadas por <strong>Tab</strong>, <strong>;</strong> ou <strong>,</strong> — dá pra colar direto de uma planilha.
+        </p>
+        <div className="card pad" style={{ background: "var(--bg-soft, #f8fafc)", fontSize: 13, marginBottom: 10 }}>
+          <div><strong>Ordem das colunas:</strong> {colunas}</div>
+          <div className="muted" style={{ marginTop: 4, fontFamily: "ui-monospace, monospace" }}>ex.: {exemplo}</div>
+        </div>
+        <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={10} placeholder={exemplo} autoFocus
+          style={{ width: "100%", fontFamily: "ui-monospace, monospace", fontSize: 13, padding: 10, boxSizing: "border-box" }} />
+        <div className="row-gap" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+          <span className="muted" style={{ fontSize: 13 }}>{linhas} linha(s)</span>
+          <div className="row-gap">
+            <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
+            <button className="btn btn-primary" onClick={salvar} disabled={salvando || !linhas}>{salvando ? "Salvando…" : "Cadastrar todos"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -642,6 +690,7 @@ function AbaFiosCores() {
   const [agrupar, setAgrupar] = useState(false);
   const [fioForm, setFioForm] = useState<{ id: string | null; nome: string; fornId: string; cor: string } | null>(null);
   const [colar, setColar] = useState("");
+  const [colarFio, setColarFio] = useState(false);
   const [processando, setProcessando] = useState(false);
 
   function recarregar() {
@@ -746,6 +795,7 @@ function AbaFiosCores() {
       <div className="row-gap" style={{ marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
         <p className="muted" style={{ margin: 0 }}>Entre num tipo de fio para ver e cadastrar as cores dele.</p>
         <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={() => setAgrupar(true)}>Agrupar cores</button>
+        <button className="btn btn-soft" onClick={() => setColarFio(true)}>📋 Colar em massa</button>
         <button className="btn btn-primary" onClick={() => setFioForm({ id: null, nome: "", fornId: "", cor: CORES_FIO[0] })}>＋ Novo tipo de fio</button>
       </div>
 
@@ -793,6 +843,14 @@ function AbaFiosCores() {
       </div>
 
       {agrupar && <AgruparFioModal cores={cores} onFechar={() => setAgrupar(false)} onSalvo={() => { setAgrupar(false); recarregar(); }} />}
+      {colarFio && <ColarEmMassa
+        titulo="Colar tipos de fio em massa"
+        colunas="nome · cor (hex) · preço (por kg)"
+        exemplo="Polisoft;#7c3aed;28,50"
+        onColar={api.bulkTiposFio}
+        onFechar={() => setColarFio(false)}
+        onSalvo={recarregar}
+      />}
     </>
   );
 }
@@ -1154,6 +1212,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const [extra, setExtra] = useState<Record<string, string>>({});
   const [novoForn, setNovoForn] = useState(false);
   const [entrada, setEntrada] = useState<Material | null>(null);
+  const [colar, setColar] = useState(false);
 
   function parseExtra(m: Material): Record<string, string> {
     if (!m.extra) return {};
@@ -1202,6 +1261,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
         <div className="row-gap" style={{ alignItems: "center" }}>
           <h2 style={{ margin: 0 }}>{editId ? `Editar ${label.toLowerCase()}` : `Novo ${label.toLowerCase()}`}</h2>
           <span style={{ marginLeft: "auto" }} />
+          <button className="btn btn-soft" title="Colar vários de uma vez" onClick={() => setColar(true)}>📋 Colar em massa</button>
           <button className="btn btn-soft" title="Renomear insumo" onClick={onEditarCat}>✎ Insumo</button>
           <button className="btn" title="Excluir insumo" onClick={onExcluirCat}>🗑</button>
         </div>
@@ -1299,6 +1359,14 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
 
       {novoForn && <FornecedorRapido onFechar={() => setNovoForn(false)} onSalvo={async (id) => { setNovoForn(false); await recarregarForn(); setFornId(id); }} />}
       {entrada && <MovEstoqueModal material={entrada} onFechar={() => setEntrada(null)} onSalvo={() => { setEntrada(null); recarregar(); onMudou?.(); }} />}
+      {colar && <ColarEmMassa
+        titulo={`Colar ${label.toLowerCase()} em massa`}
+        colunas="nome · tamanho · unidade · preço · estoque mín."
+        exemplo={`${label} branco;90X200;m;12,90;5`}
+        onColar={(texto) => api.bulkMateriais(categoria, texto)}
+        onFechar={() => setColar(false)}
+        onSalvo={() => { recarregar(); onMudou?.(); }}
+      />}
     </>
   );
 }
@@ -1426,6 +1494,7 @@ function AbaFornecedores() {
   const [itens, setItens] = useState<Fornecedor[]>([]);
   const [busca, setBusca] = useState("");
   const [modal, setModal] = useState<{ f: Partial<Fornecedor> } | null>(null);
+  const [colar, setColar] = useState(false);
 
   function recarregar() {
     api.listarFornecedores().then(setItens).catch(() => {});
@@ -1444,7 +1513,8 @@ function AbaFornecedores() {
     <>
       <div className="row-gap" style={{ marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         <input className="busca-ped" placeholder="🔎 Buscar fornecedor…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <button className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={() => setModal({ f: { nome: "", ativo: 1 } })}>＋ Novo fornecedor</button>
+        <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={() => setColar(true)}>📋 Colar em massa</button>
+        <button className="btn btn-primary" onClick={() => setModal({ f: { nome: "", ativo: 1 } })}>＋ Novo fornecedor</button>
       </div>
 
       <div className="card">
@@ -1467,6 +1537,14 @@ function AbaFornecedores() {
       </div>
 
       {modal && <FornecedorModal fornecedor={modal.f} onFechar={() => setModal(null)} onSalvo={() => { setModal(null); recarregar(); }} />}
+      {colar && <ColarEmMassa
+        titulo="Colar fornecedores em massa"
+        colunas="nome · contato · telefone · e-mail"
+        exemplo="Coats;João;(11) 99999-0000;joao@coats.com"
+        onColar={api.bulkFornecedores}
+        onFechar={() => setColar(false)}
+        onSalvo={recarregar}
+      />}
     </>
   );
 }
@@ -1524,6 +1602,7 @@ function OperadoresCadastro() {
   const [nome, setNome] = useState("");
   const [senha, setSenha] = useState("");
   const [setor, setSetor] = useState("");
+  const [colar, setColar] = useState(false);
 
   function recarregar() {
     api.listarOperadores().then(setItens).catch(() => {});
@@ -1555,7 +1634,10 @@ function OperadoresCadastro() {
   return (
     <>
       <div className="card pad" style={{ marginBottom: 16 }}>
-        <h2>Novo operador</h2>
+        <div className="row-gap" style={{ alignItems: "center" }}>
+          <h2 style={{ margin: 0 }}>Novo operador</h2>
+          <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={() => setColar(true)}>📋 Colar em massa</button>
+        </div>
         <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
           Ao iniciar uma produção, a pessoa seleciona o nome e digita a senha. Deixe o setor em branco
           para liberar em todos os setores.
@@ -1600,6 +1682,15 @@ function OperadoresCadastro() {
           ))}
         </tbody>
       </table>
+
+      {colar && <ColarEmMassa
+        titulo="Colar operadores em massa"
+        colunas="nome · senha · setor"
+        exemplo="Maria;1234;costura"
+        onColar={api.bulkOperadores}
+        onFechar={() => setColar(false)}
+        onSalvo={recarregar}
+      />}
     </>
   );
 }

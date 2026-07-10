@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { DEFAULT_PARTE1, norm } from "../classificar";
+import { colsBulk } from "./materiais";
 
 const BASE_P1 = new Set(DEFAULT_PARTE1.map((n) => norm(n)));
 
@@ -268,6 +269,38 @@ tiposFio.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// COLAR EM MASSA: uma linha = um tipo de fio. Colunas por Tab/;/, na ordem
+// nome · cor (hex) · preço. Só o nome é obrigatório. Nome repetido é ignorado.
+tiposFio.post("/bulk", async (c) => {
+  const b = await c.req.json<{ texto?: string }>().catch(() => ({}) as Record<string, unknown>);
+  const linhas = String(b.texto || "").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
+  const parsed: { nome: string; cor: string | null; preco: number | null }[] = [];
+  const vistos = new Set<string>();
+  let total = 0;
+  for (const linha of linhas) {
+    const p = colsBulk(linha);
+    const nome = p[0] || "";
+    if (!nome) continue;
+    total++;
+    if (vistos.has(nome.toLowerCase())) continue;
+    vistos.add(nome.toLowerCase());
+    const corRaw = p[1] || "";
+    const cor = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(corRaw) ? corRaw : null;
+    const precoN = Number((p[2] || "").replace(",", "."));
+    parsed.push({ nome, cor, preco: isNaN(precoN) || !p[2] ? null : precoN });
+  }
+  if (!total) return c.json({ error: "nenhum tipo de fio reconhecido", exemplo: "Polisoft;#7c3aed;28,50" }, 400);
+
+  const { results: exist } = await c.env.DB.prepare("SELECT nome FROM tipos_fio").all<{ nome: string }>();
+  const jaTinha = new Set(exist.map((x) => x.nome.toLowerCase()));
+  const novos = parsed.filter((p) => !jaTinha.has(p.nome.toLowerCase()));
+  const stmts = novos.map((p) =>
+    c.env.DB.prepare("INSERT INTO tipos_fio (id, nome, cor, preco) VALUES (?, ?, ?, ?)").bind(crypto.randomUUID(), p.nome, p.cor, p.preco)
+  );
+  if (stmts.length) await c.env.DB.batch(stmts);
+  return c.json({ total, criados: novos.length, ignorados: total - novos.length }, 201);
+});
+
 // ── Tamanhos (cada modelo tem vários) ─────────────────────────────────────────
 export const tamanhos = new Hono<{ Bindings: Env }>();
 
@@ -506,6 +539,40 @@ operadores.post("/", async (c) => {
 operadores.delete("/:id", async (c) => {
   await c.env.DB.prepare("DELETE FROM operadores WHERE id = ?").bind(c.req.param("id")).run();
   return c.json({ ok: true });
+});
+
+// COLAR EM MASSA: uma linha = um operador. Colunas por Tab/;/, na ordem
+// nome · senha · setor. Nome e senha são obrigatórios (linhas sem os dois são
+// ignoradas). Nome repetido faz upsert da senha/setor.
+operadores.post("/bulk", async (c) => {
+  const b = await c.req.json<{ texto?: string }>().catch(() => ({}) as Record<string, unknown>);
+  const linhas = String(b.texto || "").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
+  const parsed: { nome: string; senha: string; setor: string | null }[] = [];
+  const vistos = new Set<string>();
+  let semSenha = 0, total = 0;
+  for (const linha of linhas) {
+    const p = colsBulk(linha);
+    const nome = p[0] || "", senha = p[1] || "";
+    if (!nome) continue;
+    total++;
+    if (!senha) { semSenha++; continue; }
+    if (vistos.has(nome.toLowerCase())) continue;
+    vistos.add(nome.toLowerCase());
+    parsed.push({ nome, senha, setor: p[2] || null });
+  }
+  if (!parsed.length) return c.json({ error: "nenhum operador válido (nome e senha por linha)", exemplo: "Maria;1234;costura" }, 400);
+
+  const { results: exist } = await c.env.DB.prepare("SELECT nome FROM operadores").all<{ nome: string }>();
+  const jaTinha = new Set(exist.map((x) => x.nome.toLowerCase()));
+  const stmts = parsed.map((p) =>
+    c.env.DB.prepare(
+      `INSERT INTO operadores (id, nome, senha, setor) VALUES (?, ?, ?, ?)
+       ON CONFLICT(nome) DO UPDATE SET senha = excluded.senha, setor = excluded.setor`
+    ).bind(crypto.randomUUID(), p.nome, p.senha, p.setor)
+  );
+  await c.env.DB.batch(stmts);
+  const criados = parsed.filter((p) => !jaTinha.has(p.nome.toLowerCase())).length;
+  return c.json({ total, criados, ignorados: total - criados, sem_senha: semSenha }, 201);
 });
 
 // ── Usuários (login + permissões de telas) ────────────────────────────────────
