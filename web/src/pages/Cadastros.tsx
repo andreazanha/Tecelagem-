@@ -387,6 +387,41 @@ function GerenciarProdutosModal({ colecao, produtos, tipos, atuais, onFechar, on
   );
 }
 
+// Seletor "Aplicar em": Todos os tamanhos ou um/vários específicos (chips).
+function AplicarEm({ todos, aplicar, tamanhos, onTodos, onTam }: { todos: boolean; aplicar: Set<string>; tamanhos: string[]; onTodos: () => void; onTam: (t: string) => void }) {
+  return (
+    <div className="row-gap" style={{ gap: 4, flexWrap: "wrap", maxWidth: 230 }}>
+      <button type="button" onClick={onTodos} className="chip" style={{ cursor: "pointer", border: "none", background: todos ? "#4338ca" : "#eef2ff", color: todos ? "#fff" : "#3730a3" }}>Todos</button>
+      {tamanhos.map((t) => {
+        const on = !todos && aplicar.has(t);
+        return <button type="button" key={t} onClick={() => onTam(t)} className="chip" style={{ cursor: "pointer", border: "none", background: on ? "#16a34a" : "#f1f5f9", color: on ? "#fff" : "#475569" }}>{t}</button>;
+      })}
+    </div>
+  );
+}
+
+// Uma linha da ficha de consumo do produto (aba Materiais).
+type FichaLinha = {
+  id: string; tipo: string; fonte: "material" | "fio";
+  nomeMat: string; material_id: string;
+  quantidade: string; unidade: string;
+  aplicarTodos: boolean; aplicar: Set<string>;
+  obs: string; status: "ativo" | "inativo";
+};
+// Valor de uma "coluna" (chave) de um material — campo direto ou extra:<k>.
+function valorCol(m: Material, key: string): string {
+  if (!key) return "";
+  if (key.startsWith("extra:")) {
+    try { const o = m.extra ? JSON.parse(m.extra) : {}; return String((o as Record<string, unknown>)[key.slice(6)] ?? ""); } catch { return ""; }
+  }
+  return String((m as unknown as Record<string, unknown>)[key] ?? "");
+}
+// A "variação" do material na ficha (comprimento/tamanho/medida… conforme o tipo).
+function variacaoMat(m: Material): string {
+  const key = CAMPOS_POR_TIPO[m.categoria]?.variacao || "tamanho";
+  return valorCol(m, key) || m.tamanho || m.cor || "único";
+}
+
 function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | null; onFechar: () => void; onSalvo: () => void }) {
   const [nome, setNome] = useState("");
   const [ref, setRef] = useState("");
@@ -404,17 +439,15 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false); // "✓ salvo" — continua na tela após salvar
   const [refNome, setRefNome] = useState(nomeEdit); // nome já gravado (título + renomear)
-  const [matCat, setMatCat] = useState<Material[]>([]); // catálogo de materiais (insumos)
+  const [matCat, setMatCat] = useState<Material[]>([]);       // catálogo de materiais
   const [matDefs, setMatDefs] = useState<MaterialCategoriaDef[]>([]); // categorias (rótulos)
-  // Ficha técnica POR TAMANHO: colunas de material + item escolhido por (tamanho, categoria)
-  const [fichaCols, setFichaCols] = useState<string[]>([]);
-  const [fichaItem, setFichaItem] = useState<Record<string, string>>({}); // `${tam}||${cat}` → material_id
-  const [novoMat, setNovoMat] = useState(false); // modal p/ criar novo tipo de material
-  const [abrirTam, setAbrirTam] = useState(false); // seção Tamanhos/ficha recolhida por padrão
+  const [fios, setFios] = useState<TipoFio[]>([]);            // tipos de fio (fonte 'fio')
+  const [linhas, setLinhas] = useState<FichaLinha[]>([]);     // ficha de consumo (uma linha por material)
+  const [aba, setAba] = useState<"cores" | "peso" | "materiais">("cores");
 
   useEffect(() => {
-    Promise.all([api.listarCores(), api.listarTamanhos(), api.listarMateriais(), api.listarCategoriasMaterial()])
-      .then(([cs, ts, ms, mc]) => { setCores(cs); setTamCat(ts); setMatCat(ms); setMatDefs(mc); })
+    Promise.all([api.listarCores(), api.listarTamanhos(), api.listarMateriais(), api.listarCategoriasMaterial(), api.listarTiposFio()])
+      .then(([cs, ts, ms, mc, fs]) => { setCores(cs); setTamCat(ts); setMatCat(ms); setMatDefs(mc); setFios(fs); })
       .catch(() => {});
     if (nomeEdit) {
       api.obterModelo(nomeEdit).then((m) => {
@@ -430,19 +463,29 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           stp[t.tamanho] = t.tempo != null ? String(t.tempo) : "";
         });
         setSelTam(st); setPesos(sp); setTempos(stp);
-        const fc: string[] = [], fi: Record<string, string> = {};
+        // Ficha: agrupa as linhas por (material + qtd + un + obs + status + fonte);
+        // cada grupo aplica-se a um conjunto de tamanhos.
+        const grp = new Map<string, FichaLinha>();
         (m.materiais || []).forEach((mt) => {
-          const cat = mt.categoria || "";
-          if (cat && !fc.includes(cat)) fc.push(cat);
-          fi[`${mt.tamanho}||${cat}`] = mt.material_id;
+          const key = [mt.material_id, mt.quantidade, mt.unidade, mt.obs, mt.status, mt.fonte].join("|");
+          let ln = grp.get(key);
+          if (!ln) {
+            ln = { id: crypto.randomUUID(), tipo: mt.categoria || "", fonte: mt.fonte === "fio" ? "fio" : "material",
+              nomeMat: mt.nome || "", material_id: mt.material_id,
+              quantidade: mt.quantidade != null ? String(mt.quantidade) : "", unidade: mt.unidade || "",
+              aplicarTodos: false, aplicar: new Set<string>(), obs: mt.obs || "", status: mt.status === "inativo" ? "inativo" : "ativo" };
+            grp.set(key, ln);
+          }
+          ln.aplicar.add(mt.tamanho);
         });
-        setFichaCols(fc); setFichaItem(fi);
+        const tamsProd = m.tamanhos.map((t) => t.tamanho);
+        const arr = [...grp.values()];
+        arr.forEach((ln) => { if (ln.aplicar.size && tamsProd.length && tamsProd.every((t) => ln.aplicar.has(t))) ln.aplicarTodos = true; });
+        setLinhas(arr);
       }).catch((e) => setErro((e as Error).message));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nomeEdit]);
-  const catNome = (slug?: string) => matDefs.find((d) => d.slug === slug)?.nome || slug || "";
-
   const toggleCor = (n: string) => { setSalvo(false); setSel((prev) => { const s = new Set(prev); s.has(n) ? s.delete(n) : s.add(n); return s; }); };
   function toggleGrupo(gcores: Cor[]) {
     setSalvo(false);
@@ -513,14 +556,15 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         peso: pesos[t.nome] && pesos[t.nome].trim() !== "" ? Number(pesos[t.nome].replace(",", ".")) : null,
         tempo: tempos[t.nome] && tempos[t.nome].trim() !== "" ? Number(tempos[t.nome].replace(",", ".")) : null,
       }));
-    // Ficha por tamanho: para cada material-coluna e cada tamanho, o item escolhido.
+    // Ficha de consumo: cada linha vira uma linha por tamanho onde se aplica.
     const tamsSel = linhasTam.filter((t) => selTam[t.nome]).map((t) => t.nome);
-    const materiais: { tamanho: string; material_id: string; quantidade: number | null }[] = [];
-    for (const cat of fichaCols)
-      for (const tam of tamsSel) {
-        const mid = fichaItem[`${tam}||${cat}`];
-        if (mid) materiais.push({ tamanho: tam, material_id: mid, quantidade: 1 });
-      }
+    const materiais: { tamanho: string; material_id: string; quantidade: number | null; unidade: string | null; obs: string | null; status: string; fonte: string }[] = [];
+    for (const ln of linhas) {
+      if (!ln.material_id) continue;
+      const q = ln.quantidade.trim() ? Number(ln.quantidade.replace(",", ".")) : null;
+      const alvos = ln.aplicarTodos ? tamsSel : tamsSel.filter((t) => ln.aplicar.has(t));
+      for (const tam of alvos) materiais.push({ tamanho: tam, material_id: ln.material_id, quantidade: q, unidade: ln.unidade || null, obs: ln.obs || null, status: ln.status, fonte: ln.fonte });
+    }
     try {
       await api.salvarModelo(
         { nome: nome.trim(), parte, ref: ref.trim(), composicao: composicao.trim(), cores: [...sel], tamanhos, materiais },
@@ -536,9 +580,28 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     }
   }
 
+  // ── Ficha de consumo (aba Materiais) ──
+  const tamsProdSel = linhasTam.filter((t) => selTam[t.nome]).map((t) => t.nome);
+  const tiposFicha = [{ slug: "fio", nome: "Fio" }, ...matDefs.map((d) => ({ slug: d.slug, nome: d.nome }))];
+  const nomesDoTipo = (tipo: string): string[] =>
+    tipo === "fio" ? [...new Set(fios.map((f) => f.nome))] : [...new Set(matCat.filter((m) => m.categoria === tipo).map((m) => m.nome))];
+  const variacoesDoTipo = (tipo: string, nomeMat: string): { id: string; label: string; preco: number | null; unidade: string }[] =>
+    tipo === "fio"
+      ? (fios.filter((f) => f.nome === nomeMat).map((f) => ({ id: f.id, label: "Cor do produto", preco: f.preco ?? null, unidade: "kg" })))
+      : matCat.filter((m) => m.categoria === tipo && m.nome === nomeMat).map((m) => ({ id: m.id, label: variacaoMat(m), preco: m.preco ?? null, unidade: m.unidade || "" }));
+  const precoLinha = (ln: FichaLinha): number | null =>
+    ln.fonte === "fio" ? (fios.find((f) => f.id === ln.material_id)?.preco ?? null) : (matCat.find((m) => m.id === ln.material_id)?.preco ?? null);
+  const custoLinha = (ln: FichaLinha): number => (precoLinha(ln) || 0) * (Number(ln.quantidade.replace(",", ".")) || 0);
+  const setLn = (id: string, patch: Partial<FichaLinha>) => { setSalvo(false); setLinhas((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l))); };
+  const addLinha = () => { setSalvo(false); setLinhas((ls) => [...ls, { id: crypto.randomUUID(), tipo: "", fonte: "material", nomeMat: "", material_id: "", quantidade: "", unidade: "", aplicarTodos: true, aplicar: new Set(), obs: "", status: "ativo" }]); };
+  const delLinha = (id: string) => { setSalvo(false); setLinhas((ls) => ls.filter((l) => l.id !== id)); };
+  const custoPorTam = tamsProdSel.map((tam) => ({
+    tam, custo: linhas.filter((ln) => ln.status === "ativo" && (ln.aplicarTodos || ln.aplicar.has(tam))).reduce((s, ln) => s + custoLinha(ln), 0),
+  }));
+
   return (
     <div className="modal-bg" onClick={onFechar}>
-      <div className="modal-card" style={{ maxWidth: 900, width: "min(900px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card" style={{ maxWidth: 980, width: "min(980px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica">
           <div className="modal-hd-top">
             <span className="modal-pills"><span className="modal-pill">{refNome ? "Editar produto" : "Novo produto"}</span></span>
@@ -548,22 +611,29 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         <div className="pad">
           {erro && <p className="erro">{erro}</p>}
 
-          {/* 1. Dados do produto */}
-          <div className="campo-l" style={{ marginBottom: 8 }}>1 · DADOS DO PRODUTO</div>
+          {/* Dados do produto — sempre visíveis */}
           <div className="form-grid2">
-            <Campo label="Nome do modelo *"><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex.: PESEIRA ALANA" /></Campo>
-            <Campo label="Referência"><input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="ex.: 1075" /></Campo>
+            <Campo label="Nome do modelo *"><input value={nome} onChange={(e) => { setSalvo(false); setNome(e.target.value); }} spellCheck lang="pt-BR" placeholder="ex.: PESEIRA ALANA" /></Campo>
+            <Campo label="Referência"><input value={ref} onChange={(e) => { setSalvo(false); setRef(e.target.value); }} placeholder="ex.: 1075" /></Campo>
             <Campo label="Galga / parte">
-              <select value={parte} onChange={(e) => setParte(Number(e.target.value))}>
+              <select value={parte} onChange={(e) => { setSalvo(false); setParte(Number(e.target.value)); }}>
                 <option value={2}>Galga 7 (Parte 2)</option>
                 <option value={1}>Galga 3 (Parte 1)</option>
               </select>
             </Campo>
-            <Campo label="Composição"><input value={composicao} onChange={(e) => setComposicao(e.target.value)} placeholder="ex.: 100% POLIÉSTER" /></Campo>
+            <Campo label="Composição"><input value={composicao} onChange={(e) => { setSalvo(false); setComposicao(e.target.value); }} spellCheck lang="pt-BR" placeholder="ex.: 100% POLIÉSTER" /></Campo>
           </div>
 
+          {/* Abas do cadastro do produto */}
+          <div className="segmented" style={{ margin: "16px 0" }}>
+            <button type="button" className={"seg" + (aba === "cores" ? " seg-on" : "")} onClick={() => setAba("cores")}>Cores &amp; Tamanhos</button>
+            <button type="button" className={"seg" + (aba === "peso" ? " seg-on" : "")} onClick={() => setAba("peso")}>Peso e tempo</button>
+            <button type="button" className={"seg" + (aba === "materiais" ? " seg-on" : "")} onClick={() => setAba("materiais")}>Materiais {linhas.length > 0 ? `(${linhas.length})` : ""}</button>
+          </div>
+
+          {aba === "cores" && (<>
           {/* Cores e tamanhos do produto — seletores lado a lado (padrão da Galga) */}
-          <div className="form-grid2" style={{ marginTop: 14 }}>
+          <div className="form-grid2">
             <Campo label="Tipo de fio">
               <select value={fioSel ?? "__pick__"} onChange={(e) => setFioSel(e.target.value === "__pick__" ? null : e.target.value)} disabled={fiosLista.length === 0}>
                 <option value="__pick__">{fiosLista.length === 0 ? "nenhuma cor cadastrada" : "— escolha o tipo de fio —"}</option>
@@ -634,86 +704,84 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             </>
           )}
 
-          {/* 3. Tamanhos e ficha técnica — recolhida por padrão; clica pra abrir a matriz */}
-          <div className="sec-toggle" style={{ margin: "16px 0 8px" }}>
-            <span onClick={() => setAbrirTam((v) => !v)} style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-              <span className="sec-car">{abrirTam ? "▾" : "▸"}</span>
-              3 · TAMANHOS E FICHA TÉCNICA
-              <span className="chip">{nTam} tamanho(s)</span>
-            </span>
-            {abrirTam && (
-              <select value="__pick__" style={{ marginLeft: "auto", maxWidth: 240, textTransform: "none", fontWeight: 600 }} onChange={(e) => {
-                const v = e.target.value;
-                if (v === "__novo__") { setNovoMat(true); return; }
-                if (v && v !== "__pick__") setFichaCols((cs) => (cs.includes(v) ? cs : [...cs, v]));
-              }}>
-                <option value="__pick__">＋ material (coluna)</option>
-                {matDefs.filter((d) => !fichaCols.includes(d.slug)).map((d) => <option key={d.slug} value={d.slug}>{d.nome}</option>)}
-                <option value="__novo__">＋ criar novo material…</option>
-              </select>
-            )}
-          </div>
-          {abrirTam && (nTam === 0 ? (
-            <p className="muted" style={{ fontSize: 13 }}>Adicione tamanhos no seletor <strong>Tamanho</strong> acima — cada tamanho vira uma linha aqui.</p>
-          ) : (
-            <div className="card" style={{ overflowX: "auto" }}>
-              <table className="table" style={{ minWidth: 460 + fichaCols.length * 168 }}>
-                <thead>
-                  <tr>
-                    <th>Tamanho</th>
-                    <th className="num">Fio (kg)</th>
-                    <th className="num">Tempo (min)</th>
-                    {fichaCols.map((cat) => (
-                      <th key={cat} style={{ color: "#4338ca" }}>
-                        {catNome(cat)}
-                        <button type="button" className="icon-btn" title="Remover coluna" style={{ marginLeft: 4 }}
-                          onClick={() => { setFichaCols((cs) => cs.filter((x) => x !== cat)); setFichaItem((fi) => { const n = { ...fi }; Object.keys(n).forEach((k) => { if (k.endsWith("||" + cat)) delete n[k]; }); return n; }); }}>✕</button>
-                      </th>
-                    ))}
-                    <th style={{ width: 40 }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {linhasTam.filter((t) => selTam[t.nome]).map((t) => (
-                    <tr key={t.id}>
-                      <td className="strong">{t.nome}</td>
-                      <td className="num">
-                        <span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
-                          <input className="w-xs num" type="number" min={0} step="any" value={pesos[t.nome] ?? ""} onChange={(e) => { setSalvo(false); setPesos((p) => ({ ...p, [t.nome]: e.target.value })); }} />
-                          <span className="muted" style={{ fontSize: 12 }}>kg</span>
-                        </span>
-                      </td>
-                      <td className="num">
-                        <span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
-                          <input className="w-xs num" type="number" min={0} step="any" value={tempos[t.nome] ?? ""} onChange={(e) => { setSalvo(false); setTempos((p) => ({ ...p, [t.nome]: e.target.value })); }} />
-                          <span className="muted" style={{ fontSize: 12 }}>min</span>
-                        </span>
-                      </td>
-                      {fichaCols.map((cat) => {
-                        const k = `${t.nome}||${cat}`;
-                        return (
-                          <td key={cat}>
-                            <select value={fichaItem[k] || ""} onChange={(e) => { setSalvo(false); setFichaItem((fi) => ({ ...fi, [k]: e.target.value })); }} style={{ minWidth: 150 }}>
-                              <option value="">— não usa —</option>
-                              {matCat.filter((m) => m.categoria === cat).map((m) => <option key={m.id} value={m.id}>{m.nome}{m.cor ? ` (${m.cor})` : ""}</option>)}
-                            </select>
-                          </td>
-                        );
-                      })}
-                      <td><button type="button" className="icon-btn" title="Remover tamanho" onClick={() => setSelTam((s) => ({ ...s, [t.nome]: false }))}>✕</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
-          {novoMat && (
-            <InsumoModal cat={null} onFechar={() => setNovoMat(false)} onSalvo={(slug) => {
-              setNovoMat(false);
-              Promise.all([api.listarMateriais(), api.listarCategoriasMaterial()]).then(([ms, mc]) => { setMatCat(ms); setMatDefs(mc); }).catch(() => {});
-              setFichaCols((cs) => (cs.includes(slug) ? cs : [...cs, slug]));
-            }} />
+          </>)}
+
+          {aba === "peso" && (
+            tamsProdSel.length === 0
+              ? <p className="muted" style={{ fontSize: 13 }}>Selecione tamanhos na aba <strong>Cores &amp; Tamanhos</strong>.</p>
+              : <div className="card" style={{ overflowX: "auto" }}>
+                  <table className="table">
+                    <thead><tr><th>Tamanho</th><th className="num">Fio (kg)</th><th className="num">Tempo (min)</th></tr></thead>
+                    <tbody>
+                      {linhasTam.filter((t) => selTam[t.nome]).map((t) => (
+                        <tr key={t.id}>
+                          <td className="strong">{t.nome}</td>
+                          <td className="num"><span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}><input className="w-xs num" type="number" min={0} step="any" value={pesos[t.nome] ?? ""} onChange={(e) => { setSalvo(false); setPesos((p) => ({ ...p, [t.nome]: e.target.value })); }} /><span className="muted" style={{ fontSize: 12 }}>kg</span></span></td>
+                          <td className="num"><span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}><input className="w-xs num" type="number" min={0} step="any" value={tempos[t.nome] ?? ""} onChange={(e) => { setSalvo(false); setTempos((p) => ({ ...p, [t.nome]: e.target.value })); }} /><span className="muted" style={{ fontSize: 12 }}>min</span></span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
           )}
+
+          {aba === "materiais" && (<>
+            <div className="row-gap" style={{ alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+              <span className="muted" style={{ fontSize: 13 }}>Cada material usado no produto, com quantidade e onde se aplica.</span>
+              <button type="button" className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={addLinha}>＋ Adicionar material</button>
+            </div>
+            {tamsProdSel.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Dica: selecione os tamanhos do produto na aba <strong>Cores &amp; Tamanhos</strong> para escolher onde cada material se aplica.</p>}
+            {linhas.length === 0 ? (
+              <div className="card pad empty">Nenhum material na ficha. Clique em <strong>＋ Adicionar material</strong>.</div>
+            ) : (
+              <div className="card" style={{ overflowX: "auto" }}>
+                <table className="table" style={{ minWidth: 940 }}>
+                  <thead><tr>
+                    <th>Tipo</th><th>Material</th><th>Variação</th><th className="num">Qtd</th><th>Unid.</th><th>Aplicar em</th><th>Obs</th><th>Status</th><th className="num">Custo</th><th></th>
+                  </tr></thead>
+                  <tbody>
+                    {linhas.map((ln) => {
+                      const nomes = nomesDoTipo(ln.tipo);
+                      const vars = variacoesDoTipo(ln.tipo, ln.nomeMat);
+                      return (
+                        <tr key={ln.id} style={ln.status === "inativo" ? { opacity: 0.55 } : undefined}>
+                          <td><select value={ln.tipo} onChange={(e) => setLn(ln.id, { tipo: e.target.value, fonte: e.target.value === "fio" ? "fio" : "material", nomeMat: "", material_id: "", unidade: "" })}>
+                            <option value="">—</option>
+                            {tiposFicha.map((t) => <option key={t.slug} value={t.slug}>{t.nome}</option>)}
+                          </select></td>
+                          <td><select value={ln.nomeMat} disabled={!ln.tipo} onChange={(e) => { const nm = e.target.value; const vs = variacoesDoTipo(ln.tipo, nm); const only = vs.length === 1 ? vs[0] : null; setLn(ln.id, { nomeMat: nm, material_id: only ? only.id : "", unidade: only ? only.unidade : "" }); }} style={{ minWidth: 130 }}>
+                            <option value="">—</option>
+                            {nomes.map((nm) => <option key={nm} value={nm}>{nm}</option>)}
+                          </select></td>
+                          <td>{ln.tipo === "fio" ? <span className="muted">Cor do produto</span> : (
+                            <select value={ln.material_id} disabled={!ln.nomeMat} onChange={(e) => { const v = vars.find((x) => x.id === e.target.value); setLn(ln.id, { material_id: e.target.value, unidade: v?.unidade || ln.unidade }); }} style={{ minWidth: 110 }}>
+                              <option value="">—</option>
+                              {vars.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+                            </select>
+                          )}</td>
+                          <td className="num"><input className="num" inputMode="decimal" value={ln.quantidade} onChange={(e) => setLn(ln.id, { quantidade: e.target.value })} style={{ width: 66 }} /></td>
+                          <td><input value={ln.unidade} onChange={(e) => setLn(ln.id, { unidade: e.target.value })} style={{ width: 54 }} /></td>
+                          <td><AplicarEm todos={ln.aplicarTodos} aplicar={ln.aplicar} tamanhos={tamsProdSel} onTodos={() => setLn(ln.id, { aplicarTodos: true })} onTam={(tam) => { const n = new Set(ln.aplicar); n.has(tam) ? n.delete(tam) : n.add(tam); setLn(ln.id, { aplicarTodos: false, aplicar: n }); }} /></td>
+                          <td><input value={ln.obs} onChange={(e) => setLn(ln.id, { obs: e.target.value })} spellCheck lang="pt-BR" style={{ width: 110 }} /></td>
+                          <td><select value={ln.status} onChange={(e) => setLn(ln.id, { status: e.target.value === "inativo" ? "inativo" : "ativo" })}>
+                            <option value="ativo">Ativo</option><option value="inativo">Inativo</option>
+                          </select></td>
+                          <td className="num">{precoLinha(ln) != null ? rBR(custoLinha(ln)) : "—"}</td>
+                          <td><button type="button" className="icon-btn" title="Remover" onClick={() => delLinha(ln.id)}>✕</button></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  {custoPorTam.length > 0 && (
+                    <tfoot><tr><td colSpan={10} style={{ padding: "8px 10px" }}>
+                      <span className="muted" style={{ fontSize: 12, marginRight: 6 }}>Custo por tamanho (materiais ativos):</span>
+                      {custoPorTam.map((c) => <span key={c.tam} className="chip" style={{ marginRight: 6 }}>{c.tam}: {rBR(c.custo)}</span>)}
+                    </td></tr></tfoot>
+                  )}
+                </table>
+              </div>
+            )}
+          </>)}
 
           {/* Footer */}
           <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16, alignItems: "center" }}>
@@ -1132,8 +1200,10 @@ const CORES_INSUMO = ["#0891b2", "#7c3aed", "#ca8a04", "#16a34a", "#ea580c", "#d
 // extra:<chave> (campo próprio do tipo, guardado no JSON `extra`).
 // Tipos com `colunas` mostram SÓ essas colunas; os demais usam colunasPadrao().
 type ColDef = { key: string; label: string; ph?: string; width?: number; default?: string };
-const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; colunas?: ColDef[]; nomeTemplate?: string }> = {
-  ziper: { colunas: [
+// `variacao` = qual campo do material é a "variação" dele na ficha do produto
+// (ex.: zíper → comprimento; forro/refil → tamanho; embalagem → medida interna).
+const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; colunas?: ColDef[]; nomeTemplate?: string; variacao?: string }> = {
+  ziper: { variacao: "extra:comprimento", colunas: [
     { key: "nome", label: "Nome", ph: "ex.: Zíper Invisível", width: 190 },
     { key: "cor", label: "Cor do tricô", ph: "ex.: Off White", width: 150 },
     { key: "codigo", label: "Código do fabricante", ph: "ex.: P-296", width: 180 },
@@ -1185,7 +1255,7 @@ const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; coluna
     { key: "minimo", label: "Estoque mínimo", width: 120 },
     { key: "fornecedor", label: "Fornecedor", width: 160 },
   ] },
-  embalagem: { colunas: [
+  embalagem: { variacao: "extra:medida_interna", colunas: [
     { key: "codigo_interno", label: "Código", ph: "ex.: EMB-001", width: 110 },
     { key: "nome", label: "Descrição", ph: "ex.: Embalagem 50x50", width: 190 },
     { key: "extra:tipo", label: "Tipo", default: "PVC", width: 90 },

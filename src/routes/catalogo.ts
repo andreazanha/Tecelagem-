@@ -26,7 +26,7 @@ modelos.post("/", async (c) => {
     tassel_almofada?: number;
     cores?: string[]; // cores do produto (nomes)
     tamanhos?: { tamanho?: string; peso?: number; tempo?: number }[]; // tamanhos + fio(kg)/peça + tempo
-    materiais?: { tamanho?: string; material_id?: string; quantidade?: number }[]; // ficha técnica por tamanho
+    materiais?: { tamanho?: string; material_id?: string; quantidade?: number; unidade?: string; obs?: string; status?: string; fonte?: string }[]; // ficha de consumo por tamanho
   }>();
   const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
@@ -90,7 +90,13 @@ modelos.post("/", async (c) => {
       if (vistos.has(chave)) continue;
       vistos.add(chave);
       const q = mt.quantidade == null || isNaN(Number(mt.quantidade)) ? null : Number(mt.quantidade);
-      stmts.push(c.env.DB.prepare("INSERT INTO modelo_materiais (modelo_nome, tamanho, material_id, quantidade) VALUES (?, ?, ?, ?)").bind(nome, tam, mid, q));
+      const un = (mt.unidade || "").trim() || null;
+      const obs = (mt.obs || "").trim() || null;
+      const status = String(mt.status || "ativo").trim() === "inativo" ? "inativo" : "ativo";
+      const fonte = String(mt.fonte || "material").trim() === "fio" ? "fio" : "material";
+      stmts.push(c.env.DB.prepare(
+        "INSERT INTO modelo_materiais (modelo_nome, tamanho, material_id, quantidade, unidade, obs, status, fonte) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      ).bind(nome, tam, mid, q, un, obs, status, fonte));
     }
   }
   await c.env.DB.batch(stmts);
@@ -111,9 +117,16 @@ modelos.get("/:nome", async (c) => {
   const { results: cores } = await c.env.DB.prepare("SELECT cor_nome FROM modelo_cores WHERE modelo_nome = ?").bind(nome).all<{ cor_nome: string }>();
   const { results: tamanhos } = await c.env.DB.prepare("SELECT tamanho, peso, tempo FROM modelo_tamanhos WHERE modelo_nome = ?").bind(nome).all();
   const { results: materiais } = await c.env.DB.prepare(
-    `SELECT mm.tamanho, mm.material_id, mm.quantidade, m.categoria, m.nome, m.unidade, m.cor, m.codigo
-       FROM modelo_materiais mm JOIN materiais m ON m.id = mm.material_id
-      WHERE mm.modelo_nome = ? ORDER BY m.categoria, mm.tamanho, m.nome`
+    `SELECT mm.tamanho, mm.material_id, mm.quantidade, mm.obs, mm.status, mm.fonte,
+            COALESCE(mm.unidade, m.unidade, CASE WHEN mm.fonte='fio' THEN 'kg' END) AS unidade,
+            COALESCE(m.categoria, CASE WHEN mm.fonte='fio' THEN 'fio' END) AS categoria,
+            COALESCE(m.nome, tf.nome) AS nome,
+            m.cor, m.codigo, m.tamanho AS variacao, m.extra,
+            COALESCE(m.preco, tf.preco) AS preco
+       FROM modelo_materiais mm
+       LEFT JOIN materiais  m  ON m.id  = mm.material_id AND mm.fonte <> 'fio'
+       LEFT JOIN tipos_fio  tf ON tf.id = mm.material_id AND mm.fonte  = 'fio'
+      WHERE mm.modelo_nome = ? ORDER BY categoria, mm.tamanho, nome`
   ).bind(nome).all();
   return c.json({ ...m, cores: cores.map((x) => x.cor_nome), tamanhos, materiais });
 });

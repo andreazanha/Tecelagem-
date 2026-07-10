@@ -88,6 +88,12 @@ export interface ModeloMaterial {
   unidade?: string | null;
   cor?: string | null;
   codigo?: string | null;
+  variacao?: string | null;  // variação do material (tamanho do material)
+  extra?: string | null;     // JSON dos campos do material
+  preco?: number | null;     // custo unitário do material/fio
+  obs?: string | null;
+  status?: string | null;    // ativo|inativo
+  fonte?: string | null;     // material|fio
 }
 export interface Colecao {
   id: string;
@@ -607,7 +613,7 @@ export const api = {
   obterModelo: (nome: string) =>
     fetch(`/api/modelos/${encodeURIComponent(nome)}`).then((r) => j<ModeloDetalhe>(r)),
   salvarModelo: (
-    m: Modelo & { cores?: string[]; tamanhos?: { tamanho: string; peso: number | null; tempo: number | null }[]; materiais?: { tamanho: string; material_id: string; quantidade: number | null }[] },
+    m: Modelo & { cores?: string[]; tamanhos?: { tamanho: string; peso: number | null; tempo: number | null }[]; materiais?: { tamanho: string; material_id: string; quantidade: number | null; unidade?: string | null; obs?: string | null; status?: string; fonte?: string }[] },
     de?: string
   ) =>
     fetch("/api/modelos", {
