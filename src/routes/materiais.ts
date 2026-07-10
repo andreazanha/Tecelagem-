@@ -9,6 +9,8 @@ export const materiais = new Hono<{ Bindings: Env }>();
 
 const uid = () => crypto.randomUUID();
 const str = (v: unknown) => String(v ?? "").trim() || null;
+// Primeira letra maiúscula (mantém o resto). Ex.: "off white" → "Off white".
+const capFirst = (s: string | null) => { const t = (s || "").trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; };
 const num = (v: unknown) => (v == null || isNaN(Number(v)) ? null : Number(v));
 // Colar em massa: separa as colunas de UMA linha. "Fareja" o separador (Tab tem
 // prioridade, depois ";", só então ","), para NÃO quebrar preços com vírgula
@@ -108,8 +110,9 @@ materiais.post("/", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const categoria = String(b.categoria ?? "").trim().toLowerCase();
   if (!(await slugsValidos(c.env)).has(categoria)) return c.json({ error: "categoria inválida" }, 400);
-  const nome = String(b.nome ?? "").trim();
+  const nome = capFirst(String(b.nome ?? "").trim());
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
+  const corCap = capFirst(str(b.cor)) || null;
   const id = (b.id as string) || uid();
   const hexRaw = String(b.cor_hex ?? "").trim();
   const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hexRaw) ? hexRaw : null;
@@ -128,7 +131,7 @@ materiais.post("/", async (c) => {
        fornecedor_id=excluded.fornecedor_id, cor=excluded.cor, cor_hex=excluded.cor_hex, codigo=excluded.codigo,
        unidade=excluded.unidade, preco=excluded.preco, minimo=excluded.minimo,
        codigo_interno=excluded.codigo_interno, status=excluded.status, obs=excluded.obs, extra=excluded.extra`
-  ).bind(id, categoria, nome, str(b.tamanho), str(b.fornecedor_id), str(b.cor), hex, str(b.codigo),
+  ).bind(id, categoria, nome, str(b.tamanho), str(b.fornecedor_id), corCap, hex, str(b.codigo),
          str(b.unidade), num(b.preco), num(b.minimo) ?? 0, str(b.codigo_interno), status, str(b.obs), extra, id).run();
   return c.json({ id });
 });
@@ -236,6 +239,8 @@ materiais.post("/bulk", async (c) => {
       }).trim();
     }
     if (!m.nome) continue;
+    m.nome = capFirst(m.nome); // primeira letra maiúscula
+    if (m.cor) m.cor = capFirst(m.cor);
     total++;
     const chave = chaveMat(m);
     if (vistos.has(chave)) continue; // duplicata na própria colagem

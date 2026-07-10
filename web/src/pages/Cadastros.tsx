@@ -776,7 +776,7 @@ function AbaFiosCores() {
   async function salvarFio() {
     if (!fioForm || !fioForm.nome.trim()) return alert("Informe o nome do tipo de fio.");
     try {
-      await api.salvarTipoFio({ id: fioForm.id || undefined, nome: fioForm.nome.trim(), fornecedor_id: fioForm.fornId || null, cor: fioForm.cor });
+      await api.salvarTipoFio({ id: fioForm.id || undefined, nome: capFirst(fioForm.nome), fornecedor_id: fioForm.fornId || null, cor: fioForm.cor });
       setFioForm(null); recarregar();
     } catch (e) { alert((e as Error).message); }
   }
@@ -883,6 +883,7 @@ function AbaFiosCores() {
               <div className="nm">{t.nome}</div>
               <div className="sub">{t.fornecedor_nome || "sem fornecedor"} · {coresDoFio(t.id).length} cor(es)</div>
             </div>
+            <button className="icon-btn" title="Duplicar" onClick={(e) => { e.stopPropagation(); setFioForm({ id: null, nome: t.nome, fornId: t.fornecedor_id || "", cor: t.cor || CORES_FIO[0] }); }}>⧉</button>
             <button className="icon-btn" title="Editar" onClick={(e) => { e.stopPropagation(); setFioForm({ id: t.id, nome: t.nome, fornId: t.fornecedor_id || "", cor: t.cor || CORES_FIO[0] }); }}>✎</button>
             <button className="icon-btn" title="Excluir" onClick={(e) => { e.stopPropagation(); removerFio(t); }}>✕</button>
           </div>
@@ -1229,6 +1230,8 @@ function exemploColuna(c: ColDef, tipoNome: string): string {
     default: return c.key.startsWith("extra:") ? (c.ph || "").replace(/^ex\.:\s*/, "") : "";
   }
 }
+// Primeira letra maiúscula (mantém o resto como está). Ex.: "off white" → "Off white".
+const capFirst = (s: string) => { const t = (s || "").trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; };
 const nBR = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 const rBR = (v: number) => "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -1431,8 +1434,8 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
     for (const k of extraKeys) { const v = (extra[k] || "").trim(); if (v) extraLimpo[k] = v; }
     try {
       await api.salvarMaterial({
-        id: editId || undefined, categoria, nome: nomeM, tamanho: tamanho.trim() || null, fornecedor_id: fornId || null,
-        cor: temCor ? (cor.trim() || null) : null, cor_hex: null, codigo: temCor ? (codigo.trim() || null) : null,
+        id: editId || undefined, categoria, nome: capFirst(nomeM), tamanho: tamanho.trim() || null, fornecedor_id: fornId || null,
+        cor: temCor ? (capFirst(cor) || null) : null, cor_hex: null, codigo: temCor ? (codigo.trim() || null) : null,
         unidade, preco: preco.trim() ? Number(preco.replace(",", ".")) : null, minimo: minimo.trim() ? Number(minimo.replace(",", ".")) : 0,
         codigo_interno: codInterno.trim() || null, status, obs: obs.trim() || null,
         extra: JSON.stringify(extraLimpo),
@@ -1731,7 +1734,10 @@ function AbaFornecedores() {
                 <td>{f.contato || "—"}</td>
                 <td>{f.telefone || "—"}</td>
                 <td>{f.cnpj || "—"}</td>
-                <td><button className="icon-btn" title="Excluir" onClick={(e) => { e.stopPropagation(); remover(f); }}>✕</button></td>
+                <td style={{ whiteSpace: "nowrap" }}>
+                  <button className="icon-btn" title="Duplicar" onClick={(e) => { e.stopPropagation(); setModal({ f: { ...f, id: undefined, nome: (f.nome || "") + " (cópia)" } }); }}>⧉</button>
+                  <button className="icon-btn" title="Excluir" onClick={(e) => { e.stopPropagation(); remover(f); }}>✕</button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1762,7 +1768,7 @@ function FornecedorModal({ fornecedor, onFechar, onSalvo }: { fornecedor: Partia
     if (!f.nome?.trim()) return setErro("Informe o nome do fornecedor.");
     setSalvando(true); setErro("");
     try {
-      await api.salvarFornecedor(f);
+      await api.salvarFornecedor({ ...f, nome: capFirst(f.nome || "") });
       onSalvo();
     } catch (e) {
       setErro((e as Error).message);
@@ -1818,7 +1824,7 @@ function OperadoresCadastro() {
       return;
     }
     try {
-      await api.salvarOperador({ nome: nome.trim(), senha: senha.trim(), setor: setor || undefined });
+      await api.salvarOperador({ nome: capFirst(nome), senha: senha.trim(), setor: setor || undefined });
       setNome("");
       setSenha("");
       setSetor("");
@@ -1879,6 +1885,7 @@ function OperadoresCadastro() {
               <td data-label="Setor">{o.setor ? o.setor.charAt(0).toUpperCase() + o.setor.slice(1) : "Todos"}</td>
               <td data-label="Senha">••••</td>
               <td>
+                <button className="icon-btn" title="Duplicar" onClick={() => { setNome(o.nome + " (cópia)"); setSetor(o.setor || ""); setSenha(""); if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }}>⧉</button>
                 <button className="icon-btn" title="Remover" onClick={() => remover(o.id)}>✕</button>
               </td>
             </tr>
