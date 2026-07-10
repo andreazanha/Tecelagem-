@@ -857,7 +857,7 @@ function AbaFiosCores() {
         <div className="card pad" style={{ marginBottom: 14 }}>
           <h2>{fioForm.id ? "Editar tipo de fio" : "Novo tipo de fio"}</h2>
           <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
-            <label className="fld">Nome<input autoFocus value={fioForm.nome} onChange={(e) => setFioForm({ ...fioForm, nome: e.target.value })} onKeyDown={(e) => e.key === "Enter" && salvarFio()} style={{ minWidth: 200 }} /></label>
+            <label className="fld">Nome<input autoFocus spellCheck lang="pt-BR" value={fioForm.nome} onChange={(e) => setFioForm({ ...fioForm, nome: e.target.value })} onKeyDown={(e) => e.key === "Enter" && salvarFio()} style={{ minWidth: 200 }} /></label>
             <label className="fld">Fornecedor
               <select value={fioForm.fornId} onChange={(e) => setFioForm({ ...fioForm, fornId: e.target.value })} style={{ minWidth: 180 }}>
                 <option value="">Sem fornecedor</option>
@@ -1315,7 +1315,7 @@ function InsumoModal({ cat, onFechar, onSalvo }: { cat: MaterialCategoriaDef | n
         <h2 style={{ marginTop: 0 }}>{cat ? "Editar insumo" : "Novo insumo"}</h2>
         <p className="muted" style={{ marginTop: -4 }}>Ele aparece sozinho no menu Materiais e como sub-aba.</p>
         <label className="campo"><span className="campo-label">Nome</span>
-          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex.: Botão, Linha, Viés" autoFocus /></label>
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex.: Botão, Linha, Viés" autoFocus spellCheck lang="pt-BR" /></label>
         <label className="campo"><span className="campo-label">Ícone (emoji, opcional)</span>
           <input value={icone} onChange={(e) => setIcone(e.target.value)} placeholder="ex.: 🔘" style={{ width: 90 }} /></label>
         <div className="campo"><span className="campo-label">Cor</span>
@@ -1502,9 +1502,11 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
               </label>
             );
             const decimal = c.key === "preco" || c.key === "minimo";
+            const corrige = c.key === "nome" || c.key === "cor" || c.key === "obs"; // corretor ortográfico só em texto
             return (
               <label className="fld" key={c.key} style={c.key === "obs" ? { flex: 1, minWidth: 180 } : undefined}>{c.label}
-                <input value={getV(c.key)} onChange={(e) => setV(c.key, e.target.value)} placeholder={c.ph || (c.key === "nome" ? `ex.: ${label}` : "")} inputMode={decimal ? "decimal" : undefined} style={{ width: c.width || 130 }} />
+                <input value={getV(c.key)} onChange={(e) => setV(c.key, e.target.value)} placeholder={c.ph || (c.key === "nome" ? `ex.: ${label}` : "")}
+                  inputMode={decimal ? "decimal" : undefined} spellCheck={corrige} lang={corrige ? "pt-BR" : undefined} style={{ width: c.width || 130 }} />
               </label>
             );
           })}
@@ -1602,7 +1604,7 @@ function FornecedorRapido({ onFechar, onSalvo }: { onFechar: () => void; onSalvo
       <div className="modal-card" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>Novo fornecedor</h2>
         <label className="campo"><span className="campo-label">Nome</span>
-          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex.: Coats" autoFocus /></label>
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex.: Coats" autoFocus spellCheck lang="pt-BR" /></label>
         <label className="campo"><span className="campo-label">Contato (opcional)</span>
           <input value={contato} onChange={(e) => setContato(e.target.value)} placeholder="telefone / e-mail" /></label>
         <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16 }}>
@@ -1854,7 +1856,7 @@ function FornecedorModal({ fornecedor, onFechar, onSalvo }: { fornecedor: Partia
         <div className="pad">
           {erro && <p className="erro">{erro}</p>}
           <div className="form-grid2">
-            <Campo label="Nome *"><input value={f.nome || ""} onChange={(e) => set({ nome: e.target.value })} placeholder="ex.: Fios do Sul" /></Campo>
+            <Campo label="Nome *"><input value={f.nome || ""} onChange={(e) => set({ nome: e.target.value })} placeholder="ex.: Fios do Sul" spellCheck lang="pt-BR" /></Campo>
             <Campo label="Contato"><input value={f.contato || ""} onChange={(e) => set({ contato: e.target.value })} placeholder="pessoa de contato" /></Campo>
             <Campo label="Telefone"><input value={f.telefone || ""} onChange={(e) => set({ telefone: e.target.value })} placeholder="(00) 00000-0000" /></Campo>
             <Campo label="E-mail"><input value={f.email || ""} onChange={(e) => set({ email: e.target.value })} placeholder="contato@fornecedor.com" /></Campo>
@@ -1918,7 +1920,7 @@ function OperadoresCadastro() {
           para liberar em todos os setores.
         </p>
         <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap" }}>
-          <input placeholder="Nome do operador" value={nome} onChange={(e) => setNome(e.target.value)} style={{ minWidth: 200 }} />
+          <input placeholder="Nome do operador" value={nome} onChange={(e) => setNome(e.target.value)} spellCheck lang="pt-BR" style={{ minWidth: 200 }} />
           <input placeholder="Senha" type="text" value={senha} onChange={(e) => setSenha(e.target.value)} style={{ minWidth: 140 }} />
           <select value={setor} onChange={(e) => setSetor(e.target.value)} style={{ minWidth: 160 }}>
             <option value="">Todos os setores</option>
