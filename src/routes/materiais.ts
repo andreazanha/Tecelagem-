@@ -316,6 +316,58 @@ materiais.post("/excluir-todos", async (c) => {
   return c.json({ ok: true, excluidos: ids.length });
 });
 
+// Alterar EM MASSA um campo de vários materiais (por ids selecionados).
+materiais.post("/alterar-massa", async (c) => {
+  const b = await c.req.json<{ ids?: string[]; campo?: string; valor?: string }>().catch(() => ({}) as Record<string, unknown>);
+  const ids = Array.isArray(b.ids) ? b.ids.filter((x): x is string => typeof x === "string") : [];
+  const campo = String(b.campo ?? "").trim();
+  const valorRaw = String(b.valor ?? "");
+  if (!ids.length) return c.json({ error: "nenhum item selecionado" }, 400);
+  if (!campo) return c.json({ error: "campo é obrigatório" }, 400);
+  const ph = ids.map(() => "?").join(",");
+
+  // extra:<k> — precisa mesclar o JSON de cada item.
+  if (campo.startsWith("extra:")) {
+    const k = campo.slice(6);
+    const { results } = await c.env.DB.prepare(`SELECT id, extra FROM materiais WHERE id IN (${ph})`).bind(...ids).all<{ id: string; extra: string | null }>();
+    const stmts = results.map((row) => {
+      let obj: Record<string, string> = {};
+      try { obj = row.extra ? JSON.parse(row.extra) : {}; } catch { obj = {}; }
+      if (valorRaw.trim()) obj[k] = valorRaw.trim(); else delete obj[k];
+      return c.env.DB.prepare("UPDATE materiais SET extra = ? WHERE id = ?").bind(Object.keys(obj).length ? JSON.stringify(obj) : null, row.id);
+    });
+    if (stmts.length) await c.env.DB.batch(stmts);
+    return c.json({ ok: true, alterados: ids.length });
+  }
+
+  // fornecedor por NOME (acha ou cria).
+  if (campo === "fornecedor") {
+    const nome = valorRaw.trim();
+    let fid: string | null = null;
+    if (nome) {
+      const ex = await c.env.DB.prepare("SELECT id FROM fornecedores WHERE lower(nome) = lower(?)").bind(nome).first<{ id: string }>();
+      fid = ex?.id || uid();
+      if (!ex) await c.env.DB.prepare("INSERT INTO fornecedores (id, nome, ativo) VALUES (?, ?, 1)").bind(fid, capFirst(nome)).run();
+    }
+    await c.env.DB.prepare(`UPDATE materiais SET fornecedor_id = ? WHERE id IN (${ph})`).bind(fid, ...ids).run();
+    return c.json({ ok: true, alterados: ids.length });
+  }
+
+  // colunas escalares permitidas (whitelist).
+  const COLS: Record<string, string> = { preco: "preco", minimo: "minimo", unidade: "unidade", status: "status", cor: "cor", codigo: "codigo", codigo_interno: "codigo_interno", tamanho: "tamanho", obs: "obs" };
+  const col = COLS[campo];
+  if (!col) return c.json({ error: "campo inválido" }, 400);
+  let valor: string | number | null;
+  if (campo === "preco") valor = parseMoeda(valorRaw);
+  else if (campo === "minimo") valor = parseMoeda(valorRaw) ?? 0;
+  else if (campo === "status") valor = /inativ/i.test(valorRaw) ? "inativo" : "ativo";
+  else if (campo === "unidade") valor = valorRaw.trim().toLowerCase() || null;
+  else if (campo === "cor") valor = capFirst(valorRaw) || null;
+  else valor = valorRaw.trim() || null;
+  await c.env.DB.prepare(`UPDATE materiais SET ${col} = ? WHERE id IN (${ph})`).bind(valor, ...ids).run();
+  return c.json({ ok: true, alterados: ids.length });
+});
+
 materiais.delete("/:id", async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare("DELETE FROM materiais WHERE id = ?").bind(c.req.param("id")),

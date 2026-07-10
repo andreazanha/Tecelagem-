@@ -668,6 +668,8 @@ export const api = {
     jsonPost("/api/materiais", b).then((r) => j<{ id: string }>(r)),
   excluirTodosMateriais: (categoria: string) =>
     jsonPost("/api/materiais/excluir-todos", { categoria }).then((r) => j<{ ok: boolean; excluidos: number }>(r)),
+  alterarMassaMateriais: (ids: string[], campo: string, valor: string) =>
+    jsonPost("/api/materiais/alterar-massa", { ids, campo, valor }).then((r) => j<{ ok: boolean; alterados: number }>(r)),
   excluirMaterial: (id: string) =>
     fetch(`/api/materiais/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   // Insumos (categorias dinâmicas de material)

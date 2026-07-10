@@ -1371,6 +1371,9 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const [novoForn, setNovoForn] = useState(false);
   const [entrada, setEntrada] = useState<Material | null>(null);
   const [colar, setColar] = useState(false);
+  const [sel, setSel] = useState<Set<string>>(new Set()); // seleção p/ alterar em massa
+  const [alterar, setAlterar] = useState(false);
+  const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   // Desfazer a última importação MESMO depois de fechar o modal: guardo os ids
   // criados no localStorage (por tipo). Some quando é desfeita ou substituída.
@@ -1465,6 +1468,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
               style={{ color: "#b91c1c", borderColor: "#fca5a5" }}>↩️ Desfazer importação ({undoIds.length})</button>
           )}
           <button className="btn btn-soft" title="Colar vários de uma vez" onClick={() => setColar(true)}>📋 Colar em massa</button>
+          {sel.size > 0 && <button className="btn btn-soft" title="Alterar um campo dos selecionados" onClick={() => setAlterar(true)} style={{ color: "#4338ca", borderColor: "#c7d2fe" }}>✏️ Alterar em massa ({sel.size})</button>}
           {itens.length > 0 && <button className="btn btn-soft" title="Excluir todos deste tipo" onClick={excluirTodos} style={{ color: "#b91c1c" }}>🗑 Excluir todos</button>}
           <button className="btn btn-soft" title="Renomear insumo" onClick={onEditarCat}>✎ Insumo</button>
           <button className="btn" title="Excluir insumo" onClick={onExcluirCat}>🗑</button>
@@ -1516,12 +1520,14 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
         </div>
         <table className="table">
           <thead><tr>
+            <th style={{ width: 30 }}><input type="checkbox" title="Selecionar todos" checked={itens.length > 0 && sel.size === itens.length}
+              onChange={(e) => setSel(e.target.checked ? new Set(itens.map((m) => m.id)) : new Set())} /></th>
             {colunas.map((c) => <th key={c.key} className={c.key === "preco" || c.key === "minimo" ? "num" : undefined}>{c.label}</th>)}
             <th className="num">Estoque</th><th></th>
           </tr></thead>
           <tbody>
             {itens.length === 0 ? (
-              <tr><td colSpan={colunas.length + 2} className="empty pad">Nenhum {label.toLowerCase()} cadastrado ainda.</td></tr>
+              <tr><td colSpan={colunas.length + 3} className="empty pad">Nenhum {label.toLowerCase()} cadastrado ainda.</td></tr>
             ) : itens.map((m) => {
               const saldo = m.saldo || 0, min = m.minimo || 0, baixo = min > 0 && saldo < min;
               const mx: Record<string, string> = (() => { try { return m.extra ? JSON.parse(m.extra) : {}; } catch { return {}; } })();
@@ -1543,6 +1549,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
               };
               return (
                 <tr key={m.id} style={inativo ? { opacity: 0.55 } : undefined}>
+                  <td><input type="checkbox" checked={sel.has(m.id)} onChange={() => toggleSel(m.id)} /></td>
                   {colunas.map((c) => <td key={c.key} className={c.key === "preco" || c.key === "minimo" ? "num" : undefined}>{celula(c)}</td>)}
                   <td className="num">
                     <span className={baixo ? "mat-saldo-baixo" : ""}>{nBR(saldo)} {m.unidade || ""}</span>
@@ -1563,6 +1570,11 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
 
       {novoForn && <FornecedorRapido onFechar={() => setNovoForn(false)} onSalvo={async (id) => { setNovoForn(false); await recarregarForn(); setFornId(id); }} />}
       {entrada && <MovEstoqueModal material={entrada} onFechar={() => setEntrada(null)} onSalvo={() => { setEntrada(null); recarregar(); onMudou?.(); }} />}
+      {alterar && <AlterarMassaModal
+        colunas={colunas} ids={[...sel]} fornecedores={fornecedores}
+        onFechar={() => setAlterar(false)}
+        onSalvo={(n) => { setAlterar(false); setSel(new Set()); recarregar(); onMudou?.(); alert(`${n} item(ns) alterado(s).`); }}
+      />}
       {colar && <ColarEmMassa
         titulo={`Colar ${label.toLowerCase()} em massa`}
         colunas={bulkLabel}
@@ -1633,6 +1645,60 @@ function MovEstoqueModal({ material, onFechar, onSalvo }: { material: Material; 
         <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16 }}>
           <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
           <button className="btn btn-primary" onClick={salvar}>Confirmar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Alterar EM MASSA: escolhe UM campo e aplica o mesmo valor a todos os selecionados.
+function AlterarMassaModal({ colunas, ids, fornecedores, onFechar, onSalvo }: {
+  colunas: ColDef[]; ids: string[]; fornecedores: Fornecedor[]; onFechar: () => void; onSalvo: (n: number) => void;
+}) {
+  const editaveis = colunas.filter((c) => c.key !== "nome"); // nome não altera em massa
+  const [campo, setCampo] = useState(editaveis[0]?.key || "preco");
+  const [valor, setValor] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const cur = editaveis.find((c) => c.key === campo);
+  async function aplicar() {
+    setSalvando(true);
+    try { const r = await api.alterarMassaMateriais(ids, campo, valor); onSalvo(r.alterados); }
+    catch (e) { alert((e as Error).message); setSalvando(false); }
+  }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginTop: 0 }}>✏️ Alterar em massa</h2>
+        <p className="muted" style={{ marginTop: -4 }}>Muda <strong>um campo</strong> nos <strong>{ids.length}</strong> itens selecionados.</p>
+        <label className="campo"><span className="campo-label">Campo</span>
+          <select value={campo} onChange={(e) => { setCampo(e.target.value); setValor(""); }}>
+            {editaveis.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
+        </label>
+        <label className="campo"><span className="campo-label">Novo valor {cur ? `(${cur.label})` : ""}</span>
+          {campo === "unidade" ? (
+            <select value={valor} onChange={(e) => setValor(e.target.value)}>
+              {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
+          ) : campo === "status" ? (
+            <select value={valor} onChange={(e) => setValor(e.target.value)}>
+              <option value="ativo">Ativo</option><option value="inativo">Inativo</option>
+            </select>
+          ) : campo === "fornecedor" ? (
+            <select value={valor} onChange={(e) => setValor(e.target.value)}>
+              <option value="">Sem fornecedor</option>
+              {fornecedores.map((f) => <option key={f.id} value={f.nome}>{f.nome}</option>)}
+            </select>
+          ) : (
+            <input value={valor} onChange={(e) => setValor(e.target.value)}
+              inputMode={campo === "preco" || campo === "minimo" ? "decimal" : undefined}
+              placeholder={campo === "preco" ? "0,00" : cur?.ph || ""} autoFocus />
+          )}
+        </label>
+        <p className="muted" style={{ fontSize: 12 }}>Deixar em branco limpa o campo (exceto unidade/status).</p>
+        <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+          <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
+          <button className="btn btn-primary" onClick={aplicar} disabled={salvando}>{salvando ? "Aplicando…" : `Aplicar a ${ids.length}`}</button>
         </div>
       </div>
     </div>
