@@ -1141,6 +1141,7 @@ const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; coluna
     { key: "unidade", label: "Un", width: 80 },
     { key: "preco", label: "Preço (R$)", ph: "0,64", width: 100 },
     { key: "minimo", label: "Estoque mín.", width: 90 },
+    { key: "fornecedor", label: "Fornecedor", width: 160 },
     { key: "status", label: "Status", width: 100 },
   ] },
   etiqueta: { colunas: [
@@ -1149,6 +1150,7 @@ const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; coluna
     { key: "unidade", label: "Un", width: 80 },
     { key: "preco", label: "Preço (R$)", ph: "0,14", width: 100 },
     { key: "minimo", label: "Estoque mín.", width: 90 },
+    { key: "fornecedor", label: "Fornecedor", width: 160 },
     { key: "status", label: "Status", width: 100 },
   ] },
   forro: { colunas: [
