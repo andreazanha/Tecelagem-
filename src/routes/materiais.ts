@@ -16,6 +16,10 @@ const num = (v: unknown) => (v == null || isNaN(Number(v)) ? null : Number(v));
 export const colsBulk = (linha: string): string[] =>
   (linha.includes("\t") ? linha.split("\t") : linha.includes(";") ? linha.split(";") : linha.split(","))
     .map((s) => s.trim());
+
+// Identidade de um material para deduplicar na colagem (nome+tamanho+cor+código).
+const chaveMat = (m: { nome: string; tamanho?: string | null; cor?: string | null; codigo?: string | null }) =>
+  (m.nome + "||" + (m.tamanho || "") + "||" + (m.cor || "") + "||" + (m.codigo || "")).toLowerCase();
 const slugify = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
@@ -171,14 +175,14 @@ materiais.post("/bulk", async (c) => {
   const isSep = (cells: string[]) => cells.length > 0 && cells.every((x) => x === "" || /^:?-+:?$/.test(x));
 
   type Mat = { nome: string; tamanho: string | null; unidade: string | null; preco: number | null; minimo: number;
-    codigo_interno: string | null; cor: string | null; codigo: string | null; status: string; extra: Record<string, string> };
+    codigo_interno: string | null; cor: string | null; codigo: string | null; status: string; obs: string | null; extra: Record<string, string> };
   const parsed: Mat[] = [];
   const vistos = new Set<string>();
   let total = 0, headerPulado = false;
   for (const linha of rawLinhas) {
     const cells = splitRow(linha);
     if (isSep(cells)) continue; // linha "---" de markdown
-    const m: Mat = { nome: "", tamanho: null, unidade: null, preco: null, minimo: 0, codigo_interno: null, cor: null, codigo: null, status: "ativo", extra: {} };
+    const m: Mat = { nome: "", tamanho: null, unidade: null, preco: null, minimo: 0, codigo_interno: null, cor: null, codigo: null, status: "ativo", obs: null, extra: {} };
     colunas.forEach((campo, i) => {
       const v = (cells[i] || "").trim();
       if (campo === "nome") m.nome = v;
@@ -189,31 +193,33 @@ materiais.post("/bulk", async (c) => {
       else if (campo === "codigo_interno") m.codigo_interno = v || null;
       else if (campo === "cor") m.cor = v || null;
       else if (campo === "codigo") m.codigo = v || null;
+      else if (campo === "obs") m.obs = v || null;
       else if (campo === "status") m.status = /inativ/i.test(v) ? "inativo" : "ativo";
       else if (campo.startsWith("extra:")) { if (v) m.extra[campo.slice(6)] = v; }
     });
     if (!m.nome) continue;
     if (!headerPulado && norm(m.nome) === "nome") { headerPulado = true; continue; } // pula cabeçalho colado junto
     total++;
-    const chave = (m.nome + "||" + (m.tamanho || "")).toLowerCase();
+    const chave = chaveMat(m);
     if (vistos.has(chave)) continue; // duplicata na própria colagem
     vistos.add(chave);
     parsed.push(m);
   }
   if (!total) return c.json({ error: "nenhum material reconhecido", exemplo: "Zíper preto;40;un;1,50;10" }, 400);
 
-  // Já existentes (mesma categoria + nome + tamanho) contam como ignorados.
+  // Já existentes contam como ignorados. Identidade = nome+tamanho+cor+código
+  // (no zíper o nome se repete e só a cor muda, então cor entra na chave).
   const { results: exist } = await c.env.DB.prepare(
-    "SELECT nome, tamanho FROM materiais WHERE categoria = ?"
-  ).bind(categoria).all<{ nome: string; tamanho: string | null }>();
-  const jaTinha = new Set(exist.map((x) => (x.nome + "||" + (x.tamanho || "")).toLowerCase()));
+    "SELECT nome, tamanho, cor, codigo FROM materiais WHERE categoria = ?"
+  ).bind(categoria).all<{ nome: string; tamanho: string | null; cor: string | null; codigo: string | null }>();
+  const jaTinha = new Set(exist.map((x) => chaveMat(x)));
 
-  const novos = parsed.filter((p) => !jaTinha.has((p.nome + "||" + (p.tamanho || "")).toLowerCase())).map((p) => ({ ...p, id: uid() }));
+  const novos = parsed.filter((p) => !jaTinha.has(chaveMat(p))).map((p) => ({ ...p, id: uid() }));
   const stmts = novos.map((p) =>
     c.env.DB.prepare(
-      `INSERT INTO materiais (id, categoria, nome, tamanho, unidade, preco, minimo, codigo_interno, cor, codigo, status, extra, saldo)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
-    ).bind(p.id, categoria, p.nome, p.tamanho, p.unidade, p.preco, p.minimo, p.codigo_interno, p.cor, p.codigo, p.status,
+      `INSERT INTO materiais (id, categoria, nome, tamanho, unidade, preco, minimo, codigo_interno, cor, codigo, status, obs, extra, saldo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+    ).bind(p.id, categoria, p.nome, p.tamanho, p.unidade, p.preco, p.minimo, p.codigo_interno, p.cor, p.codigo, p.status, p.obs,
            Object.keys(p.extra).length ? JSON.stringify(p.extra) : null)
   );
   if (stmts.length) await c.env.DB.batch(stmts);

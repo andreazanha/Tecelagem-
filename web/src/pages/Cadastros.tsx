@@ -1125,21 +1125,66 @@ function AbaTamanhos() {
 const UNIDADES = ["un", "kg", "g", "m", "cm", "par", "rolo", "pacote", "caixa"];
 const CORES_INSUMO = ["#0891b2", "#7c3aed", "#ca8a04", "#16a34a", "#ea580c", "#db2777", "#2563eb", "#dc2626", "#64748b"];
 
-// Campos específicos por TIPO de material. `cor` mostra o bloco cor+código+amostra;
-// `campos` são atributos escalares guardados em `extra` (JSON). Tipos sem config
-// (inclusive os criados pelo usuário) usam apenas os campos comuns.
-type CampoExtra = { key: string; label: string; ph?: string; width?: number };
-const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: CampoExtra[] }> = {
-  ziper:     { cor: true,  campos: [{ key: "comprimento", label: "Comprimento", ph: "ex.: 40 cm", width: 110 }] },
-  forro:     { cor: true,  campos: [{ key: "largura", label: "Largura", ph: "ex.: 1,40 m", width: 100 }, { key: "gramatura", label: "Gramatura", ph: "ex.: 180 g/m²", width: 110 }] },
-  refil:     { campos: [{ key: "medida", label: "Medida", ph: "ex.: 50x50", width: 100 }] },
-  etiqueta:  { campos: [{ key: "texto", label: "Texto / composição", ph: "ex.: 100% algodão", width: 200 }] },
-  encarte:   { campos: [{ key: "modelo", label: "Modelo", ph: "ex.: A6 frente/verso", width: 160 }] },
-  embalagem: { campos: [{ key: "dimensao", label: "Dimensão", ph: "ex.: 30x40", width: 120 }] },
-  tag:       { campos: [{ key: "modelo", label: "Modelo", ph: "ex.: Kraft redonda", width: 160 }] },
-  tabuleiro: { campos: [{ key: "medida", label: "Medida", ph: "ex.: 45x45", width: 110 }] },
+// Cada TIPO de material define suas COLUNAS — e as MESMAS colunas valem no
+// formulário, na tabela e no colar em massa. Chaves possíveis: nome, codigo_interno,
+// tamanho, cor, codigo, unidade, preco, minimo, fornecedor, status, obs e
+// extra:<chave> (campo próprio do tipo, guardado no JSON `extra`).
+// Tipos com `colunas` mostram SÓ essas colunas; os demais usam colunasPadrao().
+type ColDef = { key: string; label: string; ph?: string; width?: number };
+const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; colunas?: ColDef[] }> = {
+  ziper: { colunas: [
+    { key: "nome", label: "Nome", ph: "ex.: Zíper Invisível", width: 190 },
+    { key: "cor", label: "Cor do tricô", ph: "ex.: Off White", width: 150 },
+    { key: "codigo", label: "Código do fabricante", ph: "ex.: P-296", width: 180 },
+    { key: "extra:comprimento", label: "Comprimento", ph: "ex.: 50 cm", width: 110 },
+    { key: "unidade", label: "Un", width: 80 },
+    { key: "preco", label: "Preço (R$)", ph: "0,64", width: 100 },
+    { key: "status", label: "Status", width: 100 },
+  ] },
+  etiqueta: { colunas: [
+    { key: "nome", label: "Nome", ph: "ex.: Etiqueta 20x75 mm", width: 200 },
+    { key: "tamanho", label: "Tamanho", ph: "ex.: 20X75 MM", width: 130 },
+    { key: "unidade", label: "Un", width: 80 },
+    { key: "preco", label: "Preço (R$)", ph: "0,14", width: 100 },
+    { key: "status", label: "Status", width: 100 },
+  ] },
+  forro:     { cor: true,  campos: [{ key: "extra:largura", label: "Largura", ph: "ex.: 1,40 m", width: 100 }, { key: "extra:gramatura", label: "Gramatura", ph: "ex.: 180 g/m²", width: 110 }] },
+  refil:     { campos: [{ key: "extra:medida", label: "Medida", ph: "ex.: 50x50", width: 100 }] },
+  encarte:   { campos: [{ key: "extra:modelo", label: "Modelo", ph: "ex.: A6 frente/verso", width: 160 }] },
+  embalagem: { campos: [{ key: "extra:dimensao", label: "Dimensão", ph: "ex.: 30x40", width: 120 }] },
+  tag:       { campos: [{ key: "extra:modelo", label: "Modelo", ph: "ex.: Kraft redonda", width: 160 }] },
+  tabuleiro: { campos: [{ key: "extra:medida", label: "Medida", ph: "ex.: 45x45", width: 110 }] },
   linha:     { cor: true },
 };
+// Colunas padrão (tipos sem layout próprio): campos comuns + cor/extras do cfg.
+function colunasPadrao(cfg: { cor?: boolean; campos?: ColDef[] }): ColDef[] {
+  const cor = cfg.cor ? [{ key: "cor", label: "Cor", width: 110 }, { key: "codigo", label: "Código", width: 100 }] : [];
+  return [
+    { key: "nome", label: "Nome", width: 190 },
+    { key: "codigo_interno", label: "Cód. interno", width: 100 },
+    { key: "tamanho", label: "Tamanho", width: 120 },
+    ...cor, ...(cfg.campos || []),
+    { key: "unidade", label: "Unidade", width: 90 },
+    { key: "preco", label: "Preço (R$)", width: 100 },
+    { key: "minimo", label: "Estoque mín.", width: 90 },
+    { key: "fornecedor", label: "Fornecedor", width: 170 },
+    { key: "status", label: "Status", width: 100 },
+    { key: "obs", label: "Observações", width: 200 },
+  ];
+}
+// Valor de exemplo para cada coluna (usado no placeholder do colar em massa).
+function exemploColuna(c: ColDef, tipoNome: string): string {
+  switch (c.key) {
+    case "nome": return `${tipoNome} exemplo`;
+    case "cor": return "Off White";
+    case "codigo": return "P-296";
+    case "codigo_interno": return "SKU-01";
+    case "unidade": return "un";
+    case "preco": return c.ph || "0,00";
+    case "status": return "ativo";
+    default: return c.key.startsWith("extra:") ? (c.ph || "").replace(/^ex\.:\s*/, "") : "";
+  }
+}
 const nBR = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 const rBR = (v: number) => "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -1247,22 +1292,14 @@ function InsumoModal({ cat, onFechar, onSalvo }: { cat: MaterialCategoriaDef | n
 function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: MaterialCategoriaDef; onEditarCat: () => void; onExcluirCat: () => void; onMudou?: () => void }) {
   const categoria = cat.slug, label = cat.nome, catCor = cat.cor || "#64748b";
   const cfg = CAMPOS_POR_TIPO[categoria] || {};
-  const temCor = !!cfg.cor;
-  const camposExtra = cfg.campos || [];
-  // Colar em massa: as colunas do colar = as colunas visíveis do tipo, na mesma ordem.
-  const bulkCols = ["nome", "codigo_interno", "tamanho", ...(temCor ? ["cor", "codigo"] : []), ...camposExtra.map((cp) => "extra:" + cp.key), "unidade", "preco", "minimo", "status"];
-  const bulkLabel = ["nome", "cód. interno", "tamanho", ...(temCor ? ["cor", "código"] : []), ...camposExtra.map((cp) => cp.label.toLowerCase()), "unidade", "preço", "est. mín.", "status"].join(" · ");
-  const bulkEx = bulkCols.map((campo) => {
-    if (campo === "nome") return `${cat.nome} branco`;
-    if (campo === "codigo_interno") return "SKU-01";
-    if (campo === "tamanho") return ""; // deixa em branco no exemplo
-    if (campo === "cor") return "Branco";
-    if (campo === "codigo") return "P-101";
-    if (campo === "unidade") return "un";
-    if (campo === "status") return "ativo";
-    if (campo.startsWith("extra:")) return (camposExtra.find((c) => "extra:" + c.key === campo)?.ph || "").replace(/^ex\.:\s*/, "");
-    return "";
-  }).join(";");
+  const colunas: ColDef[] = cfg.colunas || colunasPadrao(cfg);
+  const temCor = colunas.some((c) => c.key === "cor");
+  const extraKeys = colunas.filter((c) => c.key.startsWith("extra:")).map((c) => c.key.slice(6));
+  // Colar em massa: mesmas colunas do tipo, menos "fornecedor" (é relacional).
+  const bulkColDefs = colunas.filter((c) => c.key !== "fornecedor");
+  const bulkCols = bulkColDefs.map((c) => c.key);
+  const bulkLabel = bulkColDefs.map((c) => c.label.toLowerCase()).join(" · ");
+  const bulkEx = bulkColDefs.map((c) => exemploColuna(c, cat.nome)).join(";");
   const [itens, setItens] = useState<Material[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
@@ -1270,7 +1307,6 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const [tamanho, setTamanho] = useState("");
   const [fornId, setFornId] = useState("");
   const [cor, setCor] = useState("");
-  const [corHex, setCorHex] = useState("#333333");
   const [codigo, setCodigo] = useState("");
   const [unidade, setUnidade] = useState("un");
   const [preco, setPreco] = useState("");
@@ -1311,25 +1347,35 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   useEffect(() => { recarregar(); recarregarForn(); /* eslint-disable-next-line */ }, [categoria]);
 
   function limpar() {
-    setEditId(null); setNome(""); setTamanho(""); setFornId(""); setCor(""); setCorHex("#333333"); setCodigo("");
+    setEditId(null); setNome(""); setTamanho(""); setFornId(""); setCor(""); setCodigo("");
     setUnidade("un"); setPreco(""); setMinimo(""); setCodInterno(""); setStatus("ativo"); setObs(""); setExtra({});
   }
   function editar(m: Material) {
     setEditId(m.id); setNome(m.nome); setTamanho(m.tamanho || ""); setFornId(m.fornecedor_id || "");
-    setCor(m.cor || ""); setCorHex(m.cor_hex || "#333333"); setCodigo(m.codigo || "");
+    setCor(m.cor || ""); setCodigo(m.codigo || "");
     setUnidade(m.unidade || "un"); setPreco(m.preco != null ? String(m.preco) : ""); setMinimo(m.minimo != null ? String(m.minimo) : "");
     setCodInterno(m.codigo_interno || ""); setStatus(m.status === "inativo" ? "inativo" : "ativo"); setObs(m.obs || ""); setExtra(parseExtra(m));
   }
 
+  // Lê/escreve o valor de uma coluna sobre os estados individuais.
+  function getV(key: string): string {
+    if (key.startsWith("extra:")) return extra[key.slice(6)] || "";
+    return ({ nome, codigo_interno: codInterno, tamanho, cor, codigo, unidade, preco, minimo, status, obs } as Record<string, string>)[key] ?? "";
+  }
+  function setV(key: string, v: string) {
+    if (key.startsWith("extra:")) { const k = key.slice(6); setExtra((x) => ({ ...x, [k]: v })); return; }
+    ({ nome: setNome, codigo_interno: setCodInterno, tamanho: setTamanho, cor: setCor, codigo: setCodigo, unidade: setUnidade, preco: setPreco, minimo: setMinimo, status: setStatus, obs: setObs } as Record<string, (v: string) => void>)[key]?.(v);
+  }
+
   async function salvar() {
     if (!nome.trim()) return alert("Informe o nome do material.");
-    // extra: só as chaves configuradas para este tipo, sem valores vazios.
+    // extra: só as chaves de coluna deste tipo, sem valores vazios.
     const extraLimpo: Record<string, string> = {};
-    for (const cp of camposExtra) { const v = (extra[cp.key] || "").trim(); if (v) extraLimpo[cp.key] = v; }
+    for (const k of extraKeys) { const v = (extra[k] || "").trim(); if (v) extraLimpo[k] = v; }
     try {
       await api.salvarMaterial({
         id: editId || undefined, categoria, nome: nome.trim(), tamanho: tamanho.trim() || null, fornecedor_id: fornId || null,
-        cor: temCor ? (cor.trim() || null) : null, cor_hex: temCor ? corHex : null, codigo: temCor ? (codigo.trim() || null) : null,
+        cor: temCor ? (cor.trim() || null) : null, cor_hex: null, codigo: temCor ? (codigo.trim() || null) : null,
         unidade, preco: preco.trim() ? Number(preco.replace(",", ".")) : null, minimo: minimo.trim() ? Number(minimo.replace(",", ".")) : 0,
         codigo_interno: codInterno.trim() || null, status, obs: obs.trim() || null,
         extra: JSON.stringify(extraLimpo),
@@ -1342,7 +1388,6 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
     try { await api.excluirMaterial(m.id); if (editId === m.id) limpar(); recarregar(); onMudou?.(); } catch (e) { alert((e as Error).message); }
   }
 
-  const colSpan = 7 + (temCor ? 2 : 0) + camposExtra.length;
   return (
     <>
       <div className="card pad" style={{ marginBottom: 16 }}>
@@ -1359,42 +1404,40 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
           <button className="btn" title="Excluir insumo" onClick={onExcluirCat}>🗑</button>
         </div>
         <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
-          <label className="fld">Nome<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder={`ex.: ${label} branco`} style={{ minWidth: 190 }} /></label>
-          <label className="fld">Cód. interno<input value={codInterno} onChange={(e) => setCodInterno(e.target.value)} placeholder="SKU" style={{ width: 100 }} /></label>
-          <label className="fld">Tamanho<input value={tamanho} onChange={(e) => setTamanho(e.target.value)} placeholder="ex.: 90X200" style={{ width: 120 }} /></label>
-          {temCor && <>
-            <label className="fld">Cor<input value={cor} onChange={(e) => setCor(e.target.value)} placeholder="ex.: Preto" style={{ width: 110 }} /></label>
-            <label className="fld">Código<input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Z5-PT" style={{ width: 100 }} /></label>
-            <label className="fld">Amostra<input type="color" value={corHex} onChange={(e) => setCorHex(e.target.value)} style={{ width: 46, height: 36, padding: 2 }} /></label>
-          </>}
-          {camposExtra.map((cp) => (
-            <label className="fld" key={cp.key}>{cp.label}
-              <input value={extra[cp.key] || ""} onChange={(e) => setExtra((x) => ({ ...x, [cp.key]: e.target.value }))} placeholder={cp.ph} style={{ width: cp.width || 130 }} />
-            </label>
-          ))}
-          <label className="fld">Unidade
-            <select value={unidade} onChange={(e) => setUnidade(e.target.value)} style={{ width: 90 }}>
-              {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </label>
-          <label className="fld">Preço (R$)<input value={preco} onChange={(e) => setPreco(e.target.value)} placeholder="0,00" inputMode="decimal" style={{ width: 100 }} /></label>
-          <label className="fld">Estoque mín.<input value={minimo} onChange={(e) => setMinimo(e.target.value)} placeholder="0" inputMode="decimal" style={{ width: 90 }} /></label>
-          <label className="fld">Fornecedor
-            <div className="row-gap" style={{ gap: 4 }}>
-              <select value={fornId} onChange={(e) => setFornId(e.target.value)} style={{ minWidth: 150 }}>
-                <option value="">Sem fornecedor</option>
-                {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
-              </select>
-              <button type="button" className="btn btn-soft" title="Novo fornecedor" onClick={() => setNovoForn(true)} style={{ padding: "8px 11px" }}>＋</button>
-            </div>
-          </label>
-          <label className="fld">Status
-            <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 100 }}>
-              <option value="ativo">Ativo</option>
-              <option value="inativo">Inativo</option>
-            </select>
-          </label>
-          <label className="fld" style={{ flex: 1, minWidth: 180 }}>Observações<input value={obs} onChange={(e) => setObs(e.target.value)} placeholder="opcional" /></label>
+          {colunas.map((c) => {
+            if (c.key === "fornecedor") return (
+              <label className="fld" key={c.key}>{c.label}
+                <div className="row-gap" style={{ gap: 4 }}>
+                  <select value={fornId} onChange={(e) => setFornId(e.target.value)} style={{ minWidth: 150 }}>
+                    <option value="">Sem fornecedor</option>
+                    {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                  </select>
+                  <button type="button" className="btn btn-soft" title="Novo fornecedor" onClick={() => setNovoForn(true)} style={{ padding: "8px 11px" }}>＋</button>
+                </div>
+              </label>
+            );
+            if (c.key === "unidade") return (
+              <label className="fld" key={c.key}>{c.label}
+                <select value={unidade} onChange={(e) => setUnidade(e.target.value)} style={{ width: c.width || 90 }}>
+                  {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </label>
+            );
+            if (c.key === "status") return (
+              <label className="fld" key={c.key}>{c.label}
+                <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: c.width || 100 }}>
+                  <option value="ativo">Ativo</option>
+                  <option value="inativo">Inativo</option>
+                </select>
+              </label>
+            );
+            const decimal = c.key === "preco" || c.key === "minimo";
+            return (
+              <label className="fld" key={c.key} style={c.key === "obs" ? { flex: 1, minWidth: 180 } : undefined}>{c.label}
+                <input value={getV(c.key)} onChange={(e) => setV(c.key, e.target.value)} placeholder={c.ph || (c.key === "nome" ? `ex.: ${label}` : "")} inputMode={decimal ? "decimal" : undefined} style={{ width: c.width || 130 }} />
+              </label>
+            );
+          })}
           <button className="btn btn-primary" onClick={salvar}>{editId ? "Salvar" : "＋ Adicionar"}</button>
           {editId && <button className="btn" onClick={limpar}>Cancelar</button>}
         </div>
@@ -1407,38 +1450,38 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
         </div>
         <table className="table">
           <thead><tr>
-            <th>Material</th>
-            {temCor && <><th>Cor</th><th>Código</th></>}
-            <th>Tamanho</th>
-            {camposExtra.map((cp) => <th key={cp.key}>{cp.label}</th>)}
-            <th className="num">Estoque</th><th className="num">Preço</th><th>Fornecedor</th><th></th>
+            {colunas.map((c) => <th key={c.key} className={c.key === "preco" || c.key === "minimo" ? "num" : undefined}>{c.label}</th>)}
+            <th className="num">Estoque</th><th></th>
           </tr></thead>
           <tbody>
             {itens.length === 0 ? (
-              <tr><td colSpan={colSpan} className="empty pad">Nenhum {label.toLowerCase()} cadastrado ainda.</td></tr>
+              <tr><td colSpan={colunas.length + 2} className="empty pad">Nenhum {label.toLowerCase()} cadastrado ainda.</td></tr>
             ) : itens.map((m) => {
               const saldo = m.saldo || 0, min = m.minimo || 0, baixo = min > 0 && saldo < min;
-              const mx = (() => { try { return m.extra ? JSON.parse(m.extra) : {}; } catch { return {}; } })();
+              const mx: Record<string, string> = (() => { try { return m.extra ? JSON.parse(m.extra) : {}; } catch { return {}; } })();
               const inativo = m.status === "inativo";
+              const celula = (c: ColDef): React.ReactNode => {
+                if (c.key === "nome") return <span className="strong">{m.nome}</span>;
+                if (c.key === "cor") return m.cor || "—";
+                if (c.key === "codigo") return m.codigo ? <span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{m.codigo}</span> : "—";
+                if (c.key === "codigo_interno") return m.codigo_interno ? <span style={{ fontFamily: "ui-monospace, monospace" }}>{m.codigo_interno}</span> : "—";
+                if (c.key === "tamanho") return m.tamanho || "—";
+                if (c.key === "unidade") return m.unidade || "—";
+                if (c.key === "preco") return m.preco != null ? rBR(m.preco) : "—";
+                if (c.key === "minimo") return min > 0 ? nBR(min) : "—";
+                if (c.key === "fornecedor") return m.fornecedor_nome || "—";
+                if (c.key === "status") return inativo ? <span className="chip" style={{ background: "#e2e8f0", color: "#475569" }}>Inativo</span> : "Ativo";
+                if (c.key === "obs") return m.obs || "—";
+                if (c.key.startsWith("extra:")) return mx[c.key.slice(6)] || "—";
+                return "—";
+              };
               return (
                 <tr key={m.id} style={inativo ? { opacity: 0.55 } : undefined}>
-                  <td className="strong">
-                    {m.nome}
-                    {m.codigo_interno && <span className="muted" style={{ fontSize: 10.5, marginLeft: 6, fontFamily: "ui-monospace, monospace" }}>{m.codigo_interno}</span>}
-                    {inativo && <span className="chip" style={{ marginLeft: 6, background: "#e2e8f0", color: "#475569" }}>inativo</span>}
-                  </td>
-                  {temCor && (<>
-                    <td><span className="cad-sw" style={{ background: m.cor_hex || "#e2e8f0", marginRight: 7 }} />{m.cor || "—"}</td>
-                    <td>{m.codigo ? <span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{m.codigo}</span> : "—"}</td>
-                  </>)}
-                  <td className="strong">{m.tamanho || "—"}</td>
-                  {camposExtra.map((cp) => <td key={cp.key}>{mx[cp.key] || "—"}</td>)}
+                  {colunas.map((c) => <td key={c.key} className={c.key === "preco" || c.key === "minimo" ? "num" : undefined}>{celula(c)}</td>)}
                   <td className="num">
                     <span className={baixo ? "mat-saldo-baixo" : ""}>{nBR(saldo)} {m.unidade || ""}</span>
                     {min > 0 && <div className="muted" style={{ fontSize: 10.5 }}>mín {nBR(min)}{baixo ? " · repor" : ""}</div>}
                   </td>
-                  <td className="num">{m.preco != null ? rBR(m.preco) : "—"}</td>
-                  <td>{m.fornecedor_nome || "—"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button className="icon-btn" title="Entrada de estoque" onClick={() => setEntrada(m)}>📥</button>
                     <button className="icon-btn" title="Editar" onClick={() => editar(m)}>✎</button>
