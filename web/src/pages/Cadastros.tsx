@@ -1444,6 +1444,12 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
     if (!confirm(`Excluir "${m.nome}${m.tamanho ? " " + m.tamanho : ""}"?`)) return;
     try { await api.excluirMaterial(m.id); if (editId === m.id) limpar(); recarregar(); onMudou?.(); } catch (e) { alert((e as Error).message); }
   }
+  // Duplicar: carrega os dados no formulário como um NOVO cadastro (editId nulo).
+  function duplicar(m: Material) {
+    editar(m);
+    setEditId(null);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   return (
     <>
@@ -1541,6 +1547,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button className="icon-btn" title="Entrada de estoque" onClick={() => setEntrada(m)}>📥</button>
+                    <button className="icon-btn" title="Duplicar" onClick={() => duplicar(m)}>⧉</button>
                     <button className="icon-btn" title="Editar" onClick={() => editar(m)}>✎</button>
                     <button className="icon-btn" title="Excluir" onClick={() => remover(m)}>✕</button>
                   </td>
