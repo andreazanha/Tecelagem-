@@ -36,7 +36,10 @@ chat.get("/nao-lidas", async (c) => {
   const r = await c.env.DB.prepare(
     "SELECT COUNT(*) AS n FROM chat_mensagens WHERE criado_em > ? AND autor <> ?"
   ).bind(desde, autor).first<{ n: number }>();
-  return c.json({ nao_lidas: r?.n || 0 });
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, canal, autor, texto, imagem_key, criado_em FROM chat_mensagens WHERE criado_em > ? AND autor <> ? ORDER BY criado_em DESC LIMIT 1"
+  ).bind(desde, autor).all();
+  return c.json({ nao_lidas: r?.n || 0, ultima: results[0] || null });
 });
 
 // Serve a foto de uma mensagem (R2). imagem_key = id; chave no bucket = chat/<id>.

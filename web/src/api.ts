@@ -670,7 +670,7 @@ export const api = {
   enviarChat: (canal: string, autor: string, texto: string) =>
     jsonPost(`/api/chat/${encodeURIComponent(canal)}`, { autor, texto }).then((r) => j<{ id: string }>(r)),
   naoLidasChat: (desde: string, autor: string) =>
-    fetch(`/api/chat/nao-lidas?desde=${encodeURIComponent(desde)}&autor=${encodeURIComponent(autor)}`).then((r) => j<{ nao_lidas: number }>(r)),
+    fetch(`/api/chat/nao-lidas?desde=${encodeURIComponent(desde)}&autor=${encodeURIComponent(autor)}`).then((r) => j<{ nao_lidas: number; ultima: ChatMensagem | null }>(r)),
   contatosChat: () => fetch("/api/chat/contatos").then((r) => j<string[]>(r)),
   dmsChat: (me: string) => fetch(`/api/chat/dms?me=${encodeURIComponent(me)}`).then((r) => j<ChatDM[]>(r)),
   enviarFotoChat: (canal: string, autor: string, file: File, texto?: string) => {

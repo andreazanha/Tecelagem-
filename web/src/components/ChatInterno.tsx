@@ -15,6 +15,29 @@ const CANAIS = [
   { id: "expedicao", nome: "Expedição" },
 ];
 const SEEN_KEY = "chat-last-seen";
+const MUTE_KEY = "chat-mudo";
+
+// Beep curto (dois toques) via Web Audio — sem arquivo. Requer que o usuário já
+// tenha interagido com a página (política de autoplay); se bloquear, ignora.
+let _ac: AudioContext | null = null;
+function beep() {
+  try {
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    _ac = _ac || new AC();
+    if (_ac.state === "suspended") _ac.resume();
+    const notas = [880, 1175];
+    notas.forEach((f, i) => {
+      const o = _ac!.createOscillator(), g = _ac!.createGain();
+      o.connect(g); g.connect(_ac!.destination);
+      o.type = "sine"; o.frequency.value = f;
+      const t0 = _ac!.currentTime + i * 0.14;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.18, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.13);
+      o.start(t0); o.stop(t0 + 0.14);
+    });
+  } catch { /* autoplay bloqueado */ }
+}
 
 export function ChatInterno() {
   const nome = getUser()?.nome || "";
@@ -28,8 +51,15 @@ export function ChatInterno() {
   const [dms, setDms] = useState<ChatDM[]>([]);
   const [novaDM, setNovaDM] = useState(false);
   const [mencao, setMencao] = useState<string | null>(null);
+  const [mudo, setMudo] = useState(() => localStorage.getItem(MUTE_KEY) === "1");
+  const [toast, setToast] = useState<ChatMensagem | null>(null);
   const fim = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const ultimoAviso = useRef<string>(new Date().toISOString()); // não avisa mensagens antigas ao abrir a página
+  const ultimoMsgId = useRef<string>("");
+  const mudoRef = useRef(mudo);
+  useEffect(() => { mudoRef.current = mudo; }, [mudo]);
+  function toggleMudo() { setMudo((m) => { const n = !m; localStorage.setItem(MUTE_KEY, n ? "1" : "0"); return n; }); }
 
   const nomeCanal = (id: string) => id.startsWith("dm:") ? (dms.find((d) => d.canal === id)?.outro || id.slice(3).split("|").find((p) => p !== nome) || "Direta") : (CANAIS.find((c) => c.id === id)?.nome || id);
   const marcarLido = useCallback(() => { localStorage.setItem(SEEN_KEY, new Date().toISOString()); setNaoLidas(0); }, []);
@@ -50,13 +80,37 @@ export function ChatInterno() {
 
   useEffect(() => {
     if (!nome || open) return;
-    const check = () => { const desde = localStorage.getItem(SEEN_KEY) || "1970-01-01"; api.naoLidasChat(desde, nome).then((r) => setNaoLidas(r.nao_lidas)).catch(() => {}); };
+    const check = () => {
+      const desde = localStorage.getItem(SEEN_KEY) || "1970-01-01";
+      api.naoLidasChat(desde, nome).then((r) => {
+        setNaoLidas(r.nao_lidas);
+        const u = r.ultima;
+        if (u && u.criado_em > ultimoAviso.current) {
+          ultimoAviso.current = u.criado_em;
+          if (!mudoRef.current) beep();
+          setToast(u);
+          if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+            try { new Notification(`💬 ${u.autor}`, { body: u.imagem_key ? "📷 enviou uma foto" : u.texto, tag: "chat" }); } catch { /* ignore */ }
+          }
+        }
+      }).catch(() => {});
+    };
     check();
-    const t = setInterval(check, 15000);
+    const t = setInterval(check, 10000);
     return () => clearInterval(t);
   }, [nome, open]);
 
-  useEffect(() => { if (open) marcarLido(); }, [open, canal, marcarLido]);
+  // Some o toast sozinho após 6s.
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 6000); return () => clearTimeout(t); }, [toast]);
+
+  // Beep quando chega mensagem nova (de outra pessoa) no canal aberto.
+  useEffect(() => {
+    const last = msgs[msgs.length - 1];
+    if (last && ultimoMsgId.current && last.id !== ultimoMsgId.current && last.autor !== nome && open && !mudoRef.current) beep();
+    if (last) ultimoMsgId.current = last.id;
+  }, [msgs, nome, open]);
+
+  useEffect(() => { if (open) { marcarLido(); setToast(null); } }, [open, canal, marcarLido]);
   useEffect(() => { fim.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, novaDM]);
 
   async function enviar() {
@@ -95,9 +149,26 @@ export function ChatInterno() {
       <button className="chat-fab" onClick={() => setOpen((o) => !o)} title="Chat da equipe" aria-label="Chat da equipe" style={{ position: "fixed" }}>
         💬{naoLidas > 0 && <span className="chat-badge">{naoLidas > 99 ? "99+" : naoLidas}</span>}
       </button>
+      {toast && !open && (
+        <div className="chat-toast" onClick={() => {
+          const cid = toast.canal;
+          if (cid.startsWith("dm:")) { const outro = cid.slice(3).split("|").find((p) => p !== nome) || ""; setDms((ds) => (ds.some((d) => d.canal === cid) ? ds : [...ds, { canal: cid, outro }])); }
+          setCanal(cid); setNovaDM(false); setOpen(true); setToast(null);
+        }}>
+          <button className="chat-toast-x" onClick={(e) => { e.stopPropagation(); setToast(null); }}>✕</button>
+          <div className="chat-toast-hd">💬 {toast.autor}<span className="chat-toast-canal">{nomeCanal(toast.canal)}</span></div>
+          <div className="chat-toast-txt">{toast.imagem_key ? "📷 Foto" : toast.texto}</div>
+        </div>
+      )}
       {open && (
         <div className="chat-panel">
-          <div className="chat-hd"><span>💬 {nomeCanal(canal)}</span><button className="chat-x" onClick={() => setOpen(false)}>✕</button></div>
+          <div className="chat-hd">
+            <span>💬 {nomeCanal(canal)}</span>
+            <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+              <button className="chat-x" title={mudo ? "Sons desligados — clique para ligar" : "Silenciar avisos"} onClick={toggleMudo}>{mudo ? "🔕" : "🔔"}</button>
+              <button className="chat-x" onClick={() => setOpen(false)}>✕</button>
+            </span>
+          </div>
           <div className="chat-canais">
             {CANAIS.map((c) => <button key={c.id} className={"chat-canal" + (c.id === canal ? " on" : "")} onClick={() => { setNovaDM(false); setCanal(c.id); }}>{c.nome}</button>)}
             {dms.map((d) => <button key={d.canal} className={"chat-canal" + (d.canal === canal ? " on" : "")} onClick={() => { setNovaDM(false); setCanal(d.canal); }}>👤 {d.outro}</button>)}
