@@ -1025,7 +1025,6 @@ const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: CampoExtra[] }> 
   embalagem: { campos: [{ key: "dimensao", label: "Dimensão", ph: "ex.: 30x40", width: 120 }] },
   tag:       { campos: [{ key: "modelo", label: "Modelo", ph: "ex.: Kraft redonda", width: 160 }] },
   tabuleiro: { campos: [{ key: "medida", label: "Medida", ph: "ex.: 45x45", width: 110 }] },
-  tassel:    { cor: true },
   linha:     { cor: true },
 };
 const nBR = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
