@@ -1707,11 +1707,93 @@ function AlterarMassaModal({ colunas, ids, fornecedores, onFechar, onSalvo }: {
   );
 }
 
+// ── Ordem de compra: nossos dados (persistidos), fornecedor e itens → impressão ──
+type Empresa = { nome: string; cnpj: string; endereco: string; telefone: string; email: string };
+const EMPRESA_KEY = "empresa-compras";
+function getEmpresa(): Empresa {
+  const base: Empresa = { nome: "Big Tricot", cnpj: "", endereco: "", telefone: "", email: "" };
+  try { const e = JSON.parse(localStorage.getItem(EMPRESA_KEY) || "null"); if (e && typeof e === "object") return { ...base, ...e }; } catch { /* ignore */ }
+  return base;
+}
+const escHtml = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
+
+function imprimirOrdemCompra(emp: Empresa, forn: Fornecedor | null, fornNome: string, itens: CompraSugestao[]) {
+  const hoje = new Date();
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const data = `${p2(hoje.getDate())}/${p2(hoje.getMonth() + 1)}/${hoje.getFullYear()}`;
+  const numero = `OC-${hoje.getFullYear()}${p2(hoje.getMonth() + 1)}${p2(hoje.getDate())}-${p2(hoje.getHours())}${p2(hoje.getMinutes())}`;
+  const linhas = itens.map((m, i) => {
+    const qtd = m.faltam || 0, unit = m.preco || 0, tot = qtd * unit;
+    return `<tr><td class="c">${i + 1}</td><td>${escHtml(m.nome)}${m.tamanho ? " · " + escHtml(m.tamanho) : ""}${m.cor ? " · " + escHtml(m.cor) : ""}${m.codigo ? ` <span class="cod">${escHtml(m.codigo)}</span>` : ""}</td><td class="c">${escHtml(m.unidade || "")}</td><td class="r b">${nBR(qtd)}</td><td class="r">${unit ? rBR(unit) : "—"}</td><td class="r">${unit ? rBR(tot) : "—"}</td></tr>`;
+  }).join("");
+  const total = itens.reduce((s, m) => s + (m.preco || 0) * (m.faltam || 0), 0);
+  const li = (label: string, val: unknown) => val ? `<div><span class="lbl">${label}:</span> ${escHtml(val)}</div>` : "";
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${numero}</title><style>
+    *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1f2937;margin:24px;font-size:13px}
+    .top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #4338ca;padding-bottom:12px}
+    .top h1{margin:0;font-size:22px;color:#4338ca}.oc{text-align:right}.oc .t{font-size:18px;font-weight:800}
+    .box{border:1px solid #d1d5db;border-radius:8px;padding:12px 14px;margin-top:16px}
+    .box h2{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280}
+    .lbl{color:#6b7280}table{width:100%;border-collapse:collapse;margin-top:16px}
+    th,td{border:1px solid #d1d5db;padding:7px 9px}th{background:#eef2ff;text-align:left;font-size:11px;text-transform:uppercase;color:#3730a3}
+    td.c{text-align:center}td.r{text-align:right}td.b{font-weight:700}
+    .cod{font-family:monospace;background:#f3f4f6;padding:1px 5px;border-radius:4px;font-size:11px}
+    tfoot td{font-weight:800;background:#f9fafb}
+    .ass{margin-top:48px;display:flex;justify-content:space-between;gap:40px}
+    .ass div{flex:1;border-top:1px solid #9ca3af;text-align:center;padding-top:6px;color:#6b7280;font-size:12px}
+    @media print{body{margin:0}.noprint{display:none}}
+  </style></head><body>
+    <div class="top">
+      <div><h1>${escHtml(emp.nome || "Big Tricot")}</h1>${li("CNPJ", emp.cnpj)}${emp.endereco ? `<div>${escHtml(emp.endereco)}</div>` : ""}<div>${[emp.telefone, emp.email].filter(Boolean).map(escHtml).join(" · ")}</div></div>
+      <div class="oc"><div class="t">ORDEM DE COMPRA</div><div class="lbl">Nº ${numero}</div><div class="lbl">Data: ${data}</div></div>
+    </div>
+    <div class="box"><h2>Fornecedor</h2><div><strong>${escHtml(fornNome)}</strong></div>${li("Contato", forn?.contato)}${li("Telefone", forn?.telefone)}${li("E-mail", forn?.email)}${li("CNPJ", forn?.cnpj)}</div>
+    <table><thead><tr><th style="width:36px">#</th><th>Material</th><th style="width:56px">Un</th><th style="width:90px">Qtde</th><th style="width:100px">Vlr unit.</th><th style="width:110px">Total</th></tr></thead>
+      <tbody>${linhas}</tbody>
+      <tfoot><tr><td colspan="5" class="r">Total estimado</td><td class="r">${rBR(total)}</td></tr></tfoot></table>
+    <div class="ass"><div>Comprador</div><div>Fornecedor</div></div>
+    <div class="noprint" style="margin-top:24px;text-align:center"><button onclick="window.print()" style="padding:10px 18px;font-size:14px;background:#4338ca;color:#fff;border:none;border-radius:8px;cursor:pointer">🖨️ Imprimir / Salvar PDF</button></div>
+  </body></html>`;
+  const w = window.open("", "_blank");
+  if (!w) { alert("Permita pop-ups para gerar a ordem de compra."); return; }
+  w.document.write(html); w.document.close(); w.focus();
+  setTimeout(() => { try { w.print(); } catch { /* ignore */ } }, 400);
+}
+
+// Modal: edita e persiste os NOSSOS dados usados no cabeçalho da ordem de compra.
+function EmpresaModal({ onFechar }: { onFechar: () => void }) {
+  const [e, setE] = useState<Empresa>(getEmpresa());
+  const set = (p: Partial<Empresa>) => setE((o) => ({ ...o, ...p }));
+  function salvar() { localStorage.setItem(EMPRESA_KEY, JSON.stringify({ ...e, nome: (e.nome || "Big Tricot").trim() })); onFechar(); }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 460 }} onClick={(ev) => ev.stopPropagation()}>
+        <h2 style={{ marginTop: 0 }}>Nossos dados (cabeçalho da ordem)</h2>
+        <p className="muted" style={{ marginTop: -4 }}>Aparecem no topo de toda ordem de compra. Ficam salvos neste navegador.</p>
+        <label className="campo"><span className="campo-label">Nome / Razão social</span><input value={e.nome} onChange={(ev) => set({ nome: ev.target.value })} spellCheck lang="pt-BR" /></label>
+        <label className="campo"><span className="campo-label">CNPJ</span><input value={e.cnpj} onChange={(ev) => set({ cnpj: ev.target.value })} placeholder="00.000.000/0001-00" /></label>
+        <label className="campo"><span className="campo-label">Endereço</span><input value={e.endereco} onChange={(ev) => set({ endereco: ev.target.value })} spellCheck lang="pt-BR" /></label>
+        <label className="campo"><span className="campo-label">Telefone</span><input value={e.telefone} onChange={(ev) => set({ telefone: ev.target.value })} /></label>
+        <label className="campo"><span className="campo-label">E-mail</span><input value={e.email} onChange={(ev) => set({ email: ev.target.value })} /></label>
+        <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+          <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
+          <button className="btn btn-primary" onClick={salvar}>Salvar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Lista de COMPRAS: materiais abaixo do mínimo, agrupados por fornecedor.
 function ComprasMateriais() {
   const [itens, setItens] = useState<CompraSugestao[]>([]);
   const [carregou, setCarregou] = useState(false);
-  useEffect(() => { api.comprasMateriais().then((r) => { setItens(r); setCarregou(true); }).catch(() => setCarregou(true)); }, []);
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const [empresaModal, setEmpresaModal] = useState(false);
+  useEffect(() => {
+    api.comprasMateriais().then((r) => { setItens(r); setCarregou(true); }).catch(() => setCarregou(true));
+    api.listarFornecedores().then(setFornecedores).catch(() => {});
+  }, []);
 
   // agrupa por fornecedor (mantém ordem de chegada, que já vem ordenada)
   const grupos: { forn: string; itens: CompraSugestao[] }[] = [];
@@ -1731,7 +1813,8 @@ function ComprasMateriais() {
     <>
       <div className="row-gap" style={{ alignItems: "center", marginBottom: 12 }}>
         <h2 style={{ margin: 0 }}>Compras sugeridas</h2>
-        <span className="muted" style={{ marginLeft: "auto" }}>Estimativa total: <strong>{rBR(totalGeral)}</strong></span>
+        <button className="btn btn-soft" style={{ marginLeft: "auto" }} title="Editar os dados que aparecem no cabeçalho da ordem" onClick={() => setEmpresaModal(true)}>✎ Nossos dados</button>
+        <span className="muted">Estimativa total: <strong>{rBR(totalGeral)}</strong></span>
       </div>
       {grupos.map((g) => {
         const total = g.itens.reduce((s, m) => s + custoItem(m), 0);
@@ -1740,6 +1823,11 @@ function ComprasMateriais() {
             <div className="row-gap" style={{ alignItems: "center", gap: 10, padding: "10px 12px" }}>
               <span className="chip chip-kit">🚛 {g.forn}</span>
               <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>{g.itens.length} item(ns) · {rBR(total)}</span>
+              <button className="btn btn-soft" title="Gerar ordem de compra deste fornecedor" onClick={() => {
+                const fid = g.itens[0]?.fornecedor_id;
+                const f = fid ? fornecedores.find((x) => x.id === fid) || null : null;
+                imprimirOrdemCompra(getEmpresa(), f, g.forn, g.itens);
+              }}>🧾 Ordem de compra</button>
             </div>
             <table className="table">
               <thead><tr><th>Material</th><th className="num">Saldo</th><th className="num">Mínimo</th><th className="num">Comprar</th><th className="num">Custo est.</th></tr></thead>
@@ -1758,6 +1846,7 @@ function ComprasMateriais() {
           </div>
         );
       })}
+      {empresaModal && <EmpresaModal onFechar={() => setEmpresaModal(false)} />}
     </>
   );
 }
