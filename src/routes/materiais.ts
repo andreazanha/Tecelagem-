@@ -161,12 +161,14 @@ materiais.delete("/refil-mapa/:medida", async (c) => {
 // COLAR EM MASSA: uma linha = um material. Colunas por Tab/;/, na ordem
 // nome · tamanho · unidade · preço · estoque mínimo. Só o nome é obrigatório.
 materiais.post("/bulk", async (c) => {
-  const b = await c.req.json<{ categoria?: string; texto?: string; colunas?: string[]; labels?: string[]; nomeTemplate?: string }>().catch(() => ({}) as Record<string, unknown>);
+  const b = await c.req.json<{ categoria?: string; texto?: string; colunas?: string[]; labels?: string[]; nomeTemplate?: string; defaults?: Record<string, string> }>().catch(() => ({}) as Record<string, unknown>);
   const categoria = String(b.categoria ?? "").trim().toLowerCase();
   if (!(await slugsValidos(c.env)).has(categoria)) return c.json({ error: "categoria inválida" }, 400);
   const labels = Array.isArray(b.labels) ? b.labels.map(String) : [];
   // Nome derivado quando o tipo não tem coluna "nome" (ex.: refil → "Refil {tamanho}").
   const nomeTemplate = typeof b.nomeTemplate === "string" ? b.nomeTemplate : "";
+  // Valores padrão por coluna quando a célula vem vazia (ex.: embalagem tipo = "PVC").
+  const defaults: Record<string, string> = (b.defaults && typeof b.defaults === "object") ? b.defaults as Record<string, string> : {};
   // colunas: ordem dos campos de CADA linha, igual à tela do tipo. Ex. do zíper:
   // ["nome","codigo_interno","tamanho","cor","codigo","extra:comprimento","unidade","preco","minimo","status"].
   // extra:<chave> vai para o JSON `extra` (campos específicos do tipo). Sem `colunas`,
@@ -216,6 +218,14 @@ materiais.post("/bulk", async (c) => {
       else if (campo === "status") m.status = /inativ/i.test(v) ? "inativo" : "ativo";
       else if (campo.startsWith("extra:")) { if (v) m.extra[campo.slice(6)] = v; }
     });
+    // Aplica valores padrão nas colunas que vieram vazias.
+    for (const [key, dv] of Object.entries(defaults)) {
+      if (!dv) continue;
+      if (key.startsWith("extra:")) { const k = key.slice(6); if (!m.extra[k]) m.extra[k] = dv; }
+      else if (key === "unidade") { if (!m.unidade) m.unidade = dv.toLowerCase(); }
+      else if (key === "codigo") { if (!m.codigo) m.codigo = dv; }
+      else if (key === "codigo_interno") { if (!m.codigo_interno) m.codigo_interno = dv; }
+    }
     // "Não usa refil" / "sem refil" não é item de estoque — ignora.
     if (m.tamanho && /n[ãa]o usa|sem refil/i.test(m.tamanho)) continue;
     // Nome automático quando o tipo não tem coluna "nome" (ex.: "Refil {tamanho}").

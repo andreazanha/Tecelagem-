@@ -1130,7 +1130,7 @@ const CORES_INSUMO = ["#0891b2", "#7c3aed", "#ca8a04", "#16a34a", "#ea580c", "#d
 // tamanho, cor, codigo, unidade, preco, minimo, fornecedor, status, obs e
 // extra:<chave> (campo próprio do tipo, guardado no JSON `extra`).
 // Tipos com `colunas` mostram SÓ essas colunas; os demais usam colunasPadrao().
-type ColDef = { key: string; label: string; ph?: string; width?: number };
+type ColDef = { key: string; label: string; ph?: string; width?: number; default?: string };
 const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; colunas?: ColDef[]; nomeTemplate?: string }> = {
   ziper: { colunas: [
     { key: "nome", label: "Nome", ph: "ex.: Zíper Invisível", width: 190 },
@@ -1181,7 +1181,18 @@ const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; coluna
     { key: "minimo", label: "Estoque mínimo", width: 120 },
     { key: "fornecedor", label: "Fornecedor", width: 160 },
   ] },
-  embalagem: { campos: [{ key: "extra:dimensao", label: "Dimensão", ph: "ex.: 30x40", width: 120 }] },
+  embalagem: { colunas: [
+    { key: "codigo_interno", label: "Código", ph: "ex.: EMB-001", width: 110 },
+    { key: "nome", label: "Descrição", ph: "ex.: Embalagem 50x50", width: 190 },
+    { key: "extra:tipo", label: "Tipo", default: "PVC", width: 90 },
+    { key: "extra:bolso", label: "Bolso", ph: "ex.: Sim", width: 90 },
+    { key: "extra:silk", label: "Silk", ph: "ex.: Sim", width: 90 },
+    { key: "extra:medida_fabricante", label: "Medida fabricante", ph: "ex.: 52x52", width: 150 },
+    { key: "extra:medida_interna", label: "Medida interna", ph: "ex.: 50x50", width: 150 },
+    { key: "preco", label: "Valor", ph: "R$ 0,00", width: 100 },
+    { key: "minimo", label: "Estoque mínimo", width: 120 },
+    { key: "fornecedor", label: "Fabricante", width: 160 },
+  ] },
   tag:       { campos: [{ key: "extra:modelo", label: "Modelo", ph: "ex.: Kraft redonda", width: 160 }] },
   tabuleiro: { campos: [{ key: "extra:medida", label: "Medida", ph: "ex.: 45x45", width: 110 }] },
   linha:     { cor: true },
@@ -1204,6 +1215,7 @@ function colunasPadrao(cfg: { cor?: boolean; campos?: ColDef[] }): ColDef[] {
 }
 // Valor de exemplo para cada coluna (usado no placeholder do colar em massa).
 function exemploColuna(c: ColDef, tipoNome: string): string {
+  if (c.default) return c.default;
   switch (c.key) {
     case "nome": return `${tipoNome} exemplo`;
     case "cor": return "Off White";
@@ -1328,6 +1340,11 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const temCor = colunas.some((c) => c.key === "cor");
   const extraKeys = colunas.filter((c) => c.key.startsWith("extra:")).map((c) => c.key.slice(6));
   const semNome = !colunas.some((c) => c.key === "nome"); // tipos com nome automático (refil)
+  // Valores padrão de coluna (ex.: embalagem tipo = "PVC").
+  const colDefaults: Record<string, string> = {};
+  for (const c of colunas) if (c.default) colDefaults[c.key] = c.default;
+  const extraDefaults: Record<string, string> = {};
+  for (const c of colunas) if (c.default && c.key.startsWith("extra:")) extraDefaults[c.key.slice(6)] = c.default;
   // Colar em massa: mesmas colunas do tipo (fornecedor entra por NOME — cria se não existir).
   const bulkCols = colunas.map((c) => c.key);
   const bulkLabels = colunas.map((c) => c.label);
@@ -1347,7 +1364,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const [codInterno, setCodInterno] = useState("");
   const [status, setStatus] = useState("ativo");
   const [obs, setObs] = useState("");
-  const [extra, setExtra] = useState<Record<string, string>>({});
+  const [extra, setExtra] = useState<Record<string, string>>(extraDefaults);
   const [novoForn, setNovoForn] = useState(false);
   const [entrada, setEntrada] = useState<Material | null>(null);
   const [colar, setColar] = useState(false);
@@ -1381,13 +1398,13 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
 
   function limpar() {
     setEditId(null); setNome(""); setTamanho(""); setFornId(""); setCor(""); setCodigo("");
-    setUnidade("un"); setPreco(""); setMinimo(""); setCodInterno(""); setStatus("ativo"); setObs(""); setExtra({});
+    setUnidade("un"); setPreco(""); setMinimo(""); setCodInterno(""); setStatus("ativo"); setObs(""); setExtra(extraDefaults);
   }
   function editar(m: Material) {
     setEditId(m.id); setNome(m.nome); setTamanho(m.tamanho || ""); setFornId(m.fornecedor_id || "");
     setCor(m.cor || ""); setCodigo(m.codigo || "");
     setUnidade(m.unidade || "un"); setPreco(m.preco != null ? String(m.preco) : ""); setMinimo(m.minimo != null ? String(m.minimo) : "");
-    setCodInterno(m.codigo_interno || ""); setStatus(m.status === "inativo" ? "inativo" : "ativo"); setObs(m.obs || ""); setExtra(parseExtra(m));
+    setCodInterno(m.codigo_interno || ""); setStatus(m.status === "inativo" ? "inativo" : "ativo"); setObs(m.obs || ""); setExtra({ ...extraDefaults, ...parseExtra(m) });
   }
 
   // Lê/escreve o valor de uma coluna sobre os estados individuais.
@@ -1540,7 +1557,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
         titulo={`Colar ${label.toLowerCase()} em massa`}
         colunas={bulkLabel}
         exemplo={bulkEx}
-        onColar={async (texto) => { const r = await api.bulkMateriais(categoria, texto, { colunas: bulkCols, labels: bulkLabels, nomeTemplate: cfg.nomeTemplate }); if (r.ids?.length) salvarUndo(r.ids); return r; }}
+        onColar={async (texto) => { const r = await api.bulkMateriais(categoria, texto, { colunas: bulkCols, labels: bulkLabels, nomeTemplate: cfg.nomeTemplate, defaults: colDefaults }); if (r.ids?.length) salvarUndo(r.ids); return r; }}
         onUndo={(ids) => Promise.all(ids.map((id) => api.excluirMaterial(id))).then(() => { limparUndo(); })}
         onFechar={() => setColar(false)}
         onSalvo={() => { recarregar(); onMudou?.(); }}
