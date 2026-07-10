@@ -2,6 +2,7 @@
 // @menção com autocompletar e push. Atualiza por polling.
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getUser } from "../auth";
+import { pushSuportado, ativarPush } from "../push";
 import { api, type ChatMensagem, type ChatDM } from "../api";
 
 const CANAIS = [
@@ -53,6 +54,8 @@ export function ChatInterno() {
   const [mencao, setMencao] = useState<string | null>(null);
   const [mudo, setMudo] = useState(() => localStorage.getItem(MUTE_KEY) === "1");
   const [toast, setToast] = useState<ChatMensagem | null>(null);
+  const [permissao, setPermissao] = useState<string>(() => (typeof Notification !== "undefined" ? Notification.permission : "denied"));
+  const [ativandoAviso, setAtivandoAviso] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const ultimoAviso = useRef<string>(new Date().toISOString()); // não avisa mensagens antigas ao abrir a página
@@ -60,6 +63,11 @@ export function ChatInterno() {
   const mudoRef = useRef(mudo);
   useEffect(() => { mudoRef.current = mudo; }, [mudo]);
   function toggleMudo() { setMudo((m) => { const n = !m; localStorage.setItem(MUTE_KEY, n ? "1" : "0"); return n; }); }
+  async function ativarAvisos() {
+    setAtivandoAviso(true);
+    try { const r = await ativarPush(); if (!r.ok && r.erro) alert(r.erro); }
+    finally { setPermissao(typeof Notification !== "undefined" ? Notification.permission : "denied"); setAtivandoAviso(false); }
+  }
 
   const nomeCanal = (id: string) => id.startsWith("dm:") ? (dms.find((d) => d.canal === id)?.outro || id.slice(3).split("|").find((p) => p !== nome) || "Direta") : (CANAIS.find((c) => c.id === id)?.nome || id);
   const marcarLido = useCallback(() => { localStorage.setItem(SEEN_KEY, new Date().toISOString()); setNaoLidas(0); }, []);
@@ -174,6 +182,12 @@ export function ChatInterno() {
             {dms.map((d) => <button key={d.canal} className={"chat-canal" + (d.canal === canal ? " on" : "")} onClick={() => { setNovaDM(false); setCanal(d.canal); }}>👤 {d.outro}</button>)}
             <button className="chat-canal" title="Nova conversa direta" onClick={() => setNovaDM((v) => !v)}>＋ Direta</button>
           </div>
+
+          {pushSuportado() && permissao !== "granted" && (
+            <button className="chat-avisos" onClick={ativarAvisos} disabled={ativandoAviso}>
+              🔔 {ativandoAviso ? "Ativando…" : permissao === "denied" ? "Avisos bloqueados — libere nas configurações do navegador" : "Ativar avisos de mensagem (menção e diretas)"}
+            </button>
+          )}
 
           {novaDM ? (
             <div className="chat-msgs">
