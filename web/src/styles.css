@@ -40,6 +40,8 @@ a { color: inherit; }
 .brand-sub { color: #e0e7ff; font-size: 13px; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
 .undoredo { display: flex; gap: 6px; margin-right: 4px; }
+.instalar-app { background: linear-gradient(120deg, #16a34a, #0891b2); color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.instalar-app:hover { filter: brightness(1.08); }
 .ur-btn { background: #ffffff1f; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
 .ur-btn:hover:not(:disabled) { background: #ffffff33; }
 .ur-btn:disabled { opacity: .4; cursor: default; }

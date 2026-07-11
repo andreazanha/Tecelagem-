@@ -8,6 +8,7 @@ import { pushSuportado, pushAtivo, ativarPush, desativarPush } from "../push";
 import { Icon } from "./Icon";
 import { Assistente } from "./Assistente";
 import { ChatInterno } from "./ChatInterno";
+import { InstalarApp } from "./InstalarApp";
 
 // Sino de avisos: liga/desliga o Web Push de "pedido novo" neste aparelho.
 function SinoPush() {
@@ -393,6 +394,7 @@ export function Layout() {
               </>
             )}
           </div>
+          <InstalarApp />
           <span className="avatar" title={`${u.nome} · ${VERSION}`}>{iniciais || "?"}</span>
           <span className="app-ver" title="Versão do sistema">{VERSION}</span>
           <button className="ur-btn" onClick={sair} title="Sair">Sair</button>
