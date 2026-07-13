@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type Material, type MaterialCategoriaDef, type CompraSugestao, type Colecao, type ColecaoProduto, type BulkResult } from "../api";
 import { getUser, PAGINAS, type Usuario } from "../auth";
@@ -468,6 +468,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   // Zíper: mesmo comprimento para todos os tamanhos; a cor (número do fabricante) é
   // ligada manualmente a cada cor do tricô do produto (corMap: cor do produto → zíper id).
   const [ziperSel, setZiperSel] = useState<{ nome: string; comprimento: string; qtd: string; corMap: Record<string, string> }>({ nome: "", comprimento: "", qtd: "1", corMap: {} });
+  const fioSeeded = useRef(false); // ao editar, restaura o "Tipo de fio" a partir das cores salvas (só 1x)
 
   useEffect(() => {
     Promise.all([api.listarCores(), api.listarTamanhos(), api.listarMateriais(), api.listarCategoriasMaterial(), api.listarTiposFio()])
@@ -539,6 +540,19 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ziperSel, matCat, sel]);
+
+  // Tipo de fio não é um campo salvo — ele vem das cores do produto. Ao editar,
+  // assim que as cores e o catálogo estiverem prontos, restaura o fio escolhido
+  // (fioSel) a partir das cores salvas, uma única vez, para a tela abrir no fio certo.
+  useEffect(() => {
+    if (fioSeeded.current || !nomeEdit) return;
+    if (sel.size > 0 && cores.length > 0) {
+      const f = cores.find((c) => sel.has(c.nome))?.fio_nome ?? "";
+      setFioSel(f);
+      fioSeeded.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cores, sel, nomeEdit]);
 
   const toggleCor = (n: string) => { setSalvo(false); setSel((prev) => { const s = new Set(prev); s.has(n) ? s.delete(n) : s.add(n); return s; }); };
   function toggleGrupo(gcores: Cor[]) {
@@ -675,7 +689,9 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const secaoDefinida = (s: { id: string; cat?: string }): boolean => {
     switch (s.id) {
       case "tamanhos": return tamsProdSel.length > 0;
-      case "fio": return fioSel !== null;
+      // Fio vem das cores: definido quando alguma cor do produto tem tipo de fio,
+      // ou quando um fio foi escolhido na tela (mesmo antes de marcar cores).
+      case "fio": return [...sel].some((n) => !!(cores.find((c) => c.nome === n)?.fio_nome)) || (fioSel !== null && fioSel !== "");
       case "cores": return sel.size > 0;
       case "tempo": return tamsProdSel.some((t) => (tempos[t] || "").trim() !== "");
       case "peso": return tamsProdSel.some((t) => (pesos[t] || "").trim() !== "");
@@ -729,7 +745,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
               ? <div className="pad" style={{ color: "#991b1b", fontSize: 12.5, fontWeight: 600 }}>⚠️ Nenhum zíper cadastrado com esse nome/comprimento. Cadastre em <strong>Materiais › Zíper</strong>.</div>
               : faltando > 0 && <div className="pad" style={{ color: "#991b1b", fontSize: 12.5, fontWeight: 600 }}>⚠️ {faltando} cor(es) do tricô ainda sem nº de zíper ligado.</div>}
             <table className="table">
-              <thead><tr><th>Cor do tricô (produto)</th><th>Nº da cor do zíper</th><th className="num">Preço unit.</th><th>Situação</th></tr></thead>
+              <thead><tr><th>Cor do tricô (produto)</th><th>Nº da cor do zíper</th><th>Situação</th></tr></thead>
               <tbody>
                 {coresProduto.map((cor) => {
                   const id = idDaCor(cor);
@@ -743,7 +759,6 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
                           {variantes.map((x) => <option key={x.id} value={x.id}>{numLabel(x)}</option>)}
                         </select>
                       </td>
-                      <td className="num">{v?.preco != null ? rBR(v.preco) : "—"}</td>
                       <td>{v ? <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>✓ ligado</span> : <span className="chip" style={{ background: "#fee2e2", color: "#991b1b" }}>⚠ ligar nº</span>}</td>
                     </tr>
                   );
@@ -844,7 +859,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
               const n = contaSecao(s);
               const ok = secaoDefinida(s);
               return (
-                <button key={s.id} type="button" className={"prod-secao-btn" + (secao === s.id ? " on" : "") + (ok ? " ok" : "")} onClick={() => setSecao(s.id)}>
+                <button key={s.id} type="button" className={"prod-secao-btn" + (secao === s.id ? " on" : "") + (ok ? " ok" : "")} onClick={() => setSecao(secao === s.id ? "" : s.id)}>
                   {ok && <span className="prod-secao-check">✓</span>}
                   {s.nome}{n > 0 ? <span className="prod-secao-badge">{n}</span> : null}
                 </button>
