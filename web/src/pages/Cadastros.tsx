@@ -427,6 +427,7 @@ type FichaLinha = {
   quantidade: string; unidade: string;
   aplicarTodos: boolean; aplicar: Set<string>;
   obs: string; status: "ativo" | "inativo";
+  corProduto?: string; // cor do tricô (produto) ligada — usado no zíper
 };
 // Valor de uma "coluna" (chave) de um material — campo direto ou extra:<k>.
 function valorCol(m: Material, key: string): string {
@@ -464,8 +465,9 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [fios, setFios] = useState<TipoFio[]>([]);            // tipos de fio (fonte 'fio')
   const [linhas, setLinhas] = useState<FichaLinha[]>([]);     // ficha de consumo (uma linha por material)
   const [secao, setSecao] = useState<string>("tamanhos");     // sub-menu ativo (uma seção por item do produto)
-  // Zíper: mesmo comprimento para todos os tamanhos; a cor acompanha a cor do produto.
-  const [ziperSel, setZiperSel] = useState<{ nome: string; comprimento: string; qtd: string }>({ nome: "", comprimento: "", qtd: "1" });
+  // Zíper: mesmo comprimento para todos os tamanhos; a cor (número do fabricante) é
+  // ligada manualmente a cada cor do tricô do produto (corMap: cor do produto → zíper id).
+  const [ziperSel, setZiperSel] = useState<{ nome: string; comprimento: string; qtd: string; corMap: Record<string, string> }>({ nome: "", comprimento: "", qtd: "1", corMap: {} });
 
   useEffect(() => {
     Promise.all([api.listarCores(), api.listarTamanhos(), api.listarMateriais(), api.listarCategoriasMaterial(), api.listarTiposFio()])
@@ -504,9 +506,13 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         const arr = [...grp.values()];
         arr.forEach((ln) => { if (ln.aplicar.size && tamsProd.length && tamsProd.every((t) => ln.aplicar.has(t))) ln.aplicarTodos = true; });
         setLinhas(arr);
-        // Zíper: semeia a família escolhida (nome + comprimento) a partir do que estava salvo.
+        // Zíper: semeia a família (nome + comprimento) e o mapa cor do produto → zíper id.
         const zip = (m.materiais || []).filter((x) => x.categoria === "ziper");
-        if (zip.length) setZiperSel({ nome: zip[0].nome || "", comprimento: zip[0].variacao || "", qtd: zip[0].quantidade != null ? String(zip[0].quantidade) : "1" });
+        if (zip.length) {
+          const corMap: Record<string, string> = {};
+          for (const z of zip) { const cp = (z.cor_produto || z.cor || "").trim(); if (cp && z.material_id) corMap[cp] = z.material_id; }
+          setZiperSel({ nome: zip[0].nome || "", comprimento: zip[0].variacao || "", qtd: zip[0].quantidade != null ? String(zip[0].quantidade) : "1", corMap });
+        }
       }).catch((e) => setErro((e as Error).message));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -523,9 +529,11 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
       const variantes = matCat.filter((m) => m.categoria === "ziper" && m.nome === ziperSel.nome && (valorCol(m, "extra:comprimento") || "") === ziperSel.comprimento);
       const novas: FichaLinha[] = [];
       for (const cor of sel) {
-        const v = variantes.find((x) => (x.cor || "").trim().toLowerCase() === cor.trim().toLowerCase());
-        if (!v) continue; // cor do produto sem zíper cadastrado — avisado na tela
-        novas.push({ id: "ziper:" + v.id, tipo: "ziper", fonte: "material", nomeMat: ziperSel.nome, material_id: v.id, quantidade: ziperSel.qtd, unidade: v.unidade || "un", aplicarTodos: true, aplicar: new Set<string>(), obs: "", status: "ativo" });
+        // 1º o vínculo manual (corMap); senão, tenta casar pelo nome da cor do tricô.
+        const mapped = ziperSel.corMap[cor];
+        const v = (mapped && variantes.find((x) => x.id === mapped)) || variantes.find((x) => (x.cor || "").trim().toLowerCase() === cor.trim().toLowerCase());
+        if (!v) continue; // cor do produto ainda sem zíper ligado — avisado na tela
+        novas.push({ id: "ziper:" + cor + ":" + v.id, tipo: "ziper", fonte: "material", nomeMat: ziperSel.nome, material_id: v.id, quantidade: ziperSel.qtd, unidade: v.unidade || "un", aplicarTodos: true, aplicar: new Set<string>(), obs: "", status: "ativo", corProduto: cor });
       }
       return [...outros, ...novas];
     });
@@ -604,12 +612,12 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
       }));
     // Ficha de consumo: cada linha vira uma linha por tamanho onde se aplica.
     const tamsSel = linhasTam.filter((t) => selTam[t.nome]).map((t) => t.nome);
-    const materiais: { tamanho: string; material_id: string; quantidade: number | null; unidade: string | null; obs: string | null; status: string; fonte: string }[] = [];
+    const materiais: { tamanho: string; material_id: string; quantidade: number | null; unidade: string | null; obs: string | null; status: string; fonte: string; cor_produto: string | null }[] = [];
     for (const ln of linhas) {
       if (!ln.material_id) continue;
       const q = ln.quantidade.trim() ? Number(ln.quantidade.replace(",", ".")) : null;
       const alvos = ln.aplicarTodos ? tamsSel : tamsSel.filter((t) => ln.aplicar.has(t));
-      for (const tam of alvos) materiais.push({ tamanho: tam, material_id: ln.material_id, quantidade: q, unidade: ln.unidade || null, obs: ln.obs || null, status: ln.status, fonte: ln.fonte });
+      for (const tam of alvos) materiais.push({ tamanho: tam, material_id: ln.material_id, quantidade: q, unidade: ln.unidade || null, obs: ln.obs || null, status: ln.status, fonte: ln.fonte, cor_produto: ln.corProduto || null });
     }
     try {
       await api.salvarModelo(
@@ -683,11 +691,16 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     const variantes = matCat.filter((m) => m.categoria === "ziper" && m.nome === ziperSel.nome && (valorCol(m, "extra:comprimento") || "") === ziperSel.comprimento);
     const coresProduto = [...sel];
     const setFam = (patch: Partial<{ nome: string; comprimento: string; qtd: string }>) => { setSalvo(false); setZiperSel((z) => ({ ...z, ...patch })); };
-    const faltando = ziperSel.nome && ziperSel.comprimento ? coresProduto.filter((cor) => !variantes.some((x) => (x.cor || "").trim().toLowerCase() === cor.trim().toLowerCase())).length : 0;
+    const setCorLink = (cor: string, matId: string) => { setSalvo(false); setZiperSel((z) => ({ ...z, corMap: { ...z.corMap, [cor]: matId } })); };
+    // O nº da cor do zíper é o "Código do fabricante" (m.codigo). Rótulo p/ o seletor.
+    const numLabel = (v: Material) => [v.codigo ? "Nº " + v.codigo : "", v.cor || ""].filter(Boolean).join(" · ") || "sem número";
+    // Vínculo efetivo de uma cor: 1º o manual (corMap); senão casa pelo nome do tricô.
+    const idDaCor = (cor: string) => ziperSel.corMap[cor] || variantes.find((x) => (x.cor || "").trim().toLowerCase() === cor.trim().toLowerCase())?.id || "";
+    const faltando = ziperSel.nome && ziperSel.comprimento ? coresProduto.filter((cor) => !idDaCor(cor)).length : 0;
     return (
       <>
         <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
-          O zíper usa o <strong>mesmo comprimento em todos os tamanhos</strong>. A <strong>cor do zíper acompanha a cor do produto</strong> (campo “Cor do tricô” do zíper).
+          O zíper usa o <strong>mesmo comprimento em todos os tamanhos</strong>. Ligue, para cada <strong>cor do tricô</strong> do produto, o <strong>nº da cor do zíper</strong> (código do fabricante) — os nomes não precisam ser iguais.
         </p>
         <div className="form-grid2">
           <Campo label="Zíper">
@@ -712,18 +725,26 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>Escolha o zíper e o comprimento acima.</p>
         ) : (
           <div className="card" style={{ overflowX: "auto", marginTop: 10 }}>
-            {faltando > 0 && <div className="pad" style={{ color: "#991b1b", fontSize: 12.5, fontWeight: 600 }}>⚠️ {faltando} cor(es) do produto sem zíper cadastrado nessa cor/comprimento. Cadastre o zíper nessas cores em <strong>Materiais › Zíper</strong>.</div>}
+            {variantes.length === 0
+              ? <div className="pad" style={{ color: "#991b1b", fontSize: 12.5, fontWeight: 600 }}>⚠️ Nenhum zíper cadastrado com esse nome/comprimento. Cadastre em <strong>Materiais › Zíper</strong>.</div>
+              : faltando > 0 && <div className="pad" style={{ color: "#991b1b", fontSize: 12.5, fontWeight: 600 }}>⚠️ {faltando} cor(es) do tricô ainda sem nº de zíper ligado.</div>}
             <table className="table">
-              <thead><tr><th>Cor do produto</th><th>Zíper (Cor do tricô)</th><th className="num">Preço unit.</th><th>Situação</th></tr></thead>
+              <thead><tr><th>Cor do tricô (produto)</th><th>Nº da cor do zíper</th><th className="num">Preço unit.</th><th>Situação</th></tr></thead>
               <tbody>
                 {coresProduto.map((cor) => {
-                  const v = variantes.find((x) => (x.cor || "").trim().toLowerCase() === cor.trim().toLowerCase());
+                  const id = idDaCor(cor);
+                  const v = variantes.find((x) => x.id === id);
                   return (
                     <tr key={cor}>
                       <td className="strong">{cor}</td>
-                      <td>{v ? (v.cor || "—") : <span className="muted">—</span>}</td>
+                      <td>
+                        <select value={id} onChange={(e) => setCorLink(cor, e.target.value)} disabled={variantes.length === 0} style={{ minWidth: 190 }}>
+                          <option value="">— ligar nº —</option>
+                          {variantes.map((x) => <option key={x.id} value={x.id}>{numLabel(x)}</option>)}
+                        </select>
+                      </td>
                       <td className="num">{v?.preco != null ? rBR(v.preco) : "—"}</td>
-                      <td>{v ? <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>✓ ok</span> : <span className="chip" style={{ background: "#fee2e2", color: "#991b1b" }}>⚠ falta cadastrar</span>}</td>
+                      <td>{v ? <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>✓ ligado</span> : <span className="chip" style={{ background: "#fee2e2", color: "#991b1b" }}>⚠ ligar nº</span>}</td>
                     </tr>
                   );
                 })}

@@ -26,7 +26,7 @@ modelos.post("/", async (c) => {
     tassel_almofada?: number;
     cores?: string[]; // cores do produto (nomes)
     tamanhos?: { tamanho?: string; peso?: number; tempo?: number }[]; // tamanhos + fio(kg)/peça + tempo
-    materiais?: { tamanho?: string; material_id?: string; quantidade?: number; unidade?: string; obs?: string; status?: string; fonte?: string }[]; // ficha de consumo por tamanho
+    materiais?: { tamanho?: string; material_id?: string; quantidade?: number; unidade?: string; obs?: string; status?: string; fonte?: string; cor_produto?: string }[]; // ficha de consumo por tamanho
   }>();
   const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
@@ -94,9 +94,10 @@ modelos.post("/", async (c) => {
       const obs = (mt.obs || "").trim() || null;
       const status = String(mt.status || "ativo").trim() === "inativo" ? "inativo" : "ativo";
       const fonte = String(mt.fonte || "material").trim() === "fio" ? "fio" : "material";
+      const corProd = (mt.cor_produto || "").trim() || null; // cor do tricô ligada (zíper); null = todas
       stmts.push(c.env.DB.prepare(
-        "INSERT INTO modelo_materiais (modelo_nome, tamanho, material_id, quantidade, unidade, obs, status, fonte) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-      ).bind(nome, tam, mid, q, un, obs, status, fonte));
+        "INSERT INTO modelo_materiais (modelo_nome, tamanho, material_id, quantidade, unidade, obs, status, fonte, cor_produto) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).bind(nome, tam, mid, q, un, obs, status, fonte, corProd));
     }
   }
   await c.env.DB.batch(stmts);
@@ -117,7 +118,7 @@ modelos.get("/:nome", async (c) => {
   const { results: cores } = await c.env.DB.prepare("SELECT cor_nome FROM modelo_cores WHERE modelo_nome = ?").bind(nome).all<{ cor_nome: string }>();
   const { results: tamanhos } = await c.env.DB.prepare("SELECT tamanho, peso, tempo FROM modelo_tamanhos WHERE modelo_nome = ?").bind(nome).all();
   const { results: materiais } = await c.env.DB.prepare(
-    `SELECT mm.tamanho, mm.material_id, mm.quantidade, mm.obs, mm.status, mm.fonte,
+    `SELECT mm.tamanho, mm.material_id, mm.quantidade, mm.obs, mm.status, mm.fonte, mm.cor_produto,
             COALESCE(mm.unidade, m.unidade, CASE WHEN mm.fonte='fio' THEN 'kg' END) AS unidade,
             COALESCE(m.categoria, CASE WHEN mm.fonte='fio' THEN 'fio' END) AS categoria,
             COALESCE(m.nome, tf.nome) AS nome,

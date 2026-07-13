@@ -89,6 +89,7 @@ export interface ModeloMaterial {
   cor?: string | null;
   codigo?: string | null;
   variacao?: string | null;  // variação do material (tamanho do material)
+  cor_produto?: string | null; // cor do tricô (produto) ligada a este material — zíper
   extra?: string | null;     // JSON dos campos do material
   preco?: number | null;     // custo unitário do material/fio
   obs?: string | null;
@@ -622,7 +623,7 @@ export const api = {
   obterModelo: (nome: string) =>
     fetch(`/api/modelos/${encodeURIComponent(nome)}`).then((r) => j<ModeloDetalhe>(r)),
   salvarModelo: (
-    m: Modelo & { cores?: string[]; tamanhos?: { tamanho: string; peso: number | null; tempo: number | null }[]; materiais?: { tamanho: string; material_id: string; quantidade: number | null; unidade?: string | null; obs?: string | null; status?: string; fonte?: string }[] },
+    m: Modelo & { cores?: string[]; tamanhos?: { tamanho: string; peso: number | null; tempo: number | null }[]; materiais?: { tamanho: string; material_id: string; quantidade: number | null; unidade?: string | null; obs?: string | null; status?: string; fonte?: string; cor_produto?: string | null }[] },
     de?: string
   ) =>
     fetch("/api/modelos", {
