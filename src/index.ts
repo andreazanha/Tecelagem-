@@ -26,6 +26,9 @@ export interface Env {
   VAPID_PUBLIC?: string;
   VAPID_JWK?: string;
   VAPID_SUBJECT?: string;
+  // Digital Asset Links do app Android (TWA/PWABuilder) — preenchido quando o
+  // instalador é gerado (fingerprint SHA-256). Ver wrangler.jsonc › vars.
+  ASSETLINKS?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -69,6 +72,13 @@ app.route("/api/assistente", assistente);
 // o arquivo _headers NÃO é aplicado. Então definimos o cache aqui:
 //  - HTML (index.html / SPA): nunca cacheia → toda atualização chega na hora.
 //  - /assets/* (nomes com hash): cache eterno e imutável.
+// Digital Asset Links: liga o app Android (TWA gerado pelo PWABuilder) a este
+// domínio, para abrir em tela cheia sem a barra do navegador. O conteúdo (com o
+// fingerprint SHA-256 do instalador) é definido na var ASSETLINKS depois de gerar o APK.
+app.get("/.well-known/assetlinks.json", (c) => {
+  try { return c.json(c.env.ASSETLINKS ? JSON.parse(c.env.ASSETLINKS) : []); } catch { return c.json([]); }
+});
+
 app.all("*", async (c) => {
   let res = await c.env.ASSETS.fetch(c.req.raw);
   if (res.status === 404) {
