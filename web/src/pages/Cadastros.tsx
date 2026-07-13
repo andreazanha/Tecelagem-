@@ -831,7 +831,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             })}
           </div>
           <p className="muted" style={{ fontSize: 12, margin: "0 0 4px" }}>
-            {SECOES.filter((s) => secaoDefinida(s)).length} de {SECOES.length} seções definidas
+            {(() => { const n = SECOES.filter((s) => secaoDefinida(s)).length; return n === 0 ? "Nenhuma seção preenchida ainda" : `${n} seç${n === 1 ? "ão preenchida" : "ões preenchidas"} ✓`; })()}
           </p>
 
           {secao === "tamanhos" && (<>
