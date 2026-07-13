@@ -305,6 +305,18 @@ body.dark .segmented { background: #0d1526; border-color: #ffffff12; }
 body.dark .seg { color: #94a3bd; }
 body.dark .seg:hover:not(.seg-on) { color: #eaf0ff; background: #ffffff0f; }
 body.dark .seg-on { background: #212d49; color: #fff; box-shadow: 0 1px 2px #0007, inset 0 0 0 1px #ffffff1f; }
+
+/* Sub-menu do cadastro de produto: um botão por item (tamanhos, fio, cores, …) */
+.prod-secoes { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0; padding: 6px; background: #eef1f6; border: 1px solid #e4e8ef; border-radius: 12px; }
+.prod-secao-btn { font: inherit; font-size: 12.5px; font-weight: 600; padding: 7px 13px; border-radius: 9px; border: 1px solid transparent; background: transparent; color: #5b6472; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background .14s, color .14s, box-shadow .14s; }
+.prod-secao-btn:hover:not(.on) { color: #0f172a; background: #ffffffb0; }
+.prod-secao-btn.on { background: #fff; color: #4338ca; font-weight: 700; box-shadow: 0 1px 2px #0f172a24, 0 2px 7px #0f172a12; }
+.prod-secao-badge { font-size: 10.5px; font-weight: 800; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: #4338ca; color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+body.dark .prod-secoes { background: #0d1526; border-color: #ffffff12; }
+body.dark .prod-secao-btn { color: #94a3bd; }
+body.dark .prod-secao-btn:hover:not(.on) { color: #eaf0ff; background: #ffffff0f; }
+body.dark .prod-secao-btn.on { background: #212d49; color: #fff; box-shadow: 0 1px 2px #0007, inset 0 0 0 1px #ffffff1f; }
+body.dark .prod-secao-badge { background: #6366f1; }
 .pe-box { margin-top: 16px; padding: 14px; border: 1px solid #a7f3d0; background: #ecfdf5; border-radius: 12px; }
 .pe-title { font-size: 11px; font-weight: 700; color: #047857; letter-spacing: .4px; text-transform: uppercase; margin-bottom: 8px; }
 

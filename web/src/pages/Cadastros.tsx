@@ -463,7 +463,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [matDefs, setMatDefs] = useState<MaterialCategoriaDef[]>([]); // categorias (rótulos)
   const [fios, setFios] = useState<TipoFio[]>([]);            // tipos de fio (fonte 'fio')
   const [linhas, setLinhas] = useState<FichaLinha[]>([]);     // ficha de consumo (uma linha por material)
-  const [aba, setAba] = useState<"cores" | "peso" | "materiais">("cores");
+  const [secao, setSecao] = useState<string>("tamanhos");     // sub-menu ativo (uma seção por item do produto)
 
   useEffect(() => {
     Promise.all([api.listarCores(), api.listarTamanhos(), api.listarMateriais(), api.listarCategoriasMaterial(), api.listarTiposFio()])
@@ -614,10 +614,85 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const custoLinha = (ln: FichaLinha): number => (precoLinha(ln) || 0) * (Number(ln.quantidade.replace(",", ".")) || 0);
   const setLn = (id: string, patch: Partial<FichaLinha>) => { setSalvo(false); setLinhas((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l))); };
   const addLinha = () => { setSalvo(false); setLinhas((ls) => [...ls, { id: crypto.randomUUID(), tipo: "", fonte: "material", nomeMat: "", material_id: "", quantidade: "", unidade: "", aplicarTodos: true, aplicar: new Set(), obs: "", status: "ativo" }]); };
+  const addLinhaTipo = (cat: string) => { setSalvo(false); setLinhas((ls) => [...ls, { id: crypto.randomUUID(), tipo: cat, fonte: cat === "fio" ? "fio" : "material", nomeMat: "", material_id: "", quantidade: "", unidade: "", aplicarTodos: true, aplicar: new Set(), obs: "", status: "ativo" }]); };
   const delLinha = (id: string) => { setSalvo(false); setLinhas((ls) => ls.filter((l) => l.id !== id)); };
   const custoPorTam = tamsProdSel.map((tam) => ({
     tam, custo: linhas.filter((ln) => ln.status === "ativo" && (ln.aplicarTodos || ln.aplicar.has(tam))).reduce((s, ln) => s + custoLinha(ln), 0),
   }));
+
+  // Sub-menu do produto: uma seção por item que o produto usa (cada uma com suas regras).
+  // As seções com `cat` reaproveitam o editor de ficha filtrado por aquela categoria de material.
+  const SECOES: { id: string; nome: string; cat?: string }[] = [
+    { id: "tamanhos", nome: "Tamanhos" },
+    { id: "fio", nome: "Tipo de fio" },
+    { id: "cores", nome: "Cores" },
+    { id: "tempo", nome: "Tempo" },
+    { id: "peso", nome: "Peso" },
+    { id: "ziper", nome: "Zíper", cat: "ziper" },
+    { id: "encarte", nome: "Encarte", cat: "encarte" },
+    { id: "tag", nome: "Tag", cat: "tag" },
+    { id: "embalagem", nome: "Embalagens", cat: "embalagem" },
+    { id: "forro", nome: "Forro", cat: "forro" },
+    { id: "tassel", nome: "Tassel", cat: "tassel" },
+    { id: "etiqueta", nome: "Etiqueta", cat: "etiqueta" },
+  ];
+  const contaSecao = (s: { cat?: string }) => (s.cat ? linhas.filter((l) => l.tipo === s.cat).length : 0);
+
+  // Editor da ficha filtrado por uma categoria de material (Zíper, Forro, Tag, …).
+  // Reaproveita as mesmas linhas/estado, escondendo a coluna "Tipo" (já é a própria seção).
+  function renderMateriaisSecao(cat: string, nomeSecao: string) {
+    const linhasCat = linhas.filter((ln) => ln.tipo === cat);
+    const rotulo = nomeSecao.toLowerCase();
+    return (
+      <>
+        <div className="row-gap" style={{ alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+          <span className="muted" style={{ fontSize: 13 }}>{nomeSecao} usado(s) no produto, com quantidade e onde se aplica.</span>
+          <button type="button" className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={() => addLinhaTipo(cat)}>＋ Adicionar {rotulo}</button>
+        </div>
+        {tamsProdSel.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Dica: selecione os tamanhos na seção <strong>Tamanhos</strong> para escolher onde cada item se aplica.</p>}
+        {linhasCat.length === 0 ? (
+          <div className="card pad empty">Nenhum item nesta seção. Clique em <strong>＋ Adicionar {rotulo}</strong>.</div>
+        ) : (
+          <div className="card" style={{ overflowX: "auto" }}>
+            <table className="table" style={{ minWidth: 820 }}>
+              <thead><tr>
+                <th>Material</th><th>Variação</th><th className="num">Qtd</th><th>Unid.</th><th>Aplicar em</th><th>Obs</th><th>Status</th><th className="num">Custo</th><th></th>
+              </tr></thead>
+              <tbody>
+                {linhasCat.map((ln) => {
+                  const nomes = nomesDoTipo(ln.tipo);
+                  const vars = variacoesDoTipo(ln.tipo, ln.nomeMat);
+                  return (
+                    <tr key={ln.id} style={ln.status === "inativo" ? { opacity: 0.55 } : undefined}>
+                      <td><select value={ln.nomeMat} onChange={(e) => { const nm = e.target.value; const vs = variacoesDoTipo(ln.tipo, nm); const only = vs.length === 1 ? vs[0] : null; setLn(ln.id, { nomeMat: nm, material_id: only ? only.id : "", unidade: only ? only.unidade : "" }); }} style={{ minWidth: 130 }}>
+                        <option value="">—</option>
+                        {nomes.map((nm) => <option key={nm} value={nm}>{nm}</option>)}
+                      </select></td>
+                      <td>{ln.tipo === "fio" ? <span className="muted">Cor do produto</span> : (
+                        <select value={ln.material_id} disabled={!ln.nomeMat} onChange={(e) => { const v = vars.find((x) => x.id === e.target.value); setLn(ln.id, { material_id: e.target.value, unidade: v?.unidade || ln.unidade }); }} style={{ minWidth: 110 }}>
+                          <option value="">—</option>
+                          {vars.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+                        </select>
+                      )}</td>
+                      <td className="num"><input className="num" inputMode="decimal" value={ln.quantidade} onChange={(e) => setLn(ln.id, { quantidade: e.target.value })} style={{ width: 66 }} /></td>
+                      <td><input value={ln.unidade} onChange={(e) => setLn(ln.id, { unidade: e.target.value })} style={{ width: 54 }} /></td>
+                      <td><AplicarEm todos={ln.aplicarTodos} aplicar={ln.aplicar} tamanhos={tamsProdSel} onTodos={() => setLn(ln.id, { aplicarTodos: true })} onTam={(tam) => { const n = new Set(ln.aplicar); n.has(tam) ? n.delete(tam) : n.add(tam); setLn(ln.id, { aplicarTodos: false, aplicar: n }); }} /></td>
+                      <td><input value={ln.obs} onChange={(e) => setLn(ln.id, { obs: e.target.value })} spellCheck lang="pt-BR" style={{ width: 110 }} /></td>
+                      <td><select value={ln.status} onChange={(e) => setLn(ln.id, { status: e.target.value === "inativo" ? "inativo" : "ativo" })}>
+                        <option value="ativo">Ativo</option><option value="inativo">Inativo</option>
+                      </select></td>
+                      <td className="num">{precoLinha(ln) != null ? rBR(custoLinha(ln)) : "—"}</td>
+                      <td><button type="button" className="icon-btn" title="Remover" onClick={() => delLinha(ln.id)}>✕</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="modal-bg" onClick={onFechar}>
@@ -644,25 +719,20 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             <Campo label="Composição"><input value={composicao} onChange={(e) => { setSalvo(false); setComposicao(e.target.value); }} spellCheck lang="pt-BR" placeholder="ex.: 100% POLIÉSTER" /></Campo>
           </div>
 
-          {/* Abas do cadastro do produto */}
-          <div className="segmented" style={{ margin: "16px 0" }}>
-            <button type="button" className={"seg" + (aba === "cores" ? " seg-on" : "")} onClick={() => setAba("cores")}>Cores &amp; Tamanhos</button>
-            <button type="button" className={"seg" + (aba === "peso" ? " seg-on" : "")} onClick={() => setAba("peso")}>Peso e tempo</button>
-            <button type="button" className={"seg" + (aba === "materiais" ? " seg-on" : "")} onClick={() => setAba("materiais")}>Materiais {linhas.length > 0 ? `(${linhas.length})` : ""}</button>
+          {/* Sub-menu do produto: um botão para cada item que o produto usa */}
+          <div className="prod-secoes">
+            {SECOES.map((s) => {
+              const n = contaSecao(s);
+              return (
+                <button key={s.id} type="button" className={"prod-secao-btn" + (secao === s.id ? " on" : "")} onClick={() => setSecao(s.id)}>
+                  {s.nome}{n > 0 ? <span className="prod-secao-badge">{n}</span> : null}
+                </button>
+              );
+            })}
           </div>
 
-          {aba === "cores" && (<>
-          {/* Cores e tamanhos do produto — seletores lado a lado (padrão da Galga) */}
+          {secao === "tamanhos" && (<>
           <div className="form-grid2">
-            <Campo label="Tipo de fio">
-              <select value={fioSel ?? "__pick__"} onChange={(e) => setFioSel(e.target.value === "__pick__" ? null : e.target.value)} disabled={fiosLista.length === 0}>
-                <option value="__pick__">{fiosLista.length === 0 ? "nenhuma cor cadastrada" : "— escolha o tipo de fio —"}</option>
-                {fiosLista.map((f) => {
-                  const nsel = selDoFio(f.fio);
-                  return <option key={f.fio || "—"} value={f.fio}>{(f.fio || "Sem tipo de fio")} ({f.total} cor{f.total === 1 ? "" : "es"}){nsel > 0 ? ` · ${nsel} marcada${nsel === 1 ? "" : "s"}` : ""}</option>;
-                })}
-              </select>
-            </Campo>
             <Campo label="Tamanho">
               <select value="__pick__" onChange={(e) => {
                 const v = e.target.value;
@@ -678,65 +748,94 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
               </select>
             </Campo>
           </div>
-          {fiosLista.length > 0 && (
-            <>
-              {nForaFio > 0 && fioSel !== null && (
-                <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                  ⚠️ {nForaFio} cor(es) marcada(s) em outro tipo de fio.
-                  <button type="button" className="btn btn-soft" style={{ marginLeft: 8, padding: "2px 9px", fontSize: 11 }} onClick={manterSoDoFio}>manter só deste fio</button>
-                </p>
-              )}
-              {/* Cores do tipo de fio escolhido, em lista com caixinha */}
-              {fioSel !== null && (() => {
-                const g = grupos.find((gg) => gg.fio === fioSel);
-                const coresF = g ? g.cores : [];
-                const todasMarc = coresF.length > 0 && coresF.every((c) => sel.has(c.nome));
-                return (
-                  <div className="card" style={{ marginTop: 10 }}>
-                    <div className="fio-item-h" style={{ cursor: "default" }}>
-                      <span className="fio-item-nm">{fioSel || "Sem tipo de fio"}</span>
-                      <span className="muted" style={{ fontSize: 12 }}>{coresF.length} cor(es)</span>
-                      {selDoFio(fioSel) > 0 && <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>{selDoFio(fioSel)} ✓</span>}
-                      <button type="button" className="btn btn-soft" style={{ marginLeft: "auto", padding: "3px 10px", fontSize: 11 }} onClick={() => toggleGrupo(coresF)}>
-                        {todasMarc ? "desmarcar todas" : "selecionar todas"}
-                      </button>
-                    </div>
-                    <table className="table">
-                      <tbody>
-                        {coresF.length === 0 ? (
-                          <tr><td colSpan={3} className="empty pad">Nenhuma cor nesse tipo de fio{filtro ? " com esse filtro" : ""}.</td></tr>
-                        ) : coresF.map((c) => {
-                          const on = sel.has(c.nome);
-                          return (
-                            <tr key={c.nome} style={{ opacity: on ? 1 : 0.6, cursor: "pointer" }} onClick={() => toggleCor(c.nome)}>
-                              <td style={{ width: 40 }}><input type="checkbox" checked={on} readOnly /></td>
-                              <td className="strong">{c.nome}</td>
-                              <td><span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{c.codigo || "—"}</span></td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })()}
-
-            </>
-          )}
-
+          <div className="card" style={{ marginTop: 10 }}>
+            {tamsProdSel.length === 0 ? (
+              <div className="pad empty">Nenhum tamanho selecionado. Use o seletor acima.</div>
+            ) : (
+              <div className="pad" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {linhasTam.filter((t) => selTam[t.nome]).map((t) => (
+                  <span key={t.id} className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {t.nome}
+                    <button type="button" className="icon-btn" title="Remover tamanho" style={{ padding: 0, lineHeight: 1 }} onClick={() => { setSalvo(false); setSelTam((s) => ({ ...s, [t.nome]: false })); }}>✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
           </>)}
 
-          {aba === "peso" && (
+          {secao === "fio" && (<>
+          {/* Tipo de fio do produto (as cores ficam na seção Cores) */}
+          <div className="form-grid2">
+            <Campo label="Tipo de fio">
+              <select value={fioSel ?? "__pick__"} onChange={(e) => setFioSel(e.target.value === "__pick__" ? null : e.target.value)} disabled={fiosLista.length === 0}>
+                <option value="__pick__">{fiosLista.length === 0 ? "nenhuma cor cadastrada" : "— escolha o tipo de fio —"}</option>
+                {fiosLista.map((f) => {
+                  const nsel = selDoFio(f.fio);
+                  return <option key={f.fio || "—"} value={f.fio}>{(f.fio || "Sem tipo de fio")} ({f.total} cor{f.total === 1 ? "" : "es"}){nsel > 0 ? ` · ${nsel} marcada${nsel === 1 ? "" : "s"}` : ""}</option>;
+                })}
+              </select>
+            </Campo>
+          </div>
+          {fiosLista.length > 0 && nForaFio > 0 && fioSel !== null && (
+            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              ⚠️ {nForaFio} cor(es) marcada(s) em outro tipo de fio.
+              <button type="button" className="btn btn-soft" style={{ marginLeft: 8, padding: "2px 9px", fontSize: 11 }} onClick={manterSoDoFio}>manter só deste fio</button>
+            </p>
+          )}
+          {fioSel !== null && <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>Fio escolhido: <strong>{fioSel || "Sem tipo de fio"}</strong> · {selDoFio(fioSel)} cor(es) marcada(s). Escolha as cores na seção <strong>Cores</strong>.</p>}
+          </>)}
+
+          {secao === "cores" && (<>
+          {fiosLista.length === 0 ? (
+            <p className="muted" style={{ fontSize: 13 }}>Nenhuma cor cadastrada. Cadastre cores em <strong>Tipos de fio &amp; Cores</strong>.</p>
+          ) : fioSel === null ? (
+            <p className="muted" style={{ fontSize: 13 }}>Escolha o <strong>Tipo de fio</strong> na seção anterior para listar as cores.</p>
+          ) : (() => {
+            const g = grupos.find((gg) => gg.fio === fioSel);
+            const coresF = g ? g.cores : [];
+            const todasMarc = coresF.length > 0 && coresF.every((c) => sel.has(c.nome));
+            return (
+              <div className="card">
+                <div className="fio-item-h" style={{ cursor: "default" }}>
+                  <span className="fio-item-nm">{fioSel || "Sem tipo de fio"}</span>
+                  <span className="muted" style={{ fontSize: 12 }}>{coresF.length} cor(es)</span>
+                  {selDoFio(fioSel) > 0 && <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>{selDoFio(fioSel)} ✓</span>}
+                  <button type="button" className="btn btn-soft" style={{ marginLeft: "auto", padding: "3px 10px", fontSize: 11 }} onClick={() => toggleGrupo(coresF)}>
+                    {todasMarc ? "desmarcar todas" : "selecionar todas"}
+                  </button>
+                </div>
+                <table className="table">
+                  <tbody>
+                    {coresF.length === 0 ? (
+                      <tr><td colSpan={3} className="empty pad">Nenhuma cor nesse tipo de fio{filtro ? " com esse filtro" : ""}.</td></tr>
+                    ) : coresF.map((c) => {
+                      const on = sel.has(c.nome);
+                      return (
+                        <tr key={c.nome} style={{ opacity: on ? 1 : 0.6, cursor: "pointer" }} onClick={() => toggleCor(c.nome)}>
+                          <td style={{ width: 40 }}><input type="checkbox" checked={on} readOnly /></td>
+                          <td className="strong">{c.nome}</td>
+                          <td><span className="chip" style={{ fontFamily: "ui-monospace, monospace" }}>{c.codigo || "—"}</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+          </>)}
+
+          {secao === "tempo" && (
             tamsProdSel.length === 0
-              ? <p className="muted" style={{ fontSize: 13 }}>Selecione tamanhos na aba <strong>Cores &amp; Tamanhos</strong>.</p>
+              ? <p className="muted" style={{ fontSize: 13 }}>Selecione tamanhos na seção <strong>Tamanhos</strong>.</p>
               : <div className="card" style={{ overflowX: "auto" }}>
                   <table className="table">
-                    <thead><tr><th>Tamanho</th><th className="num">Fio (kg)</th><th className="num">Tempo (min)</th></tr></thead>
+                    <thead><tr><th>Tamanho</th><th className="num">Tempo (min)</th></tr></thead>
                     <tbody>
                       {linhasTam.filter((t) => selTam[t.nome]).map((t) => (
                         <tr key={t.id}>
                           <td className="strong">{t.nome}</td>
-                          <td className="num"><span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}><input className="w-xs num" type="number" min={0} step="any" value={pesos[t.nome] ?? ""} onChange={(e) => { setSalvo(false); setPesos((p) => ({ ...p, [t.nome]: e.target.value })); }} /><span className="muted" style={{ fontSize: 12 }}>kg</span></span></td>
                           <td className="num"><span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}><input className="w-xs num" type="number" min={0} step="any" value={tempos[t.nome] ?? ""} onChange={(e) => { setSalvo(false); setTempos((p) => ({ ...p, [t.nome]: e.target.value })); }} /><span className="muted" style={{ fontSize: 12 }}>min</span></span></td>
                         </tr>
                       ))}
@@ -745,63 +844,27 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
                 </div>
           )}
 
-          {aba === "materiais" && (<>
-            <div className="row-gap" style={{ alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
-              <span className="muted" style={{ fontSize: 13 }}>Cada material usado no produto, com quantidade e onde se aplica.</span>
-              <button type="button" className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={addLinha}>＋ Adicionar material</button>
-            </div>
-            {tamsProdSel.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Dica: selecione os tamanhos do produto na aba <strong>Cores &amp; Tamanhos</strong> para escolher onde cada material se aplica.</p>}
-            {linhas.length === 0 ? (
-              <div className="card pad empty">Nenhum material na ficha. Clique em <strong>＋ Adicionar material</strong>.</div>
-            ) : (
-              <div className="card" style={{ overflowX: "auto" }}>
-                <table className="table" style={{ minWidth: 940 }}>
-                  <thead><tr>
-                    <th>Tipo</th><th>Material</th><th>Variação</th><th className="num">Qtd</th><th>Unid.</th><th>Aplicar em</th><th>Obs</th><th>Status</th><th className="num">Custo</th><th></th>
-                  </tr></thead>
-                  <tbody>
-                    {linhas.map((ln) => {
-                      const nomes = nomesDoTipo(ln.tipo);
-                      const vars = variacoesDoTipo(ln.tipo, ln.nomeMat);
-                      return (
-                        <tr key={ln.id} style={ln.status === "inativo" ? { opacity: 0.55 } : undefined}>
-                          <td><select value={ln.tipo} onChange={(e) => setLn(ln.id, { tipo: e.target.value, fonte: e.target.value === "fio" ? "fio" : "material", nomeMat: "", material_id: "", unidade: "" })}>
-                            <option value="">—</option>
-                            {tiposFicha.map((t) => <option key={t.slug} value={t.slug}>{t.nome}</option>)}
-                          </select></td>
-                          <td><select value={ln.nomeMat} disabled={!ln.tipo} onChange={(e) => { const nm = e.target.value; const vs = variacoesDoTipo(ln.tipo, nm); const only = vs.length === 1 ? vs[0] : null; setLn(ln.id, { nomeMat: nm, material_id: only ? only.id : "", unidade: only ? only.unidade : "" }); }} style={{ minWidth: 130 }}>
-                            <option value="">—</option>
-                            {nomes.map((nm) => <option key={nm} value={nm}>{nm}</option>)}
-                          </select></td>
-                          <td>{ln.tipo === "fio" ? <span className="muted">Cor do produto</span> : (
-                            <select value={ln.material_id} disabled={!ln.nomeMat} onChange={(e) => { const v = vars.find((x) => x.id === e.target.value); setLn(ln.id, { material_id: e.target.value, unidade: v?.unidade || ln.unidade }); }} style={{ minWidth: 110 }}>
-                              <option value="">—</option>
-                              {vars.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
-                            </select>
-                          )}</td>
-                          <td className="num"><input className="num" inputMode="decimal" value={ln.quantidade} onChange={(e) => setLn(ln.id, { quantidade: e.target.value })} style={{ width: 66 }} /></td>
-                          <td><input value={ln.unidade} onChange={(e) => setLn(ln.id, { unidade: e.target.value })} style={{ width: 54 }} /></td>
-                          <td><AplicarEm todos={ln.aplicarTodos} aplicar={ln.aplicar} tamanhos={tamsProdSel} onTodos={() => setLn(ln.id, { aplicarTodos: true })} onTam={(tam) => { const n = new Set(ln.aplicar); n.has(tam) ? n.delete(tam) : n.add(tam); setLn(ln.id, { aplicarTodos: false, aplicar: n }); }} /></td>
-                          <td><input value={ln.obs} onChange={(e) => setLn(ln.id, { obs: e.target.value })} spellCheck lang="pt-BR" style={{ width: 110 }} /></td>
-                          <td><select value={ln.status} onChange={(e) => setLn(ln.id, { status: e.target.value === "inativo" ? "inativo" : "ativo" })}>
-                            <option value="ativo">Ativo</option><option value="inativo">Inativo</option>
-                          </select></td>
-                          <td className="num">{precoLinha(ln) != null ? rBR(custoLinha(ln)) : "—"}</td>
-                          <td><button type="button" className="icon-btn" title="Remover" onClick={() => delLinha(ln.id)}>✕</button></td>
+          {secao === "peso" && (
+            tamsProdSel.length === 0
+              ? <p className="muted" style={{ fontSize: 13 }}>Selecione tamanhos na seção <strong>Tamanhos</strong>.</p>
+              : <div className="card" style={{ overflowX: "auto" }}>
+                  <table className="table">
+                    <thead><tr><th>Tamanho</th><th className="num">Fio (kg)</th></tr></thead>
+                    <tbody>
+                      {linhasTam.filter((t) => selTam[t.nome]).map((t) => (
+                        <tr key={t.id}>
+                          <td className="strong">{t.nome}</td>
+                          <td className="num"><span className="row-gap" style={{ gap: 4, alignItems: "center", justifyContent: "flex-end" }}><input className="w-xs num" type="number" min={0} step="any" value={pesos[t.nome] ?? ""} onChange={(e) => { setSalvo(false); setPesos((p) => ({ ...p, [t.nome]: e.target.value })); }} /><span className="muted" style={{ fontSize: 12 }}>kg</span></span></td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                  {custoPorTam.length > 0 && (
-                    <tfoot><tr><td colSpan={10} style={{ padding: "8px 10px" }}>
-                      <span className="muted" style={{ fontSize: 12, marginRight: 6 }}>Custo por tamanho (materiais ativos):</span>
-                      {custoPorTam.map((c) => <span key={c.tam} className="chip" style={{ marginRight: 6 }}>{c.tam}: {rBR(c.custo)}</span>)}
-                    </td></tr></tfoot>
-                  )}
-                </table>
-              </div>
-            )}
-          </>)}
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+          )}
+
+          {SECOES.filter((s) => s.cat).map((s) => secao === s.id && (
+            <div key={s.id}>{renderMateriaisSecao(s.cat!, s.nome)}</div>
+          ))}
 
           {/* Footer */}
           <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16, alignItems: "center" }}>
