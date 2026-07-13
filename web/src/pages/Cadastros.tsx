@@ -638,10 +638,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         { nome: nome.trim(), parte, ref: ref.trim(), composicao: composicao.trim(), cores: [...sel], tamanhos, materiais },
         refNome || undefined
       );
-      onSalvo();               // recarrega a lista no fundo (sem fechar)
-      setRefNome(nome.trim()); // vira edição desse produto
-      setSalvo(true);          // continua na tela do cadastro, com "✓ salvo"
-      setSalvando(false);
+      onSalvo();               // recarrega a lista
+      onFechar();              // salvou → fecha e volta pra lista (1 clique só)
     } catch (e) {
       setErro((e as Error).message);
       setSalvando(false);
@@ -1008,12 +1006,11 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           {/* Footer */}
           <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16, alignItems: "center" }}>
             <span className="muted" style={{ marginRight: "auto", fontSize: 13 }}>
-              {salvo && <span style={{ color: "#16a34a", fontWeight: 800, marginRight: 12 }}>✓ Salvo</span>}
               <strong>{nCores}</strong> cores × <strong>{nTam}</strong> tamanhos = <strong>{nCores * nTam}</strong> variações
             </span>
-            <button className="btn" onClick={onFechar}>Fechar</button>
+            <button className="btn" onClick={onFechar}>Cancelar</button>
             <button className="btn btn-primary" style={{ background: "#16a34a" }} disabled={salvando} onClick={salvar}>
-              {salvando ? "Salvando…" : salvo ? "✔ Salvar alterações" : "✔ Salvar produto"}
+              {salvando ? "Salvando…" : refNome ? "✔ Salvar alterações" : "✔ Salvar produto"}
             </button>
           </div>
         </div>
