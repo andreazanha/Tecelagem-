@@ -470,6 +470,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [ziperSel, setZiperSel] = useState<{ nome: string; comprimento: string; qtd: string; corMap: Record<string, string> }>({ nome: "", comprimento: "", qtd: "1", corMap: {} });
   // Encarte: vem pronto pelo tamanho da peça (peseira/manta). tamMap = tamanho do produto → encarte id (ajuste manual).
   const [encarteSel, setEncarteSel] = useState<{ qtd: string; tamMap: Record<string, string> }>({ qtd: "1", tamMap: {} });
+  // Tag: uma só para o produto (igual em todos os tamanhos e cores).
+  const [tagSel, setTagSel] = useState<{ material_id: string; qtd: string }>({ material_id: "", qtd: "1" });
   const fioSeeded = useRef(false); // ao editar, restaura o "Tipo de fio" a partir das cores salvas (só 1x)
 
   useEffect(() => {
@@ -523,6 +525,9 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           for (const e of enc) { if (e.tamanho && e.material_id) tamMap[e.tamanho] = e.material_id; }
           setEncarteSel({ qtd: enc[0].quantidade != null ? String(enc[0].quantidade) : "1", tamMap });
         }
+        // Tag: uma só — pega o material e a quantidade salvos.
+        const tg = (m.materiais || []).filter((x) => x.categoria === "tag");
+        if (tg.length) setTagSel({ material_id: tg[0].material_id, qtd: tg[0].quantidade != null ? String(tg[0].quantidade) : "1" });
       }).catch((e) => setErro((e as Error).message));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -549,6 +554,17 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ziperSel, matCat, sel]);
+
+  // Tag: uma só para o produto — aplica em todos os tamanhos (aplicarTodos).
+  useEffect(() => {
+    setLinhas((prev) => {
+      const outros = prev.filter((l) => l.tipo !== "tag");
+      const tag = matCat.find((m) => m.categoria === "tag" && m.id === tagSel.material_id);
+      if (!tag) return outros.length === prev.length ? prev : outros;
+      return [...outros, { id: "tag:" + tag.id, tipo: "tag", fonte: "material", nomeMat: tag.nome, material_id: tag.id, quantidade: tagSel.qtd, unidade: tag.unidade || "un", aplicarTodos: true, aplicar: new Set<string>(), obs: "", status: "ativo" }];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagSel, matCat]);
 
   // Tipo de fio não é um campo salvo — ele vem das cores do produto. Ao editar,
   // assim que as cores e o catálogo estiverem prontos, restaura o fio escolhido
@@ -852,6 +868,32 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     );
   }
 
+  // Tag: uma só para o produto (mesma em todos os tamanhos e cores).
+  function renderTag() {
+    const tags = matCat.filter((m) => m.categoria === "tag");
+    const setT = (patch: Partial<{ material_id: string; qtd: string }>) => { setSalvo(false); setTagSel((z) => ({ ...z, ...patch })); };
+    const tagLabel = (t: Material) => { const modelo = valorCol(t, "extra:modelo"); return t.nome + (modelo ? " · " + modelo : ""); };
+    return (
+      <>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+          A tag é <strong>uma só para o produto</strong> — a mesma em todos os tamanhos e cores.
+        </p>
+        <div className="form-grid2">
+          <Campo label="Tag">
+            <select value={tagSel.material_id} onChange={(e) => setT({ material_id: e.target.value })}>
+              <option value="">{tags.length ? "— escolha a tag —" : "nenhuma tag cadastrada"}</option>
+              {tags.map((t) => <option key={t.id} value={t.id}>{tagLabel(t)}</option>)}
+            </select>
+          </Campo>
+          <Campo label="Quantidade por peça"><input inputMode="decimal" value={tagSel.qtd} onChange={(e) => setT({ qtd: e.target.value })} style={{ width: 90 }} /></Campo>
+        </div>
+        {tagSel.material_id
+          ? <p className="muted" style={{ fontSize: 12.5, marginTop: 6, color: "#166534", fontWeight: 600 }}>✓ Aplica em todos os tamanhos e cores do produto.</p>
+          : tags.length === 0 && <p className="muted" style={{ fontSize: 12.5, marginTop: 6, color: "#991b1b", fontWeight: 600 }}>⚠️ Nenhuma tag cadastrada. Cadastre em <strong>Materiais › Tag</strong>.</p>}
+      </>
+    );
+  }
+
   // Editor da ficha filtrado por uma categoria de material (Zíper, Forro, Tag, …).
   // Reaproveita as mesmas linhas/estado, escondendo a coluna "Tipo" (já é a própria seção).
   function renderMateriaisSecao(cat: string, nomeSecao: string) {
@@ -1083,7 +1125,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           )}
 
           {SECOES.filter((s) => s.cat).map((s) => secao === s.id && (
-            <div key={s.id}>{s.id === "ziper" ? renderZiper() : s.id === "encarte" ? renderEncarte() : renderMateriaisSecao(s.cat!, s.nome)}</div>
+            <div key={s.id}>{s.id === "ziper" ? renderZiper() : s.id === "encarte" ? renderEncarte() : s.id === "tag" ? renderTag() : renderMateriaisSecao(s.cat!, s.nome)}</div>
           ))}
 
           {/* Footer */}
