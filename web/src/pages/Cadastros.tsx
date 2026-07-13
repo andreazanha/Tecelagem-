@@ -464,6 +464,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [fios, setFios] = useState<TipoFio[]>([]);            // tipos de fio (fonte 'fio')
   const [linhas, setLinhas] = useState<FichaLinha[]>([]);     // ficha de consumo (uma linha por material)
   const [secao, setSecao] = useState<string>("tamanhos");     // sub-menu ativo (uma seção por item do produto)
+  // Zíper: mesmo comprimento para todos os tamanhos; a cor acompanha a cor do produto.
+  const [ziperSel, setZiperSel] = useState<{ nome: string; comprimento: string; qtd: string }>({ nome: "", comprimento: "", qtd: "1" });
 
   useEffect(() => {
     Promise.all([api.listarCores(), api.listarTamanhos(), api.listarMateriais(), api.listarCategoriasMaterial(), api.listarTiposFio()])
@@ -502,10 +504,34 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         const arr = [...grp.values()];
         arr.forEach((ln) => { if (ln.aplicar.size && tamsProd.length && tamsProd.every((t) => ln.aplicar.has(t))) ln.aplicarTodos = true; });
         setLinhas(arr);
+        // Zíper: semeia a família escolhida (nome + comprimento) a partir do que estava salvo.
+        const zip = (m.materiais || []).filter((x) => x.categoria === "ziper");
+        if (zip.length) setZiperSel({ nome: zip[0].nome || "", comprimento: zip[0].variacao || "", qtd: zip[0].quantidade != null ? String(zip[0].quantidade) : "1" });
       }).catch((e) => setErro((e as Error).message));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nomeEdit]);
+
+  // Zíper: regera as linhas da ficha (uma por cor do produto) sempre que mudar a
+  // família escolhida (nome + comprimento), a quantidade, as cores do produto ou o
+  // catálogo de materiais. O comprimento é o mesmo em todos os tamanhos (aplicarTodos);
+  // a cor de cada linha vem do zíper cujo "Cor do tricô" casa com a cor do produto.
+  useEffect(() => {
+    setLinhas((prev) => {
+      const outros = prev.filter((l) => l.tipo !== "ziper");
+      if (!ziperSel.nome || !ziperSel.comprimento) return outros.length === prev.length ? prev : outros;
+      const variantes = matCat.filter((m) => m.categoria === "ziper" && m.nome === ziperSel.nome && (valorCol(m, "extra:comprimento") || "") === ziperSel.comprimento);
+      const novas: FichaLinha[] = [];
+      for (const cor of sel) {
+        const v = variantes.find((x) => (x.cor || "").trim().toLowerCase() === cor.trim().toLowerCase());
+        if (!v) continue; // cor do produto sem zíper cadastrado — avisado na tela
+        novas.push({ id: "ziper:" + v.id, tipo: "ziper", fonte: "material", nomeMat: ziperSel.nome, material_id: v.id, quantidade: ziperSel.qtd, unidade: v.unidade || "un", aplicarTodos: true, aplicar: new Set<string>(), obs: "", status: "ativo" });
+      }
+      return [...outros, ...novas];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ziperSel, matCat, sel]);
+
   const toggleCor = (n: string) => { setSalvo(false); setSel((prev) => { const s = new Set(prev); s.has(n) ? s.delete(n) : s.add(n); return s; }); };
   function toggleGrupo(gcores: Cor[]) {
     setSalvo(false);
@@ -637,6 +663,77 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     { id: "etiqueta", nome: "Etiqueta", cat: "etiqueta" },
   ];
   const contaSecao = (s: { cat?: string }) => (s.cat ? linhas.filter((l) => l.tipo === s.cat).length : 0);
+  // Uma seção conta como "definida" (✓) quando já tem o que precisa preenchido.
+  const secaoDefinida = (s: { id: string; cat?: string }): boolean => {
+    switch (s.id) {
+      case "tamanhos": return tamsProdSel.length > 0;
+      case "fio": return fioSel !== null;
+      case "cores": return sel.size > 0;
+      case "tempo": return tamsProdSel.some((t) => (tempos[t] || "").trim() !== "");
+      case "peso": return tamsProdSel.some((t) => (pesos[t] || "").trim() !== "");
+      default: return s.cat ? linhas.some((l) => l.tipo === s.cat && l.material_id) : false;
+    }
+  };
+
+  // Zíper: famílias disponíveis = agrupa o catálogo por (nome + comprimento);
+  // cada família tem uma variante por "Cor do tricô".
+  const ziperNomes = [...new Set(matCat.filter((m) => m.categoria === "ziper").map((m) => m.nome))];
+  const ziperComprimentos = [...new Set(matCat.filter((m) => m.categoria === "ziper" && m.nome === ziperSel.nome).map((m) => valorCol(m, "extra:comprimento") || ""))];
+  function renderZiper() {
+    const variantes = matCat.filter((m) => m.categoria === "ziper" && m.nome === ziperSel.nome && (valorCol(m, "extra:comprimento") || "") === ziperSel.comprimento);
+    const coresProduto = [...sel];
+    const setFam = (patch: Partial<{ nome: string; comprimento: string; qtd: string }>) => { setSalvo(false); setZiperSel((z) => ({ ...z, ...patch })); };
+    const faltando = ziperSel.nome && ziperSel.comprimento ? coresProduto.filter((cor) => !variantes.some((x) => (x.cor || "").trim().toLowerCase() === cor.trim().toLowerCase())).length : 0;
+    return (
+      <>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+          O zíper usa o <strong>mesmo comprimento em todos os tamanhos</strong>. A <strong>cor do zíper acompanha a cor do produto</strong> (campo “Cor do tricô” do zíper).
+        </p>
+        <div className="form-grid2">
+          <Campo label="Zíper">
+            <select value={ziperSel.nome} onChange={(e) => setFam({ nome: e.target.value, comprimento: "" })}>
+              <option value="">{ziperNomes.length ? "— escolha o zíper —" : "nenhum zíper cadastrado"}</option>
+              {ziperNomes.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </Campo>
+          <Campo label="Comprimento (todos os tamanhos)">
+            <select value={ziperSel.comprimento} disabled={!ziperSel.nome} onChange={(e) => setFam({ comprimento: e.target.value })}>
+              <option value="">— escolha —</option>
+              {ziperComprimentos.map((c) => <option key={c || "único"} value={c}>{c || "único"}</option>)}
+            </select>
+          </Campo>
+          <Campo label="Quantidade por peça">
+            <input inputMode="decimal" value={ziperSel.qtd} onChange={(e) => setFam({ qtd: e.target.value })} style={{ width: 90 }} />
+          </Campo>
+        </div>
+        {coresProduto.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>Escolha as cores do produto na seção <strong>Cores</strong> para ligar o zíper a cada cor.</p>
+        ) : !(ziperSel.nome && ziperSel.comprimento) ? (
+          <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>Escolha o zíper e o comprimento acima.</p>
+        ) : (
+          <div className="card" style={{ overflowX: "auto", marginTop: 10 }}>
+            {faltando > 0 && <div className="pad" style={{ color: "#991b1b", fontSize: 12.5, fontWeight: 600 }}>⚠️ {faltando} cor(es) do produto sem zíper cadastrado nessa cor/comprimento. Cadastre o zíper nessas cores em <strong>Materiais › Zíper</strong>.</div>}
+            <table className="table">
+              <thead><tr><th>Cor do produto</th><th>Zíper (Cor do tricô)</th><th className="num">Preço unit.</th><th>Situação</th></tr></thead>
+              <tbody>
+                {coresProduto.map((cor) => {
+                  const v = variantes.find((x) => (x.cor || "").trim().toLowerCase() === cor.trim().toLowerCase());
+                  return (
+                    <tr key={cor}>
+                      <td className="strong">{cor}</td>
+                      <td>{v ? (v.cor || "—") : <span className="muted">—</span>}</td>
+                      <td className="num">{v?.preco != null ? rBR(v.preco) : "—"}</td>
+                      <td>{v ? <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>✓ ok</span> : <span className="chip" style={{ background: "#fee2e2", color: "#991b1b" }}>⚠ falta cadastrar</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </>
+    );
+  }
 
   // Editor da ficha filtrado por uma categoria de material (Zíper, Forro, Tag, …).
   // Reaproveita as mesmas linhas/estado, escondendo a coluna "Tipo" (já é a própria seção).
@@ -719,17 +816,23 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             <Campo label="Composição"><input value={composicao} onChange={(e) => { setSalvo(false); setComposicao(e.target.value); }} spellCheck lang="pt-BR" placeholder="ex.: 100% POLIÉSTER" /></Campo>
           </div>
 
-          {/* Sub-menu do produto: um botão para cada item que o produto usa */}
+          {/* Sub-menu do produto: um botão para cada item que o produto usa.
+              Fica com ✓ quando a seção já está definida — pra saber que o produto está pronto. */}
           <div className="prod-secoes">
             {SECOES.map((s) => {
               const n = contaSecao(s);
+              const ok = secaoDefinida(s);
               return (
-                <button key={s.id} type="button" className={"prod-secao-btn" + (secao === s.id ? " on" : "")} onClick={() => setSecao(s.id)}>
+                <button key={s.id} type="button" className={"prod-secao-btn" + (secao === s.id ? " on" : "") + (ok ? " ok" : "")} onClick={() => setSecao(s.id)}>
+                  {ok && <span className="prod-secao-check">✓</span>}
                   {s.nome}{n > 0 ? <span className="prod-secao-badge">{n}</span> : null}
                 </button>
               );
             })}
           </div>
+          <p className="muted" style={{ fontSize: 12, margin: "0 0 4px" }}>
+            {SECOES.filter((s) => secaoDefinida(s)).length} de {SECOES.length} seções definidas
+          </p>
 
           {secao === "tamanhos" && (<>
           <div className="form-grid2">
@@ -863,7 +966,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           )}
 
           {SECOES.filter((s) => s.cat).map((s) => secao === s.id && (
-            <div key={s.id}>{renderMateriaisSecao(s.cat!, s.nome)}</div>
+            <div key={s.id}>{s.id === "ziper" ? renderZiper() : renderMateriaisSecao(s.cat!, s.nome)}</div>
           ))}
 
           {/* Footer */}
