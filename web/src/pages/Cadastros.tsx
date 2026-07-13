@@ -468,6 +468,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   // Zíper: mesmo comprimento para todos os tamanhos; a cor (número do fabricante) é
   // ligada manualmente a cada cor do tricô do produto (corMap: cor do produto → zíper id).
   const [ziperSel, setZiperSel] = useState<{ nome: string; comprimento: string; qtd: string; corMap: Record<string, string> }>({ nome: "", comprimento: "", qtd: "1", corMap: {} });
+  // Encarte: vem pronto pelo tamanho da peça (peseira/manta). tamMap = tamanho do produto → encarte id (ajuste manual).
+  const [encarteSel, setEncarteSel] = useState<{ qtd: string; tamMap: Record<string, string> }>({ qtd: "1", tamMap: {} });
   const fioSeeded = useRef(false); // ao editar, restaura o "Tipo de fio" a partir das cores salvas (só 1x)
 
   useEffect(() => {
@@ -513,6 +515,13 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           const corMap: Record<string, string> = {};
           for (const z of zip) { const cp = (z.cor_produto || z.cor || "").trim(); if (cp && z.material_id) corMap[cp] = z.material_id; }
           setZiperSel({ nome: zip[0].nome || "", comprimento: zip[0].variacao || "", qtd: zip[0].quantidade != null ? String(zip[0].quantidade) : "1", corMap });
+        }
+        // Encarte: mapa tamanho do produto → encarte salvo (para respeitar ajustes manuais).
+        const enc = (m.materiais || []).filter((x) => x.categoria === "encarte");
+        if (enc.length) {
+          const tamMap: Record<string, string> = {};
+          for (const e of enc) { if (e.tamanho && e.material_id) tamMap[e.tamanho] = e.material_id; }
+          setEncarteSel({ qtd: enc[0].quantidade != null ? String(enc[0].quantidade) : "1", tamMap });
         }
       }).catch((e) => setErro((e as Error).message));
     }
@@ -648,6 +657,29 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
 
   // ── Ficha de consumo (aba Materiais) ──
   const tamsProdSel = linhasTam.filter((t) => selTam[t.nome]).map((t) => t.nome);
+
+  // Encarte: já vem pronto pelo tamanho da peça. Para cada tamanho do produto,
+  // liga o encarte de mesmo tamanho (ex.: peseira 70x2.20 → Encarte 70x2.20).
+  // Cada linha aplica-se só ao seu tamanho. Ajuste manual fica guardado em tamMap.
+  const normTam = (s: string) => (s || "").trim().toLowerCase().replace(/\s+/g, ""); // "70X2.20" == "70x2.20"
+  const tamsKeyEnc = tamsProdSel.join("|");
+  useEffect(() => {
+    setLinhas((prev) => {
+      const outros = prev.filter((l) => l.tipo !== "encarte");
+      const encartes = matCat.filter((m) => m.categoria === "encarte");
+      if (encartes.length === 0) return outros.length === prev.length ? prev : outros;
+      const novas: FichaLinha[] = [];
+      for (const tam of tamsProdSel) {
+        const override = encarteSel.tamMap[tam];
+        const e = (override && encartes.find((x) => x.id === override)) || encartes.find((x) => normTam(x.tamanho || "") === normTam(tam));
+        if (!e) continue; // tamanho sem encarte cadastrado — avisado na tela
+        novas.push({ id: "encarte:" + tam + ":" + e.id, tipo: "encarte", fonte: "material", nomeMat: e.nome, material_id: e.id, quantidade: encarteSel.qtd, unidade: e.unidade || "un", aplicarTodos: false, aplicar: new Set<string>([tam]), obs: "", status: "ativo" });
+      }
+      return [...outros, ...novas];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [encarteSel, matCat, tamsKeyEnc]);
+
   const tiposFicha = [{ slug: "fio", nome: "Fio" }, ...matDefs.map((d) => ({ slug: d.slug, nome: d.nome }))];
   const nomesDoTipo = (tipo: string): string[] =>
     tipo === "fio" ? [...new Set(fios.map((f) => f.nome))] : [...new Set(matCat.filter((m) => m.categoria === tipo).map((m) => m.nome))];
@@ -758,6 +790,57 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
                         </select>
                       </td>
                       <td>{v ? <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>✓ ligado</span> : <span className="chip" style={{ background: "#fee2e2", color: "#991b1b" }}>⚠ ligar nº</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // Encarte: já vem pronto pelo tamanho da peça; um encarte por tamanho do produto.
+  function renderEncarte() {
+    const encartes = matCat.filter((m) => m.categoria === "encarte");
+    const setEnc = (patch: Partial<{ qtd: string }>) => { setSalvo(false); setEncarteSel((z) => ({ ...z, ...patch })); };
+    const setTamLink = (tam: string, id: string) => { setSalvo(false); setEncarteSel((z) => ({ ...z, tamMap: { ...z.tamMap, [tam]: id } })); };
+    const idDoTam = (tam: string) => encarteSel.tamMap[tam] || encartes.find((x) => normTam(x.tamanho || "") === normTam(tam))?.id || "";
+    const encLabel = (e: Material) => e.tamanho ? (e.nome && !e.nome.includes(e.tamanho) ? `${e.tamanho} · ${e.nome}` : e.tamanho) : (e.nome || "—");
+    const faltando = tamsProdSel.filter((t) => !idDoTam(t)).length;
+    const warn = { color: "#991b1b", fontSize: 12.5, fontWeight: 600 } as const;
+    return (
+      <>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+          O encarte já vem pronto pelo <strong>tamanho da peça</strong> (peseira/manta) — ex.: peça 70x2.20 → Encarte 70x2.20. Ajuste só se precisar.
+        </p>
+        <div className="form-grid2">
+          <Campo label="Quantidade por peça"><input inputMode="decimal" value={encarteSel.qtd} onChange={(e) => setEnc({ qtd: e.target.value })} style={{ width: 90 }} /></Campo>
+        </div>
+        {tamsProdSel.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>Escolha os tamanhos do produto na seção <strong>Tamanhos</strong>.</p>
+        ) : (
+          <div className="card" style={{ overflowX: "auto", marginTop: 10 }}>
+            {encartes.length === 0
+              ? <div className="pad" style={warn}>⚠️ Nenhum encarte cadastrado. Cadastre em <strong>Materiais › Encarte</strong>.</div>
+              : faltando > 0 && <div className="pad" style={warn}>⚠️ {faltando} tamanho(s) sem encarte de mesmo tamanho — ligue manualmente ou cadastre.</div>}
+            <table className="table">
+              <thead><tr><th>Tamanho da peça</th><th>Encarte</th><th>Situação</th></tr></thead>
+              <tbody>
+                {tamsProdSel.map((tam) => {
+                  const id = idDoTam(tam);
+                  const e = encartes.find((x) => x.id === id);
+                  return (
+                    <tr key={tam}>
+                      <td className="strong">{tam}</td>
+                      <td>
+                        <select value={id} onChange={(ev) => setTamLink(tam, ev.target.value)} disabled={encartes.length === 0} style={{ minWidth: 190 }}>
+                          <option value="">— ligar encarte —</option>
+                          {encartes.map((x) => <option key={x.id} value={x.id}>{encLabel(x)}</option>)}
+                        </select>
+                      </td>
+                      <td>{e ? <span className="chip" style={{ background: "#dcfce7", color: "#166534" }}>✓ pronto</span> : <span className="chip" style={{ background: "#fee2e2", color: "#991b1b" }}>⚠ ligar</span>}</td>
                     </tr>
                   );
                 })}
@@ -1000,7 +1083,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           )}
 
           {SECOES.filter((s) => s.cat).map((s) => secao === s.id && (
-            <div key={s.id}>{s.id === "ziper" ? renderZiper() : renderMateriaisSecao(s.cat!, s.nome)}</div>
+            <div key={s.id}>{s.id === "ziper" ? renderZiper() : s.id === "encarte" ? renderEncarte() : renderMateriaisSecao(s.cat!, s.nome)}</div>
           ))}
 
           {/* Footer */}
