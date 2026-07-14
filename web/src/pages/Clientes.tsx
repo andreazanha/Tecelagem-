@@ -102,7 +102,7 @@ export function Clientes() {
                   return (
                     <tr key={c.id} onClick={() => nav(`/clientes/${c.id}`)}>
                       <td><div className="cli-nm">{c.nome}</div><div className="muted2">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div></td>
-                      <td>{c.representante ? <span className="rep">🧑‍💼 {c.representante}</span> : <span className="muted2">—</span>}</td>
+                      <td>{c.representante ? <span className="rep-cli">🧑‍💼 {c.representante}</span> : <span className="muted2">—</span>}</td>
                       <td>{c.whatsapp ? (
                         wa ? <a className="wa" href={wa} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>🟢 {c.whatsapp}</a> : <span className="muted2">{c.whatsapp}</span>
                       ) : <span className="muted2">—</span>}</td>
@@ -169,7 +169,7 @@ export function ClienteFicha() {
           <div className="frow"><span className="k">E-mail</span> {f.email || "—"}</div>
           <div className="frow"><span className="k">Cidade</span> {[f.cidade, f.uf].filter(Boolean).join(" · ") || "—"}</div>
           <div className="frow"><span className="k">CNPJ</span> {f.cnpj || "—"}</div>
-          <div className="frow"><span className="k">Representante</span> {f.representante ? <span className="rep">🧑‍💼 {f.representante}</span> : "—"}</div>
+          <div className="frow"><span className="k">Representante</span> {f.representante ? <span className="rep-cli">🧑‍💼 {f.representante}</span> : "—"}</div>
           {f.observacao && <div className="frow obs"><span className="k">Obs.</span> {f.observacao}</div>}
         </div>
 
