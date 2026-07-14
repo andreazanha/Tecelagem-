@@ -472,6 +472,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [encarteSel, setEncarteSel] = useState<{ qtd: string; tamMap: Record<string, string> }>({ qtd: "1", tamMap: {} });
   // Tag: uma só para o produto (igual em todos os tamanhos e cores).
   const [tagSel, setTagSel] = useState<{ material_id: string; qtd: string }>({ material_id: "", qtd: "1" });
+  // Tassel: liga/desliga. Feito por prestadora; 4 por peça (G peseira / P almofada); R$1 por cor. Entra no romaneio.
+  const [usaTassel, setUsaTassel] = useState(false);
   const fioSeeded = useRef(false); // ao editar, restaura o "Tipo de fio" a partir das cores salvas (só 1x)
 
   useEffect(() => {
@@ -528,6 +530,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         // Tag: uma só — pega o material e a quantidade salvos.
         const tg = (m.materiais || []).filter((x) => x.categoria === "tag");
         if (tg.length) setTagSel({ material_id: tg[0].material_id, qtd: tg[0].quantidade != null ? String(tg[0].quantidade) : "1" });
+        // Tassel: usa se tiver qtd por peça salva (peseira ou almofada).
+        setUsaTassel((Number(m.tassel_peseira) || 0) > 0 || (Number(m.tassel_almofada) || 0) > 0);
       }).catch((e) => setErro((e as Error).message));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -660,7 +664,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     }
     try {
       await api.salvarModelo(
-        { nome: nome.trim(), parte, ref: ref.trim(), composicao: composicao.trim(), cores: [...sel], tamanhos, materiais },
+        { nome: nome.trim(), parte, ref: ref.trim(), composicao: composicao.trim(), cores: [...sel], tamanhos, materiais,
+          tassel_peseira: usaTassel ? 4 : 0, tassel_almofada: usaTassel ? 4 : 0 },
         refNome || undefined
       );
       onSalvo();               // recarrega a lista no fundo (sem fechar)
@@ -744,6 +749,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
       case "cores": return sel.size > 0;
       case "tempo": return tamsProdSel.some((t) => (tempos[t] || "").trim() !== "");
       case "peso": return tamsProdSel.some((t) => (pesos[t] || "").trim() !== "");
+      case "tassel": return usaTassel;
       default: return s.cat ? linhas.some((l) => l.tipo === s.cat && l.material_id) : false;
     }
   };
@@ -893,6 +899,29 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         {tagSel.material_id
           ? <p className="muted" style={{ fontSize: 12.5, marginTop: 6, color: "#166534", fontWeight: 600 }}>✓ Aplica em todos os tamanhos e cores do produto.</p>
           : tags.length === 0 && <p className="muted" style={{ fontSize: 12.5, marginTop: 6, color: "#991b1b", fontWeight: 600 }}>⚠️ Nenhuma tag cadastrada. Cadastre em <strong>Materiais › Tag</strong>.</p>}
+      </>
+    );
+  }
+
+  // Tassel: fabricado por prestadora; 4 por peça (peseira=G, almofada/capa=P); R$1 por cor.
+  // Aqui é só ligar/desligar — a cor sai das cores do produto e entra no romaneio de tassel.
+  function renderTassel() {
+    return (
+      <>
+        <label className="campo" style={{ flexDirection: "row", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <input type="checkbox" checked={usaTassel} onChange={(e) => { setSalvo(false); setUsaTassel(e.target.checked); }} style={{ width: 18, height: 18 }} />
+          <span className="campo-label" style={{ margin: 0 }}>Este produto usa tassel</span>
+        </label>
+        <div className="card pad" style={{ marginTop: 10, fontSize: 13, lineHeight: 1.7 }}>
+          <div>• <strong>4 tasseis por peça</strong>.</div>
+          <div>• Tamanho: <strong>Peseira/Manta = G</strong>, <strong>Almofada/Capa = P</strong>.</div>
+          <div>• Cor do tassel = <strong>cor do produto</strong> (automático, sem fazer à mão).</div>
+          <div>• Valor: <strong>R$ 1,00</strong> por tassel (todas as cores) — mão de obra da prestadora.</div>
+          <div>• Entra no <strong>romaneio de tassel</strong> junto com o pedido.</div>
+          {usaTassel
+            ? <div style={{ marginTop: 8, color: "#166534", fontWeight: 700 }}>✓ Tassel ativo neste produto.</div>
+            : <div style={{ marginTop: 8, color: "#64748b" }}>Marque a caixa acima se o produto leva tassel.</div>}
+        </div>
       </>
     );
   }
@@ -1128,7 +1157,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           )}
 
           {SECOES.filter((s) => s.cat).map((s) => secao === s.id && (
-            <div key={s.id}>{s.id === "ziper" ? renderZiper() : s.id === "encarte" ? renderEncarte() : s.id === "tag" ? renderTag() : renderMateriaisSecao(s.cat!, s.nome)}</div>
+            <div key={s.id}>{s.id === "ziper" ? renderZiper() : s.id === "encarte" ? renderEncarte() : s.id === "tag" ? renderTag() : s.id === "tassel" ? renderTassel() : renderMateriaisSecao(s.cat!, s.nome)}</div>
           ))}
 
           {/* Footer */}

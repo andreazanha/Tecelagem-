@@ -60,10 +60,19 @@ modelos.post("/", async (c) => {
     stmts.push(c.env.DB.prepare("UPDATE modelo_materiais SET modelo_nome = ? WHERE modelo_nome = ?").bind(nome, de));
   }
   // Cores do produto (substitui o conjunto quando enviado).
+  const coresProd = Array.isArray(b.cores) ? [...new Set(b.cores.map((x) => (x || "").trim()).filter(Boolean))] : [];
   if (Array.isArray(b.cores)) {
     stmts.push(c.env.DB.prepare("DELETE FROM modelo_cores WHERE modelo_nome = ?").bind(nome));
-    for (const cor of [...new Set(b.cores.map((x) => (x || "").trim()).filter(Boolean))])
+    for (const cor of coresProd)
       stmts.push(c.env.DB.prepare("INSERT INTO modelo_cores (modelo_nome, cor_nome) VALUES (?, ?)").bind(nome, cor));
+  }
+  // Tassel: se o produto usa tassel (qtd por peça > 0), garante o valor de mão de obra
+  // por cor na tabela `tasseis` — R$1,00 por tassel, tamanhos G (peseira) e P (almofada).
+  // INSERT OR IGNORE: preenche só o que falta, sem sobrescrever valores já ajustados à mão.
+  if ((tp > 0 || ta > 0) && coresProd.length) {
+    for (const cor of coresProd)
+      for (const tam of ["G", "P"])
+        stmts.push(c.env.DB.prepare("INSERT OR IGNORE INTO tasseis (cor, tamanho, valor) VALUES (?, ?, 1)").bind(cor, tam));
   }
   // Tamanhos do produto + fio(kg)/peça + tempo (substitui o conjunto quando enviado).
   if (Array.isArray(b.tamanhos)) {
