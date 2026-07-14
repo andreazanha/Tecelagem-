@@ -472,8 +472,9 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [encarteSel, setEncarteSel] = useState<{ qtd: string; tamMap: Record<string, string> }>({ qtd: "1", tamMap: {} });
   // Tag: uma só para o produto (igual em todos os tamanhos e cores).
   const [tagSel, setTagSel] = useState<{ material_id: string; qtd: string }>({ material_id: "", qtd: "1" });
-  // Tassel: liga/desliga. Feito por prestadora; 4 por peça (G peseira / P almofada); R$1 por cor. Entra no romaneio.
-  const [usaTassel, setUsaTassel] = useState(false);
+  // Tassel: por parte. Alguns modelos usam só na peseira (G); outros na peseira e
+  // na almofada/capa (P). 4 por peça; R$1 por cor; feito por prestadora; entra no romaneio.
+  const [tasselSel, setTasselSel] = useState<{ peseira: boolean; almofada: boolean }>({ peseira: false, almofada: false });
   const fioSeeded = useRef(false); // ao editar, restaura o "Tipo de fio" a partir das cores salvas (só 1x)
 
   useEffect(() => {
@@ -530,8 +531,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         // Tag: uma só — pega o material e a quantidade salvos.
         const tg = (m.materiais || []).filter((x) => x.categoria === "tag");
         if (tg.length) setTagSel({ material_id: tg[0].material_id, qtd: tg[0].quantidade != null ? String(tg[0].quantidade) : "1" });
-        // Tassel: usa se tiver qtd por peça salva (peseira ou almofada).
-        setUsaTassel((Number(m.tassel_peseira) || 0) > 0 || (Number(m.tassel_almofada) || 0) > 0);
+        // Tassel: por parte — peseira e/ou almofada, conforme a qtd salva em cada uma.
+        setTasselSel({ peseira: (Number(m.tassel_peseira) || 0) > 0, almofada: (Number(m.tassel_almofada) || 0) > 0 });
       }).catch((e) => setErro((e as Error).message));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -665,7 +666,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     try {
       await api.salvarModelo(
         { nome: nome.trim(), parte, ref: ref.trim(), composicao: composicao.trim(), cores: [...sel], tamanhos, materiais,
-          tassel_peseira: usaTassel ? 4 : 0, tassel_almofada: usaTassel ? 4 : 0 },
+          tassel_peseira: tasselSel.peseira ? 4 : 0, tassel_almofada: tasselSel.almofada ? 4 : 0 },
         refNome || undefined
       );
       onSalvo();               // recarrega a lista no fundo (sem fechar)
@@ -749,7 +750,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
       case "cores": return sel.size > 0;
       case "tempo": return tamsProdSel.some((t) => (tempos[t] || "").trim() !== "");
       case "peso": return tamsProdSel.some((t) => (pesos[t] || "").trim() !== "");
-      case "tassel": return usaTassel;
+      case "tassel": return tasselSel.peseira || tasselSel.almofada;
       default: return s.cat ? linhas.some((l) => l.tipo === s.cat && l.material_id) : false;
     }
   };
@@ -906,21 +907,28 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   // Tassel: fabricado por prestadora; 4 por peça (peseira=G, almofada/capa=P); R$1 por cor.
   // Aqui é só ligar/desligar — a cor sai das cores do produto e entra no romaneio de tassel.
   function renderTassel() {
+    const setTs = (patch: Partial<{ peseira: boolean; almofada: boolean }>) => { setSalvo(false); setTasselSel((z) => ({ ...z, ...patch })); };
     return (
       <>
-        <label className="campo" style={{ flexDirection: "row", alignItems: "center", gap: 10, cursor: "pointer" }}>
-          <input type="checkbox" checked={usaTassel} onChange={(e) => { setSalvo(false); setUsaTassel(e.target.checked); }} style={{ width: 18, height: 18 }} />
-          <span className="campo-label" style={{ margin: 0 }}>Este produto usa tassel</span>
-        </label>
-        <div className="card pad" style={{ marginTop: 10, fontSize: 13, lineHeight: 1.7 }}>
-          <div>• <strong>4 tasseis por peça</strong>.</div>
-          <div>• Tamanho: <strong>Peseira/Manta = G</strong>, <strong>Almofada/Capa = P</strong>.</div>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 10 }}>Marque onde o produto leva tassel. Tem modelo que usa só na peseira; outros na peseira e na almofada/capa.</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <label className="campo" style={{ flexDirection: "row", alignItems: "center", gap: 10, cursor: "pointer", margin: 0 }}>
+            <input type="checkbox" checked={tasselSel.peseira} onChange={(e) => setTs({ peseira: e.target.checked })} style={{ width: 18, height: 18 }} />
+            <span className="campo-label" style={{ margin: 0 }}>Peseira / Manta <span className="muted" style={{ fontWeight: 400 }}>— tamanho G</span></span>
+          </label>
+          <label className="campo" style={{ flexDirection: "row", alignItems: "center", gap: 10, cursor: "pointer", margin: 0 }}>
+            <input type="checkbox" checked={tasselSel.almofada} onChange={(e) => setTs({ almofada: e.target.checked })} style={{ width: 18, height: 18 }} />
+            <span className="campo-label" style={{ margin: 0 }}>Almofada / Capa <span className="muted" style={{ fontWeight: 400 }}>— tamanho P</span></span>
+          </label>
+        </div>
+        <div className="card pad" style={{ marginTop: 12, fontSize: 13, lineHeight: 1.7 }}>
+          <div>• <strong>4 tasseis por peça</strong> em cada parte marcada.</div>
           <div>• Cor do tassel = <strong>cor do produto</strong> (automático, sem fazer à mão).</div>
           <div>• Valor: <strong>R$ 1,00</strong> por tassel (todas as cores) — mão de obra da prestadora.</div>
           <div>• Entra no <strong>romaneio de tassel</strong> junto com o pedido.</div>
-          {usaTassel
-            ? <div style={{ marginTop: 8, color: "#166534", fontWeight: 700 }}>✓ Tassel ativo neste produto.</div>
-            : <div style={{ marginTop: 8, color: "#64748b" }}>Marque a caixa acima se o produto leva tassel.</div>}
+          {tasselSel.peseira || tasselSel.almofada
+            ? <div style={{ marginTop: 8, color: "#166534", fontWeight: 700 }}>✓ Tassel na {[tasselSel.peseira && "peseira", tasselSel.almofada && "almofada/capa"].filter(Boolean).join(" e ")}.</div>
+            : <div style={{ marginTop: 8, color: "#64748b" }}>Nenhuma parte marcada — o produto não leva tassel.</div>}
         </div>
       </>
     );
