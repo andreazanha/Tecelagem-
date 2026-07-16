@@ -15,14 +15,17 @@ import type { Env } from "./index";
 const uid = () => crypto.randomUUID();
 const MOTIVO_BAIXA = "pedido";
 const MOTIVO_ESTORNO = "estorno pedido";
+const SEP = ""; // separador da chave da etiqueta: produto␟tamanho␟cor
+export const etqKey = (produto: string, tamanho: string, cor: string) => [produto, tamanho, cor].join(SEP);
+const etqParts = (k: string) => k.split(SEP);
 
-export type ConsumoItem = { fonte: "material" | "fio"; material_id: string; quantidade: number };
+export type ConsumoItem = { fonte: "material" | "fio" | "etiqueta"; material_id: string; quantidade: number };
 
 // Soma consumos da mesma origem+item (um pedido usa o mesmo insumo em vários itens).
 export function somarConsumo(itens: ConsumoItem[]): Map<string, ConsumoItem> {
   const m = new Map<string, ConsumoItem>();
   for (const it of itens) {
-    const fonte = it.fonte === "fio" ? "fio" : "material";
+    const fonte = it.fonte === "fio" ? "fio" : it.fonte === "etiqueta" ? "etiqueta" : "material";
     const id = (it.material_id || "").trim();
     const q = Number(it.quantidade);
     if (!id || !q || isNaN(q) || q <= 0) continue;
@@ -66,6 +69,12 @@ export async function consumoDoPedido(env: Env, pedidoId: string): Promise<Consu
       const peso = Number(tam?.peso) || 0;
       if (peso > 0) out.push({ fonte: "fio", material_id: C, quantidade: peso * N });
     }
+    // etiqueta de colar: 1 por peça, se o produto tem estoque dessa combinação
+    // (a existência da linha = usa etiqueta nessa cor/tamanho).
+    if (C) {
+      const etq = await env.DB.prepare("SELECT 1 FROM etiqueta_estoque WHERE produto = ? AND tamanho = ? AND cor = ?").bind(P, T, C).first();
+      if (etq) out.push({ fonte: "etiqueta", material_id: etqKey(P, T, C), quantidade: N });
+    }
   }
   return out;
 }
@@ -76,6 +85,13 @@ function stmtsBaixa(env: Env, pid: string, c: ConsumoItem) {
     return [
       env.DB.prepare("UPDATE cores SET saldo = saldo - ? WHERE nome = ?").bind(c.quantidade, c.material_id),
       env.DB.prepare("INSERT INTO material_mov (id, material_id, tipo, quantidade, motivo, pedido_id, fonte) VALUES (?, ?, 'baixa', ?, ?, ?, 'fio')").bind(uid(), c.material_id, -c.quantidade, MOTIVO_BAIXA, pid),
+    ];
+  }
+  if (c.fonte === "etiqueta") {
+    const [p, t, cor] = etqParts(c.material_id);
+    return [
+      env.DB.prepare("UPDATE etiqueta_estoque SET saldo = saldo - ? WHERE produto = ? AND tamanho = ? AND cor = ?").bind(c.quantidade, p, t, cor),
+      env.DB.prepare("INSERT INTO material_mov (id, material_id, tipo, quantidade, motivo, pedido_id, fonte) VALUES (?, ?, 'baixa', ?, ?, ?, 'etiqueta')").bind(uid(), c.material_id, -c.quantidade, MOTIVO_BAIXA, pid),
     ];
   }
   return [
@@ -113,7 +129,8 @@ export async function baixarPorPedido(env: Env, pedidoId: string, itens: Consumo
   const stmts: D1PreparedStatement[] = [];
   let n = 0;
   for (const c of consumo.values()) {
-    const existe = c.fonte === "fio" ? existeCor.has(c.material_id) : existeMat.has(c.material_id);
+    // etiqueta: consumoDoPedido só inclui combinações que existem no estoque.
+    const existe = c.fonte === "etiqueta" ? true : c.fonte === "fio" ? existeCor.has(c.material_id) : existeMat.has(c.material_id);
     if (!existe) continue;
     stmts.push(...stmtsBaixa(env, pid, c));
     n++;
@@ -139,6 +156,10 @@ export async function estornarPedido(env: Env, pedidoId: string): Promise<{ esto
       if (b.fonte === "fio") {
         stmts.push(env.DB.prepare("UPDATE cores SET saldo = saldo + ? WHERE nome = ?").bind(devolver, b.material_id));
         stmts.push(env.DB.prepare("INSERT INTO material_mov (id, material_id, tipo, quantidade, motivo, pedido_id, fonte) VALUES (?, ?, 'entrada', ?, ?, ?, 'fio')").bind(uid(), b.material_id, devolver, MOTIVO_ESTORNO, pid));
+      } else if (b.fonte === "etiqueta") {
+        const [p, t, cor] = etqParts(b.material_id);
+        stmts.push(env.DB.prepare("UPDATE etiqueta_estoque SET saldo = saldo + ? WHERE produto = ? AND tamanho = ? AND cor = ?").bind(devolver, p, t, cor));
+        stmts.push(env.DB.prepare("INSERT INTO material_mov (id, material_id, tipo, quantidade, motivo, pedido_id, fonte) VALUES (?, ?, 'entrada', ?, ?, ?, 'etiqueta')").bind(uid(), b.material_id, devolver, MOTIVO_ESTORNO, pid));
       } else {
         stmts.push(env.DB.prepare("UPDATE materiais SET saldo = saldo + ? WHERE id = ?").bind(devolver, b.material_id));
         stmts.push(env.DB.prepare("INSERT INTO material_mov (id, material_id, tipo, quantidade, motivo, pedido_id, fonte) VALUES (?, ?, 'entrada', ?, ?, ?, 'material')").bind(uid(), b.material_id, devolver, MOTIVO_ESTORNO, pid));
