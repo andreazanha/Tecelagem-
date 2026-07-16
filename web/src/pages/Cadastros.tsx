@@ -477,6 +477,11 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [tasselSel, setTasselSel] = useState<{ peseira: boolean; almofada: boolean }>({ peseira: false, almofada: false });
   // Etiqueta de colar (adesivo com nome·tamanho·cor) — gerada p/ todos os tamanhos e cores.
   const [etiquetaColar, setEtiquetaColar] = useState(false);
+  // Pedido de etiquetas p/ gráfica: quantidade por etiqueta e quais tamanhos/cores
+  // ficam de fora (vazio = todos incluídos). Não controla estoque — só gera o pedido.
+  const [etqQtd, setEtqQtd] = useState("100");
+  const [etqTamOff, setEtqTamOff] = useState<Set<string>>(new Set());
+  const [etqCorOff, setEtqCorOff] = useState<Set<string>>(new Set());
   const fioSeeded = useRef(false); // ao editar, restaura o "Tipo de fio" a partir das cores salvas (só 1x)
 
   useEffect(() => {
@@ -939,23 +944,38 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     );
   }
 
-  // Etiqueta de colar: adesivo com "Nome · Tamanho · Cor", gerado para todos os
-  // tamanhos e cores do produto. Liga/desliga + prévia + imprimir (folha de adesivos).
+  // Etiqueta de colar: pedido das etiquetas p/ a GRÁFICA (não controla estoque).
+  // Escolhe tamanhos + cores + quantidade por etiqueta e gera o pedido (imprimir/enviar).
   function renderEtiqueta() {
     const coresSel = [...sel];
     const nomeProd = (nome.trim() || refNome || "Produto");
-    const total = tamsProdSel.length * coresSel.length;
-    function imprimirEtiquetas() {
-      const cards = tamsProdSel.flatMap((t) => coresSel.map((cor) =>
-        `<div class="et"><div class="et-n">${nomeProd}</div><div class="et-tc">${t} · ${cor}</div></div>`)).join("");
-      const html = `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas ${nomeProd}</title><style>
-        *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:8px}
-        h3{margin:0 0 8px;font-size:14px} .grid{display:flex;flex-wrap:wrap;gap:6px}
-        .et{width:200px;height:76px;border:1px dashed #9993;border-radius:6px;padding:9px 11px;display:flex;flex-direction:column;justify-content:center}
-        .et-n{font-weight:800;font-size:16px} .et-tc{font-size:12.5px;color:#333;margin-top:3px}
-        @media print{.et{border:1px solid #ccc}}
-      </style></head><body><h3>Etiquetas — ${nomeProd} (${total})</h3><div class="grid">${cards}</div>
-      <script>window.onload=function(){window.print()}</script></body></html>`;
+    const tamsInc = tamsProdSel.filter((t) => !etqTamOff.has(t));
+    const coresInc = coresSel.filter((c) => !etqCorOff.has(c));
+    const qtd = Math.max(0, Math.trunc(Number(etqQtd.replace(",", ".")) || 0));
+    const combos = tamsInc.length * coresInc.length;
+    const totalEtq = combos * qtd;
+    const toggleTam = (t: string) => setEtqTamOff((s) => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n; });
+    const toggleCor = (c: string) => setEtqCorOff((s) => { const n = new Set(s); n.has(c) ? n.delete(c) : n.add(c); return n; });
+    function gerarPedido() {
+      const emp = getEmpresa();
+      const linhas = tamsInc.flatMap((t) => coresInc.map((cor) =>
+        `<tr><td>${nomeProd}</td><td>${t}</td><td>${cor}</td><td class="q">${qtd}</td></tr>`)).join("");
+      const logo = emp.logo ? `<img src="${emp.logo}" style="max-height:54px">` : `<div class="big">BIG TRICOT</div>`;
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>Pedido de etiquetas — ${nomeProd}</title><style>
+        *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:22px;color:#111}
+        .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:14px}
+        .big{font-weight:900;font-size:22px} .emp{font-size:11.5px;color:#333;line-height:1.5;margin-top:4px}
+        .t{font-weight:900;font-size:17px} .sub{font-size:12px;color:#444;margin-top:2px}
+        table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12.5px}
+        th,td{border:1px solid #bbb;padding:6px 9px;text-align:left} th{background:#f1f5f9} td.q{text-align:right;font-weight:700}
+        tfoot td{font-weight:800;background:#f8fafc}
+      </style></head><body>
+        <div class="hd"><div>${logo}<div class="emp">${emp.nome}<br>CNPJ: ${emp.cnpj}<br>${emp.endereco}<br>Tel: ${emp.telefone}</div></div>
+          <div style="text-align:right"><div class="t">PEDIDO DE ETIQUETAS</div><div class="sub">Etiqueta de colar · ${nomeProd}${ref.trim() ? " · Ref " + ref.trim() : ""}</div></div></div>
+        <table><thead><tr><th>Produto</th><th>Tamanho</th><th>Cor</th><th class="q">Qtd</th></tr></thead>
+          <tbody>${linhas}</tbody>
+          <tfoot><tr><td colspan="3">Total de etiquetas</td><td class="q">${totalEtq}</td></tr></tfoot></table>
+        <script>window.onload=function(){window.print()}</script></body></html>`;
       const w = window.open("", "_blank");
       if (w) { w.document.write(html); w.document.close(); }
     }
@@ -965,23 +985,24 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           <input type="checkbox" checked={etiquetaColar} onChange={(e) => { setSalvo(false); setEtiquetaColar(e.target.checked); }} style={{ width: 18, height: 18 }} />
           <span className="campo-label" style={{ margin: 0 }}>Este produto usa etiqueta de colar</span>
         </label>
-        <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>Gerada automaticamente para <strong>todos os tamanhos e cores</strong> — texto <strong>{nomeProd} · Tamanho · Cor</strong>.</p>
-        {total === 0 ? (
-          <p className="muted" style={{ fontSize: 13 }}>Selecione tamanhos (seção <strong>Tamanhos</strong>) e cores (seção <strong>Cores</strong>) para gerar as etiquetas.</p>
+        <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>Peça as etiquetas para a gráfica: escolha tamanhos, cores e a quantidade. Texto de cada etiqueta: <strong>{nomeProd} · Tamanho · Cor</strong>. (não controla estoque)</p>
+        {tamsProdSel.length === 0 || coresSel.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13 }}>Selecione tamanhos (seção <strong>Tamanhos</strong>) e cores (seção <strong>Cores</strong>) para montar o pedido.</p>
         ) : (
           <>
-            <div className="row-gap" style={{ alignItems: "center", margin: "10px 0", flexWrap: "wrap" }}>
-              <span className="muted" style={{ fontSize: 13 }}><strong>{total}</strong> etiqueta(s) = {tamsProdSel.length} tamanho(s) × {coresSel.length} cor(es)</span>
-              <button type="button" className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={imprimirEtiquetas}>🖨️ Imprimir etiquetas</button>
-            </div>
-            <div className="card" style={{ maxHeight: 300, overflowY: "auto" }}>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: 12 }}>
-                {tamsProdSel.flatMap((t) => coresSel.map((cor) => (
-                  <div key={t + "|" + cor} style={{ width: 172, border: "1px dashed var(--line)", borderRadius: 6, padding: "8px 10px" }}>
-                    <div style={{ fontWeight: 800, fontSize: 14 }}>{nomeProd}</div>
-                    <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{t} · {cor}</div>
-                  </div>
-                )))}
+            <div className="card pad" style={{ marginTop: 10 }}>
+              <div className="campo-label">Tamanhos</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "6px 0 12px" }}>
+                {tamsProdSel.map((t) => <button key={t} type="button" className={"chip" + (etqTamOff.has(t) ? "" : " on")} style={{ cursor: "pointer", border: "1px solid var(--line)", background: etqTamOff.has(t) ? "transparent" : "#dbeafe", color: etqTamOff.has(t) ? "#94a3b8" : "#1e40af", fontWeight: 700 }} onClick={() => toggleTam(t)}>{etqTamOff.has(t) ? "○" : "✓"} {t}</button>)}
+              </div>
+              <div className="campo-label">Cores</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "6px 0 12px" }}>
+                {coresSel.map((c) => <button key={c} type="button" className="chip" style={{ cursor: "pointer", border: "1px solid var(--line)", background: etqCorOff.has(c) ? "transparent" : "#dcfce7", color: etqCorOff.has(c) ? "#94a3b8" : "#166534", fontWeight: 700 }} onClick={() => toggleCor(c)}>{etqCorOff.has(c) ? "○" : "✓"} {c}</button>)}
+              </div>
+              <div className="row-gap" style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <Campo label="Qtd por etiqueta"><input inputMode="numeric" value={etqQtd} onChange={(e) => setEtqQtd(e.target.value)} style={{ width: 100 }} /></Campo>
+                <span className="muted" style={{ fontSize: 13 }}>{tamsInc.length} tam × {coresInc.length} cor × {qtd} = <strong>{totalEtq}</strong> etiquetas</span>
+                <button type="button" className="btn btn-primary" style={{ marginLeft: "auto" }} disabled={combos === 0 || qtd === 0} onClick={gerarPedido}>🛒 Gerar pedido p/ gráfica</button>
               </div>
             </div>
           </>
