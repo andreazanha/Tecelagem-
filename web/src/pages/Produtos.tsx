@@ -52,7 +52,7 @@ export function Produtos() {
     { id: "reposicao", label: `⚠️ Reposição${nRep ? ` (${nRep})` : ""}` },
     { id: "entradas", label: "⬇️ Entradas" },
     { id: "ficha", label: "🧵 Ficha Técnica" },
-    { id: "insumos", label: "🧷 Insumos" },
+    { id: "insumos", label: "🧷 Materiais" },
     { id: "historico", label: "🕑 Histórico" },
   ];
   return (
@@ -732,8 +732,8 @@ function AbaEntradas() {
                 <td>{m.usuario || "—"}</td>
                 <td>
                   {m.tipo === "entrada" && (
-                    m.insumos_baixados ? <span className="muted" style={{ fontSize: 12 }}>insumos baixados ✓</span>
-                      : <button className="btn btn-soft" onClick={() => setBaixa(m)}>Baixar insumos</button>
+                    m.insumos_baixados ? <span className="muted" style={{ fontSize: 12 }}>materiais baixados ✓</span>
+                      : <button className="btn btn-soft" onClick={() => setBaixa(m)}>Baixar materiais</button>
                   )}
                 </td>
               </tr>
@@ -895,14 +895,14 @@ function BaixaInsumosModal({ mov, onFechar, onFeito }: { mov: ProdutoMov; onFech
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">Baixar insumos desta entrada</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
+        <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">Baixar materiais desta entrada</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
         <div className="pad">
           {erro && <p className="erro">{erro}</p>}
           <p className="muted" style={{ marginTop: 0 }}>
-            {mov.produto_nome} · entrada de <strong>{nf(mov.qtd)}</strong>. Confira o que será baixado do estoque de insumos:
+            {mov.produto_nome} · entrada de <strong>{nf(mov.qtd)}</strong>. Confira o que será baixado do estoque de materiais:
           </p>
           <table className="table">
-            <thead><tr><th>Insumo</th><th className="num">Por unid.</th><th className="num">Total</th><th className="num">Estoque</th></tr></thead>
+            <thead><tr><th>Material</th><th className="num">Por unid.</th><th className="num">Total</th><th className="num">Estoque</th></tr></thead>
             <tbody>
               {(prev?.linhas || []).length === 0 ? (
                 <tr><td colSpan={4} className="empty pad">Este produto não tem ficha técnica. Cadastre na aba Ficha Técnica.</td></tr>
@@ -918,7 +918,7 @@ function BaixaInsumosModal({ mov, onFechar, onFeito }: { mov: ProdutoMov; onFech
           </table>
           <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 14 }}>
             <button className="btn" onClick={onFechar}>Cancelar</button>
-            <button className="btn btn-primary" disabled={salvando || !temVinculo} onClick={confirmar} title={temVinculo ? "" : "Vincule os insumos da ficha ao cadastro de insumos para baixar"}>
+            <button className="btn btn-primary" disabled={salvando || !temVinculo} onClick={confirmar} title={temVinculo ? "" : "Vincule os materiais da ficha ao cadastro de materiais para baixar"}>
               {salvando ? "…" : "Confirmar baixa"}
             </button>
           </div>
@@ -955,7 +955,7 @@ function AbaFicha() {
     setMsg("");
     try {
       const r = await api.salvarFicha(pid, linhas.filter((l) => l.nome.trim()));
-      setMsg(`Ficha salva (${r.total} insumo(s)).`);
+      setMsg(`Ficha salva (${r.total} material(is)).`);
     } catch (e) {
       setMsg((e as Error).message);
     } finally {
@@ -973,7 +973,7 @@ function AbaFicha() {
   return (
     <>
       <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>
-        Especifique os insumos usados por <strong>unidade</strong> do produto. Vincule ao cadastro de insumos para a baixa automática funcionar.
+        Especifique os materiais usados por <strong>unidade</strong> do produto. Vincule ao cadastro de materiais para a baixa automática funcionar.
       </p>
       <div className="row-gap" style={{ marginBottom: 12 }}>
         <Campo label="Produto">
@@ -987,7 +987,7 @@ function AbaFicha() {
         <div className="card">
           <table className="table">
             <thead>
-              <tr><th>Insumo (cadastro)</th><th>Nome</th><th>Tipo</th><th className="num">Qtd/unid.</th><th>Unidade</th><th>Obs.</th><th></th></tr>
+              <tr><th>Material (cadastro)</th><th>Nome</th><th>Tipo</th><th className="num">Qtd/unid.</th><th>Unidade</th><th>Obs.</th><th></th></tr>
             </thead>
             <tbody>
               {linhas.map((l, i) => (
@@ -1039,7 +1039,7 @@ function AbaInsumos() {
   useEffect(() => { const t = setTimeout(recarregar, 250); return () => clearTimeout(t); }, [busca]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function excluir(i: Insumo) {
-    if (!confirm(`Excluir o insumo "${i.nome}"?`)) return;
+    if (!confirm(`Excluir o material "${i.nome}"?`)) return;
     await api.excluirInsumo(i.id).catch((e) => alert((e as Error).message));
     recarregar();
   }
@@ -1048,9 +1048,9 @@ function AbaInsumos() {
     <>
       <div className="row-gap" style={{ marginBottom: 12, alignItems: "center" }}>
         <input className="busca-ped" placeholder="🔎 Nome, categoria ou código…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <button className="btn btn-soft" onClick={() => setListas(true)} style={{ marginLeft: "auto" }} title="Gerenciar as categorias e cores próprias dos insumos">🗂️ Categorias e cores</button>
-        <button className="btn btn-soft" onClick={() => setCores(true)} title="Cadastrar um insumo em várias cores de uma vez (ex.: Zíper em Preto, Branco, Vermelho…)">🎨 Cadastro por cores</button>
-        <button className="btn btn-primary" onClick={() => setEdit({ ...INSUMO_VAZIO })}>＋ Novo insumo</button>
+        <button className="btn btn-soft" onClick={() => setListas(true)} style={{ marginLeft: "auto" }} title="Gerenciar as categorias e cores próprias dos materiais">🗂️ Categorias e cores</button>
+        <button className="btn btn-soft" onClick={() => setCores(true)} title="Cadastrar um material em várias cores de uma vez (ex.: Zíper em Preto, Branco, Vermelho…)">🎨 Cadastro por cores</button>
+        <button className="btn btn-primary" onClick={() => setEdit({ ...INSUMO_VAZIO })}>＋ Novo material</button>
       </div>
       <div className="card">
         <table className="table">
@@ -1059,7 +1059,7 @@ function AbaInsumos() {
           </thead>
           <tbody>
             {itens.length === 0 ? (
-              <tr><td colSpan={9} className="empty pad">Nenhum insumo cadastrado.</td></tr>
+              <tr><td colSpan={9} className="empty pad">Nenhum material cadastrado.</td></tr>
             ) : itens.map((i) => {
               const baixo = (Number(i.estoque) || 0) <= (Number(i.estoque_min) || 0) && (Number(i.estoque_min) || 0) > 0;
               return (
@@ -1140,13 +1140,13 @@ function ListasInsumoModal({ onFechar }: { onFechar: () => void }) {
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">Listas do insumo</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
+        <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">Listas do material</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
         <div className="pad">
           <div className="segmented" style={{ marginBottom: 14 }}>
             {abas.map((a) => <button key={a.id} type="button" className={"seg" + (aba === a.id ? " seg-on" : "")} onClick={() => setAba(a.id)}>{a.label}</button>)}
           </div>
           <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>
-            {aba === "cores" ? "Cores próprias dos insumos (separadas das cores de produto)." : aba === "categorias" ? "Categorias de insumo (viram opção no cadastro)." : "Fornecedores (para vincular ao insumo e futura ordem de compra)."}
+            {aba === "cores" ? "Cores próprias dos materiais (separadas das cores de produto)." : aba === "categorias" ? "Categorias de materiais (viram opção no cadastro)." : "Fornecedores (para vincular ao material e futura ordem de compra)."}
           </p>
           <div className="row-gap" style={{ gap: 6, marginBottom: 12 }}>
             <input value={novo} onChange={(e) => setNovo(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} placeholder={aba === "fornecedores" ? "Nome do fornecedor" : "Nome da " + (aba === "cores" ? "cor" : "categoria")} style={{ flex: 1 }} />
@@ -1195,7 +1195,7 @@ function InsumoModal({ insumo, onFechar, onSalvo }: { insumo: Partial<Insumo>; o
   }
 
   async function salvar() {
-    if (!i.nome?.trim()) return setErro("Informe o nome do insumo.");
+    if (!i.nome?.trim()) return setErro("Informe o nome do material.");
     setSalvando(true);
     setErro("");
     try {
@@ -1210,16 +1210,16 @@ function InsumoModal({ insumo, onFechar, onSalvo }: { insumo: Partial<Insumo>; o
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card" style={{ maxWidth: 600 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">{i.id ? "Editar insumo" : "Novo insumo"}</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
+        <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">{i.id ? "Editar material" : "Novo material"}</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
         <div className="pad">
           {erro && <p className="erro">{erro}</p>}
           <div className="form-grid2">
-            <Campo label="Nome do insumo *"><input value={i.nome || ""} onChange={(e) => set({ nome: e.target.value })} placeholder="ex.: Zíper 50cm" /></Campo>
+            <Campo label="Nome do material *"><input value={i.nome || ""} onChange={(e) => set({ nome: e.target.value })} placeholder="ex.: Zíper 50cm" /></Campo>
             <Campo label="Categoria">
               <input list="ins-cats" value={i.categoria || ""} onChange={(e) => set({ categoria: e.target.value })} placeholder="Aviamento, Zíper…" />
               <datalist id="ins-cats">{cats.map((c) => <option key={c} value={c} />)}</datalist>
             </Campo>
-            <Campo label="Cor (do insumo)">
+            <Campo label="Cor (do material)">
               <input list="ins-cores" value={i.cor || ""} onChange={(e) => set({ cor: e.target.value })} placeholder="Preto, Marinho…" />
               <datalist id="ins-cores">{cores.map((c) => <option key={c} value={c} />)}</datalist>
             </Campo>
@@ -1310,7 +1310,7 @@ function InsumoCoresModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo
         <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">🎨 Cadastro rápido por cores</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
         <div className="pad">
           {erro && <p className="erro">{erro}</p>}
-          <p className="muted" style={{ marginTop: 0 }}>Cadastre um insumo em <strong>várias cores de uma vez</strong>. O nome fica igual (ex.: <strong>Zíper</strong>) e cada cor vira um registro no <strong>campo cor</strong>. Cores próprias de insumo (não são as de produto).</p>
+          <p className="muted" style={{ marginTop: 0 }}>Cadastre um material em <strong>várias cores de uma vez</strong>. O nome fica igual (ex.: <strong>Zíper</strong>) e cada cor vira um registro no <strong>campo cor</strong>. Cores próprias de materiais (não são as de produto).</p>
           <div className="form-grid2">
             <Campo label="Nome-base *"><input value={base} onChange={(e) => setBase(e.target.value)} placeholder="Zíper" /></Campo>
             <Campo label="Categoria"><input value={categoria} onChange={(e) => setCategoria(e.target.value)} placeholder="Aviamento" /></Campo>
@@ -1355,8 +1355,8 @@ function AbaHistorico() {
     { v: "produto", l: "Produtos" },
     { v: "estoque", l: "Estoque" },
     { v: "ficha", l: "Ficha técnica" },
-    { v: "insumo", l: "Insumos" },
-    { v: "baixa", l: "Baixa de insumos" },
+    { v: "insumo", l: "Materiais" },
+    { v: "baixa", l: "Baixa de materiais" },
   ];
   return (
     <>

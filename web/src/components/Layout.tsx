@@ -122,7 +122,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/estoque", icon: "📦", label: "Entradas", page: "estoque" },
       { to: "/produtos?aba=estoque", icon: "📊", label: "Estoque de Produtos", page: "produtos" },
       { to: "/produtos?aba=reposicao", icon: "⚠️", label: "Reposição", page: "produtos" },
-      { to: "/produtos?aba=insumos", icon: "🧷", label: "Insumos", page: "produtos" },
+      { to: "/produtos?aba=insumos", icon: "🧷", label: "Materiais", page: "produtos" },
       { to: "/produtos?aba=entradas", icon: "⬇️", label: "Entrada de Estoque", page: "produtos" },
       { to: "/produtos?aba=ficha", icon: "🧵", label: "Ficha Técnica", page: "produtos" },
       { to: "/produtos?aba=historico", icon: "🕑", label: "Histórico", page: "produtos" },

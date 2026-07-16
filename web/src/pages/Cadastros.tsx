@@ -1804,7 +1804,7 @@ function AbaMateriais() {
           </button>
         ))}
         <button type="button" className={"seg" + (cat === "__compras" ? " seg-on" : "")} onClick={() => setCat("__compras")}>🛒 Compras</button>
-        <button type="button" className="seg" style={{ fontWeight: 700, color: "#4338ca" }} onClick={() => setModal("novo")}>＋ Novo insumo</button>
+        <button type="button" className="seg" style={{ fontWeight: 700, color: "#4338ca" }} onClick={() => setModal("novo")}>＋ Novo material</button>
       </div>
 
       {cat === "__compras" ? (
@@ -1814,13 +1814,13 @@ function AbaMateriais() {
           key={meta.slug} cat={meta} onMudou={recarregarKpis}
           onEditarCat={() => setModal(meta)}
           onExcluirCat={async () => {
-            if (!confirm(`Excluir o insumo "${meta.nome}"? (só se estiver vazio)`)) return;
+            if (!confirm(`Excluir o material "${meta.nome}"? (só se estiver vazio)`)) return;
             try { await api.excluirCategoriaMaterial(meta.id); const cs = await recarregarCats(); setCat(cs[0]?.slug || ""); }
             catch (e) { alert((e as Error).message); }
           }}
         />
       ) : (
-        <div className="card pad muted">Escolha um insumo acima ou crie um novo.</div>
+        <div className="card pad muted">Escolha um material acima ou crie um novo.</div>
       )}
 
       {modal && (
@@ -1840,14 +1840,14 @@ function InsumoModal({ cat, onFechar, onSalvo }: { cat: MaterialCategoriaDef | n
   const [cor, setCor] = useState(cat?.cor || CORES_INSUMO[0]);
   const [icone, setIcone] = useState(cat?.icone || "");
   async function salvar() {
-    if (!nome.trim()) return alert("Informe o nome do insumo.");
+    if (!nome.trim()) return alert("Informe o nome do material.");
     try { const r = await api.salvarCategoriaMaterial({ id: cat?.id, nome: nome.trim(), cor, icone: icone.trim() || null }); onSalvo(r.slug); }
     catch (e) { alert((e as Error).message); }
   }
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginTop: 0 }}>{cat ? "Editar insumo" : "Novo insumo"}</h2>
+        <h2 style={{ marginTop: 0 }}>{cat ? "Editar material" : "Novo material"}</h2>
         <p className="muted" style={{ marginTop: -4 }}>Ele aparece sozinho no menu Materiais e como sub-aba.</p>
         <label className="campo"><span className="campo-label">Nome</span>
           <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex.: Botão, Linha, Viés" autoFocus spellCheck lang="pt-BR" /></label>
@@ -1863,7 +1863,7 @@ function InsumoModal({ cat, onFechar, onSalvo }: { cat: MaterialCategoriaDef | n
         </div>
         <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 18 }}>
           <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
-          <button className="btn btn-primary" onClick={salvar}>{cat ? "Salvar" : "Criar insumo"}</button>
+          <button className="btn btn-primary" onClick={salvar}>{cat ? "Salvar" : "Criar material"}</button>
         </div>
       </div>
     </div>
@@ -2005,7 +2005,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
           <button className="btn btn-soft" title="Colar vários de uma vez" onClick={() => setColar(true)}>📋 Colar em massa</button>
           {sel.size > 0 && <button className="btn btn-soft" title="Alterar um campo dos selecionados" onClick={() => setAlterar(true)} style={{ color: "#4338ca", borderColor: "#c7d2fe" }}>✏️ Alterar em massa ({sel.size})</button>}
           {itens.length > 0 && <button className="btn btn-soft" title="Excluir todos deste tipo" onClick={excluirTodos} style={{ color: "#b91c1c" }}>🗑 Excluir todos</button>}
-          <button className="btn btn-soft" title="Renomear insumo" onClick={onEditarCat}>✎ Insumo</button>
+          <button className="btn btn-soft" title="Renomear material" onClick={onEditarCat}>✎ Material</button>
           <button className="btn" title="Excluir insumo" onClick={onExcluirCat}>🗑</button>
         </div>
         <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
@@ -2663,7 +2663,7 @@ function OperadoresCadastro() {
 const GRUPOS_PERM: { titulo: string; keys: string[] }[] = [
   { titulo: "Comercial", keys: ["pedidos", "todos-pedidos"] },
   { titulo: "Produção", keys: ["producao", "passadoria", "corte", "costura", "revisao"] },
-  { titulo: "Estoque e Insumos", keys: ["estoque", "produtos"] },
+  { titulo: "Estoque e Materiais", keys: ["estoque", "produtos"] },
   { titulo: "Expedição", keys: ["expedicao", "transporte", "romaneios"] },
   { titulo: "Fiscal e Financeiro", keys: ["fiscal"] },
   { titulo: "Cadastros", keys: ["cadastros"] },
