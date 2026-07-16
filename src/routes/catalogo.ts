@@ -10,7 +10,7 @@ export const modelos = new Hono<{ Bindings: Env }>();
 
 modelos.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT nome, parte, ref, composicao, tassel_peseira, tassel_almofada FROM modelos ORDER BY nome"
+    "SELECT nome, parte, ref, composicao, tassel_peseira, tassel_almofada, etiqueta_colar FROM modelos ORDER BY nome"
   ).all();
   return c.json(results);
 });
@@ -24,6 +24,7 @@ modelos.post("/", async (c) => {
     composicao?: string;
     tassel_peseira?: number;
     tassel_almofada?: number;
+    etiqueta_colar?: number | boolean; // usa etiqueta de colar (nome·tamanho·cor)
     cores?: string[]; // cores do produto (nomes)
     tamanhos?: { tamanho?: string; peso?: number; tempo?: number }[]; // tamanhos + fio(kg)/peça + tempo
     materiais?: { tamanho?: string; material_id?: string; quantidade?: number; unidade?: string; obs?: string; status?: string; fonte?: string; cor_produto?: string }[]; // ficha de consumo por tamanho
@@ -34,6 +35,7 @@ modelos.post("/", async (c) => {
   const parte = b.parte === 1 ? 1 : 2;
   const tp = Math.max(0, Math.trunc(Number(b.tassel_peseira) || 0));
   const ta = Math.max(0, Math.trunc(Number(b.tassel_almofada) || 0));
+  const ec = b.etiqueta_colar ? 1 : 0; // usa etiqueta de colar
 
   // renomeação: o nome é a chave primária; se mudou, não pode colidir com outro
   if (de && de !== nome) {
@@ -45,12 +47,13 @@ modelos.post("/", async (c) => {
 
   const stmts: D1PreparedStatement[] = [
     c.env.DB.prepare(
-      `INSERT INTO modelos (nome, parte, ref, composicao, tassel_peseira, tassel_almofada)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO modelos (nome, parte, ref, composicao, tassel_peseira, tassel_almofada, etiqueta_colar)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(nome) DO UPDATE SET
          parte = excluded.parte, ref = excluded.ref, composicao = excluded.composicao,
-         tassel_peseira = excluded.tassel_peseira, tassel_almofada = excluded.tassel_almofada`
-    ).bind(nome, parte, b.ref || null, b.composicao || null, tp, ta),
+         tassel_peseira = excluded.tassel_peseira, tassel_almofada = excluded.tassel_almofada,
+         etiqueta_colar = excluded.etiqueta_colar`
+    ).bind(nome, parte, b.ref || null, b.composicao || null, tp, ta, ec),
   ];
   if (de && de !== nome) {
     stmts.push(c.env.DB.prepare("DELETE FROM modelos WHERE nome = ?").bind(de));
@@ -121,7 +124,7 @@ modelos.post("/", async (c) => {
 modelos.get("/:nome", async (c) => {
   const nome = decodeURIComponent(c.req.param("nome"));
   const m = await c.env.DB.prepare(
-    "SELECT nome, parte, ref, composicao, tassel_peseira, tassel_almofada FROM modelos WHERE nome = ?"
+    "SELECT nome, parte, ref, composicao, tassel_peseira, tassel_almofada, etiqueta_colar FROM modelos WHERE nome = ?"
   ).bind(nome).first();
   if (!m) return c.json({ error: "produto não encontrado" }, 404);
   const { results: cores } = await c.env.DB.prepare("SELECT cor_nome FROM modelo_cores WHERE modelo_nome = ?").bind(nome).all<{ cor_nome: string }>();

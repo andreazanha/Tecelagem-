@@ -475,6 +475,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   // Tassel: por parte. Alguns modelos usam só na peseira (G); outros na peseira e
   // na almofada/capa (P). 4 por peça; R$1 por cor; feito por prestadora; entra no romaneio.
   const [tasselSel, setTasselSel] = useState<{ peseira: boolean; almofada: boolean }>({ peseira: false, almofada: false });
+  // Etiqueta de colar (adesivo com nome·tamanho·cor) — gerada p/ todos os tamanhos e cores.
+  const [etiquetaColar, setEtiquetaColar] = useState(false);
   const fioSeeded = useRef(false); // ao editar, restaura o "Tipo de fio" a partir das cores salvas (só 1x)
 
   useEffect(() => {
@@ -533,6 +535,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         if (tg.length) setTagSel({ material_id: tg[0].material_id, qtd: tg[0].quantidade != null ? String(tg[0].quantidade) : "1" });
         // Tassel: por parte — peseira e/ou almofada, conforme a qtd salva em cada uma.
         setTasselSel({ peseira: (Number(m.tassel_peseira) || 0) > 0, almofada: (Number(m.tassel_almofada) || 0) > 0 });
+        setEtiquetaColar(!!m.etiqueta_colar);
       }).catch((e) => setErro((e as Error).message));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -666,7 +669,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     try {
       await api.salvarModelo(
         { nome: nome.trim(), parte, ref: ref.trim(), composicao: composicao.trim(), cores: [...sel], tamanhos, materiais,
-          tassel_peseira: tasselSel.peseira ? 4 : 0, tassel_almofada: tasselSel.almofada ? 4 : 0 },
+          tassel_peseira: tasselSel.peseira ? 4 : 0, tassel_almofada: tasselSel.almofada ? 4 : 0,
+          etiqueta_colar: etiquetaColar ? 1 : 0 },
         refNome || undefined
       );
       onSalvo();               // recarrega a lista no fundo (sem fechar)
@@ -751,6 +755,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
       case "tempo": return tamsProdSel.some((t) => (tempos[t] || "").trim() !== "");
       case "peso": return tamsProdSel.some((t) => (pesos[t] || "").trim() !== "");
       case "tassel": return tasselSel.peseira || tasselSel.almofada;
+      case "etiqueta": return etiquetaColar;
       default: return s.cat ? linhas.some((l) => l.tipo === s.cat && l.material_id) : false;
     }
   };
@@ -930,6 +935,57 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             ? <div style={{ marginTop: 8, color: "#166534", fontWeight: 700 }}>✓ Tassel na {[tasselSel.peseira && "peseira", tasselSel.almofada && "almofada/capa"].filter(Boolean).join(" e ")}.</div>
             : <div style={{ marginTop: 8, color: "#64748b" }}>Nenhuma parte marcada — o produto não leva tassel.</div>}
         </div>
+      </>
+    );
+  }
+
+  // Etiqueta de colar: adesivo com "Nome · Tamanho · Cor", gerado para todos os
+  // tamanhos e cores do produto. Liga/desliga + prévia + imprimir (folha de adesivos).
+  function renderEtiqueta() {
+    const coresSel = [...sel];
+    const nomeProd = (nome.trim() || refNome || "Produto");
+    const total = tamsProdSel.length * coresSel.length;
+    function imprimirEtiquetas() {
+      const cards = tamsProdSel.flatMap((t) => coresSel.map((cor) =>
+        `<div class="et"><div class="et-n">${nomeProd}</div><div class="et-tc">${t} · ${cor}</div></div>`)).join("");
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas ${nomeProd}</title><style>
+        *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:8px}
+        h3{margin:0 0 8px;font-size:14px} .grid{display:flex;flex-wrap:wrap;gap:6px}
+        .et{width:200px;height:76px;border:1px dashed #9993;border-radius:6px;padding:9px 11px;display:flex;flex-direction:column;justify-content:center}
+        .et-n{font-weight:800;font-size:16px} .et-tc{font-size:12.5px;color:#333;margin-top:3px}
+        @media print{.et{border:1px solid #ccc}}
+      </style></head><body><h3>Etiquetas — ${nomeProd} (${total})</h3><div class="grid">${cards}</div>
+      <script>window.onload=function(){window.print()}</script></body></html>`;
+      const w = window.open("", "_blank");
+      if (w) { w.document.write(html); w.document.close(); }
+    }
+    return (
+      <>
+        <label className="campo" style={{ flexDirection: "row", alignItems: "center", gap: 10, cursor: "pointer", margin: 0 }}>
+          <input type="checkbox" checked={etiquetaColar} onChange={(e) => { setSalvo(false); setEtiquetaColar(e.target.checked); }} style={{ width: 18, height: 18 }} />
+          <span className="campo-label" style={{ margin: 0 }}>Este produto usa etiqueta de colar</span>
+        </label>
+        <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>Gerada automaticamente para <strong>todos os tamanhos e cores</strong> — texto <strong>{nomeProd} · Tamanho · Cor</strong>.</p>
+        {total === 0 ? (
+          <p className="muted" style={{ fontSize: 13 }}>Selecione tamanhos (seção <strong>Tamanhos</strong>) e cores (seção <strong>Cores</strong>) para gerar as etiquetas.</p>
+        ) : (
+          <>
+            <div className="row-gap" style={{ alignItems: "center", margin: "10px 0", flexWrap: "wrap" }}>
+              <span className="muted" style={{ fontSize: 13 }}><strong>{total}</strong> etiqueta(s) = {tamsProdSel.length} tamanho(s) × {coresSel.length} cor(es)</span>
+              <button type="button" className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={imprimirEtiquetas}>🖨️ Imprimir etiquetas</button>
+            </div>
+            <div className="card" style={{ maxHeight: 300, overflowY: "auto" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: 12 }}>
+                {tamsProdSel.flatMap((t) => coresSel.map((cor) => (
+                  <div key={t + "|" + cor} style={{ width: 172, border: "1px dashed var(--line)", borderRadius: 6, padding: "8px 10px" }}>
+                    <div style={{ fontWeight: 800, fontSize: 14 }}>{nomeProd}</div>
+                    <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{t} · {cor}</div>
+                  </div>
+                )))}
+              </div>
+            </div>
+          </>
+        )}
       </>
     );
   }
@@ -1165,7 +1221,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           )}
 
           {SECOES.filter((s) => s.cat).map((s) => secao === s.id && (
-            <div key={s.id}>{s.id === "ziper" ? renderZiper() : s.id === "encarte" ? renderEncarte() : s.id === "tag" ? renderTag() : s.id === "tassel" ? renderTassel() : renderMateriaisSecao(s.cat!, s.nome)}</div>
+            <div key={s.id}>{s.id === "ziper" ? renderZiper() : s.id === "encarte" ? renderEncarte() : s.id === "tag" ? renderTag() : s.id === "tassel" ? renderTassel() : s.id === "etiqueta" ? renderEtiqueta() : renderMateriaisSecao(s.cat!, s.nome)}</div>
           ))}
 
           {/* Footer */}
