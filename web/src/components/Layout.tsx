@@ -351,6 +351,9 @@ export function Layout() {
     setUser(null);
     nav("/login", { replace: true });
   }
+  // Rodando como app instalado (PWA/standalone)? Aí não tem o F5 do navegador,
+  // então mostramos um botão "Atualizar" que recarrega igual F5.
+  const ehApp = typeof window !== "undefined" && (window.matchMedia?.("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true);
   if (!u) return <Navigate to="/login" replace />;
   const tvsVisiveis = TVS.filter((t) => pode(u, t.page));
   const iniciais = u.nome.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
@@ -363,6 +366,9 @@ export function Layout() {
         <TopNav u={u} />
         <div className="topbar-right">
           <UndoRedo />
+          {ehApp && (
+            <button className="ur-btn" onClick={() => window.location.reload()} title="Atualizar (recarregar, igual F5)">⟳ Atualizar</button>
+          )}
           <SinoPush />
           <button
             className="ur-btn"
