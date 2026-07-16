@@ -475,13 +475,6 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   // Tassel: por parte. Alguns modelos usam só na peseira (G); outros na peseira e
   // na almofada/capa (P). 4 por peça; R$1 por cor; feito por prestadora; entra no romaneio.
   const [tasselSel, setTasselSel] = useState<{ peseira: boolean; almofada: boolean }>({ peseira: false, almofada: false });
-  // Etiqueta de colar (adesivo com nome·tamanho·cor) — gerada p/ todos os tamanhos e cores.
-  const [etiquetaColar, setEtiquetaColar] = useState(false);
-  // Pedido de etiquetas p/ gráfica: quantidade por etiqueta e quais tamanhos/cores
-  // ficam de fora (vazio = todos incluídos). Não controla estoque — só gera o pedido.
-  const [etqQtd, setEtqQtd] = useState("100");
-  const [etqTamOff, setEtqTamOff] = useState<Set<string>>(new Set());
-  const [etqCorOff, setEtqCorOff] = useState<Set<string>>(new Set());
   const fioSeeded = useRef(false); // ao editar, restaura o "Tipo de fio" a partir das cores salvas (só 1x)
 
   useEffect(() => {
@@ -540,7 +533,6 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         if (tg.length) setTagSel({ material_id: tg[0].material_id, qtd: tg[0].quantidade != null ? String(tg[0].quantidade) : "1" });
         // Tassel: por parte — peseira e/ou almofada, conforme a qtd salva em cada uma.
         setTasselSel({ peseira: (Number(m.tassel_peseira) || 0) > 0, almofada: (Number(m.tassel_almofada) || 0) > 0 });
-        setEtiquetaColar(!!m.etiqueta_colar);
       }).catch((e) => setErro((e as Error).message));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -674,8 +666,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     try {
       await api.salvarModelo(
         { nome: nome.trim(), parte, ref: ref.trim(), composicao: composicao.trim(), cores: [...sel], tamanhos, materiais,
-          tassel_peseira: tasselSel.peseira ? 4 : 0, tassel_almofada: tasselSel.almofada ? 4 : 0,
-          etiqueta_colar: etiquetaColar ? 1 : 0 },
+          tassel_peseira: tasselSel.peseira ? 4 : 0, tassel_almofada: tasselSel.almofada ? 4 : 0 },
         refNome || undefined
       );
       onSalvo();               // recarrega a lista no fundo (sem fechar)
@@ -746,7 +737,6 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     { id: "embalagem", nome: "Embalagens", cat: "embalagem" },
     { id: "forro", nome: "Forro", cat: "forro" },
     { id: "tassel", nome: "Tassel", cat: "tassel" },
-    { id: "etiqueta", nome: "Etiqueta", cat: "etiqueta" },
   ];
   const contaSecao = (s: { cat?: string }) => (s.cat ? linhas.filter((l) => l.tipo === s.cat).length : 0);
   // Uma seção conta como "definida" (✓) quando já tem o que precisa preenchido.
@@ -760,7 +750,6 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
       case "tempo": return tamsProdSel.some((t) => (tempos[t] || "").trim() !== "");
       case "peso": return tamsProdSel.some((t) => (pesos[t] || "").trim() !== "");
       case "tassel": return tasselSel.peseira || tasselSel.almofada;
-      case "etiqueta": return etiquetaColar;
       default: return s.cat ? linhas.some((l) => l.tipo === s.cat && l.material_id) : false;
     }
   };
@@ -940,73 +929,6 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
             ? <div style={{ marginTop: 8, color: "#166534", fontWeight: 700 }}>✓ Tassel na {[tasselSel.peseira && "peseira", tasselSel.almofada && "almofada/capa"].filter(Boolean).join(" e ")}.</div>
             : <div style={{ marginTop: 8, color: "#64748b" }}>Nenhuma parte marcada — o produto não leva tassel.</div>}
         </div>
-      </>
-    );
-  }
-
-  // Etiqueta de colar: pedido das etiquetas p/ a GRÁFICA (não controla estoque).
-  // Escolhe tamanhos + cores + quantidade por etiqueta e gera o pedido (imprimir/enviar).
-  function renderEtiqueta() {
-    const coresSel = [...sel];
-    const nomeProd = (nome.trim() || refNome || "Produto");
-    const tamsInc = tamsProdSel.filter((t) => !etqTamOff.has(t));
-    const coresInc = coresSel.filter((c) => !etqCorOff.has(c));
-    const qtd = Math.max(0, Math.trunc(Number(etqQtd.replace(",", ".")) || 0));
-    const combos = tamsInc.length * coresInc.length;
-    const totalEtq = combos * qtd;
-    const toggleTam = (t: string) => setEtqTamOff((s) => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n; });
-    const toggleCor = (c: string) => setEtqCorOff((s) => { const n = new Set(s); n.has(c) ? n.delete(c) : n.add(c); return n; });
-    function gerarPedido() {
-      const emp = getEmpresa();
-      const linhas = tamsInc.flatMap((t) => coresInc.map((cor) =>
-        `<tr><td>${nomeProd}</td><td>${t}</td><td>${cor}</td><td class="q">${qtd}</td></tr>`)).join("");
-      const logo = emp.logo ? `<img src="${emp.logo}" style="max-height:54px">` : `<div class="big">BIG TRICOT</div>`;
-      const html = `<!doctype html><html><head><meta charset="utf-8"><title>Pedido de etiquetas — ${nomeProd}</title><style>
-        *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:22px;color:#111}
-        .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:14px}
-        .big{font-weight:900;font-size:22px} .emp{font-size:11.5px;color:#333;line-height:1.5;margin-top:4px}
-        .t{font-weight:900;font-size:17px} .sub{font-size:12px;color:#444;margin-top:2px}
-        table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12.5px}
-        th,td{border:1px solid #bbb;padding:6px 9px;text-align:left} th{background:#f1f5f9} td.q{text-align:right;font-weight:700}
-        tfoot td{font-weight:800;background:#f8fafc}
-      </style></head><body>
-        <div class="hd"><div>${logo}<div class="emp">${emp.nome}<br>CNPJ: ${emp.cnpj}<br>${emp.endereco}<br>Tel: ${emp.telefone}</div></div>
-          <div style="text-align:right"><div class="t">PEDIDO DE ETIQUETAS</div><div class="sub">Etiqueta de colar · ${nomeProd}${ref.trim() ? " · Ref " + ref.trim() : ""}</div></div></div>
-        <table><thead><tr><th>Produto</th><th>Tamanho</th><th>Cor</th><th class="q">Qtd</th></tr></thead>
-          <tbody>${linhas}</tbody>
-          <tfoot><tr><td colspan="3">Total de etiquetas</td><td class="q">${totalEtq}</td></tr></tfoot></table>
-        <script>window.onload=function(){window.print()}</script></body></html>`;
-      const w = window.open("", "_blank");
-      if (w) { w.document.write(html); w.document.close(); }
-    }
-    return (
-      <>
-        <label className="campo" style={{ flexDirection: "row", alignItems: "center", gap: 10, cursor: "pointer", margin: 0 }}>
-          <input type="checkbox" checked={etiquetaColar} onChange={(e) => { setSalvo(false); setEtiquetaColar(e.target.checked); }} style={{ width: 18, height: 18 }} />
-          <span className="campo-label" style={{ margin: 0 }}>Este produto usa etiqueta de colar</span>
-        </label>
-        <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>Peça as etiquetas para a gráfica: escolha tamanhos, cores e a quantidade. Texto de cada etiqueta: <strong>{nomeProd} · Tamanho · Cor</strong>. (não controla estoque)</p>
-        {tamsProdSel.length === 0 || coresSel.length === 0 ? (
-          <p className="muted" style={{ fontSize: 13 }}>Selecione tamanhos (seção <strong>Tamanhos</strong>) e cores (seção <strong>Cores</strong>) para montar o pedido.</p>
-        ) : (
-          <>
-            <div className="card pad" style={{ marginTop: 10 }}>
-              <div className="campo-label">Tamanhos</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "6px 0 12px" }}>
-                {tamsProdSel.map((t) => <button key={t} type="button" className={"chip" + (etqTamOff.has(t) ? "" : " on")} style={{ cursor: "pointer", border: "1px solid var(--line)", background: etqTamOff.has(t) ? "transparent" : "#dbeafe", color: etqTamOff.has(t) ? "#94a3b8" : "#1e40af", fontWeight: 700 }} onClick={() => toggleTam(t)}>{etqTamOff.has(t) ? "○" : "✓"} {t}</button>)}
-              </div>
-              <div className="campo-label">Cores</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "6px 0 12px" }}>
-                {coresSel.map((c) => <button key={c} type="button" className="chip" style={{ cursor: "pointer", border: "1px solid var(--line)", background: etqCorOff.has(c) ? "transparent" : "#dcfce7", color: etqCorOff.has(c) ? "#94a3b8" : "#166534", fontWeight: 700 }} onClick={() => toggleCor(c)}>{etqCorOff.has(c) ? "○" : "✓"} {c}</button>)}
-              </div>
-              <div className="row-gap" style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <Campo label="Qtd por etiqueta"><input inputMode="numeric" value={etqQtd} onChange={(e) => setEtqQtd(e.target.value)} style={{ width: 100 }} /></Campo>
-                <span className="muted" style={{ fontSize: 13 }}>{tamsInc.length} tam × {coresInc.length} cor × {qtd} = <strong>{totalEtq}</strong> etiquetas</span>
-                <button type="button" className="btn btn-primary" style={{ marginLeft: "auto" }} disabled={combos === 0 || qtd === 0} onClick={gerarPedido}>🛒 Gerar pedido p/ gráfica</button>
-              </div>
-            </div>
-          </>
-        )}
       </>
     );
   }
@@ -1242,7 +1164,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           )}
 
           {SECOES.filter((s) => s.cat).map((s) => secao === s.id && (
-            <div key={s.id}>{s.id === "ziper" ? renderZiper() : s.id === "encarte" ? renderEncarte() : s.id === "tag" ? renderTag() : s.id === "tassel" ? renderTassel() : s.id === "etiqueta" ? renderEtiqueta() : renderMateriaisSecao(s.cat!, s.nome)}</div>
+            <div key={s.id}>{s.id === "ziper" ? renderZiper() : s.id === "encarte" ? renderEncarte() : s.id === "tag" ? renderTag() : s.id === "tassel" ? renderTassel() : renderMateriaisSecao(s.cat!, s.nome)}</div>
           ))}
 
           {/* Footer */}
@@ -1804,11 +1726,14 @@ function AbaMateriais() {
           </button>
         ))}
         <button type="button" className={"seg" + (cat === "__compras" ? " seg-on" : "")} onClick={() => setCat("__compras")}>🛒 Compras</button>
+        <button type="button" className={"seg" + (cat === "__etiquetas" ? " seg-on" : "")} onClick={() => setCat("__etiquetas")}>🏷️ Etiquetas de colar</button>
         <button type="button" className="seg" style={{ fontWeight: 700, color: "#4338ca" }} onClick={() => setModal("novo")}>＋ Novo material</button>
       </div>
 
       {cat === "__compras" ? (
         <ComprasMateriais />
+      ) : cat === "__etiquetas" ? (
+        <EtiquetasColar />
       ) : meta ? (
         <CadastroMaterial
           key={meta.slug} cat={meta} onMudou={recarregarKpis}
@@ -2351,6 +2276,101 @@ function EmpresaModal({ onFechar }: { onFechar: () => void }) {
           <button className="btn btn-primary" onClick={salvar}>Salvar</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Etiquetas de colar: escolhe um produto e monta o pedido das etiquetas p/ a
+// gráfica (texto "Nome · Tamanho · Cor"). Fica aqui em Materiais (não na ficha).
+function EtiquetasColar() {
+  const [modelos, setModelos] = useState<Modelo[]>([]);
+  const [nome, setNome] = useState("");
+  const [tams, setTams] = useState<string[]>([]);
+  const [coresP, setCoresP] = useState<string[]>([]);
+  const [refP, setRefP] = useState("");
+  const [qtd, setQtd] = useState("100");
+  const [tamOff, setTamOff] = useState<Set<string>>(new Set());
+  const [corOff, setCorOff] = useState<Set<string>>(new Set());
+  const [carregando, setCarregando] = useState(false);
+
+  useEffect(() => { api.listarModelos().then(setModelos).catch(() => {}); }, []);
+  useEffect(() => {
+    if (!nome) { setTams([]); setCoresP([]); setRefP(""); return; }
+    setCarregando(true);
+    api.obterModelo(nome)
+      .then((m) => { setTams(m.tamanhos.map((t) => t.tamanho)); setCoresP(m.cores); setRefP(m.ref || ""); setTamOff(new Set()); setCorOff(new Set()); })
+      .catch(() => {}).finally(() => setCarregando(false));
+  }, [nome]);
+
+  const tamsInc = tams.filter((t) => !tamOff.has(t));
+  const coresInc = coresP.filter((c) => !corOff.has(c));
+  const q = Math.max(0, Math.trunc(Number(qtd.replace(",", ".")) || 0));
+  const combos = tamsInc.length * coresInc.length;
+  const total = combos * q;
+  const toggleTam = (t: string) => setTamOff((s) => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n; });
+  const toggleCor = (c: string) => setCorOff((s) => { const n = new Set(s); n.has(c) ? n.delete(c) : n.add(c); return n; });
+
+  function gerarPedido() {
+    const emp = getEmpresa();
+    const linhas = tamsInc.flatMap((t) => coresInc.map((cor) =>
+      `<tr><td>${nome}</td><td>${t}</td><td>${cor}</td><td class="q">${q}</td></tr>`)).join("");
+    const logo = emp.logo ? `<img src="${emp.logo}" style="max-height:54px">` : `<div class="big">BIG TRICOT</div>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Pedido de etiquetas — ${nome}</title><style>
+      *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:22px;color:#111}
+      .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:14px}
+      .big{font-weight:900;font-size:22px} .emp{font-size:11.5px;color:#333;line-height:1.5;margin-top:4px}
+      .t{font-weight:900;font-size:17px} .sub{font-size:12px;color:#444;margin-top:2px}
+      table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12.5px}
+      th,td{border:1px solid #bbb;padding:6px 9px;text-align:left} th{background:#f1f5f9} td.q{text-align:right;font-weight:700}
+      tfoot td{font-weight:800;background:#f8fafc}
+    </style></head><body>
+      <div class="hd"><div>${logo}<div class="emp">${emp.nome}<br>CNPJ: ${emp.cnpj}<br>${emp.endereco}<br>Tel: ${emp.telefone}</div></div>
+        <div style="text-align:right"><div class="t">PEDIDO DE ETIQUETAS</div><div class="sub">Etiqueta de colar · ${nome}${refP ? " · Ref " + refP : ""}</div></div></div>
+      <table><thead><tr><th>Produto</th><th>Tamanho</th><th>Cor</th><th class="q">Qtd</th></tr></thead>
+        <tbody>${linhas}</tbody>
+        <tfoot><tr><td colspan="3">Total de etiquetas</td><td class="q">${total}</td></tr></tfoot></table>
+      <script>window.onload=function(){window.print()}</script></body></html>`;
+    const w = window.open("", "_blank");
+    if (w) { w.document.write(html); w.document.close(); }
+  }
+
+  return (
+    <div className="card pad">
+      <div className="row-gap" style={{ alignItems: "center", marginBottom: 10 }}>
+        <strong>Etiquetas de colar</strong>
+        <span className="muted" style={{ fontSize: 13 }}>Monte o pedido pra gráfica. Cada etiqueta: <strong>Nome · Tamanho · Cor</strong>.</span>
+      </div>
+      <div className="form-grid2">
+        <Campo label="Produto">
+          <select value={nome} onChange={(e) => setNome(e.target.value)}>
+            <option value="">— escolha o produto —</option>
+            {modelos.map((m) => <option key={m.nome} value={m.nome}>{m.nome}{m.ref ? ` · ${m.ref}` : ""}</option>)}
+          </select>
+        </Campo>
+        <Campo label="Qtd por etiqueta"><input inputMode="numeric" value={qtd} onChange={(e) => setQtd(e.target.value)} style={{ width: 100 }} /></Campo>
+      </div>
+      {!nome ? (
+        <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>Escolha um produto para montar o pedido.</p>
+      ) : carregando ? (
+        <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>Carregando tamanhos e cores…</p>
+      ) : tams.length === 0 || coresP.length === 0 ? (
+        <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>Esse produto não tem tamanhos e/ou cores cadastrados.</p>
+      ) : (
+        <>
+          <div className="campo-label" style={{ marginTop: 12 }}>Tamanhos</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "6px 0 12px" }}>
+            {tams.map((t) => <button key={t} type="button" className="chip" style={{ cursor: "pointer", border: "1px solid var(--line)", background: tamOff.has(t) ? "transparent" : "#dbeafe", color: tamOff.has(t) ? "#94a3b8" : "#1e40af", fontWeight: 700 }} onClick={() => toggleTam(t)}>{tamOff.has(t) ? "○" : "✓"} {t}</button>)}
+          </div>
+          <div className="campo-label">Cores</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "6px 0 12px" }}>
+            {coresP.map((c) => <button key={c} type="button" className="chip" style={{ cursor: "pointer", border: "1px solid var(--line)", background: corOff.has(c) ? "transparent" : "#dcfce7", color: corOff.has(c) ? "#94a3b8" : "#166534", fontWeight: 700 }} onClick={() => toggleCor(c)}>{corOff.has(c) ? "○" : "✓"} {c}</button>)}
+          </div>
+          <div className="row-gap" style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span className="muted" style={{ fontSize: 13 }}>{tamsInc.length} tam × {coresInc.length} cor × {q} = <strong>{total}</strong> etiquetas</span>
+            <button type="button" className="btn btn-primary" style={{ marginLeft: "auto" }} disabled={combos === 0 || q === 0} onClick={gerarPedido}>🛒 Gerar pedido p/ gráfica</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
