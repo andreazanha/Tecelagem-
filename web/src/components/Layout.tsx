@@ -9,6 +9,7 @@ import { Icon } from "./Icon";
 import { Assistente } from "./Assistente";
 import { ChatInterno } from "./ChatInterno";
 import { InstalarApp } from "./InstalarApp";
+import { DemoMode } from "./DemoMode";
 
 // Sino de avisos: liga/desliga o Web Push de "pedido novo" neste aparelho.
 function SinoPush() {
@@ -407,6 +408,7 @@ export function Layout() {
 
       <Assistente />
       <ChatInterno />
+      <DemoMode />
     </div>
   );
 }

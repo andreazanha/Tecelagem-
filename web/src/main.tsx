@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { instalarDemoFetch } from "./demo";
 import { Layout } from "./components/Layout";
 import { Pedidos } from "./pages/Pedidos";
 import { NovoPedido } from "./pages/NovoPedido";
@@ -75,6 +76,8 @@ function Screensaver() {
   if (!ativo) return null;
   return <div className="ss-overlay"><TVFrame><Dashboard /></TVFrame></div>;
 }
+
+instalarDemoFetch(); // filtro do modo demonstração (não grava nada quando ligado)
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
