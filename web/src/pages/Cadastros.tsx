@@ -1726,14 +1726,11 @@ function AbaMateriais() {
           </button>
         ))}
         <button type="button" className={"seg" + (cat === "__compras" ? " seg-on" : "")} onClick={() => setCat("__compras")}>🛒 Compras</button>
-        <button type="button" className={"seg" + (cat === "__etiquetas" ? " seg-on" : "")} onClick={() => setCat("__etiquetas")}>🏷️ Etiquetas de colar</button>
         <button type="button" className="seg" style={{ fontWeight: 700, color: "#4338ca" }} onClick={() => setModal("novo")}>＋ Novo material</button>
       </div>
 
       {cat === "__compras" ? (
         <ComprasMateriais />
-      ) : cat === "__etiquetas" ? (
-        <EtiquetasColar />
       ) : meta ? (
         <CadastroMaterial
           key={meta.slug} cat={meta} onMudou={recarregarKpis}
@@ -2281,8 +2278,8 @@ function EmpresaModal({ onFechar }: { onFechar: () => void }) {
 }
 
 // Etiquetas de colar: escolhe um produto e monta o pedido das etiquetas p/ a
-// gráfica (texto "Nome · Tamanho · Cor"). Fica aqui em Materiais (não na ficha).
-function EtiquetasColar() {
+// gráfica (texto "Nome · Tamanho · Cor"). Tem página própria (/etiquetas).
+export function EtiquetasColar() {
   const [modelos, setModelos] = useState<Modelo[]>([]);
   const [nome, setNome] = useState("");
   const [tams, setTams] = useState<string[]>([]);
