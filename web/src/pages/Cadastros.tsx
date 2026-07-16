@@ -1726,11 +1726,14 @@ function AbaMateriais() {
           </button>
         ))}
         <button type="button" className={"seg" + (cat === "__compras" ? " seg-on" : "")} onClick={() => setCat("__compras")}>🛒 Compras</button>
+        <button type="button" className={"seg" + (cat === "__etiquetas" ? " seg-on" : "")} onClick={() => setCat("__etiquetas")}>🏷️ Etiquetas de colar</button>
         <button type="button" className="seg" style={{ fontWeight: 700, color: "#4338ca" }} onClick={() => setModal("novo")}>＋ Novo material</button>
       </div>
 
       {cat === "__compras" ? (
         <ComprasMateriais />
+      ) : cat === "__etiquetas" ? (
+        <EtiquetasColar />
       ) : meta ? (
         <CadastroMaterial
           key={meta.slug} cat={meta} onMudou={recarregarKpis}
@@ -2277,40 +2280,39 @@ function EmpresaModal({ onFechar }: { onFechar: () => void }) {
   );
 }
 
-// Etiquetas de colar: escolhe um produto e monta o pedido das etiquetas p/ a
-// gráfica (texto "Nome · Tamanho · Cor"). Tem página própria (/etiquetas).
-export function EtiquetasColar() {
+
+// Etiquetas de colar (em Materiais): escolhe um produto e monta o pedido pra
+// gráfica, com QUANTIDADE POR TAMANHO E COR (grade). Texto: "Nome · Tamanho · Cor".
+function EtiquetasColar() {
   const [modelos, setModelos] = useState<Modelo[]>([]);
   const [nome, setNome] = useState("");
   const [tams, setTams] = useState<string[]>([]);
   const [coresP, setCoresP] = useState<string[]>([]);
   const [refP, setRefP] = useState("");
-  const [qtd, setQtd] = useState("100");
-  const [tamOff, setTamOff] = useState<Set<string>>(new Set());
-  const [corOff, setCorOff] = useState<Set<string>>(new Set());
+  const [padrao, setPadrao] = useState("100");
+  const [qtdMap, setQtdMap] = useState<Record<string, number>>({}); // "tam|cor" → qtd
   const [carregando, setCarregando] = useState(false);
 
   useEffect(() => { api.listarModelos().then(setModelos).catch(() => {}); }, []);
   useEffect(() => {
-    if (!nome) { setTams([]); setCoresP([]); setRefP(""); return; }
+    if (!nome) { setTams([]); setCoresP([]); setRefP(""); setQtdMap({}); return; }
     setCarregando(true);
     api.obterModelo(nome)
-      .then((m) => { setTams(m.tamanhos.map((t) => t.tamanho)); setCoresP(m.cores); setRefP(m.ref || ""); setTamOff(new Set()); setCorOff(new Set()); })
+      .then((m) => { setTams(m.tamanhos.map((t) => t.tamanho)); setCoresP(m.cores); setRefP(m.ref || ""); setQtdMap({}); })
       .catch(() => {}).finally(() => setCarregando(false));
   }, [nome]);
 
-  const tamsInc = tams.filter((t) => !tamOff.has(t));
-  const coresInc = coresP.filter((c) => !corOff.has(c));
-  const q = Math.max(0, Math.trunc(Number(qtd.replace(",", ".")) || 0));
-  const combos = tamsInc.length * coresInc.length;
-  const total = combos * q;
-  const toggleTam = (t: string) => setTamOff((s) => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n; });
-  const toggleCor = (c: string) => setCorOff((s) => { const n = new Set(s); n.has(c) ? n.delete(c) : n.add(c); return n; });
+  const nPadrao = Math.max(0, Math.trunc(Number(padrao.replace(",", ".")) || 0));
+  const chave = (t: string, c: string) => t + "|" + c;
+  const qDe = (t: string, c: string) => { const v = qtdMap[chave(t, c)]; return v == null ? nPadrao : v; };
+  const setQ = (t: string, c: string, v: string) => { const n = Math.max(0, Math.trunc(Number(v.replace(",", ".")) || 0)); setQtdMap((m) => ({ ...m, [chave(t, c)]: n })); };
+  const preencherTudo = () => { const m: Record<string, number> = {}; for (const t of tams) for (const c of coresP) m[chave(t, c)] = nPadrao; setQtdMap(m); };
+  const combos = tams.flatMap((t) => coresP.map((c) => ({ t, c, q: qDe(t, c) }))).filter((x) => x.q > 0);
+  const total = combos.reduce((s, x) => s + x.q, 0);
 
   function gerarPedido() {
     const emp = getEmpresa();
-    const linhas = tamsInc.flatMap((t) => coresInc.map((cor) =>
-      `<tr><td>${nome}</td><td>${t}</td><td>${cor}</td><td class="q">${q}</td></tr>`)).join("");
+    const linhas = combos.map((x) => `<tr><td>${nome}</td><td>${x.t}</td><td>${x.c}</td><td class="q">${x.q}</td></tr>`).join("");
     const logo = emp.logo ? `<img src="${emp.logo}" style="max-height:54px">` : `<div class="big">BIG TRICOT</div>`;
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Pedido de etiquetas — ${nome}</title><style>
       *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:22px;color:#111}
@@ -2335,7 +2337,7 @@ export function EtiquetasColar() {
     <div className="card pad">
       <div className="row-gap" style={{ alignItems: "center", marginBottom: 10 }}>
         <strong>Etiquetas de colar</strong>
-        <span className="muted" style={{ fontSize: 13 }}>Monte o pedido pra gráfica. Cada etiqueta: <strong>Nome · Tamanho · Cor</strong>.</span>
+        <span className="muted" style={{ fontSize: 13 }}>Pedido pra gráfica com quantidade por tamanho e cor. Cada etiqueta: <strong>Nome · Tamanho · Cor</strong>.</span>
       </div>
       <div className="form-grid2">
         <Campo label="Produto">
@@ -2344,7 +2346,12 @@ export function EtiquetasColar() {
             {modelos.map((m) => <option key={m.nome} value={m.nome}>{m.nome}{m.ref ? ` · ${m.ref}` : ""}</option>)}
           </select>
         </Campo>
-        <Campo label="Qtd por etiqueta"><input inputMode="numeric" value={qtd} onChange={(e) => setQtd(e.target.value)} style={{ width: 100 }} /></Campo>
+        <Campo label="Quantidade padrão">
+          <span className="row-gap" style={{ gap: 8, alignItems: "center" }}>
+            <input inputMode="numeric" value={padrao} onChange={(e) => setPadrao(e.target.value)} style={{ width: 90 }} />
+            <button type="button" className="btn btn-soft" style={{ padding: "5px 10px", fontSize: 12 }} onClick={preencherTudo} disabled={!nome}>Preencher tudo</button>
+          </span>
+        </Campo>
       </div>
       {!nome ? (
         <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>Escolha um produto para montar o pedido.</p>
@@ -2354,17 +2361,25 @@ export function EtiquetasColar() {
         <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>Esse produto não tem tamanhos e/ou cores cadastrados.</p>
       ) : (
         <>
-          <div className="campo-label" style={{ marginTop: 12 }}>Tamanhos</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "6px 0 12px" }}>
-            {tams.map((t) => <button key={t} type="button" className="chip" style={{ cursor: "pointer", border: "1px solid var(--line)", background: tamOff.has(t) ? "transparent" : "#dbeafe", color: tamOff.has(t) ? "#94a3b8" : "#1e40af", fontWeight: 700 }} onClick={() => toggleTam(t)}>{tamOff.has(t) ? "○" : "✓"} {t}</button>)}
+          <p className="muted" style={{ fontSize: 12.5, margin: "12px 0 6px" }}>Ajuste a quantidade de cada tamanho × cor (0 = não pede). Em branco usa a quantidade padrão.</p>
+          <div style={{ overflowX: "auto", border: "1px solid var(--line)", borderRadius: 10 }}>
+            <table className="table" style={{ minWidth: 120 + coresP.length * 92 }}>
+              <thead><tr><th style={{ position: "sticky", left: 0, background: "var(--card, #fff)" }}>Tamanho \ Cor</th>{coresP.map((c) => <th key={c} className="num">{c}</th>)}</tr></thead>
+              <tbody>
+                {tams.map((t) => (
+                  <tr key={t}>
+                    <td className="strong" style={{ position: "sticky", left: 0, background: "var(--card, #fff)" }}>{t}</td>
+                    {coresP.map((c) => (
+                      <td key={c} className="num"><input className="num" inputMode="numeric" value={String(qDe(t, c))} onChange={(e) => setQ(t, c, e.target.value)} style={{ width: 66 }} /></td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div className="campo-label">Cores</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "6px 0 12px" }}>
-            {coresP.map((c) => <button key={c} type="button" className="chip" style={{ cursor: "pointer", border: "1px solid var(--line)", background: corOff.has(c) ? "transparent" : "#dcfce7", color: corOff.has(c) ? "#94a3b8" : "#166534", fontWeight: 700 }} onClick={() => toggleCor(c)}>{corOff.has(c) ? "○" : "✓"} {c}</button>)}
-          </div>
-          <div className="row-gap" style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span className="muted" style={{ fontSize: 13 }}>{tamsInc.length} tam × {coresInc.length} cor × {q} = <strong>{total}</strong> etiquetas</span>
-            <button type="button" className="btn btn-primary" style={{ marginLeft: "auto" }} disabled={combos === 0 || q === 0} onClick={gerarPedido}>🛒 Gerar pedido p/ gráfica</button>
+          <div className="row-gap" style={{ alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+            <span className="muted" style={{ fontSize: 13 }}><strong>{combos.length}</strong> combinação(ões) · <strong>{total}</strong> etiquetas no total</span>
+            <button type="button" className="btn btn-primary" style={{ marginLeft: "auto" }} disabled={total === 0} onClick={gerarPedido}>🛒 Gerar pedido p/ gráfica</button>
           </div>
         </>
       )}

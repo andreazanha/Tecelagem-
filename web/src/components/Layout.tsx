@@ -148,7 +148,6 @@ const GRUPOS: MenuGrupo[] = [
   {
     id: "cadastros", icon: "🗂️", label: "Cadastros", itens: [
       { to: "/cadastros?aba=produtos", icon: "📦", label: "Produtos", page: "cadastros" },
-      { to: "/etiquetas", icon: "🏷️", label: "Etiquetas", page: "cadastros" },
       { to: "/cadastros?aba=tamanhos", icon: "📏", label: "Tamanhos", page: "cadastros" },
       // Materiais: submenu dinâmico (Fios + insumos cadastrados + Compras), montado em TopNav.
       { icon: "🧷", label: "Materiais", page: "cadastros", dyn: "materiais", children: [] },
