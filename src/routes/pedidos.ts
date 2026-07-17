@@ -293,6 +293,25 @@ pedidos.post("/:id/codigo-terceiro", async (c) => {
   return c.json({ ok: true, codigo_terceiro: codigo });
 });
 
+// Etiquetas de um ou mais pedidos (para impressão em A4): uma linha por item de
+// PRODUÇÃO (pronta-entrega/estoque fica de fora — kit=1). Cada item vale `qtd`
+// etiquetas (o front expande por peça). Composição vem do cadastro do modelo.
+pedidos.get("/etiquetas", async (c) => {
+  const ids = (c.req.query("ids") || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!ids.length) return c.json([]);
+  const ph = ids.map(() => "?").join(",");
+  const { results } = await c.env.DB.prepare(
+    `SELECT p.numero_erp AS pedido, p.cliente_nome AS cliente, i.produto AS modelo,
+            i.tamanho, i.cor_grade AS cor, i.qtd, m.composicao AS composicao
+       FROM pedido_itens i
+       JOIN pedidos p ON p.id = i.pedido_id
+       LEFT JOIN modelos m ON m.nome = i.produto
+      WHERE i.pedido_id IN (${ph}) AND COALESCE(i.kit, 0) = 0 AND i.qtd > 0
+      ORDER BY p.cliente_nome, i.produto, i.tamanho`
+  ).bind(...ids).all();
+  return c.json(results);
+});
+
 pedidos.get("/:id", async (c) => {
   const id = c.req.param("id");
   const pedido = await c.env.DB.prepare("SELECT * FROM pedidos WHERE id = ?")

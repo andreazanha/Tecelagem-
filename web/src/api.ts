@@ -622,6 +622,9 @@ export const api = {
   addEventoFunil: (id: string, b: { tipo: string; texto: string; autor?: string }) =>
     jsonPost(`/api/funil/${id}/evento`, b).then((r) => j<{ ok: boolean }>(r)),
   listarModelos: () => fetch("/api/modelos").then((r) => j<Modelo[]>(r)),
+  // Etiquetas (impressão A4) de um ou mais pedidos — só itens de produção.
+  etiquetasPedidos: (ids: string[]) =>
+    fetch("/api/pedidos/etiquetas?ids=" + encodeURIComponent(ids.join(","))).then((r) => j<{ pedido: string | null; cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null }[]>(r)),
   // Estoque das etiquetas de colar (por produto · tamanho · cor).
   listarEstoqueEtiquetas: (produto: string) =>
     fetch("/api/etiquetas?produto=" + encodeURIComponent(produto)).then((r) => j<{ tamanho: string; cor: string; saldo: number; minimo: number }[]>(r)),

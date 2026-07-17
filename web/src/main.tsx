@@ -7,6 +7,7 @@ import { Pedidos } from "./pages/Pedidos";
 import { NovoPedido } from "./pages/NovoPedido";
 import { PedidoDetalhe } from "./pages/PedidoDetalhe";
 import { Cadastros } from "./pages/Cadastros";
+import { ImpressaoEtiquetas } from "./pages/ImpressaoEtiquetas";
 import { Produtos } from "./pages/Produtos";
 import { Comercial } from "./pages/Comercial";
 import { Clientes, ClienteFicha } from "./pages/Clientes";
@@ -113,6 +114,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/revisao" element={<Protegido page="revisao"><Revisao /></Protegido>} />
           <Route path="/estoque" element={<Protegido page="estoque"><Estoque /></Protegido>} />
           <Route path="/expedicao" element={<Protegido page="expedicao"><Expedicao /></Protegido>} />
+          <Route path="/impressao-etiquetas" element={<Protegido page="expedicao"><ImpressaoEtiquetas /></Protegido>} />
           <Route path="/fiscal" element={<Protegido page="fiscal"><Fiscal /></Protegido>} />
           <Route path="/transporte" element={<Protegido page="transporte"><Transporte /></Protegido>} />
           <Route path="/todos-pedidos" element={<Protegido page="todos-pedidos"><TodosPedidos /></Protegido>} />

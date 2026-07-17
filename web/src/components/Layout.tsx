@@ -133,7 +133,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/expedicao", icon: "📮", label: "Expedição", page: "expedicao" },
       { to: "/transporte", icon: "🚚", label: "Transporte", page: "transporte" },
       { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
-      { icon: "🏷️", label: "Etiquetas", soon: true },
+      { to: "/impressao-etiquetas", icon: "🏷️", label: "Impressão de etiquetas", page: "expedicao" },
       { icon: "✅", label: "Conferência Final", soon: true },
     ],
   },
