@@ -42,6 +42,11 @@ const CAMPOS: { k: keyof EtqCfg; label: string; step?: number }[] = [
 // Conteúdo de uma etiqueta (HTML), reaproveitado na prévia e na impressão.
 // Layout horizontal (a etiqueta 6180 é larga e baixa): modelo + tamanho na
 // primeira linha; cor e composição juntas na segunda; cliente embaixo.
+// Normaliza nome de modelo para casar composição: minúsculo, sem acento,
+// espaços colapsados. Assim "ALMOFADA ACÁCIA" casa com "Almofada Acacia".
+function normalizar(s: string): string {
+  return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+}
 // Nome do modelo em 1 linha, com o tipo abreviado.
 // Ex.: "Almofada Bubbles" → "Alm: Bubbles"; "Manta Acácia" → "Man: Acácia".
 function modeloLinha(modelo: string): string {
@@ -102,7 +107,7 @@ export function ImpressaoEtiquetas() {
   useEffect(() => {
     api.listarModelos().then((ms) => {
       const m: Record<string, string> = {};
-      for (const x of ms) if (x.nome && x.composicao) m[x.nome.trim().toLowerCase()] = x.composicao;
+      for (const x of ms) if (x.nome && x.composicao) m[normalizar(x.nome)] = x.composicao;
       setCompMap(m);
     }).catch(() => {});
   }, []);
@@ -119,13 +124,10 @@ export function ImpressaoEtiquetas() {
       const sug = await api.importarPedidoPdf(file);
       const pid = "pdf:" + file.name + ":" + (sug.numero_erp || "") + ":" + pdfsAbertos.length;
       const cliente = sug.cliente_nome || file.name.replace(/\.pdf$/i, "");
-      const compDe = (produto: string) => {
-        const base = produto.trim().toLowerCase();
-        return compMap[base] || Object.entries(compMap).find(([k]) => base.startsWith(k) || k.startsWith(base))?.[1] || null;
-      };
+      // A composição é resolvida no cálculo das células (cadastro → padrão).
       const novas: Row[] = (sug.itens || [])
         .filter((it) => it.parte !== "kit" && Math.trunc(it.qtd) > 0) // pronta entrega/kit fica de fora
-        .map((it) => ({ pedido: sug.numero_erp || file.name, pedido_id: pid, cliente, modelo: it.produto, tamanho: it.tamanho || null, cor: it.cor_grade || null, qtd: Math.trunc(it.qtd), composicao: compDe(it.produto) }));
+        .map((it) => ({ pedido: sug.numero_erp || file.name, pedido_id: pid, cliente, modelo: it.produto, tamanho: it.tamanho || null, cor: it.cor_grade || null, qtd: Math.trunc(it.qtd), composicao: null }));
       if (!novas.length) { alert("Não achei itens de produção nesse PDF (ou só tem pronta entrega)."); return; }
       setRowsPdf((r) => [...r, ...novas]);
       setPdfsAbertos((p) => [...p, { id: pid, nome: sug.numero_erp ? `${sug.numero_erp} · ${cliente}` : file.name }]);
@@ -161,6 +163,15 @@ export function ImpressaoEtiquetas() {
   // pedidos diferentes, completa a carreira e pula 1 carreira em branco (null).
   const cells = useMemo<(Etq | null)[]>(() => {
     const compFallback = composicaoPadrao.trim() || null;
+    // Composição pelo cadastro (tolerante a acento/caixa/tamanho no nome).
+    const entradas = Object.entries(compMap);
+    const compDoCadastro = (modelo: string): string | null => {
+      const b = normalizar(modelo);
+      if (!b) return null;
+      if (compMap[b]) return compMap[b];
+      for (const [k, v] of entradas) if (k === b || k.startsWith(b + " ") || b.startsWith(k + " ")) return v;
+      return null;
+    };
     const out: (Etq | null)[] = [];
     let primeiro = true;
     for (const pid of ordemPedidos) {
@@ -169,8 +180,9 @@ export function ImpressaoEtiquetas() {
         if (r.pedido_id !== pid) return;
         const ln = linhas[i] ?? { qtd: Math.trunc(r.qtd), incluir: true };
         if (!ln.incluir) return;
+        const composicao = r.composicao || compDoCadastro(r.modelo) || compFallback;
         for (let n = 0; n < Math.max(0, Math.trunc(ln.qtd)); n++)
-          doPedido.push({ cliente: r.cliente, modelo: r.modelo, tamanho: r.tamanho, cor: r.cor, composicao: r.composicao || compFallback });
+          doPedido.push({ cliente: r.cliente, modelo: r.modelo, tamanho: r.tamanho, cor: r.cor, composicao });
       });
       if (!doPedido.length) continue;
       if (!primeiro) {
@@ -181,7 +193,7 @@ export function ImpressaoEtiquetas() {
       primeiro = false;
     }
     return out;
-  }, [rows, linhas, ordemPedidos, cfg.colunas, composicaoPadrao]);
+  }, [rows, linhas, ordemPedidos, cfg.colunas, composicaoPadrao, compMap]);
 
   const etqs = useMemo(() => cells.filter(Boolean) as Etq[], [cells]);
   // Células finais = espaços pulados (folha usada) + células (etiquetas + separadores).
@@ -356,7 +368,7 @@ export function ImpressaoEtiquetas() {
           {CAMPOS.map((c) => (
             <label key={c.k} className="campo" style={{ margin: 0 }}>
               <span className="campo-label" style={{ fontSize: 11.5 }}>{c.label}</span>
-              <input type="number" min={0} step={c.step ?? 0.5} value={String(cfg[c.k])} onChange={(e) => setC(c.k, e.target.value)} />
+              <input type="number" min={0} step={c.step ?? "any"} value={String(cfg[c.k])} onChange={(e) => setC(c.k, e.target.value)} />
             </label>
           ))}
         </div>
