@@ -42,20 +42,20 @@ const CAMPOS: { k: keyof EtqCfg; label: string; step?: number }[] = [
 // Conteúdo de uma etiqueta (HTML), reaproveitado na prévia e na impressão.
 // Layout horizontal (a etiqueta 6180 é larga e baixa): modelo + tamanho na
 // primeira linha; cor e composição juntas na segunda; cliente embaixo.
-// Nome do modelo em 2 linhas: tipo abreviado em cima, o nome embaixo.
-// Ex.: "Almofada Bubbles" → ["Alm:", "Bubbles"]; "Manta Acácia" → ["Man:", "Acácia"].
-function modeloLinhas(modelo: string): string[] {
+// Nome do modelo em 1 linha, com o tipo abreviado.
+// Ex.: "Almofada Bubbles" → "Alm: Bubbles"; "Manta Acácia" → "Man: Acácia".
+function modeloLinha(modelo: string): string {
   const nome = (modelo || "").trim();
   const sp = nome.indexOf(" ");
-  if (sp <= 0) return [nome];
+  if (sp <= 0) return nome;
   const tipo = nome.slice(0, sp), resto = nome.slice(sp + 1);
   const low = tipo.toLowerCase();
   const abrev = low === "almofada" ? "Alm:" : low === "manta" ? "Man:" : tipo;
-  return [abrev, resto];
+  return `${abrev} ${resto}`;
 }
 function conteudoEt(e: Etq): string {
   const comp = e.composicao ? ` · ${e.composicao}` : "";
-  const mod = modeloLinhas(e.modelo).map((l) => `<div class="mod">${l}</div>`).join("");
+  const mod = `<div class="mod">${modeloLinha(e.modelo)}</div>`;
   return `${mod}
     <div class="lin">Tam: <b>${e.tamanho || "—"}</b><span class="comp">${comp}</span></div>
     <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
@@ -368,7 +368,7 @@ export function ImpressaoEtiquetas() {
             if (!e) return <div key={k} className="a4-et a4-et-empty" style={style}></div>;
             return (
               <div key={k} className="a4-et" style={{ ...style, gap: 0, justifyContent: "center" }}>
-                {modeloLinhas(e.modelo).map((l, mi) => <div key={"m" + mi} className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{l}</div>)}
+                <div className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{modeloLinha(e.modelo)}</div>
                 <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Tam: <b>{e.tamanho || "—"}</b>{e.composicao ? <span style={{ color: "#55555e" }}> · {e.composicao}</span> : ""}</div>
                 <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
                 <div className="a4-cli" style={{ fontSize: fpt(0.82), lineHeight: 1.15 }}>{e.cliente}</div>
