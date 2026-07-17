@@ -163,13 +163,20 @@ export function ImpressaoEtiquetas() {
   // pedidos diferentes, completa a carreira e pula 1 carreira em branco (null).
   const cells = useMemo<(Etq | null)[]>(() => {
     const compFallback = composicaoPadrao.trim() || null;
-    // Composição pelo cadastro (tolerante a acento/caixa/tamanho no nome).
+    // Composição pelo cadastro. Tolerante a acento/caixa/tamanho e ao TIPO no
+    // começo: o pedido vem "ALMOFADA BALI" mas o cadastro é só "Bali".
     const entradas = Object.entries(compMap);
     const compDoCadastro = (modelo: string): string | null => {
       const b = normalizar(modelo);
       if (!b) return null;
+      const semTipo = b.includes(" ") ? b.slice(b.indexOf(" ") + 1) : b; // tira "Almofada/Manta/Pes"
       if (compMap[b]) return compMap[b];
-      for (const [k, v] of entradas) if (k === b || k.startsWith(b + " ") || b.startsWith(k + " ")) return v;
+      if (compMap[semTipo]) return compMap[semTipo];
+      for (const [k, v] of entradas) {
+        if (k === b || k === semTipo) return v;
+        if (b.startsWith(k + " ") || k.startsWith(b + " ")) return v;              // tamanho no fim
+        if (semTipo.startsWith(k + " ") || k.startsWith(semTipo + " ")) return v;  // nome + tamanho
+      }
       return null;
     };
     const out: (Etq | null)[] = [];

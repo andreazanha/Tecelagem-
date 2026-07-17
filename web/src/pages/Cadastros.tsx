@@ -279,7 +279,7 @@ function AbaProdutos() {
               </span>
             </div>
             <table className="table">
-              <thead><tr><th>Produto</th><th>Código</th><th>Tipo de fio</th><th></th></tr></thead>
+              <thead><tr><th>Produto</th><th>Código</th><th>Composição</th><th></th></tr></thead>
               <tbody>
                 {lista.length === 0 ? (
                   <tr><td colSpan={4} className="empty pad">Nenhum produto nesta coleção. Use "Gerenciar produtos".</td></tr>
@@ -287,7 +287,7 @@ function AbaProdutos() {
                   <tr key={p.modelo_nome} style={{ cursor: "pointer" }} onClick={() => setModal({ nome: p.modelo_nome })}>
                     <td className="strong">{p.modelo_nome}</td>
                     <td>{p.ref || "—"}</td>
-                    <td>{p.fio_nome ? <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{p.fio_nome}</span> : "—"}</td>
+                    <td>{p.composicao || "—"}</td>
                     <td><button className="icon-btn" title="Editar" onClick={(e) => { e.stopPropagation(); setModal({ nome: p.modelo_nome }); }}>✎</button></td>
                   </tr>
                 ))}
