@@ -71,6 +71,8 @@ export function ImpressaoEtiquetas() {
   const [pdfsAbertos, setPdfsAbertos] = useState<{ id: string; nome: string }[]>([]);
   const [importando, setImportando] = useState(false);
   const [compMap, setCompMap] = useState<Record<string, string>>({}); // composição por modelo (minúsculo)
+  // Composição usada quando o cadastro do modelo não tiver uma (ex.: sistema em construção).
+  const [composicaoPadrao, setComposicaoPadrao] = useState<string>(() => { try { return localStorage.getItem("etq-comp") ?? "100% Poliéster"; } catch { return "100% Poliéster"; } });
   const rows = useMemo<Row[]>(() => [...rowsDb, ...rowsPdf], [rowsDb, rowsPdf]);
   // Edição por linha: quantidade a imprimir e se entra na impressão (reimpressão).
   const [linhas, setLinhas] = useState<{ qtd: number; incluir: boolean }[]>([]);
@@ -138,6 +140,7 @@ export function ImpressaoEtiquetas() {
     setPdfsAbertos((p) => p.filter((x) => x.id !== id));
   }
   useEffect(() => { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } }, [cfg]);
+  useEffect(() => { try { localStorage.setItem("etq-comp", composicaoPadrao); } catch { /* ignore */ } }, [composicaoPadrao]);
   // Ao trocar de pedidos, reinicia a edição (tudo marcado, quantidade do pedido).
   useEffect(() => { setLinhas(rows.map((r) => ({ qtd: Math.max(0, Math.trunc(r.qtd)), incluir: true }))); }, [rows]);
 
@@ -157,6 +160,7 @@ export function ImpressaoEtiquetas() {
   // Células da folha: mesmo modelo junto (já vem ordenado do backend). Entre
   // pedidos diferentes, completa a carreira e pula 1 carreira em branco (null).
   const cells = useMemo<(Etq | null)[]>(() => {
+    const compFallback = composicaoPadrao.trim() || null;
     const out: (Etq | null)[] = [];
     let primeiro = true;
     for (const pid of ordemPedidos) {
@@ -166,7 +170,7 @@ export function ImpressaoEtiquetas() {
         const ln = linhas[i] ?? { qtd: Math.trunc(r.qtd), incluir: true };
         if (!ln.incluir) return;
         for (let n = 0; n < Math.max(0, Math.trunc(ln.qtd)); n++)
-          doPedido.push({ cliente: r.cliente, modelo: r.modelo, tamanho: r.tamanho, cor: r.cor, composicao: r.composicao });
+          doPedido.push({ cliente: r.cliente, modelo: r.modelo, tamanho: r.tamanho, cor: r.cor, composicao: r.composicao || compFallback });
       });
       if (!doPedido.length) continue;
       if (!primeiro) {
@@ -177,7 +181,7 @@ export function ImpressaoEtiquetas() {
       primeiro = false;
     }
     return out;
-  }, [rows, linhas, ordemPedidos, cfg.colunas]);
+  }, [rows, linhas, ordemPedidos, cfg.colunas, composicaoPadrao]);
 
   const etqs = useMemo(() => cells.filter(Boolean) as Etq[], [cells]);
   // Células finais = espaços pulados (folha usada) + células (etiquetas + separadores).
@@ -323,6 +327,10 @@ export function ImpressaoEtiquetas() {
           <span className="muted" style={{ fontSize: 12.5 }}>Medidas em mm. Salva automático.</span>
         </div>
         <div className="row-gap" style={{ alignItems: "flex-end", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+          <label className="campo" style={{ margin: 0, minWidth: 200 }} title="Usada quando o modelo não tem composição cadastrada.">
+            <span className="campo-label">Composição padrão</span>
+            <input type="text" value={composicaoPadrao} placeholder="ex.: 100% Poliéster" onChange={(e) => setComposicaoPadrao(e.target.value)} />
+          </label>
           <label className="campo" style={{ margin: 0, minWidth: 220 }}>
             <span className="campo-label">Tamanho da folha</span>
             <select value={cfg.pagina} onChange={(e) => setCfg((c) => ({ ...c, pagina: e.target.value as Pagina }))}>
