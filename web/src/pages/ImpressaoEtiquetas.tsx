@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { api, type Pedido } from "../api";
 
 type Etq = { cliente: string; modelo: string; tamanho: string | null; cor: string | null; composicao: string | null };
@@ -53,7 +53,9 @@ function conteudoEt(e: Etq): string {
 export function ImpressaoEtiquetas() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [sel, setSel] = useState<string[]>([]);
-  const [rows, setRows] = useState<{ cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null }[]>([]);
+  const [rows, setRows] = useState<{ pedido: string | null; pedido_id: string; cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null }[]>([]);
+  // Edição por linha: quantidade a imprimir e se entra na impressão (reimpressão).
+  const [linhas, setLinhas] = useState<{ qtd: number; incluir: boolean }[]>([]);
   const [cfg, setCfg] = useState<EtqCfg>(carregarCfg);
   const [presets, setPresets] = useState<{ nome: string; cfg: EtqCfg }[]>(carregarPresets);
   const [carregando, setCarregando] = useState(false);
@@ -82,24 +84,57 @@ export function ImpressaoEtiquetas() {
     api.etiquetasPedidos(sel).then(setRows).catch(() => setRows([])).finally(() => setCarregando(false));
   }, [sel]);
   useEffect(() => { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } }, [cfg]);
-
-  const etqs = useMemo<Etq[]>(() => {
-    const out: Etq[] = [];
-    for (const r of rows) for (let i = 0; i < Math.max(0, Math.trunc(r.qtd)); i++)
-      out.push({ cliente: r.cliente, modelo: r.modelo, tamanho: r.tamanho, cor: r.cor, composicao: r.composicao });
-    return out;
-  }, [rows]);
+  // Ao trocar de pedidos, reinicia a edição (tudo marcado, quantidade do pedido).
+  useEffect(() => { setLinhas(rows.map((r) => ({ qtd: Math.max(0, Math.trunc(r.qtd)), incluir: true }))); }, [rows]);
 
   const setC = (k: keyof EtqCfg, v: string) => setCfg((c) => ({ ...c, [k]: Math.max(0, Number(v.replace(",", ".")) || 0) }));
   const pag = PAG[cfg.pagina] || PAG.A4;
   const porPagina = Math.max(1, cfg.colunas * cfg.linhas);
   // Pula espaços já usados na 1ª folha (reaproveitar folha meio usada).
   const offset = Math.min(porPagina - 1, Math.max(0, Math.trunc(inicio) - 1));
-  const totalCel = offset + etqs.length; // células ocupadas (vazias + cheias)
+
+  // Ordem dos pedidos = ordem em que foram adicionados.
+  const ordemPedidos = useMemo(() => {
+    const o = sel.slice();
+    for (const r of rows) if (!o.includes(r.pedido_id)) o.push(r.pedido_id);
+    return o.filter((pid) => rows.some((r) => r.pedido_id === pid));
+  }, [sel, rows]);
+
+  // Células da folha: mesmo modelo junto (já vem ordenado do backend). Entre
+  // pedidos diferentes, completa a carreira e pula 1 carreira em branco (null).
+  const cells = useMemo<(Etq | null)[]>(() => {
+    const out: (Etq | null)[] = [];
+    let primeiro = true;
+    for (const pid of ordemPedidos) {
+      const doPedido: Etq[] = [];
+      rows.forEach((r, i) => {
+        if (r.pedido_id !== pid) return;
+        const ln = linhas[i] ?? { qtd: Math.trunc(r.qtd), incluir: true };
+        if (!ln.incluir) return;
+        for (let n = 0; n < Math.max(0, Math.trunc(ln.qtd)); n++)
+          doPedido.push({ cliente: r.cliente, modelo: r.modelo, tamanho: r.tamanho, cor: r.cor, composicao: r.composicao });
+      });
+      if (!doPedido.length) continue;
+      if (!primeiro) {
+        while (out.length % cfg.colunas !== 0) out.push(null); // completa a carreira atual
+        for (let c = 0; c < cfg.colunas; c++) out.push(null);  // 1 carreira em branco (separador)
+      }
+      out.push(...doPedido);
+      primeiro = false;
+    }
+    return out;
+  }, [rows, linhas, ordemPedidos, cfg.colunas]);
+
+  const etqs = useMemo(() => cells.filter(Boolean) as Etq[], [cells]);
+  // Células finais = espaços pulados (folha usada) + células (etiquetas + separadores).
+  const finalCells = useMemo<(Etq | null)[]>(() => [...Array(offset).fill(null), ...cells], [offset, cells]);
+  const totalCel = finalCells.length;
   const paginas = Math.max(1, Math.ceil(totalCel / porPagina));
-  const usadasUltima = totalCel % porPagina === 0 ? porPagina : totalCel % porPagina;
-  const sobra = porPagina - usadasUltima; // espaços vazios na última folha
+  const usadasUltima = totalCel === 0 ? 0 : (totalCel % porPagina === 0 ? porPagina : totalCel % porPagina);
+  const sobra = totalCel === 0 ? porPagina : porPagina - usadasUltima; // espaços vazios na última folha
   const label = (p: Pedido) => `${p.numero_erp || p.codigo_pai || p.id.slice(0, 6)} · ${p.cliente_nome}`;
+  const setLinha = (i: number, patch: Partial<{ qtd: number; incluir: boolean }>) => setLinhas((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const marcarTodas = (v: boolean) => setLinhas((ls) => ls.map((l) => ({ ...l, incluir: v })));
 
   // CSS comum da etiqueta (prévia e impressão), com a fonte configurável.
   // Disposição horizontal: linha de topo com modelo (esq.) e tamanho (dir.).
@@ -115,14 +150,12 @@ export function ImpressaoEtiquetas() {
     for (let pg = 0; pg < paginas; pg++) {
       let labels = "";
       for (let k = 0; k < porPagina; k++) {
-        const cel = pg * porPagina + k; // célula global (inclui as puladas)
-        const idx = cel - offset; // índice da etiqueta; < 0 = espaço pulado
-        if (idx < 0) continue; // deixa em branco (folha já usada)
-        if (idx >= etqs.length) break;
+        const cel = finalCells[pg * porPagina + k]; // null = espaço em branco (pulado ou separador)
+        if (!cel) continue;
         const col = k % cfg.colunas, row = Math.floor(k / cfg.colunas);
         const x = cfg.margemEsq + col * (cfg.larguraEt + cfg.gapH);
         const y = cfg.margemTopo + row * (cfg.alturaEt + cfg.gapV);
-        labels += `<div class="et" style="left:${x}mm;top:${y}mm;width:${cfg.larguraEt}mm;height:${cfg.alturaEt}mm">${conteudoEt(etqs[idx])}</div>`;
+        labels += `<div class="et" style="left:${x}mm;top:${y}mm;width:${cfg.larguraEt}mm;height:${cfg.alturaEt}mm">${conteudoEt(cel)}</div>`;
       }
       body += `<div class="pg">${labels}</div>`;
     }
@@ -167,9 +200,52 @@ export function ImpressaoEtiquetas() {
           </div>
         )}
         <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>
-          {carregando ? "Carregando…" : sel.length === 0 ? "Escolha um ou mais pedidos. Pronta entrega fica de fora." : <>Peças de produção: <strong>{etqs.length}</strong> etiqueta(s) · <strong>{paginas}</strong> folha(s) {cfg.pagina === "carta" ? "Carta" : "A4"} ({porPagina} por folha){offset > 0 && <> · pulando {offset} espaço(s) na 1ª folha</>}. {sobra > 0 ? <>Sobram <strong>{sobra}</strong> espaço(s) na última folha — adicione outro pedido pra completar e não desperdiçar.</> : <>Folha(s) cheia(s), sem sobra. 👍</>}</>}
+          {carregando ? "Carregando…" : sel.length === 0 ? "Escolha um ou mais pedidos. Pronta entrega fica de fora." : <>Peças de produção: <strong>{etqs.length}</strong> etiqueta(s) · <strong>{paginas}</strong> folha(s) {cfg.pagina === "carta" ? "Carta" : "A4"} ({porPagina} por folha){offset > 0 && <> · pulando {offset} espaço(s) na 1ª folha</>}{ordemPedidos.length > 1 && <> · pedidos separados por 1 carreira em branco</>}. {sobra > 0 ? <>Sobram <strong>{sobra}</strong> espaço(s) na última folha — adicione outro pedido pra completar e não desperdiçar.</> : <>Folha(s) cheia(s), sem sobra. 👍</>}</>}
         </p>
       </div>
+
+      {/* Conferir / editar: mesmo modelo junto; marcar o que imprimir (reimpressão) */}
+      {rows.length > 0 && (
+        <div className="card pad" style={{ marginTop: 14 }}>
+          <div className="row-gap" style={{ alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+            <strong>📋 Conferir / editar etiquetas</strong>
+            <span className="muted" style={{ fontSize: 12.5 }}>Mesmo modelo junto. Desmarque o que não quer e ajuste a quantidade — útil pra reimprimir só algumas.</span>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+              <button className="btn btn-soft" style={{ padding: "6px 10px" }} onClick={() => marcarTodas(true)}>Marcar todas</button>
+              <button className="btn btn-soft" style={{ padding: "6px 10px" }} onClick={() => marcarTodas(false)}>Desmarcar</button>
+            </div>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table className="table" style={{ minWidth: 520 }}>
+              <thead><tr><th style={{ width: 34 }}></th><th>Modelo</th><th>Tamanho</th><th>Cor</th><th className="num" style={{ width: 90 }}>Qtd</th></tr></thead>
+              <tbody>
+                {ordemPedidos.map((pid) => {
+                  const idxs = rows.map((r, i) => ({ r, i })).filter((x) => x.r.pedido_id === pid);
+                  if (!idxs.length) return null;
+                  const ped = pedidos.find((p) => p.id === pid);
+                  return (
+                    <Fragment key={pid}>
+                      <tr><td colSpan={5} style={{ background: "var(--accent-soft, #eef)", fontWeight: 700, fontSize: 12.5 }}>Pedido {ped ? label(ped) : idxs[0].r.pedido || pid.slice(0, 6)}</td></tr>
+                      {idxs.map(({ r, i }) => {
+                        const ln = linhas[i] ?? { qtd: Math.trunc(r.qtd), incluir: true };
+                        return (
+                          <tr key={i} style={{ opacity: ln.incluir ? 1 : 0.45 }}>
+                            <td><input type="checkbox" checked={ln.incluir} onChange={(e) => setLinha(i, { incluir: e.target.checked })} /></td>
+                            <td>{r.modelo}</td>
+                            <td>{r.tamanho || "—"}</td>
+                            <td>{r.cor || "—"}</td>
+                            <td className="num"><input type="number" min={0} className="w-sm" style={{ width: 66, textAlign: "right" }} value={String(ln.qtd)} onChange={(e) => setLinha(i, { qtd: Math.max(0, Math.trunc(Number(e.target.value) || 0)) })} /></td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Configuração da folha de etiquetas (em mm) */}
       <div className="card pad" style={{ marginTop: 14 }}>
@@ -218,10 +294,9 @@ export function ImpressaoEtiquetas() {
             const x = cfg.margemEsq + col * (cfg.larguraEt + cfg.gapH);
             const y = cfg.margemTopo + row * (cfg.alturaEt + cfg.gapV);
             const style = { position: "absolute" as const, left: pct(x, pag.w) + "%", top: pct(y, pag.h) + "%", width: pct(cfg.larguraEt, pag.w) + "%", height: pct(cfg.alturaEt, pag.h) + "%", overflow: "hidden" };
-            if (k < offset) return <div key={k} className="a4-et a4-et-skip" style={style}>usada</div>;
-            const idx = k - offset;
-            const e: Etq = etqs.length ? (etqs[idx] || { cliente: "", modelo: "", tamanho: "", cor: "", composicao: "" }) : { cliente: "Cliente", modelo: "(etiqueta)", tamanho: "", cor: "", composicao: "" };
-            if (etqs.length && idx >= etqs.length) return <div key={k} className="a4-et a4-et-empty" style={style}></div>;
+            if (etqs.length && k < offset) return <div key={k} className="a4-et a4-et-skip" style={style}>usada</div>;
+            const e = etqs.length ? finalCells[k] : ({ cliente: "Cliente", modelo: "(etiqueta)", tamanho: "", cor: "", composicao: "" } as Etq);
+            if (!e) return <div key={k} className="a4-et a4-et-empty" style={style}></div>;
             return (
               <div key={k} className="a4-et" style={style}>
                 <div className="a4-mod">{e.modelo}</div>
