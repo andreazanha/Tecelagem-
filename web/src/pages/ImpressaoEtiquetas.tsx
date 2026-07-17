@@ -44,8 +44,8 @@ const CAMPOS: { k: keyof EtqCfg; label: string; step?: number }[] = [
 // primeira linha; cor e composição juntas na segunda; cliente embaixo.
 function conteudoEt(e: Etq): string {
   const comp = e.composicao ? ` · ${e.composicao}` : "";
-  return `<div class="top"><span class="mod">${e.modelo || ""}</span><span class="tam">${e.tamanho || "—"}</span></div>
-    <div class="mid">Cor: <b>${e.cor || "—"}</b><span class="comp">${comp}</span></div>
+  return `<div class="top"><span class="mod">${e.modelo || ""}</span><span class="cor">${e.cor || "—"}</span></div>
+    <div class="mid">Tamanho: <b>${e.tamanho || "—"}</b><span class="comp">${comp}</span></div>
     <div class="cli">${e.cliente || ""}</div>`;
 }
 
@@ -105,8 +105,9 @@ export function ImpressaoEtiquetas() {
   const cssEt = `.et{position:absolute;overflow:hidden;box-sizing:border-box;padding:1.4mm 2.2mm;display:flex;flex-direction:column;justify-content:center;gap:0.5mm;font-family:Arial,Helvetica,sans-serif;border:0.2mm solid #000;border-radius:1mm}
     .top{display:flex;justify-content:space-between;align-items:baseline;gap:2mm}
     .mod{font-size:${(cfg.fonte * 1.35).toFixed(1)}pt;font-weight:800;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .tam{font-size:${(cfg.fonte * 1.05).toFixed(1)}pt;font-weight:700;color:#111;white-space:nowrap;flex:none}
+    .cor{font-size:${(cfg.fonte * 1.05).toFixed(1)}pt;font-weight:700;color:#111;white-space:nowrap;flex:none}
     .mid{font-size:${cfg.fonte}pt;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .mid b{color:#111}
     .mid .comp{color:#555;font-weight:400}
     .cli{font-size:${(cfg.fonte * 0.82).toFixed(1)}pt;color:#555;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}`;
 
@@ -224,8 +225,8 @@ export function ImpressaoEtiquetas() {
             if (etqs.length && idx >= etqs.length) return <div key={k} className="a4-et a4-et-empty" style={style}></div>;
             return (
               <div key={k} className="a4-et" style={style}>
-                <div className="a4-top"><span className="a4-mod">{e.modelo}</span><span className="a4-tam">{e.tamanho || "—"}</span></div>
-                <div className="a4-lin">Cor: <b>{e.cor || "—"}</b>{e.composicao ? <span style={{ color: "#55555e" }}> · {e.composicao}</span> : ""}</div>
+                <div className="a4-top"><span className="a4-mod">{e.modelo}</span><span className="a4-tam">{e.cor || "—"}</span></div>
+                <div className="a4-lin">Tamanho: <b>{e.tamanho || "—"}</b>{e.composicao ? <span style={{ color: "#55555e" }}> · {e.composicao}</span> : ""}</div>
                 <div className="a4-cli">{e.cliente}</div>
               </div>
             );
