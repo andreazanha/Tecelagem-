@@ -95,7 +95,7 @@ export function ImpressaoEtiquetas() {
 
   // CSS comum da etiqueta (prévia e impressão), com a fonte configurável.
   // Disposição horizontal: linha de topo com modelo (esq.) e tamanho (dir.).
-  const cssEt = `.et{position:absolute;overflow:hidden;box-sizing:border-box;padding:1.4mm 2.2mm;display:flex;flex-direction:column;justify-content:center;gap:0.5mm;font-family:Arial,Helvetica,sans-serif}
+  const cssEt = `.et{position:absolute;overflow:hidden;box-sizing:border-box;padding:1.4mm 2.2mm;display:flex;flex-direction:column;justify-content:center;gap:0.5mm;font-family:Arial,Helvetica,sans-serif;border:0.2mm solid #000;border-radius:1mm}
     .top{display:flex;justify-content:space-between;align-items:baseline;gap:2mm}
     .mod{font-size:${(cfg.fonte * 1.35).toFixed(1)}pt;font-weight:800;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .tam{font-size:${(cfg.fonte * 1.05).toFixed(1)}pt;font-weight:700;color:#111;white-space:nowrap;flex:none}
