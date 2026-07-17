@@ -9,9 +9,19 @@ type Etq = { cliente: string; modelo: string; tamanho: string | null; cor: strin
 type EtqCfg = { margemTopo: number; margemEsq: number; larguraEt: number; alturaEt: number; gapH: number; gapV: number; colunas: number; linhas: number; fonte: number };
 const CFG_PADRAO: EtqCfg = { margemTopo: 10, margemEsq: 8, larguraEt: 63.5, alturaEt: 38.1, gapH: 2.5, gapV: 0, colunas: 3, linhas: 7, fonte: 9 };
 const CFG_KEY = "etq-cfg";
+const PRESETS_KEY = "etq-presets"; // modelos salvos pelo usuário
+// Modelos prontos (medidas oficiais aproximadas — ajuste fino no print de teste).
+const PRESETS_FIXOS: { nome: string; cfg: EtqCfg }[] = [
+  { nome: "Pimaco A4251 · 38,2 × 21,2 mm (5 × 13 = 65)", cfg: { margemTopo: 10.8, margemEsq: 9.8, larguraEt: 38.2, alturaEt: 21.2, gapH: 0, gapV: 0, colunas: 5, linhas: 13, fonte: 6 } },
+  { nome: "Pimaco 6180 · 63,5 × 38,1 mm (3 × 7 = 21)", cfg: { ...CFG_PADRAO } },
+];
 function carregarCfg(): EtqCfg {
   try { const s = localStorage.getItem(CFG_KEY); if (s) return { ...CFG_PADRAO, ...JSON.parse(s) }; } catch { /* ignore */ }
   return { ...CFG_PADRAO };
+}
+function carregarPresets(): { nome: string; cfg: EtqCfg }[] {
+  try { const s = localStorage.getItem(PRESETS_KEY); if (s) return JSON.parse(s); } catch { /* ignore */ }
+  return [];
 }
 
 const CAMPOS: { k: keyof EtqCfg; label: string; step?: number }[] = [
@@ -36,7 +46,23 @@ export function ImpressaoEtiquetas() {
   const [sel, setSel] = useState<string[]>([]);
   const [rows, setRows] = useState<{ cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null }[]>([]);
   const [cfg, setCfg] = useState<EtqCfg>(carregarCfg);
+  const [presets, setPresets] = useState<{ nome: string; cfg: EtqCfg }[]>(carregarPresets);
   const [carregando, setCarregando] = useState(false);
+
+  const todosPresets = [...PRESETS_FIXOS, ...presets];
+  function aplicarPreset(nome: string) { const p = todosPresets.find((x) => x.nome === nome); if (p) setCfg({ ...p.cfg }); }
+  function salvarPreset() {
+    const nome = prompt("Nome do modelo de etiqueta (ex.: minha etiqueta pequena):");
+    const n = (nome || "").trim(); if (!n) return;
+    const novos = [...presets.filter((p) => p.nome !== n), { nome: n, cfg: { ...cfg } }];
+    setPresets(novos); try { localStorage.setItem(PRESETS_KEY, JSON.stringify(novos)); } catch { /* ignore */ }
+    alert(`Modelo "${n}" salvo.`);
+  }
+  function excluirPreset(nome: string) {
+    if (!confirm(`Excluir o modelo "${nome}"?`)) return;
+    const novos = presets.filter((p) => p.nome !== nome);
+    setPresets(novos); try { localStorage.setItem(PRESETS_KEY, JSON.stringify(novos)); } catch { /* ignore */ }
+  }
 
   useEffect(() => { api.listarPedidos().then(setPedidos).catch(() => {}); }, []);
   useEffect(() => {
@@ -119,10 +145,25 @@ export function ImpressaoEtiquetas() {
 
       {/* Configuração da folha de etiquetas (em mm) */}
       <div className="card pad" style={{ marginTop: 14 }}>
-        <div className="row-gap" style={{ alignItems: "center", marginBottom: 10 }}>
+        <div className="row-gap" style={{ alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
           <strong>⚙️ Configuração da etiqueta</strong>
-          <span className="muted" style={{ fontSize: 12.5 }}>Medidas da sua folha (mm). Salva automático.</span>
-          <button className="btn btn-soft" style={{ marginLeft: "auto", padding: "5px 10px", fontSize: 12 }} onClick={() => setCfg({ ...CFG_PADRAO })}>Restaurar padrão</button>
+          <span className="muted" style={{ fontSize: 12.5 }}>Medidas em mm. Salva automático.</span>
+        </div>
+        <div className="row-gap" style={{ alignItems: "flex-end", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+          <label className="campo" style={{ margin: 0, minWidth: 260 }}>
+            <span className="campo-label">Modelo de etiqueta</span>
+            <select value="" onChange={(e) => { if (e.target.value) aplicarPreset(e.target.value); e.currentTarget.value = ""; }}>
+              <option value="">— escolher um modelo salvo —</option>
+              {todosPresets.map((p) => <option key={p.nome} value={p.nome}>{p.nome}</option>)}
+            </select>
+          </label>
+          <button className="btn btn-soft" onClick={salvarPreset}>💾 Salvar como modelo</button>
+          {presets.length > 0 && (
+            <select className="campo" style={{ padding: "8px 10px" }} value="" onChange={(e) => { if (e.target.value) excluirPreset(e.target.value); e.currentTarget.value = ""; }}>
+              <option value="">🗑 Excluir meu modelo…</option>
+              {presets.map((p) => <option key={p.nome} value={p.nome}>{p.nome}</option>)}
+            </select>
+          )}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
           {CAMPOS.map((c) => (
