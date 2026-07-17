@@ -34,11 +34,10 @@ const CAMPOS: { k: keyof EtqCfg; label: string; step?: number }[] = [
 
 // Conteúdo de uma etiqueta (HTML), reaproveitado na prévia e na impressão.
 function conteudoEt(e: Etq): string {
-  return `<div class="cli">${e.cliente || ""}</div>
-    <div class="mod">${e.modelo || ""}</div>
-    <div class="lin">Tamanho: <b>${e.tamanho || "—"}</b></div>
-    <div class="lin">${e.composicao || ""}</div>
-    <div class="lin">Cor: <b>${e.cor || "—"}</b></div>`;
+  return `<div class="mod">${e.modelo || ""}</div>
+    <div class="lin">Tamanho: <b>${e.tamanho || "—"}</b>&nbsp;&nbsp;Cor: <b>${e.cor || "—"}</b></div>
+    <div class="comp">${e.composicao || ""}</div>
+    <div class="cli">Cliente: ${e.cliente || ""}</div>`;
 }
 
 export function ImpressaoEtiquetas() {
@@ -87,8 +86,10 @@ export function ImpressaoEtiquetas() {
   // CSS comum da etiqueta (prévia e impressão), com a fonte configurável.
   const cssEt = `.et{position:absolute;overflow:hidden;box-sizing:border-box;padding:2mm;display:flex;flex-direction:column;justify-content:center;gap:0.4mm;font-family:Arial,Helvetica,sans-serif}
     .cli{font-size:${(cfg.fonte * 0.82).toFixed(1)}pt;color:#333}
-    .mod{font-size:${(cfg.fonte * 1.35).toFixed(1)}pt;font-weight:800}
-    .lin{font-size:${cfg.fonte}pt;color:#222}`;
+    .mod{font-size:${(cfg.fonte * 1.35).toFixed(1)}pt;font-weight:800;line-height:1.05}
+    .lin{font-size:${cfg.fonte}pt;color:#222}
+    .comp{font-size:${(cfg.fonte * 0.92).toFixed(1)}pt;color:#555}
+    .cli{font-size:${(cfg.fonte * 0.82).toFixed(1)}pt;color:#555;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}`;
 
   function imprimir() {
     let body = "";
@@ -185,11 +186,10 @@ export function ImpressaoEtiquetas() {
             const y = cfg.margemTopo + row * (cfg.alturaEt + cfg.gapV);
             return (
               <div key={k} className="a4-et" style={{ position: "absolute", left: pct(x, 210) + "%", top: pct(y, 297) + "%", width: pct(cfg.larguraEt, 210) + "%", height: pct(cfg.alturaEt, 297) + "%", overflow: "hidden" }}>
-                <div className="a4-cli">{e.cliente}</div>
                 <div className="a4-mod">{e.modelo}</div>
-                <div className="a4-lin">Tamanho: <b>{e.tamanho || "—"}</b></div>
-                <div className="a4-lin">{e.composicao || ""}</div>
-                <div className="a4-lin">Cor: <b>{e.cor || "—"}</b></div>
+                <div className="a4-lin">Tamanho: <b>{e.tamanho || "—"}</b>&nbsp;&nbsp;Cor: <b>{e.cor || "—"}</b></div>
+                <div className="a4-lin" style={{ color: "#55555e" }}>{e.composicao || ""}</div>
+                <div className="a4-cli">Cliente: {e.cliente}</div>
               </div>
             );
           })}
