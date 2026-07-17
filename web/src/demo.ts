@@ -16,7 +16,7 @@ export function setDemo(on: boolean) {
 }
 
 // Caminhos que NUNCA são bloqueados (senão não dá nem pra entrar no sistema).
-const LIVRE = ["/api/usuarios/login"];
+const LIVRE = ["/api/usuarios/login", "/api/pedidos/importar"];
 
 let instalado = false;
 // Instala uma única vez o "filtro" no fetch global. Ele só age quando o modo

@@ -53,7 +53,13 @@ function conteudoEt(e: Etq): string {
 export function ImpressaoEtiquetas() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [sel, setSel] = useState<string[]>([]);
-  const [rows, setRows] = useState<{ pedido: string | null; pedido_id: string; cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null }[]>([]);
+  type Row = { pedido: string | null; pedido_id: string; cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null };
+  const [rowsDb, setRowsDb] = useState<Row[]>([]);   // vindos de pedidos salvos
+  const [rowsPdf, setRowsPdf] = useState<Row[]>([]); // vindos de PDF aberto (teste)
+  const [pdfsAbertos, setPdfsAbertos] = useState<{ id: string; nome: string }[]>([]);
+  const [importando, setImportando] = useState(false);
+  const [compMap, setCompMap] = useState<Record<string, string>>({}); // composição por modelo (minúsculo)
+  const rows = useMemo<Row[]>(() => [...rowsDb, ...rowsPdf], [rowsDb, rowsPdf]);
   // Edição por linha: quantidade a imprimir e se entra na impressão (reimpressão).
   const [linhas, setLinhas] = useState<{ qtd: number; incluir: boolean }[]>([]);
   const [cfg, setCfg] = useState<EtqCfg>(carregarCfg);
@@ -78,11 +84,47 @@ export function ImpressaoEtiquetas() {
   }
 
   useEffect(() => { api.listarPedidos().then(setPedidos).catch(() => {}); }, []);
+  // Mapa de composição por modelo (para preencher etiquetas de PDF aberto).
   useEffect(() => {
-    if (!sel.length) { setRows([]); return; }
+    api.listarModelos().then((ms) => {
+      const m: Record<string, string> = {};
+      for (const x of ms) if (x.nome && x.composicao) m[x.nome.trim().toLowerCase()] = x.composicao;
+      setCompMap(m);
+    }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!sel.length) { setRowsDb([]); return; }
     setCarregando(true);
-    api.etiquetasPedidos(sel).then(setRows).catch(() => setRows([])).finally(() => setCarregando(false));
+    api.etiquetasPedidos(sel).then(setRowsDb).catch(() => setRowsDb([])).finally(() => setCarregando(false));
   }, [sel]);
+
+  // Abre um PDF de pedido (sem salvar) e adiciona as etiquetas para teste.
+  async function abrirPdf(file: File) {
+    setImportando(true);
+    try {
+      const sug = await api.importarPedidoPdf(file);
+      const pid = "pdf:" + file.name + ":" + (sug.numero_erp || "") + ":" + pdfsAbertos.length;
+      const cliente = sug.cliente_nome || file.name.replace(/\.pdf$/i, "");
+      const compDe = (produto: string) => {
+        const base = produto.trim().toLowerCase();
+        return compMap[base] || Object.entries(compMap).find(([k]) => base.startsWith(k) || k.startsWith(base))?.[1] || null;
+      };
+      const novas: Row[] = (sug.itens || [])
+        .filter((it) => it.parte !== "kit" && Math.trunc(it.qtd) > 0) // pronta entrega/kit fica de fora
+        .map((it) => ({ pedido: sug.numero_erp || file.name, pedido_id: pid, cliente, modelo: it.produto, tamanho: it.tamanho || null, cor: it.cor_grade || null, qtd: Math.trunc(it.qtd), composicao: compDe(it.produto) }));
+      if (!novas.length) { alert("Não achei itens de produção nesse PDF (ou só tem pronta entrega)."); return; }
+      setRowsPdf((r) => [...r, ...novas]);
+      setPdfsAbertos((p) => [...p, { id: pid, nome: sug.numero_erp ? `${sug.numero_erp} · ${cliente}` : file.name }]);
+    } catch {
+      alert("Não consegui ler esse PDF. Confira se é um PDF de pedido do sistema.");
+    } finally {
+      setImportando(false);
+    }
+  }
+  function tirarPdf(id: string) {
+    setRowsPdf((r) => r.filter((x) => x.pedido_id !== id));
+    setPdfsAbertos((p) => p.filter((x) => x.id !== id));
+  }
   useEffect(() => { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } }, [cfg]);
   // Ao trocar de pedidos, reinicia a edição (tudo marcado, quantidade do pedido).
   useEffect(() => { setLinhas(rows.map((r) => ({ qtd: Math.max(0, Math.trunc(r.qtd)), incluir: true }))); }, [rows]);
@@ -185,22 +227,34 @@ export function ImpressaoEtiquetas() {
               {pedidos.filter((p) => !sel.includes(p.id)).map((p) => <option key={p.id} value={p.id}>{label(p)}</option>)}
             </select>
           </label>
+          <label className="campo" style={{ minWidth: 170 }} title="Para testar sem pedido salvo: abra um PDF de pedido do sistema.">
+            <span className="campo-label">Ou abrir PDF (testar)</span>
+            <label className="btn btn-soft" style={{ margin: 0, cursor: "pointer", textAlign: "center" }}>
+              {importando ? "Lendo…" : "📂 Abrir PDF de pedido"}
+              <input type="file" accept="application/pdf,.pdf" style={{ display: "none" }} disabled={importando}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) abrirPdf(f); e.currentTarget.value = ""; }} />
+            </label>
+          </label>
           <label className="campo" style={{ minWidth: 150 }} title="Para reaproveitar uma folha que já tem etiquetas coladas: conte os espaços já usados (esquerda→direita, cima→baixo) e comece na próxima.">
             <span className="campo-label">Começar na etiqueta nº</span>
             <input type="number" min={1} max={porPagina} step={1} value={String(inicio)} onChange={(e) => setInicio(Math.max(1, Math.min(porPagina, Math.trunc(Number(e.target.value) || 1))))} />
           </label>
           <button className="btn btn-primary" style={{ marginLeft: "auto" }} disabled={etqs.length === 0} onClick={imprimir}>🖨️ Imprimir</button>
         </div>
-        {sel.length > 0 && (
+        {(sel.length > 0 || pdfsAbertos.length > 0) && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
             {sel.map((id) => { const p = pedidos.find((x) => x.id === id); return (
               <span key={id} className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{p ? label(p) : id}
                 <button className="icon-btn" title="Tirar" style={{ padding: 0, lineHeight: 1 }} onClick={() => setSel((s) => s.filter((x) => x !== id))}>✕</button></span>
             ); })}
+            {pdfsAbertos.map((pf) => (
+              <span key={pf.id} className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--accent-soft, #eef)" }}>📄 {pf.nome}
+                <button className="icon-btn" title="Tirar" style={{ padding: 0, lineHeight: 1 }} onClick={() => tirarPdf(pf.id)}>✕</button></span>
+            ))}
           </div>
         )}
         <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>
-          {carregando ? "Carregando…" : sel.length === 0 ? "Escolha um ou mais pedidos. Pronta entrega fica de fora." : <>Peças de produção: <strong>{etqs.length}</strong> etiqueta(s) · <strong>{paginas}</strong> folha(s) {cfg.pagina === "carta" ? "Carta" : "A4"} ({porPagina} por folha){offset > 0 && <> · pulando {offset} espaço(s) na 1ª folha</>}{ordemPedidos.length > 1 && <> · pedidos separados por 1 carreira em branco</>}. {sobra > 0 ? <>Sobram <strong>{sobra}</strong> espaço(s) na última folha — adicione outro pedido pra completar e não desperdiçar.</> : <>Folha(s) cheia(s), sem sobra. 👍</>}</>}
+          {carregando || importando ? "Carregando…" : (sel.length === 0 && pdfsAbertos.length === 0) ? "Escolha um pedido salvo, ou abra um PDF de pedido para testar. Pronta entrega fica de fora." : <>Peças de produção: <strong>{etqs.length}</strong> etiqueta(s) · <strong>{paginas}</strong> folha(s) {cfg.pagina === "carta" ? "Carta" : "A4"} ({porPagina} por folha){offset > 0 && <> · pulando {offset} espaço(s) na 1ª folha</>}{ordemPedidos.length > 1 && <> · pedidos separados por 1 carreira em branco</>}. {sobra > 0 ? <>Sobram <strong>{sobra}</strong> espaço(s) na última folha — adicione outro pedido pra completar e não desperdiçar.</> : <>Folha(s) cheia(s), sem sobra. 👍</>}</>}
         </p>
       </div>
 

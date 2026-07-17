@@ -622,6 +622,14 @@ export const api = {
   addEventoFunil: (id: string, b: { tipo: string; texto: string; autor?: string }) =>
     jsonPost(`/api/funil/${id}/evento`, b).then((r) => j<{ ok: boolean }>(r)),
   listarModelos: () => fetch("/api/modelos").then((r) => j<Modelo[]>(r)),
+  // Lê um PDF de pedido (sem salvar) e devolve os itens — usado para testar a
+  // impressão de etiquetas a partir de um arquivo, sem depender de pedido salvo.
+  importarPedidoPdf: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return fetch("/api/pedidos/importar", { method: "POST", body: fd }).then((r) =>
+      j<{ numero_erp?: string; cliente_nome?: string; itens: { produto: string; ref?: string; cor_grade?: string; tamanho?: string; qtd: number; parte: string }[]; metodo: string }>(r));
+  },
   // Etiquetas (impressão A4) de um ou mais pedidos — só itens de produção.
   etiquetasPedidos: (ids: string[]) =>
     fetch("/api/pedidos/etiquetas?ids=" + encodeURIComponent(ids.join(","))).then((r) => j<{ pedido_id: string; pedido: string | null; cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null }[]>(r)),
