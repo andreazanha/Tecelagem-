@@ -1293,7 +1293,7 @@ body.dark .demo-guia-ol li { color: #cbd5e1; }
 body.dark .demo-guia-ol li span { color: #8b97ab; }
 
 /* ── Impressão de etiquetas (prévia da folha A4) ─────────────────────────────── */
-.a4-folha { width: min(560px, 96%); aspect-ratio: 210 / 297; margin: 0 auto; background: #fff; box-shadow: 0 6px 24px #0f172a22; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.a4-folha { width: min(560px, 96%); aspect-ratio: 210 / 297; margin: 0 auto; background: #fff; box-shadow: 0 6px 24px #0f172a22; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; container-type: inline-size; }
 .a4-et { border: 1px solid #333; border-radius: 3px; padding: 3px 4px; display: flex; flex-direction: column; justify-content: center; gap: 0px; overflow: hidden; box-sizing: border-box; }
 .a4-cli { font-size: 8px; color: #475569; line-height: 1.15; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .a4-mod { font-size: 12px; font-weight: 800; color: #0f172a; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

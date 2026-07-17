@@ -213,6 +213,9 @@ export function ImpressaoEtiquetas() {
 
   // Prévia da 1ª página em A4 proporcional (posições em % da folha).
   const pct = (mm: number, total: number) => (mm / total) * 100;
+  // Fonte da prévia proporcional à impressão real: cfg.fonte(pt) → mm → % da
+  // largura da folha (cqw), então a prévia mostra exatamente o que cabe.
+  const fpt = (mult: number) => `${(cfg.fonte * mult * 0.3528 / pag.w * 100).toFixed(3)}cqw`;
 
   return (
     <>
@@ -352,11 +355,11 @@ export function ImpressaoEtiquetas() {
             const e = etqs.length ? finalCells[k] : ({ cliente: "Cliente", modelo: "(etiqueta)", tamanho: "", cor: "", composicao: "" } as Etq);
             if (!e) return <div key={k} className="a4-et a4-et-empty" style={style}></div>;
             return (
-              <div key={k} className="a4-et" style={style}>
-                <div className="a4-mod">{e.modelo}</div>
-                <div className="a4-lin">Cor: <b>{e.cor || "—"}</b></div>
-                <div className="a4-lin">Tamanho: <b>{e.tamanho || "—"}</b>{e.composicao ? <span style={{ color: "#55555e" }}> · {e.composicao}</span> : ""}</div>
-                <div className="a4-cli">{e.cliente}</div>
+              <div key={k} className="a4-et" style={{ ...style, gap: 0, justifyContent: "center" }}>
+                <div className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{e.modelo}</div>
+                <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
+                <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Tamanho: <b>{e.tamanho || "—"}</b>{e.composicao ? <span style={{ color: "#55555e" }}> · {e.composicao}</span> : ""}</div>
+                <div className="a4-cli" style={{ fontSize: fpt(0.82), lineHeight: 1.15 }}>{e.cliente}</div>
               </div>
             );
           })}
