@@ -1298,6 +1298,8 @@ body.dark .demo-guia-ol li span { color: #8b97ab; }
 .a4-cli { font-size: 8px; color: #475569; line-height: 1.15; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .a4-mod { font-size: 12px; font-weight: 800; color: #0f172a; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .a4-lin { font-size: 8.5px; color: #334155; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.a4-et-skip { border-style: dashed !important; border-color: #c8ccd4 !important; color: #aab; align-items: center; justify-content: center; font-size: 8px; text-transform: uppercase; letter-spacing: .06em; background: repeating-linear-gradient(45deg, #f4f5f7, #f4f5f7 4px, #eceef1 4px, #eceef1 8px); }
+.a4-et-empty { border-style: dashed !important; border-color: #d7dbe1 !important; }
 .a4-top { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
 .a4-tam { font-size: 9.5px; font-weight: 700; color: #0f172a; white-space: nowrap; flex: none; }
 body.dark .a4-folha { background: #f8fafc; }

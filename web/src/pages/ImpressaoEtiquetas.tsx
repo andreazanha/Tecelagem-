@@ -56,6 +56,8 @@ export function ImpressaoEtiquetas() {
   const [cfg, setCfg] = useState<EtqCfg>(carregarCfg);
   const [presets, setPresets] = useState<{ nome: string; cfg: EtqCfg }[]>(carregarPresets);
   const [carregando, setCarregando] = useState(false);
+  // Para reaproveitar folha meio usada: pular as primeiras (inicio-1) etiquetas.
+  const [inicio, setInicio] = useState(1);
 
   const todosPresets = [...PRESETS_FIXOS, ...presets];
   function aplicarPreset(nome: string) { const p = todosPresets.find((x) => x.nome === nome); if (p) setCfg({ ...p.cfg }); }
@@ -90,7 +92,12 @@ export function ImpressaoEtiquetas() {
   const setC = (k: keyof EtqCfg, v: string) => setCfg((c) => ({ ...c, [k]: Math.max(0, Number(v.replace(",", ".")) || 0) }));
   const pag = PAG[cfg.pagina] || PAG.A4;
   const porPagina = Math.max(1, cfg.colunas * cfg.linhas);
-  const paginas = Math.max(1, Math.ceil(etqs.length / porPagina));
+  // Pula espaços já usados na 1ª folha (reaproveitar folha meio usada).
+  const offset = Math.min(porPagina - 1, Math.max(0, Math.trunc(inicio) - 1));
+  const totalCel = offset + etqs.length; // células ocupadas (vazias + cheias)
+  const paginas = Math.max(1, Math.ceil(totalCel / porPagina));
+  const usadasUltima = totalCel % porPagina === 0 ? porPagina : totalCel % porPagina;
+  const sobra = porPagina - usadasUltima; // espaços vazios na última folha
   const label = (p: Pedido) => `${p.numero_erp || p.codigo_pai || p.id.slice(0, 6)} · ${p.cliente_nome}`;
 
   // CSS comum da etiqueta (prévia e impressão), com a fonte configurável.
@@ -108,7 +115,10 @@ export function ImpressaoEtiquetas() {
     for (let pg = 0; pg < paginas; pg++) {
       let labels = "";
       for (let k = 0; k < porPagina; k++) {
-        const idx = pg * porPagina + k; if (idx >= etqs.length) break;
+        const cel = pg * porPagina + k; // célula global (inclui as puladas)
+        const idx = cel - offset; // índice da etiqueta; < 0 = espaço pulado
+        if (idx < 0) continue; // deixa em branco (folha já usada)
+        if (idx >= etqs.length) break;
         const col = k % cfg.colunas, row = Math.floor(k / cfg.colunas);
         const x = cfg.margemEsq + col * (cfg.larguraEt + cfg.gapH);
         const y = cfg.margemTopo + row * (cfg.alturaEt + cfg.gapV);
@@ -142,6 +152,10 @@ export function ImpressaoEtiquetas() {
               {pedidos.filter((p) => !sel.includes(p.id)).map((p) => <option key={p.id} value={p.id}>{label(p)}</option>)}
             </select>
           </label>
+          <label className="campo" style={{ minWidth: 150 }} title="Para reaproveitar uma folha que já tem etiquetas coladas: conte os espaços já usados (esquerda→direita, cima→baixo) e comece na próxima.">
+            <span className="campo-label">Começar na etiqueta nº</span>
+            <input type="number" min={1} max={porPagina} step={1} value={String(inicio)} onChange={(e) => setInicio(Math.max(1, Math.min(porPagina, Math.trunc(Number(e.target.value) || 1))))} />
+          </label>
           <button className="btn btn-primary" style={{ marginLeft: "auto" }} disabled={etqs.length === 0} onClick={imprimir}>🖨️ Imprimir</button>
         </div>
         {sel.length > 0 && (
@@ -153,7 +167,7 @@ export function ImpressaoEtiquetas() {
           </div>
         )}
         <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>
-          {carregando ? "Carregando…" : sel.length === 0 ? "Escolha um ou mais pedidos. Pronta entrega fica de fora." : <>Peças de produção: <strong>{etqs.length}</strong> etiqueta(s) · <strong>{paginas}</strong> folha(s) {cfg.pagina === "carta" ? "Carta" : "A4"} ({porPagina} por folha).</>}
+          {carregando ? "Carregando…" : sel.length === 0 ? "Escolha um ou mais pedidos. Pronta entrega fica de fora." : <>Peças de produção: <strong>{etqs.length}</strong> etiqueta(s) · <strong>{paginas}</strong> folha(s) {cfg.pagina === "carta" ? "Carta" : "A4"} ({porPagina} por folha){offset > 0 && <> · pulando {offset} espaço(s) na 1ª folha</>}. {sobra > 0 ? <>Sobram <strong>{sobra}</strong> espaço(s) na última folha — adicione outro pedido pra completar e não desperdiçar.</> : <>Folha(s) cheia(s), sem sobra. 👍</>}</>}
         </p>
       </div>
 
@@ -199,12 +213,17 @@ export function ImpressaoEtiquetas() {
       <div style={{ marginTop: 16 }}>
         <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Prévia da folha {cfg.pagina === "carta" ? "Carta" : "A4"} (1ª de {paginas}):</div>
         <div className="a4-folha" style={{ padding: 0, position: "relative", aspectRatio: `${pag.w} / ${pag.h}` }}>
-          {(etqs.length ? etqs : Array.from({ length: porPagina }, () => ({ cliente: "Cliente", modelo: "(etiqueta)", tamanho: "", cor: "", composicao: "" } as Etq))).slice(0, porPagina).map((e, k) => {
+          {Array.from({ length: porPagina }, (_, k) => {
             const col = k % cfg.colunas, row = Math.floor(k / cfg.colunas);
             const x = cfg.margemEsq + col * (cfg.larguraEt + cfg.gapH);
             const y = cfg.margemTopo + row * (cfg.alturaEt + cfg.gapV);
+            const style = { position: "absolute" as const, left: pct(x, pag.w) + "%", top: pct(y, pag.h) + "%", width: pct(cfg.larguraEt, pag.w) + "%", height: pct(cfg.alturaEt, pag.h) + "%", overflow: "hidden" };
+            if (k < offset) return <div key={k} className="a4-et a4-et-skip" style={style}>usada</div>;
+            const idx = k - offset;
+            const e: Etq = etqs.length ? (etqs[idx] || { cliente: "", modelo: "", tamanho: "", cor: "", composicao: "" }) : { cliente: "Cliente", modelo: "(etiqueta)", tamanho: "", cor: "", composicao: "" };
+            if (etqs.length && idx >= etqs.length) return <div key={k} className="a4-et a4-et-empty" style={style}></div>;
             return (
-              <div key={k} className="a4-et" style={{ position: "absolute", left: pct(x, pag.w) + "%", top: pct(y, pag.h) + "%", width: pct(cfg.larguraEt, pag.w) + "%", height: pct(cfg.alturaEt, pag.h) + "%", overflow: "hidden" }}>
+              <div key={k} className="a4-et" style={style}>
                 <div className="a4-top"><span className="a4-mod">{e.modelo}</span><span className="a4-tam">{e.tamanho || "—"}</span></div>
                 <div className="a4-lin">Cor: <b>{e.cor || "—"}</b>{e.composicao ? <span style={{ color: "#55555e" }}> · {e.composicao}</span> : ""}</div>
                 <div className="a4-cli">{e.cliente}</div>
