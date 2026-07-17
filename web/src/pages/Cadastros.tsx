@@ -1830,6 +1830,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const [extra, setExtra] = useState<Record<string, string>>(extraDefaults);
   const [novoForn, setNovoForn] = useState(false);
   const [entrada, setEntrada] = useState<Material | null>(null);
+  const [extrato, setExtrato] = useState<Material | null>(null);
   const [colar, setColar] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set()); // seleção p/ alterar em massa
   const [alterar, setAlterar] = useState(false);
@@ -2015,10 +2016,12 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
                   {colunas.map((c) => <td key={c.key} className={c.key === "preco" || c.key === "minimo" ? "num" : undefined}>{celula(c)}</td>)}
                   <td className="num">
                     <span className={baixo ? "mat-saldo-baixo" : ""}>{nBR(saldo)} {m.unidade || ""}</span>
+                    {(m.caixas || 0) > 0 && <div className="muted" style={{ fontSize: 10.5 }}>{nBR(m.caixas || 0)} caixa(s)</div>}
                     {min > 0 && <div className="muted" style={{ fontSize: 10.5 }}>mín {nBR(min)}{baixo ? " · repor" : ""}</div>}
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    <button className="icon-btn" title="Entrada de estoque" onClick={() => setEntrada(m)}>📥</button>
+                    <button className="icon-btn" title="Movimentar estoque (saldo / caixas)" onClick={() => setEntrada(m)}>📥</button>
+                    <button className="icon-btn" title="Movimentos (histórico)" onClick={() => setExtrato(m)}>🕑</button>
                     <button className="icon-btn" title="Duplicar" onClick={() => duplicar(m)}>⧉</button>
                     <button className="icon-btn" title="Editar" onClick={() => editar(m)}>✎</button>
                     <button className="icon-btn" title="Excluir" onClick={() => remover(m)}>✕</button>
@@ -2032,6 +2035,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
 
       {novoForn && <FornecedorRapido onFechar={() => setNovoForn(false)} onSalvo={async (id) => { setNovoForn(false); await recarregarForn(); setFornId(id); }} />}
       {entrada && <MovEstoqueModal material={entrada} onFechar={() => setEntrada(null)} onSalvo={() => { setEntrada(null); recarregar(); onMudou?.(); }} />}
+      {extrato && <MovimentosMaterialModal material={extrato} onFechar={() => setExtrato(null)} />}
       {alterar && <AlterarMassaModal
         colunas={colunas} ids={[...sel]} fornecedores={fornecedores}
         onFechar={() => setAlterar(false)}
@@ -2079,20 +2083,29 @@ function FornecedorRapido({ onFechar, onSalvo }: { onFechar: () => void; onSalvo
 // Modal de movimentação de estoque (entrada de compra / baixa / ajuste).
 function MovEstoqueModal({ material, onFechar, onSalvo }: { material: Material; onFechar: () => void; onSalvo: () => void }) {
   const [tipo, setTipo] = useState<"entrada" | "baixa" | "ajuste">("entrada");
+  const [alvo, setAlvo] = useState<"saldo" | "caixas">("saldo");
   const [qtd, setQtd] = useState("");
   const [motivo, setMotivo] = useState("");
   const un = material.unidade || "";
+  const unAlvo = alvo === "caixas" ? "caixas" : (un || "un");
   async function salvar() {
     const q = Number(qtd.replace(",", "."));
-    if (!q || isNaN(q)) return alert("Informe a quantidade.");
-    try { await api.movMaterial(material.id, { tipo, quantidade: q, motivo: motivo.trim() || undefined }); onSalvo(); }
+    if ((!q || isNaN(q)) && tipo !== "ajuste") return alert("Informe a quantidade.");
+    try { await api.movMaterial(material.id, { tipo, quantidade: isNaN(q) ? 0 : q, motivo: motivo.trim() || undefined, alvo }); onSalvo(); }
     catch (e) { alert((e as Error).message); }
   }
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card" style={{ maxWidth: 430 }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>Estoque · {material.nome}</h2>
-        <p className="muted" style={{ marginTop: -4 }}>Saldo atual: <strong>{nBR(material.saldo || 0)} {un}</strong></p>
+        <p className="muted" style={{ marginTop: -4 }}>Saldo: <strong>{nBR(material.saldo || 0)} {un}</strong> · Caixas: <strong>{nBR(material.caixas || 0)}</strong></p>
+        <div className="segmented" style={{ marginBottom: 10 }}>
+          {(["saldo", "caixas"] as const).map((a) => (
+            <button key={a} type="button" className={"seg" + (alvo === a ? " seg-on" : "")} onClick={() => setAlvo(a)}>
+              {a === "saldo" ? `Saldo (${un || "un"})` : "Caixas"}
+            </button>
+          ))}
+        </div>
         <div className="segmented" style={{ marginBottom: 12 }}>
           {(["entrada", "baixa", "ajuste"] as const).map((t) => (
             <button key={t} type="button" className={"seg" + (tipo === t ? " seg-on" : "")} onClick={() => setTipo(t)}>
@@ -2100,13 +2113,51 @@ function MovEstoqueModal({ material, onFechar, onSalvo }: { material: Material; 
             </button>
           ))}
         </div>
-        <label className="campo"><span className="campo-label">{tipo === "ajuste" ? `Novo saldo (${un})` : `Quantidade (${un})`}</span>
+        <label className="campo"><span className="campo-label">{tipo === "ajuste" ? `Novo valor (${unAlvo})` : `Quantidade (${unAlvo})`}</span>
           <input value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="0" inputMode="decimal" autoFocus /></label>
         <label className="campo"><span className="campo-label">Motivo (opcional)</span>
           <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder={tipo === "entrada" ? "ex.: compra NF 123" : "ex.: perda / acerto"} /></label>
         <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16 }}>
           <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
           <button className="btn btn-primary" onClick={salvar}>Confirmar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Extrato de movimentos de um material (livro-razão): entradas, baixas e as
+// saídas/estornos causados por pedidos (com o nº do pedido).
+function MovimentosMaterialModal({ material, onFechar }: { material: Material; onFechar: () => void }) {
+  const [movs, setMovs] = useState<{ tipo: string; quantidade: number; motivo: string | null; pedido_id: string | null; fonte: string | null; criado_em: string }[] | null>(null);
+  useEffect(() => { api.movimentosMaterial(material.id).then(setMovs).catch(() => setMovs([])); }, [material.id]);
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginTop: 0 }}>Movimentos · {material.nome}</h2>
+        {movs == null ? <p className="muted">Carregando…</p> : movs.length === 0 ? <p className="muted">Nenhum movimento ainda.</p> : (
+          <div style={{ maxHeight: "60vh", overflowY: "auto" }}>
+            <table className="table">
+              <thead><tr><th>Data</th><th>Tipo</th><th className="num">Qtd</th><th>Origem / Motivo</th></tr></thead>
+              <tbody>
+                {movs.map((mv, i) => {
+                  const pos = Number(mv.quantidade) >= 0;
+                  const origem = mv.pedido_id ? (mv.motivo === "estorno pedido" ? `↩ estorno pedido` : `pedido`) + (mv.fonte === "caixas" ? " · caixas" : "") : (mv.motivo || (mv.fonte === "caixas" ? "caixas" : "—"));
+                  return (
+                    <tr key={i}>
+                      <td className="muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>{(mv.criado_em || "").replace("T", " ").slice(0, 16)}</td>
+                      <td>{mv.tipo === "entrada" ? "📥 Entrada" : mv.tipo === "baixa" ? "📤 Baixa" : "⚖️ Ajuste"}</td>
+                      <td className="num" style={{ color: pos ? "#16a34a" : "#dc2626", fontWeight: 700 }}>{pos ? "+" : ""}{nBR(mv.quantidade)}</td>
+                      <td className="muted" style={{ fontSize: 12.5 }}>{origem}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+          <button className="btn btn-soft" onClick={onFechar}>Fechar</button>
         </div>
       </div>
     </div>

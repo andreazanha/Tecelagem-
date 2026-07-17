@@ -286,19 +286,31 @@ materiais.post("/:id/mov", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const tipo = String(b.tipo ?? "entrada").trim();
   if (!["entrada", "baixa", "ajuste"].includes(tipo)) return c.json({ error: "tipo inválido" }, 400);
+  // alvo: "saldo" (unidade base) ou "caixas" (contagem independente).
+  const alvo = String(b.alvo ?? "saldo").trim() === "caixas" ? "caixas" : "saldo";
   const qtd = Number(b.quantidade);
-  if (!qtd || isNaN(qtd)) return c.json({ error: "quantidade inválida" }, 400);
-  const mat = await c.env.DB.prepare("SELECT saldo FROM materiais WHERE id = ?").bind(id).first<{ saldo: number }>();
+  if (isNaN(qtd) || (tipo !== "ajuste" && !qtd)) return c.json({ error: "quantidade inválida" }, 400);
+  const mat = await c.env.DB.prepare("SELECT saldo, caixas FROM materiais WHERE id = ?").bind(id).first<{ saldo: number; caixas: number }>();
   if (!mat) return c.json({ error: "material não encontrado" }, 404);
-  // entrada soma; baixa subtrai; ajuste DEFINE o saldo (delta = alvo − atual).
-  const delta = tipo === "entrada" ? Math.abs(qtd) : tipo === "baixa" ? -Math.abs(qtd) : qtd - (mat.saldo || 0);
-  const novo = Math.max(0, (mat.saldo || 0) + delta);
+  const atual = (alvo === "caixas" ? mat.caixas : mat.saldo) || 0;
+  // entrada soma; baixa subtrai; ajuste DEFINE (delta = alvo − atual).
+  const delta = tipo === "entrada" ? Math.abs(qtd) : tipo === "baixa" ? -Math.abs(qtd) : qtd - atual;
+  const novo = Math.max(0, atual + delta);
   await c.env.DB.batch([
-    c.env.DB.prepare("UPDATE materiais SET saldo = ? WHERE id = ?").bind(novo, id),
-    c.env.DB.prepare("INSERT INTO material_mov (id, material_id, tipo, quantidade, motivo) VALUES (?, ?, ?, ?, ?)")
-      .bind(uid(), id, tipo, delta, str(b.motivo)),
+    c.env.DB.prepare(`UPDATE materiais SET ${alvo === "caixas" ? "caixas" : "saldo"} = ? WHERE id = ?`).bind(novo, id),
+    c.env.DB.prepare("INSERT INTO material_mov (id, material_id, tipo, quantidade, motivo, fonte) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(uid(), id, tipo, delta, str(b.motivo), alvo === "caixas" ? "caixas" : "material"),
   ]);
-  return c.json({ id, saldo: novo });
+  return c.json({ id, saldo: alvo === "caixas" ? mat.saldo : novo, caixas: alvo === "caixas" ? novo : mat.caixas });
+});
+
+// Histórico de movimentos de um material (livro-razão), inclui as baixas/estornos
+// causados por pedidos (motivo "pedido" / "estorno pedido", com pedido_id).
+materiais.get("/:id/movimentos", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT tipo, quantidade, motivo, pedido_id, fonte, criado_em FROM material_mov WHERE material_id = ? ORDER BY criado_em DESC, rowid DESC LIMIT 200"
+  ).bind(c.req.param("id")).all();
+  return c.json(results);
 });
 
 // Excluir TODOS os materiais de um tipo (categoria). Uso: limpar e recadastrar.

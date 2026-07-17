@@ -164,7 +164,8 @@ export interface Material {
   codigo?: string | null;
   unidade?: string | null;   // un|cm|kg|m
   preco?: number | null;     // custo por unidade
-  saldo?: number;            // estoque atual
+  saldo?: number;            // estoque atual (unidade base)
+  caixas?: number;           // contagem de caixas (independente da unidade base)
   minimo?: number;           // estoque mínimo (dispara compra)
   codigo_interno?: string | null; // SKU interno
   status?: string | null;    // ativo|inativo
@@ -715,8 +716,10 @@ export const api = {
   excluirCategoriaMaterial: (id: string) =>
     fetch(`/api/materiais/categorias/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   // Movimenta estoque do material (entrada de compra, baixa, ajuste)
-  movMaterial: (id: string, b: { tipo: "entrada" | "baixa" | "ajuste"; quantidade: number; motivo?: string }) =>
-    jsonPost(`/api/materiais/${encodeURIComponent(id)}/mov`, b).then((r) => j<{ id: string; saldo: number }>(r)),
+  movMaterial: (id: string, b: { tipo: "entrada" | "baixa" | "ajuste"; quantidade: number; motivo?: string; alvo?: "saldo" | "caixas" }) =>
+    jsonPost(`/api/materiais/${encodeURIComponent(id)}/mov`, b).then((r) => j<{ id: string; saldo: number; caixas: number }>(r)),
+  movimentosMaterial: (id: string) =>
+    fetch(`/api/materiais/${encodeURIComponent(id)}/movimentos`).then((r) => j<{ tipo: string; quantidade: number; motivo: string | null; pedido_id: string | null; fonte: string | null; criado_em: string }[]>(r)),
   // Sugestão de compras (saldo abaixo do mínimo)
   comprasMateriais: () =>
     fetch("/api/materiais/compras").then((r) => j<CompraSugestao[]>(r)),
