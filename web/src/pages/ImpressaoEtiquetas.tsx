@@ -51,10 +51,10 @@ function modeloLinhas(modelo: string): string[] {
 function conteudoEt(e: Etq): string {
   const comp = e.composicao ? ` · ${e.composicao}` : "";
   const mod = modeloLinhas(e.modelo).map((l) => `<div class="mod">${l}</div>`).join("");
-  return `<div class="lin">Cor: <b>${e.cor || "—"}</b></div>
+  return `${mod}
+    <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
     <div class="lin">Tamanho: <b>${e.tamanho || "—"}</b><span class="comp">${comp}</span></div>
-    <div class="cli">${e.cliente || ""}</div>
-    ${mod}`;
+    <div class="cli">${e.cliente || ""}</div>`;
 }
 
 export function ImpressaoEtiquetas() {
@@ -363,10 +363,10 @@ export function ImpressaoEtiquetas() {
             if (!e) return <div key={k} className="a4-et a4-et-empty" style={style}></div>;
             return (
               <div key={k} className="a4-et" style={{ ...style, gap: 0, justifyContent: "center" }}>
+                {modeloLinhas(e.modelo).map((l, mi) => <div key={"m" + mi} className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{l}</div>)}
                 <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
                 <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Tamanho: <b>{e.tamanho || "—"}</b>{e.composicao ? <span style={{ color: "#55555e" }}> · {e.composicao}</span> : ""}</div>
                 <div className="a4-cli" style={{ fontSize: fpt(0.82), lineHeight: 1.15 }}>{e.cliente}</div>
-                {modeloLinhas(e.modelo).map((l, mi) => <div key={"m" + mi} className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{l}</div>)}
               </div>
             );
           })}
