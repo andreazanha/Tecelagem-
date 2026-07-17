@@ -42,12 +42,19 @@ const CAMPOS: { k: keyof EtqCfg; label: string; step?: number }[] = [
 // Conteúdo de uma etiqueta (HTML), reaproveitado na prévia e na impressão.
 // Layout horizontal (a etiqueta 6180 é larga e baixa): modelo + tamanho na
 // primeira linha; cor e composição juntas na segunda; cliente embaixo.
+// Nome do modelo em 2 linhas: 1ª palavra (tipo) em cima, o resto embaixo.
+function modeloLinhas(modelo: string): string[] {
+  const nome = (modelo || "").trim();
+  const sp = nome.indexOf(" ");
+  return sp > 0 ? [nome.slice(0, sp), nome.slice(sp + 1)] : [nome];
+}
 function conteudoEt(e: Etq): string {
   const comp = e.composicao ? ` · ${e.composicao}` : "";
-  return `<div class="mod">${e.modelo || ""}</div>
-    <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
+  const mod = modeloLinhas(e.modelo).map((l) => `<div class="mod">${l}</div>`).join("");
+  return `<div class="lin">Cor: <b>${e.cor || "—"}</b></div>
     <div class="lin">Tamanho: <b>${e.tamanho || "—"}</b><span class="comp">${comp}</span></div>
-    <div class="cli">${e.cliente || ""}</div>`;
+    <div class="cli">${e.cliente || ""}</div>
+    ${mod}`;
 }
 
 export function ImpressaoEtiquetas() {
@@ -180,7 +187,7 @@ export function ImpressaoEtiquetas() {
 
   // CSS comum da etiqueta (prévia e impressão), com a fonte configurável.
   // Disposição horizontal: linha de topo com modelo (esq.) e tamanho (dir.).
-  const cssEt = `.et{position:absolute;overflow:hidden;box-sizing:border-box;padding:1.4mm 2.2mm;display:flex;flex-direction:column;justify-content:center;gap:0.5mm;font-family:Arial,Helvetica,sans-serif;border:0.2mm solid #000;border-radius:1mm}
+  const cssEt = `.et{position:absolute;overflow:hidden;box-sizing:border-box;padding:1.4mm 2.2mm;display:flex;flex-direction:column;justify-content:center;gap:0.5mm;font-family:Arial,Helvetica,sans-serif}
     .mod{font-size:${(cfg.fonte * 1.3).toFixed(1)}pt;font-weight:800;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .lin{font-size:${cfg.fonte}pt;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .lin b{color:#111}
@@ -356,10 +363,10 @@ export function ImpressaoEtiquetas() {
             if (!e) return <div key={k} className="a4-et a4-et-empty" style={style}></div>;
             return (
               <div key={k} className="a4-et" style={{ ...style, gap: 0, justifyContent: "center" }}>
-                <div className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{e.modelo}</div>
                 <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
                 <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Tamanho: <b>{e.tamanho || "—"}</b>{e.composicao ? <span style={{ color: "#55555e" }}> · {e.composicao}</span> : ""}</div>
                 <div className="a4-cli" style={{ fontSize: fpt(0.82), lineHeight: 1.15 }}>{e.cliente}</div>
+                {modeloLinhas(e.modelo).map((l, mi) => <div key={"m" + mi} className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{l}</div>)}
               </div>
             );
           })}
