@@ -3,15 +3,39 @@ import { api, type Pedido } from "../api";
 
 type Etq = { cliente: string; modelo: string; tamanho: string | null; cor: string | null; composicao: string | null };
 
-// Impressão de etiquetas dos pedidos em folha A4.
-// Você escolhe um ou mais pedidos; o sistema lê os itens de PRODUÇÃO (pronta
-// entrega fica de fora), gera uma etiqueta por peça e monta na A4. Dá pra somar
-// vários pedidos para aproveitar a folha. (As coordenadas exatas virão depois.)
+// Configuração da folha de etiquetas (tudo em milímetros). Casa com as folhas
+// de etiqueta adesiva comuns (tipo Pimaco): margem + tamanho da etiqueta +
+// espaçamento + nº de colunas/linhas por página A4.
+type EtqCfg = { margemTopo: number; margemEsq: number; larguraEt: number; alturaEt: number; gapH: number; gapV: number; colunas: number; linhas: number; fonte: number };
+const CFG_PADRAO: EtqCfg = { margemTopo: 10, margemEsq: 8, larguraEt: 63.5, alturaEt: 38.1, gapH: 2.5, gapV: 0, colunas: 3, linhas: 7, fonte: 9 };
+const CFG_KEY = "etq-cfg";
+function carregarCfg(): EtqCfg {
+  try { const s = localStorage.getItem(CFG_KEY); if (s) return { ...CFG_PADRAO, ...JSON.parse(s) }; } catch { /* ignore */ }
+  return { ...CFG_PADRAO };
+}
+
+const CAMPOS: { k: keyof EtqCfg; label: string; step?: number }[] = [
+  { k: "colunas", label: "Colunas", step: 1 }, { k: "linhas", label: "Linhas por página", step: 1 },
+  { k: "larguraEt", label: "Largura da etiqueta (mm)" }, { k: "alturaEt", label: "Altura da etiqueta (mm)" },
+  { k: "margemEsq", label: "Margem esquerda (mm)" }, { k: "margemTopo", label: "Margem superior (mm)" },
+  { k: "gapH", label: "Espaço horizontal (mm)" }, { k: "gapV", label: "Espaço vertical (mm)" },
+  { k: "fonte", label: "Tamanho da fonte (pt)" },
+];
+
+// Conteúdo de uma etiqueta (HTML), reaproveitado na prévia e na impressão.
+function conteudoEt(e: Etq): string {
+  return `<div class="cli">${e.cliente || ""}</div>
+    <div class="mod">${e.modelo || ""}</div>
+    <div class="lin">Tamanho: <b>${e.tamanho || "—"}</b></div>
+    <div class="lin">${e.composicao || ""}</div>
+    <div class="lin">Cor: <b>${e.cor || "—"}</b></div>`;
+}
+
 export function ImpressaoEtiquetas() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [sel, setSel] = useState<string[]>([]);
-  const [rows, setRows] = useState<{ pedido: string | null; cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null }[]>([]);
-  const [cols, setCols] = useState(3);
+  const [rows, setRows] = useState<{ cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null }[]>([]);
+  const [cfg, setCfg] = useState<EtqCfg>(carregarCfg);
   const [carregando, setCarregando] = useState(false);
 
   useEffect(() => { api.listarPedidos().then(setPedidos).catch(() => {}); }, []);
@@ -20,8 +44,8 @@ export function ImpressaoEtiquetas() {
     setCarregando(true);
     api.etiquetasPedidos(sel).then(setRows).catch(() => setRows([])).finally(() => setCarregando(false));
   }, [sel]);
+  useEffect(() => { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } }, [cfg]);
 
-  // Uma etiqueta por peça (expande pela quantidade).
   const etqs = useMemo<Etq[]>(() => {
     const out: Etq[] = [];
     for (const r of rows) for (let i = 0; i < Math.max(0, Math.trunc(r.qtd)); i++)
@@ -29,97 +53,107 @@ export function ImpressaoEtiquetas() {
     return out;
   }, [rows]);
 
+  const setC = (k: keyof EtqCfg, v: string) => setCfg((c) => ({ ...c, [k]: Math.max(0, Number(v.replace(",", ".")) || 0) }));
+  const porPagina = Math.max(1, cfg.colunas * cfg.linhas);
+  const paginas = Math.max(1, Math.ceil(etqs.length / porPagina));
   const label = (p: Pedido) => `${p.numero_erp || p.codigo_pai || p.id.slice(0, 6)} · ${p.cliente_nome}`;
-  const addPedido = (id: string) => { if (id && !sel.includes(id)) setSel((s) => [...s, id]); };
-  const removePedido = (id: string) => setSel((s) => s.filter((x) => x !== id));
+
+  // CSS comum da etiqueta (prévia e impressão), com a fonte configurável.
+  const cssEt = `.et{position:absolute;overflow:hidden;box-sizing:border-box;padding:2mm;display:flex;flex-direction:column;justify-content:center;gap:0.4mm;font-family:Arial,Helvetica,sans-serif}
+    .cli{font-size:${(cfg.fonte * 0.82).toFixed(1)}pt;color:#333}
+    .mod{font-size:${(cfg.fonte * 1.35).toFixed(1)}pt;font-weight:800}
+    .lin{font-size:${cfg.fonte}pt;color:#222}`;
 
   function imprimir() {
-    const cel = (e: Etq) => `<div class="et">
-      <div class="cli">${e.cliente || ""}</div>
-      <div class="mod">${e.modelo || ""}</div>
-      <div class="lin">Tamanho: <b>${e.tamanho || "—"}</b></div>
-      <div class="lin">${e.composicao || ""}</div>
-      <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
-    </div>`;
+    let body = "";
+    for (let pg = 0; pg < paginas; pg++) {
+      let labels = "";
+      for (let k = 0; k < porPagina; k++) {
+        const idx = pg * porPagina + k; if (idx >= etqs.length) break;
+        const col = k % cfg.colunas, row = Math.floor(k / cfg.colunas);
+        const x = cfg.margemEsq + col * (cfg.larguraEt + cfg.gapH);
+        const y = cfg.margemTopo + row * (cfg.alturaEt + cfg.gapV);
+        labels += `<div class="et" style="left:${x}mm;top:${y}mm;width:${cfg.larguraEt}mm;height:${cfg.alturaEt}mm">${conteudoEt(etqs[idx])}</div>`;
+      }
+      body += `<div class="pg">${labels}</div>`;
+    }
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas</title><style>
-      @page { size: A4; margin: 8mm; }
-      * { box-sizing: border-box; }
-      body { margin: 0; font-family: Arial, Helvetica, sans-serif; }
-      .grid { display: grid; grid-template-columns: repeat(${cols}, 1fr); gap: 3mm; }
-      .et { border: 1px dashed #999; border-radius: 2mm; padding: 3mm; height: 30mm; display: flex; flex-direction: column; justify-content: center; gap: 0.6mm; overflow: hidden; }
-      .cli { font-size: 8pt; color: #333; }
-      .mod { font-size: 12pt; font-weight: 800; }
-      .lin { font-size: 8.5pt; color: #222; }
-      .lin b { font-weight: 700; }
-    </style></head><body><div class="grid">${etqs.map(cel).join("")}</div>
-    <script>window.onload=function(){window.print()}</script></body></html>`;
+      @page { size: A4; margin: 0; } *{box-sizing:border-box} body{margin:0}
+      .pg{position:relative;width:210mm;height:297mm;overflow:hidden;page-break-after:always}
+      ${cssEt}
+    </style></head><body>${body}<script>window.onload=function(){window.print()}</script></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(html); w.document.close(); }
   }
 
+  // Prévia da 1ª página em A4 proporcional (posições em % da folha).
+  const pct = (mm: number, total: number) => (mm / total) * 100;
+
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>Impressão de etiquetas</h1>
-          <div className="breadcrumb">Expedição › Etiquetas dos pedidos (A4)</div>
-        </div>
-      </div>
+      <div className="page-head"><div><h1>Impressão de etiquetas</h1><div className="breadcrumb">Expedição › Etiquetas dos pedidos (A4)</div></div></div>
 
       <div className="card pad">
         <div className="row-gap" style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <label className="campo" style={{ minWidth: 280 }}>
             <span className="campo-label">Adicionar pedido</span>
-            <select value="" onChange={(e) => { addPedido(e.target.value); e.currentTarget.value = ""; }}>
+            <select value="" onChange={(e) => { const id = e.target.value; if (id && !sel.includes(id)) setSel((s) => [...s, id]); e.currentTarget.value = ""; }}>
               <option value="">— escolha um pedido —</option>
               {pedidos.filter((p) => !sel.includes(p.id)).map((p) => <option key={p.id} value={p.id}>{label(p)}</option>)}
             </select>
           </label>
-          <label className="campo" style={{ width: 120 }}>
-            <span className="campo-label">Colunas na A4</span>
-            <select value={cols} onChange={(e) => setCols(Number(e.target.value))}>
-              {[2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </label>
           <button className="btn btn-primary" style={{ marginLeft: "auto" }} disabled={etqs.length === 0} onClick={imprimir}>🖨️ Imprimir A4</button>
         </div>
-
         {sel.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
             {sel.map((id) => { const p = pedidos.find((x) => x.id === id); return (
-              <span key={id} className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                {p ? label(p) : id}
-                <button className="icon-btn" title="Tirar" style={{ padding: 0, lineHeight: 1 }} onClick={() => removePedido(id)}>✕</button>
-              </span>
+              <span key={id} className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{p ? label(p) : id}
+                <button className="icon-btn" title="Tirar" style={{ padding: 0, lineHeight: 1 }} onClick={() => setSel((s) => s.filter((x) => x !== id))}>✕</button></span>
             ); })}
           </div>
         )}
-
         <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>
-          {carregando ? "Carregando…" : sel.length === 0 ? "Escolha um ou mais pedidos. Pronta entrega fica de fora." : <>Peças de produção: <strong>{etqs.length}</strong> etiqueta(s) — pronta entrega fica de fora.</>}
+          {carregando ? "Carregando…" : sel.length === 0 ? "Escolha um ou mais pedidos. Pronta entrega fica de fora." : <>Peças de produção: <strong>{etqs.length}</strong> etiqueta(s) · <strong>{paginas}</strong> folha(s) A4 ({porPagina} por folha).</>}
         </p>
       </div>
 
-      {/* Prévia da folha A4 (proporcional). As coordenadas exatas serão ajustadas depois. */}
-      {etqs.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Prévia da folha A4:</div>
-          <div className="a4-folha">
-            <div className="a4-grid" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
-              {etqs.slice(0, cols * 9).map((e, i) => (
-                <div key={i} className="a4-et">
-                  <div className="a4-cli">{e.cliente}</div>
-                  <div className="a4-mod">{e.modelo}</div>
-                  <div className="a4-lin">Tamanho: <b>{e.tamanho || "—"}</b></div>
-                  <div className="a4-lin">{e.composicao || ""}</div>
-                  <div className="a4-lin">Cor: <b>{e.cor || "—"}</b></div>
-                </div>
-              ))}
-            </div>
-            {etqs.length > cols * 9 && <div className="muted" style={{ fontSize: 11, textAlign: "center", padding: 8 }}>… +{etqs.length - cols * 9} etiqueta(s) (continuam na impressão)</div>}
-          </div>
+      {/* Configuração da folha de etiquetas (em mm) */}
+      <div className="card pad" style={{ marginTop: 14 }}>
+        <div className="row-gap" style={{ alignItems: "center", marginBottom: 10 }}>
+          <strong>⚙️ Configuração da etiqueta</strong>
+          <span className="muted" style={{ fontSize: 12.5 }}>Medidas da sua folha (mm). Salva automático.</span>
+          <button className="btn btn-soft" style={{ marginLeft: "auto", padding: "5px 10px", fontSize: 12 }} onClick={() => setCfg({ ...CFG_PADRAO })}>Restaurar padrão</button>
         </div>
-      )}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
+          {CAMPOS.map((c) => (
+            <label key={c.k} className="campo" style={{ margin: 0 }}>
+              <span className="campo-label" style={{ fontSize: 11.5 }}>{c.label}</span>
+              <input type="number" min={0} step={c.step ?? 0.5} value={String(cfg[c.k])} onChange={(e) => setC(c.k, e.target.value)} />
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Prévia da 1ª folha A4 (proporcional) */}
+      <div style={{ marginTop: 16 }}>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Prévia da folha A4 (1ª de {paginas}):</div>
+        <div className="a4-folha" style={{ padding: 0, position: "relative" }}>
+          {(etqs.length ? etqs : Array.from({ length: porPagina }, () => ({ cliente: "", modelo: "(etiqueta)", tamanho: "", cor: "", composicao: "" } as Etq))).slice(0, porPagina).map((e, k) => {
+            const col = k % cfg.colunas, row = Math.floor(k / cfg.colunas);
+            const x = cfg.margemEsq + col * (cfg.larguraEt + cfg.gapH);
+            const y = cfg.margemTopo + row * (cfg.alturaEt + cfg.gapV);
+            return (
+              <div key={k} className="a4-et" style={{ position: "absolute", left: pct(x, 210) + "%", top: pct(y, 297) + "%", width: pct(cfg.larguraEt, 210) + "%", height: pct(cfg.alturaEt, 297) + "%", overflow: "hidden" }}>
+                <div className="a4-cli">{e.cliente}</div>
+                <div className="a4-mod">{e.modelo}</div>
+                <div className="a4-lin">Tamanho: <b>{e.tamanho || "—"}</b></div>
+                <div className="a4-lin">{e.composicao || ""}</div>
+                <div className="a4-lin">Cor: <b>{e.cor || "—"}</b></div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </>
   );
 }
