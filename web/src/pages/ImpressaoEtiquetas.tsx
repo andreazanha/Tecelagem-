@@ -82,19 +82,22 @@ export function ImpressaoEtiquetas() {
   const [carregando, setCarregando] = useState(false);
   // Para reaproveitar folha meio usada: pular as primeiras (inicio-1) etiquetas.
   const [inicio, setInicio] = useState(1);
+  const [modalSalvar, setModalSalvar] = useState(false); // diálogo "salvar modelo"
+  const [novoNome, setNovoNome] = useState("");
 
   const todosPresets = [...PRESETS_FIXOS, ...presets];
   function aplicarPreset(nome: string) { const p = todosPresets.find((x) => x.nome === nome); if (p) setCfg({ ...p.cfg }); }
   async function recarregarPresets() {
     try { const srv = await api.listarPresetsEtiqueta(); setPresets(srv.map((p) => ({ nome: p.nome, cfg: p.cfg as unknown as EtqCfg }))); return srv; } catch { return null; }
   }
-  async function salvarPreset() {
-    const nome = prompt("Nome do modelo de etiqueta (ex.: minha etiqueta pequena):");
-    const n = (nome || "").trim(); if (!n) return;
-    const existe = presets.some((p) => p.nome === n);
-    if (existe && !confirm(`Já existe "${n}". Salvar por cima (sobrescrever)?`)) return;
-    try { await api.salvarPresetEtiqueta(n, cfg); await recarregarPresets(); alert(`Modelo "${n}" salvo.`); }
+  async function gravarPreset(n: string) {
+    const nome = n.trim(); if (!nome) return;
+    try { await api.salvarPresetEtiqueta(nome, cfg); await recarregarPresets(); setModalSalvar(false); setNovoNome(""); alert(`Modelo "${nome}" salvo.`); }
     catch { alert("Não consegui salvar o modelo no servidor."); }
+  }
+  function salvarPorCima(nome: string) {
+    if (!confirm(`Salvar a configuração atual por cima de "${nome}"?`)) return;
+    gravarPreset(nome);
   }
   async function excluirPreset(nome: string) {
     if (!confirm(`Excluir o modelo "${nome}"?`)) return;
@@ -376,7 +379,7 @@ export function ImpressaoEtiquetas() {
               {todosPresets.map((p) => <option key={p.nome} value={p.nome}>{p.nome}</option>)}
             </select>
           </label>
-          <button className="btn btn-soft" onClick={salvarPreset}>💾 Salvar como modelo</button>
+          <button className="btn btn-soft" onClick={() => { setNovoNome(""); setModalSalvar(true); }}>💾 Salvar modelo</button>
           {presets.length > 0 && (
             <select className="campo" style={{ padding: "8px 10px" }} value="" onChange={(e) => { if (e.target.value) excluirPreset(e.target.value); e.currentTarget.value = ""; }}>
               <option value="">🗑 Excluir meu modelo…</option>
@@ -417,6 +420,39 @@ export function ImpressaoEtiquetas() {
           })}
         </div>
       </div>
+
+      {/* Diálogo: salvar modelo (novo ou por cima de um existente) */}
+      {modalSalvar && (
+        <div className="modal-bg" onClick={() => setModalSalvar(false)}>
+          <div className="modal-card" style={{ maxWidth: 460, width: "min(460px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0 }}>Salvar modelo de etiqueta</h2>
+            <label className="campo" style={{ margin: 0 }}>
+              <span className="campo-label">Novo modelo (dê um nome)</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} placeholder="ex.: minha etiqueta A4251" style={{ flex: 1 }}
+                  onKeyDown={(e) => { if (e.key === "Enter") gravarPreset(novoNome); }} />
+                <button className="btn btn-primary" disabled={!novoNome.trim()} onClick={() => gravarPreset(novoNome)}>Salvar novo</button>
+              </div>
+            </label>
+            {presets.length > 0 && (
+              <>
+                <p className="muted" style={{ fontSize: 13, margin: "14px 0 6px" }}>Ou clique em um modelo salvo para <strong>salvar por cima</strong>:</p>
+                <div style={{ maxHeight: "42vh", overflowY: "auto", border: "1px solid var(--line)", borderRadius: 12 }}>
+                  {presets.map((p) => (
+                    <div key={p.nome} className="row-gap" style={{ alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: "1px solid #f3f4f8", cursor: "pointer" }} onClick={() => salvarPorCima(p.nome)}>
+                      <span className="strong">{p.nome}</span>
+                      <button className="btn btn-soft" style={{ marginLeft: "auto", padding: "5px 12px" }} onClick={(e) => { e.stopPropagation(); salvarPorCima(p.nome); }}>Salvar aqui</button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+              <button className="btn btn-soft" onClick={() => setModalSalvar(false)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
