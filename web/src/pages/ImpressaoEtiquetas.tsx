@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { api, type Pedido } from "../api";
 
-type Etq = { cliente: string; modelo: string; tamanho: string | null; cor: string | null; composicao: string | null };
+type Etq = { cliente: string; modelo: string; tamanho: string | null; cor: string | null; composicao: string | null; kit?: boolean };
 
 // Configuração da folha de etiquetas (tudo em milímetros). Casa com as folhas
 // de etiqueta adesiva comuns (tipo Pimaco): tamanho da folha + margem + tamanho
@@ -54,7 +54,28 @@ function modeloLinha(modelo: string): string {
   const abrev = low === "almofada" ? "Alm:" : low === "manta" ? "Man:" : tipo;
   return `${abrev} ${resto}`;
 }
+// Kit: extrai o nome ("Kora") e a composição do pacote ("70×2,20 + 2× 55×35 · c/ ench.").
+function kitInfo(produto: string, tamanho: string | null): { nome: string; comp: string } {
+  const p = (produto || "").replace(/^\s*KIT\s+/i, "").trim();
+  const m = p.match(/^([^\s+]+)/);
+  const nome = m ? m[1] : p;
+  let resto = p.slice(nome.length).trim();
+  const ench = /ench/i.test(resto);
+  resto = resto.replace(/c\/?\s*enchimento/i, "").trim();
+  let comp = `${tamanho || ""} ${resto}`.trim()
+    .replace(/\+\s*(\d+)\s*-\s*/g, " + $1× ")
+    .replace(/[xX]/g, "×").replace(/\./g, ",").replace(/\s+/g, " ").trim();
+  if (ench) comp += " · c/ ench.";
+  return { nome, comp };
+}
 function conteudoEt(e: Etq): string {
+  if (e.kit) {
+    const k = kitInfo(e.modelo, e.tamanho);
+    return `<div class="mod">KIT ${(k.nome || "").toUpperCase()} · ${(e.cor || "—").toUpperCase()}</div>
+      <div class="lin">${k.comp}</div>
+      ${e.composicao ? `<div class="lin"><span class="comp">${e.composicao}</span></div>` : ""}
+      <div class="cli">${e.cliente || ""}</div>`;
+  }
   const comp = e.composicao ? ` · ${e.composicao}` : "";
   const mod = `<div class="mod">${modeloLinha(e.modelo)}</div>`;
   return `${mod}
@@ -66,7 +87,7 @@ function conteudoEt(e: Etq): string {
 export function ImpressaoEtiquetas() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [sel, setSel] = useState<string[]>([]);
-  type Row = { pedido: string | null; pedido_id: string; cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null };
+  type Row = { pedido: string | null; pedido_id: string; cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null; kit: boolean };
   const [rowsDb, setRowsDb] = useState<Row[]>([]);   // vindos de pedidos salvos
   const [rowsPdf, setRowsPdf] = useState<Row[]>([]); // vindos de PDF aberto (teste)
   const [pdfsAbertos, setPdfsAbertos] = useState<{ id: string; nome: string }[]>([]);
@@ -84,6 +105,7 @@ export function ImpressaoEtiquetas() {
   const [inicio, setInicio] = useState(1);
   const [modalSalvar, setModalSalvar] = useState(false); // diálogo "salvar modelo"
   const [novoNome, setNovoNome] = useState("");
+  const [incluirKits, setIncluirKits] = useState(false); // por padrão os kits ficam de fora
 
   const todosPresets = [...PRESETS_FIXOS, ...presets];
   function aplicarPreset(nome: string) { const p = todosPresets.find((x) => x.nome === nome); if (p) setCfg({ ...p.cfg }); }
@@ -130,7 +152,7 @@ export function ImpressaoEtiquetas() {
   useEffect(() => {
     if (!sel.length) { setRowsDb([]); return; }
     setCarregando(true);
-    api.etiquetasPedidos(sel).then(setRowsDb).catch(() => setRowsDb([])).finally(() => setCarregando(false));
+    api.etiquetasPedidos(sel).then((rs) => setRowsDb(rs.map((r) => ({ ...r, kit: !!r.kit })))).catch(() => setRowsDb([])).finally(() => setCarregando(false));
   }, [sel]);
 
   // Abre um PDF de pedido (sem salvar) e adiciona as etiquetas para teste.
@@ -140,10 +162,10 @@ export function ImpressaoEtiquetas() {
       const sug = await api.importarPedidoPdf(file);
       const pid = "pdf:" + file.name + ":" + (sug.numero_erp || "") + ":" + pdfsAbertos.length;
       const cliente = sug.cliente_nome || file.name.replace(/\.pdf$/i, "");
-      // A composição é resolvida no cálculo das células (cadastro → padrão).
+      // Importa tudo (kits inclusos com a marca kit); a exibição decide o que entra.
       const novas: Row[] = (sug.itens || [])
-        .filter((it) => it.parte !== "kit" && Math.trunc(it.qtd) > 0) // pronta entrega/kit fica de fora
-        .map((it) => ({ pedido: sug.numero_erp || file.name, pedido_id: pid, cliente, modelo: it.produto, tamanho: it.tamanho || null, cor: it.cor_grade || null, qtd: Math.trunc(it.qtd), composicao: null }));
+        .filter((it) => Math.trunc(it.qtd) > 0)
+        .map((it) => ({ pedido: sug.numero_erp || file.name, pedido_id: pid, cliente, modelo: it.produto, tamanho: it.tamanho || null, cor: it.cor_grade || null, qtd: Math.trunc(it.qtd), composicao: null, kit: it.parte === "kit" }));
       if (!novas.length) { alert("Não achei itens de produção nesse PDF (ou só tem pronta entrega)."); return; }
       setRowsPdf((r) => [...r, ...novas]);
       setPdfsAbertos((p) => [...p, { id: pid, nome: sug.numero_erp ? `${sug.numero_erp} · ${cliente}` : file.name }]);
@@ -201,11 +223,12 @@ export function ImpressaoEtiquetas() {
       const doPedido: Etq[] = [];
       rows.forEach((r, i) => {
         if (r.pedido_id !== pid) return;
+        if (r.kit && !incluirKits) return; // kits só quando marcado "Incluir kits"
         const ln = linhas[i] ?? { qtd: Math.trunc(r.qtd), incluir: true };
         if (!ln.incluir) return;
-        const composicao = r.composicao || compDoCadastro(r.modelo) || compFallback;
+        const composicao = r.composicao || compDoCadastro(r.kit ? kitInfo(r.modelo, r.tamanho).nome : r.modelo) || compFallback;
         for (let n = 0; n < Math.max(0, Math.trunc(ln.qtd)); n++)
-          doPedido.push({ cliente: r.cliente, modelo: r.modelo, tamanho: r.tamanho, cor: r.cor, composicao });
+          doPedido.push({ cliente: r.cliente, modelo: r.modelo, tamanho: r.tamanho, cor: r.cor, composicao, kit: r.kit });
       });
       if (!doPedido.length) continue;
       if (!primeiro) {
@@ -216,7 +239,7 @@ export function ImpressaoEtiquetas() {
       primeiro = false;
     }
     return out;
-  }, [rows, linhas, ordemPedidos, cfg.colunas, composicaoPadrao, compMap]);
+  }, [rows, linhas, ordemPedidos, cfg.colunas, composicaoPadrao, compMap, incluirKits]);
 
   const etqs = useMemo(() => cells.filter(Boolean) as Etq[], [cells]);
   // Células finais = espaços pulados (folha usada) + células (etiquetas + separadores).
@@ -228,6 +251,8 @@ export function ImpressaoEtiquetas() {
   const label = (p: Pedido) => `${p.numero_erp || p.codigo_pai || p.id.slice(0, 6)} · ${p.cliente_nome}`;
   const setLinha = (i: number, patch: Partial<{ qtd: number; incluir: boolean }>) => setLinhas((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const marcarTodas = (v: boolean) => setLinhas((ls) => ls.map((l) => ({ ...l, incluir: v })));
+  const temKits = rows.some((r) => r.kit);
+  const qtdKits = rows.filter((r) => r.kit).reduce((s, r) => s + Math.max(0, Math.trunc(r.qtd)), 0);
 
   // CSS comum da etiqueta (prévia e impressão), com a fonte configurável.
   // Disposição horizontal: linha de topo com modelo (esq.) e tamanho (dir.).
@@ -293,6 +318,14 @@ export function ImpressaoEtiquetas() {
             <span className="campo-label">Começar na etiqueta nº</span>
             <input type="number" min={1} max={porPagina} step={1} value={String(inicio)} onChange={(e) => setInicio(Math.max(1, Math.min(porPagina, Math.trunc(Number(e.target.value) || 1))))} />
           </label>
+          {temKits && (
+            <label className="campo" style={{ minWidth: 150, cursor: "pointer" }} title="Por padrão os kits ficam de fora. Marque para gerar 1 etiqueta por kit.">
+              <span className="campo-label">Kits</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 0" }}>
+                <input type="checkbox" checked={incluirKits} onChange={(e) => setIncluirKits(e.target.checked)} /> Incluir kits ({qtdKits})
+              </span>
+            </label>
+          )}
           <button className="btn btn-primary" style={{ marginLeft: "auto" }} disabled={etqs.length === 0} onClick={imprimir}>🖨️ Imprimir</button>
         </div>
         {(sel.length > 0 || pdfsAbertos.length > 0) && (
@@ -336,11 +369,12 @@ export function ImpressaoEtiquetas() {
                       <tr><td colSpan={5} style={{ background: "var(--accent-soft, #eef)", fontWeight: 700, fontSize: 12.5 }}>Pedido {ped ? label(ped) : idxs[0].r.pedido || pid.slice(0, 6)}</td></tr>
                       {idxs.map(({ r, i }) => {
                         const ln = linhas[i] ?? { qtd: Math.trunc(r.qtd), incluir: true };
+                        const foraKit = r.kit && !incluirKits; // kit que não vai imprimir
                         return (
-                          <tr key={i} style={{ opacity: ln.incluir ? 1 : 0.45 }}>
+                          <tr key={i} style={{ opacity: (ln.incluir && !foraKit) ? 1 : 0.4 }} title={foraKit ? "Kit não incluído — marque 'Incluir kits' acima" : undefined}>
                             <td><input type="checkbox" checked={ln.incluir} onChange={(e) => setLinha(i, { incluir: e.target.checked })} /></td>
-                            <td>{r.modelo}</td>
-                            <td>{r.tamanho || "—"}</td>
+                            <td>{r.kit ? <>{kitInfo(r.modelo, r.tamanho).nome} <span className="chip" style={{ fontSize: 10, padding: "1px 6px", background: "var(--accent-soft, #eef)" }}>KIT</span></> : r.modelo}</td>
+                            <td>{r.kit ? kitInfo(r.modelo, r.tamanho).comp : (r.tamanho || "—")}</td>
                             <td>{r.cor || "—"}</td>
                             <td className="num"><input type="number" min={0} className="w-sm" style={{ width: 66, textAlign: "right" }} value={String(ln.qtd)} onChange={(e) => setLinha(i, { qtd: Math.max(0, Math.trunc(Number(e.target.value) || 0)) })} /></td>
                           </tr>
@@ -409,6 +443,17 @@ export function ImpressaoEtiquetas() {
             if (etqs.length && k < offset) return <div key={k} className="a4-et a4-et-skip" style={style}>usada</div>;
             const e = etqs.length ? finalCells[k] : ({ cliente: "Cliente", modelo: "(etiqueta)", tamanho: "", cor: "", composicao: "" } as Etq);
             if (!e) return <div key={k} className="a4-et a4-et-empty" style={style}></div>;
+            if (e.kit) {
+              const kInfo = kitInfo(e.modelo, e.tamanho);
+              return (
+                <div key={k} className="a4-et" style={{ ...style, gap: 0, justifyContent: "center" }}>
+                  <div className="a4-mod" style={{ fontSize: fpt(1.25), lineHeight: 1.05 }}>KIT {kInfo.nome.toUpperCase()} · {(e.cor || "—").toUpperCase()}</div>
+                  <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>{kInfo.comp}</div>
+                  {e.composicao ? <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15, color: "#55555e" }}>{e.composicao}</div> : null}
+                  <div className="a4-cli" style={{ fontSize: fpt(0.82), lineHeight: 1.15 }}>{e.cliente}</div>
+                </div>
+              );
+            }
             return (
               <div key={k} className="a4-et" style={{ ...style, gap: 0, justifyContent: "center" }}>
                 <div className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{modeloLinha(e.modelo)}</div>

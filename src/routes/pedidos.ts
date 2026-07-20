@@ -302,12 +302,13 @@ pedidos.get("/etiquetas", async (c) => {
   const ph = ids.map(() => "?").join(",");
   const { results } = await c.env.DB.prepare(
     `SELECT i.pedido_id AS pedido_id, p.numero_erp AS pedido, p.cliente_nome AS cliente,
-            i.produto AS modelo, i.tamanho, i.cor_grade AS cor, i.qtd, m.composicao AS composicao
+            i.produto AS modelo, i.tamanho, i.cor_grade AS cor, i.qtd, m.composicao AS composicao,
+            COALESCE(i.kit, 0) AS kit
        FROM pedido_itens i
        JOIN pedidos p ON p.id = i.pedido_id
        LEFT JOIN modelos m ON m.nome = i.produto
-      WHERE i.pedido_id IN (${ph}) AND COALESCE(i.kit, 0) = 0 AND i.qtd > 0
-      ORDER BY p.numero_erp, i.produto, i.tamanho, i.cor_grade`
+      WHERE i.pedido_id IN (${ph}) AND i.qtd > 0
+      ORDER BY COALESCE(i.kit,0), p.numero_erp, i.produto, i.tamanho, i.cor_grade`
   ).bind(...ids).all();
   return c.json(results);
 });
