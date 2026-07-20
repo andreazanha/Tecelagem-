@@ -638,6 +638,12 @@ export const api = {
     fetch("/api/etiquetas?produto=" + encodeURIComponent(produto)).then((r) => j<{ tamanho: string; cor: string; saldo: number; minimo: number }[]>(r)),
   entradaEtiquetas: (produto: string, itens: { tamanho: string; cor: string; quantidade: number }[]) =>
     jsonPost("/api/etiquetas/entrada", { produto, itens }).then((r) => j<{ ok: boolean; itens: number }>(r)),
+  // Modelos de etiqueta (config da folha) salvos no servidor — sincronizam entre computadores.
+  listarPresetsEtiqueta: () => fetch("/api/etiquetas/presets").then((r) => j<{ nome: string; cfg: Record<string, number | string> }[]>(r)),
+  salvarPresetEtiqueta: (nome: string, cfg: unknown) =>
+    jsonPost("/api/etiquetas/presets", { nome, cfg }).then((r) => j<{ ok: boolean; nome: string }>(r)),
+  excluirPresetEtiqueta: (nome: string) =>
+    fetch(`/api/etiquetas/presets/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   obterModelo: (nome: string) =>
     fetch(`/api/modelos/${encodeURIComponent(nome)}`).then((r) => j<ModeloDetalhe>(r)),
   salvarModelo: (

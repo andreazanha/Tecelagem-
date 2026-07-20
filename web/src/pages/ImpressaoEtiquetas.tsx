@@ -26,10 +26,6 @@ function carregarCfg(): EtqCfg {
   try { const s = localStorage.getItem(CFG_KEY); if (s) return { ...CFG_PADRAO, ...JSON.parse(s) }; } catch { /* ignore */ }
   return { ...CFG_PADRAO };
 }
-function carregarPresets(): { nome: string; cfg: EtqCfg }[] {
-  try { const s = localStorage.getItem(PRESETS_KEY); if (s) return JSON.parse(s); } catch { /* ignore */ }
-  return [];
-}
 
 const CAMPOS: { k: keyof EtqCfg; label: string; step?: number }[] = [
   { k: "colunas", label: "Colunas", step: 1 }, { k: "linhas", label: "Linhas por página", step: 1 },
@@ -82,27 +78,44 @@ export function ImpressaoEtiquetas() {
   // Edição por linha: quantidade a imprimir e se entra na impressão (reimpressão).
   const [linhas, setLinhas] = useState<{ qtd: number; incluir: boolean }[]>([]);
   const [cfg, setCfg] = useState<EtqCfg>(carregarCfg);
-  const [presets, setPresets] = useState<{ nome: string; cfg: EtqCfg }[]>(carregarPresets);
+  const [presets, setPresets] = useState<{ nome: string; cfg: EtqCfg }[]>([]);
   const [carregando, setCarregando] = useState(false);
   // Para reaproveitar folha meio usada: pular as primeiras (inicio-1) etiquetas.
   const [inicio, setInicio] = useState(1);
 
   const todosPresets = [...PRESETS_FIXOS, ...presets];
   function aplicarPreset(nome: string) { const p = todosPresets.find((x) => x.nome === nome); if (p) setCfg({ ...p.cfg }); }
-  function salvarPreset() {
+  async function recarregarPresets() {
+    try { const srv = await api.listarPresetsEtiqueta(); setPresets(srv.map((p) => ({ nome: p.nome, cfg: p.cfg as unknown as EtqCfg }))); return srv; } catch { return null; }
+  }
+  async function salvarPreset() {
     const nome = prompt("Nome do modelo de etiqueta (ex.: minha etiqueta pequena):");
     const n = (nome || "").trim(); if (!n) return;
-    const novos = [...presets.filter((p) => p.nome !== n), { nome: n, cfg: { ...cfg } }];
-    setPresets(novos); try { localStorage.setItem(PRESETS_KEY, JSON.stringify(novos)); } catch { /* ignore */ }
-    alert(`Modelo "${n}" salvo.`);
+    const existe = presets.some((p) => p.nome === n);
+    if (existe && !confirm(`Já existe "${n}". Salvar por cima (sobrescrever)?`)) return;
+    try { await api.salvarPresetEtiqueta(n, cfg); await recarregarPresets(); alert(`Modelo "${n}" salvo.`); }
+    catch { alert("Não consegui salvar o modelo no servidor."); }
   }
-  function excluirPreset(nome: string) {
+  async function excluirPreset(nome: string) {
     if (!confirm(`Excluir o modelo "${nome}"?`)) return;
-    const novos = presets.filter((p) => p.nome !== nome);
-    setPresets(novos); try { localStorage.setItem(PRESETS_KEY, JSON.stringify(novos)); } catch { /* ignore */ }
+    try { await api.excluirPresetEtiqueta(nome); await recarregarPresets(); } catch { alert("Não consegui excluir."); }
   }
 
   useEffect(() => { api.listarPedidos().then(setPedidos).catch(() => {}); }, []);
+  // Carrega modelos salvos do servidor; migra os que estavam só no navegador (uma vez).
+  useEffect(() => {
+    (async () => {
+      let locais: { nome: string; cfg: EtqCfg }[] = [];
+      try { const s = localStorage.getItem(PRESETS_KEY); if (s) locais = JSON.parse(s); } catch { /* ignore */ }
+      if (locais.length) {
+        for (const p of locais) { try { await api.salvarPresetEtiqueta(p.nome, p.cfg); } catch { /* ignore */ } }
+        const srv = await recarregarPresets();
+        if (srv && locais.every((p) => srv.some((s) => s.nome === p.nome))) { try { localStorage.removeItem(PRESETS_KEY); } catch { /* ignore */ } }
+        return;
+      }
+      recarregarPresets();
+    })();
+  }, []);
   // Mapa de composição por modelo (para preencher etiquetas de PDF aberto).
   useEffect(() => {
     api.listarModelos().then((ms) => {

@@ -49,3 +49,32 @@ etiquetas.post("/ajuste", async (c) => {
   ).bind(produto, tam, cor, saldo, minimo).run();
   return c.json({ ok: true });
 });
+
+// ── Modelos de etiqueta (config da folha) salvos no servidor ─────────────────
+// Sincronizam entre computadores. Chave = nome; salvar com o mesmo nome
+// sobrescreve. cfg é o JSON da configuração da etiqueta.
+etiquetas.get("/presets", async (c) => {
+  const { results } = await c.env.DB.prepare("SELECT nome, cfg FROM etiqueta_presets ORDER BY nome").all();
+  const out = (results as { nome: string; cfg: string }[]).map((r) => {
+    let cfg: unknown = null;
+    try { cfg = JSON.parse(r.cfg); } catch { cfg = null; }
+    return { nome: r.nome, cfg };
+  }).filter((r) => r.cfg != null);
+  return c.json(out);
+});
+
+etiquetas.post("/presets", async (c) => {
+  const b = (await c.req.json<{ nome?: string; cfg?: unknown }>().catch(() => ({}))) as { nome?: string; cfg?: unknown };
+  const nome = (b.nome || "").trim();
+  if (!nome || b.cfg == null) return c.json({ error: "nome e cfg são obrigatórios" }, 400);
+  await c.env.DB.prepare(
+    `INSERT INTO etiqueta_presets (nome, cfg, atualizado_em) VALUES (?, ?, ?)
+     ON CONFLICT(nome) DO UPDATE SET cfg = excluded.cfg, atualizado_em = excluded.atualizado_em`
+  ).bind(nome, JSON.stringify(b.cfg), Date.now()).run();
+  return c.json({ ok: true, nome });
+});
+
+etiquetas.delete("/presets/:nome", async (c) => {
+  await c.env.DB.prepare("DELETE FROM etiqueta_presets WHERE nome = ?").bind(c.req.param("nome")).run();
+  return c.json({ ok: true });
+});
