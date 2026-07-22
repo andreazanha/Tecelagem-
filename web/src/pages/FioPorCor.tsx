@@ -62,7 +62,7 @@ export function FioPorCor() {
 
   return (
     <>
-      <div className="page-head"><div><h1>Fio por cor</h1><div className="breadcrumb">Estoque › Fio por cor (kg)</div></div></div>
+      <div className="page-head"><div><h1>Estoque de fios</h1><div className="breadcrumb">Estoque › Estoque de fios (kg, por cor)</div></div></div>
 
       <div className="row-gap" style={{ gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div className="card pad" style={{ minWidth: 160 }}><div className="muted" style={{ fontSize: 12 }}>Cores com fio</div><div style={{ fontSize: 26, fontWeight: 800 }}>{nComFio}</div></div>
