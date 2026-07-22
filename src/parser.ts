@@ -137,10 +137,12 @@ function pareceERPBigTricot(text: string): boolean {
 function parseItensERP(text: string): ItemSugerido[] {
   const itens: ItemSugerido[] = [];
   const blocos = text.split(/Produto:\s*/i).slice(1);
-  // Nome da cor pode ser uma COMBINAÇÃO (ex.: "AREIA/BEGE NOVO/OFF-WHITE"),
-  // por isso a barra "/" e o hífen "-" entram no nome.
+  // Nome da cor pode ser uma COMBINAÇÃO (ex.: "AREIA/BEGE NOVO/OFF", "RIVIERA/GRAF M./OFF"):
+  // aceita barra "/", hífen "-" e ponto "." no nome. O nome não tem dígitos, e o
+  // \s* (em vez de \s+) antes da quantidade cobre o caso da cor colada no número
+  // ("...OFF4 4 403,20").
   const reCor =
-    /(\d{4})\s+(?:\d{2,3}\s+)?([A-Za-zÀ-ú][A-Za-zÀ-ú0-9 /\-]*?)\s+(\d+)\s+(\d+)\s+(\d{1,3}(?:\.\d{3})*,\d{2})/g;
+    /(\d{4})\s+(?:\d{2,3}\s+)?([A-Za-zÀ-ú][A-Za-zÀ-ú /.\-]*?)\s*(\d+)\s+(\d+)\s+(\d{1,3}(?:\.\d{3})*,\d{2})/g;
   for (const bloco of blocos) {
     const mNome = bloco.match(/^\s*\d+\s+(\d+)\s+(.+?)\s+Col:/i);
     if (!mNome) continue;
