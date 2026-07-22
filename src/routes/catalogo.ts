@@ -183,7 +183,7 @@ export const cores = new Hono<{ Bindings: Env }>();
 
 cores.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT c.nome, c.hex, c.foto_key, c.codigo, c.fio_id,
+    `SELECT c.nome, c.hex, c.foto_key, c.codigo, c.fio_id, c.saldo,
             f.nome AS fio_nome, f.fornecedor_id, fo.nome AS fornecedor_nome
        FROM cores c
        LEFT JOIN tipos_fio f ON f.id = c.fio_id
@@ -394,6 +394,39 @@ cores.delete("/:nome", async (c) => {
     .bind(decodeURIComponent(c.req.param("nome")))
     .run();
   return c.json({ ok: true });
+});
+
+// ── Estoque de fio POR COR (cores.saldo, em kg) ─────────────────────────────
+// Entrada/baixa/ajuste manual do saldo de fio de uma cor, com registro no
+// ledger (material_mov, fonte 'fio'). A baixa por pedido é automática.
+cores.post("/:nome/mov", async (c) => {
+  const nome = decodeURIComponent(c.req.param("nome")).trim();
+  const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
+  const tipo = String(b.tipo ?? "entrada").trim();
+  if (!["entrada", "baixa", "ajuste"].includes(tipo)) return c.json({ error: "tipo inválido" }, 400);
+  const qtd = Number(b.quantidade);
+  if (isNaN(qtd) || (tipo !== "ajuste" && !qtd)) return c.json({ error: "quantidade inválida" }, 400);
+  const cor = await c.env.DB.prepare("SELECT saldo FROM cores WHERE nome = ?").bind(nome).first<{ saldo: number }>();
+  if (!cor) return c.json({ error: "cor não encontrada" }, 404);
+  const atual = cor.saldo || 0;
+  // entrada soma; baixa subtrai; ajuste DEFINE (delta = novo − atual).
+  const delta = tipo === "entrada" ? Math.abs(qtd) : tipo === "baixa" ? -Math.abs(qtd) : qtd - atual;
+  const novo = Math.max(0, atual + delta);
+  const motivo = String(b.motivo ?? "").trim() || null;
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE cores SET saldo = ? WHERE nome = ?").bind(novo, nome),
+    c.env.DB.prepare("INSERT INTO material_mov (id, material_id, tipo, quantidade, motivo, fonte) VALUES (?, ?, ?, ?, ?, 'fio')")
+      .bind(crypto.randomUUID(), nome, tipo, delta, motivo),
+  ]);
+  return c.json({ nome, saldo: novo });
+});
+
+// Extrato de fio de uma cor (entradas manuais + baixas/estornos por pedido).
+cores.get("/:nome/movimentos", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT tipo, quantidade, motivo, pedido_id, criado_em FROM material_mov WHERE material_id = ? AND fonte = 'fio' ORDER BY criado_em DESC, rowid DESC LIMIT 200"
+  ).bind(decodeURIComponent(c.req.param("nome")).trim()).all();
+  return c.json(results);
 });
 
 // FOTO da cor (amostra real) — sobe no R2 e cria a cor se ainda não existir.

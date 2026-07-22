@@ -76,6 +76,7 @@ export interface Cor {
   fio_nome?: string | null; // nome do tipo de fio
   fornecedor_id?: string | null; // fornecedor (via tipo de fio)
   fornecedor_nome?: string | null;
+  saldo?: number; // estoque de fio dessa cor, em kg
 }
 
 // Detalhe de um produto/modelo: além dos dados básicos, as cores selecionadas
@@ -676,6 +677,11 @@ export const api = {
   salvarProdutosColecao: (id: string, produtos: { modelo_nome: string; fio_id?: string | null }[]) =>
     jsonPost(`/api/colecoes/${encodeURIComponent(id)}/produtos`, { produtos }).then((r) => j<{ ok: boolean; total: number }>(r)),
   listarCores: () => fetch("/api/cores").then((r) => j<Cor[]>(r)),
+  // Estoque de fio por cor (kg): entrada/baixa/ajuste + extrato.
+  movFio: (nome: string, b: { tipo: "entrada" | "baixa" | "ajuste"; quantidade: number; motivo?: string }) =>
+    jsonPost(`/api/cores/${encodeURIComponent(nome)}/mov`, b).then((r) => j<{ nome: string; saldo: number }>(r)),
+  movimentosFio: (nome: string) =>
+    fetch(`/api/cores/${encodeURIComponent(nome)}/movimentos`).then((r) => j<{ tipo: string; quantidade: number; motivo: string | null; pedido_id: string | null; criado_em: string }[]>(r)),
   bulkCores: (texto: string, fio_id: string | null) =>
     jsonPost("/api/cores/bulk", { texto, fio_id }).then((r) => j<{ total: number; criados: number; ignorados: number; cores: string[] }>(r)),
   salvarCor: (cor: Cor & { de?: string }) =>

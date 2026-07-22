@@ -20,6 +20,7 @@ import { Corte } from "./pages/Corte";
 import { Costura } from "./pages/Costura";
 import { Revisao } from "./pages/Revisao";
 import { Estoque } from "./pages/Estoque";
+import { FioPorCor } from "./pages/FioPorCor";
 import { Expedicao } from "./pages/Expedicao";
 import { Fiscal } from "./pages/Fiscal";
 import { Transporte } from "./pages/Transporte";
@@ -113,6 +114,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/costura" element={<Protegido page="costura"><Costura /></Protegido>} />
           <Route path="/revisao" element={<Protegido page="revisao"><Revisao /></Protegido>} />
           <Route path="/estoque" element={<Protegido page="estoque"><Estoque /></Protegido>} />
+          <Route path="/fio-por-cor" element={<Protegido page="estoque"><FioPorCor /></Protegido>} />
           <Route path="/expedicao" element={<Protegido page="expedicao"><Expedicao /></Protegido>} />
           <Route path="/impressao-etiquetas" element={<Protegido page="expedicao"><ImpressaoEtiquetas /></Protegido>} />
           <Route path="/fiscal" element={<Protegido page="fiscal"><Fiscal /></Protegido>} />
