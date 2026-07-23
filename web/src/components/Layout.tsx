@@ -122,6 +122,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/estoque", icon: "📦", label: "Entradas", page: "estoque" },
       { to: "/fio-por-cor", icon: "🧵", label: "Estoque de fios", page: "estoque" },
       { to: "/estoque-ziper", icon: "🤐", label: "Estoque de zíper", page: "estoque" },
+      { to: "/estoque-forro", icon: "🧶", label: "Estoque de forro", page: "estoque" },
       { to: "/produtos?aba=estoque", icon: "📊", label: "Estoque de Produtos", page: "produtos" },
       { to: "/produtos?aba=reposicao", icon: "⚠️", label: "Reposição", page: "produtos" },
       { to: "/produtos?aba=insumos", icon: "🧷", label: "Materiais", page: "produtos" },
