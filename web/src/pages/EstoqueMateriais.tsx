@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type Material } from "../api";
+import { api, type Material, type MaterialCategoriaDef } from "../api";
 
 const nf = (n: number | undefined) => (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 type Mov = { tipo: string; quantidade: number; motivo: string | null; pedido_id: string | null; fonte: string | null; criado_em: string };
 
-export function EstoqueZiper() {
+export function EstoqueMateriais() {
+  const [cats, setCats] = useState<MaterialCategoriaDef[]>([]);
+  const [cat, setCat] = useState<string>("");
   const [itens, setItens] = useState<Material[]>([]);
   const [busca, setBusca] = useState("");
-  const [carregando, setCarregando] = useState(true);
+  const [carregando, setCarregando] = useState(false);
   const [mov, setMov] = useState<Material | null>(null);
   const [movTipo, setMovTipo] = useState<"entrada" | "ajuste">("entrada");
   const [movAlvo, setMovAlvo] = useState<"saldo" | "caixas">("saldo");
@@ -18,13 +20,27 @@ export function EstoqueZiper() {
   const [extratoNome, setExtratoNome] = useState("");
   const [extrato, setExtrato] = useState<Mov[]>([]);
 
-  function recarregar() { setCarregando(true); api.listarMateriais("ziper").then(setItens).catch(() => {}).finally(() => setCarregando(false)); }
-  useEffect(recarregar, []);
+  useEffect(() => {
+    api.listarCategoriasMaterial().then((cs) => {
+      setCats(cs);
+      setCat((atual) => atual || (cs.find((c) => (c.itens || 0) > 0)?.slug ?? cs[0]?.slug ?? ""));
+    }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!cat) { setItens([]); return; }
+    setCarregando(true);
+    api.listarMateriais(cat).then(setItens).catch(() => setItens([])).finally(() => setCarregando(false));
+  }, [cat]);
+
+  const catNome = cats.find((c) => c.slug === cat)?.nome || "material";
+  const temCor = itens.some((m) => m.cor);
+  const temTam = itens.some((m) => m.tamanho);
+  const temCod = itens.some((m) => m.codigo);
 
   const lista = useMemo(() => {
     const f = busca.trim().toLowerCase();
-    return itens.filter((m) => `${m.cor || m.nome} ${m.codigo || ""} ${m.tamanho || ""}`.toLowerCase().includes(f))
-      .sort((a, b) => (a.cor || a.nome).localeCompare(b.cor || b.nome));
+    return itens.filter((m) => `${m.cor || ""} ${m.nome} ${m.tamanho || ""} ${m.codigo || ""}`.toLowerCase().includes(f))
+      .sort((a, b) => (a.cor || a.nome).localeCompare(b.cor || b.nome) || (a.tamanho || "").localeCompare(b.tamanho || ""));
   }, [itens, busca]);
   const totalUn = useMemo(() => itens.reduce((s, m) => s + (Number(m.saldo) || 0), 0), [itens]);
   const totalCx = useMemo(() => itens.reduce((s, m) => s + (Number(m.caixas) || 0), 0), [itens]);
@@ -46,8 +62,9 @@ export function EstoqueZiper() {
     } catch { alert("Não consegui salvar o movimento."); }
     finally { setSalvando(false); }
   }
+  const idDe = (m: Material) => [m.cor, m.tamanho].filter(Boolean).join(" · ") || m.nome;
   async function abrirExtrato(m: Material) {
-    setExtratoId(m.id); setExtratoNome(m.cor || m.nome); setExtrato([]);
+    setExtratoId(m.id); setExtratoNome(idDe(m)); setExtrato([]);
     try { setExtrato(await api.movimentosMaterial(m.id)); } catch { /* ignore */ }
   }
   const rotuloMov = (m: Mov) =>
@@ -57,32 +74,47 @@ export function EstoqueZiper() {
 
   return (
     <>
-      <div className="page-head"><div><h1>Estoque de zíper</h1><div className="breadcrumb">Estoque › Zíper (por cor e código)</div></div></div>
+      <div className="page-head"><div><h1>Estoque de materiais</h1><div className="breadcrumb">Estoque › Materiais (por categoria)</div></div></div>
+
+      {/* Seletor de categoria */}
+      <div className="row-gap" style={{ gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        {cats.map((c) => (
+          <button key={c.slug} className={"btn " + (c.slug === cat ? "btn-primary" : "btn-soft")} style={{ padding: "8px 14px" }} onClick={() => { setCat(c.slug); setBusca(""); }}>
+            {c.icone ? c.icone + " " : ""}{c.nome}{typeof c.itens === "number" ? ` (${c.itens})` : ""}
+          </button>
+        ))}
+      </div>
 
       <div className="row-gap" style={{ gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-        <div className="card pad" style={{ minWidth: 150 }}><div className="muted" style={{ fontSize: 12 }}>Cores de zíper</div><div style={{ fontSize: 26, fontWeight: 800 }}>{itens.length}</div></div>
+        <div className="card pad" style={{ minWidth: 150 }}><div className="muted" style={{ fontSize: 12 }}>Itens</div><div style={{ fontSize: 26, fontWeight: 800 }}>{itens.length}</div></div>
         <div className="card pad" style={{ minWidth: 150 }}><div className="muted" style={{ fontSize: 12 }}>Total em unidades</div><div style={{ fontSize: 26, fontWeight: 800 }}>{nf(totalUn)}</div></div>
         <div className="card pad" style={{ minWidth: 150 }}><div className="muted" style={{ fontSize: 12 }}>Total em caixas</div><div style={{ fontSize: 26, fontWeight: 800 }}>{nf(totalCx)}</div></div>
       </div>
 
       <div className="card pad">
         <div className="row-gap" style={{ alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-          <input className="busca-ped" style={{ flex: 1, minWidth: 220 }} placeholder="🔎 Buscar cor ou código…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <input className="busca-ped" style={{ flex: 1, minWidth: 220 }} placeholder={`🔎 Buscar em ${catNome}…`} value={busca} onChange={(e) => setBusca(e.target.value)} />
           <span className="muted" style={{ fontSize: 12.5 }}>A baixa por pedido é automática. Aqui você dá entrada, ajusta e vê o extrato.</span>
         </div>
         {carregando ? <p className="muted pad">Carregando…</p> : lista.length === 0 ? (
-          <p className="muted pad">Nenhum zíper cadastrado{busca ? " para essa busca" : ""}. (Cadastre os zíperes em Materiais › Zíper.)</p>
+          <p className="muted pad">Nenhum item em {catNome}{busca ? " para essa busca" : ""}. (Cadastre em Cadastros › Materiais.)</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
-            <table className="table" style={{ minWidth: 680 }}>
-              <thead><tr><th style={{ width: 30 }}></th><th>Cor</th><th>Código</th><th>Comprimento</th><th className="num">Un.</th><th className="num">Caixas</th><th style={{ width: 200 }}></th></tr></thead>
+            <table className="table" style={{ minWidth: 640 }}>
+              <thead><tr>
+                {temCor && <th style={{ width: 24 }}></th>}
+                <th>{temCor ? "Cor" : "Item"}</th>
+                {temTam && <th>Tamanho</th>}
+                {temCod && <th>Código</th>}
+                <th className="num">Un.</th><th className="num">Caixas</th><th style={{ width: 200 }}></th>
+              </tr></thead>
               <tbody>
                 {lista.map((m) => (
                   <tr key={m.id}>
-                    <td>{m.cor_hex ? <span style={{ display: "inline-block", width: 18, height: 18, borderRadius: 4, background: m.cor_hex, border: "1px solid #0002" }} /> : null}</td>
-                    <td className="strong">{m.cor || m.nome}</td>
-                    <td className="muted">{m.codigo || "—"}</td>
-                    <td className="muted">{m.tamanho || "—"}</td>
+                    {temCor && <td>{m.cor_hex ? <span style={{ display: "inline-block", width: 18, height: 18, borderRadius: 4, background: m.cor_hex, border: "1px solid #0002" }} /> : null}</td>}
+                    <td className="strong">{temCor ? (m.cor || m.nome) : m.nome}</td>
+                    {temTam && <td className="muted">{m.tamanho || "—"}</td>}
+                    {temCod && <td className="muted">{m.codigo || "—"}</td>}
                     <td className="num" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums", color: (Number(m.saldo) || 0) <= 0 ? "#b91c1c" : undefined }}>{nf(m.saldo)}</td>
                     <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{nf(m.caixas)}</td>
                     <td className="num">
@@ -104,8 +136,8 @@ export function EstoqueZiper() {
       {mov && (
         <div className="modal-bg" onClick={() => setMov(null)}>
           <div className="modal-card" style={{ maxWidth: 440, width: "min(440px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ marginTop: 0 }}>{movTipo === "entrada" ? "Entrada de zíper" : "Ajustar saldo"} · {mov.cor || mov.nome}</h2>
-            <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>{mov.codigo ? `Código ${mov.codigo} · ` : ""}saldo: <strong>{nf(mov.saldo)} un</strong> · <strong>{nf(mov.caixas)} cx</strong></p>
+            <h2 style={{ marginTop: 0 }}>{movTipo === "entrada" ? "Entrada" : "Ajustar saldo"} · {idDe(mov)}</h2>
+            <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>{catNome} · saldo: <strong>{nf(mov.saldo)} un</strong> · <strong>{nf(mov.caixas)} cx</strong></p>
             <label className="campo">
               <span className="campo-label">Contar em</span>
               <select value={movAlvo} onChange={(e) => { const a = e.target.value as "saldo" | "caixas"; setMovAlvo(a); if (movTipo === "ajuste") setMovQtd(String((a === "caixas" ? mov.caixas : mov.saldo) ?? 0)); }}>
