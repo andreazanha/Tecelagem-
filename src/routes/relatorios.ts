@@ -9,8 +9,11 @@ export const relatorios = new Hono<{ Bindings: Env }>();
 relatorios.get("/vendas", async (c) => {
   const de = (c.req.query("de") || "").trim();
   const ate = (c.req.query("ate") || "").trim();
+  const kits = (c.req.query("kits") || "todos").toLowerCase(); // todos | so | sem
   const dataExpr = "COALESCE(NULLIF(p.data_pedido,''), date(p.created_at))";
-  const cond = ["COALESCE(i.kit,0) = 0", "i.qtd > 0"];
+  const cond = ["i.qtd > 0"];
+  if (kits === "so") cond.push("COALESCE(i.kit,0) = 1");
+  else if (kits === "sem") cond.push("COALESCE(i.kit,0) = 0");
   const binds: unknown[] = [];
   if (de) { cond.push(`${dataExpr} >= ?`); binds.push(de); }
   if (ate) { cond.push(`${dataExpr} <= ?`); binds.push(ate); }
@@ -25,12 +28,12 @@ relatorios.get("/vendas", async (c) => {
   ).bind(...binds).first();
 
   const modelos = await run(
-    `i.produto AS produto, ${pecas} AS pecas, ${valor} AS valor, COUNT(DISTINCT i.cor_grade) AS cores, COUNT(DISTINCT i.tamanho) AS tamanhos`,
+    `i.produto AS produto, MAX(COALESCE(i.kit,0)) AS kit, ${pecas} AS pecas, ${valor} AS valor, COUNT(DISTINCT i.cor_grade) AS cores, COUNT(DISTINCT i.tamanho) AS tamanhos`,
     "GROUP BY i.produto ORDER BY pecas DESC");
   const cores = await run(`COALESCE(NULLIF(i.cor_grade,''),'—') AS cor, ${pecas} AS pecas, ${valor} AS valor`, "GROUP BY cor ORDER BY pecas DESC");
   const tamanhos = await run(`COALESCE(NULLIF(i.tamanho,''),'—') AS tamanho, ${pecas} AS pecas, ${valor} AS valor`, "GROUP BY tamanho ORDER BY pecas DESC");
   const combos = await run(
-    `i.produto AS produto, COALESCE(NULLIF(i.cor_grade,''),'—') AS cor, COALESCE(NULLIF(i.tamanho,''),'—') AS tamanho, ${pecas} AS pecas, ${valor} AS valor`,
+    `i.produto AS produto, MAX(COALESCE(i.kit,0)) AS kit, COALESCE(NULLIF(i.cor_grade,''),'—') AS cor, COALESCE(NULLIF(i.tamanho,''),'—') AS tamanho, ${pecas} AS pecas, ${valor} AS valor`,
     "GROUP BY i.produto, cor, tamanho ORDER BY pecas DESC LIMIT 40");
   const porModeloCor = await run(`i.produto AS produto, COALESCE(NULLIF(i.cor_grade,''),'—') AS cor, ${pecas} AS pecas`, "GROUP BY i.produto, cor ORDER BY i.produto, pecas DESC");
   const porModeloTam = await run(`i.produto AS produto, COALESCE(NULLIF(i.tamanho,''),'—') AS tamanho, ${pecas} AS pecas`, "GROUP BY i.produto, tamanho ORDER BY i.produto, pecas DESC");

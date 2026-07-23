@@ -566,18 +566,18 @@ async function j<T>(res: Response): Promise<T> {
 
 export interface RelatorioVendas {
   resumo: { pecas: number; valor: number; pedidos: number; modelos: number } | null;
-  modelos: { produto: string; pecas: number; valor: number; cores: number; tamanhos: number }[];
+  modelos: { produto: string; kit: number; pecas: number; valor: number; cores: number; tamanhos: number }[];
   cores: { cor: string; pecas: number; valor: number }[];
   tamanhos: { tamanho: string; pecas: number; valor: number }[];
-  combos: { produto: string; cor: string; tamanho: string; pecas: number; valor: number }[];
+  combos: { produto: string; kit: number; cor: string; tamanho: string; pecas: number; valor: number }[];
   porModeloCor: { produto: string; cor: string; pecas: number }[];
   porModeloTam: { produto: string; tamanho: string; pecas: number }[];
 }
 
 export const api = {
-  relatorioVendas: (de?: string, ate?: string) => {
+  relatorioVendas: (de?: string, ate?: string, kits?: "todos" | "so" | "sem") => {
     const q = new URLSearchParams();
-    if (de) q.set("de", de); if (ate) q.set("ate", ate);
+    if (de) q.set("de", de); if (ate) q.set("ate", ate); if (kits) q.set("kits", kits);
     return fetch("/api/relatorios/vendas?" + q.toString()).then((r) => j<RelatorioVendas>(r));
   },
   listarPedidos: () => fetch("/api/pedidos").then((r) => j<Pedido[]>(r)),
