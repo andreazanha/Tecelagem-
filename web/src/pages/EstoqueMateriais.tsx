@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type Material, type MaterialCategoriaDef } from "../api";
+import { EstoqueScanner } from "../components/EstoqueScanner";
+import { imprimirEtiquetasQR } from "../qrPrint";
 
 const nf = (n: number | undefined) => (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 type Mov = { tipo: string; quantidade: number; motivo: string | null; pedido_id: string | null; fonte: string | null; criado_em: string };
@@ -19,6 +21,7 @@ export function EstoqueMateriais() {
   const [extratoId, setExtratoId] = useState<string | null>(null);
   const [extratoNome, setExtratoNome] = useState("");
   const [extrato, setExtrato] = useState<Mov[]>([]);
+  const [scan, setScan] = useState(false);
 
   useEffect(() => {
     api.listarCategoriasMaterial().then((cs) => {
@@ -93,8 +96,10 @@ export function EstoqueMateriais() {
 
       <div className="card pad">
         <div className="row-gap" style={{ alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-          <input className="busca-ped" style={{ flex: 1, minWidth: 220 }} placeholder={`🔎 Buscar em ${catNome}…`} value={busca} onChange={(e) => setBusca(e.target.value)} />
-          <span className="muted" style={{ fontSize: 12.5 }}>A baixa por pedido é automática. Aqui você dá entrada, ajusta e vê o extrato.</span>
+          <input className="busca-ped" style={{ flex: 1, minWidth: 200 }} placeholder={`🔎 Buscar em ${catNome}…`} value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <button className="btn btn-soft" onClick={() => setScan(true)}>📷 Escanear</button>
+          <button className="btn btn-soft" disabled={lista.length === 0} onClick={() => imprimirEtiquetasQR(lista.map((m) => ({ url: `${location.origin}/estoque-scan?f=material&id=${encodeURIComponent(m.id)}`, titulo: (m.cor || m.nome), sub: [m.tamanho, m.codigo].filter(Boolean).join(" · ") })))}>🏷️ Imprimir QR</button>
+          <span className="muted" style={{ fontSize: 12.5 }}>A baixa por pedido é automática. Escaneie o QR pra dar entrada/saída no celular.</span>
         </div>
         {carregando ? <p className="muted pad">Carregando…</p> : lista.length === 0 ? (
           <p className="muted pad">Nenhum item em {catNome}{busca ? " para essa busca" : ""}. (Cadastre em Cadastros › Materiais.)</p>
@@ -131,6 +136,8 @@ export function EstoqueMateriais() {
           </div>
         )}
       </div>
+
+      {scan && <EstoqueScanner onFechar={() => setScan(false)} />}
 
       {/* Modal entrada/ajuste */}
       {mov && (

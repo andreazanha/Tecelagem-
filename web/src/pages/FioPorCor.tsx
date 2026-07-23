@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type Cor } from "../api";
+import { EstoqueScanner } from "../components/EstoqueScanner";
+import { imprimirEtiquetasQR } from "../qrPrint";
 
 // Formata kg com até 3 casas (ex.: 12,5 kg · 0,75 kg).
 const kg = (n: number | undefined) => (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
@@ -18,6 +20,7 @@ export function FioPorCor() {
   const [salvando, setSalvando] = useState(false);
   const [extratoCor, setExtratoCor] = useState<string | null>(null);
   const [extrato, setExtrato] = useState<Mov[]>([]);
+  const [scan, setScan] = useState(false);
 
   function recarregar() { setCarregando(true); api.listarCores().then(setCores).catch(() => {}).finally(() => setCarregando(false)); }
   useEffect(recarregar, []);
@@ -71,8 +74,10 @@ export function FioPorCor() {
 
       <div className="card pad">
         <div className="row-gap" style={{ alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-          <input className="busca-ped" style={{ flex: 1, minWidth: 220 }} placeholder="🔎 Buscar cor…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-          <span className="muted" style={{ fontSize: 12.5 }}>A baixa por pedido é automática. Aqui você dá entrada, ajusta e vê o extrato.</span>
+          <input className="busca-ped" style={{ flex: 1, minWidth: 200 }} placeholder="🔎 Buscar cor…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <button className="btn btn-soft" onClick={() => setScan(true)}>📷 Escanear</button>
+          <button className="btn btn-soft" disabled={cores.filter((c) => c.fio_nome).length === 0} onClick={() => imprimirEtiquetasQR(cores.filter((c) => c.fio_nome).map((c) => ({ url: `${location.origin}/estoque-scan?f=fio&cor=${encodeURIComponent(c.nome)}`, titulo: c.nome, sub: c.fio_nome || "" })))}>🏷️ Imprimir QR</button>
+          <span className="muted" style={{ fontSize: 12.5 }}>A baixa por pedido é automática. Escaneie o QR pra dar entrada/saída no celular.</span>
         </div>
         {carregando ? <p className="muted pad">Carregando…</p> : grupos.length === 0 ? (
           <p className="muted pad">Nenhuma cor com tipo de fio definido{busca ? " para essa busca" : ""}. (Defina o tipo de fio das cores no cadastro de Cores.)</p>
@@ -104,6 +109,8 @@ export function FioPorCor() {
           </div>
         ))}
       </div>
+
+      {scan && <EstoqueScanner onFechar={() => setScan(false)} />}
 
       {/* Modal entrada/ajuste */}
       {movCor && (

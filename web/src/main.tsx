@@ -22,6 +22,7 @@ import { Revisao } from "./pages/Revisao";
 import { Estoque } from "./pages/Estoque";
 import { FioPorCor } from "./pages/FioPorCor";
 import { EstoqueMateriais } from "./pages/EstoqueMateriais";
+import { EstoqueScan } from "./pages/EstoqueScan";
 import { Expedicao } from "./pages/Expedicao";
 import { Fiscal } from "./pages/Fiscal";
 import { Transporte } from "./pages/Transporte";
@@ -117,6 +118,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/estoque" element={<Protegido page="estoque"><Estoque /></Protegido>} />
           <Route path="/fio-por-cor" element={<Protegido page="estoque"><FioPorCor /></Protegido>} />
           <Route path="/estoque-materiais" element={<Protegido page="estoque"><EstoqueMateriais /></Protegido>} />
+          <Route path="/estoque-scan" element={<Protegido page="estoque"><EstoqueScan /></Protegido>} />
           <Route path="/expedicao" element={<Protegido page="expedicao"><Expedicao /></Protegido>} />
           <Route path="/impressao-etiquetas" element={<Protegido page="expedicao"><ImpressaoEtiquetas /></Protegido>} />
           <Route path="/fiscal" element={<Protegido page="fiscal"><Fiscal /></Protegido>} />
