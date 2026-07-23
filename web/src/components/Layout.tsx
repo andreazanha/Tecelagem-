@@ -160,6 +160,7 @@ const GRUPOS: MenuGrupo[] = [
   {
     id: "relatorios", icon: "📈", label: "Relatórios", itens: [
       { to: "/todos-pedidos", icon: "📋", label: "Todos os Pedidos", page: "todos-pedidos" },
+      { to: "/relatorio-vendas", icon: "🏆", label: "Vendas (o que vende mais)", page: "todos-pedidos" },
       { to: "/dashboard", icon: "📺", label: "Painel Geral", page: "tv-dashboard" },
       { icon: "🏭", label: "Produção", soon: true },
       { icon: "⏰", label: "Atrasos", soon: true },
