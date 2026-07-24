@@ -76,26 +76,32 @@ function cap(s: string): string {
 function fmtMedida(s: string): string {
   return (s || "").replace(/[xX]/g, "×").replace(/\./g, ",").trim();
 }
-// Peça principal do kit: Peseira (peça larga, ~60–100 cm) ou Manta (medidas em
-// metros, ex.: 1,20×1,80). Heurística pela dimensão — confira se algum kit sair errado.
-function tipoPrincipal(size: string): string {
-  const nums = (size || "").split(/[xX]/).map((n) => parseFloat(n.replace(",", ".")) || 0);
-  return nums.some((n) => n >= 60 && n <= 100) ? "Peseira" : "Manta";
+// Tipo da peça principal pela largura (mesma regra da produção, classificar.ts):
+// ≤75 cm → Peseira; acima → Manta; pequena (≤60×60) → Almofada. Aceita medida
+// em metros (n < 10 vira cm, ex.: 2,20 → 220).
+function tipoPrincipal(tamanho: string): string {
+  const m = (tamanho || "").toUpperCase().replace(/\s/g, "").match(/^([\d.,]+)X([\d.,]+)/);
+  if (!m) return "Peça";
+  const cm = (x: string) => { const n = parseFloat(x.replace(",", ".")); return n < 10 ? Math.round(n * 100) : Math.round(n); };
+  const W = cm(m[1]), H = cm(m[2]);
+  if (W <= 60 && H <= 60) return "Almofada";
+  if (W <= 75) return "Peseira";
+  return "Manta";
 }
 // Peças de um kit = 1 principal (peseira/manta, tamanho no campo tamanho) +
-// N almofadas descritas no nome como "+2-55X35" (2 almofadas de 55×35).
+// N almofadas descritas no nome como "+2-55X35". Kit VAZIO (só a capa) vem
+// marcado com "CAPA" no nome → "Capa"; kit CHEIO (c/ enchimento) → "Almofada".
+// Mesma leitura da produção (classificar.ts › composicaoKit).
 function kitPecas(produto: string, tamanho: string | null): { tipo: string; tamanho: string }[] {
+  const nome = (produto || "").toUpperCase();
   const pecas: { tipo: string; tamanho: string }[] = [];
   const mainSize = (tamanho || "").trim();
   if (mainSize) pecas.push({ tipo: tipoPrincipal(mainSize), tamanho: fmtMedida(mainSize) });
-  const re = /\+\s*(\d+)\s*-\s*([0-9][0-9xX.,]*)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(produto || "")) !== null) {
-    const n = Math.max(1, parseInt(m[1], 10) || 1);
-    for (let i = 0; i < n; i++) pecas.push({ tipo: "Almofada", tamanho: fmtMedida(m[2]) });
-  }
-  // Kit sem almofadas descritas: ao menos a peça principal.
-  return pecas.length ? pecas : (mainSize ? pecas : [{ tipo: "Peça", tamanho: "" }]);
+  const count = parseInt(nome.match(/\+\s*(\d+)/)?.[1] || "0", 10);
+  const almSize = (nome.match(/\+\s*\d+\s*-?\s*(\d[\d.,]*\s*X\s*\d[\d.,]*)/i)?.[1] || "").replace(/\s+/g, "");
+  const almTipo = /\bCAPA\b/.test(nome) ? "Capa" : "Almofada"; // vazio = capa; cheio = almofada
+  if (almSize && count) for (let i = 0; i < count; i++) pecas.push({ tipo: almTipo, tamanho: fmtMedida(almSize) });
+  return pecas.length ? pecas : [{ tipo: "Peça", tamanho: fmtMedida(mainSize) }];
 }
 function conteudoEt(e: Etq): string {
   if (e.kit) {
