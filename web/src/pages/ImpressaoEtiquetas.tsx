@@ -90,8 +90,8 @@ function tipoPrincipal(tamanho: string): string {
 }
 // Peças de um kit = 1 principal (peseira/manta, tamanho no campo tamanho) +
 // N almofadas descritas no nome como "+2-55X35". Kit VAZIO (só a capa) vem
-// marcado com "CAPA" no nome → "Capa"; kit CHEIO (c/ enchimento) → "Almofada".
-// Mesma leitura da produção (classificar.ts › composicaoKit).
+// marcado com "CAPA" ou "S/ ENCHIMENTO" (sem enchimento) → "Capa"; kit CHEIO
+// (c/ enchimento) → "Almofada". Mesma leitura da produção (classificar.ts).
 function kitPecas(produto: string, tamanho: string | null): { tipo: string; tamanho: string }[] {
   const nome = (produto || "").toUpperCase();
   const pecas: { tipo: string; tamanho: string }[] = [];
@@ -99,7 +99,9 @@ function kitPecas(produto: string, tamanho: string | null): { tipo: string; tama
   if (mainSize) pecas.push({ tipo: tipoPrincipal(mainSize), tamanho: fmtMedida(mainSize) });
   const count = parseInt(nome.match(/\+\s*(\d+)/)?.[1] || "0", 10);
   const almSize = (nome.match(/\+\s*\d+\s*-?\s*(\d[\d.,]*\s*X\s*\d[\d.,]*)/i)?.[1] || "").replace(/\s+/g, "");
-  const almTipo = /\bCAPA\b/.test(nome) ? "Capa" : "Almofada"; // vazio = capa; cheio = almofada
+  // Vazio = "CAPA" no nome, ou "S/ ENCHIMENTO"/"SEM ENCHIMENTO". Senão, cheio (Almofada).
+  const vazio = /\bCAPA\b/.test(nome) || /S\/\s*ENCH/.test(nome) || /\bSEM\s+ENCH/.test(nome);
+  const almTipo = vazio ? "Capa" : "Almofada";
   if (almSize && count) for (let i = 0; i < count; i++) pecas.push({ tipo: almTipo, tamanho: fmtMedida(almSize) });
   return pecas.length ? pecas : [{ tipo: "Peça", tamanho: fmtMedida(mainSize) }];
 }
