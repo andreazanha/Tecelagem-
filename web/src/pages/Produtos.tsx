@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   api,
   type Produto,
@@ -29,20 +29,25 @@ const dt = (s?: string | null) => {
 };
 const nf = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(".", ","));
 
-const ABAS_VALIDAS: Aba[] = ["produtos", "estoque", "reposicao", "entradas", "ficha", "insumos", "historico"];
+// "insumos" saiu (tela antiga, tabela `insumos`). A tela de materiais atual é
+// Cadastros › Materiais (/cadastros?aba=materiais). Links antigos são redirecionados.
+const ABAS_VALIDAS: Aba[] = ["produtos", "estoque", "reposicao", "entradas", "ficha", "historico"];
 
 export function Produtos() {
   const [sp] = useSearchParams();
+  const navigate = useNavigate();
   const [aba, setAba] = useState<Aba>(() => {
     const q = sp.get("aba") as Aba | null;
     if (q && ABAS_VALIDAS.includes(q)) return q;
     return (localStorage.getItem("produtos-aba") as Aba) || "produtos";
   });
-  // atalhos do menu (?aba=insumos, ?aba=ficha…) trocam a aba mesmo já montado
+  // atalhos do menu (?aba=ficha…) trocam a aba mesmo já montado.
+  // ?aba=insumos é a tela antiga: manda pra tela de materiais atual.
   useEffect(() => {
     const q = sp.get("aba") as Aba | null;
+    if (q === "insumos") { navigate("/cadastros?aba=materiais", { replace: true }); return; }
     if (q && ABAS_VALIDAS.includes(q)) setAba(q);
-  }, [sp]);
+  }, [sp, navigate]);
   // contador de reposições pendentes (badge na aba)
   const [nRep, setNRep] = useState(0);
   useEffect(() => { api.listarReposicao().then((r) => setNRep(r.length)).catch(() => {}); }, [aba]);
@@ -52,7 +57,6 @@ export function Produtos() {
     { id: "reposicao", label: `⚠️ Reposição${nRep ? ` (${nRep})` : ""}` },
     { id: "entradas", label: "⬇️ Entradas" },
     { id: "ficha", label: "🧵 Ficha Técnica" },
-    { id: "insumos", label: "🧷 Materiais" },
     { id: "historico", label: "🕑 Histórico" },
   ];
   return (
