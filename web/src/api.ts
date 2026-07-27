@@ -574,12 +574,40 @@ export interface RelatorioVendas {
   porModeloTam: { produto: string; tamanho: string; pecas: number }[];
 }
 
+export interface MaquinaTec { id: string; nome: string; ordem: number; ativo: number }
+export interface MotivoTec { id: string; codigo: string; nome: string | null; tipo: string; ordem: number; ativo: number }
+export interface ResumoTec {
+  mes: string;
+  maquinas: {
+    maquina_id: string; nome: string; media: number | null; turnos: number;
+    minParada: number; minLimpeza: number; minManutencao: number; motivos: Record<string, number>;
+  }[];
+}
+
 export const api = {
   relatorioVendas: (de?: string, ate?: string, kits?: "todos" | "so" | "sem") => {
     const q = new URLSearchParams();
     if (de) q.set("de", de); if (ate) q.set("ate", ate); if (kits) q.set("kits", kits);
     return fetch("/api/relatorios/vendas?" + q.toString()).then((r) => j<RelatorioVendas>(r));
   },
+
+  // ── Controle da Tecelagem ──────────────────────────────────────────────────
+  listarMaquinasTec: () => fetch("/api/tecelagem/maquinas").then((r) => j<MaquinaTec[]>(r)),
+  salvarMaquinaTec: (b: { id?: string; nome: string; ordem?: number; ativo?: boolean }) =>
+    jsonPost("/api/tecelagem/maquinas", b).then((r) => j<{ id: string }>(r)),
+  excluirMaquinaTec: (id: string) =>
+    fetch(`/api/tecelagem/maquinas/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  listarMotivosTec: () => fetch("/api/tecelagem/motivos").then((r) => j<MotivoTec[]>(r)),
+  salvarMotivoTec: (b: { id?: string; codigo: string; nome?: string; tipo?: string; ordem?: number }) =>
+    jsonPost("/api/tecelagem/motivos", b).then((r) => j<{ id: string; codigo: string }>(r)),
+  excluirMotivoTec: (id: string) =>
+    fetch(`/api/tecelagem/motivos/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  getRegistroTec: (maquina_id: string, data: string, turno: string) =>
+    fetch(`/api/tecelagem/registro?maquina_id=${encodeURIComponent(maquina_id)}&data=${data}&turno=${turno}`)
+      .then((r) => j<{ registro: { id: string; percentual: number | null; operador: string | null; obs: string | null } | null; paradas: Record<string, number> }>(r)),
+  salvarRegistroTec: (b: { maquina_id: string; data: string; turno: string; percentual?: number | null; operador?: string; obs?: string; paradas: Record<string, number> }) =>
+    jsonPost("/api/tecelagem/registro", b).then((r) => j<{ id: string }>(r)),
+  resumoTec: (mes: string) => fetch(`/api/tecelagem/resumo?mes=${mes}`).then((r) => j<ResumoTec>(r)),
   listarPedidos: () => fetch("/api/pedidos").then((r) => j<Pedido[]>(r)),
   obterPedido: (id: string) => fetch(`/api/pedidos/${id}`).then((r) => j<Pedido>(r)),
   excluirPedido: (id: string) =>

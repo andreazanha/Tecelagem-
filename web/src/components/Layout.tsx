@@ -111,6 +111,7 @@ const GRUPOS: MenuGrupo[] = [
   {
     id: "producao", icon: "🏭", label: "Produção", itens: [
       { to: "/producao", icon: "🧶", label: "Tecelagem", page: "producao" },
+      { to: "/controle-tecelagem", icon: "📈", label: "Controle da Tecelagem", page: "producao" },
       { to: "/passadoria", icon: "🔥", label: "Passadoria", page: "passadoria" },
       { to: "/corte", icon: "✂️", label: "Corte", page: "corte" },
       { to: "/costura", icon: "🪡", label: "Costura", page: "costura" },

@@ -15,6 +15,7 @@ import { Funil } from "./pages/Funil";
 import { Atendimento } from "./pages/Atendimento";
 import { Romaneios } from "./pages/Romaneios";
 import { Producao } from "./pages/Producao";
+import { ControleTecelagem } from "./pages/ControleTecelagem";
 import { Passadoria } from "./pages/Passadoria";
 import { Corte } from "./pages/Corte";
 import { Costura } from "./pages/Costura";
@@ -112,6 +113,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 
           <Route path="/romaneios" element={<Protegido page="romaneios"><Romaneios /></Protegido>} />
           <Route path="/producao" element={<Protegido page="producao"><Producao /></Protegido>} />
+          <Route path="/controle-tecelagem" element={<Protegido page="producao"><ControleTecelagem /></Protegido>} />
           <Route path="/passadoria" element={<Protegido page="passadoria"><Passadoria /></Protegido>} />
           <Route path="/corte" element={<Protegido page="corte"><Corte /></Protegido>} />
           <Route path="/costura" element={<Protegido page="costura"><Costura /></Protegido>} />
