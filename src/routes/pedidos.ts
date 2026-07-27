@@ -303,7 +303,7 @@ pedidos.get("/etiquetas", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT i.pedido_id AS pedido_id, p.numero_erp AS pedido, p.cliente_nome AS cliente,
             i.produto AS modelo, i.tamanho, i.cor_grade AS cor, i.qtd, m.composicao AS composicao,
-            COALESCE(i.kit, 0) AS kit
+            i.ref AS ref, COALESCE(i.kit, 0) AS kit
        FROM pedido_itens i
        JOIN pedidos p ON p.id = i.pedido_id
        LEFT JOIN modelos m ON m.nome = i.produto

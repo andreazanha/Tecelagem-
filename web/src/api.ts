@@ -648,7 +648,7 @@ export const api = {
   },
   // Etiquetas (impressão A4) de um ou mais pedidos — só itens de produção.
   etiquetasPedidos: (ids: string[]) =>
-    fetch("/api/pedidos/etiquetas?ids=" + encodeURIComponent(ids.join(","))).then((r) => j<{ pedido_id: string; pedido: string | null; cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null; kit: number }[]>(r)),
+    fetch("/api/pedidos/etiquetas?ids=" + encodeURIComponent(ids.join(","))).then((r) => j<{ pedido_id: string; pedido: string | null; cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null; ref: string | null; kit: number }[]>(r)),
   // Estoque das etiquetas de colar (por produto · tamanho · cor).
   listarEstoqueEtiquetas: (produto: string) =>
     fetch("/api/etiquetas?produto=" + encodeURIComponent(produto)).then((r) => j<{ tamanho: string; cor: string; saldo: number; minimo: number }[]>(r)),

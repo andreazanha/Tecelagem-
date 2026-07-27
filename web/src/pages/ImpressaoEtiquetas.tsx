@@ -43,6 +43,13 @@ const CAMPOS: { k: keyof EtqCfg; label: string; step?: number }[] = [
 function normalizar(s: string): string {
   return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
 }
+// Produto "OT" = c\u00f3digo (ref) come\u00e7a com "OT" (ex.: OT1012, OT8019). S\u00e3o os
+// kits que precisam ser desmembrados nas etiquetas (peseira/manta + almofadas),
+// e por isso entram SEMPRE, sem depender do bot\u00e3o "Incluir kits". (C\u00f3digos "OC"
+// s\u00e3o pe\u00e7as individuais \u2014 almofada/capa avulsa \u2014 e seguem o fluxo normal.)
+function ehOT(ref: string | null | undefined): boolean {
+  return /^\s*ot/i.test(ref || "");
+}
 // Nome do modelo em 1 linha, com o tipo abreviado.
 // Ex.: "Almofada Bubbles" → "Alm: Bubbles"; "Manta Acácia" → "Man: Acácia".
 function modeloLinha(modelo: string): string {
@@ -126,7 +133,7 @@ function conteudoEt(e: Etq): string {
 export function ImpressaoEtiquetas() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [sel, setSel] = useState<string[]>([]);
-  type Row = { pedido: string | null; pedido_id: string; cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null; kit: boolean };
+  type Row = { pedido: string | null; pedido_id: string; cliente: string; modelo: string; tamanho: string | null; cor: string | null; qtd: number; composicao: string | null; ref: string | null; kit: boolean };
   const [rowsDb, setRowsDb] = useState<Row[]>([]);   // vindos de pedidos salvos
   const [rowsPdf, setRowsPdf] = useState<Row[]>([]); // vindos de PDF aberto (teste)
   const [pdfsAbertos, setPdfsAbertos] = useState<{ id: string; nome: string }[]>([]);
@@ -204,7 +211,7 @@ export function ImpressaoEtiquetas() {
       // Importa tudo (kits inclusos com a marca kit); a exibição decide o que entra.
       const novas: Row[] = (sug.itens || [])
         .filter((it) => Math.trunc(it.qtd) > 0)
-        .map((it) => ({ pedido: sug.numero_erp || file.name, pedido_id: pid, cliente, modelo: it.produto, tamanho: it.tamanho || null, cor: it.cor_grade || null, qtd: Math.trunc(it.qtd), composicao: null, kit: it.parte === "kit" }));
+        .map((it) => ({ pedido: sug.numero_erp || file.name, pedido_id: pid, cliente, modelo: it.produto, tamanho: it.tamanho || null, cor: it.cor_grade || null, qtd: Math.trunc(it.qtd), composicao: null, ref: it.ref || null, kit: it.parte === "kit" }));
       if (!novas.length) { alert("Não achei itens de produção nesse PDF (ou só tem pronta entrega)."); return; }
       setRowsPdf((r) => [...r, ...novas]);
       setPdfsAbertos((p) => [...p, { id: pid, nome: sug.numero_erp ? `${sug.numero_erp} · ${cliente}` : file.name }]);
@@ -260,7 +267,7 @@ export function ImpressaoEtiquetas() {
     for (const pid of ordemPedidos) {
       rows.forEach((r, i) => {
         if (r.pedido_id !== pid) return;
-        if (r.kit && !incluirKits) return; // kits só quando marcado "Incluir kits"
+        if (r.kit && !incluirKits && !ehOT(r.ref)) return; // kits só quando marcado — exceto OT, que desmembra sempre
         const ln = linhas[i] ?? { qtd: Math.trunc(r.qtd), incluir: true };
         if (!ln.incluir) return;
         const composicao = r.composicao || compDoCadastro(r.kit ? kitInfo(r.modelo, r.tamanho).nome : r.modelo) || compFallback;
@@ -291,8 +298,10 @@ export function ImpressaoEtiquetas() {
   const label = (p: Pedido) => `${p.numero_erp || p.codigo_pai || p.id.slice(0, 6)} · ${p.cliente_nome}`;
   const setLinha = (i: number, patch: Partial<{ qtd: number; incluir: boolean }>) => setLinhas((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const marcarTodas = (v: boolean) => setLinhas((ls) => ls.map((l) => ({ ...l, incluir: v })));
-  const temKits = rows.some((r) => r.kit);
-  const qtdKits = rows.filter((r) => r.kit).reduce((s, r) => s + Math.max(0, Math.trunc(r.qtd)), 0);
+  // O botão "Incluir kits" controla só os kits comuns; os OC entram sempre.
+  const temKits = rows.some((r) => r.kit && !ehOT(r.ref));
+  const qtdKits = rows.filter((r) => r.kit && !ehOT(r.ref)).reduce((s, r) => s + Math.max(0, Math.trunc(r.qtd)), 0);
+  const qtdKitsOT = rows.filter((r) => r.kit && ehOT(r.ref)).reduce((s, r) => s + Math.max(0, Math.trunc(r.qtd)), 0);
 
   // CSS comum da etiqueta (prévia e impressão), com a fonte configurável.
   // Disposição horizontal: linha de topo com modelo (esq.) e tamanho (dir.).
@@ -366,6 +375,12 @@ export function ImpressaoEtiquetas() {
               </span>
             </label>
           )}
+          {qtdKitsOT > 0 && (
+            <span className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--accent-soft, #eef)" }}
+              title="Kits com código OT são desmembrados automaticamente (peseira/manta + almofadas), sem precisar marcar 'Incluir kits'.">
+              🧩 OT: {qtdKitsOT} kit(s) → {qtdKitsOT * 3} etq. (automático)
+            </span>
+          )}
           <button className="btn btn-primary" style={{ marginLeft: "auto" }} disabled={etqs.length === 0} onClick={imprimir}>🖨️ Imprimir</button>
         </div>
         {(sel.length > 0 || pdfsAbertos.length > 0) && (
@@ -409,7 +424,7 @@ export function ImpressaoEtiquetas() {
                       <tr><td colSpan={5} style={{ background: "var(--accent-soft, #eef)", fontWeight: 700, fontSize: 12.5 }}>Pedido {ped ? label(ped) : idxs[0].r.pedido || pid.slice(0, 6)}</td></tr>
                       {idxs.map(({ r, i }) => {
                         const ln = linhas[i] ?? { qtd: Math.trunc(r.qtd), incluir: true };
-                        const foraKit = r.kit && !incluirKits; // kit que não vai imprimir
+                        const foraKit = r.kit && !incluirKits && !ehOT(r.ref); // kit que não vai imprimir (OT sempre entra)
                         return (
                           <tr key={i} style={{ opacity: (ln.incluir && !foraKit) ? 1 : 0.4 }} title={foraKit ? "Kit não incluído — marque 'Incluir kits' acima" : undefined}>
                             <td><input type="checkbox" checked={ln.incluir} onChange={(e) => setLinha(i, { incluir: e.target.checked })} /></td>
