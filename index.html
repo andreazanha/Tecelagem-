@@ -7,8 +7,8 @@
 <style>
   :root{
     --ink:#14110D;
-    --porcelain:#F4F0E8;
-    --wool:#EAE3D7;
+    --porcelain:#FAFAF8;
+    --wool:#F0EFEB;
     --camel:#A67C4E;
     --camel-soft:#C6A578;
     --espresso:#2A2320;
@@ -25,7 +25,7 @@
   @media (prefers-color-scheme:dark){
     :root{--bg:#14110D;--fg:#EDE7DB;--panel:#1C1813;--hair:rgba(237,231,219,.13);--muted:#A79C8C;--wool:#241F18}
   }
-  :root[data-theme="light"]{--bg:var(--porcelain);--fg:var(--ink);--panel:#FFFFFF;--hair:rgba(20,17,13,.14);--muted:#6B6257;--wool:#EAE3D7}
+  :root[data-theme="light"]{--bg:var(--porcelain);--fg:var(--ink);--panel:#FFFFFF;--hair:rgba(20,17,13,.12);--muted:#6B6257;--wool:#F0EFEB}
   :root[data-theme="dark"]{--bg:#14110D;--fg:#EDE7DB;--panel:#1C1813;--hair:rgba(237,231,219,.13);--muted:#A79C8C;--wool:#241F18}
 
   *{box-sizing:border-box}
@@ -283,7 +283,7 @@
   <!-- editorial highlights -->
   <div class="editorial wrap">
     <article class="feat" id="mantas">
-      <div class="feat-media"><span class="feat-num">I</span><canvas class="knit" data-yarn="#B9A488" aria-hidden="true"></canvas></div>
+      <div class="feat-media"><span class="feat-num">I</span><canvas class="knit" data-yarn="#C6BFB2" aria-hidden="true"></canvas></div>
       <div class="feat-body">
         <span class="eyebrow">Categoria 01 · Medidas sob encomenda</span>
         <h3>Mantas</h3>
@@ -301,7 +301,7 @@
       </div>
     </article>
     <article class="feat" id="almofadas">
-      <div class="feat-media"><span class="feat-num">III</span><canvas class="knit" data-yarn="#A67C4E" aria-hidden="true"></canvas></div>
+      <div class="feat-media"><span class="feat-num">III</span><canvas class="knit" data-yarn="#B3AA9A" aria-hidden="true"></canvas></div>
       <div class="feat-body">
         <span class="eyebrow">Categoria 03 · Capa + enchimento</span>
         <h3>Almofadas</h3>
@@ -397,9 +397,9 @@
 
   /* ---- hero slides ---- */
   var slides=[
-    {eye:'Coleção Inverno · MMXXVI', script:'aconchego', sub:'Mantas encorpadas em ponto trançado, feitas à mão no Brasil.', yarnL:'#C9B79A', yarnD:'#2A2320'},
-    {eye:'Novo · Capas de Almofada', script:'camadas', sub:'Troque a textura da casa a cada estação, sem trocar o enchimento.', yarnL:'#B7A98F', yarnD:'#332C24'},
-    {eye:'Para lojistas', script:'atacado', sub:'Private label e produção sob demanda com cartela de cores exclusiva.', yarnL:'#A6906D', yarnD:'#241F18'}
+    {eye:'Coleção Inverno · MMXXVI', script:'aconchego', sub:'Mantas encorpadas em ponto trançado, feitas à mão no Brasil.', yarnL:'#D9D4CB', yarnD:'#2A2320'},
+    {eye:'Novo · Capas de Almofada', script:'camadas', sub:'Troque a textura da casa a cada estação, sem trocar o enchimento.', yarnL:'#CFCABF', yarnD:'#332C24'},
+    {eye:'Para lojistas', script:'atacado', sub:'Private label e produção sob demanda com cartela de cores exclusiva.', yarnL:'#C6BFB2', yarnD:'#241F18'}
   ];
   var i=0, dots=[].slice.call(document.querySelectorAll('#dots i'));
   var eye=document.getElementById('hEye'), scr=document.getElementById('hScript'), sub=document.getElementById('hSub');
