@@ -78,7 +78,7 @@
     <div class="field"><label>Responsável <span class="req">*</span></label><input name="responsavel" required autocomplete="name"></div>
     <div class="field"><label>WhatsApp <span class="req">*</span></label><input name="whatsapp" required inputmode="tel" placeholder="(00) 00000-0000"></div>
     <div class="field"><label>E-mail</label><input name="email" type="email" autocomplete="email"></div>
-    <div class="field"><label>Instagram</label><input name="instagram" placeholder="@sualoja"></div>
+    <div class="field"><label>Instagram <span class="req">*</span></label><input name="instagram" required placeholder="@sualoja"></div>
     <div class="field"><label>Estado <span class="req">*</span></label><select name="uf" required><option value="">Selecione…</option></select></div>
     <div class="field"><label>Cidade <span class="req">*</span></label><input name="cidade" required></div>
     <div class="field full"><label>Endereço (rua e número) <span class="req">*</span></label><input name="endereco" required autocomplete="street-address"></div>
@@ -126,7 +126,7 @@
     e.preventDefault();
     if(val('website')) return; // honeypot: bot
     // validação
-    var required=['nome','responsavel','whatsapp','uf','cidade','endereco'];
+    var required=['nome','responsavel','whatsapp','instagram','uf','cidade','endereco'];
     var ok=true;
     required.forEach(function(n){var el=form.elements[n];var f=fieldOf(el);var bad=!el.value.trim();if(f)f.classList.toggle('bad',bad);if(bad)ok=false;});
     if(!ok){form.querySelector('.bad input,.bad select').focus();return;}
