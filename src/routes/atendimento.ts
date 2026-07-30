@@ -27,13 +27,27 @@ type ConvRow = Conversa & {
 // ── Dependências (SINTEGRA + lojas parceiras) ────────────────────────────────────
 function deps(env: Env): Deps {
   return {
-    // TODO(SINTEGRA): trocar pela consulta real de IE/SINTEGRA. Por ora: se o CNPJ
-    // já é cliente da base → lojista; senão assume lojista (pendente de verificação).
-    async sintegra(cnpj) {
+    // Consulta o CNPJ: 1º na base própria (cliente já cadastrado → aceita na hora,
+    // offline-safe); senão na Receita via BrasilAPI (confirma existência + situação).
+    async consultarCnpj(cnpj) {
       const cli = await env.DB.prepare(
-        "SELECT 1 FROM clientes WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-','') = ? LIMIT 1"
-      ).bind(cnpj).first().catch(() => null);
-      return { lojista: true, fonte: cli ? "base" : "pendente-sintegra" };
+        "SELECT nome FROM clientes WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-','') = ? LIMIT 1"
+      ).bind(cnpj).first<{ nome: string | null }>().catch(() => null);
+      if (cli) return { existe: true, ativa: true, nome: cli.nome ?? null, fonte: "base" };
+      try {
+        const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, {
+          headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000),
+        });
+        if (resp.status === 404) return { existe: false, ativa: false, nome: null, fonte: "brasilapi" };
+        if (!resp.ok) return { existe: false, ativa: false, nome: null, erro: true, fonte: `brasilapi-${resp.status}` };
+        const j = await resp.json<{ razao_social?: string; nome_fantasia?: string; descricao_situacao_cadastral?: string; situacao_cadastral?: number | string }>();
+        const desc = String(j.descricao_situacao_cadastral ?? "").toUpperCase();
+        const ativa = desc.includes("ATIVA") || Number(j.situacao_cadastral) === 2;
+        const nome = (j.nome_fantasia || j.razao_social || "").trim() || null;
+        return { existe: true, ativa, nome, fonte: "brasilapi" };
+      } catch {
+        return { existe: false, ativa: false, nome: null, erro: true, fonte: "erro-rede" };
+      }
     },
     // Lojas parceiras perto da cidade/UF: clientes reais, priorizando ativos e frequentes.
     async parceiros(cidade, uf) {

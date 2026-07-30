@@ -20,10 +20,31 @@ export interface Conversa {
 export interface Saida { tipo: "texto" | "arquivo" | "sistema"; texto: string }
 export interface LojaParceira { nome: string; cidade: string | null; uf: string | null; whatsapp: string | null; instagram?: string | null; ativo?: boolean; freq?: boolean }
 export interface Deps {
-  // Consulta se o CNPJ é lojista (SINTEGRA / base própria). Retorna lojista true/false.
-  sintegra: (cnpjDigitos: string) => Promise<{ lojista: boolean; fonte?: string }>;
+  // Consulta o CNPJ (base própria → Receita/BrasilAPI). existe=achou o CNPJ,
+  // ativa=situação cadastral ativa, nome=razão/fantasia, erro=falha na consulta
+  // (nesse caso não bloqueia o lojista — manda catálogo e deixa pra conferência).
+  consultarCnpj: (cnpjDigitos: string) => Promise<{ existe: boolean; ativa: boolean; nome: string | null; erro?: boolean; fonte?: string }>;
   // Busca lojas parceiras perto da cidade/UF (prioriza ativas e frequentes).
   parceiros: (cidade: string | null, uf: string | null) => Promise<LojaParceira[]>;
+}
+
+// Validação real do CNPJ (dígitos verificadores) — pega número errado/inventado.
+export function cnpjValido(cnpj: string): boolean {
+  const d = (cnpj || "").replace(/\D/g, "");
+  if (d.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(d)) return false; // todos os dígitos iguais
+  const dv = (base: string) => {
+    let soma = 0, peso = base.length - 7;
+    for (let i = 0; i < base.length; i++) {
+      soma += parseInt(base[i], 10) * peso;
+      peso = peso === 2 ? 9 : peso - 1;
+    }
+    const r = soma % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  const d1 = dv(d.slice(0, 12));
+  const d2 = dv(d.slice(0, 12) + d1);
+  return d1 === parseInt(d[12], 10) && d2 === parseInt(d[13], 10);
 }
 export interface Resultado { conv: Conversa; saidas: Saida[]; notificarHumano: boolean; qualificado: boolean }
 
@@ -145,28 +166,55 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
       break;
 
     case "aguardando-cnpj": {
-      if (digitos.length !== 14) {
-        // sem CNPJ / recusa → trilha de não-lojista
+      // Saída de emergência: pediu atendente/humano a qualquer momento.
+      if (/atendente|humano|falar com|uma pessoa/i.test(t)) {
+        push("Claro! Já chamo alguém do nosso time pra te atender. 💬");
+        conv.estado = "atendimento-humano";
+        notificarHumano = true;
+        break;
+      }
+      // Poucos dígitos / "não tenho" → é consumidor final: trilha de loja parceira.
+      if (digitos.length < 8) {
         push(NAO_LOJISTA);
         if (conv.cidade && conv.uf) return await indicar(conv, saidas, deps);
         conv.estado = "aguardando-cidade-parceiro";
         break;
       }
+      // Tentou um CNPJ, mas os dígitos verificadores não batem → pede pra reenviar.
+      if (!cnpjValido(digitos)) {
+        push("Hmm, esse CNPJ não parece válido 🤔. Confere os números e me reenvia? (são *14 dígitos*)\n\nSe você *não tem CNPJ*, é só dizer que te indico uma loja parceira. 😉");
+        break; // continua em aguardando-cnpj
+      }
       conv.cnpj = formatCnpj(digitos);
-      const r = await deps.sintegra(digitos);
-      if (r.lojista) {
+      const r = await deps.consultarCnpj(digitos);
+      if (r.erro) {
+        // Consulta indisponível → não trava o lojista; manda catálogo e sinaliza conferência.
         conv.lojista = 1;
-        push("Show! Confirmei aqui que você é lojista. ✅\nJá vou te mandar nosso catálogo. 📒");
+        if (!conv.nome && r.nome) conv.nome = r.nome;
+        push("Perfeito! ✅ Já vou te mandar nosso catálogo 📒\n(nosso time confirma seu cadastro em seguida).");
         saidas.push({ tipo: "arquivo", texto: "Catálogo Big Tricot 2026.pdf" });
         push("Um dos nossos vendedores já vai assumir a conversa pra montar seu pedido. 🚀");
         conv.estado = "catalogo-enviado";
         notificarHumano = true;
         qualificado = true;
-      } else {
+      } else if (r.existe && r.ativa) {
+        conv.lojista = 1;
+        if (!conv.nome && r.nome) conv.nome = r.nome;
+        push(`Show! Confirmei seu CNPJ${r.nome ? ` (*${r.nome}*)` : ""}. ✅\nJá vou te mandar nosso catálogo. 📒`);
+        saidas.push({ tipo: "arquivo", texto: "Catálogo Big Tricot 2026.pdf" });
+        push("Um dos nossos vendedores já vai assumir a conversa pra montar seu pedido. 🚀");
+        conv.estado = "catalogo-enviado";
+        notificarHumano = true;
+        qualificado = true;
+      } else if (r.existe && !r.ativa) {
         conv.lojista = 0;
-        push(NAO_LOJISTA);
-        if (conv.cidade && conv.uf) return await indicar(conv, saidas, deps);
-        conv.estado = "aguardando-cidade-parceiro";
+        push("Encontrei seu CNPJ, mas ele consta como *não ativo* na Receita. 😕\nVou te passar pra um atendente conferir, tudo bem?");
+        conv.estado = "atendimento-humano";
+        notificarHumano = true;
+      } else {
+        // Passou nos dígitos, mas a Receita não achou → provável erro de digitação.
+        push("Não encontrei esse CNPJ na base da Receita. 🤔 Pode conferir e me reenviar?\n\nSe preferir, digite *atendente* que eu chamo alguém do time.");
+        break; // continua em aguardando-cnpj
       }
       break;
     }
