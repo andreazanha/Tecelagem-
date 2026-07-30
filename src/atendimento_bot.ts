@@ -146,9 +146,9 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
   switch (conv.estado) {
     case "novo":
       if (conv.clienteConhecido) {
-        // Já é cliente da base → atendimento comercial direto, com o representante dele.
-        const quem = conv.representante ? `*${conv.representante}*` : "seu vendedor";
-        push(`Olá${conv.nome ? `, *${conv.nome}*` : ""}! 👋 Que bom te ver de novo na *Big Tricot* 💛\nJá estou avisando ${quem} pra te atender. Me conta: como posso ajudar hoje? 😊`);
+        // Já é cliente da base → atendimento comercial. Ainda NÃO promete um vendedor:
+        // o encaminhamento ao representante passa por autorização da equipe.
+        push(`Olá${conv.nome ? `, *${conv.nome}*` : ""}! 👋 Que bom te ver de novo na *Big Tricot* 💛\nJá já alguém do nosso time te atende. Me conta: como posso ajudar hoje? 😊`);
         conv.estado = "atendimento-humano";
         notificarHumano = true;
       } else {

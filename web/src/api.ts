@@ -276,7 +276,7 @@ export interface AtendConversa {
   id: string; telefone: string; nome: string | null; estado: string; coluna: string;
   setor: string | null; cnpj: string | null; cidade: string | null; uf: string | null;
   lojista: number | null; responsavel: string | null; atualizado_em: string; ultima_msg: string | null;
-  tipo: string | null; representante: string | null; origem: string | null; contato_nome: string | null;
+  tipo: string | null; representante: string | null; origem: string | null; contato_nome: string | null; autorizado: number | null;
 }
 export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; criado_em: string }
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
@@ -656,6 +656,8 @@ export const api = {
     jsonPost(`/api/atendimento/${id}/assumir`, { responsavel }).then((r) => j<{ ok: boolean }>(r)),
   atendEnviar: (id: string, b: { texto: string; autor?: string }) =>
     jsonPost(`/api/atendimento/${id}/enviar`, b).then((r) => j<{ ok: boolean }>(r)),
+  atendAutorizar: (id: string, representante?: string) =>
+    jsonPost(`/api/atendimento/${id}/autorizar`, { representante }).then((r) => j<{ ok: boolean; representante: string }>(r)),
   atendConfig: () => fetch("/api/atendimento/config").then((r) => j<ZapiConfig>(r)),
   atendSalvarConfig: (b: Partial<Omit<ZapiConfig, "webhook_url">>) =>
     jsonPost("/api/atendimento/config", b).then((r) => j<{ ok: boolean }>(r)),

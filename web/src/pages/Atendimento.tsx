@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig } from "../api";
+import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante } from "../api";
 
 function iniciais(s?: string | null) {
   return (s || "?").replace(/\D/g, "").slice(-2) || (s || "?").split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
@@ -160,8 +160,10 @@ function ConvMini({ c, onAbrir }: { c: AtendConversa; onAbrir: () => void }) {
       <div className="fx-sub">{(c.nome || c.contato_nome) ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—"}</div>
       {c.ultima_msg && <div className="at-prev">{c.ultima_msg}</div>}
       <div className="fx-foot">
-        <span className="at-badge">{humano ? `👤 ${c.responsavel || "humano"}` : `🤖 robô`}</span>
-        {c.representante && <span className="at-badge" style={{ background: "#eef2ff", color: "#4338ca" }} title="Representante">🧑‍💼 {c.representante}</span>}
+        {c.autorizado === 0
+          ? <span className="at-badge" style={{ background: "#fef3c7", color: "#92400e" }} title="Aguardando autorização da equipe">⏳ Autorizar</span>
+          : <span className="at-badge">{humano ? `👤 ${c.responsavel || "humano"}` : `🤖 robô`}</span>}
+        {c.representante && <span className="at-badge" style={{ background: "#eef2ff", color: "#4338ca" }} title={c.autorizado === 0 ? "Representante sugerido" : "Representante"}>🧑‍💼 {c.representante}</span>}
         {c.setor && <span className="fx-sub">{SETOR_EMOJI[c.setor] || ""}</span>}
         <span className="fx-sub" style={{ marginLeft: "auto" }}>{hora(c.atualizado_em)}</span>
       </div>
@@ -174,10 +176,13 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
   const [d, setD] = useState<AtendConversaDetalhe | null>(null);
   const [texto, setTexto] = useState("");
   const [busy, setBusy] = useState(false);
+  const [reps, setReps] = useState<Representante[]>([]);
+  const [repSel, setRepSel] = useState("");
   const fim = useRef<HTMLDivElement>(null);
 
-  function carregar() { api.atendConversa(id).then(setD); }
+  function carregar() { api.atendConversa(id).then((c) => { setD(c); setRepSel((s) => s || c.representante || ""); }); }
   useEffect(() => { carregar(); const t = setInterval(carregar, 5000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [id]);
+  useEffect(() => { api.listarRepresentantes().then((r) => setReps(r.filter((x) => x.ativo))).catch(() => {}); }, []);
   useEffect(() => { fim.current?.scrollIntoView(); }, [d?.mensagens.length]);
 
   async function assumir() {
@@ -185,6 +190,13 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
     if (nome == null) return;
     setBusy(true);
     try { await api.atendAssumir(id, nome || "Atendente"); carregar(); onMudou(); } finally { setBusy(false); }
+  }
+  async function autorizar() {
+    const rep = repSel.trim();
+    if (!rep) { alert("Escolha o representante."); return; }
+    if (!confirm(`Autorizar o encaminhamento para ${rep}? O cliente será avisado.`)) return;
+    setBusy(true);
+    try { await api.atendAutorizar(id, rep); carregar(); onMudou(); } finally { setBusy(false); }
   }
   async function enviar() {
     if (!texto.trim()) return;
@@ -228,6 +240,21 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
             <div className="at-row"><span>CNPJ</span><b>{d?.cnpj || "—"}</b></div>
             <div className="at-row"><span>Lojista</span><b>{d?.lojista == null ? "—" : d.lojista ? "✅ sim" : "🙅 não"}</b></div>
             <div className="at-row"><span>Cidade</span><b>{[d?.cidade, d?.uf].filter(Boolean).join("/") || "—"}</b></div>
+            {d?.representante && d?.autorizado !== 0 && <div className="at-row"><span>Representante</span><b>🧑‍💼 {d.representante}</b></div>}
+
+            {d?.autorizado === 0 && (
+              <div style={{ marginTop: 10, padding: "10px 11px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a" }}>
+                <div style={{ fontWeight: 800, fontSize: 13, color: "#92400e", marginBottom: 6 }}>⏳ Aguardando autorização</div>
+                <div style={{ fontSize: 12, color: "#78350f", marginBottom: 8 }}>Confira o representante e autorize pra conectar o cliente. Nada foi enviado a ninguém ainda.</div>
+                <select value={repSel} onChange={(e) => setRepSel(e.target.value)} style={{ width: "100%", marginBottom: 8 }}>
+                  <option value="">— escolher representante —</option>
+                  {reps.map((r) => <option key={r.id} value={r.nome}>{r.nome}</option>)}
+                  {d.representante && !reps.some((r) => r.nome === d.representante) && <option value={d.representante}>{d.representante} (sugerido)</option>}
+                </select>
+                <button className="kbtn go" style={{ width: "100%" }} disabled={busy || !repSel} onClick={autorizar}>✅ Autorizar e conectar</button>
+              </div>
+            )}
+
             {d?.card_id && <Link to="/funil" className="btn" style={{ marginTop: 10, display: "block", textAlign: "center" }}>🎯 Ver no funil</Link>}
             {!humano && <button className="kbtn go" style={{ marginTop: 10, width: "100%" }} disabled={busy} onClick={assumir}>🙋 Assumir atendimento</button>}
           </div>

@@ -21,7 +21,7 @@ async function lerConfig(env: Env): Promise<Record<string, string>> {
 
 type ConvRow = Conversa & {
   id: string; telefone: string; responsavel: string | null; card_id: string | null; cliente_id: string | null; contato_nome: string | null;
-  ultima_in_em: string | null; ultima_out_em: string | null; criado_em: string; atualizado_em: string;
+  autorizado: number | null; ultima_in_em: string | null; ultima_out_em: string | null; criado_em: string; atualizado_em: string;
 };
 
 // ── Dependências (SINTEGRA + lojas parceiras) ────────────────────────────────────
@@ -172,21 +172,20 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   if (r.qualificado || r.conv.lojista === 1) tipoFinal = "lojista";
   else if (r.conv.estado === "aguardando-cidade-parceiro" || r.conv.estado === "indicado-parceiro") tipoFinal = "consumidor";
 
+  // Encaminhamento ao representante NÃO é automático: se há um representante
+  // sugerido e ainda não foi autorizado, marca como PENDENTE (a equipe aprova).
+  let autorizado = conv.autorizado ?? null;
+  if (representanteFinal && autorizado == null) autorizado = 0;
+
   await env.DB.prepare(
-    `UPDATE atend_conversas SET estado=?, nome=?, setor=?, cnpj=?, cidade=?, uf=?, lojista=?, tipo=?, representante=?, atualizado_em=datetime('now') WHERE id=?`
-  ).bind(r.conv.estado, r.conv.nome ?? null, r.conv.setor ?? null, r.conv.cnpj ?? null, r.conv.cidade ?? null, r.conv.uf ?? null, r.conv.lojista ?? null, tipoFinal, representanteFinal, conv.id).run();
+    `UPDATE atend_conversas SET estado=?, nome=?, setor=?, cnpj=?, cidade=?, uf=?, lojista=?, tipo=?, representante=?, autorizado=?, atualizado_em=datetime('now') WHERE id=?`
+  ).bind(r.conv.estado, r.conv.nome ?? null, r.conv.setor ?? null, r.conv.cnpj ?? null, r.conv.cidade ?? null, r.conv.uf ?? null, r.conv.lojista ?? null, tipoFinal, representanteFinal, autorizado, conv.id).run();
 
   for (const s of r.saidas) {
     await addMsg(env, conv.id, "out", "bot", s.tipo, s.texto);
     await enviarWhatsapp(env, tel, s);
   }
-  // Apresenta o vendedor/representante pro cliente quando o lead é encaminhado.
-  if (r.qualificado && representanteFinal) {
-    const aviso = `👤 *${representanteFinal}* vai cuidar do seu atendimento a partir de agora. 😊`;
-    await addMsg(env, conv.id, "out", "bot", "texto", aviso);
-    await enviarWhatsapp(env, tel, { tipo: "texto", texto: aviso });
-  }
-  if (r.saidas.length || (r.qualificado && representanteFinal)) await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
+  if (r.saidas.length) await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
 
   // Qualificou (lojista + catálogo) → vira lead no Funil de Vendas, já com o representante.
   if (r.qualificado && !conv.card_id) {
@@ -310,7 +309,7 @@ async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; text
 // ── BOARD (conversas por coluna) ──────────────────────────────────────────────────
 atendimento.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.responsavel, c.atualizado_em, c.tipo, c.representante, c.origem, c.contato_nome,
+    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.responsavel, c.atualizado_em, c.tipo, c.representante, c.origem, c.contato_nome, c.autorizado,
             (SELECT texto FROM atend_mensagens m WHERE m.conversa_id=c.id ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 1) AS ultima_msg
        FROM atend_conversas c ORDER BY c.atualizado_em DESC`
   ).all<Record<string, unknown>>();
@@ -344,6 +343,26 @@ atendimento.post("/:id/assumir", async (c) => {
     await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(id).run();
   }
   return c.json({ ok: true });
+});
+
+// ── Autorizar encaminhamento ao representante (aprovação da equipe) ────────────────
+// Nada vai pro cliente/representante automaticamente — só depois de alguém autorizar.
+atendimento.post("/:id/autorizar", async (c) => {
+  const b = await c.req.json<{ representante?: string }>().catch(() => ({}) as Record<string, string>);
+  const id = c.req.param("id");
+  const conv = await c.env.DB.prepare("SELECT telefone, representante FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string; representante: string | null }>();
+  if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  const rep = (b.representante || conv.representante || "").trim();
+  if (!rep) return c.json({ error: "informe o representante" }, 400);
+  await c.env.DB.prepare(
+    "UPDATE atend_conversas SET representante=?, responsavel=?, autorizado=1, estado='atendimento-humano', atualizado_em=datetime('now') WHERE id=?"
+  ).bind(rep, rep, id).run();
+  await addMsg(c.env, id, "out", "sistema", "sistema", `Encaminhamento para ${rep} autorizado.`);
+  const aviso = `👤 *${rep}* vai cuidar do seu atendimento a partir de agora. 😊`;
+  await addMsg(c.env, id, "out", rep, "texto", aviso);
+  await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto: aviso });
+  await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(id).run();
+  return c.json({ ok: true, representante: rep });
 });
 
 // ── Atendente envia mensagem manual ──────────────────────────────────────────────────
