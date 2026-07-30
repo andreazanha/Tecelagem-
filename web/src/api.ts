@@ -276,12 +276,13 @@ export interface AtendConversa {
   id: string; telefone: string; nome: string | null; estado: string; coluna: string;
   setor: string | null; cnpj: string | null; cidade: string | null; uf: string | null;
   lojista: number | null; responsavel: string | null; atualizado_em: string; ultima_msg: string | null;
+  tipo: string | null; representante: string | null; origem: string | null; contato_nome: string | null;
 }
 export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; criado_em: string }
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
 export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; mensagens: AtendMensagem[] }
 export interface AtendResposta { conversa_id: string; estado: string; coluna: string; respostas: { tipo: string; texto: string }[]; notificarHumano: boolean }
-export interface ZapiConfig { zapi_base: string; zapi_instance: string; zapi_token: string; zapi_client_token: string; zapi_ativo: boolean; webhook_url: string }
+export interface ZapiConfig { zapi_base: string; zapi_instance: string; zapi_token: string; zapi_client_token: string; zapi_ativo: boolean; atendimento_ativo: boolean; webhook_url: string }
 
 export interface FunilResumo { parados: number; semTarefa: number; retornos: number; alertas: number }
 export interface FunilBoard { etapas: FunilEtapa[]; cards: FunilCard[]; resumo: FunilResumo }

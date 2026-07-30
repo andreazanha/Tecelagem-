@@ -20,7 +20,7 @@ async function lerConfig(env: Env): Promise<Record<string, string>> {
 }
 
 type ConvRow = Conversa & {
-  id: string; telefone: string; responsavel: string | null; card_id: string | null;
+  id: string; telefone: string; responsavel: string | null; card_id: string | null; cliente_id: string | null; contato_nome: string | null;
   ultima_in_em: string | null; ultima_out_em: string | null; criado_em: string; atualizado_em: string;
 };
 
@@ -31,20 +31,22 @@ function deps(env: Env): Deps {
     // offline-safe); senão na Receita via BrasilAPI (confirma existência + situação).
     async consultarCnpj(cnpj) {
       const cli = await env.DB.prepare(
-        "SELECT nome FROM clientes WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-','') = ? LIMIT 1"
-      ).bind(cnpj).first<{ nome: string | null }>().catch(() => null);
-      if (cli) return { existe: true, ativa: true, nome: cli.nome ?? null, fonte: "base" };
+        "SELECT nome, cidade, uf FROM clientes WHERE REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-','') = ? LIMIT 1"
+      ).bind(cnpj).first<{ nome: string | null; cidade: string | null; uf: string | null }>().catch(() => null);
+      if (cli) return { existe: true, ativa: true, nome: cli.nome ?? null, uf: cli.uf, cidade: cli.cidade, fonte: "base" };
       try {
         const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, {
           headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000),
         });
         if (resp.status === 404) return { existe: false, ativa: false, nome: null, fonte: "brasilapi" };
         if (!resp.ok) return { existe: false, ativa: false, nome: null, erro: true, fonte: `brasilapi-${resp.status}` };
-        const j = await resp.json<{ razao_social?: string; nome_fantasia?: string; descricao_situacao_cadastral?: string; situacao_cadastral?: number | string }>();
+        const j = await resp.json<{ razao_social?: string; nome_fantasia?: string; descricao_situacao_cadastral?: string; situacao_cadastral?: number | string; uf?: string; municipio?: string }>();
         const desc = String(j.descricao_situacao_cadastral ?? "").toUpperCase();
         const ativa = desc.includes("ATIVA") || Number(j.situacao_cadastral) === 2;
         const nome = (j.nome_fantasia || j.razao_social || "").trim() || null;
-        return { existe: true, ativa, nome, fonte: "brasilapi" };
+        const uf = (j.uf || "").trim().toUpperCase() || null;
+        const cidade = (j.municipio || "").trim() || null;
+        return { existe: true, ativa, nome, uf, cidade, fonte: "brasilapi" };
       } catch {
         return { existe: false, ativa: false, nome: null, erro: true, fonte: "erro-rede" };
       }
@@ -79,6 +81,37 @@ function deps(env: Env): Deps {
   };
 }
 
+// ── CRM: identificação do contato + roteamento por região ────────────────────────
+// Casa o telefone pelo sufixo (últimos 8 dígitos): ignora DDI, formatação e o 9º dígito.
+const LIMPA_WPP = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(whatsapp,''),'.',''),'-',''),'(',''),')',''),' ','')";
+
+async function identificarCliente(env: Env, tel: string) {
+  const core = digitos(tel).slice(-8);
+  if (core.length < 8) return null;
+  return env.DB.prepare(
+    `SELECT id, nome, cnpj, cidade, uf, representante, instagram FROM clientes WHERE ${LIMPA_WPP} LIKE '%' || ? LIMIT 1`
+  ).bind(core).first<{ id: string; nome: string; cnpj: string | null; cidade: string | null; uf: string | null; representante: string | null; instagram: string | null }>().catch(() => null);
+}
+
+async function ehRepresentante(env: Env, tel: string) {
+  const core = digitos(tel).slice(-8);
+  if (core.length < 8) return null;
+  return env.DB.prepare(
+    `SELECT nome FROM representantes WHERE COALESCE(ativo,1)=1 AND ${LIMPA_WPP} LIKE '%' || ? LIMIT 1`
+  ).bind(core).first<{ nome: string }>().catch(() => null);
+}
+
+// Representante cuja carteira (representantes.ufs, CSV "MG,SP,GO") cobre a UF.
+async function representantePorRegiao(env: Env, uf: string | null | undefined): Promise<string | null> {
+  const u = String(uf ?? "").trim().toUpperCase();
+  if (!u) return null;
+  const r = await env.DB.prepare(
+    `SELECT nome FROM representantes WHERE COALESCE(ativo,1)=1 AND ufs IS NOT NULL
+       AND (',' || REPLACE(UPPER(ufs),' ','') || ',') LIKE '%,' || ? || ',%' LIMIT 1`
+  ).bind(u).first<{ nome: string }>().catch(() => null);
+  return r?.nome ?? null;
+}
+
 async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: string, tipo: string, texto: string) {
   await env.DB.prepare(
     "INSERT INTO atend_mensagens (id, conversa_id, direcao, autor, tipo, texto) VALUES (?, ?, ?, ?, ?, ?)"
@@ -87,16 +120,35 @@ async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: st
 
 // ── Núcleo: recebe uma mensagem do cliente, roda o robô, responde e qualifica ────
 // Usado tanto pelo simulador (/entrada) quanto pelo webhook real da Z-API (/webhook).
-async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown) {
+async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "") {
   const tel = digitos(telRaw);
   const texto = String(textoRaw ?? "");
+  const contato = String(contatoNome ?? "").trim().slice(0, 80) || null;
   if (!tel) return { erro: "telefone é obrigatório" as const };
 
   let conv = await env.DB.prepare("SELECT * FROM atend_conversas WHERE telefone = ?").bind(tel).first<ConvRow>();
   if (!conv) {
+    // Primeiro contato: tenta reconhecer quem é (cliente da base ou representante).
     const id = uid();
-    await env.DB.prepare("INSERT INTO atend_conversas (id, telefone, estado) VALUES (?, ?, 'novo')").bind(id, tel).run();
-    conv = { id, telefone: tel, estado: "novo" } as ConvRow;
+    const cliente = await identificarCliente(env, tel);
+    const rep = cliente ? null : await ehRepresentante(env, tel);
+    let tipo: string | null = null, representante: string | null = null;
+    let nome: string | null = null, cnpj: string | null = null, cidade: string | null = null, uf: string | null = null, clienteId: string | null = null;
+    if (cliente) {
+      tipo = "lojista"; clienteId = cliente.id; nome = cliente.nome; cnpj = cliente.cnpj;
+      cidade = cliente.cidade; uf = cliente.uf;
+      representante = cliente.representante || (await representantePorRegiao(env, cliente.uf));
+    } else if (rep) {
+      tipo = "representante"; representante = rep.nome;
+    }
+    await env.DB.prepare(
+      "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, representante, cliente_id, nome, cnpj, cidade, uf, contato_nome) VALUES (?, ?, 'novo', ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(id, tel, origem, tipo, representante, clienteId, nome, cnpj, cidade, uf, contato).run();
+    conv = { id, telefone: tel, estado: "novo", origem, tipo, representante, cliente_id: clienteId, nome, cnpj, cidade, uf, contato_nome: contato } as ConvRow;
+  } else if (contato && !conv.contato_nome) {
+    // Preenche o nome do perfil se ainda não temos.
+    await env.DB.prepare("UPDATE atend_conversas SET contato_nome=? WHERE id=?").bind(contato, conv.id).run();
+    conv.contato_nome = contato;
   }
   await addMsg(env, conv.id, "in", "cliente", "texto", texto);
   await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now') WHERE id = ?").bind(conv.id).run();
@@ -106,23 +158,42 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown) {
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
   }
 
+  // Passa o contexto de identificação pro robô (saudação personalizada de cliente conhecido).
+  conv.clienteConhecido = !!conv.cliente_id;
   const r = await processar(conv as Conversa, texto, deps(env));
+
+  // Representante responsável: 1º o que já veio (cliente/base), senão pela região da UF.
+  let representanteFinal = conv.representante ?? null;
+  if (!representanteFinal && (r.qualificado || r.conv.lojista === 1) && r.conv.uf) {
+    representanteFinal = await representantePorRegiao(env, r.conv.uf);
+  }
+  // Classificação do tipo conforme o desfecho.
+  let tipoFinal = conv.tipo ?? null;
+  if (r.qualificado || r.conv.lojista === 1) tipoFinal = "lojista";
+  else if (r.conv.estado === "aguardando-cidade-parceiro" || r.conv.estado === "indicado-parceiro") tipoFinal = "consumidor";
+
   await env.DB.prepare(
-    `UPDATE atend_conversas SET estado=?, nome=?, setor=?, cnpj=?, cidade=?, uf=?, lojista=?, atualizado_em=datetime('now') WHERE id=?`
-  ).bind(r.conv.estado, r.conv.nome ?? null, r.conv.setor ?? null, r.conv.cnpj ?? null, r.conv.cidade ?? null, r.conv.uf ?? null, r.conv.lojista ?? null, conv.id).run();
+    `UPDATE atend_conversas SET estado=?, nome=?, setor=?, cnpj=?, cidade=?, uf=?, lojista=?, tipo=?, representante=?, atualizado_em=datetime('now') WHERE id=?`
+  ).bind(r.conv.estado, r.conv.nome ?? null, r.conv.setor ?? null, r.conv.cnpj ?? null, r.conv.cidade ?? null, r.conv.uf ?? null, r.conv.lojista ?? null, tipoFinal, representanteFinal, conv.id).run();
 
   for (const s of r.saidas) {
     await addMsg(env, conv.id, "out", "bot", s.tipo, s.texto);
     await enviarWhatsapp(env, tel, s);
   }
-  if (r.saidas.length) await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
+  // Apresenta o vendedor/representante pro cliente quando o lead é encaminhado.
+  if (r.qualificado && representanteFinal) {
+    const aviso = `👤 *${representanteFinal}* vai cuidar do seu atendimento a partir de agora. 😊`;
+    await addMsg(env, conv.id, "out", "bot", "texto", aviso);
+    await enviarWhatsapp(env, tel, { tipo: "texto", texto: aviso });
+  }
+  if (r.saidas.length || (r.qualificado && representanteFinal)) await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
 
-  // Qualificou (lojista + catálogo) → vira lead no Funil de Vendas.
+  // Qualificou (lojista + catálogo) → vira lead no Funil de Vendas, já com o representante.
   if (r.qualificado && !conv.card_id) {
     const cardId = uid();
     await env.DB.prepare(
       "INSERT INTO funil_cards (id, nome, whatsapp, etapa, responsavel) VALUES (?, ?, ?, 'primeiro-contato', ?)"
-    ).bind(cardId, r.conv.nome || "Lead WhatsApp", tel, conv.responsavel ?? null).run();
+    ).bind(cardId, r.conv.nome || "Lead WhatsApp", tel, representanteFinal ?? conv.responsavel ?? null).run();
     await env.DB.prepare(
       "INSERT INTO funil_tarefas (id, card_id, titulo, vence_em) VALUES (?, ?, 'Assumir e montar pedido', date('now','+1 day'))"
     ).bind(uid(), cardId).run();
@@ -146,6 +217,12 @@ atendimento.post("/entrada", async (c) => {
 // Ignora mensagens enviadas por nós (fromMe) e callbacks de status. Só texto por ora.
 atendimento.post("/webhook", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
+  // Interruptor mestre: se o atendimento automático estiver desligado, NÃO responde
+  // clientes reais (fica em modo teste interno pelo Simulador). Ignora silenciosamente.
+  const cfg = await lerConfig(c.env);
+  if (cfg.atendimento_ativo !== "1") return c.json({ ignorado: "atendimento-desligado" });
+  // Não responde em grupos (só conversas 1:1).
+  if (b.isGroup === true || b.isGroupMessage === true) return c.json({ ignorado: "grupo" });
   // Só processa mensagem recebida de terceiro.
   if (b.fromMe === true) return c.json({ ignorado: "fromMe" });
   if (b.type && b.type !== "ReceivedCallback") return c.json({ ignorado: String(b.type) });
@@ -154,15 +231,17 @@ atendimento.post("/webhook", async (c) => {
   const t = b.text as { message?: string } | undefined;
   const img = b.image as { caption?: string } | undefined;
   const texto = (t?.message ?? img?.caption ?? "").toString();
+  const nomeContato = String(b.senderName ?? b.chatName ?? b.pushName ?? "").trim();
   if (!phone) return c.json({ ignorado: "sem-telefone" });
   if (!texto.trim()) return c.json({ ignorado: "sem-texto" });
-  const r = await receberMensagem(c.env, phone, texto);
+  const r = await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato);
   if ("erro" in r) return c.json({ error: r.erro }, 400);
   return c.json({ ok: true, conversa_id: r.conversa_id });
 });
 
 // ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
+const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo"]);
 
 atendimento.get("/config", async (c) => {
   const cfg = await lerConfig(c.env);
@@ -172,6 +251,7 @@ atendimento.get("/config", async (c) => {
     zapi_token: cfg.zapi_token || "",
     zapi_client_token: cfg.zapi_client_token || "",
     zapi_ativo: cfg.zapi_ativo === "1",
+    atendimento_ativo: cfg.atendimento_ativo === "1",
     webhook_url: new URL(c.req.url).origin + "/api/atendimento/webhook",
   });
 });
@@ -179,9 +259,9 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of ZAPI_CHAVES) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo"] as const) {
     if (k in b) {
-      const v = k === "zapi_ativo" ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
+      const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
     }
   }
@@ -230,7 +310,7 @@ async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; text
 // ── BOARD (conversas por coluna) ──────────────────────────────────────────────────
 atendimento.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.responsavel, c.atualizado_em,
+    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.responsavel, c.atualizado_em, c.tipo, c.representante, c.origem, c.contato_nome,
             (SELECT texto FROM atend_mensagens m WHERE m.conversa_id=c.id ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 1) AS ultima_msg
        FROM atend_conversas c ORDER BY c.atualizado_em DESC`
   ).all<Record<string, unknown>>();
@@ -255,6 +335,14 @@ atendimento.post("/:id/assumir", async (c) => {
   const id = c.req.param("id");
   await c.env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', responsavel=?, atualizado_em=datetime('now') WHERE id=?").bind(resp, id).run();
   await addMsg(c.env, id, "out", "sistema", "sistema", `${resp} assumiu o atendimento.`);
+  // Apresenta o atendente pro cliente.
+  const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
+  if (conv) {
+    const aviso = `Olá! 👋 Aqui é *${resp}* da *Big Tricot*, vou continuar seu atendimento por aqui. 😊`;
+    await addMsg(c.env, id, "out", resp, "texto", aviso);
+    await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto: aviso });
+    await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(id).run();
+  }
   return c.json({ ok: true });
 });
 

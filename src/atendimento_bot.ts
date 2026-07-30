@@ -15,6 +15,11 @@ export interface Conversa {
   cidade?: string | null;
   uf?: string | null;
   lojista?: number | null;
+  // CRM Fase 1: contexto de identificação (preenchido pelo route antes de processar).
+  origem?: string | null;                 // whatsapp | instagram | formulario | catalogo
+  tipo?: string | null;                   // lojista | consumidor | representante | fornecedor | sem-identificacao
+  representante?: string | null;          // representante responsável (nome)
+  clienteConhecido?: boolean;             // true = telefone já está no cadastro de clientes
 }
 
 export interface Saida { tipo: "texto" | "arquivo" | "sistema"; texto: string }
@@ -23,7 +28,7 @@ export interface Deps {
   // Consulta o CNPJ (base própria → Receita/BrasilAPI). existe=achou o CNPJ,
   // ativa=situação cadastral ativa, nome=razão/fantasia, erro=falha na consulta
   // (nesse caso não bloqueia o lojista — manda catálogo e deixa pra conferência).
-  consultarCnpj: (cnpjDigitos: string) => Promise<{ existe: boolean; ativa: boolean; nome: string | null; erro?: boolean; fonte?: string }>;
+  consultarCnpj: (cnpjDigitos: string) => Promise<{ existe: boolean; ativa: boolean; nome: string | null; uf?: string | null; cidade?: string | null; erro?: boolean; fonte?: string }>;
   // Busca lojas parceiras perto da cidade/UF (prioriza ativas e frequentes).
   parceiros: (cidade: string | null, uf: string | null) => Promise<LojaParceira[]>;
 }
@@ -140,8 +145,16 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
 
   switch (conv.estado) {
     case "novo":
-      push(BOAS_VINDAS);
-      conv.estado = "aguardando-setor";
+      if (conv.clienteConhecido) {
+        // Já é cliente da base → atendimento comercial direto, com o representante dele.
+        const quem = conv.representante ? `*${conv.representante}*` : "seu vendedor";
+        push(`Olá${conv.nome ? `, *${conv.nome}*` : ""}! 👋 Que bom te ver de novo na *Big Tricot* 💛\nJá estou avisando ${quem} pra te atender. Me conta: como posso ajudar hoje? 😊`);
+        conv.estado = "atendimento-humano";
+        notificarHumano = true;
+      } else {
+        push(BOAS_VINDAS);
+        conv.estado = "aguardando-setor";
+      }
       break;
 
     case "aguardando-setor": {
@@ -200,6 +213,8 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
       } else if (r.existe && r.ativa) {
         conv.lojista = 1;
         if (!conv.nome && r.nome) conv.nome = r.nome;
+        if (r.uf && !conv.uf) conv.uf = r.uf;
+        if (r.cidade && !conv.cidade) conv.cidade = r.cidade;
         push(`Show! Confirmei seu CNPJ${r.nome ? ` (*${r.nome}*)` : ""}. ✅\nJá vou te mandar nosso catálogo. 📒`);
         saidas.push({ tipo: "arquivo", texto: "Catálogo Big Tricot 2026.pdf" });
         push("Um dos nossos vendedores já vai assumir a conversa pra montar seu pedido. 🚀");

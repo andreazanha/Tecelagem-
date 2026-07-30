@@ -77,7 +77,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
     if (!cfg) return;
     setSalvando(true); setMsg("");
     try {
-      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo });
+      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo });
       setMsg("✓ Salvo!"); onMudou(); setTimeout(() => setMsg(""), 2500);
     } catch { setMsg("Erro ao salvar."); } finally { setSalvando(false); }
   }
@@ -99,6 +99,16 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
         <h2 style={{ marginTop: 0 }}>⚙️ Conexão do WhatsApp (Z-API)</h2>
         {!cfg ? <p className="muted">Carregando…</p> : (
           <>
+            {/* Interruptor mestre — liga/desliga o robô com clientes reais */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginBottom: 14, borderRadius: 10, border: "2px solid " + (cfg.atendimento_ativo ? "#22c55e" : "#f59e0b"), background: cfg.atendimento_ativo ? "#f0fdf4" : "#fffbeb" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800 }}>{cfg.atendimento_ativo ? "🟢 Atendimento automático LIGADO" : "🟡 Atendimento automático DESLIGADO"}</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>{cfg.atendimento_ativo ? "O robô responde clientes reais no WhatsApp." : "Modo teste: o robô NÃO responde clientes reais. Use o Simulador."}</div>
+              </div>
+              <button type="button" className={"btn " + (cfg.atendimento_ativo ? "btn-soft" : "btn-primary")} onClick={() => set("atendimento_ativo", !cfg.atendimento_ativo)}>
+                {cfg.atendimento_ativo ? "Desligar" : "Ligar"}
+              </button>
+            </div>
             <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 12px", fontSize: 12.5, marginBottom: 14, color: "#92400e" }}>
               API não-oficial: use um <b>chip dedicado</b> (não seu número pessoal). Há risco de bloqueio pelo WhatsApp se disparar em massa.
             </div>
@@ -146,11 +156,12 @@ function ConvMini({ c, onAbrir }: { c: AtendConversa; onAbrir: () => void }) {
   const humano = c.coluna === "atendimento-humano";
   return (
     <div className="fx-card" onClick={onAbrir}>
-      <div className="fx-nm">{c.nome || telBonito(c.telefone)}</div>
-      <div className="fx-sub">{c.nome ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—"}</div>
+      <div className="fx-nm">{c.nome || c.contato_nome || telBonito(c.telefone)}</div>
+      <div className="fx-sub">{(c.nome || c.contato_nome) ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—"}</div>
       {c.ultima_msg && <div className="at-prev">{c.ultima_msg}</div>}
       <div className="fx-foot">
         <span className="at-badge">{humano ? `👤 ${c.responsavel || "humano"}` : `🤖 robô`}</span>
+        {c.representante && <span className="at-badge" style={{ background: "#eef2ff", color: "#4338ca" }} title="Representante">🧑‍💼 {c.representante}</span>}
         {c.setor && <span className="fx-sub">{SETOR_EMOJI[c.setor] || ""}</span>}
         <span className="fx-sub" style={{ marginLeft: "auto" }}>{hora(c.atualizado_em)}</span>
       </div>

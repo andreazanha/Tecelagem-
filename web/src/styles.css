@@ -1076,13 +1076,15 @@ body.dark .fx-pill.on { background: #4f46e5; border-color: #4f46e5; color: #fff;
 .fx-alertbar { display: flex; gap: 8px; align-items: center; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 9px 13px; font-size: 13px; color: #92400e; font-weight: 600; margin-bottom: 14px; }
 body.dark .fx-alertbar { background: #2a2410; border-color: #5c4a12; color: #fcd34d; }
 .fx-board { display: flex; gap: 12px; overflow-x: auto; padding: 4px 2px 14px; align-items: flex-start; }
-.fx-col { flex: 0 0 246px; background: #eef1f6; border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-height: 120px; }
+.fx-col { flex: 0 0 224px; max-width: 224px; background: #eef1f6; border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-height: 120px; }
 body.dark .fx-col { background: #111826; border-color: #243044; }
 .fx-hd { display: flex; align-items: center; gap: 7px; padding: 4px 4px 9px; font-weight: 800; font-size: 13px; }
 .fx-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
 .fx-hd .ct { margin-left: auto; background: #fff; border: 1px solid var(--line); border-radius: 20px; font-size: 11px; font-weight: 800; padding: 1px 8px; color: var(--muted); }
 body.dark .fx-hd .ct { background: #1b2536; border-color: #26324a; }
-.fx-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; box-shadow: 0 1px 2px #0f172a12; border-left: 3px solid transparent; cursor: pointer; }
+.fx-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; box-shadow: 0 1px 2px #0f172a12; border-left: 3px solid transparent; cursor: pointer; overflow: hidden; min-width: 0; }
+.fx-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx-foot { flex-wrap: wrap; }
 .fx-card:hover { box-shadow: 0 3px 10px #0f172a20; }
 body.dark .fx-card { background: #18202f; border-color: #26324a; }
 .fx-card.red { border-left-color: #dc2626; background: #fef4f4; }
