@@ -11,6 +11,14 @@ export const atendimento = new Hono<{ Bindings: Env }>();
 const uid = () => crypto.randomUUID();
 const digitos = (s: unknown) => String(s ?? "").replace(/\D/g, "");
 
+// ── Config (chave/valor no banco) ────────────────────────────────────────────────
+async function lerConfig(env: Env): Promise<Record<string, string>> {
+  const { results } = await env.DB.prepare("SELECT chave, valor FROM config").all<{ chave: string; valor: string | null }>().catch(() => ({ results: [] as { chave: string; valor: string | null }[] }));
+  const out: Record<string, string> = {};
+  for (const r of results) out[r.chave] = r.valor ?? "";
+  return out;
+}
+
 type ConvRow = Conversa & {
   id: string; telefone: string; responsavel: string | null; card_id: string | null;
   ultima_in_em: string | null; ultima_out_em: string | null; criado_em: string; atualizado_em: string;
@@ -63,54 +71,146 @@ async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: st
   ).bind(uid(), convId, direcao, autor, tipo, texto).run();
 }
 
-// ── ENTRADA de mensagem (webhook da Z-API OU simulador) ──────────────────────────
-// Corpo: { telefone, texto }. Cria/atualiza a conversa, roda o robô e devolve as
-// respostas (o envio real pela Z-API é feito aqui, no stub enviarWhatsapp).
-atendimento.post("/entrada", async (c) => {
-  const b = await c.req.json<{ telefone?: string; texto?: string }>().catch(() => ({}) as Record<string, string>);
-  const tel = digitos(b.telefone);
-  const texto = String(b.texto ?? "");
-  if (!tel) return c.json({ error: "telefone é obrigatório" }, 400);
+// ── Núcleo: recebe uma mensagem do cliente, roda o robô, responde e qualifica ────
+// Usado tanto pelo simulador (/entrada) quanto pelo webhook real da Z-API (/webhook).
+async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown) {
+  const tel = digitos(telRaw);
+  const texto = String(textoRaw ?? "");
+  if (!tel) return { erro: "telefone é obrigatório" as const };
 
-  let conv = await c.env.DB.prepare("SELECT * FROM atend_conversas WHERE telefone = ?").bind(tel).first<ConvRow>();
+  let conv = await env.DB.prepare("SELECT * FROM atend_conversas WHERE telefone = ?").bind(tel).first<ConvRow>();
   if (!conv) {
     const id = uid();
-    await c.env.DB.prepare("INSERT INTO atend_conversas (id, telefone, estado) VALUES (?, ?, 'novo')").bind(id, tel).run();
+    await env.DB.prepare("INSERT INTO atend_conversas (id, telefone, estado) VALUES (?, ?, 'novo')").bind(id, tel).run();
     conv = { id, telefone: tel, estado: "novo" } as ConvRow;
   }
-  await addMsg(c.env, conv.id, "in", "cliente", "texto", texto);
-  await c.env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now') WHERE id = ?").bind(conv.id).run();
+  await addMsg(env, conv.id, "in", "cliente", "texto", texto);
+  await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now') WHERE id = ?").bind(conv.id).run();
 
-  const r = await processar(conv as Conversa, texto, deps(c.env));
-  await c.env.DB.prepare(
+  // Atendente humano assumiu → o robô não responde mais, só registra a mensagem.
+  if (conv.estado === "atendimento-humano") {
+    return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
+  }
+
+  const r = await processar(conv as Conversa, texto, deps(env));
+  await env.DB.prepare(
     `UPDATE atend_conversas SET estado=?, nome=?, setor=?, cnpj=?, cidade=?, uf=?, lojista=?, atualizado_em=datetime('now') WHERE id=?`
   ).bind(r.conv.estado, r.conv.nome ?? null, r.conv.setor ?? null, r.conv.cnpj ?? null, r.conv.cidade ?? null, r.conv.uf ?? null, r.conv.lojista ?? null, conv.id).run();
 
   for (const s of r.saidas) {
-    await addMsg(c.env, conv.id, "out", "bot", s.tipo, s.texto);
-    await enviarWhatsapp(c.env, tel, s); // TODO(Z-API): envio real
+    await addMsg(env, conv.id, "out", "bot", s.tipo, s.texto);
+    await enviarWhatsapp(env, tel, s);
   }
-  if (r.saidas.length) await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
+  if (r.saidas.length) await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
 
   // Qualificou (lojista + catálogo) → vira lead no Funil de Vendas.
   if (r.qualificado && !conv.card_id) {
     const cardId = uid();
-    await c.env.DB.prepare(
+    await env.DB.prepare(
       "INSERT INTO funil_cards (id, nome, whatsapp, etapa, responsavel) VALUES (?, ?, ?, 'primeiro-contato', ?)"
     ).bind(cardId, r.conv.nome || "Lead WhatsApp", tel, conv.responsavel ?? null).run();
-    await c.env.DB.prepare(
+    await env.DB.prepare(
       "INSERT INTO funil_tarefas (id, card_id, titulo, vence_em) VALUES (?, ?, 'Assumir e montar pedido', date('now','+1 day'))"
     ).bind(uid(), cardId).run();
-    await c.env.DB.prepare("UPDATE atend_conversas SET card_id=? WHERE id=?").bind(cardId, conv.id).run();
+    await env.DB.prepare("UPDATE atend_conversas SET card_id=? WHERE id=?").bind(cardId, conv.id).run();
   }
 
-  return c.json({ conversa_id: conv.id, estado: r.conv.estado, coluna: colunaDe(r.conv.estado), respostas: r.saidas, notificarHumano: r.notificarHumano });
+  return { conversa_id: conv.id, estado: r.conv.estado, coluna: colunaDe(r.conv.estado), respostas: r.saidas, notificarHumano: r.notificarHumano };
+}
+
+// ── ENTRADA de mensagem (SIMULADOR) ──────────────────────────────────────────────
+// Corpo: { telefone, texto }. Mesma lógica do webhook, para testar sem WhatsApp.
+atendimento.post("/entrada", async (c) => {
+  const b = await c.req.json<{ telefone?: string; texto?: string }>().catch(() => ({}) as Record<string, string>);
+  const r = await receberMensagem(c.env, b.telefone, b.texto);
+  if ("erro" in r) return c.json({ error: r.erro }, 400);
+  return c.json(r);
 });
 
-// Stub de envio pela Z-API (substituir pela chamada HTTP real).
-async function enviarWhatsapp(_env: Env, _tel: string, _saida: { tipo: string; texto: string }) {
-  // TODO(Z-API): POST https://api.z-api.io/instances/<id>/token/<t>/send-text
-  return;
+// ── WEBHOOK da Z-API (mensagem recebida) ─────────────────────────────────────────
+// Configure no painel Z-API (Ao receber) a URL: <seu-dominio>/api/atendimento/webhook
+// Ignora mensagens enviadas por nós (fromMe) e callbacks de status. Só texto por ora.
+atendimento.post("/webhook", async (c) => {
+  const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
+  // Só processa mensagem recebida de terceiro.
+  if (b.fromMe === true) return c.json({ ignorado: "fromMe" });
+  if (b.type && b.type !== "ReceivedCallback") return c.json({ ignorado: String(b.type) });
+  const phone = digitos(b.phone ?? b.participantPhone ?? b.connectedPhone);
+  // Texto pode vir em text.message, ou legendas de mídia (image.caption etc.).
+  const t = b.text as { message?: string } | undefined;
+  const img = b.image as { caption?: string } | undefined;
+  const texto = (t?.message ?? img?.caption ?? "").toString();
+  if (!phone) return c.json({ ignorado: "sem-telefone" });
+  if (!texto.trim()) return c.json({ ignorado: "sem-texto" });
+  const r = await receberMensagem(c.env, phone, texto);
+  if ("erro" in r) return c.json({ error: r.erro }, 400);
+  return c.json({ ok: true, conversa_id: r.conversa_id });
+});
+
+// ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
+const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
+
+atendimento.get("/config", async (c) => {
+  const cfg = await lerConfig(c.env);
+  return c.json({
+    zapi_base: cfg.zapi_base || "https://api.z-api.io",
+    zapi_instance: cfg.zapi_instance || "",
+    zapi_token: cfg.zapi_token || "",
+    zapi_client_token: cfg.zapi_client_token || "",
+    zapi_ativo: cfg.zapi_ativo === "1",
+    webhook_url: new URL(c.req.url).origin + "/api/atendimento/webhook",
+  });
+});
+
+atendimento.post("/config", async (c) => {
+  const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
+  const pares: [string, string][] = [];
+  for (const k of ZAPI_CHAVES) {
+    if (k in b) {
+      const v = k === "zapi_ativo" ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
+      pares.push([k, v]);
+    }
+  }
+  for (const [chave, valor] of pares) {
+    await c.env.DB.prepare(
+      "INSERT INTO config (chave, valor, atualizado_em) VALUES (?, ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+    ).bind(chave, valor).run();
+  }
+  return c.json({ ok: true });
+});
+
+// Envia uma mensagem de teste pelo número informado (valida credenciais/QR).
+atendimento.post("/config/testar", async (c) => {
+  const b = await c.req.json<{ telefone?: string }>().catch(() => ({}) as Record<string, string>);
+  const tel = digitos(b.telefone);
+  if (!tel) return c.json({ error: "informe um telefone (com DDD)" }, 400);
+  const r = await enviarWhatsapp(c.env, tel, { tipo: "texto", texto: "✅ Teste de conexão do CRM da Tecelagem. Se você recebeu isto, o WhatsApp está funcionando!" });
+  return c.json(r);
+});
+
+// Envio real pela Z-API. Se a integração estiver desligada ou sem credenciais,
+// vira no-op (o board/histórico e o simulador seguem funcionando normalmente).
+async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; texto: string }) {
+  const cfg = await lerConfig(env);
+  if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
+  const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
+  const inst = cfg.zapi_instance || "";
+  const token = cfg.zapi_token || "";
+  if (!inst || !token) return { enviado: false, motivo: "sem-credenciais" };
+  const phone = digitos(tel);
+  const texto = String(saida.texto ?? "").trim();
+  if (!phone || !texto) return { enviado: false, motivo: "vazio" };
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
+    const resp = await fetch(`${base}/instances/${inst}/token/${token}/send-text`, {
+      method: "POST", headers, body: JSON.stringify({ phone, message: texto }),
+    });
+    if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}` };
+    return { enviado: true };
+  } catch (e) {
+    return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
+  }
 }
 
 // ── BOARD (conversas por coluna) ──────────────────────────────────────────────────

@@ -281,6 +281,7 @@ export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: strin
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
 export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; mensagens: AtendMensagem[] }
 export interface AtendResposta { conversa_id: string; estado: string; coluna: string; respostas: { tipo: string; texto: string }[]; notificarHumano: boolean }
+export interface ZapiConfig { zapi_base: string; zapi_instance: string; zapi_token: string; zapi_client_token: string; zapi_ativo: boolean; webhook_url: string }
 
 export interface FunilResumo { parados: number; semTarefa: number; retornos: number; alertas: number }
 export interface FunilBoard { etapas: FunilEtapa[]; cards: FunilCard[]; resumo: FunilResumo }
@@ -654,6 +655,11 @@ export const api = {
     jsonPost(`/api/atendimento/${id}/assumir`, { responsavel }).then((r) => j<{ ok: boolean }>(r)),
   atendEnviar: (id: string, b: { texto: string; autor?: string }) =>
     jsonPost(`/api/atendimento/${id}/enviar`, b).then((r) => j<{ ok: boolean }>(r)),
+  atendConfig: () => fetch("/api/atendimento/config").then((r) => j<ZapiConfig>(r)),
+  atendSalvarConfig: (b: Partial<Omit<ZapiConfig, "webhook_url">>) =>
+    jsonPost("/api/atendimento/config", b).then((r) => j<{ ok: boolean }>(r)),
+  atendTestarZapi: (telefone: string) =>
+    jsonPost("/api/atendimento/config/testar", { telefone }).then((r) => j<{ enviado: boolean; motivo?: string }>(r)),
   funilCard: (id: string) => fetch(`/api/funil/${id}`).then((r) => j<FunilCardDetalhe>(r)),
   criarCard: (b: { nome: string; whatsapp: string; cidade?: string; uf?: string; responsavel?: string; cliente_id?: string }) =>
     jsonPost("/api/funil", b).then((r) => j<{ id: string; nome: string }>(r)),

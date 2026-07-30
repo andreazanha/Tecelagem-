@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe } from "../api";
+import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig } from "../api";
 
 function iniciais(s?: string | null) {
   return (s || "?").replace(/\D/g, "").slice(-2) || (s || "?").split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
@@ -22,16 +22,20 @@ export function Atendimento() {
   const [board, setBoard] = useState<AtendBoard | null>(null);
   const [abrir, setAbrir] = useState<string | null>(null);
   const [sim, setSim] = useState(false);
+  const [cfgOpen, setCfgOpen] = useState(false);
+  const [conectado, setConectado] = useState<boolean | null>(null);
 
   function recarregar() { api.atendBoard().then(setBoard).catch(() => {}); }
-  useEffect(() => { recarregar(); const t = setInterval(recarregar, 8000); return () => clearInterval(t); }, []);
+  function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance && !!c.zapi_token)).catch(() => setConectado(false)); }
+  useEffect(() => { recarregar(); checarConexao(); const t = setInterval(recarregar, 8000); return () => clearInterval(t); }, []);
 
   return (
     <div className="quadro-page" style={{ maxWidth: "none" }}>
       <div className="page-head">
         <div><h1>Atendimento</h1><div className="breadcrumb">Comercial › Atendimento (robô do WhatsApp)</div></div>
         <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span className="at-status">🟡 Z-API não conectada (simulação)</span>
+          <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
+          <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>
           <button className="btn btn-primary" onClick={() => setSim(true)}>💬 Simular cliente</button>
         </div>
       </div>
@@ -54,6 +58,86 @@ export function Atendimento() {
 
       {sim && <Simulador onFechar={() => setSim(false)} onMudou={recarregar} />}
       {abrir && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
+      {cfgOpen && <ConfigZapi onFechar={() => setCfgOpen(false)} onMudou={checarConexao} />}
+    </div>
+  );
+}
+
+// ── Configuração da conexão Z-API (WhatsApp não-oficial) ─────────────────────────
+function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () => void }) {
+  const [cfg, setCfg] = useState<ZapiConfig | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [telTeste, setTelTeste] = useState("");
+
+  useEffect(() => { api.atendConfig().then(setCfg).catch(() => setMsg("Não consegui carregar a configuração.")); }, []);
+  const set = (k: keyof ZapiConfig, v: string | boolean) => setCfg((c) => (c ? { ...c, [k]: v } : c));
+
+  async function salvar() {
+    if (!cfg) return;
+    setSalvando(true); setMsg("");
+    try {
+      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo });
+      setMsg("✓ Salvo!"); onMudou(); setTimeout(() => setMsg(""), 2500);
+    } catch { setMsg("Erro ao salvar."); } finally { setSalvando(false); }
+  }
+  async function testar() {
+    const tel = telTeste.replace(/\D/g, "");
+    if (!tel) { setMsg("Digite um número (com DDD) pra testar."); return; }
+    setMsg("Enviando teste…");
+    try {
+      const r = await api.atendTestarZapi(tel);
+      setMsg(r.enviado ? "✓ Enviado! Veja o WhatsApp do número de teste." : `Falhou: ${r.motivo || "erro"}. Salvou as credenciais e ligou a conexão?`);
+    } catch { setMsg("Erro ao testar."); }
+  }
+
+  const copiar = (t: string) => navigator.clipboard?.writeText(t).then(() => { setMsg("Webhook copiado!"); setTimeout(() => setMsg(""), 2000); });
+
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 560, width: "min(560px,96vw)" }} onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginTop: 0 }}>⚙️ Conexão do WhatsApp (Z-API)</h2>
+        {!cfg ? <p className="muted">Carregando…</p> : (
+          <>
+            <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 12px", fontSize: 12.5, marginBottom: 14, color: "#92400e" }}>
+              API não-oficial: use um <b>chip dedicado</b> (não seu número pessoal). Há risco de bloqueio pelo WhatsApp se disparar em massa.
+            </div>
+
+            <label className="campo"><span className="campo-label">Instância (Instance ID)</span>
+              <input value={cfg.zapi_instance} onChange={(e) => set("zapi_instance", e.target.value)} placeholder="cole aqui o ID da instância Z-API" /></label>
+            <label className="campo"><span className="campo-label">Token da instância</span>
+              <input value={cfg.zapi_token} onChange={(e) => set("zapi_token", e.target.value)} placeholder="cole o token da instância" /></label>
+            <label className="campo"><span className="campo-label">Client-Token (segurança da conta)</span>
+              <input value={cfg.zapi_client_token} onChange={(e) => set("zapi_client_token", e.target.value)} placeholder="Account Security Token (menu Segurança do painel)" /></label>
+            <label className="campo"><span className="campo-label">URL base (deixe o padrão)</span>
+              <input value={cfg.zapi_base} onChange={(e) => set("zapi_base", e.target.value)} placeholder="https://api.z-api.io" /></label>
+
+            <label className="row-gap" style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 14px", cursor: "pointer" }}>
+              <input type="checkbox" checked={cfg.zapi_ativo} onChange={(e) => set("zapi_ativo", e.target.checked)} style={{ width: 18, height: 18 }} />
+              <span><b>Ligar envio real</b> pelo WhatsApp (desligado = só simulador)</span>
+            </label>
+
+            <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: "10px 12px", fontSize: 12.5, marginBottom: 14 }}>
+              <b>📥 Para receber mensagens:</b> no painel Z-API, em <b>Ao receber (webhook)</b>, cole esta URL:
+              <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center" }}>
+                <code style={{ flex: 1, background: "#fff", padding: "6px 8px", borderRadius: 6, fontSize: 11.5, wordBreak: "break-all" }}>{cfg.webhook_url}</code>
+                <button className="btn btn-soft" style={{ padding: "6px 10px" }} onClick={() => copiar(cfg.webhook_url)}>Copiar</button>
+              </div>
+            </div>
+
+            <div className="row-gap" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+              <input value={telTeste} onChange={(e) => setTelTeste(e.target.value)} placeholder="55DDDnúmero pra teste" style={{ flex: 1 }} />
+              <button className="btn btn-soft" onClick={testar}>📨 Enviar teste</button>
+            </div>
+
+            <div className="row-gap" style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "flex-end" }}>
+              {msg && <span style={{ fontWeight: 700, fontSize: 13, color: msg.startsWith("✓") ? "#15803d" : msg.startsWith("Falhou") || msg.startsWith("Erro") ? "#b91c1c" : "#334155" }}>{msg}</span>}
+              <button className="btn btn-soft" onClick={onFechar}>Fechar</button>
+              <button className="btn btn-primary" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "💾 Salvar"}</button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
