@@ -166,6 +166,9 @@ export function ClienteFicha() {
           )}
           <div className="frow"><span className="k">Contato</span> {f.contato || "—"}</div>
           <div className="frow"><span className="k">WhatsApp</span> {f.whatsapp || "—"}</div>
+          <div className="frow"><span className="k">Instagram</span> {f.instagram
+            ? <a href={/^https?:\/\//i.test(f.instagram) ? f.instagram : `https://instagram.com/${f.instagram.replace(/^@/, "")}`} target="_blank" rel="noreferrer">📸 {f.instagram}</a>
+            : "—"}</div>
           <div className="frow"><span className="k">E-mail</span> {f.email || "—"}</div>
           <div className="frow"><span className="k">Cidade</span> {[f.cidade, f.uf].filter(Boolean).join(" · ") || "—"}</div>
           <div className="frow"><span className="k">CNPJ</span> {f.cnpj || "—"}</div>
@@ -237,6 +240,7 @@ function ClienteModal({ cliente, onFechar, onSalvo }: { cliente: Partial<Cliente
             <label className="fld full">Nome / Razão social<input value={f.nome || ""} onChange={(e) => set("nome", e.target.value)} autoFocus /></label>
             <label className="fld">Contato (pessoa)<input value={f.contato || ""} onChange={(e) => set("contato", e.target.value)} /></label>
             <label className="fld">WhatsApp<input value={f.whatsapp || ""} onChange={(e) => set("whatsapp", e.target.value)} placeholder="(31) 9 9999-9999" /></label>
+            <label className="fld">Instagram<input value={f.instagram || ""} onChange={(e) => set("instagram", e.target.value)} placeholder="@perfil ou link" /></label>
             <label className="fld">E-mail<input value={f.email || ""} onChange={(e) => set("email", e.target.value)} /></label>
             <label className="fld">Representante<input value={f.representante || ""} onChange={(e) => set("representante", e.target.value)} /></label>
             <label className="fld">Cidade<input value={f.cidade || ""} onChange={(e) => set("cidade", e.target.value)} /></label>

@@ -318,7 +318,9 @@ function AbaRepresentantes() {
           <tbody>
             {lista.map((r) => (
               <tr key={r.id} style={{ opacity: r.ativo ?? 1 ? 1 : 0.5 }}>
-                <td><strong>{r.nome}</strong>{r.observacao ? <div className="muted" style={{ fontSize: 12 }}>{r.observacao}</div> : null}</td>
+                <td><strong>{r.nome}</strong>
+                  {r.ufs ? <div style={{ fontSize: 11, color: "#4338ca" }}>🗺️ {r.ufs}</div> : null}
+                  {r.observacao ? <div className="muted" style={{ fontSize: 12 }}>{r.observacao}</div> : null}</td>
                 <td>{r.whatsapp || "—"}</td>
                 <td>{r.email || "—"}</td>
                 <td>{r.ativo ?? 1 ? "Ativo" : "Inativo"}</td>
@@ -352,6 +354,15 @@ function AbaRepresentantes() {
               <label className="campo">
                 <span>E-mail</span>
                 <input value={edit.email || ""} onChange={(e) => setEdit({ ...edit, email: e.target.value })} />
+              </label>
+              <label className="campo">
+                <span>Instagram</span>
+                <input value={edit.instagram || ""} onChange={(e) => setEdit({ ...edit, instagram: e.target.value })} placeholder="@perfil ou link" />
+              </label>
+              <label className="campo">
+                <span>Estados que atende (carteira)</span>
+                <input value={edit.ufs || ""} onChange={(e) => setEdit({ ...edit, ufs: e.target.value })} placeholder="ex.: MG, SP, GO" />
+                <small className="muted" style={{ fontSize: 11 }}>Usado pra rotear o cliente da região pro representante certo.</small>
               </label>
               <label className="campo">
                 <span>Observação</span>

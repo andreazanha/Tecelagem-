@@ -9,7 +9,7 @@ const str = (v: unknown) => String(v ?? "").trim() || null;
 type ClienteRow = {
   id: string; nome: string; contato: string | null; whatsapp: string | null; email: string | null;
   cidade: string | null; uf: string | null; cnpj: string | null; representante: string | null;
-  observacao: string | null; created_at?: string | null;
+  instagram: string | null; observacao: string | null; created_at?: string | null;
 };
 
 // Último vendedor conhecido de cada cliente (fallback do representante quando o
@@ -33,7 +33,7 @@ clientes.get("/", async (c) => {
     return c.json(results);
   }
   const { results: cli } = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, observacao, created_at FROM clientes ORDER BY nome"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, created_at FROM clientes ORDER BY nome"
   ).all<ClienteRow>();
   const { results: stats } = await c.env.DB.prepare(
     `SELECT p.cliente_nome AS nome, COUNT(DISTINCT p.id) AS pedidos,
@@ -62,7 +62,7 @@ clientes.get("/", async (c) => {
 clientes.get("/:id", async (c) => {
   const id = c.req.param("id");
   const cli = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, observacao, created_at FROM clientes WHERE id = ?"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, created_at FROM clientes WHERE id = ?"
   ).bind(id).first<ClienteRow>();
   if (!cli) return c.json({ error: "cliente não encontrado" }, 404);
 
@@ -106,13 +106,13 @@ clientes.post("/", async (c) => {
     id = ex?.id || crypto.randomUUID();
   }
   await c.env.DB.prepare(
-    `INSERT INTO clientes (id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, observacao)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO clientes (id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET nome=excluded.nome, contato=excluded.contato, whatsapp=excluded.whatsapp,
        email=excluded.email, cidade=excluded.cidade, uf=excluded.uf, cnpj=excluded.cnpj,
-       representante=excluded.representante, observacao=excluded.observacao`
+       representante=excluded.representante, instagram=excluded.instagram, observacao=excluded.observacao`
   )
-    .bind(id, nome, str(b.contato), str(b.whatsapp), str(b.email), str(b.cidade), str(b.uf), str(b.cnpj), str(b.representante), str(b.observacao))
+    .bind(id, nome, str(b.contato), str(b.whatsapp), str(b.email), str(b.cidade), str(b.uf), str(b.cnpj), str(b.representante), str(b.instagram), str(b.observacao))
     .run();
   return c.json({ id, nome });
 });

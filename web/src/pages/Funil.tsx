@@ -300,25 +300,6 @@ function CardDetalhe({ id, onFechar, onMudou }: { id: string; onFechar: () => vo
                 </div>
               </div>
 
-              {/* Histórico de pedidos (só clientes vinculados à base) */}
-              {d.pedidos.length > 0 && (
-                <div className="fx-block">
-                  <div className="fx-block-h">Pedidos do cliente</div>
-                  <table className="crm fx-peds"><tbody>
-                    {d.pedidos.map((p) => {
-                      const s = SIT[p.situacao] || { l: p.situacao, c: "st-producao" };
-                      return (
-                        <tr key={p.id} onClick={() => nav(`/pedidos/${p.id}`)} title="Abrir pedido">
-                          <td>{dataBr(p.data)}</td>
-                          <td>{p.numero ? "#" + p.numero : "—"}</td>
-                          <td className="money">{brl(p.valor)}</td>
-                          <td><span className={"stpill " + s.c}>{s.l}</span></td>
-                        </tr>
-                      );
-                    })}
-                  </tbody></table>
-                </div>
-              )}
             </div>
 
             {/* Timeline */}

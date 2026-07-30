@@ -224,6 +224,7 @@ export interface ClienteCrm {
   uf?: string | null;
   cnpj?: string | null;
   representante?: string | null;
+  instagram?: string | null;
   observacao?: string | null;
   created_at?: string | null;
   pedidos?: number;
@@ -1315,6 +1316,8 @@ export interface Representante {
   email?: string | null;
   ativo?: number;
   observacao?: string | null;
+  ufs?: string | null;
+  instagram?: string | null;
 }
 export interface VendaRep {
   vendedor: string;
