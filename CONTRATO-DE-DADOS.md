@@ -44,3 +44,50 @@ Um array JSON. Cada loja é um objeto com estes campos:
 
 `lojas.json` na raiz do site (mesma pasta do `onde-encontrar.html`).
 No GitHub Pages fica acessível em `…/Tecelagem-/lojas.json`.
+
+---
+
+# Contrato de dados — Cadastro de loja parceira (formulário)
+
+A página **`cadastro.html`** é o link que você envia ao cliente. Ao enviar, ela faz
+`POST` (JSON) para a URL do CRM definida na constante `CRM_ENDPOINT` (dentro do arquivo).
+Enquanto `CRM_ENDPOINT` estiver vazia, o cadastro é enviado pelo **WhatsApp da empresa**
+(constante `EMPRESA_WHATSAPP`) como fallback — nada se perde.
+
+## Corpo do POST enviado ao CRM
+
+```json
+{
+  "nome": "Casa Aconchego Decorações",
+  "responsavel": "Maria Silva",
+  "whatsapp": "5511999990001",
+  "email": "contato@loja.com.br",
+  "instagram": "casaaconchego",
+  "uf": "SP",
+  "cidade": "São Paulo",
+  "endereco": "Rua dos Pinheiros, 123",
+  "bairro": "Pinheiros",
+  "cep": "05422000",
+  "complemento": "Loja 2",
+  "obs": "Já revende marcas de cama e decoração.",
+  "autoriza": true,
+  "status": "pendente",
+  "origem": "site-cadastro",
+  "criadoEm": "2026-07-30T21:00:00.000Z"
+}
+```
+
+- `whatsapp` e `cep` vão só com dígitos; `instagram` já vem sem `@`.
+- `autoriza` = o cliente marcou que autoriza aparecer no site.
+- `status: "pendente"` — o CRM deve exigir aprovação antes de publicar em `lojas.json`.
+- Recomendado: o endpoint responder `200` em caso de sucesso e habilitar CORS
+  (`Access-Control-Allow-Origin`) para o domínio do site.
+
+## Como ligar o CRM
+
+No `cadastro.html`, procure o bloco `CONFIGURAÇÃO` e preencha:
+
+```js
+var CRM_ENDPOINT='https://SEU-CRM/parceiros';   // URL que recebe o POST
+var EMPRESA_WHATSAPP='55DDDNUMERO';             // usado no fallback
+```
