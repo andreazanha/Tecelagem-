@@ -20,12 +20,10 @@
   svg{display:block}
   .eyebrow{font-size:.66rem;letter-spacing:.42em;text-transform:uppercase;color:var(--muted);font-weight:600}
   .wrap{width:min(1240px,92vw);margin-inline:auto}
-
   .util{border-bottom:1px solid var(--hair);font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
   .util .wrap{display:flex;justify-content:space-between;gap:16px;padding:9px 0;flex-wrap:wrap}
   .util .promo{color:var(--fg);font-weight:600}
   .util a{opacity:.85}.util a:hover{opacity:1;color:var(--camel)}
-
   header{position:sticky;top:0;z-index:40;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--hair)}
   .topline{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:18px 0 12px;gap:20px}
   .brand{justify-self:center}
@@ -40,11 +38,9 @@
   .mainnav a{font-size:.7rem;letter-spacing:.22em;text-transform:uppercase;opacity:.8;position:relative;padding-bottom:3px}
   .mainnav a.on,.mainnav a:hover{opacity:1}
   .mainnav a.on::after{content:"";position:absolute;left:0;bottom:0;width:100%;height:1px;background:var(--camel)}
-
   .page-head{text-align:center;padding:52px 0 6px}
   .page-head h1{font-size:clamp(2.2rem,4.6vw,3.4rem);margin-top:14px}
   .page-head p{color:var(--muted);max-width:60ch;margin:16px auto 0}
-
   .finder{display:grid;grid-template-columns:1fr 1.05fr;gap:52px;align-items:start;padding:40px 0 20px}
   .filters{position:sticky;top:120px;display:flex;flex-direction:column;gap:20px}
   .selrow{display:flex;flex-direction:column;gap:8px}
@@ -56,7 +52,6 @@
   .counter b{color:var(--fg)}
   .clearbtn{align-self:flex-start;font-size:.64rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);background:none;border:0;cursor:pointer;padding:4px 0;border-bottom:1px solid var(--hair)}
   .clearbtn:hover{color:var(--camel);border-color:var(--camel)}
-
   .map-wrap{background:var(--panel);border:1px solid var(--hair);padding:22px}
   .brmap{width:100%;height:auto;display:block}
   .brmap .estado{fill:var(--map);cursor:default;transition:fill .2s}
@@ -69,8 +64,6 @@
   .legend span{display:inline-flex;align-items:center;gap:7px}
   .legend i{width:13px;height:13px;border:1px solid var(--hair)}
   .legend i.a{background:var(--map-on)} .legend i.b{background:var(--camel)} .legend i.c{background:var(--map)}
-
-  /* results */
   .results{padding:24px 0 90px}
   .city-group{margin-top:44px}
   .city-group:first-child{margin-top:8px}
@@ -82,25 +75,18 @@
   .store h3{font-size:1.25rem}
   .store .addr{color:var(--muted);font-size:.86rem;line-height:1.6;flex:1}
   .store .acts{display:flex;gap:10px;margin-top:6px;flex-wrap:wrap}
-  .chip{display:inline-flex;align-items:center;gap:8px;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:11px 16px;border-radius:40px;transition:transform .2s,opacity .2s}
+  .chip{display:inline-flex;align-items:center;gap:8px;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:11px 16px;border-radius:40px;transition:transform .2s}
   .chip:hover{transform:translateY(-2px)}
   .chip svg{width:16px;height:16px}
   .chip.ig{color:#fff;background:linear-gradient(45deg,#F58529,#DD2A7B,#8134AF)}
   .chip.wa{color:#fff;background:var(--wa)}
+  .loading{text-align:center;color:var(--muted);padding:60px 0;font-size:.85rem;letter-spacing:.1em;text-transform:uppercase}
   .empty{text-align:center;color:var(--muted);font-family:var(--serif);font-style:italic;font-size:1.3rem;padding:70px 0}
-
   footer{background:var(--panel);border-top:1px solid var(--hair);padding:40px 0;text-align:center;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-
-  @media (max-width:900px){
-    .topline{grid-template-columns:auto 1fr auto}
-    .finder{grid-template-columns:1fr;gap:32px}
-    .filters{position:static}
-    .map-wrap{order:-1}
-  }
+  @media (max-width:900px){.topline{grid-template-columns:auto 1fr auto}.finder{grid-template-columns:1fr;gap:32px}.filters{position:static}.map-wrap{order:-1}}
 </style>
 
 <div class="util"><div class="wrap"><span class="promo">Vendemos somente no atacado — conheça nossas lojas parceiras</span><a href="https://wa.me/5500000000000">Quero revender</a></div></div>
-
 <header>
   <div class="topline wrap">
     <a class="back" href="index.html">‹ Início</a>
@@ -115,27 +101,18 @@
     <a href="representantes.html">Representantes</a>
   </nav>
 </header>
-
 <section class="wrap page-head">
   <span class="eyebrow">Lojas Parceiras</span>
   <h1>Onde encontrar a Big Tricot</h1>
   <p>Escolha o seu estado e a cidade para descobrir as lojas parceiras que revendem nossas peças pertinho de você.</p>
 </section>
-
 <section class="wrap finder">
   <div class="filters">
-    <div class="selrow">
-      <label for="uf">Estado</label>
-      <select id="uf"><option value="">Selecione o estado…</option></select>
-    </div>
-    <div class="selrow">
-      <label for="cidade">Cidade</label>
-      <select id="cidade" disabled><option value="">Todas as cidades</option></select>
-    </div>
+    <div class="selrow"><label for="uf">Estado</label><select id="uf"><option value="">Carregando…</option></select></div>
+    <div class="selrow"><label for="cidade">Cidade</label><select id="cidade" disabled><option value="">Todas as cidades</option></select></div>
     <div class="counter" id="counter">Selecione um estado para começar.</div>
     <button class="clearbtn" id="clear">Limpar filtros</button>
   </div>
-
   <div>
     <div class="map-wrap"><svg class="brmap" version="1.1" id="svg-map" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 450 460" enable-background="new 0 0 450 460" xml:space="preserve">
     <g>
@@ -451,20 +428,11 @@
       </a>
     </g>
   </svg></div>
-    <div class="legend">
-      <span><i class="a"></i>Tem loja parceira</span>
-      <span><i class="b"></i>Selecionado</span>
-      <span><i class="c"></i>Em breve</span>
-    </div>
+    <div class="legend"><span><i class="a"></i>Tem loja parceira</span><span><i class="b"></i>Selecionado</span><span><i class="c"></i>Em breve</span></div>
   </div>
 </section>
-
-<section class="wrap results">
-  <div id="list"><p class="empty">Selecione um estado no mapa ou na lista acima.</p></div>
-</section>
-
+<section class="wrap results"><div id="list"><p class="loading">Carregando lojas…</p></div></section>
 <footer>© MMXXVI Big Tricot · Feito à mão no Brasil</footer>
-
 <script>
 (function(){
   var root=document.documentElement, tb=document.getElementById('theme');
@@ -473,86 +441,87 @@
 
   var UF_NOME={AC:'Acre',AL:'Alagoas',AM:'Amazonas',AP:'Amapá',BA:'Bahia',CE:'Ceará',DF:'Distrito Federal',ES:'Espírito Santo',GO:'Goiás',MA:'Maranhão',MG:'Minas Gerais',MS:'Mato Grosso do Sul',MT:'Mato Grosso',PA:'Pará',PB:'Paraíba',PE:'Pernambuco',PI:'Piauí',PR:'Paraná',RJ:'Rio de Janeiro',RN:'Rio Grande do Norte',RO:'Rondônia',RR:'Roraima',RS:'Rio Grande do Sul',SC:'Santa Catarina',SE:'Sergipe',SP:'São Paulo',TO:'Tocantins'};
 
-  // ====== EDITE AQUI: lojas parceiras ======
-  // uf, cidade, nome da loja, endereço completo, instagram (só o @), whats (só números com DDI 55)
-  var LOJAS=[
-    {uf:'SP',cidade:'São Paulo',nome:'Casa Aconchego Decorações',endereco:'Rua dos Pinheiros, 123 · Pinheiros · São Paulo/SP · 05422-000',instagram:'casaaconchego',whats:'5511999990001'},
-    {uf:'SP',cidade:'São Paulo',nome:'Trama & Cor',endereco:'Av. Paulista, 2000 · Bela Vista · São Paulo/SP · 01310-200',instagram:'tramaecor',whats:'5511999990002'},
-    {uf:'SP',cidade:'Campinas',nome:'Ateliê do Lar',endereco:'Rua Conceição, 456 · Cambuí · Campinas/SP · 13024-000',instagram:'ateliedolar',whats:'5519999990003'},
-    {uf:'RJ',cidade:'Rio de Janeiro',nome:'Trama Carioca',endereco:'Rua Visconde de Pirajá, 550 · Ipanema · Rio de Janeiro/RJ · 22410-002',instagram:'tramacarioca',whats:'5521999990004'},
-    {uf:'MG',cidade:'Belo Horizonte',nome:'Fio & Casa',endereco:'Rua da Bahia, 1000 · Centro · Belo Horizonte/MG · 30160-011',instagram:'fioecasa',whats:'5531999990005'},
-    {uf:'RS',cidade:'Porto Alegre',nome:'Lã & Linho Home',endereco:'Rua Padre Chagas, 88 · Moinhos de Vento · Porto Alegre/RS · 90570-080',instagram:'laelinhohome',whats:'5551999990006'},
-    {uf:'SC',cidade:'Florianópolis',nome:'Maré Mansa Decor',endereco:'Av. Beira-Mar Norte, 200 · Centro · Florianópolis/SC · 88015-700',instagram:'maremansadecor',whats:'5548999990007'},
-    {uf:'PR',cidade:'Curitiba',nome:'Aconchego Curitibano',endereco:'Rua XV de Novembro, 300 · Centro · Curitiba/PR · 80020-310',instagram:'aconchegocuritibano',whats:'5541999990008'},
-    {uf:'BA',cidade:'Salvador',nome:'Casa Bahia Tramas',endereco:'Rua Chile, 20 · Comércio · Salvador/BA · 40020-000',instagram:'casabahiatramas',whats:'5571999990009'}
+  // Exemplo usado só se o lojas.json (do CRM) não estiver disponível
+  var LOJAS_FALLBACK=[
+    {uf:'SP',cidade:'São Paulo',nome:'Casa Aconchego Decorações',endereco:'Rua dos Pinheiros, 123 · Pinheiros · São Paulo/SP · 05422-000',instagram:'casaaconchego',whatsapp:'5511999990001'},
+    {uf:'SP',cidade:'São Paulo',nome:'Trama & Cor',endereco:'Av. Paulista, 2000 · Bela Vista · São Paulo/SP · 01310-200',instagram:'tramaecor',whatsapp:'5511999990002'},
+    {uf:'SP',cidade:'Campinas',nome:'Ateliê do Lar',endereco:'Rua Conceição, 456 · Cambuí · Campinas/SP · 13024-000',instagram:'ateliedolar',whatsapp:'5519999990003'},
+    {uf:'RJ',cidade:'Rio de Janeiro',nome:'Trama Carioca',endereco:'Rua Visconde de Pirajá, 550 · Ipanema · Rio de Janeiro/RJ · 22410-002',instagram:'tramacarioca',whatsapp:'5521999990004'},
+    {uf:'MG',cidade:'Belo Horizonte',nome:'Fio & Casa',endereco:'Rua da Bahia, 1000 · Centro · Belo Horizonte/MG · 30160-011',instagram:'fioecasa',whatsapp:'5531999990005'},
+    {uf:'RS',cidade:'Porto Alegre',nome:'Lã & Linho Home',endereco:'Rua Padre Chagas, 88 · Moinhos de Vento · Porto Alegre/RS · 90570-080',instagram:'laelinhohome',whatsapp:'5551999990006'},
+    {uf:'SC',cidade:'Florianópolis',nome:'Maré Mansa Decor',endereco:'Av. Beira-Mar Norte, 200 · Centro · Florianópolis/SC · 88015-700',instagram:'maremansadecor',whatsapp:'5548999990007'},
+    {uf:'PR',cidade:'Curitiba',nome:'Aconchego Curitibano',endereco:'Rua XV de Novembro, 300 · Centro · Curitiba/PR · 80020-310',instagram:'aconchegocuritibano',whatsapp:'5541999990008'},
+    {uf:'BA',cidade:'Salvador',nome:'Casa Bahia Tramas',endereco:'Rua Chile, 20 · Comércio · Salvador/BA · 40020-000',instagram:'casabahiatramas',whatsapp:'5571999990009'}
   ];
-  // =========================================
 
   var ufSel=document.getElementById('uf'), citySel=document.getElementById('cidade');
   var counter=document.getElementById('counter'), list=document.getElementById('list');
   var estados=[].slice.call(document.querySelectorAll('.brmap .estado'));
+  var LOJAS=[], ufsComLoja={};
 
-  var ufsComLoja={};
-  LOJAS.forEach(function(l){(ufsComLoja[l.uf]=ufsComLoja[l.uf]||[]).push(l);});
-
-  // popular select de estados (só os que têm loja)
-  Object.keys(ufsComLoja).sort(function(a,b){return UF_NOME[a].localeCompare(UF_NOME[b]);}).forEach(function(u){
-    var o=document.createElement('option');o.value=u;o.textContent=UF_NOME[u]+' ('+u+')';ufSel.appendChild(o);
-  });
-
-  // marcar estados com loja no mapa
-  estados.forEach(function(el){
-    var u=el.getAttribute('data-uf');
-    if(ufsComLoja[u]){el.classList.add('has');el.addEventListener('click',function(){selectUF(u);});}
-  });
-
+  // listeners fixos (uma vez só)
+  estados.forEach(function(el){el.addEventListener('click',function(){var u=el.getAttribute('data-uf');if(ufsComLoja[u])selectUF(u);});});
   ufSel.addEventListener('change',function(){selectUF(ufSel.value);});
   citySel.addEventListener('change',render);
   document.getElementById('clear').addEventListener('click',function(){selectUF('');});
 
+  function norm(l){return {uf:(l.uf||l.estado||'').toUpperCase().trim(),cidade:(l.cidade||l.city||'').trim(),nome:(l.nome||l.loja||l.name||'').trim(),endereco:(l.endereco||l.endereço||l.address||'').trim(),instagram:(l.instagram||l.insta||'').replace('@','').replace(/^https?:\/\/(www\.)?instagram\.com\//,'').replace(/\/$/,'').trim(),whatsapp:(l.whatsapp||l.whats||l.telefone||'').replace(/\D/g,'')};}
+
+  function buildIndex(){ufsComLoja={};LOJAS.forEach(function(l){if(!l.uf||!UF_NOME[l.uf])return;(ufsComLoja[l.uf]=ufsComLoja[l.uf]||[]).push(l);});}
+  function populate(){
+    ufSel.innerHTML='<option value="">Selecione o estado…</option>';
+    Object.keys(ufsComLoja).sort(function(a,b){return UF_NOME[a].localeCompare(UF_NOME[b]);}).forEach(function(u){
+      var o=document.createElement('option');o.value=u;o.textContent=UF_NOME[u]+' ('+u+')';ufSel.appendChild(o);
+    });
+    estados.forEach(function(el){el.classList.toggle('has',!!ufsComLoja[el.getAttribute('data-uf')]);el.classList.remove('active');});
+  }
   function selectUF(u){
     ufSel.value=u||'';
-    estados.forEach(function(e){e.classList.toggle('active',e.getAttribute('data-uf')===u && !!u);});
-    // popular cidades
+    estados.forEach(function(e){e.classList.toggle('active',!!u && e.getAttribute('data-uf')===u);});
     citySel.innerHTML='<option value="">Todas as cidades</option>';
     if(u && ufsComLoja[u]){
-      var cidades=[];
-      ufsComLoja[u].forEach(function(l){if(cidades.indexOf(l.cidade)<0)cidades.push(l.cidade);});
-      cidades.sort(function(a,b){return a.localeCompare(b);}).forEach(function(c){
-        var o=document.createElement('option');o.value=c;o.textContent=c;citySel.appendChild(o);
-      });
+      var cid=[];ufsComLoja[u].forEach(function(l){if(cid.indexOf(l.cidade)<0)cid.push(l.cidade);});
+      cid.sort(function(a,b){return a.localeCompare(b);}).forEach(function(c){var o=document.createElement('option');o.value=c;o.textContent=c;citySel.appendChild(o);});
       citySel.disabled=false;
     }else{citySel.disabled=true;}
     render();
   }
-
   function icoIG(){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.1" fill="currentColor" stroke="none"/></svg>';}
   function icoWA(){return '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.1-1.3A10 10 0 1 0 12 2Zm5.3 14c-.2.6-1.2 1.1-1.7 1.2-.5.1-1 .1-1.6-.1-.4-.1-.9-.3-1.5-.6-2.7-1.1-4.4-3.8-4.5-4-.1-.2-1-1.3-1-2.6 0-1.2.6-1.8.9-2.1.2-.2.4-.3.6-.3h.5c.2 0 .4 0 .6.4.2.5.7 1.6.7 1.7.1.1.1.3 0 .4l-.3.5c-.1.2-.3.3-.4.5-.1.1-.3.3-.1.5.1.3.6 1 1.3 1.5.9.8 1.6 1 1.9 1.1.2.1.4.1.5-.1l.7-.9c.1-.2.3-.1.5-.1l1.4.7c.2.1.4.2.4.3.1.1.1.5-.1 1.1Z"/></svg>';}
-
+  function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
   function card(l){
-    var ig=l.instagram?'<a class="chip ig" href="https://instagram.com/'+l.instagram+'" target="_blank" rel="noopener">'+icoIG()+'Instagram</a>':'';
+    var ig=l.instagram?'<a class="chip ig" href="https://instagram.com/'+encodeURIComponent(l.instagram)+'" target="_blank" rel="noopener">'+icoIG()+'Instagram</a>':'';
     var msg=encodeURIComponent('Olá! Vim pelo site da Big Tricot e gostaria de conhecer os produtos da loja.');
-    var wa=l.whats?'<a class="chip wa" href="https://wa.me/'+l.whats+'?text='+msg+'" target="_blank" rel="noopener">'+icoWA()+'WhatsApp</a>':'';
-    return '<article class="store"><h3>'+l.nome+'</h3><p class="addr">'+l.endereco+'</p><div class="acts">'+ig+wa+'</div></article>';
+    var wa=l.whatsapp?'<a class="chip wa" href="https://wa.me/'+l.whatsapp+'?text='+msg+'" target="_blank" rel="noopener">'+icoWA()+'WhatsApp</a>':'';
+    return '<article class="store"><h3>'+esc(l.nome)+'</h3><p class="addr">'+esc(l.endereco)+'</p><div class="acts">'+ig+wa+'</div></article>';
   }
-
   function render(){
     var u=ufSel.value, c=citySel.value;
     if(!u){list.innerHTML='<p class="empty">Selecione um estado no mapa ou na lista acima.</p>';counter.textContent='Selecione um estado para começar.';return;}
     var items=ufsComLoja[u].filter(function(l){return !c || l.cidade===c;});
-    // agrupar por cidade
     var byCity={},order=[];
     items.forEach(function(l){if(!byCity[l.cidade]){byCity[l.cidade]=[];order.push(l.cidade);}byCity[l.cidade].push(l);});
     order.sort(function(a,b){return a.localeCompare(b);});
     var html='';
     order.forEach(function(city){
-      html+='<div class="city-group"><div class="city-title"><h2>'+city+'</h2><span class="uf">'+UF_NOME[u]+' · '+u+'</span></div><div class="stores">';
+      html+='<div class="city-group"><div class="city-title"><h2>'+esc(city)+'</h2><span class="uf">'+UF_NOME[u]+' · '+u+'</span></div><div class="stores">';
       byCity[city].forEach(function(l){html+=card(l);});
       html+='</div></div>';
     });
-    list.innerHTML=html || '<p class="empty">Nenhuma loja encontrada.</p>';
+    list.innerHTML=html||'<p class="empty">Nenhuma loja encontrada.</p>';
     var n=items.length;
-    counter.innerHTML='<b>'+n+'</b> loja'+(n===1?'':'s')+' parceira'+(n===1?'':'s')+' em '+UF_NOME[u]+(c?' · '+c:'');
+    counter.innerHTML='<b>'+n+'</b> loja'+(n===1?'':'s')+' parceira'+(n===1?'':'s')+' em '+UF_NOME[u]+(c?' · '+esc(c):'');
   }
+  function start(data){
+    var arr=(data&&data.length)?data.map(norm).filter(function(l){return l.nome&&l.uf;}):LOJAS_FALLBACK;
+    LOJAS=arr; buildIndex(); populate();
+    list.innerHTML='<p class="empty">Selecione um estado no mapa ou na lista acima.</p>';
+    counter.textContent='Selecione um estado para começar.';
+  }
+  // Puxa os dados do CRM (lojas.json na mesma pasta). Se falhar, usa o exemplo.
+  fetch('lojas.json',{cache:'no-store'})
+    .then(function(r){if(!r.ok)throw 0;return r.json();})
+    .then(function(d){start(Array.isArray(d)?d:(d.lojas||d.data||[]));})
+    .catch(function(){start(LOJAS_FALLBACK);});
 })();
 </script>
