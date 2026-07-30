@@ -1,0 +1,34 @@
+[
+  {
+    "uf": "SP",
+    "cidade": "São Paulo",
+    "nome": "Casa Aconchego Decorações",
+    "endereco": "Rua dos Pinheiros, 123 · Pinheiros · São Paulo/SP · 05422-000",
+    "instagram": "casaaconchego",
+    "whatsapp": "5511999990001"
+  },
+  {
+    "uf": "SP",
+    "cidade": "Campinas",
+    "nome": "Ateliê do Lar",
+    "endereco": "Rua Conceição, 456 · Cambuí · Campinas/SP · 13024-000",
+    "instagram": "ateliedolar",
+    "whatsapp": "5519999990003"
+  },
+  {
+    "uf": "RJ",
+    "cidade": "Rio de Janeiro",
+    "nome": "Trama Carioca",
+    "endereco": "Rua Visconde de Pirajá, 550 · Ipanema · Rio de Janeiro/RJ · 22410-002",
+    "instagram": "tramacarioca",
+    "whatsapp": "5521999990004"
+  },
+  {
+    "uf": "MG",
+    "cidade": "Belo Horizonte",
+    "nome": "Fio & Casa",
+    "endereco": "Rua da Bahia, 1000 · Centro · Belo Horizonte/MG · 30160-011",
+    "instagram": "fioecasa",
+    "whatsapp": "5531999990005"
+  }
+]
