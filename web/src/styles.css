@@ -1200,6 +1200,8 @@ body.dark .at-simatalhos { background: #18202f; border-color: #26324a; }
 @keyframes at-blink { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
 /* Pulso do alerta de "atendimento humano" (popup vermelho no canto) */
 @keyframes atpulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+/* Painel do gestor: 2 colunas no desktop, 1 no celular */
+@media (max-width: 760px) { .pg-grid { grid-template-columns: 1fr !important; } }
 
 /* Linha de produto em FALTA na aba Estoque — legível em tema claro e escuro. */
 tr.prod-falta > td { background: #fef2f2; color: #991b1b; }
