@@ -142,6 +142,7 @@ export function Clientes() {
       <td style={{ textAlign: "center" }}>{c.pedidos || 0}</td>
       <td className="money">{brl(c.total)}</td>
       <td>{c.ultima ? <><div>{dataBr(c.ultima)}</div><div className="muted2">{desde(c.ultima)}</div></> : "—"}</td>
+      <td>{c.ultimo_faturamento ? <><div>🧾 {dataBr(c.ultimo_faturamento)}</div><div className="muted2">{desde(c.ultimo_faturamento)}</div></> : "—"}</td>
     </tr>
   );
   const tabela = (items: ClienteCrm[]) => (
@@ -149,7 +150,7 @@ export function Clientes() {
       {!items.length ? <div className="pad muted">Nenhum cliente aqui.</div> : (
         <div className="crm-scroll">
           <table className="crm">
-            <thead><tr><th>Cliente</th><th>Representante</th><th>WhatsApp</th><th style={{ textAlign: "center" }}>Pedidos</th><th>Total comprado</th><th>Última compra</th></tr></thead>
+            <thead><tr><th>Cliente</th><th>Representante</th><th>WhatsApp</th><th style={{ textAlign: "center" }}>Pedidos</th><th>Total comprado</th><th>Última compra</th><th>Último faturamento</th></tr></thead>
             <tbody>{items.map((c) => linha(c))}</tbody>
           </table>
         </div>
