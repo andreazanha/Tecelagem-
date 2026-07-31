@@ -15,7 +15,7 @@ import { materiais } from "./routes/materiais";
 import { colecoes } from "./routes/colecoes";
 import { chat } from "./routes/chat";
 import { etiquetas } from "./routes/etiquetas";
-import { atendimento, followupAtendimento, sincronizarPedidos, posVendaRecompra } from "./routes/atendimento";
+import { atendimento, followupAtendimento, sincronizarPedidos, posVendaRecompra, lerAtividadeCatalogo } from "./routes/atendimento";
 import { assistente } from "./routes/assistente";
 import { relatorios } from "./routes/relatorios";
 import { tecelagem } from "./routes/tecelagem";
@@ -112,5 +112,6 @@ export default {
     ctx.waitUntil(followupAtendimento(env)); // retomada 24h do robô de atendimento
     ctx.waitUntil(sincronizarPedidos(env));  // status do pedido → conversa (realizado/faturado/enviado)
     ctx.waitUntil(posVendaRecompra(env));    // pós-venda e recompra por tempo
+    ctx.waitUntil(lerAtividadeCatalogo(env)); // lê a atividade do catálogo (bt-atividade) → leads
   },
 };

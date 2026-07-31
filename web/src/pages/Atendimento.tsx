@@ -77,7 +77,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
     if (!cfg) return;
     setSalvando(true); setMsg("");
     try {
-      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, catalogo_evento_token: cfg.catalogo_evento_token });
+      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
       setMsg("✓ Salvo!"); onMudou(); setTimeout(() => setMsg(""), 2500);
     } catch { setMsg("Erro ao salvar."); } finally { setSalvando(false); }
   }
@@ -91,7 +91,14 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
     } catch { setMsg("Erro ao testar."); }
   }
 
-  const copiar = (t: string) => navigator.clipboard?.writeText(t).then(() => { setMsg("Webhook copiado!"); setTimeout(() => setMsg(""), 2000); });
+  const [sincroCat, setSincroCat] = useState(false);
+  async function sincronizarCatalogo() {
+    setSincroCat(true); setMsg("");
+    try { const r = await api.atendSincronizarCatalogo(); setMsg(`✓ ${r.novos} evento(s) novo(s) do catálogo.`); }
+    catch { setMsg("Não consegui ler a atividade — confira a URL de leitura."); }
+    finally { setSincroCat(false); }
+  }
+  const copiar = (t: string) => navigator.clipboard?.writeText(t).then(() => { setMsg("Copiado!"); setTimeout(() => setMsg(""), 2000); });
 
   return (
     <div className="modal-bg" onClick={onFechar}>
@@ -164,14 +171,21 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
             </div>
 
             <div style={{ border: "1px solid #ddd6fe", background: "#f5f3ff", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
-              <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 6 }}>🔗 Catálogo (eventos)</div>
-              <div style={{ fontSize: 12.5, marginBottom: 6 }}>O catálogo deve fazer um <b>POST</b> para esta URL quando alguém acessa/abre/baixa:</div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
-                <code style={{ flex: 1, background: "#fff", padding: "6px 8px", borderRadius: 6, fontSize: 11, wordBreak: "break-all" }}>{cfg.catalogo_evento_url}</code>
-                <button className="btn btn-soft" style={{ padding: "6px 10px" }} onClick={() => copiar(cfg.catalogo_evento_url)}>Copiar</button>
-              </div>
-              <label className="campo" style={{ margin: 0 }}><span className="campo-label">Token de segurança (opcional — combine com o catálogo)</span>
-                <input value={cfg.catalogo_evento_token} onChange={(e) => set("catalogo_evento_token", e.target.value)} placeholder="ex.: bt-cat-2026 (vazio = sem checagem)" /></label>
+              <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 6 }}>🔗 Catálogo — ler atividade</div>
+              <div style={{ fontSize: 12.5, marginBottom: 6 }}>O CRM lê os acessos do catálogo daqui e cria os leads. Cole a <b>URL de leitura</b> (o GET <code>/log</code> com o código):</div>
+              <label className="campo" style={{ margin: "0 0 8px" }}><span className="campo-label">URL de leitura da atividade (bt-atividade /log)</span>
+                <input value={cfg.catalogo_log_url} onChange={(e) => set("catalogo_log_url", e.target.value)} placeholder="https://…/log?code=bigtricot2026" /></label>
+              <button className="btn btn-soft" style={{ fontSize: 12.5 }} disabled={sincroCat} onClick={sincronizarCatalogo}>{sincroCat ? "Sincronizando…" : "🔄 Sincronizar agora"}</button>
+              <details style={{ marginTop: 10 }}>
+                <summary style={{ fontSize: 12, cursor: "pointer", color: "#6d28d9" }}>Alternativa: o catálogo empurrar (POST)</summary>
+                <div style={{ fontSize: 12, marginTop: 6 }}>URL do webhook de eventos:</div>
+                <div style={{ display: "flex", gap: 8, margin: "4px 0", alignItems: "center" }}>
+                  <code style={{ flex: 1, background: "#fff", padding: "6px 8px", borderRadius: 6, fontSize: 10.5, wordBreak: "break-all" }}>{cfg.catalogo_evento_url}</code>
+                  <button className="btn btn-soft" style={{ padding: "5px 9px" }} onClick={() => copiar(cfg.catalogo_evento_url)}>Copiar</button>
+                </div>
+                <label className="campo" style={{ margin: 0 }}><span className="campo-label">Token (opcional)</span>
+                  <input value={cfg.catalogo_evento_token} onChange={(e) => set("catalogo_evento_token", e.target.value)} placeholder="vazio = sem checagem" /></label>
+              </details>
             </div>
 
             <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: "10px 12px", fontSize: 12.5, marginBottom: 14 }}>

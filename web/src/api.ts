@@ -283,7 +283,7 @@ export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: strin
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
 export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; interesses: string[]; pedidos_resumo: { nome: string; qtd: number; total: number; ultima: string | null } | null; mensagens: AtendMensagem[] }
 export interface AtendResposta { conversa_id: string; estado: string; coluna: string; respostas: { tipo: string; texto: string }[]; notificarHumano: boolean }
-export interface ZapiConfig { zapi_base: string; zapi_instance: string; zapi_token: string; zapi_client_token: string; zapi_ativo: boolean; atendimento_ativo: boolean; catalogo_url: string; catalogo_senha: string; catalogo_msg: string; followup_ativo: boolean; followup_hora_ini: string; followup_hora_fim: string; followup_domingo: boolean; followup_ia: boolean; pos_venda_ativo: boolean; pos_venda_dias: string; recompra_ativo: boolean; recompra_dias: string; catalogo_evento_token: string; catalogo_evento_url: string; webhook_url: string }
+export interface ZapiConfig { zapi_base: string; zapi_instance: string; zapi_token: string; zapi_client_token: string; zapi_ativo: boolean; atendimento_ativo: boolean; catalogo_url: string; catalogo_senha: string; catalogo_msg: string; followup_ativo: boolean; followup_hora_ini: string; followup_hora_fim: string; followup_domingo: boolean; followup_ia: boolean; pos_venda_ativo: boolean; pos_venda_dias: string; recompra_ativo: boolean; recompra_dias: string; catalogo_evento_token: string; catalogo_evento_url: string; catalogo_log_url: string; webhook_url: string }
 
 export interface FunilResumo { parados: number; semTarefa: number; retornos: number; alertas: number }
 export interface FunilBoard { etapas: FunilEtapa[]; cards: FunilCard[]; resumo: FunilResumo }
@@ -668,6 +668,8 @@ export const api = {
     jsonPost("/api/atendimento/config", b).then((r) => j<{ ok: boolean }>(r)),
   atendTestarZapi: (telefone: string) =>
     jsonPost("/api/atendimento/config/testar", { telefone }).then((r) => j<{ enviado: boolean; motivo?: string }>(r)),
+  atendSincronizarCatalogo: () =>
+    jsonPost("/api/atendimento/sincronizar-catalogo", {}).then((r) => j<{ ok: boolean; novos: number }>(r)),
   funilCard: (id: string) => fetch(`/api/funil/${id}`).then((r) => j<FunilCardDetalhe>(r)),
   criarCard: (b: { nome: string; whatsapp: string; cidade?: string; uf?: string; responsavel?: string; cliente_id?: string }) =>
     jsonPost("/api/funil", b).then((r) => j<{ id: string; nome: string }>(r)),

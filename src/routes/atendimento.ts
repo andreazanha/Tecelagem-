@@ -290,27 +290,25 @@ const EVENTO_LABEL: Record<string, (b: { loja?: string; rep?: string; produto?: 
   produto: (b) => `👀 Visualizou: *${b.produto || "produto"}*`,
 };
 
-atendimento.post("/catalogo-evento", async (c) => {
-  const cfg = await lerConfig(c.env);
-  const b = await c.req.json<{ tipo?: string; telefone?: string; loja?: string; rep?: string; produto?: string; code?: string }>().catch(() => ({}) as Record<string, string>);
-  if (cfg.catalogo_evento_token && (b.code || "") !== cfg.catalogo_evento_token) return c.json({ error: "não autorizado" }, 401);
-  const tel = digitos(b.telefone);
-  const tipo = (b.tipo || "").trim().toLowerCase();
-  if (!tel) return c.json({ error: "telefone é obrigatório" }, 400);
-  const loja = (b.loja || "").trim().slice(0, 80) || null;
-  const rep = (b.rep || "").trim() || null;
+// Cria/atualiza a conversa a partir de um evento do catálogo e registra no histórico.
+async function registrarEventoCatalogo(env: Env, ev: { tipo?: string; telefone?: string; loja?: string; rep?: string; produto?: string }): Promise<string | null> {
+  const tel = digitos(ev.telefone);
+  if (!tel) return null;
+  const tipo = (ev.tipo || "").trim().toLowerCase();
+  const loja = (ev.loja || "").trim().slice(0, 80) || null;
+  const rep = (ev.rep || "").trim() || null;
 
-  let conv = await c.env.DB.prepare("SELECT id, nome, representante FROM atend_conversas WHERE telefone = ?").bind(tel).first<{ id: string; nome: string | null; representante: string | null }>();
+  let conv = await env.DB.prepare("SELECT id, nome, representante FROM atend_conversas WHERE telefone = ?").bind(tel).first<{ id: string; nome: string | null; representante: string | null }>();
   if (!conv) {
     const id = uid();
-    const cliente = await identificarCliente(c.env, tel);
+    const cliente = await identificarCliente(env, tel);
     let representante = rep, nome = loja, cnpj: string | null = null, cidade: string | null = null, uf: string | null = null, clienteId: string | null = null;
     let tipoConv: string | null = rep ? "lojista" : null;
     if (cliente) {
       clienteId = cliente.id; nome = nome || cliente.nome; cnpj = cliente.cnpj; cidade = cliente.cidade; uf = cliente.uf; tipoConv = "lojista";
-      representante = representante || cliente.representante || (await representantePorRegiao(c.env, cliente.uf));
+      representante = representante || cliente.representante || (await representantePorRegiao(env, cliente.uf));
     }
-    await c.env.DB.prepare(
+    await env.DB.prepare(
       "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, representante, cliente_id, nome, cnpj, cidade, uf) VALUES (?, ?, 'novo', 'catalogo', ?, ?, ?, ?, ?, ?, ?)"
     ).bind(id, tel, tipoConv, representante, clienteId, nome, cnpj, cidade, uf).run();
     conv = { id, nome, representante };
@@ -318,18 +316,73 @@ atendimento.post("/catalogo-evento", async (c) => {
     const sets = ["origem='catalogo'"], binds: unknown[] = [];
     if (loja && !conv.nome) { sets.push("nome=?"); binds.push(loja); }
     if (rep && !conv.representante) { sets.push("representante=?"); binds.push(rep); }
-    await c.env.DB.prepare(`UPDATE atend_conversas SET ${sets.join(", ")}, atualizado_em=datetime('now') WHERE id=?`).bind(...binds, conv.id).run();
+    await env.DB.prepare(`UPDATE atend_conversas SET ${sets.join(", ")}, atualizado_em=datetime('now') WHERE id=?`).bind(...binds, conv.id).run();
   }
 
-  const label = (EVENTO_LABEL[tipo] || ((x: { produto?: string }) => `📌 Catálogo: ${tipo}${x.produto ? ` (${x.produto})` : ""}`))({ loja: loja || undefined, rep: rep || undefined, produto: b.produto });
-  await addMsg(c.env, conv.id, "in", "catalogo", "sistema", label);
-  await c.env.DB.prepare("UPDATE atend_conversas SET atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
-  if (tipo === "produto" && b.produto) {
-    await c.env.DB.prepare("INSERT OR IGNORE INTO atend_interesses (id, conversa_id, termo) VALUES (?, ?, ?)").bind(uid(), conv.id, String(b.produto).trim().slice(0, 60)).run();
-    await c.env.DB.prepare("UPDATE atend_conversas SET interessado=1 WHERE id=?").bind(conv.id).run();
+  const label = (EVENTO_LABEL[tipo] || ((x: { produto?: string }) => `📌 Catálogo: ${tipo}${x.produto ? ` (${x.produto})` : ""}`))({ loja: loja || undefined, rep: rep || undefined, produto: ev.produto });
+  await addMsg(env, conv.id, "in", "catalogo", "sistema", label);
+  await env.DB.prepare("UPDATE atend_conversas SET atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+  if (tipo === "produto" && ev.produto) {
+    await env.DB.prepare("INSERT OR IGNORE INTO atend_interesses (id, conversa_id, termo) VALUES (?, ?, ?)").bind(uid(), conv.id, String(ev.produto).trim().slice(0, 60)).run();
+    await env.DB.prepare("UPDATE atend_conversas SET interessado=1 WHERE id=?").bind(conv.id).run();
   }
-  return c.json({ ok: true, conversa_id: conv.id });
+  return conv.id;
+}
+
+atendimento.post("/catalogo-evento", async (c) => {
+  const cfg = await lerConfig(c.env);
+  const b = await c.req.json<{ tipo?: string; telefone?: string; loja?: string; rep?: string; produto?: string; code?: string }>().catch(() => ({}) as Record<string, string>);
+  if (cfg.catalogo_evento_token && (b.code || "") !== cfg.catalogo_evento_token) return c.json({ error: "não autorizado" }, 401);
+  if (!digitos(b.telefone)) return c.json({ error: "telefone é obrigatório" }, 400);
+  const id = await registrarEventoCatalogo(c.env, b);
+  return c.json({ ok: true, conversa_id: id });
 });
+
+// ── LEITURA (PULL) da atividade do catálogo (bt-atividade) — chamado pelo cron ────
+// Lê GET no /log configurado, mapeia repId→repNome (dos eventos "envio"), e cria os
+// leads no board. Guarda o último ts processado para não repetir. Read-only p/ o cliente.
+export async function lerAtividadeCatalogo(env: Env): Promise<number> {
+  const cfg = await lerConfig(env);
+  const url = (cfg.catalogo_log_url || "").trim();
+  if (!url) return 0;
+  let eventos: Array<Record<string, unknown>> = [];
+  try {
+    const resp = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) return 0;
+    const dados = await resp.json<{ eventos?: Array<Record<string, unknown>> }>();
+    eventos = Array.isArray(dados?.eventos) ? dados.eventos : [];
+  } catch {
+    return 0;
+  }
+  // Mapa repId → repNome (o "acesso" não traz o nome; o "envio" traz).
+  const repMap = new Map<string, string>();
+  for (const e of eventos) {
+    const rid = String(e.repId ?? ""), rnome = String(e.repNome ?? "").trim();
+    if (rid && rnome) repMap.set(rid, rnome);
+  }
+  const ultimoTs = Number(cfg.catalogo_log_ts || "0");
+  eventos.sort((a, b) => Number(a.ts ?? 0) - Number(b.ts ?? 0));
+  let maxTs = ultimoTs, n = 0;
+  for (const e of eventos) {
+    const ts = Number(e.ts ?? 0);
+    if (ts <= ultimoTs) continue;
+    const rep = String(e.repNome ?? "").trim() || repMap.get(String(e.repId ?? "")) || null;
+    await registrarEventoCatalogo(env, {
+      tipo: String(e.tipo ?? ""),
+      telefone: String(e.telefone ?? e.clienteTel ?? ""),
+      loja: String(e.loja ?? e.clienteNome ?? ""),
+      rep: rep ?? undefined,
+    });
+    if (ts > maxTs) maxTs = ts;
+    n++;
+  }
+  if (maxTs > ultimoTs) {
+    await env.DB.prepare(
+      "INSERT INTO config (chave, valor, atualizado_em) VALUES ('catalogo_log_ts', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+    ).bind(String(maxTs)).run();
+  }
+  return n;
+}
 
 // ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
@@ -358,6 +411,7 @@ atendimento.get("/config", async (c) => {
     recompra_dias: cfg.recompra_dias || "45",
     catalogo_evento_token: cfg.catalogo_evento_token || "",
     catalogo_evento_url: new URL(c.req.url).origin + "/api/atendimento/catalogo-evento",
+    catalogo_log_url: cfg.catalogo_log_url || "",
     webhook_url: new URL(c.req.url).origin + "/api/atendimento/webhook",
   });
 });
@@ -365,7 +419,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "catalogo_evento_token"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -377,6 +431,12 @@ atendimento.post("/config", async (c) => {
     ).bind(chave, valor).run();
   }
   return c.json({ ok: true });
+});
+
+// Puxa a atividade do catálogo agora (botão "Sincronizar agora").
+atendimento.post("/sincronizar-catalogo", async (c) => {
+  const n = await lerAtividadeCatalogo(c.env);
+  return c.json({ ok: true, novos: n });
 });
 
 // Envia uma mensagem de teste pelo número informado (valida credenciais/QR).
