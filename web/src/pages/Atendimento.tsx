@@ -116,6 +116,16 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
                 {cfg.atendimento_ativo ? "Desligar" : "Ligar"}
               </button>
             </div>
+            {/* IA de triagem — atende conversando antes de pedir o CNPJ */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginBottom: 14, borderRadius: 10, border: "2px solid " + (cfg.atendimento_ia ? "#8b5cf6" : "#e2e8f0"), background: cfg.atendimento_ia ? "#faf5ff" : "#f8fafc" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800 }}>{cfg.atendimento_ia ? "🧠 Atendente com IA LIGADA" : "🧠 Atendente com IA desligada"}</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>{cfg.atendimento_ia ? "A IA conversa com o lead, entende o que ele quer e só depois pede loja/CNPJ. Consumidor final é direcionado a lojas parceiras." : "Sem IA: o robô usa o menu fixo (1 Vendas, 2 Financeiro…)."}</div>
+              </div>
+              <button type="button" className={"btn " + (cfg.atendimento_ia ? "btn-soft" : "btn-primary")} onClick={() => set("atendimento_ia", !cfg.atendimento_ia)}>
+                {cfg.atendimento_ia ? "Desligar" : "Ligar"}
+              </button>
+            </div>
             <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 12px", fontSize: 12.5, marginBottom: 14, color: "#92400e" }}>
               API não-oficial: use um <b>chip dedicado</b> (não seu número pessoal). Há risco de bloqueio pelo WhatsApp se disparar em massa.
             </div>
@@ -374,7 +384,7 @@ function Simulador({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =>
   const [busy, setBusy] = useState(false);
   const [estado, setEstado] = useState("novo");
   const fim = useRef<HTMLDivElement>(null);
-  useEffect(() => { fim.current?.scrollIntoView(); }, [msgs.length]);
+  useEffect(() => { fim.current?.scrollIntoView(); }, [msgs.length, busy]);
 
   async function mandar(t?: string) {
     const msg = (t ?? texto).trim();
@@ -405,6 +415,10 @@ function Simulador({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =>
   const atalhos: { label: string; val: string }[] = (() => {
     switch (estado) {
       case "novo": return [{ label: "👋 oi", val: "oi" }];
+      case "ia-triagem": return [
+        { label: "🏪 sou lojista", val: "sou lojista, quero revender" },
+        { label: "🧶 quero ver mantas", val: "quero comprar mantas pra minha loja" },
+        { label: "🙋 é pra uso pessoal", val: "é pra mim mesmo, uso pessoal" }];
       case "aguardando-setor": return [
         { label: "1️⃣ Vendas", val: "1" }, { label: "2️⃣ Financeiro", val: "2" },
         { label: "3️⃣ Pós-venda", val: "3" }, { label: "4️⃣ Outros", val: "4" }];
@@ -433,6 +447,12 @@ function Simulador({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =>
               {m.arquivo ? <span className="at-file">📒 {m.texto}</span> : m.texto}
             </div>
           ))}
+          {busy && (
+            <div className="at-b in at-typing">
+              <div className="at-aut">🤖 robô</div>
+              <span className="at-dot" /><span className="at-dot" /><span className="at-dot" />
+            </div>
+          )}
           <div ref={fim} />
         </div>
         {atalhos.length > 0 && (

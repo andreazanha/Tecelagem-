@@ -3,7 +3,7 @@
 // Não fala com banco nem com provedor — isso fica no route. Assim é testável.
 
 export type EstadoAtend =
-  | "novo" | "aguardando-setor" | "triagem-nome" | "aguardando-cnpj"
+  | "novo" | "ia-triagem" | "aguardando-setor" | "triagem-nome" | "aguardando-cnpj"
   | "aguardando-cidade-parceiro" | "catalogo-enviado" | "follow-up-24h"
   | "atendimento-humano" | "nao-qualificado" | "indicado-parceiro" | "sem-retorno"
   | "pedido-realizado" | "pedido-faturado" | "pedido-enviado" | "pos-venda" | "recompra";
@@ -94,6 +94,7 @@ export const ATEND_COLUNAS = [
 export function colunaDe(estado: string): string {
   switch (estado) {
     case "novo": return "primeiro-contato";
+    case "ia-triagem": return "aguardando-setor";
     case "aguardando-setor": return "aguardando-setor";
     case "triagem-nome": return "triagem-vendas";
     case "aguardando-cnpj": return "aguardando-cnpj";
@@ -114,7 +115,7 @@ export function colunaDe(estado: string): string {
 }
 
 // ── Mensagens ───────────────────────────────────────────────────────────────────
-const BOAS_VINDAS =
+export const BOAS_VINDAS =
   "Olá! 👋 Aqui é o atendimento da *Big Tricot*.\nCom qual setor você quer falar?\n\n1️⃣ Vendas\n2️⃣ Financeiro\n3️⃣ Pós-venda\n4️⃣ Outros";
 const MENU_REPETE = "Não entendi 😅. Responda com o número:\n1️⃣ Vendas  2️⃣ Financeiro  3️⃣ Pós-venda  4️⃣ Outros";
 const NAO_LOJISTA =

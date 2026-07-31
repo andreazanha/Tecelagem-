@@ -3,7 +3,7 @@
 // pela Z-API e a consulta SINTEGRA entram nos stubs marcados com TODO.
 import { Hono } from "hono";
 import type { Env } from "../index";
-import { processar, colunaDe, ATEND_COLUNAS, type Conversa, type Deps, type LojaParceira } from "../atendimento_bot";
+import { processar, colunaDe, ATEND_COLUNAS, BOAS_VINDAS, type Conversa, type Deps, type LojaParceira, type Saida, type EstadoAtend } from "../atendimento_bot";
 import { ehClienteInterno } from "./funil";
 
 export const atendimento = new Hono<{ Bindings: Env }>();
@@ -143,6 +143,98 @@ async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: st
   ).bind(uid(), convId, direcao, autor, tipo, texto).run();
 }
 
+// ── IA de triagem (atendente virtual antes do CNPJ) ──────────────────────────────
+// A IA conversa naturalmente, entende a necessidade e CLASSIFICA o contato:
+//  • lojista pronto pra ver produtos → "coletar_lojista" (aí o fluxo pede nome+CNPJ)
+//  • consumidor final               → "indicar_parceiro" (loja parceira da região)
+//  • financeiro/pós-venda/reclamação/pediu humano → "humano"
+//  • ainda conversando              → "conversar"
+// O motor determinístico (CNPJ, catálogo, parceiros) segue intacto — a IA só faz a frente.
+const IA_SISTEMA = `Você é a *Bia*, atendente virtual da *Big Tricot* no WhatsApp.
+A Big Tricot é uma fábrica de tricô (mantas, capas de almofada, almofadas e afins) que vende **no ATACADO, apenas para LOJISTAS** (revendedores com CNPJ).
+
+SEU PAPEL: acolher quem chama, conversar de forma natural e humana, ENTENDER o que a pessoa quer e descobrir se ela é LOJISTA (compra pra revender) ou CONSUMIDOR FINAL (compra pra usar/presente).
+
+REGRAS IMPORTANTES:
+- NÃO peça o CNPJ logo de cara. Primeiro converse, entenda a necessidade (que tipo de produto procura, se já conhece a marca, etc.) e só depois, quando fizer sentido, encaminhe pra pegar os dados.
+- Se perceber que é LOJISTA e a pessoa quer ver produtos/preços/catálogo/fazer pedido: use acao "coletar_lojista" e, na sua resposta, peça gentilmente o NOME DA LOJA (o sistema pede o CNPJ na sequência).
+- Se for CONSUMIDOR FINAL (pessoa física, "pra mim", "uso pessoal", "presente", sem loja/CNPJ): use acao "indicar_parceiro" e explique com carinho que as vendas da Big Tricot são direcionadas a lojistas, mas que você pode indicar LOJAS PARCEIRAS da região dela — e peça a CIDADE e o ESTADO.
+- Se pedir Financeiro, Pós-venda, tratar de um pedido já feito, reclamação/problema, ou pedir pra falar com uma pessoa: use acao "humano".
+- Enquanto ainda está entendendo, use acao "conversar".
+- NUNCA invente preços, prazos de entrega, pedido mínimo, formas de pagamento ou políticas. Se perguntarem, diga que o vendedor passa esses detalhes e que o catálogo é enviado após confirmar o cadastro.
+- Tom: caloroso, brasileiro, informal de WhatsApp. Respostas CURTAS (1 a 3 linhas), no máximo 1 ou 2 emojis. Nunca repita a mesma pergunta que já foi respondida.
+
+RESPONDA **SOMENTE** com um JSON válido, sem texto fora dele, neste formato exato:
+{"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "indicar_parceiro" | "humano"}`;
+
+const IA_MODELOS = [
+  "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  "@cf/meta/llama-3.1-70b-instruct",
+  "@cf/meta/llama-3.1-8b-instruct",
+  "@cf/meta/llama-3-8b-instruct",
+];
+
+interface IaDecisao { resposta: string; intencao: string; acao: string }
+
+// Extrai o primeiro objeto JSON de um texto (o modelo às vezes embrulha em ``` ou prosa).
+function extrairJson(txt: string): IaDecisao | null {
+  const m = txt.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    const o = JSON.parse(m[0]) as Partial<IaDecisao>;
+    if (typeof o.resposta === "string") {
+      return { resposta: o.resposta.trim(), intencao: String(o.intencao ?? "indefinido"), acao: String(o.acao ?? "conversar") };
+    }
+  } catch { /* json inválido */ }
+  return null;
+}
+
+// Chama a IA com o histórico da conversa e devolve a decisão (ou null se indisponível).
+async function chamarIa(env: Env, conv: ConvRow): Promise<IaDecisao | null> {
+  const AI = env.AI as unknown as { run: (m: string, o: unknown) => Promise<{ response?: string }> };
+  if (!AI?.run) return null;
+  // Histórico recente (as últimas trocas de texto), pra IA ter contexto.
+  const { results } = await env.DB.prepare(
+    "SELECT direcao, autor, texto FROM atend_mensagens WHERE conversa_id=? AND tipo='texto' AND autor IN ('cliente','bot') ORDER BY criado_em ASC, rowid ASC"
+  ).bind(conv.id).all<{ direcao: string; autor: string; texto: string | null }>();
+  const hist = results.slice(-16).map((r) => ({ role: r.autor === "cliente" ? "user" : "assistant", content: String(r.texto ?? "") })).filter((m) => m.content.trim());
+  const messages = [{ role: "system", content: IA_SISTEMA }, ...hist];
+  for (const modelo of IA_MODELOS) {
+    try {
+      const res = await AI.run(modelo, { messages, max_tokens: 400, temperature: 0.6 });
+      const txt = (res?.response || "").trim();
+      if (!txt) continue;
+      const dec = extrairJson(txt);
+      if (dec && dec.resposta) return dec;
+      // Modelo respondeu, mas não em JSON → usa o texto como fala e segue conversando.
+      if (!txt.includes("{")) return { resposta: txt, intencao: "indefinido", acao: "conversar" };
+    } catch { /* tenta o próximo modelo */ }
+  }
+  return null;
+}
+
+interface IaSaida { saidas: Saida[]; novoEstado: EstadoAtend; notificarHumano: boolean; tipo: string | null }
+
+// Roda a IA de triagem e traduz a decisão em resposta + próximo estado do fluxo.
+async function iaTriagem(env: Env, conv: ConvRow): Promise<IaSaida> {
+  const dec = await chamarIa(env, conv);
+  // IA indisponível (binding ausente/erro) → degrada pro menu determinístico, que é à prova de falhas.
+  if (!dec) return { saidas: [{ tipo: "texto", texto: BOAS_VINDAS }], novoEstado: "aguardando-setor", notificarHumano: false, tipo: null };
+  const saidas: Saida[] = [{ tipo: "texto", texto: dec.resposta }];
+  switch (dec.acao) {
+    case "coletar_lojista":
+      // A IA já pediu o nome da loja na resposta → o fluxo determinístico captura o nome e pede o CNPJ.
+      return { saidas, novoEstado: "triagem-nome", notificarHumano: false, tipo: "lojista" };
+    case "indicar_parceiro":
+      // A IA já pediu cidade/UF → o fluxo determinístico busca as lojas parceiras.
+      return { saidas, novoEstado: "aguardando-cidade-parceiro", notificarHumano: false, tipo: "consumidor" };
+    case "humano":
+      return { saidas, novoEstado: "atendimento-humano", notificarHumano: true, tipo: conv.tipo ?? null };
+    default:
+      return { saidas, novoEstado: "ia-triagem", notificarHumano: false, tipo: conv.tipo ?? null };
+  }
+}
+
 // ── Núcleo: recebe uma mensagem do cliente, roda o robô, responde e qualifica ────
 // Usado tanto pelo simulador (/entrada) quanto pelo webhook real da Z-API (/webhook).
 async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "") {
@@ -195,6 +287,22 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Atendente humano assumiu → o robô não responde mais, só registra a mensagem.
   if (conv.estado === "atendimento-humano") {
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
+  }
+
+  // IA de triagem (se ligada): atende o lead novo conversando naturalmente antes de
+  // pedir o CNPJ. Só para leads desconhecidos (cliente/representante seguem o fluxo padrão).
+  // Ao decidir, a IA passa o bastão pro motor determinístico (nome+CNPJ ou lojas parceiras).
+  if (cfgAt.atendimento_ia === "1" && !conv.cliente_id && conv.tipo !== "representante"
+      && (conv.estado === "novo" || conv.estado === "ia-triagem")) {
+    const ia = await iaTriagem(env, conv);
+    await env.DB.prepare("UPDATE atend_conversas SET estado=?, tipo=COALESCE(?, tipo), atualizado_em=datetime('now') WHERE id=?")
+      .bind(ia.novoEstado, ia.tipo, conv.id).run();
+    for (const s of ia.saidas) {
+      await addMsg(env, conv.id, "out", "bot", s.tipo, s.texto);
+      await enviarWhatsapp(env, tel, s);
+    }
+    if (ia.saidas.length) await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
+    return { conversa_id: conv.id, estado: ia.novoEstado, coluna: colunaDe(ia.novoEstado), respostas: ia.saidas, notificarHumano: ia.notificarHumano };
   }
 
   // Passa o contexto de identificação pro robô (saudação personalizada de cliente conhecido).
@@ -407,7 +515,7 @@ export async function lerAtividadeCatalogo(env: Env): Promise<number> {
 
 // ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
-const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo"]);
+const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo"]);
 
 atendimento.get("/config", async (c) => {
   const cfg = await lerConfig(c.env);
@@ -418,6 +526,7 @@ atendimento.get("/config", async (c) => {
     zapi_client_token: cfg.zapi_client_token || "",
     zapi_ativo: cfg.zapi_ativo === "1",
     atendimento_ativo: cfg.atendimento_ativo === "1",
+    atendimento_ia: cfg.atendimento_ia === "1",
     catalogo_url: cfg.catalogo_url || "",
     catalogo_senha: cfg.catalogo_senha || "",
     catalogo_msg: cfg.catalogo_msg || "",
@@ -440,7 +549,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -481,11 +590,14 @@ async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; text
   const phone = digitos(tel);
   const texto = String(saida.texto ?? "").trim();
   if (!phone || !texto) return { enviado: false, motivo: "vazio" };
+  // "Digitando…": a Z-API mostra o status de digitação por N segundos antes de enviar.
+  // Proporcional ao tamanho do texto (1s + ~1s a cada 50 caracteres), no máx. 5s.
+  const delayTyping = Math.min(5, 1 + Math.floor(texto.length / 50));
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
     const resp = await fetch(`${base}/instances/${inst}/token/${token}/send-text`, {
-      method: "POST", headers, body: JSON.stringify({ phone, message: texto }),
+      method: "POST", headers, body: JSON.stringify({ phone, message: texto, delayTyping }),
     });
     if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}` };
     return { enviado: true };

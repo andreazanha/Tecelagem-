@@ -1186,6 +1186,12 @@ body.dark .at-compose input { background: #0b1220; border-color: #ffffff1a; colo
 body.dark .at-simscr { background: #0c1a17; }
 .at-simatalhos { display: flex; gap: 6px; flex-wrap: wrap; padding: 9px 12px; background: #fff; border-top: 1px solid var(--line); }
 body.dark .at-simatalhos { background: #18202f; border-color: #26324a; }
+/* Bolha "digitando…" (robô) no simulador */
+.at-typing { display: inline-flex; align-items: center; gap: 4px; }
+.at-typing .at-dot { width: 6px; height: 6px; border-radius: 50%; background: #94a3b8; display: inline-block; animation: at-blink 1.2s infinite both; }
+.at-typing .at-dot:nth-child(3) { animation-delay: .2s; }
+.at-typing .at-dot:nth-child(4) { animation-delay: .4s; }
+@keyframes at-blink { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
 
 /* Linha de produto em FALTA na aba Estoque — legível em tema claro e escuro. */
 tr.prod-falta > td { background: #fef2f2; color: #991b1b; }
