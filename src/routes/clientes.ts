@@ -96,6 +96,44 @@ clientes.get("/:id", async (c) => {
 });
 
 // CRIA/ATUALIZA. Sem id, procura por nome (mantém 1 registro por cliente).
+// Importação em lote (planilha). Cria/atualiza clientes casando por CNPJ (dígitos) ou nome,
+// garante o representante e vincula todos os clientes a ele.
+clientes.post("/importar", async (c) => {
+  const b = await c.req.json<{ representante?: string; clientes?: Partial<ClienteRow>[] }>().catch(() => ({}) as { representante?: string; clientes?: Partial<ClienteRow>[] });
+  const rep = String(b.representante ?? "").trim();
+  const lista = Array.isArray(b.clientes) ? b.clientes : [];
+  if (!lista.length) return c.json({ error: "planilha vazia ou não reconhecida" }, 400);
+  if (rep) {
+    const ex = await c.env.DB.prepare("SELECT id FROM representantes WHERE nome = ? LIMIT 1").bind(rep).first<{ id: string }>().catch(() => null);
+    if (!ex) await c.env.DB.prepare("INSERT INTO representantes (id, nome, ativo) VALUES (?, ?, 1)").bind(crypto.randomUUID(), rep).run();
+  }
+  let criados = 0, atualizados = 0, ignorados = 0;
+  for (const r of lista) {
+    const nome = String(r.nome ?? "").trim();
+    if (!nome) { ignorados++; continue; }
+    const cnpjDig = String(r.cnpj ?? "").replace(/\D/g, "");
+    let ex: { id: string } | null = null;
+    if (cnpjDig.length >= 11) ex = await c.env.DB.prepare("SELECT id FROM clientes WHERE REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-','') = ? LIMIT 1").bind(cnpjDig).first<{ id: string }>().catch(() => null);
+    if (!ex) ex = await c.env.DB.prepare("SELECT id FROM clientes WHERE nome = ? LIMIT 1").bind(nome).first<{ id: string }>().catch(() => null);
+    const id = ex?.id || crypto.randomUUID();
+    const repFinal = rep || String(r.representante ?? "").trim() || null;
+    await c.env.DB.prepare(
+      `INSERT INTO clientes (id, nome, whatsapp, email, cidade, uf, cnpj, representante, observacao)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         whatsapp = COALESCE(NULLIF(excluded.whatsapp,''), clientes.whatsapp),
+         email = COALESCE(NULLIF(excluded.email,''), clientes.email),
+         cidade = COALESCE(NULLIF(excluded.cidade,''), clientes.cidade),
+         uf = COALESCE(NULLIF(excluded.uf,''), clientes.uf),
+         cnpj = COALESCE(NULLIF(excluded.cnpj,''), clientes.cnpj),
+         representante = COALESCE(NULLIF(excluded.representante,''), clientes.representante),
+         observacao = COALESCE(NULLIF(excluded.observacao,''), clientes.observacao)`
+    ).bind(id, nome, str(r.whatsapp), str(r.email), str(r.cidade), str(r.uf), str(r.cnpj), repFinal, str(r.observacao)).run();
+    if (ex) atualizados++; else criados++;
+  }
+  return c.json({ ok: true, criados, atualizados, ignorados });
+});
+
 clientes.post("/", async (c) => {
   const b = await c.req.json<Partial<ClienteRow>>().catch(() => ({}) as Partial<ClienteRow>);
   const nome = (b.nome || "").trim();

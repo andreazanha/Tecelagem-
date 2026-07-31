@@ -646,6 +646,8 @@ export const api = {
   obterCliente: (id: string) => fetch(`/api/clientes/${id}`).then((r) => j<ClienteFicha>(r)),
   salvarCliente: (b: Partial<ClienteCrm>) =>
     jsonPost("/api/clientes", b).then((r) => j<{ id: string; nome: string }>(r)),
+  importarClientes: (b: { representante?: string; clientes: Record<string, string>[] }) =>
+    jsonPost("/api/clientes/importar", b).then((r) => j<{ ok?: boolean; criados?: number; atualizados?: number; ignorados?: number; error?: string }>(r)),
   // CRM Funil de vendas
   funilBoard: () => fetch("/api/funil").then((r) => j<FunilBoard>(r)),
   sincronizarFunil: () => jsonPost("/api/funil/sincronizar", {}).then((r) => j<{ criados: number; removidos: number; ignorados: number }>(r)),

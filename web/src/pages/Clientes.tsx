@@ -46,6 +46,7 @@ export function Clientes() {
   const [busca, setBusca] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [novo, setNovo] = useState<ClienteCrm | null>(null);
+  const [importar, setImportar] = useState(false);
 
   function recarregar() {
     api.listarClientesCrm().then((d) => { if (Array.isArray(d)) setLista(d); }).catch(() => {}).finally(() => setCarregando(false));
@@ -76,6 +77,7 @@ export function Clientes() {
         <div><h1>Clientes</h1><div className="breadcrumb">Comercial › Clientes</div></div>
         <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <input className="busca-ped" placeholder="🔎 Buscar cliente, cidade, representante…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ minWidth: 240 }} />
+          <button className="btn btn-soft" onClick={() => setImportar(true)}>📥 Importar planilha</button>
           <button className="btn btn-primary" onClick={() => setNovo({ id: "", nome: "" })}>＋ Novo cliente</button>
         </div>
       </div>
@@ -119,6 +121,7 @@ export function Clientes() {
       </div>
 
       {novo && <ClienteModal cliente={novo} onFechar={() => setNovo(null)} onSalvo={() => { setNovo(null); recarregar(); }} />}
+      {importar && <ImportarClientesModal onFechar={() => setImportar(false)} onImportou={() => { setImportar(false); recarregar(); }} />}
     </div>
   );
 }
@@ -252,6 +255,96 @@ function ClienteModal({ cliente, onFechar, onSalvo }: { cliente: Partial<Cliente
         <div className="modal-ft">
           <button className="btn" onClick={onFechar}>Cancelar</button>
           <button className="kbtn go" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Importar planilha de clientes (xlsx/csv) ─────────────────────────────────────
+function ImportarClientesModal({ onFechar, onImportou }: { onFechar: () => void; onImportou: () => void }) {
+  const [linhas, setLinhas] = useState<Record<string, string>[]>([]);
+  const [rep, setRep] = useState("");
+  const [nomeArq, setNomeArq] = useState("");
+  const [erro, setErro] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const norm = (s: unknown) => String(s ?? "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+  const dig = (s: unknown) => String(s ?? "").replace(/\D/g, "");
+
+  async function carregar(file: File) {
+    setErro(""); setMsg(""); setLinhas([]);
+    setNomeArq(file.name);
+    setRep((r) => r || file.name.replace(/\.[^.]+$/, "").replace(/^clientes[_\s-]*/i, "").trim());
+    try {
+      const XLSX = await import("xlsx");
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, blankrows: false });
+      if (!rows.length) { setErro("Planilha vazia."); return; }
+      const head = (rows[0] as unknown[]).map(norm);
+      const col = (...ns: string[]) => head.findIndex((h) => ns.includes(h));
+      const iNome = col("nome", "razaosocial", "cliente"), iFant = col("fantasia", "nomefantasia"), iUf = col("uf", "estado"),
+        iCid = col("cidade"), iCel = col("celular", "whatsapp", "whats", "cel"), iDdd = col("ddd"),
+        iFone = col("fones", "fone", "telefone", "tel"), iMail = col("email"), iCnpj = col("cnpjcpf", "cnpj", "cpf");
+      if (iNome < 0) { setErro("Não achei a coluna 'Nome'. Confira o cabeçalho da planilha."); return; }
+      const out: Record<string, string>[] = [];
+      for (const r of rows.slice(1)) {
+        const row = r as unknown[];
+        const nome = String(row[iNome] ?? "").trim();
+        if (!nome) continue;
+        const ddd = iDdd >= 0 ? dig(row[iDdd]) : "";
+        const num = dig(iCel >= 0 ? row[iCel] : "") || dig(iFone >= 0 ? row[iFone] : "");
+        const wa = num ? (num.length >= 10 ? num : ddd + num) : "";
+        out.push({
+          nome, uf: iUf >= 0 ? String(row[iUf] ?? "").trim().toUpperCase().slice(0, 2) : "",
+          cidade: iCid >= 0 ? String(row[iCid] ?? "").trim() : "", whatsapp: wa,
+          email: iMail >= 0 ? String(row[iMail] ?? "").trim() : "", cnpj: iCnpj >= 0 ? String(row[iCnpj] ?? "").trim() : "",
+          observacao: iFant >= 0 && row[iFant] ? `Fantasia: ${String(row[iFant]).trim()}` : "",
+        });
+      }
+      if (!out.length) { setErro("Nenhum cliente com nome encontrado."); return; }
+      setLinhas(out);
+    } catch { setErro("Não consegui ler o arquivo. Use .xlsx ou .csv."); }
+  }
+
+  async function importar() {
+    if (!linhas.length) return;
+    setBusy(true); setMsg("");
+    try {
+      const r = await api.importarClientes({ representante: rep.trim(), clientes: linhas });
+      if (r.error) setErro(r.error);
+      else { setMsg(`✓ ${r.criados || 0} novos, ${r.atualizados || 0} atualizados${rep.trim() ? ` · vinculados a ${rep.trim()}` : ""}.`); setTimeout(onImportou, 1600); }
+    } catch { setErro("Erro ao importar."); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 560, width: "min(560px,96vw)", color: "#1e293b" }} onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginTop: 0 }}>📥 Importar clientes por planilha</h2>
+        <p className="muted" style={{ fontSize: 13 }}>Aceita Excel (.xlsx) ou CSV. Cabeçalho esperado: <b>Nome, Fantasia, UF, Cidade, DDD, Fones, Celular, email, CNPJ_CPF</b>. Casa com quem já existe pelo CNPJ ou nome.</p>
+
+        <input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => e.target.files?.[0] && carregar(e.target.files[0])} style={{ margin: "8px 0" }} />
+
+        {erro && <div style={{ background: "#fef2f2", color: "#991b1b", borderRadius: 8, padding: "8px 12px", fontSize: 13 }}>{erro}</div>}
+
+        {linhas.length > 0 && (
+          <>
+            <div style={{ background: "#ecfdf5", color: "#065f46", borderRadius: 8, padding: "8px 12px", fontSize: 13.5, margin: "8px 0" }}>
+              ✅ <b>{linhas.length}</b> clientes lidos de <b>{nomeArq}</b>. Ex.: {linhas.slice(0, 3).map((l) => l.nome).join(", ")}…
+            </div>
+            <label className="campo"><span className="campo-label">Representante destes clientes (vincula todos)</span>
+              <input value={rep} onChange={(e) => setRep(e.target.value)} placeholder="Ex.: Augusto (é criado se não existir)" /></label>
+          </>
+        )}
+
+        {msg && <div style={{ background: "#ecfdf5", color: "#065f46", borderRadius: 8, padding: "8px 12px", fontSize: 13.5, marginTop: 8 }}>{msg}</div>}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+          <button className="btn btn-soft" onClick={onFechar}>Fechar</button>
+          <button className="btn btn-primary" disabled={busy || !linhas.length} onClick={importar}>{busy ? "Importando…" : `Importar ${linhas.length || ""}`}</button>
         </div>
       </div>
     </div>
