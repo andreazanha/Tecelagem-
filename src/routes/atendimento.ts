@@ -1296,7 +1296,9 @@ export async function prospeccaoCatalogo(env: Env): Promise<number> {
     const tel = digitos(cli.whatsapp || "");
     if (tel.length < 10) continue;
     if (jaFalou.has("id:" + cli.id) || jaFalou.has("tel:" + tel.slice(-8))) continue;
-    const texto = montarMsgReativacao(cfg, primeiroNome(cli.contato || cli.nome), diasDesdeISO(cli.ultimo_faturamento, agora));
+    // Só usa nome quando há CONTATO (pessoa). Sem contato, chama só "Olá!" —
+    // evita usar a razão social da empresa como se fosse o nome da pessoa.
+    const texto = montarMsgReativacao(cfg, primeiroNome(cli.contato), diasDesdeISO(cli.ultimo_faturamento, agora));
     const convId = uid();
     await env.DB.prepare(
       "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, cliente_id, nome, pedido_marco, ultima_out_em, atualizado_em) VALUES (?, ?, 'prospeccao-catalogo', 'reativacao', 'lojista', ?, ?, 'reativacao', datetime('now'), datetime('now'))"
