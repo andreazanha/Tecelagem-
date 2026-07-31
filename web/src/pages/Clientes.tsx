@@ -1,7 +1,6 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { api, type ClienteCrm, type ClienteFicha as TFicha } from "../api";
-import { ConversaModal } from "./Atendimento";
 
 const brl = (n?: number) => "R$ " + (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
@@ -60,10 +59,8 @@ export function Clientes() {
   const [carregando, setCarregando] = useState(true);
   const [novo, setNovo] = useState<ClienteCrm | null>(null);
   const [importar, setImportar] = useState(false);
-  const [modo, setModo] = useState<"estado" | "representante" | "lista">("estado");
-  const [abertos, setAbertos] = useState<Set<string>>(new Set()); // grupos abertos (começa tudo fechado)
-  const [letra, setLetra] = useState(""); // filtro alfabético (A–Z), "" = todas
-  const [conversa, setConversa] = useState<string | null>(null);
+  const [dim, setDim] = useState<null | "estado" | "representante" | "letra" | "todos">(null); // menu escolhido
+  const [sel, setSel] = useState<string | null>(null); // grupo selecionado (UF, representante, letra)
   const [abrindo, setAbrindo] = useState<string | null>(null);
   const [escolha, setEscolha] = useState<ClienteCrm | null>(null); // cliente aguardando "prospecção x só conversar"
 
@@ -72,15 +69,15 @@ export function Clientes() {
   }
   useEffect(() => { recarregar(); }, []);
 
-  // Abre a conversa DENTRO do CRM (não abre o WhatsApp externo): acha ou cria a
-  // conversa pelo telefone do cliente e mostra o chat aqui mesmo. Com criarCard=true
-  // também cria um card de prospecção no funil (novo lead).
-  async function atender(c: ClienteCrm, criarCard: boolean) {
+  // Cria/acha a conversa do cliente e LEVA para o funil (o quadro de colunas), já
+  // abrindo o WhatsApp lá. destino "prospeccao" → card em "Novo lead";
+  // "atendimento" → card na coluna "Atendimento" (só conversa: fiscal, dúvida…).
+  async function atender(c: ClienteCrm, destino: "prospeccao" | "atendimento") {
     setEscolha(null);
     setAbrindo(c.id);
     try {
-      const r = await api.abrirConversaDoCard({ telefone: c.whatsapp, nome: c.nome, cliente_id: c.id, criar_card: criarCard });
-      if (r.id) setConversa(r.id);
+      const r = await api.abrirConversaDoCard({ telefone: c.whatsapp, nome: c.nome, cliente_id: c.id, destino });
+      if (r.id) nav("/funil", { state: { abrirConversa: r.id } });
       else alert(r.error || "Este cliente não tem WhatsApp no cadastro. Adicione o número em Clientes e tente de novo.");
     } catch {
       alert("Não consegui abrir a conversa agora. Tente de novo em instantes.");
@@ -91,40 +88,37 @@ export function Clientes() {
   // 1ª letra "de índice" do nome (ignora aspas/pontos; nº e símbolos caem em "#").
   const primeiraLetra = (nome: string) => { const ch = semAcento(nome).replace(/^[^a-z0-9]+/, "")[0] || ""; return /[a-z]/.test(ch) ? ch : "#"; };
   const q = semAcento(busca.trim());
-  const filtrados = useMemo(() => {
-    let base = lista;
-    if (letra) base = base.filter((c) => primeiraLetra(c.nome) === letra);
-    if (!q) return base;
+  // Chave do grupo conforme o menu escolhido (UF / representante / 1ª letra).
+  const chaveGrupo = (c: ClienteCrm, d: "estado" | "representante" | "letra") =>
+    d === "estado" ? ((c.uf || "").trim().toUpperCase() || "—")
+      : d === "representante" ? ((c.representante || "").trim() || "—")
+        : primeiraLetra(c.nome).toUpperCase();
+  // Busca livre: nome, cidade, representante e WhatsApp/CNPJ por dígitos (sem acento).
+  const resultadosBusca = useMemo(() => {
+    if (!q) return [] as ClienteCrm[];
     const dig = q.replace(/\D/g, "");
-    return base.filter((c) =>
+    return lista.filter((c) =>
       semAcento(c.nome).includes(q) || semAcento(c.cidade || "").includes(q) || semAcento(c.representante || "").includes(q) ||
       (dig.length >= 3 && ((c.whatsapp || "").replace(/\D/g, "").includes(dig) || (c.cnpj || "").replace(/\D/g, "").includes(dig)))
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lista, q, letra]);
-  // Letras que realmente têm clientes (as demais ficam desabilitadas na barra A–Z).
-  const letrasComDados = useMemo(() => {
-    const s = new Set<string>();
-    for (const c of lista) s.add(primeiraLetra(c.nome));
-    return s;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lista]);
-
-  // Agrupa por estado OU por representante (ordenado; "sem…" por último), com total do grupo.
-  const grupos = useMemo(() => {
+  }, [lista, q]);
+  // Botões de grupo do menu atual (com contagem e total), ordenados; "sem…" por último.
+  const gruposLista = useMemo(() => {
+    if (!dim || dim === "todos") return [] as { key: string; cls: ClienteCrm[]; total: number }[];
     const m = new Map<string, ClienteCrm[]>();
-    for (const c of filtrados) {
-      const k = modo === "estado"
-        ? ((c.uf || "").trim().toUpperCase() || "— Sem estado")
-        : ((c.representante || "").trim() || "— Sem representante");
-      (m.get(k) || m.set(k, []).get(k)!).push(c);
-    }
+    for (const c of lista) { const k = chaveGrupo(c, dim); (m.get(k) || m.set(k, []).get(k)!).push(c); }
     return [...m.entries()]
-      .sort((a, b) => (a[0].startsWith("—") ? 1 : 0) - (b[0].startsWith("—") ? 1 : 0) || a[0].localeCompare(b[0], "pt-BR"))
-      .map(([rep, cls]) => ({ rep, cls, total: cls.reduce((s, c) => s + (c.total || 0), 0) }));
-  }, [filtrados, modo]);
-  const toggle = (rep: string) => setAbertos((s) => { const n = new Set(s); n.has(rep) ? n.delete(rep) : n.add(rep); return n; });
-  const trocarModo = (m: "estado" | "representante" | "lista") => { setModo(m); setAbertos(new Set()); };
+      .sort((a, b) => (a[0] === "—" ? 1 : 0) - (b[0] === "—" ? 1 : 0) || a[0].localeCompare(b[0], "pt-BR"))
+      .map(([key, cls]) => ({ key, cls, total: cls.reduce((s, c) => s + (c.total || 0), 0) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lista, dim]);
+  // Clientes do grupo selecionado.
+  const doGrupo = useMemo(
+    () => (dim && dim !== "todos" && sel ? lista.filter((c) => chaveGrupo(c, dim) === sel) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lista, dim, sel]
+  );
 
   const hoje = new Date(); const mesAtual = hoje.toISOString().slice(0, 7);
   const compraram90 = lista.filter((c) => {
@@ -141,7 +135,7 @@ export function Clientes() {
       <td><div className="cli-nm">{c.nome}</div><div className="muted2">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div></td>
       <td>{c.representante ? <span className="rep-cli">🧑‍💼 {c.representante}</span> : <span className="muted2">—</span>}</td>
       <td>{c.whatsapp ? (
-        <button className="wa wa-btn" disabled={abrindo === c.id} onClick={(e) => { e.stopPropagation(); setEscolha(c); }} title="Abrir conversa no CRM">
+        <button className="wa wa-btn" disabled={abrindo === c.id} onClick={(e) => { e.stopPropagation(); setEscolha(c); }} title="Abrir conversa no funil">
           {abrindo === c.id ? "abrindo…" : `🟢 ${c.whatsapp}`}
         </button>
       ) : <span className="muted2">—</span>}</td>
@@ -150,18 +144,28 @@ export function Clientes() {
       <td>{desde(c.ultima)}</td>
     </tr>
   );
+  const tabela = (items: ClienteCrm[]) => (
+    <div className="crm-card cli-lista">
+      {!items.length ? <div className="pad muted">Nenhum cliente aqui.</div> : (
+        <div className="crm-scroll">
+          <table className="crm">
+            <thead><tr><th>Cliente</th><th>Representante</th><th>WhatsApp</th><th style={{ textAlign: "center" }}>Pedidos</th><th>Total comprado</th><th>Última compra</th></tr></thead>
+            <tbody>{items.map((c) => linha(c))}</tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+  const ICONE: Record<string, string> = { estado: "🗺️", representante: "🧑‍💼", letra: "🔤", todos: "☰" };
+  const ROTULO: Record<string, string> = { estado: "Por estado", representante: "Por representante", letra: "Por letra", todos: "Todos" };
+  const SEM: Record<string, string> = { estado: "Sem estado", representante: "Sem representante", letra: "#", todos: "" };
 
   return (
     <div className="quadro-page">
       <div className="page-head">
         <div><h1>Clientes</h1><div className="breadcrumb">Comercial › Clientes</div></div>
         <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <input className="busca-ped" placeholder="🔎 Buscar cliente, cidade, representante…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ minWidth: 240 }} />
-          <div className="seg">
-            <button className={modo === "estado" ? "on" : ""} onClick={() => trocarModo("estado")}>🗺️ Por estado</button>
-            <button className={modo === "representante" ? "on" : ""} onClick={() => trocarModo("representante")}>🧑‍💼 Por representante</button>
-            <button className={modo === "lista" ? "on" : ""} onClick={() => trocarModo("lista")}>☰ Lista</button>
-          </div>
+          <input className="busca-ped" placeholder="🔎 Buscar nome, cidade, WhatsApp, CNPJ…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ minWidth: 240 }} />
           <button className="btn btn-soft" onClick={() => setImportar(true)}>📥 Importar planilha</button>
           <button className="btn btn-primary" onClick={() => setNovo({ id: "", nome: "" })}>＋ Novo cliente</button>
         </div>
@@ -174,51 +178,55 @@ export function Clientes() {
         <div className="crm-st"><div className="n">{brl(ticketGeral)}</div><div className="l">Ticket médio</div></div>
       </div>
 
-      <div className="az-bar">
-        <button className={letra === "" ? "on" : ""} onClick={() => setLetra("")}>Todos</button>
-        {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((L) => {
-          const l = L.toLowerCase();
-          const tem = letrasComDados.has(l);
-          return <button key={L} className={letra === l ? "on" : ""} disabled={!tem} onClick={() => setLetra(letra === l ? "" : l)}>{L}</button>;
-        })}
-        {letrasComDados.has("#") && <button className={letra === "#" ? "on" : ""} onClick={() => setLetra(letra === "#" ? "" : "#")}>#</button>}
-      </div>
+      {!q && dim && (
+        <div className="cli-nav">
+          <button className="btn btn-soft" onClick={() => (sel ? setSel(null) : setDim(null))}>← Voltar</button>
+          <span className="cli-nav-bc">
+            <button className="lnk" onClick={() => { setDim(null); setSel(null); }}>Clientes</button>
+            {` › ${ICONE[dim]} ${ROTULO[dim]}`}{sel ? ` › ${sel === "—" ? SEM[dim] : sel}` : ""}
+          </span>
+        </div>
+      )}
 
-      <div className="crm-card cli-lista">
-        {carregando ? (
-          <div className="pad muted">Carregando…</div>
-        ) : !filtrados.length ? (
-          <div className="pad muted">Nenhum cliente encontrado.</div>
-        ) : (
-          <div className="crm-scroll">
-            <table className="crm">
-              <thead><tr><th>Cliente</th><th>Representante</th><th>WhatsApp</th><th style={{ textAlign: "center" }}>Pedidos</th><th>Total comprado</th><th>Última compra</th></tr></thead>
-              <tbody>
-                {modo === "lista"
-                  ? filtrados.map((c) => linha(c))
-                  : grupos.map((g) => {
-                      const aberto = !!q || !!letra || abertos.has(g.rep);
-                      const semRotulo = g.rep.startsWith("—");
-                      return (
-                        <Fragment key={g.rep}>
-                          <tr className="cli-grp" onClick={() => toggle(g.rep)}>
-                            <td colSpan={6}>
-                              <span className="cli-grp-ar">{aberto ? "▾" : "▸"}</span>
-                              {modo === "estado" ? "🗺️ " : "🧑‍💼 "}
-                              <strong>{semRotulo ? g.rep.replace(/^—\s*/, "") : g.rep}</strong>
-                              <span className="cli-grp-n">{g.cls.length} cliente(s)</span>
-                              {g.total > 0 && <span className="cli-grp-t">{brl(g.total)}</span>}
-                            </td>
-                          </tr>
-                          {aberto && g.cls.map((c) => linha(c))}
-                        </Fragment>
-                      );
-                    })}
-              </tbody>
-            </table>
+      {carregando ? (
+        <div className="crm-card"><div className="pad muted">Carregando…</div></div>
+      ) : q ? (
+        <>
+          <div className="cli-res">🔎 <b>{resultadosBusca.length}</b> resultado(s) para “{busca.trim()}”</div>
+          {tabela(resultadosBusca)}
+        </>
+      ) : !dim ? (
+        <div className="opt-grid">
+          <button className="opt-card est" onClick={() => { setDim("estado"); setSel(null); }}>
+            <span className="opt-ic">🗺️</span><span className="opt-tt">Por estado</span><span className="opt-sub">Clientes agrupados por UF</span>
+          </button>
+          <button className="opt-card rep" onClick={() => { setDim("representante"); setSel(null); }}>
+            <span className="opt-ic">🧑‍💼</span><span className="opt-tt">Por representante</span><span className="opt-sub">Clientes de cada representante</span>
+          </button>
+          <button className="opt-card let" onClick={() => { setDim("letra"); setSel(null); }}>
+            <span className="opt-ic">🔤</span><span className="opt-tt">Por letra</span><span className="opt-sub">Índice A a Z pelo nome</span>
+          </button>
+          <button className="opt-card all" onClick={() => { setDim("todos"); setSel("*"); }}>
+            <span className="opt-ic">☰</span><span className="opt-tt">Ver todos</span><span className="opt-sub">Lista completa ({lista.length})</span>
+          </button>
+        </div>
+      ) : dim === "todos" ? (
+        tabela(lista)
+      ) : !sel ? (
+        !gruposLista.length ? <div className="crm-card"><div className="pad muted">Nada para mostrar.</div></div> : (
+          <div className="chip-grid">
+            {gruposLista.map((g) => (
+              <button key={g.key} className="chip-card" onClick={() => setSel(g.key)}>
+                <span className="chip-tt">{ICONE[dim]} {g.key === "—" ? SEM[dim] : g.key}</span>
+                <span className="chip-n">{g.cls.length} cliente(s)</span>
+                {g.total > 0 && <span className="chip-t">{brl(g.total)}</span>}
+              </button>
+            ))}
           </div>
-        )}
-      </div>
+        )
+      ) : (
+        tabela(doGrupo)
+      )}
 
       {novo && <ClienteModal cliente={novo} onFechar={() => setNovo(null)} onSalvo={() => { setNovo(null); recarregar(); }} />}
       {importar && <ImportarClientesModal onFechar={() => setImportar(false)} onImportou={() => { setImportar(false); recarregar(); }} />}
@@ -227,20 +235,19 @@ export function Clientes() {
         <div className="modal-bg" onClick={() => setEscolha(null)}>
           <div className="modal-card" style={{ maxWidth: 460, width: "min(460px,96vw)" }} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>Falar com {escolha.nome}</h3>
-            <p className="muted" style={{ fontSize: 13.5 }}>Como você quer abrir essa conversa? Isso decide se entra no funil de vendas.</p>
+            <p className="muted" style={{ fontSize: 13.5 }}>Isso abre a conversa no <b>funil</b>. Escolha em qual coluna ela entra:</p>
             <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
-              <button className="btn btn-primary" style={{ textAlign: "left", lineHeight: 1.35, height: "auto", padding: "10px 14px" }} onClick={() => atender(escolha, true)}>
-                🎯 <b>Iniciar prospecção</b><br /><small style={{ opacity: .9 }}>Cria um card de “Novo lead” no funil e abre a conversa</small>
+              <button className="btn btn-primary" style={{ textAlign: "left", lineHeight: 1.35, height: "auto", padding: "10px 14px" }} onClick={() => atender(escolha, "prospeccao")}>
+                🎯 <b>Iniciar prospecção</b><br /><small style={{ opacity: .9 }}>Entra na coluna “Novo lead” do funil e abre a conversa</small>
               </button>
-              <button className="btn btn-soft" style={{ textAlign: "left", lineHeight: 1.35, height: "auto", padding: "10px 14px" }} onClick={() => atender(escolha, false)}>
-                💬 <b>Só conversar</b><br /><small className="muted">Ex.: fiscal, financeiro, dúvida — abre a conversa sem criar card</small>
+              <button className="btn btn-soft" style={{ textAlign: "left", lineHeight: 1.35, height: "auto", padding: "10px 14px" }} onClick={() => atender(escolha, "atendimento")}>
+                💬 <b>Só conversar</b><br /><small className="muted">Ex.: fiscal, financeiro, dúvida — entra na coluna “Atendimento”</small>
               </button>
             </div>
             <div style={{ textAlign: "right", marginTop: 12 }}><button className="btn" onClick={() => setEscolha(null)}>Cancelar</button></div>
           </div>
         </div>
       )}
-      {conversa && <ConversaModal id={conversa} onFechar={() => { setConversa(null); recarregar(); }} onMudou={recarregar} />}
     </div>
   );
 }

@@ -246,6 +246,7 @@ export interface ClienteFicha extends ClienteCrm {
 
 // ── CRM Funil de vendas ──────────────────────────────────────────────────────
 export type FunilEtapa =
+  | "atendimento"
   | "novo-lead" | "primeiro-contato" | "negociacao" | "aguardando-retorno"
   | "pos-venda" | "ativo" | "inativo" | "perdido";
 export interface FunilCardBase { conversa_id?: string | null }
@@ -666,7 +667,7 @@ export const api = {
   atendExcluirSetor: (id: string) => fetch(`/api/atendimento/setores/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   // Painel do gestor
   atendPainel: () => fetch("/api/atendimento/painel").then((r) => j<AtendPainel>(r)),
-  abrirConversaDoCard: (b: { telefone?: string | null; nome?: string | null; card_id?: string; cliente_id?: string; criar_card?: boolean }) =>
+  abrirConversaDoCard: (b: { telefone?: string | null; nome?: string | null; card_id?: string; cliente_id?: string; criar_card?: boolean; destino?: "prospeccao" | "atendimento" }) =>
     jsonPost("/api/atendimento/abrir-conversa", b).then((r) => j<{ id?: string; card_id?: string | null; error?: string }>(r)),
   // Robô de atendimento (WhatsApp)
   atendBoard: (usuario?: string, gestor?: boolean) => fetch(`/api/atendimento?usuario=${encodeURIComponent(usuario || "")}&gestor=${gestor ? 1 : 0}`).then((r) => j<AtendBoard>(r)),

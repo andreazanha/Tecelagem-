@@ -1043,17 +1043,25 @@ tr.cli-grp:hover td { background: var(--bg-soft, #eef2f7); cursor: pointer; }
 .crm-card.cli-lista { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-bottom: 8px; }
 .crm-card.cli-lista .crm-scroll { overflow: auto; min-height: 0; flex: 1 1 auto; }
 .crm-card.cli-lista table.crm thead th { position: sticky; top: 0; z-index: 2; background: var(--painel-bg, #fff); }
-/* Segmented control (menu de agrupamento) */
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--painel-bg, #fff); }
-.seg button { border: none; background: transparent; color: var(--ink); font: inherit; font-size: 12.5px; font-weight: 700; padding: 7px 12px; cursor: pointer; white-space: nowrap; border-right: 1px solid var(--line); }
-.seg button:last-child { border-right: none; }
-.seg button.on { background: var(--brand2, #7c3aed); color: #fff; }
-/* Barra alfabética A–Z */
-.az-bar { display: flex; flex-wrap: wrap; gap: 3px; margin: 0 0 12px; }
-.az-bar button { min-width: 26px; height: 26px; padding: 0 5px; border: 1px solid var(--line); background: var(--painel-bg, #fff); color: var(--ink); border-radius: 7px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
-.az-bar button:hover:not(:disabled) { border-color: var(--brand2, #7c3aed); }
-.az-bar button.on { background: var(--brand2, #7c3aed); border-color: transparent; color: #fff; }
-.az-bar button:disabled { opacity: .3; cursor: default; }
+/* Menu de entrada (Por estado / Por representante / Por letra / Ver todos) */
+.opt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 8px; }
+.opt-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; background: var(--painel-bg, #fff); border: 1px solid var(--line); border-radius: 16px; padding: 20px; cursor: pointer; font: inherit; color: var(--ink); box-shadow: 0 2px 5px #0f172a10; transition: transform .08s ease, border-color .12s ease, box-shadow .12s ease; }
+.opt-card:hover { transform: translateY(-2px); border-color: var(--brand2, #7c3aed); box-shadow: 0 10px 26px #0f172a1f; }
+.opt-ic { font-size: 30px; line-height: 1; margin-bottom: 6px; }
+.opt-tt { font-size: 16px; font-weight: 800; }
+.opt-sub { font-size: 12.5px; color: var(--muted); }
+/* Botões de grupo (estados / representantes / letras) */
+.chip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-bottom: 8px; }
+.chip-card { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; text-align: left; background: var(--painel-bg, #fff); border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px; cursor: pointer; font: inherit; color: var(--ink); transition: transform .08s ease, border-color .12s ease, box-shadow .12s ease; }
+.chip-card:hover { transform: translateY(-1px); border-color: var(--brand2, #7c3aed); box-shadow: 0 6px 16px #0f172a1a; }
+.chip-tt { font-weight: 800; font-size: 14px; flex: 1 1 auto; min-width: 0; }
+.chip-n { font-size: 11.5px; font-weight: 700; color: #fff; background: var(--brand2, #7c3aed); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.chip-t { width: 100%; font-size: 12px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Barra de navegação (voltar / breadcrumb) da tela de clientes */
+.cli-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.cli-nav-bc { font-size: 13px; color: var(--muted); font-weight: 700; }
+.cli-nav-bc .lnk { border: none; background: none; color: var(--brand2, #7c3aed); font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
+.cli-res { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
 .wa.wa-big { width: 100%; justify-content: center; padding: 11px; margin: 10px 0 6px; font-size: 13.5px; }
 .wa.off { background: #f1f5f9; color: #94a3b8; border-color: var(--line); cursor: default; }
 /* Chip de "representante" (ficha do cliente). NOME ESCOPADO: um ".rep" solto

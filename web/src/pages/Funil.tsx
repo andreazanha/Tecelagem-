@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api, type FunilCard, type FunilBoard, type FunilCardDetalhe, type FunilEtapa } from "../api";
 import { ConversaModal } from "./Atendimento";
 
@@ -20,6 +20,7 @@ function iniciais(nome?: string | null): string {
 
 // Metadados das etapas (ordem, rótulo e cor do quadro).
 const ETAPAS_META: { id: FunilEtapa; label: string; cor: string }[] = [
+  { id: "atendimento", label: "💬 Atendimento", cor: "#06b6d4" },
   { id: "novo-lead", label: "Novo Lead", cor: "#3b82f6" },
   { id: "primeiro-contato", label: "Primeiro Contato", cor: "#8b5cf6" },
   { id: "negociacao", label: "Negociação", cor: "#f59e0b" },
@@ -56,8 +57,16 @@ export function Funil() {
   const [arrastando, setArrastando] = useState<string | null>(null); // card id em drag
   const [sobre, setSobre] = useState<string | null>(null); // etapa alvo do drag
 
+  const loc = useLocation();
+  const nav = useNavigate();
   function recarregar() { api.funilBoard().then(setBoard).catch(() => {}); }
   useEffect(() => { recarregar(); }, []);
+  // Veio de "abrir WhatsApp" na tela de Clientes: abre a conversa já no funil.
+  useEffect(() => {
+    const cid = (loc.state as { abrirConversa?: string } | null)?.abrirConversa;
+    if (cid) { setAbrirConversa(cid); nav(loc.pathname, { replace: true, state: {} }); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loc.state]);
 
   async function sincronizar() {
     setSincronizando(true);
@@ -173,10 +182,12 @@ function CardMini({ c, onAbrir, onDragStart, onDragEnd }: { c: FunilCard; onAbri
         {(c.etapa === "ativo" || c.etapa === "inativo") && c.diasSemComprar != null && (
           <span className={"fx-chip dias" + (c.faixa ? " warn" : "")}>{c.diasSemComprar}d s/ comprar</span>
         )}
-        <span className={"fx-chip dias" + (c.diasParado >= 7 ? " warn" : "")}>⏱ {c.diasParado}d parado</span>
+        {c.etapa !== "atendimento" && <span className={"fx-chip dias" + (c.diasParado >= 7 ? " warn" : "")}>⏱ {c.diasParado}d parado</span>}
       </div>
       <div className={"fx-task" + (c.semTarefa ? " miss" : "")}>
-        {c.semTarefa ? "⚠️ Sem próxima tarefa" : <>📋 {c.proxTarefa?.titulo}{c.proxTarefa?.vence_em ? ` · ${dataBr(c.proxTarefa.vence_em)}` : ""}</>}
+        {c.etapa === "atendimento"
+          ? "💬 Conversa (sem prospecção)"
+          : c.semTarefa ? "⚠️ Sem próxima tarefa" : <>📋 {c.proxTarefa?.titulo}{c.proxTarefa?.vence_em ? ` · ${dataBr(c.proxTarefa.vence_em)}` : ""}</>}
       </div>
       <div className="fx-foot">
         <div className="fx-av">{iniciais(c.responsavel)}</div>

@@ -12,6 +12,7 @@ const num = (v: unknown) => (v === "" || v == null || isNaN(Number(v)) ? null : 
 // Etapas na ordem do quadro. Funil é de relacionamento/venda — o acompanhamento
 // de produção de um pedido fica nos painéis, não aqui.
 export const ETAPAS = [
+  "atendimento", // conversas que não são prospecção (fiscal, financeiro, dúvida)
   "novo-lead", "primeiro-contato", "negociacao", "aguardando-retorno",
   "pos-venda", "ativo", "inativo", "perdido",
 ] as const;
@@ -136,10 +137,11 @@ funil.get("/", async (c) => {
     if (chave) { auto.push({ id: k.id, etapa, chave }); diasParado = 0; }
 
     const proxTar = chave ? { titulo: MOVE[chave].tarefa, vence_em: null } : proxTarefa.get(k.id) || null;
-    const semTarefa = etapa !== "perdido" && !proxTar;
+    // "atendimento" (só conversa) não exige tarefa nem dispara alerta de parado.
+    const semTarefa = etapa !== "perdido" && etapa !== "atendimento" && !proxTar;
     const retornoVencido = etapa === "aguardando-retorno" && !!k.retorno_em && k.retorno_em <= hoje;
-    const alerta = semTarefa || retornoVencido || (etapa === "negociacao" && diasParado > 7) || diasParado > 15;
-    const vermelho = (etapa === "negociacao" && diasParado >= 7) || diasParado > 15;
+    const alerta = semTarefa || retornoVencido || (etapa === "negociacao" && diasParado > 7) || (etapa !== "atendimento" && diasParado > 15);
+    const vermelho = (etapa === "negociacao" && diasParado >= 7) || (etapa !== "atendimento" && diasParado > 15);
 
     return {
       id: k.id, cliente_id: k.cliente_id, nome: k.nome, cidade: k.cidade, uf: k.uf, whatsapp: k.whatsapp,

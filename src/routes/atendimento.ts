@@ -833,9 +833,11 @@ atendimento.delete("/conhecimento/:id", async (c) => {
 
 // Abre (ou cria) a conversa de WhatsApp de um card do funil / cliente, pra chamar do funil.
 atendimento.post("/abrir-conversa", async (c) => {
-  const b = await c.req.json<{ telefone?: string; nome?: string; card_id?: string; cliente_id?: string; criar_card?: boolean }>().catch(() => ({}) as Record<string, never>);
+  const b = await c.req.json<{ telefone?: string; nome?: string; card_id?: string; cliente_id?: string; criar_card?: boolean; destino?: string }>().catch(() => ({}) as Record<string, never>);
   const tel = digitos(b.telefone);
   let cardId = String(b.card_id ?? "").trim() || null;
+  // destino do card: "prospeccao" (novo lead) ou "atendimento" (só conversa). criar_card:true = prospecção (compat).
+  const destino = String(b.destino ?? "").trim() || (b.criar_card ? "prospeccao" : "");
   // 1) Já existe conversa vinculada a esse card?
   let conv = cardId ? await c.env.DB.prepare("SELECT id, card_id FROM atend_conversas WHERE card_id=? LIMIT 1").bind(cardId).first<{ id: string; card_id: string | null }>().catch(() => null) : null;
   // 2) Senão, procura pelo telefone (sufixo de 8 dígitos).
@@ -851,22 +853,27 @@ atendimento.post("/abrir-conversa", async (c) => {
   if (!tel) return c.json({ error: "Este cliente não tem WhatsApp no cadastro. Adicione o número em Clientes e tente de novo." });
   const cli = await identificarCliente(c.env, tel);
   const nome = (b.nome || cli?.nome || "").trim();
-  // 3b) Prospecção: se pedido, garante um card no funil (novo-lead) e vincula a conversa a ele.
-  if (!cardId && b.criar_card) {
+  // 3b) Garante um card no funil e vincula a conversa: prospecção → "novo-lead"
+  //     (com tarefa de 1º contato); atendimento → coluna "atendimento" (só conversa).
+  if (!cardId && (destino === "prospeccao" || destino === "atendimento")) {
     const cliId = String(b.cliente_id ?? "").trim() || cli?.id || null;
     let card = cliId ? await c.env.DB.prepare("SELECT id FROM funil_cards WHERE cliente_id=? LIMIT 1").bind(cliId).first<{ id: string }>().catch(() => null) : null;
     if (!card && nome) card = await c.env.DB.prepare("SELECT id FROM funil_cards WHERE nome=? LIMIT 1").bind(nome).first<{ id: string }>().catch(() => null);
     if (card) cardId = card.id;
     else {
       const info = cliId ? await c.env.DB.prepare("SELECT cidade, uf, representante FROM clientes WHERE id=?").bind(cliId).first<{ cidade: string | null; uf: string | null; representante: string | null }>().catch(() => null) : null;
+      const etapa = destino === "atendimento" ? "atendimento" : "novo-lead";
       const novo = uid();
       await c.env.DB.prepare(
-        "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, 'novo-lead', ?)"
-      ).bind(novo, cliId, nome || "(sem nome)", info?.cidade ?? null, info?.uf ?? null, tel, info?.representante ?? null).run();
-      await c.env.DB.prepare(
-        "INSERT INTO funil_tarefas (id, card_id, titulo, vence_em, responsavel) VALUES (?, ?, '1º contato (24h)', date('now','+1 day'), ?)"
-      ).bind(uid(), novo, info?.representante ?? null).run();
-      await c.env.DB.prepare("INSERT INTO funil_eventos (id, card_id, tipo, texto) VALUES (?, ?, 'etapa', 'Prospecção iniciada pelo WhatsApp')").bind(uid(), novo).run();
+        "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      ).bind(novo, cliId, nome || "(sem nome)", info?.cidade ?? null, info?.uf ?? null, tel, etapa, info?.representante ?? null).run();
+      if (destino === "prospeccao") {
+        await c.env.DB.prepare(
+          "INSERT INTO funil_tarefas (id, card_id, titulo, vence_em, responsavel) VALUES (?, ?, '1º contato (24h)', date('now','+1 day'), ?)"
+        ).bind(uid(), novo, info?.representante ?? null).run();
+      }
+      const logTxt = destino === "atendimento" ? "Conversa iniciada pelo WhatsApp (atendimento)" : "Prospecção iniciada pelo WhatsApp";
+      await c.env.DB.prepare("INSERT INTO funil_eventos (id, card_id, tipo, texto) VALUES (?, ?, 'etapa', ?)").bind(uid(), novo, logTxt).run();
       cardId = novo;
     }
   }
