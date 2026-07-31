@@ -244,7 +244,7 @@ atendimento.post("/webhook", async (c) => {
 
 // ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
-const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "followup_ativo", "followup_domingo"]);
+const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "followup_ativo", "followup_domingo", "followup_ia"]);
 
 atendimento.get("/config", async (c) => {
   const cfg = await lerConfig(c.env);
@@ -262,6 +262,7 @@ atendimento.get("/config", async (c) => {
     followup_hora_ini: cfg.followup_hora_ini || "8",
     followup_hora_fim: cfg.followup_hora_fim || "18",
     followup_domingo: cfg.followup_domingo === "1",
+    followup_ia: cfg.followup_ia === "1",
     webhook_url: new URL(c.req.url).origin + "/api/atendimento/webhook",
   });
 });
@@ -269,7 +270,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -409,6 +410,28 @@ function textoFollowup(etapa: number, nome: string | null): string {
   return `Vou deixar seu atendimento em aberto por aqui 🌸. Quando quiser conhecer melhor nossos produtos ou receber sugestões pra sua loja, é só me chamar!`;
 }
 
+// Gera o texto do follow-up por IA (Cloudflare Workers AI). Personaliza com nome/cidade
+// e a intenção da etapa. Qualquer falha (ou IA desligada) cai no modelo pronto.
+async function textoFollowupIA(env: Env, etapa: number, ctx: { nome: string | null; cidade: string | null }): Promise<string> {
+  const fallback = textoFollowup(etapa, ctx.nome);
+  try {
+    const objetivo = etapa === 1
+      ? "primeira retomada, leve e simpática, perguntando se conseguiu ver o catálogo"
+      : etapa === 2
+        ? "segunda tentativa, oferecendo ajuda para montar uma seleção para a loja dela"
+        : "última mensagem, deixando o atendimento em aberto, sem insistir";
+    const sys = "Você é atendente da Big Tricot, atacado de tricô para o lar (mantas, capas, almofadas), falando com LOJISTAS pelo WhatsApp. Escreva UMA mensagem curta (1 a 2 frases), calorosa e natural em português do Brasil, com no máximo 1 emoji. NUNCA invente preços, produtos, prazos ou promoções. Não seja insistente. Responda apenas com a mensagem, sem aspas.";
+    const usr = `Objetivo: ${objetivo}.${ctx.nome ? ` Nome da loja/cliente: ${ctx.nome}.` : ""}${ctx.cidade ? ` Cidade: ${ctx.cidade}.` : ""}`;
+    const r = (await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+      messages: [{ role: "system", content: sys }, { role: "user", content: usr }], max_tokens: 140,
+    })) as { response?: string };
+    const txt = (r?.response || "").trim().replace(/^["']+|["']+$/g, "");
+    return txt.length >= 10 && txt.length <= 400 ? txt : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 // ── FOLLOW-UP em cadência (24h → +3d → +7d → para) com regras (chamado pelo cron) ──
 // Regras: só em horário comercial (Brasil, sem madrugada/domingo), nunca 2× no mesmo
 // dia, para quando o cliente responde, não insiste após a última tentativa, e respeita
@@ -434,17 +457,19 @@ export async function followupAtendimento(env: Env): Promise<number> {
     { de: 1, gap: "-3 days", para: 2, estado: "follow-up-24h" },
     { de: 2, gap: "-7 days", para: 3, estado: "sem-retorno" },
   ];
+  const usarIA = (cfg.followup_ia ?? "0") === "1";
   let enviados = 0;
   for (const e of estagios) {
     const { results } = await env.DB.prepare(
-      `SELECT id, telefone, nome, contato_nome FROM atend_conversas
+      `SELECT id, telefone, nome, contato_nome, cidade FROM atend_conversas
         WHERE followup_etapa = ? AND COALESCE(nao_perturbe,0) = 0
           AND estado IN ('catalogo-enviado','follow-up-24h')
           AND ultima_out_em IS NOT NULL AND ultima_out_em <= datetime('now', ?)
           AND (ultima_in_em IS NULL OR ultima_in_em <= ultima_out_em)`
-    ).bind(e.de, e.gap).all<{ id: string; telefone: string; nome: string | null; contato_nome: string | null }>();
+    ).bind(e.de, e.gap).all<{ id: string; telefone: string; nome: string | null; contato_nome: string | null; cidade: string | null }>();
     for (const conv of results) {
-      const texto = textoFollowup(e.para, conv.contato_nome || conv.nome);
+      const nome = conv.contato_nome || conv.nome;
+      const texto = usarIA ? await textoFollowupIA(env, e.para, { nome, cidade: conv.cidade }) : textoFollowup(e.para, nome);
       await addMsg(env, conv.id, "out", "bot", "texto", texto);
       await enviarWhatsapp(env, conv.telefone, { tipo: "texto", texto });
       await env.DB.prepare(
