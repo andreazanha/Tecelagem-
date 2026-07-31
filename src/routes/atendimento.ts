@@ -277,6 +277,60 @@ atendimento.post("/webhook", async (c) => {
   return c.json({ ok: true, conversa_id: r.conversa_id });
 });
 
+// ── EVENTO do catálogo (o catálogo faz POST aqui) ────────────────────────────────
+// Body: { tipo, telefone, loja?, rep?, produto?, code? }.
+// tipo: acesso | abertura | download | envio | rep_acesso | produto.
+// Cria/atualiza a conversa (origem=catálogo, vira lead) e registra o evento no histórico.
+const EVENTO_LABEL: Record<string, (b: { loja?: string; rep?: string; produto?: string }) => string> = {
+  acesso: (b) => `🔗 Entrou no catálogo${b.loja ? ` — loja: *${b.loja}*` : ""}`,
+  abertura: () => "📖 Abriu o catálogo",
+  download: () => "⬇️ Baixou o catálogo",
+  envio: () => "📤 Catálogo enviado",
+  rep_acesso: (b) => `🧑‍💼 Acesso pelo link do representante${b.rep ? ` (${b.rep})` : ""}`,
+  produto: (b) => `👀 Visualizou: *${b.produto || "produto"}*`,
+};
+
+atendimento.post("/catalogo-evento", async (c) => {
+  const cfg = await lerConfig(c.env);
+  const b = await c.req.json<{ tipo?: string; telefone?: string; loja?: string; rep?: string; produto?: string; code?: string }>().catch(() => ({}) as Record<string, string>);
+  if (cfg.catalogo_evento_token && (b.code || "") !== cfg.catalogo_evento_token) return c.json({ error: "não autorizado" }, 401);
+  const tel = digitos(b.telefone);
+  const tipo = (b.tipo || "").trim().toLowerCase();
+  if (!tel) return c.json({ error: "telefone é obrigatório" }, 400);
+  const loja = (b.loja || "").trim().slice(0, 80) || null;
+  const rep = (b.rep || "").trim() || null;
+
+  let conv = await c.env.DB.prepare("SELECT id, nome, representante FROM atend_conversas WHERE telefone = ?").bind(tel).first<{ id: string; nome: string | null; representante: string | null }>();
+  if (!conv) {
+    const id = uid();
+    const cliente = await identificarCliente(c.env, tel);
+    let representante = rep, nome = loja, cnpj: string | null = null, cidade: string | null = null, uf: string | null = null, clienteId: string | null = null;
+    let tipoConv: string | null = rep ? "lojista" : null;
+    if (cliente) {
+      clienteId = cliente.id; nome = nome || cliente.nome; cnpj = cliente.cnpj; cidade = cliente.cidade; uf = cliente.uf; tipoConv = "lojista";
+      representante = representante || cliente.representante || (await representantePorRegiao(c.env, cliente.uf));
+    }
+    await c.env.DB.prepare(
+      "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, representante, cliente_id, nome, cnpj, cidade, uf) VALUES (?, ?, 'novo', 'catalogo', ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(id, tel, tipoConv, representante, clienteId, nome, cnpj, cidade, uf).run();
+    conv = { id, nome, representante };
+  } else {
+    const sets = ["origem='catalogo'"], binds: unknown[] = [];
+    if (loja && !conv.nome) { sets.push("nome=?"); binds.push(loja); }
+    if (rep && !conv.representante) { sets.push("representante=?"); binds.push(rep); }
+    await c.env.DB.prepare(`UPDATE atend_conversas SET ${sets.join(", ")}, atualizado_em=datetime('now') WHERE id=?`).bind(...binds, conv.id).run();
+  }
+
+  const label = (EVENTO_LABEL[tipo] || ((x: { produto?: string }) => `📌 Catálogo: ${tipo}${x.produto ? ` (${x.produto})` : ""}`))({ loja: loja || undefined, rep: rep || undefined, produto: b.produto });
+  await addMsg(c.env, conv.id, "in", "catalogo", "sistema", label);
+  await c.env.DB.prepare("UPDATE atend_conversas SET atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+  if (tipo === "produto" && b.produto) {
+    await c.env.DB.prepare("INSERT OR IGNORE INTO atend_interesses (id, conversa_id, termo) VALUES (?, ?, ?)").bind(uid(), conv.id, String(b.produto).trim().slice(0, 60)).run();
+    await c.env.DB.prepare("UPDATE atend_conversas SET interessado=1 WHERE id=?").bind(conv.id).run();
+  }
+  return c.json({ ok: true, conversa_id: conv.id });
+});
+
 // ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
 const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo"]);
@@ -302,6 +356,8 @@ atendimento.get("/config", async (c) => {
     pos_venda_dias: cfg.pos_venda_dias || "7",
     recompra_ativo: (cfg.recompra_ativo ?? "1") === "1",
     recompra_dias: cfg.recompra_dias || "45",
+    catalogo_evento_token: cfg.catalogo_evento_token || "",
+    catalogo_evento_url: new URL(c.req.url).origin + "/api/atendimento/catalogo-evento",
     webhook_url: new URL(c.req.url).origin + "/api/atendimento/webhook",
   });
 });
@@ -309,7 +365,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "catalogo_evento_token"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
