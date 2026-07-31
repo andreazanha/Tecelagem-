@@ -77,7 +77,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
     if (!cfg) return;
     setSalvando(true); setMsg("");
     try {
-      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo });
+      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, catalogo_url: cfg.catalogo_url });
       setMsg("✓ Salvo!"); onMudou(); setTimeout(() => setMsg(""), 2500);
     } catch { setMsg("Erro ao salvar."); } finally { setSalvando(false); }
   }
@@ -121,6 +121,8 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
               <input value={cfg.zapi_client_token} onChange={(e) => set("zapi_client_token", e.target.value)} placeholder="Account Security Token (menu Segurança do painel)" /></label>
             <label className="campo"><span className="campo-label">URL base (deixe o padrão)</span>
               <input value={cfg.zapi_base} onChange={(e) => set("zapi_base", e.target.value)} placeholder="https://api.z-api.io" /></label>
+            <label className="campo"><span className="campo-label">📒 Link do catálogo (enviado ao lojista)</span>
+              <input value={cfg.catalogo_url} onChange={(e) => set("catalogo_url", e.target.value)} placeholder="cole o link público do catálogo" /></label>
 
             <label className="row-gap" style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 14px", cursor: "pointer" }}>
               <input type="checkbox" checked={cfg.zapi_ativo} onChange={(e) => set("zapi_ativo", e.target.checked)} style={{ width: 18, height: 18 }} />

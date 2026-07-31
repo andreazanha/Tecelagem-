@@ -31,6 +31,18 @@ export interface Deps {
   consultarCnpj: (cnpjDigitos: string) => Promise<{ existe: boolean; ativa: boolean; nome: string | null; uf?: string | null; cidade?: string | null; erro?: boolean; fonte?: string }>;
   // Busca lojas parceiras perto da cidade/UF (prioriza ativas e frequentes).
   parceiros: (cidade: string | null, uf: string | null) => Promise<LojaParceira[]>;
+  // Link do catálogo (configurado no CRM). Se vazio, cai no placeholder antigo.
+  catalogoUrl?: string | null;
+}
+
+// Monta o envio do catálogo: se há link configurado, manda o link real; senão,
+// o placeholder antigo (compatibilidade / modo teste sem link).
+function enviarCatalogo(saidas: Saida[], deps: Deps) {
+  if (deps.catalogoUrl) {
+    saidas.push({ tipo: "texto", texto: `📒 Nosso catálogo está aqui, dá uma olhada:\n${deps.catalogoUrl}` });
+  } else {
+    saidas.push({ tipo: "arquivo", texto: "Catálogo Big Tricot 2026.pdf" });
+  }
 }
 
 // Validação real do CNPJ (dígitos verificadores) — pega número errado/inventado.
@@ -205,7 +217,7 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
         conv.lojista = 1;
         if (!conv.nome && r.nome) conv.nome = r.nome;
         push("Perfeito! ✅ Já vou te mandar nosso catálogo 📒\n(nosso time confirma seu cadastro em seguida).");
-        saidas.push({ tipo: "arquivo", texto: "Catálogo Big Tricot 2026.pdf" });
+        enviarCatalogo(saidas, deps);
         push("Um dos nossos vendedores já vai assumir a conversa pra montar seu pedido. 🚀");
         conv.estado = "catalogo-enviado";
         notificarHumano = true;
@@ -216,7 +228,7 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
         if (r.uf && !conv.uf) conv.uf = r.uf;
         if (r.cidade && !conv.cidade) conv.cidade = r.cidade;
         push(`Show! Confirmei seu CNPJ${r.nome ? ` (*${r.nome}*)` : ""}. ✅\nJá vou te mandar nosso catálogo. 📒`);
-        saidas.push({ tipo: "arquivo", texto: "Catálogo Big Tricot 2026.pdf" });
+        enviarCatalogo(saidas, deps);
         push("Um dos nossos vendedores já vai assumir a conversa pra montar seu pedido. 🚀");
         conv.estado = "catalogo-enviado";
         notificarHumano = true;

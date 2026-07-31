@@ -25,8 +25,9 @@ type ConvRow = Conversa & {
 };
 
 // ── Dependências (SINTEGRA + lojas parceiras) ────────────────────────────────────
-function deps(env: Env): Deps {
+function deps(env: Env, catalogoUrl?: string | null): Deps {
   return {
+    catalogoUrl: catalogoUrl ?? null,
     // Consulta o CNPJ: 1º na base própria (cliente já cadastrado → aceita na hora,
     // offline-safe); senão na Receita via BrasilAPI (confirma existência + situação).
     async consultarCnpj(cnpj) {
@@ -160,7 +161,8 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
 
   // Passa o contexto de identificação pro robô (saudação personalizada de cliente conhecido).
   conv.clienteConhecido = !!conv.cliente_id;
-  const r = await processar(conv as Conversa, texto, deps(env));
+  const cfgAt = await lerConfig(env);
+  const r = await processar(conv as Conversa, texto, deps(env, cfgAt.catalogo_url || null));
 
   // Representante responsável: 1º o que já veio (cliente/base), senão pela região da UF.
   let representanteFinal = conv.representante ?? null;
@@ -251,6 +253,7 @@ atendimento.get("/config", async (c) => {
     zapi_client_token: cfg.zapi_client_token || "",
     zapi_ativo: cfg.zapi_ativo === "1",
     atendimento_ativo: cfg.atendimento_ativo === "1",
+    catalogo_url: cfg.catalogo_url || "",
     webhook_url: new URL(c.req.url).origin + "/api/atendimento/webhook",
   });
 });
@@ -258,7 +261,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "catalogo_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
