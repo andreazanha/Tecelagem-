@@ -148,7 +148,7 @@ REGRAS IMPORTANTES:
 - Se o cliente pedir PRIVATE LABEL (marca própria, etiqueta própria, fabricar com a marca dele): use acao "humano" — isso é com um vendedor especializado. Na resposta, diga que já vai chamar o vendedor.
 - Se pedir Financeiro, Pós-venda, tratar de um pedido já feito, reclamação/problema, ou pedir pra falar com uma pessoa: use acao "humano".
 - Enquanto ainda está entendendo se é lojista ou consumidor, use acao "conversar". Assim que descobrir, seja decidido e use a acao certa — não enrole.
-- NUNCA invente preços, prazos de entrega, pedido mínimo, formas de pagamento ou políticas. Se perguntarem, diga que o vendedor passa esses detalhes e que o catálogo é enviado após confirmar o cadastro.
+- Não invente preços, prazos, pedido mínimo ou políticas POR CONTA PRÓPRIA. PORÉM, se a pergunta tiver resposta na BASE DE CONHECIMENTO (mais abaixo), use EXATAMENTE aquela informação — ela é oficial da empresa e tem prioridade sobre esta regra. Só quando NÃO houver nada na base sobre o assunto é que você diz que o vendedor passa os detalhes.
 - Tom: caloroso, brasileiro, informal de WhatsApp. Respostas CURTAS (1 a 3 linhas), no máximo 1 ou 2 emojis. Nunca repita a mesma pergunta que já foi respondida.
 - Escreva os emojis COMO EMOJI de verdade (😊 💛 👍), NUNCA como código escapado tipo \\u{1f603}.
 
@@ -181,7 +181,7 @@ async function lerConhecimento(env: Env): Promise<string> {
   ).all<{ pergunta: string; resposta: string }>().catch(() => ({ results: [] as { pergunta: string; resposta: string }[] }));
   if (!results.length) return "";
   const itens = results.map((r) => `P: ${String(r.pergunta).trim()}\nR: ${String(r.resposta).trim()}`).join("\n\n");
-  return `\n\nBASE DE CONHECIMENTO (quando a pergunta do cliente for parecida com uma destas, responda com base na resposta correspondente, adaptando ao tom da conversa; se não houver nada relacionado, responda normalmente pelas regras acima):\n${itens}`;
+  return `\n\nBASE DE CONHECIMENTO OFICIAL (PRIORIDADE MÁXIMA): quando a pergunta do cliente for sobre um destes temas, responda COM BASE na resposta correspondente — mesmo que seja sobre preço, prazo ou pedido mínimo. Estas respostas foram definidas pela empresa e valem MAIS que a regra geral de "não inventar". Adapte só o tom, sem mudar a informação. Se não houver nada relacionado, siga as regras acima.\n${itens}`;
 }
 
 const IA_MODELOS = [
