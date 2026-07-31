@@ -45,12 +45,22 @@ export interface Deps {
 // Monta a mensagem do catálogo — que é VIRTUAL (link), nunca um PDF.
 // Precedência: mensagem pronta > link (+senha) > aviso de que o vendedor envia.
 export function montarCatalogo(deps: Deps): Saida[] {
-  if (deps.catalogoMsg && deps.catalogoMsg.trim()) {
-    return [{ tipo: "texto", texto: deps.catalogoMsg.trim() }];
+  const url = (deps.catalogoUrl || "").trim();
+  const senha = (deps.catalogoSenha || "").trim();
+  const msg = (deps.catalogoMsg || "").trim();
+  if (msg) {
+    let txt = msg;
+    // Se a mensagem colada NÃO tem link e existe um link configurado, anexa o link
+    // (e a senha, se ainda não estiver no texto). Assim o link sempre chega ao cliente.
+    if (url && !/https?:\/\//i.test(msg)) {
+      txt += `\n\n${url}`;
+      if (senha && !msg.toLowerCase().includes(senha.toLowerCase())) txt += `\n🔑 Senha: *${senha}*`;
+    }
+    return [{ tipo: "texto", texto: txt }];
   }
-  if (deps.catalogoUrl && deps.catalogoUrl.trim()) {
-    let txt = `📒 Nosso catálogo é digital, dá uma olhada aqui:\n${deps.catalogoUrl.trim()}`;
-    if (deps.catalogoSenha) txt += `\n\n🔑 Senha de acesso: *${deps.catalogoSenha}*`;
+  if (url) {
+    let txt = `📒 Nosso catálogo é digital, dá uma olhada aqui:\n${url}`;
+    if (senha) txt += `\n\n🔑 Senha de acesso: *${senha}*`;
     return [{ tipo: "texto", texto: txt }];
   }
   // Sem catálogo configurado: não inventa PDF — avisa que o vendedor manda o acesso.

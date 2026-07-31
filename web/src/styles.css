@@ -550,8 +550,8 @@ body.dark .kcard-estoque.urg-ok      { background: #10281a; border-color: #14532
 /* TEMA ESCURO (toggle no topo) — navy + roxo, igual ao painel.   */
 /* ============================================================= */
 body.dark {
-  --ink: #e8ecf6;
-  --muted: #93a0bd;
+  --ink: #eef1f8;
+  --muted: #aab6d2;
   --line: #ffffff1a;
   --bg: #070b16;
   background: #070b16;
