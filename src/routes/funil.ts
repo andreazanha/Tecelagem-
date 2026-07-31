@@ -327,6 +327,22 @@ funil.post("/reativacao", async (c) => {
   return c.json({ criados, dias });
 });
 
+// ── ASSUMIR cliente ────────────────────────────────────────────────────────────
+// A loja assume o cliente do representante (quando o representante não atende /
+// atende mal). Tira o representante do cliente e do cartão e registra na timeline.
+funil.post("/:id/assumir", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ autor?: string }>().catch(() => ({}) as { autor?: string });
+  const autor = String(b.autor ?? "").trim() || null;
+  const card = await c.env.DB.prepare("SELECT id, nome, cliente_id, responsavel FROM funil_cards WHERE id = ?").bind(id).first<{ id: string; nome: string; cliente_id: string | null; responsavel: string | null }>();
+  if (!card) return c.json({ error: "cartão não encontrado" }, 404);
+  const repAntigo = (card.responsavel || "").trim();
+  await c.env.DB.prepare("UPDATE clientes SET representante = NULL WHERE id = ? OR nome = ?").bind(card.cliente_id, card.nome).run();
+  await c.env.DB.prepare("UPDATE funil_cards SET responsavel = ? WHERE id = ?").bind(autor, id).run();
+  await logar(c.env, id, "obs", repAntigo ? `Cliente assumido pela loja (era do representante ${repAntigo})` : "Cliente assumido pela loja", autor);
+  return c.json({ ok: true });
+});
+
 // ── APAGAR cartão ────────────────────────────────────────────────────────────────
 funil.delete("/:id", async (c) => {
   await apagarCard(c.env, c.req.param("id"));

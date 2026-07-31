@@ -662,6 +662,7 @@ export const api = {
   funilBoard: () => fetch("/api/funil").then((r) => j<FunilBoard>(r)),
   sincronizarFunil: () => jsonPost("/api/funil/sincronizar", {}).then((r) => j<{ criados: number; removidos: number; ignorados: number }>(r)),
   reativarFunil: (dias?: number) => jsonPost(`/api/funil/reativacao${dias ? `?dias=${dias}` : ""}`, {}).then((r) => j<{ criados: number; dias: number }>(r)),
+  assumirCliente: (cardId: string) => jsonPost(`/api/funil/${cardId}/assumir`, { autor: quemSou() }).then((r) => j<{ ok: boolean; error?: string }>(r)),
   excluirCard: (id: string) => fetch(`/api/funil/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   // Lojas parceiras (vitrine)
   parceiros: () => fetch("/api/parceiros").then((r) => j<LojaParceira[]>(r)),

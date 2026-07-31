@@ -287,6 +287,18 @@ function CardDetalhe({ id, onFechar, onMudou, onAbrirConversa }: { id: string; o
                   💬 Abrir conversa no WhatsApp
                 </button>
               )}
+              {/* Assumir cliente: tira do representante e passa pra loja (quando o rep não atende) */}
+              {d.responsavel && (
+                <button className="btn" style={{ width: "100%", marginBottom: 12 }} disabled={busy}
+                  onClick={async () => {
+                    if (!confirm(`Assumir o cliente "${d.nome}"? Ele sai do representante ${d.responsavel} e passa a ser atendido pela loja.`)) return;
+                    setBusy(true);
+                    try { const r = await api.assumirCliente(id); if (r.error) alert(r.error); else { carregar(); onMudou(); } }
+                    catch (e) { alert((e as Error).message); } finally { setBusy(false); }
+                  }}>
+                  🤝 Assumir cliente (tirar do representante)
+                </button>
+              )}
               {/* Mover de etapa */}
               <div className="fx-block">
                 <div className="fx-block-h">Etapa</div>
