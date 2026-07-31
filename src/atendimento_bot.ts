@@ -31,15 +31,18 @@ export interface Deps {
   consultarCnpj: (cnpjDigitos: string) => Promise<{ existe: boolean; ativa: boolean; nome: string | null; uf?: string | null; cidade?: string | null; erro?: boolean; fonte?: string }>;
   // Busca lojas parceiras perto da cidade/UF (prioriza ativas e frequentes).
   parceiros: (cidade: string | null, uf: string | null) => Promise<LojaParceira[]>;
-  // Link do catálogo (configurado no CRM). Se vazio, cai no placeholder antigo.
+  // Link e senha do catálogo (configurados no CRM). Se vazio, cai no placeholder.
   catalogoUrl?: string | null;
+  catalogoSenha?: string | null;
 }
 
-// Monta o envio do catálogo: se há link configurado, manda o link real; senão,
-// o placeholder antigo (compatibilidade / modo teste sem link).
+// Monta o envio do catálogo: se há link configurado, manda o link (e a senha de
+// acesso, se houver); senão, o placeholder antigo (modo teste sem link).
 function enviarCatalogo(saidas: Saida[], deps: Deps) {
   if (deps.catalogoUrl) {
-    saidas.push({ tipo: "texto", texto: `📒 Nosso catálogo está aqui, dá uma olhada:\n${deps.catalogoUrl}` });
+    let txt = `📒 Nosso catálogo está aqui, dá uma olhada:\n${deps.catalogoUrl}`;
+    if (deps.catalogoSenha) txt += `\n\n🔑 Senha de acesso: *${deps.catalogoSenha}*`;
+    saidas.push({ tipo: "texto", texto: txt });
   } else {
     saidas.push({ tipo: "arquivo", texto: "Catálogo Big Tricot 2026.pdf" });
   }
