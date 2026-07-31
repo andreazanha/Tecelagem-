@@ -79,7 +79,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
     if (!cfg) return;
     setSalvando(true); setMsg("");
     try {
-      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
+      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, ia_prompt: cfg.ia_prompt, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
       setMsg("✓ Salvo!"); onMudou(); setTimeout(() => setMsg(""), 2500);
     } catch { setMsg("Erro ao salvar."); } finally { setSalvando(false); }
   }
@@ -146,6 +146,21 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
                <span style={{ fontSize: 12, color: "#64748b" }}>Vê na hora se a IA responde (não precisa do simulador).</span>
              </div>
              {iaTeste && <pre style={{ marginTop: 10, marginBottom: 0, whiteSpace: "pre-wrap", fontSize: 12.5, background: "#0f172a", color: "#e2e8f0", padding: "10px 12px", borderRadius: 8, fontFamily: "inherit", lineHeight: 1.5 }}>{iaTeste}</pre>}
+             {cfg.atendimento_ia && (
+               <div style={{ marginTop: 12 }}>
+                 <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 3 }}>📝 Ajustes na conversa da Bia (opcional)</div>
+                 <textarea value={cfg.ia_prompt} onChange={(e) => set("ia_prompt", e.target.value)} rows={5}
+                   placeholder={"Escreva do seu jeito o que a Bia deve (ou não deve) fazer. Ex.:\n• Não fale de modelos/cores com consumidor final, só indique a loja parceira.\n• Seja mais objetiva, no máximo 2 linhas.\n• Sempre pergunte a quantidade que o lojista precisa."}
+                   style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.45 }} />
+                 <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 3 }}>
+                   Em branco = a Bia usa as regras padrão da Big Tricot. O que você escrever aqui é <b>somado</b> às regras (não substitui) — então ela nunca "quebra".
+                 </div>
+                 <details style={{ marginTop: 6 }}>
+                   <summary style={{ cursor: "pointer", fontSize: 11.5, color: "#8b5cf6" }}>ver as regras padrão da Bia (referência)</summary>
+                   <pre style={{ whiteSpace: "pre-wrap", fontSize: 11, color: "#475569", background: "#f1f5f9", padding: "8px 10px", borderRadius: 6, marginTop: 4, maxHeight: 180, overflow: "auto", fontFamily: "inherit" }}>{cfg.ia_prompt_padrao}</pre>
+                 </details>
+               </div>
+             )}
             </div>
             <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 12px", fontSize: 12.5, marginBottom: 14, color: "#92400e" }}>
               API não-oficial: use um <b>chip dedicado</b> (não seu número pessoal). Há risco de bloqueio pelo WhatsApp se disparar em massa.

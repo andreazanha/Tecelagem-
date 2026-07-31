@@ -158,14 +158,21 @@ SEU PAPEL: acolher quem chama, conversar de forma natural e humana, ENTENDER o q
 REGRAS IMPORTANTES:
 - NÃO peça o CNPJ logo de cara. Primeiro converse, entenda a necessidade (que tipo de produto procura, se já conhece a marca, etc.) e só depois, quando fizer sentido, encaminhe pra pegar os dados.
 - Se perceber que é LOJISTA e a pessoa quer ver produtos/preços/catálogo/fazer pedido: use acao "coletar_lojista" e, na sua resposta, peça gentilmente o NOME DA LOJA (o sistema pede o CNPJ na sequência).
-- Se for CONSUMIDOR FINAL (pessoa física, "pra mim", "uso pessoal", "presente", sem loja/CNPJ): use acao "indicar_parceiro" e explique com carinho que as vendas da Big Tricot são direcionadas a lojistas, mas que você pode indicar LOJAS PARCEIRAS da região dela — e peça a CIDADE e o ESTADO.
+- Se for CONSUMIDOR FINAL (pessoa física, "pra mim", "uso pessoal", "presente", sem loja/CNPJ): use acao "indicar_parceiro" JÁ na mesma resposta — explique com carinho, em 1 ou 2 linhas, que as vendas da Big Tricot são no atacado para lojistas, mas que você indica uma LOJA PARCEIRA da região, e peça a CIDADE e o ESTADO. NÃO fique conversando sobre modelos, cores ou tipos de produto com o consumidor final: quem vai atendê-lo é a loja parceira. Assim que ele responder a cidade, o sistema mostra as lojas — você não precisa fazer mais nada.
 - Se pedir Financeiro, Pós-venda, tratar de um pedido já feito, reclamação/problema, ou pedir pra falar com uma pessoa: use acao "humano".
-- Enquanto ainda está entendendo, use acao "conversar".
+- Enquanto ainda está entendendo se é lojista ou consumidor, use acao "conversar". Assim que descobrir, seja decidido e use a acao certa — não enrole.
 - NUNCA invente preços, prazos de entrega, pedido mínimo, formas de pagamento ou políticas. Se perguntarem, diga que o vendedor passa esses detalhes e que o catálogo é enviado após confirmar o cadastro.
 - Tom: caloroso, brasileiro, informal de WhatsApp. Respostas CURTAS (1 a 3 linhas), no máximo 1 ou 2 emojis. Nunca repita a mesma pergunta que já foi respondida.
 
 RESPONDA **SOMENTE** com um JSON válido, sem texto fora dele, neste formato exato:
 {"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "indicar_parceiro" | "humano"}`;
+
+// Junta as regras base (fixas, incluindo o formato JSON) com os ajustes que o lojista
+// escreve na config. Ajustes se SOMAM — nunca substituem o núcleo, pra não quebrar a Bia.
+function sistemaIa(extra?: string | null): string {
+  const e = String(extra ?? "").trim();
+  return e ? `${IA_SISTEMA}\n\nAJUSTES DO LOJISTA (siga também estas instruções, sem quebrar o formato JSON acima):\n${e}` : IA_SISTEMA;
+}
 
 const IA_MODELOS = [
   "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
@@ -190,7 +197,8 @@ function extrairJson(txt: string): IaDecisao | null {
 }
 
 // Chama a IA com o histórico da conversa e devolve a decisão (ou null se indisponível).
-async function chamarIa(env: Env, conv: ConvRow): Promise<IaDecisao | null> {
+// `sistema` é o prompt de personalidade/regras — editável pelo lojista na config.
+async function chamarIa(env: Env, conv: ConvRow, sistema: string): Promise<IaDecisao | null> {
   const AI = env.AI as unknown as { run: (m: string, o: unknown) => Promise<{ response?: string }> };
   if (!AI?.run) return null;
   // Histórico recente (as últimas trocas de texto), pra IA ter contexto.
@@ -198,7 +206,7 @@ async function chamarIa(env: Env, conv: ConvRow): Promise<IaDecisao | null> {
     "SELECT direcao, autor, texto FROM atend_mensagens WHERE conversa_id=? AND tipo='texto' AND autor IN ('cliente','bot') ORDER BY criado_em ASC, rowid ASC"
   ).bind(conv.id).all<{ direcao: string; autor: string; texto: string | null }>();
   const hist = results.slice(-16).map((r) => ({ role: r.autor === "cliente" ? "user" : "assistant", content: String(r.texto ?? "") })).filter((m) => m.content.trim());
-  const messages = [{ role: "system", content: IA_SISTEMA }, ...hist];
+  const messages = [{ role: "system", content: sistema }, ...hist];
   for (const modelo of IA_MODELOS) {
     try {
       const res = await AI.run(modelo, { messages, max_tokens: 400, temperature: 0.6 });
@@ -216,8 +224,8 @@ async function chamarIa(env: Env, conv: ConvRow): Promise<IaDecisao | null> {
 interface IaSaida { saidas: Saida[]; novoEstado: EstadoAtend; notificarHumano: boolean; tipo: string | null }
 
 // Roda a IA de triagem e traduz a decisão em resposta + próximo estado do fluxo.
-async function iaTriagem(env: Env, conv: ConvRow): Promise<IaSaida> {
-  const dec = await chamarIa(env, conv);
+async function iaTriagem(env: Env, conv: ConvRow, sistema: string): Promise<IaSaida> {
+  const dec = await chamarIa(env, conv, sistema);
   // IA indisponível (binding ausente/erro) → degrada pro menu determinístico, que é à prova de falhas.
   if (!dec) return { saidas: [{ tipo: "texto", texto: BOAS_VINDAS }], novoEstado: "aguardando-setor", notificarHumano: false, tipo: null };
   const saidas: Saida[] = [{ tipo: "texto", texto: dec.resposta }];
@@ -294,7 +302,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Ao decidir, a IA passa o bastão pro motor determinístico (nome+CNPJ ou lojas parceiras).
   if (cfgAt.atendimento_ia === "1" && !conv.cliente_id && conv.tipo !== "representante"
       && (conv.estado === "novo" || conv.estado === "ia-triagem")) {
-    const ia = await iaTriagem(env, conv);
+    const ia = await iaTriagem(env, conv, sistemaIa(cfgAt.ia_prompt));
     await env.DB.prepare("UPDATE atend_conversas SET estado=?, tipo=COALESCE(?, tipo), atualizado_em=datetime('now') WHERE id=?")
       .bind(ia.novoEstado, ia.tipo, conv.id).run();
     for (const s of ia.saidas) {
@@ -527,6 +535,8 @@ atendimento.get("/config", async (c) => {
     zapi_ativo: cfg.zapi_ativo === "1",
     atendimento_ativo: cfg.atendimento_ativo === "1",
     atendimento_ia: cfg.atendimento_ia === "1",
+    ia_prompt: cfg.ia_prompt || "",
+    ia_prompt_padrao: IA_SISTEMA,
     catalogo_url: cfg.catalogo_url || "",
     catalogo_senha: cfg.catalogo_senha || "",
     catalogo_msg: cfg.catalogo_msg || "",
@@ -549,7 +559,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -571,7 +581,7 @@ atendimento.post("/ia-teste", async (c) => {
   const cfg = await lerConfig(c.env);
   if (!AI?.run) return c.json({ ok: false, ia_ligada: cfg.atendimento_ia === "1", erro: "Binding de IA (env.AI) ausente no Worker.", tentativas: [] });
   const messages = [
-    { role: "system", content: IA_SISTEMA },
+    { role: "system", content: sistemaIa(cfg.ia_prompt) },
     { role: "user", content: "oi, queria ver as mantas de vocês" },
   ];
   const tentativas: { modelo: string; ok: boolean; resposta?: string; erro?: string }[] = [];
