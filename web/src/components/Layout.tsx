@@ -101,9 +101,13 @@ const GRUPOS: MenuGrupo[] = [
     id: "comercial", icon: "🛒", label: "Comercial", itens: [
       { to: "/pedidos", icon: "📦", label: "Pedidos", page: "pedidos" },
       { to: "/pedidos/novo", icon: "➕", label: "Novo Pedido", page: "pedidos" },
-      { to: "/clientes", icon: "👥", label: "Clientes", page: "comercial" },
-      { to: "/funil", icon: "🎯", label: "Funil de Vendas", page: "comercial" },
+    ],
+  },
+  {
+    id: "crm", icon: "🤝", label: "CRM", itens: [
       { to: "/atendimento", icon: "💬", label: "Atendimento (WhatsApp)", page: "comercial" },
+      { to: "/funil", icon: "🎯", label: "Funil de Vendas", page: "comercial" },
+      { to: "/clientes", icon: "👥", label: "Clientes", page: "comercial" },
       { to: "/comercial", icon: "🧑‍💼", label: "Representantes", page: "comercial" },
       { to: "/comercial", icon: "💵", label: "Vendas (Dashboard)", page: "comercial" },
     ],
