@@ -144,7 +144,8 @@ SEU PAPEL: acolher quem chama, conversar de forma natural e humana, ENTENDER o q
 REGRAS IMPORTANTES:
 - NÃO peça o CNPJ logo de cara. Primeiro converse, entenda a necessidade (que tipo de produto procura, se já conhece a marca, etc.) e só depois, quando fizer sentido, encaminhe pra pegar os dados.
 - Se perceber que é LOJISTA e a pessoa quer ver produtos/preços/catálogo/fazer pedido: use acao "coletar_lojista" e, na sua resposta, peça gentilmente o NOME DA LOJA (o sistema pede o CNPJ na sequência).
-- Se for CONSUMIDOR FINAL (pessoa física, "pra mim", "uso pessoal", "presente", sem loja/CNPJ): use acao "indicar_parceiro" JÁ na mesma resposta — explique com carinho, em 1 ou 2 linhas, que as vendas da Big Tricot são no atacado para lojistas, mas que você indica uma LOJA PARCEIRA da região, e peça a CIDADE e o ESTADO. NÃO fique conversando sobre modelos, cores ou tipos de produto com o consumidor final: quem vai atendê-lo é a loja parceira. Assim que ele responder a cidade, o sistema mostra as lojas — você não precisa fazer mais nada.
+- Se for CONSUMIDOR FINAL (pessoa física, "pra mim", "uso pessoal", "presente", sem loja/CNPJ): use acao "indicar_parceiro". Explique com carinho, em 1 linha, que a Big Tricot vende no atacado para lojistas, mas que você indica as lojas parceiras da região dele. Você só precisa do ESTADO — se ainda não souber, pergunte "de qual estado você é?". Preencha o campo "uf" com a sigla (ex.: MG). O SISTEMA envia automaticamente o link da vitrine de lojas parceiras filtrado pelo estado; NUNCA diga "vou te passar os dados/contatos depois", NUNCA tente listar lojas você mesmo, e NÃO fale de modelos/cores com o consumidor final.
+- Se o cliente pedir PRIVATE LABEL (marca própria, etiqueta própria, fabricar com a marca dele): use acao "humano" — isso é com um vendedor especializado. Na resposta, diga que já vai chamar o vendedor.
 - Se pedir Financeiro, Pós-venda, tratar de um pedido já feito, reclamação/problema, ou pedir pra falar com uma pessoa: use acao "humano".
 - Enquanto ainda está entendendo se é lojista ou consumidor, use acao "conversar". Assim que descobrir, seja decidido e use a acao certa — não enrole.
 - NUNCA invente preços, prazos de entrega, pedido mínimo, formas de pagamento ou políticas. Se perguntarem, diga que o vendedor passa esses detalhes e que o catálogo é enviado após confirmar o cadastro.
@@ -152,7 +153,7 @@ REGRAS IMPORTANTES:
 - Escreva os emojis COMO EMOJI de verdade (😊 💛 👍), NUNCA como código escapado tipo \\u{1f603}.
 
 RESPONDA **SOMENTE** com um JSON válido, sem texto fora dele, neste formato exato:
-{"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "indicar_parceiro" | "humano"}`;
+{"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "indicar_parceiro" | "humano", "uf": "<sigla do estado, ex.: MG, se souber; senão vazio>", "cidade": "<cidade se souber; senão vazio>"}`;
 
 // Junta as regras base (fixas, incluindo o formato JSON) com os ajustes que o lojista
 // escreve na config. Ajustes se SOMAM — nunca substituem o núcleo, pra não quebrar a Bia.
@@ -168,7 +169,24 @@ const IA_MODELOS = [
   "@cf/meta/llama-3-8b-instruct",
 ];
 
-interface IaDecisao { resposta: string; intencao: string; acao: string }
+interface IaDecisao { resposta: string; intencao: string; acao: string; uf?: string; cidade?: string }
+
+// Normaliza estado → sigla UF (aceita "MG" ou "minas gerais").
+const UF_NOMES: Record<string, string> = {
+  "acre": "AC", "alagoas": "AL", "amapa": "AP", "amazonas": "AM", "bahia": "BA", "ceara": "CE",
+  "distrito federal": "DF", "espirito santo": "ES", "goias": "GO", "maranhao": "MA", "mato grosso": "MT",
+  "mato grosso do sul": "MS", "minas gerais": "MG", "para": "PA", "paraiba": "PB", "parana": "PR",
+  "pernambuco": "PE", "piaui": "PI", "rio de janeiro": "RJ", "rio grande do norte": "RN",
+  "rio grande do sul": "RS", "rondonia": "RO", "roraima": "RR", "santa catarina": "SC",
+  "sao paulo": "SP", "sergipe": "SE", "tocantins": "TO",
+};
+function ufDe(s?: string | null): string {
+  const t = String(s ?? "").trim();
+  if (!t) return "";
+  if (/^[A-Za-z]{2}$/.test(t)) return t.toUpperCase();
+  const norm = t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return UF_NOMES[norm] ?? "";
+}
 
 // Alguns modelos escapam emojis como texto literal ("\u{1f603}" ou "😃")
 // dentro do JSON. Converte esses escapes de volta pro caractere real.
@@ -185,7 +203,7 @@ function extrairJson(txt: string): IaDecisao | null {
   try {
     const o = JSON.parse(m[0]) as Partial<IaDecisao>;
     if (typeof o.resposta === "string") {
-      return { resposta: decodificarEscapes(o.resposta.trim()), intencao: String(o.intencao ?? "indefinido"), acao: String(o.acao ?? "conversar") };
+      return { resposta: decodificarEscapes(o.resposta.trim()), intencao: String(o.intencao ?? "indefinido"), acao: String(o.acao ?? "conversar"), uf: String(o.uf ?? ""), cidade: String(o.cidade ?? "") };
     }
   } catch { /* json inválido */ }
   return null;
@@ -219,18 +237,36 @@ async function chamarIa(env: Env, conv: ConvRow, sistema: string): Promise<IaDec
 interface IaSaida { saidas: Saida[]; novoEstado: EstadoAtend; notificarHumano: boolean; tipo: string | null }
 
 // Roda a IA de triagem e traduz a decisão em resposta + próximo estado do fluxo.
-async function iaTriagem(env: Env, conv: ConvRow, sistema: string): Promise<IaSaida> {
+// `origin` é usado pra montar o link da vitrine (indicação de consumidor final).
+async function iaTriagem(env: Env, conv: ConvRow, sistema: string, origin: string | null): Promise<IaSaida> {
   const dec = await chamarIa(env, conv, sistema);
   // IA indisponível (binding ausente/erro) → degrada pro menu determinístico, que é à prova de falhas.
   if (!dec) return { saidas: [{ tipo: "texto", texto: BOAS_VINDAS }], novoEstado: "aguardando-setor", notificarHumano: false, tipo: null };
+
+  // CONSUMIDOR FINAL: guardrail robusto — não depende só do "acao" do modelo. Se ele marcou
+  // indicar_parceiro OU disse que é consumidor, tratamos como indicação. Com o ESTADO em mãos,
+  // o sistema JÁ envia o link da vitrine filtrado por UF (a pessoa escolhe a cidade mais perto lá).
+  const uf = ufDe(dec.uf) || ufDe(conv.uf);
+  const querIndicar = dec.acao === "indicar_parceiro" || dec.intencao === "consumidor";
+  if (querIndicar) {
+    if (uf && origin) {
+      const link = `${origin}/vitrine?uf=${encodeURIComponent(uf)}`;
+      // Mensagem fixa (rápida e sem "vou passar depois"): manda o link do estado na hora.
+      const saidas: Saida[] = [
+        { tipo: "texto", texto: `A Big Tricot vende no atacado pra lojistas, mas temos *lojas parceiras* que revendem nossos produtos! 💛` },
+        { tipo: "texto", texto: `Abre esse link, escolha a *cidade mais perto de você* e veja os contatos das lojas de ${uf} 👇\n${link}` },
+      ];
+      return { saidas, novoEstado: "indicado-parceiro", notificarHumano: false, tipo: "consumidor" };
+    }
+    // Ainda não sabemos o estado → a IA pergunta (a resposta dela já pede) e aguardamos.
+    return { saidas: [{ tipo: "texto", texto: dec.resposta }], novoEstado: "aguardando-cidade-parceiro", notificarHumano: false, tipo: "consumidor" };
+  }
+
   const saidas: Saida[] = [{ tipo: "texto", texto: dec.resposta }];
   switch (dec.acao) {
     case "coletar_lojista":
       // A IA já pediu o nome da loja na resposta → o fluxo determinístico captura o nome e pede o CNPJ.
       return { saidas, novoEstado: "triagem-nome", notificarHumano: false, tipo: "lojista" };
-    case "indicar_parceiro":
-      // A IA já pediu cidade/UF → o fluxo determinístico busca as lojas parceiras.
-      return { saidas, novoEstado: "aguardando-cidade-parceiro", notificarHumano: false, tipo: "consumidor" };
     case "humano":
       return { saidas, novoEstado: "atendimento-humano", notificarHumano: true, tipo: conv.tipo ?? null };
     default:
@@ -297,7 +333,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Ao decidir, a IA passa o bastão pro motor determinístico (nome+CNPJ ou lojas parceiras).
   if (cfgAt.atendimento_ia === "1" && !conv.cliente_id && conv.tipo !== "representante"
       && (conv.estado === "novo" || conv.estado === "ia-triagem")) {
-    const ia = await iaTriagem(env, conv, sistemaIa(cfgAt.ia_prompt));
+    const ia = await iaTriagem(env, conv, sistemaIa(cfgAt.ia_prompt), origin);
     await env.DB.prepare("UPDATE atend_conversas SET estado=?, tipo=COALESCE(?, tipo), atualizado_em=datetime('now') WHERE id=?")
       .bind(ia.novoEstado, ia.tipo, conv.id).run();
     for (const s of ia.saidas) {

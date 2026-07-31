@@ -156,23 +156,29 @@ function cardLoja(l: LojaParceira): string {
 }
 
 async function indicar(conv: Conversa, saidas: Saida[], deps: Deps): Promise<Resultado> {
-  const lojas = await deps.parceiros(conv.cidade ?? null, conv.uf ?? null);
-  // Preferência: mandar o LINK da vitrine (já filtrado por estado/cidade), onde o cliente
-  // vê endereço, site, Instagram e WhatsApp clicáveis. Só cai nos cards no chat se não houver link.
-  if (deps.vitrineUrl && lojas.length) {
+  const uf = String(conv.uf ?? "").trim().toUpperCase();
+  // Sem estado nem cidade → pergunta o estado e aguarda.
+  if (!uf && !conv.cidade) {
+    saidas.push({ tipo: "texto", texto: "Me diz de qual *estado* você é? Aí já te mando as lojas parceiras da Big Tricot da sua região. 😊" });
+    conv.estado = "aguardando-cidade-parceiro";
+    return { conv, saidas, notificarHumano: false, qualificado: false };
+  }
+  if (deps.vitrineUrl) {
+    // Link da vitrine filtrado pelo ESTADO: a pessoa escolhe a cidade mais perto dela lá dentro.
     const q = new URLSearchParams();
-    if (conv.uf) q.set("uf", String(conv.uf));
-    if (conv.cidade) q.set("cidade", String(conv.cidade));
-    const link = deps.vitrineUrl + (q.toString() ? "?" + q.toString() : "");
-    const n = lojas.length;
-    saidas.push({ tipo: "texto", texto: `Boa! Encontrei ${n} loja${n > 1 ? "s" : ""} parceira${n > 1 ? "s" : ""} em ${conv.cidade || "sua região"}. 💛` });
-    saidas.push({ tipo: "texto", texto: `É só abrir esse link pra ver o endereço, o WhatsApp e o Instagram delas 👇\n${link}` });
-  } else if (lojas.length) {
-    saidas.push({ tipo: "texto", texto: "Achei essas lojas parceiras pertinho de você: 👇" });
-    for (const l of lojas.slice(0, 3)) saidas.push({ tipo: "texto", texto: cardLoja(l) });
-    saidas.push({ tipo: "texto", texto: "Elas vão te atender super bem! Qualquer coisa, é só chamar. 😊" });
+    if (uf) q.set("uf", uf); else if (conv.cidade) q.set("cidade", String(conv.cidade));
+    const link = deps.vitrineUrl + "?" + q.toString();
+    saidas.push({ tipo: "texto", texto: "A Big Tricot vende no atacado pra lojistas, mas temos *lojas parceiras* que revendem nossos produtos! 💛" });
+    saidas.push({ tipo: "texto", texto: `Abre esse link, escolha a *cidade mais perto de você* e veja os contatos das lojas 👇\n${link}` });
   } else {
-    saidas.push({ tipo: "texto", texto: `No momento não achei uma loja parceira pertinho de ${conv.cidade || "você"}. 😕 Assim que abrir uma, te aviso!` });
+    // Sem vitrine configurada → mostra os cards no chat (comportamento antigo).
+    const lojas = await deps.parceiros(conv.cidade ?? null, conv.uf ?? null);
+    if (lojas.length) {
+      saidas.push({ tipo: "texto", texto: "Achei essas lojas parceiras pertinho de você: 👇" });
+      for (const l of lojas.slice(0, 3)) saidas.push({ tipo: "texto", texto: cardLoja(l) });
+    } else {
+      saidas.push({ tipo: "texto", texto: `No momento não achei uma loja parceira pertinho de ${conv.cidade || "você"}. 😕 Assim que abrir uma, te aviso!` });
+    }
   }
   conv.estado = "indicado-parceiro";
   return { conv, saidas, notificarHumano: false, qualificado: false };
