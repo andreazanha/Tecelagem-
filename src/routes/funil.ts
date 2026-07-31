@@ -309,16 +309,17 @@ funil.post("/reativacao", async (c) => {
     await c.env.DB.prepare(
       "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, 'reativacao', ?)"
     ).bind(cardId, cli.id, cli.nome, str(cli.cidade), str(cli.uf), str(cli.whatsapp), resp).run();
-    // Cliente de REPRESENTANTE: não falar direto com o cliente — acionar o representante
-    // (não passar por cima dele). Cliente sem representante: pós-venda direto.
+    // Fala direto com o cliente (pós-venda + catálogo). Se ele quiser comprar e
+    // tiver representante, passa a venda pro representante fechar. Se o cliente
+    // reclamar que o representante não atende / atende mal, a loja assume o cliente.
     const tarefa = resp
-      ? `Acionar o representante ${resp} para o pós-venda (não falar direto com o cliente): conferir se recebeu o pedido, se deu tudo certo e oferecer reposição.`
-      : "Pós-venda direto: perguntar se recebeu o pedido e se deu tudo certo; depois oferecer reposição.";
+      ? `Pós-venda + catálogo (pode falar direto): perguntar se recebeu o pedido e se deu tudo certo, mandar novidades. Se quiser comprar, passar para o representante ${resp} fechar a venda. Se reclamar que ${resp} não atende / atende mal, assumir o cliente.`
+      : "Pós-venda + catálogo: perguntar se recebeu o pedido e se deu tudo certo, mandar novidades e oferecer reposição.";
     await c.env.DB.prepare(
       "INSERT INTO funil_tarefas (id, card_id, titulo, vence_em, responsavel) VALUES (?, ?, ?, date('now','+1 day'), ?)"
     ).bind(uid(), cardId, tarefa, resp).run();
     await logar(c.env, cardId, "etapa", resp
-      ? `Pós-venda automático (+${dias}d): cliente do representante ${resp} — acionar o representante`
+      ? `Pós-venda automático (+${dias}d): cliente do representante ${resp} — venda vai pro representante; assumir só se houver reclamação`
       : `Pós-venda automático (+${dias}d): sem representante — contato direto`);
     jaTem.add(cli.nome);
     criados++;
