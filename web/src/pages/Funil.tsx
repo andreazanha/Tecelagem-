@@ -150,7 +150,7 @@ export function Funil() {
       )}
 
       {novo && <NovoLead onFechar={() => setNovo(false)} onSalvo={() => { setNovo(false); recarregar(); }} />}
-      {abrir && <CardDetalhe id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
+      {abrir && <CardDetalhe id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} onAbrirConversa={(cid) => { setAbrir(null); setAbrirConversa(cid); }} />}
       {abrirConversa && <ConversaModal id={abrirConversa} onFechar={() => setAbrirConversa(null)} onMudou={recarregar} />}
     </div>
   );
@@ -188,7 +188,7 @@ function CardMini({ c, onAbrir, onDragStart, onDragEnd }: { c: FunilCard; onAbri
 }
 
 // ── Detalhe do cartão (mover etapa, tarefas, timeline, histórico) ────────────────
-function CardDetalhe({ id, onFechar, onMudou }: { id: string; onFechar: () => void; onMudou: () => void }) {
+function CardDetalhe({ id, onFechar, onMudou, onAbrirConversa }: { id: string; onFechar: () => void; onMudou: () => void; onAbrirConversa?: (conversaId: string) => void }) {
   const nav = useNavigate();
   const [d, setD] = useState<FunilCardDetalhe | null>(null);
   const [etapa, setEtapa] = useState<FunilEtapa>("novo-lead");
@@ -257,6 +257,13 @@ function CardDetalhe({ id, onFechar, onMudou }: { id: string; onFechar: () => vo
         {!d ? <div className="modal-bd"><div className="pad muted">Carregando…</div></div> : (
           <div className="modal-bd fx-detalhe">
             <div className="fx-d-main">
+              {/* WhatsApp: abre (ou inicia) a conversa completa deste cliente */}
+              {onAbrirConversa && (
+                <button className="btn btn-primary" style={{ width: "100%", marginBottom: 12, background: "#25d366", border: "none" }}
+                  onClick={async () => { const r = await api.abrirConversaDoCard({ telefone: d.whatsapp, nome: d.nome, card_id: id }); if (r.id) onAbrirConversa(r.id); else alert(r.error || "Este cliente não tem WhatsApp cadastrado."); }}>
+                  💬 Abrir conversa no WhatsApp
+                </button>
+              )}
               {/* Mover de etapa */}
               <div className="fx-block">
                 <div className="fx-block-h">Etapa</div>

@@ -825,6 +825,32 @@ atendimento.delete("/conhecimento/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// Abre (ou cria) a conversa de WhatsApp de um card do funil / cliente, pra chamar do funil.
+atendimento.post("/abrir-conversa", async (c) => {
+  const b = await c.req.json<{ telefone?: string; nome?: string; card_id?: string }>().catch(() => ({}) as Record<string, never>);
+  const tel = digitos(b.telefone);
+  const cardId = String(b.card_id ?? "").trim() || null;
+  // 1) Já existe conversa vinculada a esse card?
+  let conv = cardId ? await c.env.DB.prepare("SELECT id FROM atend_conversas WHERE card_id=? LIMIT 1").bind(cardId).first<{ id: string }>().catch(() => null) : null;
+  // 2) Senão, procura pelo telefone (sufixo de 8 dígitos).
+  if (!conv && tel.length >= 8) {
+    const core = tel.slice(-8);
+    conv = await c.env.DB.prepare(
+      `SELECT id FROM atend_conversas WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(telefone,'.',''),'-',''),'(',''),')',''),' ','') LIKE '%' || ? LIMIT 1`
+    ).bind(core).first<{ id: string }>().catch(() => null);
+    if (conv && cardId) await c.env.DB.prepare("UPDATE atend_conversas SET card_id=? WHERE id=? AND (card_id IS NULL OR card_id='')").bind(cardId, conv.id).run();
+  }
+  if (conv) return c.json({ id: conv.id });
+  // 3) Não existe → cria uma conversa "manual" já em atendimento humano (pronta pra responder).
+  if (!tel) return c.json({ error: "cliente sem telefone/WhatsApp" }, 400);
+  const cli = await identificarCliente(c.env, tel);
+  const id = uid();
+  await c.env.DB.prepare(
+    "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, card_id, cliente_id, nome) VALUES (?, ?, 'atendimento-humano', 'manual', 'lojista', ?, ?, ?)"
+  ).bind(id, tel, cardId, cli?.id ?? null, (b.nome || cli?.nome || "").trim() || null).run();
+  return c.json({ id });
+});
+
 // ── SETORES do atendimento (cadastro + membros) — antes de "/:id" ─────────────────
 atendimento.get("/setores", async (c) => {
   const { results } = await c.env.DB.prepare(
