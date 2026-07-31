@@ -20,6 +20,7 @@ export function LojasParceiras() {
 
   async function salvar() {
     if (!form?.nome?.trim()) { setMsg("Informe o nome da loja."); return; }
+    if (!String(form?.uf ?? "").trim()) { setMsg("Informe o estado (UF) — sem ele a loja não aparece na vitrine."); return; }
     try { await api.salvarParceiro(form); setForm(null); setMsg("✓ Salvo!"); carregar(); setTimeout(() => setMsg(""), 2500); }
     catch { setMsg("Erro ao salvar."); }
   }
@@ -74,7 +75,7 @@ export function LojasParceiras() {
             <label className="campo"><span className="campo-label">Nome da loja *</span><input value={form.nome ?? ""} onChange={(e) => set("nome", e.target.value)} /></label>
             <label className="campo"><span className="campo-label">Endereço</span><input value={form.endereco ?? ""} onChange={(e) => set("endereco", e.target.value)} placeholder="Rua, número, bairro" /></label>
             <label className="campo"><span className="campo-label">Cidade</span><input value={form.cidade ?? ""} onChange={(e) => set("cidade", e.target.value)} /></label>
-            <label className="campo"><span className="campo-label">UF</span><input value={form.uf ?? ""} maxLength={2} onChange={(e) => set("uf", e.target.value.toUpperCase())} placeholder="MG" /></label>
+            <label className="campo"><span className="campo-label">UF (estado) *</span><input value={form.uf ?? ""} maxLength={2} onChange={(e) => set("uf", e.target.value.toUpperCase())} placeholder="MG" style={{ border: String(form.uf ?? "").trim() ? undefined : "1.5px solid #f59e0b" }} /></label>
             <label className="campo"><span className="campo-label">WhatsApp</span><input value={form.whatsapp ?? ""} onChange={(e) => set("whatsapp", e.target.value)} placeholder="(35) 9 9999-9999" /></label>
             <label className="campo"><span className="campo-label">Instagram</span><input value={form.instagram ?? ""} onChange={(e) => set("instagram", e.target.value)} placeholder="@sualoja" /></label>
             <label className="campo"><span className="campo-label">Site</span><input value={form.site ?? ""} onChange={(e) => set("site", e.target.value)} placeholder="www.sualoja.com.br" /></label>

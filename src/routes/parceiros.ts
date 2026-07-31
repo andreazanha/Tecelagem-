@@ -44,6 +44,7 @@ parceiros.post("/", async (c) => {
   const nome = String(b.nome ?? "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
   const uf = String(b.uf ?? "").trim().toUpperCase().slice(0, 2) || null;
+  if (!uf) return c.json({ error: "o estado (UF) é obrigatório — sem ele a loja não aparece na vitrine" }, 400);
   const id = b.id || uid();
   const ativo = b.ativo === false || b.ativo === 0 ? 0 : 1;
   await c.env.DB.prepare(
@@ -70,6 +71,7 @@ parceiros.post("/autocadastro", async (c) => {
   const nome = String(b.nome ?? "").trim();
   if (!nome) return c.json({ error: "Informe o nome da loja." }, 400);
   const uf = String(b.uf ?? "").trim().toUpperCase().slice(0, 2) || null;
+  if (!uf) return c.json({ error: "Informe o estado (UF) da loja." }, 400);
   await c.env.DB.prepare(
     `INSERT INTO lojas_parceiras (id, nome, endereco, cidade, uf, whatsapp, instagram, site, ativo)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`
@@ -126,7 +128,7 @@ export function cadastroHtml(): string {
       <label>Nome da loja <span class="obg">*</span><input name="nome" required maxlength="120" /></label>
       <label>Endereço<input name="endereco" maxlength="200" placeholder="Rua, número, bairro" /></label>
       <label>Cidade<input name="cidade" maxlength="80" /></label>
-      <label>Estado (UF)<input name="uf" maxlength="2" placeholder="MG" style="text-transform:uppercase" /></label>
+      <label>Estado (UF) <span class="obg">*</span><input name="uf" required maxlength="2" placeholder="MG" style="text-transform:uppercase" /></label>
       <label>WhatsApp<input name="whatsapp" maxlength="30" placeholder="(35) 9 9999-9999" /></label>
       <label>Instagram<input name="instagram" maxlength="80" placeholder="@sualoja" /></label>
       <label>Site (se tiver)<input name="site" maxlength="150" placeholder="www.sualoja.com.br" /></label>
@@ -250,8 +252,11 @@ export async function vitrineHtml(env: Env, uf?: string, cidade?: string): Promi
   }
   elUf.addEventListener('change', function(){ preencheCidades(); render(); });
   elCid.addEventListener('change', render);
-  // Pré-seleção (link que a Bia manda já vem com estado/cidade).
-  if(PRE_UF && ufs.indexOf(PRE_UF)>=0){ elUf.value=PRE_UF; preencheCidades();
+  // Pré-seleção (link que a Bia manda já vem com estado). Seleciona o estado mesmo que
+  // ainda não haja loja cadastrada nele (aí a vitrine mostra o aviso de "sem loja aqui").
+  if(PRE_UF){
+    if(ufs.indexOf(PRE_UF)<0) elUf.appendChild(opt(PRE_UF,PRE_UF));
+    elUf.value=PRE_UF; preencheCidades();
     if(PRE_CID){ for(var i=0;i<elCid.options.length;i++){ if(elCid.options[i].value.toLowerCase()===PRE_CID.toLowerCase()){ elCid.selectedIndex=i; break; } } }
   } else { preencheCidades(); }
   render();

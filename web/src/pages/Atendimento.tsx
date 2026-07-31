@@ -2,6 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante } from "../api";
 
+// Renderiza o texto da mensagem como no WhatsApp: URLs viram links clicáveis e
+// *texto* vira negrito. As quebras de linha já são preservadas pelo CSS (pre-wrap).
+function formatarMsg(texto: string | null | undefined) {
+  return String(texto ?? "").split(/(https?:\/\/[^\s]+)/g).map((p, i) => {
+    if (/^https?:\/\//.test(p)) {
+      return <a key={i} href={p} target="_blank" rel="noreferrer" style={{ color: "#2563eb", wordBreak: "break-all" }}>{p}</a>;
+    }
+    return p.split(/(\*[^*\n]+\*)/g).map((s, j) =>
+      /^\*[^*\n]+\*$/.test(s) ? <b key={i + "-" + j}>{s.slice(1, -1)}</b> : <span key={i + "-" + j}>{s}</span>
+    );
+  });
+}
+
 function iniciais(s?: string | null) {
   return (s || "?").replace(/\D/g, "").slice(-2) || (s || "?").split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 }
@@ -346,7 +359,7 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
                 ? <div className="at-sys" key={m.id}>⚙️ {m.texto}</div>
                 : <div key={m.id} className={"at-b " + (m.direcao === "in" ? "in" : "out")}>
                     {m.autor && m.direcao === "out" && <div className="at-aut">{m.autor === "bot" ? "🤖 robô" : m.autor}</div>}
-                    {m.tipo === "arquivo" ? <span className="at-file">📒 {m.texto}</span> : m.texto}
+                    {m.tipo === "arquivo" ? <span className="at-file">📒 {m.texto}</span> : formatarMsg(m.texto)}
                     <span className="at-tm">{hora(m.criado_em)}</span>
                   </div>
             ))}
@@ -480,7 +493,7 @@ function Simulador({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =>
           {msgs.map((m, i) => (
             <div key={i} className={"at-b " + (m.de === "cliente" ? "out" : "in")}>
               {m.de === "bot" && <div className="at-aut">🤖 robô</div>}
-              {m.arquivo ? <span className="at-file">📒 {m.texto}</span> : m.texto}
+              {m.arquivo ? <span className="at-file">📒 {m.texto}</span> : formatarMsg(m.texto)}
             </div>
           ))}
           {busy && (
