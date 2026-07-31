@@ -237,7 +237,7 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
         if (!conv.nome && r.nome) conv.nome = r.nome;
         push("Perfeito! ✅ Já vou te mandar nosso catálogo 📒\n(nosso time confirma seu cadastro em seguida).");
         enviarCatalogo(saidas, deps);
-        push("Um dos nossos vendedores já vai assumir a conversa pra montar seu pedido. 🚀");
+        push("Um dos nossos vendedores já vai dar continuidade ao seu atendimento. 🚀");
         conv.estado = "catalogo-enviado";
         notificarHumano = true;
         qualificado = true;
@@ -248,7 +248,7 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
         if (r.cidade && !conv.cidade) conv.cidade = r.cidade;
         push(`Show! Confirmei seu CNPJ${r.nome ? ` (*${r.nome}*)` : ""}. ✅\nJá vou te mandar nosso catálogo. 📒`);
         enviarCatalogo(saidas, deps);
-        push("Um dos nossos vendedores já vai assumir a conversa pra montar seu pedido. 🚀");
+        push("Um dos nossos vendedores já vai dar continuidade ao seu atendimento. 🚀");
         conv.estado = "catalogo-enviado";
         notificarHumano = true;
         qualificado = true;
