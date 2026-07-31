@@ -127,6 +127,11 @@ function Cartao({ l, pendente, onEditar, onAprovar, onExcluir, onAlternar }: {
         <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
           {[l.whatsapp && `📲 ${l.whatsapp}`, l.instagram && `📸 ${l.instagram}`, l.site && `🌐 ${l.site}`].filter(Boolean).join("  ·  ") || "—"}
         </div>
+        {!String(l.uf ?? "").trim() && (
+          <div style={{ fontSize: 12, color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "4px 8px", marginTop: 5, fontWeight: 600 }}>
+            ⚠️ Sem estado (UF) — não aparece na vitrine. Clique em <b>Editar</b> e informe o estado (ex.: MG).
+          </div>
+        )}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {pendente && onAprovar && <button className="btn btn-primary" onClick={onAprovar}>✓ Aprovar</button>}
