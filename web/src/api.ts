@@ -656,6 +656,12 @@ export const api = {
   conhecimento: () => fetch("/api/atendimento/conhecimento").then((r) => j<IaConhecimento[]>(r)),
   salvarConhecimento: (b: Partial<IaConhecimento>) => jsonPost("/api/atendimento/conhecimento", b).then((r) => j<{ ok: boolean; id: string }>(r)),
   excluirConhecimento: (id: string) => fetch(`/api/atendimento/conhecimento/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  // Setores do atendimento
+  atendSetores: () => fetch("/api/atendimento/setores").then((r) => j<AtendSetor[]>(r)),
+  atendSalvarSetor: (b: { id?: string; nome: string; membros: string[]; ativo?: boolean }) => jsonPost("/api/atendimento/setores", b).then((r) => j<{ ok: boolean; id: string }>(r)),
+  atendExcluirSetor: (id: string) => fetch(`/api/atendimento/setores/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  // Painel do gestor
+  atendPainel: () => fetch("/api/atendimento/painel").then((r) => j<AtendPainel>(r)),
   // Robô de atendimento (WhatsApp)
   atendBoard: () => fetch("/api/atendimento").then((r) => j<AtendBoard>(r)),
   atendConversa: (id: string) => fetch(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),
@@ -1437,6 +1443,14 @@ export interface ProdutoLog {
 }
 export interface IaConhecimento {
   id: string; pergunta: string; resposta: string; ativo: number; criado_em?: string;
+}
+export interface AtendSetor { id: string; nome: string; membros: string | null; ativo: number; criado_em?: string }
+export interface AtendPainel {
+  gerais: { novas_hoje?: number; em_humano?: number; nao_assumidas?: number; catalogos_hoje?: number; leads_hoje?: number; indicados_hoje?: number };
+  fila: { id: string; telefone: string; nome: string | null; setor: string | null; responsavel: string | null; ultima_in_em: string | null; espera_min: number }[];
+  atendentes: { atendente: string; total: number; aguardando: number }[];
+  setores: { setor: string; total: number }[];
+  tempoResposta: { atendente: string; media_min: number; respostas: number }[];
 }
 export interface LojaParceira {
   id: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null;

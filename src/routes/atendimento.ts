@@ -825,6 +825,33 @@ atendimento.delete("/conhecimento/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── SETORES do atendimento (cadastro + membros) — antes de "/:id" ─────────────────
+atendimento.get("/setores", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, nome, membros, ativo, criado_em FROM atend_setores ORDER BY nome"
+  ).all().catch(() => ({ results: [] }));
+  return c.json(results);
+});
+
+atendimento.post("/setores", async (c) => {
+  const b = await c.req.json<{ id?: string; nome?: string; membros?: string[] | string; ativo?: boolean | number }>().catch(() => ({}) as Record<string, never>);
+  const nome = String(b.nome ?? "").trim();
+  if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
+  const membros = Array.isArray(b.membros) ? b.membros.map((m) => String(m).trim()).filter(Boolean).join(",") : String(b.membros ?? "").trim();
+  const id = b.id || uid();
+  const ativo = b.ativo === false || b.ativo === 0 ? 0 : 1;
+  await c.env.DB.prepare(
+    `INSERT INTO atend_setores (id, nome, membros, ativo) VALUES (?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET nome=excluded.nome, membros=excluded.membros, ativo=excluded.ativo`
+  ).bind(id, nome, membros || null, ativo).run();
+  return c.json({ ok: true, id });
+});
+
+atendimento.delete("/setores/:id", async (c) => {
+  await c.env.DB.prepare("DELETE FROM atend_setores WHERE id = ?").bind(c.req.param("id")).run();
+  return c.json({ ok: true });
+});
+
 // ── PAINEL DO GESTOR (métricas de atendimento) — antes de "/:id" ──────────────────
 // Fuso: "hoje" = dia em Brasília (UTC-3). Espera em minutos desde a última msg do cliente.
 atendimento.get("/painel", async (c) => {

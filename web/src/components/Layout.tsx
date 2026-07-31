@@ -110,6 +110,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/clientes", icon: "👥", label: "Clientes", page: "comercial" },
       { to: "/lojas-parceiras", icon: "🏬", label: "Lojas Parceiras", page: "comercial" },
       { to: "/treinar-bia", icon: "🎓", label: "Treinar a Bia (IA)", page: "comercial" },
+      { to: "/setores-atendimento", icon: "🏢", label: "Setores do Atendimento", page: "atendimento-gestor" },
       { to: "/comercial", icon: "🧑‍💼", label: "Representantes", page: "comercial" },
       { to: "/comercial", icon: "💵", label: "Vendas (Dashboard)", page: "comercial" },
     ],
