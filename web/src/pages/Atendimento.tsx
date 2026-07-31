@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante } from "../api";
+import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe } from "../api";
 import { getUser, pode } from "../auth";
+
+// Etapas do funil (venda) mostradas dentro da conversa.
+const ETAPAS_FUNIL: { id: string; label: string }[] = [
+  { id: "novo-lead", label: "Novo lead" }, { id: "primeiro-contato", label: "Primeiro contato" },
+  { id: "negociacao", label: "Negociação" }, { id: "aguardando-retorno", label: "Aguardando retorno" },
+  { id: "pos-venda", label: "Pós-venda" }, { id: "ativo", label: "Cliente ativo" },
+  { id: "inativo", label: "Inativo" }, { id: "perdido", label: "Perdido" },
+];
+const etapaLabel = (e?: string | null) => ETAPAS_FUNIL.find((x) => x.id === e)?.label || e || "";
 
 // Gestor do atendimento: admin ou quem tem a permissão de gestor. Só ele vê config/relatórios.
 function ehGestorAtend() { const u = getUser(); return !!u && (u.admin || pode(u, "atendimento-gestor")); }
@@ -355,6 +364,7 @@ function ConvMini({ c, onAbrir }: { c: AtendConversa; onAbrir: () => void }) {
         {c.autorizado === 0
           ? <span className="at-badge" style={{ background: "#fef3c7", color: "#92400e" }} title="Aguardando autorização da equipe">⏳ Autorizar</span>
           : <span className="at-badge">{humano ? `👤 ${c.responsavel || "humano"}` : `🤖 robô`}</span>}
+        {c.funil_etapa && <span className="at-badge" style={{ background: "#ecfdf5", color: "#047857" }} title="Etapa no funil de vendas">🎯 {etapaLabel(c.funil_etapa)}</span>}
         {c.interessado === 1 && <span className="at-badge" style={{ background: "#fee2e2", color: "#b91c1c" }} title="Demonstrou interesse comercial">🔥 Interessado</span>}
         {c.representante && <span className="at-badge" style={{ background: "#eef2ff", color: "#4338ca" }} title={c.autorizado === 0 ? "Representante sugerido" : "Representante"}>🧑‍💼 {c.representante}</span>}
         {c.setor && <span className="fx-sub">{SETOR_EMOJI[c.setor] || ""}</span>}
@@ -379,6 +389,15 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
   useEffect(() => { api.listarRepresentantes().then((r) => setReps(r.filter((x) => x.ativo))).catch(() => {}); }, []);
   useEffect(() => { api.listarUsuarios().then((u) => setUsuarios(Array.isArray(u) ? u : [])).catch(() => {}); }, []);
   useEffect(() => { fim.current?.scrollIntoView(); }, [d?.mensagens.length]);
+
+  // Funil (venda) trazido pra dentro da conversa.
+  const [funil, setFunil] = useState<FunilCardDetalhe | null>(null);
+  useEffect(() => { if (d?.card_id) api.funilCard(d.card_id).then(setFunil).catch(() => setFunil(null)); else setFunil(null); }, [d?.card_id]);
+  async function moverEtapa(etapa: string) {
+    if (!d?.card_id || !etapa) return;
+    setBusy(true);
+    try { await api.atualizarCard(d.card_id, { etapa }); setFunil(await api.funilCard(d.card_id)); onMudou(); } finally { setBusy(false); }
+  }
 
   async function assumir() {
     const u = getUser();
@@ -481,7 +500,17 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
                 {d.pedidos_resumo.ultima && <div className="muted">última compra: {new Date(d.pedidos_resumo.ultima + "T00:00:00").toLocaleDateString("pt-BR")}</div>}
               </div>
             )}
-            {d?.card_id && <Link to="/funil" className="btn" style={{ marginTop: 10, display: "block", textAlign: "center" }}>🎯 Ver no funil</Link>}
+            {d?.card_id && (
+              <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid #a7f3d0", background: "#ecfdf5", color: "#065f46" }}>
+                <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 6 }}>🎯 Venda (Funil)</div>
+                <select value={funil?.etapa || ""} onChange={(e) => moverEtapa(e.target.value)} disabled={busy} style={{ width: "100%", padding: "7px 9px", borderRadius: 8, border: "1px solid #6ee7b7", background: "#fff", color: "#065f46", fontWeight: 700 }}>
+                  {ETAPAS_FUNIL.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                </select>
+                {funil?.valor_estimado ? <div style={{ fontSize: 12.5, marginTop: 6 }}>💰 Valor estimado: <b>R$ {Number(funil.valor_estimado).toLocaleString("pt-BR")}</b></div> : null}
+                {(() => { const t = funil?.tarefas?.find((x) => !x.feita); return t ? <div style={{ fontSize: 12, marginTop: 4 }}>📌 {t.titulo}{t.vence_em ? ` · vence ${t.vence_em.slice(8, 10)}/${t.vence_em.slice(5, 7)}` : ""}</div> : null; })()}
+                <Link to="/funil" className="btn btn-soft" style={{ marginTop: 8, display: "block", textAlign: "center", fontSize: 12 }}>Abrir no funil completo →</Link>
+              </div>
+            )}
             {!humano && <button className="kbtn go" style={{ marginTop: 10, width: "100%" }} disabled={busy} onClick={assumir}>🙋 Assumir atendimento</button>}
             {humano && (
               <div style={{ marginTop: 10 }}>

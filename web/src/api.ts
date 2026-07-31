@@ -278,6 +278,7 @@ export interface AtendConversa {
   setor: string | null; cnpj: string | null; cidade: string | null; uf: string | null;
   lojista: number | null; responsavel: string | null; atualizado_em: string; ultima_msg: string | null;
   tipo: string | null; representante: string | null; origem: string | null; contato_nome: string | null; autorizado: number | null; interessado: number | null;
+  funil_etapa?: string | null;
 }
 export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; criado_em: string }
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
