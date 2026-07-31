@@ -2801,7 +2801,7 @@ function OperadoresCadastro() {
 // Telas agrupadas como no menu lateral — facilita escolher o que cada usuário acessa.
 const GRUPOS_PERM: { titulo: string; keys: string[] }[] = [
   { titulo: "Comercial", keys: ["pedidos", "todos-pedidos"] },
-  { titulo: "CRM / Atendimento", keys: ["atendimento", "comercial"] },
+  { titulo: "CRM / Atendimento", keys: ["atendimento", "atendimento-gestor", "comercial"] },
   { titulo: "Produção", keys: ["producao", "passadoria", "corte", "costura", "revisao"] },
   { titulo: "Estoque e Materiais", keys: ["estoque", "produtos"] },
   { titulo: "Expedição", keys: ["expedicao", "transporte", "romaneios"] },

@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante } from "../api";
+import { getUser, pode } from "../auth";
+
+// Gestor do atendimento: admin ou quem tem a permissão de gestor. Só ele vê config/relatórios.
+function ehGestorAtend() { const u = getUser(); return !!u && (u.admin || pode(u, "atendimento-gestor")); }
 
 // Renderiza o texto da mensagem como no WhatsApp: URLs viram links clicáveis e
 // *texto* vira negrito. As quebras de linha já são preservadas pelo CSS (pre-wrap).
@@ -116,8 +120,8 @@ export function Atendimento() {
         <div><h1>Atendimento</h1><div className="breadcrumb">Comercial › Atendimento (robô do WhatsApp)</div></div>
         <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
-          <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>
-          <button className="btn btn-primary" onClick={() => setSim(true)}>💬 Simular cliente</button>
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
+          {ehGestorAtend() && <button className="btn btn-primary" onClick={() => setSim(true)}>💬 Simular cliente</button>}
         </div>
       </div>
 
