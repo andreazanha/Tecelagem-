@@ -653,6 +653,8 @@ export const api = {
   atendConversa: (id: string) => fetch(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),
   atendEntrada: (b: { telefone: string; texto: string }) =>
     jsonPost("/api/atendimento/entrada", b).then((r) => j<AtendResposta>(r)),
+  atendReset: (telefone: string) =>
+    jsonPost("/api/atendimento/reset", { telefone }).then((r) => j<{ ok: boolean; removida: boolean }>(r)),
   atendAssumir: (id: string, responsavel: string) =>
     jsonPost(`/api/atendimento/${id}/assumir`, { responsavel }).then((r) => j<{ ok: boolean }>(r)),
   atendEnviar: (id: string, b: { texto: string; autor?: string }) =>

@@ -250,6 +250,27 @@ atendimento.post("/entrada", async (c) => {
   return c.json(r);
 });
 
+// ── RESET de conversa (SIMULADOR) ────────────────────────────────────────────────
+// Apaga a conversa daquele telefone (mensagens, interesses e o card do funil, se
+// houver) para testar o robô do zero — o "oi" volta a abrir o atendimento.
+atendimento.post("/reset", async (c) => {
+  const b = await c.req.json<{ telefone?: string }>().catch(() => ({}) as Record<string, string>);
+  const tel = digitos(b.telefone);
+  if (!tel) return c.json({ error: "telefone é obrigatório" }, 400);
+  const conv = await c.env.DB.prepare("SELECT id, card_id FROM atend_conversas WHERE telefone = ?")
+    .bind(tel).first<{ id: string; card_id: string | null }>();
+  if (conv) {
+    if (conv.card_id) {
+      await c.env.DB.prepare("DELETE FROM funil_tarefas WHERE card_id = ?").bind(conv.card_id).run();
+      await c.env.DB.prepare("DELETE FROM funil_cards WHERE id = ?").bind(conv.card_id).run();
+    }
+    await c.env.DB.prepare("DELETE FROM atend_interesses WHERE conversa_id = ?").bind(conv.id).run();
+    await c.env.DB.prepare("DELETE FROM atend_mensagens WHERE conversa_id = ?").bind(conv.id).run();
+    await c.env.DB.prepare("DELETE FROM atend_conversas WHERE id = ?").bind(conv.id).run();
+  }
+  return c.json({ ok: true, removida: !!conv });
+});
+
 // ── WEBHOOK da Z-API (mensagem recebida) ─────────────────────────────────────────
 // Configure no painel Z-API (Ao receber) a URL: <seu-dominio>/api/atendimento/webhook
 // Ignora mensagens enviadas por nós (fromMe) e callbacks de status. Só texto por ora.

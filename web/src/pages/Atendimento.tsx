@@ -382,9 +382,21 @@ function Simulador({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =>
     setTexto(""); setBusy(true);
     try {
       const r = await api.atendEntrada({ telefone: tel, texto: msg });
-      setMsgs((m) => [...m, ...r.respostas.map((s) => ({ de: "bot" as const, texto: s.texto, arquivo: s.tipo === "arquivo" }))]);
+      if (r.respostas.length === 0) {
+        // O robô ficou calado de propósito: um humano assumiu ou a conversa já
+        // passou da triagem. Explica e oferece o reinício em vez de tela vazia.
+        setMsgs((m) => [...m, { de: "bot", texto: "🤖 (o robô não respondeu — essa conversa já está em atendimento humano ou numa etapa final. Clique em 🔄 Reiniciar pra testar do zero.)" }]);
+      } else {
+        setMsgs((m) => [...m, ...r.respostas.map((s) => ({ de: "bot" as const, texto: s.texto, arquivo: s.tipo === "arquivo" }))]);
+      }
       onMudou();
     } catch (e) { setMsgs((m) => [...m, { de: "bot", texto: "⚠️ " + (e as Error).message }]); }
+    finally { setBusy(false); }
+  }
+  async function reiniciar() {
+    setBusy(true);
+    try { await api.atendReset(tel); setMsgs([]); onMudou(); }
+    catch (e) { setMsgs((m) => [...m, { de: "bot", texto: "⚠️ " + (e as Error).message }]); }
     finally { setBusy(false); }
   }
   const atalhos = ["oi", "1", "Loja Encanto Decor", "12.345.678/0001-90", "não tenho, uso pessoal", "Contagem, MG"];
@@ -393,7 +405,7 @@ function Simulador({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =>
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card at-sim" onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: "linear-gradient(130deg,#25d366,#075e54)" }}>
-          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">💬 Simulador — cliente</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
+          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">💬 Simulador — cliente</span></span><span style={{ display: "flex", gap: 8 }}><button className="modal-x" title="Apaga esta conversa de teste e começa do zero" disabled={busy} onClick={reiniciar} style={{ width: "auto", padding: "0 10px", fontSize: 13 }}>🔄 Reiniciar</button><button className="modal-x" onClick={onFechar}>✕</button></span></div>
           <div className="modal-hd-sub">Digite como se fosse o cliente no WhatsApp. Nº: <input className="at-siminput" value={tel} onChange={(e) => setTel(e.target.value)} /></div>
         </div>
         <div className="at-simscr">
