@@ -3,7 +3,7 @@
 // pela Z-API e a consulta SINTEGRA entram nos stubs marcados com TODO.
 import { Hono } from "hono";
 import type { Env } from "../index";
-import { processar, colunaDe, ATEND_COLUNAS, FOLLOWUP_24H, type Conversa, type Deps, type LojaParceira } from "../atendimento_bot";
+import { processar, colunaDe, ATEND_COLUNAS, type Conversa, type Deps, type LojaParceira } from "../atendimento_bot";
 import { ehClienteInterno } from "./funil";
 
 export const atendimento = new Hono<{ Bindings: Env }>();
@@ -244,7 +244,7 @@ atendimento.post("/webhook", async (c) => {
 
 // ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
-const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo"]);
+const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "followup_ativo", "followup_domingo"]);
 
 atendimento.get("/config", async (c) => {
   const cfg = await lerConfig(c.env);
@@ -258,6 +258,10 @@ atendimento.get("/config", async (c) => {
     catalogo_url: cfg.catalogo_url || "",
     catalogo_senha: cfg.catalogo_senha || "",
     catalogo_msg: cfg.catalogo_msg || "",
+    followup_ativo: (cfg.followup_ativo ?? "1") === "1",
+    followup_hora_ini: cfg.followup_hora_ini || "8",
+    followup_hora_fim: cfg.followup_hora_fim || "18",
+    followup_domingo: cfg.followup_domingo === "1",
     webhook_url: new URL(c.req.url).origin + "/api/atendimento/webhook",
   });
 });
@@ -265,7 +269,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "catalogo_url", "catalogo_senha", "catalogo_msg"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -352,6 +356,14 @@ atendimento.post("/:id/assumir", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── Opt-out: não enviar mensagens automáticas para este cliente ───────────────────
+atendimento.post("/:id/nao-perturbe", async (c) => {
+  const b = await c.req.json<{ nao_perturbe?: boolean }>().catch(() => ({}) as Record<string, boolean>);
+  await c.env.DB.prepare("UPDATE atend_conversas SET nao_perturbe=?, atualizado_em=datetime('now') WHERE id=?")
+    .bind(b.nao_perturbe ? 1 : 0, c.req.param("id")).run();
+  return c.json({ ok: true, nao_perturbe: !!b.nao_perturbe });
+});
+
 // ── Autorizar encaminhamento ao representante (aprovação da equipe) ────────────────
 // Nada vai pro cliente/representante automaticamente — só depois de alguém autorizar.
 atendimento.post("/:id/autorizar", async (c) => {
@@ -389,18 +401,57 @@ atendimento.post("/:id/enviar", async (c) => {
 // ── FOLLOW-UP 24h (chamado pelo cron) ────────────────────────────────────────────────
 // Conversas com catálogo enviado há +24h sem resposta do cliente → mensagem de
 // retomada e move para a coluna Follow-up 24h.
+// Texto de cada etapa do follow-up (personalizado com o nome, se houver).
+function textoFollowup(etapa: number, nome: string | null): string {
+  const oi = `Oi${nome ? `, *${nome}*` : ""}!`;
+  if (etapa === 1) return `${oi} 😊 Passando pra saber se você conseguiu dar uma olhada no nosso catálogo. Tem algum modelo que chamou sua atenção? Posso te ajudar a montar uma seleção pra sua loja!`;
+  if (etapa === 2) return `${oi} Passando só pra saber se ficou alguma dúvida sobre os produtos ou as condições de pedido. Posso te ajudar a montar uma seleção pra sua loja. 💛`;
+  return `Vou deixar seu atendimento em aberto por aqui 🌸. Quando quiser conhecer melhor nossos produtos ou receber sugestões pra sua loja, é só me chamar!`;
+}
+
+// ── FOLLOW-UP em cadência (24h → +3d → +7d → para) com regras (chamado pelo cron) ──
+// Regras: só em horário comercial (Brasil, sem madrugada/domingo), nunca 2× no mesmo
+// dia, para quando o cliente responde, não insiste após a última tentativa, e respeita
+// o opt-out (nao_perturbe) e o interruptor mestre.
 export async function followupAtendimento(env: Env): Promise<number> {
-  const { results } = await env.DB.prepare(
-    `SELECT id, telefone FROM atend_conversas
-      WHERE estado='catalogo-enviado'
-        AND ultima_out_em IS NOT NULL
-        AND ultima_out_em <= datetime('now','-24 hours')
-        AND (ultima_in_em IS NULL OR ultima_in_em <= ultima_out_em)`
-  ).all<{ id: string; telefone: string }>();
-  for (const conv of results) {
-    await addMsg(env, conv.id, "out", "bot", "texto", FOLLOWUP_24H);
-    await enviarWhatsapp(env, conv.telefone, { tipo: "texto", texto: FOLLOWUP_24H });
-    await env.DB.prepare("UPDATE atend_conversas SET estado='follow-up-24h', ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+  const cfg = await lerConfig(env);
+  if (cfg.atendimento_ativo !== "1") return 0;        // modo teste: não mexe com clientes reais
+  if ((cfg.followup_ativo ?? "1") !== "1") return 0;   // cadência desligada
+
+  // Horário comercial em horário do Brasil (UTC-3): não madrugada, não domingo.
+  const t = await env.DB.prepare(
+    "SELECT strftime('%w','now','-3 hours') AS dow, CAST(strftime('%H','now','-3 hours') AS INTEGER) AS h"
+  ).first<{ dow: string; h: number }>();
+  const dow = Number(t?.dow ?? "1"), hora = Number(t?.h ?? 12);
+  const hIni = parseInt(cfg.followup_hora_ini || "8", 10);
+  const hFim = parseInt(cfg.followup_hora_fim || "18", 10);
+  if (dow === 0 && (cfg.followup_domingo ?? "0") !== "1") return 0; // domingo
+  if (hora < hIni || hora >= hFim) return 0;                        // fora do horário
+
+  // etapa atual → intervalo desde a última mensagem → próxima etapa/estado.
+  const estagios = [
+    { de: 0, gap: "-24 hours", para: 1, estado: "follow-up-24h" },
+    { de: 1, gap: "-3 days", para: 2, estado: "follow-up-24h" },
+    { de: 2, gap: "-7 days", para: 3, estado: "sem-retorno" },
+  ];
+  let enviados = 0;
+  for (const e of estagios) {
+    const { results } = await env.DB.prepare(
+      `SELECT id, telefone, nome, contato_nome FROM atend_conversas
+        WHERE followup_etapa = ? AND COALESCE(nao_perturbe,0) = 0
+          AND estado IN ('catalogo-enviado','follow-up-24h')
+          AND ultima_out_em IS NOT NULL AND ultima_out_em <= datetime('now', ?)
+          AND (ultima_in_em IS NULL OR ultima_in_em <= ultima_out_em)`
+    ).bind(e.de, e.gap).all<{ id: string; telefone: string; nome: string | null; contato_nome: string | null }>();
+    for (const conv of results) {
+      const texto = textoFollowup(e.para, conv.contato_nome || conv.nome);
+      await addMsg(env, conv.id, "out", "bot", "texto", texto);
+      await enviarWhatsapp(env, conv.telefone, { tipo: "texto", texto });
+      await env.DB.prepare(
+        "UPDATE atend_conversas SET followup_etapa=?, estado=?, ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?"
+      ).bind(e.para, e.estado, conv.id).run();
+      enviados++;
+    }
   }
-  return results.length;
+  return enviados;
 }

@@ -77,7 +77,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
     if (!cfg) return;
     setSalvando(true); setMsg("");
     try {
-      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg });
+      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo });
       setMsg("✓ Salvo!"); onMudou(); setTimeout(() => setMsg(""), 2500);
     } catch { setMsg("Erro ao salvar."); } finally { setSalvando(false); }
   }
@@ -132,6 +132,24 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
               <input type="checkbox" checked={cfg.zapi_ativo} onChange={(e) => set("zapi_ativo", e.target.checked)} style={{ width: 18, height: 18 }} />
               <span><b>Ligar envio real</b> pelo WhatsApp (desligado = só simulador)</span>
             </label>
+
+            <div style={{ border: "1px solid var(--line,#e2e8f0)", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 8 }}>⏰ Mensagens automáticas (follow-up)</div>
+              <label className="row-gap" style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10, cursor: "pointer" }}>
+                <input type="checkbox" checked={cfg.followup_ativo} onChange={(e) => set("followup_ativo", e.target.checked)} style={{ width: 17, height: 17 }} />
+                <span>Ligar a cadência <b>24h → 3 dias → 7 dias → parar</b> (retomada de quem não respondeu)</span>
+              </label>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", fontSize: 13 }}>
+                <span>Horário comercial:</span>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>das
+                  <input type="number" min={0} max={23} value={cfg.followup_hora_ini} onChange={(e) => set("followup_hora_ini", e.target.value)} style={{ width: 54 }} />h</label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>às
+                  <input type="number" min={1} max={24} value={cfg.followup_hora_fim} onChange={(e) => set("followup_hora_fim", e.target.value)} style={{ width: 54 }} />h</label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                  <input type="checkbox" checked={cfg.followup_domingo} onChange={(e) => set("followup_domingo", e.target.checked)} /> enviar aos domingos</label>
+              </div>
+              <div className="muted" style={{ fontSize: 11.5, marginTop: 7 }}>Nunca envia 2× no mesmo dia, fora do horário, na madrugada, ou para quem já respondeu.</div>
+            </div>
 
             <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: "10px 12px", fontSize: 12.5, marginBottom: 14 }}>
               <b>📥 Para receber mensagens:</b> no painel Z-API, em <b>Ao receber (webhook)</b>, cole esta URL:
@@ -196,6 +214,11 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
     if (nome == null) return;
     setBusy(true);
     try { await api.atendAssumir(id, nome || "Atendente"); carregar(); onMudou(); } finally { setBusy(false); }
+  }
+  async function toggleNaoPerturbe() {
+    if (!d) return;
+    setBusy(true);
+    try { await api.atendNaoPerturbe(id, !d.nao_perturbe); carregar(); onMudou(); } finally { setBusy(false); }
   }
   async function autorizar() {
     const rep = repSel.trim();
@@ -263,6 +286,9 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
 
             {d?.card_id && <Link to="/funil" className="btn" style={{ marginTop: 10, display: "block", textAlign: "center" }}>🎯 Ver no funil</Link>}
             {!humano && <button className="kbtn go" style={{ marginTop: 10, width: "100%" }} disabled={busy} onClick={assumir}>🙋 Assumir atendimento</button>}
+            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5 }} disabled={busy} onClick={toggleNaoPerturbe} title="Para/retoma as mensagens automáticas para este cliente">
+              {d?.nao_perturbe ? "🔕 Automáticas pausadas — retomar" : "🔔 Pausar mensagens automáticas"}
+            </button>
           </div>
         </div>
 

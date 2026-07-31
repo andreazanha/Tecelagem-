@@ -5,7 +5,7 @@
 export type EstadoAtend =
   | "novo" | "aguardando-setor" | "triagem-nome" | "aguardando-cnpj"
   | "aguardando-cidade-parceiro" | "catalogo-enviado" | "follow-up-24h"
-  | "atendimento-humano" | "nao-qualificado" | "indicado-parceiro";
+  | "atendimento-humano" | "nao-qualificado" | "indicado-parceiro" | "sem-retorno";
 
 export interface Conversa {
   estado: EstadoAtend;
@@ -80,6 +80,7 @@ export const ATEND_COLUNAS = [
   { id: "catalogo-enviado", label: "Catálogo enviado", cor: "#22c55e" },
   { id: "follow-up-24h", label: "Follow-up 24h", cor: "#eab308" },
   { id: "atendimento-humano", label: "Atendimento humano", cor: "#6366f1" },
+  { id: "sem-retorno", label: "Sem retorno", cor: "#94a3b8" },
   { id: "nao-qualificado", label: "Não qualificado", cor: "#ef4444" },
   { id: "indicado-parceiro", label: "Consumidor → loja parceira", cor: "#14b8a6" },
 ] as const;
@@ -93,6 +94,7 @@ export function colunaDe(estado: string): string {
     case "catalogo-enviado": return "catalogo-enviado";
     case "follow-up-24h": return "follow-up-24h";
     case "atendimento-humano": return "atendimento-humano";
+    case "sem-retorno": return "sem-retorno";
     case "aguardando-cidade-parceiro": return "nao-qualificado";
     case "nao-qualificado": return "nao-qualificado";
     case "indicado-parceiro": return "indicado-parceiro";

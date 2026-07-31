@@ -281,9 +281,9 @@ export interface AtendConversa {
 }
 export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; criado_em: string }
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
-export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; mensagens: AtendMensagem[] }
+export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; mensagens: AtendMensagem[] }
 export interface AtendResposta { conversa_id: string; estado: string; coluna: string; respostas: { tipo: string; texto: string }[]; notificarHumano: boolean }
-export interface ZapiConfig { zapi_base: string; zapi_instance: string; zapi_token: string; zapi_client_token: string; zapi_ativo: boolean; atendimento_ativo: boolean; catalogo_url: string; catalogo_senha: string; catalogo_msg: string; webhook_url: string }
+export interface ZapiConfig { zapi_base: string; zapi_instance: string; zapi_token: string; zapi_client_token: string; zapi_ativo: boolean; atendimento_ativo: boolean; catalogo_url: string; catalogo_senha: string; catalogo_msg: string; followup_ativo: boolean; followup_hora_ini: string; followup_hora_fim: string; followup_domingo: boolean; webhook_url: string }
 
 export interface FunilResumo { parados: number; semTarefa: number; retornos: number; alertas: number }
 export interface FunilBoard { etapas: FunilEtapa[]; cards: FunilCard[]; resumo: FunilResumo }
@@ -659,6 +659,8 @@ export const api = {
     jsonPost(`/api/atendimento/${id}/enviar`, b).then((r) => j<{ ok: boolean }>(r)),
   atendAutorizar: (id: string, representante?: string) =>
     jsonPost(`/api/atendimento/${id}/autorizar`, { representante }).then((r) => j<{ ok: boolean; representante: string }>(r)),
+  atendNaoPerturbe: (id: string, nao_perturbe: boolean) =>
+    jsonPost(`/api/atendimento/${id}/nao-perturbe`, { nao_perturbe }).then((r) => j<{ ok: boolean }>(r)),
   atendConfig: () => fetch("/api/atendimento/config").then((r) => j<ZapiConfig>(r)),
   atendSalvarConfig: (b: Partial<Omit<ZapiConfig, "webhook_url">>) =>
     jsonPost("/api/atendimento/config", b).then((r) => j<{ ok: boolean }>(r)),
