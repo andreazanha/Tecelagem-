@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { limparVendedor } from "./comercial";
+import { ehClienteInterno } from "./funil";
 
 export const clientes = new Hono<{ Bindings: Env }>();
 
@@ -32,9 +33,11 @@ clientes.get("/", async (c) => {
     const { results } = await c.env.DB.prepare("SELECT id, nome FROM clientes ORDER BY nome").all();
     return c.json(results);
   }
-  const { results: cli } = await c.env.DB.prepare(
+  const { results: cliAll } = await c.env.DB.prepare(
     "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, ultima_compra, created_at FROM clientes ORDER BY nome"
   ).all<ClienteRow>();
+  // Nomes internos (ESTOQUE, OP CONSOLIDADA, REPOSIÇÃO, BIG TRICOT) não são clientes reais.
+  const cli = cliAll.filter((c0) => !ehClienteInterno(c0.nome));
   const { results: stats } = await c.env.DB.prepare(
     `SELECT p.cliente_nome AS nome, COUNT(DISTINCT p.id) AS pedidos,
             COALESCE(SUM(i.qtd * i.valor_unit), 0) AS total, MAX(p.data_pedido) AS ultima

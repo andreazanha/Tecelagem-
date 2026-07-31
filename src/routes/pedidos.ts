@@ -15,6 +15,7 @@ import { gerarPdfParte, gerarPdfCliente, mergePdfs, gerarRomaneioTassel, type Pe
 import { enviarPushNovoPedido, enviarPush } from "../push-send";
 import { baixaProntaEntrega, localizacaoProducao, cadastrarProdutosDoPedido } from "./produtos";
 import { consumoDoPedido, baixarPorPedido, estornarPedido } from "../estoque-baixa";
+import { ehClienteInterno } from "./funil";
 
 export const pedidos = new Hono<{ Bindings: Env }>();
 
@@ -378,12 +379,15 @@ pedidos.post("/", async (c) => {
     )
   );
 
-  // garante o cliente no catálogo
-  stmts.push(
-    c.env.DB.prepare(
-      "INSERT INTO clientes (id, nome) VALUES (?, ?) ON CONFLICT(nome) DO NOTHING"
-    ).bind(crypto.randomUUID(), cliente_nome)
-  );
+  // garante o cliente no catálogo — pedidos internos (estoque, OP consolidada,
+  // reposição, Big Tricot) NÃO viram cliente na base.
+  if (!ehClienteInterno(cliente_nome)) {
+    stmts.push(
+      c.env.DB.prepare(
+        "INSERT INTO clientes (id, nome) VALUES (?, ?) ON CONFLICT(nome) DO NOTHING"
+      ).bind(crypto.randomUUID(), cliente_nome)
+    );
+  }
 
   for (const it of b.itens || []) {
     const produto = (it.produto || "").trim();
@@ -451,7 +455,7 @@ pedidos.put("/:id", async (c) => {
       id
     )
   );
-  stmts.push(c.env.DB.prepare("INSERT INTO clientes (id, nome) VALUES (?, ?) ON CONFLICT(nome) DO NOTHING").bind(crypto.randomUUID(), cliente_nome));
+  if (!ehClienteInterno(cliente_nome)) stmts.push(c.env.DB.prepare("INSERT INTO clientes (id, nome) VALUES (?, ?) ON CONFLICT(nome) DO NOTHING").bind(crypto.randomUUID(), cliente_nome));
   stmts.push(c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id = ?").bind(id));
   for (const it of b.itens || []) {
     const produto = (it.produto || "").trim();
