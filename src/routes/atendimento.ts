@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import type { Env } from "../index";
 import { processar, colunaDe, ATEND_COLUNAS, BOAS_VINDAS, montarCatalogo, type Conversa, type Deps, type LojaParceira, type Saida, type EstadoAtend } from "../atendimento_bot";
 import { ehClienteInterno } from "./funil";
+import { enviarPush } from "../push-send";
 
 export const atendimento = new Hono<{ Bindings: Env }>();
 
@@ -121,6 +122,13 @@ async function detectarInteresse(env: Env, convId: string, texto: string, modelo
     await env.DB.prepare("UPDATE atend_conversas SET interessado=1, atualizado_em=datetime('now') WHERE id=?").bind(convId).run();
   }
   return interessou || citados.length > 0;
+}
+
+// Push (notificação do SO — funciona em qualquer tela e com o navegador fechado)
+// quando uma conversa ACABA de cair no atendimento humano.
+async function avisarHumanoPush(env: Env, c: { id: string; nome?: string | null; contato_nome?: string | null; telefone: string }) {
+  const quem = (c.nome || c.contato_nome || "").trim() || ("+" + digitos(c.telefone));
+  await enviarPush(env, { titulo: "🔔 Atendimento humano", corpo: `${quem} precisa de um atendente no WhatsApp.`, url: "/atendimento", tag: "atend-" + c.id }).catch(() => {});
 }
 
 async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: string, tipo: string, texto: string) {
@@ -397,6 +405,9 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     await addMsg(env, conv.id, "out", "sistema", "sistema", "🔔 Cliente respondeu ao follow-up — retomar atendimento.");
   }
 
+  // Estado antes desta mensagem (pra saber se a conversa ACABOU de virar "humano").
+  const estadoAntes = conv.estado;
+
   // Atendente humano assumiu → o robô não responde mais, só registra a mensagem.
   if (conv.estado === "atendimento-humano") {
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
@@ -446,6 +457,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     }
     await env.DB.prepare("UPDATE atend_conversas SET estado=?, tipo=COALESCE(?, tipo), atualizado_em=datetime('now') WHERE id=?")
       .bind(ia.novoEstado, ia.tipo, conv.id).run();
+    if (ia.novoEstado === "atendimento-humano" && estadoAntes !== "atendimento-humano") await avisarHumanoPush(env, conv);
     for (const s of ia.saidas) {
       await addMsg(env, conv.id, "out", "bot", s.tipo, s.texto);
       await enviarWhatsapp(env, tel, s);
@@ -476,6 +488,10 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   await env.DB.prepare(
     `UPDATE atend_conversas SET estado=?, nome=?, setor=?, cnpj=?, cidade=?, uf=?, lojista=?, tipo=?, representante=?, autorizado=?, atualizado_em=datetime('now') WHERE id=?`
   ).bind(r.conv.estado, r.conv.nome ?? null, r.conv.setor ?? null, r.conv.cnpj ?? null, r.conv.cidade ?? null, r.conv.uf ?? null, r.conv.lojista ?? null, tipoFinal, representanteFinal, autorizado, conv.id).run();
+
+  if (r.conv.estado === "atendimento-humano" && estadoAntes !== "atendimento-humano") {
+    await avisarHumanoPush(env, { id: conv.id, nome: r.conv.nome ?? conv.nome, contato_nome: conv.contato_nome, telefone: conv.telefone });
+  }
 
   for (const s of r.saidas) {
     await addMsg(env, conv.id, "out", "bot", s.tipo, s.texto);

@@ -413,6 +413,7 @@ export function Layout() {
           </div>
           <InstalarApp />
           <span className="avatar" title={`${u.nome} · ${VERSION}`}>{iniciais || "?"}</span>
+          <span className="topnav-username" title={`Logado como ${u.usuario}`}>{u.nome}</span>
           <span className="app-ver" title="Versão do sistema">{VERSION}</span>
           <button className="ur-btn" onClick={sair} title="Sair">Sair</button>
         </div>
