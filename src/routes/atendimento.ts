@@ -756,6 +756,43 @@ atendimento.post("/config", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── PONTE CATÁLOGO → FUNIL (pública) ─────────────────────────────────────────────
+// O botão de WhatsApp do catálogo aponta pra cá. Registra o contato no funil
+// (coluna "📥 Catálogo (contato)") e redireciona pro WhatsApp de destino (loja ou
+// representante). Assim o cliente cai no WhatsApp normalmente E fica no funil.
+// Parâmetros: ?para=<zap destino> &wa=<zap do cliente> &nome= &uf= &rep= &texto=
+const SUFIXO_TEL = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(whatsapp,''),'.',''),'-',''),'(',''),')',''),' ','')";
+atendimento.get("/catalogo-whatsapp", async (c) => {
+  const paraDig = digitos(c.req.query("para") || c.req.query("p") || "");
+  const waDig = digitos(c.req.query("wa") || c.req.query("cliente") || "");
+  const nome = (c.req.query("nome") || c.req.query("loja") || "").toString().trim().slice(0, 120);
+  const uf = (c.req.query("uf") || "").toString().trim().toUpperCase().slice(0, 2);
+  const rep = (c.req.query("rep") || "").toString().trim().slice(0, 80);
+  const texto = (c.req.query("texto") || c.req.query("text") || "").toString().slice(0, 600);
+
+  // Registra o lead no funil se veio o WhatsApp do cliente (idempotente por telefone).
+  if (waDig.length >= 10 && !ehClienteInterno(nome)) {
+    const core = waDig.slice(-8);
+    const jaCard = await c.env.DB.prepare(`SELECT id FROM funil_cards WHERE ${SUFIXO_TEL} LIKE '%'||? LIMIT 1`).bind(core).first<{ id: string }>().catch(() => null);
+    if (!jaCard) {
+      const cli = await c.env.DB.prepare(
+        `SELECT id, representante FROM clientes WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(whatsapp,''),'.',''),'-',''),'(',''),')',''),' ','') LIKE '%'||? LIMIT 1`
+      ).bind(core).first<{ id: string; representante: string | null }>().catch(() => null);
+      const cardId = uid();
+      await c.env.DB.prepare(
+        "INSERT INTO funil_cards (id, cliente_id, nome, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, 'catalogo-recebido', ?)"
+      ).bind(cardId, cli?.id ?? null, nome || "(catálogo)", uf || null, waDig, rep || cli?.representante || null).run();
+      await c.env.DB.prepare("INSERT INTO funil_eventos (id, card_id, tipo, texto) VALUES (?, ?, 'etapa', 'Clicou no WhatsApp pelo catálogo')").bind(uid(), cardId).run();
+    }
+  }
+  // Redireciona pro WhatsApp de destino (loja/representante), se informado.
+  if (paraDig.length >= 10) {
+    const full = paraDig.length <= 11 ? "55" + paraDig : paraDig;
+    return c.redirect(`https://wa.me/${full}` + (texto ? `?text=${encodeURIComponent(texto)}` : ""), 302);
+  }
+  return c.json({ ok: true, registrado: waDig.length >= 10 });
+});
+
 // Diagnóstico da IA (botão "Testar IA"): roda o modelo com uma mensagem de teste
 // e devolve, por modelo, se respondeu ou o erro exato. Serve pra ver se o Workers AI
 // está disponível na conta e qual modelo funciona — sem adivinhação.
