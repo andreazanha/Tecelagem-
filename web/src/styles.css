@@ -1089,6 +1089,11 @@ body.dark .fx-hd .ct { background: #1b2536; border-color: #26324a; }
 body.dark .fx-card { background: #18202f; border-color: #26324a; }
 .fx-card.red { border-left-color: #dc2626; background: #fef4f4; }
 body.dark .fx-card.red { background: #2a1618; }
+/* Mobile: colunas ocupam quase a tela toda e a rolagem "encaixa" uma por vez. */
+@media (max-width: 700px) {
+  .fx-board { gap: 10px; scroll-snap-type: x proximity; scroll-padding-left: 4px; -webkit-overflow-scrolling: touch; }
+  .fx-col { flex: 0 0 86%; max-width: 86%; scroll-snap-align: start; }
+}
 .fx-card.alert { border-left-color: #f59e0b; }
 .fx-nm { font-weight: 800; font-size: 13px; letter-spacing: -.2px; }
 .fx-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
@@ -1183,6 +1188,7 @@ body.dark .at-compose input { background: #0b1220; border-color: #ffffff1a; colo
 .at-sim { max-width: 460px; width: 94vw; padding: 0; overflow: hidden; }
 .at-siminput { border: none; border-radius: 6px; padding: 2px 7px; font-size: 12px; width: 130px; margin-left: 4px; }
 .at-simscr { background: #e5ddd3; padding: 14px; display: flex; flex-direction: column; gap: 7px; height: 46vh; overflow-y: auto; }
+@media (max-width: 700px) { .at-simscr { height: 60vh; } .at-sim { width: 96vw; } }
 body.dark .at-simscr { background: #0c1a17; }
 .at-simatalhos { display: flex; gap: 6px; flex-wrap: wrap; padding: 9px 12px; background: #fff; border-top: 1px solid var(--line); }
 body.dark .at-simatalhos { background: #18202f; border-color: #26324a; }

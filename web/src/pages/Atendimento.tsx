@@ -118,7 +118,7 @@ export function Atendimento() {
       )}
       <div className="page-head">
         <div><h1>Atendimento</h1><div className="breadcrumb">Comercial › Atendimento (robô do WhatsApp)</div></div>
-        <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
           {ehGestorAtend() && <button className="btn btn-primary" onClick={() => setSim(true)}>💬 Simular cliente</button>}
