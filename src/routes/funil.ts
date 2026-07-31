@@ -272,12 +272,13 @@ funil.post("/sincronizar", async (c) => {
   return c.json({ criados, removidos, ignorados: clientes.length - criados });
 });
 
-// ── REATIVAÇÃO ────────────────────────────────────────────────────────────────
-// Puxa para a coluna "reativacao" os clientes com WhatsApp que estão há +N dias
-// (padrão 90) sem faturar (clientes.ultimo_faturamento). Idempotente: não mexe em
-// quem já tem cartão no funil, e cada cliente ganha uma tarefa de mensagem.
+// ── REATIVAÇÃO / PÓS-VENDA ─────────────────────────────────────────────────────
+// 30 dias (padrão) depois do faturamento, se o cliente com WhatsApp ainda NÃO
+// falou com a gente, entra na coluna "reativacao" para o pós-venda: perguntar se
+// recebeu o pedido / deu tudo certo e depois oferecer reposição. Idempotente:
+// pula quem já tem cartão no funil OU quem já tem conversa (já mandou mensagem).
 funil.post("/reativacao", async (c) => {
-  const dias = Math.max(1, Math.floor(Number(c.req.query("dias")) || 90));
+  const dias = Math.max(1, Math.floor(Number(c.req.query("dias")) || 30));
   const { results: clientes } = await c.env.DB.prepare(
     `SELECT id, nome, cidade, uf, whatsapp, representante
        FROM clientes
@@ -289,19 +290,36 @@ funil.post("/reativacao", async (c) => {
 
   const { results: existentes } = await c.env.DB.prepare("SELECT nome FROM funil_cards").all<{ nome: string }>();
   const jaTem = new Set(existentes.map((e) => e.nome));
+  // Quem já tem conversa (já mandou / já falamos) não entra na fila de prospecção.
+  const { results: convs } = await c.env.DB.prepare("SELECT telefone, cliente_id FROM atend_conversas").all<{ telefone: string | null; cliente_id: string | null }>().catch(() => ({ results: [] as { telefone: string | null; cliente_id: string | null }[] }));
+  const jaFalou = new Set<string>();
+  for (const cv of convs) {
+    if (cv.cliente_id) jaFalou.add("id:" + cv.cliente_id);
+    const t = (cv.telefone || "").replace(/\D/g, ""); if (t.length >= 8) jaFalou.add("tel:" + t.slice(-8));
+  }
 
   let criados = 0;
   for (const cli of clientes) {
     if (ehClienteInterno(cli.nome) || jaTem.has(cli.nome)) continue;
+    if (cli.id && jaFalou.has("id:" + cli.id)) continue;
+    const tel8 = (cli.whatsapp || "").replace(/\D/g, "").slice(-8);
+    if (tel8 && jaFalou.has("tel:" + tel8)) continue;
     const cardId = uid();
     const resp = str(cli.representante);
     await c.env.DB.prepare(
       "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, 'reativacao', ?)"
     ).bind(cardId, cli.id, cli.nome, str(cli.cidade), str(cli.uf), str(cli.whatsapp), resp).run();
+    // Cliente de REPRESENTANTE: não falar direto com o cliente — acionar o representante
+    // (não passar por cima dele). Cliente sem representante: pós-venda direto.
+    const tarefa = resp
+      ? `Acionar o representante ${resp} para o pós-venda (não falar direto com o cliente): conferir se recebeu o pedido, se deu tudo certo e oferecer reposição.`
+      : "Pós-venda direto: perguntar se recebeu o pedido e se deu tudo certo; depois oferecer reposição.";
     await c.env.DB.prepare(
-      "INSERT INTO funil_tarefas (id, card_id, titulo, vence_em, responsavel) VALUES (?, ?, 'Enviar mensagem de reativação', date('now','+1 day'), ?)"
-    ).bind(uid(), cardId, resp).run();
-    await logar(c.env, cardId, "etapa", `Reativação: +${dias} dias sem faturar`);
+      "INSERT INTO funil_tarefas (id, card_id, titulo, vence_em, responsavel) VALUES (?, ?, ?, date('now','+1 day'), ?)"
+    ).bind(uid(), cardId, tarefa, resp).run();
+    await logar(c.env, cardId, "etapa", resp
+      ? `Pós-venda automático (+${dias}d): cliente do representante ${resp} — acionar o representante`
+      : `Pós-venda automático (+${dias}d): sem representante — contato direto`);
     jaTem.add(cli.nome);
     criados++;
   }

@@ -127,7 +127,7 @@ export function Funil() {
           ))}
           <span className={"fx-pill" + (filtro === "alerta" ? " on" : "")} onClick={() => setFiltro("alerta")}>⚠️ Em alerta</span>
           <button className="btn" disabled={sincronizando} onClick={sincronizar}>{sincronizando ? "Sincronizando…" : "🔄 Sincronizar clientes"}</button>
-          <button className="btn" disabled={reativando} onClick={reativar} title="Puxa clientes com WhatsApp sem faturar há +90 dias">{reativando ? "Buscando…" : "🔔 Buscar reativações"}</button>
+          <button className="btn" disabled={reativando} onClick={reativar} title="Puxa clientes com WhatsApp sem contato, +30 dias do faturamento (pós-venda)">{reativando ? "Buscando…" : "🔔 Buscar pós-venda"}</button>
           <button className="btn btn-primary" onClick={() => setNovo(true)}>＋ Novo lead</button>
         </div>
       </div>

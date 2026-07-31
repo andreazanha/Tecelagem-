@@ -140,9 +140,9 @@ export function Clientes() {
   const ticketGeral = somaPed ? somaTotal / somaPed : 0;
 
   const linha = (c: ClienteCrm) => {
-    // Régua de reativação pelo faturamento: 90d = atenção, 120d = reativar.
+    // Régua de pós-venda/reativação pelo faturamento: 30d = hora do contato, 60d = atrasado.
     const dFat = diasDe(c.ultimo_faturamento);
-    const fatCls = dFat != null && dFat >= 120 ? "fat-frio" : dFat != null && dFat >= 90 ? "fat-morno" : "";
+    const fatCls = dFat != null && dFat >= 60 ? "fat-frio" : dFat != null && dFat >= 30 ? "fat-morno" : "";
     return (
       <tr key={c.id} onClick={() => nav(`/clientes/${c.id}`)}>
         <td><div className="cli-nm">{c.nome}</div><div className="muted2">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div></td>
@@ -158,7 +158,7 @@ export function Clientes() {
         <td>{c.ultimo_faturamento ? (
           <div className={fatCls}>
             <div>🧾 {dataBr(c.ultimo_faturamento)}</div>
-            <div className={fatCls ? "fat-flag" : "muted2"}>{desde(c.ultimo_faturamento)}{dFat != null && dFat >= 120 ? " · reativar" : dFat != null && dFat >= 90 ? " · atenção" : ""}</div>
+            <div className={fatCls ? "fat-flag" : "muted2"}>{desde(c.ultimo_faturamento)}{dFat != null && dFat >= 60 ? " · pós-venda atrasado" : dFat != null && dFat >= 30 ? " · hora do pós-venda" : ""}</div>
           </div>
         ) : "—"}</td>
       </tr>
