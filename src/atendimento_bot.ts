@@ -32,6 +32,8 @@ export interface Deps {
   consultarCnpj: (cnpjDigitos: string) => Promise<{ existe: boolean; ativa: boolean; nome: string | null; uf?: string | null; cidade?: string | null; erro?: boolean; fonte?: string }>;
   // Busca lojas parceiras perto da cidade/UF (prioriza ativas e frequentes).
   parceiros: (cidade: string | null, uf: string | null) => Promise<LojaParceira[]>;
+  // URL da vitrine pública de lojas parceiras (link enviado ao consumidor final).
+  vitrineUrl?: string | null;
   // Catálogo (configurado no CRM). Precedência: mensagem pronta > link (+senha) > placeholder.
   catalogoMsg?: string | null;   // mensagem completa colada pela loja (com link e senha)
   catalogoUrl?: string | null;
@@ -155,7 +157,17 @@ function cardLoja(l: LojaParceira): string {
 
 async function indicar(conv: Conversa, saidas: Saida[], deps: Deps): Promise<Resultado> {
   const lojas = await deps.parceiros(conv.cidade ?? null, conv.uf ?? null);
-  if (lojas.length) {
+  // Preferência: mandar o LINK da vitrine (já filtrado por estado/cidade), onde o cliente
+  // vê endereço, site, Instagram e WhatsApp clicáveis. Só cai nos cards no chat se não houver link.
+  if (deps.vitrineUrl && lojas.length) {
+    const q = new URLSearchParams();
+    if (conv.uf) q.set("uf", String(conv.uf));
+    if (conv.cidade) q.set("cidade", String(conv.cidade));
+    const link = deps.vitrineUrl + (q.toString() ? "?" + q.toString() : "");
+    const n = lojas.length;
+    saidas.push({ tipo: "texto", texto: `Boa! Encontrei ${n} loja${n > 1 ? "s" : ""} parceira${n > 1 ? "s" : ""} em ${conv.cidade || "sua região"}. 💛` });
+    saidas.push({ tipo: "texto", texto: `É só abrir esse link pra ver o endereço, o WhatsApp e o Instagram delas 👇\n${link}` });
+  } else if (lojas.length) {
     saidas.push({ tipo: "texto", texto: "Achei essas lojas parceiras pertinho de você: 👇" });
     for (const l of lojas.slice(0, 3)) saidas.push({ tipo: "texto", texto: cardLoja(l) });
     saidas.push({ tipo: "texto", texto: "Elas vão te atender super bem! Qualquer coisa, é só chamar. 😊" });

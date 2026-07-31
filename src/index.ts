@@ -11,6 +11,7 @@ import { push } from "./routes/push";
 import { produtos, insumos, fornecedores, lembreteReposicao } from "./routes/produtos";
 import { representantes, comercial } from "./routes/comercial";
 import { funil } from "./routes/funil";
+import { parceiros, vitrineHtml, cadastroHtml } from "./routes/parceiros";
 import { materiais } from "./routes/materiais";
 import { colecoes } from "./routes/colecoes";
 import { chat } from "./routes/chat";
@@ -68,6 +69,7 @@ app.route("/api/fornecedores", fornecedores);
 app.route("/api/representantes", representantes);
 app.route("/api/comercial", comercial);
 app.route("/api/funil", funil);
+app.route("/api/parceiros", parceiros);
 app.route("/api/atendimento", atendimento);
 app.route("/api/assistente", assistente);
 app.route("/api/relatorios", relatorios);
@@ -84,6 +86,17 @@ app.route("/api/tecelagem", tecelagem);
 app.get("/.well-known/assetlinks.json", (c) => {
   try { return c.json(c.env.ASSETLINKS ? JSON.parse(c.env.ASSETLINKS) : []); } catch { return c.json([]); }
 });
+
+// Vitrine pública de lojas parceiras (SEM login) — link que a Bia manda pro consumidor
+// final e que pode ser divulgado por fora. Aceita ?uf= e ?cidade= pra já filtrar.
+app.get("/vitrine", async (c) => {
+  const url = new URL(c.req.url);
+  const html = await vitrineHtml(c.env, url.searchParams.get("uf") ?? undefined, url.searchParams.get("cidade") ?? undefined);
+  return c.html(html, 200, { "Cache-Control": "no-cache" });
+});
+
+// Autocadastro público de loja parceira (link do convite enviado aos lojistas).
+app.get("/cadastrar-loja", (c) => c.html(cadastroHtml(), 200, { "Cache-Control": "no-cache" }));
 
 app.all("*", async (c) => {
   let res = await c.env.ASSETS.fetch(c.req.raw);

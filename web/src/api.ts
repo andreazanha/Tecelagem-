@@ -648,6 +648,10 @@ export const api = {
   funilBoard: () => fetch("/api/funil").then((r) => j<FunilBoard>(r)),
   sincronizarFunil: () => jsonPost("/api/funil/sincronizar", {}).then((r) => j<{ criados: number; removidos: number; ignorados: number }>(r)),
   excluirCard: (id: string) => fetch(`/api/funil/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  // Lojas parceiras (vitrine)
+  parceiros: () => fetch("/api/parceiros").then((r) => j<LojaParceira[]>(r)),
+  salvarParceiro: (b: Partial<LojaParceira>) => jsonPost("/api/parceiros", b).then((r) => j<{ ok: boolean; id: string }>(r)),
+  excluirParceiro: (id: string) => fetch(`/api/parceiros/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   // Robô de atendimento (WhatsApp)
   atendBoard: () => fetch("/api/atendimento").then((r) => j<AtendBoard>(r)),
   atendConversa: (id: string) => fetch(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),
@@ -1426,6 +1430,10 @@ export interface ProdutoLog {
   usuario?: string | null;
   ref_id?: string | null;
   criado_em: string;
+}
+export interface LojaParceira {
+  id: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null;
+  whatsapp: string | null; instagram: string | null; site: string | null; ativo: number; criado_em?: string;
 }
 export interface ItemPedidoEstoque {
   ref?: string | null;

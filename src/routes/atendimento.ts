@@ -25,8 +25,9 @@ type ConvRow = Conversa & {
 };
 
 // ── Dependências (SINTEGRA + lojas parceiras) ────────────────────────────────────
-function deps(env: Env, cat?: { url?: string | null; senha?: string | null; msg?: string | null }): Deps {
+function deps(env: Env, cat?: { url?: string | null; senha?: string | null; msg?: string | null }, origin?: string | null): Deps {
   return {
+    vitrineUrl: origin ? origin + "/vitrine" : null,
     catalogoMsg: cat?.msg ?? null,
     catalogoUrl: cat?.url ?? null,
     catalogoSenha: cat?.senha ?? null,
@@ -54,32 +55,17 @@ function deps(env: Env, cat?: { url?: string | null; senha?: string | null; msg?
         return { existe: false, ativa: false, nome: null, erro: true, fonte: "erro-rede" };
       }
     },
-    // Lojas parceiras perto da cidade/UF: clientes reais, priorizando ativos e frequentes.
+    // Lojas parceiras perto da cidade/UF: cadastro próprio (tabela lojas_parceiras).
     async parceiros(cidade, uf) {
-      const conds: string[] = ["COALESCE(reposicao,0)=0"]; // via subquery abaixo
-      const cond: string[] = [];
+      const cond: string[] = ["COALESCE(ativo,1)=1"];
       const args: unknown[] = [];
-      if (uf) { cond.push("UPPER(COALESCE(c.uf,'')) = ?"); args.push(uf.toUpperCase()); }
-      if (cidade) { cond.push("UPPER(COALESCE(c.cidade,'')) LIKE ?"); args.push("%" + cidade.trim().toUpperCase() + "%"); }
-      if (!cond.length) return [];
-      void conds;
+      if (uf) { cond.push("UPPER(COALESCE(uf,'')) = ?"); args.push(uf.toUpperCase()); }
+      if (cidade) { cond.push("UPPER(COALESCE(cidade,'')) LIKE ?"); args.push("%" + cidade.trim().toUpperCase() + "%"); }
+      if (!uf && !cidade) return [];
       const { results } = await env.DB.prepare(
-        `SELECT c.nome, c.cidade, c.uf, c.whatsapp,
-                (SELECT COUNT(*) FROM pedidos p WHERE p.cliente_nome=c.nome AND COALESCE(p.reposicao,0)=0 AND COALESCE(p.tipo,'')<>'estoque') AS n,
-                (SELECT MAX(p.data_pedido) FROM pedidos p WHERE p.cliente_nome=c.nome AND COALESCE(p.reposicao,0)=0 AND COALESCE(p.tipo,'')<>'estoque') AS ultima
-           FROM clientes c WHERE ${cond.join(" AND ")}`
-      ).bind(...args).all<{ nome: string; cidade: string | null; uf: string | null; whatsapp: string | null; n: number; ultima: string | null }>();
-      const hoje = Date.now();
-      const lojas: (LojaParceira & { score: number })[] = results
-        .filter((r) => !ehClienteInterno(r.nome))
-        .map((r) => {
-          const dias = r.ultima ? Math.floor((hoje - Date.parse(r.ultima + "T00:00:00Z")) / 86400000) : 9999;
-          const ativo = dias <= 90;
-          const freq = r.n >= 3;
-          return { nome: r.nome, cidade: r.cidade, uf: r.uf, whatsapp: r.whatsapp, ativo, freq, score: (ativo ? 100 : 0) + Math.min(r.n, 20) - dias / 30 };
-        });
-      lojas.sort((a, b) => b.score - a.score);
-      return lojas.slice(0, 3);
+        `SELECT nome, cidade, uf, whatsapp, instagram FROM lojas_parceiras WHERE ${cond.join(" AND ")} ORDER BY cidade, nome`
+      ).bind(...args).all<{ nome: string; cidade: string | null; uf: string | null; whatsapp: string | null; instagram: string | null }>().catch(() => ({ results: [] as { nome: string; cidade: string | null; uf: string | null; whatsapp: string | null; instagram: string | null }[] }));
+      return results.map((r) => ({ nome: r.nome, cidade: r.cidade, uf: r.uf, whatsapp: r.whatsapp, instagram: r.instagram, ativo: true, freq: false }));
     },
   };
 }
@@ -245,7 +231,7 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string): Promise<IaSa
 
 // ── Núcleo: recebe uma mensagem do cliente, roda o robô, responde e qualifica ────
 // Usado tanto pelo simulador (/entrada) quanto pelo webhook real da Z-API (/webhook).
-async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "") {
+async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "", origin: string | null = null) {
   const tel = digitos(telRaw);
   const texto = String(textoRaw ?? "");
   const contato = String(contatoNome ?? "").trim().slice(0, 80) || null;
@@ -315,7 +301,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
 
   // Passa o contexto de identificação pro robô (saudação personalizada de cliente conhecido).
   conv.clienteConhecido = !!conv.cliente_id;
-  const r = await processar(conv as Conversa, texto, deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }));
+  const r = await processar(conv as Conversa, texto, deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, origin));
 
   // Representante responsável: 1º o que já veio (cliente/base), senão pela região da UF.
   let representanteFinal = conv.representante ?? null;
@@ -361,7 +347,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
 // Corpo: { telefone, texto }. Mesma lógica do webhook, para testar sem WhatsApp.
 atendimento.post("/entrada", async (c) => {
   const b = await c.req.json<{ telefone?: string; texto?: string }>().catch(() => ({}) as Record<string, string>);
-  const r = await receberMensagem(c.env, b.telefone, b.texto);
+  const r = await receberMensagem(c.env, b.telefone, b.texto, "whatsapp", "", new URL(c.req.url).origin);
   if ("erro" in r) return c.json({ error: r.erro }, 400);
   return c.json(r);
 });
@@ -409,7 +395,7 @@ atendimento.post("/webhook", async (c) => {
   const nomeContato = String(b.senderName ?? b.chatName ?? b.pushName ?? "").trim();
   if (!phone) return c.json({ ignorado: "sem-telefone" });
   if (!texto.trim()) return c.json({ ignorado: "sem-texto" });
-  const r = await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato);
+  const r = await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, new URL(c.req.url).origin);
   if ("erro" in r) return c.json({ error: r.erro }, 400);
   return c.json({ ok: true, conversa_id: r.conversa_id });
 });
