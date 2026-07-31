@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type FunilCard, type FunilBoard, type FunilCardDetalhe, type FunilEtapa } from "../api";
+import { ConversaModal } from "./Atendimento";
 
 const brl = (n?: number | null) => "R$ " + (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 function dataBr(d?: string | null): string {
@@ -47,7 +48,10 @@ export function Funil() {
   const [board, setBoard] = useState<FunilBoard | null>(null);
   const [filtro, setFiltro] = useState<string>("todos"); // todos | alerta | <responsavel>
   const [abrir, setAbrir] = useState<string | null>(null); // card id detalhe
+  const [abrirConversa, setAbrirConversa] = useState<string | null>(null); // conversa (WhatsApp) do card
   const [novo, setNovo] = useState(false);
+  // Clicar no card: se tem conversa de WhatsApp vinculada, abre o atendimento completo; senão, o detalhe do funil.
+  const abrirCard = (c: FunilCard) => c.conversa_id ? setAbrirConversa(c.conversa_id) : setAbrir(c.id);
   const [sincronizando, setSincronizando] = useState(false);
   const [arrastando, setArrastando] = useState<string | null>(null); // card id em drag
   const [sobre, setSobre] = useState<string | null>(null); // etapa alvo do drag
@@ -135,7 +139,7 @@ export function Funil() {
                 <div className="fx-hd"><span className="fx-dot" style={{ background: et.cor }} />{et.label}<span className="ct">{cards.length}</span></div>
                 {cards.map((c) => (
                   <CardMini
-                    key={c.id} c={c} onAbrir={() => setAbrir(c.id)}
+                    key={c.id} c={c} onAbrir={() => abrirCard(c)}
                     onDragStart={() => setArrastando(c.id)} onDragEnd={() => { setArrastando(null); setSobre(null); }}
                   />
                 ))}
@@ -147,6 +151,7 @@ export function Funil() {
 
       {novo && <NovoLead onFechar={() => setNovo(false)} onSalvo={() => { setNovo(false); recarregar(); }} />}
       {abrir && <CardDetalhe id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
+      {abrirConversa && <ConversaModal id={abrirConversa} onFechar={() => setAbrirConversa(null)} onMudou={recarregar} />}
     </div>
   );
 }

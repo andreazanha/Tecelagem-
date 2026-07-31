@@ -73,6 +73,13 @@ funil.get("/", async (c) => {
   const proxTarefa = new Map<string, { titulo: string; vence_em: string | null }>();
   for (const t of tar) if (!proxTarefa.has(t.card_id)) proxTarefa.set(t.card_id, { titulo: t.titulo, vence_em: t.vence_em });
 
+  // Conversa de WhatsApp vinculada a cada card (abrir o atendimento direto do funil).
+  const { results: convs } = await c.env.DB.prepare(
+    "SELECT card_id, id FROM atend_conversas WHERE card_id IS NOT NULL"
+  ).all<{ card_id: string; id: string }>().catch(() => ({ results: [] as { card_id: string; id: string }[] }));
+  const conversaDe = new Map<string, string>();
+  for (const cv of convs) if (!conversaDe.has(cv.card_id)) conversaDe.set(cv.card_id, cv.id);
+
   // Compras reais de cada cliente vinculado (para as regras automáticas):
   // nº de pedidos, data da última compra e quando o último pedido foi lançado.
   const nomesVinc = [...new Set(cards.filter((k) => k.cliente_id).map((k) => k.nome))];
@@ -139,7 +146,7 @@ funil.get("/", async (c) => {
       etapa, responsavel: k.responsavel, valor_estimado: k.valor_estimado, probabilidade: k.probabilidade,
       retorno_em: k.retorno_em, motivo_perdido: k.motivo_perdido, tentativas: k.tentativas,
       diasParado, proxTarefa: proxTar, semTarefa, alerta, vermelho, retornoVencido,
-      diasSemComprar, faixa,
+      diasSemComprar, faixa, conversa_id: conversaDe.get(k.id) ?? null,
     };
   });
 

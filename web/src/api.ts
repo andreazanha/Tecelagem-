@@ -248,7 +248,8 @@ export interface ClienteFicha extends ClienteCrm {
 export type FunilEtapa =
   | "novo-lead" | "primeiro-contato" | "negociacao" | "aguardando-retorno"
   | "pos-venda" | "ativo" | "inativo" | "perdido";
-export interface FunilCard {
+export interface FunilCardBase { conversa_id?: string | null }
+export interface FunilCard extends FunilCardBase {
   id: string;
   cliente_id: string | null;
   nome: string;

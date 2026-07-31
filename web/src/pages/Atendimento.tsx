@@ -375,7 +375,7 @@ function ConvMini({ c, onAbrir }: { c: AtendConversa; onAbrir: () => void }) {
 }
 
 // ── Conversa (thread estilo WhatsApp + contexto + ações do atendente) ──────────────
-function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => void; onMudou: () => void }) {
+export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => void; onMudou: () => void }) {
   const [d, setD] = useState<AtendConversaDetalhe | null>(null);
   const [texto, setTexto] = useState("");
   const [busy, setBusy] = useState(false);
