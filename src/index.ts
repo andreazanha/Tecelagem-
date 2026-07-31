@@ -15,7 +15,7 @@ import { materiais } from "./routes/materiais";
 import { colecoes } from "./routes/colecoes";
 import { chat } from "./routes/chat";
 import { etiquetas } from "./routes/etiquetas";
-import { atendimento, followupAtendimento } from "./routes/atendimento";
+import { atendimento, followupAtendimento, sincronizarPedidos } from "./routes/atendimento";
 import { assistente } from "./routes/assistente";
 import { relatorios } from "./routes/relatorios";
 import { tecelagem } from "./routes/tecelagem";
@@ -110,5 +110,6 @@ export default {
   scheduled: (_event: ScheduledController, env: Env, ctx: ExecutionContext) => {
     ctx.waitUntil(lembreteReposicao(env));
     ctx.waitUntil(followupAtendimento(env)); // retomada 24h do robô de atendimento
+    ctx.waitUntil(sincronizarPedidos(env));  // status do pedido → conversa (realizado/faturado/enviado)
   },
 };

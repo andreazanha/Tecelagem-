@@ -471,6 +471,73 @@ atendimento.post("/:id/enviar", async (c) => {
 // ── FOLLOW-UP 24h (chamado pelo cron) ────────────────────────────────────────────────
 // Conversas com catálogo enviado há +24h sem resposta do cliente → mensagem de
 // retomada e move para a coluna Follow-up 24h.
+// ── Sincroniza o status do pedido com a conversa (chamado pelo cron) ──────────────
+// Detecta o marco do pedido mais recente do cliente (realizado → faturado → enviado)
+// e, quando avança, move a conversa e avisa o cliente. Não repete marco já avisado e
+// NÃO dispara em massa por pedidos antigos (baseline silencioso no 1º vínculo).
+const MARCO_ORDEM: Record<string, number> = { realizado: 1, faturado: 2, enviado: 3 };
+
+function textoMarco(marco: string, nome: string | null): { estado: string; texto: string } {
+  const oi = `Oi${nome ? `, *${nome}*` : ""}!`;
+  if (marco === "faturado") return { estado: "pedido-faturado", texto: `${oi} Seu pedido da *Big Tricot* foi *faturado* e já está seguindo para o envio. 📦 Assim que a transportadora atualizar, te aviso por aqui!` };
+  if (marco === "enviado") return { estado: "pedido-enviado", texto: `${oi} Seu pedido *saiu para entrega* 🚚. Qualquer coisa, é só me chamar!` };
+  return { estado: "pedido-realizado", texto: `Seu pedido foi recebido com sucesso! ✅ Agora ele segue para a nossa programação. Assim que tivermos novidades, te aviso por aqui. 🧶` };
+}
+
+export async function sincronizarPedidos(env: Env): Promise<number> {
+  const cfg = await lerConfig(env);
+  if (cfg.atendimento_ativo !== "1") return 0; // modo teste não mexe com clientes reais
+
+  const { results: convs } = await env.DB.prepare(
+    `SELECT id, telefone, nome, contato_nome, cliente_id, cnpj, pedido_id, pedido_marco
+       FROM atend_conversas
+      WHERE (cliente_id IS NOT NULL OR (cnpj IS NOT NULL AND cnpj <> ''))
+        AND estado NOT IN ('nao-qualificado','indicado-parceiro','aguardando-cidade-parceiro')`
+  ).all<{ id: string; telefone: string; nome: string | null; contato_nome: string | null; cliente_id: string | null; cnpj: string | null; pedido_id: string | null; pedido_marco: string | null }>();
+
+  let mudou = 0;
+  for (const cv of convs) {
+    // Nome do cliente (para casar com pedidos.cliente_nome).
+    let clienteNome: string | null = null;
+    if (cv.cliente_id) clienteNome = (await env.DB.prepare("SELECT nome FROM clientes WHERE id = ?").bind(cv.cliente_id).first<{ nome: string }>())?.nome ?? null;
+    if (!clienteNome && cv.cnpj) {
+      const dig = digitos(cv.cnpj);
+      clienteNome = (await env.DB.prepare("SELECT nome FROM clientes WHERE REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-','') = ? LIMIT 1").bind(dig).first<{ nome: string }>())?.nome ?? null;
+    }
+    if (!clienteNome) continue;
+
+    const ped = await env.DB.prepare(
+      `SELECT p.id, p.numero_erp, e.nf_numero, e.fase, e.transportadora,
+              (p.data_pedido >= date('now','-3 days')) AS recente
+         FROM pedidos p LEFT JOIN expedicao e ON e.pedido_id = p.id
+        WHERE p.cliente_nome = ? AND COALESCE(p.reposicao,0) = 0
+        ORDER BY (p.data_pedido IS NULL), p.data_pedido DESC, p.rowid DESC LIMIT 1`
+    ).bind(clienteNome).first<{ id: string; numero_erp: string | null; nf_numero: string | null; fase: string | null; transportadora: string | null; recente: number }>();
+    if (!ped) continue;
+
+    const marco = ped.fase === "transporte" && ped.transportadora ? "enviado" : ped.nf_numero ? "faturado" : "realizado";
+    const mesmoPedido = ped.id === cv.pedido_id;
+    const avancou = !mesmoPedido || MARCO_ORDEM[marco] > (MARCO_ORDEM[cv.pedido_marco || ""] || 0);
+    if (!avancou) continue;
+
+    // Anuncia se já acompanhava um pedido, ou se este é recente. Senão, só baseline.
+    const anunciar = !!cv.pedido_id || ped.recente === 1;
+    if (anunciar) {
+      const { estado, texto } = textoMarco(marco, cv.contato_nome || cv.nome);
+      await addMsg(env, cv.id, "out", "bot", "texto", texto);
+      await enviarWhatsapp(env, cv.telefone, { tipo: "texto", texto });
+      await env.DB.prepare(
+        "UPDATE atend_conversas SET pedido_id=?, pedido_marco=?, estado=?, followup_etapa=0, ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?"
+      ).bind(ped.id, marco, estado, cv.id).run();
+      mudou++;
+    } else {
+      // Baseline silencioso (pedido antigo no 1º vínculo) — não spamma.
+      await env.DB.prepare("UPDATE atend_conversas SET pedido_id=?, pedido_marco=? WHERE id=?").bind(ped.id, marco, cv.id).run();
+    }
+  }
+  return mudou;
+}
+
 // Texto de cada etapa do follow-up (personalizado com o nome, se houver).
 function textoFollowup(etapa: number, nome: string | null): string {
   const oi = `Oi${nome ? `, *${nome}*` : ""}!`;
