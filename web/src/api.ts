@@ -670,6 +670,8 @@ export const api = {
     jsonPost("/api/atendimento/config", b).then((r) => j<{ ok: boolean }>(r)),
   atendTestarZapi: (telefone: string) =>
     jsonPost("/api/atendimento/config/testar", { telefone }).then((r) => j<{ enviado: boolean; motivo?: string }>(r)),
+  atendTestarIa: () =>
+    jsonPost("/api/atendimento/ia-teste", {}).then((r) => j<{ ok: boolean; ia_ligada: boolean; erro?: string; tentativas: { modelo: string; ok: boolean; resposta?: string; erro?: string }[] }>(r)),
   atendSincronizarCatalogo: () =>
     jsonPost("/api/atendimento/sincronizar-catalogo", {}).then((r) => j<{ ok: boolean; novos: number }>(r)),
   funilCard: (id: string) => fetch(`/api/funil/${id}`).then((r) => j<FunilCardDetalhe>(r)),

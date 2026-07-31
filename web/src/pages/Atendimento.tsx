@@ -69,6 +69,8 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
   const [telTeste, setTelTeste] = useState("");
+  const [iaTeste, setIaTeste] = useState<string>("");
+  const [iaTestando, setIaTestando] = useState(false);
 
   useEffect(() => { api.atendConfig().then(setCfg).catch(() => setMsg("Não consegui carregar a configuração.")); }, []);
   const set = (k: keyof ZapiConfig, v: string | boolean) => setCfg((c) => (c ? { ...c, [k]: v } : c));
@@ -89,6 +91,18 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
       const r = await api.atendTestarZapi(tel);
       setMsg(r.enviado ? "✓ Enviado! Veja o WhatsApp do número de teste." : `Falhou: ${r.motivo || "erro"}. Salvou as credenciais e ligou a conexão?`);
     } catch { setMsg("Erro ao testar."); }
+  }
+
+  async function testarIa() {
+    setIaTestando(true); setIaTeste("");
+    try {
+      const r = await api.atendTestarIa();
+      const ok = r.tentativas.find((t) => t.ok);
+      if (r.erro) setIaTeste(`❌ ${r.erro}`);
+      else if (ok) setIaTeste(`✅ IA funcionando! Modelo: ${ok.modelo}\nResposta de teste: "${ok.resposta}"` + (r.ia_ligada ? "" : "\n\n⚠️ Mas a IA está DESLIGADA — ligue e Salve acima."));
+      else { const err = r.tentativas.map((t) => `• ${t.modelo}: ${t.erro || "sem resposta"}`).join("\n"); setIaTeste(`❌ Nenhum modelo respondeu:\n${err}`); }
+    } catch { setIaTeste("❌ Erro ao chamar o teste (deploy subiu? versão nova?)."); }
+    finally { setIaTestando(false); }
   }
 
   const [sincroCat, setSincroCat] = useState(false);
@@ -117,7 +131,8 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
               </button>
             </div>
             {/* IA de triagem — atende conversando antes de pedir o CNPJ */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginBottom: 14, borderRadius: 10, border: "2px solid " + (cfg.atendimento_ia ? "#8b5cf6" : "#e2e8f0"), background: cfg.atendimento_ia ? "#faf5ff" : "#f8fafc" }}>
+            <div style={{ padding: "12px 14px", marginBottom: 14, borderRadius: 10, border: "2px solid " + (cfg.atendimento_ia ? "#8b5cf6" : "#e2e8f0"), background: cfg.atendimento_ia ? "#faf5ff" : "#f8fafc" }}>
+             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 800 }}>{cfg.atendimento_ia ? "🧠 Atendente com IA LIGADA" : "🧠 Atendente com IA desligada"}</div>
                 <div style={{ fontSize: 12, color: "#475569" }}>{cfg.atendimento_ia ? "A IA conversa com o lead, entende o que ele quer e só depois pede loja/CNPJ. Consumidor final é direcionado a lojas parceiras." : "Sem IA: o robô usa o menu fixo (1 Vendas, 2 Financeiro…)."}</div>
@@ -125,6 +140,12 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
               <button type="button" className={"btn " + (cfg.atendimento_ia ? "btn-soft" : "btn-primary")} onClick={() => set("atendimento_ia", !cfg.atendimento_ia)}>
                 {cfg.atendimento_ia ? "Desligar" : "Ligar"}
               </button>
+             </div>
+             <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+               <button type="button" className="btn btn-soft" disabled={iaTestando} onClick={testarIa}>{iaTestando ? "Testando…" : "🧪 Testar IA agora"}</button>
+               <span style={{ fontSize: 12, color: "#64748b" }}>Vê na hora se a IA responde (não precisa do simulador).</span>
+             </div>
+             {iaTeste && <pre style={{ marginTop: 10, marginBottom: 0, whiteSpace: "pre-wrap", fontSize: 12.5, background: "#0f172a", color: "#e2e8f0", padding: "10px 12px", borderRadius: 8, fontFamily: "inherit", lineHeight: 1.5 }}>{iaTeste}</pre>}
             </div>
             <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 12px", fontSize: 12.5, marginBottom: 14, color: "#92400e" }}>
               API não-oficial: use um <b>chip dedicado</b> (não seu número pessoal). Há risco de bloqueio pelo WhatsApp se disparar em massa.

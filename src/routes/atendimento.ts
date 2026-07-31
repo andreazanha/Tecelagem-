@@ -563,6 +563,31 @@ atendimento.post("/config", async (c) => {
   return c.json({ ok: true });
 });
 
+// Diagnóstico da IA (botão "Testar IA"): roda o modelo com uma mensagem de teste
+// e devolve, por modelo, se respondeu ou o erro exato. Serve pra ver se o Workers AI
+// está disponível na conta e qual modelo funciona — sem adivinhação.
+atendimento.post("/ia-teste", async (c) => {
+  const AI = c.env.AI as unknown as { run: (m: string, o: unknown) => Promise<{ response?: string }> };
+  const cfg = await lerConfig(c.env);
+  if (!AI?.run) return c.json({ ok: false, ia_ligada: cfg.atendimento_ia === "1", erro: "Binding de IA (env.AI) ausente no Worker.", tentativas: [] });
+  const messages = [
+    { role: "system", content: IA_SISTEMA },
+    { role: "user", content: "oi, queria ver as mantas de vocês" },
+  ];
+  const tentativas: { modelo: string; ok: boolean; resposta?: string; erro?: string }[] = [];
+  for (const modelo of IA_MODELOS) {
+    try {
+      const res = await AI.run(modelo, { messages, max_tokens: 300, temperature: 0.6 });
+      const txt = (res?.response || "").trim();
+      tentativas.push({ modelo, ok: !!txt, resposta: txt.slice(0, 400) });
+      if (txt) break;
+    } catch (e) {
+      tentativas.push({ modelo, ok: false, erro: String((e as { message?: string })?.message ?? e).slice(0, 240) });
+    }
+  }
+  return c.json({ ok: tentativas.some((t) => t.ok), ia_ligada: cfg.atendimento_ia === "1", tentativas });
+});
+
 // Puxa a atividade do catálogo agora (botão "Sincronizar agora").
 atendimento.post("/sincronizar-catalogo", async (c) => {
   const n = await lerAtividadeCatalogo(c.env);
