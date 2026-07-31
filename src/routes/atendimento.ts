@@ -115,6 +115,26 @@ async function representantePorRegiao(env: Env, uf: string | null | undefined): 
   return r?.nome ?? null;
 }
 
+// Detecta interesse comercial (preço, cores, mínimo, frete…) e modelos citados.
+const INTERESSE_RE = /pre[çc]o|valor|quanto (custa|sai|fica|é)|\bcores?\b|estoque|dispon[íi]vel|pedido m[íi]nimo|\bm[íi]nimo\b|pagament|\bfrete|parcel|\bcondi[çc][õo]es|tabela|or[çc]ament/i;
+
+async function detectarInteresse(env: Env, convId: string, texto: string, modelosCsv: string): Promise<boolean> {
+  const t = texto || "";
+  const interessou = INTERESSE_RE.test(t);
+  const citados: string[] = [];
+  for (const m of modelosCsv.split(",").map((s) => s.trim()).filter(Boolean)) {
+    const re = new RegExp(`(^|[^a-zA-ZÀ-ú])${m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i");
+    if (re.test(t)) citados.push(m);
+  }
+  for (const termo of citados) {
+    await env.DB.prepare("INSERT OR IGNORE INTO atend_interesses (id, conversa_id, termo) VALUES (?, ?, ?)").bind(uid(), convId, termo).run();
+  }
+  if (interessou || citados.length) {
+    await env.DB.prepare("UPDATE atend_conversas SET interessado=1, atualizado_em=datetime('now') WHERE id=?").bind(convId).run();
+  }
+  return interessou || citados.length > 0;
+}
+
 async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: string, tipo: string, texto: string) {
   await env.DB.prepare(
     "INSERT INTO atend_mensagens (id, conversa_id, direcao, autor, tipo, texto) VALUES (?, ?, ?, ?, ?, ?)"
@@ -156,6 +176,10 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   await addMsg(env, conv.id, "in", "cliente", "texto", texto);
   await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now') WHERE id = ?").bind(conv.id).run();
 
+  // Detecta interesse comercial + modelos citados (vale inclusive no atendimento humano).
+  const cfgAt = await lerConfig(env);
+  await detectarInteresse(env, conv.id, texto, cfgAt.interesse_modelos || "");
+
   // Cliente respondeu durante o follow-up → cancela a cadência e sinaliza a retomada.
   if ((conv.followup_etapa ?? 0) > 0 && ["catalogo-enviado", "follow-up-24h", "sem-retorno"].includes(conv.estado)) {
     await env.DB.prepare("UPDATE atend_conversas SET followup_etapa=0 WHERE id=?").bind(conv.id).run();
@@ -169,7 +193,6 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
 
   // Passa o contexto de identificação pro robô (saudação personalizada de cliente conhecido).
   conv.clienteConhecido = !!conv.cliente_id;
-  const cfgAt = await lerConfig(env);
   const r = await processar(conv as Conversa, texto, deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }));
 
   // Representante responsável: 1º o que já veio (cliente/base), senão pela região da UF.
@@ -327,7 +350,7 @@ async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; text
 // ── BOARD (conversas por coluna) ──────────────────────────────────────────────────
 atendimento.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.responsavel, c.atualizado_em, c.tipo, c.representante, c.origem, c.contato_nome, c.autorizado,
+    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.responsavel, c.atualizado_em, c.tipo, c.representante, c.origem, c.contato_nome, c.autorizado, c.interessado,
             (SELECT texto FROM atend_mensagens m WHERE m.conversa_id=c.id ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 1) AS ultima_msg
        FROM atend_conversas c ORDER BY c.atualizado_em DESC`
   ).all<Record<string, unknown>>();
@@ -342,7 +365,10 @@ atendimento.get("/:id", async (c) => {
   const { results: mensagens } = await c.env.DB.prepare(
     "SELECT id, direcao, autor, tipo, texto, criado_em FROM atend_mensagens WHERE conversa_id = ? ORDER BY criado_em ASC, rowid ASC"
   ).bind(conv.id).all();
-  return c.json({ ...conv, coluna: colunaDe(conv.estado), mensagens });
+  const { results: interesses } = await c.env.DB.prepare(
+    "SELECT termo FROM atend_interesses WHERE conversa_id = ? ORDER BY criado_em"
+  ).bind(conv.id).all<{ termo: string }>();
+  return c.json({ ...conv, coluna: colunaDe(conv.estado), mensagens, interesses: interesses.map((i) => i.termo) });
 });
 
 // ── Atendente humano assume ─────────────────────────────────────────────────────────

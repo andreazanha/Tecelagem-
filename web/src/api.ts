@@ -277,11 +277,11 @@ export interface AtendConversa {
   id: string; telefone: string; nome: string | null; estado: string; coluna: string;
   setor: string | null; cnpj: string | null; cidade: string | null; uf: string | null;
   lojista: number | null; responsavel: string | null; atualizado_em: string; ultima_msg: string | null;
-  tipo: string | null; representante: string | null; origem: string | null; contato_nome: string | null; autorizado: number | null;
+  tipo: string | null; representante: string | null; origem: string | null; contato_nome: string | null; autorizado: number | null; interessado: number | null;
 }
 export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; criado_em: string }
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
-export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; mensagens: AtendMensagem[] }
+export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; interesses: string[]; mensagens: AtendMensagem[] }
 export interface AtendResposta { conversa_id: string; estado: string; coluna: string; respostas: { tipo: string; texto: string }[]; notificarHumano: boolean }
 export interface ZapiConfig { zapi_base: string; zapi_instance: string; zapi_token: string; zapi_client_token: string; zapi_ativo: boolean; atendimento_ativo: boolean; catalogo_url: string; catalogo_senha: string; catalogo_msg: string; followup_ativo: boolean; followup_hora_ini: string; followup_hora_fim: string; followup_domingo: boolean; followup_ia: boolean; webhook_url: string }
 

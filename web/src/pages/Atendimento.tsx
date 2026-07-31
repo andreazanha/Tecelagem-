@@ -191,6 +191,7 @@ function ConvMini({ c, onAbrir }: { c: AtendConversa; onAbrir: () => void }) {
         {c.autorizado === 0
           ? <span className="at-badge" style={{ background: "#fef3c7", color: "#92400e" }} title="Aguardando autorização da equipe">⏳ Autorizar</span>
           : <span className="at-badge">{humano ? `👤 ${c.responsavel || "humano"}` : `🤖 robô`}</span>}
+        {c.interessado === 1 && <span className="at-badge" style={{ background: "#fee2e2", color: "#b91c1c" }} title="Demonstrou interesse comercial">🔥 Interessado</span>}
         {c.representante && <span className="at-badge" style={{ background: "#eef2ff", color: "#4338ca" }} title={c.autorizado === 0 ? "Representante sugerido" : "Representante"}>🧑‍💼 {c.representante}</span>}
         {c.setor && <span className="fx-sub">{SETOR_EMOJI[c.setor] || ""}</span>}
         <span className="fx-sub" style={{ marginLeft: "auto" }}>{hora(c.atualizado_em)}</span>
@@ -281,6 +282,14 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
             <div className="at-row"><span>Lojista</span><b>{d?.lojista == null ? "—" : d.lojista ? "✅ sim" : "🙅 não"}</b></div>
             <div className="at-row"><span>Cidade</span><b>{[d?.cidade, d?.uf].filter(Boolean).join("/") || "—"}</b></div>
             {d?.representante && d?.autorizado !== 0 && <div className="at-row"><span>Representante</span><b>🧑‍💼 {d.representante}</b></div>}
+            {d && d.interesses && d.interesses.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <div className="at-row" style={{ borderBottom: 0, paddingBottom: 2 }}><span>🔥 Interesse</span><b></b></div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {d.interesses.map((t) => <span key={t} className="at-chip" style={{ background: "#fee2e2", color: "#b91c1c", fontSize: 11.5 }}>{t}</span>)}
+                </div>
+              </div>
+            )}
 
             {d?.autorizado === 0 && (
               <div style={{ marginTop: 10, padding: "10px 11px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a" }}>
