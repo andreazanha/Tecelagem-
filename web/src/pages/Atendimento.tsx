@@ -173,7 +173,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
     if (!cfg) return;
     setSalvando(true); setMsg("");
     try {
-      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, ia_prompt: cfg.ia_prompt, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
+      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, ia_prompt: cfg.ia_prompt, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, reativacao_ativo: cfg.reativacao_ativo, reativacao_dias: cfg.reativacao_dias, reativacao_limite: cfg.reativacao_limite, reativacao_msg: cfg.reativacao_msg, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
       setMsg("✓ Salvo!"); onMudou(); setTimeout(() => setMsg(""), 2500);
     } catch { setMsg("Erro ao salvar."); } finally { setSalvando(false); }
   }
@@ -308,6 +308,20 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
                   <input type="number" min={7} max={365} value={cfg.recompra_dias} onChange={(e) => set("recompra_dias", e.target.value)} style={{ width: 56 }} /> dias</label>
               </div>
               <div className="muted" style={{ fontSize: 11.5, marginTop: 7 }}>Nunca envia 2× no mesmo dia, fora do horário, na madrugada, ou para quem já respondeu.</div>
+            </div>
+
+            <div style={{ border: "1px solid #fde68a", background: "#fffbeb", color: "#1e293b", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 6 }}>🔔 Prospecção automática por catálogo (reativação)</div>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", fontSize: 13 }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                  <input type="checkbox" checked={cfg.reativacao_ativo} onChange={(e) => set("reativacao_ativo", e.target.checked)} /> Ativar — enviar após
+                  <input type="number" min={1} max={365} value={cfg.reativacao_dias} onChange={(e) => set("reativacao_dias", e.target.value)} style={{ width: 52 }} /> dias do faturamento</label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>máx.
+                  <input type="number" min={1} max={500} value={cfg.reativacao_limite} onChange={(e) => set("reativacao_limite", e.target.value)} style={{ width: 56 }} /> por dia</label>
+              </div>
+              <label className="campo" style={{ margin: "8px 0 0" }}><span className="campo-label">Mensagem (use {"{nome}"} e {"{dias}"})</span>
+                <textarea rows={3} value={cfg.reativacao_msg} onChange={(e) => set("reativacao_msg", e.target.value)} placeholder={cfg.reativacao_msg_padrao} /></label>
+              <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Manda o catálogo como “desculpa” pra reabrir conversa — só pra cliente com WhatsApp que ainda não falou com a gente. O link do catálogo é anexado sozinho e envia 1× por cliente. Vale pra cliente de representante ou não.</div>
             </div>
 
             <div style={{ border: "1px solid #ddd6fe", background: "#f5f3ff", color: "#1e293b", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>

@@ -686,7 +686,7 @@ export async function lerAtividadeCatalogo(env: Env): Promise<number> {
 
 // ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
-const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo"]);
+const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo", "reativacao_ativo"]);
 
 atendimento.get("/config", async (c) => {
   const cfg = await lerConfig(c.env);
@@ -712,6 +712,11 @@ atendimento.get("/config", async (c) => {
     pos_venda_dias: cfg.pos_venda_dias || "7",
     recompra_ativo: (cfg.recompra_ativo ?? "1") === "1",
     recompra_dias: cfg.recompra_dias || "45",
+    reativacao_ativo: (cfg.reativacao_ativo ?? "0") === "1",
+    reativacao_dias: cfg.reativacao_dias || "30",
+    reativacao_limite: cfg.reativacao_limite || "40",
+    reativacao_msg: cfg.reativacao_msg || "",
+    reativacao_msg_padrao: MSG_REATIVACAO_PADRAO,
     catalogo_evento_token: cfg.catalogo_evento_token || "",
     catalogo_evento_url: new URL(c.req.url).origin + "/api/atendimento/catalogo-evento",
     catalogo_log_url: cfg.catalogo_log_url || "",
@@ -722,7 +727,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_msg", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -1226,6 +1231,82 @@ export async function posVendaRecompra(env: Env): Promise<number> {
     }
   }
   return n;
+}
+
+// ── PROSPECÇÃO por catálogo (reativação por faturamento) — chamado pelo cron ──────
+// X dias (padrão 30) depois do faturamento, se o cliente com WhatsApp AINDA não tem
+// conversa, manda o catálogo atualizado como "desculpa" pra puxar conversa — vale
+// pra cliente de representante ou não. Envia UMA vez (a conversa criada evita reenvio).
+const MSG_REATIVACAO_PADRAO =
+  "Olá {nome}! 💛 Aqui é da *Big Tricot*. Já faz {dias} dias desde o seu último pedido e preparei nosso *catálogo atualizado* pra você. Se precisar repor os modelos que mais saíram ou quiser ver as novidades, é só me chamar por aqui! 🧶";
+
+function primeiroNome(s?: string | null): string {
+  const n = String(s || "").trim().split(/\s+/)[0] || "";
+  return n ? n.charAt(0).toUpperCase() + n.slice(1).toLowerCase() : "";
+}
+function diasDesdeISO(iso?: string | null, nowMs = Date.now()): number {
+  const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return 0;
+  const t = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  return Math.max(0, Math.floor((nowMs - t) / 86400000));
+}
+function linkCatalogo(cfg: Record<string, string>): string {
+  const url = (cfg.catalogo_url || "").trim();
+  if (!url) return "";
+  const senha = (cfg.catalogo_senha || "").trim();
+  return `👉 ${url}` + (senha ? `\n🔑 Senha: *${senha}*` : "");
+}
+function montarMsgReativacao(cfg: Record<string, string>, nome: string, dias: number): string {
+  const base = (cfg.reativacao_msg || "").trim() || MSG_REATIVACAO_PADRAO;
+  let txt = base.replace(/\{nome\}/gi, nome).replace(/\{dias\}/gi, String(dias));
+  txt = txt.replace(/\s+([!?.,])/g, "$1").replace(/,\s*,/g, ",").replace(/ {2,}/g, " ").trim();
+  const link = linkCatalogo(cfg);
+  if (link && !/https?:\/\//i.test(base)) txt += `\n\n${link}`;
+  return txt;
+}
+
+export async function prospeccaoCatalogo(env: Env): Promise<number> {
+  const cfg = await lerConfig(env);
+  if (cfg.atendimento_ativo !== "1") return 0;          // modo teste não mexe com clientes reais
+  if ((cfg.reativacao_ativo ?? "0") !== "1") return 0;   // desligado por padrão (liga na config)
+  if (cfg.zapi_ativo !== "1") return 0;
+  if (!(await horarioComercialOk(env, cfg))) return 0;
+
+  const dias = Math.max(1, parseInt(cfg.reativacao_dias || "30", 10) || 30);
+  const limite = Math.max(1, parseInt(cfg.reativacao_limite || "40", 10) || 40);
+
+  const { results: clientes } = await env.DB.prepare(
+    `SELECT id, nome, contato, whatsapp, ultimo_faturamento FROM clientes
+      WHERE COALESCE(whatsapp,'') <> '' AND COALESCE(ultimo_faturamento,'') <> ''
+        AND ultimo_faturamento <= date('now', ?)
+      ORDER BY ultimo_faturamento ASC`
+  ).bind(`-${dias} day`).all<{ id: string; nome: string; contato: string | null; whatsapp: string | null; ultimo_faturamento: string | null }>();
+  if (!clientes.length) return 0;
+
+  // Já tem conversa? (não reenvia nem incomoda quem já falou com a gente)
+  const { results: convs } = await env.DB.prepare("SELECT telefone, cliente_id FROM atend_conversas").all<{ telefone: string | null; cliente_id: string | null }>();
+  const jaFalou = new Set<string>();
+  for (const cv of convs) { if (cv.cliente_id) jaFalou.add("id:" + cv.cliente_id); const t = digitos(cv.telefone || ""); if (t.length >= 8) jaFalou.add("tel:" + t.slice(-8)); }
+
+  const agora = Date.now();
+  let enviados = 0;
+  for (const cli of clientes) {
+    if (enviados >= limite) break;
+    if (ehClienteInterno(cli.nome)) continue;
+    const tel = digitos(cli.whatsapp || "");
+    if (tel.length < 10) continue;
+    if (jaFalou.has("id:" + cli.id) || jaFalou.has("tel:" + tel.slice(-8))) continue;
+    const texto = montarMsgReativacao(cfg, primeiroNome(cli.contato || cli.nome), diasDesdeISO(cli.ultimo_faturamento, agora));
+    const convId = uid();
+    await env.DB.prepare(
+      "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, cliente_id, nome, pedido_marco, ultima_out_em, atualizado_em) VALUES (?, ?, 'prospeccao-catalogo', 'reativacao', 'lojista', ?, ?, 'reativacao', datetime('now'), datetime('now'))"
+    ).bind(convId, tel, cli.id, cli.nome).run();
+    await addMsg(env, convId, "out", "bot", "texto", texto);
+    await enviarWhatsapp(env, tel, { tipo: "texto", texto });
+    jaFalou.add("id:" + cli.id); jaFalou.add("tel:" + tel.slice(-8));
+    enviados++;
+  }
+  return enviados;
 }
 
 // Texto de cada etapa do follow-up (personalizado com o nome, se houver).
