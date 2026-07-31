@@ -255,15 +255,32 @@ export function Clientes() {
 // ── FICHA 360 de um cliente ───────────────────────────────────────────────────
 export function ClienteFicha() {
   const { id } = useParams();
+  const nav = useNavigate();
   const [f, setF] = useState<TFicha | null>(null);
   const [erro, setErro] = useState("");
   const [editar, setEditar] = useState(false);
+  const [escolha, setEscolha] = useState(false); // abrir chooser "prospecção x só conversar"
+  const [abrindo, setAbrindo] = useState(false);
 
   function recarregar() {
     if (!id) return;
     api.obterCliente(id).then(setF).catch((e) => setErro((e as Error).message || "erro"));
   }
   useEffect(() => { setF(null); setErro(""); recarregar(); /* eslint-disable-next-line */ }, [id]);
+
+  // Abre a conversa do cliente LÁ NO FUNIL (e fica por lá). destino "prospeccao"
+  // → coluna "Novo lead"; "atendimento" → coluna "Atendimento" (só conversa).
+  async function atender(destino: "prospeccao" | "atendimento") {
+    if (!f) return;
+    setEscolha(false); setAbrindo(true);
+    try {
+      const r = await api.abrirConversaDoCard({ telefone: f.whatsapp, nome: f.nome, cliente_id: f.id, destino });
+      if (r.id) nav("/funil", { state: { abrirConversa: r.id } });
+      else alert(r.error || "Este cliente não tem WhatsApp no cadastro. Adicione o número e tente de novo.");
+    } catch {
+      alert("Não consegui abrir a conversa agora. Tente de novo em instantes.");
+    } finally { setAbrindo(false); }
+  }
 
   if (erro) return <div className="quadro-page"><div className="page-head"><div><h1>Cliente</h1><div className="breadcrumb"><Link to="/clientes">Comercial › Clientes</Link></div></div></div><div className="card pad muted">{erro}</div></div>;
   if (!f) return <div className="quadro-page"><div className="card pad">Carregando…</div></div>;
@@ -289,7 +306,7 @@ export function ClienteFicha() {
             <div><div style={{ fontWeight: 800, fontSize: 17 }}>{f.nome}</div><div className="muted2">Cliente desde {dataBr(f.created_at)}</div></div>
           </div>
           {wa ? (
-            <a className="wa wa-big" href={wa} target="_blank" rel="noreferrer">🟢 Abrir WhatsApp</a>
+            <button className="wa wa-big wa-btn" disabled={abrindo} onClick={() => setEscolha(true)}>{abrindo ? "abrindo…" : "🟢 Abrir conversa no funil"}</button>
           ) : (
             <div className="wa wa-big off">WhatsApp não cadastrado</div>
           )}
@@ -340,6 +357,23 @@ export function ClienteFicha() {
         </div>
       </div>
 
+      {escolha && (
+        <div className="modal-bg" onClick={() => setEscolha(false)}>
+          <div className="modal-card" style={{ maxWidth: 460, width: "min(460px,96vw)" }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Falar com {f.nome}</h3>
+            <p className="muted" style={{ fontSize: 13.5 }}>Isso abre a conversa no <b>funil</b>. Escolha em qual coluna ela entra:</p>
+            <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
+              <button className="btn btn-primary" style={{ textAlign: "left", lineHeight: 1.35, height: "auto", padding: "10px 14px" }} onClick={() => atender("prospeccao")}>
+                🎯 <b>Iniciar prospecção</b><br /><small style={{ opacity: .9 }}>Entra na coluna “Novo lead” do funil e abre a conversa</small>
+              </button>
+              <button className="btn btn-soft" style={{ textAlign: "left", lineHeight: 1.35, height: "auto", padding: "10px 14px" }} onClick={() => atender("atendimento")}>
+                💬 <b>Só conversar</b><br /><small className="muted">Ex.: fiscal, financeiro, dúvida — entra na coluna “Atendimento”</small>
+              </button>
+            </div>
+            <div style={{ textAlign: "right", marginTop: 12 }}><button className="btn" onClick={() => setEscolha(false)}>Cancelar</button></div>
+          </div>
+        </div>
+      )}
       {editar && <ClienteModal cliente={f} onFechar={() => setEditar(false)} onSalvo={() => { setEditar(false); recarregar(); }} />}
     </div>
   );
