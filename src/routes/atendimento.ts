@@ -825,6 +825,63 @@ atendimento.delete("/conhecimento/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── PAINEL DO GESTOR (métricas de atendimento) — antes de "/:id" ──────────────────
+// Fuso: "hoje" = dia em Brasília (UTC-3). Espera em minutos desde a última msg do cliente.
+atendimento.get("/painel", async (c) => {
+  const db = c.env.DB;
+  const g = await db.prepare(
+    `SELECT
+       (SELECT COUNT(*) FROM atend_conversas WHERE date(criado_em,'-3 hours')=date('now','-3 hours')) AS novas_hoje,
+       (SELECT COUNT(*) FROM atend_conversas WHERE estado='atendimento-humano') AS em_humano,
+       (SELECT COUNT(*) FROM atend_conversas WHERE estado='atendimento-humano' AND (responsavel IS NULL OR responsavel='')) AS nao_assumidas,
+       (SELECT COUNT(*) FROM atend_conversas WHERE estado='catalogo-enviado' AND date(atualizado_em,'-3 hours')=date('now','-3 hours')) AS catalogos_hoje,
+       (SELECT COUNT(*) FROM atend_conversas WHERE COALESCE(interessado,0)=1 AND date(atualizado_em,'-3 hours')=date('now','-3 hours')) AS leads_hoje,
+       (SELECT COUNT(*) FROM atend_conversas WHERE estado='indicado-parceiro' AND date(atualizado_em,'-3 hours')=date('now','-3 hours')) AS indicados_hoje`
+  ).first<Record<string, number>>().catch(() => ({} as Record<string, number>));
+
+  const { results: fila } = await db.prepare(
+    `SELECT id, telefone, nome, setor, responsavel, ultima_in_em,
+            CAST((julianday('now') - julianday(COALESCE(ultima_in_em, atualizado_em))) * 1440 AS INTEGER) AS espera_min
+       FROM atend_conversas WHERE estado='atendimento-humano'
+      ORDER BY COALESCE(ultima_in_em, atualizado_em) ASC`
+  ).all<{ id: string; telefone: string; nome: string | null; setor: string | null; responsavel: string | null; ultima_in_em: string | null; espera_min: number }>().catch(() => ({ results: [] as never[] }));
+
+  const { results: atendentes } = await db.prepare(
+    `SELECT COALESCE(NULLIF(responsavel,''),'(não assumido)') AS atendente, COUNT(*) AS total,
+            SUM(CASE WHEN COALESCE(ultima_in_em,'') > COALESCE(ultima_out_em,'') THEN 1 ELSE 0 END) AS aguardando
+       FROM atend_conversas WHERE estado='atendimento-humano' GROUP BY atendente ORDER BY total DESC`
+  ).all<{ atendente: string; total: number; aguardando: number }>().catch(() => ({ results: [] as never[] }));
+
+  const { results: setores } = await db.prepare(
+    `SELECT COALESCE(NULLIF(setor,''),'(sem setor)') AS setor, COUNT(*) AS total
+       FROM atend_conversas WHERE date(criado_em,'-3 hours')=date('now','-3 hours') GROUP BY setor ORDER BY total DESC`
+  ).all<{ setor: string; total: number }>().catch(() => ({ results: [] as never[] }));
+
+  // Tempo de resposta (hoje): pareia msg do cliente → 1ª resposta humana (autor ≠ bot/sistema/cliente).
+  const { results: msgs } = await db.prepare(
+    `SELECT conversa_id, direcao, autor, criado_em FROM atend_mensagens
+      WHERE date(criado_em,'-3 hours')=date('now','-3 hours') AND tipo='texto'
+      ORDER BY conversa_id, criado_em ASC, rowid ASC`
+  ).all<{ conversa_id: string; direcao: string; autor: string | null; criado_em: string }>().catch(() => ({ results: [] as never[] }));
+  const porAtend: Record<string, { soma: number; n: number }> = {};
+  let esperandoCliente: { conversa_id: string; t: number } | null = null;
+  let convAtual = "";
+  for (const m of msgs) {
+    if (m.conversa_id !== convAtual) { convAtual = m.conversa_id; esperandoCliente = null; }
+    const autor = String(m.autor ?? "");
+    const ehHumano = m.direcao === "out" && autor && !["bot", "sistema"].includes(autor);
+    if (m.direcao === "in") { if (!esperandoCliente) esperandoCliente = { conversa_id: m.conversa_id, t: Date.parse(m.criado_em + "Z") }; }
+    else if (ehHumano && esperandoCliente) {
+      const dt = (Date.parse(m.criado_em + "Z") - esperandoCliente.t) / 60000;
+      if (dt >= 0 && dt < 1440) { (porAtend[autor] ??= { soma: 0, n: 0 }); porAtend[autor].soma += dt; porAtend[autor].n++; }
+      esperandoCliente = null;
+    }
+  }
+  const tempoResposta = Object.entries(porAtend).map(([atendente, v]) => ({ atendente, media_min: Math.round(v.soma / v.n), respostas: v.n })).sort((a, b) => b.media_min - a.media_min);
+
+  return c.json({ gerais: g, fila, atendentes, setores, tempoResposta });
+});
+
 // ── BOARD (conversas por coluna) ──────────────────────────────────────────────────
 atendimento.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
