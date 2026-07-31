@@ -155,6 +155,10 @@ REGRAS IMPORTANTES:
 RESPONDA **SOMENTE** com um JSON válido, sem texto fora dele, neste formato exato:
 {"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "indicar_parceiro" | "humano", "uf": "<sigla do estado, ex.: MG, se souber; senão vazio>", "cidade": "<cidade se souber; senão vazio>"}`;
 
+// Estados "terminados" em que a Bia reengaja o contato que volta a falar (ela usa o
+// histórico e continua). Ficam de fora: coleta determinística e estados de pedido/pós-venda.
+const IA_REENGATA = new Set<string>(["indicado-parceiro", "catalogo-enviado", "nao-qualificado", "sem-retorno", "follow-up-24h"]);
+
 // Saudação fixa do primeiro contato (lead novo, desconhecido) quando a IA está ligada.
 const SAUDACAO_NOVO =
   "Olá! Tudo bem? 🤗\n" +
@@ -347,8 +351,11 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   }
 
   // IA de triagem (se ligada). Representantes seguem o fluxo padrão (menu).
+  // Reengaja também quem já tinha terminado a conversa e voltou a falar (a Bia tem o
+  // histórico e continua). NÃO reengaja estados de coleta determinística (nome/CNPJ/cidade)
+  // nem "atendimento-humano" (já tratado acima).
   if (cfgAt.atendimento_ia === "1" && conv.tipo !== "representante"
-      && (conv.estado === "novo" || conv.estado === "ia-triagem")) {
+      && (conv.estado === "novo" || conv.estado === "ia-triagem" || IA_REENGATA.has(conv.estado))) {
     // PRIMEIRO CONTATO: saudação fixa (sem gastar chamada de IA). Se o número já está
     // na base de clientes, identifica e saúda pelo nome; senão manda a saudação padrão.
     if (conv.estado === "novo") {
