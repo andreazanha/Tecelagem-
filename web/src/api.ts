@@ -661,6 +661,8 @@ export const api = {
     jsonPost(`/api/atendimento/${id}/autorizar`, { representante }).then((r) => j<{ ok: boolean; representante: string }>(r)),
   atendNaoPerturbe: (id: string, nao_perturbe: boolean) =>
     jsonPost(`/api/atendimento/${id}/nao-perturbe`, { nao_perturbe }).then((r) => j<{ ok: boolean }>(r)),
+  atendSugerir: (id: string) =>
+    jsonPost(`/api/atendimento/${id}/sugerir`, {}).then((r) => j<{ sugestao: string }>(r)),
   atendConfig: () => fetch("/api/atendimento/config").then((r) => j<ZapiConfig>(r)),
   atendSalvarConfig: (b: Partial<Omit<ZapiConfig, "webhook_url">>) =>
     jsonPost("/api/atendimento/config", b).then((r) => j<{ ok: boolean }>(r)),

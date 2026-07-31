@@ -21,7 +21,7 @@ async function lerConfig(env: Env): Promise<Record<string, string>> {
 
 type ConvRow = Conversa & {
   id: string; telefone: string; responsavel: string | null; card_id: string | null; cliente_id: string | null; contato_nome: string | null;
-  autorizado: number | null; ultima_in_em: string | null; ultima_out_em: string | null; criado_em: string; atualizado_em: string;
+  autorizado: number | null; followup_etapa: number | null; ultima_in_em: string | null; ultima_out_em: string | null; criado_em: string; atualizado_em: string;
 };
 
 // ── Dependências (SINTEGRA + lojas parceiras) ────────────────────────────────────
@@ -155,6 +155,12 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   }
   await addMsg(env, conv.id, "in", "cliente", "texto", texto);
   await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now') WHERE id = ?").bind(conv.id).run();
+
+  // Cliente respondeu durante o follow-up → cancela a cadência e sinaliza a retomada.
+  if ((conv.followup_etapa ?? 0) > 0 && ["catalogo-enviado", "follow-up-24h", "sem-retorno"].includes(conv.estado)) {
+    await env.DB.prepare("UPDATE atend_conversas SET followup_etapa=0 WHERE id=?").bind(conv.id).run();
+    await addMsg(env, conv.id, "out", "sistema", "sistema", "🔔 Cliente respondeu ao follow-up — retomar atendimento.");
+  }
 
   // Atendente humano assumiu → o robô não responde mais, só registra a mensagem.
   if (conv.estado === "atendimento-humano") {
@@ -355,6 +361,29 @@ atendimento.post("/:id/assumir", async (c) => {
     await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(id).run();
   }
   return c.json({ ok: true });
+});
+
+// ── Sugestão de resposta por IA (o vendedor edita antes de enviar) ────────────────
+atendimento.post("/:id/sugerir", async (c) => {
+  const id = c.req.param("id");
+  const conv = await c.env.DB.prepare("SELECT nome FROM atend_conversas WHERE id=?").bind(id).first<{ nome: string | null }>();
+  if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  const { results } = await c.env.DB.prepare(
+    "SELECT direcao, texto FROM atend_mensagens WHERE conversa_id=? AND tipo<>'sistema' ORDER BY criado_em DESC, rowid DESC LIMIT 12"
+  ).bind(id).all<{ direcao: string; texto: string | null }>();
+  const hist = results.reverse().map((m) => `${m.direcao === "in" ? "Cliente" : "Atendente"}: ${m.texto || ""}`).join("\n");
+  try {
+    const sys = "Você é vendedor(a) da Big Tricot, atacado de tricô para o lar (mantas, capas, almofadas), atendendo LOJISTAS pelo WhatsApp. Sugira a PRÓXIMA resposta do atendente: curta (até 2 frases), calorosa e natural em português do Brasil, no máximo 1 emoji. NUNCA invente preços, prazos ou promoções. Responda apenas com a mensagem sugerida, sem aspas.";
+    const usr = `Conversa até agora:\n${hist || "(sem histórico)"}\n\nEscreva a próxima resposta do atendente${conv.nome ? ` para ${conv.nome}` : ""}.`;
+    const r = (await c.env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+      messages: [{ role: "system", content: sys }, { role: "user", content: usr }], max_tokens: 160,
+    })) as { response?: string };
+    const sug = (r?.response || "").trim().replace(/^["']+|["']+$/g, "");
+    if (!sug) return c.json({ error: "não consegui sugerir agora" }, 503);
+    return c.json({ sugestao: sug });
+  } catch {
+    return c.json({ error: "IA indisponível no momento" }, 503);
+  }
 });
 
 // ── Opt-out: não enviar mensagens automáticas para este cliente ───────────────────

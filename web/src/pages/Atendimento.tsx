@@ -219,6 +219,13 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
     setBusy(true);
     try { await api.atendAssumir(id, nome || "Atendente"); carregar(); onMudou(); } finally { setBusy(false); }
   }
+  const [sugerindo, setSugerindo] = useState(false);
+  async function sugerir() {
+    setSugerindo(true);
+    try { const r = await api.atendSugerir(id); setTexto(r.sugestao); }
+    catch { alert("Não consegui sugerir uma resposta agora."); }
+    finally { setSugerindo(false); }
+  }
   async function toggleNaoPerturbe() {
     if (!d) return;
     setBusy(true);
@@ -298,7 +305,11 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
 
         <div className="at-compose">
           {humano
-            ? <><input placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => e.key === "Enter" && enviar()} /><button className="at-send" disabled={busy} onClick={enviar}>➤</button></>
+            ? <>
+                <button className="at-send" style={{ background: "transparent", color: "var(--accent,#7c3aed)" }} disabled={busy || sugerindo} onClick={sugerir} title="Sugerir resposta com IA (você pode editar)">{sugerindo ? "…" : "✨"}</button>
+                <input placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => e.key === "Enter" && enviar()} />
+                <button className="at-send" disabled={busy} onClick={enviar}>➤</button>
+              </>
             : <div className="muted2" style={{ padding: "6px 4px" }}>🤖 O robô está conduzindo. Clique em <b>Assumir</b> para responder.</div>}
         </div>
       </div>

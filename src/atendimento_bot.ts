@@ -264,7 +264,7 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
     default:
       // Estados terminais / humano: o robô não responde sozinho. Se o cliente
       // respondeu enquanto aguardava (catálogo/follow-up), avisa o atendente.
-      if (conv.estado === "catalogo-enviado" || conv.estado === "follow-up-24h") notificarHumano = true;
+      if (conv.estado === "catalogo-enviado" || conv.estado === "follow-up-24h" || conv.estado === "sem-retorno") notificarHumano = true;
       break;
   }
 
