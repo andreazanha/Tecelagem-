@@ -372,6 +372,7 @@ function Simulador({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =>
   const [texto, setTexto] = useState("");
   const [msgs, setMsgs] = useState<{ de: "cliente" | "bot"; texto: string; arquivo?: boolean }[]>([]);
   const [busy, setBusy] = useState(false);
+  const [estado, setEstado] = useState("novo");
   const fim = useRef<HTMLDivElement>(null);
   useEffect(() => { fim.current?.scrollIntoView(); }, [msgs.length]);
 
@@ -389,17 +390,33 @@ function Simulador({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =>
       } else {
         setMsgs((m) => [...m, ...r.respostas.map((s) => ({ de: "bot" as const, texto: s.texto, arquivo: s.tipo === "arquivo" }))]);
       }
+      setEstado(r.estado);
       onMudou();
     } catch (e) { setMsgs((m) => [...m, { de: "bot", texto: "⚠️ " + (e as Error).message }]); }
     finally { setBusy(false); }
   }
   async function reiniciar() {
     setBusy(true);
-    try { await api.atendReset(tel); setMsgs([]); onMudou(); }
+    try { await api.atendReset(tel); setMsgs([]); setEstado("novo"); onMudou(); }
     catch (e) { setMsgs((m) => [...m, { de: "bot", texto: "⚠️ " + (e as Error).message }]); }
     finally { setBusy(false); }
   }
-  const atalhos = ["oi", "1", "Loja Encanto Decor", "12.345.678/0001-90", "não tenho, uso pessoal", "Contagem, MG"];
+  // Botões que acompanham a pergunta do robô — o usuário clica em vez de digitar.
+  const atalhos: { label: string; val: string }[] = (() => {
+    switch (estado) {
+      case "novo": return [{ label: "👋 oi", val: "oi" }];
+      case "aguardando-setor": return [
+        { label: "1️⃣ Vendas", val: "1" }, { label: "2️⃣ Financeiro", val: "2" },
+        { label: "3️⃣ Pós-venda", val: "3" }, { label: "4️⃣ Outros", val: "4" }];
+      case "triagem-nome": return [{ label: "🏬 Loja Encanto Decor", val: "Loja Encanto Decor" }];
+      case "aguardando-cnpj": return [
+        { label: "✅ CNPJ válido", val: "11.222.333/0001-81" },
+        { label: "🙅 não tenho CNPJ", val: "não tenho, uso pessoal" },
+        { label: "🙋 falar com atendente", val: "atendente" }];
+      case "aguardando-cidade-parceiro": return [{ label: "📍 Contagem, MG", val: "Contagem, MG" }];
+      default: return [];
+    }
+  })();
 
   return (
     <div className="modal-bg" onClick={onFechar}>
@@ -418,9 +435,12 @@ function Simulador({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =>
           ))}
           <div ref={fim} />
         </div>
-        <div className="at-simatalhos">
-          {atalhos.map((a) => <span key={a} className="fx-pill" onClick={() => mandar(a)}>{a}</span>)}
-        </div>
+        {atalhos.length > 0 && (
+          <div className="at-simatalhos">
+            <span className="muted2" style={{ fontSize: 11, alignSelf: "center", marginRight: 2 }}>clique 👉</span>
+            {atalhos.map((a) => <span key={a.val} className="fx-pill" onClick={() => !busy && mandar(a.val)}>{a.label}</span>)}
+          </div>
+        )}
         <div className="at-compose">
           <input placeholder="Mensagem do cliente…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => e.key === "Enter" && mandar()} autoFocus />
           <button className="at-send" disabled={busy} onClick={() => mandar()}>➤</button>
