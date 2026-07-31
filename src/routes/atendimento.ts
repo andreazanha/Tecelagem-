@@ -155,6 +155,13 @@ REGRAS IMPORTANTES:
 RESPONDA **SOMENTE** com um JSON válido, sem texto fora dele, neste formato exato:
 {"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "indicar_parceiro" | "humano", "uf": "<sigla do estado, ex.: MG, se souber; senão vazio>", "cidade": "<cidade se souber; senão vazio>"}`;
 
+// Saudação fixa do primeiro contato (lead novo, desconhecido) quando a IA está ligada.
+const SAUDACAO_NOVO =
+  "Olá! Tudo bem? 🤗\n" +
+  "Seja bem-vindo à *Big Tricot*!\n\n" +
+  "Somos uma fábrica especializada em tricô para decoração e atendemos exclusivamente lojistas no atacado.\n\n" +
+  "Para eu te ajudar melhor, você já é nosso cliente ou está entrando em contato pela primeira vez?";
+
 // Junta as regras base (fixas, incluindo o formato JSON) com os ajustes que o lojista
 // escreve na config. Ajustes se SOMAM — nunca substituem o núcleo, pra não quebrar a Bia.
 function sistemaIa(extra?: string | null): string {
@@ -328,12 +335,28 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
   }
 
-  // IA de triagem (se ligada): atende o lead novo conversando naturalmente antes de
-  // pedir o CNPJ. Só para leads desconhecidos (cliente/representante seguem o fluxo padrão).
-  // Ao decidir, a IA passa o bastão pro motor determinístico (nome+CNPJ ou lojas parceiras).
-  if (cfgAt.atendimento_ia === "1" && !conv.cliente_id && conv.tipo !== "representante"
+  // IA de triagem (se ligada). Representantes seguem o fluxo padrão (menu).
+  if (cfgAt.atendimento_ia === "1" && conv.tipo !== "representante"
       && (conv.estado === "novo" || conv.estado === "ia-triagem")) {
-    const ia = await iaTriagem(env, conv, sistemaIa(cfgAt.ia_prompt), origin);
+    // PRIMEIRO CONTATO: saudação fixa (sem gastar chamada de IA). Se o número já está
+    // na base de clientes, identifica e saúda pelo nome; senão manda a saudação padrão.
+    if (conv.estado === "novo") {
+      const primeiro = String(conv.nome ?? "").trim().split(/\s+/)[0] || "";
+      const saud = conv.cliente_id
+        ? `Olá${primeiro ? ", " + primeiro : ""}! Tudo bem? 🤗\nQue bom te ver de novo na *Big Tricot*! 💛\nComo posso te ajudar hoje?`
+        : SAUDACAO_NOVO;
+      await env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      await addMsg(env, conv.id, "out", "bot", "texto", saud);
+      await enviarWhatsapp(env, tel, { tipo: "texto", texto: saud });
+      await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
+      return { conversa_id: conv.id, estado: "ia-triagem", coluna: colunaDe("ia-triagem"), respostas: [{ tipo: "texto", texto: saud }], notificarHumano: false };
+    }
+    // Conversa em andamento: a IA responde. Cliente já cadastrado entra com contexto extra.
+    let sistema = sistemaIa(cfgAt.ia_prompt);
+    if (conv.cliente_id) {
+      sistema += `\n\nCONTEXTO IMPORTANTE: este contato JÁ É CLIENTE cadastrado da Big Tricot (loja: ${conv.nome || "?"}${conv.cidade ? ", de " + conv.cidade + (conv.uf ? "/" + conv.uf : "") : ""}). Trate como cliente conhecido: NÃO peça CNPJ nem o nome da loja de novo. Ajude no que precisar; se for pedido ou assunto comercial, use acao "humano" pra chamar o vendedor.`;
+    }
+    const ia = await iaTriagem(env, conv, sistema, origin);
     await env.DB.prepare("UPDATE atend_conversas SET estado=?, tipo=COALESCE(?, tipo), atualizado_em=datetime('now') WHERE id=?")
       .bind(ia.novoEstado, ia.tipo, conv.id).run();
     for (const s of ia.saidas) {
