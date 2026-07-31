@@ -16,6 +16,7 @@ import { enviarPushNovoPedido, enviarPush } from "../push-send";
 import { baixaProntaEntrega, localizacaoProducao, cadastrarProdutosDoPedido } from "./produtos";
 import { consumoDoPedido, baixarPorPedido, estornarPedido } from "../estoque-baixa";
 import { ehClienteInterno } from "./funil";
+import { limparVendedor } from "./comercial";
 
 export const pedidos = new Hono<{ Bindings: Env }>();
 
@@ -244,6 +245,10 @@ interface ItemIn {
 interface PedidoIn {
   numero_erp?: string;
   cliente_nome?: string;
+  cliente_cnpj?: string;
+  cliente_cidade?: string;
+  cliente_uf?: string;
+  cliente_fone?: string;
   vendedor?: string;
   codigo_terceiro?: string;
   tipo?: string;
@@ -254,6 +259,27 @@ interface PedidoIn {
   data_tecelagem?: string;
   observacao?: string;
   itens?: ItemIn[];
+}
+
+// Cria/atualiza o cliente a partir do pedido. Cliente novo entra com os dados
+// lidos do PDF; cliente existente só ganha campos que ainda estavam vazios
+// (COALESCE do valor atual primeiro — nunca sobrescreve o que já foi cadastrado).
+function upsertClienteDoPedido(env: Env, nome: string, b: PedidoIn): D1PreparedStatement {
+  const cnpj = (b.cliente_cnpj || "").trim() || null;
+  const cidade = (b.cliente_cidade || "").trim() || null;
+  const uf = (b.cliente_uf || "").trim().toUpperCase().slice(0, 2) || null;
+  const whatsapp = (b.cliente_fone || "").replace(/\D/g, "") || null;
+  const representante = limparVendedor(b.vendedor) || null;
+  return env.DB.prepare(
+    `INSERT INTO clientes (id, nome, cnpj, cidade, uf, whatsapp, representante)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(nome) DO UPDATE SET
+       cnpj = COALESCE(clientes.cnpj, NULLIF(excluded.cnpj, '')),
+       cidade = COALESCE(clientes.cidade, NULLIF(excluded.cidade, '')),
+       uf = COALESCE(clientes.uf, NULLIF(excluded.uf, '')),
+       whatsapp = COALESCE(clientes.whatsapp, NULLIF(excluded.whatsapp, '')),
+       representante = COALESCE(clientes.representante, NULLIF(excluded.representante, ''))`
+  ).bind(crypto.randomUUID(), nome, cnpj, cidade, uf, whatsapp, representante);
 }
 
 // Backfill: pedidos consolidados (vários números) sem código pai ganham um agora.
@@ -380,14 +406,10 @@ pedidos.post("/", async (c) => {
   );
 
   // garante o cliente no catálogo — pedidos internos (estoque, OP consolidada,
-  // reposição, Big Tricot) NÃO viram cliente na base.
-  if (!ehClienteInterno(cliente_nome)) {
-    stmts.push(
-      c.env.DB.prepare(
-        "INSERT INTO clientes (id, nome) VALUES (?, ?) ON CONFLICT(nome) DO NOTHING"
-      ).bind(crypto.randomUUID(), cliente_nome)
-    );
-  }
+  // reposição, Big Tricot) NÃO viram cliente na base. Cliente novo já entra com os
+  // dados lidos do PDF (CNPJ, cidade/UF, telefone, representante); o que já existe
+  // só ganha o que ainda estava em branco (não sobrescreve).
+  if (!ehClienteInterno(cliente_nome)) stmts.push(upsertClienteDoPedido(c.env, cliente_nome, b));
 
   for (const it of b.itens || []) {
     const produto = (it.produto || "").trim();
@@ -455,7 +477,7 @@ pedidos.put("/:id", async (c) => {
       id
     )
   );
-  if (!ehClienteInterno(cliente_nome)) stmts.push(c.env.DB.prepare("INSERT INTO clientes (id, nome) VALUES (?, ?) ON CONFLICT(nome) DO NOTHING").bind(crypto.randomUUID(), cliente_nome));
+  if (!ehClienteInterno(cliente_nome)) stmts.push(upsertClienteDoPedido(c.env, cliente_nome, b));
   stmts.push(c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id = ?").bind(id));
   for (const it of b.itens || []) {
     const produto = (it.produto || "").trim();

@@ -27,6 +27,10 @@ export function NovoPedido() {
   const [form, setForm] = useState<NovoPedidoBody>({
     numero_erp: "",
     cliente_nome: "",
+    cliente_cnpj: "",
+    cliente_cidade: "",
+    cliente_uf: "",
+    cliente_fone: "",
     vendedor: "",
     codigo_terceiro: "",
     tipo: "auto",
@@ -217,6 +221,11 @@ export function NovoPedido() {
             ...f,
             numero_erp: nums.join(", "),
             cliente_nome: f.cliente_nome || s.cliente_nome || "",
+            // dados do cliente lidos do PDF (p/ cadastrar cliente novo automaticamente)
+            cliente_cnpj: f.cliente_cnpj || s.cliente_cnpj || "",
+            cliente_cidade: f.cliente_cidade || s.cliente_cidade || "",
+            cliente_uf: f.cliente_uf || s.cliente_uf || "",
+            cliente_fone: f.cliente_fone || s.cliente_fone || "",
             data_pedido: f.data_pedido || s.data_pedido || "",
             data_entrega: f.data_entrega || s.data_entrega || "",
             reposicao: f.reposicao || !!s.reposicao, // OF de reposição → marca o pedido como reposição de estoque

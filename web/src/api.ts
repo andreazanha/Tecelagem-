@@ -43,6 +43,10 @@ export interface Pedido {
 export interface NovoPedidoBody {
   numero_erp?: string;
   cliente_nome: string;
+  cliente_cnpj?: string;
+  cliente_cidade?: string;
+  cliente_uf?: string;
+  cliente_fone?: string;
   vendedor?: string;
   codigo_terceiro?: string;
   tipo: string;
@@ -479,6 +483,10 @@ export interface EmitidoRomaneio {
 export interface Sugestao {
   numero_erp?: string;
   cliente_nome?: string;
+  cliente_cnpj?: string;
+  cliente_cidade?: string;
+  cliente_uf?: string;
+  cliente_fone?: string;
   vendedor?: string;
   data_pedido?: string;
   data_entrega?: string;

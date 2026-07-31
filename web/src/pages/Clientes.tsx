@@ -141,7 +141,7 @@ export function Clientes() {
       ) : <span className="muted2">—</span>}</td>
       <td style={{ textAlign: "center" }}>{c.pedidos || 0}</td>
       <td className="money">{brl(c.total)}</td>
-      <td>{desde(c.ultima)}</td>
+      <td>{c.ultima ? <><div>{dataBr(c.ultima)}</div><div className="muted2">{desde(c.ultima)}</div></> : "—"}</td>
     </tr>
   );
   const tabela = (items: ClienteCrm[]) => (

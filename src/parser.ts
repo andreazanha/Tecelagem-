@@ -24,6 +24,10 @@ function extrairTamanho(nome: string): { produto: string; tamanho?: string } {
 export interface SugestaoPedido {
   numero_erp?: string;
   cliente_nome?: string;
+  cliente_cnpj?: string;
+  cliente_cidade?: string;
+  cliente_uf?: string;
+  cliente_fone?: string;
   vendedor?: string;
   data_pedido?: string; // yyyy-mm-dd
   data_entrega?: string; // yyyy-mm-dd
@@ -31,6 +35,41 @@ export interface SugestaoPedido {
   itens: ItemSugerido[];
   confianca: number; // 0..100 (estimativa grosseira)
   texto: string; // texto bruto (para conferência/depuração)
+}
+
+// Dados do cliente lidos do PDF (CNPJ, cidade/UF, telefone) para cadastrar
+// automaticamente um cliente novo. Busca só no "bloco" do cliente (do nome até
+// o Representante/itens) para não pegar o CNPJ/telefone da própria Big Tricot.
+function extrairDadosCliente(text: string, nomeCliente?: string): {
+  cliente_cnpj?: string; cliente_cidade?: string; cliente_uf?: string; cliente_fone?: string;
+} {
+  let bloco = text;
+  if (nomeCliente) {
+    const i = text.indexOf(nomeCliente);
+    if (i >= 0) {
+      const resto = text.slice(i + nomeCliente.length);
+      // corta no Representante / Produto / itens (o que vier primeiro).
+      bloco = resto.split(/\b(?:Representante|Vendedor|Produto|Refer[êe]ncia|Item|Qtd|Total\s+Geral)\b/i)[0];
+    }
+  }
+  const cnpjM = bloco.match(/(\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2})/);
+  const foneM = bloco.match(/(?:Fones?|Telefones?|Tel|Cel(?:ular)?|WhatsApp|Whats)\.?\s*[:\-]?\s*(\(?\d{2}\)?[\s.-]?\d{4,5}[\s.-]?\d{4})/i);
+  // "Cidade: X - UF"  |  "X/UF CEP"  |  "Cidade: X  Estado: UF"
+  let cidade: string | undefined, uf: string | undefined;
+  const cid1 = bloco.match(/(?:Cidade|Munic[íi]pio)\s*[:\-]?\s*([A-Za-zÀ-ú][A-Za-zÀ-ú .'`-]+?)\s*[\/-]\s*([A-Z]{2})\b/i);
+  const cid2 = bloco.match(/(?:Cidade|Munic[íi]pio)\s*[:\-]?\s*([A-Za-zÀ-ú][A-Za-zÀ-ú .'`-]{2,40}?)\s+(?:Estado|UF)\s*[:\-]?\s*([A-Z]{2})\b/i);
+  const m = cid1 || cid2;
+  if (m) { cidade = m[1].replace(/\s+/g, " ").trim(); uf = m[2].toUpperCase(); }
+  else {
+    const ufM = bloco.match(/\b(?:Estado|UF)\s*[:\-]?\s*([A-Z]{2})\b/i);
+    if (ufM) uf = ufM[1].toUpperCase();
+  }
+  return {
+    cliente_cnpj: cnpjM?.[1],
+    cliente_cidade: cidade,
+    cliente_uf: uf,
+    cliente_fone: foneM?.[1]?.replace(/\s+/g, " ").trim(),
+  };
 }
 
 function dataBRtoISO(d?: string): string | undefined {
@@ -196,6 +235,7 @@ function parseERPBigTricot(text: string): SugestaoPedido {
   return {
     numero_erp,
     cliente_nome: cliente_nome?.slice(0, 120),
+    ...extrairDadosCliente(text, cliente_nome),
     vendedor: vendedor?.slice(0, 80),
     data_pedido,
     data_entrega,
@@ -292,6 +332,7 @@ export function parsePedido(texto: string): SugestaoPedido {
   return {
     numero_erp,
     cliente_nome: cliente_nome?.slice(0, 120),
+    ...extrairDadosCliente(text, cliente_nome),
     vendedor: vendedor?.slice(0, 80),
     data_pedido,
     data_entrega,
