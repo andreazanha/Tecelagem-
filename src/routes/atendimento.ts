@@ -137,17 +137,20 @@ async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: st
   ).bind(uid(), convId, direcao, autor, tipo, texto).run();
 }
 
-// Garante um card na coluna "📤 Catálogo (contato)" quando o cliente ENTROU EM
-// CONTATO e recebeu o catálogo. Se a conversa já tem card, não duplica.
-async function garantirCardCatalogoContato(env: Env, conv: { id: string; card_id?: string | null; cliente_id?: string | null; nome?: string | null; cidade?: string | null; uf?: string | null; representante?: string | null }, tel: string) {
-  const atual = await env.DB.prepare("SELECT card_id FROM atend_conversas WHERE id=?").bind(conv.id).first<{ card_id: string | null }>().catch(() => null);
-  if (atual?.card_id) return;
+// Garante um card na coluna "📥 Catálogo (contato)" para uma conversa vinda do
+// catálogo (cliente entrou em contato / atividade do catálogo). Idempotente: se a
+// conversa já tem card, não duplica. Lê os dados direto da conversa.
+async function garantirCardDaConversa(env: Env, convId: string, texto = "Catálogo (cliente entrou em contato)") {
+  const cv = await env.DB.prepare(
+    "SELECT id, card_id, cliente_id, nome, cidade, uf, representante, telefone FROM atend_conversas WHERE id=?"
+  ).bind(convId).first<{ id: string; card_id: string | null; cliente_id: string | null; nome: string | null; cidade: string | null; uf: string | null; representante: string | null; telefone: string | null }>().catch(() => null);
+  if (!cv || cv.card_id || ehClienteInterno(cv.nome)) return;
   const cardId = uid();
   await env.DB.prepare(
     "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, 'catalogo-recebido', ?)"
-  ).bind(cardId, conv.cliente_id ?? null, conv.nome || "(sem nome)", conv.cidade ?? null, conv.uf ?? null, tel, conv.representante ?? null).run();
-  await env.DB.prepare("INSERT INTO funil_eventos (id, card_id, tipo, texto) VALUES (?, ?, 'etapa', 'Catálogo enviado (cliente entrou em contato)')").bind(uid(), cardId).run();
-  await env.DB.prepare("UPDATE atend_conversas SET card_id=? WHERE id=?").bind(cardId, conv.id).run();
+  ).bind(cardId, cv.cliente_id ?? null, cv.nome || "(catálogo)", cv.cidade ?? null, cv.uf ?? null, digitos(cv.telefone || ""), cv.representante ?? null).run();
+  await env.DB.prepare("INSERT INTO funil_eventos (id, card_id, tipo, texto) VALUES (?, ?, 'etapa', ?)").bind(uid(), cardId, texto).run();
+  await env.DB.prepare("UPDATE atend_conversas SET card_id=? WHERE id=?").bind(cardId, convId).run();
 }
 
 // ── IA de triagem (atendente virtual antes do CNPJ) ──────────────────────────────
@@ -462,8 +465,8 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     // Cliente pediu o catálogo → anexa a mensagem do catálogo (virtual/link), montada da config.
     if (ia.catalogo) {
       for (const s of montarCatalogo(deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, origin))) ia.saidas.push(s);
-      // Registra na coluna "📤 Catálogo (contato)" do funil — cliente que entrou em contato e recebeu.
-      await garantirCardCatalogoContato(env, conv, tel);
+      // Registra na coluna "📥 Catálogo (contato)" do funil — cliente que entrou em contato e recebeu.
+      await garantirCardDaConversa(env, conv.id, "Catálogo enviado (cliente entrou em contato)");
     }
     // Cliente quer o status do pedido → resolve o CNPJ (do cadastro, da IA, ou da própria
     // mensagem) e consulta a produção. Sem CNPJ, pede. Guarda o CNPJ na conversa pra próxima.
@@ -641,6 +644,8 @@ async function registrarEventoCatalogo(env: Env, ev: { tipo?: string; telefone?:
     await env.DB.prepare("INSERT OR IGNORE INTO atend_interesses (id, conversa_id, termo) VALUES (?, ?, ?)").bind(uid(), conv.id, String(ev.produto).trim().slice(0, 60)).run();
     await env.DB.prepare("UPDATE atend_conversas SET interessado=1 WHERE id=?").bind(conv.id).run();
   }
+  // Lead do catálogo aparece como card no funil (coluna "📥 Catálogo (contato)").
+  await garantirCardDaConversa(env, conv.id, `Lead do catálogo (${tipo || "acesso"})`);
   return conv.id;
 }
 
