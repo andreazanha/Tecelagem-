@@ -19,25 +19,28 @@ export const representantes = new Hono<{ Bindings: Env }>();
 
 representantes.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT id, nome, whatsapp, email, ativo, observacao, ufs, instagram FROM representantes ORDER BY nome"
+    "SELECT id, nome, whatsapp, email, ativo, observacao, ufs, instagram, cidades, comissao FROM representantes ORDER BY nome"
   ).all();
   return c.json(results);
 });
 
 representantes.post("/", async (c) => {
-  const b = await c.req.json<{ id?: string; nome?: string; whatsapp?: string; email?: string; ativo?: boolean | number; observacao?: string; ufs?: string; instagram?: string }>().catch(() => ({}) as Record<string, never>);
+  const b = await c.req.json<{ id?: string; nome?: string; whatsapp?: string; email?: string; ativo?: boolean | number; observacao?: string; ufs?: string; instagram?: string; cidades?: string; comissao?: number | string }>().catch(() => ({}) as Record<string, never>);
   const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
   // Normaliza a carteira de UFs: "mg, sp ; go" → "MG,SP,GO".
   const ufs = (b.ufs || "").split(/[,;\s]+/).map((u) => u.trim().toUpperCase()).filter((u) => /^[A-Z]{2}$/.test(u)).join(",") || null;
+  const cidades = (b.cidades || "").split(/[;\n]+/).map((s) => s.trim()).filter(Boolean).join(", ") || null;
+  const comissao = b.comissao != null && String(b.comissao).trim() !== "" ? Number(String(b.comissao).replace(",", ".")) : null;
   const existe = b.id ? await c.env.DB.prepare("SELECT id FROM representantes WHERE id = ?").bind(b.id).first() : null;
   const id = b.id || uid();
   await c.env.DB.prepare(
-    `INSERT INTO representantes (id, nome, whatsapp, email, ativo, observacao, ufs, instagram) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO representantes (id, nome, whatsapp, email, ativo, observacao, ufs, instagram, cidades, comissao) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, whatsapp = excluded.whatsapp, email = excluded.email,
-       ativo = excluded.ativo, observacao = excluded.observacao, ufs = excluded.ufs, instagram = excluded.instagram`
+       ativo = excluded.ativo, observacao = excluded.observacao, ufs = excluded.ufs, instagram = excluded.instagram,
+       cidades = excluded.cidades, comissao = excluded.comissao`
   )
-    .bind(id, nome, (b.whatsapp || "").trim() || null, (b.email || "").trim() || null, b.ativo === false || b.ativo === 0 ? 0 : 1, (b.observacao || "").trim() || null, ufs, (b.instagram || "").trim() || null)
+    .bind(id, nome, (b.whatsapp || "").trim() || null, (b.email || "").trim() || null, b.ativo === false || b.ativo === 0 ? 0 : 1, (b.observacao || "").trim() || null, ufs, (b.instagram || "").trim() || null, cidades, Number.isFinite(comissao as number) ? comissao : null)
     .run();
   return c.json({ id, nome }, existe ? 200 : 201);
 });

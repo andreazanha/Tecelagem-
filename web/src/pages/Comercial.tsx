@@ -243,7 +243,7 @@ function DetalheRep({ detalhe, carregando }: { detalhe: ComercialDetalhe | null;
 }
 
 // ── Cadastro de representantes ───────────────────────────────────────────────
-const VAZIO: Partial<Representante> = { nome: "", whatsapp: "", email: "", observacao: "", ativo: 1 };
+const VAZIO: Partial<Representante> = { nome: "", whatsapp: "", email: "", observacao: "", ufs: "", cidades: "", comissao: null, instagram: "", ativo: 1 };
 
 function AbaRepresentantes() {
   const [lista, setLista] = useState<Representante[]>([]);
@@ -320,6 +320,8 @@ function AbaRepresentantes() {
               <tr key={r.id} style={{ opacity: r.ativo ?? 1 ? 1 : 0.5 }}>
                 <td><strong>{r.nome}</strong>
                   {r.ufs ? <div style={{ fontSize: 11, color: "#4338ca" }}>🗺️ {r.ufs}</div> : null}
+                  {r.cidades ? <div className="muted" style={{ fontSize: 11 }}>📍 {r.cidades}</div> : null}
+                  {r.comissao != null ? <div style={{ fontSize: 11, color: "#047857" }}>💰 {r.comissao}% comissão</div> : null}
                   {r.observacao ? <div className="muted" style={{ fontSize: 12 }}>{r.observacao}</div> : null}</td>
                 <td>{r.whatsapp || "—"}</td>
                 <td>{r.email || "—"}</td>
@@ -363,6 +365,15 @@ function AbaRepresentantes() {
                 <span>Estados que atende (carteira)</span>
                 <input value={edit.ufs || ""} onChange={(e) => setEdit({ ...edit, ufs: e.target.value })} placeholder="ex.: MG, SP, GO" />
                 <small className="muted" style={{ fontSize: 11 }}>Usado pra rotear o cliente da região pro representante certo.</small>
+              </label>
+              <label className="campo">
+                <span>Cidades que atende</span>
+                <input value={edit.cidades || ""} onChange={(e) => setEdit({ ...edit, cidades: e.target.value })} placeholder="ex.: Belo Horizonte, Contagem, Uberlândia" />
+                <small className="muted" style={{ fontSize: 11 }}>Separe por vírgula. Deixe em branco se atende o estado inteiro.</small>
+              </label>
+              <label className="campo">
+                <span>Comissão (%)</span>
+                <input type="number" step="0.1" min="0" value={edit.comissao ?? ""} onChange={(e) => setEdit({ ...edit, comissao: e.target.value === "" ? null : Number(e.target.value) })} placeholder="ex.: 5" />
               </label>
               <label className="campo">
                 <span>Observação</span>

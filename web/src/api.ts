@@ -1348,6 +1348,8 @@ export interface Representante {
   observacao?: string | null;
   ufs?: string | null;
   instagram?: string | null;
+  cidades?: string | null;
+  comissao?: number | null;
 }
 export interface VendaRep {
   vendedor: string;
