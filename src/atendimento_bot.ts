@@ -31,15 +31,18 @@ export interface Deps {
   consultarCnpj: (cnpjDigitos: string) => Promise<{ existe: boolean; ativa: boolean; nome: string | null; uf?: string | null; cidade?: string | null; erro?: boolean; fonte?: string }>;
   // Busca lojas parceiras perto da cidade/UF (prioriza ativas e frequentes).
   parceiros: (cidade: string | null, uf: string | null) => Promise<LojaParceira[]>;
-  // Link e senha do catálogo (configurados no CRM). Se vazio, cai no placeholder.
+  // Catálogo (configurado no CRM). Precedência: mensagem pronta > link (+senha) > placeholder.
+  catalogoMsg?: string | null;   // mensagem completa colada pela loja (com link e senha)
   catalogoUrl?: string | null;
   catalogoSenha?: string | null;
 }
 
-// Monta o envio do catálogo: se há link configurado, manda o link (e a senha de
-// acesso, se houver); senão, o placeholder antigo (modo teste sem link).
+// Monta o envio do catálogo. 1º usa a mensagem pronta da loja (se houver); senão
+// monta link+senha; senão, o placeholder antigo (modo teste sem nada configurado).
 function enviarCatalogo(saidas: Saida[], deps: Deps) {
-  if (deps.catalogoUrl) {
+  if (deps.catalogoMsg && deps.catalogoMsg.trim()) {
+    saidas.push({ tipo: "texto", texto: deps.catalogoMsg.trim() });
+  } else if (deps.catalogoUrl) {
     let txt = `📒 Nosso catálogo está aqui, dá uma olhada:\n${deps.catalogoUrl}`;
     if (deps.catalogoSenha) txt += `\n\n🔑 Senha de acesso: *${deps.catalogoSenha}*`;
     saidas.push({ tipo: "texto", texto: txt });
