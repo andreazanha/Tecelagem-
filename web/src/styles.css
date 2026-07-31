@@ -1206,6 +1206,10 @@ body.dark .at-simatalhos { background: #18202f; border-color: #26324a; }
 @keyframes atpulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 /* Painel do gestor: 2 colunas no desktop, 1 no celular */
 @media (max-width: 760px) { .pg-grid { grid-template-columns: 1fr !important; } }
+/* Abas do CRM (Funil / Caixa de entrada) */
+.crm-tabs { display: flex; gap: 6px; padding: 10px 14px 0; flex-wrap: wrap; }
+.crm-tab { font: inherit; font-size: 13.5px; font-weight: 700; padding: 8px 16px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; }
+.crm-tab.on { background: var(--bg-soft); color: var(--ink); border-color: var(--line); }
 
 /* Linha de produto em FALTA na aba Estoque — legível em tema claro e escuro. */
 tr.prod-falta > td { background: #fef2f2; color: #991b1b; }

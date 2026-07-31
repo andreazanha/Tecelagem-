@@ -13,6 +13,7 @@ import { Comercial } from "./pages/Comercial";
 import { Clientes, ClienteFicha } from "./pages/Clientes";
 import { Funil } from "./pages/Funil";
 import { Atendimento } from "./pages/Atendimento";
+import { CrmAtendimento } from "./pages/CrmAtendimento";
 import { LojasParceiras } from "./pages/LojasParceiras";
 import { TreinarBia } from "./pages/TreinarBia";
 import { SetoresAtendimento } from "./pages/SetoresAtendimento";
@@ -113,7 +114,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/clientes" element={<Protegido page="comercial"><Clientes /></Protegido>} />
           <Route path="/clientes/:id" element={<Protegido page="comercial"><ClienteFicha /></Protegido>} />
           <Route path="/funil" element={<Protegido page="comercial"><Funil /></Protegido>} />
-          <Route path="/atendimento" element={<Protegido page="atendimento"><Atendimento /></Protegido>} />
+          <Route path="/atendimento" element={<Protegido page="atendimento"><CrmAtendimento /></Protegido>} />
           <Route path="/lojas-parceiras" element={<Protegido page="comercial"><LojasParceiras /></Protegido>} />
           <Route path="/treinar-bia" element={<Protegido page="comercial"><TreinarBia /></Protegido>} />
           <Route path="/setores-atendimento" element={<Protegido page="atendimento-gestor"><SetoresAtendimento /></Protegido>} />
