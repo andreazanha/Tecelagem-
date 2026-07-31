@@ -161,9 +161,10 @@ REGRAS IMPORTANTES:
 - Não invente preços, prazos, pedido mínimo ou políticas POR CONTA PRÓPRIA. PORÉM, se a pergunta tiver resposta na BASE DE CONHECIMENTO (mais abaixo), use EXATAMENTE aquela informação — ela é oficial da empresa e tem prioridade sobre esta regra. Só quando NÃO houver nada na base sobre o assunto é que você diz que o vendedor passa os detalhes.
 - Tom: caloroso, brasileiro, informal de WhatsApp. Respostas CURTAS (1 a 3 linhas), no máximo 1 ou 2 emojis. Nunca repita a mesma pergunta que já foi respondida.
 - Escreva os emojis COMO EMOJI de verdade (😊 💛 👍), NUNCA como código escapado tipo \\u{1f603}.
+- SETOR: identifique de qual setor o cliente precisa e preencha o campo "setor": "vendas" (comprar, ver produtos, preço, catálogo, revenda), "fiscal" (nota fiscal, boleto, pagamento, cobrança, financeiro), "estoque" (disponibilidade, se tem tal cor/modelo, quando repõe), "pcp" (andamento/status de um pedido em produção). Se ainda não der pra saber, deixe vazio.
 
 RESPONDA **SOMENTE** com um JSON válido, sem texto fora dele, neste formato exato:
-{"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "enviar_catalogo" | "consultar_pedido" | "indicar_parceiro" | "humano", "uf": "<sigla do estado, ex.: MG, se souber; senão vazio>", "cidade": "<cidade se souber; senão vazio>", "cnpj": "<CNPJ do cliente se ele informar ou você já souber; senão vazio>"}`;
+{"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "enviar_catalogo" | "consultar_pedido" | "indicar_parceiro" | "humano", "uf": "<sigla do estado, ex.: MG, se souber; senão vazio>", "cidade": "<cidade se souber; senão vazio>", "cnpj": "<CNPJ do cliente se ele informar ou você já souber; senão vazio>", "setor": "vendas" | "fiscal" | "estoque" | "pcp" | ""}`;
 
 // Estados "terminados" em que a Bia reengaja o contato que volta a falar (ela usa o
 // histórico e continua). Ficam de fora: coleta determinística e estados de pedido/pós-venda.
@@ -201,7 +202,11 @@ const IA_MODELOS = [
   "@cf/meta/llama-3-8b-instruct",
 ];
 
-interface IaDecisao { resposta: string; intencao: string; acao: string; uf?: string; cidade?: string; cnpj?: string }
+interface IaDecisao { resposta: string; intencao: string; acao: string; uf?: string; cidade?: string; cnpj?: string; setor?: string }
+
+// Setores válidos do atendimento (a Bia roteia pra um deles).
+const SETORES_VALIDOS = new Set(["vendas", "fiscal", "estoque", "pcp"]);
+const setorDe = (s?: string | null) => { const t = String(s ?? "").trim().toLowerCase(); return SETORES_VALIDOS.has(t) ? t : ""; };
 
 // Normaliza estado → sigla UF (aceita "MG" ou "minas gerais").
 const UF_NOMES: Record<string, string> = {
@@ -235,7 +240,7 @@ function extrairJson(txt: string): IaDecisao | null {
   try {
     const o = JSON.parse(m[0]) as Partial<IaDecisao>;
     if (typeof o.resposta === "string") {
-      return { resposta: decodificarEscapes(o.resposta.trim()), intencao: String(o.intencao ?? "indefinido"), acao: String(o.acao ?? "conversar"), uf: String(o.uf ?? ""), cidade: String(o.cidade ?? ""), cnpj: String(o.cnpj ?? "") };
+      return { resposta: decodificarEscapes(o.resposta.trim()), intencao: String(o.intencao ?? "indefinido"), acao: String(o.acao ?? "conversar"), uf: String(o.uf ?? ""), cidade: String(o.cidade ?? ""), cnpj: String(o.cnpj ?? ""), setor: String(o.setor ?? "") };
     }
   } catch { /* json inválido */ }
   return null;
@@ -310,7 +315,7 @@ async function consultarStatusPedido(env: Env, cnpjDig: string): Promise<Saida[]
   return [{ tipo: "texto", texto: txt }];
 }
 
-interface IaSaida { saidas: Saida[]; novoEstado: EstadoAtend; notificarHumano: boolean; tipo: string | null; catalogo?: boolean; consultarPedido?: boolean; cnpjConsulta?: string }
+interface IaSaida { saidas: Saida[]; novoEstado: EstadoAtend; notificarHumano: boolean; tipo: string | null; catalogo?: boolean; consultarPedido?: boolean; cnpjConsulta?: string; setor?: string }
 
 // Roda a IA de triagem e traduz a decisão em resposta + próximo estado do fluxo.
 // `origin` é usado pra montar o link da vitrine (indicação de consumidor final).
@@ -318,6 +323,7 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, origin: strin
   const dec = await chamarIa(env, conv, sistema);
   // IA indisponível (binding ausente/erro) → degrada pro menu determinístico, que é à prova de falhas.
   if (!dec) return { saidas: [{ tipo: "texto", texto: BOAS_VINDAS }], novoEstado: "aguardando-setor", notificarHumano: false, tipo: null };
+  const setor = setorDe(dec.setor); // setor que a Bia identificou (vendas/fiscal/estoque/pcp)
 
   // CONSUMIDOR FINAL: guardrail robusto — não depende só do "acao" do modelo. Se ele marcou
   // indicar_parceiro OU disse que é consumidor, tratamos como indicação. Com o ESTADO em mãos,
@@ -331,28 +337,28 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, origin: strin
       const saidas: Saida[] = [
         { tipo: "texto", texto: `Prontinho! 💛 Abre esse link, escolha a *cidade mais perto de você* e veja os contatos das lojas parceiras de ${uf} 👇\n${link}` },
       ];
-      return { saidas, novoEstado: "indicado-parceiro", notificarHumano: false, tipo: "consumidor" };
+      return { saidas, novoEstado: "indicado-parceiro", notificarHumano: false, tipo: "consumidor", setor };
     }
     // Ainda não sabemos o estado → a IA pergunta (a resposta dela já pede) e aguardamos.
-    return { saidas: [{ tipo: "texto", texto: dec.resposta }], novoEstado: "aguardando-cidade-parceiro", notificarHumano: false, tipo: "consumidor" };
+    return { saidas: [{ tipo: "texto", texto: dec.resposta }], novoEstado: "aguardando-cidade-parceiro", notificarHumano: false, tipo: "consumidor", setor };
   }
 
   const saidas: Saida[] = [{ tipo: "texto", texto: dec.resposta }];
   switch (dec.acao) {
     case "coletar_lojista":
       // A IA já pediu o nome da loja na resposta → o fluxo determinístico captura o nome e pede o CNPJ.
-      return { saidas, novoEstado: "triagem-nome", notificarHumano: false, tipo: "lojista" };
+      return { saidas, novoEstado: "triagem-nome", notificarHumano: false, tipo: "lojista", setor: setor || "vendas" };
     case "enviar_catalogo":
       // SÓ quando o cliente PEDE o catálogo. A mensagem do catálogo (link virtual) é
       // anexada no núcleo (receberMensagem), que tem a config. Aqui só sinalizamos.
-      return { saidas, novoEstado: "catalogo-enviado", notificarHumano: false, tipo: "lojista", catalogo: true };
+      return { saidas, novoEstado: "catalogo-enviado", notificarHumano: false, tipo: "lojista", catalogo: true, setor: setor || "vendas" };
     case "consultar_pedido":
       // Cliente quer saber o status do pedido. O núcleo resolve o CNPJ e consulta a produção.
-      return { saidas, novoEstado: "ia-triagem", notificarHumano: false, tipo: conv.tipo ?? null, consultarPedido: true, cnpjConsulta: digitos(dec.cnpj) || digitos(conv.cnpj) };
+      return { saidas, novoEstado: "ia-triagem", notificarHumano: false, tipo: conv.tipo ?? null, consultarPedido: true, cnpjConsulta: digitos(dec.cnpj) || digitos(conv.cnpj), setor: setor || "pcp" };
     case "humano":
-      return { saidas, novoEstado: "atendimento-humano", notificarHumano: true, tipo: conv.tipo ?? null };
+      return { saidas, novoEstado: "atendimento-humano", notificarHumano: true, tipo: conv.tipo ?? null, setor };
     default:
-      return { saidas, novoEstado: "ia-triagem", notificarHumano: false, tipo: conv.tipo ?? null };
+      return { saidas, novoEstado: "ia-triagem", notificarHumano: false, tipo: conv.tipo ?? null, setor };
   }
 }
 
@@ -455,8 +461,8 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
         ia.saidas = [{ tipo: "texto", texto: "Pra localizar seu pedido, me passa o *CNPJ* da sua loja (só os números)? 😊" }];
       }
     }
-    await env.DB.prepare("UPDATE atend_conversas SET estado=?, tipo=COALESCE(?, tipo), atualizado_em=datetime('now') WHERE id=?")
-      .bind(ia.novoEstado, ia.tipo, conv.id).run();
+    await env.DB.prepare("UPDATE atend_conversas SET estado=?, tipo=COALESCE(?, tipo), setor=COALESCE(NULLIF(?,''), setor), atualizado_em=datetime('now') WHERE id=?")
+      .bind(ia.novoEstado, ia.tipo, ia.setor ?? "", conv.id).run();
     if (ia.novoEstado === "atendimento-humano" && estadoAntes !== "atendimento-humano") await avisarHumanoPush(env, conv);
     for (const s of ia.saidas) {
       await addMsg(env, conv.id, "out", "bot", s.tipo, s.texto);
@@ -842,7 +848,7 @@ atendimento.post("/abrir-conversa", async (c) => {
   }
   if (conv) return c.json({ id: conv.id });
   // 3) Não existe → cria uma conversa "manual" já em atendimento humano (pronta pra responder).
-  if (!tel) return c.json({ error: "cliente sem telefone/WhatsApp" }, 400);
+  if (!tel) return c.json({ error: "Este cliente não tem WhatsApp no cadastro. Adicione o número em Clientes e tente de novo." });
   const cli = await identificarCliente(c.env, tel);
   const id = uid();
   await c.env.DB.prepare(

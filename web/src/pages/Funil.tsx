@@ -260,7 +260,7 @@ function CardDetalhe({ id, onFechar, onMudou, onAbrirConversa }: { id: string; o
               {/* WhatsApp: abre (ou inicia) a conversa completa deste cliente */}
               {onAbrirConversa && (
                 <button className="btn btn-primary" style={{ width: "100%", marginBottom: 12, background: "#25d366", border: "none" }}
-                  onClick={async () => { const r = await api.abrirConversaDoCard({ telefone: d.whatsapp, nome: d.nome, card_id: id }); if (r.id) onAbrirConversa(r.id); else alert(r.error || "Este cliente não tem WhatsApp cadastrado."); }}>
+                  onClick={async () => { try { const r = await api.abrirConversaDoCard({ telefone: d.whatsapp, nome: d.nome, card_id: id }); if (r.id) onAbrirConversa(r.id); else alert(r.error || "Não consegui abrir a conversa."); } catch { alert("Este cliente não tem WhatsApp no cadastro. Adicione o número em Clientes e tente de novo."); } }}>
                   💬 Abrir conversa no WhatsApp
                 </button>
               )}
