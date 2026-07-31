@@ -169,6 +169,17 @@ function sistemaIa(extra?: string | null): string {
   return e ? `${IA_SISTEMA}\n\nAJUSTES DO LOJISTA (siga também estas instruções, sem quebrar o formato JSON acima):\n${e}` : IA_SISTEMA;
 }
 
+// Base de conhecimento (treino da Bia): injeta as perguntas/respostas ativas no prompt,
+// pra ela responder dúvidas complexas do jeito certo. Vazio se não houver entradas.
+async function lerConhecimento(env: Env): Promise<string> {
+  const { results } = await env.DB.prepare(
+    "SELECT pergunta, resposta FROM ia_conhecimento WHERE COALESCE(ativo,1)=1 ORDER BY criado_em"
+  ).all<{ pergunta: string; resposta: string }>().catch(() => ({ results: [] as { pergunta: string; resposta: string }[] }));
+  if (!results.length) return "";
+  const itens = results.map((r) => `P: ${String(r.pergunta).trim()}\nR: ${String(r.resposta).trim()}`).join("\n\n");
+  return `\n\nBASE DE CONHECIMENTO (quando a pergunta do cliente for parecida com uma destas, responda com base na resposta correspondente, adaptando ao tom da conversa; se não houver nada relacionado, responda normalmente pelas regras acima):\n${itens}`;
+}
+
 const IA_MODELOS = [
   "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
   "@cf/meta/llama-3.1-70b-instruct",
@@ -352,7 +363,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       return { conversa_id: conv.id, estado: "ia-triagem", coluna: colunaDe("ia-triagem"), respostas: [{ tipo: "texto", texto: saud }], notificarHumano: false };
     }
     // Conversa em andamento: a IA responde. Cliente já cadastrado entra com contexto extra.
-    let sistema = sistemaIa(cfgAt.ia_prompt);
+    let sistema = sistemaIa(cfgAt.ia_prompt) + await lerConhecimento(env);
     if (conv.cliente_id) {
       sistema += `\n\nCONTEXTO IMPORTANTE: este contato JÁ É CLIENTE cadastrado da Big Tricot (loja: ${conv.nome || "?"}${conv.cidade ? ", de " + conv.cidade + (conv.uf ? "/" + conv.uf : "") : ""}). Trate como cliente conhecido: NÃO peça CNPJ nem o nome da loja de novo. Ajude no que precisar; se for pedido ou assunto comercial, use acao "humano" pra chamar o vendedor.`;
     }
@@ -635,7 +646,7 @@ atendimento.post("/ia-teste", async (c) => {
   const cfg = await lerConfig(c.env);
   if (!AI?.run) return c.json({ ok: false, ia_ligada: cfg.atendimento_ia === "1", erro: "Binding de IA (env.AI) ausente no Worker.", tentativas: [] });
   const messages = [
-    { role: "system", content: sistemaIa(cfg.ia_prompt) },
+    { role: "system", content: sistemaIa(cfg.ia_prompt) + await lerConhecimento(c.env) },
     { role: "user", content: "oi, queria ver as mantas de vocês" },
   ];
   const tentativas: { modelo: string; ok: boolean; resposta?: string; erro?: string }[] = [];
@@ -694,6 +705,33 @@ async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; text
     return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
   }
 }
+
+// ── TREINO DA BIA (base de conhecimento) — antes de "/:id" pra não ser capturado ──
+atendimento.get("/conhecimento", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, pergunta, resposta, ativo, criado_em FROM ia_conhecimento ORDER BY criado_em DESC"
+  ).all().catch(() => ({ results: [] }));
+  return c.json(results);
+});
+
+atendimento.post("/conhecimento", async (c) => {
+  const b = await c.req.json<{ id?: string; pergunta?: string; resposta?: string; ativo?: boolean | number }>().catch(() => ({}) as Record<string, never>);
+  const pergunta = String(b.pergunta ?? "").trim();
+  const resposta = String(b.resposta ?? "").trim();
+  if (!pergunta || !resposta) return c.json({ error: "pergunta e resposta são obrigatórias" }, 400);
+  const id = b.id || uid();
+  const ativo = b.ativo === false || b.ativo === 0 ? 0 : 1;
+  await c.env.DB.prepare(
+    `INSERT INTO ia_conhecimento (id, pergunta, resposta, ativo) VALUES (?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET pergunta=excluded.pergunta, resposta=excluded.resposta, ativo=excluded.ativo`
+  ).bind(id, pergunta, resposta, ativo).run();
+  return c.json({ ok: true, id });
+});
+
+atendimento.delete("/conhecimento/:id", async (c) => {
+  await c.env.DB.prepare("DELETE FROM ia_conhecimento WHERE id = ?").bind(c.req.param("id")).run();
+  return c.json({ ok: true });
+});
 
 // ── BOARD (conversas por coluna) ──────────────────────────────────────────────────
 atendimento.get("/", async (c) => {

@@ -14,6 +14,7 @@ import { Clientes, ClienteFicha } from "./pages/Clientes";
 import { Funil } from "./pages/Funil";
 import { Atendimento } from "./pages/Atendimento";
 import { LojasParceiras } from "./pages/LojasParceiras";
+import { TreinarBia } from "./pages/TreinarBia";
 import { Romaneios } from "./pages/Romaneios";
 import { Producao } from "./pages/Producao";
 import { ControleTecelagem } from "./pages/ControleTecelagem";
@@ -112,6 +113,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/funil" element={<Protegido page="comercial"><Funil /></Protegido>} />
           <Route path="/atendimento" element={<Protegido page="comercial"><Atendimento /></Protegido>} />
           <Route path="/lojas-parceiras" element={<Protegido page="comercial"><LojasParceiras /></Protegido>} />
+          <Route path="/treinar-bia" element={<Protegido page="comercial"><TreinarBia /></Protegido>} />
 
           <Route path="/romaneios" element={<Protegido page="romaneios"><Romaneios /></Protegido>} />
           <Route path="/producao" element={<Protegido page="producao"><Producao /></Protegido>} />
