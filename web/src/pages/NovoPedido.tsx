@@ -632,6 +632,7 @@ export function NovoPedido() {
             onClick={(e) => e.stopPropagation()}
             style={{
               background: "#fff",
+              color: "#1e293b",
               borderRadius: 14,
               width: "min(900px, 96vw)",
               height: "92vh",

@@ -5,6 +5,8 @@
   --muted: #64748b;
   --line: #eef0f4;
   --bg: #f6f7f9;
+  --bg-soft: #f8fafc;
+  --painel-bg: #fafafa;
   --sidebar: #0f1629;
 }
 * { box-sizing: border-box; }
@@ -554,6 +556,8 @@ body.dark {
   --muted: #aab6d2;
   --line: #ffffff1a;
   --bg: #070b16;
+  --bg-soft: #131c30;
+  --painel-bg: #0e1426;
   background: #070b16;
 }
 body.dark::before {

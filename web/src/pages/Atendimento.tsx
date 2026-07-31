@@ -456,7 +456,7 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
             )}
 
             {d?.autorizado === 0 && (
-              <div style={{ marginTop: 10, padding: "10px 11px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a" }}>
+              <div style={{ marginTop: 10, padding: "10px 11px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" }}>
                 <div style={{ fontWeight: 800, fontSize: 13, color: "#92400e", marginBottom: 6 }}>⏳ Aguardando autorização</div>
                 <div style={{ fontSize: 12, color: "#78350f", marginBottom: 8 }}>Confira o representante e autorize pra conectar o cliente. Nada foi enviado a ninguém ainda.</div>
                 <select value={repSel} onChange={(e) => setRepSel(e.target.value)} style={{ width: "100%", marginBottom: 8 }}>
@@ -469,7 +469,7 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
             )}
 
             {d?.pedidos_resumo && d.pedidos_resumo.qtd > 0 && (
-              <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 8, background: "#f0fdf4", border: "1px solid #bbf7d0", fontSize: 12.5 }}>
+              <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 8, background: "#f0fdf4", border: "1px solid #bbf7d0", fontSize: 12.5, color: "#166534" }}>
                 <div style={{ fontWeight: 800, color: "#15803d", marginBottom: 3 }}>🛍️ Cliente da base</div>
                 <div><b>{d.pedidos_resumo.qtd}</b> pedido(s) · <b>{d.pedidos_resumo.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b></div>
                 {d.pedidos_resumo.ultima && <div className="muted">última compra: {new Date(d.pedidos_resumo.ultima + "T00:00:00").toLocaleDateString("pt-BR")}</div>}

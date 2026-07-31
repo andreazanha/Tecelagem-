@@ -2454,7 +2454,7 @@ function EtiquetasColar() {
                 const on = aberto.has(t);
                 return (
                   <div key={t} className="card" style={{ overflow: "hidden" }}>
-                    <button type="button" onClick={() => toggleTam(t)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", background: on ? "#f1f5ff" : "transparent", border: "none", cursor: "pointer", font: "inherit", textAlign: "left" }}>
+                    <button type="button" onClick={() => toggleTam(t)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", background: on ? "#6366f122" : "transparent", border: "none", cursor: "pointer", font: "inherit", textAlign: "left" }}>
                       <span style={{ fontWeight: 800, fontSize: 13, color: "#4338ca" }}>{on ? "▾" : "▸"}</span>
                       <span style={{ fontWeight: 800 }}>{t}</span>
                       <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>estoque: <strong>{saldoTam(t)}</strong> · pedido: <strong>{pedidoTam(t)}</strong></span>

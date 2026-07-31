@@ -1906,7 +1906,7 @@ function EntradaEstoqueModal({ card, onFechar, onFeito }: { card: CardProducao; 
             </tbody>
           </table>
           {semVinculo.length > 0 && (
-            <div style={{ marginTop: 10, padding: 10, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10 }}>
+            <div style={{ marginTop: 10, padding: 10, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10, color: "#7c2d12" }}>
               <strong style={{ fontSize: 13 }}>⚠ {semVinculo.length} item(ns) sem produto cadastrado</strong>
               <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
                 {producao.length > 0 && (

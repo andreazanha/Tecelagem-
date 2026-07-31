@@ -577,7 +577,7 @@ function AbaReposicao() {
             ) : itens.length === 0 ? (
               <tr><td colSpan={8} className="empty pad">Nenhuma reposição aguardando aprovação. 👍</td></tr>
             ) : itens.map((a) => (
-              <tr key={a.id} style={{ background: "#fff7ed" }}>
+              <tr key={a.id} style={{ background: "#fff7ed", color: "#7c2d12" }}>
                 <td className="strong">{a.produto_nome}</td>
                 <td>{a.ref || "—"}</td>
                 <td>{a.cor || "—"}{a.tamanho ? ` · ${a.tamanho}` : ""}</td>
