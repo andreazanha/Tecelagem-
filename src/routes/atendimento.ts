@@ -761,6 +761,44 @@ atendimento.post("/config", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── PROXY DO CATÁLOGO (Firestore → JSON limpo, com cache) ────────────────────────
+// Busca o documento catalogo/main no Firestore público do catálogo, decodifica o
+// formato tipado e devolve JSON limpo (produtos, preços por região, representantes).
+const FIRESTORE_CATALOGO = "https://firestore.googleapis.com/v1/projects/bigtricot-catalogo/databases/(default)/documents/catalogo/main";
+// Decodifica um "value" tipado do Firestore para valor JS puro.
+function fsVal(v: Record<string, unknown>): unknown {
+  if (v == null) return null;
+  if ("stringValue" in v) return v.stringValue;
+  if ("integerValue" in v) return Number(v.integerValue);
+  if ("doubleValue" in v) return Number(v.doubleValue);
+  if ("booleanValue" in v) return v.booleanValue;
+  if ("nullValue" in v) return null;
+  if ("timestampValue" in v) return v.timestampValue;
+  if ("arrayValue" in v) return ((v.arrayValue as { values?: Record<string, unknown>[] })?.values || []).map(fsVal);
+  if ("mapValue" in v) return fsFields((v.mapValue as { fields?: Record<string, Record<string, unknown>> })?.fields || {});
+  return null;
+}
+function fsFields(fields: Record<string, Record<string, unknown>>): Record<string, unknown> {
+  const o: Record<string, unknown> = {};
+  for (const k in fields) o[k] = fsVal(fields[k]);
+  return o;
+}
+let _catCache: { ts: number; data: Record<string, unknown> } | null = null;
+async function catalogoExterno(): Promise<Record<string, unknown>> {
+  const now = Date.now();
+  if (_catCache && now - _catCache.ts < 10 * 60 * 1000) return _catCache.data; // cache 10 min
+  const resp = await fetch(FIRESTORE_CATALOGO, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10000) });
+  if (!resp.ok) throw new Error("firestore http " + resp.status);
+  const doc = await resp.json<{ fields?: Record<string, Record<string, unknown>> }>();
+  const data = fsFields(doc.fields || {});
+  _catCache = { ts: now, data };
+  return data;
+}
+atendimento.get("/catalogo-dados", async (c) => {
+  try { return c.json({ ok: true, catalogo: await catalogoExterno() }); }
+  catch (e) { return c.json({ ok: false, error: String((e as Error).message || e) }, 502); }
+});
+
 // ── PONTE CATÁLOGO → FUNIL (pública) ─────────────────────────────────────────────
 // O botão de WhatsApp do catálogo aponta pra cá. Registra o contato no funil
 // (coluna "📥 Catálogo (contato)") e redireciona pro WhatsApp de destino (loja ou
