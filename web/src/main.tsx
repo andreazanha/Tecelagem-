@@ -111,7 +111,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/clientes" element={<Protegido page="comercial"><Clientes /></Protegido>} />
           <Route path="/clientes/:id" element={<Protegido page="comercial"><ClienteFicha /></Protegido>} />
           <Route path="/funil" element={<Protegido page="comercial"><Funil /></Protegido>} />
-          <Route path="/atendimento" element={<Protegido page="comercial"><Atendimento /></Protegido>} />
+          <Route path="/atendimento" element={<Protegido page="atendimento"><Atendimento /></Protegido>} />
           <Route path="/lojas-parceiras" element={<Protegido page="comercial"><LojasParceiras /></Protegido>} />
           <Route path="/treinar-bia" element={<Protegido page="comercial"><TreinarBia /></Protegido>} />
 

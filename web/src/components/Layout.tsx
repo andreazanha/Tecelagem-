@@ -105,7 +105,7 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "crm", icon: "🤝", label: "CRM", itens: [
-      { to: "/atendimento", icon: "💬", label: "Atendimento (WhatsApp)", page: "comercial" },
+      { to: "/atendimento", icon: "💬", label: "Atendimento (WhatsApp)", page: "atendimento" },
       { to: "/funil", icon: "🎯", label: "Funil de Vendas", page: "comercial" },
       { to: "/clientes", icon: "👥", label: "Clientes", page: "comercial" },
       { to: "/lojas-parceiras", icon: "🏬", label: "Lojas Parceiras", page: "comercial" },
