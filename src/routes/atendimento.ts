@@ -146,6 +146,7 @@ REGRAS IMPORTANTES:
 - Se perceber que é LOJISTA e a pessoa quer comprar/revender/fazer cadastro: use acao "coletar_lojista" e, na sua resposta, peça gentilmente o NOME DA LOJA (o sistema pede o CNPJ na sequência).
 - CATÁLOGO: nosso catálogo é DIGITAL (um link), nunca um PDF. NUNCA envie o catálogo por conta própria nem prometa enviar "automaticamente". Envie SÓ quando o cliente PEDIR o catálogo (ex.: "me manda o catálogo", "quero ver os produtos", "tem catálogo?") — aí use acao "enviar_catalogo" (o sistema anexa o link). Não peça CNPJ como condição para mandar o catálogo se o cliente só quer dar uma olhada.
 - Se for CONSUMIDOR FINAL (pessoa física, "pra mim", "uso pessoal", "presente", sem loja/CNPJ): use acao "indicar_parceiro". Explique com carinho, em 1 linha, que a Big Tricot vende no atacado para lojistas, mas que você indica as lojas parceiras da região dele. Você só precisa do ESTADO — se ainda não souber, pergunte "de qual estado você é?". Preencha o campo "uf" com a sigla (ex.: MG). O SISTEMA envia automaticamente o link da vitrine de lojas parceiras filtrado pelo estado; NUNCA diga "vou te passar os dados/contatos depois", NUNCA tente listar lojas você mesmo, e NÃO fale de modelos/cores com o consumidor final.
+- STATUS DE PEDIDO: se o cliente perguntar sobre um pedido dele (ex.: "como está meu pedido?", "meu pedido já saiu?", "em que fase está?"): use acao "consultar_pedido". O sistema identifica pelo CNPJ e responde a fase de produção + a data prevista — você não precisa inventar nada. Se você JÁ sabe o CNPJ dele, preencha o campo "cnpj". Se NÃO souber, peça o CNPJ da loja na resposta. IMPORTANTE: depois que o status for informado, se o cliente fizer MAIS perguntas sobre o pedido (adiantar, alterar, reclamar do prazo), use acao "humano" e diga que vai chamar o *PCP* (setor de produção) pra ajudar.
 - Se o cliente pedir PRIVATE LABEL (marca própria, etiqueta própria, fabricar com a marca dele): use acao "humano" — isso é com um vendedor especializado. Na resposta, diga que já vai chamar o vendedor.
 - Se pedir Financeiro, Pós-venda, tratar de um pedido já feito, reclamação/problema, ou pedir pra falar com uma pessoa: use acao "humano".
 - Enquanto ainda está entendendo se é lojista ou consumidor, use acao "conversar". Assim que descobrir, seja decidido e use a acao certa — não enrole.
@@ -154,7 +155,7 @@ REGRAS IMPORTANTES:
 - Escreva os emojis COMO EMOJI de verdade (😊 💛 👍), NUNCA como código escapado tipo \\u{1f603}.
 
 RESPONDA **SOMENTE** com um JSON válido, sem texto fora dele, neste formato exato:
-{"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "enviar_catalogo" | "indicar_parceiro" | "humano", "uf": "<sigla do estado, ex.: MG, se souber; senão vazio>", "cidade": "<cidade se souber; senão vazio>"}`;
+{"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "enviar_catalogo" | "consultar_pedido" | "indicar_parceiro" | "humano", "uf": "<sigla do estado, ex.: MG, se souber; senão vazio>", "cidade": "<cidade se souber; senão vazio>", "cnpj": "<CNPJ do cliente se ele informar ou você já souber; senão vazio>"}`;
 
 // Estados "terminados" em que a Bia reengaja o contato que volta a falar (ela usa o
 // histórico e continua). Ficam de fora: coleta determinística e estados de pedido/pós-venda.
@@ -192,7 +193,7 @@ const IA_MODELOS = [
   "@cf/meta/llama-3-8b-instruct",
 ];
 
-interface IaDecisao { resposta: string; intencao: string; acao: string; uf?: string; cidade?: string }
+interface IaDecisao { resposta: string; intencao: string; acao: string; uf?: string; cidade?: string; cnpj?: string }
 
 // Normaliza estado → sigla UF (aceita "MG" ou "minas gerais").
 const UF_NOMES: Record<string, string> = {
@@ -226,7 +227,7 @@ function extrairJson(txt: string): IaDecisao | null {
   try {
     const o = JSON.parse(m[0]) as Partial<IaDecisao>;
     if (typeof o.resposta === "string") {
-      return { resposta: decodificarEscapes(o.resposta.trim()), intencao: String(o.intencao ?? "indefinido"), acao: String(o.acao ?? "conversar"), uf: String(o.uf ?? ""), cidade: String(o.cidade ?? "") };
+      return { resposta: decodificarEscapes(o.resposta.trim()), intencao: String(o.intencao ?? "indefinido"), acao: String(o.acao ?? "conversar"), uf: String(o.uf ?? ""), cidade: String(o.cidade ?? ""), cnpj: String(o.cnpj ?? "") };
     }
   } catch { /* json inválido */ }
   return null;
@@ -257,7 +258,51 @@ async function chamarIa(env: Env, conv: ConvRow, sistema: string): Promise<IaDec
   return null;
 }
 
-interface IaSaida { saidas: Saida[]; novoEstado: EstadoAtend; notificarHumano: boolean; tipo: string | null; catalogo?: boolean }
+// ── Status do pedido (Bia consulta a produção pelo CNPJ) ──────────────────────────
+// Esteira canônica de fases (produção + pós-revisão). Ordem = avanço do pedido.
+const FASES_PEDIDO = ["tecelagem", "passadoria", "corte", "costura", "revisao", "expedicao", "fiscal", "transporte", "entregue"];
+const FASE_CURTA: Record<string, string> = {
+  tecelagem: "Tecelagem", passadoria: "Passadoria", corte: "Corte", costura: "Costura",
+  revisao: "Revisão", expedicao: "Expedição", fiscal: "Nota fiscal", transporte: "Transporte", entregue: "Entregue",
+};
+function dataBr(iso?: string | null): string {
+  const m = String(iso ?? "").slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+}
+
+// Dado o CNPJ (só dígitos), acha o cliente → pedido mais recente → fase atual + data prevista.
+async function consultarStatusPedido(env: Env, cnpjDig: string): Promise<Saida[]> {
+  const cli = await env.DB.prepare(
+    "SELECT nome FROM clientes WHERE REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-','') = ? LIMIT 1"
+  ).bind(cnpjDig).first<{ nome: string }>().catch(() => null);
+  if (!cli) return [{ tipo: "texto", texto: "Não encontrei um cadastro com esse CNPJ aqui. 🤔 Confere os números pra mim? Se estiver certo, eu chamo alguém do time pra verificar." }];
+  const ped = await env.DB.prepare(
+    "SELECT id, numero_erp, data_entrega FROM pedidos WHERE cliente_nome = ? AND COALESCE(reposicao,0)=0 ORDER BY (data_pedido IS NULL), data_pedido DESC, rowid DESC LIMIT 1"
+  ).bind(cli.nome).first<{ id: string; numero_erp: string | null; data_entrega: string | null }>().catch(() => null);
+  if (!ped) return [{ tipo: "texto", texto: `Oi! Não achei nenhum pedido em produção no cadastro de *${cli.nome}*. 😕 Se você fez um pedido recente, me avisa que eu chamo o time pra conferir!` }];
+  // Fase atual: expedição sobrepõe produção; senão, o setor mais avançado das partes.
+  const exp = await env.DB.prepare("SELECT fase FROM expedicao WHERE pedido_id=? LIMIT 1").bind(ped.id).first<{ fase: string }>().catch(() => null);
+  let fase = "";
+  if (exp?.fase) fase = String(exp.fase).toLowerCase().trim();
+  else {
+    const { results } = await env.DB.prepare("SELECT DISTINCT setor FROM producao WHERE pedido_id=?").bind(ped.id).all<{ setor: string }>().catch(() => ({ results: [] as { setor: string }[] }));
+    let idx = -1;
+    for (const r of results) { const i = FASES_PEDIDO.indexOf(String(r.setor ?? "").toLowerCase().trim()); if (i > idx) idx = i; }
+    fase = idx >= 0 ? FASES_PEDIDO[idx] : "";
+  }
+  const numero = ped.numero_erp ? ` (nº ${ped.numero_erp})` : "";
+  const prazo = dataBr(ped.data_entrega) ? `\n📅 Previsão de entrega: *${dataBr(ped.data_entrega)}*` : "";
+  if (!fase) return [{ tipo: "texto", texto: `Seu pedido${numero} já está no nosso sistema e logo entra em produção! 💛${prazo}` }];
+  if (fase === "entregue") return [{ tipo: "texto", texto: `Seu pedido${numero} já foi *entregue*! ✅ Qualquer coisa, é só chamar. 💛` }];
+  const idx = FASES_PEDIDO.indexOf(fase);
+  const faltam = FASES_PEDIDO.slice(idx + 1).filter((f) => f !== "entregue" && f !== "fiscal").map((f) => FASE_CURTA[f]);
+  let txt = `📦 Seu pedido${numero} está na etapa *${FASE_CURTA[fase] || fase}*.`;
+  if (faltam.length) txt += `\nDepois ainda passa por: ${faltam.join(" → ")}.`;
+  txt += prazo;
+  return [{ tipo: "texto", texto: txt }];
+}
+
+interface IaSaida { saidas: Saida[]; novoEstado: EstadoAtend; notificarHumano: boolean; tipo: string | null; catalogo?: boolean; consultarPedido?: boolean; cnpjConsulta?: string }
 
 // Roda a IA de triagem e traduz a decisão em resposta + próximo estado do fluxo.
 // `origin` é usado pra montar o link da vitrine (indicação de consumidor final).
@@ -293,6 +338,9 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, origin: strin
       // SÓ quando o cliente PEDE o catálogo. A mensagem do catálogo (link virtual) é
       // anexada no núcleo (receberMensagem), que tem a config. Aqui só sinalizamos.
       return { saidas, novoEstado: "catalogo-enviado", notificarHumano: false, tipo: "lojista", catalogo: true };
+    case "consultar_pedido":
+      // Cliente quer saber o status do pedido. O núcleo resolve o CNPJ e consulta a produção.
+      return { saidas, novoEstado: "ia-triagem", notificarHumano: false, tipo: conv.tipo ?? null, consultarPedido: true, cnpjConsulta: digitos(dec.cnpj) || digitos(conv.cnpj) };
     case "humano":
       return { saidas, novoEstado: "atendimento-humano", notificarHumano: true, tipo: conv.tipo ?? null };
     default:
@@ -384,6 +432,17 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     // Cliente pediu o catálogo → anexa a mensagem do catálogo (virtual/link), montada da config.
     if (ia.catalogo) {
       for (const s of montarCatalogo(deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, origin))) ia.saidas.push(s);
+    }
+    // Cliente quer o status do pedido → resolve o CNPJ (do cadastro, da IA, ou da própria
+    // mensagem) e consulta a produção. Sem CNPJ, pede. Guarda o CNPJ na conversa pra próxima.
+    if (ia.consultarPedido) {
+      const cnpj = [ia.cnpjConsulta, digitos(conv.cnpj), digitos(texto)].find((x) => (x || "").length === 14) || "";
+      if (cnpj) {
+        if (!conv.cnpj) await env.DB.prepare("UPDATE atend_conversas SET cnpj=? WHERE id=?").bind(cnpj, conv.id).run();
+        ia.saidas = await consultarStatusPedido(env, cnpj);
+      } else {
+        ia.saidas = [{ tipo: "texto", texto: "Pra localizar seu pedido, me passa o *CNPJ* da sua loja (só os números)? 😊" }];
+      }
     }
     await env.DB.prepare("UPDATE atend_conversas SET estado=?, tipo=COALESCE(?, tipo), atualizado_em=datetime('now') WHERE id=?")
       .bind(ia.novoEstado, ia.tipo, conv.id).run();
