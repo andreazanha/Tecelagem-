@@ -231,6 +231,7 @@ export interface ClienteCrm {
   instagram?: string | null;
   observacao?: string | null;
   created_at?: string | null;
+  ultimo_faturamento?: string | null;
   pedidos?: number;
   total?: number;
   ultima?: string | null;

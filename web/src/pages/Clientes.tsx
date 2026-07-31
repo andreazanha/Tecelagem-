@@ -319,6 +319,9 @@ export function ClienteFicha() {
           <div className="frow"><span className="k">Cidade</span> {[f.cidade, f.uf].filter(Boolean).join(" · ") || "—"}</div>
           <div className="frow"><span className="k">CNPJ</span> {f.cnpj || "—"}</div>
           <div className="frow"><span className="k">Representante</span> {f.representante ? <span className="rep-cli">🧑‍💼 {f.representante}</span> : "—"}</div>
+          <div className="frow"><span className="k">Último faturamento</span> {f.ultimo_faturamento
+            ? <>🧾 {dataBr(f.ultimo_faturamento)} <span className="muted2">({desde(f.ultimo_faturamento)})</span></>
+            : "—"}</div>
           {f.observacao && <div className="frow obs"><span className="k">Obs.</span> {f.observacao}</div>}
         </div>
 
@@ -450,8 +453,11 @@ function ImportarClientesModal({ onFechar, onImportou }: { onFechar: () => void;
         iCid = col("cidade"), iCel = col("celular", "whatsapp", "whats", "cel"), iDdd = col("ddd"),
         iFone = col("fones", "fone", "telefone", "tel"), iMail = col("email"), iCnpj = col("cnpjcpf", "cnpj", "cpf");
       // Data da última compra: aceita "Data Ult_Venda", "Ultima Compra" etc.
-      let iUlt = col("dataultvenda", "dataultimavenda", "ultimacompra", "dataultimacompra", "ultvenda", "ultimavenda", "dataultimofaturamento");
-      if (iUlt < 0) iUlt = head.findIndex((h) => h.includes("ult") && (h.includes("venda") || h.includes("compra") || h.includes("fatur")));
+      let iUlt = col("dataultvenda", "dataultimavenda", "ultimacompra", "dataultimacompra", "ultvenda", "ultimavenda");
+      if (iUlt < 0) iUlt = head.findIndex((h) => h.includes("ult") && (h.includes("venda") || h.includes("compra")));
+      // Data do último faturamento: "Data faturamento".
+      let iFat = col("datafaturamento", "faturamento", "dataultimofaturamento", "dataultfaturamento", "ultimofaturamento");
+      if (iFat < 0) iFat = head.findIndex((h) => h.includes("fatur"));
       if (iNome < 0) { setErro("Não achei a coluna 'Nome'. Confira o cabeçalho da planilha."); return; }
       const out: Record<string, string>[] = [];
       for (const r of rows.slice(1)) {
@@ -466,6 +472,7 @@ function ImportarClientesModal({ onFechar, onImportou }: { onFechar: () => void;
           cidade: iCid >= 0 ? String(row[iCid] ?? "").trim() : "", whatsapp: wa,
           email: iMail >= 0 ? String(row[iMail] ?? "").trim() : "", cnpj: iCnpj >= 0 ? String(row[iCnpj] ?? "").trim() : "",
           ultima_compra: iUlt >= 0 ? toISO(row[iUlt]) : "",
+          ultimo_faturamento: iFat >= 0 ? toISO(row[iFat]) : "",
           observacao: iFant >= 0 && row[iFant] ? `Fantasia: ${String(row[iFant]).trim()}` : "",
         });
       }

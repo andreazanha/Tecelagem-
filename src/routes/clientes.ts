@@ -10,7 +10,7 @@ const str = (v: unknown) => String(v ?? "").trim() || null;
 type ClienteRow = {
   id: string; nome: string; contato: string | null; whatsapp: string | null; email: string | null;
   cidade: string | null; uf: string | null; cnpj: string | null; representante: string | null;
-  instagram: string | null; observacao: string | null; ultima_compra?: string | null; created_at?: string | null;
+  instagram: string | null; observacao: string | null; ultima_compra?: string | null; ultimo_faturamento?: string | null; created_at?: string | null;
 };
 
 // Último vendedor conhecido de cada cliente (fallback do representante quando o
@@ -34,7 +34,7 @@ clientes.get("/", async (c) => {
     return c.json(results);
   }
   const { results: cliAll } = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, ultima_compra, created_at FROM clientes ORDER BY nome"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, ultima_compra, ultimo_faturamento, created_at FROM clientes ORDER BY nome"
   ).all<ClienteRow>();
   // Nomes internos (ESTOQUE, OP CONSOLIDADA, REPOSIÇÃO, BIG TRICOT) não são clientes reais.
   const cli = cliAll.filter((c0) => !ehClienteInterno(c0.nome));
@@ -65,7 +65,7 @@ clientes.get("/", async (c) => {
 clientes.get("/:id", async (c) => {
   const id = c.req.param("id");
   const cli = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, ultima_compra, created_at FROM clientes WHERE id = ?"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, ultima_compra, ultimo_faturamento, created_at FROM clientes WHERE id = ?"
   ).bind(id).first<ClienteRow>();
   if (!cli) return c.json({ error: "cliente não encontrado" }, 404);
 
@@ -121,8 +121,8 @@ clientes.post("/importar", async (c) => {
     const id = ex?.id || crypto.randomUUID();
     const repFinal = rep || String(r.representante ?? "").trim() || null;
     await c.env.DB.prepare(
-      `INSERT INTO clientes (id, nome, whatsapp, email, cidade, uf, cnpj, representante, observacao, ultima_compra)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO clientes (id, nome, whatsapp, email, cidade, uf, cnpj, representante, observacao, ultima_compra, ultimo_faturamento)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          whatsapp = COALESCE(NULLIF(excluded.whatsapp,''), clientes.whatsapp),
          email = COALESCE(NULLIF(excluded.email,''), clientes.email),
@@ -131,8 +131,9 @@ clientes.post("/importar", async (c) => {
          cnpj = COALESCE(NULLIF(excluded.cnpj,''), clientes.cnpj),
          representante = COALESCE(NULLIF(excluded.representante,''), clientes.representante),
          observacao = COALESCE(NULLIF(excluded.observacao,''), clientes.observacao),
-         ultima_compra = COALESCE(NULLIF(excluded.ultima_compra,''), clientes.ultima_compra)`
-    ).bind(id, nome, str(r.whatsapp), str(r.email), str(r.cidade), str(r.uf), str(r.cnpj), repFinal, str(r.observacao), str((r as { ultima_compra?: string }).ultima_compra)).run();
+         ultima_compra = COALESCE(NULLIF(excluded.ultima_compra,''), clientes.ultima_compra),
+         ultimo_faturamento = COALESCE(NULLIF(excluded.ultimo_faturamento,''), clientes.ultimo_faturamento)`
+    ).bind(id, nome, str(r.whatsapp), str(r.email), str(r.cidade), str(r.uf), str(r.cnpj), repFinal, str(r.observacao), str((r as { ultima_compra?: string }).ultima_compra), str((r as { ultimo_faturamento?: string }).ultimo_faturamento)).run();
     if (ex) atualizados++; else criados++;
   }
   return c.json({ ok: true, criados, atualizados, ignorados });
