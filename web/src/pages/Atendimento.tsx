@@ -77,7 +77,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
     if (!cfg) return;
     setSalvando(true); setMsg("");
     try {
-      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia });
+      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias });
       setMsg("✓ Salvo!"); onMudou(); setTimeout(() => setMsg(""), 2500);
     } catch { setMsg("Erro ao salvar."); } finally { setSalvando(false); }
   }
@@ -152,6 +152,14 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
                 <input type="checkbox" checked={cfg.followup_ia} onChange={(e) => set("followup_ia", e.target.checked)} style={{ width: 17, height: 17 }} />
                 <span>🤖 Gerar os textos por <b>IA</b> (mais naturais, variados) — desligado usa modelos prontos</span>
               </label>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", fontSize: 13, marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line,#e2e8f0)" }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                  <input type="checkbox" checked={cfg.pos_venda_ativo} onChange={(e) => set("pos_venda_ativo", e.target.checked)} /> 💛 Pós-venda após
+                  <input type="number" min={1} max={90} value={cfg.pos_venda_dias} onChange={(e) => set("pos_venda_dias", e.target.value)} style={{ width: 52 }} /> dias do envio</label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                  <input type="checkbox" checked={cfg.recompra_ativo} onChange={(e) => set("recompra_ativo", e.target.checked)} /> 🔁 Recompra após
+                  <input type="number" min={7} max={365} value={cfg.recompra_dias} onChange={(e) => set("recompra_dias", e.target.value)} style={{ width: 56 }} /> dias</label>
+              </div>
               <div className="muted" style={{ fontSize: 11.5, marginTop: 7 }}>Nunca envia 2× no mesmo dia, fora do horário, na madrugada, ou para quem já respondeu.</div>
             </div>
 

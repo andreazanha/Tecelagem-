@@ -6,7 +6,7 @@ export type EstadoAtend =
   | "novo" | "aguardando-setor" | "triagem-nome" | "aguardando-cnpj"
   | "aguardando-cidade-parceiro" | "catalogo-enviado" | "follow-up-24h"
   | "atendimento-humano" | "nao-qualificado" | "indicado-parceiro" | "sem-retorno"
-  | "pedido-realizado" | "pedido-faturado" | "pedido-enviado";
+  | "pedido-realizado" | "pedido-faturado" | "pedido-enviado" | "pos-venda" | "recompra";
 
 export interface Conversa {
   estado: EstadoAtend;
@@ -84,6 +84,8 @@ export const ATEND_COLUNAS = [
   { id: "pedido-realizado", label: "Pedido realizado", cor: "#0d9488" },
   { id: "pedido-faturado", label: "Pedido faturado", cor: "#7c3aed" },
   { id: "pedido-enviado", label: "Pedido enviado", cor: "#0891b2" },
+  { id: "pos-venda", label: "Pós-venda", cor: "#db2777" },
+  { id: "recompra", label: "Cliente para recompra", cor: "#ea580c" },
   { id: "sem-retorno", label: "Sem retorno", cor: "#94a3b8" },
   { id: "nao-qualificado", label: "Não qualificado", cor: "#ef4444" },
   { id: "indicado-parceiro", label: "Consumidor → loja parceira", cor: "#14b8a6" },
@@ -101,6 +103,8 @@ export function colunaDe(estado: string): string {
     case "pedido-realizado": return "pedido-realizado";
     case "pedido-faturado": return "pedido-faturado";
     case "pedido-enviado": return "pedido-enviado";
+    case "pos-venda": return "pos-venda";
+    case "recompra": return "recompra";
     case "sem-retorno": return "sem-retorno";
     case "aguardando-cidade-parceiro": return "nao-qualificado";
     case "nao-qualificado": return "nao-qualificado";
@@ -271,7 +275,7 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
     default:
       // Estados terminais / humano: o robô não responde sozinho. Se o cliente
       // respondeu enquanto aguardava (catálogo/follow-up), avisa o atendente.
-      if (["catalogo-enviado", "follow-up-24h", "sem-retorno", "pedido-realizado", "pedido-faturado", "pedido-enviado"].includes(conv.estado)) notificarHumano = true;
+      if (["catalogo-enviado", "follow-up-24h", "sem-retorno", "pedido-realizado", "pedido-faturado", "pedido-enviado", "pos-venda", "recompra"].includes(conv.estado)) notificarHumano = true;
       break;
   }
 

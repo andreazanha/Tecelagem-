@@ -117,6 +117,8 @@ async function representantePorRegiao(env: Env, uf: string | null | undefined): 
 
 // Detecta interesse comercial (preço, cores, mínimo, frete…) e modelos citados.
 const INTERESSE_RE = /pre[çc]o|valor|quanto (custa|sai|fica|é)|\bcores?\b|estoque|dispon[íi]vel|pedido m[íi]nimo|\bm[íi]nimo\b|pagament|\bfrete|parcel|\bcondi[çc][õo]es|tabela|or[çc]ament/i;
+// Sinais de reclamação/problema → prioriza atendimento humano (§12/§16).
+const RECLAMACAO_RE = /reclama|problema|defeito|quebrad|rasgad|estragad|veio errad|errad[oa]|faltou|faltando|falta (uma|um|de)|troca(r)?|devolu|devolv|atras(ad|o)|n[ãa]o chegou|ainda n[ãa]o (chegou|recebi)|insatisfeit|p[ée]ssim/i;
 
 async function detectarInteresse(env: Env, convId: string, texto: string, modelosCsv: string): Promise<boolean> {
   const t = texto || "";
@@ -179,6 +181,10 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Detecta interesse comercial + modelos citados (vale inclusive no atendimento humano).
   const cfgAt = await lerConfig(env);
   await detectarInteresse(env, conv.id, texto, cfgAt.interesse_modelos || "");
+  // Reclamação/problema → sinaliza para o time tratar com prioridade.
+  if (RECLAMACAO_RE.test(texto)) {
+    await addMsg(env, conv.id, "out", "sistema", "sistema", "⚠️ Possível reclamação/problema — priorizar atendimento humano.");
+  }
 
   // Cliente respondeu durante o follow-up → cancela a cadência e sinaliza a retomada.
   if ((conv.followup_etapa ?? 0) > 0 && ["catalogo-enviado", "follow-up-24h", "sem-retorno"].includes(conv.estado)) {
@@ -273,7 +279,7 @@ atendimento.post("/webhook", async (c) => {
 
 // ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
-const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "followup_ativo", "followup_domingo", "followup_ia"]);
+const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo"]);
 
 atendimento.get("/config", async (c) => {
   const cfg = await lerConfig(c.env);
@@ -292,6 +298,10 @@ atendimento.get("/config", async (c) => {
     followup_hora_fim: cfg.followup_hora_fim || "18",
     followup_domingo: cfg.followup_domingo === "1",
     followup_ia: cfg.followup_ia === "1",
+    pos_venda_ativo: (cfg.pos_venda_ativo ?? "1") === "1",
+    pos_venda_dias: cfg.pos_venda_dias || "7",
+    recompra_ativo: (cfg.recompra_ativo ?? "1") === "1",
+    recompra_dias: cfg.recompra_dias || "45",
     webhook_url: new URL(c.req.url).origin + "/api/atendimento/webhook",
   });
 });
@@ -299,7 +309,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -475,7 +485,19 @@ atendimento.post("/:id/enviar", async (c) => {
 // Detecta o marco do pedido mais recente do cliente (realizado → faturado → enviado)
 // e, quando avança, move a conversa e avisa o cliente. Não repete marco já avisado e
 // NÃO dispara em massa por pedidos antigos (baseline silencioso no 1º vínculo).
-const MARCO_ORDEM: Record<string, number> = { realizado: 1, faturado: 2, enviado: 3 };
+const MARCO_ORDEM: Record<string, number> = { realizado: 1, faturado: 2, enviado: 3, "pos-venda": 4, recompra: 5 };
+
+// Horário comercial (Brasil UTC-3): sem madrugada, sem domingo (salvo config).
+async function horarioComercialOk(env: Env, cfg: Record<string, string>): Promise<boolean> {
+  const t = await env.DB.prepare(
+    "SELECT strftime('%w','now','-3 hours') AS dow, CAST(strftime('%H','now','-3 hours') AS INTEGER) AS h"
+  ).first<{ dow: string; h: number }>();
+  const dow = Number(t?.dow ?? "1"), hora = Number(t?.h ?? 12);
+  const hIni = parseInt(cfg.followup_hora_ini || "8", 10);
+  const hFim = parseInt(cfg.followup_hora_fim || "18", 10);
+  if (dow === 0 && (cfg.followup_domingo ?? "0") !== "1") return false;
+  return hora >= hIni && hora < hFim;
+}
 
 function textoMarco(marco: string, nome: string | null): { estado: string; texto: string } {
   const oi = `Oi${nome ? `, *${nome}*` : ""}!`;
@@ -538,6 +560,57 @@ export async function sincronizarPedidos(env: Env): Promise<number> {
   return mudou;
 }
 
+// ── Pós-venda e recompra (por tempo, após a entrega) — chamado pelo cron ──────────
+export async function posVendaRecompra(env: Env): Promise<number> {
+  const cfg = await lerConfig(env);
+  if (cfg.atendimento_ativo !== "1") return 0;
+  if (!(await horarioComercialOk(env, cfg))) return 0;
+
+  const enviar = async (id: string, telefone: string, texto: string, estado: string, marco: string) => {
+    await addMsg(env, id, "out", "bot", "texto", texto);
+    await enviarWhatsapp(env, telefone, { tipo: "texto", texto });
+    await env.DB.prepare(
+      "UPDATE atend_conversas SET estado=?, pedido_marco=?, ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?"
+    ).bind(estado, marco, id).run();
+  };
+  let n = 0;
+
+  // Pós-venda: passou X dias desde o "enviado", sem resposta nova.
+  if ((cfg.pos_venda_ativo ?? "1") === "1") {
+    const dias = parseInt(cfg.pos_venda_dias || "7", 10);
+    const { results } = await env.DB.prepare(
+      `SELECT id, telefone, nome, contato_nome FROM atend_conversas
+        WHERE pedido_marco='enviado' AND COALESCE(nao_perturbe,0)=0
+          AND ultima_out_em IS NOT NULL AND ultima_out_em <= datetime('now', ?)
+          AND (ultima_in_em IS NULL OR ultima_in_em <= ultima_out_em)`
+    ).bind(`-${dias} days`).all<{ id: string; telefone: string; nome: string | null; contato_nome: string | null }>();
+    for (const cv of results) {
+      const nome = cv.contato_nome || cv.nome;
+      const texto = `Oi${nome ? `, *${nome}*` : ""}! 😊 Vi que seu pedido foi entregue. Chegou tudo certinho? Depois me conta quais peças seus clientes mais gostaram! 💛`;
+      await enviar(cv.id, cv.telefone, texto, "pos-venda", "pos-venda");
+      n++;
+    }
+  }
+
+  // Recompra: passou Y dias (após pós-venda/enviado) sem novo pedido.
+  if ((cfg.recompra_ativo ?? "1") === "1") {
+    const dias = parseInt(cfg.recompra_dias || "45", 10);
+    const { results } = await env.DB.prepare(
+      `SELECT id, telefone, nome, contato_nome FROM atend_conversas
+        WHERE pedido_marco IN ('enviado','pos-venda') AND COALESCE(nao_perturbe,0)=0
+          AND ultima_out_em IS NOT NULL AND ultima_out_em <= datetime('now', ?)
+          AND (ultima_in_em IS NULL OR ultima_in_em <= ultima_out_em)`
+    ).bind(`-${dias} days`).all<{ id: string; telefone: string; nome: string | null; contato_nome: string | null }>();
+    for (const cv of results) {
+      const nome = cv.contato_nome || cv.nome;
+      const texto = `Oi${nome ? `, *${nome}*` : ""}! Como foi a saída das peças do seu último pedido? 🧶 Chegaram novidades e posso verificar a reposição dos modelos que você já levou. Quer dar uma olhada?`;
+      await enviar(cv.id, cv.telefone, texto, "recompra", "recompra");
+      n++;
+    }
+  }
+  return n;
+}
+
 // Texto de cada etapa do follow-up (personalizado com o nome, se houver).
 function textoFollowup(etapa: number, nome: string | null): string {
   const oi = `Oi${nome ? `, *${nome}*` : ""}!`;
@@ -576,16 +649,7 @@ export async function followupAtendimento(env: Env): Promise<number> {
   const cfg = await lerConfig(env);
   if (cfg.atendimento_ativo !== "1") return 0;        // modo teste: não mexe com clientes reais
   if ((cfg.followup_ativo ?? "1") !== "1") return 0;   // cadência desligada
-
-  // Horário comercial em horário do Brasil (UTC-3): não madrugada, não domingo.
-  const t = await env.DB.prepare(
-    "SELECT strftime('%w','now','-3 hours') AS dow, CAST(strftime('%H','now','-3 hours') AS INTEGER) AS h"
-  ).first<{ dow: string; h: number }>();
-  const dow = Number(t?.dow ?? "1"), hora = Number(t?.h ?? 12);
-  const hIni = parseInt(cfg.followup_hora_ini || "8", 10);
-  const hFim = parseInt(cfg.followup_hora_fim || "18", 10);
-  if (dow === 0 && (cfg.followup_domingo ?? "0") !== "1") return 0; // domingo
-  if (hora < hIni || hora >= hFim) return 0;                        // fora do horário
+  if (!(await horarioComercialOk(env, cfg))) return 0; // horário comercial (Brasil)
 
   // etapa atual → intervalo desde a última mensagem → próxima etapa/estado.
   const estagios = [
