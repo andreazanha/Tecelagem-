@@ -22,6 +22,8 @@ function iniciais(nome?: string | null): string {
 const ETAPAS_META: { id: FunilEtapa; label: string; cor: string }[] = [
   { id: "atendimento", label: "💬 Atendimento", cor: "#06b6d4" },
   { id: "reativacao", label: "🔔 Reativar", cor: "#f59e0b" },
+  { id: "prospeccao-enviada", label: "📤 Catálogo (automático)", cor: "#a855f7" },
+  { id: "catalogo-recebido", label: "📥 Catálogo (contato/manual)", cor: "#0ea5e9" },
   { id: "novo-lead", label: "Novo Lead", cor: "#3b82f6" },
   { id: "primeiro-contato", label: "Primeiro Contato", cor: "#8b5cf6" },
   { id: "negociacao", label: "Negociação", cor: "#f59e0b" },
@@ -194,12 +196,16 @@ function CardMini({ c, onAbrir, onDragStart, onDragEnd }: { c: FunilCard; onAbri
         {(c.etapa === "ativo" || c.etapa === "inativo") && c.diasSemComprar != null && (
           <span className={"fx-chip dias" + (c.faixa ? " warn" : "")}>{c.diasSemComprar}d s/ comprar</span>
         )}
-        {c.etapa !== "atendimento" && <span className={"fx-chip dias" + (c.diasParado >= 7 ? " warn" : "")}>⏱ {c.diasParado}d parado</span>}
+        {c.etapa !== "atendimento" && c.etapa !== "prospeccao-enviada" && c.etapa !== "catalogo-recebido" && <span className={"fx-chip dias" + (c.diasParado >= 7 ? " warn" : "")}>⏱ {c.diasParado}d parado</span>}
       </div>
       <div className={"fx-task" + (c.semTarefa ? " miss" : "")}>
         {c.etapa === "atendimento"
           ? "💬 Conversa (sem prospecção)"
-          : c.semTarefa ? "⚠️ Sem próxima tarefa" : <>📋 {c.proxTarefa?.titulo}{c.proxTarefa?.vence_em ? ` · ${dataBr(c.proxTarefa.vence_em)}` : ""}</>}
+          : c.etapa === "prospeccao-enviada"
+            ? "📤 Catálogo automático — aguardando resposta"
+            : c.etapa === "catalogo-recebido"
+              ? "📥 Entrou em contato — recebeu o catálogo"
+              : c.semTarefa ? "⚠️ Sem próxima tarefa" : <>📋 {c.proxTarefa?.titulo}{c.proxTarefa?.vence_em ? ` · ${dataBr(c.proxTarefa.vence_em)}` : ""}</>}
       </div>
       <div className="fx-foot">
         <div className="fx-av">{iniciais(c.responsavel)}</div>

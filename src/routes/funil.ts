@@ -13,7 +13,9 @@ const num = (v: unknown) => (v === "" || v == null || isNaN(Number(v)) ? null : 
 // de produção de um pedido fica nos painéis, não aqui.
 export const ETAPAS = [
   "atendimento", // conversas que não são prospecção (fiscal, financeiro, dúvida)
-  "reativacao", // clientes há muito tempo sem faturar (fila de mensagem de reativação)
+  "reativacao", // fila de reativação/pós-venda (ainda não contatado)
+  "prospeccao-enviada", // catálogo enviado pela PROSPECÇÃO AUTOMÁTICA — aguardando resposta
+  "catalogo-recebido", // cliente ENTROU EM CONTATO / manual e recebeu o catálogo
   "novo-lead", "primeiro-contato", "negociacao", "aguardando-retorno",
   "pos-venda", "ativo", "inativo", "perdido",
 ] as const;
@@ -138,11 +140,13 @@ funil.get("/", async (c) => {
     if (chave) { auto.push({ id: k.id, etapa, chave }); diasParado = 0; }
 
     const proxTar = chave ? { titulo: MOVE[chave].tarefa, vence_em: null } : proxTarefa.get(k.id) || null;
-    // "atendimento" (só conversa) não exige tarefa nem dispara alerta de parado.
-    const semTarefa = etapa !== "perdido" && etapa !== "atendimento" && !proxTar;
+    // "atendimento" e "prospeccao-enviada" (aguardando resposta) não exigem tarefa
+    // nem disparam alerta de parado.
+    const semAlerta = etapa === "atendimento" || etapa === "prospeccao-enviada" || etapa === "catalogo-recebido";
+    const semTarefa = etapa !== "perdido" && !semAlerta && !proxTar;
     const retornoVencido = etapa === "aguardando-retorno" && !!k.retorno_em && k.retorno_em <= hoje;
-    const alerta = semTarefa || retornoVencido || (etapa === "negociacao" && diasParado > 7) || (etapa !== "atendimento" && diasParado > 15);
-    const vermelho = (etapa === "negociacao" && diasParado >= 7) || (etapa !== "atendimento" && diasParado > 15);
+    const alerta = semTarefa || retornoVencido || (etapa === "negociacao" && diasParado > 7) || (!semAlerta && diasParado > 15);
+    const vermelho = (etapa === "negociacao" && diasParado >= 7) || (!semAlerta && diasParado > 15);
 
     return {
       id: k.id, cliente_id: k.cliente_id, nome: k.nome, cidade: k.cidade, uf: k.uf, whatsapp: k.whatsapp,

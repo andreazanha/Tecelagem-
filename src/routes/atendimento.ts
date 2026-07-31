@@ -137,6 +137,19 @@ async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: st
   ).bind(uid(), convId, direcao, autor, tipo, texto).run();
 }
 
+// Garante um card na coluna "📤 Catálogo (contato)" quando o cliente ENTROU EM
+// CONTATO e recebeu o catálogo. Se a conversa já tem card, não duplica.
+async function garantirCardCatalogoContato(env: Env, conv: { id: string; card_id?: string | null; cliente_id?: string | null; nome?: string | null; cidade?: string | null; uf?: string | null; representante?: string | null }, tel: string) {
+  const atual = await env.DB.prepare("SELECT card_id FROM atend_conversas WHERE id=?").bind(conv.id).first<{ card_id: string | null }>().catch(() => null);
+  if (atual?.card_id) return;
+  const cardId = uid();
+  await env.DB.prepare(
+    "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, 'catalogo-recebido', ?)"
+  ).bind(cardId, conv.cliente_id ?? null, conv.nome || "(sem nome)", conv.cidade ?? null, conv.uf ?? null, tel, conv.representante ?? null).run();
+  await env.DB.prepare("INSERT INTO funil_eventos (id, card_id, tipo, texto) VALUES (?, ?, 'etapa', 'Catálogo enviado (cliente entrou em contato)')").bind(uid(), cardId).run();
+  await env.DB.prepare("UPDATE atend_conversas SET card_id=? WHERE id=?").bind(cardId, conv.id).run();
+}
+
 // ── IA de triagem (atendente virtual antes do CNPJ) ──────────────────────────────
 // A IA conversa naturalmente, entende a necessidade e CLASSIFICA o contato:
 //  • lojista pronto pra ver produtos → "coletar_lojista" (aí o fluxo pede nome+CNPJ)
@@ -449,6 +462,8 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     // Cliente pediu o catálogo → anexa a mensagem do catálogo (virtual/link), montada da config.
     if (ia.catalogo) {
       for (const s of montarCatalogo(deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, origin))) ia.saidas.push(s);
+      // Registra na coluna "📤 Catálogo (contato)" do funil — cliente que entrou em contato e recebeu.
+      await garantirCardCatalogoContato(env, conv, tel);
     }
     // Cliente quer o status do pedido → resolve o CNPJ (do cadastro, da IA, ou da própria
     // mensagem) e consulta a produção. Sem CNPJ, pede. Guarda o CNPJ na conversa pra próxima.
@@ -1276,11 +1291,11 @@ export async function prospeccaoCatalogo(env: Env): Promise<number> {
   const limite = Math.max(1, parseInt(cfg.reativacao_limite || "40", 10) || 40);
 
   const { results: clientes } = await env.DB.prepare(
-    `SELECT id, nome, contato, whatsapp, ultimo_faturamento FROM clientes
+    `SELECT id, nome, contato, whatsapp, cidade, uf, representante, ultimo_faturamento FROM clientes
       WHERE COALESCE(whatsapp,'') <> '' AND COALESCE(ultimo_faturamento,'') <> ''
         AND ultimo_faturamento <= date('now', ?)
       ORDER BY ultimo_faturamento ASC`
-  ).bind(`-${dias} day`).all<{ id: string; nome: string; contato: string | null; whatsapp: string | null; ultimo_faturamento: string | null }>();
+  ).bind(`-${dias} day`).all<{ id: string; nome: string; contato: string | null; whatsapp: string | null; cidade: string | null; uf: string | null; representante: string | null; ultimo_faturamento: string | null }>();
   if (!clientes.length) return 0;
 
   // Já tem conversa? (não reenvia nem incomoda quem já falou com a gente)
@@ -1298,11 +1313,18 @@ export async function prospeccaoCatalogo(env: Env): Promise<number> {
     if (jaFalou.has("id:" + cli.id) || jaFalou.has("tel:" + tel.slice(-8))) continue;
     // Só usa nome quando há CONTATO (pessoa). Sem contato, chama só "Olá!" —
     // evita usar a razão social da empresa como se fosse o nome da pessoa.
-    const texto = montarMsgReativacao(cfg, primeiroNome(cli.contato), diasDesdeISO(cli.ultimo_faturamento, agora));
+    const d = diasDesdeISO(cli.ultimo_faturamento, agora);
+    const texto = montarMsgReativacao(cfg, primeiroNome(cli.contato), d);
+    // Card na coluna "📤 Catálogo enviado" (aba especial), ligado à conversa.
+    const cardId = uid();
+    await env.DB.prepare(
+      "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, 'prospeccao-enviada', ?)"
+    ).bind(cardId, cli.id, cli.nome, cli.cidade ?? null, cli.uf ?? null, tel, cli.representante ?? null).run();
+    await env.DB.prepare("INSERT INTO funil_eventos (id, card_id, tipo, texto) VALUES (?, ?, 'etapa', ?)").bind(uid(), cardId, `Catálogo enviado automaticamente (+${d} dias do faturamento)`).run();
     const convId = uid();
     await env.DB.prepare(
-      "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, cliente_id, nome, pedido_marco, ultima_out_em, atualizado_em) VALUES (?, ?, 'prospeccao-catalogo', 'reativacao', 'lojista', ?, ?, 'reativacao', datetime('now'), datetime('now'))"
-    ).bind(convId, tel, cli.id, cli.nome).run();
+      "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, card_id, cliente_id, nome, pedido_marco, ultima_out_em, atualizado_em) VALUES (?, ?, 'prospeccao-catalogo', 'reativacao', 'lojista', ?, ?, ?, 'reativacao', datetime('now'), datetime('now'))"
+    ).bind(convId, tel, cardId, cli.id, cli.nome).run();
     await addMsg(env, convId, "out", "bot", "texto", texto);
     await enviarWhatsapp(env, tel, { tipo: "texto", texto });
     jaFalou.add("id:" + cli.id); jaFalou.add("tel:" + tel.slice(-8));

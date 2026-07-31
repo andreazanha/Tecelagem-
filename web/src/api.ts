@@ -251,7 +251,7 @@ export interface ClienteFicha extends ClienteCrm {
 
 // ── CRM Funil de vendas ──────────────────────────────────────────────────────
 export type FunilEtapa =
-  | "atendimento" | "reativacao"
+  | "atendimento" | "reativacao" | "prospeccao-enviada" | "catalogo-recebido"
   | "novo-lead" | "primeiro-contato" | "negociacao" | "aguardando-retorno"
   | "pos-venda" | "ativo" | "inativo" | "perdido";
 export interface FunilCardBase { conversa_id?: string | null }
