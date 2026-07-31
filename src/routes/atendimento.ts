@@ -833,28 +833,48 @@ atendimento.delete("/conhecimento/:id", async (c) => {
 
 // Abre (ou cria) a conversa de WhatsApp de um card do funil / cliente, pra chamar do funil.
 atendimento.post("/abrir-conversa", async (c) => {
-  const b = await c.req.json<{ telefone?: string; nome?: string; card_id?: string }>().catch(() => ({}) as Record<string, never>);
+  const b = await c.req.json<{ telefone?: string; nome?: string; card_id?: string; cliente_id?: string; criar_card?: boolean }>().catch(() => ({}) as Record<string, never>);
   const tel = digitos(b.telefone);
-  const cardId = String(b.card_id ?? "").trim() || null;
+  let cardId = String(b.card_id ?? "").trim() || null;
   // 1) Já existe conversa vinculada a esse card?
-  let conv = cardId ? await c.env.DB.prepare("SELECT id FROM atend_conversas WHERE card_id=? LIMIT 1").bind(cardId).first<{ id: string }>().catch(() => null) : null;
+  let conv = cardId ? await c.env.DB.prepare("SELECT id, card_id FROM atend_conversas WHERE card_id=? LIMIT 1").bind(cardId).first<{ id: string; card_id: string | null }>().catch(() => null) : null;
   // 2) Senão, procura pelo telefone (sufixo de 8 dígitos).
   if (!conv && tel.length >= 8) {
     const core = tel.slice(-8);
     conv = await c.env.DB.prepare(
-      `SELECT id FROM atend_conversas WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(telefone,'.',''),'-',''),'(',''),')',''),' ','') LIKE '%' || ? LIMIT 1`
-    ).bind(core).first<{ id: string }>().catch(() => null);
+      `SELECT id, card_id FROM atend_conversas WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(telefone,'.',''),'-',''),'(',''),')',''),' ','') LIKE '%' || ? LIMIT 1`
+    ).bind(core).first<{ id: string; card_id: string | null }>().catch(() => null);
     if (conv && cardId) await c.env.DB.prepare("UPDATE atend_conversas SET card_id=? WHERE id=? AND (card_id IS NULL OR card_id='')").bind(cardId, conv.id).run();
   }
-  if (conv) return c.json({ id: conv.id });
+  if (conv) return c.json({ id: conv.id, card_id: cardId || conv.card_id || null });
   // 3) Não existe → cria uma conversa "manual" já em atendimento humano (pronta pra responder).
   if (!tel) return c.json({ error: "Este cliente não tem WhatsApp no cadastro. Adicione o número em Clientes e tente de novo." });
   const cli = await identificarCliente(c.env, tel);
+  const nome = (b.nome || cli?.nome || "").trim();
+  // 3b) Prospecção: se pedido, garante um card no funil (novo-lead) e vincula a conversa a ele.
+  if (!cardId && b.criar_card) {
+    const cliId = String(b.cliente_id ?? "").trim() || cli?.id || null;
+    let card = cliId ? await c.env.DB.prepare("SELECT id FROM funil_cards WHERE cliente_id=? LIMIT 1").bind(cliId).first<{ id: string }>().catch(() => null) : null;
+    if (!card && nome) card = await c.env.DB.prepare("SELECT id FROM funil_cards WHERE nome=? LIMIT 1").bind(nome).first<{ id: string }>().catch(() => null);
+    if (card) cardId = card.id;
+    else {
+      const info = cliId ? await c.env.DB.prepare("SELECT cidade, uf, representante FROM clientes WHERE id=?").bind(cliId).first<{ cidade: string | null; uf: string | null; representante: string | null }>().catch(() => null) : null;
+      const novo = uid();
+      await c.env.DB.prepare(
+        "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, 'novo-lead', ?)"
+      ).bind(novo, cliId, nome || "(sem nome)", info?.cidade ?? null, info?.uf ?? null, tel, info?.representante ?? null).run();
+      await c.env.DB.prepare(
+        "INSERT INTO funil_tarefas (id, card_id, titulo, vence_em, responsavel) VALUES (?, ?, '1º contato (24h)', date('now','+1 day'), ?)"
+      ).bind(uid(), novo, info?.representante ?? null).run();
+      await c.env.DB.prepare("INSERT INTO funil_eventos (id, card_id, tipo, texto) VALUES (?, ?, 'etapa', 'Prospecção iniciada pelo WhatsApp')").bind(uid(), novo).run();
+      cardId = novo;
+    }
+  }
   const id = uid();
   await c.env.DB.prepare(
     "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, card_id, cliente_id, nome) VALUES (?, ?, 'atendimento-humano', 'manual', 'lojista', ?, ?, ?)"
-  ).bind(id, tel, cardId, cli?.id ?? null, (b.nome || cli?.nome || "").trim() || null).run();
-  return c.json({ id });
+  ).bind(id, tel, cardId, cli?.id ?? null, nome || null).run();
+  return c.json({ id, card_id: cardId });
 });
 
 // ── SETORES do atendimento (cadastro + membros) — antes de "/:id" ─────────────────

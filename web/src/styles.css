@@ -1031,6 +1031,14 @@ table.crm tbody tr:last-child td { border-bottom: none; }
 .money { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .wa { display: inline-flex; align-items: center; gap: 5px; background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; border-radius: 8px; padding: 4px 9px; font-size: 12px; font-weight: 800; text-decoration: none; white-space: nowrap; }
 .wa:hover { background: #bbf7d0; }
+.wa.wa-btn { cursor: pointer; font-family: inherit; }
+.wa.wa-btn:disabled { opacity: .6; cursor: default; }
+/* Cabeçalho de grupo (clientes agrupados por representante) */
+tr.cli-grp td { background: var(--bg-soft, #f1f5f9); border-bottom: 1px solid var(--line); padding: 10px 16px; font-size: 13px; }
+tr.cli-grp:hover td { background: var(--bg-soft, #eef2f7); cursor: pointer; }
+.cli-grp-ar { display: inline-block; width: 16px; color: var(--muted); font-size: 11px; }
+.cli-grp-n { color: var(--muted); font-weight: 700; font-size: 12px; margin-left: 10px; }
+.cli-grp-t { float: right; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink); }
 .wa.wa-big { width: 100%; justify-content: center; padding: 11px; margin: 10px 0 6px; font-size: 13.5px; }
 .wa.off { background: #f1f5f9; color: #94a3b8; border-color: var(--line); cursor: default; }
 /* Chip de "representante" (ficha do cliente). NOME ESCOPADO: um ".rep" solto

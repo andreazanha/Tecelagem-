@@ -9,7 +9,7 @@ const str = (v: unknown) => String(v ?? "").trim() || null;
 type ClienteRow = {
   id: string; nome: string; contato: string | null; whatsapp: string | null; email: string | null;
   cidade: string | null; uf: string | null; cnpj: string | null; representante: string | null;
-  instagram: string | null; observacao: string | null; created_at?: string | null;
+  instagram: string | null; observacao: string | null; ultima_compra?: string | null; created_at?: string | null;
 };
 
 // Último vendedor conhecido de cada cliente (fallback do representante quando o
@@ -33,7 +33,7 @@ clientes.get("/", async (c) => {
     return c.json(results);
   }
   const { results: cli } = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, created_at FROM clientes ORDER BY nome"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, ultima_compra, created_at FROM clientes ORDER BY nome"
   ).all<ClienteRow>();
   const { results: stats } = await c.env.DB.prepare(
     `SELECT p.cliente_nome AS nome, COUNT(DISTINCT p.id) AS pedidos,
@@ -51,7 +51,7 @@ clientes.get("/", async (c) => {
     return {
       ...c0,
       representante: c0.representante || vmap.get(c0.nome) || null,
-      pedidos, total, ultima: s?.ultima || null,
+      pedidos, total, ultima: s?.ultima || c0.ultima_compra || null,
       ticket: pedidos ? total / pedidos : 0,
     };
   });
@@ -62,7 +62,7 @@ clientes.get("/", async (c) => {
 clientes.get("/:id", async (c) => {
   const id = c.req.param("id");
   const cli = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, created_at FROM clientes WHERE id = ?"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, ultima_compra, created_at FROM clientes WHERE id = ?"
   ).bind(id).first<ClienteRow>();
   if (!cli) return c.json({ error: "cliente não encontrado" }, 404);
 
@@ -90,7 +90,7 @@ clientes.get("/:id", async (c) => {
     situacao: situ.get(p.id) || (p.status === "novo" ? "novo" : "producao"),
   }));
   const total = pedidos.reduce((s, p) => s + p.valor, 0);
-  const kpis = { total, pedidos: pedidos.length, ticket: pedidos.length ? total / pedidos.length : 0, ultima: pedidos[0]?.data || null };
+  const kpis = { total, pedidos: pedidos.length, ticket: pedidos.length ? total / pedidos.length : 0, ultima: pedidos[0]?.data || cli.ultima_compra || null };
   const vmap = await ultimoVendedorPorCliente(c.env);
   return c.json({ ...cli, representante: cli.representante || vmap.get(cli.nome) || null, kpis, historico: pedidos });
 });
@@ -118,8 +118,8 @@ clientes.post("/importar", async (c) => {
     const id = ex?.id || crypto.randomUUID();
     const repFinal = rep || String(r.representante ?? "").trim() || null;
     await c.env.DB.prepare(
-      `INSERT INTO clientes (id, nome, whatsapp, email, cidade, uf, cnpj, representante, observacao)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO clientes (id, nome, whatsapp, email, cidade, uf, cnpj, representante, observacao, ultima_compra)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          whatsapp = COALESCE(NULLIF(excluded.whatsapp,''), clientes.whatsapp),
          email = COALESCE(NULLIF(excluded.email,''), clientes.email),
@@ -127,8 +127,9 @@ clientes.post("/importar", async (c) => {
          uf = COALESCE(NULLIF(excluded.uf,''), clientes.uf),
          cnpj = COALESCE(NULLIF(excluded.cnpj,''), clientes.cnpj),
          representante = COALESCE(NULLIF(excluded.representante,''), clientes.representante),
-         observacao = COALESCE(NULLIF(excluded.observacao,''), clientes.observacao)`
-    ).bind(id, nome, str(r.whatsapp), str(r.email), str(r.cidade), str(r.uf), str(r.cnpj), repFinal, str(r.observacao)).run();
+         observacao = COALESCE(NULLIF(excluded.observacao,''), clientes.observacao),
+         ultima_compra = COALESCE(NULLIF(excluded.ultima_compra,''), clientes.ultima_compra)`
+    ).bind(id, nome, str(r.whatsapp), str(r.email), str(r.cidade), str(r.uf), str(r.cnpj), repFinal, str(r.observacao), str((r as { ultima_compra?: string }).ultima_compra)).run();
     if (ex) atualizados++; else criados++;
   }
   return c.json({ ok: true, criados, atualizados, ignorados });

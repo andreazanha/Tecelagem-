@@ -666,8 +666,8 @@ export const api = {
   atendExcluirSetor: (id: string) => fetch(`/api/atendimento/setores/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   // Painel do gestor
   atendPainel: () => fetch("/api/atendimento/painel").then((r) => j<AtendPainel>(r)),
-  abrirConversaDoCard: (b: { telefone?: string | null; nome?: string | null; card_id?: string }) =>
-    jsonPost("/api/atendimento/abrir-conversa", b).then((r) => j<{ id?: string; error?: string }>(r)),
+  abrirConversaDoCard: (b: { telefone?: string | null; nome?: string | null; card_id?: string; cliente_id?: string; criar_card?: boolean }) =>
+    jsonPost("/api/atendimento/abrir-conversa", b).then((r) => j<{ id?: string; card_id?: string | null; error?: string }>(r)),
   // Robô de atendimento (WhatsApp)
   atendBoard: (usuario?: string, gestor?: boolean) => fetch(`/api/atendimento?usuario=${encodeURIComponent(usuario || "")}&gestor=${gestor ? 1 : 0}`).then((r) => j<AtendBoard>(r)),
   atendConversa: (id: string) => fetch(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),

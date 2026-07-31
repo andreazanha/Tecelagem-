@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { api, type ClienteCrm, type ClienteFicha as TFicha } from "../api";
+import { ConversaModal } from "./Atendimento";
 
 const brl = (n?: number) => "R$ " + (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
@@ -22,6 +23,18 @@ function dataBr(d?: string | null): string {
   if (!d) return "—";
   const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
+}
+// Normaliza uma data da planilha (Date, serial ou texto dd/mm/aaaa) para ISO YYYY-MM-DD.
+function toISO(v: unknown): string {
+  if (v == null || v === "") return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (v instanceof Date && !isNaN(v.getTime())) return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`;
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{2,4})/);
+  if (m) { const a = m[3].length === 2 ? "20" + m[3] : m[3]; return `${a}-${pad(+m[2])}-${pad(+m[1])}`; }
+  return "";
 }
 // Link do WhatsApp (wa.me) — só dígitos, prefixa 55 se vier sem código do país.
 function waHref(num?: string | null): string | null {
@@ -47,11 +60,31 @@ export function Clientes() {
   const [carregando, setCarregando] = useState(true);
   const [novo, setNovo] = useState<ClienteCrm | null>(null);
   const [importar, setImportar] = useState(false);
+  const [agrupar, setAgrupar] = useState(true);
+  const [colapsados, setColapsados] = useState<Set<string>>(new Set());
+  const [conversa, setConversa] = useState<string | null>(null);
+  const [abrindo, setAbrindo] = useState<string | null>(null);
+  const [escolha, setEscolha] = useState<ClienteCrm | null>(null); // cliente aguardando "prospecção x só conversar"
 
   function recarregar() {
     api.listarClientesCrm().then((d) => { if (Array.isArray(d)) setLista(d); }).catch(() => {}).finally(() => setCarregando(false));
   }
   useEffect(() => { recarregar(); }, []);
+
+  // Abre a conversa DENTRO do CRM (não abre o WhatsApp externo): acha ou cria a
+  // conversa pelo telefone do cliente e mostra o chat aqui mesmo. Com criarCard=true
+  // também cria um card de prospecção no funil (novo lead).
+  async function atender(c: ClienteCrm, criarCard: boolean) {
+    setEscolha(null);
+    setAbrindo(c.id);
+    try {
+      const r = await api.abrirConversaDoCard({ telefone: c.whatsapp, nome: c.nome, cliente_id: c.id, criar_card: criarCard });
+      if (r.id) setConversa(r.id);
+      else alert(r.error || "Este cliente não tem WhatsApp no cadastro. Adicione o número em Clientes e tente de novo.");
+    } catch {
+      alert("Não consegui abrir a conversa agora. Tente de novo em instantes.");
+    } finally { setAbrindo(null); }
+  }
 
   const q = busca.trim().toLowerCase();
   const filtrados = useMemo(() => {
@@ -60,6 +93,19 @@ export function Clientes() {
       c.nome.toLowerCase().includes(q) || (c.cidade || "").toLowerCase().includes(q) || (c.representante || "").toLowerCase().includes(q)
     );
   }, [lista, q]);
+
+  // Agrupa por representante (ordenado; "Sem representante" por último), cada grupo com total.
+  const grupos = useMemo(() => {
+    const m = new Map<string, ClienteCrm[]>();
+    for (const c of filtrados) {
+      const k = (c.representante || "").trim() || "— Sem representante";
+      (m.get(k) || m.set(k, []).get(k)!).push(c);
+    }
+    return [...m.entries()]
+      .sort((a, b) => (a[0].startsWith("—") ? 1 : 0) - (b[0].startsWith("—") ? 1 : 0) || a[0].localeCompare(b[0], "pt-BR"))
+      .map(([rep, cls]) => ({ rep, cls, total: cls.reduce((s, c) => s + (c.total || 0), 0) }));
+  }, [filtrados]);
+  const toggle = (rep: string) => setColapsados((s) => { const n = new Set(s); n.has(rep) ? n.delete(rep) : n.add(rep); return n; });
 
   const hoje = new Date(); const mesAtual = hoje.toISOString().slice(0, 7);
   const compraram90 = lista.filter((c) => {
@@ -71,12 +117,28 @@ export function Clientes() {
   const somaPed = lista.reduce((s, c) => s + (c.pedidos || 0), 0);
   const ticketGeral = somaPed ? somaTotal / somaPed : 0;
 
+  const linha = (c: ClienteCrm) => (
+    <tr key={c.id} onClick={() => nav(`/clientes/${c.id}`)}>
+      <td><div className="cli-nm">{c.nome}</div><div className="muted2">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div></td>
+      <td>{c.representante ? <span className="rep-cli">🧑‍💼 {c.representante}</span> : <span className="muted2">—</span>}</td>
+      <td>{c.whatsapp ? (
+        <button className="wa wa-btn" disabled={abrindo === c.id} onClick={(e) => { e.stopPropagation(); setEscolha(c); }} title="Abrir conversa no CRM">
+          {abrindo === c.id ? "abrindo…" : `🟢 ${c.whatsapp}`}
+        </button>
+      ) : <span className="muted2">—</span>}</td>
+      <td style={{ textAlign: "center" }}>{c.pedidos || 0}</td>
+      <td className="money">{brl(c.total)}</td>
+      <td>{desde(c.ultima)}</td>
+    </tr>
+  );
+
   return (
     <div className="quadro-page">
       <div className="page-head">
         <div><h1>Clientes</h1><div className="breadcrumb">Comercial › Clientes</div></div>
         <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <input className="busca-ped" placeholder="🔎 Buscar cliente, cidade, representante…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ minWidth: 240 }} />
+          <button className="btn btn-soft" onClick={() => setAgrupar((a) => !a)} title="Agrupar clientes por representante">{agrupar ? "☰ Lista simples" : "🗂️ Agrupar por representante"}</button>
           <button className="btn btn-soft" onClick={() => setImportar(true)}>📥 Importar planilha</button>
           <button className="btn btn-primary" onClick={() => setNovo({ id: "", nome: "" })}>＋ Novo cliente</button>
         </div>
@@ -99,21 +161,24 @@ export function Clientes() {
             <table className="crm">
               <thead><tr><th>Cliente</th><th>Representante</th><th>WhatsApp</th><th style={{ textAlign: "center" }}>Pedidos</th><th>Total comprado</th><th>Última compra</th></tr></thead>
               <tbody>
-                {filtrados.map((c) => {
-                  const wa = waHref(c.whatsapp);
-                  return (
-                    <tr key={c.id} onClick={() => nav(`/clientes/${c.id}`)}>
-                      <td><div className="cli-nm">{c.nome}</div><div className="muted2">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div></td>
-                      <td>{c.representante ? <span className="rep-cli">🧑‍💼 {c.representante}</span> : <span className="muted2">—</span>}</td>
-                      <td>{c.whatsapp ? (
-                        wa ? <a className="wa" href={wa} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>🟢 {c.whatsapp}</a> : <span className="muted2">{c.whatsapp}</span>
-                      ) : <span className="muted2">—</span>}</td>
-                      <td style={{ textAlign: "center" }}>{c.pedidos || 0}</td>
-                      <td className="money">{brl(c.total)}</td>
-                      <td>{desde(c.ultima)}</td>
-                    </tr>
-                  );
-                })}
+                {agrupar
+                  ? grupos.map((g) => {
+                      const col = colapsados.has(g.rep);
+                      return (
+                        <Fragment key={g.rep}>
+                          <tr className="cli-grp" onClick={() => toggle(g.rep)}>
+                            <td colSpan={6}>
+                              <span className="cli-grp-ar">{col ? "▸" : "▾"}</span>
+                              🧑‍💼 <strong>{g.rep.replace(/^—\s*/, "")}</strong>
+                              <span className="cli-grp-n">{g.cls.length} cliente(s)</span>
+                              {g.total > 0 && <span className="cli-grp-t">{brl(g.total)}</span>}
+                            </td>
+                          </tr>
+                          {!col && g.cls.map((c) => linha(c))}
+                        </Fragment>
+                      );
+                    })
+                  : filtrados.map((c) => linha(c))}
               </tbody>
             </table>
           </div>
@@ -122,6 +187,25 @@ export function Clientes() {
 
       {novo && <ClienteModal cliente={novo} onFechar={() => setNovo(null)} onSalvo={() => { setNovo(null); recarregar(); }} />}
       {importar && <ImportarClientesModal onFechar={() => setImportar(false)} onImportou={() => { setImportar(false); recarregar(); }} />}
+
+      {escolha && (
+        <div className="modal-bg" onClick={() => setEscolha(null)}>
+          <div className="modal-card" style={{ maxWidth: 460, width: "min(460px,96vw)" }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Falar com {escolha.nome}</h3>
+            <p className="muted" style={{ fontSize: 13.5 }}>Como você quer abrir essa conversa? Isso decide se entra no funil de vendas.</p>
+            <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
+              <button className="btn btn-primary" style={{ textAlign: "left", lineHeight: 1.35, height: "auto", padding: "10px 14px" }} onClick={() => atender(escolha, true)}>
+                🎯 <b>Iniciar prospecção</b><br /><small style={{ opacity: .9 }}>Cria um card de “Novo lead” no funil e abre a conversa</small>
+              </button>
+              <button className="btn btn-soft" style={{ textAlign: "left", lineHeight: 1.35, height: "auto", padding: "10px 14px" }} onClick={() => atender(escolha, false)}>
+                💬 <b>Só conversar</b><br /><small className="muted">Ex.: fiscal, financeiro, dúvida — abre a conversa sem criar card</small>
+              </button>
+            </div>
+            <div style={{ textAlign: "right", marginTop: 12 }}><button className="btn" onClick={() => setEscolha(null)}>Cancelar</button></div>
+          </div>
+        </div>
+      )}
+      {conversa && <ConversaModal id={conversa} onFechar={() => { setConversa(null); recarregar(); }} onMudou={recarregar} />}
     </div>
   );
 }
@@ -280,7 +364,7 @@ function ImportarClientesModal({ onFechar, onImportou }: { onFechar: () => void;
     try {
       const XLSX = await import("xlsx");
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
+      const wb = XLSX.read(buf, { type: "array", cellDates: true });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, blankrows: false });
       if (!rows.length) { setErro("Planilha vazia."); return; }
@@ -289,6 +373,9 @@ function ImportarClientesModal({ onFechar, onImportou }: { onFechar: () => void;
       const iNome = col("nome", "razaosocial", "cliente"), iFant = col("fantasia", "nomefantasia"), iUf = col("uf", "estado"),
         iCid = col("cidade"), iCel = col("celular", "whatsapp", "whats", "cel"), iDdd = col("ddd"),
         iFone = col("fones", "fone", "telefone", "tel"), iMail = col("email"), iCnpj = col("cnpjcpf", "cnpj", "cpf");
+      // Data da última compra: aceita "Data Ult_Venda", "Ultima Compra" etc.
+      let iUlt = col("dataultvenda", "dataultimavenda", "ultimacompra", "dataultimacompra", "ultvenda", "ultimavenda", "dataultimofaturamento");
+      if (iUlt < 0) iUlt = head.findIndex((h) => h.includes("ult") && (h.includes("venda") || h.includes("compra") || h.includes("fatur")));
       if (iNome < 0) { setErro("Não achei a coluna 'Nome'. Confira o cabeçalho da planilha."); return; }
       const out: Record<string, string>[] = [];
       for (const r of rows.slice(1)) {
@@ -302,6 +389,7 @@ function ImportarClientesModal({ onFechar, onImportou }: { onFechar: () => void;
           nome, uf: iUf >= 0 ? String(row[iUf] ?? "").trim().toUpperCase().slice(0, 2) : "",
           cidade: iCid >= 0 ? String(row[iCid] ?? "").trim() : "", whatsapp: wa,
           email: iMail >= 0 ? String(row[iMail] ?? "").trim() : "", cnpj: iCnpj >= 0 ? String(row[iCnpj] ?? "").trim() : "",
+          ultima_compra: iUlt >= 0 ? toISO(row[iUlt]) : "",
           observacao: iFant >= 0 && row[iFant] ? `Fantasia: ${String(row[iFant]).trim()}` : "",
         });
       }
