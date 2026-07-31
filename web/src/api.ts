@@ -251,7 +251,7 @@ export interface ClienteFicha extends ClienteCrm {
 
 // ── CRM Funil de vendas ──────────────────────────────────────────────────────
 export type FunilEtapa =
-  | "atendimento"
+  | "atendimento" | "reativacao"
   | "novo-lead" | "primeiro-contato" | "negociacao" | "aguardando-retorno"
   | "pos-venda" | "ativo" | "inativo" | "perdido";
 export interface FunilCardBase { conversa_id?: string | null }
@@ -661,6 +661,7 @@ export const api = {
   // CRM Funil de vendas
   funilBoard: () => fetch("/api/funil").then((r) => j<FunilBoard>(r)),
   sincronizarFunil: () => jsonPost("/api/funil/sincronizar", {}).then((r) => j<{ criados: number; removidos: number; ignorados: number }>(r)),
+  reativarFunil: (dias?: number) => jsonPost(`/api/funil/reativacao${dias ? `?dias=${dias}` : ""}`, {}).then((r) => j<{ criados: number; dias: number }>(r)),
   excluirCard: (id: string) => fetch(`/api/funil/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   // Lojas parceiras (vitrine)
   parceiros: () => fetch("/api/parceiros").then((r) => j<LojaParceira[]>(r)),

@@ -1062,6 +1062,10 @@ tr.cli-grp:hover td { background: var(--bg-soft, #eef2f7); cursor: pointer; }
 .cli-nav-bc { font-size: 13px; color: var(--muted); font-weight: 700; }
 .cli-nav-bc .lnk { border: none; background: none; color: var(--brand2, #7c3aed); font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
 .cli-res { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+/* Régua de reativação pelo faturamento (atenção 90d / reativar 120d) */
+.fat-morno { color: #d97706; font-weight: 700; }
+.fat-frio { color: #dc2626; font-weight: 800; }
+.fat-flag { font-size: 11px; font-weight: 800; color: inherit; }
 .wa.wa-big { width: 100%; justify-content: center; padding: 11px; margin: 10px 0 6px; font-size: 13.5px; }
 .wa.off { background: #f1f5f9; color: #94a3b8; border-color: var(--line); cursor: default; }
 /* Chip de "representante" (ficha do cliente). NOME ESCOPADO: um ".rep" solto

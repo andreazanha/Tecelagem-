@@ -13,6 +13,7 @@ const num = (v: unknown) => (v === "" || v == null || isNaN(Number(v)) ? null : 
 // de produção de um pedido fica nos painéis, não aqui.
 export const ETAPAS = [
   "atendimento", // conversas que não são prospecção (fiscal, financeiro, dúvida)
+  "reativacao", // clientes há muito tempo sem faturar (fila de mensagem de reativação)
   "novo-lead", "primeiro-contato", "negociacao", "aguardando-retorno",
   "pos-venda", "ativo", "inativo", "perdido",
 ] as const;
@@ -269,6 +270,42 @@ funil.post("/sincronizar", async (c) => {
     criados++;
   }
   return c.json({ criados, removidos, ignorados: clientes.length - criados });
+});
+
+// ── REATIVAÇÃO ────────────────────────────────────────────────────────────────
+// Puxa para a coluna "reativacao" os clientes com WhatsApp que estão há +N dias
+// (padrão 90) sem faturar (clientes.ultimo_faturamento). Idempotente: não mexe em
+// quem já tem cartão no funil, e cada cliente ganha uma tarefa de mensagem.
+funil.post("/reativacao", async (c) => {
+  const dias = Math.max(1, Math.floor(Number(c.req.query("dias")) || 90));
+  const { results: clientes } = await c.env.DB.prepare(
+    `SELECT id, nome, cidade, uf, whatsapp, representante
+       FROM clientes
+      WHERE COALESCE(whatsapp,'') <> ''
+        AND COALESCE(ultimo_faturamento,'') <> ''
+        AND ultimo_faturamento <= date('now', ?)
+      ORDER BY ultimo_faturamento ASC`
+  ).bind(`-${dias} day`).all<{ id: string; nome: string; cidade: string | null; uf: string | null; whatsapp: string | null; representante: string | null }>();
+
+  const { results: existentes } = await c.env.DB.prepare("SELECT nome FROM funil_cards").all<{ nome: string }>();
+  const jaTem = new Set(existentes.map((e) => e.nome));
+
+  let criados = 0;
+  for (const cli of clientes) {
+    if (ehClienteInterno(cli.nome) || jaTem.has(cli.nome)) continue;
+    const cardId = uid();
+    const resp = str(cli.representante);
+    await c.env.DB.prepare(
+      "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, 'reativacao', ?)"
+    ).bind(cardId, cli.id, cli.nome, str(cli.cidade), str(cli.uf), str(cli.whatsapp), resp).run();
+    await c.env.DB.prepare(
+      "INSERT INTO funil_tarefas (id, card_id, titulo, vence_em, responsavel) VALUES (?, ?, 'Enviar mensagem de reativação', date('now','+1 day'), ?)"
+    ).bind(uid(), cardId, resp).run();
+    await logar(c.env, cardId, "etapa", `Reativação: +${dias} dias sem faturar`);
+    jaTem.add(cli.nome);
+    criados++;
+  }
+  return c.json({ criados, dias });
 });
 
 // ── APAGAR cartão ────────────────────────────────────────────────────────────────

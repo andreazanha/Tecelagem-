@@ -21,6 +21,7 @@ function iniciais(nome?: string | null): string {
 // Metadados das etapas (ordem, rótulo e cor do quadro).
 const ETAPAS_META: { id: FunilEtapa; label: string; cor: string }[] = [
   { id: "atendimento", label: "💬 Atendimento", cor: "#06b6d4" },
+  { id: "reativacao", label: "🔔 Reativar", cor: "#f59e0b" },
   { id: "novo-lead", label: "Novo Lead", cor: "#3b82f6" },
   { id: "primeiro-contato", label: "Primeiro Contato", cor: "#8b5cf6" },
   { id: "negociacao", label: "Negociação", cor: "#f59e0b" },
@@ -54,6 +55,7 @@ export function Funil() {
   // Clicar no card: se tem conversa de WhatsApp vinculada, abre o atendimento completo; senão, o detalhe do funil.
   const abrirCard = (c: FunilCard) => c.conversa_id ? setAbrirConversa(c.conversa_id) : setAbrir(c.id);
   const [sincronizando, setSincronizando] = useState(false);
+  const [reativando, setReativando] = useState(false);
   const [arrastando, setArrastando] = useState<string | null>(null); // card id em drag
   const [sobre, setSobre] = useState<string | null>(null); // etapa alvo do drag
 
@@ -93,6 +95,15 @@ export function Funil() {
     catch (e) { alert((e as Error).message); }
   }
 
+  async function reativar() {
+    setReativando(true);
+    try {
+      const r = await api.reativarFunil();
+      recarregar();
+      alert(r.criados ? `${r.criados} cliente(s) sem faturar há +${r.dias} dias foram para a coluna “Reativar”.` : "Nenhum cliente novo para reativar (todos já estão no funil ou faturaram recentemente).");
+    } catch (e) { alert((e as Error).message); } finally { setReativando(false); }
+  }
+
   const responsaveis = useMemo(
     () => [...new Set((board?.cards || []).map((c) => c.responsavel).filter(Boolean) as string[])].sort(),
     [board]
@@ -116,6 +127,7 @@ export function Funil() {
           ))}
           <span className={"fx-pill" + (filtro === "alerta" ? " on" : "")} onClick={() => setFiltro("alerta")}>⚠️ Em alerta</span>
           <button className="btn" disabled={sincronizando} onClick={sincronizar}>{sincronizando ? "Sincronizando…" : "🔄 Sincronizar clientes"}</button>
+          <button className="btn" disabled={reativando} onClick={reativar} title="Puxa clientes com WhatsApp sem faturar há +90 dias">{reativando ? "Buscando…" : "🔔 Buscar reativações"}</button>
           <button className="btn btn-primary" onClick={() => setNovo(true)}>＋ Novo lead</button>
         </div>
       </div>

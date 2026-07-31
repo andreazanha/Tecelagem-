@@ -23,6 +23,15 @@ function dataBr(d?: string | null): string {
   const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
 }
+// Nº de dias desde a data (para régua de reativação). null se não houver data.
+function diasDe(d?: string | null): number | null {
+  if (!d) return null;
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const dt = new Date(+m[1], +m[2] - 1, +m[3]);
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  return Math.round((hoje.getTime() - dt.getTime()) / 86400000);
+}
 // Normaliza uma data da planilha (Date, serial ou texto dd/mm/aaaa) para ISO YYYY-MM-DD.
 function toISO(v: unknown): string {
   if (v == null || v === "") return "";
@@ -130,21 +139,31 @@ export function Clientes() {
   const somaPed = lista.reduce((s, c) => s + (c.pedidos || 0), 0);
   const ticketGeral = somaPed ? somaTotal / somaPed : 0;
 
-  const linha = (c: ClienteCrm) => (
-    <tr key={c.id} onClick={() => nav(`/clientes/${c.id}`)}>
-      <td><div className="cli-nm">{c.nome}</div><div className="muted2">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div></td>
-      <td>{c.representante ? <span className="rep-cli">🧑‍💼 {c.representante}</span> : <span className="muted2">—</span>}</td>
-      <td>{c.whatsapp ? (
-        <button className="wa wa-btn" disabled={abrindo === c.id} onClick={(e) => { e.stopPropagation(); setEscolha(c); }} title="Abrir conversa no funil">
-          {abrindo === c.id ? "abrindo…" : `🟢 ${c.whatsapp}`}
-        </button>
-      ) : <span className="muted2">—</span>}</td>
-      <td style={{ textAlign: "center" }}>{c.pedidos || 0}</td>
-      <td className="money">{brl(c.total)}</td>
-      <td>{c.ultima ? <><div>{dataBr(c.ultima)}</div><div className="muted2">{desde(c.ultima)}</div></> : "—"}</td>
-      <td>{c.ultimo_faturamento ? <><div>🧾 {dataBr(c.ultimo_faturamento)}</div><div className="muted2">{desde(c.ultimo_faturamento)}</div></> : "—"}</td>
-    </tr>
-  );
+  const linha = (c: ClienteCrm) => {
+    // Régua de reativação pelo faturamento: 90d = atenção, 120d = reativar.
+    const dFat = diasDe(c.ultimo_faturamento);
+    const fatCls = dFat != null && dFat >= 120 ? "fat-frio" : dFat != null && dFat >= 90 ? "fat-morno" : "";
+    return (
+      <tr key={c.id} onClick={() => nav(`/clientes/${c.id}`)}>
+        <td><div className="cli-nm">{c.nome}</div><div className="muted2">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div></td>
+        <td>{c.representante ? <span className="rep-cli">🧑‍💼 {c.representante}</span> : <span className="muted2">—</span>}</td>
+        <td>{c.whatsapp ? (
+          <button className="wa wa-btn" disabled={abrindo === c.id} onClick={(e) => { e.stopPropagation(); setEscolha(c); }} title="Abrir conversa no funil">
+            {abrindo === c.id ? "abrindo…" : `🟢 ${c.whatsapp}`}
+          </button>
+        ) : <span className="muted2">—</span>}</td>
+        <td style={{ textAlign: "center" }}>{c.pedidos || 0}</td>
+        <td className="money">{brl(c.total)}</td>
+        <td>{c.ultima ? <><div>{dataBr(c.ultima)}</div><div className="muted2">{desde(c.ultima)}</div></> : "—"}</td>
+        <td>{c.ultimo_faturamento ? (
+          <div className={fatCls}>
+            <div>🧾 {dataBr(c.ultimo_faturamento)}</div>
+            <div className={fatCls ? "fat-flag" : "muted2"}>{desde(c.ultimo_faturamento)}{dFat != null && dFat >= 120 ? " · reativar" : dFat != null && dFat >= 90 ? " · atenção" : ""}</div>
+          </div>
+        ) : "—"}</td>
+      </tr>
+    );
+  };
   const tabela = (items: ClienteCrm[]) => (
     <div className="crm-card cli-lista">
       {!items.length ? <div className="pad muted">Nenhum cliente aqui.</div> : (
