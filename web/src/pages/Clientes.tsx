@@ -60,8 +60,9 @@ export function Clientes() {
   const [carregando, setCarregando] = useState(true);
   const [novo, setNovo] = useState<ClienteCrm | null>(null);
   const [importar, setImportar] = useState(false);
-  const [agrupar, setAgrupar] = useState(true);
-  const [colapsados, setColapsados] = useState<Set<string>>(new Set());
+  const [modo, setModo] = useState<"estado" | "representante" | "lista">("estado");
+  const [abertos, setAbertos] = useState<Set<string>>(new Set()); // grupos abertos (começa tudo fechado)
+  const [letra, setLetra] = useState(""); // filtro alfabético (A–Z), "" = todas
   const [conversa, setConversa] = useState<string | null>(null);
   const [abrindo, setAbrindo] = useState<string | null>(null);
   const [escolha, setEscolha] = useState<ClienteCrm | null>(null); // cliente aguardando "prospecção x só conversar"
@@ -86,26 +87,44 @@ export function Clientes() {
     } finally { setAbrindo(null); }
   }
 
-  const q = busca.trim().toLowerCase();
+  const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  // 1ª letra "de índice" do nome (ignora aspas/pontos; nº e símbolos caem em "#").
+  const primeiraLetra = (nome: string) => { const ch = semAcento(nome).replace(/^[^a-z0-9]+/, "")[0] || ""; return /[a-z]/.test(ch) ? ch : "#"; };
+  const q = semAcento(busca.trim());
   const filtrados = useMemo(() => {
-    if (!q) return lista;
-    return lista.filter((c) =>
-      c.nome.toLowerCase().includes(q) || (c.cidade || "").toLowerCase().includes(q) || (c.representante || "").toLowerCase().includes(q)
+    let base = lista;
+    if (letra) base = base.filter((c) => primeiraLetra(c.nome) === letra);
+    if (!q) return base;
+    const dig = q.replace(/\D/g, "");
+    return base.filter((c) =>
+      semAcento(c.nome).includes(q) || semAcento(c.cidade || "").includes(q) || semAcento(c.representante || "").includes(q) ||
+      (dig.length >= 3 && ((c.whatsapp || "").replace(/\D/g, "").includes(dig) || (c.cnpj || "").replace(/\D/g, "").includes(dig)))
     );
-  }, [lista, q]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lista, q, letra]);
+  // Letras que realmente têm clientes (as demais ficam desabilitadas na barra A–Z).
+  const letrasComDados = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of lista) s.add(primeiraLetra(c.nome));
+    return s;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lista]);
 
-  // Agrupa por representante (ordenado; "Sem representante" por último), cada grupo com total.
+  // Agrupa por estado OU por representante (ordenado; "sem…" por último), com total do grupo.
   const grupos = useMemo(() => {
     const m = new Map<string, ClienteCrm[]>();
     for (const c of filtrados) {
-      const k = (c.representante || "").trim() || "— Sem representante";
+      const k = modo === "estado"
+        ? ((c.uf || "").trim().toUpperCase() || "— Sem estado")
+        : ((c.representante || "").trim() || "— Sem representante");
       (m.get(k) || m.set(k, []).get(k)!).push(c);
     }
     return [...m.entries()]
       .sort((a, b) => (a[0].startsWith("—") ? 1 : 0) - (b[0].startsWith("—") ? 1 : 0) || a[0].localeCompare(b[0], "pt-BR"))
       .map(([rep, cls]) => ({ rep, cls, total: cls.reduce((s, c) => s + (c.total || 0), 0) }));
-  }, [filtrados]);
-  const toggle = (rep: string) => setColapsados((s) => { const n = new Set(s); n.has(rep) ? n.delete(rep) : n.add(rep); return n; });
+  }, [filtrados, modo]);
+  const toggle = (rep: string) => setAbertos((s) => { const n = new Set(s); n.has(rep) ? n.delete(rep) : n.add(rep); return n; });
+  const trocarModo = (m: "estado" | "representante" | "lista") => { setModo(m); setAbertos(new Set()); };
 
   const hoje = new Date(); const mesAtual = hoje.toISOString().slice(0, 7);
   const compraram90 = lista.filter((c) => {
@@ -138,7 +157,11 @@ export function Clientes() {
         <div><h1>Clientes</h1><div className="breadcrumb">Comercial › Clientes</div></div>
         <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <input className="busca-ped" placeholder="🔎 Buscar cliente, cidade, representante…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ minWidth: 240 }} />
-          <button className="btn btn-soft" onClick={() => setAgrupar((a) => !a)} title="Agrupar clientes por representante">{agrupar ? "☰ Lista simples" : "🗂️ Agrupar por representante"}</button>
+          <div className="seg">
+            <button className={modo === "estado" ? "on" : ""} onClick={() => trocarModo("estado")}>🗺️ Por estado</button>
+            <button className={modo === "representante" ? "on" : ""} onClick={() => trocarModo("representante")}>🧑‍💼 Por representante</button>
+            <button className={modo === "lista" ? "on" : ""} onClick={() => trocarModo("lista")}>☰ Lista</button>
+          </div>
           <button className="btn btn-soft" onClick={() => setImportar(true)}>📥 Importar planilha</button>
           <button className="btn btn-primary" onClick={() => setNovo({ id: "", nome: "" })}>＋ Novo cliente</button>
         </div>
@@ -151,7 +174,17 @@ export function Clientes() {
         <div className="crm-st"><div className="n">{brl(ticketGeral)}</div><div className="l">Ticket médio</div></div>
       </div>
 
-      <div className="crm-card">
+      <div className="az-bar">
+        <button className={letra === "" ? "on" : ""} onClick={() => setLetra("")}>Todos</button>
+        {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((L) => {
+          const l = L.toLowerCase();
+          const tem = letrasComDados.has(l);
+          return <button key={L} className={letra === l ? "on" : ""} disabled={!tem} onClick={() => setLetra(letra === l ? "" : l)}>{L}</button>;
+        })}
+        {letrasComDados.has("#") && <button className={letra === "#" ? "on" : ""} onClick={() => setLetra(letra === "#" ? "" : "#")}>#</button>}
+      </div>
+
+      <div className="crm-card cli-lista">
         {carregando ? (
           <div className="pad muted">Carregando…</div>
         ) : !filtrados.length ? (
@@ -161,24 +194,26 @@ export function Clientes() {
             <table className="crm">
               <thead><tr><th>Cliente</th><th>Representante</th><th>WhatsApp</th><th style={{ textAlign: "center" }}>Pedidos</th><th>Total comprado</th><th>Última compra</th></tr></thead>
               <tbody>
-                {agrupar
-                  ? grupos.map((g) => {
-                      const col = colapsados.has(g.rep);
+                {modo === "lista"
+                  ? filtrados.map((c) => linha(c))
+                  : grupos.map((g) => {
+                      const aberto = !!q || !!letra || abertos.has(g.rep);
+                      const semRotulo = g.rep.startsWith("—");
                       return (
                         <Fragment key={g.rep}>
                           <tr className="cli-grp" onClick={() => toggle(g.rep)}>
                             <td colSpan={6}>
-                              <span className="cli-grp-ar">{col ? "▸" : "▾"}</span>
-                              🧑‍💼 <strong>{g.rep.replace(/^—\s*/, "")}</strong>
+                              <span className="cli-grp-ar">{aberto ? "▾" : "▸"}</span>
+                              {modo === "estado" ? "🗺️ " : "🧑‍💼 "}
+                              <strong>{semRotulo ? g.rep.replace(/^—\s*/, "") : g.rep}</strong>
                               <span className="cli-grp-n">{g.cls.length} cliente(s)</span>
                               {g.total > 0 && <span className="cli-grp-t">{brl(g.total)}</span>}
                             </td>
                           </tr>
-                          {!col && g.cls.map((c) => linha(c))}
+                          {aberto && g.cls.map((c) => linha(c))}
                         </Fragment>
                       );
-                    })
-                  : filtrados.map((c) => linha(c))}
+                    })}
               </tbody>
             </table>
           </div>
