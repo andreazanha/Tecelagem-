@@ -105,9 +105,8 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "crm", icon: "🤝", label: "CRM", itens: [
-      { to: "/atendimento", icon: "💬", label: "Atendimento (WhatsApp)", page: "atendimento" },
+      { to: "/atendimento", icon: "💬", label: "Atendimento + Funil", page: "atendimento" },
       { to: "/painel-atendimento", icon: "📊", label: "Painel do Gestor", page: "atendimento-gestor" },
-      { to: "/funil", icon: "🎯", label: "Funil de Vendas", page: "comercial" },
       { to: "/clientes", icon: "👥", label: "Clientes", page: "comercial" },
       { to: "/lojas-parceiras", icon: "🏬", label: "Lojas Parceiras", page: "comercial" },
       { to: "/treinar-bia", icon: "🎓", label: "Treinar a Bia (IA)", page: "comercial" },
