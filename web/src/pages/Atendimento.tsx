@@ -38,12 +38,80 @@ export function Atendimento() {
   const [cfgOpen, setCfgOpen] = useState(false);
   const [conectado, setConectado] = useState<boolean | null>(null);
 
+  const [alerta, setAlerta] = useState<AtendConversa | null>(null); // banner de backup na tela
+  const alertadosRef = useRef<Set<string>>(new Set());
+  const primeiraRef = useRef(true);
+  const audioRef = useRef<AudioContext | null>(null);
+
   function recarregar() { api.atendBoard().then(setBoard).catch(() => {}); }
   function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance && !!c.zapi_token)).catch(() => setConectado(false)); }
   useEffect(() => { recarregar(); checarConexao(); const t = setInterval(recarregar, 8000); return () => clearInterval(t); }, []);
 
+  // Libera o áudio no primeiro clique (política de autoplay) e pede permissão de notificação.
+  useEffect(() => {
+    const liberar = () => {
+      if (!audioRef.current) { try { audioRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)(); } catch { /* sem áudio */ } }
+      audioRef.current?.resume?.();
+      if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
+      window.removeEventListener("pointerdown", liberar);
+    };
+    window.addEventListener("pointerdown", liberar);
+    if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
+    return () => window.removeEventListener("pointerdown", liberar);
+  }, []);
+
+  // Som IRRITANTE (bipes agudos alternados) gerado na hora, sem depender de arquivo.
+  function tocarAlerta() {
+    const ctx = audioRef.current;
+    if (!ctx) return;
+    try { ctx.resume?.(); } catch { /* ignore */ }
+    const t0 = ctx.currentTime;
+    for (let i = 0; i < 8; i++) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "square";
+      o.frequency.value = i % 2 ? 1320 : 880;
+      const ini = t0 + i * 0.17;
+      g.gain.setValueAtTime(0.0001, ini);
+      g.gain.exponentialRampToValueAtTime(0.3, ini + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, ini + 0.15);
+      o.connect(g).connect(ctx.destination);
+      o.start(ini); o.stop(ini + 0.16);
+    }
+  }
+
+  function dispararAlerta(c: AtendConversa) {
+    const quem = c.nome || c.contato_nome || telBonito(c.telefone);
+    if ("Notification" in window && Notification.permission === "granted") {
+      try {
+        const n = new Notification("🔔 Atendimento humano!", { body: `${quem} precisa de um atendente.`, tag: "atend-" + c.id, requireInteraction: true });
+        n.onclick = () => { window.focus(); setAbrir(c.id); setAlerta(null); n.close(); };
+      } catch { /* alguns navegadores exigem service worker; o som + banner cobrem */ }
+    }
+    setAlerta(c);
+    tocarAlerta();
+  }
+
+  // A cada atualização do quadro, detecta conversas NOVAS que precisam de humano (sem responsável).
+  useEffect(() => {
+    if (!board) return;
+    const pend = board.conversas.filter((c) => c.coluna === "atendimento-humano" && !c.responsavel);
+    if (primeiraRef.current) { pend.forEach((c) => alertadosRef.current.add(c.id)); primeiraRef.current = false; return; }
+    for (const c of pend) {
+      if (!alertadosRef.current.has(c.id)) { alertadosRef.current.add(c.id); dispararAlerta(c); }
+    }
+    const ids = new Set(pend.map((c) => c.id));
+    for (const id of Array.from(alertadosRef.current)) if (!ids.has(id)) alertadosRef.current.delete(id);
+  }, [board]);
+
   return (
     <div className="quadro-page" style={{ maxWidth: "none" }}>
+      {alerta && (
+        <div onClick={() => { setAbrir(alerta.id); setAlerta(null); }} style={{ position: "fixed", top: 16, right: 16, zIndex: 200, background: "#dc2626", color: "#fff", borderRadius: 12, padding: "12px 16px", boxShadow: "0 10px 30px #0006", cursor: "pointer", maxWidth: 320, animation: "atpulse 1s ease-in-out infinite" }}>
+          <div style={{ fontWeight: 800, fontSize: 14 }}>🔔 Atendimento humano!</div>
+          <div style={{ fontSize: 13, marginTop: 2 }}>{alerta.nome || alerta.contato_nome || telBonito(alerta.telefone)} precisa de um atendente.</div>
+          <div style={{ fontSize: 11.5, marginTop: 4, opacity: .9 }}>Clique para abrir · <span onClick={(e) => { e.stopPropagation(); setAlerta(null); }} style={{ textDecoration: "underline" }}>dispensar</span></div>
+        </div>
+      )}
       <div className="page-head">
         <div><h1>Atendimento</h1><div className="breadcrumb">Comercial › Atendimento (robô do WhatsApp)</div></div>
         <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center" }}>
