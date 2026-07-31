@@ -281,7 +281,7 @@ export interface AtendConversa {
 }
 export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; criado_em: string }
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
-export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; interesses: string[]; mensagens: AtendMensagem[] }
+export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; interesses: string[]; pedidos_resumo: { nome: string; qtd: number; total: number; ultima: string | null } | null; mensagens: AtendMensagem[] }
 export interface AtendResposta { conversa_id: string; estado: string; coluna: string; respostas: { tipo: string; texto: string }[]; notificarHumano: boolean }
 export interface ZapiConfig { zapi_base: string; zapi_instance: string; zapi_token: string; zapi_client_token: string; zapi_ativo: boolean; atendimento_ativo: boolean; catalogo_url: string; catalogo_senha: string; catalogo_msg: string; followup_ativo: boolean; followup_hora_ini: string; followup_hora_fim: string; followup_domingo: boolean; followup_ia: boolean; webhook_url: string }
 

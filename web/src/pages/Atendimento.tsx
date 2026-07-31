@@ -304,6 +304,13 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
               </div>
             )}
 
+            {d?.pedidos_resumo && d.pedidos_resumo.qtd > 0 && (
+              <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 8, background: "#f0fdf4", border: "1px solid #bbf7d0", fontSize: 12.5 }}>
+                <div style={{ fontWeight: 800, color: "#15803d", marginBottom: 3 }}>🛍️ Cliente da base</div>
+                <div><b>{d.pedidos_resumo.qtd}</b> pedido(s) · <b>{d.pedidos_resumo.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b></div>
+                {d.pedidos_resumo.ultima && <div className="muted">última compra: {new Date(d.pedidos_resumo.ultima + "T00:00:00").toLocaleDateString("pt-BR")}</div>}
+              </div>
+            )}
             {d?.card_id && <Link to="/funil" className="btn" style={{ marginTop: 10, display: "block", textAlign: "center" }}>🎯 Ver no funil</Link>}
             {!humano && <button className="kbtn go" style={{ marginTop: 10, width: "100%" }} disabled={busy} onClick={assumir}>🙋 Assumir atendimento</button>}
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5 }} disabled={busy} onClick={toggleNaoPerturbe} title="Para/retoma as mensagens automáticas para este cliente">

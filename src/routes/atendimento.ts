@@ -368,7 +368,21 @@ atendimento.get("/:id", async (c) => {
   const { results: interesses } = await c.env.DB.prepare(
     "SELECT termo FROM atend_interesses WHERE conversa_id = ? ORDER BY criado_em"
   ).bind(conv.id).all<{ termo: string }>();
-  return c.json({ ...conv, coluna: colunaDe(conv.estado), mensagens, interesses: interesses.map((i) => i.termo) });
+
+  // Resumo de pedidos do cliente (quando a conversa está vinculada à base).
+  let pedidos_resumo: { nome: string; qtd: number; total: number; ultima: string | null } | null = null;
+  if (conv.cliente_id) {
+    const cli = await c.env.DB.prepare("SELECT nome FROM clientes WHERE id = ?").bind(conv.cliente_id).first<{ nome: string }>();
+    if (cli) {
+      const r = await c.env.DB.prepare(
+        `SELECT COUNT(DISTINCT p.id) AS qtd, COALESCE(SUM(i.qtd * i.valor_unit), 0) AS total, MAX(p.data_pedido) AS ultima
+           FROM pedidos p LEFT JOIN pedido_itens i ON i.pedido_id = p.id
+          WHERE p.cliente_nome = ? AND COALESCE(p.reposicao,0)=0`
+      ).bind(cli.nome).first<{ qtd: number; total: number; ultima: string | null }>();
+      pedidos_resumo = { nome: cli.nome, qtd: r?.qtd || 0, total: Number(r?.total) || 0, ultima: r?.ultima || null };
+    }
+  }
+  return c.json({ ...conv, coluna: colunaDe(conv.estado), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo });
 });
 
 // ── Atendente humano assume ─────────────────────────────────────────────────────────
