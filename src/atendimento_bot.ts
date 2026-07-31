@@ -42,16 +42,19 @@ export interface Deps {
 
 // Monta o envio do catálogo. 1º usa a mensagem pronta da loja (se houver); senão
 // monta link+senha; senão, o placeholder antigo (modo teste sem nada configurado).
-function enviarCatalogo(saidas: Saida[], deps: Deps) {
+// Monta a mensagem do catálogo — que é VIRTUAL (link), nunca um PDF.
+// Precedência: mensagem pronta > link (+senha) > aviso de que o vendedor envia.
+export function montarCatalogo(deps: Deps): Saida[] {
   if (deps.catalogoMsg && deps.catalogoMsg.trim()) {
-    saidas.push({ tipo: "texto", texto: deps.catalogoMsg.trim() });
-  } else if (deps.catalogoUrl) {
-    let txt = `📒 Nosso catálogo está aqui, dá uma olhada:\n${deps.catalogoUrl}`;
-    if (deps.catalogoSenha) txt += `\n\n🔑 Senha de acesso: *${deps.catalogoSenha}*`;
-    saidas.push({ tipo: "texto", texto: txt });
-  } else {
-    saidas.push({ tipo: "arquivo", texto: "Catálogo Big Tricot 2026.pdf" });
+    return [{ tipo: "texto", texto: deps.catalogoMsg.trim() }];
   }
+  if (deps.catalogoUrl && deps.catalogoUrl.trim()) {
+    let txt = `📒 Nosso catálogo é digital, dá uma olhada aqui:\n${deps.catalogoUrl.trim()}`;
+    if (deps.catalogoSenha) txt += `\n\n🔑 Senha de acesso: *${deps.catalogoSenha}*`;
+    return [{ tipo: "texto", texto: txt }];
+  }
+  // Sem catálogo configurado: não inventa PDF — avisa que o vendedor manda o acesso.
+  return [{ tipo: "texto", texto: "Nosso catálogo é digital 💛 Já vou pedir pro nosso vendedor te enviar o acesso, tá?" }];
 }
 
 // Validação real do CNPJ (dígitos verificadores) — pega número errado/inventado.
@@ -251,25 +254,20 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
       conv.cnpj = formatCnpj(digitos);
       const r = await deps.consultarCnpj(digitos);
       if (r.erro) {
-        // Consulta indisponível → não trava o lojista; manda catálogo e sinaliza conferência.
+        // Consulta indisponível → não trava o lojista; confirma cadastro e segue com a IA.
+        // NÃO envia catálogo automático — só quando o cliente pedir (a IA cuida disso).
         conv.lojista = 1;
         if (!conv.nome && r.nome) conv.nome = r.nome;
-        push("Perfeito! ✅ Já vou te mandar nosso catálogo 📒\n(nosso time confirma seu cadastro em seguida).");
-        enviarCatalogo(saidas, deps);
-        push("Um dos nossos vendedores já vai dar continuidade ao seu atendimento. 🚀");
-        conv.estado = "catalogo-enviado";
-        notificarHumano = true;
+        push("Perfeito, cadastro anotado! ✅ Como posso te ajudar? Se quiser, posso te enviar nosso catálogo. 😊");
+        conv.estado = "ia-triagem";
         qualificado = true;
       } else if (r.existe && r.ativa) {
         conv.lojista = 1;
         if (!conv.nome && r.nome) conv.nome = r.nome;
         if (r.uf && !conv.uf) conv.uf = r.uf;
         if (r.cidade && !conv.cidade) conv.cidade = r.cidade;
-        push(`Show! Confirmei seu CNPJ${r.nome ? ` (*${r.nome}*)` : ""}. ✅\nJá vou te mandar nosso catálogo. 📒`);
-        enviarCatalogo(saidas, deps);
-        push("Um dos nossos vendedores já vai dar continuidade ao seu atendimento. 🚀");
-        conv.estado = "catalogo-enviado";
-        notificarHumano = true;
+        push(`Show! Confirmei seu CNPJ${r.nome ? ` (*${r.nome}*)` : ""}. ✅ Cadastro feito!\nComo posso te ajudar? Se quiser, posso te enviar nosso catálogo. 😊`);
+        conv.estado = "ia-triagem";
         qualificado = true;
       } else if (r.existe && !r.ativa) {
         conv.lojista = 0;

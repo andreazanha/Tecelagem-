@@ -3,7 +3,7 @@
 // pela Z-API e a consulta SINTEGRA entram nos stubs marcados com TODO.
 import { Hono } from "hono";
 import type { Env } from "../index";
-import { processar, colunaDe, ATEND_COLUNAS, BOAS_VINDAS, type Conversa, type Deps, type LojaParceira, type Saida, type EstadoAtend } from "../atendimento_bot";
+import { processar, colunaDe, ATEND_COLUNAS, BOAS_VINDAS, montarCatalogo, type Conversa, type Deps, type LojaParceira, type Saida, type EstadoAtend } from "../atendimento_bot";
 import { ehClienteInterno } from "./funil";
 
 export const atendimento = new Hono<{ Bindings: Env }>();
@@ -143,7 +143,8 @@ SEU PAPEL: acolher quem chama, conversar de forma natural e humana, ENTENDER o q
 
 REGRAS IMPORTANTES:
 - NÃO peça o CNPJ logo de cara. Primeiro converse, entenda a necessidade (que tipo de produto procura, se já conhece a marca, etc.) e só depois, quando fizer sentido, encaminhe pra pegar os dados.
-- Se perceber que é LOJISTA e a pessoa quer ver produtos/preços/catálogo/fazer pedido: use acao "coletar_lojista" e, na sua resposta, peça gentilmente o NOME DA LOJA (o sistema pede o CNPJ na sequência).
+- Se perceber que é LOJISTA e a pessoa quer comprar/revender/fazer cadastro: use acao "coletar_lojista" e, na sua resposta, peça gentilmente o NOME DA LOJA (o sistema pede o CNPJ na sequência).
+- CATÁLOGO: nosso catálogo é DIGITAL (um link), nunca um PDF. NUNCA envie o catálogo por conta própria nem prometa enviar "automaticamente". Envie SÓ quando o cliente PEDIR o catálogo (ex.: "me manda o catálogo", "quero ver os produtos", "tem catálogo?") — aí use acao "enviar_catalogo" (o sistema anexa o link). Não peça CNPJ como condição para mandar o catálogo se o cliente só quer dar uma olhada.
 - Se for CONSUMIDOR FINAL (pessoa física, "pra mim", "uso pessoal", "presente", sem loja/CNPJ): use acao "indicar_parceiro". Explique com carinho, em 1 linha, que a Big Tricot vende no atacado para lojistas, mas que você indica as lojas parceiras da região dele. Você só precisa do ESTADO — se ainda não souber, pergunte "de qual estado você é?". Preencha o campo "uf" com a sigla (ex.: MG). O SISTEMA envia automaticamente o link da vitrine de lojas parceiras filtrado pelo estado; NUNCA diga "vou te passar os dados/contatos depois", NUNCA tente listar lojas você mesmo, e NÃO fale de modelos/cores com o consumidor final.
 - Se o cliente pedir PRIVATE LABEL (marca própria, etiqueta própria, fabricar com a marca dele): use acao "humano" — isso é com um vendedor especializado. Na resposta, diga que já vai chamar o vendedor.
 - Se pedir Financeiro, Pós-venda, tratar de um pedido já feito, reclamação/problema, ou pedir pra falar com uma pessoa: use acao "humano".
@@ -153,7 +154,7 @@ REGRAS IMPORTANTES:
 - Escreva os emojis COMO EMOJI de verdade (😊 💛 👍), NUNCA como código escapado tipo \\u{1f603}.
 
 RESPONDA **SOMENTE** com um JSON válido, sem texto fora dele, neste formato exato:
-{"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "indicar_parceiro" | "humano", "uf": "<sigla do estado, ex.: MG, se souber; senão vazio>", "cidade": "<cidade se souber; senão vazio>"}`;
+{"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "enviar_catalogo" | "indicar_parceiro" | "humano", "uf": "<sigla do estado, ex.: MG, se souber; senão vazio>", "cidade": "<cidade se souber; senão vazio>"}`;
 
 // Estados "terminados" em que a Bia reengaja o contato que volta a falar (ela usa o
 // histórico e continua). Ficam de fora: coleta determinística e estados de pedido/pós-venda.
@@ -256,7 +257,7 @@ async function chamarIa(env: Env, conv: ConvRow, sistema: string): Promise<IaDec
   return null;
 }
 
-interface IaSaida { saidas: Saida[]; novoEstado: EstadoAtend; notificarHumano: boolean; tipo: string | null }
+interface IaSaida { saidas: Saida[]; novoEstado: EstadoAtend; notificarHumano: boolean; tipo: string | null; catalogo?: boolean }
 
 // Roda a IA de triagem e traduz a decisão em resposta + próximo estado do fluxo.
 // `origin` é usado pra montar o link da vitrine (indicação de consumidor final).
@@ -289,6 +290,10 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, origin: strin
     case "coletar_lojista":
       // A IA já pediu o nome da loja na resposta → o fluxo determinístico captura o nome e pede o CNPJ.
       return { saidas, novoEstado: "triagem-nome", notificarHumano: false, tipo: "lojista" };
+    case "enviar_catalogo":
+      // SÓ quando o cliente PEDE o catálogo. A mensagem do catálogo (link virtual) é
+      // anexada no núcleo (receberMensagem), que tem a config. Aqui só sinalizamos.
+      return { saidas, novoEstado: "catalogo-enviado", notificarHumano: false, tipo: "lojista", catalogo: true };
     case "humano":
       return { saidas, novoEstado: "atendimento-humano", notificarHumano: true, tipo: conv.tipo ?? null };
     default:
@@ -372,9 +377,15 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     // Conversa em andamento: a IA responde. Cliente já cadastrado entra com contexto extra.
     let sistema = sistemaIa(cfgAt.ia_prompt) + await lerConhecimento(env);
     if (conv.cliente_id) {
-      sistema += `\n\nCONTEXTO IMPORTANTE: este contato JÁ É CLIENTE cadastrado da Big Tricot (loja: ${conv.nome || "?"}${conv.cidade ? ", de " + conv.cidade + (conv.uf ? "/" + conv.uf : "") : ""}). Trate como cliente conhecido: NÃO peça CNPJ nem o nome da loja de novo. Ajude no que precisar; se for pedido ou assunto comercial, use acao "humano" pra chamar o vendedor.`;
+      sistema += `\n\nCONTEXTO IMPORTANTE: este contato JÁ É CLIENTE cadastrado da Big Tricot (loja: ${conv.nome || "?"}${conv.cidade ? ", de " + conv.cidade + (conv.uf ? "/" + conv.uf : "") : ""}). Trate como cliente conhecido: NÃO peça CNPJ nem o nome da loja de novo. Ajude no que precisar; se ele PEDIR o catálogo use acao "enviar_catalogo"; se for pedido ou assunto comercial, use acao "humano" pra chamar o vendedor.`;
+    } else if (conv.lojista === 1 || conv.cnpj) {
+      sistema += `\n\nCONTEXTO: este lojista JÁ FOI QUALIFICADO (CNPJ confirmado${conv.nome ? ", loja: " + conv.nome : ""}). NÃO peça CNPJ nem nome da loja de novo. Ajude no que precisar; se ele PEDIR o catálogo use acao "enviar_catalogo".`;
     }
     const ia = await iaTriagem(env, conv, sistema, origin);
+    // Cliente pediu o catálogo → anexa a mensagem do catálogo (virtual/link), montada da config.
+    if (ia.catalogo) {
+      for (const s of montarCatalogo(deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, origin))) ia.saidas.push(s);
+    }
     await env.DB.prepare("UPDATE atend_conversas SET estado=?, tipo=COALESCE(?, tipo), atualizado_em=datetime('now') WHERE id=?")
       .bind(ia.novoEstado, ia.tipo, conv.id).run();
     for (const s of ia.saidas) {
