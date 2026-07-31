@@ -149,6 +149,7 @@ REGRAS IMPORTANTES:
 - Enquanto ainda está entendendo se é lojista ou consumidor, use acao "conversar". Assim que descobrir, seja decidido e use a acao certa — não enrole.
 - NUNCA invente preços, prazos de entrega, pedido mínimo, formas de pagamento ou políticas. Se perguntarem, diga que o vendedor passa esses detalhes e que o catálogo é enviado após confirmar o cadastro.
 - Tom: caloroso, brasileiro, informal de WhatsApp. Respostas CURTAS (1 a 3 linhas), no máximo 1 ou 2 emojis. Nunca repita a mesma pergunta que já foi respondida.
+- Escreva os emojis COMO EMOJI de verdade (😊 💛 👍), NUNCA como código escapado tipo \\u{1f603}.
 
 RESPONDA **SOMENTE** com um JSON válido, sem texto fora dele, neste formato exato:
 {"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "indicar_parceiro" | "humano"}`;
@@ -169,6 +170,14 @@ const IA_MODELOS = [
 
 interface IaDecisao { resposta: string; intencao: string; acao: string }
 
+// Alguns modelos escapam emojis como texto literal ("\u{1f603}" ou "😃")
+// dentro do JSON. Converte esses escapes de volta pro caractere real.
+function decodificarEscapes(s: string): string {
+  return String(s ?? "")
+    .replace(/\\u\{([0-9a-fA-F]{1,6})\}/g, (_, h) => { try { return String.fromCodePoint(parseInt(h, 16)); } catch { return ""; } })
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => { try { return String.fromCharCode(parseInt(h, 16)); } catch { return ""; } });
+}
+
 // Extrai o primeiro objeto JSON de um texto (o modelo às vezes embrulha em ``` ou prosa).
 function extrairJson(txt: string): IaDecisao | null {
   const m = txt.match(/\{[\s\S]*\}/);
@@ -176,7 +185,7 @@ function extrairJson(txt: string): IaDecisao | null {
   try {
     const o = JSON.parse(m[0]) as Partial<IaDecisao>;
     if (typeof o.resposta === "string") {
-      return { resposta: o.resposta.trim(), intencao: String(o.intencao ?? "indefinido"), acao: String(o.acao ?? "conversar") };
+      return { resposta: decodificarEscapes(o.resposta.trim()), intencao: String(o.intencao ?? "indefinido"), acao: String(o.acao ?? "conversar") };
     }
   } catch { /* json inválido */ }
   return null;
@@ -201,7 +210,7 @@ async function chamarIa(env: Env, conv: ConvRow, sistema: string): Promise<IaDec
       const dec = extrairJson(txt);
       if (dec && dec.resposta) return dec;
       // Modelo respondeu, mas não em JSON → usa o texto como fala e segue conversando.
-      if (!txt.includes("{")) return { resposta: txt, intencao: "indefinido", acao: "conversar" };
+      if (!txt.includes("{")) return { resposta: decodificarEscapes(txt), intencao: "indefinido", acao: "conversar" };
     } catch { /* tenta o próximo modelo */ }
   }
   return null;

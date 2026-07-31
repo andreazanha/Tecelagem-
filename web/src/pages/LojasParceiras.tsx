@@ -68,7 +68,7 @@ export function LojasParceiras() {
 
       {/* Formulário */}
       {form && (
-        <div style={{ border: "2px solid #8c6239", borderRadius: 12, padding: 16, marginBottom: 18, background: "#fffdfa" }}>
+        <div style={{ border: "2px solid #8c6239", borderRadius: 12, padding: 16, marginBottom: 18, background: "#fffdfa", color: "#1e293b" }}>
           <h3 style={{ marginTop: 0 }}>{form.id ? "Editar loja" : "Nova loja"}</h3>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10 }}>
             <label className="campo"><span className="campo-label">Nome da loja *</span><input value={form.nome ?? ""} onChange={(e) => set("nome", e.target.value)} /></label>
@@ -117,7 +117,7 @@ function Cartao({ l, pendente, onEditar, onAprovar, onExcluir, onAlternar }: {
   l: LojaParceira; pendente?: boolean; onEditar: () => void; onAprovar?: () => void; onExcluir: () => void; onAlternar: () => void;
 }) {
   return (
-    <div style={{ border: "1px solid " + (pendente ? "#fcd34d" : "var(--line,#e2e8f0)"), borderRadius: 10, padding: "10px 12px", background: pendente ? "#fffbeb" : "#fff", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+    <div style={{ border: "1px solid " + (pendente ? "#fcd34d" : "var(--line,#e2e8f0)"), borderRadius: 10, padding: "10px 12px", background: pendente ? "#fffbeb" : "#fff", color: "#1e293b", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
       <div style={{ flex: "1 1 220px" }}>
         <div style={{ fontWeight: 800 }}>{l.nome}</div>
         <div style={{ fontSize: 12.5, color: "#64748b" }}>

@@ -226,7 +226,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
                 <summary style={{ fontSize: 12, cursor: "pointer", color: "#6d28d9" }}>Alternativa: o catálogo empurrar (POST)</summary>
                 <div style={{ fontSize: 12, marginTop: 6 }}>URL do webhook de eventos:</div>
                 <div style={{ display: "flex", gap: 8, margin: "4px 0", alignItems: "center" }}>
-                  <code style={{ flex: 1, background: "#fff", padding: "6px 8px", borderRadius: 6, fontSize: 10.5, wordBreak: "break-all" }}>{cfg.catalogo_evento_url}</code>
+                  <code style={{ flex: 1, background: "#fff", color: "#334155", padding: "6px 8px", borderRadius: 6, fontSize: 10.5, wordBreak: "break-all" }}>{cfg.catalogo_evento_url}</code>
                   <button className="btn btn-soft" style={{ padding: "5px 9px" }} onClick={() => copiar(cfg.catalogo_evento_url)}>Copiar</button>
                 </div>
                 <label className="campo" style={{ margin: 0 }}><span className="campo-label">Token (opcional)</span>
@@ -237,7 +237,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
             <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: "10px 12px", fontSize: 12.5, marginBottom: 14 }}>
               <b>📥 Para receber mensagens:</b> no painel Z-API, em <b>Ao receber (webhook)</b>, cole esta URL:
               <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center" }}>
-                <code style={{ flex: 1, background: "#fff", padding: "6px 8px", borderRadius: 6, fontSize: 11.5, wordBreak: "break-all" }}>{cfg.webhook_url}</code>
+                <code style={{ flex: 1, background: "#fff", color: "#334155", padding: "6px 8px", borderRadius: 6, fontSize: 11.5, wordBreak: "break-all" }}>{cfg.webhook_url}</code>
                 <button className="btn btn-soft" style={{ padding: "6px 10px" }} onClick={() => copiar(cfg.webhook_url)}>Copiar</button>
               </div>
             </div>
