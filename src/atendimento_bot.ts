@@ -171,8 +171,7 @@ async function indicar(conv: Conversa, saidas: Saida[], deps: Deps): Promise<Res
     const q = new URLSearchParams();
     if (uf) q.set("uf", uf); else if (conv.cidade) q.set("cidade", String(conv.cidade));
     const link = deps.vitrineUrl + "?" + q.toString();
-    saidas.push({ tipo: "texto", texto: "A Big Tricot vende no atacado pra lojistas, mas temos *lojas parceiras* que revendem nossos produtos! 💛" });
-    saidas.push({ tipo: "texto", texto: `Abre esse link, escolha a *cidade mais perto de você* e veja os contatos das lojas 👇\n${link}` });
+    saidas.push({ tipo: "texto", texto: `Prontinho! 💛 Abre esse link, escolha a *cidade mais perto de você* e veja os contatos das lojas parceiras 👇\n${link}` });
   } else {
     // Sem vitrine configurada → mostra os cards no chat (comportamento antigo).
     const lojas = await deps.parceiros(conv.cidade ?? null, conv.uf ?? null);

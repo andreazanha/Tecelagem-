@@ -276,8 +276,7 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, origin: strin
       const link = `${origin}/vitrine?uf=${encodeURIComponent(uf)}`;
       // Mensagem fixa (rápida e sem "vou passar depois"): manda o link do estado na hora.
       const saidas: Saida[] = [
-        { tipo: "texto", texto: `A Big Tricot vende no atacado pra lojistas, mas temos *lojas parceiras* que revendem nossos produtos! 💛` },
-        { tipo: "texto", texto: `Abre esse link, escolha a *cidade mais perto de você* e veja os contatos das lojas de ${uf} 👇\n${link}` },
+        { tipo: "texto", texto: `Prontinho! 💛 Abre esse link, escolha a *cidade mais perto de você* e veja os contatos das lojas parceiras de ${uf} 👇\n${link}` },
       ];
       return { saidas, novoEstado: "indicado-parceiro", notificarHumano: false, tipo: "consumidor" };
     }
