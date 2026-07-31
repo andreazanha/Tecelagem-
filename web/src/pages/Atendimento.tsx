@@ -47,7 +47,7 @@ export function Atendimento() {
   const primeiraRef = useRef(true);
   const audioRef = useRef<AudioContext | null>(null);
 
-  function recarregar() { api.atendBoard().then(setBoard).catch(() => {}); }
+  function recarregar() { const u = getUser(); api.atendBoard(u?.nome, ehGestorAtend()).then(setBoard).catch(() => {}); }
   function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance && !!c.zapi_token)).catch(() => setConectado(false)); }
   useEffect(() => { recarregar(); checarConexao(); const t = setInterval(recarregar, 8000); return () => clearInterval(t); }, []);
 
@@ -371,18 +371,24 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
   const [busy, setBusy] = useState(false);
   const [reps, setReps] = useState<Representante[]>([]);
   const [repSel, setRepSel] = useState("");
+  const [usuarios, setUsuarios] = useState<{ nome: string; usuario: string }[]>([]);
   const fim = useRef<HTMLDivElement>(null);
 
   function carregar() { api.atendConversa(id).then((c) => { setD(c); setRepSel((s) => s || c.representante || ""); }); }
   useEffect(() => { carregar(); const t = setInterval(carregar, 5000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => { api.listarRepresentantes().then((r) => setReps(r.filter((x) => x.ativo))).catch(() => {}); }, []);
+  useEffect(() => { api.listarUsuarios().then((u) => setUsuarios(Array.isArray(u) ? u : [])).catch(() => {}); }, []);
   useEffect(() => { fim.current?.scrollIntoView(); }, [d?.mensagens.length]);
 
   async function assumir() {
-    const nome = prompt("Seu nome (atendente):", d?.responsavel || "");
-    if (nome == null) return;
+    const u = getUser();
     setBusy(true);
-    try { await api.atendAssumir(id, nome || "Atendente"); carregar(); onMudou(); } finally { setBusy(false); }
+    try { await api.atendAssumir(id, u?.nome || "Atendente"); carregar(); onMudou(); } finally { setBusy(false); }
+  }
+  async function transferir(nome: string) {
+    if (!nome) return;
+    setBusy(true);
+    try { await api.atendAssumir(id, nome); carregar(); onMudou(); } finally { setBusy(false); }
   }
   const [sugerindo, setSugerindo] = useState(false);
   async function sugerir() {
@@ -477,6 +483,15 @@ function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => 
             )}
             {d?.card_id && <Link to="/funil" className="btn" style={{ marginTop: 10, display: "block", textAlign: "center" }}>🎯 Ver no funil</Link>}
             {!humano && <button className="kbtn go" style={{ marginTop: 10, width: "100%" }} disabled={busy} onClick={assumir}>🙋 Assumir atendimento</button>}
+            {humano && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 4 }}>Em atendimento com <b>{d?.responsavel || "—"}</b></div>
+                <select value="" onChange={(e) => { if (e.target.value) transferir(e.target.value); }} disabled={busy} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg-soft)", color: "var(--ink)" }}>
+                  <option value="">↔️ Transferir para outro atendente…</option>
+                  {usuarios.filter((u) => u.nome !== d?.responsavel).map((u) => <option key={u.usuario} value={u.nome}>{u.nome}</option>)}
+                </select>
+              </div>
+            )}
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5 }} disabled={busy} onClick={toggleNaoPerturbe} title="Para/retoma as mensagens automáticas para este cliente">
               {d?.nao_perturbe ? "🔕 Automáticas pausadas — retomar" : "🔔 Pausar mensagens automáticas"}
             </button>

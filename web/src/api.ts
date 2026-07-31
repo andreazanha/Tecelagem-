@@ -663,7 +663,7 @@ export const api = {
   // Painel do gestor
   atendPainel: () => fetch("/api/atendimento/painel").then((r) => j<AtendPainel>(r)),
   // Robô de atendimento (WhatsApp)
-  atendBoard: () => fetch("/api/atendimento").then((r) => j<AtendBoard>(r)),
+  atendBoard: (usuario?: string, gestor?: boolean) => fetch(`/api/atendimento?usuario=${encodeURIComponent(usuario || "")}&gestor=${gestor ? 1 : 0}`).then((r) => j<AtendBoard>(r)),
   atendConversa: (id: string) => fetch(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),
   atendEntrada: (b: { telefone: string; texto: string }) =>
     jsonPost("/api/atendimento/entrada", b).then((r) => j<AtendResposta>(r)),
