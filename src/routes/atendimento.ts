@@ -789,6 +789,7 @@ atendimento.get("/config", async (c) => {
     reativacao_ativo: (cfg.reativacao_ativo ?? "0") === "1",
     reativacao_dias: cfg.reativacao_dias || "30",
     reativacao_limite: cfg.reativacao_limite || "40",
+    reativacao_intervalo_seg: cfg.reativacao_intervalo_seg || "25",
     reativacao_msg: cfg.reativacao_msg || "",
     reativacao_msg_padrao: MSG_REATIVACAO_PADRAO,
     catalogo_evento_token: cfg.catalogo_evento_token || "",
@@ -801,7 +802,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_msg", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -1466,14 +1467,22 @@ export async function prospeccaoCatalogo(env: Env): Promise<number> {
   const jaFalou = new Set<string>();
   for (const cv of convs) { if (cv.cliente_id) jaFalou.add("id:" + cv.cliente_id); const t = digitos(cv.telefone || ""); if (t.length >= 8) jaFalou.add("tel:" + t.slice(-8)); }
 
-  const agora = Date.now();
+  // Anti-banimento: NÃO dispara em rajada. Espaça cada envio (intervalo aleatório,
+  // padrão 25–55s) e para o disparo depois de ~8 min pra não estourar o tempo do cron
+  // (o que sobrar sai no próximo horário; é idempotente). Intervalo é configurável.
+  const gapMin = Math.max(5, parseInt(cfg.reativacao_intervalo_seg || "25", 10) || 25);
+  const dormir = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  const inicio = Date.now();
+  const agora = inicio;
   let enviados = 0;
   for (const cli of clientes) {
     if (enviados >= limite) break;
+    if (Date.now() - inicio > 8 * 60 * 1000) break; // orçamento de tempo do cron
     if (ehClienteInterno(cli.nome)) continue;
     const tel = digitos(cli.whatsapp || "");
     if (tel.length < 10) continue;
     if (jaFalou.has("id:" + cli.id) || jaFalou.has("tel:" + tel.slice(-8))) continue;
+    if (enviados > 0) await dormir((gapMin + Math.floor(Math.random() * 30)) * 1000); // espaço entre um cliente e o próximo
     // Só usa nome quando há CONTATO (pessoa). Sem contato, chama só "Olá!" —
     // evita usar a razão social da empresa como se fosse o nome da pessoa.
     const d = diasDesdeISO(cli.ultimo_faturamento, agora);
