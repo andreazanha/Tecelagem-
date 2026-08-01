@@ -877,7 +877,18 @@ atendimento.post("/ia-teste", async (c) => {
 // Puxa a atividade do catálogo agora (botão "Sincronizar agora").
 atendimento.post("/sincronizar-catalogo", async (c) => {
   const n = await lerAtividadeCatalogo(c.env);
-  return c.json({ ok: true, novos: n });
+  // Backfill: leads de catálogo que já existiam (antes do card no funil) ganham card agora.
+  const { results: semCard } = await c.env.DB.prepare(
+    "SELECT id FROM atend_conversas WHERE origem='catalogo' AND (card_id IS NULL OR card_id='')"
+  ).all<{ id: string }>().catch(() => ({ results: [] as { id: string }[] }));
+  let backfill = 0;
+  for (const cv of semCard) {
+    const antes = await c.env.DB.prepare("SELECT card_id FROM atend_conversas WHERE id=?").bind(cv.id).first<{ card_id: string | null }>().catch(() => null);
+    await garantirCardDaConversa(c.env, cv.id, "Lead do catálogo (histórico)");
+    const depois = await c.env.DB.prepare("SELECT card_id FROM atend_conversas WHERE id=?").bind(cv.id).first<{ card_id: string | null }>().catch(() => null);
+    if (!antes?.card_id && depois?.card_id) backfill++;
+  }
+  return c.json({ ok: true, novos: n, backfill });
 });
 
 // Envia uma mensagem de teste pelo número informado (valida credenciais/QR).
