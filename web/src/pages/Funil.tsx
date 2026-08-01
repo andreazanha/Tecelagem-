@@ -160,12 +160,14 @@ export function Funil() {
                 onDrop={() => soltarEm(et.id)}
               >
                 <div className="fx-hd"><span className="fx-dot" style={{ background: et.cor }} />{et.label}<span className="ct">{cards.length}</span></div>
-                {cards.map((c) => (
-                  <CardMini
-                    key={c.id} c={c} onAbrir={() => abrirCard(c)}
-                    onDragStart={() => setArrastando(c.id)} onDragEnd={() => { setArrastando(null); setSobre(null); }}
-                  />
-                ))}
+                <div className="fx-col-body">
+                  {cards.map((c) => (
+                    <CardMini
+                      key={c.id} c={c} onAbrir={() => abrirCard(c)}
+                      onDragStart={() => setArrastando(c.id)} onDragEnd={() => { setArrastando(null); setSobre(null); }}
+                    />
+                  ))}
+                </div>
               </div>
             );
           })}
