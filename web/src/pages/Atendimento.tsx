@@ -202,7 +202,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   const [sincroCat, setSincroCat] = useState(false);
   async function sincronizarCatalogo() {
     setSincroCat(true); setMsg("");
-    try { const r = await api.atendSincronizarCatalogo(); setMsg(`✓ ${r.novos} evento(s) novo(s)${r.backfill ? ` · ${r.backfill} card(s) criado(s) no funil` : ""} do catálogo.`); }
+    try { const r = await api.atendSincronizarCatalogo(); setMsg(`✓ ${r.novos} novo(s) · ${r.backfill || 0} card(s) no funil · log tem ${r.logTotal ?? "?"} evento(s) · ${r.catalogoConversas ?? "?"} conversa(s) de catálogo (últ. ts ${r.ultimoTs || "0"}).`); }
     catch { setMsg("Não consegui ler a atividade — confira a URL de leitura."); }
     finally { setSincroCat(false); }
   }

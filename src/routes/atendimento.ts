@@ -888,7 +888,18 @@ atendimento.post("/sincronizar-catalogo", async (c) => {
     const depois = await c.env.DB.prepare("SELECT card_id FROM atend_conversas WHERE id=?").bind(cv.id).first<{ card_id: string | null }>().catch(() => null);
     if (!antes?.card_id && depois?.card_id) backfill++;
   }
-  return c.json({ ok: true, novos: n, backfill });
+  // Diagnóstico: quantos eventos o log traz, quantas conversas de catálogo já existem, e o último ts lido.
+  const cfg = await lerConfig(c.env);
+  let logTotal = -1;
+  try {
+    const url = (cfg.catalogo_log_url || "").trim();
+    if (url) {
+      const r = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+      if (r.ok) { const d = await r.json<{ eventos?: unknown[] }>(); logTotal = Array.isArray(d?.eventos) ? d.eventos.length : 0; }
+    }
+  } catch { /* ignora */ }
+  const cat = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM atend_conversas WHERE origem='catalogo'").first<{ n: number }>().catch(() => ({ n: -1 }));
+  return c.json({ ok: true, novos: n, backfill, logTotal, catalogoConversas: cat?.n ?? -1, ultimoTs: cfg.catalogo_log_ts || "0" });
 });
 
 // Envia uma mensagem de teste pelo número informado (valida credenciais/QR).

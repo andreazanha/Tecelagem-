@@ -705,7 +705,7 @@ export const api = {
   atendTestarIa: () =>
     jsonPost("/api/atendimento/ia-teste", {}).then((r) => j<{ ok: boolean; ia_ligada: boolean; erro?: string; tentativas: { modelo: string; ok: boolean; resposta?: string; erro?: string }[] }>(r)),
   atendSincronizarCatalogo: () =>
-    jsonPost("/api/atendimento/sincronizar-catalogo", {}).then((r) => j<{ ok: boolean; novos: number; backfill?: number }>(r)),
+    jsonPost("/api/atendimento/sincronizar-catalogo", {}).then((r) => j<{ ok: boolean; novos: number; backfill?: number; logTotal?: number; catalogoConversas?: number; ultimoTs?: string }>(r)),
   funilCard: (id: string) => fetch(`/api/funil/${id}`).then((r) => j<FunilCardDetalhe>(r)),
   criarCard: (b: { nome: string; whatsapp: string; cidade?: string; uf?: string; responsavel?: string; cliente_id?: string }) =>
     jsonPost("/api/funil", b).then((r) => j<{ id: string; nome: string }>(r)),
