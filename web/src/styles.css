@@ -229,10 +229,14 @@ h2 { font-size: 15px; margin: 0 0 12px; }
   .grid-2 { grid-template-columns: 1fr; }
   /* sidebar vira barra de navegação horizontal (rolável) abaixo do topo */
   .app {
-    grid-template-columns: 1fr;
+    /* minmax(0,...) impede a coluna de "esticar" além da largura da tela por causa
+       de um conteúdo largo (senão a borda direita fica cortada no celular). */
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 56px auto 1fr;
     grid-template-areas: "top" "side" "main";
   }
+  /* topo: se os botões não couberem, rolam de lado em vez de serem cortados */
+  .topbar-right { min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .sidebar { padding: 8px 10px; }
   .sidebar-title, .sidebar-kicker, .sidebar-version { display: none; }
   .sidebar nav { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
