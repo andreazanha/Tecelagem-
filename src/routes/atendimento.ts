@@ -888,18 +888,25 @@ atendimento.post("/sincronizar-catalogo", async (c) => {
     const depois = await c.env.DB.prepare("SELECT card_id FROM atend_conversas WHERE id=?").bind(cv.id).first<{ card_id: string | null }>().catch(() => null);
     if (!antes?.card_id && depois?.card_id) backfill++;
   }
-  // Diagnóstico: quantos eventos o log traz, quantas conversas de catálogo já existem, e o último ts lido.
+  // Diagnóstico: URL usada, erro de leitura, total de eventos, conversas de catálogo e último ts.
   const cfg = await lerConfig(c.env);
-  let logTotal = -1;
-  try {
-    const url = (cfg.catalogo_log_url || "").trim();
-    if (url) {
-      const r = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
-      if (r.ok) { const d = await r.json<{ eventos?: unknown[] }>(); logTotal = Array.isArray(d?.eventos) ? d.eventos.length : 0; }
-    }
-  } catch { /* ignora */ }
+  const logUrl = (cfg.catalogo_log_url || "").trim();
+  let logTotal = -1, logErro = "";
+  if (!logUrl) {
+    logErro = "URL vazia — preencha e clique em SALVAR antes de sincronizar";
+  } else {
+    try {
+      const r = await fetch(logUrl, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+      if (!r.ok) logErro = "HTTP " + r.status;
+      else {
+        const d = await r.json<{ eventos?: unknown[] }>().catch(() => null);
+        if (d && Array.isArray(d.eventos)) logTotal = d.eventos.length;
+        else logErro = "resposta sem o campo 'eventos'";
+      }
+    } catch (e) { logErro = "falha ao buscar: " + String((e as Error).message || e).slice(0, 120); }
+  }
   const cat = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM atend_conversas WHERE origem='catalogo'").first<{ n: number }>().catch(() => ({ n: -1 }));
-  return c.json({ ok: true, novos: n, backfill, logTotal, catalogoConversas: cat?.n ?? -1, ultimoTs: cfg.catalogo_log_ts || "0" });
+  return c.json({ ok: true, novos: n, backfill, logTotal, logErro, logUrl, catalogoConversas: cat?.n ?? -1, ultimoTs: cfg.catalogo_log_ts || "0" });
 });
 
 // Envia uma mensagem de teste pelo número informado (valida credenciais/QR).
