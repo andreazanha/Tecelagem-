@@ -383,12 +383,18 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, origin: strin
 // Estados do NORTE + NORDESTE (usam a tabela "norte" do catálogo). O resto (S/SE/CO)
 // usa a tabela padrão (Sul). O link do catálogo ganha "r=norte" para essa região.
 const REGIAO_NORTE = new Set(["AC", "AP", "AM", "PA", "RO", "RR", "TO", "AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"]);
-function ehRegiaoNorte(uf?: string | null): boolean {
-  return REGIAO_NORTE.has(String(uf || "").trim().toUpperCase());
+// DDDs de Norte + Nordeste — usados como palpite quando não há UF no cadastro.
+const DDD_NORTE = new Set(["68", "69", "92", "97", "95", "91", "93", "94", "96", "63", "98", "99", "86", "89", "85", "88", "84", "83", "81", "87", "82", "79", "71", "73", "74", "75", "77"]);
+function ehRegiaoNorte(uf?: string | null, tel?: string | null): boolean {
+  const u = String(uf || "").trim().toUpperCase();
+  if (u) return REGIAO_NORTE.has(u);           // UF do cadastro tem prioridade
+  const d = digitos(tel);                       // senão, deduz pelo DDD
+  const ddd = d.startsWith("55") && d.length >= 4 ? d.slice(2, 4) : d.slice(0, 2);
+  return DDD_NORTE.has(ddd);
 }
 // Ajusta o link do catálogo à tabela da região do cliente: Norte/NE → insere r=norte.
-function ajustarCatalogoRegiao(texto: string, uf?: string | null): string {
-  if (!ehRegiaoNorte(uf)) return texto; // Sul é o padrão (sem r=)
+function ajustarCatalogoRegiao(texto: string, uf?: string | null, tel?: string | null): string {
+  if (!ehRegiaoNorte(uf, tel)) return texto; // Sul é o padrão (sem r=)
   return texto.replace(/(catalogo\.bigtricot\.com\.br\/#)(?!r=)/gi, "$1r=norte&");
 }
 
@@ -480,7 +486,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     if (ia.catalogo) {
       // Manda a tabela da REGIÃO do cliente (Norte/NE vs Sul), pela UF.
       for (const s of montarCatalogo(deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, origin))) {
-        s.texto = ajustarCatalogoRegiao(s.texto, conv.uf);
+        s.texto = ajustarCatalogoRegiao(s.texto, conv.uf, tel);
         ia.saidas.push(s);
       }
       // Registra na coluna "📥 Catálogo (contato)" do funil — cliente que entrou em contato e recebeu.
@@ -1464,7 +1470,7 @@ export async function prospeccaoCatalogo(env: Env): Promise<number> {
     // Só usa nome quando há CONTATO (pessoa). Sem contato, chama só "Olá!" —
     // evita usar a razão social da empresa como se fosse o nome da pessoa.
     const d = diasDesdeISO(cli.ultimo_faturamento, agora);
-    const texto = ajustarCatalogoRegiao(montarMsgReativacao(cfg, primeiroNome(cli.contato), d), cli.uf);
+    const texto = ajustarCatalogoRegiao(montarMsgReativacao(cfg, primeiroNome(cli.contato), d), cli.uf, tel);
     // Card na coluna "📤 Catálogo enviado" (aba especial), ligado à conversa.
     const cardId = uid();
     await env.DB.prepare(
