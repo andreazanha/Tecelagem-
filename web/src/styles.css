@@ -1133,7 +1133,16 @@ body.dark .fx-card.red { background: #2a1618; }
 /* Mobile: colunas ocupam quase a tela toda e a rolagem "encaixa" uma por vez. */
 @media (max-width: 700px) {
   .fx-board { gap: 10px; scroll-snap-type: x proximity; scroll-padding-left: 4px; -webkit-overflow-scrolling: touch; }
-  .fx-col { flex: 0 0 86%; max-width: 86%; scroll-snap-align: start; }
+  .fx-col { flex: 0 0 88%; max-width: 88%; scroll-snap-align: start; max-height: calc(100dvh - 250px); }
+  /* Barra de filtros/ações vira um strip que rola de lado (nada corta). */
+  .fx-filtros { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; margin: 0 -14px; padding-left: 14px; padding-right: 14px; }
+  .fx-filtros::-webkit-scrollbar { display: none; }
+  .fx-filtros > * { flex: 0 0 auto; white-space: nowrap; }
+  .fx-filtros .btn, .fx-filtros .btn-primary { padding: 8px 12px; font-size: 13px; }
+  /* Topo mais compacto pra sobrar tela pros cards. */
+  .quadro-page .page-head { margin-bottom: 10px; }
+  .quadro-page .breadcrumb { display: none; }
+  .fx-alertbar { margin-bottom: 10px; padding: 7px 11px; font-size: 12px; }
 }
 .fx-card.alert { border-left-color: #f59e0b; }
 .fx-nm { font-weight: 800; font-size: 13px; letter-spacing: -.2px; }
