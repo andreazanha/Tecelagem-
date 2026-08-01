@@ -674,8 +674,21 @@ export async function lerAtividadeCatalogo(env: Env): Promise<number> {
   } catch {
     return 0;
   }
-  // Mapa repId → repNome (o "acesso" não traz o nome; o "envio" traz).
+  // Mapa repId → repNome. O "acesso" não traz o nome; resolvemos por 2 fontes:
+  //  1) os representantes cadastrados no catálogo (Firestore) — fonte principal;
+  //  2) eventos "envio", que às vezes já trazem o repNome.
   const repMap = new Map<string, string>();
+  try {
+    const cat = await catalogoExterno();
+    const reps = cat.representantes;
+    if (Array.isArray(reps)) {
+      for (const r of reps as Record<string, unknown>[]) {
+        const rid = String(r?.repId ?? r?.id ?? r?.codigo ?? "").trim();
+        const rnome = String(r?.nome ?? r?.name ?? r?.repNome ?? "").trim();
+        if (rid && rnome) repMap.set(rid, rnome);
+      }
+    }
+  } catch { /* sem catálogo agora → cai no mapa por eventos */ }
   for (const e of eventos) {
     const rid = String(e.repId ?? ""), rnome = String(e.repNome ?? "").trim();
     if (rid && rnome) repMap.set(rid, rnome);
