@@ -392,6 +392,9 @@ function ehRegiaoNorte(uf?: string | null, tel?: string | null): boolean {
   const ddd = d.startsWith("55") && d.length >= 4 ? d.slice(2, 4) : d.slice(0, 2);
   return DDD_NORTE.has(ddd);
 }
+// Pedido claro de catálogo (rede de segurança quando a IA "enrola" e não envia).
+// Evita casar com "ver o pedido" (status do pedido, que é outro fluxo).
+const PEDE_CATALOGO_RE = /cat[aá]logo|ver (as |os |o )?(pe[çc]as|produtos|mantas|novidades|cole[çc][aã]o)/i;
 // Ajusta o link do catálogo à tabela da região do cliente: Norte/NE → insere r=norte.
 function ajustarCatalogoRegiao(texto: string, uf?: string | null, tel?: string | null): string {
   if (!ehRegiaoNorte(uf, tel)) return texto; // Sul é o padrão (sem r=)
@@ -482,6 +485,10 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       sistema += `\n\nCONTEXTO: este lojista JÁ FOI QUALIFICADO (CNPJ confirmado${conv.nome ? ", loja: " + conv.nome : ""}). NÃO peça CNPJ nem nome da loja de novo. Ajude no que precisar; se ele PEDIR o catálogo use acao "enviar_catalogo".`;
     }
     const ia = await iaTriagem(env, conv, sistema, origin);
+    // Rede de segurança: se o cliente PEDIU o catálogo de forma clara mas a IA não
+    // classificou (às vezes ela responde "vou enviar… aguarde" e não manda), força o
+    // envio do link agora — sem a resposta enrolada.
+    if (!ia.catalogo && PEDE_CATALOGO_RE.test(texto)) { ia.catalogo = true; ia.saidas = []; ia.novoEstado = "catalogo-enviado"; }
     // Cliente pediu o catálogo → anexa a mensagem do catálogo (virtual/link), montada da config.
     if (ia.catalogo) {
       // Manda a tabela da REGIÃO do cliente (Norte/NE vs Sul), pela UF.
