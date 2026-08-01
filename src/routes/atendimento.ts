@@ -366,8 +366,10 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, origin: strin
       return { saidas, novoEstado: "triagem-nome", notificarHumano: false, tipo: "lojista", setor: setor || "vendas" };
     case "enviar_catalogo":
       // SÓ quando o cliente PEDE o catálogo. A mensagem do catálogo (link virtual) é
-      // anexada no núcleo (receberMensagem), que tem a config. Aqui só sinalizamos.
-      return { saidas, novoEstado: "catalogo-enviado", notificarHumano: false, tipo: "lojista", catalogo: true, setor: setor || "vendas" };
+      // anexada no núcleo (receberMensagem) e JÁ é o convite completo (texto + link +
+      // senha). Não enviamos a resposta da IA aqui pra não mandar o convite 2× (bug do
+      // "mesma mensagem repetida"). Envia só o catálogo.
+      return { saidas: [], novoEstado: "catalogo-enviado", notificarHumano: false, tipo: "lojista", catalogo: true, setor: setor || "vendas" };
     case "consultar_pedido":
       // Cliente quer saber o status do pedido. O núcleo resolve o CNPJ e consulta a produção.
       return { saidas, novoEstado: "ia-triagem", notificarHumano: false, tipo: conv.tipo ?? null, consultarPedido: true, cnpjConsulta: digitos(dec.cnpj) || digitos(conv.cnpj), setor: setor || "pcp" };
@@ -376,6 +378,18 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, origin: strin
     default:
       return { saidas, novoEstado: "ia-triagem", notificarHumano: false, tipo: conv.tipo ?? null, setor };
   }
+}
+
+// Estados do NORTE + NORDESTE (usam a tabela "norte" do catálogo). O resto (S/SE/CO)
+// usa a tabela padrão (Sul). O link do catálogo ganha "r=norte" para essa região.
+const REGIAO_NORTE = new Set(["AC", "AP", "AM", "PA", "RO", "RR", "TO", "AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"]);
+function ehRegiaoNorte(uf?: string | null): boolean {
+  return REGIAO_NORTE.has(String(uf || "").trim().toUpperCase());
+}
+// Ajusta o link do catálogo à tabela da região do cliente: Norte/NE → insere r=norte.
+function ajustarCatalogoRegiao(texto: string, uf?: string | null): string {
+  if (!ehRegiaoNorte(uf)) return texto; // Sul é o padrão (sem r=)
+  return texto.replace(/(catalogo\.bigtricot\.com\.br\/#)(?!r=)/gi, "$1r=norte&");
 }
 
 // ── Núcleo: recebe uma mensagem do cliente, roda o robô, responde e qualifica ────
@@ -464,7 +478,11 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     const ia = await iaTriagem(env, conv, sistema, origin);
     // Cliente pediu o catálogo → anexa a mensagem do catálogo (virtual/link), montada da config.
     if (ia.catalogo) {
-      for (const s of montarCatalogo(deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, origin))) ia.saidas.push(s);
+      // Manda a tabela da REGIÃO do cliente (Norte/NE vs Sul), pela UF.
+      for (const s of montarCatalogo(deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, origin))) {
+        s.texto = ajustarCatalogoRegiao(s.texto, conv.uf);
+        ia.saidas.push(s);
+      }
       // Registra na coluna "📥 Catálogo (contato)" do funil — cliente que entrou em contato e recebeu.
       await garantirCardDaConversa(env, conv.id, "Catálogo enviado (cliente entrou em contato)");
     }
@@ -1446,7 +1464,7 @@ export async function prospeccaoCatalogo(env: Env): Promise<number> {
     // Só usa nome quando há CONTATO (pessoa). Sem contato, chama só "Olá!" —
     // evita usar a razão social da empresa como se fosse o nome da pessoa.
     const d = diasDesdeISO(cli.ultimo_faturamento, agora);
-    const texto = montarMsgReativacao(cfg, primeiroNome(cli.contato), d);
+    const texto = ajustarCatalogoRegiao(montarMsgReativacao(cfg, primeiroNome(cli.contato), d), cli.uf);
     // Card na coluna "📤 Catálogo enviado" (aba especial), ligado à conversa.
     const cardId = uid();
     await env.DB.prepare(
