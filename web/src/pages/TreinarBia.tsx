@@ -72,16 +72,19 @@ export function TreinarBia() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {itens.map((i) => (
-            <div key={i.id} style={{ border: "1px solid var(--line,#e2e8f0)", borderRadius: 10, padding: "10px 12px", background: i.ativo ? "#fff" : "#f8fafc", color: "#1e293b", opacity: i.ativo ? 1 : 0.6 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800, fontSize: 14 }}>❓ {i.pergunta}</div>
-                  <div style={{ fontSize: 13, color: "#475569", marginTop: 3, whiteSpace: "pre-wrap" }}>💬 {i.resposta}</div>
+            <div key={i.id} style={{ border: "1px solid var(--line,#e2e8f0)", borderRadius: 10, padding: "10px 12px", background: i.ativo ? "#fff" : "#f8fafc", color: "#1e293b", opacity: i.ativo ? 1 : 0.72 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 800, padding: "3px 9px", borderRadius: 999, background: i.ativo ? "#dcfce7" : "#f1f5f9", color: i.ativo ? "#166534" : "#64748b", whiteSpace: "nowrap" }}>
+                    {i.ativo ? "🟢 Ativa — a Bia responde" : "⚪ Inativa — a Bia ignora"}
+                  </span>
                 </div>
-                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  <button className="btn btn-soft" onClick={() => alternar(i)} title={i.ativo ? "Desativar" : "Ativar"}>{i.ativo ? "Ativa" : "Inativa"}</button>
-                  <button className="btn btn-soft" onClick={() => setForm(i)}>Editar</button>
-                  <button className="btn btn-soft" onClick={() => excluir(i)}>🗑</button>
+                <div style={{ fontWeight: 800, fontSize: 14, marginTop: 8 }}>❓ {i.pergunta}</div>
+                <div style={{ fontSize: 13, color: "#475569", marginTop: 3, whiteSpace: "pre-wrap" }}>💬 {i.resposta}</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                  <button className={i.ativo ? "btn btn-soft" : "btn btn-primary"} onClick={() => alternar(i)}>{i.ativo ? "Desativar" : "✓ Ativar"}</button>
+                  <button className="btn btn-soft" onClick={() => setForm(i)}>✏️ Editar</button>
+                  <button className="btn btn-soft" onClick={() => excluir(i)}>🗑 Excluir</button>
                 </div>
               </div>
             </div>
