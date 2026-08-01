@@ -661,9 +661,15 @@ atendimento.post("/catalogo-evento", async (c) => {
 // ── LEITURA (PULL) da atividade do catálogo (bt-atividade) — chamado pelo cron ────
 // Lê GET no /log configurado, mapeia repId→repNome (dos eventos "envio"), e cria os
 // leads no board. Guarda o último ts processado para não repetir. Read-only p/ o cliente.
-// Corrige a URL do log: codifica o "|" cru (senão a Cloudflare devolve 404).
+// Corrige a URL do log: codifica o "|" cru.
 function urlLogAtividade(cfg: Record<string, string>): string {
   return (cfg.catalogo_log_url || "").trim().replace(/\|/g, "%7C");
+}
+// Busca o /log usando o service binding (Worker→Worker direto) quando disponível;
+// senão cai no fetch normal. O binding evita o 404 de chamada entre workers.dev.
+function buscarLogAtividade(env: Env, url: string): Promise<Response> {
+  const init: RequestInit = { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10000) };
+  return env.ATIVIDADE ? env.ATIVIDADE.fetch(url, init) : fetch(url, init);
 }
 export async function lerAtividadeCatalogo(env: Env): Promise<number> {
   const cfg = await lerConfig(env);
@@ -671,7 +677,7 @@ export async function lerAtividadeCatalogo(env: Env): Promise<number> {
   if (!url) return 0;
   let eventos: Array<Record<string, unknown>> = [];
   try {
-    const resp = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10000) });
+    const resp = await buscarLogAtividade(env, url);
     if (!resp.ok) return 0;
     const dados = await resp.json<{ eventos?: Array<Record<string, unknown>> }>();
     eventos = Array.isArray(dados?.eventos) ? dados.eventos : [];
@@ -900,7 +906,7 @@ atendimento.post("/sincronizar-catalogo", async (c) => {
     logErro = "URL vazia — preencha e clique em SALVAR antes de sincronizar";
   } else {
     try {
-      const r = await fetch(logUrl, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+      const r = await buscarLogAtividade(c.env, logUrl);
       if (!r.ok) logErro = "HTTP " + r.status;
       else {
         const d = await r.json<{ eventos?: unknown[] }>().catch(() => null);

@@ -24,6 +24,11 @@
     }
   ],
   "ai": { "binding": "AI" },
+  // Ligação interna com o worker de atividade do catálogo (evita o 404 de
+  // Worker→Worker no mesmo workers.dev). O nome do serviço = nome do worker.
+  "services": [
+    { "binding": "ATIVIDADE", "service": "bt-atividade" }
+  ],
   "observability": { "enabled": true },
   // Lembrete de reposição pendente (push). Horários em UTC ≈ 8h, 12h e 16h de Brasília.
   "triggers": { "crons": ["0 11 * * *", "0 15 * * *", "0 19 * * *"] },

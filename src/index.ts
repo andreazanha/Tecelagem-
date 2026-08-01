@@ -26,6 +26,9 @@ export interface Env {
   BUCKET: R2Bucket;
   ASSETS: Fetcher;
   AI: Ai;
+  // Service binding para o worker de atividade do catálogo (bt-atividade).
+  // Necessário porque Worker→Worker no mesmo *.workers.dev dá 404 por fetch normal.
+  ATIVIDADE?: Fetcher;
   // Web Push (notificação de pedido novo). Definidos em wrangler.jsonc › vars.
   VAPID_PUBLIC?: string;
   VAPID_JWK?: string;
