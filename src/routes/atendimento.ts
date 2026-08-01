@@ -788,8 +788,8 @@ atendimento.get("/config", async (c) => {
     recompra_dias: cfg.recompra_dias || "45",
     reativacao_ativo: (cfg.reativacao_ativo ?? "0") === "1",
     reativacao_dias: cfg.reativacao_dias || "30",
-    reativacao_limite: cfg.reativacao_limite || "40",
-    reativacao_intervalo_seg: cfg.reativacao_intervalo_seg || "25",
+    reativacao_limite: cfg.reativacao_limite || "12",
+    reativacao_intervalo_seg: cfg.reativacao_intervalo_seg || "40",
     reativacao_msg: cfg.reativacao_msg || "",
     reativacao_msg_padrao: MSG_REATIVACAO_PADRAO,
     catalogo_evento_token: cfg.catalogo_evento_token || "",
@@ -1452,7 +1452,7 @@ export async function prospeccaoCatalogo(env: Env): Promise<number> {
   if (!(await horarioComercialOk(env, cfg))) return 0;
 
   const dias = Math.max(1, parseInt(cfg.reativacao_dias || "30", 10) || 30);
-  const limite = Math.max(1, parseInt(cfg.reativacao_limite || "40", 10) || 40);
+  const limite = Math.max(1, parseInt(cfg.reativacao_limite || "12", 10) || 12);
 
   const { results: clientes } = await env.DB.prepare(
     `SELECT id, nome, contato, whatsapp, cidade, uf, representante, ultimo_faturamento FROM clientes
@@ -1470,7 +1470,7 @@ export async function prospeccaoCatalogo(env: Env): Promise<number> {
   // Anti-banimento: NÃO dispara em rajada. Espaça cada envio (intervalo aleatório,
   // padrão 25–55s) e para o disparo depois de ~8 min pra não estourar o tempo do cron
   // (o que sobrar sai no próximo horário; é idempotente). Intervalo é configurável.
-  const gapMin = Math.max(5, parseInt(cfg.reativacao_intervalo_seg || "25", 10) || 25);
+  const gapMin = Math.max(5, parseInt(cfg.reativacao_intervalo_seg || "40", 10) || 40);
   const dormir = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
   const inicio = Date.now();
   const agora = inicio;

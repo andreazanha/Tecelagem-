@@ -143,7 +143,9 @@ export function Atendimento() {
             return (
               <div className="fx-col" key={col.id}>
                 <div className="fx-hd"><span className="fx-dot" style={{ background: col.cor }} />{col.label}<span className="ct">{cs.length}</span></div>
-                {cs.map((c) => <ConvMini key={c.id} c={c} onAbrir={() => setAbrir(c.id)} />)}
+                <div className="fx-col-body">
+                  {cs.map((c) => <ConvMini key={c.id} c={c} onAbrir={() => setAbrir(c.id)} />)}
+                </div>
               </div>
             );
           })}
