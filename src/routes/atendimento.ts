@@ -288,6 +288,22 @@ async function chamarIa(env: Env, conv: ConvRow, sistema: string): Promise<IaDec
   return null;
 }
 
+// Transcreve um áudio (nota de voz do WhatsApp) em texto, via IA (Whisper na
+// Cloudflare Workers AI). Retorna "" se não der (sem binding, download falhou, áudio
+// vazio…) — aí o webhook responde pedindo pra mandar por escrito.
+async function transcreverAudio(env: Env, url: string): Promise<string> {
+  const AI = env.AI as unknown as { run: (m: string, o: unknown) => Promise<{ text?: string }> };
+  if (!AI?.run || !url) return "";
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return "";
+    const buf = new Uint8Array(await resp.arrayBuffer());
+    if (!buf.length) return "";
+    const res = await AI.run("@cf/openai/whisper", { audio: [...buf] });
+    return String(res?.text ?? "").trim();
+  } catch { return ""; }
+}
+
 // ── Status do pedido (Bia consulta a produção pelo CNPJ) ──────────────────────────
 // Esteira canônica de fases (produção + pós-revisão). Ordem = avanço do pedido.
 const FASES_PEDIDO = ["tecelagem", "passadoria", "corte", "costura", "revisao", "expedicao", "fiscal", "transporte", "entregue"];
@@ -618,9 +634,19 @@ atendimento.post("/webhook", async (c) => {
   // Texto pode vir em text.message, ou legendas de mídia (image.caption etc.).
   const t = b.text as { message?: string } | undefined;
   const img = b.image as { caption?: string } | undefined;
-  const texto = (t?.message ?? img?.caption ?? "").toString();
+  const audio = b.audio as { audioUrl?: string; url?: string } | undefined;
+  let texto = (t?.message ?? img?.caption ?? "").toString();
   const nomeContato = String(b.senderName ?? b.chatName ?? b.pushName ?? "").trim();
   if (!phone) return c.json({ ignorado: "sem-telefone" });
+  // Áudio (nota de voz): transcreve com IA e trata como texto normal. Se não der pra
+  // ouvir, responde pedindo por escrito — em vez de ignorar e deixar o cliente sem resposta.
+  if (!texto.trim() && audio) {
+    texto = await transcreverAudio(c.env, audio.audioUrl || audio.url || "");
+    if (!texto.trim()) {
+      await enviarWhatsapp(c.env, phone, { tipo: "texto", texto: "Oi! 😊 Recebi seu áudio, mas não consegui ouvir direitinho por aqui. Pode me mandar por *escrito*, por favor? Assim já te respondo! 💛" });
+      return c.json({ ignorado: "audio-sem-transcricao" });
+    }
+  }
   if (!texto.trim()) return c.json({ ignorado: "sem-texto" });
   const r = await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, new URL(c.req.url).origin);
   if ("erro" in r) return c.json({ error: r.erro }, 400);
