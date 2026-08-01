@@ -661,9 +661,13 @@ atendimento.post("/catalogo-evento", async (c) => {
 // ── LEITURA (PULL) da atividade do catálogo (bt-atividade) — chamado pelo cron ────
 // Lê GET no /log configurado, mapeia repId→repNome (dos eventos "envio"), e cria os
 // leads no board. Guarda o último ts processado para não repetir. Read-only p/ o cliente.
+// Corrige a URL do log: codifica o "|" cru (senão a Cloudflare devolve 404).
+function urlLogAtividade(cfg: Record<string, string>): string {
+  return (cfg.catalogo_log_url || "").trim().replace(/\|/g, "%7C");
+}
 export async function lerAtividadeCatalogo(env: Env): Promise<number> {
   const cfg = await lerConfig(env);
-  const url = (cfg.catalogo_log_url || "").trim();
+  const url = urlLogAtividade(cfg);
   if (!url) return 0;
   let eventos: Array<Record<string, unknown>> = [];
   try {
@@ -890,7 +894,7 @@ atendimento.post("/sincronizar-catalogo", async (c) => {
   }
   // Diagnóstico: URL usada, erro de leitura, total de eventos, conversas de catálogo e último ts.
   const cfg = await lerConfig(c.env);
-  const logUrl = (cfg.catalogo_log_url || "").trim();
+  const logUrl = urlLogAtividade(cfg);
   let logTotal = -1, logErro = "";
   if (!logUrl) {
     logErro = "URL vazia — preencha e clique em SALVAR antes de sincronizar";
