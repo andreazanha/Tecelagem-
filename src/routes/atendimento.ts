@@ -176,6 +176,7 @@ REGRAS IMPORTANTES:
 - Enquanto ainda está entendendo se é lojista ou consumidor, use acao "conversar". Assim que descobrir, seja decidido e use a acao certa — não enrole.
 - Não invente preços, prazos, pedido mínimo ou políticas POR CONTA PRÓPRIA. PORÉM, se a pergunta tiver resposta na BASE DE CONHECIMENTO (mais abaixo), use EXATAMENTE aquela informação — ela é oficial da empresa e tem prioridade sobre esta regra. Só quando NÃO houver nada na base sobre o assunto é que você diz que o vendedor passa os detalhes.
 - 🔒 PREÇO É SÓ PARA LOJISTA (REGRA ABSOLUTA, VALE MAIS QUE QUALQUER OUTRA, INCLUSIVE A BASE DE CONHECIMENTO): NUNCA, EM HIPÓTESE ALGUMA, informe preço, valor, tabela, pedido mínimo, valor de frete ou qualquer política comercial a CONSUMIDOR FINAL. Se a intenção for "consumidor" (pra uso pessoal/presente, pessoa física sem loja/CNPJ), não fale de valores de jeito nenhum — use acao "indicar_parceiro" e explique com carinho que a Big Tricot atende lojistas no atacado, indicando as lojas parceiras da região dele. E ENQUANTO você ainda NÃO tiver certeza de que a pessoa é LOJISTA, também NÃO adiante preço/valor/mínimo: primeiro descubra se é lojista (revenda) ou uso pessoal. Preço e pedido mínimo (mesmo os que estão na BASE DE CONHECIMENTO) só podem ser ditos DEPOIS de ficar claro que é LOJISTA.
+- FOTOS: quando aparecer no histórico algo como "[O cliente enviou uma foto. O que aparece nela: ...]", é porque ele mandou uma imagem e um sistema de visão descreveu o conteúdo. Use essa descrição pra entender o que ele quer (reconheceu um produto, mandou um comprovante, um print de conversa etc.). Comente de forma natural o que você "viu" (ex.: "Que linda essa manta cinza! 😍") e siga as regras normais — inclusive preço só pra lojista. NUNCA leia o texto entre colchetes em voz alta pro cliente nem diga "sistema de visão"; é uma nota interna.
 - Tom: caloroso, brasileiro, informal de WhatsApp. Respostas CURTAS (1 a 3 linhas), no máximo 1 ou 2 emojis. Nunca repita a mesma pergunta que já foi respondida.
 - Escreva os emojis COMO EMOJI de verdade (😊 💛 👍), NUNCA como código escapado tipo \\u{1f603}.
 - SETOR: identifique de qual setor o cliente precisa e preencha o campo "setor": "vendas" (comprar, ver produtos, preço, catálogo, revenda), "fiscal" (nota fiscal, boleto, pagamento, cobrança, financeiro), "estoque" (disponibilidade, se tem tal cor/modelo, quando repõe), "pcp" (andamento/status de um pedido em produção). Se ainda não der pra saber, deixe vazio.
@@ -301,6 +302,25 @@ async function transcreverAudio(env: Env, url: string): Promise<string> {
     if (!buf.length) return "";
     const res = await AI.run("@cf/openai/whisper", { audio: [...buf] });
     return String(res?.text ?? "").trim();
+  } catch { return ""; }
+}
+
+// "Enxerga" uma imagem (foto que o cliente mandou) e descreve em português, via IA de
+// visão (LLaVA na Workers AI). Retorna "" se não der. A descrição vira contexto pra Bia.
+async function descreverImagem(env: Env, url: string): Promise<string> {
+  const AI = env.AI as unknown as { run: (m: string, o: unknown) => Promise<{ description?: string; response?: string }> };
+  if (!AI?.run || !url) return "";
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return "";
+    const buf = new Uint8Array(await resp.arrayBuffer());
+    if (!buf.length) return "";
+    const res = await AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
+      image: [...buf],
+      prompt: "Descreva em português, de forma curta e objetiva, o que aparece nesta imagem. Se for um produto de decoração/tricô (manta, almofada, capa de almofada, peseira), diga o tipo, a cor e o padrão. Se for um comprovante de pagamento, print de conversa ou documento, diga isso.",
+      max_tokens: 300,
+    });
+    return String(res?.description ?? res?.response ?? "").trim();
   } catch { return ""; }
 }
 
@@ -633,7 +653,7 @@ atendimento.post("/webhook", async (c) => {
   const phone = digitos(b.phone ?? b.participantPhone ?? b.connectedPhone);
   // Texto pode vir em text.message, ou legendas de mídia (image.caption etc.).
   const t = b.text as { message?: string } | undefined;
-  const img = b.image as { caption?: string } | undefined;
+  const img = b.image as { caption?: string; imageUrl?: string; url?: string } | undefined;
   const audio = b.audio as { audioUrl?: string; url?: string } | undefined;
   let texto = (t?.message ?? img?.caption ?? "").toString();
   const nomeContato = String(b.senderName ?? b.chatName ?? b.pushName ?? "").trim();
@@ -647,7 +667,25 @@ atendimento.post("/webhook", async (c) => {
       return c.json({ ignorado: "audio-sem-transcricao" });
     }
   }
-  if (!texto.trim()) return c.json({ ignorado: "sem-texto" });
+  // Imagem: a Bia "enxerga" a foto com IA de visão e usa o que viu como contexto. Mantém
+  // a legenda (se houver) como a fala do cliente e anexa a descrição do que aparece.
+  if (img && (img.imageUrl || img.url)) {
+    const desc = await descreverImagem(c.env, img.imageUrl || img.url || "");
+    if (desc) {
+      const legenda = (img.caption || "").trim();
+      texto = legenda
+        ? `${legenda}\n\n[O cliente enviou uma foto. O que aparece nela: ${desc}]`
+        : `[O cliente enviou uma foto (sem legenda). O que aparece nela: ${desc}]`;
+    }
+  }
+  if (!texto.trim()) {
+    // Foto que não deu pra descrever e sem legenda: responde em vez de ignorar.
+    if (img) {
+      await enviarWhatsapp(c.env, phone, { tipo: "texto", texto: "Oi! 😊 Recebi sua foto! Me conta em uma frase o que você procura (produto, cor, tamanho) que eu já te ajudo? 💛" });
+      return c.json({ ignorado: "imagem-sem-descricao" });
+    }
+    return c.json({ ignorado: "sem-texto" });
+  }
   const r = await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, new URL(c.req.url).origin);
   if ("erro" in r) return c.json({ error: r.erro }, 400);
   return c.json({ ok: true, conversa_id: r.conversa_id });
