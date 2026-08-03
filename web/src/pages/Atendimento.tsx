@@ -736,6 +736,16 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     setBusy(true);
     try { await api.atendAssumir(id, nome); carregar(); onMudou(); } finally { setBusy(false); }
   }
+  // Devolve a conversa pra Big (IA) — inverso do "assumir". A partir daqui a IA responde
+  // sozinha as próximas mensagens do cliente.
+  async function devolverIa() {
+    setBusy(true);
+    try {
+      const r = await api.atendIaAssumir(id);
+      if (r && r.ia_ligada === false) alert("A conversa voltou pra Big, mas a IA de atendimento está DESLIGADA em Configurações → Conexão. Ligue-a pra ela responder.");
+      carregar(); onMudou();
+    } catch { alert("Não consegui devolver pra IA."); } finally { setBusy(false); }
+  }
   const [sugerindo, setSugerindo] = useState(false);
   async function sugerir() {
     setSugerindo(true);
@@ -959,6 +969,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: encerrado ? "#a7f3d0" : undefined, background: encerrado ? "#ecfdf5" : undefined, color: encerrado ? "#065f46" : undefined }} disabled={busy} onClick={encerrar} title="Marca o atendimento como resolvido (para de piscar). NÃO envia nada ao cliente.">
               {encerrado ? "✅ Encerrado — reabrir" : "✅ Encerrar atendimento"}
             </button>
+            {(humano || d?.responsavel) && (
+              <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: "#ddd6fe", background: "#f5f3ff", color: "#6d28d9", fontWeight: 700 }} disabled={busy} onClick={devolverIa} title="A Big (IA) volta a assumir e responde automaticamente as próximas mensagens deste cliente.">
+                🤖 Devolver pra Big (IA)
+              </button>
+            )}
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5 }} disabled={busy} onClick={toggleNaoPerturbe} title="Para/retoma as mensagens automáticas para este cliente">
               {d?.nao_perturbe ? "🔕 Automáticas pausadas — retomar" : "🔔 Pausar mensagens automáticas"}
             </button>

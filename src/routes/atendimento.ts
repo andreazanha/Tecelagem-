@@ -1806,6 +1806,21 @@ atendimento.post("/:id/assumir", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── Devolver a conversa pra IA (a Big volta a responder automaticamente) ──────────────
+// Inverso do "assumir": tira o responsável humano, volta o estado pra 'ia-triagem' e solta
+// a coluna manual — assim a Big responde a PRÓXIMA mensagem do cliente por conta própria.
+// (Precisa da IA de atendimento LIGADA em Configurações; senão ninguém responde.)
+atendimento.post("/:id/ia-assumir", async (c) => {
+  const id = c.req.param("id");
+  const conv = await c.env.DB.prepare("SELECT id FROM atend_conversas WHERE id=?").bind(id).first<{ id: string }>();
+  if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  const cfg = await lerConfig(c.env);
+  await c.env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', responsavel=NULL, coluna_manual=NULL, encerrado_em=NULL, atualizado_em=datetime('now') WHERE id=?").bind(id).run();
+  await addMsg(c.env, id, "out", "sistema", "sistema", "🤖 A Big (IA) voltou a assumir este atendimento — ela responde as próximas mensagens.");
+  // Avisa se a IA global estiver desligada (aí a devolução não adianta sozinha).
+  return c.json({ ok: true, ia_ligada: cfg.atendimento_ia === "1" });
+});
+
 // ── Sugestão de resposta por IA (o vendedor edita antes de enviar) ────────────────
 atendimento.post("/:id/sugerir", async (c) => {
   const id = c.req.param("id");
