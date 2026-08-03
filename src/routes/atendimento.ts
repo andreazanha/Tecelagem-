@@ -1117,6 +1117,25 @@ atendimento.post("/:id/encerrar", async (c) => {
   return c.json({ ok: true });
 });
 
+// Foto de perfil do contato (Z-API) — pra mostrar o avatar real na conversa.
+atendimento.get("/:id/foto-perfil", async (c) => {
+  const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(c.req.param("id")).first<{ telefone: string }>();
+  if (!conv) return c.json({ link: null });
+  const cfg = await lerConfig(c.env);
+  if (cfg.zapi_ativo !== "1") return c.json({ link: null });
+  const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
+  const inst = cfg.zapi_instance || "", token = cfg.zapi_token || "";
+  if (!inst || !token) return c.json({ link: null });
+  const headers: Record<string, string> = {};
+  if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
+  try {
+    const r = await fetch(`${base}/instances/${inst}/token/${token}/profile-picture?phone=${digitos(conv.telefone)}`, { headers, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return c.json({ link: null });
+    const d = await r.json().catch(() => ({})) as { link?: string; imgUrl?: string };
+    return c.json({ link: d?.link || d?.imgUrl || null });
+  } catch { return c.json({ link: null }); }
+});
+
 // Mover um card pra outra coluna (arrastar) — grava a coluna manual.
 atendimento.post("/:id/coluna", async (c) => {
   const b = await c.req.json<{ coluna?: string }>().catch(() => ({}) as Record<string, string>);

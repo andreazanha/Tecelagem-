@@ -657,6 +657,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     api.atendRespostasEmpresa().then(setRespEmpresa).catch(() => {});
   }
   useEffect(() => { carregarRespostas(); }, []);
+  const [fotoPerfil, setFotoPerfil] = useState<string | null>(null);
+  useEffect(() => { api.atendFotoPerfil(id).then((r) => setFotoPerfil(r.link)).catch(() => {}); }, [id]);
   function carregar() { api.atendConversa(id).then((c) => { setD(c); setRepSel((s) => s || c.representante || ""); }); }
   useEffect(() => { carregar(); const t = setInterval(carregar, 5000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => { api.listarRepresentantes().then((r) => setReps(r.filter((x) => x.ativo))).catch(() => {}); }, []);
@@ -747,7 +749,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card at-modal" onClick={(e) => e.stopPropagation()}>
         <div className="at-thd">
-          <div className="at-av">{iniciais(d?.nome || d?.contato_nome || d?.telefone)}</div>
+          <div className="at-av" style={fotoPerfil ? { backgroundImage: `url(${fotoPerfil})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{fotoPerfil ? "" : iniciais(d?.nome || d?.contato_nome || d?.telefone)}</div>
           <div className="info">
             <div className="nm">{d?.nome || d?.contato_nome || (d ? telBonito(d.telefone) : "…")}</div>
             <div className="sub">{d ? telBonito(d.telefone) : ""}{d?.cidade ? ` · ${d.cidade}/${d.uf || ""}` : ""}</div>
