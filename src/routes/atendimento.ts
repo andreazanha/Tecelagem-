@@ -1108,20 +1108,17 @@ async function lerColunasAtend(env: Env): Promise<{ id: string; label: string; c
     if (Array.isArray(raw)) extra = raw.filter((x) => x && x.id && x.label).map((x) => ({ id: String(x.id), label: String(x.label), cor: String(x.cor || "#64748b"), custom: true }));
   } catch { extra = []; }
   const base = ATEND_COLUNAS.map((c0) => ({ id: c0.id as string, label: c0.label as string, cor: c0.cor as string }));
+  const baseIdx = new Map(base.map((b, i) => [b.id, i]));
   const todas = [...base, ...extra.filter((e) => !base.some((b) => b.id === e.id))];
   let ordem: string[] = [];
   try { const o = JSON.parse(cfg.atend_colunas_ordem || "[]"); if (Array.isArray(o)) ordem = o.map(String); } catch { ordem = []; }
-  const pos = (id: string) => { const i = ordem.indexOf(id); return i < 0 ? 9999 : i; };
-  const ordenadas = todas.map((c0, i) => ({ ...c0, _i: i })).sort((a, b) => (pos(a.id) - pos(b.id)) || (a._i - b._i)).map(({ _i, ...c0 }) => { void _i; return c0; });
-  // "Montando pedido" fica logo DEPOIS de "Aguardando setor interno" (por pedido).
-  const iMont = ordenadas.findIndex((c0) => c0.id === "montando-pedido");
-  if (iMont >= 0) {
-    const [mont] = ordenadas.splice(iMont, 1);
-    const iSetor = ordenadas.findIndex((c0) => c0.id === "aguardando-setor");
-    ordenadas.splice(iSetor >= 0 ? iSetor + 1 : ordenadas.length, 0, mont);
-  }
-  // "Reclamação ou pendência" fica SEMPRE como última coluna (por pedido), mesmo que
-  // haja uma ordem antiga salva que a colocava no começo.
+  // As colunas PADRÃO seguem a ordem CANÔNICA do código (ATEND_COLUNAS) — assim reordenar
+  // é só mexer no array, e uma ordem antiga salva no banco não bagunça mais. As colunas
+  // CRIADAS pelo gestor vêm depois, na ordem que ele salvou.
+  const customPos = (id: string) => { const i = ordem.indexOf(id); return i < 0 ? 9999 : i; };
+  const chave = (id: string) => (baseIdx.has(id) ? baseIdx.get(id)! : 1000 + customPos(id));
+  const ordenadas = todas.map((c0, i) => ({ ...c0, _i: i })).sort((a, b) => (chave(a.id) - chave(b.id)) || (a._i - b._i)).map(({ _i, ...c0 }) => { void _i; return c0; });
+  // "Reclamação ou pendência" SEMPRE por último (depois inclusive das colunas criadas).
   const iRec = ordenadas.findIndex((c0) => c0.id === "reclamacao");
   if (iRec >= 0) ordenadas.push(ordenadas.splice(iRec, 1)[0]);
   return ordenadas;
