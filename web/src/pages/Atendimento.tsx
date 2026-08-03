@@ -470,6 +470,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [editDados, setEditDados] = useState(false);
   const [formD, setFormD] = useState({ nome: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
   const [respondendo, setRespondendo] = useState<{ id: string; texto: string } | null>(null);
+  const [modo, setModo] = useState<"cliente" | "interno">("cliente");
   const fim = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Faz o campo de mensagem crescer na vertical conforme digita (até um limite).
@@ -548,6 +549,13 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     try { await api.atendEnviar(id, { texto: texto.trim(), autor: d?.responsavel || "Atendente", responder_a: respondendo?.id }); setTexto(""); setRespondendo(null); carregar(); onMudou(); }
     finally { setBusy(false); }
   }
+  // Nota interna: recado da equipe DENTRO da conversa — o cliente NÃO recebe.
+  async function enviarNota() {
+    if (!texto.trim()) return;
+    setBusy(true);
+    try { await api.atendNota(id, { texto: texto.trim(), autor: getUser()?.nome || "Equipe" }); setTexto(""); carregar(); onMudou(); }
+    finally { setBusy(false); }
+  }
 
   const humano = d?.coluna === "atendimento-humano";
   return (
@@ -568,6 +576,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             {d?.mensagens.map((m) => (
               m.tipo === "sistema"
                 ? <div className="at-sys" key={m.id}>⚙️ {m.texto}</div>
+                : m.tipo === "nota"
+                ? <div className="at-nota" key={m.id}><span className="at-nota-hd">📝 {m.autor || "Equipe"} · nota interna (o cliente não vê)</span>{formatarMsg(m.texto)}<span className="at-tm">{hora(m.criado_em)}</span></div>
                 : <div key={m.id} className={"at-b " + (m.direcao === "in" ? "in" : "out")}>
                     {m.autor && m.direcao === "out" && <div className="at-aut">{m.autor === "bot" ? "🤖 robô" : m.autor}</div>}
                     {m.responder_texto && <div className="at-quote">↪ {m.responder_texto}</div>}
@@ -724,7 +734,17 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
               <button className="modal-x" style={{ position: "static" }} onClick={() => setRespondendo(null)} title="Cancelar resposta">✕</button>
             </div>
           )}
-          {humano
+          {/* Alternar: falar com o CLIENTE (WhatsApp) ou deixar NOTA INTERNA (só a equipe vê) */}
+          <div style={{ flexBasis: "100%", display: "flex", gap: 6, marginBottom: 4 }}>
+            <button className="at-modo-pill" style={modo === "cliente" ? { background: "#25d366", color: "#fff", borderColor: "#25d366" } : {}} onClick={() => setModo("cliente")}>💬 Cliente</button>
+            <button className="at-modo-pill" style={modo === "interno" ? { background: "#f59e0b", color: "#fff", borderColor: "#f59e0b" } : {}} onClick={() => setModo("interno")}>📝 Nota interna</button>
+          </div>
+          {modo === "interno"
+            ? <>
+                <textarea ref={inputRef} rows={1} placeholder="Recado pra equipe (o cliente NÃO vê)… ex.: cobra o boleto dele" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarNota(); } }} style={{ background: "#fffbeb", borderColor: "#fde68a" }} />
+                <button className="at-send" style={{ background: "#f59e0b" }} disabled={busy} onClick={enviarNota} title="Salvar nota interna">📝</button>
+              </>
+            : humano
             ? <>
                 <button className="at-send" style={{ background: "transparent", color: "var(--accent,#7c3aed)" }} disabled={busy || sugerindo} onClick={sugerir} title="Sugerir resposta com IA (você pode editar)">{sugerindo ? "…" : "✨"}</button>
                 <button className="at-send" style={{ background: "transparent" }} onClick={() => setMostrarResp((v) => !v)} title="Respostas prontas">📋</button>

@@ -1236,6 +1236,13 @@ body.dark .at-quote { background: #ffffff14; color: #b8c2cc; }
 .at-b:hover .at-reply { opacity: 1; }
 @media (hover: none) { .at-reply { opacity: .85; } }
 body.dark .at-reply { background: #1f2c34; border-color: #33454f; }
+/* Nota interna (chat da equipe dentro da conversa) — o cliente não vê */
+.at-nota { align-self: center; max-width: 92%; background: #fef9c3; border: 1px solid #fde68a; color: #713f12; border-radius: 10px; padding: 7px 11px 6px; font-size: 12.5px; line-height: 1.4; white-space: pre-wrap; box-shadow: 0 1px 1px #0001; }
+body.dark .at-nota { background: #3a3011; border-color: #665318; color: #fde68a; }
+.at-nota-hd { display: block; font-size: 10px; font-weight: 800; opacity: .8; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .3px; }
+/* Alternador cliente/interno no compose */
+.at-modo-pill { font: inherit; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line,#d5dbe6); background: var(--card,#fff); color: var(--ink,#334155); cursor: pointer; }
+body.dark .at-modo-pill { background: #0b1220; border-color: #ffffff1a; color: #cbd5e1; }
 .at-file { font-weight: 700; color: #0b3d2e; } body.dark .at-file { color: #86efac; }
 .at-sys { align-self: center; background: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 body.dark .at-sys { background: #12233f; color: #93c5fd; }

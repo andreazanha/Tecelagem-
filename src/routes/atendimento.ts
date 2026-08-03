@@ -1345,7 +1345,7 @@ atendimento.get("/", async (c) => {
   if (!gestor && usuario) { cond.push("(c.responsavel = ? OR c.responsavel IS NULL OR c.responsavel = '')"); binds.push(usuario); }
   const stmt = c.env.DB.prepare(
     `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.responsavel, c.atualizado_em, c.ultima_in_em, c.tipo, c.representante, c.origem, c.contato_nome, c.autorizado, c.interessado,
-            (SELECT texto FROM atend_mensagens m WHERE m.conversa_id=c.id ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 1) AS ultima_msg,
+            (SELECT texto FROM atend_mensagens m WHERE m.conversa_id=c.id AND m.tipo NOT IN ('nota','sistema') ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 1) AS ultima_msg,
             (SELECT etapa FROM funil_cards fc WHERE fc.id = c.card_id) AS funil_etapa
        FROM atend_conversas c WHERE ${cond.join(" AND ")} ORDER BY c.atualizado_em DESC`
   );
@@ -1481,7 +1481,7 @@ atendimento.post("/:id/sugerir", async (c) => {
   const conv = await c.env.DB.prepare("SELECT nome FROM atend_conversas WHERE id=?").bind(id).first<{ nome: string | null }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
   const { results } = await c.env.DB.prepare(
-    "SELECT direcao, texto FROM atend_mensagens WHERE conversa_id=? AND tipo<>'sistema' ORDER BY criado_em DESC, rowid DESC LIMIT 12"
+    "SELECT direcao, texto FROM atend_mensagens WHERE conversa_id=? AND tipo NOT IN ('sistema','nota') ORDER BY criado_em DESC, rowid DESC LIMIT 12"
   ).bind(id).all<{ direcao: string; texto: string | null }>();
   const hist = results.reverse().map((m) => `${m.direcao === "in" ? "Cliente" : "Atendente"}: ${m.texto || ""}`).join("\n");
   if (!c.env.AI?.run) return c.json({ error: "IA indisponível no momento" }, 503);
@@ -1515,6 +1515,20 @@ atendimento.post("/:id/dados", async (c) => {
   if (!campos.length) return c.json({ ok: true });
   vals.push(id);
   await c.env.DB.prepare(`UPDATE atend_conversas SET ${campos.join(", ")}, atualizado_em=datetime('now') WHERE id=?`).bind(...vals).run();
+  return c.json({ ok: true });
+});
+
+// ── Nota interna (chat da equipe DENTRO da conversa) — NÃO vai pro cliente ─────────
+atendimento.post("/:id/nota", async (c) => {
+  const b = await c.req.json<{ texto?: string; autor?: string }>().catch(() => ({}) as Record<string, string>);
+  const texto = (b.texto || "").trim();
+  if (!texto) return c.json({ error: "texto é obrigatório" }, 400);
+  const id = c.req.param("id");
+  const conv = await c.env.DB.prepare("SELECT id FROM atend_conversas WHERE id=?").bind(id).first<{ id: string }>();
+  if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  // tipo "nota": aparece na conversa só pra equipe; NÃO chama enviarWhatsapp.
+  await addMsg(c.env, id, "out", (b.autor || "Equipe").trim(), "nota", texto);
+  await c.env.DB.prepare("UPDATE atend_conversas SET atualizado_em=datetime('now') WHERE id=?").bind(id).run();
   return c.json({ ok: true });
 });
 
