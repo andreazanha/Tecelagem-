@@ -434,6 +434,10 @@ function ClienteModal({ cliente, onFechar, onSalvo }: { cliente: Partial<Cliente
             <label className="fld">CNPJ<input value={f.cnpj || ""} onChange={(e) => set("cnpj", e.target.value)} /></label>
             <label className="fld full">Observação<textarea value={f.observacao || ""} onChange={(e) => set("observacao", e.target.value)} rows={2} /></label>
           </div>
+          <label className="fld full" style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6, padding: "10px 12px", borderRadius: 8, border: "1px solid " + (f.bloqueado ? "#fecaca" : "var(--line)"), background: f.bloqueado ? "#fef2f2" : "transparent" }}>
+            <input type="checkbox" checked={!!f.bloqueado} onChange={(e) => setF((x) => ({ ...x, bloqueado: e.target.checked }))} style={{ width: 18, height: 18 }} />
+            <span><b>🚫 Bloquear mensagens</b> — não enviar <b>nenhuma</b> mensagem no WhatsApp pra este cliente (caloteiro / inadimplente). Vale pro robô e pras automáticas.</span>
+          </label>
         </div>
         <div className="modal-ft">
           <button className="btn" onClick={onFechar}>Cancelar</button>

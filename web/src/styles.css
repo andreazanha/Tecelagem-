@@ -1120,7 +1120,9 @@ body.dark .fx-pill { background: #18202f; border-color: #26324a; }
 body.dark .fx-pill.on { background: #4f46e5; border-color: #4f46e5; color: #fff; }
 .fx-alertbar { display: flex; gap: 8px; align-items: center; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 9px 13px; font-size: 13px; color: #92400e; font-weight: 600; margin-bottom: 14px; }
 body.dark .fx-alertbar { background: #2a2410; border-color: #5c4a12; color: #fcd34d; }
-.fx-board { display: flex; gap: 12px; overflow-x: auto; padding: 4px 2px 14px; align-items: flex-start; }
+/* Altura fixa: o quadro rola por dentro (x e y), então a barra de rolagem de baixo
+   fica sempre visível — não some quando a página desce. */
+.fx-board { display: flex; gap: 12px; overflow: auto; padding: 4px 2px 14px; align-items: flex-start; max-height: calc(100dvh - 200px); min-height: 300px; overscroll-behavior: contain; }
 .fx-col { flex: 0 0 224px; max-width: 224px; background: #eef1f6; border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-height: 120px; display: flex; flex-direction: column; max-height: calc(100vh - 210px); }
 body.dark .fx-col { background: #111826; border-color: #243044; }
 /* Cabeçalho da coluna fica fixo; só o corpo (cards) rola. */

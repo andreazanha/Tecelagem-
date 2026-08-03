@@ -1147,6 +1147,14 @@ async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; text
   const phone = digitos(tel);
   let texto = String(saida.texto ?? "").trim();
   if (!phone || !texto) return { enviado: false, motivo: "vazio" };
+  // Cliente BLOQUEADO (caloteiro/inadimplente): não envia NADA — nem robô, nem campanha.
+  const core = phone.replace(/^55/, "").slice(-8);
+  if (core.length >= 8) {
+    const bloq = await env.DB.prepare(
+      `SELECT 1 FROM clientes WHERE COALESCE(bloqueado,0)=1 AND ${LIMPA_WPP} LIKE '%' || ? LIMIT 1`
+    ).bind(core).first().catch(() => null);
+    if (bloq) return { enviado: false, motivo: "cliente-bloqueado" };
+  }
   // Responder uma mensagem específica: se temos o id da Z-API, cita de forma NATIVA
   // (messageId). Se não (mensagem antiga sem id), cai num fallback citando o trecho.
   const body: Record<string, unknown> = { phone };
@@ -1454,7 +1462,14 @@ atendimento.get("/:id", async (c) => {
       pedidos_resumo = { nome: cli.nome, qtd: r?.qtd || 0, total: Number(r?.total) || 0, ultima: r?.ultima || null };
     }
   }
-  return c.json({ ...conv, coluna: colunaDe(conv.estado), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo });
+  // Cliente bloqueado? (por telefone) — pra avisar o atendente que nada será enviado.
+  const core = digitos(conv.telefone).replace(/^55/, "").slice(-8);
+  let bloqueado = 0;
+  if (core.length >= 8) {
+    const bq = await c.env.DB.prepare(`SELECT 1 FROM clientes WHERE COALESCE(bloqueado,0)=1 AND ${LIMPA_WPP} LIKE '%' || ? LIMIT 1`).bind(core).first().catch(() => null);
+    bloqueado = bq ? 1 : 0;
+  }
+  return c.json({ ...conv, coluna: colunaDe(conv.estado), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado });
 });
 
 // ── Atendente humano assume ─────────────────────────────────────────────────────────

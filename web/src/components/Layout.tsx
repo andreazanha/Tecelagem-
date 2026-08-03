@@ -6,8 +6,6 @@ import { getUser, setUser, pode } from "../auth";
 import { api, type MaterialCategoriaDef } from "../api";
 import { pushSuportado, pushAtivo, ativarPush, desativarPush } from "../push";
 import { Icon } from "./Icon";
-import { Assistente } from "./Assistente";
-import { ChatInterno } from "./ChatInterno";
 import { InstalarApp } from "./InstalarApp";
 import { DemoMode } from "./DemoMode";
 
@@ -424,8 +422,6 @@ export function Layout() {
         <Outlet />
       </main>
 
-      <Assistente />
-      <ChatInterno />
       <DemoMode />
     </div>
   );

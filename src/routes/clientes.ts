@@ -10,7 +10,7 @@ const str = (v: unknown) => String(v ?? "").trim() || null;
 type ClienteRow = {
   id: string; nome: string; contato: string | null; whatsapp: string | null; email: string | null;
   cidade: string | null; uf: string | null; cnpj: string | null; representante: string | null;
-  instagram: string | null; observacao: string | null; ultima_compra?: string | null; ultimo_faturamento?: string | null; created_at?: string | null;
+  instagram: string | null; observacao: string | null; bloqueado?: number | boolean | null; ultima_compra?: string | null; ultimo_faturamento?: string | null; created_at?: string | null;
 };
 
 // Último vendedor conhecido de cada cliente (fallback do representante quando o
@@ -34,7 +34,7 @@ clientes.get("/", async (c) => {
     return c.json(results);
   }
   const { results: cliAll } = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, ultima_compra, ultimo_faturamento, created_at FROM clientes ORDER BY nome"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, ultima_compra, ultimo_faturamento, created_at FROM clientes ORDER BY nome"
   ).all<ClienteRow>();
   // Nomes internos (ESTOQUE, OP CONSOLIDADA, REPOSIÇÃO, BIG TRICOT) não são clientes reais.
   const cli = cliAll.filter((c0) => !ehClienteInterno(c0.nome));
@@ -65,7 +65,7 @@ clientes.get("/", async (c) => {
 clientes.get("/:id", async (c) => {
   const id = c.req.param("id");
   const cli = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, ultima_compra, ultimo_faturamento, created_at FROM clientes WHERE id = ?"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, ultima_compra, ultimo_faturamento, created_at FROM clientes WHERE id = ?"
   ).bind(id).first<ClienteRow>();
   if (!cli) return c.json({ error: "cliente não encontrado" }, 404);
 
@@ -148,14 +148,15 @@ clientes.post("/", async (c) => {
     const ex = await c.env.DB.prepare("SELECT id FROM clientes WHERE nome = ?").bind(nome).first<{ id: string }>();
     id = ex?.id || crypto.randomUUID();
   }
+  const bloqueado = b.bloqueado === true || b.bloqueado === 1 ? 1 : 0;
   await c.env.DB.prepare(
-    `INSERT INTO clientes (id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO clientes (id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET nome=excluded.nome, contato=excluded.contato, whatsapp=excluded.whatsapp,
        email=excluded.email, cidade=excluded.cidade, uf=excluded.uf, cnpj=excluded.cnpj,
-       representante=excluded.representante, instagram=excluded.instagram, observacao=excluded.observacao`
+       representante=excluded.representante, instagram=excluded.instagram, observacao=excluded.observacao, bloqueado=excluded.bloqueado`
   )
-    .bind(id, nome, str(b.contato), str(b.whatsapp), str(b.email), str(b.cidade), str(b.uf), str(b.cnpj), str(b.representante), str(b.instagram), str(b.observacao))
+    .bind(id, nome, str(b.contato), str(b.whatsapp), str(b.email), str(b.cidade), str(b.uf), str(b.cnpj), str(b.representante), str(b.instagram), str(b.observacao), bloqueado)
     .run();
   return c.json({ id, nome });
 });

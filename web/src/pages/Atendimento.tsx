@@ -558,6 +558,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   }
 
   const humano = d?.coluna === "atendimento-humano";
+  const bloqueado = !!d?.bloqueado;
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card at-modal" onClick={(e) => e.stopPropagation()}>
@@ -568,6 +569,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             <div className="sub">{d ? telBonito(d.telefone) : ""}{d?.cidade ? ` · ${d.cidade}/${d.uf || ""}` : ""}</div>
           </div>
           {d && <span className="at-chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{d.coluna.replace(/-/g, " ")}</span>}
+          {bloqueado && <span className="at-chip" style={{ background: "#fee2e2", color: "#b91c1c" }} title="Mensagens bloqueadas para este cliente">🚫 bloqueado</span>}
           <button className="modal-x" onClick={onFechar}>✕</button>
         </div>
 
@@ -739,7 +741,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             <button className="at-modo-pill" style={modo === "cliente" ? { background: "#25d366", color: "#fff", borderColor: "#25d366" } : {}} onClick={() => setModo("cliente")}>💬 Cliente</button>
             <button className="at-modo-pill" style={modo === "interno" ? { background: "#f59e0b", color: "#fff", borderColor: "#f59e0b" } : {}} onClick={() => setModo("interno")}>📝 Nota interna</button>
           </div>
-          {modo === "interno"
+          {modo === "cliente" && bloqueado
+            ? <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", flexWrap: "wrap", background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: 8, padding: "8px 12px", fontSize: 12.5 }}>
+                🚫 <b>Cliente bloqueado</b> — nenhuma mensagem é enviada pra ele. Use <b>📝 Nota interna</b> ou desbloqueie em <b>Clientes</b>.
+              </div>
+            : modo === "interno"
             ? <>
                 <textarea ref={inputRef} rows={1} placeholder="Recado pra equipe (o cliente NÃO vê)… ex.: cobra o boleto dele" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarNota(); } }} style={{ background: "#fffbeb", borderColor: "#fde68a" }} />
                 <button className="at-send" style={{ background: "#f59e0b" }} disabled={busy} onClick={enviarNota} title="Salvar nota interna">📝</button>

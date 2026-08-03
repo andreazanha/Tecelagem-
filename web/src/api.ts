@@ -230,6 +230,7 @@ export interface ClienteCrm {
   representante?: string | null;
   instagram?: string | null;
   observacao?: string | null;
+  bloqueado?: number | boolean | null;
   created_at?: string | null;
   ultimo_faturamento?: string | null;
   pedidos?: number;
@@ -289,7 +290,7 @@ export interface AtendConversa {
 }
 export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; responder_texto?: string | null; criado_em: string }
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
-export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; interesses: string[]; pedidos_resumo: { nome: string; qtd: number; total: number; ultima: string | null } | null; mensagens: AtendMensagem[] }
+export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; bloqueado?: number | null; interesses: string[]; pedidos_resumo: { nome: string; qtd: number; total: number; ultima: string | null } | null; mensagens: AtendMensagem[] }
 export interface AtendResposta { conversa_id: string; estado: string; coluna: string; respostas: { tipo: string; texto: string }[]; notificarHumano: boolean }
 export interface ZapiConfig { zapi_base: string; zapi_instance: string; zapi_token: string; zapi_client_token: string; zapi_ativo: boolean; atendimento_ativo: boolean; atendimento_ia: boolean; equipe_numeros: string; ia_prompt: string; ia_prompt_padrao: string; catalogo_url: string; catalogo_senha: string; catalogo_msg: string; followup_ativo: boolean; followup_hora_ini: string; followup_hora_fim: string; followup_domingo: boolean; followup_ia: boolean; pos_venda_ativo: boolean; pos_venda_dias: string; recompra_ativo: boolean; recompra_dias: string; reativacao_ativo: boolean; reativacao_dias: string; reativacao_limite: string; reativacao_intervalo_seg: string; reativacao_msg: string; reativacao_msg_padrao: string; catalogo_evento_token: string; catalogo_evento_url: string; catalogo_log_url: string; webhook_url: string }
 
