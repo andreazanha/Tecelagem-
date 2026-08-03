@@ -38,8 +38,14 @@ function telBonito(t: string) {
 }
 function hora(iso?: string | null) {
   if (!iso) return "";
-  const m = iso.match(/(\d{2}):(\d{2})/);
-  return m ? `${m[1]}:${m[2]}` : "";
+  // criado_em vem em UTC ("YYYY-MM-DD HH:MM:SS"); mostra no horário de Brasília.
+  const m = iso.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (m) {
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
+    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+  }
+  const mm = iso.match(/(\d{2}):(\d{2})/);
+  return mm ? `${mm[1]}:${mm[2]}` : "";
 }
 const SETOR_EMOJI: Record<string, string> = { vendas: "🛒", financeiro: "💰", "pos-venda": "📦", outros: "💬" };
 

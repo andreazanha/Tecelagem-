@@ -532,8 +532,10 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Estado antes desta mensagem (pra saber se a conversa ACABOU de virar "humano").
   const estadoAntes = conv.estado;
 
-  // Atendente humano assumiu (ou já é reclamação) → o robô não responde mais, só registra.
-  if (conv.estado === "atendimento-humano" || conv.estado === "reclamacao") {
+  // Atendente humano assumiu (ou já é reclamação), OU já existe um responsável (ex.: Pedro
+  // já estava atendendo) → o robô NÃO responde de jeito nenhum, só registra e avisa o humano.
+  // Isso impede a IA de se meter numa conversa que já está com alguém do time.
+  if (conv.estado === "atendimento-humano" || conv.estado === "reclamacao" || String(conv.responsavel ?? "").trim()) {
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
   }
 
@@ -565,8 +567,11 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       // Conversa que JÁ vinha em andamento (cliente da base OU a 1ª mensagem já fala de
       // pedido/relação — ex.: "tirar um novo pedido", "meu boleto"). Nesse caso a Big só
       // cumprimenta e passa DIRETO pro humano, sem o fluxo de "você é novo cliente?".
-      const ehContinuacao = /(meu|nosso|[uú]ltimo|novo|pr[oó]ximo)\s+pedido|tirar\s+(um\s+|o\s+|mais\s+um\s+)?pedido|j[aá]\s+(comprei|compramos|fiz|fizemos)|sempre\s+compr|comprei\s+(com|de)\s+voc|nota\s+fiscal|boleto|fatura|reposi[çc]|mercadoria|meu\s+pagamento/i.test(texto);
-      if (conv.cliente_id || ehContinuacao) {
+      const ehContinuacao = /(meu|nosso|[uú]ltimo|novo|pr[oó]ximo)\s+pedido|tirar\s+(um\s+|o\s+|mais\s+um\s+)?pedido|j[aá]\s+(comprei|compramos|fiz|fizemos)|sempre\s+compr|comprei\s+(com|de)\s+voc|nota\s+fiscal|boleto|fatura|reposi[çc]|mercadoria|meu\s+pagamento|confirma.*valor|valores?\s+(est|certo)|tira\s+o\s+|c[oó]d\.?\s*produto|qtd|desconto/i.test(texto);
+      // Cliente que manda FOTO/ÁUDIO logo de cara quase sempre está no meio de um assunto
+      // (pedido, comprovante, print) — não é primeiro contato frio. Vai direto pro humano.
+      const temMidia = !!arquivoUrl;
+      if (conv.cliente_id || ehContinuacao || temMidia) {
         const saud = conv.cliente_id
           ? `${ola}${primeiro ? ", " + primeiro : ""}! 🤗 Que bom te ver de novo na *Big Tricot* 💛\nJá vou chamar alguém do nosso time pra te atender, tá? 😊`
           : `${ola}! 🤗 Aqui é da *Big Tricot* 💛\nJá vou chamar alguém do nosso time pra continuar seu atendimento, tá? 😊`;
