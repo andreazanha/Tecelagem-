@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { api, type Representante, type ComercialVendas, type ComercialDetalhe } from "../api";
+import { getUser, pode } from "../auth";
 
 type Aba = "dashboard" | "representantes";
 
@@ -25,15 +26,23 @@ function mesCorrente(): { de: string; ate: string } {
 }
 
 export function Comercial() {
-  const [aba, setAba] = useState<Aba>(() => (localStorage.getItem("comercial-aba") as Aba) || "dashboard");
+  // Só mostra as abas que o usuário tem permissão (Dashboard = vendas-dashboard,
+  // Representantes = representantes). Admin vê as duas.
+  const u = getUser();
+  const abas: { id: Aba; label: string }[] = [
+    ...(pode(u, "vendas-dashboard") ? [{ id: "dashboard" as Aba, label: "📊 Dashboard" }] : []),
+    ...(pode(u, "representantes") ? [{ id: "representantes" as Aba, label: "🧑‍💼 Representantes" }] : []),
+  ];
+  const abaInicial = (): Aba => {
+    const salva = localStorage.getItem("comercial-aba") as Aba | null;
+    if (salva && abas.some((a) => a.id === salva)) return salva;
+    return abas[0]?.id ?? "dashboard";
+  };
+  const [aba, setAba] = useState<Aba>(abaInicial);
   function mudar(a: Aba) {
     setAba(a);
     localStorage.setItem("comercial-aba", a);
   }
-  const abas: { id: Aba; label: string }[] = [
-    { id: "dashboard", label: "📊 Dashboard" },
-    { id: "representantes", label: "🧑‍💼 Representantes" },
-  ];
   return (
     <>
       <div className="page-head">

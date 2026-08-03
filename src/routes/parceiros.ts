@@ -252,7 +252,7 @@ export async function vitrineHtml(env: Env, uf?: string, cidade?: string): Promi
   }
   elUf.addEventListener('change', function(){ preencheCidades(); render(); });
   elCid.addEventListener('change', render);
-  // Pré-seleção (link que a Gaby manda já vem com estado). Seleciona o estado mesmo que
+  // Pré-seleção (link que a Big manda já vem com estado). Seleciona o estado mesmo que
   // ainda não haja loja cadastrada nele (aí a vitrine mostra o aviso de "sem loja aqui").
   if(PRE_UF){
     if(ufs.indexOf(PRE_UF)<0) elUf.appendChild(opt(PRE_UF,PRE_UF));

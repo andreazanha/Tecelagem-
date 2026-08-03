@@ -41,15 +41,16 @@ import { TvRevisao } from "./pages/TvRevisao";
 import { NovoPedidoTV } from "./pages/NovoPedidoTV";
 import { Login } from "./pages/Login";
 import { TVFrame } from "./components/TVFrame";
-import { getUser, pode, primeiraPagina } from "./auth";
+import { getUser, pode, podeAlgum, primeiraPagina } from "./auth";
 import "./styles.css";
 
 // Protege uma página: exige login e a permissão da tela. Sem permissão, manda
 // para a primeira página liberada do usuário.
-function Protegido({ page, children }: { page?: string; children: React.ReactNode }) {
+function Protegido({ page, children }: { page?: string | string[]; children: React.ReactNode }) {
   const u = getUser();
   if (!u) return <Navigate to="/login" replace />;
-  if (page && !pode(u, page)) return <Navigate to={primeiraPagina(u)} replace />;
+  const ok = !page || (Array.isArray(page) ? podeAlgum(u, page) : pode(u, page));
+  if (!ok) return <Navigate to={primeiraPagina(u)} replace />;
   return <>{children}</>;
 }
 
@@ -110,13 +111,13 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/pedidos/:id" element={<Protegido page="pedidos"><PedidoDetalhe /></Protegido>} />
           <Route path="/cadastros" element={<Protegido page="cadastros"><Cadastros /></Protegido>} />
           <Route path="/produtos" element={<Protegido page="produtos"><Produtos /></Protegido>} />
-          <Route path="/comercial" element={<Protegido page="comercial"><Comercial /></Protegido>} />
+          <Route path="/comercial" element={<Protegido page={["representantes", "vendas-dashboard"]}><Comercial /></Protegido>} />
           <Route path="/clientes" element={<Protegido page="comercial"><Clientes /></Protegido>} />
           <Route path="/clientes/:id" element={<Protegido page="comercial"><ClienteFicha /></Protegido>} />
           <Route path="/funil" element={<Protegido page="comercial"><Funil /></Protegido>} />
           <Route path="/atendimento" element={<Protegido page="atendimento"><CrmAtendimento /></Protegido>} />
           <Route path="/lojas-parceiras" element={<Protegido page="comercial"><LojasParceiras /></Protegido>} />
-          <Route path="/treinar-bia" element={<Protegido page="comercial"><TreinarBia /></Protegido>} />
+          <Route path="/treinar-bia" element={<Protegido page="treinar-ia"><TreinarBia /></Protegido>} />
           <Route path="/setores-atendimento" element={<Protegido page="atendimento-gestor"><SetoresAtendimento /></Protegido>} />
           <Route path="/painel-atendimento" element={<Protegido page="atendimento-gestor"><PainelGestor /></Protegido>} />
 

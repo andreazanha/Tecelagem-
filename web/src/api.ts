@@ -668,7 +668,7 @@ export const api = {
   parceiros: () => fetch("/api/parceiros").then((r) => j<LojaParceira[]>(r)),
   salvarParceiro: (b: Partial<LojaParceira>) => jsonPost("/api/parceiros", b).then((r) => j<{ ok: boolean; id: string }>(r)),
   excluirParceiro: (id: string) => fetch(`/api/parceiros/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
-  // Treino da Gaby (base de conhecimento)
+  // Treino da Big (base de conhecimento)
   conhecimento: () => fetch("/api/atendimento/conhecimento").then((r) => j<IaConhecimento[]>(r)),
   salvarConhecimento: (b: Partial<IaConhecimento>) => jsonPost("/api/atendimento/conhecimento", b).then((r) => j<{ ok: boolean; id: string }>(r)),
   excluirConhecimento: (id: string) => fetch(`/api/atendimento/conhecimento/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),

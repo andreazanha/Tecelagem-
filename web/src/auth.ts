@@ -25,7 +25,10 @@ export const PAGINAS: { key: string; label: string; tv?: boolean }[] = [
   { key: "produtos", label: "Produtos" },
   { key: "atendimento", label: "Atendimento — Atendente (só conversas)" },
   { key: "atendimento-gestor", label: "Atendimento — Gestor (config + relatórios)" },
-  { key: "comercial", label: "CRM (Clientes, Funil, Representantes)" },
+  { key: "comercial", label: "CRM (Clientes, Funil, Lojas Parceiras)" },
+  { key: "representantes", label: "Representantes" },
+  { key: "vendas-dashboard", label: "Vendas (Dashboard)" },
+  { key: "treinar-ia", label: "Treinar a IA (Big)" },
   { key: "romaneios", label: "Romaneios" },
   { key: "cadastros", label: "Cadastros" },
   { key: "tv-dashboard", label: "Painel TV (Dashboard)", tv: true },
@@ -51,6 +54,12 @@ export function pode(u: Usuario | null, key: string): boolean {
   if (u.admin) return true;
   return u.paginas.includes(key);
 }
+// Libera se o usuário tiver PELO MENOS UMA das permissões (rotas com mais de um dono).
+export function podeAlgum(u: Usuario | null, keys: string[]): boolean {
+  if (!u) return false;
+  if (u.admin) return true;
+  return keys.some((k) => u.paginas.includes(k));
+}
 // Primeira página do sistema (não-TV) que o usuário pode abrir.
 export function primeiraPagina(u: Usuario | null): string {
   if (!u) return "/login";
@@ -59,7 +68,7 @@ export function primeiraPagina(u: Usuario | null): string {
     ["pedidos", "/pedidos"], ["producao", "/producao"], ["passadoria", "/passadoria"],
     ["corte", "/corte"], ["costura", "/costura"], ["revisao", "/revisao"], ["estoque", "/estoque"],
     ["expedicao", "/expedicao"], ["fiscal", "/fiscal"], ["transporte", "/transporte"],
-    ["todos-pedidos", "/todos-pedidos"], ["produtos", "/produtos"], ["atendimento", "/atendimento"], ["comercial", "/comercial"], ["romaneios", "/romaneios"], ["cadastros", "/cadastros"],
+    ["todos-pedidos", "/todos-pedidos"], ["produtos", "/produtos"], ["atendimento", "/atendimento"], ["comercial", "/clientes"], ["romaneios", "/romaneios"], ["cadastros", "/cadastros"],
   ];
   for (const [k, rota] of ordem) if (u.paginas.includes(k)) return rota;
   return "/sem-acesso";

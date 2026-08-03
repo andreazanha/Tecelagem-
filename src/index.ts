@@ -90,7 +90,7 @@ app.get("/.well-known/assetlinks.json", (c) => {
   try { return c.json(c.env.ASSETLINKS ? JSON.parse(c.env.ASSETLINKS) : []); } catch { return c.json([]); }
 });
 
-// Vitrine pública de lojas parceiras (SEM login) — link que a Gaby manda pro consumidor
+// Vitrine pública de lojas parceiras (SEM login) — link que a Big manda pro consumidor
 // final e que pode ser divulgado por fora. Aceita ?uf= e ?cidade= pra já filtrar.
 app.get("/vitrine", async (c) => {
   const url = new URL(c.req.url);

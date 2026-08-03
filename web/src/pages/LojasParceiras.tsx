@@ -58,7 +58,7 @@ export function LojasParceiras() {
         </div>
         <div style={{ flex: "1 1 260px", border: "1px solid var(--line,#e2e8f0)", borderRadius: 10, padding: "10px 12px" }}>
           <div style={{ fontWeight: 800, fontSize: 13 }}>👀 Vitrine pública (o que o cliente vê)</div>
-          <div style={{ fontSize: 12, color: "#64748b", margin: "2px 0 6px" }}>É esse link que a Gaby manda pro consumidor final e que dá pra usar no site.</div>
+          <div style={{ fontSize: 12, color: "#64748b", margin: "2px 0 6px" }}>É esse link que a Big manda pro consumidor final e que dá pra usar no site.</div>
           <div style={{ display: "flex", gap: 6 }}>
             <input readOnly value={linkVitrine} style={{ flex: 1, fontSize: 12 }} />
             <button className="btn btn-soft" onClick={() => copiar(linkVitrine)}>Copiar</button>
