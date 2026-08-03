@@ -1152,7 +1152,9 @@ atendimento.post("/:id/encerrar", async (c) => {
     await c.env.DB.prepare("UPDATE atend_conversas SET encerrado_em=NULL, atualizado_em=datetime('now') WHERE id=?").bind(id).run();
     return c.json({ ok: true, reaberto: true });
   }
-  await c.env.DB.prepare("UPDATE atend_conversas SET encerrado_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
+  // Encerrar: marca a data E limpa a fixação manual da coluna — senão, se o card já tinha
+  // sido movido na mão (ex.: pra "Aguardando atendimento humano"), ele continuaria travado lá.
+  await c.env.DB.prepare("UPDATE atend_conversas SET encerrado_em=datetime('now'), coluna_manual=NULL, atualizado_em=datetime('now') WHERE id=?").bind(id).run();
   await addMsg(c.env, id, "out", "sistema", "sistema", `Atendimento encerrado${b.autor ? " por " + String(b.autor).trim() : ""}.`);
   return c.json({ ok: true });
 });
