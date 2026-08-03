@@ -49,6 +49,7 @@ export function Atendimento() {
   const [abrir, setAbrir] = useState<string | null>(null);
   const [sim, setSim] = useState(false);
   const [cfgOpen, setCfgOpen] = useState(false);
+  const [novaConv, setNovaConv] = useState(false);
   const [conectado, setConectado] = useState<boolean | null>(null);
 
   const [alerta, setAlerta] = useState<AtendConversa | null>(null); // banner de backup na tela
@@ -129,8 +130,9 @@ export function Atendimento() {
         <div><h1>Atendimento</h1><div className="breadcrumb">Comercial › Atendimento (robô do WhatsApp)</div></div>
         <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
+          <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
-          {ehGestorAtend() && <button className="btn btn-primary" onClick={() => setSim(true)}>💬 Simular cliente</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setSim(true)}>💬 Simular cliente</button>}
         </div>
       </div>
 
@@ -153,6 +155,7 @@ export function Atendimento() {
       )}
 
       {sim && <Simulador onFechar={() => setSim(false)} onMudou={recarregar} />}
+      {novaConv && <NovaConversa onFechar={() => setNovaConv(false)} onAbrir={(cid) => { setNovaConv(false); setAbrir(cid); }} onMudou={recarregar} />}
       {abrir && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
       {cfgOpen && <ConfigZapi onFechar={() => setCfgOpen(false)} onMudou={checarConexao} />}
     </div>
@@ -440,6 +443,13 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     setBusy(true);
     try { await api.atendNaoPerturbe(id, !d.nao_perturbe); carregar(); onMudou(); } finally { setBusy(false); }
   }
+  async function enviarCatalogo() {
+    if (!confirm("Enviar o link do catálogo para este cliente?")) return;
+    setBusy(true);
+    try { await api.atendEnviarCatalogo(id); carregar(); onMudou(); }
+    catch { alert("Não consegui enviar o catálogo agora."); }
+    finally { setBusy(false); }
+  }
   async function autorizar() {
     const rep = repSel.trim();
     if (!rep) { alert("Escolha o representante."); return; }
@@ -549,10 +559,78 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
           {humano
             ? <>
                 <button className="at-send" style={{ background: "transparent", color: "var(--accent,#7c3aed)" }} disabled={busy || sugerindo} onClick={sugerir} title="Sugerir resposta com IA (você pode editar)">{sugerindo ? "…" : "✨"}</button>
+                <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={enviarCatalogo} title="Enviar o link do catálogo">📖</button>
                 <input placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => e.key === "Enter" && enviar()} />
                 <button className="at-send" disabled={busy} onClick={enviar}>➤</button>
               </>
             : <div className="muted2" style={{ padding: "6px 4px" }}>🤖 O robô está conduzindo. Clique em <b>Assumir</b> para responder.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Nova conversa: escolhe um contato do WhatsApp (ou digita o número) e manda a 1ª msg ──
+function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; onAbrir: (id: string) => void; onMudou: () => void }) {
+  const [contatos, setContatos] = useState<{ nome: string; telefone: string }[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [busca, setBusca] = useState("");
+  const [sel, setSel] = useState<{ nome: string; telefone: string } | null>(null);
+  const [telManual, setTelManual] = useState("");
+  const [texto, setTexto] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    api.atendContatosWhatsapp()
+      .then((r) => { setContatos(r.contatos || []); if (r.erro) setErro("Conecte o WhatsApp (Z-API) pra carregar seus contatos. Você ainda pode digitar o número abaixo."); })
+      .catch(() => setErro("Não consegui carregar os contatos agora. Digite o número abaixo."))
+      .finally(() => setCarregando(false));
+  }, []);
+
+  const filtrados = contatos.filter((c) => {
+    const q = busca.trim().toLowerCase();
+    return !q || c.nome.toLowerCase().includes(q) || c.telefone.includes(q.replace(/\D/g, ""));
+  }).slice(0, 200);
+
+  async function enviar() {
+    const tel = (sel?.telefone || telManual).replace(/\D/g, "");
+    if (tel.length < 10) { alert("Escolha um contato ou digite um número válido (com DDD)."); return; }
+    if (!texto.trim()) { alert("Escreva a primeira mensagem."); return; }
+    setBusy(true);
+    try {
+      const u = getUser();
+      const r = await api.atendNovaConversa({ telefone: tel, texto: texto.trim(), nome: sel?.nome, responsavel: u?.nome || "Atendente" });
+      onMudou();
+      onAbrir(r.conversa_id);
+    } catch (e) { alert((e as Error).message || "Não consegui enviar."); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 520, width: "96vw" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <h2 style={{ margin: 0 }}>➕ Nova conversa</h2>
+          <button className="modal-x" onClick={onFechar}>✕</button>
+        </div>
+        {erro && <div style={{ fontSize: 12.5, marginBottom: 8, color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "7px 10px" }}>{erro}</div>}
+        <input placeholder="🔎 Buscar contato pelo nome ou número…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: "100%", marginBottom: 8 }} />
+        <div style={{ maxHeight: 220, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10, marginBottom: 10 }}>
+          {carregando ? <div className="muted" style={{ padding: 12 }}>Carregando contatos…</div>
+            : filtrados.length === 0 ? <div className="muted" style={{ padding: 12 }}>Nenhum contato encontrado. Digite o número abaixo. 👇</div>
+            : filtrados.map((c) => (
+              <button key={c.telefone} type="button" onClick={() => { setSel(c); setTelManual(""); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderBottom: "1px solid var(--line)", background: sel?.telefone === c.telefone ? "#eef2ff" : "transparent", cursor: "pointer", color: "var(--ink)" }}>
+                <b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span>
+              </button>
+            ))}
+        </div>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>ou digite o número (com DDD):</div>
+        <input placeholder="Ex.: 35 9 9999-9999" value={telManual} onChange={(e) => { setTelManual(e.target.value); setSel(null); }} style={{ width: "100%", marginBottom: 10 }} />
+        <textarea placeholder="Escreva a primeira mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", marginBottom: 10 }} />
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
+          <button className="btn btn-primary" disabled={busy} onClick={enviar}>{busy ? "Enviando…" : "📤 Enviar e abrir"}</button>
         </div>
       </div>
     </div>

@@ -1271,6 +1271,79 @@ atendimento.get("/", async (c) => {
   return c.json({ colunas: ATEND_COLUNAS, conversas });
 });
 
+// ── CONTATOS salvos no WhatsApp (via Z-API) — pra iniciar conversa com alguém ───────
+atendimento.get("/contatos-whatsapp", async (c) => {
+  const cfg = await lerConfig(c.env);
+  const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
+  const inst = cfg.zapi_instance || "", token = cfg.zapi_token || "";
+  if (!inst || !token) return c.json({ contatos: [], erro: "sem-credenciais" });
+  const headers: Record<string, string> = {};
+  if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
+  const map = new Map<string, { nome: string; telefone: string }>();
+  try {
+    for (let page = 1; page <= 30; page++) {
+      const r = await fetch(`${base}/instances/${inst}/token/${token}/contacts?page=${page}&pageSize=200`, { headers, signal: AbortSignal.timeout(12000) });
+      if (!r.ok) break;
+      const data = await r.json() as unknown;
+      const arr: Array<Record<string, unknown>> = Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
+      if (!arr.length) break;
+      for (const ct of arr) {
+        const tel = digitos(ct.phone ?? ct.id ?? "");
+        if (tel.length < 10 || tel.length > 15) continue;                 // pula grupos/inválidos
+        const nome = String(ct.name ?? ct.short ?? ct.notify ?? ct.vname ?? "").trim().slice(0, 80) || ("+" + tel);
+        if (!map.has(tel)) map.set(tel, { nome, telefone: tel });
+      }
+      if (arr.length < 200) break;
+    }
+  } catch { /* devolve o que já tiver */ }
+  const contatos = [...map.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  return c.json({ contatos });
+});
+
+// ── INICIAR uma conversa (o atendente manda a 1ª mensagem) ─────────────────────────
+atendimento.post("/nova-conversa", async (c) => {
+  const b = await c.req.json<{ telefone?: string; texto?: string; nome?: string; responsavel?: string }>().catch(() => ({}) as Record<string, string>);
+  const tel = digitos(b.telefone);
+  const texto = String(b.texto ?? "").trim();
+  if (tel.length < 10) return c.json({ error: "número inválido" }, 400);
+  if (!texto) return c.json({ error: "escreva uma mensagem" }, 400);
+  const resp = (b.responsavel || "").trim() || "Atendente";
+  const nomeManual = String(b.nome ?? "").trim().slice(0, 80) || null;
+  let conv = await c.env.DB.prepare("SELECT id FROM atend_conversas WHERE telefone=?").bind(tel).first<{ id: string }>();
+  let convId: string;
+  if (conv) {
+    convId = conv.id;
+    await c.env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', responsavel=?, atualizado_em=datetime('now') WHERE id=?").bind(resp, convId).run();
+  } else {
+    convId = uid();
+    const cliente = await identificarCliente(c.env, tel);
+    await c.env.DB.prepare(
+      "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, cliente_id, nome, contato_nome, responsavel, ultima_out_em, atualizado_em) VALUES (?, ?, 'atendimento-humano', 'manual', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))"
+    ).bind(convId, tel, cliente ? "lojista" : null, cliente?.id ?? null, cliente?.nome ?? nomeManual, nomeManual, resp).run();
+  }
+  await addMsg(c.env, convId, "out", resp, "texto", texto);
+  await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(convId).run();
+  await enviarWhatsapp(c.env, tel, { tipo: "texto", texto });
+  return c.json({ ok: true, conversa_id: convId });
+});
+
+// ── ENVIAR o link do catálogo numa conversa (botão do atendente) ───────────────────
+atendimento.post("/:id/enviar-catalogo", async (c) => {
+  const id = c.req.param("id");
+  const conv = await c.env.DB.prepare("SELECT id, telefone, uf FROM atend_conversas WHERE id=?").bind(id).first<{ id: string; telefone: string; uf: string | null }>();
+  if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  const cfgAt = await lerConfig(c.env);
+  const origin = new URL(c.req.url).origin;
+  for (const s of montarCatalogo(deps(c.env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, origin))) {
+    s.texto = ajustarCatalogoRegiao(s.texto, conv.uf, conv.telefone);
+    await addMsg(c.env, id, "out", "bot", s.tipo, s.texto);
+    await enviarWhatsapp(c.env, conv.telefone, s);
+  }
+  await garantirCardDaConversa(c.env, id, "Catálogo enviado pelo atendente", "catalogo-recebido");
+  await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(id).run();
+  return c.json({ ok: true });
+});
+
 // ── DETALHE (conversa + histórico) ─────────────────────────────────────────────────
 atendimento.get("/:id", async (c) => {
   const conv = await c.env.DB.prepare("SELECT * FROM atend_conversas WHERE id = ?").bind(c.req.param("id")).first<ConvRow>();
