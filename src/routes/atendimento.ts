@@ -505,7 +505,11 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     conv.contato_nome = contato;
   }
   await addMsg(env, conv.id, "in", "cliente", "texto", texto, { zapId: zapId || null, arquivoUrl: arquivoUrl || null });
-  await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now') WHERE id = ?").bind(conv.id).run();
+  // Cliente mandou mensagem NOVA → "chamou de volta". Se o card estava ESTACIONADO numa
+  // coluna à mão (coluna_manual), destrava: ele volta pro fluxo automático (Em atendimento /
+  // Aguardando humano) pra ninguém esquecer que a cliente está esperando resposta.
+  // Exceção: "Montando pedido" é trabalho em andamento — não sai só porque a cliente escreveu.
+  await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now'), coluna_manual = CASE WHEN coluna_manual = 'montando-pedido' THEN coluna_manual ELSE NULL END WHERE id = ?").bind(conv.id).run();
 
   // Detecta interesse comercial + modelos citados (vale inclusive no atendimento humano).
   const cfgAt = await lerConfig(env);
@@ -1109,6 +1113,13 @@ async function lerColunasAtend(env: Env): Promise<{ id: string; label: string; c
   try { const o = JSON.parse(cfg.atend_colunas_ordem || "[]"); if (Array.isArray(o)) ordem = o.map(String); } catch { ordem = []; }
   const pos = (id: string) => { const i = ordem.indexOf(id); return i < 0 ? 9999 : i; };
   const ordenadas = todas.map((c0, i) => ({ ...c0, _i: i })).sort((a, b) => (pos(a.id) - pos(b.id)) || (a._i - b._i)).map(({ _i, ...c0 }) => { void _i; return c0; });
+  // "Montando pedido" fica logo DEPOIS de "Aguardando setor interno" (por pedido).
+  const iMont = ordenadas.findIndex((c0) => c0.id === "montando-pedido");
+  if (iMont >= 0) {
+    const [mont] = ordenadas.splice(iMont, 1);
+    const iSetor = ordenadas.findIndex((c0) => c0.id === "aguardando-setor");
+    ordenadas.splice(iSetor >= 0 ? iSetor + 1 : ordenadas.length, 0, mont);
+  }
   // "Reclamação ou pendência" fica SEMPRE como última coluna (por pedido), mesmo que
   // haja uma ordem antiga salva que a colocava no começo.
   const iRec = ordenadas.findIndex((c0) => c0.id === "reclamacao");
