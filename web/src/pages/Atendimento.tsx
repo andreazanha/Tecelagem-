@@ -204,7 +204,7 @@ export function Atendimento() {
         <div className="fx-board">
           {/* Coluna EQUIPE: fala com o time por dentro (chat interno) */}
           {(() => { const eu = getUser()?.nome; const outros = membros.filter((m) => m !== eu); return (
-            <div className="fx-col" key="__equipe" style={{ background: "#eef2ff44", borderRadius: 12 }}>
+            <div className="fx-col" key="__equipe" style={{ position: "sticky", left: 0, zIndex: 3, background: "var(--card,#fff)", borderRadius: 12, boxShadow: "3px 0 10px #0000001f" }}>
               <div className="fx-hd"><span className="fx-dot" style={{ background: "#6366f1" }} />👥 Equipe<span className="ct">{outros.length}</span></div>
               <div className="fx-col-body">
                 {outros.length === 0

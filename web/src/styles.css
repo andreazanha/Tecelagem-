@@ -1253,7 +1253,7 @@ body.dark .at-ctx { border-color: #26324a; }
 .at-block-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-bottom: 8px; }
 .at-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid #eef1f6; }
 body.dark .at-row { border-color: #1b2536; }
-.at-compose { display: flex; gap: 10px; align-items: flex-end; background: #f0f2f5; border-top: 1px solid var(--line); padding: 10px 14px; }
+.at-compose { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; background: #f0f2f5; border-top: 1px solid var(--line); padding: 10px 14px; }
 body.dark .at-compose { background: #111826; border-color: #26324a; }
 .at-compose input, .at-compose textarea { flex: 1; border: 1px solid var(--line); border-radius: 20px; padding: 10px 15px; font-size: 13.5px; background: #fff; font-family: inherit; }
 /* Campo cresce na VERTICAL (linhas) em vez de esticar na horizontal */
