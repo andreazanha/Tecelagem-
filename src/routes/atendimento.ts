@@ -781,12 +781,10 @@ async function registrarEventoCatalogo(env: Env, ev: { tipo?: string; telefone?:
 }
 
 atendimento.post("/catalogo-evento", async (c) => {
-  const cfg = await lerConfig(c.env);
-  const b = await c.req.json<{ tipo?: string; telefone?: string; loja?: string; rep?: string; produto?: string; code?: string }>().catch(() => ({}) as Record<string, string>);
-  if (cfg.catalogo_evento_token && (b.code || "") !== cfg.catalogo_evento_token) return c.json({ error: "não autorizado" }, 401);
-  if (!digitos(b.telefone)) return c.json({ error: "telefone é obrigatório" }, 400);
-  const id = await registrarEventoCatalogo(c.env, b);
-  return c.json({ ok: true, conversa_id: id });
+  // Desativado a pedido: quem só VÊ o catálogo NÃO é trazido pro atendimento/funil.
+  // O evento é aceito (pra não dar erro no catálogo), mas ignorado — só entra no sistema
+  // quem realmente manda mensagem no WhatsApp.
+  return c.json({ ok: true, ignorado: "catalogo-visualizacao" });
 });
 
 // ── LEITURA (PULL) da atividade do catálogo (bt-atividade) — chamado pelo cron ────
