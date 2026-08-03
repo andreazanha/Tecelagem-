@@ -1478,15 +1478,8 @@ atendimento.post("/:id/assumir", async (c) => {
   const resp = (b.responsavel || "").trim() || "Atendente";
   const id = c.req.param("id");
   await c.env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', responsavel=?, atualizado_em=datetime('now') WHERE id=?").bind(resp, id).run();
+  // Registro INTERNO (só a equipe vê) de quem assumiu. NÃO manda nada pro cliente.
   await addMsg(c.env, id, "out", "sistema", "sistema", `${resp} assumiu o atendimento.`);
-  // Apresenta o atendente pro cliente.
-  const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
-  if (conv) {
-    const aviso = `Olá! 👋 Aqui é *${resp}* da *Big Tricot*, vou continuar seu atendimento por aqui. 😊`;
-    await addMsg(c.env, id, "out", resp, "texto", aviso);
-    await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto: aviso });
-    await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(id).run();
-  }
   return c.json({ ok: true });
 });
 
