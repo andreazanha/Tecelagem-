@@ -412,6 +412,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [gerenciarResp, setGerenciarResp] = useState(false);
   const [editDados, setEditDados] = useState(false);
   const [formD, setFormD] = useState({ nome: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
+  const [respondendo, setRespondendo] = useState<{ id: string; texto: string } | null>(null);
   const fim = useRef<HTMLDivElement>(null);
 
   function abrirEdicaoDados() {
@@ -480,7 +481,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   async function enviar() {
     if (!texto.trim()) return;
     setBusy(true);
-    try { await api.atendEnviar(id, { texto: texto.trim(), autor: d?.responsavel || "Atendente" }); setTexto(""); carregar(); onMudou(); }
+    try { await api.atendEnviar(id, { texto: texto.trim(), autor: d?.responsavel || "Atendente", responder_a: respondendo?.id }); setTexto(""); setRespondendo(null); carregar(); onMudou(); }
     finally { setBusy(false); }
   }
 
@@ -505,8 +506,12 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 ? <div className="at-sys" key={m.id}>⚙️ {m.texto}</div>
                 : <div key={m.id} className={"at-b " + (m.direcao === "in" ? "in" : "out")}>
                     {m.autor && m.direcao === "out" && <div className="at-aut">{m.autor === "bot" ? "🤖 robô" : m.autor}</div>}
+                    {m.responder_texto && <div className="at-quote">↪ {m.responder_texto}</div>}
                     {m.tipo === "arquivo" ? <span className="at-file">📒 {m.texto}</span> : formatarMsg(m.texto)}
                     <span className="at-tm">{hora(m.criado_em)}</span>
+                    {humano && m.direcao === "in" && m.tipo !== "arquivo" && (m.texto || "").trim() && (
+                      <button className="at-reply" title="Responder esta mensagem" onClick={() => setRespondendo({ id: m.id, texto: (m.texto || "").slice(0, 180) })}>↩︎</button>
+                    )}
                   </div>
             ))}
             <div ref={fim} />
@@ -633,6 +638,15 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                       <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto}</div>
                     </button>
                   ))}
+            </div>
+          )}
+          {respondendo && humano && (
+            <div style={{ position: "absolute", left: 8, right: 8, bottom: "100%", marginBottom: 6, display: "flex", alignItems: "center", gap: 8, background: "var(--bg-soft,#f1f5f9)", borderLeft: "3px solid #16a34a", borderRadius: 8, padding: "6px 10px", zIndex: 15 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#16a34a" }}>↪ Respondendo</div>
+                <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{respondendo.texto}</div>
+              </div>
+              <button className="modal-x" style={{ position: "static" }} onClick={() => setRespondendo(null)} title="Cancelar resposta">✕</button>
             </div>
           )}
           {humano

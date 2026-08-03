@@ -287,7 +287,7 @@ export interface AtendConversa {
   tipo: string | null; representante: string | null; origem: string | null; contato_nome: string | null; autorizado: number | null; interessado: number | null;
   funil_etapa?: string | null;
 }
-export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; criado_em: string }
+export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; responder_texto?: string | null; criado_em: string }
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
 export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; interesses: string[]; pedidos_resumo: { nome: string; qtd: number; total: number; ultima: string | null } | null; mensagens: AtendMensagem[] }
 export interface AtendResposta { conversa_id: string; estado: string; coluna: string; respostas: { tipo: string; texto: string }[]; notificarHumano: boolean }
@@ -697,7 +697,7 @@ export const api = {
     jsonPost(`/api/atendimento/${id}/enviar-catalogo`, {}).then((r) => j<{ ok: boolean }>(r)),
   atendSalvarEquipe: (equipe_numeros: string) =>
     jsonPost("/api/atendimento/config", { equipe_numeros }).then((r) => j<{ ok: boolean }>(r)),
-  atendEnviar: (id: string, b: { texto: string; autor?: string }) =>
+  atendEnviar: (id: string, b: { texto: string; autor?: string; responder_a?: string }) =>
     jsonPost(`/api/atendimento/${id}/enviar`, b).then((r) => j<{ ok: boolean }>(r)),
   atendRespostas: () =>
     fetch(`/api/atendimento/respostas?u=${encodeURIComponent(getUser()?.usuario || "")}`).then((r) => j<{ titulo: string; texto: string }[]>(r)),

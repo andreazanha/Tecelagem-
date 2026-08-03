@@ -131,10 +131,12 @@ async function avisarHumanoPush(env: Env, c: { id: string; nome?: string | null;
   await enviarPush(env, { titulo: "🔔 Atendimento humano", corpo: `${quem} precisa de um atendente no WhatsApp.`, url: "/atendimento", tag: "atend-" + c.id }).catch(() => {});
 }
 
-async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: string, tipo: string, texto: string) {
+async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: string, tipo: string, texto: string, opts: { zapId?: string | null; responderTexto?: string | null } = {}) {
+  const id = uid();
   await env.DB.prepare(
-    "INSERT INTO atend_mensagens (id, conversa_id, direcao, autor, tipo, texto) VALUES (?, ?, ?, ?, ?, ?)"
-  ).bind(uid(), convId, direcao, autor, tipo, texto).run();
+    "INSERT INTO atend_mensagens (id, conversa_id, direcao, autor, tipo, texto, zap_id, responder_texto) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id, convId, direcao, autor, tipo, texto, opts.zapId || null, opts.responderTexto || null).run();
+  return id;
 }
 
 // Garante um card na coluna "📥 Catálogo (contato)" para uma conversa vinda do
@@ -442,7 +444,7 @@ function ajustarCatalogoRegiao(texto: string, uf?: string | null, tel?: string |
 
 // ── Núcleo: recebe uma mensagem do cliente, roda o robô, responde e qualifica ────
 // Usado tanto pelo simulador (/entrada) quanto pelo webhook real da Z-API (/webhook).
-async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "", origin: string | null = null) {
+async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "", origin: string | null = null, zapId = "") {
   const tel = digitos(telRaw);
   const texto = String(textoRaw ?? "");
   const contato = String(contatoNome ?? "").trim().slice(0, 80) || null;
@@ -472,7 +474,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     await env.DB.prepare("UPDATE atend_conversas SET contato_nome=? WHERE id=?").bind(contato, conv.id).run();
     conv.contato_nome = contato;
   }
-  await addMsg(env, conv.id, "in", "cliente", "texto", texto);
+  await addMsg(env, conv.id, "in", "cliente", "texto", texto, { zapId: zapId || null });
   await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now') WHERE id = ?").bind(conv.id).run();
 
   // Detecta interesse comercial + modelos citados (vale inclusive no atendimento humano).
@@ -729,7 +731,7 @@ atendimento.post("/webhook", async (c) => {
     }
     return c.json({ ignorado: "sem-texto" });
   }
-  const r = await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, new URL(c.req.url).origin);
+  const r = await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, new URL(c.req.url).origin, String(b.messageId ?? ""));
   if ("erro" in r) return c.json({ error: r.erro }, 400);
   return c.json({ ok: true, conversa_id: r.conversa_id });
 });
@@ -1112,7 +1114,7 @@ atendimento.post("/config/testar", async (c) => {
 
 // Envio real pela Z-API. Se a integração estiver desligada ou sem credenciais,
 // vira no-op (o board/histórico e o simulador seguem funcionando normalmente).
-async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; texto: string }) {
+async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; texto: string }, quote: { zapId?: string | null; texto?: string | null } = {}) {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
   const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
@@ -1120,16 +1122,22 @@ async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; text
   const token = cfg.zapi_token || "";
   if (!inst || !token) return { enviado: false, motivo: "sem-credenciais" };
   const phone = digitos(tel);
-  const texto = String(saida.texto ?? "").trim();
+  let texto = String(saida.texto ?? "").trim();
   if (!phone || !texto) return { enviado: false, motivo: "vazio" };
+  // Responder uma mensagem específica: se temos o id da Z-API, cita de forma NATIVA
+  // (messageId). Se não (mensagem antiga sem id), cai num fallback citando o trecho.
+  const body: Record<string, unknown> = { phone };
+  if (quote.zapId) body.messageId = quote.zapId;
+  else if (quote.texto) texto = `↪ _"${String(quote.texto).slice(0, 120)}"_\n\n${texto}`;
   // "Digitando…": a Z-API mostra o status de digitação por N segundos antes de enviar.
   // Proporcional ao tamanho do texto (1s + ~1s a cada 50 caracteres), no máx. 5s.
   const delayTyping = Math.min(5, 1 + Math.floor(texto.length / 50));
+  body.message = texto; body.delayTyping = delayTyping;
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
     const resp = await fetch(`${base}/instances/${inst}/token/${token}/send-text`, {
-      method: "POST", headers, body: JSON.stringify({ phone, message: texto, delayTyping }),
+      method: "POST", headers, body: JSON.stringify(body),
     });
     if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}` };
     return { enviado: true };
@@ -1403,7 +1411,7 @@ atendimento.get("/:id", async (c) => {
   // Só as ÚLTIMAS 250 mensagens: conversas antigas (ou floods) podem ter centenas
   // de mensagens e travar a tela ("página sem resposta") em PC mais fraco.
   const { results: msgsDesc } = await c.env.DB.prepare(
-    "SELECT id, direcao, autor, tipo, texto, criado_em FROM atend_mensagens WHERE conversa_id = ? ORDER BY criado_em DESC, rowid DESC LIMIT 250"
+    "SELECT id, direcao, autor, tipo, texto, responder_texto, criado_em FROM atend_mensagens WHERE conversa_id = ? ORDER BY criado_em DESC, rowid DESC LIMIT 250"
   ).bind(conv.id).all();
   const mensagens = (msgsDesc as unknown[]).slice().reverse();
   const { results: interesses } = await c.env.DB.prepare(
@@ -1517,15 +1525,21 @@ atendimento.post("/:id/autorizar", async (c) => {
 
 // ── Atendente envia mensagem manual ──────────────────────────────────────────────────
 atendimento.post("/:id/enviar", async (c) => {
-  const b = await c.req.json<{ texto?: string; autor?: string }>().catch(() => ({}) as Record<string, string>);
+  const b = await c.req.json<{ texto?: string; autor?: string; responder_a?: string }>().catch(() => ({}) as Record<string, string>);
   const texto = (b.texto || "").trim();
   if (!texto) return c.json({ error: "texto é obrigatório" }, 400);
   const id = c.req.param("id");
   const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
-  await addMsg(c.env, id, "out", (b.autor || "Atendente").trim(), "texto", texto);
+  // Responder uma mensagem marcada: busca a original (dela vem o trecho citado e o id da Z-API).
+  let quote: { zapId?: string | null; texto?: string | null } = {};
+  if (b.responder_a) {
+    const alvo = await c.env.DB.prepare("SELECT texto, zap_id FROM atend_mensagens WHERE id=? AND conversa_id=?").bind(b.responder_a, id).first<{ texto: string | null; zap_id: string | null }>();
+    if (alvo) quote = { zapId: alvo.zap_id, texto: (alvo.texto || "").slice(0, 180) };
+  }
+  await addMsg(c.env, id, "out", (b.autor || "Atendente").trim(), "texto", texto, { responderTexto: quote.texto || null });
   await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
-  await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto });
+  await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto }, quote);
   return c.json({ ok: true });
 });
 
