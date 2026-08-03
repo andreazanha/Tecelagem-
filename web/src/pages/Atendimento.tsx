@@ -314,7 +314,7 @@ export function Atendimento() {
       {!board ? (
         <div className="card pad muted">Carregando…</div>
       ) : (
-        <div className="fx-board">
+        <div className="fx-board at-board">
           {/* Coluna EQUIPE: fala com o time por dentro (chat interno) */}
           {(() => { const eu = getUser()?.nome; const outros = membros.filter((m) => m !== eu); return (
             <div className="fx-col" key="__equipe" style={{ position: "sticky", left: 0, zIndex: 3, background: "var(--card,#fff)", borderRadius: 12, boxShadow: "3px 0 10px #0000001f" }}>
