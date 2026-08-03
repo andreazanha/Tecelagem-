@@ -1104,12 +1104,16 @@ atendimento.post("/respostas-empresa", async (c) => {
 });
 
 // ── COLUNAS do quadro de atendimento (built-in + customizadas + ordem) ────────────
+// Colunas criadas à mão que devem ser ESCONDIDAS (pedido do gestor). Comparação sem acento
+// e minúscula. Os cards que estiverem nelas caem no fluxo automático (não somem).
+const COLUNAS_OCULTAS = new Set(["em negociacao"]);
+const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 async function lerColunasAtend(env: Env): Promise<{ id: string; label: string; cor: string; custom?: boolean }[]> {
   const cfg = await lerConfig(env);
   let extra: { id: string; label: string; cor: string; custom: boolean }[] = [];
   try {
     const raw = JSON.parse(cfg.atend_colunas_extra || "[]");
-    if (Array.isArray(raw)) extra = raw.filter((x) => x && x.id && x.label).map((x) => ({ id: String(x.id), label: String(x.label), cor: String(x.cor || "#64748b"), custom: true }));
+    if (Array.isArray(raw)) extra = raw.filter((x) => x && x.id && x.label && !COLUNAS_OCULTAS.has(semAcento(String(x.label)))).map((x) => ({ id: String(x.id), label: String(x.label), cor: String(x.cor || "#64748b"), custom: true }));
   } catch { extra = []; }
   const base = ATEND_COLUNAS.map((c0) => ({ id: c0.id as string, label: c0.label as string, cor: c0.cor as string }));
   const baseIdx = new Map(base.map((b, i) => [b.id, i]));
