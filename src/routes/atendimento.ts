@@ -1001,6 +1001,40 @@ atendimento.post("/respostas-empresa", async (c) => {
   return c.json({ ok: true, respostas: arr });
 });
 
+// ── COLUNAS do quadro de atendimento (built-in + customizadas + ordem) ────────────
+async function lerColunasAtend(env: Env): Promise<{ id: string; label: string; cor: string; custom?: boolean }[]> {
+  const cfg = await lerConfig(env);
+  let extra: { id: string; label: string; cor: string; custom: boolean }[] = [];
+  try {
+    const raw = JSON.parse(cfg.atend_colunas_extra || "[]");
+    if (Array.isArray(raw)) extra = raw.filter((x) => x && x.id && x.label).map((x) => ({ id: String(x.id), label: String(x.label), cor: String(x.cor || "#64748b"), custom: true }));
+  } catch { extra = []; }
+  const base = ATEND_COLUNAS.map((c0) => ({ id: c0.id as string, label: c0.label as string, cor: c0.cor as string }));
+  const todas = [...base, ...extra.filter((e) => !base.some((b) => b.id === e.id))];
+  let ordem: string[] = [];
+  try { const o = JSON.parse(cfg.atend_colunas_ordem || "[]"); if (Array.isArray(o)) ordem = o.map(String); } catch { ordem = []; }
+  const pos = (id: string) => { const i = ordem.indexOf(id); return i < 0 ? 9999 : i; };
+  return todas.map((c0, i) => ({ ...c0, _i: i })).sort((a, b) => (pos(a.id) - pos(b.id)) || (a._i - b._i)).map(({ _i, ...c0 }) => { void _i; return c0; });
+}
+atendimento.get("/colunas", async (c) => c.json({ colunas: await lerColunasAtend(c.env) }));
+atendimento.post("/colunas", async (c) => {
+  const b = await c.req.json<{ extra?: { id?: string; label?: string; cor?: string }[]; ordem?: string[] }>().catch(() => ({}) as Record<string, never>);
+  const extra = Array.isArray(b.extra)
+    ? b.extra.filter((x) => x && String(x.label ?? "").trim()).map((x) => ({ id: String(x.id || ("col-" + uid())).slice(0, 40), label: String(x.label).slice(0, 40), cor: String(x.cor || "#64748b").slice(0, 20) }))
+    : [];
+  const ordem = Array.isArray(b.ordem) ? b.ordem.map(String) : [];
+  await salvarConfigJson(c.env, "atend_colunas_extra", extra);
+  await salvarConfigJson(c.env, "atend_colunas_ordem", ordem);
+  return c.json({ ok: true, colunas: await lerColunasAtend(c.env) });
+});
+// Mover um card pra outra coluna (arrastar) — grava a coluna manual.
+atendimento.post("/:id/coluna", async (c) => {
+  const b = await c.req.json<{ coluna?: string }>().catch(() => ({}) as Record<string, string>);
+  const coluna = String(b.coluna ?? "").trim() || null;
+  await c.env.DB.prepare("UPDATE atend_conversas SET coluna_manual=?, atualizado_em=datetime('now') WHERE id=?").bind(coluna, c.req.param("id")).run();
+  return c.json({ ok: true });
+});
+
 // ── PROXY DO CATÁLOGO (Firestore → JSON limpo, com cache) ────────────────────────
 // Busca o documento catalogo/main no Firestore público do catálogo, decodifica o
 // formato tipado e devolve JSON limpo (produtos, preços por região, representantes).
@@ -1381,14 +1415,19 @@ atendimento.get("/", async (c) => {
   const binds: string[] = [];
   if (!gestor && usuario) { cond.push("(c.responsavel = ? OR c.responsavel IS NULL OR c.responsavel = '')"); binds.push(usuario); }
   const stmt = c.env.DB.prepare(
-    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.responsavel, c.atualizado_em, c.ultima_in_em, c.tipo, c.representante, c.origem, c.contato_nome, c.autorizado, c.interessado,
+    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.responsavel, c.atualizado_em, c.ultima_in_em, c.ultima_out_em, c.coluna_manual, c.tipo, c.representante, c.origem, c.contato_nome, c.autorizado, c.interessado,
             (SELECT texto FROM atend_mensagens m WHERE m.conversa_id=c.id AND m.tipo NOT IN ('nota','sistema') ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 1) AS ultima_msg,
             (SELECT etapa FROM funil_cards fc WHERE fc.id = c.card_id) AS funil_etapa
        FROM atend_conversas c WHERE ${cond.join(" AND ")} ORDER BY c.atualizado_em DESC`
   );
   const { results } = await stmt.bind(...binds).all<Record<string, unknown>>();
-  const conversas = results.map((r) => ({ ...r, coluna: colunaDe(String(r.estado)) }));
-  return c.json({ colunas: ATEND_COLUNAS, conversas });
+  const colunas = await lerColunasAtend(c.env);
+  const validos = new Set(colunas.map((x) => x.id));
+  const conversas = results.map((r) => {
+    const manual = r.coluna_manual && validos.has(String(r.coluna_manual)) ? String(r.coluna_manual) : null;
+    return { ...r, coluna: manual || colunaDe(String(r.estado)) };
+  });
+  return c.json({ colunas, conversas });
 });
 
 // ── CONTATOS salvos no WhatsApp (via Z-API) — pra iniciar conversa com alguém ───────

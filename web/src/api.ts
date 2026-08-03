@@ -280,11 +280,11 @@ export interface FunilCard extends FunilCardBase {
   faixa: string | null;
 }
 // ── Robô de atendimento (WhatsApp) ───────────────────────────────────────────
-export interface AtendColuna { id: string; label: string; cor: string }
+export interface AtendColuna { id: string; label: string; cor: string; custom?: boolean }
 export interface AtendConversa {
   id: string; telefone: string; nome: string | null; estado: string; coluna: string;
   setor: string | null; cnpj: string | null; cidade: string | null; uf: string | null;
-  lojista: number | null; responsavel: string | null; atualizado_em: string; ultima_in_em?: string | null; ultima_msg: string | null;
+  lojista: number | null; responsavel: string | null; atualizado_em: string; ultima_in_em?: string | null; ultima_out_em?: string | null; coluna_manual?: string | null; ultima_msg: string | null;
   tipo: string | null; representante: string | null; origem: string | null; contato_nome: string | null; autorizado: number | null; interessado: number | null;
   funil_etapa?: string | null;
 }
@@ -683,6 +683,11 @@ export const api = {
     jsonPost("/api/atendimento/abrir-conversa", b).then((r) => j<{ id?: string; card_id?: string | null; error?: string }>(r)),
   // Robô de atendimento (WhatsApp)
   atendBoard: (usuario?: string, gestor?: boolean) => fetch(`/api/atendimento?usuario=${encodeURIComponent(usuario || "")}&gestor=${gestor ? 1 : 0}`).then((r) => j<AtendBoard>(r)),
+  atendColunas: () => fetch("/api/atendimento/colunas").then((r) => j<{ colunas: AtendColuna[] }>(r)),
+  atendSalvarColunas: (extra: { id?: string; label: string; cor: string }[], ordem: string[]) =>
+    jsonPost("/api/atendimento/colunas", { extra, ordem }).then((r) => j<{ ok: boolean; colunas: AtendColuna[] }>(r)),
+  atendMoverColuna: (id: string, coluna: string) =>
+    jsonPost(`/api/atendimento/${id}/coluna`, { coluna }).then((r) => j<{ ok: boolean }>(r)),
   atendConversa: (id: string) => fetch(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),
   atendEntrada: (b: { telefone: string; texto: string }) =>
     jsonPost("/api/atendimento/entrada", b).then((r) => j<AtendResposta>(r)),

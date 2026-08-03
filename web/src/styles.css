@@ -1245,6 +1245,9 @@ body.dark .at-nota { background: #3a3011; border-color: #665318; color: #fde68a;
 /* Alternador cliente/interno no compose */
 .at-modo-pill { font: inherit; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line,#d5dbe6); background: var(--card,#fff); color: var(--ink,#334155); cursor: pointer; }
 body.dark .at-modo-pill { background: #0b1220; border-color: #ffffff1a; color: #cbd5e1; }
+/* Card aguardando resposta (mensagem nova do cliente): pisca e sobe pro topo */
+@keyframes atCardPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,.45); } 50% { box-shadow: 0 0 0 5px rgba(239,68,68,0); } }
+.fx-card.pulsando { border-left: 3px solid #ef4444; animation: atCardPulse 1.3s ease-in-out infinite; }
 .at-file { font-weight: 700; color: #0b3d2e; } body.dark .at-file { color: #86efac; }
 .at-sys { align-self: center; background: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 body.dark .at-sys { background: #12233f; color: #93c5fd; }

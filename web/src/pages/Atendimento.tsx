@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { Link } from "react-router-dom";
 import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type ChatMensagem } from "../api";
 import { getUser, pode } from "../auth";
@@ -78,6 +78,55 @@ export function Atendimento() {
     marcar(); const t = setInterval(marcar, 4000); return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatCom, eu]);
+
+  // ── Arrastar card entre colunas (pointer: mouse + toque, igual ao Funil) ──
+  const [arrastando, setArrastando] = useState<string | null>(null);
+  const [sobre, setSobre] = useState<string | null>(null);
+  const dragRef = useRef<{ id: string; el: HTMLElement; timer: number | null; startX: number; startY: number; active: boolean; touch: boolean; pointerId: number } | null>(null);
+  const arrastou = useRef(false);
+  const [gerColunas, setGerColunas] = useState(false);
+  function colunaEmPonto(x: number, y: number): string | null {
+    for (const el of document.elementsFromPoint(x, y)) { const d = (el as HTMLElement).dataset?.coluna; if (d) return d; }
+    return null;
+  }
+  function ativarDragC() { const d = dragRef.current; if (!d) return; d.active = true; try { d.el.setPointerCapture(d.pointerId); } catch { /* */ } setArrastando(d.id); }
+  function dragDownC(e: RPointerEvent, id: string) {
+    if (e.button && e.button !== 0) return;
+    const d = { id, el: e.currentTarget as HTMLElement, timer: null as number | null, startX: e.clientX, startY: e.clientY, active: false, touch: e.pointerType === "touch", pointerId: e.pointerId };
+    dragRef.current = d;
+    if (d.touch) d.timer = window.setTimeout(() => { if (dragRef.current === d) ativarDragC(); }, 240);
+  }
+  function dragMoveC(e: RPointerEvent) {
+    const d = dragRef.current; if (!d) return;
+    if (!d.active) {
+      const dx = Math.abs(e.clientX - d.startX), dy = Math.abs(e.clientY - d.startY);
+      if (d.touch) { if (dx > 10 || dy > 10) { if (d.timer) clearTimeout(d.timer); dragRef.current = null; } }
+      else if (dx > 5 || dy > 5) ativarDragC();
+      return;
+    }
+    e.preventDefault(); setSobre(colunaEmPonto(e.clientX, e.clientY));
+  }
+  function dragUpC(e: RPointerEvent) {
+    const d = dragRef.current; if (!d) return;
+    if (d.timer) clearTimeout(d.timer);
+    const active = d.active;
+    try { if (active) d.el.releasePointerCapture(d.pointerId); } catch { /* */ }
+    dragRef.current = null;
+    if (!active) return;
+    arrastou.current = true;
+    const alvo = colunaEmPonto(e.clientX, e.clientY);
+    setArrastando(null); setSobre(null);
+    if (alvo) soltarConversa(alvo, d.id);
+  }
+  function dragCancelC() { const d = dragRef.current; if (!d) return; if (d.timer) clearTimeout(d.timer); try { if (d.active) d.el.releasePointerCapture(d.pointerId); } catch { /* */ } dragRef.current = null; setArrastando(null); setSobre(null); }
+  async function soltarConversa(coluna: string, id: string) {
+    const c = board?.conversas.find((x) => x.id === id);
+    if (!c || c.coluna === coluna) return;
+    setBoard((b) => (b ? { ...b, conversas: b.conversas.map((x) => (x.id === id ? { ...x, coluna, coluna_manual: coluna } : x)) } : b));
+    try { await api.atendMoverColuna(id, coluna); recarregar(); } catch { recarregar(); }
+  }
+  // Card "aguardando": cliente escreveu depois da nossa última resposta (ou nunca respondemos).
+  const aguardando = (c: AtendConversa) => !!c.ultima_in_em && (c.ultima_in_em || "") > (c.ultima_out_em || "");
 
   const [alerta, setAlerta] = useState<AtendConversa | null>(null); // banner de backup na tela
   const alertadosRef = useRef<Set<string>>(new Set());
@@ -246,18 +295,28 @@ export function Atendimento() {
           {board.colunas.map((col) => {
             const cs = board.conversas.filter((c) => c.coluna === col.id).filter((c) =>
               filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend
+            ).sort((a, b) =>
+              (Number(aguardando(b)) - Number(aguardando(a))) ||
+              (b.ultima_in_em || "").localeCompare(a.ultima_in_em || "") ||
+              (b.atualizado_em || "").localeCompare(a.atualizado_em || "")
             );
             return (
-              <div className="fx-col" key={col.id}>
+              <div className={"fx-col" + (sobre === col.id ? " drag-over" : "")} key={col.id} data-coluna={col.id}>
                 <div className="fx-hd"><span className="fx-dot" style={{ background: col.cor }} />{col.label}<span className="ct">{cs.length}</span></div>
                 <div className="fx-col-body">
-                  {cs.map((c) => <ConvMini key={c.id} c={c} onAbrir={() => setAbrir(c.id)} />)}
+                  {cs.map((c) => (
+                    <ConvMini key={c.id} c={c} pulsando={aguardando(c)} arrastando={arrastando === c.id}
+                      onAbrir={() => { if (arrastou.current) { arrastou.current = false; return; } setAbrir(c.id); }}
+                      onPointerDown={(e) => dragDownC(e, c.id)} onPointerMove={dragMoveC} onPointerUp={dragUpC} onPointerCancel={dragCancelC} />
+                  ))}
                 </div>
               </div>
             );
           })}
         </div>
       )}
+      {ehGestorAtend() && board && <div style={{ marginTop: 10 }}><button className="btn btn-soft" onClick={() => setGerColunas(true)}>➕ Criar / organizar colunas</button></div>}
+      {gerColunas && <ColunasModal onFechar={() => setGerColunas(false)} onSalvo={() => { setGerColunas(false); recarregar(); }} />}
 
       {sim && <Simulador onFechar={() => setSim(false)} onMudou={recarregar} />}
       {novaConv && <NovaConversa onFechar={() => setNovaConv(false)} onAbrir={(cid) => { setNovaConv(false); setAbrir(cid); }} onMudou={recarregar} />}
@@ -482,10 +541,11 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   );
 }
 
-function ConvMini({ c, onAbrir }: { c: AtendConversa; onAbrir: () => void }) {
+function ConvMini({ c, onAbrir, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; onAbrir: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.coluna === "atendimento-humano";
   return (
-    <div className="fx-card" onClick={onAbrir}>
+    <div className={"fx-card" + (pulsando ? " pulsando" : "")} style={arrastando ? { opacity: 0.5 } : undefined}
+      onClick={onAbrir} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
       <div className="fx-nm">{c.nome || c.contato_nome || telBonito(c.telefone)}</div>
       <div className="fx-sub">{(c.nome || c.contato_nome) ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—"}</div>
       {c.ultima_msg && <div className="at-prev">{c.ultima_msg}</div>}
@@ -975,6 +1035,55 @@ function ChatEquipeModal({ outro, onFechar }: { outro: string; onFechar: () => v
             <textarea rows={1} placeholder={"Mensagem para " + outro + "…"} value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
             <button className="at-send" disabled={busy} onClick={enviar}>➤</button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Criar / organizar colunas do quadro (gestor) ──────────────────────────────────
+function ColunasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => void }) {
+  const [colunas, setColunas] = useState<import("../api").AtendColuna[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api.atendColunas().then((r) => setColunas(r.colunas)).catch(() => {}).finally(() => setCarregando(false)); }, []);
+  const mover = (i: number, dir: number) => setColunas((cs) => { const n = [...cs]; const j = i + dir; if (j < 0 || j >= n.length) return n; [n[i], n[j]] = [n[j], n[i]]; return n; });
+  const setCampo = (i: number, k: "label" | "cor", v: string) => setColunas((cs) => cs.map((c, idx) => (idx === i ? { ...c, [k]: v } : c)));
+  const add = () => setColunas((cs) => [...cs, { id: "col-" + Math.random().toString(36).slice(2, 9), label: "Nova coluna", cor: "#64748b", custom: true }]);
+  const remover = (i: number) => setColunas((cs) => cs.filter((_, idx) => idx !== i));
+  async function salvar() {
+    setBusy(true);
+    try {
+      const extra = colunas.filter((c) => c.custom).map((c) => ({ id: c.id, label: c.label, cor: c.cor }));
+      const ordem = colunas.map((c) => c.id);
+      await api.atendSalvarColunas(extra, ordem);
+      onSalvo();
+    } catch { alert("Não consegui salvar as colunas."); } finally { setBusy(false); }
+  }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 520, width: "min(520px,96vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd" style={{ background: "linear-gradient(130deg,#0ea5e9,#4f46e5)" }}>
+          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">🗂️ Colunas do quadro</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
+        </div>
+        <div className="modal-bd">
+          <div className="muted2" style={{ marginBottom: 10, fontSize: 12.5 }}>Use as setas pra reordenar. Você pode <b>criar novas colunas</b> e arrastar os cards pra elas. As colunas padrão do sistema não podem ser apagadas (só reordenadas).</div>
+          {carregando ? <p className="muted">Carregando…</p> : colunas.map((c, i) => (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 6px", borderBottom: "1px solid var(--line,#f1f5f9)" }}>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <button className="btn btn-soft" style={{ padding: "0 6px", lineHeight: 1.1 }} disabled={i === 0} onClick={() => mover(i, -1)}>▲</button>
+                <button className="btn btn-soft" style={{ padding: "0 6px", lineHeight: 1.1 }} disabled={i === colunas.length - 1} onClick={() => mover(i, 1)}>▼</button>
+              </div>
+              <input type="color" value={/^#/.test(c.cor) ? c.cor : "#64748b"} onChange={(e) => setCampo(i, "cor", e.target.value)} disabled={!c.custom} style={{ width: 34, height: 34, padding: 0, border: "none", background: "none" }} title={c.custom ? "Cor" : "Cor da coluna padrão"} />
+              <input value={c.label} onChange={(e) => setCampo(i, "label", e.target.value)} disabled={!c.custom} style={{ flex: 1 }} />
+              {c.custom ? <button className="btn btn-soft" style={{ color: "#dc2626" }} onClick={() => remover(i)} title="Remover">🗑️</button> : <span className="muted2" style={{ fontSize: 10.5, width: 46, textAlign: "center" }}>padrão</span>}
+            </div>
+          ))}
+          <button className="btn btn-soft" onClick={add} style={{ width: "100%", marginTop: 10 }}>＋ Nova coluna</button>
+        </div>
+        <div className="modal-ft">
+          <button className="btn" onClick={onFechar}>Cancelar</button>
+          <button className="kbtn go" disabled={busy} onClick={salvar}>{busy ? "Salvando…" : "Salvar"}</button>
         </div>
       </div>
     </div>
