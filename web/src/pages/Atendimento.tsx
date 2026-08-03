@@ -459,9 +459,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card at-modal" onClick={(e) => e.stopPropagation()}>
         <div className="at-thd">
-          <div className="at-av">{iniciais(d?.nome || d?.telefone)}</div>
+          <div className="at-av">{iniciais(d?.nome || d?.contato_nome || d?.telefone)}</div>
           <div className="info">
-            <div className="nm">{d?.nome || (d ? telBonito(d.telefone) : "…")}</div>
+            <div className="nm">{d?.nome || d?.contato_nome || (d ? telBonito(d.telefone) : "…")}</div>
             <div className="sub">{d ? telBonito(d.telefone) : ""}{d?.cidade ? ` · ${d.cidade}/${d.uf || ""}` : ""}</div>
           </div>
           {d && <span className="at-chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{d.coluna.replace(/-/g, " ")}</span>}

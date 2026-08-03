@@ -140,15 +140,17 @@ async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: st
 // Garante um card na coluna "📥 Catálogo (contato)" para uma conversa vinda do
 // catálogo (cliente entrou em contato / atividade do catálogo). Idempotente: se a
 // conversa já tem card, não duplica. Lê os dados direto da conversa.
-async function garantirCardDaConversa(env: Env, convId: string, texto = "Catálogo (cliente entrou em contato)") {
+async function garantirCardDaConversa(env: Env, convId: string, texto = "Catálogo (cliente entrou em contato)", etapa = "catalogo-recebido") {
   const cv = await env.DB.prepare(
-    "SELECT id, card_id, cliente_id, nome, cidade, uf, representante, telefone FROM atend_conversas WHERE id=?"
-  ).bind(convId).first<{ id: string; card_id: string | null; cliente_id: string | null; nome: string | null; cidade: string | null; uf: string | null; representante: string | null; telefone: string | null }>().catch(() => null);
+    "SELECT id, card_id, cliente_id, nome, contato_nome, cidade, uf, representante, telefone FROM atend_conversas WHERE id=?"
+  ).bind(convId).first<{ id: string; card_id: string | null; cliente_id: string | null; nome: string | null; contato_nome: string | null; cidade: string | null; uf: string | null; representante: string | null; telefone: string | null }>().catch(() => null);
   if (!cv || cv.card_id || ehClienteInterno(cv.nome)) return;
+  // Nome do card: loja > nome do contato (perfil do WhatsApp) > telefone.
+  const nomeCard = (cv.nome || cv.contato_nome || "").trim() || ("+" + digitos(cv.telefone || ""));
   const cardId = uid();
   await env.DB.prepare(
-    "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, 'catalogo-recebido', ?)"
-  ).bind(cardId, cv.cliente_id ?? null, cv.nome || "(catálogo)", cv.cidade ?? null, cv.uf ?? null, digitos(cv.telefone || ""), cv.representante ?? null).run();
+    "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(cardId, cv.cliente_id ?? null, nomeCard, cv.cidade ?? null, cv.uf ?? null, digitos(cv.telefone || ""), etapa, cv.representante ?? null).run();
   await env.DB.prepare("INSERT INTO funil_eventos (id, card_id, tipo, texto) VALUES (?, ?, 'etapa', ?)").bind(uid(), cardId, texto).run();
   await env.DB.prepare("UPDATE atend_conversas SET card_id=? WHERE id=?").bind(cardId, convId).run();
 }
@@ -504,20 +506,38 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     return { conversa_id: conv.id, estado: "reclamacao", coluna: "reclamacao", respostas: [{ tipo: "texto", texto: ack }], notificarHumano: true };
   }
 
-  // IA de triagem (se ligada). Representantes seguem o fluxo padrão (menu).
-  // Reengaja também quem já tinha terminado a conversa e voltou a falar (a Big tem o
-  // histórico e continua). NÃO reengaja estados de coleta determinística (nome/CNPJ/cidade)
-  // nem "atendimento-humano" (já tratado acima).
-  if (cfgAt.atendimento_ia === "1" && conv.tipo !== "representante"
+  // IA de triagem (se ligada). A Big responde TODO MUNDO de forma natural — inclusive
+  // representantes (nada de menu numerado "digite 1/2/3"). Reengaja também quem já tinha
+  // terminado a conversa e voltou a falar. NÃO reengaja estados de coleta determinística
+  // (nome/CNPJ/cidade) nem "atendimento-humano" (já tratado acima).
+  if (cfgAt.atendimento_ia === "1"
       && (conv.estado === "novo" || conv.estado === "ia-triagem" || IA_REENGATA.has(conv.estado))) {
     // PRIMEIRO CONTATO: saudação fixa (sem gastar chamada de IA). Se o número já está
     // na base de clientes, identifica e saúda pelo nome; senão manda a saudação padrão.
     if (conv.estado === "novo") {
-      const primeiro = String(conv.nome ?? "").trim().split(/\s+/)[0] || "";
-      const saud = conv.cliente_id
-        ? `Olá${primeiro ? ", " + primeiro : ""}! Tudo bem? 🤗\nQue bom te ver de novo na *Big Tricot*! 💛\nComo posso te ajudar hoje?`
-        : SAUDACAO_NOVO;
+      const primeiro = String(conv.nome ?? conv.contato_nome ?? "").trim().split(/\s+/)[0] || "";
+      const hBR = (new Date().getUTCHours() + 21) % 24;                    // Brasil (UTC-3)
+      const ola = hBR < 12 ? "Bom dia" : hBR < 18 ? "Boa tarde" : "Boa noite";
+      // Conversa que JÁ vinha em andamento (cliente da base OU a 1ª mensagem já fala de
+      // pedido/relação — ex.: "tirar um novo pedido", "meu boleto"). Nesse caso a Big só
+      // cumprimenta e passa DIRETO pro humano, sem o fluxo de "você é novo cliente?".
+      const ehContinuacao = /(meu|nosso|[uú]ltimo|novo|pr[oó]ximo)\s+pedido|tirar\s+(um\s+|o\s+|mais\s+um\s+)?pedido|j[aá]\s+(comprei|compramos|fiz|fizemos)|sempre\s+compr|comprei\s+(com|de)\s+voc|nota\s+fiscal|boleto|fatura|reposi[çc]|mercadoria|meu\s+pagamento/i.test(texto);
+      if (conv.cliente_id || ehContinuacao) {
+        const saud = conv.cliente_id
+          ? `${ola}${primeiro ? ", " + primeiro : ""}! 🤗 Que bom te ver de novo na *Big Tricot* 💛\nJá vou chamar alguém do nosso time pra te atender, tá? 😊`
+          : `${ola}! 🤗 Aqui é da *Big Tricot* 💛\nJá vou chamar alguém do nosso time pra continuar seu atendimento, tá? 😊`;
+        await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+        await garantirCardDaConversa(env, conv.id, conv.cliente_id ? "Cliente conhecido voltou a falar" : "Conversa em andamento → humano", "atendimento");
+        await avisarHumanoPush(env, conv).catch(() => {});
+        await addMsg(env, conv.id, "out", "bot", "texto", saud);
+        await enviarWhatsapp(env, tel, { tipo: "texto", texto: saud });
+        await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
+        return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: saud }], notificarHumano: true };
+      }
+      // Contato novo → saudação padrão + a IA qualifica. Já cria o card no Funil (coluna Atendimento).
+      const saud = SAUDACAO_NOVO;
       await env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      await garantirCardDaConversa(env, conv.id, "Novo contato no WhatsApp", "atendimento");
       await addMsg(env, conv.id, "out", "bot", "texto", saud);
       await enviarWhatsapp(env, tel, { tipo: "texto", texto: saud });
       await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
