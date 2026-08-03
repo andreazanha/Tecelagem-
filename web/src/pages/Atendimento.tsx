@@ -132,8 +132,9 @@ export function Atendimento() {
     setBoard((b) => (b ? { ...b, conversas: b.conversas.map((x) => (x.id === id ? { ...x, coluna, coluna_manual: coluna } : x)) } : b));
     try { await api.atendMoverColuna(id, coluna); recarregar(); } catch { recarregar(); }
   }
-  // Card "aguardando": cliente escreveu depois da nossa última resposta (ou nunca respondemos).
-  const aguardando = (c: AtendConversa) => !!c.ultima_in_em && (c.ultima_in_em || "") > (c.ultima_out_em || "");
+  // Card "aguardando": cliente escreveu depois da nossa última resposta (ou nunca respondemos)
+  // E o atendimento não foi encerrado depois disso. Encerrar para de piscar sem mandar nada.
+  const aguardando = (c: AtendConversa) => !!c.ultima_in_em && (c.ultima_in_em || "") > (c.ultima_out_em || "") && (c.ultima_in_em || "") > (c.encerrado_em || "");
 
   const [alerta, setAlerta] = useState<AtendConversa | null>(null); // banner de backup na tela
   const alertadosRef = useRef<Set<string>>(new Set());
@@ -693,6 +694,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     setBusy(true);
     try { await api.atendNaoPerturbe(id, !d.nao_perturbe); carregar(); onMudou(); } finally { setBusy(false); }
   }
+  const encerrado = !!d?.encerrado_em && (d.encerrado_em || "") >= (d.ultima_in_em || "");
+  async function encerrar() {
+    setBusy(true);
+    try { await api.atendEncerrar(id, getUser()?.nome, encerrado); carregar(); onMudou(); } finally { setBusy(false); }
+  }
   async function enviarCatalogo() {
     if (!confirm("Enviar o link do catálogo para este cliente?")) return;
     setBusy(true);
@@ -880,6 +886,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 {usuarios.map((u) => <option key={u.usuario} value={u.nome}>{u.nome}</option>)}
               </select>
             </div>
+            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: encerrado ? "#a7f3d0" : undefined, background: encerrado ? "#ecfdf5" : undefined, color: encerrado ? "#065f46" : undefined }} disabled={busy} onClick={encerrar} title="Marca o atendimento como resolvido (para de piscar). NÃO envia nada ao cliente.">
+              {encerrado ? "✅ Encerrado — reabrir" : "✅ Encerrar atendimento"}
+            </button>
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5 }} disabled={busy} onClick={toggleNaoPerturbe} title="Para/retoma as mensagens automáticas para este cliente">
               {d?.nao_perturbe ? "🔕 Automáticas pausadas — retomar" : "🔔 Pausar mensagens automáticas"}
             </button>

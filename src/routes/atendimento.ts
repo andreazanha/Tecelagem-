@@ -1104,6 +1104,19 @@ atendimento.post("/colunas", async (c) => {
   await salvarConfigJson(c.env, "atend_colunas_ordem", ordem);
   return c.json({ ok: true, colunas: await lerColunasAtend(c.env) });
 });
+// Encerrar atendimento: só marca como resolvido (para de piscar). NÃO envia nada ao cliente.
+atendimento.post("/:id/encerrar", async (c) => {
+  const b = await c.req.json<{ autor?: string; reabrir?: boolean }>().catch(() => ({}) as Record<string, string>);
+  const id = c.req.param("id");
+  if (b.reabrir) {
+    await c.env.DB.prepare("UPDATE atend_conversas SET encerrado_em=NULL, atualizado_em=datetime('now') WHERE id=?").bind(id).run();
+    return c.json({ ok: true, reaberto: true });
+  }
+  await c.env.DB.prepare("UPDATE atend_conversas SET encerrado_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
+  await addMsg(c.env, id, "out", "sistema", "sistema", `Atendimento encerrado${b.autor ? " por " + String(b.autor).trim() : ""}.`);
+  return c.json({ ok: true });
+});
+
 // Mover um card pra outra coluna (arrastar) — grava a coluna manual.
 atendimento.post("/:id/coluna", async (c) => {
   const b = await c.req.json<{ coluna?: string }>().catch(() => ({}) as Record<string, string>);
@@ -1547,7 +1560,7 @@ atendimento.get("/", async (c) => {
   const binds: string[] = [];
   if (!gestor && usuario) { cond.push("(c.responsavel = ? OR c.responsavel IS NULL OR c.responsavel = '')"); binds.push(usuario); }
   const stmt = c.env.DB.prepare(
-    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.responsavel, c.atualizado_em, c.ultima_in_em, c.ultima_out_em, c.coluna_manual, c.tipo, c.representante, c.origem, c.contato_nome, c.autorizado, c.interessado,
+    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.responsavel, c.atualizado_em, c.ultima_in_em, c.ultima_out_em, c.encerrado_em, c.coluna_manual, c.tipo, c.representante, c.origem, c.contato_nome, c.autorizado, c.interessado,
             (SELECT texto FROM atend_mensagens m WHERE m.conversa_id=c.id AND m.tipo NOT IN ('nota','sistema') ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 1) AS ultima_msg,
             (SELECT etapa FROM funil_cards fc WHERE fc.id = c.card_id) AS funil_etapa
        FROM atend_conversas c WHERE ${cond.join(" AND ")} ORDER BY c.atualizado_em DESC`

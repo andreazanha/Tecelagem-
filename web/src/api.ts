@@ -284,7 +284,7 @@ export interface AtendColuna { id: string; label: string; cor: string; custom?: 
 export interface AtendConversa {
   id: string; telefone: string; nome: string | null; estado: string; coluna: string;
   setor: string | null; cnpj: string | null; cidade: string | null; uf: string | null;
-  lojista: number | null; responsavel: string | null; atualizado_em: string; ultima_in_em?: string | null; ultima_out_em?: string | null; coluna_manual?: string | null; ultima_msg: string | null;
+  lojista: number | null; responsavel: string | null; atualizado_em: string; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null; coluna_manual?: string | null; ultima_msg: string | null;
   tipo: string | null; representante: string | null; origem: string | null; contato_nome: string | null; autorizado: number | null; interessado: number | null;
   funil_etapa?: string | null;
 }
@@ -688,6 +688,8 @@ export const api = {
     jsonPost("/api/atendimento/colunas", { extra, ordem }).then((r) => j<{ ok: boolean; colunas: AtendColuna[] }>(r)),
   atendMoverColuna: (id: string, coluna: string) =>
     jsonPost(`/api/atendimento/${id}/coluna`, { coluna }).then((r) => j<{ ok: boolean }>(r)),
+  atendEncerrar: (id: string, autor?: string, reabrir?: boolean) =>
+    jsonPost(`/api/atendimento/${id}/encerrar`, { autor, reabrir }).then((r) => j<{ ok: boolean }>(r)),
   atendCampanhas: () => fetch("/api/atendimento/campanhas").then((r) => j<{ id: string; nome: string | null; mensagem: string; intervalo_seg: number; status: string; criado_em: string; total: number; enviados: number; pendentes: number; falhas: number }[]>(r)),
   atendCriarCampanha: (b: { nome?: string; mensagem: string; intervalo_seg: number; alvos: { telefone: string; nome?: string }[] }) =>
     jsonPost("/api/atendimento/campanhas", b).then((r) => j<{ ok: boolean; id: string; total: number; error?: string }>(r)),
