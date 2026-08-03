@@ -52,6 +52,7 @@ export function Atendimento() {
   const [novaConv, setNovaConv] = useState(false);
   const [equipeOpen, setEquipeOpen] = useState(false);
   const [conectado, setConectado] = useState<boolean | null>(null);
+  const [filtroAtend, setFiltroAtend] = useState<string>("todos"); // gestor: filtra por vendedor
 
   const [alerta, setAlerta] = useState<AtendConversa | null>(null); // banner de backup na tela
   const alertadosRef = useRef<Set<string>>(new Set());
@@ -175,12 +176,30 @@ export function Atendimento() {
         </div>
       </div>
 
+      {/* Gestor: acompanha cada vendedor — filtra o quadro por quem está atendendo. */}
+      {board && ehGestorAtend() && (() => {
+        const atendentes = [...new Set(board.conversas.map((c) => c.responsavel).filter(Boolean) as string[])].sort();
+        if (atendentes.length === 0) return null;
+        return (
+          <div className="fx-filtros" style={{ marginBottom: 10 }}>
+            <span style={{ fontSize: 12, color: "var(--muted)", alignSelf: "center" }}>👀 Acompanhar:</span>
+            <span className={"fx-pill" + (filtroAtend === "todos" ? " on" : "")} onClick={() => setFiltroAtend("todos")}>Todos</span>
+            {atendentes.map((a) => (
+              <span key={a} className={"fx-pill" + (filtroAtend === a ? " on" : "")} onClick={() => setFiltroAtend(a)}>{a}</span>
+            ))}
+            <span className={"fx-pill" + (filtroAtend === "__robo" ? " on" : "")} onClick={() => setFiltroAtend("__robo")}>🤖 Só robô</span>
+          </div>
+        );
+      })()}
+
       {!board ? (
         <div className="card pad muted">Carregando…</div>
       ) : (
         <div className="fx-board">
           {board.colunas.map((col) => {
-            const cs = board.conversas.filter((c) => c.coluna === col.id);
+            const cs = board.conversas.filter((c) => c.coluna === col.id).filter((c) =>
+              filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend
+            );
             return (
               <div className="fx-col" key={col.id}>
                 <div className="fx-hd"><span className="fx-dot" style={{ background: col.cor }} />{col.label}<span className="ct">{cs.length}</span></div>
