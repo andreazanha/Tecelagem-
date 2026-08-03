@@ -820,7 +820,9 @@ export const api = {
     fetch(`/api/chat/nao-lidas?desde=${encodeURIComponent(desde)}&autor=${encodeURIComponent(autor)}`).then((r) => j<{ nao_lidas: number; ultima: ChatMensagem | null }>(r)),
   contatosChat: () => fetch("/api/chat/contatos").then((r) => j<string[]>(r)),
   dmsChat: (me: string) => fetch(`/api/chat/dms?me=${encodeURIComponent(me)}`).then((r) => j<ChatDM[]>(r)),
-  dmResumoChat: (me: string) => fetch(`/api/chat/dm-resumo?me=${encodeURIComponent(me)}`).then((r) => j<{ outro: string; ultima_em: string; ultimo_autor: string }[]>(r)),
+  dmResumoChat: (me: string) => fetch(`/api/chat/dm-resumo?me=${encodeURIComponent(me)}`).then((r) => j<{ outro: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean }[]>(r)),
+  marcarLidoChat: (usuario: string, canal: string) =>
+    jsonPost("/api/chat/marcar-lido", { usuario, canal }).then((r) => j<{ ok: boolean }>(r)),
   enviarFotoChat: (canal: string, autor: string, file: File, texto?: string) => {
     const fd = new FormData();
     fd.append("file", file); fd.append("autor", autor); if (texto) fd.append("texto", texto);

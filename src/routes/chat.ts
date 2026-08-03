@@ -37,16 +37,35 @@ chat.get("/dm-resumo", async (c) => {
   const { results } = await c.env.DB.prepare(
     "SELECT canal, autor, criado_em FROM chat_mensagens WHERE canal LIKE 'dm:%' ORDER BY criado_em DESC, rowid DESC"
   ).all<{ canal: string; autor: string; criado_em: string }>();
+  // O que "me" já leu em cada canal (servidor → igual em qualquer aparelho).
+  const { results: lidos } = await c.env.DB.prepare(
+    "SELECT canal, visto_em FROM chat_lido WHERE usuario = ?"
+  ).bind(me).all<{ canal: string; visto_em: string | null }>().catch(() => ({ results: [] as { canal: string; visto_em: string | null }[] }));
+  const lidoMap = new Map(lidos.map((l) => [l.canal, l.visto_em || ""]));
   const vistos = new Set<string>();
-  const out: { outro: string; ultima_em: string; ultimo_autor: string }[] = [];
+  const out: { outro: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean }[] = [];
   for (const r of results) {
     if (vistos.has(r.canal)) continue; // já pegamos a mais recente deste canal
     const partes = r.canal.slice(3).split("|");
     if (!partes.includes(me)) continue;
     vistos.add(r.canal);
-    out.push({ outro: partes.find((p) => p !== me) || partes[0], ultima_em: r.criado_em, ultimo_autor: r.autor });
+    const nao_lido = r.autor !== me && r.criado_em > (lidoMap.get(r.canal) || "");
+    out.push({ outro: partes.find((p) => p !== me) || partes[0], ultima_em: r.criado_em, ultimo_autor: r.autor, nao_lido });
   }
   return c.json(out);
+});
+
+// Marca um canal como lido por "me" até a última mensagem (servidor).
+chat.post("/marcar-lido", async (c) => {
+  const b = await c.req.json<{ usuario?: string; canal?: string }>().catch(() => ({}) as Record<string, string>);
+  const usuario = (b.usuario || "").trim();
+  const canal = (b.canal || "").trim();
+  if (!usuario || !canal) return c.json({ error: "usuario e canal são obrigatórios" }, 400);
+  const ult = await c.env.DB.prepare("SELECT MAX(criado_em) AS m FROM chat_mensagens WHERE canal = ?").bind(canal).first<{ m: string | null }>();
+  await c.env.DB.prepare(
+    "INSERT INTO chat_lido (usuario, canal, visto_em) VALUES (?, ?, ?) ON CONFLICT(usuario, canal) DO UPDATE SET visto_em=excluded.visto_em"
+  ).bind(usuario, canal, ult?.m || null).run();
+  return c.json({ ok: true });
 });
 
 // Não lidas: mensagens depois de `desde` que NÃO são minhas.

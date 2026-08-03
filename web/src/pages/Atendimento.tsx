@@ -55,30 +55,29 @@ export function Atendimento() {
   const [filtroAtend, setFiltroAtend] = useState<string>("todos"); // gestor: filtra por vendedor
   const [membros, setMembros] = useState<string[]>([]); // equipe (chat interno)
   const [chatCom, setChatCom] = useState<string | null>(null); // membro com quem estou conversando
-  const [dmResumo, setDmResumo] = useState<{ outro: string; ultima_em: string; ultimo_autor: string }[]>([]);
-  const [, setVistoTick] = useState(0);
+  const [dmResumo, setDmResumo] = useState<{ outro: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean }[]>([]);
   const eu = getUser()?.nome || "";
+  const canalDM = (o: string) => "dm:" + [eu, o].sort().join("|");
   useEffect(() => { api.contatosChat().then(setMembros).catch(() => {}); }, []);
   useEffect(() => {
     if (!eu) return;
     const carregar = () => api.dmResumoChat(eu).then(setDmResumo).catch(() => {});
     carregar(); const t = setInterval(carregar, 8000); return () => clearInterval(t);
   }, [eu]);
-  const vistoKey = (o: string) => `dm-visto:${eu}:${o}`;
-  function temNovoDe(o: string) { const r = dmResumo.find((x) => x.outro === o); if (!r || r.ultimo_autor === eu) return false; return r.ultima_em > (localStorage.getItem(vistoKey(o)) || ""); }
-  function abrirChatEquipe(o: string) {
-    const r = dmResumo.find((x) => x.outro === o);
-    localStorage.setItem(vistoKey(o), r?.ultima_em || "9999"); // marca como lido até a última
-    setVistoTick((t) => t + 1);
+  // "Lido" é controlado no SERVIDOR (chat_lido), então a bolinha fica igual em qualquer aparelho.
+  const temNovoDe = (o: string) => !!dmResumo.find((x) => x.outro === o)?.nao_lido;
+  async function abrirChatEquipe(o: string) {
     setChatCom(o);
+    setDmResumo((ds) => ds.map((x) => (x.outro === o ? { ...x, nao_lido: false } : x))); // limpa na hora
+    try { await api.marcarLidoChat(eu, canalDM(o)); } catch { /* ignora */ }
   }
-  // Enquanto o chat com alguém está aberto, mantém marcado como lido.
+  // Enquanto o chat está aberto, vai marcando como lido no servidor.
   useEffect(() => {
-    if (!chatCom) return;
-    const r = dmResumo.find((x) => x.outro === chatCom);
-    if (r) localStorage.setItem(vistoKey(chatCom), r.ultima_em);
+    if (!chatCom || !eu) return;
+    const marcar = () => api.marcarLidoChat(eu, canalDM(chatCom)).catch(() => {});
+    marcar(); const t = setInterval(marcar, 4000); return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatCom, dmResumo]);
+  }, [chatCom, eu]);
 
   const [alerta, setAlerta] = useState<AtendConversa | null>(null); // banner de backup na tela
   const alertadosRef = useRef<Set<string>>(new Set());
