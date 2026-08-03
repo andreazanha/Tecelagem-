@@ -860,12 +860,12 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <Link to="/funil" className="btn btn-soft" style={{ marginTop: 8, display: "block", textAlign: "center", fontSize: 12 }}>Abrir no funil completo →</Link>
               </div>
             )}
-            {humano && <div style={{ fontSize: 12, color: "var(--muted)", margin: "10px 0 4px" }}>Em atendimento com <b>{d?.responsavel || "—"}</b></div>}
-            {/* Transferir SEMPRE disponível — dá pra encaminhar direto pra um atendente, sem precisar assumir antes. */}
-            <div style={{ marginTop: humano ? 0 : 8 }}>
-              <select value="" onChange={(e) => { if (e.target.value) transferir(e.target.value); }} disabled={busy} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg-soft)", color: "var(--ink)" }}>
-                <option value="">{humano ? "↔️ Transferir para outro atendente…" : "↔️ Transferir direto para um atendente…"}</option>
-                {usuarios.filter((u) => u.nome !== d?.responsavel).map((u) => <option key={u.usuario} value={u.nome}>{u.nome}</option>)}
+            {/* Vendedor responsável: mostra o nome de quem atende e deixa escolher/trocar direto aqui. */}
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>🧑‍💼 Vendedor responsável</div>
+              <select value={d?.responsavel || ""} onChange={(e) => { if (e.target.value) transferir(e.target.value); }} disabled={busy} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid " + (d?.responsavel ? "#a7f3d0" : "var(--line)"), background: d?.responsavel ? "#ecfdf5" : "var(--bg-soft)", color: "var(--ink)", fontWeight: d?.responsavel ? 700 : 400 }}>
+                <option value="">— escolher vendedor —</option>
+                {usuarios.map((u) => <option key={u.usuario} value={u.nome}>{u.nome}</option>)}
               </select>
             </div>
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5 }} disabled={busy} onClick={toggleNaoPerturbe} title="Para/retoma as mensagens automáticas para este cliente">
