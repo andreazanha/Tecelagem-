@@ -714,6 +714,22 @@ atendimento.post("/reset", async (c) => {
 // Ignora mensagens enviadas por nós (fromMe) e callbacks de status. Só texto por ora.
 atendimento.post("/webhook", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
+  // Callback de STATUS (entregue/lido) — atualiza os ✓✓ das mensagens que ENVIAMOS.
+  // Configure na Z-API o webhook "Ao atualizar status da mensagem" apontando para esta URL.
+  if (b.status && (b.ids || b.messageId) || b.type === "MessageStatusCallback" || b.type === "DeliveryCallback") {
+    const ids = Array.isArray(b.ids) ? (b.ids as unknown[]).map(String) : (b.messageId ? [String(b.messageId)] : []);
+    const st = String(b.status ?? "").toUpperCase();
+    const novo = (st === "READ" || st === "PLAYED") ? "read" : (st === "RECEIVED" || st === "DELIVERED") ? "delivered" : (st === "SENT") ? "sent" : "";
+    const rank = novo === "read" ? 3 : novo === "delivered" ? 2 : novo === "sent" ? 1 : 0;
+    if (novo && ids.length) {
+      for (const mid of ids) {
+        await c.env.DB.prepare(
+          "UPDATE atend_mensagens SET status=? WHERE zap_id=? AND (CASE status WHEN 'read' THEN 3 WHEN 'delivered' THEN 2 WHEN 'sent' THEN 1 ELSE 0 END) < ?"
+        ).bind(novo, mid, rank).run();
+      }
+    }
+    return c.json({ ok: true, status: novo, n: ids.length });
+  }
   // Interruptor mestre: se o atendimento automático estiver desligado, NÃO responde
   // clientes reais (fica em modo teste interno pelo Simulador). Ignora silenciosamente.
   const cfg = await lerConfig(c.env);
@@ -1237,7 +1253,8 @@ async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; text
       method: "POST", headers, body: JSON.stringify(body),
     });
     if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}` };
-    return { enviado: true };
+    const dj = await resp.json().catch(() => ({})) as { messageId?: string; id?: string; zaapId?: string };
+    return { enviado: true, messageId: dj?.messageId || dj?.id || dj?.zaapId || null };
   } catch (e) {
     return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
   }
@@ -1264,7 +1281,8 @@ async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string; ehIma
   try {
     const resp = await fetch(`${base}/instances/${inst}/token/${token}/${endpoint}`, { method: "POST", headers, body: JSON.stringify(body) });
     if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}` };
-    return { enviado: true };
+    const dj = await resp.json().catch(() => ({})) as { messageId?: string; id?: string; zaapId?: string };
+    return { enviado: true, messageId: dj?.messageId || dj?.id || dj?.zaapId || null };
   } catch (e) {
     return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
   }
@@ -1537,9 +1555,10 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   const nome = `${uid()}.${ext}`;
   await c.env.BUCKET.put(`atend/${nome}`, file.stream(), { httpMetadata: { contentType: ct } });
   const url = `${new URL(c.req.url).origin}/api/atendimento/arquivo/${nome}`;
-  await addMsg(c.env, id, "out", autor, "arquivo", legenda || nomeArq, { arquivoUrl: url });
+  const msgId = await addMsg(c.env, id, "out", autor, "arquivo", legenda || nomeArq, { arquivoUrl: url });
   await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
   const r = await enviarMidiaZapi(c.env, conv.telefone, { url, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
+  if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
   return c.json({ ok: true, enviado: r.enviado, motivo: r.motivo, url });
 });
 
@@ -1574,7 +1593,7 @@ atendimento.get("/:id", async (c) => {
   // Só as ÚLTIMAS 250 mensagens: conversas antigas (ou floods) podem ter centenas
   // de mensagens e travar a tela ("página sem resposta") em PC mais fraco.
   const { results: msgsDesc } = await c.env.DB.prepare(
-    "SELECT id, direcao, autor, tipo, texto, responder_texto, arquivo_url, criado_em FROM atend_mensagens WHERE conversa_id = ? ORDER BY criado_em DESC, rowid DESC LIMIT 250"
+    "SELECT id, direcao, autor, tipo, texto, responder_texto, arquivo_url, status, criado_em FROM atend_mensagens WHERE conversa_id = ? ORDER BY criado_em DESC, rowid DESC LIMIT 250"
   ).bind(conv.id).all();
   const mensagens = (msgsDesc as unknown[]).slice().reverse();
   const { results: interesses } = await c.env.DB.prepare(
@@ -1714,9 +1733,11 @@ atendimento.post("/:id/enviar", async (c) => {
     const alvo = await c.env.DB.prepare("SELECT texto, zap_id FROM atend_mensagens WHERE id=? AND conversa_id=?").bind(b.responder_a, id).first<{ texto: string | null; zap_id: string | null }>();
     if (alvo) quote = { zapId: alvo.zap_id, texto: (alvo.texto || "").slice(0, 180) };
   }
-  await addMsg(c.env, id, "out", (b.autor || "Atendente").trim(), "texto", texto, { responderTexto: quote.texto || null });
+  const msgId = await addMsg(c.env, id, "out", (b.autor || "Atendente").trim(), "texto", texto, { responderTexto: quote.texto || null });
   await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
-  await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto }, quote);
+  const r = await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto }, quote);
+  // Guarda o id da Z-API pra casar com os callbacks de status (✓ enviado / ✓✓ lido).
+  if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
   return c.json({ ok: true });
 });
 
