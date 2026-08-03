@@ -1392,10 +1392,17 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     }).finally(() => setCarregando(false));
     carregarCampanhas();
   }, []);
+  const CAP_CONTATOS = 1000; // limite de exibição (perf). O resto acha-se pela busca.
   const filtrados = (() => {
-    const q = busca.trim().toLowerCase(); if (!q) return contatos.slice(0, 500);
+    const q = busca.trim().toLowerCase(); if (!q) return contatos.slice(0, CAP_CONTATOS);
     const dig = q.replace(/\D/g, "");
-    return contatos.filter((c) => c.nome.toLowerCase().includes(q) || (dig.length >= 3 && c.telefone.includes(dig))).slice(0, 500);
+    // Busca por NOME, CIDADE/UF ou NÚMERO — sobre a base TODA (não só os que estão à mostra).
+    return contatos.filter((c) =>
+      c.nome.toLowerCase().includes(q)
+      || (c.cidade || "").toLowerCase().includes(q)
+      || (c.uf || "").toLowerCase() === q
+      || (dig.length >= 3 && c.telefone.includes(dig))
+    ).slice(0, CAP_CONTATOS);
   })();
   const toggle = (tel: string) => setSel((s) => { const n = new Set(s); if (n.has(tel)) n.delete(tel); else n.add(tel); return n; });
   const marcarFiltrados = () => setSel((s) => { const n = new Set(s); filtrados.forEach((c) => n.add(c.telefone)); return n; });
@@ -1445,6 +1452,11 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
                 </label>
               ))}
           </div>
+          {!carregando && contatos.length > filtrados.length && (
+            <div className="muted2" style={{ fontSize: 11, marginTop: 5 }}>
+              Mostrando {filtrados.length} de <b>{contatos.length}</b> contatos. Pra achar qualquer um (inclusive além do que aparece aqui), <b>digite no campo acima</b> — nome, cidade ou número. A busca varre a lista toda. 🔎
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
             <button className="kbtn go" disabled={busy} onClick={criar}>{busy ? "Criando…" : `📣 Criar campanha (${sel.size})`}</button>
           </div>
