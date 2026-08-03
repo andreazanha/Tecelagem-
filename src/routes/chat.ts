@@ -29,6 +29,26 @@ chat.get("/dms", async (c) => {
   return c.json(out);
 });
 
+// Resumo das conversas diretas de "me": última mensagem e autor de cada DM.
+// Usado pra mostrar a bolinha de "não lido" em cada membro da equipe.
+chat.get("/dm-resumo", async (c) => {
+  const me = (c.req.query("me") || "").trim();
+  if (!me) return c.json([]);
+  const { results } = await c.env.DB.prepare(
+    "SELECT canal, autor, criado_em FROM chat_mensagens WHERE canal LIKE 'dm:%' ORDER BY criado_em DESC, rowid DESC"
+  ).all<{ canal: string; autor: string; criado_em: string }>();
+  const vistos = new Set<string>();
+  const out: { outro: string; ultima_em: string; ultimo_autor: string }[] = [];
+  for (const r of results) {
+    if (vistos.has(r.canal)) continue; // já pegamos a mais recente deste canal
+    const partes = r.canal.slice(3).split("|");
+    if (!partes.includes(me)) continue;
+    vistos.add(r.canal);
+    out.push({ outro: partes.find((p) => p !== me) || partes[0], ultima_em: r.criado_em, ultimo_autor: r.autor });
+  }
+  return c.json(out);
+});
+
 // Não lidas: mensagens depois de `desde` que NÃO são minhas.
 chat.get("/nao-lidas", async (c) => {
   const desde = c.req.query("desde") || "1970-01-01";

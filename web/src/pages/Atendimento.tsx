@@ -55,7 +55,30 @@ export function Atendimento() {
   const [filtroAtend, setFiltroAtend] = useState<string>("todos"); // gestor: filtra por vendedor
   const [membros, setMembros] = useState<string[]>([]); // equipe (chat interno)
   const [chatCom, setChatCom] = useState<string | null>(null); // membro com quem estou conversando
+  const [dmResumo, setDmResumo] = useState<{ outro: string; ultima_em: string; ultimo_autor: string }[]>([]);
+  const [, setVistoTick] = useState(0);
+  const eu = getUser()?.nome || "";
   useEffect(() => { api.contatosChat().then(setMembros).catch(() => {}); }, []);
+  useEffect(() => {
+    if (!eu) return;
+    const carregar = () => api.dmResumoChat(eu).then(setDmResumo).catch(() => {});
+    carregar(); const t = setInterval(carregar, 8000); return () => clearInterval(t);
+  }, [eu]);
+  const vistoKey = (o: string) => `dm-visto:${eu}:${o}`;
+  function temNovoDe(o: string) { const r = dmResumo.find((x) => x.outro === o); if (!r || r.ultimo_autor === eu) return false; return r.ultima_em > (localStorage.getItem(vistoKey(o)) || ""); }
+  function abrirChatEquipe(o: string) {
+    const r = dmResumo.find((x) => x.outro === o);
+    localStorage.setItem(vistoKey(o), r?.ultima_em || "9999"); // marca como lido até a última
+    setVistoTick((t) => t + 1);
+    setChatCom(o);
+  }
+  // Enquanto o chat com alguém está aberto, mantém marcado como lido.
+  useEffect(() => {
+    if (!chatCom) return;
+    const r = dmResumo.find((x) => x.outro === chatCom);
+    if (r) localStorage.setItem(vistoKey(chatCom), r.ultima_em);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatCom, dmResumo]);
 
   const [alerta, setAlerta] = useState<AtendConversa | null>(null); // banner de backup na tela
   const alertadosRef = useRef<Set<string>>(new Set());
@@ -209,12 +232,15 @@ export function Atendimento() {
               <div className="fx-col-body">
                 {outros.length === 0
                   ? <div className="muted2" style={{ padding: 10, fontSize: 12 }}>Nenhum outro membro cadastrado.</div>
-                  : outros.map((m) => (
-                    <div key={m} className="fx-card" onClick={() => setChatCom(m)} style={{ cursor: "pointer" }}>
-                      <div className="fx-nm">👤 {m}</div>
-                      <div className="fx-sub">💬 Conversar (interno)</div>
+                  : outros.map((m) => {
+                    const novo = temNovoDe(m);
+                    return (
+                    <div key={m} className="fx-card" onClick={() => abrirChatEquipe(m)} style={{ cursor: "pointer", borderLeft: novo ? "3px solid #ef4444" : undefined }}>
+                      <div className="fx-nm" style={{ display: "flex", alignItems: "center", gap: 6 }}>👤 {m}{novo && <span title="Mensagem nova" style={{ width: 9, height: 9, borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 0 2px #fff", display: "inline-block" }} />}</div>
+                      <div className="fx-sub">{novo ? "🔴 Recado novo" : "💬 Conversar (interno)"}</div>
                     </div>
-                  ))}
+                    );
+                  })}
               </div>
             </div>
           ); })()}
@@ -572,6 +598,15 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     try { await api.atendEnviar(id, { texto: texto.trim(), autor: d?.responsavel || "Atendente", responder_a: respondendo?.id }); setTexto(""); setRespondendo(null); carregar(); onMudou(); }
     finally { setBusy(false); }
   }
+  // Resposta pronta: ao clicar, ENVIA direto pro cliente (não só preenche o campo).
+  async function enviarResposta(t: string) {
+    const txt = (t || "").trim();
+    if (!txt) return;
+    setMostrarResp(false);
+    setBusy(true);
+    try { await api.atendEnviar(id, { texto: txt, autor: d?.responsavel || "Atendente", responder_a: respondendo?.id }); setRespondendo(null); carregar(); onMudou(); }
+    catch { alert("Não consegui enviar a mensagem."); } finally { setBusy(false); }
+  }
   // Nota interna: recado da equipe DENTRO da conversa — o cliente NÃO recebe.
   async function enviarNota() {
     if (!texto.trim()) return;
@@ -733,7 +768,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 : <>
                     {respEmpresa.length > 0 && <div className="muted2" style={{ padding: "6px 12px 2px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: .3 }}>📌 Da empresa</div>}
                     {respEmpresa.map((r, i) => (
-                      <button key={"e" + i} onClick={() => { setTexto(r.texto); setMostrarResp(false); }} title="Coloca no campo — você pode editar antes de enviar"
+                      <button key={"e" + i} onClick={() => enviarResposta(r.texto)} title="Enviar esta mensagem agora"
                         style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderTop: "1px solid var(--line,#f1f5f9)", background: "transparent", cursor: "pointer" }}>
                         <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.titulo || "(sem título)"}</div>
                         <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto}</div>
@@ -741,7 +776,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     ))}
                     {respostas.length > 0 && <div className="muted2" style={{ padding: "8px 12px 2px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: .3 }}>🙋 Minhas</div>}
                     {respostas.map((r, i) => (
-                      <button key={"m" + i} onClick={() => { setTexto(r.texto); setMostrarResp(false); }} title="Coloca no campo — você pode editar antes de enviar"
+                      <button key={"m" + i} onClick={() => enviarResposta(r.texto)} title="Enviar esta mensagem agora"
                         style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderTop: "1px solid var(--line,#f1f5f9)", background: "transparent", cursor: "pointer" }}>
                         <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.titulo || "(sem título)"}</div>
                         <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto}</div>
