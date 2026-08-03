@@ -934,8 +934,10 @@ atendimento.post("/config", async (c) => {
 // ── Respostas prontas (atalhos de texto que o atendente insere na conversa) ──────
 // Guardadas como JSON na tabela config (chave respostas_rapidas). Editáveis pelo
 // próprio atendente na tela da conversa.
-const RESPOSTAS_PADRAO: { titulo: string; texto: string }[] = [
-  { titulo: "Cadastro no site", texto: "Oi! 🖤 Aqui é da *Big Tricot*!\n\nA gente tem uma *vitrine de lojas parceiras* no nosso site: quando um consumidor procura nossos produtos na região dele, ele encontra a *sua loja* pra comprar. 😍\n\nPra você aparecer lá, é só fazer um cadastro rapidinho (leva 1 minutinho):\n👉 https://cadastro.bigtricot.com.br\n\nÉ só preencher o nome da loja, cidade e seu contato. Depois que a gente confere, sua loja já entra na vitrine e começa a receber clientes novos. 🚀\n\nQualquer dúvida, é só me chamar por aqui! 😊" },
+// Respostas DA EMPRESA (compartilhadas): aparecem pra todos os atendentes. Editáveis
+// pelo gestor. Guardadas na chave global "respostas_empresa".
+const RESPOSTAS_EMPRESA_PADRAO: { titulo: string; texto: string }[] = [
+  { titulo: "Convite pra cadastrar no site", texto: "Oi! 🖤 Aqui é da *Big Tricot*!\n\nA gente tem uma *vitrine de lojas parceiras* no nosso site: quando um consumidor procura nossos produtos na região dele, ele encontra a *sua loja* pra comprar. 😍\n\nPra você aparecer lá, é só fazer um cadastro rapidinho (leva 1 minutinho):\n👉 https://cadastro.bigtricot.com.br\n\nÉ só preencher o nome da loja, cidade e seu contato. Depois que a gente confere, sua loja já entra na vitrine e começa a receber clientes novos. 🚀\n\nQualquer dúvida, é só me chamar por aqui! 😊" },
   { titulo: "Horário de atendimento", texto: "Nosso atendimento é de *segunda a sexta, das 8h às 18h*. Assim que abrir já te respondo por aqui! 🙌" },
   { titulo: "Pedir dados da loja", texto: "Pra eu já adiantar seu cadastro, me manda por favor: *nome da loja*, *cidade/UF* e *CNPJ*. 📋" },
 ];
@@ -945,10 +947,22 @@ const respostasKey = (u?: string | null) => {
   const s = String(u ?? "").trim().toLowerCase();
   return s ? `respostas_rapidas:${s}` : "respostas_rapidas";
 };
+// Normaliza uma lista de respostas recebida do cliente (título + texto).
+function normalizarRespostas(src: unknown): { titulo: string; texto: string }[] {
+  return Array.isArray(src)
+    ? src.filter((x): x is { titulo?: unknown; texto?: unknown } => !!x && typeof x === "object" && typeof (x as { texto?: unknown }).texto === "string" && String((x as { texto: string }).texto).trim() !== "")
+        .map((x) => ({ titulo: String(x.titulo ?? "").slice(0, 60), texto: String(x.texto).slice(0, 1000) }))
+    : [];
+}
+async function salvarConfigJson(env: Env, chave: string, valor: unknown) {
+  await env.DB.prepare(
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES (?, ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(chave, JSON.stringify(valor)).run();
+}
 atendimento.get("/respostas", async (c) => {
   const cfg = await lerConfig(c.env);
   const raw = cfg[respostasKey(c.req.query("u"))];
-  if (raw == null) return c.json(RESPOSTAS_PADRAO);
+  if (raw == null) return c.json([]); // pessoais começam vazias; as padrão ficam em "empresa"
   let arr: unknown = [];
   try { arr = JSON.parse(raw); } catch { arr = []; }
   return c.json(Array.isArray(arr) ? arr : []);
@@ -957,14 +971,22 @@ atendimento.post("/respostas", async (c) => {
   const b = await c.req.json<unknown>().catch(() => ({}));
   // Aceita { usuario, respostas: [...] } (novo) ou um array direto (antigo/global).
   const usuario = (b && typeof b === "object" && !Array.isArray(b)) ? (b as { usuario?: string }).usuario : undefined;
-  const src = Array.isArray(b) ? b : ((b as { respostas?: unknown })?.respostas);
-  const arr = Array.isArray(src)
-    ? src.filter((x): x is { titulo?: unknown; texto?: unknown } => !!x && typeof x === "object" && typeof (x as { texto?: unknown }).texto === "string" && String((x as { texto: string }).texto).trim() !== "")
-        .map((x) => ({ titulo: String(x.titulo ?? "").slice(0, 60), texto: String(x.texto).slice(0, 1000) }))
-    : [];
-  await c.env.DB.prepare(
-    "INSERT INTO config (chave, valor, atualizado_em) VALUES (?, ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
-  ).bind(respostasKey(usuario), JSON.stringify(arr)).run();
+  const arr = normalizarRespostas(Array.isArray(b) ? b : (b as { respostas?: unknown })?.respostas);
+  await salvarConfigJson(c.env, respostasKey(usuario), arr);
+  return c.json({ ok: true, respostas: arr });
+});
+// Respostas da empresa (compartilhadas com todos).
+atendimento.get("/respostas-empresa", async (c) => {
+  const cfg = await lerConfig(c.env);
+  if (cfg.respostas_empresa == null) return c.json(RESPOSTAS_EMPRESA_PADRAO);
+  let arr: unknown = [];
+  try { arr = JSON.parse(cfg.respostas_empresa); } catch { arr = []; }
+  return c.json(Array.isArray(arr) ? arr : []);
+});
+atendimento.post("/respostas-empresa", async (c) => {
+  const b = await c.req.json<unknown>().catch(() => ({}));
+  const arr = normalizarRespostas(Array.isArray(b) ? b : (b as { respostas?: unknown })?.respostas);
+  await salvarConfigJson(c.env, "respostas_empresa", arr);
   return c.json({ ok: true, respostas: arr });
 });
 

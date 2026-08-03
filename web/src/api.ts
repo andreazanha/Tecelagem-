@@ -703,6 +703,10 @@ export const api = {
     fetch(`/api/atendimento/respostas?u=${encodeURIComponent(getUser()?.usuario || "")}`).then((r) => j<{ titulo: string; texto: string }[]>(r)),
   atendSalvarRespostas: (respostas: { titulo: string; texto: string }[]) =>
     jsonPost("/api/atendimento/respostas", { usuario: getUser()?.usuario || "", respostas }).then((r) => j<{ ok: boolean; respostas: { titulo: string; texto: string }[] }>(r)),
+  atendRespostasEmpresa: () =>
+    fetch("/api/atendimento/respostas-empresa").then((r) => j<{ titulo: string; texto: string }[]>(r)),
+  atendSalvarRespostasEmpresa: (respostas: { titulo: string; texto: string }[]) =>
+    jsonPost("/api/atendimento/respostas-empresa", { respostas }).then((r) => j<{ ok: boolean; respostas: { titulo: string; texto: string }[] }>(r)),
   atendAutorizar: (id: string, representante?: string) =>
     jsonPost(`/api/atendimento/${id}/autorizar`, { representante }).then((r) => j<{ ok: boolean; representante: string }>(r)),
   atendNaoPerturbe: (id: string, nao_perturbe: boolean) =>

@@ -408,6 +408,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [repSel, setRepSel] = useState("");
   const [usuarios, setUsuarios] = useState<{ nome: string; usuario: string }[]>([]);
   const [respostas, setRespostas] = useState<{ titulo: string; texto: string }[]>([]);
+  const [respEmpresa, setRespEmpresa] = useState<{ titulo: string; texto: string }[]>([]);
   const [mostrarResp, setMostrarResp] = useState(false);
   const [gerenciarResp, setGerenciarResp] = useState(false);
   const [editDados, setEditDados] = useState(false);
@@ -425,7 +426,10 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     catch { alert("Não consegui salvar os dados."); } finally { setBusy(false); }
   }
 
-  function carregarRespostas() { api.atendRespostas().then(setRespostas).catch(() => {}); }
+  function carregarRespostas() {
+    api.atendRespostas().then(setRespostas).catch(() => {});
+    api.atendRespostasEmpresa().then(setRespEmpresa).catch(() => {});
+  }
   useEffect(() => { carregarRespostas(); }, []);
   function carregar() { api.atendConversa(id).then((c) => { setD(c); setRepSel((s) => s || c.representante || ""); }); }
   useEffect(() => { carregar(); const t = setInterval(carregar, 5000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [id]);
@@ -629,15 +633,26 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <b style={{ fontSize: 13 }}>📋 Respostas prontas</b>
                 <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => { setMostrarResp(false); setGerenciarResp(true); }}>⚙️ Gerenciar</button>
               </div>
-              {respostas.length === 0
+              {respEmpresa.length === 0 && respostas.length === 0
                 ? <div className="muted2" style={{ padding: "12px" }}>Nenhuma resposta salva. Clique em <b>⚙️ Gerenciar</b> para criar.</div>
-                : respostas.map((r, i) => (
-                    <button key={i} onClick={() => { setTexto(r.texto); setMostrarResp(false); }} title="Coloca no campo — você pode editar antes de enviar"
-                      style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderTop: i ? "1px solid var(--line,#f1f5f9)" : "none", background: "transparent", cursor: "pointer" }}>
-                      <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.titulo || "(sem título)"}</div>
-                      <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto}</div>
-                    </button>
-                  ))}
+                : <>
+                    {respEmpresa.length > 0 && <div className="muted2" style={{ padding: "6px 12px 2px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: .3 }}>📌 Da empresa</div>}
+                    {respEmpresa.map((r, i) => (
+                      <button key={"e" + i} onClick={() => { setTexto(r.texto); setMostrarResp(false); }} title="Coloca no campo — você pode editar antes de enviar"
+                        style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderTop: "1px solid var(--line,#f1f5f9)", background: "transparent", cursor: "pointer" }}>
+                        <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.titulo || "(sem título)"}</div>
+                        <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto}</div>
+                      </button>
+                    ))}
+                    {respostas.length > 0 && <div className="muted2" style={{ padding: "8px 12px 2px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: .3 }}>🙋 Minhas</div>}
+                    {respostas.map((r, i) => (
+                      <button key={"m" + i} onClick={() => { setTexto(r.texto); setMostrarResp(false); }} title="Coloca no campo — você pode editar antes de enviar"
+                        style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderTop: "1px solid var(--line,#f1f5f9)", background: "transparent", cursor: "pointer" }}>
+                        <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.titulo || "(sem título)"}</div>
+                        <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto}</div>
+                      </button>
+                    ))}
+                  </>}
             </div>
           )}
           {respondendo && humano && (
@@ -670,26 +685,48 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
 
 // ── Gerenciar respostas prontas (atalhos de texto do atendente) ───────────────────
 function RespostasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => void }) {
-  const [lista, setLista] = useState<{ titulo: string; texto: string }[]>([]);
+  const gestor = ehGestorAtend();
+  const [aba, setAba] = useState<"minhas" | "empresa">("minhas");
+  const [minhas, setMinhas] = useState<{ titulo: string; texto: string }[]>([]);
+  const [empresa, setEmpresa] = useState<{ titulo: string; texto: string }[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { api.atendRespostas().then((r) => setLista(r.length ? r : [])).catch(() => {}).finally(() => setCarregando(false)); }, []);
+  useEffect(() => {
+    Promise.allSettled([api.atendRespostas(), api.atendRespostasEmpresa()]).then(([m, e]) => {
+      if (m.status === "fulfilled") setMinhas(m.value);
+      if (e.status === "fulfilled") setEmpresa(e.value);
+    }).finally(() => setCarregando(false));
+  }, []);
+  const empresaMode = aba === "empresa" && gestor;
+  const lista = empresaMode ? empresa : minhas;
+  const setLista = empresaMode ? setEmpresa : setMinhas;
   const set = (i: number, k: "titulo" | "texto", v: string) => setLista((l) => l.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
   const add = () => setLista((l) => [...l, { titulo: "", texto: "" }]);
   const remover = (i: number) => setLista((l) => l.filter((_, j) => j !== i));
   async function salvar() {
     setBusy(true);
-    try { await api.atendSalvarRespostas(lista.filter((x) => x.texto.trim())); onSalvo(); }
-    catch { alert("Não consegui salvar as respostas."); } finally { setBusy(false); }
+    try {
+      if (empresaMode) await api.atendSalvarRespostasEmpresa(empresa.filter((x) => x.texto.trim()));
+      else await api.atendSalvarRespostas(minhas.filter((x) => x.texto.trim()));
+      onSalvo();
+    } catch { alert("Não consegui salvar as respostas."); } finally { setBusy(false); }
   }
+  const tabBtn = (id: "minhas" | "empresa", label: string) => (
+    <button className={"crm-tab" + (aba === id ? " on" : "")} style={{ fontSize: 12.5 }} onClick={() => setAba(id)}>{label}</button>
+  );
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card" style={{ maxWidth: 560, width: "min(560px,96vw)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: "linear-gradient(130deg,#7c3aed,#4f46e5)" }}>
-          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📋 Minhas respostas prontas</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
+          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📋 Respostas prontas</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
         </div>
         <div className="modal-bd">
-          <div className="muted2" style={{ marginBottom: 10, fontSize: 12.5 }}>Estas respostas são <b>suas</b> — cada atendente ({getUser()?.nome || "você"}) tem as próprias. Textos que você usa toda hora (link do cadastro, horário, pedir dados…). Na conversa, clique em 📋 e escolha — dá pra editar antes de enviar.</div>
+          {gestor && <div className="crm-tabs" style={{ marginBottom: 10 }}>{tabBtn("minhas", "🙋 Minhas")}{tabBtn("empresa", "📌 Da empresa")}</div>}
+          <div className="muted2" style={{ marginBottom: 10, fontSize: 12.5 }}>
+            {empresaMode
+              ? <>Respostas <b>da empresa</b> — aparecem pra <b>todos os atendentes</b>. Use pros textos padrão (convite pro cadastro, horário…).</>
+              : <>Estas respostas são <b>suas</b> ({getUser()?.nome || "você"}) — só você vê. As <b>da empresa</b> aparecem pra todos automaticamente. Na conversa, clique em 📋 e escolha.</>}
+          </div>
           {carregando ? <p className="muted">Carregando…</p> : lista.map((r, i) => (
             <div key={i} style={{ border: "1px solid var(--line,#e2e8f0)", borderRadius: 10, padding: 10, marginBottom: 10 }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
@@ -703,7 +740,7 @@ function RespostasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: 
         </div>
         <div className="modal-ft">
           <button className="btn" onClick={onFechar}>Cancelar</button>
-          <button className="kbtn go" disabled={busy} onClick={salvar}>{busy ? "Salvando…" : "Salvar respostas"}</button>
+          <button className="kbtn go" disabled={busy} onClick={salvar}>{busy ? "Salvando…" : (empresaMode ? "Salvar (empresa)" : "Salvar respostas")}</button>
         </div>
       </div>
     </div>
