@@ -1443,18 +1443,19 @@ atendimento.post("/:id/sugerir", async (c) => {
     "SELECT direcao, texto FROM atend_mensagens WHERE conversa_id=? AND tipo<>'sistema' ORDER BY criado_em DESC, rowid DESC LIMIT 12"
   ).bind(id).all<{ direcao: string; texto: string | null }>();
   const hist = results.reverse().map((m) => `${m.direcao === "in" ? "Cliente" : "Atendente"}: ${m.texto || ""}`).join("\n");
-  try {
-    const sys = "Você é vendedor(a) da Big Tricot, atacado de tricô para o lar (mantas, capas, almofadas), atendendo LOJISTAS pelo WhatsApp. Sugira a PRÓXIMA resposta do atendente: curta (até 2 frases), calorosa e natural em português do Brasil, no máximo 1 emoji. NUNCA invente preços, prazos ou promoções. Responda apenas com a mensagem sugerida, sem aspas.";
-    const usr = `Conversa até agora:\n${hist || "(sem histórico)"}\n\nEscreva a próxima resposta do atendente${conv.nome ? ` para ${conv.nome}` : ""}.`;
-    const r = (await c.env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
-      messages: [{ role: "system", content: sys }, { role: "user", content: usr }], max_tokens: 160,
-    })) as { response?: string };
-    const sug = (r?.response || "").trim().replace(/^["']+|["']+$/g, "");
-    if (!sug) return c.json({ error: "não consegui sugerir agora" }, 503);
-    return c.json({ sugestao: sug });
-  } catch {
-    return c.json({ error: "IA indisponível no momento" }, 503);
+  if (!c.env.AI?.run) return c.json({ error: "IA indisponível no momento" }, 503);
+  const sys = "Você é vendedor(a) da Big Tricot, atacado de tricô para o lar (mantas, capas, almofadas), atendendo LOJISTAS pelo WhatsApp. Sugira a PRÓXIMA resposta do atendente: curta (até 2 frases), calorosa e natural em português do Brasil, no máximo 1 emoji. NUNCA invente preços, prazos ou promoções. Responda apenas com a mensagem sugerida, sem aspas.";
+  const usr = `Conversa até agora:\n${hist || "(sem histórico)"}\n\nEscreva a próxima resposta do atendente${conv.nome ? ` para ${conv.nome}` : ""}.`;
+  const messages = [{ role: "system", content: sys }, { role: "user", content: usr }];
+  // Mesma cascata de modelos do robô: se o primeiro estiver fora do ar, tenta o próximo.
+  for (const modelo of IA_MODELOS) {
+    try {
+      const r = (await c.env.AI.run(modelo, { messages, max_tokens: 160, temperature: 0.6 })) as { response?: string };
+      const sug = (r?.response || "").trim().replace(/^["']+|["']+$/g, "");
+      if (sug) return c.json({ sugestao: sug });
+    } catch { /* tenta o próximo modelo */ }
   }
+  return c.json({ error: "não consegui sugerir agora" }, 503);
 });
 
 // ── Opt-out: não enviar mensagens automáticas para este cliente ───────────────────
