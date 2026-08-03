@@ -1257,14 +1257,18 @@ atendimento.get("/", async (c) => {
   // Atendente (gestor≠1) vê só as conversas DELE + as não assumidas (fila). Gestor/admin vê tudo.
   const usuario = String(c.req.query("usuario") ?? "").trim();
   const gestor = c.req.query("gestor") === "1";
-  const filtro = (!gestor && usuario) ? "WHERE (c.responsavel = ? OR c.responsavel IS NULL OR c.responsavel = '')" : "";
+  // Quem SÓ entrou no catálogo/prospecção (nunca mandou mensagem) não aparece na Caixa de
+  // entrada — só entra no inbox quem realmente escreveu. (O lead segue rastreado no Funil.)
+  const cond: string[] = ["(COALESCE(c.origem,'') NOT IN ('catalogo','reativacao') OR c.ultima_in_em IS NOT NULL)"];
+  const binds: string[] = [];
+  if (!gestor && usuario) { cond.push("(c.responsavel = ? OR c.responsavel IS NULL OR c.responsavel = '')"); binds.push(usuario); }
   const stmt = c.env.DB.prepare(
     `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.responsavel, c.atualizado_em, c.tipo, c.representante, c.origem, c.contato_nome, c.autorizado, c.interessado,
             (SELECT texto FROM atend_mensagens m WHERE m.conversa_id=c.id ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 1) AS ultima_msg,
             (SELECT etapa FROM funil_cards fc WHERE fc.id = c.card_id) AS funil_etapa
-       FROM atend_conversas c ${filtro} ORDER BY c.atualizado_em DESC`
+       FROM atend_conversas c WHERE ${cond.join(" AND ")} ORDER BY c.atualizado_em DESC`
   );
-  const { results } = await (filtro ? stmt.bind(usuario) : stmt).all<Record<string, unknown>>();
+  const { results } = await stmt.bind(...binds).all<Record<string, unknown>>();
   const conversas = results.map((r) => ({ ...r, coluna: colunaDe(String(r.estado)) }));
   return c.json({ colunas: ATEND_COLUNAS, conversas });
 });
