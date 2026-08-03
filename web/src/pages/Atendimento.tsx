@@ -50,6 +50,7 @@ export function Atendimento() {
   const [sim, setSim] = useState(false);
   const [cfgOpen, setCfgOpen] = useState(false);
   const [novaConv, setNovaConv] = useState(false);
+  const [equipeOpen, setEquipeOpen] = useState(false);
   const [conectado, setConectado] = useState<boolean | null>(null);
 
   const [alerta, setAlerta] = useState<AtendConversa | null>(null); // banner de backup na tela
@@ -131,6 +132,7 @@ export function Atendimento() {
         <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
           <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setSim(true)}>💬 Simular cliente</button>}
         </div>
@@ -156,6 +158,7 @@ export function Atendimento() {
 
       {sim && <Simulador onFechar={() => setSim(false)} onMudou={recarregar} />}
       {novaConv && <NovaConversa onFechar={() => setNovaConv(false)} onAbrir={(cid) => { setNovaConv(false); setAbrir(cid); }} onMudou={recarregar} />}
+      {equipeOpen && <EquipeModal onFechar={() => setEquipeOpen(false)} />}
       {abrir && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
       {cfgOpen && <ConfigZapi onFechar={() => setCfgOpen(false)} onMudou={checarConexao} />}
     </div>
@@ -564,6 +567,41 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <button className="at-send" disabled={busy} onClick={enviar}>➤</button>
               </>
             : <div className="muted2" style={{ padding: "6px 4px" }}>🤖 O robô está conduzindo. Clique em <b>Assumir</b> para responder.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Equipe: números do time que a Big NÃO atende automaticamente ──────────────────
+function EquipeModal({ onFechar }: { onFechar: () => void }) {
+  const [numeros, setNumeros] = useState("");
+  const [carregando, setCarregando] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [salvou, setSalvou] = useState(false);
+  useEffect(() => { api.atendConfig().then((c) => setNumeros(c.equipe_numeros || "")).catch(() => {}).finally(() => setCarregando(false)); }, []);
+  async function salvar() {
+    setBusy(true);
+    try { await api.atendSalvarEquipe(numeros); setSalvou(true); setTimeout(() => setSalvou(false), 2200); }
+    catch { alert("Não consegui salvar."); } finally { setBusy(false); }
+  }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 480, width: "96vw" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <h2 style={{ margin: 0 }}>👥 Equipe</h2>
+          <button className="modal-x" onClick={onFechar}>✕</button>
+        </div>
+        <p className="muted" style={{ fontSize: 13, marginTop: 0, lineHeight: 1.5 }}>
+          Números da <b>equipe</b> que a Big <b>NÃO</b> deve atender. Assim vocês falam com esse WhatsApp (testar, avisar algo) <b>sem o robô responder</b>. Um número por linha, com DDD.
+        </p>
+        {carregando ? <div className="muted">Carregando…</div> : (
+          <textarea value={numeros} onChange={(e) => setNumeros(e.target.value)} rows={6} placeholder={"35 9 9999-9999\n11 98888-7777"} style={{ width: "100%", resize: "vertical", fontFamily: "inherit" }} />
+        )}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 10, alignItems: "center" }}>
+          {salvou && <span style={{ color: "#16a34a", fontSize: 13, fontWeight: 700 }}>✓ Salvo</span>}
+          <button className="btn btn-soft" onClick={onFechar}>Fechar</button>
+          <button className="btn btn-primary" disabled={busy || carregando} onClick={salvar}>{busy ? "Salvando…" : "Salvar"}</button>
         </div>
       </div>
     </div>

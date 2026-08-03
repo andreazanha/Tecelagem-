@@ -479,6 +479,20 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   const cfgAt = await lerConfig(env);
   await detectarInteresse(env, conv.id, texto, cfgAt.interesse_modelos || "");
 
+  // EQUIPE: números do time NÃO recebem atendimento automático — a Big fica quieta pra vocês
+  // conversarem/testarem sem o robô responder. (Cadastrados na aba "Equipe".)
+  const equipe = (cfgAt.equipe_numeros || "").split(/[,;\s]+/).map((x) => digitos(x)).filter((x) => x.length >= 8);
+  if (equipe.some((e) => tel.slice(-8) === e.slice(-8))) {
+    return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: false };
+  }
+  // MODO MANUAL (robô pausado): com a IA desligada, a Big NÃO responde ninguém — só registra
+  // a mensagem e deixa pra um humano atender. Ideal pra fase de prospecção (acumular conversas
+  // sem o robô falar sozinho). Liga a IA de novo quando quiser que ela atenda.
+  if (cfgAt.atendimento_ia !== "1") {
+    if (conv.estado === "novo") await env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    return { conversa_id: conv.id, estado: conv.estado === "novo" ? "ia-triagem" : conv.estado, coluna: "aguardando-setor", respostas: [], notificarHumano: true };
+  }
+
   // Cliente respondeu durante o follow-up → cancela a cadência e sinaliza a retomada.
   if ((conv.followup_etapa ?? 0) > 0 && ["catalogo-enviado", "follow-up-24h", "sem-retorno"].includes(conv.estado)) {
     await env.DB.prepare("UPDATE atend_conversas SET followup_etapa=0 WHERE id=?").bind(conv.id).run();
@@ -870,6 +884,7 @@ atendimento.get("/config", async (c) => {
     zapi_ativo: cfg.zapi_ativo === "1",
     atendimento_ativo: cfg.atendimento_ativo === "1",
     atendimento_ia: cfg.atendimento_ia === "1",
+    equipe_numeros: cfg.equipe_numeros || "",
     ia_prompt: cfg.ia_prompt || "",
     ia_prompt_padrao: IA_SISTEMA,
     catalogo_url: cfg.catalogo_url || "",
@@ -900,7 +915,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);

@@ -291,7 +291,7 @@ export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: strin
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
 export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; interesses: string[]; pedidos_resumo: { nome: string; qtd: number; total: number; ultima: string | null } | null; mensagens: AtendMensagem[] }
 export interface AtendResposta { conversa_id: string; estado: string; coluna: string; respostas: { tipo: string; texto: string }[]; notificarHumano: boolean }
-export interface ZapiConfig { zapi_base: string; zapi_instance: string; zapi_token: string; zapi_client_token: string; zapi_ativo: boolean; atendimento_ativo: boolean; atendimento_ia: boolean; ia_prompt: string; ia_prompt_padrao: string; catalogo_url: string; catalogo_senha: string; catalogo_msg: string; followup_ativo: boolean; followup_hora_ini: string; followup_hora_fim: string; followup_domingo: boolean; followup_ia: boolean; pos_venda_ativo: boolean; pos_venda_dias: string; recompra_ativo: boolean; recompra_dias: string; reativacao_ativo: boolean; reativacao_dias: string; reativacao_limite: string; reativacao_intervalo_seg: string; reativacao_msg: string; reativacao_msg_padrao: string; catalogo_evento_token: string; catalogo_evento_url: string; catalogo_log_url: string; webhook_url: string }
+export interface ZapiConfig { zapi_base: string; zapi_instance: string; zapi_token: string; zapi_client_token: string; zapi_ativo: boolean; atendimento_ativo: boolean; atendimento_ia: boolean; equipe_numeros: string; ia_prompt: string; ia_prompt_padrao: string; catalogo_url: string; catalogo_senha: string; catalogo_msg: string; followup_ativo: boolean; followup_hora_ini: string; followup_hora_fim: string; followup_domingo: boolean; followup_ia: boolean; pos_venda_ativo: boolean; pos_venda_dias: string; recompra_ativo: boolean; recompra_dias: string; reativacao_ativo: boolean; reativacao_dias: string; reativacao_limite: string; reativacao_intervalo_seg: string; reativacao_msg: string; reativacao_msg_padrao: string; catalogo_evento_token: string; catalogo_evento_url: string; catalogo_log_url: string; webhook_url: string }
 
 export interface FunilResumo { parados: number; semTarefa: number; retornos: number; alertas: number }
 export interface FunilBoard { etapas: FunilEtapa[]; cards: FunilCard[]; resumo: FunilResumo }
@@ -695,6 +695,8 @@ export const api = {
     jsonPost("/api/atendimento/nova-conversa", b).then((r) => j<{ ok: boolean; conversa_id: string; error?: string }>(r)),
   atendEnviarCatalogo: (id: string) =>
     jsonPost(`/api/atendimento/${id}/enviar-catalogo`, {}).then((r) => j<{ ok: boolean }>(r)),
+  atendSalvarEquipe: (equipe_numeros: string) =>
+    jsonPost("/api/atendimento/config", { equipe_numeros }).then((r) => j<{ ok: boolean }>(r)),
   atendEnviar: (id: string, b: { texto: string; autor?: string }) =>
     jsonPost(`/api/atendimento/${id}/enviar`, b).then((r) => j<{ ok: boolean }>(r)),
   atendAutorizar: (id: string, representante?: string) =>
