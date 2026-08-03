@@ -638,11 +638,13 @@ operadores.post("/bulk", async (c) => {
 export const usuarios = new Hono<{ Bindings: Env }>();
 
 usuarios.get("/", async (c) => {
+  // Inclui a senha: o cadastro é só do admin e as senhas ficam em texto, então o
+  // gestor consegue conferir a senha que definiu para cada usuário.
   const { results } = await c.env.DB.prepare(
-    "SELECT id, nome, usuario, admin, paginas FROM usuarios ORDER BY nome"
-  ).all<{ id: string; nome: string; usuario: string; admin: number; paginas: string }>();
+    "SELECT id, nome, usuario, senha, admin, paginas FROM usuarios ORDER BY nome"
+  ).all<{ id: string; nome: string; usuario: string; senha: string; admin: number; paginas: string }>();
   return c.json(
-    results.map((u) => ({ id: u.id, nome: u.nome, usuario: u.usuario, admin: !!u.admin, paginas: JSON.parse(u.paginas || "[]") }))
+    results.map((u) => ({ id: u.id, nome: u.nome, usuario: u.usuario, senha: u.senha, admin: !!u.admin, paginas: JSON.parse(u.paginas || "[]") }))
   );
 });
 

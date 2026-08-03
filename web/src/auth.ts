@@ -6,6 +6,7 @@ export interface Usuario {
   usuario: string;
   admin: boolean;
   paginas: string[];
+  senha?: string; // só vem na listagem do cadastro (admin), pra o gestor conferir
 }
 
 // Telas controláveis por usuário (chaves usadas nas permissões).

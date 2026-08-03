@@ -2817,6 +2817,7 @@ function UsuariosCadastro() {
   const vazio = { nome: "", usuario: "", senha: "", admin: false, paginas: [] as string[] };
   const [novo, setNovo] = useState<{ nome: string; usuario: string; senha: string; admin: boolean; paginas: string[] }>(vazio);
   const [editId, setEditId] = useState<string | null>(null);
+  const [verSenha, setVerSenha] = useState<Record<string, boolean>>({});
 
   function recarregar() {
     api.listarUsuarios().then(setItens).catch(() => {});
@@ -2848,7 +2849,8 @@ function UsuariosCadastro() {
   }
   function editar(u: Usuario) {
     setEditId(u.id);
-    setNovo({ nome: u.nome, usuario: u.usuario, senha: "", admin: u.admin, paginas: u.paginas });
+    // já traz a senha atual preenchida, pra o gestor ver/ajustar
+    setNovo({ nome: u.nome, usuario: u.usuario, senha: u.senha || "", admin: u.admin, paginas: u.paginas });
   }
   async function remover(u: Usuario) {
     if (u.usuario === "admin") return alert("O usuário admin não pode ser removido.");
@@ -2863,7 +2865,7 @@ function UsuariosCadastro() {
         <h2>{editId ? "Editar usuário" : "Novo usuário"}</h2>
         <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
           Defina o login e marque as telas que essa pessoa pode usar. Admin enxerga tudo.
-          {editId && " Deixe a senha em branco para mantê-la."}
+          {editId && " A senha atual já aparece no campo — é só editar se quiser trocar."}
         </p>
         <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap" }}>
           <input placeholder="Nome" value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} style={{ minWidth: 180 }} />
@@ -2910,13 +2912,24 @@ function UsuariosCadastro() {
       </div>
 
       <table className="table">
-        <thead><tr><th>Nome</th><th>Usuário</th><th>Acesso</th><th></th></tr></thead>
+        <thead><tr><th>Nome</th><th>Usuário</th><th>Senha</th><th>Acesso</th><th></th></tr></thead>
         <tbody>
-          {itens.length === 0 && <tr><td colSpan={4} className="muted">Nenhum usuário ainda.</td></tr>}
+          {itens.length === 0 && <tr><td colSpan={5} className="muted">Nenhum usuário ainda.</td></tr>}
           {itens.map((u) => (
             <tr key={u.id}>
               <td data-label="Nome"><strong>{u.nome}</strong></td>
               <td data-label="Usuário">{u.usuario}</td>
+              <td data-label="Senha">
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontFamily: "monospace", fontSize: 13.5, letterSpacing: verSenha[u.id] ? "normal" : "2px" }}>
+                    {verSenha[u.id] ? (u.senha || "—") : "••••••"}
+                  </span>
+                  <button className="icon-btn" title={verSenha[u.id] ? "Ocultar senha" : "Mostrar senha"}
+                    onClick={() => setVerSenha((s) => ({ ...s, [u.id]: !s[u.id] }))}>
+                    {verSenha[u.id] ? "🙈" : "👁"}
+                  </button>
+                </span>
+              </td>
               <td data-label="Acesso">{u.admin ? "Admin (tudo)" : u.paginas.length ? u.paginas.length + " tela(s)" : "nenhuma"}</td>
               <td>
                 <button className="icon-btn" title="Editar" onClick={() => editar(u)}>✎</button>
