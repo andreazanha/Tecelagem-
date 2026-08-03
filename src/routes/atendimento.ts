@@ -929,6 +929,33 @@ atendimento.post("/config", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── Respostas prontas (atalhos de texto que o atendente insere na conversa) ──────
+// Guardadas como JSON na tabela config (chave respostas_rapidas). Editáveis pelo
+// próprio atendente na tela da conversa.
+const RESPOSTAS_PADRAO: { titulo: string; texto: string }[] = [
+  { titulo: "Cadastro no site", texto: "Oi! 😊 Pra agilizar seu atendimento, cadastre sua loja no nosso site (é rapidinho): https://cadastro.bigtricot.com.br" },
+  { titulo: "Horário de atendimento", texto: "Nosso atendimento é de *segunda a sexta, das 8h às 18h*. Assim que abrir já te respondo por aqui! 🙌" },
+  { titulo: "Pedir dados da loja", texto: "Pra eu já adiantar seu cadastro, me manda por favor: *nome da loja*, *cidade/UF* e *CNPJ*. 📋" },
+];
+atendimento.get("/respostas", async (c) => {
+  const cfg = await lerConfig(c.env);
+  if (cfg.respostas_rapidas == null) return c.json(RESPOSTAS_PADRAO);
+  let arr: unknown = [];
+  try { arr = JSON.parse(cfg.respostas_rapidas); } catch { arr = []; }
+  return c.json(Array.isArray(arr) ? arr : []);
+});
+atendimento.post("/respostas", async (c) => {
+  const b = await c.req.json<unknown>().catch(() => []);
+  const arr = Array.isArray(b)
+    ? b.filter((x): x is { titulo?: unknown; texto?: unknown } => !!x && typeof x === "object" && typeof (x as { texto?: unknown }).texto === "string" && String((x as { texto: string }).texto).trim() !== "")
+        .map((x) => ({ titulo: String(x.titulo ?? "").slice(0, 60), texto: String(x.texto).slice(0, 1000) }))
+    : [];
+  await c.env.DB.prepare(
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('respostas_rapidas', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(JSON.stringify(arr)).run();
+  return c.json({ ok: true, respostas: arr });
+});
+
 // ── PROXY DO CATÁLOGO (Firestore → JSON limpo, com cache) ────────────────────────
 // Busca o documento catalogo/main no Firestore público do catálogo, decodifica o
 // formato tipado e devolve JSON limpo (produtos, preços por região, representantes).
@@ -1363,9 +1390,12 @@ atendimento.post("/:id/enviar-catalogo", async (c) => {
 atendimento.get("/:id", async (c) => {
   const conv = await c.env.DB.prepare("SELECT * FROM atend_conversas WHERE id = ?").bind(c.req.param("id")).first<ConvRow>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
-  const { results: mensagens } = await c.env.DB.prepare(
-    "SELECT id, direcao, autor, tipo, texto, criado_em FROM atend_mensagens WHERE conversa_id = ? ORDER BY criado_em ASC, rowid ASC"
+  // Só as ÚLTIMAS 250 mensagens: conversas antigas (ou floods) podem ter centenas
+  // de mensagens e travar a tela ("página sem resposta") em PC mais fraco.
+  const { results: msgsDesc } = await c.env.DB.prepare(
+    "SELECT id, direcao, autor, tipo, texto, criado_em FROM atend_mensagens WHERE conversa_id = ? ORDER BY criado_em DESC, rowid DESC LIMIT 250"
   ).bind(conv.id).all();
+  const mensagens = (msgsDesc as unknown[]).slice().reverse();
   const { results: interesses } = await c.env.DB.prepare(
     "SELECT termo FROM atend_interesses WHERE conversa_id = ? ORDER BY criado_em"
   ).bind(conv.id).all<{ termo: string }>();

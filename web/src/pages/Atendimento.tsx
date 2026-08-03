@@ -407,8 +407,13 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [reps, setReps] = useState<Representante[]>([]);
   const [repSel, setRepSel] = useState("");
   const [usuarios, setUsuarios] = useState<{ nome: string; usuario: string }[]>([]);
+  const [respostas, setRespostas] = useState<{ titulo: string; texto: string }[]>([]);
+  const [mostrarResp, setMostrarResp] = useState(false);
+  const [gerenciarResp, setGerenciarResp] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
 
+  function carregarRespostas() { api.atendRespostas().then(setRespostas).catch(() => {}); }
+  useEffect(() => { carregarRespostas(); }, []);
   function carregar() { api.atendConversa(id).then((c) => { setD(c); setRepSel((s) => s || c.representante || ""); }); }
   useEffect(() => { carregar(); const t = setInterval(carregar, 5000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => { api.listarRepresentantes().then((r) => setReps(r.filter((x) => x.ativo))).catch(() => {}); }, []);
@@ -558,15 +563,80 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
           </div>
         </div>
 
-        <div className="at-compose">
+        <div className="at-compose" style={{ position: "relative" }}>
+          {/* Lista de respostas prontas (abre acima do campo) */}
+          {mostrarResp && humano && (
+            <div style={{ position: "absolute", left: 8, right: 8, bottom: "100%", marginBottom: 8, background: "var(--card,#fff)", border: "1px solid var(--line,#e2e8f0)", borderRadius: 12, boxShadow: "0 12px 32px #0002", maxHeight: 280, overflowY: "auto", zIndex: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--line,#eef2f7)" }}>
+                <b style={{ fontSize: 13 }}>📋 Respostas prontas</b>
+                <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => { setMostrarResp(false); setGerenciarResp(true); }}>⚙️ Gerenciar</button>
+              </div>
+              {respostas.length === 0
+                ? <div className="muted2" style={{ padding: "12px" }}>Nenhuma resposta salva. Clique em <b>⚙️ Gerenciar</b> para criar.</div>
+                : respostas.map((r, i) => (
+                    <button key={i} onClick={() => { setTexto(r.texto); setMostrarResp(false); }} title="Coloca no campo — você pode editar antes de enviar"
+                      style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderTop: i ? "1px solid var(--line,#f1f5f9)" : "none", background: "transparent", cursor: "pointer" }}>
+                      <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.titulo || "(sem título)"}</div>
+                      <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto}</div>
+                    </button>
+                  ))}
+            </div>
+          )}
           {humano
             ? <>
                 <button className="at-send" style={{ background: "transparent", color: "var(--accent,#7c3aed)" }} disabled={busy || sugerindo} onClick={sugerir} title="Sugerir resposta com IA (você pode editar)">{sugerindo ? "…" : "✨"}</button>
+                <button className="at-send" style={{ background: "transparent" }} onClick={() => setMostrarResp((v) => !v)} title="Respostas prontas">📋</button>
                 <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={enviarCatalogo} title="Enviar o link do catálogo">📖</button>
                 <input placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => e.key === "Enter" && enviar()} />
                 <button className="at-send" disabled={busy} onClick={enviar}>➤</button>
               </>
-            : <div className="muted2" style={{ padding: "6px 4px" }}>🤖 O robô está conduzindo. Clique em <b>Assumir</b> para responder.</div>}
+            : <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", flexWrap: "wrap" }}>
+                <span className="muted2" style={{ flex: 1, minWidth: 160 }}>🤖 O robô está conduzindo.</span>
+                <button className="kbtn go" disabled={busy} onClick={assumir}>🙋 Assumir e responder</button>
+              </div>}
+        </div>
+      </div>
+      {gerenciarResp && <RespostasModal onFechar={() => setGerenciarResp(false)} onSalvo={() => { setGerenciarResp(false); carregarRespostas(); }} />}
+    </div>
+  );
+}
+
+// ── Gerenciar respostas prontas (atalhos de texto do atendente) ───────────────────
+function RespostasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => void }) {
+  const [lista, setLista] = useState<{ titulo: string; texto: string }[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api.atendRespostas().then((r) => setLista(r.length ? r : [])).catch(() => {}).finally(() => setCarregando(false)); }, []);
+  const set = (i: number, k: "titulo" | "texto", v: string) => setLista((l) => l.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+  const add = () => setLista((l) => [...l, { titulo: "", texto: "" }]);
+  const remover = (i: number) => setLista((l) => l.filter((_, j) => j !== i));
+  async function salvar() {
+    setBusy(true);
+    try { await api.atendSalvarRespostas(lista.filter((x) => x.texto.trim())); onSalvo(); }
+    catch { alert("Não consegui salvar as respostas."); } finally { setBusy(false); }
+  }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 560, width: "min(560px,96vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd" style={{ background: "linear-gradient(130deg,#7c3aed,#4f46e5)" }}>
+          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📋 Respostas prontas</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
+        </div>
+        <div className="modal-bd">
+          <div className="muted2" style={{ marginBottom: 10, fontSize: 12.5 }}>Textos que você usa toda hora (link do cadastro, horário, pedir dados…). Na conversa, clique em 📋 e escolha — dá pra editar antes de enviar.</div>
+          {carregando ? <p className="muted">Carregando…</p> : lista.map((r, i) => (
+            <div key={i} style={{ border: "1px solid var(--line,#e2e8f0)", borderRadius: 10, padding: 10, marginBottom: 10 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                <input placeholder="Título (ex.: Cadastro no site)" value={r.titulo} onChange={(e) => set(i, "titulo", e.target.value)} style={{ flex: 1 }} />
+                <button className="btn btn-soft" style={{ color: "#dc2626" }} onClick={() => remover(i)} title="Remover">🗑️</button>
+              </div>
+              <textarea placeholder="Texto da mensagem…" rows={3} value={r.texto} onChange={(e) => set(i, "texto", e.target.value)} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} />
+            </div>
+          ))}
+          <button className="btn btn-soft" onClick={add} style={{ width: "100%" }}>＋ Nova resposta</button>
+        </div>
+        <div className="modal-ft">
+          <button className="btn" onClick={onFechar}>Cancelar</button>
+          <button className="kbtn go" disabled={busy} onClick={salvar}>{busy ? "Salvando…" : "Salvar respostas"}</button>
         </div>
       </div>
     </div>
