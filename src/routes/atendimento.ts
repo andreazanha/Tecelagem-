@@ -1120,13 +1120,6 @@ async function lerColunasAtend(env: Env): Promise<{ id: string; label: string; c
     const iSetor = ordenadas.findIndex((c0) => c0.id === "aguardando-setor");
     ordenadas.splice(iSetor >= 0 ? iSetor + 1 : ordenadas.length, 0, mont);
   }
-  // "Aguardando envio de material" logo DEPOIS de "Montando pedido".
-  const iEnv = ordenadas.findIndex((c0) => c0.id === "aguardando-envio-material");
-  if (iEnv >= 0) {
-    const [env2] = ordenadas.splice(iEnv, 1);
-    const iRef = ordenadas.findIndex((c0) => c0.id === "montando-pedido");
-    ordenadas.splice(iRef >= 0 ? iRef + 1 : ordenadas.length, 0, env2);
-  }
   // "Reclamação ou pendência" fica SEMPRE como última coluna (por pedido), mesmo que
   // haja uma ordem antiga salva que a colocava no começo.
   const iRec = ordenadas.findIndex((c0) => c0.id === "reclamacao");
