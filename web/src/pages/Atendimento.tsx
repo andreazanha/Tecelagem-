@@ -531,15 +531,14 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
               </div>
             )}
             {!humano && <button className="kbtn go" style={{ marginTop: 10, width: "100%" }} disabled={busy} onClick={assumir}>🙋 Assumir atendimento</button>}
-            {humano && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 4 }}>Em atendimento com <b>{d?.responsavel || "—"}</b></div>
-                <select value="" onChange={(e) => { if (e.target.value) transferir(e.target.value); }} disabled={busy} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg-soft)", color: "var(--ink)" }}>
-                  <option value="">↔️ Transferir para outro atendente…</option>
-                  {usuarios.filter((u) => u.nome !== d?.responsavel).map((u) => <option key={u.usuario} value={u.nome}>{u.nome}</option>)}
-                </select>
-              </div>
-            )}
+            {humano && <div style={{ fontSize: 12, color: "var(--muted)", margin: "10px 0 4px" }}>Em atendimento com <b>{d?.responsavel || "—"}</b></div>}
+            {/* Transferir SEMPRE disponível — dá pra encaminhar direto pra um atendente, sem precisar assumir antes. */}
+            <div style={{ marginTop: humano ? 0 : 8 }}>
+              <select value="" onChange={(e) => { if (e.target.value) transferir(e.target.value); }} disabled={busy} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg-soft)", color: "var(--ink)" }}>
+                <option value="">{humano ? "↔️ Transferir para outro atendente…" : "↔️ Transferir direto para um atendente…"}</option>
+                {usuarios.filter((u) => u.nome !== d?.responsavel).map((u) => <option key={u.usuario} value={u.nome}>{u.nome}</option>)}
+              </select>
+            </div>
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5 }} disabled={busy} onClick={toggleNaoPerturbe} title="Para/retoma as mensagens automáticas para este cliente">
               {d?.nao_perturbe ? "🔕 Automáticas pausadas — retomar" : "🔔 Pausar mensagens automáticas"}
             </button>

@@ -1209,14 +1209,16 @@ body.dark .at-status { background: #2a2410; border-color: #5c4a12; color: #fcd34
 .at-badge { font-size: 10px; font-weight: 800; background: #eef2f7; color: #334155; border-radius: 6px; padding: 2px 7px; }
 body.dark .at-badge { background: #243044; color: #c7d2e0; }
 /* modal conversa */
-.at-modal { max-width: 900px; width: 95vw; padding: 0; overflow: hidden; }
+.at-modal { max-width: 900px; width: 95vw; padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh; }
 .at-thd { display: flex; align-items: center; gap: 11px; padding: 12px 14px; background: #075e54; color: #fff; }
 .at-thd .at-av { width: 40px; height: 40px; border-radius: 50%; background: #25d366; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
 .at-thd .info { flex: 1; } .at-thd .info .nm { font-weight: 800; font-size: 14.5px; } .at-thd .info .sub { font-size: 11.5px; color: #bfeee4; }
 .at-thd .modal-x { color: #fff; }
 .at-chip { font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 7px; text-transform: capitalize; }
-.at-body { display: grid; grid-template-columns: 1fr 250px; min-height: 460px; max-height: 66vh; }
-.at-msgs { background: #e5ddd3; padding: 14px 16px; display: flex; flex-direction: column; gap: 7px; overflow-y: auto; }
+.at-body { display: grid; grid-template-columns: 1fr 250px; flex: 1 1 auto; min-height: 320px; }
+/* o compose (campo de escrever) nunca encolhe — fica sempre visível no rodapé do modal */
+.at-compose { flex: 0 0 auto; }
+.at-msgs { background: #e5ddd3; padding: 14px 16px; display: flex; flex-direction: column; gap: 7px; overflow-y: auto; min-height: 0; }
 body.dark .at-msgs { background: #0c1a17; }
 .at-b { max-width: 78%; padding: 7px 10px 6px; border-radius: 9px; font-size: 13px; line-height: 1.42; box-shadow: 0 1px .5px #0002; white-space: pre-wrap; position: relative; }
 .at-b.in { align-self: flex-start; background: #fff; border-top-left-radius: 2px; }
@@ -1227,7 +1229,7 @@ body.dark .at-b.in { background: #1f2c34; color: #e7ebf3; } body.dark .at-b.out 
 .at-file { font-weight: 700; color: #0b3d2e; } body.dark .at-file { color: #86efac; }
 .at-sys { align-self: center; background: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 body.dark .at-sys { background: #12233f; color: #93c5fd; }
-.at-ctx { border-left: 1px solid var(--line); padding: 14px; overflow-y: auto; }
+.at-ctx { border-left: 1px solid var(--line); padding: 14px; overflow-y: auto; min-height: 0; }
 body.dark .at-ctx { border-color: #26324a; }
 .at-block-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-bottom: 8px; }
 .at-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid #eef1f6; }
