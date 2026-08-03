@@ -582,15 +582,25 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const fim = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const arqRef = useRef<HTMLInputElement>(null);
-  async function anexarArquivo(file: File) {
+  // Anexo: primeiro mostra uma PRÉVIA (com legenda) e só envia ao confirmar.
+  const [anexo, setAnexo] = useState<{ file: File; url: string; ehImg: boolean } | null>(null);
+  const [legendaAnexo, setLegendaAnexo] = useState("");
+  function escolherAnexo(file: File) {
     if (!file) return;
+    const ehImg = (file.type || "").startsWith("image/");
+    setAnexo((a) => { if (a?.url) URL.revokeObjectURL(a.url); return { file, url: ehImg ? URL.createObjectURL(file) : "", ehImg }; });
+    setLegendaAnexo("");
+  }
+  function cancelarAnexo() { if (anexo?.url) URL.revokeObjectURL(anexo.url); setAnexo(null); setLegendaAnexo(""); if (arqRef.current) arqRef.current.value = ""; }
+  async function confirmarAnexo() {
+    if (!anexo) return;
     setBusy(true);
     try {
-      const r = await api.atendEnviarArquivo(id, file, d?.responsavel || "Atendente");
+      const r = await api.atendEnviarArquivo(id, anexo.file, d?.responsavel || "Atendente", legendaAnexo.trim() || undefined);
       if (!r.enviado && r.motivo && r.motivo !== "desligado") alert("Arquivo salvo na conversa, mas não foi enviado ao cliente: " + r.motivo);
-      carregar(); onMudou();
+      cancelarAnexo(); carregar(); onMudou();
     } catch { alert("Não consegui enviar o arquivo."); }
-    finally { setBusy(false); if (arqRef.current) arqRef.current.value = ""; }
+    finally { setBusy(false); }
   }
   // Faz o campo de mensagem crescer na vertical conforme digita (até um limite).
   function ajustarAltura() { const t = inputRef.current; if (!t) return; t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 130) + "px"; }
@@ -678,6 +688,20 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
 
   const humano = d?.coluna === "atendimento-humano";
   const bloqueado = !!d?.bloqueado;
+  // Colar um print (Ctrl+V): pega a imagem da área de transferência e abre a prévia.
+  useEffect(() => {
+    if (!humano || bloqueado) return;
+    function onPaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items; if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.type.startsWith("image/")) { const f = it.getAsFile(); if (f) { e.preventDefault(); escolherAnexo(f); return; } }
+      }
+    }
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [humano, bloqueado]);
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card at-modal" onClick={(e) => e.stopPropagation()}>
@@ -823,6 +847,26 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
         </div>
 
         <div className="at-compose" style={{ position: "relative" }}>
+          {/* Prévia do anexo (foto colada ou escolhida) com legenda antes de enviar */}
+          {anexo && (
+            <div style={{ position: "absolute", left: 8, right: 8, bottom: "100%", marginBottom: 8, background: "var(--card,#fff)", border: "1px solid var(--line,#e2e8f0)", borderRadius: 12, boxShadow: "0 12px 32px #0002", padding: 12, zIndex: 26 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                {anexo.ehImg
+                  ? <img src={anexo.url} alt="prévia" style={{ maxWidth: 130, maxHeight: 130, borderRadius: 8, objectFit: "cover" }} />
+                  : <div className="at-file" style={{ padding: "10px 12px", background: "var(--bg-soft,#f1f5f9)", borderRadius: 8 }}>📎 {anexo.file.name}</div>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 4 }}>Enviar {anexo.ehImg ? "imagem" : "arquivo"} para o cliente</div>
+                  <textarea placeholder="Escreva uma legenda (opcional)…" value={legendaAnexo} onChange={(e) => setLegendaAnexo(e.target.value)} rows={2} autoFocus
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); confirmarAnexo(); } }}
+                    style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
+                <button className="btn btn-soft" disabled={busy} onClick={cancelarAnexo}>Cancelar</button>
+                <button className="kbtn go" disabled={busy} onClick={confirmarAnexo}>{busy ? "Enviando…" : "📤 Enviar"}</button>
+              </div>
+            </div>
+          )}
           {/* Lista de respostas prontas (abre acima do campo) */}
           {mostrarResp && humano && (
             <div style={{ position: "absolute", left: 8, right: 8, bottom: "100%", marginBottom: 8, background: "var(--card,#fff)", border: "1px solid var(--line,#e2e8f0)", borderRadius: 12, boxShadow: "0 12px 32px #0002", maxHeight: 280, overflowY: "auto", zIndex: 20 }}>
@@ -879,8 +923,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             ? <>
                 <button className="at-send" style={{ background: "transparent", color: "var(--accent,#7c3aed)" }} disabled={busy || sugerindo} onClick={sugerir} title="Sugerir resposta com IA (você pode editar)">{sugerindo ? "…" : "✨"}</button>
                 <button className="at-send" style={{ background: "transparent" }} onClick={() => setMostrarResp((v) => !v)} title="Respostas prontas">📋</button>
-                <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={() => arqRef.current?.click()} title="Anexar arquivo (foto/documento)">📎</button>
-                <input ref={arqRef} type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) anexarArquivo(f); }} />
+                <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={() => arqRef.current?.click()} title="Anexar arquivo (foto/documento) — ou cole um print com Ctrl+V">📎</button>
+                <input ref={arqRef} type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) escolherAnexo(f); }} />
                 <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={enviarCatalogo} title="Enviar o link do catálogo">📖</button>
                 <textarea ref={inputRef} rows={1} placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
                 <button className="at-send" disabled={busy} onClick={enviar}>➤</button>
