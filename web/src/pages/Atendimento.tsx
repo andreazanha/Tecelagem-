@@ -688,6 +688,15 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     try { await api.atendSalvarDados(id, formD); setEditDados(false); carregar(); onMudou(); }
     catch { alert("Não consegui salvar os dados."); } finally { setBusy(false); }
   }
+  // Botão de 1 clique: marca/desmarca que a pessoa JÁ É cliente/lojista. Com isso a Big
+  // trata como lojista (informa preço, não manda pro "onde comprar") e foto/áudio dele vai
+  // direto pro humano.
+  async function marcarCliente() {
+    const novo = d?.lojista === 1 ? "0" : "1";
+    setBusy(true);
+    try { await api.atendSalvarDados(id, { lojista: novo }); carregar(); onMudou(); }
+    catch { alert("Não consegui marcar."); } finally { setBusy(false); }
+  }
 
   function carregarRespostas() {
     api.atendRespostas().then(setRespostas).catch(() => {});
@@ -882,6 +891,13 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
               <div className="at-row"><span>Lojista</span><b>{d?.lojista == null ? "—" : d.lojista ? "✅ sim" : "🙅 não"}</b></div>
               <div className="at-row"><span>Cidade</span><b>{[d?.cidade, d?.uf].filter(Boolean).join("/") || "—"}</b></div>
             </>)}
+            {d && !editDados && (
+              <button className="btn btn-soft" disabled={busy} onClick={marcarCliente}
+                style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d.lojista === 1 ? { borderColor: "#a7f3d0", background: "#ecfdf5", color: "#065f46", fontWeight: 700 } : {}) }}
+                title="Marca que essa pessoa JÁ é cliente/lojista. A Big passa a tratá-la como lojista (informa preço, não manda pro 'onde comprar').">
+                {d.lojista === 1 ? "📇 É cliente / lojista ✓ (desmarcar)" : "📇 Marcar como cliente / lojista"}
+              </button>
+            )}
             {d?.representante && d?.autorizado !== 0 && <div className="at-row"><span>Representante</span><b>🧑‍💼 {d.representante}</b></div>}
             {d && d.interesses && d.interesses.length > 0 && (
               <div style={{ marginTop: 8 }}>
