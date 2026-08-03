@@ -933,7 +933,7 @@ atendimento.post("/config", async (c) => {
 // Guardadas como JSON na tabela config (chave respostas_rapidas). Editáveis pelo
 // próprio atendente na tela da conversa.
 const RESPOSTAS_PADRAO: { titulo: string; texto: string }[] = [
-  { titulo: "Cadastro no site", texto: "Oi! 😊 Pra agilizar seu atendimento, cadastre sua loja no nosso site (é rapidinho): https://cadastro.bigtricot.com.br" },
+  { titulo: "Cadastro no site", texto: "Oi! 🖤 Aqui é da *Big Tricot*!\n\nA gente tem uma *vitrine de lojas parceiras* no nosso site: quando um consumidor procura nossos produtos na região dele, ele encontra a *sua loja* pra comprar. 😍\n\nPra você aparecer lá, é só fazer um cadastro rapidinho (leva 1 minutinho):\n👉 https://cadastro.bigtricot.com.br\n\nÉ só preencher o nome da loja, cidade e seu contato. Depois que a gente confere, sua loja já entra na vitrine e começa a receber clientes novos. 🚀\n\nQualquer dúvida, é só me chamar por aqui! 😊" },
   { titulo: "Horário de atendimento", texto: "Nosso atendimento é de *segunda a sexta, das 8h às 18h*. Assim que abrir já te respondo por aqui! 🙌" },
   { titulo: "Pedir dados da loja", texto: "Pra eu já adiantar seu cadastro, me manda por favor: *nome da loja*, *cidade/UF* e *CNPJ*. 📋" },
 ];
