@@ -128,10 +128,11 @@ export interface ChatMensagem {
   autor: string;
   texto: string;
   imagem_key?: string | null;
+  midia_tipo?: "imagem" | "audio" | null;
   criado_em: string;
 }
 export interface ChatDM { canal: string; outro: string }
-export interface ChatMembro { id: string; nome: string; telefone: string }
+export interface ChatMembro { id: string; nome: string; telefone: string; tipo?: "interno" | "externo" }
 export interface TipoFio {
   id: string;
   nome: string;
@@ -846,12 +847,12 @@ export const api = {
     jsonPost("/api/chat/marcar-lido", { usuario, canal }).then((r) => j<{ ok: boolean }>(r)),
   // Membros da equipe por OUTRO número de WhatsApp (canal ext:<id>).
   chatMembros: () => fetch("/api/chat/membros").then((r) => j<ChatMembro[]>(r)),
-  addChatMembro: (nome: string, telefone: string) =>
-    jsonPost("/api/chat/membros", { nome, telefone }).then((r) => j<ChatMembro>(r)),
+  addChatMembro: (nome: string, telefone: string, tipo: "interno" | "externo" = "externo") =>
+    jsonPost("/api/chat/membros", { nome, telefone, tipo }).then((r) => j<ChatMembro>(r)),
   delChatMembro: (id: string) => fetch(`/api/chat/membros/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
-  enviarFotoChat: (canal: string, autor: string, file: File, texto?: string) => {
+  enviarFotoChat: (canal: string, autor: string, file: File, texto?: string, tipo: "imagem" | "audio" = "imagem") => {
     const fd = new FormData();
-    fd.append("file", file); fd.append("autor", autor); if (texto) fd.append("texto", texto);
+    fd.append("file", file); fd.append("autor", autor); fd.append("tipo", tipo); if (texto) fd.append("texto", texto);
     return fetch(`/api/chat/${encodeURIComponent(canal)}/foto`, { method: "POST", body: fd }).then((r) => j<{ id: string; imagem_key: string }>(r));
   },
   listarTiposFio: () => fetch("/api/tipos-fio").then((r) => j<TipoFio[]>(r)),

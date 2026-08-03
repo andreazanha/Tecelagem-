@@ -788,7 +788,7 @@ atendimento.post("/webhook", async (c) => {
   {
     const coreM = phone.replace(/^55/, "").slice(-8);
     const membro = coreM.length >= 8
-      ? await c.env.DB.prepare("SELECT id, nome FROM chat_membros WHERE telefone LIKE '%' || ? LIMIT 1").bind(coreM).first<{ id: string; nome: string }>().catch(() => null)
+      ? await c.env.DB.prepare("SELECT id, nome FROM chat_membros WHERE telefone <> '' AND telefone LIKE '%' || ? LIMIT 1").bind(coreM).first<{ id: string; nome: string }>().catch(() => null)
       : null;
     if (membro) {
       let txt = String((b.text as { message?: string } | undefined)?.message ?? (b.image as { caption?: string } | undefined)?.caption ?? "").trim();

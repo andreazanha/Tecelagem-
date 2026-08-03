@@ -85,18 +85,20 @@ chat.post("/marcar-lido", async (c) => {
 // A equipe conversa com eles aqui e o texto vai/volta pelo WhatsApp deles (Z-API).
 chat.get("/membros", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT id, nome, telefone FROM chat_membros ORDER BY nome"
-  ).all<{ id: string; nome: string; telefone: string }>().catch(() => ({ results: [] as { id: string; nome: string; telefone: string }[] }));
+    "SELECT id, nome, telefone, COALESCE(tipo,'externo') AS tipo FROM chat_membros ORDER BY nome"
+  ).all<{ id: string; nome: string; telefone: string; tipo: string }>().catch(() => ({ results: [] as { id: string; nome: string; telefone: string; tipo: string }[] }));
   return c.json(results);
 });
 chat.post("/membros", async (c) => {
-  const b = await c.req.json<{ nome?: string; telefone?: string }>().catch(() => ({}) as Record<string, string>);
+  const b = await c.req.json<{ nome?: string; telefone?: string; tipo?: string }>().catch(() => ({}) as Record<string, string>);
   const nome = (b.nome || "").trim();
+  const tipo = b.tipo === "interno" ? "interno" : "externo";
   const tel = soDigitos(b.telefone);
-  if (!nome || tel.length < 10) return c.json({ error: "Informe nome e um número de WhatsApp válido (com DDD)." }, 400);
+  if (!nome) return c.json({ error: "Informe o nome." }, 400);
+  if (tipo === "externo" && tel.length < 10) return c.json({ error: "Informe um número de WhatsApp válido (com DDD)." }, 400);
   const id = uid();
-  await c.env.DB.prepare("INSERT INTO chat_membros (id, nome, telefone) VALUES (?, ?, ?)").bind(id, nome, tel).run();
-  return c.json({ id, nome, telefone: tel }, 201);
+  await c.env.DB.prepare("INSERT INTO chat_membros (id, nome, telefone, tipo) VALUES (?, ?, ?, ?)").bind(id, nome, tipo === "interno" ? "" : tel, tipo).run();
+  return c.json({ id, nome, telefone: tipo === "interno" ? "" : tel, tipo }, 201);
 });
 chat.delete("/membros/:id", async (c) => {
   await c.env.DB.prepare("DELETE FROM chat_membros WHERE id = ?").bind(c.req.param("id")).run();
@@ -127,7 +129,7 @@ chat.get("/foto/:id", async (c) => {
 chat.get("/:canal", async (c) => {
   const canal = c.req.param("canal");
   const { results } = await c.env.DB.prepare(
-    "SELECT id, canal, autor, texto, imagem_key, criado_em FROM chat_mensagens WHERE canal = ? ORDER BY criado_em DESC LIMIT 100"
+    "SELECT id, canal, autor, texto, imagem_key, midia_tipo, criado_em FROM chat_mensagens WHERE canal = ? ORDER BY criado_em DESC LIMIT 100"
   ).bind(canal).all();
   return c.json(results.reverse());
 });
@@ -175,7 +177,8 @@ chat.post("/:canal", async (c) => {
   return c.json({ id }, 201);
 });
 
-// Envia uma FOTO (multipart) — sobe no R2 e cria a mensagem com a imagem.
+// Envia uma MÍDIA (multipart) — foto (print) ou áudio. Sobe no R2 e cria a mensagem.
+// Aceita ?tipo=audio (ou campo 'tipo'); padrão é imagem. A chave do arquivo fica em imagem_key.
 chat.post("/:canal/foto", async (c) => {
   const canal = c.req.param("canal");
   const body = await c.req.parseBody();
@@ -183,9 +186,11 @@ chat.post("/:canal/foto", async (c) => {
   if (!(file instanceof File)) return c.json({ error: "arquivo ausente" }, 400);
   const autor = String(body["autor"] ?? "").trim() || "Anônimo";
   const legenda = String(body["texto"] ?? "").trim();
+  const tipo = (String(body["tipo"] ?? "") || c.req.query("tipo")) === "audio" ? "audio" : "imagem";
   const id = uid();
-  await c.env.BUCKET.put(`chat/${id}`, await file.arrayBuffer(), { httpMetadata: { contentType: file.type || "image/jpeg" } });
-  await c.env.DB.prepare("INSERT INTO chat_mensagens (id, canal, autor, texto, imagem_key) VALUES (?, ?, ?, ?, ?)").bind(id, canal, autor, legenda.slice(0, 500), id).run();
-  await notificar(c.env, waitUntilDe(c), canal, autor, legenda || "📷 enviou uma foto");
-  return c.json({ id, imagem_key: id }, 201);
+  const ct = file.type || (tipo === "audio" ? "audio/webm" : "image/jpeg");
+  await c.env.BUCKET.put(`chat/${id}`, await file.arrayBuffer(), { httpMetadata: { contentType: ct } });
+  await c.env.DB.prepare("INSERT INTO chat_mensagens (id, canal, autor, texto, imagem_key, midia_tipo) VALUES (?, ?, ?, ?, ?, ?)").bind(id, canal, autor, legenda.slice(0, 500), id, tipo).run();
+  await notificar(c.env, waitUntilDe(c), canal, autor, legenda || (tipo === "audio" ? "🎤 enviou um áudio" : "📷 enviou uma foto"));
+  return c.json({ id, imagem_key: id, midia_tipo: tipo }, 201);
 });

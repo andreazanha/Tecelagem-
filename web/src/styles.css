@@ -1128,17 +1128,18 @@ body.dark .fx-alertbar { background: #2a2410; border-color: #5c4a12; color: #fcd
 /* Atendimento: altura FIXA no quadro → cada coluna ocupa a altura toda e ROLA POR DENTRO.
    Assim os cards nunca "passam por trás" da caixa da coluna e o cabeçalho fica fixo no topo. */
 .fx-board.at-board { height: calc(100dvh - 255px); max-height: none; overflow-x: auto; overflow-y: hidden; align-items: stretch; }
+.fx-board.fx-fix { height: calc(100dvh - 210px); max-height: none; overflow-x: auto; overflow-y: hidden; align-items: stretch; }
 .fx-col { flex: 0 0 224px; max-width: 224px; background: #eef1f6; border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-height: calc(100dvh - 260px); display: flex; flex-direction: column; }
-.fx-board.at-board .fx-col { height: 100%; min-height: 0; }
+.fx-board.at-board .fx-col, .fx-board.fx-fix .fx-col { height: 100%; min-height: 0; }
 body.dark .fx-col { background: #111826; border-color: #243044; }
 /* Cabeçalho da coluna fica fixo; só o corpo (cards) rola. */
 /* No Funil quem rola é o quadro (overflow visível, cabeçalho sticky). No Atendimento
    a coluna tem altura fixa, então o CORPO rola por dentro (scrollbar fina e discreta). */
 .fx-col-body { flex: 1 1 auto; min-height: 0; overflow: visible; }
-.fx-board.at-board .fx-col-body { overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
-.fx-board.at-board .fx-col-body::-webkit-scrollbar { width: 7px; }
-.fx-board.at-board .fx-col-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
-body.dark .fx-board.at-board .fx-col-body::-webkit-scrollbar-thumb { background: #33415a; }
+.fx-board.at-board .fx-col-body, .fx-board.fx-fix .fx-col-body { overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+.fx-board.at-board .fx-col-body::-webkit-scrollbar, .fx-board.fx-fix .fx-col-body::-webkit-scrollbar { width: 7px; }
+.fx-board.at-board .fx-col-body::-webkit-scrollbar-thumb, .fx-board.fx-fix .fx-col-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+body.dark .fx-board.at-board .fx-col-body::-webkit-scrollbar-thumb, body.dark .fx-board.fx-fix .fx-col-body::-webkit-scrollbar-thumb { background: #33415a; }
 /* Cabeçalho da coluna FIXO no topo ao rolar (sticky), sólido pra cobrir os cards. */
 .fx-hd { display: flex; align-items: center; gap: 7px; padding: 9px 6px 9px; font-weight: 800; font-size: 13px; flex: 0 0 auto; position: sticky; top: -4px; z-index: 6; background: #eef1f6; margin: -8px -8px 6px; border-radius: 11px 11px 0 0; box-shadow: 0 5px 6px -4px rgba(15,23,42,.28); }
 body.dark .fx-hd { background: #17202f; box-shadow: 0 5px 6px -4px rgba(0,0,0,.5); }
@@ -1364,6 +1365,12 @@ body.dark .ci-item.on { background: #14233f; }
 .ci-msgs { flex: 1; background: #e5ddd3; padding: 14px 16px; display: flex; flex-direction: column; gap: 7px; overflow-y: auto; min-height: 0; }
 body.dark .ci-msgs { background: #0c1a17; }
 .at-attach { border: none; background: transparent; font-size: 20px; cursor: pointer; padding: 4px 6px; align-self: flex-end; }
+.at-attach.gravando { animation: ciPisca .8s ease-in-out infinite; }
+.ci-modo { display: flex; gap: 6px; }
+.ci-modo-b { flex: 1; font: inherit; font-size: 12.5px; font-weight: 700; padding: 8px 6px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg-soft, #f4f6f9); color: var(--muted); cursor: pointer; }
+.ci-modo-b.on { background: #dcfce7; color: #065f46; border-color: #34d399; }
+body.dark .ci-modo-b { background: #0f1a2e; color: #9fb0c9; border-color: #26324a; }
+body.dark .ci-modo-b.on { background: #0f2a1c; color: #a7f3d0; border-color: #2f855a; }
 .ci-sino { position: relative; }
 .ci-sino.pisca { animation: ciPisca 1s ease-in-out infinite; }
 .ci-sino-dot { position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; }

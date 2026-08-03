@@ -200,7 +200,7 @@ export function Funil() {
       {!board ? (
         <div className="card pad muted">Carregando…</div>
       ) : (
-        <div className="fx-board">
+        <div className="fx-board fx-fix">
           {ETAPAS_META.map((et) => {
             const cards = visiveis.filter((c) => c.etapa === et.id)
               .sort((a, b) => Number(b.alerta) - Number(a.alerta) || b.diasParado - a.diasParado);

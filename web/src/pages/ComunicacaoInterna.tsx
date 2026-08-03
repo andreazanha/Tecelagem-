@@ -25,34 +25,33 @@ function formatarMsg(texto: string | null | undefined) {
 const canalDM = (a: string, b: string) => "dm:" + [a, b].sort().join("|");
 
 type Resumo = { outro: string; canal: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean };
-type Contato = { canal: string; nome: string; externo: boolean; membroId?: string };
+type Contato = { canal: string; nome: string; externo: boolean; membroId: string };
 
-// ── Comunicação interna: chat da equipe, idêntico ao WhatsApp (2 painéis) ──────────
+// ── Comunicação interna: chat da equipe (começa vazio; você adiciona quem quiser) ──
 export function ComunicacaoInterna() {
   const eu = getUser()?.nome || "";
-  const [membrosSis, setMembrosSis] = useState<string[]>([]); // usuários do sistema
-  const [membrosExt, setMembrosExt] = useState<ChatMembro[]>([]); // números externos
+  const [membros, setMembros] = useState<ChatMembro[]>([]);     // adicionados (interno/externo)
+  const [usuariosSis, setUsuariosSis] = useState<string[]>([]); // usuários do sistema (p/ o picker)
   const [resumo, setResumo] = useState<Resumo[]>([]);
   const [ativo, setAtivo] = useState<Contato | null>(null);
   const [busca, setBusca] = useState("");
   const [addOpen, setAddOpen] = useState(false);
 
-  function carregarMembros() {
-    api.contatosChat().then((ms) => setMembrosSis(ms.filter((m) => m !== eu))).catch(() => {});
-    api.chatMembros().then(setMembrosExt).catch(() => {});
+  function carregar() {
+    api.chatMembros().then(setMembros).catch(() => {});
+    api.contatosChat().then((ms) => setUsuariosSis(ms.filter((m) => m !== eu))).catch(() => {});
   }
-  useEffect(carregarMembros, [eu]);
+  useEffect(carregar, [eu]);
   useEffect(() => {
     if (!eu) return;
-    const carregar = () => api.dmResumoChat(eu).then(setResumo).catch(() => {});
-    carregar(); const t = setInterval(carregar, 6000); return () => clearInterval(t);
+    const f = () => api.dmResumoChat(eu).then(setResumo).catch(() => {});
+    f(); const t = setInterval(f, 6000); return () => clearInterval(t);
   }, [eu]);
 
-  // Lista unificada: usuários do sistema (canal dm:) + membros externos (canal ext:).
-  const contatos: Contato[] = [
-    ...membrosSis.map((n) => ({ canal: canalDM(eu, n), nome: n, externo: false })),
-    ...membrosExt.map((m) => ({ canal: "ext:" + m.id, nome: m.nome, externo: true, membroId: m.id })),
-  ];
+  // Lista = SÓ os membros adicionados (interno usa DM; externo usa canal ext:).
+  const contatos: Contato[] = membros.map((m) => (m.tipo === "interno"
+    ? { canal: canalDM(eu, m.nome), nome: m.nome, externo: false, membroId: m.id }
+    : { canal: "ext:" + m.id, nome: m.nome, externo: true, membroId: m.id }));
   const resumoDe = (canal: string) => resumo.find((x) => x.canal === canal);
   const temNovo = (canal: string) => !!resumoDe(canal)?.nao_lido;
   const ordenados = [...contatos].sort((a, b) => {
@@ -75,11 +74,12 @@ export function ComunicacaoInterna() {
     <div className="ci-wrap">
       <aside className="ci-lista">
         <div className="ci-busca">
-          <input placeholder="🔎 Buscar na equipe…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-          <button className="ci-add" onClick={() => setAddOpen(true)} title="Adicionar membro por WhatsApp (outro número)">＋</button>
+          <input placeholder="🔎 Buscar…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <button className="ci-add" onClick={() => setAddOpen(true)} title="Adicionar pessoa à comunicação interna">＋</button>
         </div>
         <div className="ci-membros">
-          {lista.length === 0 && <div className="muted2" style={{ padding: 14, fontSize: 12.5 }}>Ninguém encontrado.</div>}
+          {membros.length === 0 && <div className="muted2" style={{ padding: 16, fontSize: 12.5, textAlign: "center" }}>Ninguém aqui ainda.<br />Toque no <b>＋</b> pra adicionar as pessoas da equipe.</div>}
+          {membros.length > 0 && lista.length === 0 && <div className="muted2" style={{ padding: 14, fontSize: 12.5 }}>Ninguém encontrado.</div>}
           {lista.map((m) => {
             const r = resumoDe(m.canal);
             return (
@@ -90,7 +90,7 @@ export function ComunicacaoInterna() {
                     <span className="ci-nome">{m.nome}{m.externo && <span className="ci-tagwa" title="Membro por WhatsApp (número externo)">📱</span>}</span>
                     {r?.ultima_em && <span className="ci-hora">{hora(r.ultima_em)}</span>}
                   </div>
-                  <div className="ci-item-sub">{m.externo ? "WhatsApp da equipe" : (r ? (r.ultimo_autor === eu ? "Você: " : "") + "conversa aberta" : "Iniciar conversa")}</div>
+                  <div className="ci-item-sub">{m.externo ? "WhatsApp da equipe" : (r ? (r.ultimo_autor === eu ? "Você: " : "") + "conversa aberta" : "Usa o sistema")}</div>
                 </div>
                 {temNovo(m.canal) && <span className="ci-dot" />}
               </button>
@@ -107,7 +107,7 @@ export function ComunicacaoInterna() {
           </div>
         )}
       </section>
-      {addOpen && <AddMembroModal onFechar={() => setAddOpen(false)} onSalvo={() => { setAddOpen(false); carregarMembros(); }} onRemover={carregarMembros} membros={membrosExt} />}
+      {addOpen && <AddMembroModal onFechar={() => setAddOpen(false)} onMudou={carregar} membros={membros} usuariosSis={usuariosSis} />}
     </div>
   );
 }
@@ -119,8 +119,10 @@ function ChatPane({ eu, contato, onFechar }: { eu: string; contato: Contato; onF
   const [msgs, setMsgs] = useState<ChatMensagem[]>([]);
   const [texto, setTexto] = useState("");
   const [busy, setBusy] = useState(false);
+  const [gravando, setGravando] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const recRef = useRef<{ mr: MediaRecorder; chunks: Blob[] } | null>(null);
 
   function carregar() { api.listarChat(canal).then(setMsgs).catch(() => {}); }
   useEffect(() => { carregar(); const t = setInterval(carregar, 3500); return () => clearInterval(t); /* eslint-disable-next-line */ }, [canal]);
@@ -135,7 +137,27 @@ function ChatPane({ eu, contato, onFechar }: { eu: string; contato: Contato; onF
   async function enviarFoto(f: File) {
     if (contato.externo) { alert("Por enquanto, membros por WhatsApp recebem só texto por aqui."); return; }
     setBusy(true);
-    try { await api.enviarFotoChat(canal, eu, f, texto.trim()); setTexto(""); carregar(); } finally { setBusy(false); }
+    try { await api.enviarFotoChat(canal, eu, f, texto.trim(), "imagem"); setTexto(""); carregar(); } finally { setBusy(false); }
+  }
+  async function gravar() {
+    if (contato.externo) { alert("Por enquanto, membros por WhatsApp recebem só texto por aqui."); return; }
+    if (gravando) { recRef.current?.mr.stop(); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      mr.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setGravando(false);
+        const blob = new Blob(chunks, { type: mr.mimeType || "audio/webm" });
+        if (blob.size < 800) return; // clique rápido sem fala
+        setBusy(true);
+        try { await api.enviarFotoChat(canal, eu, new File([blob], "audio.webm", { type: blob.type }), "", "audio"); carregar(); } finally { setBusy(false); }
+      };
+      recRef.current = { mr, chunks };
+      mr.start(); setGravando(true);
+    } catch { alert("Não consegui acessar o microfone."); }
   }
 
   return (
@@ -154,7 +176,9 @@ function ChatPane({ eu, contato, onFechar }: { eu: string; contato: Contato; onF
         {msgs.map((m) => (
           <div key={m.id} className={"at-b " + (m.autor === eu ? "out" : "in")}>
             {m.autor !== eu && <div className="at-aut">{m.autor}</div>}
-            {m.imagem_key && <img src={`/api/chat/foto/${m.imagem_key}`} alt="" style={{ maxWidth: 220, borderRadius: 8, display: "block", marginBottom: m.texto ? 4 : 0 }} />}
+            {m.imagem_key && (m.midia_tipo === "audio"
+              ? <audio controls src={`/api/chat/foto/${m.imagem_key}`} style={{ maxWidth: 230, display: "block", marginBottom: m.texto ? 4 : 0 }} />
+              : <img src={`/api/chat/foto/${m.imagem_key}`} alt="" style={{ maxWidth: 220, borderRadius: 8, display: "block", marginBottom: m.texto ? 4 : 0 }} />)}
             {m.texto && formatarMsg(m.texto)}
             <span className="at-tm">{hora(m.criado_em)}</span>
           </div>
@@ -163,8 +187,9 @@ function ChatPane({ eu, contato, onFechar }: { eu: string; contato: Contato; onF
       </div>
       <div className="at-compose">
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) enviarFoto(f); e.target.value = ""; }} />
-        {!contato.externo && <button className="at-attach" title="Enviar foto" onClick={() => fileRef.current?.click()}>📎</button>}
-        <textarea rows={1} placeholder={"Mensagem para " + outro + "…"} value={texto} onChange={(e) => setTexto(e.target.value)}
+        {!contato.externo && <button className="at-attach" title="Enviar foto / print" onClick={() => fileRef.current?.click()}>📎</button>}
+        {!contato.externo && <button className={"at-attach" + (gravando ? " gravando" : "")} title={gravando ? "Parar e enviar áudio" : "Gravar áudio"} onClick={gravar}>{gravando ? "⏹️" : "🎤"}</button>}
+        <textarea rows={1} placeholder={gravando ? "Gravando áudio…" : "Mensagem para " + outro + "…"} value={texto} onChange={(e) => setTexto(e.target.value)}
           onPaste={(e) => { const f = Array.from(e.clipboardData.files)[0]; if (f && f.type.startsWith("image/")) { e.preventDefault(); enviarFoto(f); } }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
         <button className="at-send" disabled={busy} onClick={enviar}>➤</button>
@@ -173,34 +198,64 @@ function ChatPane({ eu, contato, onFechar }: { eu: string; contato: Contato; onF
   );
 }
 
-// ── Modal: adicionar/remover membro por WhatsApp (número externo) ──────────────────
-function AddMembroModal({ onFechar, onSalvo, onRemover, membros }: { onFechar: () => void; onSalvo: () => void; onRemover: () => void; membros: ChatMembro[] }) {
+// ── Modal: adicionar pessoa (usa o sistema OU outro número de WhatsApp) ────────────
+function AddMembroModal({ onFechar, onMudou, membros, usuariosSis }: { onFechar: () => void; onMudou: () => void; membros: ChatMembro[]; usuariosSis: string[] }) {
+  const [modo, setModo] = useState<"interno" | "externo">("interno");
+  const [nomeSis, setNomeSis] = useState("");
   const [nome, setNome] = useState("");
   const [tel, setTel] = useState("");
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
+  // Usuários do sistema ainda não adicionados.
+  const jaInternos = new Set(membros.filter((m) => m.tipo === "interno").map((m) => m.nome));
+  const disponiveis = usuariosSis.filter((u) => !jaInternos.has(u));
+
   async function salvar() {
-    if (!nome.trim() || tel.replace(/\D/g, "").length < 10) { setErro("Informe o nome e o WhatsApp com DDD."); return; }
-    setBusy(true); setErro("");
-    try { await api.addChatMembro(nome.trim(), tel); setNome(""); setTel(""); onSalvo(); }
-    catch { setErro("Não consegui salvar. Confira o número."); } finally { setBusy(false); }
+    setErro("");
+    if (modo === "interno") {
+      if (!nomeSis) { setErro("Escolha uma pessoa da lista."); return; }
+      setBusy(true);
+      try { await api.addChatMembro(nomeSis, "", "interno"); setNomeSis(""); onMudou(); } catch { setErro("Não consegui adicionar."); } finally { setBusy(false); }
+    } else {
+      if (!nome.trim() || tel.replace(/\D/g, "").length < 10) { setErro("Informe o nome e o WhatsApp com DDD."); return; }
+      setBusy(true);
+      try { await api.addChatMembro(nome.trim(), tel, "externo"); setNome(""); setTel(""); onMudou(); } catch { setErro("Não consegui salvar. Confira o número."); } finally { setBusy(false); }
+    }
   }
   async function remover(id: string) {
-    if (!confirm("Remover este membro da comunicação interna?")) return;
-    try { await api.delChatMembro(id); onRemover(); } catch { alert("Não consegui remover."); }
+    if (!confirm("Remover esta pessoa da comunicação interna?")) return;
+    try { await api.delChatMembro(id); onMudou(); } catch { alert("Não consegui remover."); }
   }
+
   return (
     <div className="modal-bg" onClick={onFechar}>
-      <div className="modal-card" style={{ maxWidth: 460, width: "min(460px,96vw)" }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card" style={{ maxWidth: 470, width: "min(470px,96vw)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: "linear-gradient(130deg,#25d366,#075e54)" }}>
-          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📱 Membro por WhatsApp</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
+          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">➕ Adicionar à equipe</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
         </div>
         <div className="modal-bd">
-          <div className="muted2" style={{ fontSize: 12.5, marginBottom: 10 }}>
-            Adicione alguém da equipe que usa <b>outro número</b> e não entra no sistema. O que você escrever pra essa pessoa vai pro <b>WhatsApp dela</b>, e a resposta dela volta aqui.
+          <div className="ci-modo">
+            <button className={"ci-modo-b" + (modo === "interno" ? " on" : "")} onClick={() => setModo("interno")}>💻 Usa o sistema</button>
+            <button className={"ci-modo-b" + (modo === "externo" ? " on" : "")} onClick={() => setModo("externo")}>📱 Outro número (WhatsApp)</button>
           </div>
-          <label className="fld"><span>Nome</span><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: João (produção)" /></label>
-          <label className="fld"><span>WhatsApp (com DDD)</span><input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="Ex.: (46) 99999-9999" inputMode="tel" /></label>
+          {modo === "interno" ? (
+            <>
+              <div className="muted2" style={{ fontSize: 12.5, margin: "10px 0" }}>Pessoa que <b>faz login no sistema</b>. A conversa fica só dentro do app.</div>
+              <label className="fld"><span>Quem?</span>
+                <select className="at-sel" value={nomeSis} onChange={(e) => setNomeSis(e.target.value)}>
+                  <option value="">— escolher pessoa —</option>
+                  {disponiveis.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </label>
+              {disponiveis.length === 0 && <div className="muted2" style={{ fontSize: 12 }}>Todo mundo do sistema já foi adicionado.</div>}
+            </>
+          ) : (
+            <>
+              <div className="muted2" style={{ fontSize: 12.5, margin: "10px 0" }}>Alguém da equipe que usa <b>outro número</b> e não entra no sistema. O que você escrever vai pro <b>WhatsApp dela</b>, e a resposta volta aqui.</div>
+              <label className="fld"><span>Nome</span><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: João (produção)" /></label>
+              <label className="fld"><span>WhatsApp (com DDD)</span><input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="Ex.: (46) 99999-9999" inputMode="tel" /></label>
+            </>
+          )}
           {erro && <div style={{ color: "#dc2626", fontSize: 12.5, marginTop: 4 }}>{erro}</div>}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
             <button className="btn btn-soft" onClick={onFechar}>Fechar</button>
@@ -208,11 +263,11 @@ function AddMembroModal({ onFechar, onSalvo, onRemover, membros }: { onFechar: (
           </div>
           {membros.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <div className="muted2" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Membros por WhatsApp já cadastrados</div>
+              <div className="muted2" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Já na comunicação interna</div>
               {membros.map((m) => (
                 <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 2px", borderBottom: "1px solid var(--line,#f1f5f9)" }}>
-                  <div className="ci-av ext" style={{ width: 30, height: 30, fontSize: 12 }}>{iniciais(m.nome)}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, fontSize: 13 }}>{m.nome}</div><div className="muted2" style={{ fontSize: 12 }}>{m.telefone}</div></div>
+                  <div className={"ci-av" + (m.tipo === "externo" ? " ext" : "")} style={{ width: 30, height: 30, fontSize: 12 }}>{iniciais(m.nome)}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, fontSize: 13 }}>{m.nome} {m.tipo === "externo" ? "📱" : "💻"}</div><div className="muted2" style={{ fontSize: 12 }}>{m.tipo === "externo" ? m.telefone : "usa o sistema"}</div></div>
                   <button className="btn btn-soft" style={{ color: "#dc2626" }} onClick={() => remover(m.id)} title="Remover">🗑️</button>
                 </div>
               ))}
