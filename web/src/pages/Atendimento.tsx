@@ -521,6 +521,17 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [modo, setModo] = useState<"cliente" | "interno">("cliente");
   const fim = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const arqRef = useRef<HTMLInputElement>(null);
+  async function anexarArquivo(file: File) {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const r = await api.atendEnviarArquivo(id, file, d?.responsavel || "Atendente");
+      if (!r.enviado && r.motivo && r.motivo !== "desligado") alert("Arquivo salvo na conversa, mas não foi enviado ao cliente: " + r.motivo);
+      carregar(); onMudou();
+    } catch { alert("Não consegui enviar o arquivo."); }
+    finally { setBusy(false); if (arqRef.current) arqRef.current.value = ""; }
+  }
   // Faz o campo de mensagem crescer na vertical conforme digita (até um limite).
   function ajustarAltura() { const t = inputRef.current; if (!t) return; t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 130) + "px"; }
   useEffect(() => { ajustarAltura(); }, [texto]);
@@ -631,7 +642,13 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 : <div key={m.id} className={"at-b " + (m.direcao === "in" ? "in" : "out")}>
                     {m.autor && m.direcao === "out" && <div className="at-aut">{m.autor === "bot" ? "🤖 Big (automático) · só você vê" : m.autor}</div>}
                     {m.responder_texto && <div className="at-quote">↪ {m.responder_texto}</div>}
-                    {m.tipo === "arquivo" ? <span className="at-file">📒 {m.texto}</span> : formatarMsg(m.texto)}
+                    {m.tipo === "arquivo"
+                      ? (m.arquivo_url
+                          ? (/\.(jpg|jpeg|png|gif|webp)$/i.test(m.arquivo_url)
+                              ? <a href={m.arquivo_url} target="_blank" rel="noreferrer"><img src={m.arquivo_url} alt={m.texto || "imagem"} style={{ maxWidth: 220, maxHeight: 260, borderRadius: 8, display: "block" }} /></a>
+                              : <a href={m.arquivo_url} target="_blank" rel="noreferrer" className="at-file" style={{ color: "inherit" }}>📎 {m.texto || "arquivo"}</a>)
+                          : <span className="at-file">📒 {m.texto}</span>)
+                      : formatarMsg(m.texto)}
                     <span className="at-tm">{hora(m.criado_em)}</span>
                     {humano && m.direcao === "in" && m.tipo !== "arquivo" && (m.texto || "").trim() && (
                       <button className="at-reply" title="Responder esta mensagem" onClick={() => setRespondendo({ id: m.id, texto: (m.texto || "").slice(0, 180) })}>↩︎</button>
@@ -802,6 +819,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             ? <>
                 <button className="at-send" style={{ background: "transparent", color: "var(--accent,#7c3aed)" }} disabled={busy || sugerindo} onClick={sugerir} title="Sugerir resposta com IA (você pode editar)">{sugerindo ? "…" : "✨"}</button>
                 <button className="at-send" style={{ background: "transparent" }} onClick={() => setMostrarResp((v) => !v)} title="Respostas prontas">📋</button>
+                <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={() => arqRef.current?.click()} title="Anexar arquivo (foto/documento)">📎</button>
+                <input ref={arqRef} type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) anexarArquivo(f); }} />
                 <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={enviarCatalogo} title="Enviar o link do catálogo">📖</button>
                 <textarea ref={inputRef} rows={1} placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
                 <button className="at-send" disabled={busy} onClick={enviar}>➤</button>

@@ -131,12 +131,22 @@ async function avisarHumanoPush(env: Env, c: { id: string; nome?: string | null;
   await enviarPush(env, { titulo: "🔔 Atendimento humano", corpo: `${quem} precisa de um atendente no WhatsApp.`, url: "/atendimento", tag: "atend-" + c.id }).catch(() => {});
 }
 
-async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: string, tipo: string, texto: string, opts: { zapId?: string | null; responderTexto?: string | null } = {}) {
+async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: string, tipo: string, texto: string, opts: { zapId?: string | null; responderTexto?: string | null; arquivoUrl?: string | null } = {}) {
   const id = uid();
   await env.DB.prepare(
-    "INSERT INTO atend_mensagens (id, conversa_id, direcao, autor, tipo, texto, zap_id, responder_texto) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-  ).bind(id, convId, direcao, autor, tipo, texto, opts.zapId || null, opts.responderTexto || null).run();
+    "INSERT INTO atend_mensagens (id, conversa_id, direcao, autor, tipo, texto, zap_id, responder_texto, arquivo_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id, convId, direcao, autor, tipo, texto, opts.zapId || null, opts.responderTexto || null, opts.arquivoUrl || null).run();
   return id;
+}
+
+// Cliente bloqueado (caloteiro): não enviar NADA pra ele. Usado no texto e na mídia.
+async function clienteBloqueado(env: Env, tel: string): Promise<boolean> {
+  const core = digitos(tel).replace(/^55/, "").slice(-8);
+  if (core.length < 8) return false;
+  const bloq = await env.DB.prepare(
+    `SELECT 1 FROM clientes WHERE COALESCE(bloqueado,0)=1 AND ${LIMPA_WPP} LIKE '%' || ? LIMIT 1`
+  ).bind(core).first().catch(() => null);
+  return !!bloq;
 }
 
 // Garante um card na coluna "📥 Catálogo (contato)" para uma conversa vinda do
@@ -1148,13 +1158,7 @@ async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; text
   let texto = String(saida.texto ?? "").trim();
   if (!phone || !texto) return { enviado: false, motivo: "vazio" };
   // Cliente BLOQUEADO (caloteiro/inadimplente): não envia NADA — nem robô, nem campanha.
-  const core = phone.replace(/^55/, "").slice(-8);
-  if (core.length >= 8) {
-    const bloq = await env.DB.prepare(
-      `SELECT 1 FROM clientes WHERE COALESCE(bloqueado,0)=1 AND ${LIMPA_WPP} LIKE '%' || ? LIMIT 1`
-    ).bind(core).first().catch(() => null);
-    if (bloq) return { enviado: false, motivo: "cliente-bloqueado" };
-  }
+  if (await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
   // Responder uma mensagem específica: se temos o id da Z-API, cita de forma NATIVA
   // (messageId). Se não (mensagem antiga sem id), cai num fallback citando o trecho.
   const body: Record<string, unknown> = { phone };
@@ -1170,6 +1174,31 @@ async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; text
     const resp = await fetch(`${base}/instances/${inst}/token/${token}/send-text`, {
       method: "POST", headers, body: JSON.stringify(body),
     });
+    if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}` };
+    return { enviado: true };
+  } catch (e) {
+    return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
+  }
+}
+
+// Envia um ARQUIVO (imagem ou documento) pela Z-API, a partir de uma URL pública.
+async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string; ehImagem: boolean; ext: string; fileName: string; caption?: string }) {
+  const cfg = await lerConfig(env);
+  if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
+  const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
+  const inst = cfg.zapi_instance || "", token = cfg.zapi_token || "";
+  if (!inst || !token) return { enviado: false, motivo: "sem-credenciais" };
+  const phone = digitos(tel);
+  if (!phone) return { enviado: false, motivo: "vazio" };
+  if (await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
+  const endpoint = opts.ehImagem ? "send-image" : `send-document/${opts.ext || "bin"}`;
+  const body = opts.ehImagem
+    ? { phone, image: opts.url, caption: opts.caption || "" }
+    : { phone, document: opts.url, fileName: opts.fileName };
+  try {
+    const resp = await fetch(`${base}/instances/${inst}/token/${token}/${endpoint}`, { method: "POST", headers, body: JSON.stringify(body) });
     if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}` };
     return { enviado: true };
   } catch (e) {
@@ -1418,6 +1447,39 @@ atendimento.post("/nova-conversa", async (c) => {
   return c.json({ ok: true, conversa_id: convId });
 });
 
+// ── ANEXAR e ENVIAR um arquivo (imagem/documento) pro cliente ─────────────────────
+atendimento.post("/:id/enviar-arquivo", async (c) => {
+  const id = c.req.param("id");
+  const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
+  if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  const form = await c.req.formData().catch(() => null);
+  const entry = form?.get("file");
+  if (!entry || typeof entry === "string") return c.json({ error: "arquivo é obrigatório" }, 400);
+  const file = entry as Blob & { name?: string };
+  if (file.size === 0) return c.json({ error: "arquivo é obrigatório" }, 400);
+  if (file.size > 16 * 1024 * 1024) return c.json({ error: "arquivo muito grande (máx. 16MB)" }, 400);
+  const autor = String(form?.get("autor") || "Atendente").trim() || "Atendente";
+  const legenda = String(form?.get("legenda") || "").trim();
+  const nomeArq = (file.name || "arquivo").slice(0, 120);
+  const ext = (nomeArq.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
+  const ct = file.type || "application/octet-stream";
+  const ehImagem = ct.startsWith("image/");
+  const nome = `${uid()}.${ext}`;
+  await c.env.BUCKET.put(`atend/${nome}`, file.stream(), { httpMetadata: { contentType: ct } });
+  const url = `${new URL(c.req.url).origin}/api/atendimento/arquivo/${nome}`;
+  await addMsg(c.env, id, "out", autor, "arquivo", legenda || nomeArq, { arquivoUrl: url });
+  await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
+  const r = await enviarMidiaZapi(c.env, conv.telefone, { url, ehImagem, ext, fileName: nomeArq, caption: legenda });
+  return c.json({ ok: true, enviado: r.enviado, motivo: r.motivo, url });
+});
+
+// Serve o arquivo anexado (do R2). A Z-API também busca por esta URL pública.
+atendimento.get("/arquivo/:nome", async (c) => {
+  const obj = await c.env.BUCKET.get(`atend/${c.req.param("nome")}`);
+  if (!obj) return c.json({ error: "arquivo não encontrado" }, 404);
+  return new Response(obj.body, { headers: { "Content-Type": obj.httpMetadata?.contentType || "application/octet-stream", "Cache-Control": "public, max-age=31536000, immutable" } });
+});
+
 // ── ENVIAR o link do catálogo numa conversa (botão do atendente) ───────────────────
 atendimento.post("/:id/enviar-catalogo", async (c) => {
   const id = c.req.param("id");
@@ -1442,7 +1504,7 @@ atendimento.get("/:id", async (c) => {
   // Só as ÚLTIMAS 250 mensagens: conversas antigas (ou floods) podem ter centenas
   // de mensagens e travar a tela ("página sem resposta") em PC mais fraco.
   const { results: msgsDesc } = await c.env.DB.prepare(
-    "SELECT id, direcao, autor, tipo, texto, responder_texto, criado_em FROM atend_mensagens WHERE conversa_id = ? ORDER BY criado_em DESC, rowid DESC LIMIT 250"
+    "SELECT id, direcao, autor, tipo, texto, responder_texto, arquivo_url, criado_em FROM atend_mensagens WHERE conversa_id = ? ORDER BY criado_em DESC, rowid DESC LIMIT 250"
   ).bind(conv.id).all();
   const mensagens = (msgsDesc as unknown[]).slice().reverse();
   const { results: interesses } = await c.env.DB.prepare(
