@@ -51,6 +51,7 @@ export function Atendimento() {
   const [cfgOpen, setCfgOpen] = useState(false);
   const [novaConv, setNovaConv] = useState(false);
   const [equipeOpen, setEquipeOpen] = useState(false);
+  const [campanhaOpen, setCampanhaOpen] = useState(false);
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [filtroAtend, setFiltroAtend] = useState<string>("todos"); // gestor: filtra por vendedor
   const [membros, setMembros] = useState<string[]>([]); // equipe (chat interno)
@@ -248,6 +249,7 @@ export function Atendimento() {
           <button className="btn btn-soft" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); return n; })} title={mudo ? "Som desligado — clique para ligar" : "Toca um som quando chega mensagem nova"}>{mudo ? "🔕 Som off" : "🔔 Som on"}</button>
           <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setSim(true)}>💬 Simular cliente</button>}
         </div>
@@ -321,6 +323,7 @@ export function Atendimento() {
       {sim && <Simulador onFechar={() => setSim(false)} onMudou={recarregar} />}
       {novaConv && <NovaConversa onFechar={() => setNovaConv(false)} onAbrir={(cid) => { setNovaConv(false); setAbrir(cid); }} onMudou={recarregar} />}
       {equipeOpen && <EquipeModal onFechar={() => setEquipeOpen(false)} />}
+      {campanhaOpen && <CampanhaModal onFechar={() => setCampanhaOpen(false)} />}
       {chatCom && <ChatEquipeModal outro={chatCom} onFechar={() => setChatCom(null)} />}
       {abrir && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
       {cfgOpen && <ConfigZapi onFechar={() => setCfgOpen(false)} onMudou={checarConexao} />}
@@ -522,6 +525,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
                 <code style={{ flex: 1, background: "#fff", color: "#334155", padding: "6px 8px", borderRadius: 6, fontSize: 11.5, wordBreak: "break-all" }}>{cfg.webhook_url}</code>
                 <button className="btn btn-soft" style={{ padding: "6px 10px" }} onClick={() => copiar(cfg.webhook_url)}>Copiar</button>
               </div>
+              <div style={{ marginTop: 8, fontSize: 12 }}><b>✓✓ Para os vistos (entregue/lido):</b> cole a <b>mesma URL acima</b> também no webhook <b>“Ao atualizar status da mensagem”</b> (ou “Status”) da Z-API. Sem isso os risquinhos não ficam azuis.</div>
             </div>
 
             <div className="row-gap" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
@@ -1254,6 +1258,122 @@ function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; on
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
           <button className="btn btn-primary" disabled={busy} onClick={enviar}>{busy ? "Enviando…" : "📤 Enviar e abrir"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Campanha: escolhe contatos e a IA envia a mensagem aos poucos (anti-ban) ───────
+function CampanhaModal({ onFechar }: { onFechar: () => void }) {
+  const [contatos, setContatos] = useState<Contato[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [busca, setBusca] = useState("");
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [mensagem, setMensagem] = useState("");
+  const [intervalo, setIntervalo] = useState("40");
+  const [nome, setNome] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [campanhas, setCampanhas] = useState<{ id: string; nome: string | null; status: string; total: number; enviados: number; pendentes: number; falhas: number }[]>([]);
+  function carregarCampanhas() { api.atendCampanhas().then(setCampanhas).catch(() => {}); }
+  useEffect(() => {
+    Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp(), api.atendRespostasEmpresa()]).then(([cl, w, emp]) => {
+      const lista: Contato[] = []; const vistos = new Set<string>();
+      const add = (n: string, tel: string, origem: "cliente" | "whats", cidade?: string | null, uf?: string | null) => {
+        const d = (tel || "").replace(/\D/g, ""); if (d.length < 10) return;
+        const key = d.slice(-11); if (vistos.has(key)) return; vistos.add(key);
+        lista.push({ nome: n || telBonito(d), telefone: d, origem, cidade, uf });
+      };
+      if (cl.status === "fulfilled") for (const c of cl.value) add(c.nome, c.whatsapp || "", "cliente", c.cidade, c.uf);
+      if (w.status === "fulfilled") for (const c of (w.value.contatos || [])) add(c.nome, c.telefone, "whats");
+      lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+      setContatos(lista);
+      if (emp.status === "fulfilled") { const conv = emp.value.find((r) => /cadast/i.test(r.titulo)); if (conv) setMensagem(conv.texto); }
+    }).finally(() => setCarregando(false));
+    carregarCampanhas();
+  }, []);
+  const filtrados = (() => {
+    const q = busca.trim().toLowerCase(); if (!q) return contatos.slice(0, 500);
+    const dig = q.replace(/\D/g, "");
+    return contatos.filter((c) => c.nome.toLowerCase().includes(q) || (dig.length >= 3 && c.telefone.includes(dig))).slice(0, 500);
+  })();
+  const toggle = (tel: string) => setSel((s) => { const n = new Set(s); if (n.has(tel)) n.delete(tel); else n.add(tel); return n; });
+  const marcarFiltrados = () => setSel((s) => { const n = new Set(s); filtrados.forEach((c) => n.add(c.telefone)); return n; });
+  const limpar = () => setSel(new Set());
+  async function criar() {
+    if (!mensagem.trim()) { alert("Escreva a mensagem da campanha."); return; }
+    if (sel.size === 0) { alert("Selecione pelo menos um contato."); return; }
+    if (!confirm(`Criar campanha para ${sel.size} contato(s)? A Big vai enviando 1 a cada ${intervalo}s pra não bloquear o número.`)) return;
+    setBusy(true);
+    try {
+      const alvos = contatos.filter((c) => sel.has(c.telefone)).map((c) => ({ telefone: c.telefone, nome: c.nome }));
+      const r = await api.atendCriarCampanha({ nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 40, alvos });
+      if (r.error) { alert(r.error); return; }
+      alert(`Campanha criada! ${r.total} contato(s). A Big começa a enviar aos poucos.`);
+      setSel(new Set()); setNome(""); carregarCampanhas();
+    } catch (e) { alert((e as Error).message || "Não consegui criar a campanha."); } finally { setBusy(false); }
+  }
+  async function mudarStatus(id: string, status: string) { await api.atendStatusCampanha(id, status).catch(() => {}); carregarCampanhas(); }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 620, width: "min(620px,96vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd" style={{ background: "linear-gradient(130deg,#0ea5e9,#4f46e5)" }}>
+          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📣 Nova campanha</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
+        </div>
+        <div className="modal-bd">
+          <div className="muted2" style={{ fontSize: 12.5, marginBottom: 8 }}>Escolha os contatos, escreva a mensagem (com o link) e a Big vai enviando <b>aos poucos</b> pra não correr risco de bloqueio.</div>
+          <label className="fld full">Nome da campanha (opcional)<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Convite cadastro — agosto" /></label>
+          <label className="fld full" style={{ marginTop: 8 }}>Mensagem<textarea value={mensagem} onChange={(e) => setMensagem(e.target.value)} rows={5} placeholder="Escreva a mensagem com o link…" style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} /></label>
+          <label className="fld" style={{ marginTop: 8, display: "inline-flex", flexDirection: "column" }}>Enviar 1 a cada
+            <span><input type="number" min={15} max={600} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} style={{ width: 70 }} /> segundos <span className="muted2">(recomendado ≥ 40s)</span></span>
+          </label>
+          <div style={{ marginTop: 10, marginBottom: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <b style={{ fontSize: 13 }}>Contatos</b>
+            <span className="at-chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{sel.size} selecionado(s)</span>
+            <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={marcarFiltrados}>Selecionar os {filtrados.length} da busca</button>
+            {sel.size > 0 && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={limpar}>Limpar</button>}
+          </div>
+          <input placeholder="🔎 Buscar por nome, cidade ou número…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: "100%", marginBottom: 6 }} />
+          <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10 }}>
+            {carregando ? <div className="muted" style={{ padding: 12 }}>Carregando contatos…</div>
+              : filtrados.length === 0 ? <div className="muted" style={{ padding: 12 }}>Nenhum contato.</div>
+              : filtrados.map((c) => (
+                <label key={c.origem + c.telefone} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderBottom: "1px solid var(--line)", cursor: "pointer" }}>
+                  <input type="checkbox" checked={sel.has(c.telefone)} onChange={() => toggle(c.telefone)} />
+                  <div><div><b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span></div>
+                    <div className="muted2" style={{ fontSize: 11 }}>{c.origem === "cliente" ? "📇 base" : "📱 zap"}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : ""}</div></div>
+                </label>
+              ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+            <button className="kbtn go" disabled={busy} onClick={criar}>{busy ? "Criando…" : `📣 Criar campanha (${sel.size})`}</button>
+          </div>
+
+          {campanhas.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 6 }}>Campanhas</div>
+              {campanhas.map((c) => (
+                <div key={c.id} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px", marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <b style={{ fontSize: 12.5 }}>{c.nome || "Campanha"}</b>
+                    <span className="at-chip" style={{ background: c.status === "concluida" ? "#dcfce7" : c.status === "pausada" ? "#fef3c7" : "#e0f2fe", color: "#1e293b", fontSize: 11 }}>{c.status}</span>
+                    <span className="muted2" style={{ fontSize: 11.5, marginLeft: "auto" }}>{c.enviados}/{c.total} enviados{c.falhas ? ` · ${c.falhas} falha(s)` : ""}</span>
+                  </div>
+                  <div style={{ height: 6, background: "var(--bg-soft,#eef2f7)", borderRadius: 4, marginTop: 6, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${c.total ? Math.round((c.enviados / c.total) * 100) : 0}%`, background: "#22c55e" }} />
+                  </div>
+                  {c.status !== "concluida" && (
+                    <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
+                      {c.status === "ativa"
+                        ? <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => mudarStatus(c.id, "pausada")}>⏸ Pausar</button>
+                        : <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => mudarStatus(c.id, "ativa")}>▶️ Retomar</button>}
+                      <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#dc2626" }} onClick={() => mudarStatus(c.id, "concluida")}>⏹ Encerrar</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

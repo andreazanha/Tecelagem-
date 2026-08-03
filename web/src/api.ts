@@ -688,6 +688,11 @@ export const api = {
     jsonPost("/api/atendimento/colunas", { extra, ordem }).then((r) => j<{ ok: boolean; colunas: AtendColuna[] }>(r)),
   atendMoverColuna: (id: string, coluna: string) =>
     jsonPost(`/api/atendimento/${id}/coluna`, { coluna }).then((r) => j<{ ok: boolean }>(r)),
+  atendCampanhas: () => fetch("/api/atendimento/campanhas").then((r) => j<{ id: string; nome: string | null; mensagem: string; intervalo_seg: number; status: string; criado_em: string; total: number; enviados: number; pendentes: number; falhas: number }[]>(r)),
+  atendCriarCampanha: (b: { nome?: string; mensagem: string; intervalo_seg: number; alvos: { telefone: string; nome?: string }[] }) =>
+    jsonPost("/api/atendimento/campanhas", b).then((r) => j<{ ok: boolean; id: string; total: number; error?: string }>(r)),
+  atendStatusCampanha: (id: string, status: string) =>
+    jsonPost(`/api/atendimento/campanhas/${id}/status`, { status }).then((r) => j<{ ok: boolean }>(r)),
   atendConversa: (id: string) => fetch(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),
   atendEntrada: (b: { telefone: string; texto: string }) =>
     jsonPost("/api/atendimento/entrada", b).then((r) => j<AtendResposta>(r)),

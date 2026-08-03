@@ -16,7 +16,7 @@ import { materiais } from "./routes/materiais";
 import { colecoes } from "./routes/colecoes";
 import { chat } from "./routes/chat";
 import { etiquetas } from "./routes/etiquetas";
-import { atendimento, followupAtendimento, sincronizarPedidos, posVendaRecompra, prospeccaoCatalogo } from "./routes/atendimento";
+import { atendimento, followupAtendimento, sincronizarPedidos, posVendaRecompra, prospeccaoCatalogo, processarCampanhas } from "./routes/atendimento";
 import { assistente } from "./routes/assistente";
 import { relatorios } from "./routes/relatorios";
 import { tecelagem } from "./routes/tecelagem";
@@ -134,12 +134,15 @@ app.all("*", async (c) => {
 // reposições pendentes por push — "várias vezes até o pedido ser gerado".
 export default {
   fetch: (req: Request, env: Env, ctx: ExecutionContext) => app.fetch(req, env, ctx),
-  scheduled: (_event: ScheduledController, env: Env, ctx: ExecutionContext) => {
+  scheduled: (event: ScheduledController, env: Env, ctx: ExecutionContext) => {
+    // Cron frequente (a cada 5 min): só as campanhas — dispara aos poucos, sem banir.
+    if (event.cron === "*/5 * * * *") { ctx.waitUntil(processarCampanhas(env)); return; }
     ctx.waitUntil(lembreteReposicao(env));
     ctx.waitUntil(followupAtendimento(env)); // retomada 24h do robô de atendimento
     ctx.waitUntil(sincronizarPedidos(env));  // status do pedido → conversa (realizado/faturado/enviado)
     ctx.waitUntil(posVendaRecompra(env));    // pós-venda e recompra por tempo
     ctx.waitUntil(prospeccaoCatalogo(env));  // reativação: catálogo X dias após o faturamento
+    ctx.waitUntil(processarCampanhas(env));  // também nos crons diários (garantia)
     // (desativado a pedido) lerAtividadeCatalogo — quem só VÊ o catálogo NÃO vira lead aqui.
   },
 };

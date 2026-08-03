@@ -1079,6 +1079,43 @@ atendimento.post("/:id/coluna", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── CAMPANHAS (envio em massa aos poucos) ─────────────────────────────────────────
+atendimento.get("/campanhas", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT c.id, c.nome, c.mensagem, c.intervalo_seg, c.status, c.criado_em, c.ultimo_envio_em,
+       (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id) AS total,
+       (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id AND a.status='enviado') AS enviados,
+       (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id AND a.status='pendente') AS pendentes,
+       (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id AND a.status='falhou') AS falhas
+     FROM atend_campanhas c ORDER BY c.criado_em DESC LIMIT 50`
+  ).all().catch(() => ({ results: [] as unknown[] }));
+  return c.json(results);
+});
+atendimento.post("/campanhas", async (c) => {
+  const b = await c.req.json<{ nome?: string; mensagem?: string; intervalo_seg?: number; alvos?: { telefone: string; nome?: string }[] }>().catch(() => ({}) as Record<string, never>);
+  const mensagem = String(b.mensagem ?? "").trim();
+  if (!mensagem) return c.json({ error: "mensagem é obrigatória" }, 400);
+  const vistos = new Set<string>();
+  const alvos = (Array.isArray(b.alvos) ? b.alvos : [])
+    .map((a) => ({ telefone: digitos(a.telefone), nome: String(a.nome ?? "").slice(0, 80) }))
+    .filter((a) => a.telefone.length >= 10 && !vistos.has(a.telefone.slice(-11)) && (vistos.add(a.telefone.slice(-11)), true));
+  if (!alvos.length) return c.json({ error: "escolha pelo menos um contato válido" }, 400);
+  const id = uid();
+  const intervalo = Math.max(15, Number(b.intervalo_seg) || 40);
+  await c.env.DB.prepare("INSERT INTO atend_campanhas (id, nome, mensagem, intervalo_seg, status) VALUES (?, ?, ?, ?, 'ativa')")
+    .bind(id, String(b.nome ?? "").slice(0, 80) || null, mensagem, intervalo).run();
+  const stmts = alvos.map((a) => c.env.DB.prepare("INSERT INTO atend_campanha_alvos (id, campanha_id, telefone, nome) VALUES (?, ?, ?, ?)").bind(uid(), id, a.telefone, a.nome || null));
+  for (let i = 0; i < stmts.length; i += 50) await c.env.DB.batch(stmts.slice(i, i + 50));
+  return c.json({ ok: true, id, total: alvos.length });
+});
+atendimento.post("/campanhas/:id/status", async (c) => {
+  const b = await c.req.json<{ status?: string }>().catch(() => ({}) as Record<string, string>);
+  const st = ["ativa", "pausada", "concluida"].includes(String(b.status)) ? String(b.status) : "";
+  if (!st) return c.json({ error: "status inválido" }, 400);
+  await c.env.DB.prepare("UPDATE atend_campanhas SET status=? WHERE id=?").bind(st, c.req.param("id")).run();
+  return c.json({ ok: true });
+});
+
 // ── PROXY DO CATÁLOGO (Firestore → JSON limpo, com cache) ────────────────────────
 // Busca o documento catalogo/main no Firestore público do catálogo, decodifica o
 // formato tipado e devolve JSON limpo (produtos, preços por região, representantes).
@@ -1904,6 +1941,38 @@ function montarMsgReativacao(cfg: Record<string, string>, nome: string, dias: nu
   const link = linkCatalogo(cfg);
   if (link && !/https?:\/\//i.test(base)) txt += `\n\n${link}`;
   return txt;
+}
+
+// Processa as campanhas ativas: envia aos poucos, respeitando o intervalo (anti-ban).
+// Roda no cron frequente. Cada tick dispara por até ~4min e o resto segue no próximo.
+export async function processarCampanhas(env: Env): Promise<number> {
+  const cfg = await lerConfig(env);
+  if (cfg.zapi_ativo !== "1") return 0;
+  const { results: camps } = await env.DB.prepare(
+    "SELECT id, mensagem, intervalo_seg FROM atend_campanhas WHERE status='ativa'"
+  ).all<{ id: string; mensagem: string; intervalo_seg: number }>().catch(() => ({ results: [] as { id: string; mensagem: string; intervalo_seg: number }[] }));
+  let enviados = 0;
+  const inicio = Date.now();
+  for (const camp of camps) {
+    const intervalo = Math.max(15, Number(camp.intervalo_seg) || 40);
+    const { results: alvos } = await env.DB.prepare(
+      "SELECT id, telefone FROM atend_campanha_alvos WHERE campanha_id=? AND status='pendente' ORDER BY rowid LIMIT 500"
+    ).bind(camp.id).all<{ id: string; telefone: string }>();
+    if (!alvos.length) { await env.DB.prepare("UPDATE atend_campanhas SET status='concluida' WHERE id=?").bind(camp.id).run(); continue; }
+    for (const alvo of alvos) {
+      if (Date.now() - inicio > 4 * 60 * 1000) return enviados; // segue no próximo tick do cron
+      // Confere se a campanha ainda está ativa (pode ter sido pausada no meio).
+      const ativa = await env.DB.prepare("SELECT 1 FROM atend_campanhas WHERE id=? AND status='ativa'").bind(camp.id).first();
+      if (!ativa) break;
+      const r = await enviarWhatsapp(env, alvo.telefone, { tipo: "texto", texto: camp.mensagem });
+      const st = r.enviado ? "enviado" : (r.motivo === "cliente-bloqueado" ? "bloqueado" : "falhou");
+      await env.DB.prepare("UPDATE atend_campanha_alvos SET status=?, motivo=?, enviado_em=datetime('now') WHERE id=?").bind(st, r.motivo || null, alvo.id).run();
+      await env.DB.prepare("UPDATE atend_campanhas SET ultimo_envio_em=datetime('now') WHERE id=?").bind(camp.id).run();
+      if (r.enviado) enviados++;
+      await new Promise((res) => setTimeout(res, intervalo * 1000));
+    }
+  }
+  return enviados;
 }
 
 export async function prospeccaoCatalogo(env: Env): Promise<number> {
