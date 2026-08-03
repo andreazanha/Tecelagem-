@@ -89,14 +89,14 @@ export interface Resultado { conv: Conversa; saidas: Saida[]; notificarHumano: b
 
 // ── Colunas do board (na ordem) + mapeamento estado → coluna ────────────────────
 export const ATEND_COLUNAS = [
+  { id: "atendimento-humano", label: "Atendimento humano", cor: "#6366f1" },
+  { id: "reclamacao", label: "Reclamação", cor: "#ef4444" },
   { id: "primeiro-contato", label: "Primeiro contato", cor: "#3b82f6" },
   { id: "aguardando-setor", label: "Aguardando setor", cor: "#8b5cf6" },
   { id: "triagem-vendas", label: "Triagem de vendas", cor: "#f59e0b" },
   { id: "aguardando-cnpj", label: "Aguardando CNPJ", cor: "#0ea5e9" },
   { id: "catalogo-enviado", label: "Catálogo enviado", cor: "#22c55e" },
   { id: "follow-up-24h", label: "Follow-up 24h", cor: "#eab308" },
-  { id: "atendimento-humano", label: "Atendimento humano", cor: "#6366f1" },
-  { id: "reclamacao", label: "Reclamação", cor: "#ef4444" },
   { id: "pedido-realizado", label: "Pedido realizado", cor: "#0d9488" },
   { id: "pedido-faturado", label: "Pedido faturado", cor: "#7c3aed" },
   { id: "pedido-enviado", label: "Pedido enviado", cor: "#0891b2" },
