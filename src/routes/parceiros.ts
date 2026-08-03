@@ -88,10 +88,10 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (ch) => ({ "&": 
 
 // Estilo comum das páginas públicas (vitrine + autocadastro).
 const ESTILO_PUBLICO = `* { box-sizing: border-box; }
-  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #faf7f2; color: #2b2b2b; }
-  header { background: linear-gradient(135deg,#b98a5e,#8c6239); color: #fff; padding: 22px 18px 18px; text-align: center; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #ffffff; color: #111111; }
+  header { background: #111111; color: #fff; padding: 22px 18px 18px; text-align: center; }
   header h1 { margin: 0 0 4px; font-size: 20px; letter-spacing: .5px; }
-  header p { margin: 0; font-size: 13px; opacity: .92; }
+  header p { margin: 0; font-size: 13px; opacity: .85; }
   .wrap { max-width: 640px; margin: 0 auto; padding: 16px 14px 40px; }`;
 
 // Página pública de autocadastro (link do convite): a loja preenche os próprios dados.
@@ -105,18 +105,19 @@ export function cadastroHtml(): string {
 <style>
   ${ESTILO_PUBLICO}
   form { display: flex; flex-direction: column; gap: 12px; }
-  label { font-size: 12.5px; font-weight: 700; color: #6b5638; display: flex; flex-direction: column; gap: 4px; }
-  input { padding: 11px 12px; border: 1.5px solid #d9cdbb; border-radius: 10px; font-size: 15px; background: #fff; }
-  .check { flex-direction: row; align-items: center; gap: 9px; color: #2b2b2b; font-weight: 600; background: #fff; border: 1.5px solid #d9cdbb; border-radius: 10px; padding: 11px 12px; }
-  .check input { width: 20px; height: 20px; padding: 0; margin: 0; flex: none; }
-  .obg { color: #b45309; }
-  button { margin-top: 6px; padding: 13px; border: 0; border-radius: 12px; background: #8c6239; color: #fff; font-size: 16px; font-weight: 800; cursor: pointer; }
-  button:disabled { opacity: .6; }
-  .aviso { font-size: 12.5px; color: #7a6a52; line-height: 1.5; margin: 0 0 8px; }
+  label { font-size: 12.5px; font-weight: 700; color: #333333; display: flex; flex-direction: column; gap: 4px; }
+  input { padding: 11px 12px; border: 1.5px solid #cccccc; border-radius: 10px; font-size: 15px; background: #fff; color: #111; }
+  input:focus { outline: none; border-color: #111; }
+  .check { flex-direction: row; align-items: center; gap: 9px; color: #111; font-weight: 600; background: #fff; border: 1.5px solid #cccccc; border-radius: 10px; padding: 11px 12px; }
+  .check input { width: 20px; height: 20px; padding: 0; margin: 0; flex: none; accent-color: #111; }
+  .obg { color: #111; }
+  button { margin-top: 6px; padding: 13px; border: 0; border-radius: 12px; background: #111111; color: #fff; font-size: 16px; font-weight: 800; cursor: pointer; }
+  button:disabled { opacity: .5; }
+  .aviso { font-size: 12.5px; color: #555555; line-height: 1.5; margin: 0 0 8px; }
   .ok { text-align: center; padding: 40px 16px; }
   .ok .big { font-size: 46px; }
-  .ok h2 { color: #6b4a24; margin: 10px 0 6px; }
-  .ok p { color: #6b5638; font-size: 14.5px; }
+  .ok h2 { color: #111; margin: 10px 0 6px; }
+  .ok p { color: #444; font-size: 14.5px; }
 </style>
 </head>
 <body>
@@ -126,7 +127,7 @@ export function cadastroHtml(): string {
 </header>
 <div class="wrap">
   <div id="form-box">
-    <p class="aviso">Preencha os dados da sua loja. Depois de conferirmos, ela aparece na nossa vitrine e no nosso site. 💛 <br>Campos com <span class="obg">*</span> são obrigatórios.</p>
+    <p class="aviso">Preencha os dados da sua loja. Depois de conferirmos, ela aparece na nossa vitrine e no nosso site. 🖤 <br>Campos com <span class="obg">*</span> são obrigatórios.</p>
     <form id="f">
       <label>Nome da loja <span class="obg">*</span><input name="nome" required maxlength="120" /></label>
       <label>Endereço<input name="endereco" maxlength="200" placeholder="Rua, número, bairro" /></label>
@@ -142,7 +143,7 @@ export function cadastroHtml(): string {
   <div class="ok" id="ok" style="display:none">
     <div class="big">✅</div>
     <h2>Cadastro enviado!</h2>
-    <p>Obrigada! 💛 Assim que a Big Tricot conferir os dados, sua loja vai aparecer na vitrine.</p>
+    <p>Obrigada! 🖤 Assim que a Big Tricot conferir os dados, sua loja vai aparecer na vitrine.</p>
   </div>
 </div>
 <script>
@@ -239,7 +240,7 @@ export async function vitrineHtml(env: Env, uf?: string, cidade?: string): Promi
     var u=elUf.value, c=elCid.value;
     var lista=LOJAS.filter(function(l){ return (!u||norm(l.uf).toUpperCase()===u) && (!c||norm(l.cidade).toLowerCase()===c.toLowerCase()); });
     if(!u){ elLojas.innerHTML='<div class="vazio">👆 Escolha o seu estado para ver as lojas parceiras.</div>'; return; }
-    if(!lista.length){ elLojas.innerHTML='<div class="vazio">Ainda não temos uma loja parceira cadastrada aqui. 💛<br>Volte em breve!</div>'; return; }
+    if(!lista.length){ elLojas.innerHTML='<div class="vazio">Ainda não temos uma loja parceira cadastrada aqui. 🖤<br>Volte em breve!</div>'; return; }
     elLojas.innerHTML='';
     lista.forEach(function(l){
       var card=document.createElement('div'); card.className='card';

@@ -90,6 +90,17 @@ app.get("/.well-known/assetlinks.json", (c) => {
   try { return c.json(c.env.ASSETLINKS ? JSON.parse(c.env.ASSETLINKS) : []); } catch { return c.json([]); }
 });
 
+// No subdomínio cadastro.bigtricot.com.br, a RAIZ serve direto o formulário de
+// auto-cadastro da loja — assim o link fica limpo (só "cadastro.bigtricot.com.br",
+// sem caminho). Só intercepta a raiz; /api, assets e o resto seguem normais.
+app.use("*", async (c, next) => {
+  const url = new URL(c.req.url);
+  if (url.hostname.startsWith("cadastro.") && url.pathname === "/") {
+    return c.html(cadastroHtml(), 200, { "Cache-Control": "no-cache" });
+  }
+  await next();
+});
+
 // Vitrine pública de lojas parceiras (SEM login) — link que a Big manda pro consumidor
 // final e que pode ser divulgado por fora. Aceita ?uf= e ?cidade= pra já filtrar.
 app.get("/vitrine", async (c) => {
