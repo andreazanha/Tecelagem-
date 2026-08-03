@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe } from "../api";
+import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type ChatMensagem } from "../api";
 import { getUser, pode } from "../auth";
 
 // Etapas do funil (venda) mostradas dentro da conversa.
@@ -53,6 +53,9 @@ export function Atendimento() {
   const [equipeOpen, setEquipeOpen] = useState(false);
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [filtroAtend, setFiltroAtend] = useState<string>("todos"); // gestor: filtra por vendedor
+  const [membros, setMembros] = useState<string[]>([]); // equipe (chat interno)
+  const [chatCom, setChatCom] = useState<string | null>(null); // membro com quem estou conversando
+  useEffect(() => { api.contatosChat().then(setMembros).catch(() => {}); }, []);
 
   const [alerta, setAlerta] = useState<AtendConversa | null>(null); // banner de backup na tela
   const alertadosRef = useRef<Set<string>>(new Set());
@@ -199,6 +202,22 @@ export function Atendimento() {
         <div className="card pad muted">Carregando…</div>
       ) : (
         <div className="fx-board">
+          {/* Coluna EQUIPE: fala com o time por dentro (chat interno) */}
+          {(() => { const eu = getUser()?.nome; const outros = membros.filter((m) => m !== eu); return (
+            <div className="fx-col" key="__equipe" style={{ background: "#eef2ff44", borderRadius: 12 }}>
+              <div className="fx-hd"><span className="fx-dot" style={{ background: "#6366f1" }} />👥 Equipe<span className="ct">{outros.length}</span></div>
+              <div className="fx-col-body">
+                {outros.length === 0
+                  ? <div className="muted2" style={{ padding: 10, fontSize: 12 }}>Nenhum outro membro cadastrado.</div>
+                  : outros.map((m) => (
+                    <div key={m} className="fx-card" onClick={() => setChatCom(m)} style={{ cursor: "pointer" }}>
+                      <div className="fx-nm">👤 {m}</div>
+                      <div className="fx-sub">💬 Conversar (interno)</div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          ); })()}
           {board.colunas.map((col) => {
             const cs = board.conversas.filter((c) => c.coluna === col.id).filter((c) =>
               filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend
@@ -218,6 +237,7 @@ export function Atendimento() {
       {sim && <Simulador onFechar={() => setSim(false)} onMudou={recarregar} />}
       {novaConv && <NovaConversa onFechar={() => setNovaConv(false)} onAbrir={(cid) => { setNovaConv(false); setAbrir(cid); }} onMudou={recarregar} />}
       {equipeOpen && <EquipeModal onFechar={() => setEquipeOpen(false)} />}
+      {chatCom && <ChatEquipeModal outro={chatCom} onFechar={() => setChatCom(null)} />}
       {abrir && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
       {cfgOpen && <ConfigZapi onFechar={() => setCfgOpen(false)} onMudou={checarConexao} />}
     </div>
@@ -865,6 +885,52 @@ function EquipeModal({ onFechar }: { onFechar: () => void }) {
           {salvou && <span style={{ color: "#16a34a", fontSize: 13, fontWeight: 700 }}>✓ Salvo</span>}
           <button className="btn btn-soft" onClick={onFechar}>Fechar</button>
           <button className="btn btn-primary" disabled={busy || carregando} onClick={salvar}>{busy ? "Salvando…" : "Salvar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Chat interno da equipe (DM) — abre da coluna "Equipe" ──────────────────────────
+function ChatEquipeModal({ outro, onFechar }: { outro: string; onFechar: () => void }) {
+  const nome = getUser()?.nome || "";
+  const canal = "dm:" + [nome, outro].sort().join("|");
+  const [msgs, setMsgs] = useState<ChatMensagem[]>([]);
+  const [texto, setTexto] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fim = useRef<HTMLDivElement>(null);
+  function carregar() { api.listarChat(canal).then(setMsgs).catch(() => {}); }
+  useEffect(() => { carregar(); const t = setInterval(carregar, 3500); return () => clearInterval(t); /* eslint-disable-next-line */ }, [canal]);
+  useEffect(() => { fim.current?.scrollIntoView(); }, [msgs.length]);
+  async function enviar() {
+    if (!texto.trim()) return;
+    setBusy(true);
+    try { await api.enviarChat(canal, nome, texto.trim()); setTexto(""); carregar(); } finally { setBusy(false); }
+  }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card at-modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+        <div className="at-thd" style={{ background: "#4f46e5" }}>
+          <div className="at-av" style={{ background: "#6366f1" }}>{iniciais(outro)}</div>
+          <div className="info"><div className="nm">👤 {outro}</div><div className="sub">Chat interno da equipe (o cliente não vê)</div></div>
+          <button className="modal-x" onClick={onFechar}>✕</button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", flex: "1 1 auto", minHeight: 320 }}>
+          <div className="at-msgs" style={{ flex: 1 }}>
+            {msgs.length === 0 && <div className="muted2" style={{ margin: "auto", fontSize: 12.5 }}>Sem mensagens ainda. Diga oi pra {outro}! 👋</div>}
+            {msgs.map((m) => (
+              <div key={m.id} className={"at-b " + (m.autor === nome ? "out" : "in")}>
+                {m.autor !== nome && <div className="at-aut">{m.autor}</div>}
+                {formatarMsg(m.texto)}
+                <span className="at-tm">{hora(m.criado_em)}</span>
+              </div>
+            ))}
+            <div ref={fim} />
+          </div>
+          <div className="at-compose">
+            <textarea rows={1} placeholder={"Mensagem para " + outro + "…"} value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
+            <button className="at-send" disabled={busy} onClick={enviar}>➤</button>
+          </div>
         </div>
       </div>
     </div>
