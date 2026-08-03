@@ -22,7 +22,7 @@ export function TreinarBia() {
   const set = (k: keyof IaConhecimento, v: string | number) => setForm((f) => (f ? { ...f, [k]: v } : f));
   async function salvar() {
     if (!form?.pergunta?.trim() || !form?.resposta?.trim()) { setMsg("Preencha a pergunta e a resposta."); return; }
-    try { await api.salvarConhecimento(form); setForm(null); setMsg("✓ Salvo! A Bia já vai usar."); carregar(); setTimeout(() => setMsg(""), 2500); }
+    try { await api.salvarConhecimento(form); setForm(null); setMsg("✓ Salvo! A Gaby já vai usar."); carregar(); setTimeout(() => setMsg(""), 2500); }
     catch { setMsg("Erro ao salvar."); }
   }
   async function alternar(i: IaConhecimento) { await api.salvarConhecimento({ ...i, ativo: i.ativo ? 0 : 1 }); carregar(); }
@@ -32,8 +32,8 @@ export function TreinarBia() {
     <div className="pagina" style={{ maxWidth: 860, margin: "0 auto", padding: "0 12px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, margin: "10px 0 6px" }}>
         <div>
-          <h1 style={{ margin: 0 }}>🎓 Treinar a Bia</h1>
-          <p className="muted" style={{ margin: "2px 0 0" }}>Cadastre perguntas comuns e a resposta certa. A Bia usa isso pra responder direitinho.</p>
+          <h1 style={{ margin: 0 }}>🎓 Treinar a Gaby</h1>
+          <p className="muted" style={{ margin: "2px 0 0" }}>Cadastre perguntas comuns e a resposta certa. A Gaby usa isso pra responder direitinho.</p>
         </div>
         {!form && <button className="btn btn-primary" onClick={() => setForm({ pergunta: "", resposta: "", ativo: 1 })}>+ Nova pergunta</button>}
       </div>
@@ -41,7 +41,7 @@ export function TreinarBia() {
       {msg && <div style={{ margin: "8px 0", padding: "8px 12px", borderRadius: 8, background: "#ecfdf5", color: "#065f46", fontSize: 13.5 }}>{msg}</div>}
 
       <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", color: "#4b3f63", borderRadius: 10, padding: "10px 13px", fontSize: 12.5, margin: "8px 0 16px", lineHeight: 1.5 }}>
-        💡 Escreva a <b>pergunta como o cliente faria</b> e a <b>resposta que a Bia deve dar</b>. Ela adapta ao tom da conversa. Ideal pra: pedido mínimo, prazos, formas de pagamento, private label, dúvidas frequentes. Não invente preço aqui se não quiser que ela fale — pode mandar ela chamar o vendedor.
+        💡 Escreva a <b>pergunta como o cliente faria</b> e a <b>resposta que a Gaby deve dar</b>. Ela adapta ao tom da conversa. Ideal pra: pedido mínimo, prazos, formas de pagamento, private label, dúvidas frequentes. Não invente preço aqui se não quiser que ela fale — pode mandar ela chamar o vendedor.
       </div>
 
       {form && (
@@ -49,7 +49,7 @@ export function TreinarBia() {
           <h3 style={{ marginTop: 0 }}>{form.id ? "Editar" : "Nova pergunta"}</h3>
           <label className="campo"><span className="campo-label">Pergunta do cliente</span>
             <input value={form.pergunta ?? ""} onChange={(e) => set("pergunta", e.target.value)} placeholder="Ex.: Qual o pedido mínimo de vocês?" /></label>
-          <label className="campo"><span className="campo-label">Resposta que a Bia deve dar</span>
+          <label className="campo"><span className="campo-label">Resposta que a Gaby deve dar</span>
             <textarea value={form.resposta ?? ""} onChange={(e) => set("resposta", e.target.value)} rows={4} placeholder="Ex.: Nosso pedido mínimo é de R$ 500. Posso te ajudar com mais alguma coisa? 💛" style={{ resize: "vertical", fontFamily: "inherit" }} /></label>
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <button className="btn btn-primary" onClick={salvar}>💾 Salvar</button>
@@ -76,7 +76,7 @@ export function TreinarBia() {
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 11.5, fontWeight: 800, padding: "3px 9px", borderRadius: 999, background: i.ativo ? "#dcfce7" : "#f1f5f9", color: i.ativo ? "#166534" : "#64748b", whiteSpace: "nowrap" }}>
-                    {i.ativo ? "🟢 Ativa — a Bia responde" : "⚪ Inativa — a Bia ignora"}
+                    {i.ativo ? "🟢 Ativa — a Gaby responde" : "⚪ Inativa — a Gaby ignora"}
                   </span>
                 </div>
                 <div style={{ fontWeight: 800, fontSize: 14, marginTop: 8 }}>❓ {i.pergunta}</div>

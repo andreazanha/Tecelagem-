@@ -160,7 +160,7 @@ async function garantirCardDaConversa(env: Env, convId: string, texto = "Catálo
 //  • financeiro/pós-venda/reclamação/pediu humano → "humano"
 //  • ainda conversando              → "conversar"
 // O motor determinístico (CNPJ, catálogo, parceiros) segue intacto — a IA só faz a frente.
-const IA_SISTEMA = `Você é a *Bia*, atendente virtual da *Big Tricot* no WhatsApp.
+const IA_SISTEMA = `Você é a *Gaby*, atendente virtual da *Big Tricot* no WhatsApp.
 A Big Tricot é uma fábrica de tricô (mantas, capas de almofada, almofadas e afins) que vende **no ATACADO, apenas para LOJISTAS** (revendedores com CNPJ).
 
 SEU PAPEL: acolher quem chama, conversar de forma natural e humana, ENTENDER o que a pessoa quer e descobrir se ela é LOJISTA (compra pra revender) ou CONSUMIDOR FINAL (compra pra usar/presente).
@@ -184,7 +184,7 @@ REGRAS IMPORTANTES:
 RESPONDA **SOMENTE** com um JSON válido, sem texto fora dele, neste formato exato:
 {"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "enviar_catalogo" | "consultar_pedido" | "indicar_parceiro" | "humano", "uf": "<sigla do estado, ex.: MG, se souber; senão vazio>", "cidade": "<cidade se souber; senão vazio>", "cnpj": "<CNPJ do cliente se ele informar ou você já souber; senão vazio>", "setor": "vendas" | "fiscal" | "estoque" | "pcp" | ""}`;
 
-// Estados "terminados" em que a Bia reengaja o contato que volta a falar (ela usa o
+// Estados "terminados" em que a Gaby reengaja o contato que volta a falar (ela usa o
 // histórico e continua). Ficam de fora: coleta determinística e estados de pedido/pós-venda.
 const IA_REENGATA = new Set<string>(["indicado-parceiro", "catalogo-enviado", "nao-qualificado", "sem-retorno", "follow-up-24h"]);
 
@@ -196,13 +196,13 @@ const SAUDACAO_NOVO =
   "Para eu te ajudar melhor, você já é nosso cliente ou está entrando em contato pela primeira vez?";
 
 // Junta as regras base (fixas, incluindo o formato JSON) com os ajustes que o lojista
-// escreve na config. Ajustes se SOMAM — nunca substituem o núcleo, pra não quebrar a Bia.
+// escreve na config. Ajustes se SOMAM — nunca substituem o núcleo, pra não quebrar a Gaby.
 function sistemaIa(extra?: string | null): string {
   const e = String(extra ?? "").trim();
   return e ? `${IA_SISTEMA}\n\nAJUSTES DO LOJISTA (siga também estas instruções, sem quebrar o formato JSON acima):\n${e}` : IA_SISTEMA;
 }
 
-// Base de conhecimento (treino da Bia): injeta as perguntas/respostas ativas no prompt,
+// Base de conhecimento (treino da Gaby): injeta as perguntas/respostas ativas no prompt,
 // pra ela responder dúvidas complexas do jeito certo. Vazio se não houver entradas.
 async function lerConhecimento(env: Env): Promise<string> {
   const { results } = await env.DB.prepare(
@@ -222,7 +222,7 @@ const IA_MODELOS = [
 
 interface IaDecisao { resposta: string; intencao: string; acao: string; uf?: string; cidade?: string; cnpj?: string; setor?: string }
 
-// Setores válidos do atendimento (a Bia roteia pra um deles).
+// Setores válidos do atendimento (a Gaby roteia pra um deles).
 const SETORES_VALIDOS = new Set(["vendas", "fiscal", "estoque", "pcp"]);
 const setorDe = (s?: string | null) => { const t = String(s ?? "").trim().toLowerCase(); return SETORES_VALIDOS.has(t) ? t : ""; };
 
@@ -306,7 +306,7 @@ async function transcreverAudio(env: Env, url: string): Promise<string> {
 }
 
 // "Enxerga" uma imagem (foto que o cliente mandou) e descreve em português, via IA de
-// visão (LLaVA na Workers AI). Retorna "" se não der. A descrição vira contexto pra Bia.
+// visão (LLaVA na Workers AI). Retorna "" se não der. A descrição vira contexto pra Gaby.
 async function descreverImagem(env: Env, url: string): Promise<string> {
   const AI = env.AI as unknown as { run: (m: string, o: unknown) => Promise<{ description?: string; response?: string }> };
   if (!AI?.run || !url) return "";
@@ -324,7 +324,7 @@ async function descreverImagem(env: Env, url: string): Promise<string> {
   } catch { return ""; }
 }
 
-// ── Status do pedido (Bia consulta a produção pelo CNPJ) ──────────────────────────
+// ── Status do pedido (Gaby consulta a produção pelo CNPJ) ──────────────────────────
 // Esteira canônica de fases (produção + pós-revisão). Ordem = avanço do pedido.
 const FASES_PEDIDO = ["tecelagem", "passadoria", "corte", "costura", "revisao", "expedicao", "fiscal", "transporte", "entregue"];
 const FASE_CURTA: Record<string, string> = {
@@ -376,7 +376,7 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, origin: strin
   const dec = await chamarIa(env, conv, sistema);
   // IA indisponível (binding ausente/erro) → degrada pro menu determinístico, que é à prova de falhas.
   if (!dec) return { saidas: [{ tipo: "texto", texto: BOAS_VINDAS }], novoEstado: "aguardando-setor", notificarHumano: false, tipo: null };
-  const setor = setorDe(dec.setor); // setor que a Bia identificou (vendas/fiscal/estoque/pcp)
+  const setor = setorDe(dec.setor); // setor que a Gaby identificou (vendas/fiscal/estoque/pcp)
 
   // CONSUMIDOR FINAL: guardrail robusto — não depende só do "acao" do modelo. Se ele marcou
   // indicar_parceiro OU disse que é consumidor, tratamos como indicação. Com o ESTADO em mãos,
@@ -491,7 +491,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
   }
 
-  // Reclamação/problema → coluna própria "Reclamação": a Bia dá um retorno acolhedor,
+  // Reclamação/problema → coluna própria "Reclamação": a Gaby dá um retorno acolhedor,
   // avisa o time e deixa o caso separado e visível pra resolver com prioridade.
   // Guarda contra falso positivo ("sem problema", "tudo certo").
   if (RECLAMACAO_RE.test(texto) && !/sem problema|nenhum problema|tranquil|tudo certo|tudo (ó|o)k|sem reclama/i.test(texto)) {
@@ -505,7 +505,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   }
 
   // IA de triagem (se ligada). Representantes seguem o fluxo padrão (menu).
-  // Reengaja também quem já tinha terminado a conversa e voltou a falar (a Bia tem o
+  // Reengaja também quem já tinha terminado a conversa e voltou a falar (a Gaby tem o
   // histórico e continua). NÃO reengaja estados de coleta determinística (nome/CNPJ/cidade)
   // nem "atendimento-humano" (já tratado acima).
   if (cfgAt.atendimento_ia === "1" && conv.tipo !== "representante"
@@ -676,7 +676,7 @@ atendimento.post("/webhook", async (c) => {
       return c.json({ ignorado: "audio-sem-transcricao" });
     }
   }
-  // Imagem: a Bia "enxerga" a foto com IA de visão e usa o que viu como contexto. Mantém
+  // Imagem: a Gaby "enxerga" a foto com IA de visão e usa o que viu como contexto. Mantém
   // a legenda (se houver) como a fala do cliente e anexa a descrição do que aparece.
   if (img && (img.imageUrl || img.url)) {
     const desc = await descreverImagem(c.env, img.imageUrl || img.url || "");

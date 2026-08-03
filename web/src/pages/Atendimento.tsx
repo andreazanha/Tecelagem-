@@ -244,15 +244,15 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
              {iaTeste && <pre style={{ marginTop: 10, marginBottom: 0, whiteSpace: "pre-wrap", fontSize: 12.5, background: "#0f172a", color: "#e2e8f0", padding: "10px 12px", borderRadius: 8, fontFamily: "inherit", lineHeight: 1.5 }}>{iaTeste}</pre>}
              {cfg.atendimento_ia && (
                <div style={{ marginTop: 12 }}>
-                 <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 3 }}>📝 Ajustes na conversa da Bia (opcional)</div>
+                 <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 3 }}>📝 Ajustes na conversa da Gaby (opcional)</div>
                  <textarea value={cfg.ia_prompt} onChange={(e) => set("ia_prompt", e.target.value)} rows={5}
-                   placeholder={"Escreva do seu jeito o que a Bia deve (ou não deve) fazer. Ex.:\n• Não fale de modelos/cores com consumidor final, só indique a loja parceira.\n• Seja mais objetiva, no máximo 2 linhas.\n• Sempre pergunte a quantidade que o lojista precisa."}
+                   placeholder={"Escreva do seu jeito o que a Gaby deve (ou não deve) fazer. Ex.:\n• Não fale de modelos/cores com consumidor final, só indique a loja parceira.\n• Seja mais objetiva, no máximo 2 linhas.\n• Sempre pergunte a quantidade que o lojista precisa."}
                    style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.45 }} />
                  <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 3 }}>
-                   Em branco = a Bia usa as regras padrão da Big Tricot. O que você escrever aqui é <b>somado</b> às regras (não substitui) — então ela nunca "quebra".
+                   Em branco = a Gaby usa as regras padrão da Big Tricot. O que você escrever aqui é <b>somado</b> às regras (não substitui) — então ela nunca "quebra".
                  </div>
                  <details style={{ marginTop: 6 }}>
-                   <summary style={{ cursor: "pointer", fontSize: 11.5, color: "#8b5cf6" }}>ver as regras padrão da Bia (referência)</summary>
+                   <summary style={{ cursor: "pointer", fontSize: 11.5, color: "#8b5cf6" }}>ver as regras padrão da Gaby (referência)</summary>
                    <pre style={{ whiteSpace: "pre-wrap", fontSize: 11, color: "#475569", background: "#f1f5f9", padding: "8px 10px", borderRadius: 6, marginTop: 4, maxHeight: 180, overflow: "auto", fontFamily: "inherit" }}>{cfg.ia_prompt_padrao}</pre>
                  </details>
                </div>
