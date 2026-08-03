@@ -475,7 +475,7 @@ function ajustarCatalogoRegiao(texto: string, uf?: string | null, tel?: string |
 
 // ── Núcleo: recebe uma mensagem do cliente, roda o robô, responde e qualifica ────
 // Usado tanto pelo simulador (/entrada) quanto pelo webhook real da Z-API (/webhook).
-async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "", origin: string | null = null, zapId = "", arquivoUrl = "", soRegistrar = false) {
+async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "", origin: string | null = null, zapId = "", arquivoUrl = "", soRegistrar = false, jaRegistrada = false) {
   const tel = digitos(telRaw);
   const texto = String(textoRaw ?? "");
   const contato = String(contatoNome ?? "").trim().slice(0, 80) || null;
@@ -505,7 +505,9 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     await env.DB.prepare("UPDATE atend_conversas SET contato_nome=? WHERE id=?").bind(contato, conv.id).run();
     conv.contato_nome = contato;
   }
-  await addMsg(env, conv.id, "in", "cliente", "texto", texto, { zapId: zapId || null, arquivoUrl: arquivoUrl || null });
+  // jaRegistrada: a mensagem já está no histórico (ex.: a IA está reassumindo e respondendo
+  // uma pergunta que o cliente já tinha mandado) → NÃO registra de novo, só reprocessa.
+  if (!jaRegistrada) await addMsg(env, conv.id, "in", "cliente", "texto", texto, { zapId: zapId || null, arquivoUrl: arquivoUrl || null });
   // Cliente mandou mensagem NOVA → "chamou de volta". Se o card estava ESTACIONADO numa
   // coluna à mão (coluna_manual), destrava: ele volta pro fluxo automático (Em atendimento /
   // Aguardando humano) pra ninguém esquecer que a cliente está esperando resposta.
@@ -1816,13 +1818,27 @@ atendimento.post("/:id/assumir", async (c) => {
 // (Precisa da IA de atendimento LIGADA em Configurações; senão ninguém responde.)
 atendimento.post("/:id/ia-assumir", async (c) => {
   const id = c.req.param("id");
-  const conv = await c.env.DB.prepare("SELECT id FROM atend_conversas WHERE id=?").bind(id).first<{ id: string }>();
+  const conv = await c.env.DB.prepare("SELECT id, telefone FROM atend_conversas WHERE id=?").bind(id).first<{ id: string; telefone: string }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
   const cfg = await lerConfig(c.env);
   await c.env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', responsavel=NULL, coluna_manual=NULL, encerrado_em=NULL, atualizado_em=datetime('now') WHERE id=?").bind(id).run();
-  await addMsg(c.env, id, "out", "sistema", "sistema", "🤖 A Big (IA) voltou a assumir este atendimento — ela responde as próximas mensagens.");
-  // Avisa se a IA global estiver desligada (aí a devolução não adianta sozinha).
-  return c.json({ ok: true, ia_ligada: cfg.atendimento_ia === "1" });
+  await addMsg(c.env, id, "out", "sistema", "sistema", "🤖 A Big (IA) voltou a assumir este atendimento.");
+  const iaLigada = cfg.atendimento_ia === "1";
+  // Se a última mensagem for uma PERGUNTA do cliente ainda sem resposta, a Big já responde
+  // agora (assume E responde) — reprocessa essa mensagem pela mesma pipeline, sem duplicá-la.
+  let respondeu = false;
+  if (iaLigada) {
+    const ultima = await c.env.DB.prepare(
+      "SELECT direcao, texto FROM atend_mensagens WHERE conversa_id=? AND tipo NOT IN ('sistema','nota') ORDER BY criado_em DESC, rowid DESC LIMIT 1"
+    ).bind(id).first<{ direcao: string; texto: string | null }>();
+    if (ultima && ultima.direcao === "in" && (ultima.texto || "").trim()) {
+      try {
+        const r = await receberMensagem(c.env, conv.telefone, ultima.texto, "whatsapp", "", new URL(c.req.url).origin, "", "", false, true);
+        respondeu = !!(r && "respostas" in r && Array.isArray(r.respostas) && r.respostas.length);
+      } catch { /* se falhar, a IA ainda responde na próxima mensagem do cliente */ }
+    }
+  }
+  return c.json({ ok: true, ia_ligada: iaLigada, respondeu });
 });
 
 // ── Sugestão de resposta por IA (o vendedor edita antes de enviar) ────────────────

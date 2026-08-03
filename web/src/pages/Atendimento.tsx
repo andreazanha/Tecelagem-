@@ -736,8 +736,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     setBusy(true);
     try { await api.atendAssumir(id, nome); carregar(); onMudou(); } finally { setBusy(false); }
   }
-  // Devolve a conversa pra Big (IA) — inverso do "assumir". A partir daqui a IA responde
-  // sozinha as próximas mensagens do cliente.
+  // Devolve a conversa pra Big (IA) — inverso do "assumir". A Big assume e, se houver uma
+  // pergunta do cliente esperando, já responde agora; senão responde na próxima mensagem.
   async function devolverIa() {
     setBusy(true);
     try {
@@ -970,8 +970,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
               {encerrado ? "✅ Encerrado — reabrir" : "✅ Encerrar atendimento"}
             </button>
             {(humano || d?.responsavel) && (
-              <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: "#ddd6fe", background: "#f5f3ff", color: "#6d28d9", fontWeight: 700 }} disabled={busy} onClick={devolverIa} title="A Big (IA) volta a assumir e responde automaticamente as próximas mensagens deste cliente.">
-                🤖 Devolver pra Big (IA)
+              <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: "#ddd6fe", background: "#f5f3ff", color: "#6d28d9", fontWeight: 700 }} disabled={busy} onClick={devolverIa} title="A Big (IA) assume a conversa: se houver uma pergunta do cliente esperando, ela já responde agora; senão, responde a próxima mensagem.">
+                🤖 Big (IA) assume e responde
               </button>
             )}
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5 }} disabled={busy} onClick={toggleNaoPerturbe} title="Para/retoma as mensagens automáticas para este cliente">
