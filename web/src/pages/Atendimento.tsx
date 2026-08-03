@@ -679,27 +679,49 @@ function EquipeModal({ onFechar }: { onFechar: () => void }) {
 }
 
 // ── Nova conversa: escolhe um contato do WhatsApp (ou digita o número) e manda a 1ª msg ──
+type Contato = { nome: string; telefone: string; origem: "cliente" | "whats"; cidade?: string | null; uf?: string | null };
 function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; onAbrir: (id: string) => void; onMudou: () => void }) {
-  const [contatos, setContatos] = useState<{ nome: string; telefone: string }[]>([]);
+  const [contatos, setContatos] = useState<Contato[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
-  const [sel, setSel] = useState<{ nome: string; telefone: string } | null>(null);
+  const [sel, setSel] = useState<Contato | null>(null);
   const [telManual, setTelManual] = useState("");
   const [texto, setTexto] = useState("");
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
 
   useEffect(() => {
-    api.atendContatosWhatsapp()
-      .then((r) => { setContatos(r.contatos || []); if (r.erro) setErro("Conecte o WhatsApp (Z-API) pra carregar seus contatos. Você ainda pode digitar o número abaixo."); })
-      .catch(() => setErro("Não consegui carregar os contatos agora. Digite o número abaixo."))
-      .finally(() => setCarregando(false));
+    // Junta a BASE DE CLIENTES (nome comercial, cidade) com os contatos do WhatsApp,
+    // sem repetir número. Assim dá pra achar o cliente pelo nome da loja mesmo que
+    // ele não esteja salvo na agenda do celular.
+    Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp()]).then(([cl, w]) => {
+      const lista: Contato[] = [];
+      const vistos = new Set<string>();
+      const add = (nome: string, tel: string, origem: "cliente" | "whats", cidade?: string | null, uf?: string | null) => {
+        const d = (tel || "").replace(/\D/g, "");
+        if (d.length < 10) return;
+        const key = d.slice(-11);
+        if (vistos.has(key)) return;
+        vistos.add(key);
+        lista.push({ nome: nome || telBonito(d), telefone: d, origem, cidade, uf });
+      };
+      if (cl.status === "fulfilled") for (const c of cl.value) add(c.nome, c.whatsapp || "", "cliente", c.cidade, c.uf);
+      if (w.status === "fulfilled") for (const c of (w.value.contatos || [])) add(c.nome, c.telefone, "whats");
+      lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+      setContatos(lista);
+      if (cl.status !== "fulfilled" && w.status !== "fulfilled") setErro("Não consegui carregar os contatos agora. Digite o número abaixo.");
+      else if (w.status === "fulfilled" && w.value.erro && lista.length === 0) setErro("Conecte o WhatsApp (Z-API) pra puxar sua agenda. Você ainda pode digitar o número abaixo.");
+    }).finally(() => setCarregando(false));
   }, []);
 
-  const filtrados = contatos.filter((c) => {
+  const filtrados = (() => {
     const q = busca.trim().toLowerCase();
-    return !q || c.nome.toLowerCase().includes(q) || c.telefone.includes(q.replace(/\D/g, ""));
-  }).slice(0, 200);
+    if (!q) return contatos.slice(0, 300);
+    const dig = q.replace(/\D/g, "");
+    return contatos.filter((c) =>
+      c.nome.toLowerCase().includes(q) || (dig.length >= 3 && c.telefone.includes(dig))
+    ).slice(0, 300);
+  })();
 
   async function enviar() {
     const tel = (sel?.telefone || telManual).replace(/\D/g, "");
@@ -723,13 +745,17 @@ function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; on
           <button className="modal-x" onClick={onFechar}>✕</button>
         </div>
         {erro && <div style={{ fontSize: 12.5, marginBottom: 8, color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "7px 10px" }}>{erro}</div>}
-        <input placeholder="🔎 Buscar contato pelo nome ou número…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: "100%", marginBottom: 8 }} />
-        <div style={{ maxHeight: 220, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10, marginBottom: 10 }}>
+        <input placeholder="🔎 Buscar pelo nome da loja, pessoa ou número…" value={busca} onChange={(e) => setBusca(e.target.value)} autoFocus style={{ width: "100%", marginBottom: 6 }} />
+        {!carregando && <div className="muted" style={{ fontSize: 11.5, marginBottom: 6 }}>{busca.trim() ? `${filtrados.length} resultado(s)` : `${contatos.length} contato(s) — base de clientes + WhatsApp`}</div>}
+        <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10, marginBottom: 10 }}>
           {carregando ? <div className="muted" style={{ padding: 12 }}>Carregando contatos…</div>
             : filtrados.length === 0 ? <div className="muted" style={{ padding: 12 }}>Nenhum contato encontrado. Digite o número abaixo. 👇</div>
             : filtrados.map((c) => (
-              <button key={c.telefone} type="button" onClick={() => { setSel(c); setTelManual(""); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderBottom: "1px solid var(--line)", background: sel?.telefone === c.telefone ? "#eef2ff" : "transparent", cursor: "pointer", color: "var(--ink)" }}>
-                <b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span>
+              <button key={c.origem + c.telefone} type="button" onClick={() => { setSel(c); setTelManual(""); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", border: "none", borderBottom: "1px solid var(--line)", background: sel?.telefone === c.telefone ? "#eef2ff" : "transparent", cursor: "pointer", color: "var(--ink)" }}>
+                <div><b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span></div>
+                <div className="muted" style={{ fontSize: 11.5 }}>
+                  {c.origem === "cliente" ? "📇 Cliente da base" : "📱 WhatsApp"}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : ""}
+                </div>
               </button>
             ))}
         </div>
