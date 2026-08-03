@@ -283,7 +283,7 @@ export interface AtendColuna { id: string; label: string; cor: string }
 export interface AtendConversa {
   id: string; telefone: string; nome: string | null; estado: string; coluna: string;
   setor: string | null; cnpj: string | null; cidade: string | null; uf: string | null;
-  lojista: number | null; responsavel: string | null; atualizado_em: string; ultima_msg: string | null;
+  lojista: number | null; responsavel: string | null; atualizado_em: string; ultima_in_em?: string | null; ultima_msg: string | null;
   tipo: string | null; representante: string | null; origem: string | null; contato_nome: string | null; autorizado: number | null; interessado: number | null;
   funil_etapa?: string | null;
 }

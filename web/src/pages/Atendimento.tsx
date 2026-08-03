@@ -57,6 +57,12 @@ export function Atendimento() {
   const alertadosRef = useRef<Set<string>>(new Set());
   const primeiraRef = useRef(true);
   const audioRef = useRef<AudioContext | null>(null);
+  // Som ao chegar mensagem nova do cliente (não só quando pede humano).
+  const ultimoInRef = useRef<string>("");
+  const primeiraInRef = useRef(true);
+  const [mudo, setMudo] = useState(() => localStorage.getItem("atend-mudo") === "1");
+  const mudoRef = useRef(mudo);
+  useEffect(() => { mudoRef.current = mudo; }, [mudo]);
 
   function recarregar() { const u = getUser(); api.atendBoard(u?.nome, ehGestorAtend()).then(setBoard).catch(() => {}); }
   function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance && !!c.zapi_token)).catch(() => setConectado(false)); }
@@ -93,6 +99,36 @@ export function Atendimento() {
       o.start(ini); o.stop(ini + 0.16);
     }
   }
+
+  // "Ding" suave (2 notas) — mensagem nova do cliente, sem ser o alarme agudo.
+  function tocarDing() {
+    const ctx = audioRef.current;
+    if (!ctx) return;
+    try { ctx.resume?.(); } catch { /* ignore */ }
+    const t0 = ctx.currentTime;
+    [880, 1175].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "sine"; o.frequency.value = f;
+      const ini = t0 + i * 0.12;
+      g.gain.setValueAtTime(0.0001, ini);
+      g.gain.exponentialRampToValueAtTime(0.25, ini + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, ini + 0.22);
+      o.connect(g).connect(ctx.destination);
+      o.start(ini); o.stop(ini + 0.24);
+    });
+  }
+
+  // Toca o ding quando chega mensagem nova de QUALQUER cliente (maior ultima_in_em avançou).
+  useEffect(() => {
+    if (!board) return;
+    let maxIn = "";
+    for (const c of board.conversas) { const t = c.ultima_in_em || ""; if (t > maxIn) maxIn = t; }
+    if (primeiraInRef.current) { ultimoInRef.current = maxIn; primeiraInRef.current = false; return; }
+    if (maxIn && maxIn > ultimoInRef.current) {
+      ultimoInRef.current = maxIn;
+      if (!mudoRef.current) tocarDing();
+    }
+  }, [board]);
 
   function dispararAlerta(c: AtendConversa) {
     const quem = c.nome || c.contato_nome || telBonito(c.telefone);
@@ -131,6 +167,7 @@ export function Atendimento() {
         <div><h1>Atendimento</h1><div className="breadcrumb">Comercial › Atendimento (robô do WhatsApp)</div></div>
         <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
+          <button className="btn btn-soft" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); return n; })} title={mudo ? "Som desligado — clique para ligar" : "Toca um som quando chega mensagem nova"}>{mudo ? "🔕 Som off" : "🔔 Som on"}</button>
           <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
