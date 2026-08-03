@@ -1263,8 +1263,9 @@ body.dark .at-nota { background: #3a3011; border-color: #665318; color: #fde68a;
 .at-modo-pill { font: inherit; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line,#d5dbe6); background: var(--card,#fff); color: var(--ink,#334155); cursor: pointer; }
 body.dark .at-modo-pill { background: #0b1220; border-color: #ffffff1a; color: #cbd5e1; }
 /* Card aguardando resposta (mensagem nova do cliente): pisca e sobe pro topo */
-@keyframes atCardPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,.45); } 50% { box-shadow: 0 0 0 5px rgba(239,68,68,0); } }
-.fx-card.pulsando { border-left: 3px solid #ef4444; animation: atCardPulse 1.3s ease-in-out infinite; }
+@keyframes atCardPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,.75); } 50% { box-shadow: 0 0 0 9px rgba(34,197,94,0); } }
+.fx-card.pulsando { border-left: 5px solid #16a34a; background: #f0fdf4; animation: atCardPulse 1.15s ease-in-out infinite; }
+body.dark .fx-card.pulsando { background: #0f2a1c; }
 /* Avatar (foto de perfil ou iniciais) no card da conversa */
 .conv-av { width: 34px; height: 34px; border-radius: 50%; flex: 0 0 auto; background: #6366f1; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; overflow: hidden; }
 /* Seletor de mover no card (clica e escolhe a coluna) */
