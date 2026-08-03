@@ -131,6 +131,7 @@ export interface ChatMensagem {
   criado_em: string;
 }
 export interface ChatDM { canal: string; outro: string }
+export interface ChatMembro { id: string; nome: string; telefone: string }
 export interface TipoFio {
   id: string;
   nome: string;
@@ -840,9 +841,14 @@ export const api = {
     fetch(`/api/chat/nao-lidas?desde=${encodeURIComponent(desde)}&autor=${encodeURIComponent(autor)}`).then((r) => j<{ nao_lidas: number; ultima: ChatMensagem | null }>(r)),
   contatosChat: () => fetch("/api/chat/contatos").then((r) => j<string[]>(r)),
   dmsChat: (me: string) => fetch(`/api/chat/dms?me=${encodeURIComponent(me)}`).then((r) => j<ChatDM[]>(r)),
-  dmResumoChat: (me: string) => fetch(`/api/chat/dm-resumo?me=${encodeURIComponent(me)}`).then((r) => j<{ outro: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean }[]>(r)),
+  dmResumoChat: (me: string) => fetch(`/api/chat/dm-resumo?me=${encodeURIComponent(me)}`).then((r) => j<{ outro: string; canal: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean }[]>(r)),
   marcarLidoChat: (usuario: string, canal: string) =>
     jsonPost("/api/chat/marcar-lido", { usuario, canal }).then((r) => j<{ ok: boolean }>(r)),
+  // Membros da equipe por OUTRO número de WhatsApp (canal ext:<id>).
+  chatMembros: () => fetch("/api/chat/membros").then((r) => j<ChatMembro[]>(r)),
+  addChatMembro: (nome: string, telefone: string) =>
+    jsonPost("/api/chat/membros", { nome, telefone }).then((r) => j<ChatMembro>(r)),
+  delChatMembro: (id: string) => fetch(`/api/chat/membros/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   enviarFotoChat: (canal: string, autor: string, file: File, texto?: string) => {
     const fd = new FormData();
     fd.append("file", file); fd.append("autor", autor); if (texto) fd.append("texto", texto);

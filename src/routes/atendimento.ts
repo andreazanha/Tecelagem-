@@ -779,6 +779,22 @@ atendimento.post("/webhook", async (c) => {
   let texto = (t?.message ?? img?.caption ?? "").toString();
   const nomeContato = String(b.senderName ?? b.chatName ?? b.pushName ?? "").trim();
   if (!phone) return c.json({ ignorado: "sem-telefone" });
+  // É um MEMBRO da equipe (número externo cadastrado na Comunicação interna)? Então a
+  // mensagem NÃO vai pro robô de clientes — ela cai no chat interno da equipe (canal ext:<id>).
+  {
+    const coreM = phone.replace(/^55/, "").slice(-8);
+    const membro = coreM.length >= 8
+      ? await c.env.DB.prepare("SELECT id, nome FROM chat_membros WHERE telefone LIKE '%' || ? LIMIT 1").bind(coreM).first<{ id: string; nome: string }>().catch(() => null)
+      : null;
+    if (membro) {
+      let txt = String((b.text as { message?: string } | undefined)?.message ?? (b.image as { caption?: string } | undefined)?.caption ?? "").trim();
+      if (!txt && b.audio) { const a = b.audio as { audioUrl?: string; url?: string }; txt = (await transcreverAudio(c.env, a.audioUrl || a.url || "").catch(() => "")) || "🎤 (áudio)"; }
+      if (!txt && b.image) txt = "📷 (foto)";
+      if (!txt) txt = "(mensagem)";
+      await c.env.DB.prepare("INSERT INTO chat_mensagens (id, canal, autor, texto) VALUES (?, ?, ?, ?)").bind(crypto.randomUUID(), "ext:" + membro.id, membro.nome, txt.slice(0, 2000)).run();
+      return c.json({ ok: true, membro: membro.id });
+    }
+  }
   // Áudio (nota de voz): transcreve com IA e trata como texto normal. Se não der pra
   // ouvir, responde pedindo por escrito — em vez de ignorar e deixar o cliente sem resposta.
   const origin = new URL(c.req.url).origin;
@@ -1092,7 +1108,12 @@ async function lerColunasAtend(env: Env): Promise<{ id: string; label: string; c
   let ordem: string[] = [];
   try { const o = JSON.parse(cfg.atend_colunas_ordem || "[]"); if (Array.isArray(o)) ordem = o.map(String); } catch { ordem = []; }
   const pos = (id: string) => { const i = ordem.indexOf(id); return i < 0 ? 9999 : i; };
-  return todas.map((c0, i) => ({ ...c0, _i: i })).sort((a, b) => (pos(a.id) - pos(b.id)) || (a._i - b._i)).map(({ _i, ...c0 }) => { void _i; return c0; });
+  const ordenadas = todas.map((c0, i) => ({ ...c0, _i: i })).sort((a, b) => (pos(a.id) - pos(b.id)) || (a._i - b._i)).map(({ _i, ...c0 }) => { void _i; return c0; });
+  // "Reclamação ou pendência" fica SEMPRE como última coluna (por pedido), mesmo que
+  // haja uma ordem antiga salva que a colocava no começo.
+  const iRec = ordenadas.findIndex((c0) => c0.id === "reclamacao");
+  if (iRec >= 0) ordenadas.push(ordenadas.splice(iRec, 1)[0]);
+  return ordenadas;
 }
 atendimento.get("/colunas", async (c) => c.json({ colunas: await lerColunasAtend(c.env) }));
 atendimento.post("/colunas", async (c) => {
@@ -1342,7 +1363,7 @@ atendimento.post("/config/testar", async (c) => {
 
 // Envio real pela Z-API. Se a integração estiver desligada ou sem credenciais,
 // vira no-op (o board/histórico e o simulador seguem funcionando normalmente).
-async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; texto: string }, quote: { zapId?: string | null; texto?: string | null } = {}) {
+export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; texto: string }, quote: { zapId?: string | null; texto?: string | null } = {}) {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
   const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");

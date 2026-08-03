@@ -3,9 +3,11 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { enviarPushPara } from "../push-send";
+import { enviarWhatsapp } from "./atendimento";
 
 export const chat = new Hono<{ Bindings: Env }>();
 const uid = () => crypto.randomUUID();
+const soDigitos = (s: unknown) => String(s ?? "").replace(/\D/g, "");
 
 // Contatos para iniciar uma conversa direta (usuários + operadores, sem repetir).
 chat.get("/contatos", async (c) => {
@@ -34,23 +36,34 @@ chat.get("/dms", async (c) => {
 chat.get("/dm-resumo", async (c) => {
   const me = (c.req.query("me") || "").trim();
   if (!me) return c.json([]);
+  // DMs (dm:A|B) + threads de membros externos (ext:<id>), da mais recente pra mais antiga.
   const { results } = await c.env.DB.prepare(
-    "SELECT canal, autor, criado_em FROM chat_mensagens WHERE canal LIKE 'dm:%' ORDER BY criado_em DESC, rowid DESC"
+    "SELECT canal, autor, criado_em FROM chat_mensagens WHERE canal LIKE 'dm:%' OR canal LIKE 'ext:%' ORDER BY criado_em DESC, rowid DESC"
   ).all<{ canal: string; autor: string; criado_em: string }>();
   // O que "me" já leu em cada canal (servidor → igual em qualquer aparelho).
   const { results: lidos } = await c.env.DB.prepare(
     "SELECT canal, visto_em FROM chat_lido WHERE usuario = ?"
   ).bind(me).all<{ canal: string; visto_em: string | null }>().catch(() => ({ results: [] as { canal: string; visto_em: string | null }[] }));
   const lidoMap = new Map(lidos.map((l) => [l.canal, l.visto_em || ""]));
+  // Nome de cada membro externo (pra rotular a thread ext:<id>).
+  const { results: membros } = await c.env.DB.prepare("SELECT id, nome FROM chat_membros").all<{ id: string; nome: string }>().catch(() => ({ results: [] as { id: string; nome: string }[] }));
+  const membroNome = new Map(membros.map((m) => ["ext:" + m.id, m.nome]));
   const vistos = new Set<string>();
-  const out: { outro: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean }[] = [];
+  const out: { outro: string; canal: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean }[] = [];
   for (const r of results) {
     if (vistos.has(r.canal)) continue; // já pegamos a mais recente deste canal
-    const partes = r.canal.slice(3).split("|");
-    if (!partes.includes(me)) continue;
+    let outro: string;
+    if (r.canal.startsWith("ext:")) {
+      outro = membroNome.get(r.canal) || "";
+      if (!outro) continue; // membro apagado
+    } else {
+      const partes = r.canal.slice(3).split("|");
+      if (!partes.includes(me)) continue;
+      outro = partes.find((p) => p !== me) || partes[0];
+    }
     vistos.add(r.canal);
     const nao_lido = r.autor !== me && r.criado_em > (lidoMap.get(r.canal) || "");
-    out.push({ outro: partes.find((p) => p !== me) || partes[0], ultima_em: r.criado_em, ultimo_autor: r.autor, nao_lido });
+    out.push({ outro, canal: r.canal, ultima_em: r.criado_em, ultimo_autor: r.autor, nao_lido });
   }
   return c.json(out);
 });
@@ -65,6 +78,28 @@ chat.post("/marcar-lido", async (c) => {
   await c.env.DB.prepare(
     "INSERT INTO chat_lido (usuario, canal, visto_em) VALUES (?, ?, ?) ON CONFLICT(usuario, canal) DO UPDATE SET visto_em=excluded.visto_em"
   ).bind(usuario, canal, ult?.m || null).run();
+  return c.json({ ok: true });
+});
+
+// ── Membros da equipe por OUTRO número de WhatsApp (canal ext:<id>) ──────────────
+// A equipe conversa com eles aqui e o texto vai/volta pelo WhatsApp deles (Z-API).
+chat.get("/membros", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, nome, telefone FROM chat_membros ORDER BY nome"
+  ).all<{ id: string; nome: string; telefone: string }>().catch(() => ({ results: [] as { id: string; nome: string; telefone: string }[] }));
+  return c.json(results);
+});
+chat.post("/membros", async (c) => {
+  const b = await c.req.json<{ nome?: string; telefone?: string }>().catch(() => ({}) as Record<string, string>);
+  const nome = (b.nome || "").trim();
+  const tel = soDigitos(b.telefone);
+  if (!nome || tel.length < 10) return c.json({ error: "Informe nome e um número de WhatsApp válido (com DDD)." }, 400);
+  const id = uid();
+  await c.env.DB.prepare("INSERT INTO chat_membros (id, nome, telefone) VALUES (?, ?, ?)").bind(id, nome, tel).run();
+  return c.json({ id, nome, telefone: tel }, 201);
+});
+chat.delete("/membros/:id", async (c) => {
+  await c.env.DB.prepare("DELETE FROM chat_membros WHERE id = ?").bind(c.req.param("id")).run();
   return c.json({ ok: true });
 });
 
@@ -127,7 +162,16 @@ chat.post("/:canal", async (c) => {
   if (!texto) return c.json({ error: "mensagem vazia" }, 400);
   const id = uid();
   await c.env.DB.prepare("INSERT INTO chat_mensagens (id, canal, autor, texto) VALUES (?, ?, ?, ?)").bind(id, canal, autor, texto.slice(0, 2000)).run();
-  await notificar(c.env, waitUntilDe(c), canal, autor, texto);
+  // Membro externo (ext:<id>): manda o texto pro WhatsApp pessoal dele, com o nome de quem escreveu.
+  if (canal.startsWith("ext:")) {
+    const m = await c.env.DB.prepare("SELECT telefone FROM chat_membros WHERE id = ?").bind(canal.slice(4)).first<{ telefone: string }>().catch(() => null);
+    if (m?.telefone) {
+      const p = enviarWhatsapp(c.env, m.telefone, { tipo: "texto", texto: `*${autor}* (equipe):\n${texto}` }).then(() => {}).catch(() => {});
+      const wu = waitUntilDe(c); if (wu) wu(p); else await p;
+    }
+  } else {
+    await notificar(c.env, waitUntilDe(c), canal, autor, texto);
+  }
   return c.json({ id }, 201);
 });
 
