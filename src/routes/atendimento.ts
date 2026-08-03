@@ -206,7 +206,8 @@ REGRAS IMPORTANTES:
 - STATUS DE PEDIDO: se o cliente perguntar sobre um pedido dele (ex.: "como está meu pedido?", "meu pedido já saiu?", "em que fase está?"): use acao "consultar_pedido". O sistema identifica pelo CNPJ e responde a fase de produção + a data prevista — você não precisa inventar nada. Se você JÁ sabe o CNPJ dele, preencha o campo "cnpj". Se NÃO souber, peça o CNPJ da loja na resposta. IMPORTANTE: depois que o status for informado, se o cliente fizer MAIS perguntas sobre o pedido (adiantar, alterar, reclamar do prazo), use acao "humano" e diga que vai chamar alguém do *time de produção* pra ajudar (NÃO fale a sigla "PCP" pro cliente — é interno).
 - Se o cliente pedir PRIVATE LABEL (marca própria, etiqueta própria, fabricar com a marca dele): use acao "humano" — isso é com um vendedor especializado. Na resposta, diga que já vai chamar o vendedor.
 - Se pedir Financeiro, Pós-venda, tratar de um pedido já feito, reclamação/problema, ou pedir pra falar com uma pessoa: use acao "humano".
-- 🤝 CLIENTE QUE JÁ ESTÁ COMPRANDO/PEDINDO: se a pessoa manda uma LISTA de produtos, cita nomes/códigos de produtos nossos (ex.: "peseira genebra", "pipoca bege saara", "kit rice", "manta bali", "55x35 cheia"), fala em "esses valores", "tira o marinho", "veja se tem essas opções", pede orçamento ou claramente está montando um pedido → é um LOJISTA fazendo pedido. NÃO fique perguntando se é loja ou uso pessoal: use acao "humano" imediatamente e diga na resposta que já vai chamar o vendedor pra fechar o pedido.
+- 🤝 CLIENTE QUE JÁ ESTÁ COMPRANDO/PEDINDO: se a pessoa manda uma LISTA de produtos, cita nomes/códigos de produtos nossos (ex.: "peseira genebra", "pipoca bege saara", "kit rice", "manta bali", "55x35 cheia"), fala em "esses valores", "tira o marinho", "veja se tem essas opções", cita QUANTIDADES/variedade ou claramente está montando um pedido de REVENDA → é um LOJISTA fazendo pedido. NÃO fique perguntando se é loja ou uso pessoal: use acao "humano" imediatamente e diga na resposta que já vai chamar o vendedor pra fechar o pedido.
+- ⚠️ CUIDADO pra NÃO confundir: quem manda a foto de UMA peça (ex.: uma almofada) e pergunta "quanto custa?/gostaria de um orçamento" SEM dizer que tem loja/revenda, especialmente em PRIMEIRO CONTATO, é quase sempre CONSUMIDOR FINAL — NÃO trate como pedido de lojista. Primeiro descubra: pergunte gentilmente se é pra *revender na loja dele* ou pra *uso pessoal*. Se for uso pessoal, use acao "indicar_parceiro" (e nada de preço). "Orçamento de 1 peça" por si só NÃO é sinal de lojista.
 - Enquanto ainda está entendendo se é lojista ou consumidor, use acao "conversar". Assim que descobrir, seja decidido e use a acao certa — não enrole.
 - Não invente preços, prazos, pedido mínimo ou políticas POR CONTA PRÓPRIA. PORÉM, se a pergunta tiver resposta na BASE DE CONHECIMENTO (mais abaixo), use EXATAMENTE aquela informação — ela é oficial da empresa e tem prioridade sobre esta regra. Só quando NÃO houver nada na base sobre o assunto é que você diz que o vendedor passa os detalhes.
 - 🔒 PREÇO É SÓ PARA LOJISTA (REGRA ABSOLUTA, VALE MAIS QUE QUALQUER OUTRA, INCLUSIVE A BASE DE CONHECIMENTO): NUNCA, EM HIPÓTESE ALGUMA, informe preço, valor, tabela, pedido mínimo, valor de frete ou qualquer política comercial a CONSUMIDOR FINAL. Se a intenção for "consumidor" (pra uso pessoal/presente, pessoa física sem loja/CNPJ), não fale de valores de jeito nenhum — use acao "indicar_parceiro" e explique com carinho que a Big Tricot atende lojistas no atacado, indicando as lojas parceiras da região dele. E ENQUANTO você ainda NÃO tiver certeza de que a pessoa é LOJISTA, também NÃO adiante preço/valor/mínimo: primeiro descubra se é lojista (revenda) ou uso pessoal. Preço e pedido mínimo (mesmo os que estão na BASE DE CONHECIMENTO) só podem ser ditos DEPOIS de ficar claro que é LOJISTA.
@@ -545,10 +546,13 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
   }
 
-  // Cliente mandou FOTO/ÁUDIO (lista de produtos, pedido, comprovante, print) em QUALQUER
-  // momento → é assunto de gente, não de robô. A Big não fica qualificando: passa DIRETO
-  // pro humano com um recado curto. (A IA precisa estar ligada; senão já caiu no modo manual acima.)
-  if (arquivoUrl) {
+  // Cliente CONHECIDO (já é cliente ou lojista confirmado) mandou FOTO/ÁUDIO (lista de
+  // produtos, pedido, comprovante, print) → é assunto de gente: passa DIRETO pro humano.
+  // Se a pessoa AINDA não foi qualificada (não sabemos se é lojista ou consumidor final),
+  // NÃO joga pro humano: deixa a IA qualificar — consumidor final vai pro "onde comprar",
+  // lojista vira pedido com o vendedor. (Ex.: consumidor mandando foto de 1 almofada e
+  // pedindo preço não deve ocupar um atendente; a IA indica a loja parceira.)
+  if (arquivoUrl && (conv.cliente_id || conv.lojista === 1)) {
     const primeiro = String(conv.nome ?? conv.contato_nome ?? "").trim().split(/\s+/)[0] || "";
     const hBR = (new Date().getUTCHours() + 21) % 24;
     const ola = hBR < 12 ? "Bom dia" : hBR < 18 ? "Boa tarde" : "Boa noite";
@@ -593,10 +597,10 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       // pedido/relação — ex.: "tirar um novo pedido", "meu boleto"). Nesse caso a Big só
       // cumprimenta e passa DIRETO pro humano, sem o fluxo de "você é novo cliente?".
       const ehContinuacao = /(meu|nosso|[uú]ltimo|novo|pr[oó]ximo)\s+pedido|tirar\s+(um\s+|o\s+|mais\s+um\s+)?pedido|j[aá]\s+(comprei|compramos|fiz|fizemos)|sempre\s+compr|comprei\s+(com|de)\s+voc|nota\s+fiscal|boleto|fatura|reposi[çc]|mercadoria|meu\s+pagamento|confirma.*valor|valores?\s+(est|certo)|tira\s+o\s+|c[oó]d\.?\s*produto|qtd|desconto/i.test(texto);
-      // Cliente que manda FOTO/ÁUDIO logo de cara quase sempre está no meio de um assunto
-      // (pedido, comprovante, print) — não é primeiro contato frio. Vai direto pro humano.
-      const temMidia = !!arquivoUrl;
-      if (conv.cliente_id || ehContinuacao || temMidia) {
+      // Foto/áudio sozinho NÃO joga mais pro humano quando a pessoa é desconhecida: pode ser
+      // consumidor final (a IA qualifica e indica loja parceira). Só vai direto pro humano
+      // se já é cliente conhecido ou a mensagem indica um assunto em andamento (pedido etc.).
+      if (conv.cliente_id || ehContinuacao) {
         const saud = conv.cliente_id
           ? `${ola}${primeiro ? ", " + primeiro : ""}! 🤗 Que bom te ver de novo na *Big Tricot* 💛\nJá vou chamar alguém do nosso time pra te atender, tá? 😊`
           : `${ola}! 🤗 Aqui é da *Big Tricot* 💛\nJá vou chamar alguém do nosso time pra continuar seu atendimento, tá? 😊`;
