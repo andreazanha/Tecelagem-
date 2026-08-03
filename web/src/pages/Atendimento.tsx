@@ -619,10 +619,10 @@ function RespostasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: 
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card" style={{ maxWidth: 560, width: "min(560px,96vw)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: "linear-gradient(130deg,#7c3aed,#4f46e5)" }}>
-          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📋 Respostas prontas</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
+          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📋 Minhas respostas prontas</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
         </div>
         <div className="modal-bd">
-          <div className="muted2" style={{ marginBottom: 10, fontSize: 12.5 }}>Textos que você usa toda hora (link do cadastro, horário, pedir dados…). Na conversa, clique em 📋 e escolha — dá pra editar antes de enviar.</div>
+          <div className="muted2" style={{ marginBottom: 10, fontSize: 12.5 }}>Estas respostas são <b>suas</b> — cada atendente ({getUser()?.nome || "você"}) tem as próprias. Textos que você usa toda hora (link do cadastro, horário, pedir dados…). Na conversa, clique em 📋 e escolha — dá pra editar antes de enviar.</div>
           {carregando ? <p className="muted">Carregando…</p> : lista.map((r, i) => (
             <div key={i} style={{ border: "1px solid var(--line,#e2e8f0)", borderRadius: 10, padding: 10, marginBottom: 10 }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>

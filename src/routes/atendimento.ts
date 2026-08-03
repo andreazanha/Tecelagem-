@@ -937,22 +937,32 @@ const RESPOSTAS_PADRAO: { titulo: string; texto: string }[] = [
   { titulo: "Horário de atendimento", texto: "Nosso atendimento é de *segunda a sexta, das 8h às 18h*. Assim que abrir já te respondo por aqui! 🙌" },
   { titulo: "Pedir dados da loja", texto: "Pra eu já adiantar seu cadastro, me manda por favor: *nome da loja*, *cidade/UF* e *CNPJ*. 📋" },
 ];
+// Cada atendente tem as SUAS respostas: guardadas na chave respostas_rapidas:<usuario>.
+// Sem usuário (compatibilidade) cai na chave global antiga.
+const respostasKey = (u?: string | null) => {
+  const s = String(u ?? "").trim().toLowerCase();
+  return s ? `respostas_rapidas:${s}` : "respostas_rapidas";
+};
 atendimento.get("/respostas", async (c) => {
   const cfg = await lerConfig(c.env);
-  if (cfg.respostas_rapidas == null) return c.json(RESPOSTAS_PADRAO);
+  const raw = cfg[respostasKey(c.req.query("u"))];
+  if (raw == null) return c.json(RESPOSTAS_PADRAO);
   let arr: unknown = [];
-  try { arr = JSON.parse(cfg.respostas_rapidas); } catch { arr = []; }
+  try { arr = JSON.parse(raw); } catch { arr = []; }
   return c.json(Array.isArray(arr) ? arr : []);
 });
 atendimento.post("/respostas", async (c) => {
-  const b = await c.req.json<unknown>().catch(() => []);
-  const arr = Array.isArray(b)
-    ? b.filter((x): x is { titulo?: unknown; texto?: unknown } => !!x && typeof x === "object" && typeof (x as { texto?: unknown }).texto === "string" && String((x as { texto: string }).texto).trim() !== "")
+  const b = await c.req.json<unknown>().catch(() => ({}));
+  // Aceita { usuario, respostas: [...] } (novo) ou um array direto (antigo/global).
+  const usuario = (b && typeof b === "object" && !Array.isArray(b)) ? (b as { usuario?: string }).usuario : undefined;
+  const src = Array.isArray(b) ? b : ((b as { respostas?: unknown })?.respostas);
+  const arr = Array.isArray(src)
+    ? src.filter((x): x is { titulo?: unknown; texto?: unknown } => !!x && typeof x === "object" && typeof (x as { texto?: unknown }).texto === "string" && String((x as { texto: string }).texto).trim() !== "")
         .map((x) => ({ titulo: String(x.titulo ?? "").slice(0, 60), texto: String(x.texto).slice(0, 1000) }))
     : [];
   await c.env.DB.prepare(
-    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('respostas_rapidas', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
-  ).bind(JSON.stringify(arr)).run();
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES (?, ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(respostasKey(usuario), JSON.stringify(arr)).run();
   return c.json({ ok: true, respostas: arr });
 });
 
