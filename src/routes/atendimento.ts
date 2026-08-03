@@ -139,6 +139,24 @@ async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: st
   return id;
 }
 
+// Baixa uma mídia externa (áudio/foto que o cliente mandou, via Z-API) e guarda no
+// R2, devolvendo uma URL pública nossa — pra o atendente ouvir/ver depois na conversa.
+async function guardarMidiaExterna(env: Env, origin: string, url: string, extHint = "bin"): Promise<string> {
+  if (!url) return "";
+  try {
+    const cfg = await lerConfig(env);
+    const headers: Record<string, string> = {};
+    if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
+    const r = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
+    if (!r.ok || !r.body) return "";
+    const ct = (r.headers.get("content-type") || "").split(";")[0];
+    const ext = ((ct.split("/")[1] || extHint).replace(/[^a-z0-9]/gi, "").slice(0, 8)) || extHint;
+    const nome = `${uid()}.${ext}`;
+    await env.BUCKET.put(`atend/${nome}`, r.body, { httpMetadata: { contentType: ct || "application/octet-stream" } });
+    return `${origin}/api/atendimento/arquivo/${nome}`;
+  } catch { return ""; }
+}
+
 // Cliente bloqueado (caloteiro): não enviar NADA pra ele. Usado no texto e na mídia.
 async function clienteBloqueado(env: Env, tel: string): Promise<boolean> {
   const core = digitos(tel).replace(/^55/, "").slice(-8);
@@ -454,7 +472,7 @@ function ajustarCatalogoRegiao(texto: string, uf?: string | null, tel?: string |
 
 // ── Núcleo: recebe uma mensagem do cliente, roda o robô, responde e qualifica ────
 // Usado tanto pelo simulador (/entrada) quanto pelo webhook real da Z-API (/webhook).
-async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "", origin: string | null = null, zapId = "") {
+async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "", origin: string | null = null, zapId = "", arquivoUrl = "") {
   const tel = digitos(telRaw);
   const texto = String(textoRaw ?? "");
   const contato = String(contatoNome ?? "").trim().slice(0, 80) || null;
@@ -484,7 +502,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     await env.DB.prepare("UPDATE atend_conversas SET contato_nome=? WHERE id=?").bind(contato, conv.id).run();
     conv.contato_nome = contato;
   }
-  await addMsg(env, conv.id, "in", "cliente", "texto", texto, { zapId: zapId || null });
+  await addMsg(env, conv.id, "in", "cliente", "texto", texto, { zapId: zapId || null, arquivoUrl: arquivoUrl || null });
   await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now') WHERE id = ?").bind(conv.id).run();
 
   // Detecta interesse comercial + modelos citados (vale inclusive no atendimento humano).
@@ -715,9 +733,15 @@ atendimento.post("/webhook", async (c) => {
   if (!phone) return c.json({ ignorado: "sem-telefone" });
   // Áudio (nota de voz): transcreve com IA e trata como texto normal. Se não der pra
   // ouvir, responde pedindo por escrito — em vez de ignorar e deixar o cliente sem resposta.
+  const origin = new URL(c.req.url).origin;
+  let arquivoUrl = "";
   if (!texto.trim() && audio) {
-    texto = await transcreverAudio(c.env, audio.audioUrl || audio.url || "");
+    const audioSrc = audio.audioUrl || audio.url || "";
+    texto = await transcreverAudio(c.env, audioSrc);
+    arquivoUrl = await guardarMidiaExterna(c.env, origin, audioSrc, "ogg"); // pra o atendente OUVIR
     if (!texto.trim()) {
+      // Sem transcrição, mas guardamos o áudio: registra a conversa com o player, avisa o cliente.
+      if (arquivoUrl) { await receberMensagem(c.env, phone, "🎤 (áudio)", "whatsapp", nomeContato, origin, String(b.messageId ?? ""), arquivoUrl); return c.json({ ok: true, audio: true }); }
       await enviarWhatsapp(c.env, phone, { tipo: "texto", texto: "Oi! 😊 Recebi seu áudio, mas não consegui ouvir direitinho por aqui. Pode me mandar por *escrito*, por favor? Assim já te respondo! 💛" });
       return c.json({ ignorado: "audio-sem-transcricao" });
     }
@@ -725,12 +749,16 @@ atendimento.post("/webhook", async (c) => {
   // Imagem: a Big "enxerga" a foto com IA de visão e usa o que viu como contexto. Mantém
   // a legenda (se houver) como a fala do cliente e anexa a descrição do que aparece.
   if (img && (img.imageUrl || img.url)) {
-    const desc = await descreverImagem(c.env, img.imageUrl || img.url || "");
+    const imgSrc = img.imageUrl || img.url || "";
+    arquivoUrl = await guardarMidiaExterna(c.env, origin, imgSrc, "jpg"); // pra o atendente VER a foto
+    const desc = await descreverImagem(c.env, imgSrc);
     if (desc) {
       const legenda = (img.caption || "").trim();
       texto = legenda
         ? `${legenda}\n\n[O cliente enviou uma foto. O que aparece nela: ${desc}]`
         : `[O cliente enviou uma foto (sem legenda). O que aparece nela: ${desc}]`;
+    } else if (arquivoUrl) {
+      texto = (img.caption || "").trim() || "📷 (foto)";
     }
   }
   if (!texto.trim()) {
@@ -741,7 +769,7 @@ atendimento.post("/webhook", async (c) => {
     }
     return c.json({ ignorado: "sem-texto" });
   }
-  const r = await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, new URL(c.req.url).origin, String(b.messageId ?? ""));
+  const r = await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, origin, String(b.messageId ?? ""), arquivoUrl);
   if ("erro" in r) return c.json({ error: r.erro }, 400);
   return c.json({ ok: true, conversa_id: r.conversa_id });
 });
@@ -1216,7 +1244,7 @@ async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; text
 }
 
 // Envia um ARQUIVO (imagem ou documento) pela Z-API, a partir de uma URL pública.
-async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string; ehImagem: boolean; ext: string; fileName: string; caption?: string }) {
+async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string; ehImagem: boolean; ehAudio?: boolean; ext: string; fileName: string; caption?: string }) {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
   const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
@@ -1227,8 +1255,10 @@ async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string; ehIma
   if (await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
-  const endpoint = opts.ehImagem ? "send-image" : `send-document/${opts.ext || "bin"}`;
-  const body = opts.ehImagem
+  const endpoint = opts.ehAudio ? "send-audio" : opts.ehImagem ? "send-image" : `send-document/${opts.ext || "bin"}`;
+  const body = opts.ehAudio
+    ? { phone, audio: opts.url }
+    : opts.ehImagem
     ? { phone, image: opts.url, caption: opts.caption || "" }
     : { phone, document: opts.url, fileName: opts.fileName };
   try {
@@ -1503,12 +1533,13 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   const ext = (nomeArq.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
   const ct = file.type || "application/octet-stream";
   const ehImagem = ct.startsWith("image/");
+  const ehAudio = ct.startsWith("audio/");
   const nome = `${uid()}.${ext}`;
   await c.env.BUCKET.put(`atend/${nome}`, file.stream(), { httpMetadata: { contentType: ct } });
   const url = `${new URL(c.req.url).origin}/api/atendimento/arquivo/${nome}`;
   await addMsg(c.env, id, "out", autor, "arquivo", legenda || nomeArq, { arquivoUrl: url });
   await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
-  const r = await enviarMidiaZapi(c.env, conv.telefone, { url, ehImagem, ext, fileName: nomeArq, caption: legenda });
+  const r = await enviarMidiaZapi(c.env, conv.telefone, { url, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
   return c.json({ ok: true, enviado: r.enviado, motivo: r.motivo, url });
 });
 

@@ -583,14 +583,39 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const arqRef = useRef<HTMLInputElement>(null);
   // Anexo: primeiro mostra uma PRÉVIA (com legenda) e só envia ao confirmar.
-  const [anexo, setAnexo] = useState<{ file: File; url: string; ehImg: boolean } | null>(null);
+  const [anexo, setAnexo] = useState<{ file: File; url: string; ehImg: boolean; ehAudio: boolean } | null>(null);
   const [legendaAnexo, setLegendaAnexo] = useState("");
   function escolherAnexo(file: File) {
     if (!file) return;
     const ehImg = (file.type || "").startsWith("image/");
-    setAnexo((a) => { if (a?.url) URL.revokeObjectURL(a.url); return { file, url: ehImg ? URL.createObjectURL(file) : "", ehImg }; });
+    const ehAudio = (file.type || "").startsWith("audio/");
+    setAnexo((a) => { if (a?.url) URL.revokeObjectURL(a.url); return { file, url: (ehImg || ehAudio) ? URL.createObjectURL(file) : "", ehImg, ehAudio }; });
     setLegendaAnexo("");
   }
+  // Gravar áudio (nota de voz) pelo microfone.
+  const [gravando, setGravando] = useState(false);
+  const gravadorRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  async function iniciarGravacao() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      chunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const type = mr.mimeType || "audio/webm";
+        const ext = type.includes("ogg") ? "ogg" : "webm";
+        const file = new File(chunksRef.current, `audio-${Date.now()}.${ext}`, { type });
+        if (file.size > 0) escolherAnexo(file);
+      };
+      mr.start();
+      gravadorRef.current = mr;
+      setGravando(true);
+    } catch { alert("Não consegui acessar o microfone. Autorize o microfone no navegador e tente de novo."); }
+  }
+  function pararGravacao() { const mr = gravadorRef.current; if (mr && mr.state !== "inactive") mr.stop(); gravadorRef.current = null; setGravando(false); }
   function cancelarAnexo() { if (anexo?.url) URL.revokeObjectURL(anexo.url); setAnexo(null); setLegendaAnexo(""); if (arqRef.current) arqRef.current.value = ""; }
   async function confirmarAnexo() {
     if (!anexo) return;
@@ -726,13 +751,16 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 : <div key={m.id} className={"at-b " + (m.direcao === "in" ? "in" : "out")}>
                     {m.autor && m.direcao === "out" && <div className="at-aut">{m.autor === "bot" ? "🤖 Big (automático) · só você vê" : m.autor}</div>}
                     {m.responder_texto && <div className="at-quote">↪ {m.responder_texto}</div>}
-                    {m.tipo === "arquivo"
-                      ? (m.arquivo_url
-                          ? (/\.(jpg|jpeg|png|gif|webp)$/i.test(m.arquivo_url)
-                              ? <a href={m.arquivo_url} target="_blank" rel="noreferrer"><img src={m.arquivo_url} alt={m.texto || "imagem"} style={{ maxWidth: 220, maxHeight: 260, borderRadius: 8, display: "block" }} /></a>
-                              : <a href={m.arquivo_url} target="_blank" rel="noreferrer" className="at-file" style={{ color: "inherit" }}>📎 {m.texto || "arquivo"}</a>)
-                          : <span className="at-file">📒 {m.texto}</span>)
-                      : formatarMsg(m.texto)}
+                    {m.arquivo_url
+                      ? <>
+                          {/\.(jpg|jpeg|png|gif|webp)$/i.test(m.arquivo_url)
+                            ? <a href={m.arquivo_url} target="_blank" rel="noreferrer"><img src={m.arquivo_url} alt={m.texto || "imagem"} style={{ maxWidth: 220, maxHeight: 260, borderRadius: 8, display: "block" }} /></a>
+                            : /\.(ogg|opus|mp3|m4a|wav|webm|aac|amr)$/i.test(m.arquivo_url)
+                              ? <audio controls src={m.arquivo_url} style={{ maxWidth: 230, display: "block" }} />
+                              : <a href={m.arquivo_url} target="_blank" rel="noreferrer" className="at-file" style={{ color: "inherit" }}>📎 {m.texto || "arquivo"}</a>}
+                          {m.tipo !== "arquivo" && (m.texto || "").trim() && <div style={{ marginTop: 4 }}>{formatarMsg(m.texto)}</div>}
+                        </>
+                      : m.tipo === "arquivo" ? <span className="at-file">📒 {m.texto}</span> : formatarMsg(m.texto)}
                     <span className="at-tm">{hora(m.criado_em)}</span>
                     {humano && m.direcao === "in" && m.tipo !== "arquivo" && (m.texto || "").trim() && (
                       <button className="at-reply" title="Responder esta mensagem" onClick={() => setRespondendo({ id: m.id, texto: (m.texto || "").slice(0, 180) })}>↩︎</button>
@@ -853,12 +881,14 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
               <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                 {anexo.ehImg
                   ? <img src={anexo.url} alt="prévia" style={{ maxWidth: 130, maxHeight: 130, borderRadius: 8, objectFit: "cover" }} />
-                  : <div className="at-file" style={{ padding: "10px 12px", background: "var(--bg-soft,#f1f5f9)", borderRadius: 8 }}>📎 {anexo.file.name}</div>}
+                  : anexo.ehAudio
+                    ? <audio controls src={anexo.url} style={{ width: 210 }} />
+                    : <div className="at-file" style={{ padding: "10px 12px", background: "var(--bg-soft,#f1f5f9)", borderRadius: 8 }}>📎 {anexo.file.name}</div>}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 4 }}>Enviar {anexo.ehImg ? "imagem" : "arquivo"} para o cliente</div>
-                  <textarea placeholder="Escreva uma legenda (opcional)…" value={legendaAnexo} onChange={(e) => setLegendaAnexo(e.target.value)} rows={2} autoFocus
+                  <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 4 }}>Enviar {anexo.ehImg ? "imagem" : anexo.ehAudio ? "áudio" : "arquivo"} para o cliente</div>
+                  {!anexo.ehAudio && <textarea placeholder="Escreva uma legenda (opcional)…" value={legendaAnexo} onChange={(e) => setLegendaAnexo(e.target.value)} rows={2} autoFocus
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); confirmarAnexo(); } }}
-                    style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} />
+                    style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} />}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
@@ -923,8 +953,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             ? <>
                 <button className="at-send" style={{ background: "transparent", color: "var(--accent,#7c3aed)" }} disabled={busy || sugerindo} onClick={sugerir} title="Sugerir resposta com IA (você pode editar)">{sugerindo ? "…" : "✨"}</button>
                 <button className="at-send" style={{ background: "transparent" }} onClick={() => setMostrarResp((v) => !v)} title="Respostas prontas">📋</button>
-                <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={() => arqRef.current?.click()} title="Anexar arquivo (foto/documento) — ou cole um print com Ctrl+V">📎</button>
-                <input ref={arqRef} type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) escolherAnexo(f); }} />
+                <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={() => arqRef.current?.click()} title="Anexar arquivo (foto/documento/áudio) — ou cole um print com Ctrl+V">📎</button>
+                <input ref={arqRef} type="file" accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) escolherAnexo(f); }} />
+                <button className="at-send" style={{ background: gravando ? "#ef4444" : "transparent", color: gravando ? "#fff" : undefined }} disabled={busy} onClick={() => (gravando ? pararGravacao() : iniciarGravacao())} title={gravando ? "Parar e ouvir antes de enviar" : "Gravar áudio (nota de voz)"}>{gravando ? "⏹" : "🎤"}</button>
                 <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={enviarCatalogo} title="Enviar o link do catálogo">📖</button>
                 <textarea ref={inputRef} rows={1} placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
                 <button className="at-send" disabled={busy} onClick={enviar}>➤</button>
