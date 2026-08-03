@@ -101,22 +101,25 @@ export function Atendimento() {
     }
   }
 
-  // "Ding" suave (2 notas) — mensagem nova do cliente, sem ser o alarme agudo.
+  // "Pop" de notificação parecido com o do WhatsApp Web: duas notas curtas
+  // (aguda → um tom abaixo), senoidais, com ataque rápido e decaimento suave.
+  // (O som exato do WhatsApp é proprietário; este é uma imitação sintetizada.)
   function tocarDing() {
     const ctx = audioRef.current;
     if (!ctx) return;
     try { ctx.resume?.(); } catch { /* ignore */ }
     const t0 = ctx.currentTime;
-    [880, 1175].forEach((f, i) => {
+    const notas = [{ f: 1318, t: 0 }, { f: 988, t: 0.085 }]; // Mi6 → Si5
+    for (const n of notas) {
       const o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = "sine"; o.frequency.value = f;
-      const ini = t0 + i * 0.12;
+      o.type = "sine"; o.frequency.value = n.f;
+      const ini = t0 + n.t;
       g.gain.setValueAtTime(0.0001, ini);
-      g.gain.exponentialRampToValueAtTime(0.25, ini + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, ini + 0.22);
+      g.gain.exponentialRampToValueAtTime(0.34, ini + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, ini + 0.19);
       o.connect(g).connect(ctx.destination);
-      o.start(ini); o.stop(ini + 0.24);
-    });
+      o.start(ini); o.stop(ini + 0.2);
+    }
   }
 
   // Toca o ding quando chega mensagem nova de QUALQUER cliente (maior ultima_in_em avançou).
@@ -581,7 +584,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 : m.tipo === "nota"
                 ? <div className="at-nota" key={m.id}><span className="at-nota-hd">📝 {m.autor || "Equipe"} · nota interna (o cliente não vê)</span>{formatarMsg(m.texto)}<span className="at-tm">{hora(m.criado_em)}</span></div>
                 : <div key={m.id} className={"at-b " + (m.direcao === "in" ? "in" : "out")}>
-                    {m.autor && m.direcao === "out" && <div className="at-aut">{m.autor === "bot" ? "🤖 robô" : m.autor}</div>}
+                    {m.autor && m.direcao === "out" && <div className="at-aut">{m.autor === "bot" ? "🤖 Big (automático) · só você vê" : m.autor}</div>}
                     {m.responder_texto && <div className="at-quote">↪ {m.responder_texto}</div>}
                     {m.tipo === "arquivo" ? <span className="at-file">📒 {m.texto}</span> : formatarMsg(m.texto)}
                     <span className="at-tm">{hora(m.criado_em)}</span>
