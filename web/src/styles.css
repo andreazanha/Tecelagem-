@@ -1122,13 +1122,11 @@ body.dark .fx-pill.on { background: #4f46e5; border-color: #4f46e5; color: #fff;
 body.dark .fx-alertbar { background: #2a2410; border-color: #5c4a12; color: #fcd34d; }
 /* Altura fixa: o quadro rola por dentro (x e y), então a barra de rolagem de baixo
    fica sempre visível — não some quando a página desce. */
-/* align-items: stretch → todas as colunas ficam com a altura da mais cheia, então
-   o cabeçalho fixo (sticky) de TODAS as colunas gruda no topo, mesmo as vazias. */
-.fx-board { display: flex; gap: 12px; overflow: auto; padding: 4px 2px 14px; align-items: stretch; max-height: calc(100dvh - 200px); min-height: 300px; overscroll-behavior: contain; }
+.fx-board { display: flex; gap: 12px; overflow: auto; padding: 4px 2px 14px; align-items: flex-start; max-height: calc(100dvh - 200px); min-height: 300px; overscroll-behavior: contain; }
 /* Quadro do WhatsApp tem 1 linha a mais em cima (abas + "Acompanhar"): reserva mais
    espaço pra a barra de rolagem de baixo não cair fora da tela. */
 .fx-board.at-board { max-height: calc(100dvh - 255px); }
-.fx-col { flex: 0 0 224px; max-width: 224px; background: #eef1f6; border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-height: 120px; display: flex; flex-direction: column; }
+.fx-col { flex: 0 0 224px; max-width: 224px; background: #eef1f6; border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-height: calc(100dvh - 260px); display: flex; flex-direction: column; }
 body.dark .fx-col { background: #111826; border-color: #243044; }
 /* Cabeçalho da coluna fica fixo; só o corpo (cards) rola. */
 /* Sem rolagem própria: quem rola é o quadro (.fx-board) — só 1 barra vertical e 1 horizontal. */
@@ -1237,6 +1235,9 @@ body.dark .at-msgs { background: #0c1a17; }
 .at-b.out { align-self: flex-end; background: #d9fdd3; border-top-right-radius: 2px; }
 body.dark .at-b.in { background: #1f2c34; color: #e7ebf3; } body.dark .at-b.out { background: #144d37; color: #e7ebf3; }
 .at-aut { font-size: 10px; font-weight: 800; color: #16a34a; margin-bottom: 2px; }
+/* Nome do autor no balão verde (out): verde-escuro no claro, verde-claro no escuro — legível */
+.at-b.out .at-aut { color: #0b7a4b; }
+body.dark .at-b.out .at-aut { color: #86efc4; }
 .at-tm { font-size: 9.5px; color: #667781; float: right; margin: 6px 0 -2px 10px; }
 /* Citação (responder mensagem específica) dentro do balão */
 .at-quote { border-left: 3px solid #16a34a; background: #00000010; border-radius: 5px; padding: 3px 7px; margin-bottom: 4px; font-size: 11.5px; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
