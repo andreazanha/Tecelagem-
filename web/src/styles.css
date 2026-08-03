@@ -1131,7 +1131,9 @@ body.dark .fx-col { background: #111826; border-color: #243044; }
 /* Cabeçalho da coluna fica fixo; só o corpo (cards) rola. */
 /* Sem rolagem própria: quem rola é o quadro (.fx-board) — só 1 barra vertical e 1 horizontal. */
 .fx-col-body { flex: 1 1 auto; min-height: 0; overflow: visible; }
-.fx-hd { display: flex; align-items: center; gap: 7px; padding: 4px 4px 9px; font-weight: 800; font-size: 13px; flex: 0 0 auto; }
+/* Cabeçalho da coluna FIXO no topo ao rolar pra baixo (sticky). */
+.fx-hd { display: flex; align-items: center; gap: 7px; padding: 8px 6px 9px; font-weight: 800; font-size: 13px; flex: 0 0 auto; position: sticky; top: 0; z-index: 2; background: #eef1f6; margin: -8px -8px 4px; border-radius: 12px 12px 0 0; }
+body.dark .fx-hd { background: #111826; }
 .fx-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
 .fx-hd .ct { margin-left: auto; background: #fff; border: 1px solid var(--line); border-radius: 20px; font-size: 11px; font-weight: 800; padding: 1px 8px; color: var(--muted); }
 body.dark .fx-hd .ct { background: #1b2536; border-color: #26324a; }
@@ -1254,6 +1256,10 @@ body.dark .at-modo-pill { background: #0b1220; border-color: #ffffff1a; color: #
 .fx-card.pulsando { border-left: 3px solid #ef4444; animation: atCardPulse 1.3s ease-in-out infinite; }
 /* Avatar (foto de perfil ou iniciais) no card da conversa */
 .conv-av { width: 34px; height: 34px; border-radius: 50%; flex: 0 0 auto; background: #6366f1; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; overflow: hidden; }
+/* Seletor de mover no card (clica e escolhe a coluna) */
+.fx-mover-sel { border: 1px solid var(--line); border-radius: 6px; background: var(--card,#fff); color: var(--ink,#334155); font-size: 11px; padding: 1px 2px; cursor: pointer; max-width: 30px; }
+.fx-mover-sel:hover { border-color: #6366f1; }
+body.dark .fx-mover-sel { background: #18202f; color: #cbd5e1; border-color: #26324a; }
 /* Notinha discreta da visão da IA sobre a foto (o cliente NÃO vê isso) */
 .at-ianota { margin-top: 4px; font-size: 11px; font-style: italic; color: #64748b; opacity: .9; border-left: 2px solid #cbd5e1; padding-left: 6px; }
 body.dark .at-ianota { color: #94a3b8; border-color: #33455f; }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { Link } from "react-router-dom";
-import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type ChatMensagem } from "../api";
+import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type ChatMensagem, type AtendColuna } from "../api";
 import { getUser, pode } from "../auth";
 
 // Etapas do funil (venda) mostradas dentro da conversa.
@@ -347,7 +347,7 @@ export function Atendimento() {
                 <div className="fx-hd"><span className="fx-dot" style={{ background: col.cor }} />{col.label}<span className="ct">{cs.length}</span></div>
                 <div className="fx-col-body">
                   {cs.map((c) => (
-                    <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} pulsando={aguardando(c)} arrastando={arrastando === c.id}
+                    <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board.colunas} onMover={(colId) => soltarConversa(colId, c.id)} pulsando={aguardando(c)} arrastando={arrastando === c.id}
                       onAbrir={() => { if (arrastou.current) { arrastou.current = false; return; } setAbrir(c.id); }}
                       onPointerDown={(e) => dragDownC(e, c.id)} onPointerMove={dragMoveC} onPointerUp={dragUpC} onPointerCancel={dragCancelC} />
                   ))}
@@ -585,7 +585,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   );
 }
 
-function ConvMini({ c, foto, onAbrir, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; onAbrir: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
+function ConvMini({ c, foto, colunas, onMover, onAbrir, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.coluna === "atendimento-humano";
   const nome = c.nome || c.contato_nome || telBonito(c.telefone);
   return (
@@ -608,6 +608,15 @@ function ConvMini({ c, foto, onAbrir, pulsando, arrastando, onPointerDown, onPoi
         {c.representante && <span className="at-badge" style={{ background: "#eef2ff", color: "#4338ca" }} title={c.autorizado === 0 ? "Representante sugerido" : "Representante"}>🧑‍💼 {c.representante}</span>}
         {c.setor && <span className="fx-sub">{SETOR_EMOJI[c.setor] || ""}</span>}
         <span className="fx-sub" style={{ marginLeft: "auto" }}>{hora(c.atualizado_em)}</span>
+        {/* Mover pra outra coluna sem arrastar: clica e escolhe o nome da coluna */}
+        {colunas && onMover && (
+          <select className="fx-mover-sel" title="Mover para outra coluna" value=""
+            onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}
+            onChange={(e) => { if (e.target.value) onMover(e.target.value); e.currentTarget.value = ""; }}>
+            <option value="">↔️</option>
+            {colunas.filter((col) => col.id !== c.coluna).map((col) => <option key={col.id} value={col.id}>{col.label}</option>)}
+          </select>
+        )}
       </div>
     </div>
   );
