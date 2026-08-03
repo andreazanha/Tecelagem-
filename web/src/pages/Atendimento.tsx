@@ -602,7 +602,6 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <Link to="/funil" className="btn btn-soft" style={{ marginTop: 8, display: "block", textAlign: "center", fontSize: 12 }}>Abrir no funil completo →</Link>
               </div>
             )}
-            {!humano && <button className="kbtn go" style={{ marginTop: 10, width: "100%" }} disabled={busy} onClick={assumir}>🙋 Assumir atendimento</button>}
             {humano && <div style={{ fontSize: 12, color: "var(--muted)", margin: "10px 0 4px" }}>Em atendimento com <b>{d?.responsavel || "—"}</b></div>}
             {/* Transferir SEMPRE disponível — dá pra encaminhar direto pra um atendente, sem precisar assumir antes. */}
             <div style={{ marginTop: humano ? 0 : 8 }}>

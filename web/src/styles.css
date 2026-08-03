@@ -491,6 +491,8 @@ body.dark .kcard-estoque.urg-ok      { background: #10281a; border-color: #14532
 .kcard-hint { font-size: 10.5px; color: #94a3b8; }
 .kbtn { font: inherit; font-weight: 800; font-size: 12px; padding: 7px 13px; border-radius: 9px; border: none; color: #fff; cursor: pointer; }
 .kbtn.tecer { background: #16a34a; } .kbtn.final { background: #2563eb; } .kbtn.enviar { background: #c2a05a; color: #3a2f12; }
+.kbtn.go { background: linear-gradient(130deg, #059669, #16a34a); }
+.kbtn:disabled { opacity: .55; cursor: default; }
 .kbtn.defeito { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
 .kcard-acoes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
