@@ -28,6 +28,21 @@ function formatarMsg(texto: string | null | undefined) {
   });
 }
 
+// Separa a fala do cliente da NOTA INTERNA da visão ("[O cliente enviou uma foto...]").
+const MSG_PLACEHOLDER = /^(📷 \(foto\)|🎤 \(áudio\))$/;
+function extrairIaNota(texto: string | null | undefined): { visivel: string; iaNota: string } {
+  const t = String(texto ?? "");
+  const m = t.match(/\[O cliente enviou uma foto[^\]]*?O que aparece nela:\s*([\s\S]*?)\]\s*$/i);
+  if (!m) return { visivel: t, iaNota: "" };
+  return { visivel: t.slice(0, m.index).trim(), iaNota: (m[1] || "").trim() };
+}
+// Corpo da mensagem já com a legenda visível + a nota da IA como notinha discreta.
+function corpoMsg(texto: string | null | undefined) {
+  const { visivel, iaNota } = extrairIaNota(texto);
+  const vis = MSG_PLACEHOLDER.test(visivel.trim()) ? "" : visivel;
+  return <>{vis && <span>{formatarMsg(vis)}</span>}{iaNota && <div className="at-ianota">🔎 IA viu: {iaNota}</div>}</>;
+}
+
 function iniciais(s?: string | null) {
   return (s || "?").replace(/\D/g, "").slice(-2) || (s || "?").split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 }
@@ -583,7 +598,7 @@ function ConvMini({ c, foto, onAbrir, pulsando, arrastando, onPointerDown, onPoi
           <div className="fx-sub">{(c.nome || c.contato_nome) ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—"}</div>
         </div>
       </div>
-      {c.ultima_msg && <div className="at-prev">{c.ultima_msg}</div>}
+      {c.ultima_msg && (() => { const p = extrairIaNota(c.ultima_msg); const t = MSG_PLACEHOLDER.test((p.visivel || "").trim()) ? "" : p.visivel; return <div className="at-prev">{t || (p.iaNota ? "📷 foto" : c.ultima_msg)}</div>; })()}
       <div className="fx-foot">
         {c.autorizado === 0
           ? <span className="at-badge" style={{ background: "#fef3c7", color: "#92400e" }} title="Aguardando autorização da equipe">⏳ Autorizar</span>
@@ -800,14 +815,14 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                             : /\.(ogg|opus|mp3|m4a|wav|webm|aac|amr)$/i.test(m.arquivo_url)
                               ? <audio controls src={m.arquivo_url} style={{ maxWidth: 230, display: "block" }} />
                               : <a href={m.arquivo_url} target="_blank" rel="noreferrer" className="at-file" style={{ color: "inherit" }}>📎 {m.texto || "arquivo"}</a>}
-                          {m.tipo !== "arquivo" && (m.texto || "").trim() && <div style={{ marginTop: 4 }}>{formatarMsg(m.texto)}</div>}
+                          {m.tipo !== "arquivo" && (m.texto || "").trim() && <div style={{ marginTop: 4 }}>{corpoMsg(m.texto)}</div>}
                         </>
-                      : m.tipo === "arquivo" ? <span className="at-file">📒 {m.texto}</span> : formatarMsg(m.texto)}
+                      : m.tipo === "arquivo" ? <span className="at-file">📒 {m.texto}</span> : corpoMsg(m.texto)}
                     <span className="at-tm">{hora(m.criado_em)}{m.direcao === "out" && m.autor !== "sistema" && m.status && (
                       <span title={m.status === "read" ? "Visto" : m.status === "delivered" ? "Entregue" : "Enviado"} style={{ marginLeft: 4, color: m.status === "read" ? "#53bdeb" : "#8696a0", fontWeight: 700 }}>{m.status === "sent" ? "✓" : "✓✓"}</span>
                     )}</span>
                     {humano && m.direcao === "in" && m.tipo !== "arquivo" && (m.texto || "").trim() && (
-                      <button className="at-reply" title="Responder esta mensagem" onClick={() => setRespondendo({ id: m.id, texto: (m.texto || "").slice(0, 180) })}>↩︎</button>
+                      <button className="at-reply" title="Responder esta mensagem" onClick={() => setRespondendo({ id: m.id, texto: (extrairIaNota(m.texto).visivel || "foto").slice(0, 180) })}>↩︎</button>
                     )}
                   </div>
             ))}
