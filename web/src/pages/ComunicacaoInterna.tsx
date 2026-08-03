@@ -81,8 +81,8 @@ export function ComunicacaoInterna() {
           })}
         </div>
       </aside>
-      <section className="ci-chat">
-        {ativo ? <ChatPane key={ativo} eu={eu} outro={ativo} /> : (
+      <section className={"ci-chat" + (ativo ? " aberta" : "")}>
+        {ativo ? <ChatPane key={ativo} eu={eu} outro={ativo} onFechar={() => setAtivo(null)} /> : (
           <div className="ci-vazio">
             <div style={{ fontSize: 46 }}>💬</div>
             <p>Selecione alguém da equipe para conversar.</p>
@@ -95,7 +95,7 @@ export function ComunicacaoInterna() {
 }
 
 // ── Painel de conversa (idêntico ao chat do WhatsApp) ─────────────────────────────
-function ChatPane({ eu, outro }: { eu: string; outro: string }) {
+function ChatPane({ eu, outro, onFechar }: { eu: string; outro: string; onFechar: () => void }) {
   const canal = canalDM(eu, outro);
   const [msgs, setMsgs] = useState<ChatMensagem[]>([]);
   const [texto, setTexto] = useState("");
@@ -122,8 +122,10 @@ function ChatPane({ eu, outro }: { eu: string; outro: string }) {
   return (
     <div className="ci-pane">
       <div className="ci-thd">
+        <button className="ci-voltar" onClick={onFechar} title="Voltar / fechar conversa">←</button>
         <div className="ci-av lg">{iniciais(outro)}</div>
         <div className="ci-thd-info"><div className="nm">👤 {outro}</div><div className="sub">Comunicação interna — o cliente não vê</div></div>
+        <button className="ci-fechar" onClick={onFechar} title="Fechar conversa">✕</button>
       </div>
       <div className="ci-msgs">
         {msgs.length === 0 && <div className="muted2" style={{ margin: "auto", fontSize: 12.5 }}>Sem mensagens ainda. Diga oi para {outro}! 👋</div>}
