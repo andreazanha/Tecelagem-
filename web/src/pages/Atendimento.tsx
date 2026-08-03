@@ -597,15 +597,6 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     try { await api.atendEnviar(id, { texto: texto.trim(), autor: d?.responsavel || "Atendente", responder_a: respondendo?.id }); setTexto(""); setRespondendo(null); carregar(); onMudou(); }
     finally { setBusy(false); }
   }
-  // Resposta pronta: ao clicar, ENVIA direto pro cliente (não só preenche o campo).
-  async function enviarResposta(t: string) {
-    const txt = (t || "").trim();
-    if (!txt) return;
-    setMostrarResp(false);
-    setBusy(true);
-    try { await api.atendEnviar(id, { texto: txt, autor: d?.responsavel || "Atendente", responder_a: respondendo?.id }); setRespondendo(null); carregar(); onMudou(); }
-    catch { alert("Não consegui enviar a mensagem."); } finally { setBusy(false); }
-  }
   // Nota interna: recado da equipe DENTRO da conversa — o cliente NÃO recebe.
   async function enviarNota() {
     if (!texto.trim()) return;
@@ -767,7 +758,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 : <>
                     {respEmpresa.length > 0 && <div className="muted2" style={{ padding: "6px 12px 2px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: .3 }}>📌 Da empresa</div>}
                     {respEmpresa.map((r, i) => (
-                      <button key={"e" + i} onClick={() => enviarResposta(r.texto)} title="Enviar esta mensagem agora"
+                      <button key={"e" + i} onClick={() => { setTexto(r.texto); setMostrarResp(false); }} title="Coloca no campo — você edita e envia"
                         style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderTop: "1px solid var(--line,#f1f5f9)", background: "transparent", cursor: "pointer" }}>
                         <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.titulo || "(sem título)"}</div>
                         <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto}</div>
@@ -775,7 +766,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     ))}
                     {respostas.length > 0 && <div className="muted2" style={{ padding: "8px 12px 2px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: .3 }}>🙋 Minhas</div>}
                     {respostas.map((r, i) => (
-                      <button key={"m" + i} onClick={() => enviarResposta(r.texto)} title="Enviar esta mensagem agora"
+                      <button key={"m" + i} onClick={() => { setTexto(r.texto); setMostrarResp(false); }} title="Coloca no campo — você edita e envia"
                         style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderTop: "1px solid var(--line,#f1f5f9)", background: "transparent", cursor: "pointer" }}>
                         <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.titulo || "(sem título)"}</div>
                         <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto}</div>
