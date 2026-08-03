@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api, type FunilCard, type FunilBoard, type FunilCardDetalhe, type FunilEtapa } from "../api";
 import { ConversaModal } from "./Atendimento";
@@ -60,6 +60,61 @@ export function Funil() {
   const [reativando, setReativando] = useState(false);
   const [arrastando, setArrastando] = useState<string | null>(null); // card id em drag
   const [sobre, setSobre] = useState<string | null>(null); // etapa alvo do drag
+  // Arrastar cartão via PONTEIRO (mouse + toque). O HTML5 drag-and-drop não
+  // funciona no celular; então usamos pointer events: no mouse arrasta ao mexer,
+  // no toque exige "segurar" (long-press) pra não atrapalhar a rolagem do quadro.
+  const dragRef = useRef<{ id: string; el: HTMLElement; timer: number | null; startX: number; startY: number; active: boolean; touch: boolean; pointerId: number } | null>(null);
+  const arrastou = useRef(false); // marca que houve arrasto (pra o clique não abrir o card depois)
+
+  function etapaEmPonto(x: number, y: number): FunilEtapa | null {
+    for (const el of document.elementsFromPoint(x, y)) {
+      const de = (el as HTMLElement).dataset?.etapa;
+      if (de) return de as FunilEtapa;
+    }
+    return null;
+  }
+  function ativarDrag() {
+    const d = dragRef.current; if (!d) return;
+    d.active = true;
+    try { d.el.setPointerCapture(d.pointerId); } catch { /* ignora */ }
+    setArrastando(d.id);
+  }
+  function dragDown(e: RPointerEvent, id: string) {
+    if (e.button && e.button !== 0) return; // só botão principal
+    const d = { id, el: e.currentTarget as HTMLElement, timer: null as number | null, startX: e.clientX, startY: e.clientY, active: false, touch: e.pointerType === "touch", pointerId: e.pointerId };
+    dragRef.current = d;
+    if (d.touch) d.timer = window.setTimeout(() => { if (dragRef.current === d) ativarDrag(); }, 240);
+  }
+  function dragMove(e: RPointerEvent) {
+    const d = dragRef.current; if (!d) return;
+    if (!d.active) {
+      const dx = Math.abs(e.clientX - d.startX), dy = Math.abs(e.clientY - d.startY);
+      if (d.touch) { if (dx > 10 || dy > 10) { if (d.timer) clearTimeout(d.timer); dragRef.current = null; } } // mexeu antes de segurar → é rolagem
+      else if (dx > 5 || dy > 5) ativarDrag(); // mouse: arrasta assim que sai do lugar
+      return;
+    }
+    e.preventDefault();
+    setSobre(etapaEmPonto(e.clientX, e.clientY));
+  }
+  function dragUp(e: RPointerEvent) {
+    const d = dragRef.current; if (!d) return;
+    if (d.timer) clearTimeout(d.timer);
+    const active = d.active;
+    try { if (active) d.el.releasePointerCapture(d.pointerId); } catch { /* ignora */ }
+    dragRef.current = null;
+    if (!active) return;
+    arrastou.current = true; // impede que o onClick abra o card logo após soltar
+    const et = etapaEmPonto(e.clientX, e.clientY);
+    setArrastando(null); setSobre(null);
+    if (et) soltarEm(et, d.id);
+  }
+  function dragCancel() {
+    const d = dragRef.current; if (!d) return;
+    if (d.timer) clearTimeout(d.timer);
+    try { if (d.active) d.el.releasePointerCapture(d.pointerId); } catch { /* ignora */ }
+    dragRef.current = null;
+    setArrastando(null); setSobre(null);
+  }
 
   const loc = useLocation();
   const nav = useNavigate();
@@ -87,9 +142,7 @@ export function Funil() {
 
   // Arrastar cartão para outra etapa. Etapas que exigem dado extra (Perdido →
   // motivo, Aguardando Retorno → data) abrem o detalhe já na etapa escolhida.
-  async function soltarEm(etapaAlvo: FunilEtapa) {
-    const id = arrastando; setArrastando(null); setSobre(null);
-    if (!id) return;
+  async function soltarEm(etapaAlvo: FunilEtapa, id: string) {
     const c = (board?.cards || []).find((k) => k.id === id);
     if (!c || c.etapa === etapaAlvo) return;
     if (etapaAlvo === "perdido" || etapaAlvo === "aguardando-retorno") { setAbrir(id); return; }
@@ -152,19 +205,14 @@ export function Funil() {
             const cards = visiveis.filter((c) => c.etapa === et.id)
               .sort((a, b) => Number(b.alerta) - Number(a.alerta) || b.diasParado - a.diasParado);
             return (
-              <div
-                className={"fx-col" + (sobre === et.id ? " drag-over" : "")}
-                key={et.id}
-                onDragOver={(e) => { if (arrastando) { e.preventDefault(); setSobre(et.id); } }}
-                onDragLeave={() => setSobre((s) => (s === et.id ? null : s))}
-                onDrop={() => soltarEm(et.id)}
-              >
+              <div className={"fx-col" + (sobre === et.id ? " drag-over" : "")} key={et.id} data-etapa={et.id}>
                 <div className="fx-hd"><span className="fx-dot" style={{ background: et.cor }} />{et.label}<span className="ct">{cards.length}</span></div>
                 <div className="fx-col-body">
                   {cards.map((c) => (
                     <CardMini
-                      key={c.id} c={c} onAbrir={() => abrirCard(c)}
-                      onDragStart={() => setArrastando(c.id)} onDragEnd={() => { setArrastando(null); setSobre(null); }}
+                      key={c.id} c={c} arrastando={arrastando === c.id}
+                      onAbrir={() => { if (arrastou.current) { arrastou.current = false; return; } abrirCard(c); }}
+                      onPointerDown={(e) => dragDown(e, c.id)} onPointerMove={dragMove} onPointerUp={dragUp} onPointerCancel={dragCancel}
                     />
                   ))}
                 </div>
@@ -181,11 +229,13 @@ export function Funil() {
   );
 }
 
-function CardMini({ c, onAbrir, onDragStart, onDragEnd }: { c: FunilCard; onAbrir: () => void; onDragStart: () => void; onDragEnd: () => void }) {
+function CardMini({ c, arrastando, onAbrir, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: FunilCard; arrastando: boolean; onAbrir: () => void; onPointerDown: (e: RPointerEvent) => void; onPointerMove: (e: RPointerEvent) => void; onPointerUp: (e: RPointerEvent) => void; onPointerCancel: (e: RPointerEvent) => void }) {
   const wa = waHref(c.whatsapp);
   const cls = c.vermelho ? "red" : c.semTarefa ? "alert" : "";
   return (
-    <div className={"fx-card " + cls} onClick={onAbrir} draggable onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    <div className={"fx-card " + cls} style={arrastando ? { opacity: 0.5 } : undefined}
+      onClick={onAbrir}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
       <div className="fx-nm">{c.nome}</div>
       <div className="fx-sub">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div>
       <div className="fx-chips">
