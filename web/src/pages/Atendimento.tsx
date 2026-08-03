@@ -136,6 +136,24 @@ export function Atendimento() {
   // E o atendimento não foi encerrado depois disso. Encerrar para de piscar sem mandar nada.
   const aguardando = (c: AtendConversa) => !!c.ultima_in_em && (c.ultima_in_em || "") > (c.ultima_out_em || "") && (c.ultima_in_em || "") > (c.encerrado_em || "");
 
+  // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
+  const fotoCache = useRef<Record<string, string | null>>({});
+  const [, setFotosV] = useState(0);
+  useEffect(() => {
+    if (!board) return;
+    const ids = board.conversas.slice(0, 30).map((c) => c.id).filter((cid) => !(cid in fotoCache.current));
+    if (!ids.length) return;
+    let cancel = false;
+    (async () => {
+      for (const cid of ids) {
+        if (cancel) break;
+        fotoCache.current[cid] = null; // marca (evita buscar de novo)
+        try { const r = await api.atendFotoPerfil(cid); if (!cancel && r.link) { fotoCache.current[cid] = r.link; setFotosV((v) => v + 1); } } catch { /* ignora */ }
+      }
+    })();
+    return () => { cancel = true; };
+  }, [board]);
+
   const [alerta, setAlerta] = useState<AtendConversa | null>(null); // banner de backup na tela
   const alertadosRef = useRef<Set<string>>(new Set());
   const primeiraRef = useRef(true);
@@ -314,7 +332,7 @@ export function Atendimento() {
                 <div className="fx-hd"><span className="fx-dot" style={{ background: col.cor }} />{col.label}<span className="ct">{cs.length}</span></div>
                 <div className="fx-col-body">
                   {cs.map((c) => (
-                    <ConvMini key={c.id} c={c} pulsando={aguardando(c)} arrastando={arrastando === c.id}
+                    <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} pulsando={aguardando(c)} arrastando={arrastando === c.id}
                       onAbrir={() => { if (arrastou.current) { arrastou.current = false; return; } setAbrir(c.id); }}
                       onPointerDown={(e) => dragDownC(e, c.id)} onPointerMove={dragMoveC} onPointerUp={dragUpC} onPointerCancel={dragCancelC} />
                   ))}
@@ -552,13 +570,19 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   );
 }
 
-function ConvMini({ c, onAbrir, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; onAbrir: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
+function ConvMini({ c, foto, onAbrir, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; onAbrir: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.coluna === "atendimento-humano";
+  const nome = c.nome || c.contato_nome || telBonito(c.telefone);
   return (
     <div className={"fx-card" + (pulsando ? " pulsando" : "")} style={arrastando ? { opacity: 0.5 } : undefined}
       onClick={onAbrir} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
-      <div className="fx-nm">{c.nome || c.contato_nome || telBonito(c.telefone)}</div>
-      <div className="fx-sub">{(c.nome || c.contato_nome) ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—"}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="conv-av" style={foto ? { backgroundImage: `url(${foto})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{foto ? "" : iniciais(nome)}</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="fx-nm">{nome}</div>
+          <div className="fx-sub">{(c.nome || c.contato_nome) ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—"}</div>
+        </div>
+      </div>
       {c.ultima_msg && <div className="at-prev">{c.ultima_msg}</div>}
       <div className="fx-foot">
         {c.autorizado === 0

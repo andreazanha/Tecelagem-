@@ -375,6 +375,7 @@ export function Layout() {
         <TopNav u={u} />
         <div className="topbar-right">
           <UndoRedo />
+          <DemoMode />
           {ehApp && (
             <button className="ur-btn" onClick={() => window.location.reload()} title="Atualizar (recarregar, igual F5)">⟳ Atualizar</button>
           )}
@@ -421,8 +422,6 @@ export function Layout() {
       <main className="content">
         <Outlet />
       </main>
-
-      <DemoMode />
     </div>
   );
 }
