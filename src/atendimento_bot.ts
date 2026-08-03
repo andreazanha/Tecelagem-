@@ -88,46 +88,29 @@ export function cnpjValido(cnpj: string): boolean {
 export interface Resultado { conv: Conversa; saidas: Saida[]; notificarHumano: boolean; qualificado: boolean }
 
 // ── Colunas do board (na ordem) + mapeamento estado → coluna ────────────────────
+// Colunas do quadro de ATENDIMENTO: só o que precisa de ação NA CONVERSA.
+// (Etapas de venda ficam no Funil.) A coluna de cada conversa é derivada do estado
+// + responsável + últimas mensagens (ver colunaAtendimento em routes/atendimento.ts).
 export const ATEND_COLUNAS = [
-  { id: "atendimento-humano", label: "Atendimento humano", cor: "#6366f1" },
-  { id: "reclamacao", label: "Reclamação", cor: "#ef4444" },
-  { id: "primeiro-contato", label: "Primeiro contato", cor: "#3b82f6" },
-  { id: "aguardando-setor", label: "Aguardando setor", cor: "#8b5cf6" },
-  { id: "triagem-vendas", label: "Triagem de vendas", cor: "#f59e0b" },
-  { id: "aguardando-cnpj", label: "Aguardando CNPJ", cor: "#0ea5e9" },
-  { id: "catalogo-enviado", label: "Catálogo enviado", cor: "#22c55e" },
-  { id: "follow-up-24h", label: "Follow-up 24h", cor: "#eab308" },
-  { id: "pedido-realizado", label: "Pedido realizado", cor: "#0d9488" },
-  { id: "pedido-faturado", label: "Pedido faturado", cor: "#7c3aed" },
-  { id: "pedido-enviado", label: "Pedido enviado", cor: "#0891b2" },
-  { id: "pos-venda", label: "Pós-venda", cor: "#db2777" },
-  { id: "recompra", label: "Cliente para recompra", cor: "#ea580c" },
-  { id: "sem-retorno", label: "Sem retorno", cor: "#94a3b8" },
-  { id: "nao-qualificado", label: "Não qualificado", cor: "#ef4444" },
-  { id: "indicado-parceiro", label: "Consumidor → loja parceira", cor: "#14b8a6" },
+  { id: "novo-contato", label: "Novo contato", cor: "#3b82f6" },
+  { id: "triagem", label: "Triagem automática", cor: "#8b5cf6" },
+  { id: "aguardando-humano", label: "Aguardando atendimento humano", cor: "#f59e0b" },
+  { id: "em-atendimento", label: "Em atendimento", cor: "#6366f1" },
+  { id: "aguardando-cliente", label: "Aguardando cliente", cor: "#0ea5e9" },
+  { id: "aguardando-setor", label: "Aguardando setor interno", cor: "#a855f7" },
+  { id: "reclamacao", label: "Reclamação ou pendência", cor: "#ef4444" },
+  { id: "finalizado", label: "Atendimento finalizado", cor: "#22c55e" },
 ] as const;
 
+// Mapa simples estado → coluna (aproximação; o quadro usa colunaAtendimento, mais rico).
 export function colunaDe(estado: string): string {
   switch (estado) {
-    case "novo": return "primeiro-contato";
-    case "ia-triagem": return "aguardando-setor";
+    case "novo": return "novo-contato";
+    case "ia-triagem": case "triagem-vendas": case "triagem-nome": case "aguardando-cnpj": case "aguardando-cidade-parceiro": return "triagem";
     case "aguardando-setor": return "aguardando-setor";
-    case "triagem-nome": return "triagem-vendas";
-    case "aguardando-cnpj": return "aguardando-cnpj";
-    case "catalogo-enviado": return "catalogo-enviado";
-    case "follow-up-24h": return "follow-up-24h";
-    case "atendimento-humano": return "atendimento-humano";
+    case "atendimento-humano": return "em-atendimento";
     case "reclamacao": return "reclamacao";
-    case "pedido-realizado": return "pedido-realizado";
-    case "pedido-faturado": return "pedido-faturado";
-    case "pedido-enviado": return "pedido-enviado";
-    case "pos-venda": return "pos-venda";
-    case "recompra": return "recompra";
-    case "sem-retorno": return "sem-retorno";
-    case "aguardando-cidade-parceiro": return "nao-qualificado";
-    case "nao-qualificado": return "nao-qualificado";
-    case "indicado-parceiro": return "indicado-parceiro";
-    default: return "primeiro-contato";
+    default: return "finalizado";
   }
 }
 

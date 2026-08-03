@@ -271,7 +271,7 @@ export function Atendimento() {
   // A cada atualização do quadro, detecta conversas NOVAS que precisam de humano (sem responsável).
   useEffect(() => {
     if (!board) return;
-    const pend = board.conversas.filter((c) => c.coluna === "atendimento-humano" && !c.responsavel);
+    const pend = board.conversas.filter((c) => c.estado === "atendimento-humano" && !c.responsavel);
     if (primeiraRef.current) { pend.forEach((c) => alertadosRef.current.add(c.id)); primeiraRef.current = false; return; }
     for (const c of pend) {
       if (!alertadosRef.current.has(c.id)) { alertadosRef.current.add(c.id); dispararAlerta(c); }
@@ -322,25 +322,6 @@ export function Atendimento() {
         <div className="card pad muted">Carregando…</div>
       ) : (
         <div className="fx-board at-board">
-          {/* Coluna EQUIPE: fala com o time por dentro (chat interno) */}
-          {(() => { const eu = getUser()?.nome; const outros = membros.filter((m) => m !== eu); return (
-            <div className="fx-col" key="__equipe" style={{ position: "sticky", left: 0, zIndex: 3, background: "var(--card,#fff)", borderRadius: 12, boxShadow: "3px 0 10px #0000001f" }}>
-              <div className="fx-hd"><span className="fx-dot" style={{ background: "#6366f1" }} />👥 Equipe<span className="ct">{outros.length}</span></div>
-              <div className="fx-col-body">
-                {outros.length === 0
-                  ? <div className="muted2" style={{ padding: 10, fontSize: 12 }}>Nenhum outro membro cadastrado.</div>
-                  : outros.map((m) => {
-                    const novo = temNovoDe(m);
-                    return (
-                    <div key={m} className="fx-card" onClick={() => abrirChatEquipe(m)} style={{ cursor: "pointer", borderLeft: novo ? "3px solid #ef4444" : undefined }}>
-                      <div className="fx-nm" style={{ display: "flex", alignItems: "center", gap: 6 }}>👤 {m}{novo && <span title="Mensagem nova" style={{ width: 9, height: 9, borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 0 2px #fff", display: "inline-block" }} />}</div>
-                      <div className="fx-sub">{novo ? "🔴 Recado novo" : "💬 Conversar (interno)"}</div>
-                    </div>
-                    );
-                  })}
-              </div>
-            </div>
-          ); })()}
           {board.colunas.map((col) => {
             const cs = board.conversas.filter((c) => c.coluna === col.id).filter((c) =>
               filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend
@@ -593,7 +574,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
 }
 
 function ConvMini({ c, foto, colunas, onMover, onAbrir, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
-  const humano = c.coluna === "atendimento-humano";
+  const humano = c.estado === "atendimento-humano";
   const nome = c.nome || c.contato_nome || telBonito(c.telefone);
   return (
     <div className={"fx-card" + (pulsando ? " pulsando" : "")} style={arrastando ? { opacity: 0.5 } : undefined}
@@ -715,6 +696,12 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   useEffect(() => { carregarRespostas(); }, []);
   const [fotoPerfil, setFotoPerfil] = useState<string | null>(null);
   useEffect(() => { api.atendFotoPerfil(id).then((r) => setFotoPerfil(r.link)).catch(() => {}); }, [id]);
+  const [colsAtend, setColsAtend] = useState<{ id: string; label: string }[]>([]);
+  useEffect(() => { api.atendColunas().then((r) => setColsAtend(r.colunas)).catch(() => {}); }, []);
+  async function moverColuna(colId: string) {
+    setBusy(true);
+    try { await api.atendMoverColuna(id, colId); carregar(); onMudou(); } finally { setBusy(false); }
+  }
   function carregar() { api.atendConversa(id).then((c) => { setD(c); setRepSel((s) => s || c.representante || ""); }); }
   useEffect(() => { carregar(); const t = setInterval(carregar, 5000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => { api.listarRepresentantes().then((r) => setReps(r.filter((x) => x.ativo))).catch(() => {}); }, []);
@@ -785,7 +772,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     finally { setBusy(false); }
   }
 
-  const humano = d?.coluna === "atendimento-humano";
+  const humano = d?.estado === "atendimento-humano";
   const bloqueado = !!d?.bloqueado;
   // Colar um print (Ctrl+V): pega a imagem da área de transferência e abre a prévia.
   useEffect(() => {
@@ -942,6 +929,15 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
               <select value={d?.responsavel || ""} onChange={(e) => { if (e.target.value) transferir(e.target.value); }} disabled={busy} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid " + (d?.responsavel ? "#a7f3d0" : "var(--line)"), background: d?.responsavel ? "#ecfdf5" : "var(--bg-soft)", color: "var(--ink)", fontWeight: d?.responsavel ? 700 : 400 }}>
                 <option value="">— escolher vendedor —</option>
                 {usuarios.map((u) => <option key={u.usuario} value={u.nome}>{u.nome}</option>)}
+              </select>
+            </div>
+            {/* Mover pra outra coluna do quadro (lendo a conversa, você decide pra onde vai). */}
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>↔️ Mover para coluna</div>
+              <select value="" onChange={(e) => { const v = e.target.value; if (v) moverColuna(v === "__auto" ? "" : v); }} disabled={busy} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg-soft)", color: "var(--ink)" }}>
+                <option value="">{(d && colsAtend.find((x) => x.id === d.coluna)?.label) || "Escolher coluna…"}</option>
+                <option value="__auto">🔄 Automático (segue o estado da conversa)</option>
+                {colsAtend.filter((x) => x.id !== d?.coluna).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
               </select>
             </div>
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: encerrado ? "#a7f3d0" : undefined, background: encerrado ? "#ecfdf5" : undefined, color: encerrado ? "#065f46" : undefined }} disabled={busy} onClick={encerrar} title="Marca o atendimento como resolvido (para de piscar). NÃO envia nada ao cliente.">

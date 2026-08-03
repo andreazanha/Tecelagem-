@@ -1568,6 +1568,25 @@ atendimento.get("/painel", async (c) => {
   return c.json({ gerais: g, fila, atendentes, setores, tempoResposta });
 });
 
+// Coluna do ATENDIMENTO derivada do estado + responsável + últimas mensagens + encerrado.
+// É isso que faz os cards se moverem SOZINHOS conforme a conversa anda.
+function colunaAtendimento(c: { estado?: string | null; responsavel?: string | null; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null }): string {
+  const inn = c.ultima_in_em || "", out = c.ultima_out_em || "", enc = c.encerrado_em || "";
+  const estado = String(c.estado || "");
+  if (enc && inn <= enc) return "finalizado";                         // encerrado e sem msg nova depois
+  if (estado === "reclamacao") return "reclamacao";
+  if (estado === "aguardando-setor") return "aguardando-setor";
+  if (estado === "atendimento-humano") {
+    if (String(c.responsavel || "").trim()) return (inn && inn > out) ? "em-atendimento" : "aguardando-cliente";
+    return "aguardando-humano";                                        // precisa de humano, ninguém assumiu
+  }
+  if (["ia-triagem", "triagem-vendas", "triagem-nome", "aguardando-cnpj", "aguardando-cidade-parceiro"].includes(estado)) return "triagem";
+  if (estado === "novo") return "novo-contato";
+  // Estados de funil/venda: no ATENDIMENTO só importam se o cliente está esperando resposta.
+  if (inn && inn > out) return "aguardando-humano";
+  return "finalizado";
+}
+
 // ── BOARD (conversas por coluna) ──────────────────────────────────────────────────
 atendimento.get("/", async (c) => {
   // Atendente (gestor≠1) vê só as conversas DELE + as não assumidas (fila). Gestor/admin vê tudo.
@@ -1589,7 +1608,7 @@ atendimento.get("/", async (c) => {
   const validos = new Set(colunas.map((x) => x.id));
   const conversas = results.map((r) => {
     const manual = r.coluna_manual && validos.has(String(r.coluna_manual)) ? String(r.coluna_manual) : null;
-    return { ...r, coluna: manual || colunaDe(String(r.estado)) };
+    return { ...r, coluna: manual || colunaAtendimento(r) };
   });
   return c.json({ colunas, conversas });
 });
@@ -1736,7 +1755,8 @@ atendimento.get("/:id", async (c) => {
     const bq = await c.env.DB.prepare(`SELECT 1 FROM clientes WHERE COALESCE(bloqueado,0)=1 AND ${LIMPA_WPP} LIKE '%' || ? LIMIT 1`).bind(core).first().catch(() => null);
     bloqueado = bq ? 1 : 0;
   }
-  return c.json({ ...conv, coluna: colunaDe(conv.estado), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado });
+  const colManual = conv.coluna_manual && ATEND_COLUNAS.some((x) => x.id === conv.coluna_manual) ? conv.coluna_manual : null;
+  return c.json({ ...conv, coluna: colManual || colunaAtendimento(conv), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado });
 });
 
 // ── Atendente humano assume ─────────────────────────────────────────────────────────
