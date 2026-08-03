@@ -11,7 +11,7 @@ const digitos = (s: unknown) => String(s ?? "").replace(/\D/g, "");
 
 export interface LojaParceiraRow {
   id: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null;
-  whatsapp: string | null; instagram: string | null; site: string | null; ativo: number; criado_em?: string;
+  whatsapp: string | null; instagram: string | null; site: string | null; ativo: number; loja_online?: number; criado_em?: string;
 }
 
 export const parceiros = new Hono<{ Bindings: Env }>();
@@ -19,7 +19,7 @@ export const parceiros = new Hono<{ Bindings: Env }>();
 // Lista completa (admin) — para a tela de cadastro.
 parceiros.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT id, nome, endereco, cidade, uf, whatsapp, instagram, site, ativo, criado_em FROM lojas_parceiras ORDER BY uf, cidade, nome"
+    "SELECT id, nome, endereco, cidade, uf, whatsapp, instagram, site, ativo, loja_online, criado_em FROM lojas_parceiras ORDER BY uf, cidade, nome"
   ).all<LojaParceiraRow>().catch(() => ({ results: [] as LojaParceiraRow[] }));
   return c.json(results);
 });
@@ -67,17 +67,18 @@ parceiros.delete("/:id", async (c) => {
 // Autocadastro público (o próprio lojista preenche pelo link do convite). Entra como
 // PENDENTE (ativo=0): só aparece na vitrine depois que a Big Tricot aprova no CRM.
 parceiros.post("/autocadastro", async (c) => {
-  const b = await c.req.json<Partial<LojaParceiraRow>>().catch(() => ({}) as Record<string, never>);
+  const b = await c.req.json<Partial<Omit<LojaParceiraRow, "loja_online">> & { loja_online?: boolean | number | string }>().catch(() => ({}) as Record<string, never>);
   const nome = String(b.nome ?? "").trim();
   if (!nome) return c.json({ error: "Informe o nome da loja." }, 400);
   const uf = String(b.uf ?? "").trim().toUpperCase().slice(0, 2) || null;
   if (!uf) return c.json({ error: "Informe o estado (UF) da loja." }, 400);
+  const online = b.loja_online === true || b.loja_online === 1 || b.loja_online === "on" || b.loja_online === "true" ? 1 : 0;
   await c.env.DB.prepare(
-    `INSERT INTO lojas_parceiras (id, nome, endereco, cidade, uf, whatsapp, instagram, site, ativo)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`
+    `INSERT INTO lojas_parceiras (id, nome, endereco, cidade, uf, whatsapp, instagram, site, loja_online, ativo)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
   ).bind(
     uid(), nome, String(b.endereco ?? "").trim() || null, String(b.cidade ?? "").trim() || null, uf,
-    String(b.whatsapp ?? "").trim() || null, String(b.instagram ?? "").trim() || null, String(b.site ?? "").trim() || null
+    String(b.whatsapp ?? "").trim() || null, String(b.instagram ?? "").trim() || null, String(b.site ?? "").trim() || null, online
   ).run();
   return c.json({ ok: true });
 });
@@ -106,6 +107,8 @@ export function cadastroHtml(): string {
   form { display: flex; flex-direction: column; gap: 12px; }
   label { font-size: 12.5px; font-weight: 700; color: #6b5638; display: flex; flex-direction: column; gap: 4px; }
   input { padding: 11px 12px; border: 1.5px solid #d9cdbb; border-radius: 10px; font-size: 15px; background: #fff; }
+  .check { flex-direction: row; align-items: center; gap: 9px; color: #2b2b2b; font-weight: 600; background: #fff; border: 1.5px solid #d9cdbb; border-radius: 10px; padding: 11px 12px; }
+  .check input { width: 20px; height: 20px; padding: 0; margin: 0; flex: none; }
   .obg { color: #b45309; }
   button { margin-top: 6px; padding: 13px; border: 0; border-radius: 12px; background: #8c6239; color: #fff; font-size: 16px; font-weight: 800; cursor: pointer; }
   button:disabled { opacity: .6; }
@@ -130,8 +133,9 @@ export function cadastroHtml(): string {
       <label>Cidade<input name="cidade" maxlength="80" /></label>
       <label>Estado (UF) <span class="obg">*</span><input name="uf" required maxlength="2" placeholder="MG" style="text-transform:uppercase" /></label>
       <label>WhatsApp<input name="whatsapp" maxlength="30" placeholder="(35) 9 9999-9999" /></label>
-      <label>Instagram<input name="instagram" maxlength="80" placeholder="@sualoja" /></label>
-      <label>Site (se tiver)<input name="site" maxlength="150" placeholder="www.sualoja.com.br" /></label>
+      <label>Instagram<input name="instagram" maxlength="200" placeholder="@sualoja ou cole o link do perfil" /></label>
+      <label>Site (se tiver)<input name="site" maxlength="200" placeholder="www.sualoja.com.br" /></label>
+      <label class="check"><input type="checkbox" name="loja_online" id="loja_online" /> Minha loja é <b>online</b> (vende pela internet)</label>
       <button type="submit" id="btn">Enviar cadastro</button>
     </form>
   </div>
@@ -146,6 +150,7 @@ export function cadastroHtml(): string {
   f.addEventListener('submit', function(e){
     e.preventDefault(); btn.disabled=true; btn.textContent='Enviando…';
     var d={}; new FormData(f).forEach(function(v,k){ d[k]=String(v).trim(); });
+    d.loja_online = document.getElementById('loja_online').checked;
     fetch('/api/parceiros/autocadastro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
       .then(function(res){

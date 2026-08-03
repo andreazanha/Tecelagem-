@@ -120,7 +120,9 @@ function Cartao({ l, pendente, onEditar, onAprovar, onExcluir, onAlternar }: {
   return (
     <div style={{ border: "1px solid " + (pendente ? "#fcd34d" : "var(--line,#e2e8f0)"), borderRadius: 10, padding: "10px 12px", background: pendente ? "#fffbeb" : "#fff", color: "#1e293b", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
       <div style={{ flex: "1 1 220px" }}>
-        <div style={{ fontWeight: 800 }}>{l.nome}</div>
+        <div style={{ fontWeight: 800 }}>{l.nome}
+          {l.loja_online ? <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: "#0369a1", background: "#e0f2fe", padding: "2px 8px", borderRadius: 999 }}>🌐 Online</span> : null}
+        </div>
         <div style={{ fontSize: 12.5, color: "#64748b" }}>
           {[l.endereco, [l.cidade, l.uf].filter(Boolean).join("/")].filter(Boolean).join(" · ") || "sem endereço"}
         </div>

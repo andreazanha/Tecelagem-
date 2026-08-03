@@ -1474,7 +1474,7 @@ export interface AtendPainel {
 }
 export interface LojaParceira {
   id: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null;
-  whatsapp: string | null; instagram: string | null; site: string | null; ativo: number; criado_em?: string;
+  whatsapp: string | null; instagram: string | null; site: string | null; ativo: number; loja_online?: number; criado_em?: string;
 }
 export interface ItemPedidoEstoque {
   ref?: string | null;
