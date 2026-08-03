@@ -472,7 +472,7 @@ function ajustarCatalogoRegiao(texto: string, uf?: string | null, tel?: string |
 
 // ── Núcleo: recebe uma mensagem do cliente, roda o robô, responde e qualifica ────
 // Usado tanto pelo simulador (/entrada) quanto pelo webhook real da Z-API (/webhook).
-async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "", origin: string | null = null, zapId = "", arquivoUrl = "") {
+async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "", origin: string | null = null, zapId = "", arquivoUrl = "", soRegistrar = false) {
   const tel = digitos(telRaw);
   const texto = String(textoRaw ?? "");
   const contato = String(contatoNome ?? "").trim().slice(0, 80) || null;
@@ -518,7 +518,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // MODO MANUAL (robô pausado): com a IA desligada, a Big NÃO responde ninguém — só registra
   // a mensagem e deixa pra um humano atender. Ideal pra fase de prospecção (acumular conversas
   // sem o robô falar sozinho). Liga a IA de novo quando quiser que ela atenda.
-  if (cfgAt.atendimento_ia !== "1") {
+  if (soRegistrar || cfgAt.atendimento_ia !== "1") {
     if (conv.estado === "novo") await env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
     return { conversa_id: conv.id, estado: conv.estado === "novo" ? "ia-triagem" : conv.estado, coluna: "aguardando-setor", respostas: [], notificarHumano: true };
   }
@@ -735,7 +735,11 @@ atendimento.post("/webhook", async (c) => {
   // Interruptor mestre: se o atendimento automático estiver desligado, NÃO responde
   // clientes reais (fica em modo teste interno pelo Simulador). Ignora silenciosamente.
   const cfg = await lerConfig(c.env);
-  if (cfg.atendimento_ativo !== "1") return c.json({ ignorado: "atendimento-desligado" });
+  // Diagnóstico: guarda o último webhook recebido (pra depurar "mensagem não chegou").
+  try { await c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('webhook_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify(b).slice(0, 3000)).run(); } catch { /* ignora */ }
+  // "Atendimento automático" desligado: NÃO deixa mais a mensagem sumir — ela é REGISTRADA
+  // (aparece na caixa e vai pra humano), só que a Big não responde sozinha (soRegistrar=true).
+  const soRegistrar = cfg.atendimento_ativo !== "1";
   // Não responde em grupos (só conversas 1:1).
   if (b.isGroup === true || b.isGroupMessage === true) return c.json({ ignorado: "grupo" });
   // Só processa mensagem recebida de terceiro.
@@ -759,8 +763,9 @@ atendimento.post("/webhook", async (c) => {
     arquivoUrl = await guardarMidiaExterna(c.env, origin, audioSrc, "ogg"); // pra o atendente OUVIR
     if (!texto.trim()) {
       // Sem transcrição, mas guardamos o áudio: registra a conversa com o player, avisa o cliente.
-      if (arquivoUrl) { await receberMensagem(c.env, phone, "🎤 (áudio)", "whatsapp", nomeContato, origin, String(b.messageId ?? ""), arquivoUrl); return c.json({ ok: true, audio: true }); }
-      await enviarWhatsapp(c.env, phone, { tipo: "texto", texto: "Oi! 😊 Recebi seu áudio, mas não consegui ouvir direitinho por aqui. Pode me mandar por *escrito*, por favor? Assim já te respondo! 💛" });
+      if (arquivoUrl) { await receberMensagem(c.env, phone, "🎤 (áudio)", "whatsapp", nomeContato, origin, String(b.messageId ?? ""), arquivoUrl, soRegistrar); return c.json({ ok: true, audio: true }); }
+      if (!soRegistrar) await enviarWhatsapp(c.env, phone, { tipo: "texto", texto: "Oi! 😊 Recebi seu áudio, mas não consegui ouvir direitinho por aqui. Pode me mandar por *escrito*, por favor? Assim já te respondo! 💛" });
+      else await receberMensagem(c.env, phone, "🎤 (áudio)", "whatsapp", nomeContato, origin, String(b.messageId ?? ""), "", soRegistrar);
       return c.json({ ignorado: "audio-sem-transcricao" });
     }
   }
@@ -782,12 +787,13 @@ atendimento.post("/webhook", async (c) => {
   if (!texto.trim()) {
     // Foto que não deu pra descrever e sem legenda: responde em vez de ignorar.
     if (img) {
-      await enviarWhatsapp(c.env, phone, { tipo: "texto", texto: "Oi! 😊 Recebi sua foto! Me conta em uma frase o que você procura (produto, cor, tamanho) que eu já te ajudo? 💛" });
+      if (!soRegistrar) await enviarWhatsapp(c.env, phone, { tipo: "texto", texto: "Oi! 😊 Recebi sua foto! Me conta em uma frase o que você procura (produto, cor, tamanho) que eu já te ajudo? 💛" });
+      else await receberMensagem(c.env, phone, "📷 (foto)", "whatsapp", nomeContato, origin, String(b.messageId ?? ""), arquivoUrl, soRegistrar);
       return c.json({ ignorado: "imagem-sem-descricao" });
     }
     return c.json({ ignorado: "sem-texto" });
   }
-  const r = await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, origin, String(b.messageId ?? ""), arquivoUrl);
+  const r = await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, origin, String(b.messageId ?? ""), arquivoUrl, soRegistrar);
   if ("erro" in r) return c.json({ error: r.erro }, 400);
   return c.json({ ok: true, conversa_id: r.conversa_id });
 });
@@ -1079,6 +1085,20 @@ atendimento.post("/:id/coluna", async (c) => {
   const coluna = String(b.coluna ?? "").trim() || null;
   await c.env.DB.prepare("UPDATE atend_conversas SET coluna_manual=?, atualizado_em=datetime('now') WHERE id=?").bind(coluna, c.req.param("id")).run();
   return c.json({ ok: true });
+});
+
+// Diagnóstico do webhook (última chamada recebida + estado dos interruptores).
+atendimento.get("/webhook-debug", async (c) => {
+  const cfg = await lerConfig(c.env);
+  let ultimo: unknown = null;
+  try { ultimo = JSON.parse(cfg.webhook_ultimo || "null"); } catch { ultimo = cfg.webhook_ultimo || null; }
+  return c.json({
+    atendimento_ativo: cfg.atendimento_ativo === "1",
+    atendimento_ia: cfg.atendimento_ia === "1",
+    zapi_ativo: cfg.zapi_ativo === "1",
+    equipe_numeros: cfg.equipe_numeros || "",
+    ultimo_webhook: ultimo,
+  });
 });
 
 // ── CAMPANHAS (envio em massa aos poucos) ─────────────────────────────────────────
