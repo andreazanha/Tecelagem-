@@ -99,6 +99,7 @@ export const ATEND_COLUNAS = [
   { id: "aguardando-cliente", label: "Aguardando cliente", cor: "#0ea5e9" },
   { id: "aguardando-setor", label: "Aguardando setor interno", cor: "#a855f7" },
   { id: "montando-pedido", label: "Montando pedido", cor: "#f97316" },
+  { id: "aguardando-envio-material", label: "Aguardando envio de material", cor: "#14b8a6" },
   { id: "finalizado", label: "Atendimento finalizado", cor: "#22c55e" },
   { id: "reclamacao", label: "Reclamação ou pendência", cor: "#ef4444" },
 ] as const;
