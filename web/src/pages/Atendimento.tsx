@@ -926,7 +926,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             {/* Vendedor responsável: mostra o nome de quem atende e deixa escolher/trocar direto aqui. */}
             <div style={{ marginTop: 10 }}>
               <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>🧑‍💼 Vendedor responsável</div>
-              <select value={d?.responsavel || ""} onChange={(e) => { if (e.target.value) transferir(e.target.value); }} disabled={busy} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid " + (d?.responsavel ? "#a7f3d0" : "var(--line)"), background: d?.responsavel ? "#ecfdf5" : "var(--bg-soft)", color: "var(--ink)", fontWeight: d?.responsavel ? 700 : 400 }}>
+              <select className={"at-sel" + (d?.responsavel ? " on" : "")} value={d?.responsavel || ""} onChange={(e) => { if (e.target.value) transferir(e.target.value); }} disabled={busy}>
                 <option value="">— escolher vendedor —</option>
                 {usuarios.map((u) => <option key={u.usuario} value={u.nome}>{u.nome}</option>)}
               </select>
@@ -934,7 +934,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             {/* Mover pra outra coluna do quadro (lendo a conversa, você decide pra onde vai). */}
             <div style={{ marginTop: 10 }}>
               <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>↔️ Mover para coluna</div>
-              <select value="" onChange={(e) => { const v = e.target.value; if (v) moverColuna(v === "__auto" ? "" : v); }} disabled={busy} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg-soft)", color: "var(--ink)" }}>
+              <select className="at-sel" value="" onChange={(e) => { const v = e.target.value; if (v) moverColuna(v === "__auto" ? "" : v); }} disabled={busy}>
                 <option value="">{(d && colsAtend.find((x) => x.id === d.coluna)?.label) || "Escolher coluna…"}</option>
                 <option value="__auto">🔄 Automático (segue o estado da conversa)</option>
                 {colsAtend.filter((x) => x.id !== d?.coluna).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}

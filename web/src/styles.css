@@ -1242,6 +1242,15 @@ body.dark .at-msgs { background: #0c1a17; }
 .at-b.in { align-self: flex-start; background: #fff; border-top-left-radius: 2px; }
 .at-b.out { align-self: flex-end; background: #d9fdd3; border-top-right-radius: 2px; }
 body.dark .at-b.in { background: #1f2c34; color: #e7ebf3; } body.dark .at-b.out { background: #144d37; color: #e7ebf3; }
+/* Seletores da lateral (Vendedor responsável / Mover coluna): legíveis nos 2 temas. */
+.at-sel { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: #0f172a; font: inherit; font-size: 13px; }
+.at-sel:disabled { opacity: .7; }
+.at-sel.on { border-color: #34d399; background: #ecfdf5; color: #065f46; font-weight: 700; }
+.at-sel option { background: #fff; color: #0f172a; }
+body.dark .at-sel { background: #0b1220; color: #e7ebf3; border-color: #26324a; }
+body.dark .at-sel.on { background: #0f2a1c; color: #a7f3d0; border-color: #2f855a; }
+body.dark .at-sel option { background: #0b1220; color: #e7ebf3; }
+
 .at-aut { font-size: 11px; font-weight: 800; color: #16a34a; margin-bottom: 2px; }
 /* Nome do autor no balão verde (out): contraste FORTE — verde-escuro no claro, quase branco no escuro */
 .at-b.out .at-aut { color: #075e34; text-shadow: 0 1px 0 rgba(255,255,255,.35); }
