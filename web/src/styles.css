@@ -1122,7 +1122,9 @@ body.dark .fx-pill.on { background: #4f46e5; border-color: #4f46e5; color: #fff;
 body.dark .fx-alertbar { background: #2a2410; border-color: #5c4a12; color: #fcd34d; }
 /* Altura fixa: o quadro rola por dentro (x e y), então a barra de rolagem de baixo
    fica sempre visível — não some quando a página desce. */
-.fx-board { display: flex; gap: 12px; overflow: auto; padding: 4px 2px 14px; align-items: flex-start; max-height: calc(100dvh - 200px); min-height: 300px; overscroll-behavior: contain; }
+/* align-items: stretch → todas as colunas ficam com a altura da mais cheia, então
+   o cabeçalho fixo (sticky) de TODAS as colunas gruda no topo, mesmo as vazias. */
+.fx-board { display: flex; gap: 12px; overflow: auto; padding: 4px 2px 14px; align-items: stretch; max-height: calc(100dvh - 200px); min-height: 300px; overscroll-behavior: contain; }
 /* Quadro do WhatsApp tem 1 linha a mais em cima (abas + "Acompanhar"): reserva mais
    espaço pra a barra de rolagem de baixo não cair fora da tela. */
 .fx-board.at-board { max-height: calc(100dvh - 255px); }
