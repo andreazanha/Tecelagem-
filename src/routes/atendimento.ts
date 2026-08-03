@@ -1468,6 +1468,25 @@ atendimento.post("/:id/sugerir", async (c) => {
   return c.json({ error: "não consegui sugerir agora" }, 503);
 });
 
+// ── Preencher/corrigir os "Dados coletados" à mão (quando a IA não pegou) ──────────
+atendimento.post("/:id/dados", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown }>().catch(() => ({} as { nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown }));
+  const campos: string[] = [];
+  const vals: (string | number | null)[] = [];
+  const setTxt = (col: string, v: unknown) => { if (v !== undefined) { campos.push(`${col}=?`); const s = String(v ?? "").trim(); vals.push(s || null); } };
+  setTxt("nome", b.nome);
+  setTxt("cnpj", b.cnpj);
+  setTxt("cidade", b.cidade);
+  if (b.uf !== undefined) { campos.push("uf=?"); vals.push(b.uf ? String(b.uf).trim().toUpperCase().slice(0, 2) : null); }
+  if (b.setor !== undefined) { campos.push("setor=?"); vals.push(setorDe(b.setor) || null); }
+  if (b.lojista !== undefined) { campos.push("lojista=?"); vals.push(b.lojista === "" || b.lojista == null ? null : (b.lojista === "1" || b.lojista === 1 || b.lojista === true ? 1 : 0)); }
+  if (!campos.length) return c.json({ ok: true });
+  vals.push(id);
+  await c.env.DB.prepare(`UPDATE atend_conversas SET ${campos.join(", ")}, atualizado_em=datetime('now') WHERE id=?`).bind(...vals).run();
+  return c.json({ ok: true });
+});
+
 // ── Opt-out: não enviar mensagens automáticas para este cliente ───────────────────
 atendimento.post("/:id/nao-perturbe", async (c) => {
   const b = await c.req.json<{ nao_perturbe?: boolean }>().catch(() => ({}) as Record<string, boolean>);

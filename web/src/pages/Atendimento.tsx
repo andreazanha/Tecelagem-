@@ -410,7 +410,19 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [respostas, setRespostas] = useState<{ titulo: string; texto: string }[]>([]);
   const [mostrarResp, setMostrarResp] = useState(false);
   const [gerenciarResp, setGerenciarResp] = useState(false);
+  const [editDados, setEditDados] = useState(false);
+  const [formD, setFormD] = useState({ nome: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
   const fim = useRef<HTMLDivElement>(null);
+
+  function abrirEdicaoDados() {
+    setFormD({ nome: d?.nome || "", setor: d?.setor || "", cnpj: d?.cnpj || "", cidade: d?.cidade || "", uf: d?.uf || "", lojista: d?.lojista == null ? "" : String(d.lojista) });
+    setEditDados(true);
+  }
+  async function salvarDados() {
+    setBusy(true);
+    try { await api.atendSalvarDados(id, formD); setEditDados(false); carregar(); onMudou(); }
+    catch { alert("Não consegui salvar os dados."); } finally { setBusy(false); }
+  }
 
   function carregarRespostas() { api.atendRespostas().then(setRespostas).catch(() => {}); }
   useEffect(() => { carregarRespostas(); }, []);
@@ -501,12 +513,54 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
           </div>
 
           <div className="at-ctx">
-            <div className="at-block-h">Dados coletados</div>
-            <div className="at-row"><span>Setor</span><b>{d?.setor ? (SETOR_EMOJI[d.setor] || "") + " " + d.setor : "—"}</b></div>
-            <div className="at-row"><span>Loja</span><b>{d?.nome || "—"}</b></div>
-            <div className="at-row"><span>CNPJ</span><b>{d?.cnpj || "—"}</b></div>
-            <div className="at-row"><span>Lojista</span><b>{d?.lojista == null ? "—" : d.lojista ? "✅ sim" : "🙅 não"}</b></div>
-            <div className="at-row"><span>Cidade</span><b>{[d?.cidade, d?.uf].filter(Boolean).join("/") || "—"}</b></div>
+            <div className="at-block-h" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span>Dados coletados</span>
+              {d && !editDados && <button className="btn btn-soft" style={{ fontSize: 11, padding: "2px 8px" }} onClick={abrirEdicaoDados} title="Preencher/corrigir à mão">✏️ Editar</button>}
+            </div>
+            {editDados ? (
+              <div style={{ display: "grid", gap: 7, marginBottom: 6 }}>
+                <label className="fld" style={{ fontSize: 11.5 }}>Loja
+                  <input value={formD.nome} onChange={(e) => setFormD((f) => ({ ...f, nome: e.target.value }))} placeholder="Nome da loja" />
+                </label>
+                <label className="fld" style={{ fontSize: 11.5 }}>Setor
+                  <select value={formD.setor} onChange={(e) => setFormD((f) => ({ ...f, setor: e.target.value }))}>
+                    <option value="">—</option>
+                    <option value="vendas">🛒 Vendas</option>
+                    <option value="fiscal">💰 Fiscal / Financeiro</option>
+                    <option value="estoque">📦 Estoque</option>
+                    <option value="pcp">🏭 Produção (PCP)</option>
+                  </select>
+                </label>
+                <label className="fld" style={{ fontSize: 11.5 }}>CNPJ
+                  <input value={formD.cnpj} onChange={(e) => setFormD((f) => ({ ...f, cnpj: e.target.value }))} placeholder="00.000.000/0000-00" />
+                </label>
+                <label className="fld" style={{ fontSize: 11.5 }}>Lojista?
+                  <select value={formD.lojista} onChange={(e) => setFormD((f) => ({ ...f, lojista: e.target.value }))}>
+                    <option value="">— não sei —</option>
+                    <option value="1">✅ Sim, é lojista</option>
+                    <option value="0">🙅 Não (consumidor)</option>
+                  </select>
+                </label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <label className="fld" style={{ fontSize: 11.5, flex: 1 }}>Cidade
+                    <input value={formD.cidade} onChange={(e) => setFormD((f) => ({ ...f, cidade: e.target.value }))} />
+                  </label>
+                  <label className="fld" style={{ fontSize: 11.5, width: 64 }}>UF
+                    <input value={formD.uf} maxLength={2} onChange={(e) => setFormD((f) => ({ ...f, uf: e.target.value.toUpperCase() }))} style={{ textTransform: "uppercase" }} />
+                  </label>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button className="btn btn-soft" style={{ flex: 1 }} disabled={busy} onClick={() => setEditDados(false)}>Cancelar</button>
+                  <button className="kbtn go" style={{ flex: 1 }} disabled={busy} onClick={salvarDados}>Salvar</button>
+                </div>
+              </div>
+            ) : (<>
+              <div className="at-row"><span>Setor</span><b>{d?.setor ? (SETOR_EMOJI[d.setor] || "") + " " + d.setor : "—"}</b></div>
+              <div className="at-row"><span>Loja</span><b>{d?.nome || "—"}</b></div>
+              <div className="at-row"><span>CNPJ</span><b>{d?.cnpj || "—"}</b></div>
+              <div className="at-row"><span>Lojista</span><b>{d?.lojista == null ? "—" : d.lojista ? "✅ sim" : "🙅 não"}</b></div>
+              <div className="at-row"><span>Cidade</span><b>{[d?.cidade, d?.uf].filter(Boolean).join("/") || "—"}</b></div>
+            </>)}
             {d?.representante && d?.autorizado !== 0 && <div className="at-row"><span>Representante</span><b>🧑‍💼 {d.representante}</b></div>}
             {d && d.interesses && d.interesses.length > 0 && (
               <div style={{ marginTop: 8 }}>
