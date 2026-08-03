@@ -476,10 +476,6 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Detecta interesse comercial + modelos citados (vale inclusive no atendimento humano).
   const cfgAt = await lerConfig(env);
   await detectarInteresse(env, conv.id, texto, cfgAt.interesse_modelos || "");
-  // Reclamação/problema → sinaliza para o time tratar com prioridade.
-  if (RECLAMACAO_RE.test(texto)) {
-    await addMsg(env, conv.id, "out", "sistema", "sistema", "⚠️ Possível reclamação/problema — priorizar atendimento humano.");
-  }
 
   // Cliente respondeu durante o follow-up → cancela a cadência e sinaliza a retomada.
   if ((conv.followup_etapa ?? 0) > 0 && ["catalogo-enviado", "follow-up-24h", "sem-retorno"].includes(conv.estado)) {
@@ -490,9 +486,22 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Estado antes desta mensagem (pra saber se a conversa ACABOU de virar "humano").
   const estadoAntes = conv.estado;
 
-  // Atendente humano assumiu → o robô não responde mais, só registra a mensagem.
-  if (conv.estado === "atendimento-humano") {
+  // Atendente humano assumiu (ou já é reclamação) → o robô não responde mais, só registra.
+  if (conv.estado === "atendimento-humano" || conv.estado === "reclamacao") {
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
+  }
+
+  // Reclamação/problema → coluna própria "Reclamação": a Bia dá um retorno acolhedor,
+  // avisa o time e deixa o caso separado e visível pra resolver com prioridade.
+  // Guarda contra falso positivo ("sem problema", "tudo certo").
+  if (RECLAMACAO_RE.test(texto) && !/sem problema|nenhum problema|tranquil|tudo certo|tudo (ó|o)k|sem reclama/i.test(texto)) {
+    await env.DB.prepare("UPDATE atend_conversas SET estado='reclamacao', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    await avisarHumanoPush(env, conv).catch(() => {});
+    const ack = "Poxa, sinto muito por isso! 😟 Já vou passar pro nosso time resolver o quanto antes. Obrigada por avisar, viu? 💛";
+    await addMsg(env, conv.id, "out", "bot", "texto", ack);
+    await enviarWhatsapp(env, tel, { tipo: "texto", texto: ack });
+    await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    return { conversa_id: conv.id, estado: "reclamacao", coluna: "reclamacao", respostas: [{ tipo: "texto", texto: ack }], notificarHumano: true };
   }
 
   // IA de triagem (se ligada). Representantes seguem o fluxo padrão (menu).

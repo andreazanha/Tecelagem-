@@ -5,7 +5,7 @@
 export type EstadoAtend =
   | "novo" | "ia-triagem" | "aguardando-setor" | "triagem-nome" | "aguardando-cnpj"
   | "aguardando-cidade-parceiro" | "catalogo-enviado" | "follow-up-24h"
-  | "atendimento-humano" | "nao-qualificado" | "indicado-parceiro" | "sem-retorno"
+  | "atendimento-humano" | "reclamacao" | "nao-qualificado" | "indicado-parceiro" | "sem-retorno"
   | "pedido-realizado" | "pedido-faturado" | "pedido-enviado" | "pos-venda" | "recompra";
 
 export interface Conversa {
@@ -96,6 +96,7 @@ export const ATEND_COLUNAS = [
   { id: "catalogo-enviado", label: "Catálogo enviado", cor: "#22c55e" },
   { id: "follow-up-24h", label: "Follow-up 24h", cor: "#eab308" },
   { id: "atendimento-humano", label: "Atendimento humano", cor: "#6366f1" },
+  { id: "reclamacao", label: "Reclamação", cor: "#ef4444" },
   { id: "pedido-realizado", label: "Pedido realizado", cor: "#0d9488" },
   { id: "pedido-faturado", label: "Pedido faturado", cor: "#7c3aed" },
   { id: "pedido-enviado", label: "Pedido enviado", cor: "#0891b2" },
@@ -116,6 +117,7 @@ export function colunaDe(estado: string): string {
     case "catalogo-enviado": return "catalogo-enviado";
     case "follow-up-24h": return "follow-up-24h";
     case "atendimento-humano": return "atendimento-humano";
+    case "reclamacao": return "reclamacao";
     case "pedido-realizado": return "pedido-realizado";
     case "pedido-faturado": return "pedido-faturado";
     case "pedido-enviado": return "pedido-enviado";
