@@ -101,46 +101,53 @@ export function Atendimento() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatCom, eu]);
 
-  // ── Arrastar card entre colunas (pointer: mouse + toque, igual ao Funil) ──
+  // ── Arrastar card entre colunas (pointer + listeners no window = confiável) ──
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
-  const dragRef = useRef<{ id: string; el: HTMLElement; timer: number | null; startX: number; startY: number; active: boolean; touch: boolean; pointerId: number } | null>(null);
+  const dragRef = useRef<{ id: string; startX: number; startY: number; active: boolean; touch: boolean; timer: number | null; move?: (e: PointerEvent) => void; up?: (e: PointerEvent) => void } | null>(null);
   const arrastou = useRef(false);
   const [gerColunas, setGerColunas] = useState(false);
   function colunaEmPonto(x: number, y: number): string | null {
     for (const el of document.elementsFromPoint(x, y)) { const d = (el as HTMLElement).dataset?.coluna; if (d) return d; }
     return null;
   }
-  function ativarDragC() { const d = dragRef.current; if (!d) return; d.active = true; try { d.el.setPointerCapture(d.pointerId); } catch { /* */ } setArrastando(d.id); }
+  function finalizarDrag() {
+    const d = dragRef.current;
+    if (d) {
+      if (d.timer) clearTimeout(d.timer);
+      if (d.move) window.removeEventListener("pointermove", d.move);
+      if (d.up) { window.removeEventListener("pointerup", d.up); window.removeEventListener("pointercancel", d.up); }
+    }
+    dragRef.current = null;
+    setArrastando(null); setSobre(null);
+  }
   function dragDownC(e: RPointerEvent, id: string) {
     if (e.button && e.button !== 0) return;
-    const d = { id, el: e.currentTarget as HTMLElement, timer: null as number | null, startX: e.clientX, startY: e.clientY, active: false, touch: e.pointerType === "touch", pointerId: e.pointerId };
+    const move = (ev: PointerEvent) => {
+      const d = dragRef.current; if (!d) return;
+      if (!d.active) {
+        const dx = Math.abs(ev.clientX - d.startX), dy = Math.abs(ev.clientY - d.startY);
+        if (d.touch) { if (dx > 10 || dy > 10) finalizarDrag(); }              // moveu antes de segurar = rolagem
+        else if (dx > 4 || dy > 4) { d.active = true; setArrastando(d.id); }    // mouse: arrasta assim que sai do lugar
+        return;
+      }
+      ev.preventDefault();
+      setSobre(colunaEmPonto(ev.clientX, ev.clientY));
+    };
+    const up = (ev: PointerEvent) => {
+      const d = dragRef.current; if (!d) return;
+      const active = d.active;
+      const alvo = active ? colunaEmPonto(ev.clientX, ev.clientY) : null;
+      finalizarDrag();
+      if (active) { arrastou.current = true; if (alvo) soltarConversa(alvo, id); }
+    };
+    const d = { id, startX: e.clientX, startY: e.clientY, active: false, touch: e.pointerType === "touch", timer: null as number | null, move, up };
     dragRef.current = d;
-    if (d.touch) d.timer = window.setTimeout(() => { if (dragRef.current === d) ativarDragC(); }, 240);
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    if (d.touch) d.timer = window.setTimeout(() => { if (dragRef.current === d) { d.active = true; setArrastando(d.id); } }, 240);
   }
-  function dragMoveC(e: RPointerEvent) {
-    const d = dragRef.current; if (!d) return;
-    if (!d.active) {
-      const dx = Math.abs(e.clientX - d.startX), dy = Math.abs(e.clientY - d.startY);
-      if (d.touch) { if (dx > 10 || dy > 10) { if (d.timer) clearTimeout(d.timer); dragRef.current = null; } }
-      else if (dx > 5 || dy > 5) ativarDragC();
-      return;
-    }
-    e.preventDefault(); setSobre(colunaEmPonto(e.clientX, e.clientY));
-  }
-  function dragUpC(e: RPointerEvent) {
-    const d = dragRef.current; if (!d) return;
-    if (d.timer) clearTimeout(d.timer);
-    const active = d.active;
-    try { if (active) d.el.releasePointerCapture(d.pointerId); } catch { /* */ }
-    dragRef.current = null;
-    if (!active) return;
-    arrastou.current = true;
-    const alvo = colunaEmPonto(e.clientX, e.clientY);
-    setArrastando(null); setSobre(null);
-    if (alvo) soltarConversa(alvo, d.id);
-  }
-  function dragCancelC() { const d = dragRef.current; if (!d) return; if (d.timer) clearTimeout(d.timer); try { if (d.active) d.el.releasePointerCapture(d.pointerId); } catch { /* */ } dragRef.current = null; setArrastando(null); setSobre(null); }
   async function soltarConversa(coluna: string, id: string) {
     const c = board?.conversas.find((x) => x.id === id);
     if (!c || c.coluna === coluna) return;
@@ -349,7 +356,7 @@ export function Atendimento() {
                   {cs.map((c) => (
                     <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board.colunas} onMover={(colId) => soltarConversa(colId, c.id)} pulsando={aguardando(c)} arrastando={arrastando === c.id}
                       onAbrir={() => { if (arrastou.current) { arrastou.current = false; return; } setAbrir(c.id); }}
-                      onPointerDown={(e) => dragDownC(e, c.id)} onPointerMove={dragMoveC} onPointerUp={dragUpC} onPointerCancel={dragCancelC} />
+                      onPointerDown={(e) => dragDownC(e, c.id)} />
                   ))}
                 </div>
               </div>
@@ -600,6 +607,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, pulsando, arrastando, on
       </div>
       {c.ultima_msg && (() => { const p = extrairIaNota(c.ultima_msg); const t = MSG_PLACEHOLDER.test((p.visivel || "").trim()) ? "" : p.visivel; return <div className="at-prev">{t || (p.iaNota ? "📷 foto" : c.ultima_msg)}</div>; })()}
       <div className="fx-foot">
+        {c.cliente_id && <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="Já é cliente cadastrado na base">📇 Cliente</span>}
         {c.autorizado === 0
           ? <span className="at-badge" style={{ background: "#fef3c7", color: "#92400e" }} title="Aguardando autorização da equipe">⏳ Autorizar</span>
           : <span className="at-badge">{humano ? `👤 ${c.responsavel || "humano"}` : `🤖 robô`}</span>}
