@@ -44,6 +44,41 @@ function SinoPush() {
   );
 }
 
+// Aviso GLOBAL de comunicação interna: pisca no topo (em qualquer tela) quando
+// chega mensagem nova da equipe. Clicar leva direto pra aba "Comunicação interna".
+function SinoInterna() {
+  const nav = useNavigate();
+  const loc = useLocation();
+  const eu = getUser()?.nome || "";
+  const [tem, setTem] = useState(false);
+  const naInterna = loc.pathname === "/atendimento" && new URLSearchParams(loc.search).get("crm") === "interna";
+  useEffect(() => {
+    if (!eu) return;
+    const checar = () => api.dmResumoChat(eu).then((rs) => setTem(rs.some((r) => r.nao_lido))).catch(() => {});
+    checar(); const t = setInterval(checar, 8000); return () => clearInterval(t);
+  }, [eu]);
+  // Enquanto está na aba interna, não pisca (a própria aba já mostra).
+  useEffect(() => { if (naInterna) setTem(false); }, [naInterna, loc.search]);
+  // Título da aba do navegador pisca junto (chama atenção com o app em segundo plano).
+  useEffect(() => {
+    if (!tem || naInterna) { document.title = document.title.replace(/^💬 /, ""); return; }
+    const base = document.title.replace(/^💬 /, "");
+    let on = false;
+    const t = setInterval(() => { on = !on; document.title = (on ? "💬 " : "") + base; }, 900);
+    return () => { clearInterval(t); document.title = base; };
+  }, [tem, naInterna]);
+  if (!eu || naInterna) return null;
+  return (
+    <button
+      className={"ur-btn ci-sino" + (tem ? " pisca" : "")}
+      onClick={() => nav("/atendimento?crm=interna")}
+      title={tem ? "Nova mensagem interna da equipe! Clique para abrir." : "Comunicação interna da equipe"}
+    >
+      🗨️{tem && <span className="ci-sino-dot" />}
+    </button>
+  );
+}
+
 function UndoRedo() {
   const [, forcar] = useReducer((x) => x + 1, 0);
   useEffect(() => historico.subscribe(forcar), []);
@@ -375,6 +410,7 @@ export function Layout() {
         <TopNav u={u} />
         <div className="topbar-right">
           <UndoRedo />
+          <SinoInterna />
           <DemoMode />
           {ehApp && (
             <button className="ur-btn" onClick={() => window.location.reload()} title="Atualizar (recarregar, igual F5)">⟳ Atualizar</button>

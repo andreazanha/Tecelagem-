@@ -23,6 +23,7 @@ async function lerConfig(env: Env): Promise<Record<string, string>> {
 type ConvRow = Conversa & {
   id: string; telefone: string; responsavel: string | null; card_id: string | null; cliente_id: string | null; contato_nome: string | null;
   autorizado: number | null; followup_etapa: number | null; ultima_in_em: string | null; ultima_out_em: string | null; criado_em: string; atualizado_em: string;
+  coluna_manual: string | null; encerrado_em: string | null;
 };
 
 // ── Dependências (SINTEGRA + lojas parceiras) ────────────────────────────────────

@@ -98,8 +98,8 @@ export const ATEND_COLUNAS = [
   { id: "em-atendimento", label: "Em atendimento", cor: "#6366f1" },
   { id: "aguardando-cliente", label: "Aguardando cliente", cor: "#0ea5e9" },
   { id: "aguardando-setor", label: "Aguardando setor interno", cor: "#a855f7" },
-  { id: "reclamacao", label: "Reclamação ou pendência", cor: "#ef4444" },
   { id: "finalizado", label: "Atendimento finalizado", cor: "#22c55e" },
+  { id: "reclamacao", label: "Reclamação ou pendência", cor: "#ef4444" },
 ] as const;
 
 // Mapa simples estado → coluna (aproximação; o quadro usa colunaAtendimento, mais rico).
