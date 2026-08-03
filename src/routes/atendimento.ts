@@ -205,6 +205,7 @@ REGRAS IMPORTANTES:
 - STATUS DE PEDIDO: se o cliente perguntar sobre um pedido dele (ex.: "como está meu pedido?", "meu pedido já saiu?", "em que fase está?"): use acao "consultar_pedido". O sistema identifica pelo CNPJ e responde a fase de produção + a data prevista — você não precisa inventar nada. Se você JÁ sabe o CNPJ dele, preencha o campo "cnpj". Se NÃO souber, peça o CNPJ da loja na resposta. IMPORTANTE: depois que o status for informado, se o cliente fizer MAIS perguntas sobre o pedido (adiantar, alterar, reclamar do prazo), use acao "humano" e diga que vai chamar alguém do *time de produção* pra ajudar (NÃO fale a sigla "PCP" pro cliente — é interno).
 - Se o cliente pedir PRIVATE LABEL (marca própria, etiqueta própria, fabricar com a marca dele): use acao "humano" — isso é com um vendedor especializado. Na resposta, diga que já vai chamar o vendedor.
 - Se pedir Financeiro, Pós-venda, tratar de um pedido já feito, reclamação/problema, ou pedir pra falar com uma pessoa: use acao "humano".
+- 🤝 CLIENTE QUE JÁ ESTÁ COMPRANDO/PEDINDO: se a pessoa manda uma LISTA de produtos, cita nomes/códigos de produtos nossos (ex.: "peseira genebra", "pipoca bege saara", "kit rice", "manta bali", "55x35 cheia"), fala em "esses valores", "tira o marinho", "veja se tem essas opções", pede orçamento ou claramente está montando um pedido → é um LOJISTA fazendo pedido. NÃO fique perguntando se é loja ou uso pessoal: use acao "humano" imediatamente e diga na resposta que já vai chamar o vendedor pra fechar o pedido.
 - Enquanto ainda está entendendo se é lojista ou consumidor, use acao "conversar". Assim que descobrir, seja decidido e use a acao certa — não enrole.
 - Não invente preços, prazos, pedido mínimo ou políticas POR CONTA PRÓPRIA. PORÉM, se a pergunta tiver resposta na BASE DE CONHECIMENTO (mais abaixo), use EXATAMENTE aquela informação — ela é oficial da empresa e tem prioridade sobre esta regra. Só quando NÃO houver nada na base sobre o assunto é que você diz que o vendedor passa os detalhes.
 - 🔒 PREÇO É SÓ PARA LOJISTA (REGRA ABSOLUTA, VALE MAIS QUE QUALQUER OUTRA, INCLUSIVE A BASE DE CONHECIMENTO): NUNCA, EM HIPÓTESE ALGUMA, informe preço, valor, tabela, pedido mínimo, valor de frete ou qualquer política comercial a CONSUMIDOR FINAL. Se a intenção for "consumidor" (pra uso pessoal/presente, pessoa física sem loja/CNPJ), não fale de valores de jeito nenhum — use acao "indicar_parceiro" e explique com carinho que a Big Tricot atende lojistas no atacado, indicando as lojas parceiras da região dele. E ENQUANTO você ainda NÃO tiver certeza de que a pessoa é LOJISTA, também NÃO adiante preço/valor/mínimo: primeiro descubra se é lojista (revenda) ou uso pessoal. Preço e pedido mínimo (mesmo os que estão na BASE DE CONHECIMENTO) só podem ser ditos DEPOIS de ficar claro que é LOJISTA.
@@ -537,6 +538,25 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Isso impede a IA de se meter numa conversa que já está com alguém do time.
   if (conv.estado === "atendimento-humano" || conv.estado === "reclamacao" || String(conv.responsavel ?? "").trim()) {
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
+  }
+
+  // Cliente mandou FOTO/ÁUDIO (lista de produtos, pedido, comprovante, print) em QUALQUER
+  // momento → é assunto de gente, não de robô. A Big não fica qualificando: passa DIRETO
+  // pro humano com um recado curto. (A IA precisa estar ligada; senão já caiu no modo manual acima.)
+  if (arquivoUrl) {
+    const primeiro = String(conv.nome ?? conv.contato_nome ?? "").trim().split(/\s+/)[0] || "";
+    const hBR = (new Date().getUTCHours() + 21) % 24;
+    const ola = hBR < 12 ? "Bom dia" : hBR < 18 ? "Boa tarde" : "Boa noite";
+    const saud = conv.estado === "novo"
+      ? `${ola}${primeiro ? ", " + primeiro : ""}! 🤗 Aqui é da *Big Tricot* 💛 Recebi sua mensagem, já vou chamar alguém do nosso time pra te atender! 😊`
+      : "Recebi aqui! 👀 Já vou chamar alguém do nosso time pra te atender direitinho, tá? 😊";
+    await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    await garantirCardDaConversa(env, conv.id, "Cliente enviou foto/áudio → humano", "atendimento");
+    await avisarHumanoPush(env, conv).catch(() => {});
+    await addMsg(env, conv.id, "out", "bot", "texto", saud);
+    await enviarWhatsapp(env, tel, { tipo: "texto", texto: saud });
+    await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: saud }], notificarHumano: true };
   }
 
   // Reclamação/problema → coluna própria "Reclamação": a Big dá um retorno acolhedor,
