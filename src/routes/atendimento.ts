@@ -715,8 +715,10 @@ atendimento.post("/reset", async (c) => {
 atendimento.post("/webhook", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   // Callback de STATUS (entregue/lido) — atualiza os ✓✓ das mensagens que ENVIAMOS.
-  // Configure na Z-API o webhook "Ao atualizar status da mensagem" apontando para esta URL.
-  if (b.status && (b.ids || b.messageId) || b.type === "MessageStatusCallback" || b.type === "DeliveryCallback") {
+  // IMPORTANTE: mensagem RECEBIDA da Z-API também traz status:"RECEIVED" — por isso NÃO
+  // pode capturar aqui pelo status; só o callback de status real (type MessageStatusCallback,
+  // que manda "ids" em array). ReceivedCallback é sempre tratado como mensagem, mais abaixo.
+  if (b.type !== "ReceivedCallback" && (b.type === "MessageStatusCallback" || b.type === "DeliveryCallback" || Array.isArray(b.ids))) {
     const ids = Array.isArray(b.ids) ? (b.ids as unknown[]).map(String) : (b.messageId ? [String(b.messageId)] : []);
     const st = String(b.status ?? "").toUpperCase();
     const novo = (st === "READ" || st === "PLAYED") ? "read" : (st === "RECEIVED" || st === "DELIVERED") ? "delivered" : (st === "SENT") ? "sent" : "";
