@@ -26,10 +26,15 @@ type ConvRow = Conversa & {
   coluna_manual: string | null; encerrado_em: string | null;
 };
 
+// Site PÚBLICO de "Onde Comprar" (lojas parceiras) que a Big manda pro consumidor final.
+// É o domínio oficial — NÃO o endereço interno (workers.dev). Pode ser trocado na config
+// (chave "vitrine_url"); se vazio, usa este padrão.
+const VITRINE_PUBLICA = "https://ondecomprar.bigtricot.com.br";
+
 // ── Dependências (SINTEGRA + lojas parceiras) ────────────────────────────────────
-function deps(env: Env, cat?: { url?: string | null; senha?: string | null; msg?: string | null }, origin?: string | null): Deps {
+function deps(env: Env, cat?: { url?: string | null; senha?: string | null; msg?: string | null }, vitrineUrl?: string | null): Deps {
   return {
-    vitrineUrl: origin ? origin + "/vitrine" : null,
+    vitrineUrl: (vitrineUrl || VITRINE_PUBLICA).replace(/\/+$/, ""),
     catalogoMsg: cat?.msg ?? null,
     catalogoUrl: cat?.url ?? null,
     catalogoSenha: cat?.senha ?? null,
@@ -140,6 +145,16 @@ async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: st
   return id;
 }
 
+// Envia uma mensagem NOSSA (bot/IA) pro cliente E guarda o id da Z-API na linha da mensagem.
+// Sem isso, o callback de status (entregue/lido) não acha a mensagem pelo zap_id e os ✓✓
+// nunca acendem nas respostas da IA (só nas do atendente humano, que já guardava o id).
+async function enviarBot(env: Env, convId: string, tel: string, saida: { tipo: string; texto: string }, autor = "bot") {
+  const msgId = await addMsg(env, convId, "out", autor, saida.tipo, saida.texto);
+  const r = await enviarWhatsapp(env, tel, saida);
+  if (r.enviado && r.messageId) await env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
+  return r;
+}
+
 // Baixa uma mídia externa (áudio/foto que o cliente mandou, via Z-API) e guarda no
 // R2, devolvendo uma URL pública nossa — pra o atendente ouvir/ver depois na conversa.
 async function guardarMidiaExterna(env: Env, origin: string, url: string, extHint = "bin"): Promise<string> {
@@ -202,7 +217,7 @@ REGRAS IMPORTANTES:
 - NÃO peça o CNPJ logo de cara. Primeiro converse, entenda a necessidade (que tipo de produto procura, se já conhece a marca, etc.) e só depois, quando fizer sentido, encaminhe pra pegar os dados.
 - Se perceber que é LOJISTA e a pessoa quer comprar/revender/fazer cadastro: use acao "coletar_lojista" e, na sua resposta, peça gentilmente o NOME DA LOJA (o sistema pede o CNPJ na sequência).
 - CATÁLOGO: nosso catálogo é DIGITAL (um link), nunca um PDF. NUNCA envie o catálogo por conta própria nem prometa enviar "automaticamente". Envie SÓ quando o cliente PEDIR o catálogo (ex.: "me manda o catálogo", "quero ver os produtos", "tem catálogo?") — aí use acao "enviar_catalogo" (o sistema anexa o link). Não peça CNPJ como condição para mandar o catálogo se o cliente só quer dar uma olhada.
-- Se for CONSUMIDOR FINAL (pessoa física, "pra mim", "uso pessoal", "presente", sem loja/CNPJ): use acao "indicar_parceiro". Explique com carinho, em 1 linha, que a Big Tricot vende no atacado para lojistas, mas que você indica as lojas parceiras da região dele. Você só precisa do ESTADO — se ainda não souber, pergunte "de qual estado você é?". Preencha o campo "uf" com a sigla (ex.: MG). O SISTEMA envia automaticamente o link da vitrine de lojas parceiras filtrado pelo estado; NUNCA diga "vou te passar os dados/contatos depois", NUNCA tente listar lojas você mesmo, e NÃO fale de modelos/cores com o consumidor final.
+- Se for CONSUMIDOR FINAL (pessoa física, "pra mim", "uso pessoal", "presente", sem loja/CNPJ): use acao "indicar_parceiro". Explique com carinho, em 1 linha, que a Big Tricot vende no atacado para lojistas, mas que você indica as lojas parceiras da região dele. Você só precisa do ESTADO — se ainda não souber, pergunte "de qual estado você é?". Preencha o campo "uf" com a sigla (ex.: MG). O SISTEMA envia automaticamente o link do site de lojas parceiras filtrado pelo estado; NUNCA diga "vou te passar os dados/contatos depois", NUNCA tente listar lojas você mesmo, e NÃO fale de modelos/cores com o consumidor final. ⚠️ NUNCA escreva um link, uma URL ou um "[link]" na sua resposta — QUEM MANDA O LINK É O SISTEMA, sozinho. Você só diz que vai indicar as lojas da região; não escreva "aqui está o link", nem "[link]", nem invente endereço.
 - STATUS DE PEDIDO: se o cliente perguntar sobre um pedido dele (ex.: "como está meu pedido?", "meu pedido já saiu?", "em que fase está?"): use acao "consultar_pedido". O sistema identifica pelo CNPJ e responde a fase de produção + a data prevista — você não precisa inventar nada. Se você JÁ sabe o CNPJ dele, preencha o campo "cnpj". Se NÃO souber, peça o CNPJ da loja na resposta. IMPORTANTE: depois que o status for informado, se o cliente fizer MAIS perguntas sobre o pedido (adiantar, alterar, reclamar do prazo), use acao "humano" e diga que vai chamar alguém do *time de produção* pra ajudar (NÃO fale a sigla "PCP" pro cliente — é interno).
 - Se o cliente pedir PRIVATE LABEL (marca própria, etiqueta própria, fabricar com a marca dele): use acao "humano" — isso é com um vendedor especializado. Na resposta, diga que já vai chamar o vendedor.
 - Se pedir Financeiro, Pós-venda, tratar de um pedido já feito, reclamação/problema, ou pedir pra falar com uma pessoa: use acao "humano".
@@ -407,7 +422,7 @@ interface IaSaida { saidas: Saida[]; novoEstado: EstadoAtend; notificarHumano: b
 
 // Roda a IA de triagem e traduz a decisão em resposta + próximo estado do fluxo.
 // `origin` é usado pra montar o link da vitrine (indicação de consumidor final).
-async function iaTriagem(env: Env, conv: ConvRow, sistema: string, origin: string | null): Promise<IaSaida> {
+async function iaTriagem(env: Env, conv: ConvRow, sistema: string, vitrineBase: string): Promise<IaSaida> {
   const dec = await chamarIa(env, conv, sistema);
   // IA indisponível (binding ausente/erro) → degrada pro menu determinístico, que é à prova de falhas.
   if (!dec) return { saidas: [{ tipo: "texto", texto: BOAS_VINDAS }], novoEstado: "aguardando-setor", notificarHumano: false, tipo: null };
@@ -419,8 +434,8 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, origin: strin
   const uf = ufDe(dec.uf) || ufDe(conv.uf);
   const querIndicar = dec.acao === "indicar_parceiro" || dec.intencao === "consumidor";
   if (querIndicar) {
-    if (uf && origin) {
-      const link = `${origin}/vitrine?uf=${encodeURIComponent(uf)}`;
+    if (uf) {
+      const link = `${(vitrineBase || VITRINE_PUBLICA).replace(/\/+$/, "")}?uf=${encodeURIComponent(uf)}`;
       // Mensagem fixa (rápida e sem "vou passar depois"): manda o link do estado na hora.
       const saidas: Saida[] = [
         { tipo: "texto", texto: `Prontinho! 💛 Abre esse link, escolha a *cidade mais perto de você* e veja os contatos das lojas parceiras de ${uf} 👇\n${link}` },
@@ -564,8 +579,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
     await garantirCardDaConversa(env, conv.id, "Cliente enviou foto/áudio → humano", "atendimento");
     await avisarHumanoPush(env, conv).catch(() => {});
-    await addMsg(env, conv.id, "out", "bot", "texto", saud);
-    await enviarWhatsapp(env, tel, { tipo: "texto", texto: saud });
+    await enviarBot(env, conv.id, tel, { tipo: "texto", texto: saud });
     await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
     return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: saud }], notificarHumano: true };
   }
@@ -577,8 +591,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     await env.DB.prepare("UPDATE atend_conversas SET estado='reclamacao', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
     await avisarHumanoPush(env, conv).catch(() => {});
     const ack = "Poxa, sinto muito por isso! 😟 Já vou passar pro nosso time resolver o quanto antes. Obrigada por avisar, viu? 💛";
-    await addMsg(env, conv.id, "out", "bot", "texto", ack);
-    await enviarWhatsapp(env, tel, { tipo: "texto", texto: ack });
+    await enviarBot(env, conv.id, tel, { tipo: "texto", texto: ack });
     await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
     return { conversa_id: conv.id, estado: "reclamacao", coluna: "reclamacao", respostas: [{ tipo: "texto", texto: ack }], notificarHumano: true };
   }
@@ -609,8 +622,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
         await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
         await garantirCardDaConversa(env, conv.id, conv.cliente_id ? "Cliente conhecido voltou a falar" : "Conversa em andamento → humano", "atendimento");
         await avisarHumanoPush(env, conv).catch(() => {});
-        await addMsg(env, conv.id, "out", "bot", "texto", saud);
-        await enviarWhatsapp(env, tel, { tipo: "texto", texto: saud });
+        await enviarBot(env, conv.id, tel, { tipo: "texto", texto: saud });
         await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
         return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: saud }], notificarHumano: true };
       }
@@ -618,8 +630,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       const saud = SAUDACAO_NOVO;
       await env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
       await garantirCardDaConversa(env, conv.id, "Novo contato no WhatsApp", "atendimento");
-      await addMsg(env, conv.id, "out", "bot", "texto", saud);
-      await enviarWhatsapp(env, tel, { tipo: "texto", texto: saud });
+      await enviarBot(env, conv.id, tel, { tipo: "texto", texto: saud });
       await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
       return { conversa_id: conv.id, estado: "ia-triagem", coluna: colunaDe("ia-triagem"), respostas: [{ tipo: "texto", texto: saud }], notificarHumano: false };
     }
@@ -630,7 +641,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     } else if (conv.lojista === 1 || conv.cnpj) {
       sistema += `\n\nCONTEXTO: este lojista JÁ FOI QUALIFICADO (CNPJ confirmado${conv.nome ? ", loja: " + conv.nome : ""}). NÃO peça CNPJ nem nome da loja de novo. Ajude no que precisar; se ele PEDIR o catálogo use acao "enviar_catalogo".`;
     }
-    const ia = await iaTriagem(env, conv, sistema, origin);
+    const ia = await iaTriagem(env, conv, sistema, cfgAt.vitrine_url || VITRINE_PUBLICA);
     // Rede de segurança: se o cliente PEDIU o catálogo de forma clara mas a IA não
     // classificou (às vezes ela responde "vou enviar… aguarde" e não manda), força o
     // envio do link agora — sem a resposta enrolada.
@@ -638,7 +649,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     // Cliente pediu o catálogo → anexa a mensagem do catálogo (virtual/link), montada da config.
     if (ia.catalogo) {
       // Manda a tabela da REGIÃO do cliente (Norte/NE vs Sul), pela UF.
-      for (const s of montarCatalogo(deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, origin))) {
+      for (const s of montarCatalogo(deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }))) {
         s.texto = ajustarCatalogoRegiao(s.texto, conv.uf, tel);
         ia.saidas.push(s);
       }
@@ -660,8 +671,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       .bind(ia.novoEstado, ia.tipo, ia.setor ?? "", conv.id).run();
     if (ia.novoEstado === "atendimento-humano" && estadoAntes !== "atendimento-humano") await avisarHumanoPush(env, conv);
     for (const s of ia.saidas) {
-      await addMsg(env, conv.id, "out", "bot", s.tipo, s.texto);
-      await enviarWhatsapp(env, tel, s);
+      await enviarBot(env, conv.id, tel, s);
     }
     if (ia.saidas.length) await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
     return { conversa_id: conv.id, estado: ia.novoEstado, coluna: colunaDe(ia.novoEstado), respostas: ia.saidas, notificarHumano: ia.notificarHumano };
@@ -669,7 +679,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
 
   // Passa o contexto de identificação pro robô (saudação personalizada de cliente conhecido).
   conv.clienteConhecido = !!conv.cliente_id;
-  const r = await processar(conv as Conversa, texto, deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, origin));
+  const r = await processar(conv as Conversa, texto, deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, cfgAt.vitrine_url || VITRINE_PUBLICA));
 
   // Representante responsável: 1º o que já veio (cliente/base), senão pela região da UF.
   let representanteFinal = conv.representante ?? null;
@@ -695,8 +705,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   }
 
   for (const s of r.saidas) {
-    await addMsg(env, conv.id, "out", "bot", s.tipo, s.texto);
-    await enviarWhatsapp(env, tel, s);
+    await enviarBot(env, conv.id, tel, s);
   }
   if (r.saidas.length) await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
 
@@ -1753,7 +1762,7 @@ atendimento.post("/:id/enviar-catalogo", async (c) => {
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
   const cfgAt = await lerConfig(c.env);
   const origin = new URL(c.req.url).origin;
-  for (const s of montarCatalogo(deps(c.env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, origin))) {
+  for (const s of montarCatalogo(deps(c.env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }))) {
     s.texto = ajustarCatalogoRegiao(s.texto, conv.uf, conv.telefone);
     await addMsg(c.env, id, "out", "bot", s.tipo, s.texto);
     await enviarWhatsapp(c.env, conv.telefone, s);
