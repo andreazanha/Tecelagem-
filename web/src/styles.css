@@ -1380,8 +1380,10 @@ body.dark .fio-item.aberto > .fio-item-h { background: #212d49; }
 body.dark .kpi { background: #0e1426; border-color: #ffffff14; }
 
 /* ── Modo demonstração ─────────────────────────────────────────────────────── */
-.demo-enter { position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 65; background: #7c3aed; color: #fff; border: none; border-radius: 999px; padding: 9px 16px; font: inherit; font-size: 12.5px; font-weight: 800; cursor: pointer; box-shadow: 0 8px 22px #7c3aed55; opacity: .92; }
+/* Fica no ALTO à direita (não em cima do campo de mensagem no celular). */
+.demo-enter { position: fixed; top: 8px; right: 10px; bottom: auto; left: auto; transform: none; z-index: 60; background: #7c3aed; color: #fff; border: none; border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 11.5px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 14px #7c3aed55; opacity: .9; }
 .demo-enter:hover { opacity: 1; }
+@media (max-width: 720px) { .demo-enter { top: 6px; right: 8px; padding: 5px 10px; font-size: 11px; } }
 .demo-bar { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 120; display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 24px); flex-wrap: wrap; justify-content: center; padding: 8px 14px; border-radius: 999px; background: linear-gradient(90deg, #6d28d9, #9333ea); color: #fff; box-shadow: 0 8px 24px #6d28d977; }
 .demo-bar-t { font-weight: 800; font-size: 12.5px; }
 .demo-bar-b, .demo-bar-x { font: inherit; font-size: 11.5px; font-weight: 700; border: 1px solid #ffffff5c; background: #ffffff1f; color: #fff; border-radius: 8px; padding: 4px 10px; cursor: pointer; }
