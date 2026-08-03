@@ -734,7 +734,13 @@ async function registrarEventoCatalogo(env: Env, ev: { tipo?: string; telefone?:
   }
 
   const label = (EVENTO_LABEL[tipo] || ((x: { produto?: string }) => `📌 Catálogo: ${tipo}${x.produto ? ` (${x.produto})` : ""}`))({ loja: loja || undefined, rep: rep || undefined, produto: ev.produto });
-  await addMsg(env, conv.id, "in", "catalogo", "sistema", label);
+  // Anti-flood: não grava o mesmo evento de catálogo se um idêntico já foi registrado
+  // nesta conversa nas últimas 6h. Sem isso, reabrir o link várias vezes inunda o
+  // histórico com dezenas de "Entrou no catálogo" iguais (bug do "eee").
+  const repetido = await env.DB.prepare(
+    "SELECT 1 FROM atend_mensagens WHERE conversa_id=? AND autor='catalogo' AND texto=? AND criado_em >= datetime('now','-6 hours') LIMIT 1"
+  ).bind(conv.id, label).first().catch(() => null);
+  if (!repetido) await addMsg(env, conv.id, "in", "catalogo", "sistema", label);
   await env.DB.prepare("UPDATE atend_conversas SET atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
   if (tipo === "produto" && ev.produto) {
     await env.DB.prepare("INSERT OR IGNORE INTO atend_interesses (id, conversa_id, termo) VALUES (?, ?, ?)").bind(uid(), conv.id, String(ev.produto).trim().slice(0, 60)).run();
