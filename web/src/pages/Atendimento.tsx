@@ -667,16 +667,18 @@ function DocCard({ url, nome, pdf }: { url: string; nome: string; pdf: boolean }
 
 function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.estado === "atendimento-humano";
-  const nome = c.nome || c.contato_nome || telBonito(c.telefone);
+  // No card: nome da PESSOA em cima (quem está no WhatsApp) e, embaixo, o nome da LOJA.
+  const pessoa = c.contato_nome || c.nome || telBonito(c.telefone);
+  const loja = c.nome && c.nome !== c.contato_nome ? c.nome : "";
   const lembrete = !!c.lembrete;
   return (
     <div className={"fx-card" + (pulsando || lembrete ? " pulsando" : "") + (lembrete ? " lembrete" : "")} style={arrastando ? { opacity: 0.5 } : undefined}
       onClick={onAbrir} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <div className="conv-av" style={foto ? { backgroundImage: `url(${foto})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{foto ? "" : iniciais(nome)}</div>
+        <div className="conv-av" style={foto ? { backgroundImage: `url(${foto})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{foto ? "" : iniciais(pessoa)}</div>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="fx-nm">{nome}</div>
-          <div className="fx-sub">{(c.nome || c.contato_nome) ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—"}</div>
+          <div className="fx-nm">{pessoa}</div>
+          <div className="fx-sub">{loja ? `🏬 ${loja}` : ((c.nome || c.contato_nome) ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—")}</div>
         </div>
         {onLembrete && (
           <button onClick={(e) => { e.stopPropagation(); onLembrete(); }} onPointerDown={(e) => e.stopPropagation()}
