@@ -160,8 +160,7 @@ export function Atendimento() {
   // recente que a nossa saída) e a conversa não foi encerrada depois. Se a última mensagem for
   // NOSSA (já respondemos), para de piscar.
   const aguardando = (c: AtendConversa) => !!c.ultima_in_em && (c.ultima_in_em || "") > (c.ultima_out_em || "") && (c.ultima_in_em || "") > (c.encerrado_em || "");
-  const mudoConv = (c: AtendConversa) => !!c.silenciado || (silGrupos && c.origem === "grupo");
-  const pulsaVerde = (c: AtendConversa) => !mudoConv(c) && aguardando(c);
+  const pulsaVerde = (c: AtendConversa) => !c.silenciado && aguardando(c);
 
   // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
   const fotoCache = useRef<Record<string, string | null>>({});
@@ -192,7 +191,6 @@ export function Atendimento() {
   const ultimoInRef = useRef<string>("");
   const primeiraInRef = useRef(true);
   const [mudo, setMudo] = useState(() => localStorage.getItem("atend-mudo") === "1");
-  const [silGrupos, setSilGrupos] = useState(() => localStorage.getItem("atend-sil-grupos") === "1");
   const mudoRef = useRef(mudo);
   useEffect(() => { mudoRef.current = mudo; }, [mudo]);
 
@@ -262,7 +260,7 @@ export function Atendimento() {
   useEffect(() => {
     if (!board) return;
     let maxIn = "";
-    for (const c of board.conversas) { if (mudoConv(c)) continue; const t = c.ultima_in_em || ""; if (t > maxIn) maxIn = t; }
+    for (const c of board.conversas) { if (c.silenciado) continue; const t = c.ultima_in_em || ""; if (t > maxIn) maxIn = t; }
     if (primeiraInRef.current) { ultimoInRef.current = maxIn; primeiraInRef.current = false; return; }
     if (maxIn && maxIn > ultimoInRef.current) {
       ultimoInRef.current = maxIn;
@@ -337,7 +335,6 @@ export function Atendimento() {
         <div className="row-gap at-actions" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
           <button className="btn btn-soft" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); return n; })} title={mudo ? "Som desligado — clique para ligar" : "Toca um som quando chega mensagem nova"}>{mudo ? "🔕 Som off" : "🔔 Som on"}</button>
-          <button className="btn btn-soft" style={silGrupos ? { borderColor: "#94a3b8", background: "#f1f5f9", color: "#475569", fontWeight: 700 } : undefined} onClick={() => setSilGrupos((g) => { const n = !g; localStorage.setItem("atend-sil-grupos", n ? "1" : "0"); return n; })} title="Silencia TODOS os grupos: os cards de grupo não piscam e não tocam som/aviso.">{silGrupos ? "🔕 Grupos silenciados" : "👥 Silenciar grupos"}</button>
           <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
@@ -1152,9 +1149,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d?.lembrete ? { borderColor: "#eab308", background: "#fffbeb", color: "#854d0e", fontWeight: 700 } : {}) }} disabled={busy} onClick={toggleLembreteConv} title="Deixa o card pulsando (amarelo) no quadro pra você lembrar de falar com esse lead.">
               {d?.lembrete ? "🔔 Lembrete ativo — tirar (para de pulsar)" : "🔔 Lembrar de falar (deixa o card pulsando)"}
             </button>
-            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d?.silenciado ? { borderColor: "#94a3b8", background: "#f1f5f9", color: "#475569", fontWeight: 700 } : {}) }} disabled={busy} onClick={toggleSilenciar} title="Silencia esta conversa: o card NÃO pisca e não toca som/aviso (bom pra grupo barulhento).">
-              {d?.silenciado ? "🔕 Silenciado — reativar" : "🔕 Silenciar (não piscar / sem som)"}
-            </button>
+            {(d?.origem === "grupo" || d?.estado === "grupo") && (
+              <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d?.silenciado ? { borderColor: "#94a3b8", background: "#f1f5f9", color: "#475569", fontWeight: 700 } : {}) }} disabled={busy} onClick={toggleSilenciar} title="Silencia este grupo: o card NÃO pisca e não toca som/aviso.">
+                {d?.silenciado ? "🔕 Grupo silenciado — reativar" : "🔕 Silenciar este grupo"}
+              </button>
+            )}
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5 }} disabled={busy} onClick={toggleNaoPerturbe} title="Para/retoma as mensagens automáticas para este cliente">
               {d?.nao_perturbe ? "🔕 Automáticas pausadas — retomar" : "🔔 Pausar mensagens automáticas"}
             </button>
