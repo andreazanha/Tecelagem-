@@ -1484,6 +1484,17 @@ async function apagarWhatsapp(env: Env, tel: string, zapId: string): Promise<{ o
   }
 }
 
+// Deixa os links CLICÁVEIS no WhatsApp: (1) tira asteriscos colados numa URL — o "negrito" em
+// cima do link impede o clique; (2) põe https:// em domínio "pelado". Não mexe em e-mail nem em
+// links que já estão certos.
+export function linksClicaveis(t: string): string {
+  if (!t) return t;
+  const dom = "(?:[a-z0-9-]+\\.)+(?:com\\.br|gov\\.br|org\\.br|net\\.br|com|net|org|io|app)(?:\\/[^\\s*]*)?";
+  t = t.replace(new RegExp("\\*(https?:\\/\\/[^\\s*]+|" + dom + ")\\*", "gi"), "$1");
+  t = t.replace(new RegExp("(^|[\\s(\\n])(" + dom + ")", "gi"), (m, pre, url) => (/^https?:\/\//i.test(url) ? m : pre + "https://" + url));
+  return t;
+}
+
 export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; texto: string }, quote: { zapId?: string | null; texto?: string | null } = {}) {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
@@ -1492,7 +1503,7 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
   const token = cfg.zapi_token || "";
   if (!inst || !token) return { enviado: false, motivo: "sem-credenciais" };
   const phone = digitos(tel);
-  let texto = String(saida.texto ?? "").trim();
+  let texto = linksClicaveis(String(saida.texto ?? "").trim());
   if (!phone || !texto) return { enviado: false, motivo: "vazio" };
   // Cliente BLOQUEADO (caloteiro/inadimplente): não envia NADA — nem robô, nem campanha.
   if (await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
