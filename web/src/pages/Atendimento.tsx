@@ -679,6 +679,15 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [legendaAnexo, setLegendaAnexo] = useState("");
   function escolherAnexo(file: File) {
     if (!file) return;
+    // Confere o TAMANHO já na escolha (antes de tentar subir). Arquivo grande demais era
+    // recusado pela Cloudflare com "Erro 413" — confuso. Aqui o aviso é claro, com o tamanho.
+    const MAX_MB = 16;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      const mb = (file.size / 1024 / 1024).toFixed(1);
+      alert(`Esse arquivo tem ${mb} MB — acima do limite de ${MAX_MB} MB pra enviar pelo WhatsApp.\n\nComprima o PDF (por exemplo em ilovepdf.com/pt/comprimir_pdf) e reenvie. Se você precisa mandar catálogos grandes com frequência, me avise que eu preparo o envio de arquivos grandes.`);
+      if (arqRef.current) arqRef.current.value = "";
+      return;
+    }
     const ehImg = (file.type || "").startsWith("image/");
     const ehAudio = (file.type || "").startsWith("audio/");
     setAnexo((a) => { if (a?.url) URL.revokeObjectURL(a.url); return { file, url: (ehImg || ehAudio) ? URL.createObjectURL(file) : "", ehImg, ehAudio }; });
