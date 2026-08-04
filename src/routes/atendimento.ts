@@ -1786,15 +1786,31 @@ atendimento.get("/", async (c) => {
   const { results } = await stmt.bind(...binds).all<Record<string, unknown>>();
   const colunas = await lerColunasAtend(c.env);
   const validos = new Set(colunas.map((x) => x.id));
-  // Lembretes manuais (cards marcados pra "não esquecer de falar") — guardados numa lista JSON.
+  // Lembretes (cards que pulsam) e SILENCIADOS (não pulsam / sem som) — listas JSON na config.
   const cfgB = await lerConfig(c.env);
-  let lembretes = new Set<string>();
+  let lembretes = new Set<string>(), mudos = new Set<string>();
   try { const l = JSON.parse(cfgB.atend_lembretes || "[]"); if (Array.isArray(l)) lembretes = new Set(l.map(String)); } catch { lembretes = new Set(); }
+  try { const s = JSON.parse(cfgB.atend_silenciados || "[]"); if (Array.isArray(s)) mudos = new Set(s.map(String)); } catch { mudos = new Set(); }
   const conversas = results.map((r) => {
     const manual = r.coluna_manual && validos.has(String(r.coluna_manual)) ? String(r.coluna_manual) : null;
-    return { ...r, coluna: manual || colunaAtendimento(r), lembrete: lembretes.has(String(r.id)) ? 1 : 0 };
+    return { ...r, coluna: manual || colunaAtendimento(r), lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: mudos.has(String(r.id)) ? 1 : 0 };
   });
   return c.json({ colunas, conversas });
+});
+
+// Silencia/reativa uma conversa (grupo barulhento, etc.): o card NÃO pisca e não toca som/aviso.
+atendimento.post("/:id/silenciar", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ on?: boolean }>().catch(() => ({} as { on?: boolean }));
+  const cfg = await lerConfig(c.env);
+  let arr: string[] = [];
+  try { const s = JSON.parse(cfg.atend_silenciados || "[]"); if (Array.isArray(s)) arr = s.map(String); } catch { arr = []; }
+  const set = new Set(arr);
+  if (b.on === false) set.delete(id);
+  else if (b.on === true) set.add(id);
+  else { if (set.has(id)) set.delete(id); else set.add(id); }
+  await salvarConfigJson(c.env, "atend_silenciados", [...set]);
+  return c.json({ ok: true, silenciado: set.has(id) });
 });
 
 // Marca/desmarca um LEMBRETE no card (deixa o card pulsando pra não esquecer de falar com o lead).
@@ -1973,10 +1989,10 @@ atendimento.get("/:id", async (c) => {
     bloqueado = bq ? 1 : 0;
   }
   const colManual = conv.coluna_manual && ATEND_COLUNAS.some((x) => x.id === conv.coluna_manual) ? conv.coluna_manual : null;
-  // Lembrete manual (card pulsando) — guardado na lista JSON de config.
-  let lembrete = 0;
-  try { const cfgL = await lerConfig(c.env); const l = JSON.parse(cfgL.atend_lembretes || "[]"); if (Array.isArray(l) && l.map(String).includes(String(conv.id))) lembrete = 1; } catch { lembrete = 0; }
-  return c.json({ ...conv, coluna: colManual || colunaAtendimento(conv), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado, lembrete });
+  // Lembrete (pulsa) e silenciado (não pulsa/sem som) — listas JSON de config.
+  let lembrete = 0, silenciado = 0;
+  try { const cfgL = await lerConfig(c.env); const l = JSON.parse(cfgL.atend_lembretes || "[]"); if (Array.isArray(l) && l.map(String).includes(String(conv.id))) lembrete = 1; const s = JSON.parse(cfgL.atend_silenciados || "[]"); if (Array.isArray(s) && s.map(String).includes(String(conv.id))) silenciado = 1; } catch { /* ok */ }
+  return c.json({ ...conv, coluna: colManual || colunaAtendimento(conv), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado, lembrete, silenciado });
 });
 
 // ── Atendente humano assume ─────────────────────────────────────────────────────────

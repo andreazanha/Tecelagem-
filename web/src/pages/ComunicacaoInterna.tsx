@@ -183,7 +183,7 @@ function ChatPane({ eu, contato, onFechar }: { eu: string; contato: Contato; onF
         <div ref={fim} />
       </div>
       <div className="at-compose">
-        <input ref={fileRef} type="file" accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) enviarArquivo(f); e.target.value = ""; }} />
+        <input ref={fileRef} type="file" multiple accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" hidden onChange={(e) => { const fs = Array.from(e.target.files || []); e.currentTarget.value = ""; (async () => { for (const f of fs) await enviarArquivo(f); })(); }} />
         <button className="at-attach" title="Enviar foto, PDF ou arquivo" onClick={() => fileRef.current?.click()}>📎</button>
         <button className={"at-attach" + (gravando ? " gravando" : "")} title={gravando ? "Parar e enviar áudio" : "Gravar áudio"} onClick={gravar}>{gravando ? "⏹️" : "🎤"}</button>
         <textarea rows={1} placeholder={gravando ? "Gravando áudio…" : "Mensagem para " + outro + "…"} value={texto} onChange={(e) => setTexto(e.target.value)}

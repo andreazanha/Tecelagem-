@@ -160,7 +160,7 @@ export function Atendimento() {
   // recente que a nossa saída) e a conversa não foi encerrada depois. Se a última mensagem for
   // NOSSA (já respondemos), para de piscar.
   const aguardando = (c: AtendConversa) => !!c.ultima_in_em && (c.ultima_in_em || "") > (c.ultima_out_em || "") && (c.ultima_in_em || "") > (c.encerrado_em || "");
-  const pulsaVerde = (c: AtendConversa) => aguardando(c);
+  const pulsaVerde = (c: AtendConversa) => !c.silenciado && aguardando(c);
 
   // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
   const fotoCache = useRef<Record<string, string | null>>({});
@@ -260,7 +260,7 @@ export function Atendimento() {
   useEffect(() => {
     if (!board) return;
     let maxIn = "";
-    for (const c of board.conversas) { const t = c.ultima_in_em || ""; if (t > maxIn) maxIn = t; }
+    for (const c of board.conversas) { if (c.silenciado) continue; const t = c.ultima_in_em || ""; if (t > maxIn) maxIn = t; }
     if (primeiraInRef.current) { ultimoInRef.current = maxIn; primeiraInRef.current = false; return; }
     if (maxIn && maxIn > ultimoInRef.current) {
       ultimoInRef.current = maxIn;
@@ -671,6 +671,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, pulsando, ar
         {c.funil_etapa && <span className="at-badge" style={{ background: "#ecfdf5", color: "#047857" }} title="Etapa no funil de vendas">🎯 {etapaLabel(c.funil_etapa)}</span>}
         {c.interessado === 1 && <span className="at-badge" style={{ background: "#fee2e2", color: "#b91c1c" }} title="Demonstrou interesse comercial">🔥 Interessado</span>}
         {c.representante && <span className="at-badge" style={{ background: "#eef2ff", color: "#4338ca" }} title={c.autorizado === 0 ? "Representante sugerido" : "Representante"}>🧑‍💼 {c.representante}</span>}
+        {!!c.silenciado && <span className="at-badge" style={{ background: "#f1f5f9", color: "#475569" }} title="Silenciado — não pisca / sem som">🔕</span>}
         {c.setor && <span className="fx-sub">{SETOR_EMOJI[c.setor] || ""}</span>}
         <span className="fx-sub" style={{ marginLeft: "auto" }}>{hora(c.atualizado_em)}</span>
         {/* Mover pra outra coluna sem arrastar: clica e escolhe o nome da coluna */}
@@ -790,8 +791,20 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
       const r = await api.atendEnviarArquivo(id, anexo.file, d?.responsavel || "Atendente", legendaAnexo.trim() || undefined);
       if (!r.enviado && r.motivo && r.motivo !== "desligado") alert("Arquivo salvo na conversa, mas não foi enviado ao cliente: " + r.motivo);
       cancelarAnexo(); carregar(); onMudou();
-    } catch (e) { alert("Não consegui enviar o arquivo: " + ((e as Error)?.message || "erro") + "\n\nSe o arquivo for muito grande (acima de 16MB), tente um menor."); }
+    } catch (e) { alert("Não consegui enviar o arquivo: " + ((e as Error)?.message || "erro") + "\n\nSe o arquivo for muito grande (acima de 40MB), tente um menor."); }
     finally { setBusy(false); }
+  }
+  // Vários arquivos de uma vez: manda um por um (pula os que passam de 40MB).
+  async function enviarVarios(files: File[]) {
+    const validos = files.filter((f) => f.size <= 40 * 1024 * 1024);
+    const grandes = files.length - validos.length;
+    if (!validos.length) { alert("Todos os arquivos passam de 40 MB. Comprima e tente de novo."); return; }
+    if (!confirm(`Enviar ${validos.length} arquivo(s) para o cliente?` + (grandes ? `\n\n(${grandes} ignorado(s) por passar de 40 MB)` : ""))) return;
+    setBusy(true);
+    try {
+      for (const f of validos) { try { await api.atendEnviarArquivo(id, f, d?.responsavel || "Atendente"); } catch { /* segue os próximos */ } }
+      carregar(); onMudou();
+    } finally { setBusy(false); }
   }
   // Faz o campo de mensagem crescer na vertical conforme digita (até um limite).
   function ajustarAltura() { const t = inputRef.current; if (!t) return; t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 130) + "px"; }
@@ -891,6 +904,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   async function toggleLembreteConv() {
     setBusy(true);
     try { await api.atendLembrete(id); carregar(); onMudou(); } finally { setBusy(false); }
+  }
+  // Silenciar: card não pisca e não toca som/aviso (bom pra grupo barulhento).
+  async function toggleSilenciar() {
+    setBusy(true);
+    try { await api.atendSilenciar(id); carregar(); onMudou(); } finally { setBusy(false); }
   }
   const encerrado = !!d?.encerrado_em && (d.encerrado_em || "") >= (d.ultima_in_em || "");
   async function encerrar() {
@@ -1121,6 +1139,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d?.lembrete ? { borderColor: "#eab308", background: "#fffbeb", color: "#854d0e", fontWeight: 700 } : {}) }} disabled={busy} onClick={toggleLembreteConv} title="Deixa o card pulsando (amarelo) no quadro pra você lembrar de falar com esse lead.">
               {d?.lembrete ? "🔔 Lembrete ativo — tirar (para de pulsar)" : "🔔 Lembrar de falar (deixa o card pulsando)"}
             </button>
+            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d?.silenciado ? { borderColor: "#94a3b8", background: "#f1f5f9", color: "#475569", fontWeight: 700 } : {}) }} disabled={busy} onClick={toggleSilenciar} title="Silencia esta conversa: o card NÃO pisca e não toca som/aviso (bom pra grupo barulhento).">
+              {d?.silenciado ? "🔕 Silenciado — reativar" : "🔕 Silenciar (não piscar / sem som)"}
+            </button>
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5 }} disabled={busy} onClick={toggleNaoPerturbe} title="Para/retoma as mensagens automáticas para este cliente">
               {d?.nao_perturbe ? "🔕 Automáticas pausadas — retomar" : "🔔 Pausar mensagens automáticas"}
             </button>
@@ -1207,7 +1228,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <button className="at-send" style={{ background: "transparent", color: "var(--accent,#7c3aed)" }} disabled={busy || sugerindo} onClick={sugerir} title="Sugerir resposta com IA (você pode editar)">{sugerindo ? "…" : "✨"}</button>
                 <button className="at-send" style={{ background: "transparent" }} onClick={() => setMostrarResp((v) => !v)} title="Respostas prontas">📋</button>
                 <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={() => arqRef.current?.click()} title="Anexar arquivo (foto/documento/áudio) — ou cole um print com Ctrl+V">📎</button>
-                <input ref={arqRef} type="file" accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) escolherAnexo(f); }} />
+                <input ref={arqRef} type="file" multiple accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length === 1) escolherAnexo(fs[0]); else if (fs.length > 1) enviarVarios(fs); e.currentTarget.value = ""; }} />
                 <button className="at-send" style={{ background: gravando ? "#ef4444" : "transparent", color: gravando ? "#fff" : undefined }} disabled={busy} onClick={() => (gravando ? pararGravacao() : iniciarGravacao())} title={gravando ? "Parar e ouvir antes de enviar" : "Gravar áudio (nota de voz)"}>{gravando ? "⏹" : "🎤"}</button>
                 <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={enviarCatalogo} title="Enviar o link do catálogo">📖</button>
                 <textarea ref={inputRef} rows={1} placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
