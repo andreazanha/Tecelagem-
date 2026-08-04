@@ -1520,7 +1520,14 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
 }
 
 // Envia um ARQUIVO (imagem ou documento) pela Z-API, a partir de uma URL pública.
-async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string; ehImagem: boolean; ehAudio?: boolean; ext: string; fileName: string; caption?: string }) {
+// Base64 de um ArrayBuffer (em blocos, pra não estourar o argumento do fromCharCode).
+function abParaBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let bin = ""; const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  return btoa(bin);
+}
+async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string; docData?: string; ehImagem: boolean; ehAudio?: boolean; ext: string; fileName: string; caption?: string }) {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
   const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
@@ -1536,7 +1543,9 @@ async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string; ehIma
     ? { phone, audio: opts.url }
     : opts.ehImagem
     ? { phone, image: opts.url, caption: opts.caption || "" }
-    : { phone, document: opts.url, fileName: opts.fileName };
+    // Documento: manda EMBUTIDO (base64) quando disponível — não depende da Z-API baixar nossa
+    // URL (era o que fazia o PDF não chegar). Cai pra URL só se não tiver o base64.
+    : { phone, document: opts.docData || opts.url, fileName: opts.fileName };
   try {
     // Timeout: a Z-API baixa o arquivo da nossa URL e reenvia — se travar, não deixa pendurado.
     const resp = await fetch(`${base}/instances/${inst}/token/${token}/${endpoint}`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(90000) });
@@ -1835,8 +1844,9 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   const nome = `${uid()}.${ext}`;
   // Salva no R2 bufferizando (length conhecido) — mais confiável que um stream sem tamanho.
   // Blindado: se falhar, devolve um ERRO CLARO (nada de 500 solto que vira "não consegui enviar").
+  let bytes: ArrayBuffer;
   try {
-    const bytes = await file.arrayBuffer();
+    bytes = await file.arrayBuffer();
     await c.env.BUCKET.put(`atend/${nome}`, bytes, { httpMetadata: { contentType: ct } });
   } catch (e) {
     return c.json({ error: "não consegui salvar o arquivo (" + String((e as Error)?.message || e).slice(0, 120) + ")" }, 500);
@@ -1844,10 +1854,14 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   const url = `${new URL(c.req.url).origin}/api/atendimento/arquivo/${nome}`;
   const msgId = await addMsg(c.env, id, "out", autor, "arquivo", legenda || nomeArq, { arquivoUrl: url });
   await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
-  // Envia pro Z-API em BACKGROUND: a resposta volta NA HORA (o arquivo já está salvo e aparece
-  // na conversa), sem deixar o botão "Enviando…" travado enquanto a Z-API baixa/reenvia o PDF.
+  // Documento (PDF, etc.): manda EMBUTIDO (base64) — não depende da Z-API baixar nossa URL, que
+  // era o que fazia o PDF não chegar. Imagem/áudio seguem por URL (já funcionam).
+  let docData: string | undefined;
+  try { if (!ehImagem && !ehAudio) docData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { docData = undefined; }
+  // Envia pro Z-API em BACKGROUND: a resposta volta NA HORA (o arquivo já está na conversa), sem
+  // deixar o botão "Enviando…" travado.
   const enviarBg = (async () => {
-    const r = await enviarMidiaZapi(c.env, conv.telefone, { url, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
+    const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
     if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
   })().catch(() => { /* falha no envio não derruba a resposta; o arquivo já está na conversa */ });
   try { c.executionCtx.waitUntil(enviarBg); } catch { /* sem executionCtx: segue sem bloquear */ }
