@@ -576,6 +576,26 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     await env.DB.prepare("UPDATE atend_conversas SET contato_nome=? WHERE id=?").bind(contato, conv.id).run();
     conv.contato_nome = contato;
   }
+  // Cruza com a BASE DE CLIENTES a cada contato: se a conversa ainda não está vinculada a um
+  // cliente (ex.: o cadastro foi criado DEPOIS do primeiro contato), acha pelo telefone e
+  // preenche SÓ os campos do mini-cadastro que estiverem vazios — nunca sobrescreve o que já
+  // foi preenchido à mão. Assim, conforme os clientes vão sendo cadastrados, as conversas
+  // antigas se completam sozinhas no próximo "oi" do cliente.
+  if (!conv.cliente_id) {
+    const cli = await identificarCliente(env, tel).catch(() => null);
+    if (cli) {
+      const nome = conv.nome || cli.nome || null;
+      const cnpj = conv.cnpj || cli.cnpj || null;
+      const cidade = conv.cidade || cli.cidade || null;
+      const uf = conv.uf || cli.uf || null;
+      const rep = conv.representante || cli.representante || (await representantePorRegiao(env, cli.uf)) || null;
+      const tipo = conv.tipo || "lojista";   // se ainda não classificado, é um lojista da base
+      await env.DB.prepare(
+        "UPDATE atend_conversas SET cliente_id=?, nome=?, cnpj=?, cidade=?, uf=?, representante=?, tipo=?, atualizado_em=datetime('now') WHERE id=?"
+      ).bind(cli.id, nome, cnpj, cidade, uf, rep, tipo, conv.id).run();
+      conv.cliente_id = cli.id; conv.nome = nome; conv.cnpj = cnpj; conv.cidade = cidade; conv.uf = uf; conv.representante = rep; conv.tipo = tipo;
+    }
+  }
   // jaRegistrada: a mensagem já está no histórico (ex.: a IA está reassumindo e respondendo
   // uma pergunta que o cliente já tinha mandado) → NÃO registra de novo, só reprocessa.
   if (!jaRegistrada) await addMsg(env, conv.id, "in", "cliente", "texto", texto, { zapId: zapId || null, arquivoUrl: arquivoUrl || null });
