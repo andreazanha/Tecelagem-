@@ -867,6 +867,19 @@ atendimento.post("/webhook", async (c) => {
       texto = (img.caption || "").trim() || "📷 (foto)";
     }
   }
+  // Documento (PDF, planilha, etc.): guarda o arquivo no nosso R2 pra o atendente ABRIR/baixar
+  // na conversa. Sem isto, um PDF do cliente era ignorado (não virava link no chat).
+  const doc = b.document as { documentUrl?: string; url?: string; fileName?: string; title?: string; mimeType?: string; caption?: string } | undefined;
+  if (!arquivoUrl && doc && (doc.documentUrl || doc.url)) {
+    const docSrc = doc.documentUrl || doc.url || "";
+    const nomeArq = String(doc.fileName || doc.title || "documento").trim();
+    const ext = (nomeArq.match(/\.([a-z0-9]{2,5})$/i)?.[1] || (String(doc.mimeType || "").includes("pdf") ? "pdf" : "bin")).toLowerCase();
+    arquivoUrl = await guardarMidiaExterna(c.env, origin, docSrc, ext);
+    if (arquivoUrl) {
+      const legenda = (doc.caption || "").trim();
+      texto = legenda ? `${legenda}\n📎 ${nomeArq}` : `📎 ${nomeArq}`;
+    }
+  }
   if (!texto.trim()) {
     // Foto que não deu pra descrever e sem legenda: responde em vez de ignorar.
     if (img) {
