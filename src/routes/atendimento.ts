@@ -2124,9 +2124,15 @@ atendimento.post("/:id/enviar", async (c) => {
     const alvo = await c.env.DB.prepare("SELECT texto, zap_id FROM atend_mensagens WHERE id=? AND conversa_id=?").bind(b.responder_a, id).first<{ texto: string | null; zap_id: string | null }>();
     if (alvo) quote = { zapId: alvo.zap_id, texto: (alvo.texto || "").slice(0, 180) };
   }
-  const msgId = await addMsg(c.env, id, "out", (b.autor || "Atendente").trim(), "texto", texto, { responderTexto: quote.texto || null });
+  const autor = (b.autor || "Atendente").trim();
+  const msgId = await addMsg(c.env, id, "out", autor, "texto", texto, { responderTexto: quote.texto || null });
   await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
-  const r = await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto }, quote);
+  // O CLIENTE vê o NOME de quem está atendendo na frente da mensagem — assim a conversa fica
+  // identificada e passa pelo sistema (não pelo WhatsApp pessoal do vendedor). No CRM a mensagem
+  // fica limpa (o nome já aparece do lado); o prefixo vai só pro WhatsApp do cliente.
+  const primeiro = autor.split(/\s+/)[0] || autor;
+  const textoWpp = autor && autor.toLowerCase() !== "atendente" ? `*${primeiro}:*\n${texto}` : texto;
+  const r = await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto: textoWpp }, quote);
   // Guarda o id da Z-API pra casar com os callbacks de status (✓ enviado / ✓✓ lido).
   if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
   return c.json({ ok: true });

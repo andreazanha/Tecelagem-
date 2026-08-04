@@ -156,11 +156,11 @@ export function Atendimento() {
   }
   // Card "aguardando": cliente escreveu depois da nossa última resposta (ou nunca respondemos)
   // E o atendimento não foi encerrado depois disso. Encerrar para de piscar sem mandar nada.
+  // Pisca verde SÓ enquanto o cliente está esperando: a última mensagem é DELE (entrada mais
+  // recente que a nossa saída) e a conversa não foi encerrada depois. Se a última mensagem for
+  // NOSSA (já respondemos), para de piscar.
   const aguardando = (c: AtendConversa) => !!c.ultima_in_em && (c.ultima_in_em || "") > (c.ultima_out_em || "") && (c.ultima_in_em || "") > (c.encerrado_em || "");
-  // Passou pra humano e NINGUÉM assumiu ainda → pulsa verde pra alguém pegar (mesmo que a
-  // última mensagem tenha sido a da Big dizendo "já vou chamar alguém").
-  const precisaHumano = (c: AtendConversa) => c.estado === "atendimento-humano" && !String(c.responsavel || "").trim() && !((c.encerrado_em || "") >= (c.ultima_in_em || "") && !!c.encerrado_em);
-  const pulsaVerde = (c: AtendConversa) => aguardando(c) || precisaHumano(c);
+  const pulsaVerde = (c: AtendConversa) => aguardando(c);
 
   // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
   const fotoCache = useRef<Record<string, string | null>>({});
