@@ -1082,7 +1082,7 @@ export async function lerAtividadeCatalogo(env: Env): Promise<number> {
 
 // ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
-const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo", "reativacao_ativo"]);
+const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo", "reativacao_ativo", "atend_domingo"]);
 
 atendimento.get("/config", async (c) => {
   const cfg = await lerConfig(c.env);
@@ -1100,6 +1100,9 @@ atendimento.get("/config", async (c) => {
     catalogo_url: cfg.catalogo_url || "",
     catalogo_senha: cfg.catalogo_senha || "",
     catalogo_msg: cfg.catalogo_msg || "",
+    atend_hora_ini: cfg.atend_hora_ini || "7",
+    atend_hora_fim: cfg.atend_hora_fim || "17",
+    atend_domingo: cfg.atend_domingo === "1",
     followup_ativo: (cfg.followup_ativo ?? "1") === "1",
     followup_hora_ini: cfg.followup_hora_ini || "8",
     followup_hora_fim: cfg.followup_hora_fim || "18",
@@ -1125,7 +1128,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);

@@ -540,6 +540,19 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
             </label>
 
             <div style={{ border: "1px solid var(--line,#e2e8f0)", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 8 }}>🕐 Horário de atendimento</div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", fontSize: 13 }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>das
+                  <input type="number" min={0} max={23} value={cfg.atend_hora_ini} onChange={(e) => set("atend_hora_ini", e.target.value)} style={{ width: 54 }} />h</label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>às
+                  <input type="number" min={1} max={24} value={cfg.atend_hora_fim} onChange={(e) => set("atend_hora_fim", e.target.value)} style={{ width: 54 }} />h</label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                  <input type="checkbox" checked={cfg.atend_domingo} onChange={(e) => set("atend_domingo", e.target.checked)} /> atender aos domingos</label>
+              </div>
+              <div className="muted" style={{ fontSize: 11.5, marginTop: 7 }}>Fora desse horário, quando a conversa for pra um humano, a Big avisa o cliente sobre o horário de funcionamento.</div>
+            </div>
+
+            <div style={{ border: "1px solid var(--line,#e2e8f0)", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
               <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 8 }}>⏰ Mensagens automáticas (follow-up)</div>
               <label className="row-gap" style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10, cursor: "pointer" }}>
                 <input type="checkbox" checked={cfg.followup_ativo} onChange={(e) => set("followup_ativo", e.target.checked)} style={{ width: 17, height: 17 }} />
