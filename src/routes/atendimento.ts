@@ -1949,6 +1949,65 @@ atendimento.get("/arquivo/:nome", async (c) => {
   return new Response(obj.body, { headers: { "Content-Type": ct, "Cache-Control": "public, max-age=31536000, immutable", "Accept-Ranges": "bytes" } });
 });
 
+// ── ARQUIVOS RÁPIDOS: catálogos/PDFs salvos pra mandar com 1 clique ─────────────────
+interface ArqRapido { id: string; nome: string; nomeArq: string; key: string; ct: string; tamanho: number }
+async function lerArquivosRapidos(env: Env): Promise<ArqRapido[]> {
+  const cfg = await lerConfig(env);
+  try { const a = JSON.parse(cfg.atend_arquivos_rapidos || "[]"); return Array.isArray(a) ? a as ArqRapido[] : []; } catch { return []; }
+}
+atendimento.get("/arquivos-rapidos", async (c) => c.json({ arquivos: await lerArquivosRapidos(c.env) }));
+atendimento.post("/arquivos-rapidos", async (c) => {
+  const form = await c.req.formData().catch(() => null);
+  const entry = form?.get("file");
+  if (!entry || typeof entry === "string") return c.json({ error: "arquivo é obrigatório" }, 400);
+  const file = entry as Blob & { name?: string };
+  if (file.size === 0) return c.json({ error: "arquivo vazio" }, 400);
+  if (file.size > 40 * 1024 * 1024) return c.json({ error: "arquivo muito grande (máx. 40MB)" }, 400);
+  const nomeFile = (file.name || "arquivo").slice(0, 120);
+  const nome = (String(form?.get("nome") || "").trim() || nomeFile).slice(0, 80);
+  const ext = (nomeFile.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
+  const ct = file.type || CT_POR_EXT[ext] || "application/octet-stream";
+  const key = `${uid()}.${ext}`;
+  await c.env.BUCKET.put(`atend/${key}`, await file.arrayBuffer(), { httpMetadata: { contentType: ct } });
+  const arr = await lerArquivosRapidos(c.env);
+  arr.unshift({ id: uid(), nome, nomeArq: nomeFile, key, ct, tamanho: file.size });
+  await salvarConfigJson(c.env, "atend_arquivos_rapidos", arr.slice(0, 100));
+  return c.json({ ok: true, arquivos: arr });
+});
+atendimento.delete("/arquivos-rapidos/:aid", async (c) => {
+  const aid = c.req.param("aid");
+  const arr = await lerArquivosRapidos(c.env);
+  const alvo = arr.find((x) => x.id === aid);
+  if (alvo?.key) await c.env.BUCKET.delete(`atend/${alvo.key}`).catch(() => {});
+  const novo = arr.filter((x) => x.id !== aid);
+  await salvarConfigJson(c.env, "atend_arquivos_rapidos", novo);
+  return c.json({ ok: true, arquivos: novo });
+});
+atendimento.post("/:id/enviar-rapido", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ aid?: string; autor?: string }>().catch(() => ({} as { aid?: string; autor?: string }));
+  const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
+  if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  const alvo = (await lerArquivosRapidos(c.env)).find((x) => x.id === b.aid);
+  if (!alvo) return c.json({ error: "arquivo não encontrado" }, 404);
+  const autor = (b.autor || "Atendente").trim();
+  const ext = (alvo.key.split(".").pop() || "bin").toLowerCase();
+  const ehImagem = alvo.ct.startsWith("image/"), ehAudio = alvo.ct.startsWith("audio/");
+  const url = `${new URL(c.req.url).origin}/api/atendimento/arquivo/${alvo.key}`;
+  const msgId = await addMsg(c.env, id, "out", autor, "arquivo", alvo.nomeArq || alvo.nome, { arquivoUrl: url });
+  await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
+  let docData: string | undefined;
+  if (!ehImagem && !ehAudio) {
+    try { const obj = await c.env.BUCKET.get(`atend/${alvo.key}`); if (obj) { const bytes = await obj.arrayBuffer(); if (bytes.byteLength <= 8 * 1024 * 1024) docData = `data:${alvo.ct};base64,${abParaBase64(bytes)}`; } } catch { docData = undefined; }
+  }
+  const enviarBg = (async () => {
+    const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: alvo.nomeArq || alvo.nome, caption: "" });
+    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
+  })().catch(() => { /* falha não derruba a resposta */ });
+  try { c.executionCtx.waitUntil(enviarBg); } catch { /* ok */ }
+  return c.json({ ok: true });
+});
+
 // ── ENVIAR o link do catálogo numa conversa (botão do atendente) ───────────────────
 atendimento.post("/:id/enviar-catalogo", async (c) => {
   const id = c.req.param("id");

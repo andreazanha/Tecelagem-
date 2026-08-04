@@ -750,6 +750,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [respEmpresa, setRespEmpresa] = useState<{ titulo: string; texto: string }[]>([]);
   const [mostrarResp, setMostrarResp] = useState(false);
   const [gerenciarResp, setGerenciarResp] = useState(false);
+  const [arqRapidoOpen, setArqRapidoOpen] = useState(false);
   const [editDados, setEditDados] = useState(false);
   const [formD, setFormD] = useState({ nome: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
   const [respondendo, setRespondendo] = useState<{ id: string; texto: string } | null>(null);
@@ -1262,6 +1263,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <input ref={arqRef} type="file" multiple accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length === 1) escolherAnexo(fs[0]); else if (fs.length > 1) enviarVarios(fs); e.currentTarget.value = ""; }} />
                 <button className="at-send" style={{ background: gravando ? "#ef4444" : "transparent", color: gravando ? "#fff" : undefined }} disabled={busy} onClick={() => (gravando ? pararGravacao() : iniciarGravacao())} title={gravando ? "Parar e ouvir antes de enviar" : "Gravar áudio (nota de voz)"}>{gravando ? "⏹" : "🎤"}</button>
                 <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={enviarCatalogo} title="Enviar o link do catálogo">📖</button>
+                <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={() => setArqRapidoOpen(true)} title="Arquivos rápidos (catálogos salvos) — enviar com 1 clique">📚</button>
                 <textarea ref={inputRef} rows={1} placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
                 <button className="at-send" disabled={busy} onClick={enviar}>➤</button>
               </>
@@ -1272,11 +1274,64 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
         </div>
       </div>
       {gerenciarResp && <RespostasModal onFechar={() => setGerenciarResp(false)} onSalvo={() => { setGerenciarResp(false); carregarRespostas(); }} />}
+      {arqRapidoOpen && <ArquivosRapidosModal convId={id} autor={d?.responsavel || "Atendente"} onFechar={() => setArqRapidoOpen(false)} onEnviado={() => { setArqRapidoOpen(false); carregar(); onMudou(); }} />}
     </div>
   );
 }
 
 // ── Gerenciar respostas prontas (atalhos de texto do atendente) ───────────────────
+// Arquivos rápidos: catálogos/PDFs salvos pra mandar com 1 clique (como "respostas prontas", de arquivo).
+function ArquivosRapidosModal({ convId, autor, onFechar, onEnviado }: { convId: string; autor: string; onFechar: () => void; onEnviado: () => void }) {
+  const [lista, setLista] = useState<import("../api").ArqRapido[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [carregando, setCarregando] = useState(true);
+  const upRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { api.atendArquivosRapidos().then((r) => setLista(r.arquivos || [])).catch(() => {}).finally(() => setCarregando(false)); }, []);
+  async function subir(f: File) {
+    if (f.size > 40 * 1024 * 1024) { alert(`Esse arquivo tem ${(f.size / 1024 / 1024).toFixed(1)} MB — acima de 40 MB.`); return; }
+    setBusy(true);
+    try { const r = await api.atendSalvarArquivoRapido(f); if (r.error) alert(r.error); else setLista(r.arquivos || []); }
+    catch { alert("Não consegui salvar o arquivo."); } finally { setBusy(false); if (upRef.current) upRef.current.value = ""; }
+  }
+  async function excluir(aid: string, nome: string) {
+    if (!confirm(`Remover "${nome}" dos arquivos rápidos?`)) return;
+    setBusy(true);
+    try { const r = await api.atendExcluirArquivoRapido(aid); setLista(r.arquivos || []); } catch { /* ignora */ } finally { setBusy(false); }
+  }
+  async function enviar(aid: string) {
+    if (busy) return; setBusy(true);
+    try { const r = await api.atendEnviarRapido(convId, aid, autor); if (r.error) { alert(r.error); return; } onEnviado(); }
+    catch { alert("Não consegui enviar."); } finally { setBusy(false); }
+  }
+  const icone = (ct: string) => ct.startsWith("image/") ? "🖼️" : ct.startsWith("audio/") ? "🎵" : "📄";
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 520, width: "min(520px,96vw)" }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginTop: 0 }}>📚 Arquivos rápidos</h3>
+        <p className="muted" style={{ fontSize: 13 }}>Salve aqui os catálogos/PDFs que você mais manda. Depois é só clicar em <b>Enviar</b> pra mandar pro cliente desta conversa — sem procurar na pasta toda vez.</p>
+        <input ref={upRef} type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); }} />
+        <button className="btn btn-primary" disabled={busy} onClick={() => upRef.current?.click()} style={{ marginBottom: 12 }}>➕ Adicionar arquivo</button>
+        {carregando ? <div className="muted">Carregando…</div>
+          : lista.length === 0 ? <div className="muted" style={{ padding: "10px 0" }}>Nenhum arquivo salvo ainda. Adicione seus catálogos acima. 📎</div>
+          : <div style={{ display: "grid", gap: 8, maxHeight: "50vh", overflowY: "auto" }}>
+              {lista.map((a) => (
+                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px" }}>
+                  <span style={{ fontSize: 20 }}>{icone(a.ct)}</span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.nome}</div>
+                    <div className="muted2" style={{ fontSize: 11 }}>{(a.tamanho / 1024 / 1024).toFixed(1)} MB</div>
+                  </div>
+                  <button className="kbtn go" disabled={busy} onClick={() => enviar(a.id)} style={{ fontSize: 12, padding: "5px 10px" }}>📤 Enviar</button>
+                  <button className="btn btn-soft" disabled={busy} onClick={() => excluir(a.id, a.nome)} style={{ fontSize: 12, padding: "5px 8px" }} title="Remover">🗑</button>
+                </div>
+              ))}
+            </div>}
+        <div style={{ textAlign: "right", marginTop: 14 }}><button className="btn" onClick={onFechar}>Fechar</button></div>
+      </div>
+    </div>
+  );
+}
+
 function RespostasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => void }) {
   const gestor = ehGestorAtend();
   const [aba, setAba] = useState<"minhas" | "empresa">("minhas");

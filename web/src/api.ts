@@ -291,6 +291,7 @@ export interface AtendConversa {
   funil_etapa?: string | null; lembrete?: number | null; silenciado?: number | null;
 }
 export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; responder_texto?: string | null; arquivo_url?: string | null; status?: string | null; criado_em: string }
+export interface ArqRapido { id: string; nome: string; nomeArq: string; key: string; ct: string; tamanho: number }
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
 export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; bloqueado?: number | null; interesses: string[]; pedidos_resumo: { nome: string; qtd: number; total: number; ultima: string | null } | null; mensagens: AtendMensagem[] }
 export interface AtendResposta { conversa_id: string; estado: string; coluna: string; respostas: { tipo: string; texto: string }[]; notificarHumano: boolean }
@@ -748,6 +749,10 @@ export const api = {
   },
   atendSugerir: (id: string) =>
     jsonPost(`/api/atendimento/${id}/sugerir`, {}).then((r) => j<{ sugestao: string }>(r)),
+  atendArquivosRapidos: () => fetch("/api/atendimento/arquivos-rapidos").then((r) => j<{ arquivos: ArqRapido[] }>(r)),
+  atendSalvarArquivoRapido: (file: File, nome?: string) => { const fd = new FormData(); fd.append("file", file); if (nome) fd.append("nome", nome); return fetch("/api/atendimento/arquivos-rapidos", { method: "POST", body: fd }).then((r) => j<{ ok: boolean; arquivos: ArqRapido[]; error?: string }>(r)); },
+  atendExcluirArquivoRapido: (aid: string) => fetch(`/api/atendimento/arquivos-rapidos/${encodeURIComponent(aid)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean; arquivos: ArqRapido[] }>(r)),
+  atendEnviarRapido: (id: string, aid: string, autor?: string) => jsonPost(`/api/atendimento/${id}/enviar-rapido`, { aid, autor }).then((r) => j<{ ok: boolean; error?: string }>(r)),
   atendConfig: () => fetch("/api/atendimento/config").then((r) => j<ZapiConfig>(r)),
   atendSalvarConfig: (b: Partial<Omit<ZapiConfig, "webhook_url">>) =>
     jsonPost("/api/atendimento/config", b).then((r) => j<{ ok: boolean }>(r)),
