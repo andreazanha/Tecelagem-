@@ -643,6 +643,28 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   );
 }
 
+// Card de documento (PDF/doc) na conversa. A prévia do PDF só CARREGA quando o card entra na
+// tela (conforme você rola) — assim uma conversa com muitos PDFs não carrega todos de uma vez.
+function DocCard({ url, nome, pdf }: { url: string; nome: string; pdf: boolean }) {
+  const [visivel, setVisivel] = useState(false);
+  const ref = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (!pdf) return;
+    const el = ref.current; if (!el || typeof IntersectionObserver === "undefined") { setVisivel(true); return; }
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { setVisivel(true); io.disconnect(); } }, { rootMargin: "400px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [pdf]);
+  return (
+    <a ref={ref} href={url} target="_blank" rel="noreferrer" className="at-doc">
+      {pdf && (visivel
+        ? <embed src={url + "#toolbar=0&navpanes=0&view=FitH"} type="application/pdf" className="at-doc-prev" />
+        : <div className="at-doc-prev at-doc-load">📄 prévia…</div>)}
+      <div className="at-doc-hd"><span className="at-doc-ic">📄</span><div style={{ minWidth: 0 }}><div className="at-doc-nm">{nome}</div><div className="at-doc-sub">{pdf ? "PDF" : "Arquivo"} · toque para abrir</div></div></div>
+    </a>
+  );
+}
+
 function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.estado === "atendimento-humano";
   const nome = c.nome || c.contato_nome || telBonito(c.telefone);
@@ -993,12 +1015,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                                   const raw = (m.texto || "").trim(); const i = raw.lastIndexOf("📎");
                                   const nome = ((i >= 0 ? raw.slice(i + 1) : raw).trim() || "arquivo");
                                   const pdf = /\.pdf($|[?#])/i.test(m.arquivo_url!) || /\.pdf$/i.test(nome);
-                                  return (
-                                    <a href={m.arquivo_url} target="_blank" rel="noreferrer" className="at-doc">
-                                      {pdf && <embed src={m.arquivo_url + "#toolbar=0&navpanes=0&view=FitH"} type="application/pdf" className="at-doc-prev" />}
-                                      <div className="at-doc-hd"><span className="at-doc-ic">📄</span><div style={{ minWidth: 0 }}><div className="at-doc-nm">{nome}</div><div className="at-doc-sub">{pdf ? "PDF" : "Arquivo"} · toque para abrir</div></div></div>
-                                    </a>
-                                  );
+                                  return <DocCard url={m.arquivo_url!} nome={nome} pdf={pdf} />;
                                 })()}
                           {/\.(jpg|jpeg|png|gif|webp|ogg|opus|mp3|m4a|wav|webm|aac|amr)$/i.test(m.arquivo_url) && m.tipo !== "arquivo" && (m.texto || "").trim() && <div style={{ marginTop: 4 }}>{corpoMsg(m.texto)}</div>}
                         </>
