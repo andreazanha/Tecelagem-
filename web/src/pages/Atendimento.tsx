@@ -721,7 +721,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
       const r = await api.atendEnviarArquivo(id, anexo.file, d?.responsavel || "Atendente", legendaAnexo.trim() || undefined);
       if (!r.enviado && r.motivo && r.motivo !== "desligado") alert("Arquivo salvo na conversa, mas não foi enviado ao cliente: " + r.motivo);
       cancelarAnexo(); carregar(); onMudou();
-    } catch { alert("Não consegui enviar o arquivo."); }
+    } catch (e) { alert("Não consegui enviar o arquivo: " + ((e as Error)?.message || "erro") + "\n\nSe o arquivo for muito grande (acima de 16MB), tente um menor."); }
     finally { setBusy(false); }
   }
   // Faz o campo de mensagem crescer na vertical conforme digita (até um limite).

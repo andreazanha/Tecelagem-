@@ -1833,18 +1833,24 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   const ehImagem = ct.startsWith("image/");
   const ehAudio = ct.startsWith("audio/");
   const nome = `${uid()}.${ext}`;
-  // Bufferiza (length conhecido) — mais confiável no R2 que passar um stream sem tamanho.
-  const bytes = await file.arrayBuffer();
-  await c.env.BUCKET.put(`atend/${nome}`, bytes, { httpMetadata: { contentType: ct } });
+  // Salva no R2 bufferizando (length conhecido) — mais confiável que um stream sem tamanho.
+  // Blindado: se falhar, devolve um ERRO CLARO (nada de 500 solto que vira "não consegui enviar").
+  try {
+    const bytes = await file.arrayBuffer();
+    await c.env.BUCKET.put(`atend/${nome}`, bytes, { httpMetadata: { contentType: ct } });
+  } catch (e) {
+    return c.json({ error: "não consegui salvar o arquivo (" + String((e as Error)?.message || e).slice(0, 120) + ")" }, 500);
+  }
   const url = `${new URL(c.req.url).origin}/api/atendimento/arquivo/${nome}`;
   const msgId = await addMsg(c.env, id, "out", autor, "arquivo", legenda || nomeArq, { arquivoUrl: url });
   await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
   // Envia pro Z-API em BACKGROUND: a resposta volta NA HORA (o arquivo já está salvo e aparece
   // na conversa), sem deixar o botão "Enviando…" travado enquanto a Z-API baixa/reenvia o PDF.
-  c.executionCtx.waitUntil((async () => {
+  const enviarBg = (async () => {
     const r = await enviarMidiaZapi(c.env, conv.telefone, { url, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
     if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
-  })());
+  })().catch(() => { /* falha no envio não derruba a resposta; o arquivo já está na conversa */ });
+  try { c.executionCtx.waitUntil(enviarBg); } catch { /* sem executionCtx: segue sem bloquear */ }
   return c.json({ ok: true, enviado: true, url });
 });
 
