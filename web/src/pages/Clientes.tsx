@@ -72,6 +72,9 @@ export function Clientes() {
   const [sel, setSel] = useState<string | null>(null); // grupo selecionado (UF, representante, letra)
   const [abrindo, setAbrindo] = useState<string | null>(null);
   const [escolha, setEscolha] = useState<ClienteCrm | null>(null); // cliente aguardando "prospecção x só conversar"
+  const [selCli, setSelCli] = useState<Set<string>>(new Set()); // clientes marcados p/ campanha
+  const [campanha, setCampanha] = useState(false);
+  const toggleSel = (id: string) => setSelCli((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   function recarregar() {
     api.listarClientesCrm().then((d) => { if (Array.isArray(d)) setLista(d); }).catch(() => {}).finally(() => setCarregando(false));
@@ -145,6 +148,9 @@ export function Clientes() {
     const fatCls = dFat != null && dFat >= 60 ? "fat-frio" : dFat != null && dFat >= 30 ? "fat-morno" : "";
     return (
       <tr key={c.id} onClick={() => nav(`/clientes/${c.id}`)}>
+        <td style={{ textAlign: "center", width: 34 }} onClick={(e) => e.stopPropagation()}>
+          {c.whatsapp ? <input type="checkbox" checked={selCli.has(c.id)} onChange={() => toggleSel(c.id)} title="Selecionar para campanha" /> : null}
+        </td>
         <td><div className="cli-nm">{c.nome}</div><div className="muted2">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div></td>
         <td>{c.representante ? <span className="rep-cli">🧑‍💼 {c.representante}</span> : <span className="muted2">—</span>}</td>
         <td>{c.whatsapp ? (
@@ -169,7 +175,13 @@ export function Clientes() {
       {!items.length ? <div className="pad muted">Nenhum cliente aqui.</div> : (
         <div className="crm-scroll">
           <table className="crm">
-            <thead><tr><th>Cliente</th><th>Representante</th><th>WhatsApp</th><th style={{ textAlign: "center" }}>Pedidos</th><th>Total comprado</th><th>Última compra</th><th>Último faturamento</th></tr></thead>
+            <thead><tr>
+              <th style={{ width: 34, textAlign: "center" }}>
+                <input type="checkbox" title="Selecionar todos (com WhatsApp)"
+                  checked={items.some((c) => c.whatsapp) && items.filter((c) => c.whatsapp).every((c) => selCli.has(c.id))}
+                  onChange={(e) => setSelCli((s) => { const n = new Set(s); const alvos = items.filter((c) => c.whatsapp); if (e.target.checked) alvos.forEach((c) => n.add(c.id)); else alvos.forEach((c) => n.delete(c.id)); return n; })} />
+              </th>
+              <th>Cliente</th><th>Representante</th><th>WhatsApp</th><th style={{ textAlign: "center" }}>Pedidos</th><th>Total comprado</th><th>Última compra</th><th>Último faturamento</th></tr></thead>
             <tbody>{items.map((c) => linha(c))}</tbody>
           </table>
         </div>
@@ -268,6 +280,55 @@ export function Clientes() {
           </div>
         </div>
       )}
+
+      {/* Barra flutuante quando há clientes marcados → montar campanha de reativação */}
+      {selCli.size > 0 && (
+        <div style={{ position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: 20, zIndex: 60, background: "var(--card,#fff)", border: "1px solid var(--line)", borderRadius: 999, boxShadow: "0 10px 28px rgba(0,0,0,.25)", padding: "8px 10px 8px 18px", display: "flex", alignItems: "center", gap: 12 }}>
+          <b style={{ fontSize: 13 }}>{selCli.size} cliente(s) selecionado(s)</b>
+          <button className="btn btn-soft" onClick={() => setSelCli(new Set())}>Limpar</button>
+          <button className="btn btn-primary" onClick={() => setCampanha(true)}>📣 Campanha de reativação</button>
+        </div>
+      )}
+      {campanha && <CampanhaReativacaoModal clientes={lista.filter((c) => selCli.has(c.id) && c.whatsapp)} onFechar={() => setCampanha(false)} onCriada={() => { setCampanha(false); setSelCli(new Set()); }} />}
+    </div>
+  );
+}
+
+// ── Montar campanha de reativação a partir dos clientes selecionados ──────────────
+function CampanhaReativacaoModal({ clientes, onFechar, onCriada }: { clientes: ClienteCrm[]; onFechar: () => void; onCriada: () => void }) {
+  const MODELO = "Oi! 😊 Aqui é da *Big Tricot* 💛\nFaz um tempinho que a gente não conversa! Chegou coisa nova de tricô pra decoração — mantas, capas e almofadas lindas pro seu estoque.\nQuer que eu te mande o catálogo atualizado? 🧶";
+  const [mensagem, setMensagem] = useState(MODELO);
+  const [nome, setNome] = useState("");
+  const [intervalo, setIntervalo] = useState("40");
+  const [busy, setBusy] = useState(false);
+  const alvos = clientes.filter((c) => (c.whatsapp || "").replace(/\D/g, "").length >= 10);
+  async function criar() {
+    if (!mensagem.trim()) { alert("Escreva a mensagem da campanha."); return; }
+    if (!alvos.length) { alert("Nenhum dos selecionados tem WhatsApp válido."); return; }
+    if (!confirm(`Criar campanha de reativação para ${alvos.length} cliente(s)? A Big vai enviando 1 a cada ${intervalo}s pra não bloquear o número.`)) return;
+    setBusy(true);
+    try {
+      const r = await api.atendCriarCampanha({ nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 40, alvos: alvos.map((c) => ({ telefone: c.whatsapp as string, nome: c.nome })) });
+      if (r.error) { alert(r.error); return; }
+      alert(`Campanha criada! ${r.total} cliente(s). A Big começa a enviar aos poucos — cada mensagem aparece na conversa do cliente.`);
+      onCriada();
+    } catch (e) { alert((e as Error).message || "Não consegui criar a campanha."); } finally { setBusy(false); }
+  }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 520, width: "min(520px,96vw)" }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginTop: 0 }}>📣 Campanha de reativação</h3>
+        <p className="muted" style={{ fontSize: 13 }}>A Big envia a mensagem <b>aos poucos</b> (1 a cada X segundos) pros <b>{alvos.length}</b> cliente(s) selecionado(s) que têm WhatsApp. Cada envio aparece na conversa do cliente (com ✓✓).</p>
+        <label className="fld full">Nome da campanha (opcional)<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Reativação Augusto — agosto" /></label>
+        <label className="fld full" style={{ marginTop: 8 }}>Mensagem<textarea value={mensagem} onChange={(e) => setMensagem(e.target.value)} rows={6} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} /></label>
+        <label className="fld" style={{ marginTop: 8, display: "inline-flex", flexDirection: "column" }}>Enviar 1 a cada
+          <span><input type="number" min={15} max={600} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} style={{ width: 70 }} /> segundos <span className="muted2">(recomendado ≥ 40s)</span></span>
+        </label>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+          <button className="btn" onClick={onFechar}>Cancelar</button>
+          <button className="btn btn-primary" disabled={busy} onClick={criar}>{busy ? "Criando…" : `📣 Criar campanha (${alvos.length})`}</button>
+        </div>
+      </div>
     </div>
   );
 }
