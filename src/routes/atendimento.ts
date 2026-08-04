@@ -1538,7 +1538,8 @@ async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string; ehIma
     ? { phone, image: opts.url, caption: opts.caption || "" }
     : { phone, document: opts.url, fileName: opts.fileName };
   try {
-    const resp = await fetch(`${base}/instances/${inst}/token/${token}/${endpoint}`, { method: "POST", headers, body: JSON.stringify(body) });
+    // Timeout: a Z-API baixa o arquivo da nossa URL e reenvia — se travar, não deixa pendurado.
+    const resp = await fetch(`${base}/instances/${inst}/token/${token}/${endpoint}`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(90000) });
     if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}` };
     const dj = await resp.json().catch(() => ({})) as { messageId?: string; id?: string; zaapId?: string };
     return { enviado: true, messageId: dj?.messageId || dj?.id || dj?.zaapId || null };
@@ -1832,13 +1833,19 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   const ehImagem = ct.startsWith("image/");
   const ehAudio = ct.startsWith("audio/");
   const nome = `${uid()}.${ext}`;
-  await c.env.BUCKET.put(`atend/${nome}`, file.stream(), { httpMetadata: { contentType: ct } });
+  // Bufferiza (length conhecido) — mais confiável no R2 que passar um stream sem tamanho.
+  const bytes = await file.arrayBuffer();
+  await c.env.BUCKET.put(`atend/${nome}`, bytes, { httpMetadata: { contentType: ct } });
   const url = `${new URL(c.req.url).origin}/api/atendimento/arquivo/${nome}`;
   const msgId = await addMsg(c.env, id, "out", autor, "arquivo", legenda || nomeArq, { arquivoUrl: url });
   await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
-  const r = await enviarMidiaZapi(c.env, conv.telefone, { url, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
-  if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
-  return c.json({ ok: true, enviado: r.enviado, motivo: r.motivo, url });
+  // Envia pro Z-API em BACKGROUND: a resposta volta NA HORA (o arquivo já está salvo e aparece
+  // na conversa), sem deixar o botão "Enviando…" travado enquanto a Z-API baixa/reenvia o PDF.
+  c.executionCtx.waitUntil((async () => {
+    const r = await enviarMidiaZapi(c.env, conv.telefone, { url, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
+    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
+  })());
+  return c.json({ ok: true, enviado: true, url });
 });
 
 // Serve o arquivo anexado (do R2). A Z-API também busca por esta URL pública.
