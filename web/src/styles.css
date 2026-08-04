@@ -1171,8 +1171,16 @@ body.dark .fx-colnav-chip b { background: #1e293b; color: #a5b4fc; }
   .fx-filtros > * { flex: 0 0 auto; white-space: nowrap; }
   .fx-filtros .btn, .fx-filtros .btn-primary { padding: 8px 12px; font-size: 13px; }
   /* Topo mais compacto pra sobrar tela pros cards. */
-  .quadro-page .page-head { margin-bottom: 10px; }
+  .quadro-page .page-head { margin-bottom: 8px; row-gap: 6px; }
   .quadro-page .breadcrumb { display: none; }
+  .quadro-page .page-head h1 { font-size: 20px; }
+  /* Ações do topo (status, Nova conversa, Campanha, Conexão…) viram UMA fileira que rola
+     de lado, em vez de quebrar em 2-3 linhas e comer a tela. */
+  .at-actions { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; margin: 0 -14px; padding-left: 14px; padding-right: 14px; scrollbar-width: none; }
+  .at-actions::-webkit-scrollbar { display: none; }
+  .at-actions > * { flex: 0 0 auto; white-space: nowrap; }
+  .at-actions .btn { padding: 8px 12px; font-size: 13px; }
+  .at-status { font-size: 11.5px; padding: 6px 10px; }
   .fx-alertbar { margin-bottom: 10px; padding: 7px 11px; font-size: 12px; }
 }
 .fx-card.alert { border-left-color: #f59e0b; }
