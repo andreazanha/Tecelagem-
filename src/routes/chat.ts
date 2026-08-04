@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { enviarPushPara } from "../push-send";
-import { enviarWhatsapp } from "./atendimento";
+import { enviarWhatsapp, enviarMidiaZapi, abParaBase64 } from "./atendimento";
 
 export const chat = new Hono<{ Bindings: Env }>();
 const uid = () => crypto.randomUUID();
@@ -177,20 +177,40 @@ chat.post("/:canal", async (c) => {
   return c.json({ id }, 201);
 });
 
-// Envia uma MÍDIA (multipart) — foto (print) ou áudio. Sobe no R2 e cria a mensagem.
-// Aceita ?tipo=audio (ou campo 'tipo'); padrão é imagem. A chave do arquivo fica em imagem_key.
+// Envia uma MÍDIA (multipart) — foto, áudio OU arquivo (PDF/doc). Sobe no R2 e cria a mensagem.
+// O tipo é deduzido do content-type do arquivo. Se o canal for de um membro EXTERNO (WhatsApp),
+// a mídia também é encaminhada pro WhatsApp dele (igual ao atendimento de clientes).
 chat.post("/:canal/foto", async (c) => {
   const canal = c.req.param("canal");
   const body = await c.req.parseBody();
   const file = body["file"];
   if (!(file instanceof File)) return c.json({ error: "arquivo ausente" }, 400);
+  if (file.size > 16 * 1024 * 1024) return c.json({ error: "arquivo muito grande (máx. 16MB)" }, 400);
   const autor = String(body["autor"] ?? "").trim() || "Anônimo";
   const legenda = String(body["texto"] ?? "").trim();
-  const tipo = (String(body["tipo"] ?? "") || c.req.query("tipo")) === "audio" ? "audio" : "imagem";
+  const ctFile = file.type || "";
+  const tipo: "audio" | "imagem" | "arquivo" = ctFile.startsWith("audio/") ? "audio" : ctFile.startsWith("image/") ? "imagem" : "arquivo";
+  const nomeArq = (file.name || (tipo === "audio" ? "audio" : tipo === "imagem" ? "imagem" : "arquivo")).slice(0, 120);
   const id = uid();
-  const ct = file.type || (tipo === "audio" ? "audio/webm" : "image/jpeg");
-  await c.env.BUCKET.put(`chat/${id}`, await file.arrayBuffer(), { httpMetadata: { contentType: ct } });
-  await c.env.DB.prepare("INSERT INTO chat_mensagens (id, canal, autor, texto, imagem_key, midia_tipo) VALUES (?, ?, ?, ?, ?, ?)").bind(id, canal, autor, legenda.slice(0, 500), id, tipo).run();
-  await notificar(c.env, waitUntilDe(c), canal, autor, legenda || (tipo === "audio" ? "🎤 enviou um áudio" : "📷 enviou uma foto"));
+  const ct = ctFile || (tipo === "audio" ? "audio/ogg" : tipo === "imagem" ? "image/jpeg" : "application/octet-stream");
+  const bytes = await file.arrayBuffer();
+  await c.env.BUCKET.put(`chat/${id}`, bytes, { httpMetadata: { contentType: ct } });
+  // Pra ARQUIVO sem legenda, mostra o nome do arquivo como rótulo (pra dar pra clicar/baixar).
+  const textoMsg = legenda || (tipo === "arquivo" ? nomeArq : "");
+  await c.env.DB.prepare("INSERT INTO chat_mensagens (id, canal, autor, texto, imagem_key, midia_tipo) VALUES (?, ?, ?, ?, ?, ?)").bind(id, canal, autor, textoMsg.slice(0, 500), id, tipo).run();
+  if (canal.startsWith("ext:")) {
+    // Membro externo → encaminha a mídia pro WhatsApp pessoal dele.
+    const m = await c.env.DB.prepare("SELECT telefone FROM chat_membros WHERE id = ?").bind(canal.slice(4)).first<{ telefone: string }>().catch(() => null);
+    if (m?.telefone) {
+      const origin = new URL(c.req.url).origin;
+      const url = `${origin}/api/chat/foto/${id}`;
+      const ext = (nomeArq.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
+      const docData = tipo === "arquivo" ? `data:${ct};base64,${abParaBase64(bytes)}` : undefined;
+      const p = enviarMidiaZapi(c.env, m.telefone, { url, docData, ehImagem: tipo === "imagem", ehAudio: tipo === "audio", ext, fileName: nomeArq, caption: legenda ? `*${autor}* (equipe): ${legenda}` : `*${autor}* (equipe)` }).then(() => {}).catch(() => {});
+      const wu = waitUntilDe(c); if (wu) wu(p); else await p;
+    }
+  } else {
+    await notificar(c.env, waitUntilDe(c), canal, autor, legenda || (tipo === "audio" ? "🎤 enviou um áudio" : tipo === "imagem" ? "📷 enviou uma foto" : "📎 enviou um arquivo"));
+  }
   return c.json({ id, imagem_key: id, midia_tipo: tipo }, 201);
 });

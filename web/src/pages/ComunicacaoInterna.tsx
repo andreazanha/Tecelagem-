@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type ChatMensagem, type ChatMembro } from "../api";
 import { getUser } from "../auth";
+import { iniciarGravacaoWav, pararGravacaoWav, type GravadorWav } from "../wav";
 
 // ── Helpers locais (iguais aos do WhatsApp, mas isolados aqui) ────────────────────
 function iniciais(s?: string | null) {
@@ -122,7 +123,7 @@ function ChatPane({ eu, contato, onFechar }: { eu: string; contato: Contato; onF
   const [gravando, setGravando] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const recRef = useRef<{ mr: MediaRecorder; chunks: Blob[] } | null>(null);
+  const recRef = useRef<GravadorWav | null>(null);
 
   function carregar() { api.listarChat(canal).then(setMsgs).catch(() => {}); }
   useEffect(() => { carregar(); const t = setInterval(carregar, 3500); return () => clearInterval(t); /* eslint-disable-next-line */ }, [canal]);
@@ -134,30 +135,24 @@ function ChatPane({ eu, contato, onFechar }: { eu: string; contato: Contato; onF
     setBusy(true);
     try { await api.enviarChat(canal, eu, texto.trim()); setTexto(""); carregar(); } finally { setBusy(false); }
   }
-  async function enviarFoto(f: File) {
-    if (contato.externo) { alert("Por enquanto, membros por WhatsApp recebem só texto por aqui."); return; }
+  // Envia qualquer arquivo (foto, PDF, doc…) — o servidor deduz o tipo e, se for membro
+  // externo, encaminha pro WhatsApp dele. Confere o tamanho antes (16MB).
+  async function enviarArquivo(f: File) {
+    if (f.size > 16 * 1024 * 1024) {
+      alert(`Esse arquivo tem ${(f.size / 1024 / 1024).toFixed(1)} MB — acima do limite de 16 MB.\n\nComprima e reenvie.`);
+      return;
+    }
     setBusy(true);
-    try { await api.enviarFotoChat(canal, eu, f, texto.trim(), "imagem"); setTexto(""); carregar(); } finally { setBusy(false); }
+    try { await api.enviarFotoChat(canal, eu, f, texto.trim() || undefined); setTexto(""); carregar(); } finally { setBusy(false); }
   }
   async function gravar() {
-    if (contato.externo) { alert("Por enquanto, membros por WhatsApp recebem só texto por aqui."); return; }
-    if (gravando) { recRef.current?.mr.stop(); return; }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
-      const chunks: Blob[] = [];
-      mr.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-      mr.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        setGravando(false);
-        const blob = new Blob(chunks, { type: mr.mimeType || "audio/webm" });
-        if (blob.size < 800) return; // clique rápido sem fala
-        setBusy(true);
-        try { await api.enviarFotoChat(canal, eu, new File([blob], "audio.webm", { type: blob.type }), "", "audio"); carregar(); } finally { setBusy(false); }
-      };
-      recRef.current = { mr, chunks };
-      mr.start(); setGravando(true);
-    } catch { alert("Não consegui acessar o microfone."); }
+    if (gravando) {
+      const f = pararGravacaoWav(recRef.current); recRef.current = null; setGravando(false);
+      if (f) await enviarArquivo(f);
+      return;
+    }
+    try { recRef.current = await iniciarGravacaoWav(); setGravando(true); }
+    catch { alert("Não consegui acessar o microfone. Autorize o microfone no navegador e tente de novo."); }
   }
 
   return (
@@ -178,19 +173,21 @@ function ChatPane({ eu, contato, onFechar }: { eu: string; contato: Contato; onF
             {m.autor !== eu && <div className="at-aut">{m.autor}</div>}
             {m.imagem_key && (m.midia_tipo === "audio"
               ? <audio controls src={`/api/chat/foto/${m.imagem_key}`} style={{ maxWidth: 230, display: "block", marginBottom: m.texto ? 4 : 0 }} />
-              : <img src={`/api/chat/foto/${m.imagem_key}`} alt="" style={{ maxWidth: 220, borderRadius: 8, display: "block", marginBottom: m.texto ? 4 : 0 }} />)}
-            {m.texto && formatarMsg(m.texto)}
+              : m.midia_tipo === "arquivo"
+                ? <a href={`/api/chat/foto/${m.imagem_key}`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "inherit", textDecoration: "none", background: "var(--bg-soft,#f1f5f9)", padding: "8px 11px", borderRadius: 8, marginBottom: m.texto ? 4 : 0 }}>📎 {m.texto || "arquivo"}</a>
+                : <img src={`/api/chat/foto/${m.imagem_key}`} alt="" style={{ maxWidth: 220, borderRadius: 8, display: "block", marginBottom: m.texto ? 4 : 0 }} />)}
+            {m.texto && m.midia_tipo !== "arquivo" && formatarMsg(m.texto)}
             <span className="at-tm">{hora(m.criado_em)}</span>
           </div>
         ))}
         <div ref={fim} />
       </div>
       <div className="at-compose">
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) enviarFoto(f); e.target.value = ""; }} />
-        {!contato.externo && <button className="at-attach" title="Enviar foto / print" onClick={() => fileRef.current?.click()}>📎</button>}
-        {!contato.externo && <button className={"at-attach" + (gravando ? " gravando" : "")} title={gravando ? "Parar e enviar áudio" : "Gravar áudio"} onClick={gravar}>{gravando ? "⏹️" : "🎤"}</button>}
+        <input ref={fileRef} type="file" accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) enviarArquivo(f); e.target.value = ""; }} />
+        <button className="at-attach" title="Enviar foto, PDF ou arquivo" onClick={() => fileRef.current?.click()}>📎</button>
+        <button className={"at-attach" + (gravando ? " gravando" : "")} title={gravando ? "Parar e enviar áudio" : "Gravar áudio"} onClick={gravar}>{gravando ? "⏹️" : "🎤"}</button>
         <textarea rows={1} placeholder={gravando ? "Gravando áudio…" : "Mensagem para " + outro + "…"} value={texto} onChange={(e) => setTexto(e.target.value)}
-          onPaste={(e) => { const f = Array.from(e.clipboardData.files)[0]; if (f && f.type.startsWith("image/")) { e.preventDefault(); enviarFoto(f); } }}
+          onPaste={(e) => { const f = Array.from(e.clipboardData.files)[0]; if (f && f.type.startsWith("image/")) { e.preventDefault(); enviarArquivo(f); } }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
         <button className="at-send" disabled={busy} onClick={enviar}>➤</button>
       </div>

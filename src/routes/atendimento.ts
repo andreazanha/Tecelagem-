@@ -1521,13 +1521,13 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
 
 // Envia um ARQUIVO (imagem ou documento) pela Z-API, a partir de uma URL pública.
 // Base64 de um ArrayBuffer (em blocos, pra não estourar o argumento do fromCharCode).
-function abParaBase64(buf: ArrayBuffer): string {
+export function abParaBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   let bin = ""; const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
   return btoa(bin);
 }
-async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string; docData?: string; ehImagem: boolean; ehAudio?: boolean; ext: string; fileName: string; caption?: string }) {
+export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string; docData?: string; ehImagem: boolean; ehAudio?: boolean; ext: string; fileName: string; caption?: string }) {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
   const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");

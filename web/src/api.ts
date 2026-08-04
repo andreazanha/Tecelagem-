@@ -128,7 +128,7 @@ export interface ChatMensagem {
   autor: string;
   texto: string;
   imagem_key?: string | null;
-  midia_tipo?: "imagem" | "audio" | null;
+  midia_tipo?: "imagem" | "audio" | "arquivo" | null;
   criado_em: string;
 }
 export interface ChatDM { canal: string; outro: string }
@@ -854,10 +854,11 @@ export const api = {
   addChatMembro: (nome: string, telefone: string, tipo: "interno" | "externo" = "externo") =>
     jsonPost("/api/chat/membros", { nome, telefone, tipo }).then((r) => j<ChatMembro>(r)),
   delChatMembro: (id: string) => fetch(`/api/chat/membros/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
-  enviarFotoChat: (canal: string, autor: string, file: File, texto?: string, tipo: "imagem" | "audio" = "imagem") => {
+  // O tipo (imagem/audio/arquivo) é deduzido no servidor pelo content-type do arquivo.
+  enviarFotoChat: (canal: string, autor: string, file: File, texto?: string) => {
     const fd = new FormData();
-    fd.append("file", file); fd.append("autor", autor); fd.append("tipo", tipo); if (texto) fd.append("texto", texto);
-    return fetch(`/api/chat/${encodeURIComponent(canal)}/foto`, { method: "POST", body: fd }).then((r) => j<{ id: string; imagem_key: string }>(r));
+    fd.append("file", file); fd.append("autor", autor); if (texto) fd.append("texto", texto);
+    return fetch(`/api/chat/${encodeURIComponent(canal)}/foto`, { method: "POST", body: fd }).then((r) => j<{ id: string; imagem_key: string; midia_tipo: string }>(r));
   },
   listarTiposFio: () => fetch("/api/tipos-fio").then((r) => j<TipoFio[]>(r)),
   salvarTipoFio: (b: { id?: string; nome: string; fornecedor_id: string | null; cor?: string | null; preco?: number | null }) =>
