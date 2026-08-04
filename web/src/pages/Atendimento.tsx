@@ -200,6 +200,11 @@ export function Atendimento() {
     setBoard((b) => (b ? { ...b, conversas: b.conversas.map((c) => (c.id === id ? { ...c, lembrete: c.lembrete ? 0 : 1 } : c)) } : b));
     try { await api.atendLembrete(id); } catch { recarregar(); }
   }
+  // "Chamar IA": agenda (ou cancela) a saudação automática pro dia/horário escolhido.
+  async function agendarIa(id: string, quando: number | null) {
+    setBoard((b) => (b ? { ...b, conversas: b.conversas.map((c) => (c.id === id ? { ...c, agendado_ia: quando } : c)) } : b));
+    try { await api.atendAgendarIa(id, quando); } catch { recarregar(); }
+  }
   function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance && !!c.zapi_token)).catch(() => setConectado(false)); }
   useEffect(() => { recarregar(); checarConexao(); const t = setInterval(recarregar, 8000); return () => clearInterval(t); }, []);
 
@@ -393,6 +398,7 @@ export function Atendimento() {
                     <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board.colunas} onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)} arrastando={arrastando === c.id}
                       onAbrir={() => { if (arrastou.current) { arrastou.current = false; return; } setAbrir(c.id); }}
                       onLembrete={() => toggleLembrete(c.id)}
+                      onAgendar={(quando) => agendarIa(c.id, quando)}
                       onPointerDown={(e) => dragDownC(e, c.id)} />
                   ))}
                 </div>
@@ -665,8 +671,21 @@ function DocCard({ url, nome, pdf }: { url: string; nome: string; pdf: boolean }
   );
 }
 
-function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
+// Formata um instante (ms) pro <input type="datetime-local"> (horário LOCAL do navegador).
+function paraInputLocal(ms: number): string {
+  const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000);
+  return d.toISOString().slice(0, 16);
+}
+// Rótulo curto "05/08 às 09:00" pro agendamento.
+function agendadoLabel(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)} às ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; onAgendar?: (quando: number | null) => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.estado === "atendimento-humano";
+  const [agOpen, setAgOpen] = useState(false);
+  const [agVal, setAgVal] = useState("");
   // No card: nome da PESSOA em cima (quem está no WhatsApp) e, embaixo, o nome da LOJA.
   // Se só um dos dois existe, ele vira a linha de cima sozinho (sem duplicar embaixo).
   const pessoa = c.contato_nome || c.nome || telBonito(c.telefone);
@@ -681,12 +700,33 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, pulsando, ar
           <div className="fx-nm">{pessoa}</div>
           <div className="fx-sub">{loja ? `🏬 ${loja}` : ((c.nome || c.contato_nome) ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—")}</div>
         </div>
+        {onAgendar && (
+          <button onClick={(e) => { e.stopPropagation(); setAgVal(paraInputLocal(c.agendado_ia || Date.now() + 3600e3)); setAgOpen((v) => !v); }} onPointerDown={(e) => e.stopPropagation()}
+            title={c.agendado_ia ? `IA vai chamar em ${agendadoLabel(c.agendado_ia)}` : "Chamar IA — agendar uma saudação (bom dia/boa tarde) pra um dia e horário"}
+            style={{ flex: "0 0 auto", background: c.agendado_ia ? "#dbeafe" : "transparent", border: "1px solid " + (c.agendado_ia ? "#60a5fa" : "var(--line)"), color: c.agendado_ia ? "#1d4ed8" : "var(--muted)", borderRadius: 8, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "4px 6px" }}>⏰</button>
+        )}
         {onLembrete && (
           <button onClick={(e) => { e.stopPropagation(); onLembrete(); }} onPointerDown={(e) => e.stopPropagation()}
             title={lembrete ? "Lembrete ativo — clique pra tirar (o card para de pulsar)" : "Lembrar de falar com esse lead (deixa o card pulsando)"}
             style={{ flex: "0 0 auto", background: lembrete ? "#facc15" : "transparent", border: "1px solid " + (lembrete ? "#eab308" : "var(--line)"), color: lembrete ? "#713f12" : "var(--muted)", borderRadius: 8, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "4px 6px" }}>🔔</button>
         )}
       </div>
+      {onAgendar && agOpen && (
+        <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}
+          style={{ marginTop: 8, padding: 8, border: "1px solid var(--line)", borderRadius: 10, background: "var(--bg-soft, #f8fafc)", display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>⏰ A IA vai mandar uma saudação neste dia/horário:</div>
+          <input type="datetime-local" value={agVal} onChange={(e) => setAgVal(e.target.value)}
+            style={{ width: "100%", fontSize: 13, padding: "5px 6px", borderRadius: 8, border: "1px solid var(--line)" }} />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button onClick={() => { const ms = agVal ? new Date(agVal).getTime() : 0; if (!ms || isNaN(ms)) return; onAgendar(ms); setAgOpen(false); }}
+              style={{ flex: 1, background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "6px 8px", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>📅 Chamar IA</button>
+            {c.agendado_ia && (
+              <button onClick={() => { onAgendar(null); setAgOpen(false); }}
+                style={{ background: "transparent", color: "#b91c1c", border: "1px solid #fca5a5", borderRadius: 8, padding: "6px 8px", cursor: "pointer", fontSize: 12.5 }}>Cancelar agendamento</button>
+            )}
+          </div>
+        </div>
+      )}
       {c.ultima_msg && (() => { const p = extrairIaNota(c.ultima_msg); const t = MSG_PLACEHOLDER.test((p.visivel || "").trim()) ? "" : p.visivel; return <div className="at-prev">{t || (p.iaNota ? "📷 foto" : c.ultima_msg)}</div>; })()}
       <div className="fx-foot">
         {c.cliente_id && <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="Já é cliente cadastrado na base">📇 Cliente</span>}
@@ -697,6 +737,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, pulsando, ar
         {c.interessado === 1 && <span className="at-badge" style={{ background: "#fee2e2", color: "#b91c1c" }} title="Demonstrou interesse comercial">🔥 Interessado</span>}
         {c.representante && <span className="at-badge" style={{ background: "#eef2ff", color: "#4338ca" }} title={c.autorizado === 0 ? "Representante sugerido" : "Representante"}>🧑‍💼 {c.representante}</span>}
         {!!c.silenciado && <span className="at-badge" style={{ background: "#f1f5f9", color: "#475569" }} title="Silenciado — não pisca / sem som">🔕</span>}
+        {c.agendado_ia && <span className="at-badge" style={{ background: "#dbeafe", color: "#1d4ed8" }} title="IA vai enviar uma saudação neste horário">⏰ {agendadoLabel(c.agendado_ia)}</span>}
         {c.setor && <span className="fx-sub">{SETOR_EMOJI[c.setor] || ""}</span>}
         <span className="fx-sub" style={{ marginLeft: "auto" }}>{hora(c.atualizado_em)}</span>
         {/* Mover pra outra coluna sem arrastar: clica e escolhe o nome da coluna */}
