@@ -627,6 +627,34 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, pulsando, arrastando, on
   );
 }
 
+// Codifica PCM (Float32) em WAV 16-bit mono. O WhatsApp NÃO toca áudio webm (formato padrão
+// do navegador) — por isso a gravação sai em WAV, que a Z-API/WhatsApp aceitam em qualquer
+// navegador (inclusive Chrome). Faz downsample p/ 16kHz (voz) pra o arquivo ficar leve.
+function baixaAmostragem(buf: Float32Array, inRate: number, outRate: number): Float32Array {
+  if (!outRate || outRate >= inRate) return buf;
+  const ratio = inRate / outRate;
+  const outLen = Math.floor(buf.length / ratio);
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) out[i] = buf[Math.floor(i * ratio)] || 0;
+  return out;
+}
+function pcmParaWav(chunks: Float32Array[], inRate: number, outRate = 16000): ArrayBuffer {
+  let len = 0; for (const c of chunks) len += c.length;
+  const flat = new Float32Array(len); let off = 0;
+  for (const c of chunks) { flat.set(c, off); off += c.length; }
+  const rate = outRate && outRate < inRate ? outRate : inRate;
+  const data = baixaAmostragem(flat, inRate, rate);
+  const buffer = new ArrayBuffer(44 + data.length * 2);
+  const view = new DataView(buffer);
+  const wstr = (o: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+  wstr(0, "RIFF"); view.setUint32(4, 36 + data.length * 2, true); wstr(8, "WAVE");
+  wstr(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  wstr(36, "data"); view.setUint32(40, data.length * 2, true);
+  let o = 44; for (let i = 0; i < data.length; i++) { const s = Math.max(-1, Math.min(1, data[i])); view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true); o += 2; }
+  return buffer;
+}
+
 // ── Conversa (thread estilo WhatsApp + contexto + ações do atendente) ──────────────
 export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => void; onMudou: () => void }) {
   const [d, setD] = useState<AtendConversaDetalhe | null>(null);
@@ -656,30 +684,35 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     setAnexo((a) => { if (a?.url) URL.revokeObjectURL(a.url); return { file, url: (ehImg || ehAudio) ? URL.createObjectURL(file) : "", ehImg, ehAudio }; });
     setLegendaAnexo("");
   }
-  // Gravar áudio (nota de voz) pelo microfone.
+  // Gravar áudio (nota de voz) pelo microfone — captura PCM cru e gera WAV (o WhatsApp não
+  // toca webm, o formato padrão do navegador). Assim o áudio abre na conversa do cliente.
   const [gravando, setGravando] = useState(false);
-  const gravadorRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const gravRef = useRef<{ ctx: AudioContext; stream: MediaStream; source: MediaStreamAudioSourceNode; processor: ScriptProcessorNode; chunks: Float32Array[]; sampleRate: number } | null>(null);
   async function iniciarGravacao() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
-      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-      chunksRef.current = [];
-      mr.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
-      mr.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const type = mr.mimeType || "audio/webm";
-        const ext = type.includes("ogg") ? "ogg" : "webm";
-        const file = new File(chunksRef.current, `audio-${Date.now()}.${ext}`, { type });
-        if (file.size > 0) escolherAnexo(file);
-      };
-      mr.start();
-      gravadorRef.current = mr;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+      const AC: typeof AudioContext = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AC();
+      const source = ctx.createMediaStreamSource(stream);
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      const chunks: Float32Array[] = [];
+      processor.onaudioprocess = (e) => { chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+      source.connect(processor); processor.connect(ctx.destination);
+      gravRef.current = { ctx, stream, source, processor, chunks, sampleRate: ctx.sampleRate };
       setGravando(true);
     } catch { alert("Não consegui acessar o microfone. Autorize o microfone no navegador e tente de novo."); }
   }
-  function pararGravacao() { const mr = gravadorRef.current; if (mr && mr.state !== "inactive") mr.stop(); gravadorRef.current = null; setGravando(false); }
+  function pararGravacao() {
+    const g = gravRef.current; gravRef.current = null; setGravando(false);
+    if (!g) return;
+    try { g.processor.disconnect(); g.source.disconnect(); } catch { /* ok */ }
+    g.stream.getTracks().forEach((t) => t.stop());
+    try {
+      const wav = pcmParaWav(g.chunks, g.sampleRate);
+      if (wav.byteLength > 44) escolherAnexo(new File([wav], `audio-${Date.now()}.wav`, { type: "audio/wav" }));
+    } catch { alert("Não consegui gravar o áudio. Tente de novo."); }
+    g.ctx.close().catch(() => { /* ok */ });
+  }
   function cancelarAnexo() { if (anexo?.url) URL.revokeObjectURL(anexo.url); setAnexo(null); setLegendaAnexo(""); if (arqRef.current) arqRef.current.value = ""; }
   async function confirmarAnexo() {
     if (!anexo) return;
