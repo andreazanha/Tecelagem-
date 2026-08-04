@@ -1305,6 +1305,15 @@ body.dark .fx-mover-sel { background: #18202f; color: #cbd5e1; border-color: #26
 .at-ianota { margin-top: 4px; font-size: 11px; font-style: italic; color: #64748b; opacity: .9; border-left: 2px solid #cbd5e1; padding-left: 6px; }
 body.dark .at-ianota { color: #94a3b8; border-color: #33455f; }
 .at-file { font-weight: 700; color: #0b3d2e; } body.dark .at-file { color: #86efac; }
+/* Card de documento (PDF/doc) com prévia da 1ª página */
+.at-doc { display: block; text-decoration: none; color: inherit; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; max-width: 240px; background: #fff; }
+body.dark .at-doc { background: #0f1626; border-color: #26324a; }
+.at-doc-prev { width: 100%; height: 150px; border: 0; display: block; pointer-events: none; background: #eef2f7; }
+body.dark .at-doc-prev { background: #0b1220; }
+.at-doc-hd { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+.at-doc-ic { font-size: 20px; flex: 0 0 auto; }
+.at-doc-nm { font-weight: 700; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-doc-sub { font-size: 11px; color: var(--muted); }
 .at-sys { align-self: center; background: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 body.dark .at-sys { background: #12233f; color: #93c5fd; }
 .at-ctx { border-left: 1px solid var(--line); padding: 14px; overflow-y: auto; min-height: 0; }

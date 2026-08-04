@@ -160,7 +160,8 @@ export function Atendimento() {
   // recente que a nossa saída) e a conversa não foi encerrada depois. Se a última mensagem for
   // NOSSA (já respondemos), para de piscar.
   const aguardando = (c: AtendConversa) => !!c.ultima_in_em && (c.ultima_in_em || "") > (c.ultima_out_em || "") && (c.ultima_in_em || "") > (c.encerrado_em || "");
-  const pulsaVerde = (c: AtendConversa) => !c.silenciado && aguardando(c);
+  const mudoConv = (c: AtendConversa) => !!c.silenciado || (silGrupos && c.origem === "grupo");
+  const pulsaVerde = (c: AtendConversa) => !mudoConv(c) && aguardando(c);
 
   // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
   const fotoCache = useRef<Record<string, string | null>>({});
@@ -191,6 +192,7 @@ export function Atendimento() {
   const ultimoInRef = useRef<string>("");
   const primeiraInRef = useRef(true);
   const [mudo, setMudo] = useState(() => localStorage.getItem("atend-mudo") === "1");
+  const [silGrupos, setSilGrupos] = useState(() => localStorage.getItem("atend-sil-grupos") === "1");
   const mudoRef = useRef(mudo);
   useEffect(() => { mudoRef.current = mudo; }, [mudo]);
 
@@ -260,7 +262,7 @@ export function Atendimento() {
   useEffect(() => {
     if (!board) return;
     let maxIn = "";
-    for (const c of board.conversas) { if (c.silenciado) continue; const t = c.ultima_in_em || ""; if (t > maxIn) maxIn = t; }
+    for (const c of board.conversas) { if (mudoConv(c)) continue; const t = c.ultima_in_em || ""; if (t > maxIn) maxIn = t; }
     if (primeiraInRef.current) { ultimoInRef.current = maxIn; primeiraInRef.current = false; return; }
     if (maxIn && maxIn > ultimoInRef.current) {
       ultimoInRef.current = maxIn;
@@ -335,6 +337,7 @@ export function Atendimento() {
         <div className="row-gap at-actions" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
           <button className="btn btn-soft" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); return n; })} title={mudo ? "Som desligado — clique para ligar" : "Toca um som quando chega mensagem nova"}>{mudo ? "🔕 Som off" : "🔔 Som on"}</button>
+          <button className="btn btn-soft" style={silGrupos ? { borderColor: "#94a3b8", background: "#f1f5f9", color: "#475569", fontWeight: 700 } : undefined} onClick={() => setSilGrupos((g) => { const n = !g; localStorage.setItem("atend-sil-grupos", n ? "1" : "0"); return n; })} title="Silencia TODOS os grupos: os cards de grupo não piscam e não tocam som/aviso.">{silGrupos ? "🔕 Grupos silenciados" : "👥 Silenciar grupos"}</button>
           <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
@@ -989,8 +992,18 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                             ? <a href={m.arquivo_url} target="_blank" rel="noreferrer"><img src={m.arquivo_url} alt={m.texto || "imagem"} style={{ maxWidth: 220, maxHeight: 260, borderRadius: 8, display: "block" }} /></a>
                             : /\.(ogg|opus|mp3|m4a|wav|webm|aac|amr)$/i.test(m.arquivo_url)
                               ? <audio controls src={m.arquivo_url} style={{ maxWidth: 230, display: "block" }} />
-                              : <a href={m.arquivo_url} target="_blank" rel="noreferrer" className="at-file" style={{ color: "inherit" }}>📎 {m.texto || "arquivo"}</a>}
-                          {m.tipo !== "arquivo" && (m.texto || "").trim() && <div style={{ marginTop: 4 }}>{corpoMsg(m.texto)}</div>}
+                              : (() => {
+                                  const raw = (m.texto || "").trim(); const i = raw.lastIndexOf("📎");
+                                  const nome = ((i >= 0 ? raw.slice(i + 1) : raw).trim() || "arquivo");
+                                  const pdf = /\.pdf($|[?#])/i.test(m.arquivo_url!) || /\.pdf$/i.test(nome);
+                                  return (
+                                    <a href={m.arquivo_url} target="_blank" rel="noreferrer" className="at-doc">
+                                      {pdf && <embed src={m.arquivo_url + "#toolbar=0&navpanes=0&view=FitH"} type="application/pdf" className="at-doc-prev" />}
+                                      <div className="at-doc-hd"><span className="at-doc-ic">📄</span><div style={{ minWidth: 0 }}><div className="at-doc-nm">{nome}</div><div className="at-doc-sub">{pdf ? "PDF" : "Arquivo"} · toque para abrir</div></div></div>
+                                    </a>
+                                  );
+                                })()}
+                          {/\.(jpg|jpeg|png|gif|webp|ogg|opus|mp3|m4a|wav|webm|aac|amr)$/i.test(m.arquivo_url) && m.tipo !== "arquivo" && (m.texto || "").trim() && <div style={{ marginTop: 4 }}>{corpoMsg(m.texto)}</div>}
                         </>
                       : m.tipo === "arquivo" ? <span className="at-file">📒 {m.texto}</span> : corpoMsg(m.texto)}
                     <span className="at-tm">{hora(m.criado_em)}{m.direcao === "out" && m.autor !== "sistema" && m.status && (
