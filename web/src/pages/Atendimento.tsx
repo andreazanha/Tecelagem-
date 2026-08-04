@@ -757,6 +757,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const fim = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const arqRef = useRef<HTMLInputElement>(null);
+  const enviandoRef = useRef(false); // trava anti-duplicado (evita mandar o arquivo 2×)
   // Anexo: primeiro mostra uma PRÉVIA (com legenda) e só envia ao confirmar.
   const [anexo, setAnexo] = useState<{ file: File; url: string; ehImg: boolean; ehAudio: boolean } | null>(null);
   const [legendaAnexo, setLegendaAnexo] = useState("");
@@ -807,26 +808,27 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   }
   function cancelarAnexo() { if (anexo?.url) URL.revokeObjectURL(anexo.url); setAnexo(null); setLegendaAnexo(""); if (arqRef.current) arqRef.current.value = ""; }
   async function confirmarAnexo() {
-    if (!anexo) return;
-    setBusy(true);
+    if (!anexo || enviandoRef.current) return; // trava: não deixa mandar 2× (clique duplo / Enter)
+    enviandoRef.current = true; setBusy(true);
     try {
       const r = await api.atendEnviarArquivo(id, anexo.file, d?.responsavel || "Atendente", legendaAnexo.trim() || undefined);
       if (!r.enviado && r.motivo && r.motivo !== "desligado") alert("Arquivo salvo na conversa, mas não foi enviado ao cliente: " + r.motivo);
       cancelarAnexo(); carregar(); onMudou();
     } catch (e) { alert("Não consegui enviar o arquivo: " + ((e as Error)?.message || "erro") + "\n\nSe o arquivo for muito grande (acima de 40MB), tente um menor."); }
-    finally { setBusy(false); }
+    finally { setBusy(false); enviandoRef.current = false; }
   }
   // Vários arquivos de uma vez: manda um por um (pula os que passam de 40MB).
   async function enviarVarios(files: File[]) {
+    if (enviandoRef.current) return;
     const validos = files.filter((f) => f.size <= 40 * 1024 * 1024);
     const grandes = files.length - validos.length;
     if (!validos.length) { alert("Todos os arquivos passam de 40 MB. Comprima e tente de novo."); return; }
     if (!confirm(`Enviar ${validos.length} arquivo(s) para o cliente?` + (grandes ? `\n\n(${grandes} ignorado(s) por passar de 40 MB)` : ""))) return;
-    setBusy(true);
+    enviandoRef.current = true; setBusy(true);
     try {
       for (const f of validos) { try { await api.atendEnviarArquivo(id, f, d?.responsavel || "Atendente"); } catch { /* segue os próximos */ } }
       carregar(); onMudou();
-    } finally { setBusy(false); }
+    } finally { setBusy(false); enviandoRef.current = false; }
   }
   // Faz o campo de mensagem crescer na vertical conforme digita (até um limite).
   function ajustarAltura() { const t = inputRef.current; if (!t) return; t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 130) + "px"; }
@@ -1026,7 +1028,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     {humano && m.direcao === "in" && m.tipo !== "arquivo" && (m.texto || "").trim() && (
                       <button className="at-reply" title="Responder esta mensagem" onClick={() => setRespondendo({ id: m.id, texto: (extrairIaNota(m.texto).visivel || "foto").slice(0, 180) })}>↩︎</button>
                     )}
-                    <button title="Excluir mensagem" onClick={() => setMenuMsg(menuMsg === m.id ? null : m.id)} style={{ position: "absolute", top: 2, right: 5, background: "transparent", border: 0, cursor: "pointer", fontSize: 14, opacity: 0.5, lineHeight: 1, padding: 0 }}>⋮</button>
+                    <button title="Excluir mensagem" onClick={() => setMenuMsg(menuMsg === m.id ? null : m.id)} style={{ position: "absolute", top: 3, right: 4, background: "rgba(148,163,184,.22)", border: 0, borderRadius: 6, cursor: "pointer", fontSize: 14, opacity: 0.9, lineHeight: 1, padding: "2px 5px", fontWeight: 800 }}>⋮</button>
                     {menuMsg === m.id && (
                       <div style={{ position: "absolute", top: 18, right: 2, zIndex: 30, background: "var(--card,#fff)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 6px 16px rgba(0,0,0,.2)", overflow: "hidden", minWidth: 162 }}>
                         <button onClick={() => excluirMsg(m.id, false)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "inherit" }}>🙈 Excluir para mim</button>
