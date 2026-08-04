@@ -1931,10 +1931,22 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
 });
 
 // Serve o arquivo anexado (do R2). A Z-API também busca por esta URL pública.
+// Tipo de conteúdo por extensão do arquivo — garante que PDF/imagem/áudio sejam servidos com o
+// Content-Type certo (senão o navegador não desenha a PRÉVIA do PDF e nem toca o áudio inline).
+const CT_POR_EXT: Record<string, string> = {
+  pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp",
+  ogg: "audio/ogg", opus: "audio/ogg", mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4", webm: "audio/webm", aac: "audio/aac", amr: "audio/amr",
+  doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
 atendimento.get("/arquivo/:nome", async (c) => {
-  const obj = await c.env.BUCKET.get(`atend/${c.req.param("nome")}`);
+  const nome = c.req.param("nome");
+  const obj = await c.env.BUCKET.get(`atend/${nome}`);
   if (!obj) return c.json({ error: "arquivo não encontrado" }, 404);
-  return new Response(obj.body, { headers: { "Content-Type": obj.httpMetadata?.contentType || "application/octet-stream", "Cache-Control": "public, max-age=31536000, immutable" } });
+  const ext = (nome.split(".").pop() || "").toLowerCase();
+  const ct = CT_POR_EXT[ext] || obj.httpMetadata?.contentType || "application/octet-stream";
+  // Accept-Ranges ajuda o visualizador de PDF do Chrome a renderizar a prévia.
+  return new Response(obj.body, { headers: { "Content-Type": ct, "Cache-Control": "public, max-age=31536000, immutable", "Accept-Ranges": "bytes" } });
 });
 
 // ── ENVIAR o link do catálogo numa conversa (botão do atendente) ───────────────────
