@@ -178,6 +178,8 @@ export function Atendimento() {
   }, [board]);
 
   const [alerta, setAlerta] = useState<AtendConversa | null>(null); // banner de backup na tela
+  const [toastMsg, setToastMsg] = useState<AtendConversa | null>(null); // aviso de mensagem nova
+  const toastTimer = useRef<number | null>(null);
   const alertadosRef = useRef<Set<string>>(new Set());
   const primeiraRef = useRef(true);
   const audioRef = useRef<AudioContext | null>(null);
@@ -189,6 +191,11 @@ export function Atendimento() {
   useEffect(() => { mudoRef.current = mudo; }, [mudo]);
 
   function recarregar() { const u = getUser(); api.atendBoard(u?.nome, ehGestorAtend()).then(setBoard).catch(() => {}); }
+  // Marca/desmarca o lembrete de um card (deixa pulsando pra não esquecer de falar com o lead).
+  async function toggleLembrete(id: string) {
+    setBoard((b) => (b ? { ...b, conversas: b.conversas.map((c) => (c.id === id ? { ...c, lembrete: c.lembrete ? 0 : 1 } : c)) } : b));
+    try { await api.atendLembrete(id); } catch { recarregar(); }
+  }
   function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance && !!c.zapi_token)).catch(() => setConectado(false)); }
   useEffect(() => { recarregar(); checarConexao(); const t = setInterval(recarregar, 8000); return () => clearInterval(t); }, []);
 
@@ -245,7 +252,7 @@ export function Atendimento() {
     }
   }
 
-  // Toca o ding quando chega mensagem nova de QUALQUER cliente (maior ultima_in_em avançou).
+  // Toca o ding + mostra um AVISO GRANDE quando chega mensagem nova de QUALQUER cliente.
   useEffect(() => {
     if (!board) return;
     let maxIn = "";
@@ -254,7 +261,16 @@ export function Atendimento() {
     if (maxIn && maxIn > ultimoInRef.current) {
       ultimoInRef.current = maxIn;
       if (!mudoRef.current) tocarDing();
+      const nova = board.conversas.find((c) => (c.ultima_in_em || "") === maxIn);
+      if (nova) { setToastMsg(nova); if (toastTimer.current) clearTimeout(toastTimer.current); toastTimer.current = window.setTimeout(() => setToastMsg(null), 9000); }
     }
+  }, [board]);
+
+  // Contador de conversas ESPERANDO resposta → no título da aba do navegador (bem visível).
+  useEffect(() => {
+    const n = board ? board.conversas.filter((c) => aguardando(c)).length : 0;
+    document.title = n > 0 ? `(${n}) 💬 Atendimento` : "Atendimento";
+    return () => { document.title = "Atendimento"; };
   }, [board]);
 
   function dispararAlerta(c: AtendConversa) {
@@ -288,6 +304,18 @@ export function Atendimento() {
           <div style={{ fontWeight: 800, fontSize: 14 }}>🔔 Atendimento humano!</div>
           <div style={{ fontSize: 13, marginTop: 2 }}>{alerta.nome || alerta.contato_nome || telBonito(alerta.telefone)} precisa de um atendente.</div>
           <div style={{ fontSize: 11.5, marginTop: 4, opacity: .9 }}>Clique para abrir · <span onClick={(e) => { e.stopPropagation(); setAlerta(null); }} style={{ textDecoration: "underline" }}>dispensar</span></div>
+        </div>
+      )}
+      {/* AVISO GRANDE de mensagem nova (bem mais evidente que o pontinho) — some sozinho. */}
+      {toastMsg && (
+        <div onClick={() => { setAbrir(toastMsg.id); setToastMsg(null); }}
+          style={{ position: "fixed", top: 18, left: "50%", transform: "translateX(-50%)", zIndex: 210, background: "#16a34a", color: "#fff", borderRadius: 14, padding: "13px 20px", boxShadow: "0 12px 34px #0007", cursor: "pointer", maxWidth: "92vw", display: "flex", alignItems: "center", gap: 12, animation: "atToastIn .25s ease-out" }}>
+          <span style={{ fontSize: 22 }}>💬</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>Mensagem nova — {toastMsg.nome || toastMsg.contato_nome || telBonito(toastMsg.telefone)}</div>
+            <div style={{ fontSize: 12.5, marginTop: 1, opacity: .95, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 360 }}>{(() => { const p = extrairIaNota(toastMsg.ultima_msg || ""); return p.visivel || "toque para abrir"; })()}</div>
+          </div>
+          <span onClick={(e) => { e.stopPropagation(); setToastMsg(null); }} style={{ marginLeft: 6, fontSize: 18, opacity: .85, padding: "0 4px" }}>✕</span>
         </div>
       )}
       <div className="page-head">
@@ -352,6 +380,7 @@ export function Atendimento() {
                   {cs.map((c) => (
                     <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board.colunas} onMover={(colId) => soltarConversa(colId, c.id)} pulsando={aguardando(c)} arrastando={arrastando === c.id}
                       onAbrir={() => { if (arrastou.current) { arrastou.current = false; return; } setAbrir(c.id); }}
+                      onLembrete={() => toggleLembrete(c.id)}
                       onPointerDown={(e) => dragDownC(e, c.id)} />
                   ))}
                 </div>
@@ -589,11 +618,12 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   );
 }
 
-function ConvMini({ c, foto, colunas, onMover, onAbrir, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
+function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.estado === "atendimento-humano";
   const nome = c.nome || c.contato_nome || telBonito(c.telefone);
+  const lembrete = !!c.lembrete;
   return (
-    <div className={"fx-card" + (pulsando ? " pulsando" : "")} style={arrastando ? { opacity: 0.5 } : undefined}
+    <div className={"fx-card" + (pulsando || lembrete ? " pulsando" : "") + (lembrete ? " lembrete" : "")} style={arrastando ? { opacity: 0.5 } : undefined}
       onClick={onAbrir} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div className="conv-av" style={foto ? { backgroundImage: `url(${foto})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{foto ? "" : iniciais(nome)}</div>
@@ -601,6 +631,11 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, pulsando, arrastando, on
           <div className="fx-nm">{nome}</div>
           <div className="fx-sub">{(c.nome || c.contato_nome) ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—"}</div>
         </div>
+        {onLembrete && (
+          <button onClick={(e) => { e.stopPropagation(); onLembrete(); }} onPointerDown={(e) => e.stopPropagation()}
+            title={lembrete ? "Lembrete ativo — clique pra tirar (o card para de pulsar)" : "Lembrar de falar com esse lead (deixa o card pulsando)"}
+            style={{ flex: "0 0 auto", background: lembrete ? "#facc15" : "transparent", border: "1px solid " + (lembrete ? "#eab308" : "var(--line)"), color: lembrete ? "#713f12" : "var(--muted)", borderRadius: 8, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "4px 6px" }}>🔔</button>
+        )}
       </div>
       {c.ultima_msg && (() => { const p = extrairIaNota(c.ultima_msg); const t = MSG_PLACEHOLDER.test((p.visivel || "").trim()) ? "" : p.visivel; return <div className="at-prev">{t || (p.iaNota ? "📷 foto" : c.ultima_msg)}</div>; })()}
       <div className="fx-foot">

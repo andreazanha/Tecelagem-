@@ -1760,11 +1760,30 @@ atendimento.get("/", async (c) => {
   const { results } = await stmt.bind(...binds).all<Record<string, unknown>>();
   const colunas = await lerColunasAtend(c.env);
   const validos = new Set(colunas.map((x) => x.id));
+  // Lembretes manuais (cards marcados pra "não esquecer de falar") — guardados numa lista JSON.
+  const cfgB = await lerConfig(c.env);
+  let lembretes = new Set<string>();
+  try { const l = JSON.parse(cfgB.atend_lembretes || "[]"); if (Array.isArray(l)) lembretes = new Set(l.map(String)); } catch { lembretes = new Set(); }
   const conversas = results.map((r) => {
     const manual = r.coluna_manual && validos.has(String(r.coluna_manual)) ? String(r.coluna_manual) : null;
-    return { ...r, coluna: manual || colunaAtendimento(r) };
+    return { ...r, coluna: manual || colunaAtendimento(r), lembrete: lembretes.has(String(r.id)) ? 1 : 0 };
   });
   return c.json({ colunas, conversas });
+});
+
+// Marca/desmarca um LEMBRETE no card (deixa o card pulsando pra não esquecer de falar com o lead).
+atendimento.post("/:id/lembrete", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ on?: boolean }>().catch(() => ({} as { on?: boolean }));
+  const cfg = await lerConfig(c.env);
+  let arr: string[] = [];
+  try { const l = JSON.parse(cfg.atend_lembretes || "[]"); if (Array.isArray(l)) arr = l.map(String); } catch { arr = []; }
+  const set = new Set(arr);
+  if (b.on === false) set.delete(id);
+  else if (b.on === true) set.add(id);
+  else { if (set.has(id)) set.delete(id); else set.add(id); }
+  await salvarConfigJson(c.env, "atend_lembretes", [...set]);
+  return c.json({ ok: true, lembrete: set.has(id) });
 });
 
 // ── CONTATOS salvos no WhatsApp (via Z-API) — pra iniciar conversa com alguém ───────
