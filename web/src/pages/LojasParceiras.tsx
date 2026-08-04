@@ -8,7 +8,6 @@ export function LojasParceiras() {
   const [form, setForm] = useState<Partial<LojaParceira> | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [msg, setMsg] = useState("");
-  const origem = typeof window !== "undefined" ? window.location.origin : "";
 
   async function carregar() {
     setCarregando(true);
@@ -31,8 +30,9 @@ export function LojasParceiras() {
 
   const pendentes = lojas.filter((l) => !l.ativo);
   const ativas = lojas.filter((l) => l.ativo);
-  const linkCadastro = origem + "/cadastrar-loja";
-  const linkVitrine = origem + "/vitrine";
+  // Links PÚBLICOS (domínios oficiais) — não o endereço interno do sistema (workers.dev).
+  const linkCadastro = "https://cadastro.bigtricot.com.br";
+  const linkVitrine = "https://ondecomprar.bigtricot.com.br";
 
   return (
     <div className="pagina" style={{ maxWidth: 900, margin: "0 auto", padding: "0 12px" }}>
