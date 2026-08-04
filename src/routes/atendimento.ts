@@ -611,6 +611,8 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
 
   // Estado antes desta mensagem (pra saber se a conversa ACABOU de virar "humano").
   const estadoAntes = conv.estado;
+  // Fora do horário de atendimento → quando passar pra humano, avisa o cliente sobre o horário.
+  const aviso = (await foraDoHorarioAtend(env, cfgAt)) ? avisoHorarioTxt(cfgAt) : "";
 
   // Atendente humano assumiu (ou já é reclamação), OU já existe um responsável (ex.: Pedro
   // já estava atendendo) → o robô NÃO responde de jeito nenhum, só registra e avisa o humano.
@@ -629,9 +631,9 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     const primeiro = String(conv.nome ?? conv.contato_nome ?? "").trim().split(/\s+/)[0] || "";
     const hBR = (new Date().getUTCHours() + 21) % 24;
     const ola = hBR < 12 ? "Bom dia" : hBR < 18 ? "Boa tarde" : "Boa noite";
-    const saud = conv.estado === "novo"
+    const saud = (conv.estado === "novo"
       ? `${ola}${primeiro ? ", " + primeiro : ""}! 🤗 Aqui é da *Big Tricot* 💛 Recebi sua mensagem, já vou chamar alguém do nosso time pra te atender! 😊`
-      : "Recebi aqui! 👀 Já vou chamar alguém do nosso time pra te atender direitinho, tá? 😊";
+      : "Recebi aqui! 👀 Já vou chamar alguém do nosso time pra te atender direitinho, tá? 😊") + aviso;
     await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
     await garantirCardDaConversa(env, conv.id, "Cliente enviou foto/áudio → humano", "atendimento");
     await avisarHumanoPush(env, conv).catch(() => {});
@@ -646,7 +648,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   if (RECLAMACAO_RE.test(texto) && !/sem problema|nenhum problema|tranquil|tudo certo|tudo (ó|o)k|sem reclama/i.test(texto)) {
     await env.DB.prepare("UPDATE atend_conversas SET estado='reclamacao', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
     await avisarHumanoPush(env, conv).catch(() => {});
-    const ack = "Poxa, sinto muito por isso! 😟 Já vou passar pro nosso time resolver o quanto antes. Obrigada por avisar, viu? 💛";
+    const ack = "Poxa, sinto muito por isso! 😟 Já vou passar pro nosso time resolver o quanto antes. Obrigada por avisar, viu? 💛" + aviso;
     await enviarBot(env, conv.id, tel, { tipo: "texto", texto: ack });
     await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
     return { conversa_id: conv.id, estado: "reclamacao", coluna: "reclamacao", respostas: [{ tipo: "texto", texto: ack }], notificarHumano: true };
@@ -672,9 +674,9 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       // consumidor final (a IA qualifica e indica loja parceira). Só vai direto pro humano
       // se já é cliente conhecido ou a mensagem indica um assunto em andamento (pedido etc.).
       if (conv.cliente_id || ehContinuacao) {
-        const saud = conv.cliente_id
+        const saud = (conv.cliente_id
           ? `${ola}${primeiro ? ", " + primeiro : ""}! 🤗 Que bom te ver de novo na *Big Tricot* 💛\nJá vou chamar alguém do nosso time pra te atender, tá? 😊`
-          : `${ola}! 🤗 Aqui é da *Big Tricot* 💛\nJá vou chamar alguém do nosso time pra continuar seu atendimento, tá? 😊`;
+          : `${ola}! 🤗 Aqui é da *Big Tricot* 💛\nJá vou chamar alguém do nosso time pra continuar seu atendimento, tá? 😊`) + aviso;
         await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
         await garantirCardDaConversa(env, conv.id, conv.cliente_id ? "Cliente conhecido voltou a falar" : "Conversa em andamento → humano", "atendimento");
         await avisarHumanoPush(env, conv).catch(() => {});
@@ -726,6 +728,11 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     await env.DB.prepare("UPDATE atend_conversas SET estado=?, tipo=COALESCE(?, tipo), setor=COALESCE(NULLIF(?,''), setor), atualizado_em=datetime('now') WHERE id=?")
       .bind(ia.novoEstado, ia.tipo, ia.setor ?? "", conv.id).run();
     if (ia.novoEstado === "atendimento-humano" && estadoAntes !== "atendimento-humano") await avisarHumanoPush(env, conv);
+    // Fora do horário e a IA está passando pra humano → avisa o cliente sobre o horário.
+    if (ia.novoEstado === "atendimento-humano" && aviso) {
+      if (ia.saidas.length) ia.saidas[ia.saidas.length - 1].texto += aviso;
+      else ia.saidas.push({ tipo: "texto", texto: aviso.trimStart() });
+    }
     for (const s of ia.saidas) {
       await enviarBot(env, conv.id, tel, s);
     }
@@ -758,6 +765,11 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
 
   if (r.conv.estado === "atendimento-humano" && estadoAntes !== "atendimento-humano") {
     await avisarHumanoPush(env, { id: conv.id, nome: r.conv.nome ?? conv.nome, contato_nome: conv.contato_nome, telefone: conv.telefone });
+  }
+  // Fora do horário e passou pra humano → avisa sobre o horário de atendimento.
+  if (r.conv.estado === "atendimento-humano" && aviso) {
+    if (r.saidas.length) r.saidas[r.saidas.length - 1].texto += aviso;
+    else r.saidas.push({ tipo: "texto", texto: aviso.trimStart() });
   }
 
   for (const s of r.saidas) {
@@ -2148,6 +2160,21 @@ atendimento.post("/:id/enviar", async (c) => {
 const MARCO_ORDEM: Record<string, number> = { realizado: 1, faturado: 2, enviado: 3, "pos-venda": 4, recompra: 5 };
 
 // Horário comercial (Brasil UTC-3): sem madrugada, sem domingo (salvo config).
+// Fora do horário de ATENDIMENTO (padrão 7h–17h, Brasil; domingo fechado). Configurável em
+// atend_hora_ini / atend_hora_fim / atend_domingo.
+async function foraDoHorarioAtend(env: Env, cfg: Record<string, string>): Promise<boolean> {
+  const t = await env.DB.prepare("SELECT strftime('%w','now','-3 hours') AS dow, CAST(strftime('%H','now','-3 hours') AS INTEGER) AS h").first<{ dow: string; h: number }>();
+  const dow = Number(t?.dow ?? "1"), hora = Number(t?.h ?? 12);
+  const hIni = parseInt(cfg.atend_hora_ini || "7", 10);
+  const hFim = parseInt(cfg.atend_hora_fim || "17", 10);
+  if (dow === 0 && (cfg.atend_domingo ?? "0") !== "1") return true; // domingo fechado
+  return !(hora >= hIni && hora < hFim);
+}
+function avisoHorarioTxt(cfg: Record<string, string>): string {
+  const ini = parseInt(cfg.atend_hora_ini || "7", 10);
+  const fim = parseInt(cfg.atend_hora_fim || "17", 10);
+  return `\n\n⏰ *Nosso horário de atendimento é das ${ini}h às ${fim}h.* Assim que a gente abrir, um vendedor já te responde por aqui, tá? 💛`;
+}
 async function horarioComercialOk(env: Env, cfg: Record<string, string>): Promise<boolean> {
   const t = await env.DB.prepare(
     "SELECT strftime('%w','now','-3 hours') AS dow, CAST(strftime('%H','now','-3 hours') AS INTEGER) AS h"
