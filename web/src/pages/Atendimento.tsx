@@ -157,6 +157,10 @@ export function Atendimento() {
   // Card "aguardando": cliente escreveu depois da nossa última resposta (ou nunca respondemos)
   // E o atendimento não foi encerrado depois disso. Encerrar para de piscar sem mandar nada.
   const aguardando = (c: AtendConversa) => !!c.ultima_in_em && (c.ultima_in_em || "") > (c.ultima_out_em || "") && (c.ultima_in_em || "") > (c.encerrado_em || "");
+  // Passou pra humano e NINGUÉM assumiu ainda → pulsa verde pra alguém pegar (mesmo que a
+  // última mensagem tenha sido a da Big dizendo "já vou chamar alguém").
+  const precisaHumano = (c: AtendConversa) => c.estado === "atendimento-humano" && !String(c.responsavel || "").trim() && !((c.encerrado_em || "") >= (c.ultima_in_em || "") && !!c.encerrado_em);
+  const pulsaVerde = (c: AtendConversa) => aguardando(c) || precisaHumano(c);
 
   // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
   const fotoCache = useRef<Record<string, string | null>>({});
@@ -268,7 +272,7 @@ export function Atendimento() {
 
   // Contador de conversas ESPERANDO resposta → no título da aba do navegador (bem visível).
   useEffect(() => {
-    const n = board ? board.conversas.filter((c) => aguardando(c)).length : 0;
+    const n = board ? board.conversas.filter((c) => pulsaVerde(c)).length : 0;
     document.title = n > 0 ? `(${n}) 💬 Atendimento` : "Atendimento";
     return () => { document.title = "Atendimento"; };
   }, [board]);
@@ -386,7 +390,7 @@ export function Atendimento() {
                 <div className="fx-hd"><span className="fx-dot" style={{ background: col.cor }} />{col.label}<span className="ct">{cs.length}</span></div>
                 <div className="fx-col-body">
                   {cs.map((c) => (
-                    <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board.colunas} onMover={(colId) => soltarConversa(colId, c.id)} pulsando={aguardando(c)} arrastando={arrastando === c.id}
+                    <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board.colunas} onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)} arrastando={arrastando === c.id}
                       onAbrir={() => { if (arrastou.current) { arrastou.current = false; return; } setAbrir(c.id); }}
                       onLembrete={() => toggleLembrete(c.id)}
                       onPointerDown={(e) => dragDownC(e, c.id)} />
