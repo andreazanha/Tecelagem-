@@ -1749,10 +1749,12 @@ atendimento.get("/painel", async (c) => {
 
 // Coluna do ATENDIMENTO derivada do estado + responsável + últimas mensagens + encerrado.
 // É isso que faz os cards se moverem SOZINHOS conforme a conversa anda.
-function colunaAtendimento(c: { estado?: string | null; responsavel?: string | null; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null }): string {
+function colunaAtendimento(c: { estado?: string | null; responsavel?: string | null; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null; tipo?: string | null }): string {
   const inn = c.ultima_in_em || "", out = c.ultima_out_em || "", enc = c.encerrado_em || "";
   const estado = String(c.estado || "");
   if (estado === "grupo") return "grupos";                            // mensagens de grupo → coluna própria
+  // Consumidor final (não é lojista): coluna própria pra não poluir a fila de atendimento de lojista.
+  if (String(c.tipo || "") === "consumidor" || estado === "indicado-parceiro" || estado === "aguardando-cidade-parceiro") return "consumidor-final";
   if (enc && inn <= enc) return "finalizado";                         // encerrado e sem msg nova depois
   if (estado === "reclamacao") return "reclamacao";
   if (estado === "aguardando-setor") return "aguardando-setor";
