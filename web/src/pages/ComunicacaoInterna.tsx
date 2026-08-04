@@ -138,8 +138,8 @@ function ChatPane({ eu, contato, onFechar }: { eu: string; contato: Contato; onF
   // Envia qualquer arquivo (foto, PDF, doc…) — o servidor deduz o tipo e, se for membro
   // externo, encaminha pro WhatsApp dele. Confere o tamanho antes (16MB).
   async function enviarArquivo(f: File) {
-    if (f.size > 16 * 1024 * 1024) {
-      alert(`Esse arquivo tem ${(f.size / 1024 / 1024).toFixed(1)} MB — acima do limite de 16 MB.\n\nComprima e reenvie.`);
+    if (f.size > 40 * 1024 * 1024) {
+      alert(`Esse arquivo tem ${(f.size / 1024 / 1024).toFixed(1)} MB — acima do limite de 40 MB.\n\nComprima e reenvie.`);
       return;
     }
     setBusy(true);

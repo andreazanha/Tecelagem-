@@ -185,7 +185,7 @@ chat.post("/:canal/foto", async (c) => {
   const body = await c.req.parseBody();
   const file = body["file"];
   if (!(file instanceof File)) return c.json({ error: "arquivo ausente" }, 400);
-  if (file.size > 16 * 1024 * 1024) return c.json({ error: "arquivo muito grande (máx. 16MB)" }, 400);
+  if (file.size > 40 * 1024 * 1024) return c.json({ error: "arquivo muito grande (máx. 40MB)" }, 400);
   const autor = String(body["autor"] ?? "").trim() || "Anônimo";
   const legenda = String(body["texto"] ?? "").trim();
   const ctFile = file.type || "";
@@ -205,7 +205,7 @@ chat.post("/:canal/foto", async (c) => {
       const origin = new URL(c.req.url).origin;
       const url = `${origin}/api/chat/foto/${id}`;
       const ext = (nomeArq.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
-      const docData = tipo === "arquivo" ? `data:${ct};base64,${abParaBase64(bytes)}` : undefined;
+      const docData = tipo === "arquivo" && bytes.byteLength <= 8 * 1024 * 1024 ? `data:${ct};base64,${abParaBase64(bytes)}` : undefined;
       const p = enviarMidiaZapi(c.env, m.telefone, { url, docData, ehImagem: tipo === "imagem", ehAudio: tipo === "audio", ext, fileName: nomeArq, caption: legenda ? `*${autor}* (equipe): ${legenda}` : `*${autor}* (equipe)` }).then(() => {}).catch(() => {});
       const wu = waitUntilDe(c); if (wu) wu(p); else await p;
     }

@@ -1852,7 +1852,7 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   if (!entry || typeof entry === "string") return c.json({ error: "arquivo é obrigatório" }, 400);
   const file = entry as Blob & { name?: string };
   if (file.size === 0) return c.json({ error: "arquivo é obrigatório" }, 400);
-  if (file.size > 16 * 1024 * 1024) return c.json({ error: "arquivo muito grande (máx. 16MB)" }, 400);
+  if (file.size > 40 * 1024 * 1024) return c.json({ error: "arquivo muito grande (máx. 40MB)" }, 400);
   const autor = String(form?.get("autor") || "Atendente").trim() || "Atendente";
   const legenda = String(form?.get("legenda") || "").trim();
   const nomeArq = (file.name || "arquivo").slice(0, 120);
@@ -1873,10 +1873,11 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   const url = `${new URL(c.req.url).origin}/api/atendimento/arquivo/${nome}`;
   const msgId = await addMsg(c.env, id, "out", autor, "arquivo", legenda || nomeArq, { arquivoUrl: url });
   await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
-  // Documento (PDF, etc.): manda EMBUTIDO (base64) — não depende da Z-API baixar nossa URL, que
-  // era o que fazia o PDF não chegar. Imagem/áudio seguem por URL (já funcionam).
+  // Documento (PDF, etc.): arquivos PEQUENOS vão EMBUTIDOS (base64), o que é mais confiável.
+  // Arquivos MAIORES (>8MB) vão por URL (a Z-API baixa do nosso R2) — base64 grande demais
+  // estoura o corpo da requisição. Imagem/áudio seguem por URL (já funcionam).
   let docData: string | undefined;
-  try { if (!ehImagem && !ehAudio) docData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { docData = undefined; }
+  try { if (!ehImagem && !ehAudio && bytes.byteLength <= 8 * 1024 * 1024) docData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { docData = undefined; }
   // Envia pro Z-API em BACKGROUND: a resposta volta NA HORA (o arquivo já está na conversa), sem
   // deixar o botão "Enviando…" travado.
   const enviarBg = (async () => {

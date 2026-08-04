@@ -728,10 +728,10 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     if (!file) return;
     // Confere o TAMANHO já na escolha (antes de tentar subir). Arquivo grande demais era
     // recusado pela Cloudflare com "Erro 413" — confuso. Aqui o aviso é claro, com o tamanho.
-    const MAX_MB = 16;
+    const MAX_MB = 40;
     if (file.size > MAX_MB * 1024 * 1024) {
       const mb = (file.size / 1024 / 1024).toFixed(1);
-      alert(`Esse arquivo tem ${mb} MB — acima do limite de ${MAX_MB} MB pra enviar pelo WhatsApp.\n\nComprima o PDF (por exemplo em ilovepdf.com/pt/comprimir_pdf) e reenvie. Se você precisa mandar catálogos grandes com frequência, me avise que eu preparo o envio de arquivos grandes.`);
+      alert(`Esse arquivo tem ${mb} MB — acima do limite de ${MAX_MB} MB.\n\nPra CATÁLOGO, o melhor é enviar o LINK do catálogo (botão 📖), que abre na hora e não tem limite de tamanho.\n\nSe for outro arquivo, comprima o PDF (ex.: ilovepdf.com/pt/comprimir_pdf) e reenvie.`);
       if (arqRef.current) arqRef.current.value = "";
       return;
     }
