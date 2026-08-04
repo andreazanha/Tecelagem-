@@ -1763,7 +1763,7 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
     return "aguardando-humano";                                        // precisa de humano, ninguém assumiu
   }
   if (["ia-triagem", "triagem-vendas", "triagem-nome", "aguardando-cnpj", "aguardando-cidade-parceiro"].includes(estado)) return "triagem";
-  if (estado === "novo") return "novo-contato";
+  if (estado === "novo") return "triagem";                            // contato novo → cai na triagem automática
   // Estados de funil/venda: no ATENDIMENTO só importam se o cliente está esperando resposta.
   if (inn && inn > out) return "aguardando-humano";
   return "finalizado";
@@ -1797,7 +1797,9 @@ atendimento.get("/", async (c) => {
   for (const a of lerAgendamentos(cfgB)) if (a && a.conversaId) agendados.set(String(a.conversaId), Number(a.quando));
   const conversas = results.map((r) => {
     const manual = r.coluna_manual && validos.has(String(r.coluna_manual)) ? String(r.coluna_manual) : null;
-    return { ...r, coluna: manual || colunaAtendimento(r), lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: mudos.has(String(r.id)) ? 1 : 0, agendado_ia: agendados.get(String(r.id)) || null };
+    // Card com "Chamar IA" agendado (ainda não disparado) fica na coluna de follow-up até a hora chegar.
+    const temAgenda = agendados.has(String(r.id));
+    return { ...r, coluna: manual || (temAgenda ? "contato-followup" : colunaAtendimento(r)), lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: mudos.has(String(r.id)) ? 1 : 0, agendado_ia: agendados.get(String(r.id)) || null };
   });
   return c.json({ colunas, conversas });
 });
@@ -2091,7 +2093,7 @@ atendimento.get("/:id", async (c) => {
   // Lembrete (pulsa) e silenciado (não pulsa/sem som) — listas JSON de config.
   let lembrete = 0, silenciado = 0, agendado_ia: number | null = null;
   try { const cfgL = await lerConfig(c.env); const l = JSON.parse(cfgL.atend_lembretes || "[]"); if (Array.isArray(l) && l.map(String).includes(String(conv.id))) lembrete = 1; const s = JSON.parse(cfgL.atend_silenciados || "[]"); if (Array.isArray(s) && s.map(String).includes(String(conv.id))) silenciado = 1; const ag = lerAgendamentos(cfgL).find((a) => a && a.conversaId === conv.id); if (ag) agendado_ia = Number(ag.quando); } catch { /* ok */ }
-  return c.json({ ...conv, coluna: colManual || colunaAtendimento(conv), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado, lembrete, silenciado, agendado_ia });
+  return c.json({ ...conv, coluna: colManual || (agendado_ia ? "contato-followup" : colunaAtendimento(conv)), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado, lembrete, silenciado, agendado_ia });
 });
 
 // ── Atendente humano assume ─────────────────────────────────────────────────────────
