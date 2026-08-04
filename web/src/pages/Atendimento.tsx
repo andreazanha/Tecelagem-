@@ -746,6 +746,17 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
       carregar(); onMudou();
     } catch { alert("Não consegui devolver pra IA."); } finally { setBusy(false); }
   }
+  // Menu de excluir mensagem (para mim / para todos).
+  const [menuMsg, setMenuMsg] = useState<string | null>(null);
+  async function excluirMsg(msgId: string, paraTodos: boolean) {
+    if (paraTodos && !confirm("Apagar esta mensagem PARA TODOS? Ela some também no WhatsApp do cliente.")) return;
+    setMenuMsg(null); setBusy(true);
+    try {
+      const r = await api.atendExcluirMsg(id, msgId, paraTodos);
+      if (paraTodos && r && r.revogada === false) alert("Apaguei aqui no CRM, mas não consegui apagar no WhatsApp do cliente" + (r.motivo ? ` (${r.motivo})` : "") + ". Pode ser que já tenha passado o tempo que o WhatsApp permite apagar.");
+      carregar(); onMudou();
+    } catch { alert("Não consegui excluir a mensagem."); } finally { setBusy(false); }
+  }
   const [sugerindo, setSugerindo] = useState(false);
   async function sugerir() {
     setSugerindo(true);
@@ -828,7 +839,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 ? <div className="at-sys" key={m.id}>⚙️ {m.texto}</div>
                 : m.tipo === "nota"
                 ? <div className="at-nota" key={m.id}><span className="at-nota-hd">📝 {m.autor || "Equipe"} · nota interna (o cliente não vê)</span>{formatarMsg(m.texto)}<span className="at-tm">{hora(m.criado_em)}</span></div>
-                : <div key={m.id} className={"at-b " + (m.direcao === "in" ? "in" : "out")}>
+                : <div key={m.id} className={"at-b " + (m.direcao === "in" ? "in" : "out")} style={{ position: "relative" }}>
                     {m.autor && m.direcao === "out" && <div className="at-aut">{m.autor === "bot" ? "🤖 Big (automático) · só você vê" : m.autor}</div>}
                     {m.responder_texto && <div className="at-quote">↪ {m.responder_texto}</div>}
                     {m.arquivo_url
@@ -846,6 +857,16 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     )}</span>
                     {humano && m.direcao === "in" && m.tipo !== "arquivo" && (m.texto || "").trim() && (
                       <button className="at-reply" title="Responder esta mensagem" onClick={() => setRespondendo({ id: m.id, texto: (extrairIaNota(m.texto).visivel || "foto").slice(0, 180) })}>↩︎</button>
+                    )}
+                    <button title="Excluir mensagem" onClick={() => setMenuMsg(menuMsg === m.id ? null : m.id)} style={{ position: "absolute", top: 2, right: 5, background: "transparent", border: 0, cursor: "pointer", fontSize: 14, opacity: 0.5, lineHeight: 1, padding: 0 }}>⋮</button>
+                    {menuMsg === m.id && (
+                      <div style={{ position: "absolute", top: 18, right: 2, zIndex: 30, background: "var(--card,#fff)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 6px 16px rgba(0,0,0,.2)", overflow: "hidden", minWidth: 162 }}>
+                        <button onClick={() => excluirMsg(m.id, false)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "inherit" }}>🙈 Excluir para mim</button>
+                        {m.direcao === "out" && m.autor !== "sistema" && (
+                          <button onClick={() => excluirMsg(m.id, true)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "#dc2626" }}>🗑 Excluir para todos</button>
+                        )}
+                        <button onClick={() => setMenuMsg(null)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "var(--muted)" }}>Cancelar</button>
+                      </div>
                     )}
                   </div>
             ))}

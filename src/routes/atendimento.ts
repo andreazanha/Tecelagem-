@@ -155,6 +155,28 @@ async function enviarBot(env: Env, convId: string, tel: string, saida: { tipo: s
   return r;
 }
 
+// Registra na CONVERSA do cliente uma mensagem que saiu por FORA do chat (ex.: campanha em
+// massa) — assim ela aparece no histórico da conversa (com ✓✓), não só no controle da campanha.
+// Acha a conversa pelo telefone; se não existir, cria uma "quieta" (origem 'campanha', que o
+// board só mostra depois que o cliente responder).
+async function registrarEnvioNaConversa(env: Env, tel: string, texto: string, messageId: string | null, autor = "Campanha") {
+  const t = digitos(tel);
+  if (t.length < 8) return;
+  const conv = await env.DB.prepare("SELECT id FROM atend_conversas WHERE telefone=?").bind(t).first<{ id: string }>();
+  let convId: string;
+  if (conv) { convId = conv.id; }
+  else {
+    convId = uid();
+    const cli = await identificarCliente(env, t).catch(() => null);
+    await env.DB.prepare(
+      "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, cliente_id, nome, ultima_out_em, atualizado_em) VALUES (?, ?, 'ia-triagem', 'campanha', ?, ?, ?, datetime('now'), datetime('now'))"
+    ).bind(convId, t, cli ? "lojista" : null, cli?.id ?? null, cli?.nome ?? null).run();
+  }
+  const msgId = await addMsg(env, convId, "out", autor, "texto", texto, { zapId: messageId || null });
+  if (messageId) await env.DB.prepare("UPDATE atend_mensagens SET status='sent' WHERE id=?").bind(msgId).run();
+  await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(convId).run();
+}
+
 // Baixa uma mídia externa (áudio/foto que o cliente mandou, via Z-API) e guarda no
 // R2, devolvendo uma URL pública nossa — pra o atendente ouvir/ver depois na conversa.
 async function guardarMidiaExterna(env: Env, origin: string, url: string, extHint = "bin"): Promise<string> {
@@ -1392,6 +1414,25 @@ atendimento.post("/config/testar", async (c) => {
 
 // Envio real pela Z-API. Se a integração estiver desligada ou sem credenciais,
 // vira no-op (o board/histórico e o simulador seguem funcionando normalmente).
+// Apaga uma mensagem NOSSA no WhatsApp do cliente (revoga "para todos") via Z-API.
+// Só funciona pra mensagens que ENVIAMOS (owner=true) e que têm o id da Z-API (zap_id).
+async function apagarWhatsapp(env: Env, tel: string, zapId: string): Promise<{ ok: boolean; motivo?: string }> {
+  const cfg = await lerConfig(env);
+  if (cfg.zapi_ativo !== "1") return { ok: false, motivo: "desligado" };
+  const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
+  const inst = cfg.zapi_instance || "", token = cfg.zapi_token || "";
+  if (!inst || !token || !zapId) return { ok: false, motivo: "sem-dados" };
+  const headers: Record<string, string> = {};
+  if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
+  const q = new URLSearchParams({ messageId: zapId, phone: digitos(tel), owner: "true" });
+  try {
+    const resp = await fetch(`${base}/instances/${inst}/token/${token}/messages?${q.toString()}`, { method: "DELETE", headers });
+    return { ok: resp.ok, motivo: resp.ok ? "" : `http-${resp.status}` };
+  } catch {
+    return { ok: false, motivo: "erro-rede" };
+  }
+}
+
 export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; texto: string }, quote: { zapId?: string | null; texto?: string | null } = {}) {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
@@ -1645,7 +1686,7 @@ atendimento.get("/", async (c) => {
   const gestor = c.req.query("gestor") === "1";
   // Quem SÓ entrou no catálogo/prospecção (nunca mandou mensagem) não aparece na Caixa de
   // entrada — só entra no inbox quem realmente escreveu. (O lead segue rastreado no Funil.)
-  const cond: string[] = ["(COALESCE(c.origem,'') NOT IN ('catalogo','reativacao') OR c.ultima_in_em IS NOT NULL)"];
+  const cond: string[] = ["(COALESCE(c.origem,'') NOT IN ('catalogo','reativacao','campanha') OR c.ultima_in_em IS NOT NULL)"];
   const binds: string[] = [];
   if (!gestor && usuario) { cond.push("(c.responsavel = ? OR c.responsavel IS NULL OR c.responsavel = '')"); binds.push(usuario); }
   const stmt = c.env.DB.prepare(
@@ -1894,6 +1935,27 @@ atendimento.post("/:id/dados", async (c) => {
 });
 
 // ── Nota interna (chat da equipe DENTRO da conversa) — NÃO vai pro cliente ─────────
+// ── Excluir mensagem: "para mim" (só some do CRM) ou "para todos" (apaga no WhatsApp) ──
+atendimento.post("/:id/mensagem/:msgId/excluir", async (c) => {
+  const id = c.req.param("id"), msgId = c.req.param("msgId");
+  const b = await c.req.json<{ paraTodos?: boolean }>().catch(() => ({}) as { paraTodos?: boolean });
+  const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
+  if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  const m = await c.env.DB.prepare("SELECT id, direcao, zap_id FROM atend_mensagens WHERE id=? AND conversa_id=?").bind(msgId, id).first<{ id: string; direcao: string; zap_id: string | null }>();
+  if (!m) return c.json({ error: "mensagem não encontrada" }, 404);
+  if (!b.paraTodos) {
+    // Excluir só do CRM: remove a linha (o cliente continua com a mensagem no WhatsApp dele).
+    await c.env.DB.prepare("DELETE FROM atend_mensagens WHERE id=?").bind(msgId).run();
+    return c.json({ ok: true, paraTodos: false, revogada: false });
+  }
+  // Para todos: só dá pra apagar no WhatsApp uma mensagem que NÓS enviamos (e que tem id da Z-API).
+  if (m.direcao !== "out") return c.json({ error: "só dá pra apagar 'para todos' as mensagens que a gente enviou" }, 400);
+  const r = await apagarWhatsapp(c.env, conv.telefone, m.zap_id || "");
+  // Marca como apagada no CRM (mantém o registro pra equipe ver que foi revogada).
+  await c.env.DB.prepare("UPDATE atend_mensagens SET tipo='sistema', texto='🚫 Mensagem apagada', arquivo_url=NULL WHERE id=?").bind(msgId).run();
+  return c.json({ ok: true, paraTodos: true, revogada: r.ok, motivo: r.ok ? "" : (r.motivo || "") });
+});
+
 atendimento.post("/:id/nota", async (c) => {
   const b = await c.req.json<{ texto?: string; autor?: string }>().catch(() => ({}) as Record<string, string>);
   const texto = (b.texto || "").trim();
@@ -2145,6 +2207,8 @@ export async function processarCampanhas(env: Env): Promise<number> {
       if (!ativa) break;
       const r = await enviarWhatsapp(env, alvo.telefone, { tipo: "texto", texto: camp.mensagem });
       const st = r.enviado ? "enviado" : (r.motivo === "cliente-bloqueado" ? "bloqueado" : "falhou");
+      // Enviou de verdade → grava a mensagem NA CONVERSA do cliente (aparece no histórico, com ✓✓).
+      if (r.enviado) await registrarEnvioNaConversa(env, alvo.telefone, camp.mensagem, r.messageId ?? null);
       await env.DB.prepare("UPDATE atend_campanha_alvos SET status=?, motivo=?, enviado_em=datetime('now') WHERE id=?").bind(st, r.motivo || null, alvo.id).run();
       await env.DB.prepare("UPDATE atend_campanhas SET ultimo_envio_em=datetime('now') WHERE id=?").bind(camp.id).run();
       if (r.enviado) enviados++;
@@ -2197,18 +2261,27 @@ export async function prospeccaoCatalogo(env: Env): Promise<number> {
     // evita usar a razão social da empresa como se fosse o nome da pessoa.
     const d = diasDesdeISO(cli.ultimo_faturamento, agora);
     const texto = ajustarCatalogoRegiao(montarMsgReativacao(cfg, primeiroNome(cli.contato), d), cli.uf, tel);
-    // Card na coluna "📤 Catálogo enviado" (aba especial), ligado à conversa.
+    // Cria a conversa PRIMEIRO (ainda sem card) e ENVIA de verdade, guardando o id da Z-API
+    // (pra ✓✓ entregue/lido funcionar). Só cria o card de "Catálogo enviado" se o envio REALMENTE
+    // saiu. Se falhar (número inválido, cliente bloqueado, Z-API fora do ar), apaga a conversa e
+    // segue — nada de card fantasma marcado como "enviado" sem ter saído.
+    const convId = uid();
+    await env.DB.prepare(
+      "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, cliente_id, nome, pedido_marco, ultima_out_em, atualizado_em) VALUES (?, ?, 'prospeccao-catalogo', 'reativacao', 'lojista', ?, ?, 'reativacao', datetime('now'), datetime('now'))"
+    ).bind(convId, tel, cli.id, cli.nome).run();
+    const envio = await enviarBot(env, convId, tel, { tipo: "texto", texto });
+    if (!envio.enviado) {
+      await env.DB.prepare("DELETE FROM atend_mensagens WHERE conversa_id=?").bind(convId).run();
+      await env.DB.prepare("DELETE FROM atend_conversas WHERE id=?").bind(convId).run();
+      continue; // não conta como enviado; tenta de novo no próximo horário
+    }
+    // Enviou de verdade → cria o card "Catálogo enviado" e liga na conversa.
     const cardId = uid();
     await env.DB.prepare(
       "INSERT INTO funil_cards (id, cliente_id, nome, cidade, uf, whatsapp, etapa, responsavel) VALUES (?, ?, ?, ?, ?, ?, 'prospeccao-enviada', ?)"
     ).bind(cardId, cli.id, cli.nome, cli.cidade ?? null, cli.uf ?? null, tel, cli.representante ?? null).run();
     await env.DB.prepare("INSERT INTO funil_eventos (id, card_id, tipo, texto) VALUES (?, ?, 'etapa', ?)").bind(uid(), cardId, `Catálogo enviado automaticamente (+${d} dias do faturamento)`).run();
-    const convId = uid();
-    await env.DB.prepare(
-      "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, card_id, cliente_id, nome, pedido_marco, ultima_out_em, atualizado_em) VALUES (?, ?, 'prospeccao-catalogo', 'reativacao', 'lojista', ?, ?, ?, 'reativacao', datetime('now'), datetime('now'))"
-    ).bind(convId, tel, cardId, cli.id, cli.nome).run();
-    await addMsg(env, convId, "out", "bot", "texto", texto);
-    await enviarWhatsapp(env, tel, { tipo: "texto", texto });
+    await env.DB.prepare("UPDATE atend_conversas SET card_id=? WHERE id=?").bind(cardId, convId).run();
     jaFalou.add("id:" + cli.id); jaFalou.add("tel:" + tel.slice(-8));
     enviados++;
   }
