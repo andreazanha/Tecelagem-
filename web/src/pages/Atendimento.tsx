@@ -310,7 +310,15 @@ export function Atendimento() {
       {toastMsg && (
         <div onClick={() => { setAbrir(toastMsg.id); setToastMsg(null); }}
           style={{ position: "fixed", top: 18, left: "50%", transform: "translateX(-50%)", zIndex: 210, background: "#16a34a", color: "#fff", borderRadius: 14, padding: "13px 20px", boxShadow: "0 12px 34px #0007", cursor: "pointer", maxWidth: "92vw", display: "flex", alignItems: "center", gap: 12, animation: "atToastIn .25s ease-out" }}>
-          <span style={{ fontSize: 22 }}>💬</span>
+          {(() => {
+            const f = fotoCache.current[toastMsg.id]; const nm = toastMsg.nome || toastMsg.contato_nome || telBonito(toastMsg.telefone);
+            return (
+              <div style={{ position: "relative", flex: "0 0 auto" }}>
+                <div style={{ width: 44, height: 44, borderRadius: "50%", background: f ? `center/cover no-repeat url(${f})` : "rgba(255,255,255,.22)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16, color: "#fff", border: "2px solid #ffffff55" }}>{f ? "" : iniciais(nm)}</div>
+                <span style={{ position: "absolute", right: -3, bottom: -3, background: "#fff", borderRadius: "50%", fontSize: 13, lineHeight: 1, padding: "2px 3px", boxShadow: "0 1px 3px #0005" }}>💬</span>
+              </div>
+            );
+          })()}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>Mensagem nova — {toastMsg.nome || toastMsg.contato_nome || telBonito(toastMsg.telefone)}</div>
             <div style={{ fontSize: 12.5, marginTop: 1, opacity: .95, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 360 }}>{(() => { const p = extrairIaNota(toastMsg.ultima_msg || ""); return p.visivel || "toque para abrir"; })()}</div>
