@@ -160,6 +160,7 @@ export function Atendimento() {
 
   // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
   const fotoCache = useRef<Record<string, string | null>>({});
+  const colRefs = useRef<Record<string, HTMLDivElement | null>>({}); // p/ pular pra coluna no mobile
   const [, setFotosV] = useState(0);
   useEffect(() => {
     if (!board) return;
@@ -321,6 +322,20 @@ export function Atendimento() {
       {!board ? (
         <div className="card pad muted">Carregando…</div>
       ) : (
+        <>
+        {/* Atalho de colunas (só no celular): toque num chip pra pular direto pra coluna. */}
+        <div className="fx-colnav">
+          {board.colunas.map((col) => {
+            const n = board.conversas.filter((c) => c.coluna === col.id).filter((c) =>
+              filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend
+            ).length;
+            return (
+              <button key={col.id} className="fx-colnav-chip" onClick={() => colRefs.current[col.id]?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })}>
+                <span className="fx-dot" style={{ background: col.cor }} />{col.label}{n > 0 && <b>{n}</b>}
+              </button>
+            );
+          })}
+        </div>
         <div className="fx-board at-board">
           {board.colunas.map((col) => {
             const cs = board.conversas.filter((c) => c.coluna === col.id).filter((c) =>
@@ -331,7 +346,7 @@ export function Atendimento() {
               (b.atualizado_em || "").localeCompare(a.atualizado_em || "")
             );
             return (
-              <div className={"fx-col" + (sobre === col.id ? " drag-over" : "")} key={col.id} data-coluna={col.id}>
+              <div className={"fx-col" + (sobre === col.id ? " drag-over" : "")} key={col.id} data-coluna={col.id} ref={(el) => { colRefs.current[col.id] = el; }}>
                 <div className="fx-hd"><span className="fx-dot" style={{ background: col.cor }} />{col.label}<span className="ct">{cs.length}</span></div>
                 <div className="fx-col-body">
                   {cs.map((c) => (
@@ -344,6 +359,7 @@ export function Atendimento() {
             );
           })}
         </div>
+        </>
       )}
       {ehGestorAtend() && board && <div style={{ marginTop: 10 }}><button className="btn btn-soft" onClick={() => setGerColunas(true)}>➕ Criar / organizar colunas</button></div>}
       {gerColunas && <ColunasModal onFechar={() => setGerColunas(false)} onSalvo={() => { setGerColunas(false); recarregar(); }} />}

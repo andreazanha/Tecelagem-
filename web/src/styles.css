@@ -1153,8 +1153,16 @@ body.dark .fx-hd .ct { background: #1b2536; border-color: #26324a; }
 body.dark .fx-card { background: #18202f; border-color: #26324a; }
 .fx-card.red { border-left-color: #dc2626; background: #fef4f4; }
 body.dark .fx-card.red { background: #2a1618; }
+/* Atalho de colunas: só aparece no celular (no desktop as colunas já ficam todas à vista). */
+.fx-colnav { display: none; }
+.fx-colnav-chip { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; white-space: nowrap; border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 12.5px; font-weight: 700; color: var(--text, #0f172a); cursor: pointer; }
+.fx-colnav-chip b { background: #eef2ff; color: #4338ca; border-radius: 999px; padding: 0 7px; font-size: 11px; }
+body.dark .fx-colnav-chip { background: #111826; border-color: #26324a; color: #e7ebf3; }
+body.dark .fx-colnav-chip b { background: #1e293b; color: #a5b4fc; }
 /* Mobile: colunas ocupam quase a tela toda e a rolagem "encaixa" uma por vez. */
 @media (max-width: 700px) {
+  .fx-colnav { display: flex; gap: 7px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 2px 14px 8px; margin: 0 -14px; scrollbar-width: none; }
+  .fx-colnav::-webkit-scrollbar { display: none; }
   .fx-board { gap: 10px; scroll-snap-type: x proximity; scroll-padding-left: 4px; -webkit-overflow-scrolling: touch; }
   .fx-col { flex: 0 0 88%; max-width: 88%; scroll-snap-align: start; }
   /* Barra de filtros/ações vira um strip que rola de lado (nada corta). */
