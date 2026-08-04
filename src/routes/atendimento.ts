@@ -195,6 +195,40 @@ async function guardarMidiaExterna(env: Env, origin: string, url: string, extHin
   } catch { return ""; }
 }
 
+// Registra uma mensagem de GRUPO na conversa do grupo. O robô NUNCA responde em grupo — aqui
+// a gente só ARQUIVA (texto + mídia), com o nome de quem falou, pra você ver/responder à mão.
+// A conversa fica na coluna "👥 Grupos". Chave = id do grupo (o telefone da conversa).
+async function registrarGrupo(env: Env, origin: string, b: Record<string, unknown>): Promise<boolean> {
+  if (b.fromMe === true) return false;                       // não registra o que NÓS mandamos no grupo
+  const groupId = digitos(b.phone ?? (b as { chatId?: unknown }).chatId ?? "");
+  if (groupId.length < 6) return false;
+  const nomeGrupo = String(b.chatName ?? "Grupo").trim().slice(0, 80) || "Grupo";
+  const remetente = String((b as { senderName?: unknown }).senderName ?? (b as { pushName?: unknown }).pushName ?? "").trim();
+  const t = b.text as { message?: string } | undefined;
+  const img = b.image as { caption?: string; imageUrl?: string; url?: string } | undefined;
+  const audio = b.audio as { audioUrl?: string; url?: string } | undefined;
+  const doc = b.document as { documentUrl?: string; url?: string; fileName?: string; title?: string; mimeType?: string; caption?: string } | undefined;
+  let corpo = String(t?.message ?? img?.caption ?? doc?.caption ?? "").trim();
+  let arquivoUrl = "";
+  if (audio && (audio.audioUrl || audio.url)) { arquivoUrl = await guardarMidiaExterna(env, origin, audio.audioUrl || audio.url || "", "ogg"); if (!corpo) corpo = "🎤 (áudio)"; }
+  else if (img && (img.imageUrl || img.url)) { arquivoUrl = await guardarMidiaExterna(env, origin, img.imageUrl || img.url || "", "jpg"); if (!corpo) corpo = "📷 (foto)"; }
+  else if (doc && (doc.documentUrl || doc.url)) { const nm = String(doc.fileName || doc.title || "documento").trim(); const ext = (nm.match(/\.([a-z0-9]{2,5})$/i)?.[1] || (String(doc.mimeType || "").includes("pdf") ? "pdf" : "bin")).toLowerCase(); arquivoUrl = await guardarMidiaExterna(env, origin, doc.documentUrl || doc.url || "", ext); if (!corpo) corpo = "📎 " + nm; }
+  if (!corpo && !arquivoUrl) return false;
+  const texto = remetente ? `*${remetente}:* ${corpo}` : corpo;
+  const conv = await env.DB.prepare("SELECT id FROM atend_conversas WHERE telefone=?").bind(groupId).first<{ id: string }>();
+  let convId: string;
+  if (conv) {
+    convId = conv.id;
+    await env.DB.prepare("UPDATE atend_conversas SET estado='grupo', origem='grupo', nome=?, atualizado_em=datetime('now') WHERE id=?").bind(nomeGrupo, convId).run();
+  } else {
+    convId = uid();
+    await env.DB.prepare("INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, nome, atualizado_em) VALUES (?, ?, 'grupo', 'grupo', 'grupo', ?, datetime('now'))").bind(convId, groupId, nomeGrupo).run();
+  }
+  await addMsg(env, convId, "in", "cliente", "texto", texto, { zapId: String(b.messageId ?? "") || null, arquivoUrl: arquivoUrl || null });
+  await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(convId).run();
+  return true;
+}
+
 // Cliente bloqueado (caloteiro): não enviar NADA pra ele. Usado no texto e na mídia.
 async function clienteBloqueado(env: Env, tel: string): Promise<boolean> {
   const core = digitos(tel).replace(/^55/, "").slice(-8);
@@ -807,8 +841,12 @@ atendimento.post("/webhook", async (c) => {
   // "Atendimento automático" desligado: NÃO deixa mais a mensagem sumir — ela é REGISTRADA
   // (aparece na caixa e vai pra humano), só que a Big não responde sozinha (soRegistrar=true).
   const soRegistrar = cfg.atendimento_ativo !== "1";
-  // Não responde em grupos (só conversas 1:1).
-  if (b.isGroup === true || b.isGroupMessage === true) return c.json({ ignorado: "grupo" });
+  // GRUPOS: o robô NUNCA responde no grupo, mas ARQUIVA a mensagem na coluna "👥 Grupos"
+  // pra você ver e responder à mão. (Não segue pro fluxo do robô.)
+  if (b.isGroup === true || b.isGroupMessage === true) {
+    const okG = await registrarGrupo(c.env, new URL(c.req.url).origin, b);
+    return c.json({ ok: okG, grupo: true });
+  }
   // Só processa mensagem recebida de terceiro.
   if (b.fromMe === true) return c.json({ ignorado: "fromMe" });
   if (b.type && b.type !== "ReceivedCallback") return c.json({ ignorado: String(b.type) });
@@ -1678,6 +1716,7 @@ atendimento.get("/painel", async (c) => {
 function colunaAtendimento(c: { estado?: string | null; responsavel?: string | null; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null }): string {
   const inn = c.ultima_in_em || "", out = c.ultima_out_em || "", enc = c.encerrado_em || "";
   const estado = String(c.estado || "");
+  if (estado === "grupo") return "grupos";                            // mensagens de grupo → coluna própria
   if (enc && inn <= enc) return "finalizado";                         // encerrado e sem msg nova depois
   if (estado === "reclamacao") return "reclamacao";
   if (estado === "aguardando-setor") return "aguardando-setor";
