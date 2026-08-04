@@ -870,6 +870,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     setBusy(true);
     try { await api.atendNaoPerturbe(id, !d.nao_perturbe); carregar(); onMudou(); } finally { setBusy(false); }
   }
+  // Lembrete: deixa o card pulsando (amarelo) no quadro pra não esquecer de falar com o lead.
+  async function toggleLembreteConv() {
+    setBusy(true);
+    try { await api.atendLembrete(id); carregar(); onMudou(); } finally { setBusy(false); }
+  }
   const encerrado = !!d?.encerrado_em && (d.encerrado_em || "") >= (d.ultima_in_em || "");
   async function encerrar() {
     setBusy(true);
@@ -1096,6 +1101,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 🤖 Big (IA) assume e responde
               </button>
             )}
+            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d?.lembrete ? { borderColor: "#eab308", background: "#fffbeb", color: "#854d0e", fontWeight: 700 } : {}) }} disabled={busy} onClick={toggleLembreteConv} title="Deixa o card pulsando (amarelo) no quadro pra você lembrar de falar com esse lead.">
+              {d?.lembrete ? "🔔 Lembrete ativo — tirar (para de pulsar)" : "🔔 Lembrar de falar (deixa o card pulsando)"}
+            </button>
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5 }} disabled={busy} onClick={toggleNaoPerturbe} title="Para/retoma as mensagens automáticas para este cliente">
               {d?.nao_perturbe ? "🔕 Automáticas pausadas — retomar" : "🔔 Pausar mensagens automáticas"}
             </button>

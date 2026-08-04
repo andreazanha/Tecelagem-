@@ -1946,7 +1946,10 @@ atendimento.get("/:id", async (c) => {
     bloqueado = bq ? 1 : 0;
   }
   const colManual = conv.coluna_manual && ATEND_COLUNAS.some((x) => x.id === conv.coluna_manual) ? conv.coluna_manual : null;
-  return c.json({ ...conv, coluna: colManual || colunaAtendimento(conv), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado });
+  // Lembrete manual (card pulsando) — guardado na lista JSON de config.
+  let lembrete = 0;
+  try { const cfgL = await lerConfig(c.env); const l = JSON.parse(cfgL.atend_lembretes || "[]"); if (Array.isArray(l) && l.map(String).includes(String(conv.id))) lembrete = 1; } catch { lembrete = 0; }
+  return c.json({ ...conv, coluna: colManual || colunaAtendimento(conv), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado, lembrete });
 });
 
 // ── Atendente humano assume ─────────────────────────────────────────────────────────
