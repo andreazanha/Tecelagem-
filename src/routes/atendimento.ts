@@ -89,6 +89,28 @@ async function identificarCliente(env: Env, tel: string) {
   ).bind(core).first<{ id: string; nome: string; cnpj: string | null; cidade: string | null; uf: string | null; representante: string | null; instagram: string | null }>().catch(() => null);
 }
 
+// Núcleo canônico do telefone: DDD (2) + últimos 8 dígitos. Serve pra reconhecer a MESMA pessoa
+// mesmo quando o número chega ora com o 9º dígito, ora sem (ex.: 5565992752099 e 556592752099),
+// ou com/sem o DDI 55. Assim a gente NÃO cria duas conversas (dois cards) pro mesmo contato.
+function nucleoTel(t: unknown): string {
+  let d = digitos(t);
+  if (d.startsWith("55") && d.length >= 12) d = d.slice(2); // tira o DDI do Brasil
+  return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d;
+}
+// Acha a conversa da pessoa tolerando variação do número (9º dígito / DDI). Tenta o exato
+// primeiro; se não achar, procura pelos últimos 8 dígitos e confirma pelo núcleo canônico.
+async function acharConversaPorTelefone(env: Env, tel: string): Promise<ConvRow | null> {
+  const t = digitos(tel);
+  const exato = await env.DB.prepare("SELECT * FROM atend_conversas WHERE telefone = ?").bind(t).first<ConvRow>();
+  if (exato) return exato;
+  const core8 = t.slice(-8);
+  if (core8.length < 8) return null;
+  const nuc = nucleoTel(t);
+  const { results } = await env.DB.prepare("SELECT * FROM atend_conversas WHERE telefone LIKE '%' || ? ORDER BY atualizado_em DESC").bind(core8).all<ConvRow>().catch(() => ({ results: [] as ConvRow[] }));
+  for (const r of (results || [])) if (nucleoTel(String(r.telefone)) === nuc) return r;
+  return null;
+}
+
 async function ehRepresentante(env: Env, tel: string) {
   const core = digitos(tel).slice(-8);
   if (core.length < 8) return null;
@@ -162,7 +184,7 @@ async function enviarBot(env: Env, convId: string, tel: string, saida: { tipo: s
 async function registrarEnvioNaConversa(env: Env, tel: string, texto: string, messageId: string | null, autor = "Campanha") {
   const t = digitos(tel);
   if (t.length < 8) return;
-  const conv = await env.DB.prepare("SELECT id FROM atend_conversas WHERE telefone=?").bind(t).first<{ id: string }>();
+  const conv = await acharConversaPorTelefone(env, t);
   let convId: string;
   if (conv) { convId = conv.id; }
   else {
@@ -552,7 +574,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   const contato = String(contatoNome ?? "").trim().slice(0, 80) || null;
   if (!tel) return { erro: "telefone é obrigatório" as const };
 
-  let conv = await env.DB.prepare("SELECT * FROM atend_conversas WHERE telefone = ?").bind(tel).first<ConvRow>();
+  let conv = await acharConversaPorTelefone(env, tel);
   if (!conv) {
     // Primeiro contato: tenta reconhecer quem é (cliente da base ou representante).
     const id = uid();
@@ -992,7 +1014,7 @@ async function registrarEventoCatalogo(env: Env, ev: { tipo?: string; telefone?:
   const loja = (ev.loja || "").trim().slice(0, 80) || null;
   const rep = (ev.rep || "").trim() || null;
 
-  let conv = await env.DB.prepare("SELECT id, nome, representante FROM atend_conversas WHERE telefone = ?").bind(tel).first<{ id: string; nome: string | null; representante: string | null }>();
+  let conv: { id: string; nome?: string | null; representante?: string | null } | null = await acharConversaPorTelefone(env, tel);
   if (!conv) {
     const id = uid();
     const cliente = await identificarCliente(env, tel);
@@ -1927,7 +1949,7 @@ atendimento.post("/nova-conversa", async (c) => {
   if (!texto) return c.json({ error: "escreva uma mensagem" }, 400);
   const resp = (b.responsavel || "").trim() || "Atendente";
   const nomeManual = String(b.nome ?? "").trim().slice(0, 80) || null;
-  let conv = await c.env.DB.prepare("SELECT id FROM atend_conversas WHERE telefone=?").bind(tel).first<{ id: string }>();
+  const conv = await acharConversaPorTelefone(c.env, tel);
   let convId: string;
   if (conv) {
     convId = conv.id;
