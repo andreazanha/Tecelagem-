@@ -603,21 +603,22 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // preenche SÓ os campos do mini-cadastro que estiverem vazios — nunca sobrescreve o que já
   // foi preenchido à mão. Assim, conforme os clientes vão sendo cadastrados, as conversas
   // antigas se completam sozinhas no próximo "oi" do cliente.
-  if (!conv.cliente_id) {
+  // try/catch: NUNCA pode derrubar o recebimento da mensagem (o addMsg vem logo abaixo).
+  if (!conv.cliente_id) try {
     const cli = await identificarCliente(env, tel).catch(() => null);
     if (cli) {
       const nome = conv.nome || cli.nome || null;
       const cnpj = conv.cnpj || cli.cnpj || null;
       const cidade = conv.cidade || cli.cidade || null;
       const uf = conv.uf || cli.uf || null;
-      const rep = conv.representante || cli.representante || (await representantePorRegiao(env, cli.uf)) || null;
+      const rep = conv.representante || cli.representante || (await representantePorRegiao(env, cli.uf).catch(() => null)) || null;
       const tipo = conv.tipo || "lojista";   // se ainda não classificado, é um lojista da base
       await env.DB.prepare(
         "UPDATE atend_conversas SET cliente_id=?, nome=?, cnpj=?, cidade=?, uf=?, representante=?, tipo=?, atualizado_em=datetime('now') WHERE id=?"
       ).bind(cli.id, nome, cnpj, cidade, uf, rep, tipo, conv.id).run();
       conv.cliente_id = cli.id; conv.nome = nome; conv.cnpj = cnpj; conv.cidade = cidade; conv.uf = uf; conv.representante = rep; conv.tipo = tipo;
     }
-  }
+  } catch { /* não bloqueia o recebimento */ }
   // jaRegistrada: a mensagem já está no histórico (ex.: a IA está reassumindo e respondendo
   // uma pergunta que o cliente já tinha mandado) → NÃO registra de novo, só reprocessa.
   if (!jaRegistrada) await addMsg(env, conv.id, "in", "cliente", "texto", texto, { zapId: zapId || null, arquivoUrl: arquivoUrl || null });
@@ -935,9 +936,18 @@ atendimento.post("/webhook", async (c) => {
       return c.json({ ok: true, membro: membro.id });
     }
   }
-  // Áudio (nota de voz): transcreve com IA e trata como texto normal. Se não der pra
-  // ouvir, responde pedindo por escrito — em vez de ignorar e deixar o cliente sem resposta.
+  // IDEMPOTÊNCIA: se JÁ processamos esta mensagem (mesmo messageId da Z-API), NÃO reprocessa.
+  // A Z-API REENVIA o webhook quando a resposta demora — sem isto, cada reenvio criava
+  // mensagem/card DUPLICADO (e a Big respondia de novo).
+  const zid = String(b.messageId ?? "").trim();
+  if (zid) {
+    const dup = await c.env.DB.prepare("SELECT 1 FROM atend_mensagens WHERE zap_id=? LIMIT 1").bind(zid).first().catch(() => null);
+    if (dup) return c.json({ ok: true, duplicado: true });
+  }
+  // Responde 200 NA HORA e processa em SEGUNDO PLANO (waitUntil): a Z-API não fica esperando a
+  // IA/transcrição (que levam segundos) e PARA de reenviar o webhook — fim da demora e das duplicações.
   const origin = new URL(c.req.url).origin;
+  const trabalho = (async () => {
   let arquivoUrl = "";
   if (!texto.trim() && audio) {
     const audioSrc = audio.audioUrl || audio.url || "";
@@ -988,9 +998,11 @@ atendimento.post("/webhook", async (c) => {
     }
     return c.json({ ignorado: "sem-texto" });
   }
-  const r = await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, origin, String(b.messageId ?? ""), arquivoUrl, soRegistrar);
-  if ("erro" in r) return c.json({ error: r.erro }, 400);
-  return c.json({ ok: true, conversa_id: r.conversa_id });
+  await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, origin, zid, arquivoUrl, soRegistrar);
+  })();
+  // waitUntil deixa o processamento seguir DEPOIS de já termos respondido 200 à Z-API.
+  try { c.executionCtx.waitUntil(trabalho.catch(() => {})); } catch { await trabalho.catch(() => {}); }
+  return c.json({ ok: true, recebido: true });
 });
 
 // ── EVENTO do catálogo (o catálogo faz POST aqui) ────────────────────────────────
