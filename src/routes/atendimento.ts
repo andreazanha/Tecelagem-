@@ -2194,10 +2194,11 @@ atendimento.post("/:id/sugerir", async (c) => {
 // ── Preencher/corrigir os "Dados coletados" à mão (quando a IA não pegou) ──────────
 atendimento.post("/:id/dados", async (c) => {
   const id = c.req.param("id");
-  const b = await c.req.json<{ nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown }>().catch(() => ({} as { nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown }));
+  const b = await c.req.json<{ contato_nome?: string; nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown }>().catch(() => ({} as { contato_nome?: string; nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown }));
   const campos: string[] = [];
   const vals: (string | number | null)[] = [];
   const setTxt = (col: string, v: unknown) => { if (v !== undefined) { campos.push(`${col}=?`); const s = String(v ?? "").trim(); vals.push(s || null); } };
+  setTxt("contato_nome", b.contato_nome);
   setTxt("nome", b.nome);
   setTxt("cnpj", b.cnpj);
   setTxt("cidade", b.cidade);

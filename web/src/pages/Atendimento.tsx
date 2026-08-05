@@ -849,7 +849,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [gerenciarResp, setGerenciarResp] = useState(false);
   const [arqRapidoOpen, setArqRapidoOpen] = useState(false);
   const [editDados, setEditDados] = useState(false);
-  const [formD, setFormD] = useState({ nome: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
+  const [formD, setFormD] = useState({ contato_nome: "", nome: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
   const [respondendo, setRespondendo] = useState<{ id: string; texto: string } | null>(null);
   const [modo, setModo] = useState<"cliente" | "interno">("cliente");
   const fim = useRef<HTMLDivElement>(null);
@@ -933,7 +933,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   useEffect(() => { ajustarAltura(); }, [texto]);
 
   function abrirEdicaoDados() {
-    setFormD({ nome: d?.nome || "", setor: d?.setor || "", cnpj: d?.cnpj || "", cidade: d?.cidade || "", uf: d?.uf || "", lojista: d?.lojista == null ? "" : String(d.lojista) });
+    setFormD({ contato_nome: d?.contato_nome || "", nome: d?.nome || "", setor: d?.setor || "", cnpj: d?.cnpj || "", cidade: d?.cidade || "", uf: d?.uf || "", lojista: d?.lojista == null ? "" : String(d.lojista) });
     setEditDados(true);
   }
   async function salvarDados() {
@@ -1148,6 +1148,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             </div>
             {editDados ? (
               <div style={{ display: "grid", gap: 7, marginBottom: 6 }}>
+                <label className="fld" style={{ fontSize: 11.5 }}>Nome (pessoa)
+                  <input value={formD.contato_nome} onChange={(e) => setFormD((f) => ({ ...f, contato_nome: e.target.value }))} placeholder="Nome de quem está no WhatsApp" />
+                </label>
                 <label className="fld" style={{ fontSize: 11.5 }}>Loja
                   <input value={formD.nome} onChange={(e) => setFormD((f) => ({ ...f, nome: e.target.value }))} placeholder="Nome da loja" />
                 </label>
@@ -1184,6 +1187,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 </div>
               </div>
             ) : (<>
+              <div className="at-row"><span>Nome</span><b>{d?.contato_nome || "—"}</b></div>
               <div className="at-row"><span>Setor</span><b>{d?.setor ? (SETOR_EMOJI[d.setor] || "") + " " + d.setor : "—"}</b></div>
               <div className="at-row"><span>Loja</span><b>{d?.nome || "—"}</b></div>
               <div className="at-row"><span>CNPJ</span><b>{d?.cnpj || "—"}</b></div>
