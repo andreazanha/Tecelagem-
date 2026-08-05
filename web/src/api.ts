@@ -720,6 +720,8 @@ export const api = {
     jsonPost(`/api/atendimento/${id}/agendar-ia`, quando === null ? { cancelar: true } : { quando }).then((r) => j<{ ok: boolean; agendado: number | null }>(r)),
   atendExcluirMsg: (id: string, msgId: string, paraTodos: boolean) =>
     jsonPost(`/api/atendimento/${id}/mensagem/${msgId}/excluir`, { paraTodos }).then((r) => j<{ ok: boolean; paraTodos: boolean; revogada: boolean; motivo?: string }>(r)),
+  atendEncaminharMsg: (id: string, msgId: string, dest: { telefone?: string; conversaId?: string }) =>
+    jsonPost(`/api/atendimento/${id}/mensagem/${msgId}/encaminhar`, dest).then((r) => j<{ ok: boolean }>(r)),
   atendContatosWhatsapp: () =>
     fetch("/api/atendimento/contatos-whatsapp").then((r) => j<{ contatos: { nome: string; telefone: string }[]; erro?: string }>(r)),
   atendNovaConversa: (b: { telefone: string; texto: string; nome?: string; responsavel?: string }) =>

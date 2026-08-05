@@ -2255,6 +2255,39 @@ atendimento.post("/:id/mensagem/:msgId/excluir", async (c) => {
   return c.json({ ok: true, paraTodos: true, revogada: r.ok, motivo: r.ok ? "" : (r.motivo || "") });
 });
 
+// Encaminhar (forward) uma mensagem pra outro contato: manda o MESMO conteúdo (texto ou mídia)
+// pro número/conversa escolhido e registra o envio na conversa de destino.
+atendimento.post("/:id/mensagem/:msgId/encaminhar", async (c) => {
+  const id = c.req.param("id"), msgId = c.req.param("msgId");
+  const b = await c.req.json<{ telefone?: string; conversaId?: string }>().catch(() => ({} as { telefone?: string; conversaId?: string }));
+  const m = await c.env.DB.prepare("SELECT tipo, texto, arquivo_url FROM atend_mensagens WHERE id=? AND conversa_id=?")
+    .bind(msgId, id).first<{ tipo: string; texto: string | null; arquivo_url: string | null }>();
+  if (!m) return c.json({ error: "mensagem não encontrada" }, 404);
+  // Destino: número digitado OU uma conversa existente escolhida.
+  let tel = digitos(b.telefone);
+  if (tel.length < 10 && b.conversaId) {
+    const dc = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(b.conversaId).first<{ telefone: string }>();
+    tel = digitos(dc?.telefone || "");
+  }
+  if (tel.length < 10) return c.json({ error: "Escolha um contato ou informe um número válido (com DDD)." }, 400);
+  const texto = String(m.texto || "").trim();
+  let r: { enviado: boolean; messageId?: string | null };
+  if (m.arquivo_url) {
+    const url = m.arquivo_url;
+    const ext = (url.match(/\.([a-z0-9]{2,5})($|[?#])/i)?.[1] || "bin").toLowerCase();
+    const ehImagem = /^(jpg|jpeg|png|gif|webp)$/.test(ext);
+    const ehAudio = /^(ogg|opus|mp3|m4a|wav|aac|amr|webm)$/.test(ext);
+    const nomeArq = texto.replace(/^[\s\S]*📎/, "").trim() || `arquivo.${ext}`;
+    r = await enviarMidiaZapi(c.env, tel, { url, ehImagem, ehAudio, ext, fileName: nomeArq, caption: ehImagem ? texto : "" });
+  } else {
+    if (!texto) return c.json({ error: "mensagem sem conteúdo pra encaminhar" }, 400);
+    r = await enviarWhatsapp(c.env, tel, { tipo: "texto", texto });
+  }
+  if (!r.enviado) return c.json({ error: "Não consegui enviar (confira a conexão do WhatsApp)." }, 502);
+  await registrarEnvioNaConversa(c.env, tel, m.arquivo_url ? (texto || "📎 arquivo encaminhado") : texto, r.messageId ?? null, "Encaminhado");
+  return c.json({ ok: true });
+});
+
 atendimento.post("/:id/nota", async (c) => {
   const b = await c.req.json<{ texto?: string; autor?: string }>().catch(() => ({}) as Record<string, string>);
   const texto = (b.texto || "").trim();

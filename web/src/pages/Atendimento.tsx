@@ -1001,6 +1001,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   }
   // Menu de excluir mensagem (para mim / para todos).
   const [menuMsg, setMenuMsg] = useState<string | null>(null);
+  const [encMsg, setEncMsg] = useState<string | null>(null); // mensagem sendo encaminhada
   async function excluirMsg(msgId: string, paraTodos: boolean) {
     if (paraTodos && !confirm("Apagar esta mensagem PARA TODOS? Ela some também no WhatsApp do cliente.")) return;
     setMenuMsg(null); setBusy(true);
@@ -1129,6 +1130,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     <button title="Excluir mensagem" onClick={() => setMenuMsg(menuMsg === m.id ? null : m.id)} style={{ position: "absolute", top: 3, right: 4, background: "rgba(148,163,184,.22)", border: 0, borderRadius: 6, cursor: "pointer", fontSize: 14, opacity: 0.9, lineHeight: 1, padding: "2px 5px", fontWeight: 800 }}>⋮</button>
                     {menuMsg === m.id && (
                       <div style={{ position: "absolute", top: 18, right: 2, zIndex: 30, background: "var(--card,#fff)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 6px 16px rgba(0,0,0,.2)", overflow: "hidden", minWidth: 162 }}>
+                        <button onClick={() => { setEncMsg(m.id); setMenuMsg(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "inherit" }}>↪️ Encaminhar</button>
                         <button onClick={() => excluirMsg(m.id, false)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "inherit" }}>🙈 Excluir para mim</button>
                         {m.direcao === "out" && m.autor !== "sistema" && (
                           <button onClick={() => excluirMsg(m.id, true)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "#dc2626" }}>🗑 Excluir para todos</button>
@@ -1376,6 +1378,67 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
       </div>
       {gerenciarResp && <RespostasModal onFechar={() => setGerenciarResp(false)} onSalvo={() => { setGerenciarResp(false); carregarRespostas(); }} />}
       {arqRapidoOpen && <ArquivosRapidosModal convId={id} autor={d?.responsavel || "Atendente"} onFechar={() => setArqRapidoOpen(false)} onEnviado={() => { setArqRapidoOpen(false); carregar(); onMudou(); }} />}
+      {encMsg && <EncaminharModal convId={id} msgId={encMsg} onFechar={() => setEncMsg(null)} />}
+    </div>
+  );
+}
+
+// ── Encaminhar mensagem: escolhe um contato (busca) ou digita um número e reenvia ──
+function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: string; onFechar: () => void }) {
+  const [contatos, setContatos] = useState<AtendConversa[]>([]);
+  const [busca, setBusca] = useState("");
+  const [numero, setNumero] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  useEffect(() => {
+    const u = getUser();
+    api.atendBoard(u?.nome, ehGestorAtend()).then((b) => setContatos(b.conversas.filter((c) => c.id !== convId && c.estado !== "grupo"))).catch(() => {});
+  }, [convId]);
+  async function enviar(dest: { telefone?: string; conversaId?: string }) {
+    setBusy(true); setMsg("");
+    try { await api.atendEncaminharMsg(convId, msgId, dest); setMsg("✓ Encaminhada!"); setTimeout(onFechar, 900); }
+    catch { setMsg("Não consegui encaminhar. Confira o número/conexão."); setBusy(false); }
+  }
+  const termo = busca.trim().toLowerCase();
+  const filtrados = (termo
+    ? contatos.filter((c) => [c.contato_nome, c.nome, c.telefone].some((x) => String(x ?? "").toLowerCase().includes(termo)))
+    : contatos).slice(0, 40);
+  return (
+    <div className="modal-bg" onClick={onFechar} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--card,#fff)", color: "var(--ink,#0f172a)", borderRadius: 14, width: "100%", maxWidth: 420, maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "hidden", border: "1px solid var(--line)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: "1px solid var(--line)" }}>
+          <b>↪️ Encaminhar mensagem</b>
+          <button onClick={onFechar} style={{ background: "transparent", border: 0, fontSize: 18, cursor: "pointer", color: "var(--muted)" }}>✕</button>
+        </div>
+        {msg && <div style={{ padding: "8px 14px", fontSize: 13, color: msg[0] === "✓" ? "#15803d" : "#b91c1c" }}>{msg}</div>}
+        <div style={{ padding: "10px 14px", display: "grid", gap: 8, borderBottom: "1px solid var(--line)" }}>
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>Enviar para um número novo:</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="(35) 9 9999-9999" style={{ flex: 1, fontSize: 13, padding: "7px 8px", borderRadius: 8, border: "1px solid var(--line)" }} />
+            <button disabled={busy || numero.replace(/\D/g, "").length < 10} onClick={() => enviar({ telefone: numero })}
+              style={{ background: "#2563eb", color: "#fff", border: 0, borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontWeight: 700, fontSize: 12.5 }}>Enviar</button>
+          </div>
+        </div>
+        <div style={{ padding: "10px 14px 6px" }}>
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔎 Buscar contato pelo nome ou número…" style={{ width: "100%", fontSize: 13, padding: "7px 8px", borderRadius: 8, border: "1px solid var(--line)" }} />
+        </div>
+        <div style={{ overflowY: "auto", padding: "0 8px 10px" }}>
+          {filtrados.map((c) => {
+            const nm = c.contato_nome || c.nome || telBonito(c.telefone);
+            return (
+              <button key={c.id} disabled={busy} onClick={() => enviar({ conversaId: c.id })}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "8px 10px", background: "transparent", border: 0, borderRadius: 8, cursor: "pointer", color: "inherit" }}>
+                <span className="conv-av" style={{ width: 30, height: 30, fontSize: 12 }}>{iniciais(nm)}</span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nm}</span>
+                  <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)" }}>{telBonito(c.telefone)}</span>
+                </span>
+              </button>
+            );
+          })}
+          {filtrados.length === 0 && <div style={{ padding: 12, fontSize: 12.5, color: "var(--muted)" }}>Nenhum contato encontrado.</div>}
+        </div>
+      </div>
     </div>
   );
 }
