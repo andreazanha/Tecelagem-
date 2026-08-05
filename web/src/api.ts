@@ -672,6 +672,9 @@ export const api = {
   parceiros: () => fetch("/api/parceiros").then((r) => j<LojaParceira[]>(r)),
   salvarParceiro: (b: Partial<LojaParceira>) => jsonPost("/api/parceiros", b).then((r) => j<{ ok: boolean; id: string }>(r)),
   excluirParceiro: (id: string) => fetch(`/api/parceiros/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  aprovarParceiro: (id: string) => jsonPost(`/api/parceiros/${encodeURIComponent(id)}/aprovar`, {}).then((r) => j<{ ok: boolean }>(r)),
+  recusarParceiro: (id: string) => jsonPost(`/api/parceiros/${encodeURIComponent(id)}/recusar`, {}).then((r) => j<{ ok: boolean }>(r)),
+  importarClientesParceiros: () => jsonPost("/api/parceiros/importar-clientes", {}).then((r) => j<{ ok: boolean; criados: number }>(r)),
   // Treino da Big (base de conhecimento)
   conhecimento: () => fetch("/api/atendimento/conhecimento").then((r) => j<IaConhecimento[]>(r)),
   salvarConhecimento: (b: Partial<IaConhecimento>) => jsonPost("/api/atendimento/conhecimento", b).then((r) => j<{ ok: boolean; id: string }>(r)),
@@ -1542,6 +1545,7 @@ export interface AtendPainel {
 export interface LojaParceira {
   id: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null;
   whatsapp: string | null; instagram: string | null; site: string | null; ativo: number; loja_online?: number; criado_em?: string;
+  pendente?: number; cliente_id?: string | null;
 }
 export interface ItemPedidoEstoque {
   ref?: string | null;

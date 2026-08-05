@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../index";
 import { limparVendedor } from "./comercial";
 import { ehClienteInterno } from "./funil";
+import { garantirParceiroPendente } from "./parceiros";
 
 export const clientes = new Hono<{ Bindings: Env }>();
 
@@ -134,7 +135,7 @@ clientes.post("/importar", async (c) => {
          ultima_compra = COALESCE(NULLIF(excluded.ultima_compra,''), clientes.ultima_compra),
          ultimo_faturamento = COALESCE(NULLIF(excluded.ultimo_faturamento,''), clientes.ultimo_faturamento)`
     ).bind(id, nome, str(r.whatsapp), str(r.email), str(r.cidade), str(r.uf), str(r.cnpj), repFinal, str(r.observacao), str((r as { ultima_compra?: string }).ultima_compra), str((r as { ultimo_faturamento?: string }).ultimo_faturamento)).run();
-    if (ex) atualizados++; else criados++;
+    if (ex) atualizados++; else { criados++; await garantirParceiroPendente(c.env, id).catch(() => {}); }
   }
   return c.json({ ok: true, criados, atualizados, ignorados });
 });
@@ -158,5 +159,7 @@ clientes.post("/", async (c) => {
   )
     .bind(id, nome, str(b.contato), str(b.whatsapp), str(b.email), str(b.cidade), str(b.uf), str(b.cnpj), str(b.representante), str(b.instagram), str(b.observacao), bloqueado)
     .run();
+  // Cliente novo/atualizado na base → garante uma loja parceira PENDENTE pra aprovação.
+  await garantirParceiroPendente(c.env, id).catch(() => {});
   return c.json({ id, nome });
 });

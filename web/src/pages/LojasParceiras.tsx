@@ -23,7 +23,17 @@ export function LojasParceiras() {
     try { await api.salvarParceiro(form); setForm(null); setMsg("✓ Salvo!"); carregar(); setTimeout(() => setMsg(""), 2500); }
     catch { setMsg("Erro ao salvar."); }
   }
-  async function aprovar(l: LojaParceira) { await api.salvarParceiro({ ...l, ativo: 1 }); carregar(); }
+  async function aprovar(l: LojaParceira) {
+    if (!String(l.uf ?? "").trim()) { setMsg(`⚠️ "${l.nome}" está sem estado (UF). Clique em Editar, informe o estado e salve — aí dá pra aprovar.`); return; }
+    try { await api.aprovarParceiro(l.id); setMsg(`✓ "${l.nome}" aprovada — já aparece na vitrine.`); carregar(); setTimeout(() => setMsg(""), 2500); }
+    catch { setMsg("Não consegui aprovar. Confira o estado (UF) da loja."); }
+  }
+  async function recusar(l: LojaParceira) { if (confirm(`Recusar "${l.nome}"? (some da fila e não vai pra vitrine)`)) { await api.recusarParceiro(l.id); carregar(); } }
+  async function importar() {
+    setMsg("Importando clientes da base…");
+    try { const r = await api.importarClientesParceiros(); setMsg(`✓ ${r.criados} cliente(s) adicionados como pendentes de aprovação.`); carregar(); setTimeout(() => setMsg(""), 4000); }
+    catch { setMsg("Erro ao importar os clientes."); }
+  }
   async function alternar(l: LojaParceira) { await api.salvarParceiro({ ...l, ativo: l.ativo ? 0 : 1 }); carregar(); }
   async function excluir(l: LojaParceira) { if (confirm(`Excluir "${l.nome}"?`)) { await api.excluirParceiro(l.id); carregar(); } }
   function copiar(t: string) { navigator.clipboard?.writeText(t).then(() => { setMsg("Link copiado!"); setTimeout(() => setMsg(""), 2000); }); }
@@ -41,7 +51,12 @@ export function LojasParceiras() {
           <h1 style={{ margin: 0 }}>🏬 Lojas Parceiras</h1>
           <p className="muted" style={{ margin: "2px 0 0" }}>Lojas que revendem os produtos e aparecem na vitrine pública (WhatsApp e site).</p>
         </div>
-        {!form && <button className="btn btn-primary" onClick={() => setForm({ ...VAZIA })}>+ Nova loja</button>}
+        {!form && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-soft" onClick={importar} title="Traz todos os clientes da base como lojas parceiras pendentes, pra você aprovar">👥 Importar clientes da base</button>
+            <button className="btn btn-primary" onClick={() => setForm({ ...VAZIA })}>+ Nova loja</button>
+          </div>
+        )}
       </div>
 
       {msg && <div style={{ margin: "8px 0", padding: "8px 12px", borderRadius: 8, background: "#ecfdf5", color: "#065f46", fontSize: 13.5 }}>{msg}</div>}
@@ -97,8 +112,9 @@ export function LojasParceiras() {
           {pendentes.length > 0 && (
             <div style={{ marginBottom: 20 }}>
               <h3 style={{ margin: "0 0 8px", color: "#b45309" }}>⏳ Aguardando aprovação ({pendentes.length})</h3>
+              <p className="muted" style={{ margin: "0 0 8px", fontSize: 12.5 }}>Clientes da base e cadastros pelo link entram aqui. <b>Aprovar</b> publica na vitrine; <b>Recusar</b> descarta.</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {pendentes.map((l) => <Cartao key={l.id} l={l} pendente onEditar={() => setForm(l)} onAprovar={() => aprovar(l)} onExcluir={() => excluir(l)} onAlternar={() => alternar(l)} />)}
+                {pendentes.map((l) => <Cartao key={l.id} l={l} pendente onEditar={() => setForm(l)} onAprovar={() => aprovar(l)} onRecusar={() => recusar(l)} onExcluir={() => excluir(l)} onAlternar={() => alternar(l)} />)}
               </div>
             </div>
           )}
@@ -114,9 +130,10 @@ export function LojasParceiras() {
   );
 }
 
-function Cartao({ l, pendente, onEditar, onAprovar, onExcluir, onAlternar }: {
-  l: LojaParceira; pendente?: boolean; onEditar: () => void; onAprovar?: () => void; onExcluir: () => void; onAlternar: () => void;
+function Cartao({ l, pendente, onEditar, onAprovar, onRecusar, onExcluir, onAlternar }: {
+  l: LojaParceira; pendente?: boolean; onEditar: () => void; onAprovar?: () => void; onRecusar?: () => void; onExcluir: () => void; onAlternar: () => void;
 }) {
+  const semUf = !String(l.uf ?? "").trim();
   return (
     <div style={{ border: "1px solid " + (pendente ? "#fcd34d" : "var(--line,#e2e8f0)"), borderRadius: 10, padding: "10px 12px", background: pendente ? "#fffbeb" : "#fff", color: "#1e293b", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
       <div style={{ flex: "1 1 220px" }}>
@@ -136,10 +153,11 @@ function Cartao({ l, pendente, onEditar, onAprovar, onExcluir, onAlternar }: {
         )}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {pendente && onAprovar && <button className="btn btn-primary" onClick={onAprovar}>✓ Aprovar</button>}
+        {pendente && onAprovar && <button className="btn btn-primary" onClick={onAprovar} title={semUf ? "Falta o estado (UF) — edite antes de aprovar" : "Publicar na vitrine"} style={semUf ? { opacity: 0.55 } : undefined}>✓ Aprovar</button>}
+        {pendente && onRecusar && <button className="btn btn-soft" onClick={onRecusar} title="Descartar (não vai pra vitrine)" style={{ color: "#b91c1c" }}>✕ Recusar</button>}
         {!pendente && <button className="btn btn-soft" onClick={onAlternar} title="Tirar da vitrine">Despublicar</button>}
         <button className="btn btn-soft" onClick={onEditar}>Editar</button>
-        <button className="btn btn-soft" onClick={onExcluir} title="Excluir">🗑</button>
+        {!pendente && <button className="btn btn-soft" onClick={onExcluir} title="Excluir">🗑</button>}
       </div>
     </div>
   );

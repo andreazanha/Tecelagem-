@@ -12,6 +12,7 @@ const digitos = (s: unknown) => String(s ?? "").replace(/\D/g, "");
 export interface LojaParceiraRow {
   id: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null;
   whatsapp: string | null; instagram: string | null; site: string | null; ativo: number; loja_online?: number; criado_em?: string;
+  pendente?: number; cliente_id?: string | null;
 }
 
 export const parceiros = new Hono<{ Bindings: Env }>();
@@ -19,7 +20,7 @@ export const parceiros = new Hono<{ Bindings: Env }>();
 // Lista completa (admin) — para a tela de cadastro.
 parceiros.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT id, nome, endereco, cidade, uf, whatsapp, instagram, site, ativo, loja_online, criado_em FROM lojas_parceiras ORDER BY uf, cidade, nome"
+    "SELECT id, nome, endereco, cidade, uf, whatsapp, instagram, site, ativo, loja_online, pendente, cliente_id, criado_em FROM lojas_parceiras ORDER BY uf, cidade, nome"
   ).all<LojaParceiraRow>().catch(() => ({ results: [] as LojaParceiraRow[] }));
   return c.json(results);
 });
@@ -29,7 +30,7 @@ parceiros.get("/", async (c) => {
 parceiros.get("/publico", async (c) => {
   const uf = String(c.req.query("uf") ?? "").trim().toUpperCase();
   const cidade = String(c.req.query("cidade") ?? "").trim();
-  const cond = ["COALESCE(ativo,1)=1"]; const args: unknown[] = [];
+  const cond = ["COALESCE(ativo,1)=1", "COALESCE(pendente,0)=0"]; const args: unknown[] = [];
   if (uf) { cond.push("UPPER(COALESCE(uf,''))=?"); args.push(uf); }
   if (cidade) { cond.push("UPPER(COALESCE(cidade,'')) LIKE ?"); args.push("%" + cidade.toUpperCase() + "%"); }
   const { results } = await c.env.DB.prepare(
@@ -74,14 +75,77 @@ parceiros.post("/autocadastro", async (c) => {
   if (!uf) return c.json({ error: "Informe o estado (UF) da loja." }, 400);
   const online = b.loja_online === true || b.loja_online === 1 || b.loja_online === "on" || b.loja_online === "true" ? 1 : 0;
   await c.env.DB.prepare(
-    `INSERT INTO lojas_parceiras (id, nome, endereco, cidade, uf, whatsapp, instagram, site, loja_online, ativo)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+    `INSERT INTO lojas_parceiras (id, nome, endereco, cidade, uf, whatsapp, instagram, site, loja_online, ativo, pendente)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1)`
   ).bind(
     uid(), nome, String(b.endereco ?? "").trim() || null, String(b.cidade ?? "").trim() || null, uf,
     String(b.whatsapp ?? "").trim() || null, String(b.instagram ?? "").trim() || null, String(b.site ?? "").trim() || null, online
   ).run();
   return c.json({ ok: true });
 });
+
+// ── Lojas parceiras PENDENTES (aguardando aprovação do gestor) ─────────────────────
+// Fila de aprovação: clientes da base importados como loja parceira + autocadastros.
+parceiros.get("/pendentes", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, nome, endereco, cidade, uf, whatsapp, instagram, site, ativo, loja_online, pendente, cliente_id, criado_em FROM lojas_parceiras WHERE COALESCE(pendente,0)=1 ORDER BY criado_em DESC, nome"
+  ).all<LojaParceiraRow>().catch(() => ({ results: [] as LojaParceiraRow[] }));
+  return c.json(results);
+});
+
+// Importa TODOS os clientes da base que ainda não têm loja parceira vinculada, como PENDENTES.
+parceiros.post("/importar-clientes", async (c) => {
+  const criados = await importarClientesPendentes(c.env);
+  return c.json({ ok: true, criados });
+});
+
+// Aprovar: a loja passa a aparecer na vitrine (precisa de UF — a vitrine exige estado).
+parceiros.post("/:id/aprovar", async (c) => {
+  const id = c.req.param("id");
+  const loja = await c.env.DB.prepare("SELECT uf FROM lojas_parceiras WHERE id=?").bind(id).first<{ uf: string | null }>();
+  if (!loja) return c.json({ error: "loja não encontrada" }, 404);
+  if (!String(loja.uf ?? "").trim()) return c.json({ error: "Preencha o estado (UF) antes de aprovar — sem ele a loja não aparece na vitrine." }, 400);
+  await c.env.DB.prepare("UPDATE lojas_parceiras SET pendente=0, ativo=1 WHERE id=?").bind(id).run();
+  return c.json({ ok: true });
+});
+
+// Recusar: descarta a pendência (apaga a loja parceira criada a partir do cliente).
+parceiros.post("/:id/recusar", async (c) => {
+  await c.env.DB.prepare("DELETE FROM lojas_parceiras WHERE id=? AND COALESCE(pendente,0)=1").bind(c.req.param("id")).run();
+  return c.json({ ok: true });
+});
+
+// Cria uma loja parceira PENDENTE a partir de um cliente da base, se ele ainda não tiver uma.
+// Idempotente (não duplica). Usado no gancho de "cliente novo entrou na base".
+export async function garantirParceiroPendente(env: Env, clienteId: string): Promise<boolean> {
+  if (!clienteId) return false;
+  const ja = await env.DB.prepare("SELECT 1 FROM lojas_parceiras WHERE cliente_id=? LIMIT 1").bind(clienteId).first().catch(() => null);
+  if (ja) return false;
+  const cli = await env.DB.prepare("SELECT id, nome, whatsapp, cidade, uf FROM clientes WHERE id=?")
+    .bind(clienteId).first<{ id: string; nome: string | null; whatsapp: string | null; cidade: string | null; uf: string | null }>().catch(() => null);
+  if (!cli || !String(cli.nome ?? "").trim()) return false;
+  await env.DB.prepare(
+    "INSERT INTO lojas_parceiras (id, nome, endereco, cidade, uf, whatsapp, ativo, pendente, cliente_id) VALUES (?, ?, NULL, ?, ?, ?, 0, 1, ?)"
+  ).bind(uid(), String(cli.nome).trim(), cli.cidade || null, cli.uf ? String(cli.uf).trim().toUpperCase().slice(0, 2) : null, cli.whatsapp || null, cli.id).run();
+  return true;
+}
+
+// Importa em massa todos os clientes da base que ainda não têm loja parceira vinculada.
+export async function importarClientesPendentes(env: Env): Promise<number> {
+  const { results } = await env.DB.prepare(
+    `SELECT c.id, c.nome, c.whatsapp, c.cidade, c.uf FROM clientes c
+      WHERE TRIM(COALESCE(c.nome,'')) <> ''
+        AND NOT EXISTS (SELECT 1 FROM lojas_parceiras p WHERE p.cliente_id = c.id)`
+  ).all<{ id: string; nome: string; whatsapp: string | null; cidade: string | null; uf: string | null }>().catch(() => ({ results: [] as { id: string; nome: string; whatsapp: string | null; cidade: string | null; uf: string | null }[] }));
+  let n = 0;
+  for (const cli of (results || [])) {
+    await env.DB.prepare(
+      "INSERT INTO lojas_parceiras (id, nome, endereco, cidade, uf, whatsapp, ativo, pendente, cliente_id) VALUES (?, ?, NULL, ?, ?, ?, 0, 1, ?)"
+    ).bind(uid(), String(cli.nome).trim(), cli.cidade || null, cli.uf ? String(cli.uf).trim().toUpperCase().slice(0, 2) : null, cli.whatsapp || null, cli.id).run();
+    n++;
+  }
+  return n;
+}
 
 // ── Vitrine pública (HTML) ───────────────────────────────────────────────────────
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
@@ -167,7 +231,7 @@ export function cadastroHtml(): string {
 
 export async function vitrineHtml(env: Env, uf?: string, cidade?: string): Promise<string> {
   const { results } = await env.DB.prepare(
-    "SELECT nome, endereco, cidade, uf, whatsapp, instagram, site FROM lojas_parceiras WHERE COALESCE(ativo,1)=1 ORDER BY uf, cidade, nome"
+    "SELECT nome, endereco, cidade, uf, whatsapp, instagram, site FROM lojas_parceiras WHERE COALESCE(ativo,1)=1 AND COALESCE(pendente,0)=0 ORDER BY uf, cidade, nome"
   ).all<Omit<LojaParceiraRow, "id" | "ativo" | "criado_em">>().catch(() => ({ results: [] as Omit<LojaParceiraRow, "id" | "ativo" | "criado_em">[] }));
   const dados = JSON.stringify(results).replace(/</g, "\\u003c");
   const ufSel = esc(String(uf ?? "").toUpperCase().slice(0, 2));
