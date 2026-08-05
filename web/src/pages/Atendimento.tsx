@@ -746,39 +746,43 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
         const hoje = dataLocalStr(Date.now()), amanha = dataLocalStr(Date.now() + 864e5);
         const ms = agDia && agHora ? new Date(`${agDia}T${agHora}`).getTime() : 0;
         const valido = !!ms && !isNaN(ms) && ms > Date.now();
+        // Modal centralizado (não cabe dentro do card estreito — antes ficava cortado).
         return (
-          <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}
-            style={{ marginTop: 8, padding: 10, border: "1px solid var(--line)", borderRadius: 10, background: "var(--bg-soft, #f8fafc)", display: "grid", gap: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 12, fontWeight: 700 }}>⏰ Quando a IA deve chamar?</div>
-              <button onClick={() => setAgOpen(false)} title="Fechar"
-                style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 2 }}>✕</button>
-            </div>
-            {/* Dia: atalhos Hoje/Amanhã + calendário simples pra outro dia */}
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              <button className={"at-chip" + (agDia === hoje ? " on" : "")} onClick={() => setAgDia(hoje)}>Hoje</button>
-              <button className={"at-chip" + (agDia === amanha ? " on" : "")} onClick={() => setAgDia(amanha)}>Amanhã</button>
-              <input className="at-dt" type="date" value={agDia} min={hoje} onChange={(e) => setAgDia(e.target.value)}
-                style={{ fontSize: 12.5, padding: "4px 6px", borderRadius: 8, border: "1px solid var(--line)", flex: 1, minWidth: 120 }} />
-            </div>
-            {/* Hora: é só clicar no horário */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4 }}>
-              {HORAS_AG.map((h) => (
-                <button key={h} className={"at-chip" + (agHora === h ? " on" : "")} onClick={() => setAgHora(h)}>{h}</button>
-              ))}
-            </div>
-            {/* Mensagem própria (opcional): se vazio, a IA manda a saudação padrão */}
-            <textarea value={agMsg} onChange={(e) => setAgMsg(e.target.value)} rows={2}
-              placeholder="Mensagem (opcional). Se deixar vazio, mando um bom dia/boa tarde automático."
-              style={{ width: "100%", fontSize: 12.5, padding: "6px 8px", borderRadius: 8, border: "1px solid var(--line)", resize: "vertical", fontFamily: "inherit", background: "var(--card,#fff)", color: "var(--ink)" }} />
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button disabled={!valido} onClick={() => { if (!valido) return; onAgendar(ms, agMsg.trim() || undefined); setAgOpen(false); }}
-                style={{ flex: 1, background: valido ? "#2563eb" : "#93c5fd", color: "#fff", border: "none", borderRadius: 8, padding: "8px", cursor: valido ? "pointer" : "default", fontSize: 12.5, fontWeight: 700 }}>
-                {valido ? `📅 Chamar IA — ${agendadoLabel(ms)}` : "Escolha dia e horário"}</button>
-              {c.agendado_ia && (
-                <button onClick={() => { onAgendar(null); setAgOpen(false); }}
-                  style={{ background: "transparent", color: "#b91c1c", border: "1px solid #fca5a5", borderRadius: 8, padding: "8px 10px", cursor: "pointer", fontSize: 12.5 }}>Cancelar</button>
-              )}
+          <div onClick={(e) => { e.stopPropagation(); setAgOpen(false); }} onPointerDown={(e) => e.stopPropagation()}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}
+              style={{ width: "100%", maxWidth: 340, padding: 14, border: "1px solid var(--line)", borderRadius: 12, background: "var(--card, #fff)", color: "var(--ink)", display: "grid", gap: 10, boxShadow: "0 12px 32px rgba(0,0,0,.3)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700 }}>⏰ Quando a IA deve chamar {pessoa}?</div>
+                <button onClick={() => setAgOpen(false)} title="Fechar"
+                  style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 2 }}>✕</button>
+              </div>
+              {/* Dia: atalhos Hoje/Amanhã + calendário simples pra outro dia */}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <button className={"at-chip" + (agDia === hoje ? " on" : "")} onClick={() => setAgDia(hoje)}>Hoje</button>
+                <button className={"at-chip" + (agDia === amanha ? " on" : "")} onClick={() => setAgDia(amanha)}>Amanhã</button>
+                <input className="at-dt" type="date" value={agDia} min={hoje} onChange={(e) => setAgDia(e.target.value)}
+                  style={{ fontSize: 13, padding: "5px 7px", borderRadius: 8, border: "1px solid var(--line)", flex: 1, minWidth: 130 }} />
+              </div>
+              {/* Hora: é só clicar no horário */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
+                {HORAS_AG.map((h) => (
+                  <button key={h} className={"at-chip" + (agHora === h ? " on" : "")} onClick={() => setAgHora(h)}>{h}</button>
+                ))}
+              </div>
+              {/* Mensagem própria (opcional): se vazio, a IA manda a saudação padrão */}
+              <textarea value={agMsg} onChange={(e) => setAgMsg(e.target.value)} rows={3}
+                placeholder="Mensagem (opcional). Se deixar vazio, mando um bom dia/boa tarde automático."
+                style={{ width: "100%", fontSize: 13, padding: "7px 9px", borderRadius: 8, border: "1px solid var(--line)", resize: "vertical", fontFamily: "inherit", background: "var(--bg-soft,#fff)", color: "var(--ink)", boxSizing: "border-box" }} />
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button disabled={!valido} onClick={() => { if (!valido) return; onAgendar(ms, agMsg.trim() || undefined); setAgOpen(false); }}
+                  style={{ flex: 1, background: valido ? "#2563eb" : "#93c5fd", color: "#fff", border: "none", borderRadius: 8, padding: "9px", cursor: valido ? "pointer" : "default", fontSize: 13, fontWeight: 700 }}>
+                  {valido ? `📅 Chamar IA — ${agendadoLabel(ms)}` : "Escolha dia e horário"}</button>
+                {c.agendado_ia && (
+                  <button onClick={() => { onAgendar(null); setAgOpen(false); }}
+                    style={{ background: "transparent", color: "#b91c1c", border: "1px solid #fca5a5", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+                )}
+              </div>
             </div>
           </div>
         );
