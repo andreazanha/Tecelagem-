@@ -1842,8 +1842,8 @@ atendimento.get("/", async (c) => {
   let lembretes = new Set<string>(), mudos = new Set<string>();
   try { const l = JSON.parse(cfgB.atend_lembretes || "[]"); if (Array.isArray(l)) lembretes = new Set(l.map(String)); } catch { lembretes = new Set(); }
   try { const s = JSON.parse(cfgB.atend_silenciados || "[]"); if (Array.isArray(s)) mudos = new Set(s.map(String)); } catch { mudos = new Set(); }
-  const agendados = new Map<string, { quando: number; enviado: boolean }>();
-  for (const a of lerAgendamentos(cfgB)) if (a && a.conversaId) agendados.set(String(a.conversaId), { quando: Number(a.quando), enviado: !!a.enviado });
+  const agendados = new Map<string, { quando: number; enviado: boolean; mensagem?: string }>();
+  for (const a of lerAgendamentos(cfgB)) if (a && a.conversaId) agendados.set(String(a.conversaId), { quando: Number(a.quando), enviado: !!a.enviado, mensagem: a.mensagem });
   const conversas = results.map((r) => {
     const manual = r.coluna_manual && validos.has(String(r.coluna_manual)) ? String(r.coluna_manual) : null;
     // Card com "Chamar IA" agendado fica na coluna de follow-up: antes de disparar (esperando a
@@ -1852,7 +1852,7 @@ atendimento.get("/", async (c) => {
     // O agendamento MANDA na coluna: mesmo que o card tenha sido arrastado à mão pra outro lugar
     // (coluna_manual), enquanto houver "Chamar IA" ele fica no follow-up. Sai só quando cancelar
     // o agendamento ou o cliente responder (aí volta pra coluna manual/natural).
-    return { ...r, coluna: ag ? "contato-followup" : (manual || colunaAtendimento(r)), lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: mudos.has(String(r.id)) ? 1 : 0, agendado_ia: ag ? ag.quando : null, agendado_enviado: ag && ag.enviado ? 1 : 0 };
+    return { ...r, coluna: ag ? "contato-followup" : (manual || colunaAtendimento(r)), lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: mudos.has(String(r.id)) ? 1 : 0, agendado_ia: ag ? ag.quando : null, agendado_enviado: ag && ag.enviado ? 1 : 0, agendado_msg: ag?.mensagem || null };
   });
   return c.json({ colunas, conversas });
 });
@@ -1891,13 +1891,13 @@ atendimento.post("/:id/lembrete", async (c) => {
 // Guarda uma lista JSON (atend_agendamentos) de { id, conversaId, telefone, quando(ms) }.
 // O cron de 5 min (processarAgendamentos) dispara quando chega a hora, com a saudação
 // certa pelo período: manhã → "Bom dia", tarde → "Boa tarde", noite → "Boa noite".
-type Agendamento = { id: string; conversaId: string; telefone: string; quando: number; criado_em: number; enviado?: boolean };
+type Agendamento = { id: string; conversaId: string; telefone: string; quando: number; criado_em: number; enviado?: boolean; mensagem?: string };
 function lerAgendamentos(cfg: Record<string, string>): Agendamento[] {
   try { const l = JSON.parse(cfg.atend_agendamentos || "[]"); return Array.isArray(l) ? l as Agendamento[] : []; } catch { return []; }
 }
 atendimento.post("/:id/agendar-ia", async (c) => {
   const id = c.req.param("id");
-  const b = await c.req.json<{ quando?: number; cancelar?: boolean }>().catch(() => ({} as { quando?: number; cancelar?: boolean }));
+  const b = await c.req.json<{ quando?: number; cancelar?: boolean; mensagem?: string }>().catch(() => ({} as { quando?: number; cancelar?: boolean; mensagem?: string }));
   const cfg = await lerConfig(c.env);
   // Só um agendamento por conversa: remove o anterior antes de gravar o novo.
   let arr = lerAgendamentos(cfg).filter((a) => a && a.conversaId !== id);
@@ -1906,7 +1906,8 @@ atendimento.post("/:id/agendar-ia", async (c) => {
   if (!quando || !isFinite(quando)) return c.json({ error: "Escolha o dia e o horário." }, 400);
   const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
   if (!conv) return c.json({ error: "Conversa não encontrada." }, 404);
-  arr.push({ id: uid(), conversaId: id, telefone: conv.telefone, quando, criado_em: Date.now() });
+  const mensagem = String(b.mensagem ?? "").trim().slice(0, 2000) || undefined;
+  arr.push({ id: uid(), conversaId: id, telefone: conv.telefone, quando, criado_em: Date.now(), mensagem });
   await salvarConfigJson(c.env, "atend_agendamentos", arr.slice(-500));
   return c.json({ ok: true, agendado: quando });
 });
@@ -2420,7 +2421,8 @@ export async function processarAgendamentos(env: Env): Promise<number> {
       // Período pela HORA AGENDADA (Brasil = UTC-3), não pela hora do disparo.
       const horaBr = new Date(Number(a.quando) - 3 * 3600 * 1000).getUTCHours();
       const saud = horaBr >= 5 && horaBr < 12 ? "Bom dia" : horaBr >= 12 && horaBr < 18 ? "Boa tarde" : "Boa noite";
-      const texto = `Olá${nome ? `, ${nome}` : ""}! ${saud}, tudo bem? 😊`;
+      // Se o atendente escreveu uma mensagem própria no agendamento, manda ela; senão, a saudação padrão.
+      const texto = String(a.mensagem ?? "").trim() || `Olá${nome ? `, ${nome}` : ""}! ${saud}, tudo bem? 😊`;
       if (conv) {
         await enviarBot(env, conv.id, tel, { tipo: "texto", texto }, "bot");
         await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();

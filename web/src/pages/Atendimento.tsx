@@ -222,10 +222,10 @@ export function Atendimento() {
   }
   // "Chamar IA": agenda (ou cancela) a saudação automática pro dia/horário escolhido.
   // Ao agendar, já MOVE o card pra coluna "⏰ Contato follow-up" na hora (sem esperar o refresh).
-  async function agendarIa(id: string, quando: number | null) {
+  async function agendarIa(id: string, quando: number | null, mensagem?: string) {
     agendaPend.current.set(id, quando);
-    setBoard((b) => (b ? { ...b, conversas: b.conversas.map((c) => (c.id === id ? { ...c, agendado_ia: quando, coluna: quando ? "contato-followup" : c.coluna } : c)) } : b));
-    try { await api.atendAgendarIa(id, quando); } catch { agendaPend.current.delete(id); }
+    setBoard((b) => (b ? { ...b, conversas: b.conversas.map((c) => (c.id === id ? { ...c, agendado_ia: quando, agendado_msg: mensagem ?? null, coluna: quando ? "contato-followup" : c.coluna } : c)) } : b));
+    try { await api.atendAgendarIa(id, quando, mensagem); } catch { agendaPend.current.delete(id); }
     recarregar();
   }
   function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance && !!c.zapi_token)).catch(() => setConectado(false)); }
@@ -421,7 +421,7 @@ export function Atendimento() {
                     <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board.colunas} onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)} arrastando={arrastando === c.id}
                       onAbrir={() => { if (arrastou.current) { arrastou.current = false; return; } setAbrir(c.id); }}
                       onLembrete={() => toggleLembrete(c.id)}
-                      onAgendar={(quando) => agendarIa(c.id, quando)}
+                      onAgendar={(quando, mensagem) => agendarIa(c.id, quando, mensagem)}
                       onPointerDown={(e) => dragDownC(e, c.id)} />
                   ))}
                 </div>
@@ -711,11 +711,12 @@ function agendadoLabel(ms: number): string {
 }
 // Horários "de bater o olho e clicar" (horário comercial).
 const HORAS_AG = ["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
-function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; onAgendar?: (quando: number | null) => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
+function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; onAgendar?: (quando: number | null, mensagem?: string) => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.estado === "atendimento-humano";
   const [agOpen, setAgOpen] = useState(false);
   const [agDia, setAgDia] = useState("");   // "YYYY-MM-DD"
   const [agHora, setAgHora] = useState(""); // "HH:MM"
+  const [agMsg, setAgMsg] = useState("");   // mensagem própria (opcional)
   // No card: nome da PESSOA em cima (quem está no WhatsApp) e, embaixo, o nome da LOJA.
   // Se só um dos dois existe, ele vira a linha de cima sozinho (sem duplicar embaixo).
   const pessoa = c.contato_nome || c.nome || telBonito(c.telefone);
@@ -731,7 +732,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
           <div className="fx-sub">{loja ? `🏬 ${loja}` : ((c.nome || c.contato_nome) ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—")}</div>
         </div>
         {onAgendar && (
-          <button onClick={(e) => { e.stopPropagation(); const base = c.agendado_ia || (Date.now() + 3600e3); setAgDia(dataLocalStr(base)); setAgHora(c.agendado_ia ? horaLocalStr(base) : "09:00"); setAgOpen((v) => !v); }} onPointerDown={(e) => e.stopPropagation()}
+          <button onClick={(e) => { e.stopPropagation(); const base = c.agendado_ia || (Date.now() + 3600e3); setAgDia(dataLocalStr(base)); setAgHora(c.agendado_ia ? horaLocalStr(base) : "09:00"); setAgMsg(c.agendado_msg || ""); setAgOpen((v) => !v); }} onPointerDown={(e) => e.stopPropagation()}
             title={c.agendado_ia ? (c.agendado_enviado ? "IA já chamou — aguardando o cliente responder" : `IA vai chamar em ${agendadoLabel(c.agendado_ia)}`) : "Chamar IA — agendar uma saudação (bom dia/boa tarde) pra um dia e horário"}
             style={{ flex: "0 0 auto", background: c.agendado_ia ? "#dbeafe" : "transparent", border: "1px solid " + (c.agendado_ia ? "#60a5fa" : "var(--line)"), color: c.agendado_ia ? "#1d4ed8" : "var(--muted)", borderRadius: 8, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "4px 6px" }}>⏰</button>
         )}
@@ -766,8 +767,12 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
                 <button key={h} className={"at-chip" + (agHora === h ? " on" : "")} onClick={() => setAgHora(h)}>{h}</button>
               ))}
             </div>
+            {/* Mensagem própria (opcional): se vazio, a IA manda a saudação padrão */}
+            <textarea value={agMsg} onChange={(e) => setAgMsg(e.target.value)} rows={2}
+              placeholder="Mensagem (opcional). Se deixar vazio, mando um bom dia/boa tarde automático."
+              style={{ width: "100%", fontSize: 12.5, padding: "6px 8px", borderRadius: 8, border: "1px solid var(--line)", resize: "vertical", fontFamily: "inherit", background: "var(--card,#fff)", color: "var(--ink)" }} />
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button disabled={!valido} onClick={() => { if (!valido) return; onAgendar(ms); setAgOpen(false); }}
+              <button disabled={!valido} onClick={() => { if (!valido) return; onAgendar(ms, agMsg.trim() || undefined); setAgOpen(false); }}
                 style={{ flex: 1, background: valido ? "#2563eb" : "#93c5fd", color: "#fff", border: "none", borderRadius: 8, padding: "8px", cursor: valido ? "pointer" : "default", fontSize: 12.5, fontWeight: 700 }}>
                 {valido ? `📅 Chamar IA — ${agendadoLabel(ms)}` : "Escolha dia e horário"}</button>
               {c.agendado_ia && (

@@ -288,7 +288,7 @@ export interface AtendConversa {
   setor: string | null; cnpj: string | null; cidade: string | null; uf: string | null;
   lojista: number | null; cliente_id?: string | null; responsavel: string | null; atualizado_em: string; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null; coluna_manual?: string | null; ultima_msg: string | null;
   tipo: string | null; representante: string | null; origem: string | null; contato_nome: string | null; autorizado: number | null; interessado: number | null;
-  funil_etapa?: string | null; lembrete?: number | null; silenciado?: number | null; agendado_ia?: number | null; agendado_enviado?: number | null;
+  funil_etapa?: string | null; lembrete?: number | null; silenciado?: number | null; agendado_ia?: number | null; agendado_enviado?: number | null; agendado_msg?: string | null;
 }
 export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; responder_texto?: string | null; arquivo_url?: string | null; status?: string | null; criado_em: string }
 export interface ArqRapido { id: string; nome: string; nomeArq: string; key: string; ct: string; tamanho: number }
@@ -716,8 +716,8 @@ export const api = {
     jsonPost(`/api/atendimento/${id}/lembrete`, on === undefined ? {} : { on }).then((r) => j<{ ok: boolean; lembrete: boolean }>(r)),
   atendSilenciar: (id: string, on?: boolean) =>
     jsonPost(`/api/atendimento/${id}/silenciar`, on === undefined ? {} : { on }).then((r) => j<{ ok: boolean; silenciado: boolean }>(r)),
-  atendAgendarIa: (id: string, quando: number | null) =>
-    jsonPost(`/api/atendimento/${id}/agendar-ia`, quando === null ? { cancelar: true } : { quando }).then((r) => j<{ ok: boolean; agendado: number | null }>(r)),
+  atendAgendarIa: (id: string, quando: number | null, mensagem?: string) =>
+    jsonPost(`/api/atendimento/${id}/agendar-ia`, quando === null ? { cancelar: true } : { quando, mensagem }).then((r) => j<{ ok: boolean; agendado: number | null }>(r)),
   atendExcluirMsg: (id: string, msgId: string, paraTodos: boolean) =>
     jsonPost(`/api/atendimento/${id}/mensagem/${msgId}/excluir`, { paraTodos }).then((r) => j<{ ok: boolean; paraTodos: boolean; revogada: boolean; motivo?: string }>(r)),
   atendEncaminharMsg: (id: string, msgId: string, dest: { telefone?: string; conversaId?: string }) =>
