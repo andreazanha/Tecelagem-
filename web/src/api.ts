@@ -716,6 +716,8 @@ export const api = {
     jsonPost(`/api/atendimento/${id}/lembrete`, on === undefined ? {} : { on }).then((r) => j<{ ok: boolean; lembrete: boolean }>(r)),
   atendSilenciar: (id: string, on?: boolean) =>
     jsonPost(`/api/atendimento/${id}/silenciar`, on === undefined ? {} : { on }).then((r) => j<{ ok: boolean; silenciado: boolean }>(r)),
+  atendJuntarDuplicados: () =>
+    jsonPost("/api/atendimento/juntar-duplicados", {}).then((r) => j<{ ok: boolean; mesclados: number; removidos: number }>(r)),
   atendAgendarIa: (id: string, quando: number | null, mensagem?: string) =>
     jsonPost(`/api/atendimento/${id}/agendar-ia`, quando === null ? { cancelar: true } : { quando, mensagem }).then((r) => j<{ ok: boolean; agendado: number | null }>(r)),
   atendExcluirMsg: (id: string, msgId: string, paraTodos: boolean) =>

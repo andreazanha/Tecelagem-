@@ -229,6 +229,11 @@ export function Atendimento() {
     try { await api.atendAgendarIa(id, quando, mensagem); } catch { agendaPend.current.delete(id); }
     recarregar();
   }
+  async function juntarDuplicados() {
+    if (!confirm("Juntar os cards duplicados do mesmo contato (número com/sem o 9º dígito)?\n\nO histórico é preservado no card mais antigo e os repetidos são removidos.")) return;
+    try { const r = await api.atendJuntarDuplicados(); alert(r.mesclados ? `✓ ${r.mesclados} contato(s) juntados, ${r.removidos} card(s) duplicado(s) removido(s).` : "Nenhum duplicado encontrado. 👍"); recarregar(); }
+    catch { alert("Não consegui juntar os duplicados agora. Tente de novo."); }
+  }
   function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance && !!c.zapi_token)).catch(() => setConectado(false)); }
   useEffect(() => { recarregar(); checarConexao(); const t = setInterval(recarregar, 8000); return () => clearInterval(t); }, []);
 
@@ -369,6 +374,7 @@ export function Atendimento() {
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setSim(true)}>💬 Simular cliente</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={juntarDuplicados} title="Junta cards repetidos do mesmo contato (número com/sem o 9º dígito) num só, preservando o histórico">🧹 Juntar duplicados</button>}
         </div>
       </div>
 
