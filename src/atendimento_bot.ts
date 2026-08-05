@@ -99,9 +99,9 @@ export const ATEND_COLUNAS = [
   { id: "aguardando-cliente", label: "Aguardando cliente", cor: "#0ea5e9" },
   { id: "aguardando-setor", label: "Aguardando setor interno", cor: "#a855f7" },
   { id: "montando-pedido", label: "Montando pedido", cor: "#f97316" },
-  { id: "finalizado", label: "Atendimento finalizado", cor: "#22c55e" },
-  { id: "consumidor-final", label: "🛒 Consumidor final", cor: "#14b8a6" },
   { id: "grupos", label: "👥 Grupos", cor: "#0891b2" },
+  { id: "consumidor-final", label: "🛒 Consumidor final", cor: "#14b8a6" },
+  { id: "finalizado", label: "Atendimento finalizado", cor: "#22c55e" },
   { id: "reclamacao", label: "Reclamação ou pendência", cor: "#ef4444" },
 ] as const;
 
