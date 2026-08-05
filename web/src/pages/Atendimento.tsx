@@ -201,9 +201,10 @@ export function Atendimento() {
     try { await api.atendLembrete(id); } catch { recarregar(); }
   }
   // "Chamar IA": agenda (ou cancela) a saudação automática pro dia/horário escolhido.
+  // Ao agendar, já MOVE o card pra coluna "⏰ Contato follow-up" na hora (sem esperar o refresh).
   async function agendarIa(id: string, quando: number | null) {
-    setBoard((b) => (b ? { ...b, conversas: b.conversas.map((c) => (c.id === id ? { ...c, agendado_ia: quando } : c)) } : b));
-    try { await api.atendAgendarIa(id, quando); } catch { recarregar(); }
+    setBoard((b) => (b ? { ...b, conversas: b.conversas.map((c) => (c.id === id ? { ...c, agendado_ia: quando, coluna: quando ? "contato-followup" : c.coluna } : c)) } : b));
+    try { await api.atendAgendarIa(id, quando); if (!quando) recarregar(); } catch { recarregar(); }
   }
   function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance && !!c.zapi_token)).catch(() => setConectado(false)); }
   useEffect(() => { recarregar(); checarConexao(); const t = setInterval(recarregar, 8000); return () => clearInterval(t); }, []);
@@ -715,7 +716,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
         <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}
           style={{ marginTop: 8, padding: 8, border: "1px solid var(--line)", borderRadius: 10, background: "var(--bg-soft, #f8fafc)", display: "grid", gap: 6 }}>
           <div style={{ fontSize: 11.5, color: "var(--muted)" }}>⏰ A IA vai mandar uma saudação neste dia/horário:</div>
-          <input type="datetime-local" value={agVal} onChange={(e) => setAgVal(e.target.value)}
+          <input className="at-dt" type="datetime-local" value={agVal} onChange={(e) => setAgVal(e.target.value)}
             style={{ width: "100%", fontSize: 13, padding: "5px 6px", borderRadius: 8, border: "1px solid var(--line)" }} />
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <button onClick={() => { const ms = agVal ? new Date(agVal).getTime() : 0; if (!ms || isNaN(ms)) return; onAgendar(ms); setAgOpen(false); }}

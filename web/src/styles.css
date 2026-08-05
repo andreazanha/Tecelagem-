@@ -10,6 +10,12 @@
   --sidebar: #0f1629;
 }
 * { box-sizing: border-box; }
+/* Seletor de data/hora do "Chamar IA": no tema escuro o iconezinho do calendário
+   ficava preto sobre o fundo navy (quase invisível). color-scheme deixa o navegador
+   renderizar o campo (e o ícone) com as cores do tema — branco no escuro. */
+.at-dt { color-scheme: light; background: var(--bg-soft); color: var(--ink); }
+body.dark .at-dt { color-scheme: dark; }
+body.dark .at-dt::-webkit-calendar-picker-indicator { filter: invert(1) brightness(1.8); }
 /* A página não rola no navegador: o app ocupa a tela toda e a rolagem acontece
    POR DENTRO — o conteúdo rola na vertical (barra à direita) e o quadro na
    horizontal (barra embaixo), ambas SEMPRE visíveis e fixas. */
