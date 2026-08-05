@@ -74,13 +74,37 @@ parceiros.post("/autocadastro", async (c) => {
   const uf = String(b.uf ?? "").trim().toUpperCase().slice(0, 2) || null;
   if (!uf) return c.json({ error: "Informe o estado (UF) da loja." }, 400);
   const online = b.loja_online === true || b.loja_online === 1 || b.loja_online === "on" || b.loja_online === "true" ? 1 : 0;
+  const endereco = String(b.endereco ?? "").trim() || null;
+  const cidade = String(b.cidade ?? "").trim() || null;
+  const whatsapp = String(b.whatsapp ?? "").trim() || null;
+  const instagram = String(b.instagram ?? "").trim() || null;
+  const site = String(b.site ?? "").trim() || null;
+  // JÁ EXISTE na lista? (ex.: cliente importado da base, ou já cadastrado antes.) Em vez de
+  // criar um DUPLICADO, atualiza a loja existente com os dados que o próprio lojista preencheu.
+  // Casa pelo WhatsApp (últimos 8 dígitos) e, se não achar, pelo nome. NÃO reaprova sozinho:
+  // mantém o status (pendente/aprovado) como já estava.
+  const wa = digitos(whatsapp).slice(-8);
+  let existente: { id: string } | null = null;
+  if (wa.length === 8) existente = await c.env.DB.prepare(
+    "SELECT id FROM lojas_parceiras WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(whatsapp,''),' ',''),'-',''),'(',''),')','') LIKE '%'||? LIMIT 1"
+  ).bind(wa).first<{ id: string }>().catch(() => null);
+  if (!existente) existente = await c.env.DB.prepare(
+    "SELECT id FROM lojas_parceiras WHERE LOWER(TRIM(nome)) = LOWER(TRIM(?)) LIMIT 1"
+  ).bind(nome).first<{ id: string }>().catch(() => null);
+  if (existente) {
+    // Preenche/atualiza sem apagar o que já tinha (COALESCE mantém o antigo se vier vazio).
+    await c.env.DB.prepare(
+      `UPDATE lojas_parceiras SET nome=?,
+         endereco=COALESCE(?,endereco), cidade=COALESCE(?,cidade), uf=?,
+         whatsapp=COALESCE(?,whatsapp), instagram=COALESCE(?,instagram), site=COALESCE(?,site), loja_online=?
+       WHERE id=?`
+    ).bind(nome, endereco, cidade, uf, whatsapp, instagram, site, online, existente.id).run();
+    return c.json({ ok: true, atualizado: true });
+  }
   await c.env.DB.prepare(
     `INSERT INTO lojas_parceiras (id, nome, endereco, cidade, uf, whatsapp, instagram, site, loja_online, ativo, pendente)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1)`
-  ).bind(
-    uid(), nome, String(b.endereco ?? "").trim() || null, String(b.cidade ?? "").trim() || null, uf,
-    String(b.whatsapp ?? "").trim() || null, String(b.instagram ?? "").trim() || null, String(b.site ?? "").trim() || null, online
-  ).run();
+  ).bind(uid(), nome, endereco, cidade, uf, whatsapp, instagram, site, online).run();
   return c.json({ ok: true });
 });
 
@@ -99,10 +123,17 @@ parceiros.post("/importar-clientes", async (c) => {
   return c.json({ ok: true, criados });
 });
 
-// Aprovar EM LOTE: aprova todas as pendentes de uma vez (as sem UF ficam aprovadas, mas só
-// aparecem na vitrine quando o estado for preenchido).
+// Aprovar EM LOTE: aprova as pendentes de uma vez. Respeita o filtro de estado/cidade (se
+// vier uf/cidade, aprova só as daquela região). As sem UF ficam aprovadas, mas só aparecem
+// na vitrine quando o estado for preenchido.
 parceiros.post("/aprovar-todos", async (c) => {
-  const r = await c.env.DB.prepare("UPDATE lojas_parceiras SET pendente=0, ativo=1 WHERE COALESCE(pendente,0)=1").run();
+  const b = await c.req.json<{ uf?: string; cidade?: string }>().catch(() => ({} as { uf?: string; cidade?: string }));
+  const cond = ["COALESCE(pendente,0)=1"]; const args: unknown[] = [];
+  const uf = String(b.uf ?? "").trim().toUpperCase();
+  if (uf) { cond.push("UPPER(TRIM(COALESCE(uf,'')))=?"); args.push(uf); }
+  const cidade = String(b.cidade ?? "").trim();
+  if (cidade) { cond.push("UPPER(COALESCE(cidade,'')) LIKE ?"); args.push("%" + cidade.toUpperCase() + "%"); }
+  const r = await c.env.DB.prepare(`UPDATE lojas_parceiras SET pendente=0, ativo=1 WHERE ${cond.join(" AND ")}`).bind(...args).run();
   return c.json({ ok: true, aprovadas: r.meta?.changes ?? 0 });
 });
 

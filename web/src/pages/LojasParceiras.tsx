@@ -8,6 +8,8 @@ export function LojasParceiras() {
   const [form, setForm] = useState<Partial<LojaParceira> | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [msg, setMsg] = useState("");
+  const [fUf, setFUf] = useState("");       // filtro por estado
+  const [fCidade, setFCidade] = useState(""); // filtro por cidade
 
   async function carregar() {
     setCarregando(true);
@@ -31,9 +33,10 @@ export function LojasParceiras() {
     } catch { setMsg("Não consegui aprovar."); }
   }
   async function aprovarTodos() {
-    if (!confirm(`Aprovar todas as ${pendentes.length} lojas pendentes de uma vez?`)) return;
+    const alvo = filtrando ? `as ${pendentes.length} lojas pendentes do filtro` : `todas as ${pendentes.length} lojas pendentes`;
+    if (!confirm(`Aprovar ${alvo} de uma vez?`)) return;
     setMsg("Aprovando…");
-    try { const r = await api.aprovarTodosParceiros(); setMsg(`✓ ${r.aprovadas} loja(s) aprovadas. As que estão sem estado (UF) só aparecem na vitrine depois de preencher.`); carregar(); setTimeout(() => setMsg(""), 4000); }
+    try { const r = await api.aprovarTodosParceiros(filtrando ? { uf: fUf, cidade: fCidade } : undefined); setMsg(`✓ ${r.aprovadas} loja(s) aprovadas. As que estão sem estado (UF) só aparecem na vitrine depois de preencher.`); carregar(); setTimeout(() => setMsg(""), 4000); }
     catch { setMsg("Não consegui aprovar em lote."); }
   }
   async function recusar(l: LojaParceira) { if (confirm(`Recusar "${l.nome}"? (some da fila e não vai pra vitrine)`)) { await api.recusarParceiro(l.id); carregar(); } }
@@ -46,8 +49,14 @@ export function LojasParceiras() {
   async function excluir(l: LojaParceira) { if (confirm(`Excluir "${l.nome}"?`)) { await api.excluirParceiro(l.id); carregar(); } }
   function copiar(t: string) { navigator.clipboard?.writeText(t).then(() => { setMsg("Link copiado!"); setTimeout(() => setMsg(""), 2000); }); }
 
-  const pendentes = lojas.filter((l) => !l.ativo);
-  const ativas = lojas.filter((l) => l.ativo);
+  // Filtro por cidade/estado (vale pras duas listas).
+  const ufs = [...new Set(lojas.map((l) => String(l.uf ?? "").trim().toUpperCase()).filter(Boolean))].sort();
+  const casa = (l: LojaParceira) =>
+    (!fUf || String(l.uf ?? "").trim().toUpperCase() === fUf) &&
+    (!fCidade.trim() || String(l.cidade ?? "").toLowerCase().includes(fCidade.trim().toLowerCase()));
+  const pendentes = lojas.filter((l) => !l.ativo && casa(l));
+  const ativas = lojas.filter((l) => l.ativo && casa(l));
+  const filtrando = !!fUf || !!fCidade.trim();
   // Links PÚBLICOS (domínios oficiais) — não o endereço interno do sistema (workers.dev).
   const linkCadastro = "https://cadastro.bigtricot.com.br";
   const linkVitrine = "https://ondecomprar.bigtricot.com.br";
@@ -112,6 +121,20 @@ export function LojasParceiras() {
             <button className="btn btn-primary" onClick={salvar}>💾 Salvar</button>
             <button className="btn btn-soft" onClick={() => setForm(null)}>Cancelar</button>
           </div>
+        </div>
+      )}
+
+      {/* Filtro por cidade / estado */}
+      {!carregando && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", margin: "0 0 14px", padding: "10px 12px", border: "1px solid var(--line,#e2e8f0)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)" }}>
+          <span style={{ fontWeight: 700, fontSize: 13 }}>🔎 Filtrar:</span>
+          <select value={fUf} onChange={(e) => setFUf(e.target.value)} style={{ fontSize: 13, padding: "6px 8px", borderRadius: 8 }}>
+            <option value="">Todos os estados</option>
+            {ufs.map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
+          <input value={fCidade} onChange={(e) => setFCidade(e.target.value)} placeholder="Cidade…" style={{ fontSize: 13, padding: "6px 8px", borderRadius: 8, minWidth: 160 }} />
+          {filtrando && <button className="btn btn-soft" onClick={() => { setFUf(""); setFCidade(""); }}>✕ Limpar</button>}
+          {filtrando && <span className="muted" style={{ fontSize: 12.5 }}>{pendentes.length + ativas.length} loja(s)</span>}
         </div>
       )}
 

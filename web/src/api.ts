@@ -673,7 +673,7 @@ export const api = {
   salvarParceiro: (b: Partial<LojaParceira>) => jsonPost("/api/parceiros", b).then((r) => j<{ ok: boolean; id: string }>(r)),
   excluirParceiro: (id: string) => fetch(`/api/parceiros/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   aprovarParceiro: (id: string) => jsonPost(`/api/parceiros/${encodeURIComponent(id)}/aprovar`, {}).then((r) => j<{ ok: boolean }>(r)),
-  aprovarTodosParceiros: () => jsonPost("/api/parceiros/aprovar-todos", {}).then((r) => j<{ ok: boolean; aprovadas: number }>(r)),
+  aprovarTodosParceiros: (filtro?: { uf?: string; cidade?: string }) => jsonPost("/api/parceiros/aprovar-todos", filtro ?? {}).then((r) => j<{ ok: boolean; aprovadas: number }>(r)),
   recusarParceiro: (id: string) => jsonPost(`/api/parceiros/${encodeURIComponent(id)}/recusar`, {}).then((r) => j<{ ok: boolean }>(r)),
   importarClientesParceiros: () => jsonPost("/api/parceiros/importar-clientes", {}).then((r) => j<{ ok: boolean; criados: number }>(r)),
   // Treino da Big (base de conhecimento)
