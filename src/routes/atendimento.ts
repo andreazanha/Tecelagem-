@@ -1820,13 +1820,14 @@ atendimento.get("/", async (c) => {
   let lembretes = new Set<string>(), mudos = new Set<string>();
   try { const l = JSON.parse(cfgB.atend_lembretes || "[]"); if (Array.isArray(l)) lembretes = new Set(l.map(String)); } catch { lembretes = new Set(); }
   try { const s = JSON.parse(cfgB.atend_silenciados || "[]"); if (Array.isArray(s)) mudos = new Set(s.map(String)); } catch { mudos = new Set(); }
-  const agendados = new Map<string, number>();
-  for (const a of lerAgendamentos(cfgB)) if (a && a.conversaId) agendados.set(String(a.conversaId), Number(a.quando));
+  const agendados = new Map<string, { quando: number; enviado: boolean }>();
+  for (const a of lerAgendamentos(cfgB)) if (a && a.conversaId) agendados.set(String(a.conversaId), { quando: Number(a.quando), enviado: !!a.enviado });
   const conversas = results.map((r) => {
     const manual = r.coluna_manual && validos.has(String(r.coluna_manual)) ? String(r.coluna_manual) : null;
-    // Card com "Chamar IA" agendado (ainda não disparado) fica na coluna de follow-up até a hora chegar.
-    const temAgenda = agendados.has(String(r.id));
-    return { ...r, coluna: manual || (temAgenda ? "contato-followup" : colunaAtendimento(r)), lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: mudos.has(String(r.id)) ? 1 : 0, agendado_ia: agendados.get(String(r.id)) || null };
+    // Card com "Chamar IA" agendado fica na coluna de follow-up: antes de disparar (esperando a
+    // hora) e também DEPOIS de disparar, enquanto o cliente não responde. Sai só quando responder.
+    const ag = agendados.get(String(r.id));
+    return { ...r, coluna: manual || (ag ? "contato-followup" : colunaAtendimento(r)), lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: mudos.has(String(r.id)) ? 1 : 0, agendado_ia: ag ? ag.quando : null, agendado_enviado: ag && ag.enviado ? 1 : 0 };
   });
   return c.json({ colunas, conversas });
 });
@@ -1865,7 +1866,7 @@ atendimento.post("/:id/lembrete", async (c) => {
 // Guarda uma lista JSON (atend_agendamentos) de { id, conversaId, telefone, quando(ms) }.
 // O cron de 5 min (processarAgendamentos) dispara quando chega a hora, com a saudação
 // certa pelo período: manhã → "Bom dia", tarde → "Boa tarde", noite → "Boa noite".
-type Agendamento = { id: string; conversaId: string; telefone: string; quando: number; criado_em: number };
+type Agendamento = { id: string; conversaId: string; telefone: string; quando: number; criado_em: number; enviado?: boolean };
 function lerAgendamentos(cfg: Record<string, string>): Agendamento[] {
   try { const l = JSON.parse(cfg.atend_agendamentos || "[]"); return Array.isArray(l) ? l as Agendamento[] : []; } catch { return []; }
 }
@@ -2118,9 +2119,9 @@ atendimento.get("/:id", async (c) => {
   }
   const colManual = conv.coluna_manual && ATEND_COLUNAS.some((x) => x.id === conv.coluna_manual) ? conv.coluna_manual : null;
   // Lembrete (pulsa) e silenciado (não pulsa/sem som) — listas JSON de config.
-  let lembrete = 0, silenciado = 0, agendado_ia: number | null = null;
-  try { const cfgL = await lerConfig(c.env); const l = JSON.parse(cfgL.atend_lembretes || "[]"); if (Array.isArray(l) && l.map(String).includes(String(conv.id))) lembrete = 1; const s = JSON.parse(cfgL.atend_silenciados || "[]"); if (Array.isArray(s) && s.map(String).includes(String(conv.id))) silenciado = 1; const ag = lerAgendamentos(cfgL).find((a) => a && a.conversaId === conv.id); if (ag) agendado_ia = Number(ag.quando); } catch { /* ok */ }
-  return c.json({ ...conv, coluna: colManual || (agendado_ia ? "contato-followup" : colunaAtendimento(conv)), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado, lembrete, silenciado, agendado_ia });
+  let lembrete = 0, silenciado = 0, agendado_ia: number | null = null, agendado_enviado = 0;
+  try { const cfgL = await lerConfig(c.env); const l = JSON.parse(cfgL.atend_lembretes || "[]"); if (Array.isArray(l) && l.map(String).includes(String(conv.id))) lembrete = 1; const s = JSON.parse(cfgL.atend_silenciados || "[]"); if (Array.isArray(s) && s.map(String).includes(String(conv.id))) silenciado = 1; const ag = lerAgendamentos(cfgL).find((a) => a && a.conversaId === conv.id); if (ag) { agendado_ia = Number(ag.quando); agendado_enviado = ag.enviado ? 1 : 0; } } catch { /* ok */ }
+  return c.json({ ...conv, coluna: colManual || (agendado_ia ? "contato-followup" : colunaAtendimento(conv)), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado, lembrete, silenciado, agendado_ia, agendado_enviado });
 });
 
 // ── Atendente humano assume ─────────────────────────────────────────────────────────
@@ -2341,11 +2342,15 @@ export async function processarAgendamentos(env: Env): Promise<number> {
   const arr = lerAgendamentos(cfg);
   if (!arr.length) return 0;
   const agora = Date.now();
-  const venceu = (a: Agendamento) => a && a.telefone && Number(a.quando) <= agora;
+  // Vence só o que ainda NÃO foi enviado (o já-enviado fica na lista pra o card seguir no follow-up).
+  const venceu = (a: Agendamento) => a && a.telefone && !a.enviado && Number(a.quando) <= agora;
   const vencidos = arr.filter(venceu);
   if (!vencidos.length) return 0;
-  // Tira os vencidos da lista ANTES de enviar (evita repetir se um envio travar/reprocessar).
-  await salvarConfigJson(env, "atend_agendamentos", arr.filter((a) => !venceu(a)));
+  // Marca como ENVIADO antes de disparar (evita reenvio se travar/reprocessar) e MANTÉM na lista:
+  // assim, se o cliente não responder, o card continua na coluna de follow-up. Ele só sai quando
+  // o cliente escreve (receberMensagem apaga o agendamento) — aí vai pra "Aguardando humano".
+  const idsVencidos = new Set(vencidos.map((a) => a.id));
+  await salvarConfigJson(env, "atend_agendamentos", arr.map((a) => idsVencidos.has(a.id) ? { ...a, enviado: true } : a));
   let enviados = 0;
   for (const a of vencidos) {
     try {
