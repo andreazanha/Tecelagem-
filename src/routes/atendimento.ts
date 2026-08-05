@@ -1827,7 +1827,10 @@ atendimento.get("/", async (c) => {
     // Card com "Chamar IA" agendado fica na coluna de follow-up: antes de disparar (esperando a
     // hora) e também DEPOIS de disparar, enquanto o cliente não responde. Sai só quando responder.
     const ag = agendados.get(String(r.id));
-    return { ...r, coluna: manual || (ag ? "contato-followup" : colunaAtendimento(r)), lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: mudos.has(String(r.id)) ? 1 : 0, agendado_ia: ag ? ag.quando : null, agendado_enviado: ag && ag.enviado ? 1 : 0 };
+    // O agendamento MANDA na coluna: mesmo que o card tenha sido arrastado à mão pra outro lugar
+    // (coluna_manual), enquanto houver "Chamar IA" ele fica no follow-up. Sai só quando cancelar
+    // o agendamento ou o cliente responder (aí volta pra coluna manual/natural).
+    return { ...r, coluna: ag ? "contato-followup" : (manual || colunaAtendimento(r)), lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: mudos.has(String(r.id)) ? 1 : 0, agendado_ia: ag ? ag.quando : null, agendado_enviado: ag && ag.enviado ? 1 : 0 };
   });
   return c.json({ colunas, conversas });
 });
@@ -2121,7 +2124,7 @@ atendimento.get("/:id", async (c) => {
   // Lembrete (pulsa) e silenciado (não pulsa/sem som) — listas JSON de config.
   let lembrete = 0, silenciado = 0, agendado_ia: number | null = null, agendado_enviado = 0;
   try { const cfgL = await lerConfig(c.env); const l = JSON.parse(cfgL.atend_lembretes || "[]"); if (Array.isArray(l) && l.map(String).includes(String(conv.id))) lembrete = 1; const s = JSON.parse(cfgL.atend_silenciados || "[]"); if (Array.isArray(s) && s.map(String).includes(String(conv.id))) silenciado = 1; const ag = lerAgendamentos(cfgL).find((a) => a && a.conversaId === conv.id); if (ag) { agendado_ia = Number(ag.quando); agendado_enviado = ag.enviado ? 1 : 0; } } catch { /* ok */ }
-  return c.json({ ...conv, coluna: colManual || (agendado_ia ? "contato-followup" : colunaAtendimento(conv)), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado, lembrete, silenciado, agendado_ia, agendado_enviado });
+  return c.json({ ...conv, coluna: agendado_ia ? "contato-followup" : (colManual || colunaAtendimento(conv)), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado, lembrete, silenciado, agendado_ia, agendado_enviado });
 });
 
 // ── Atendente humano assume ─────────────────────────────────────────────────────────

@@ -694,10 +694,14 @@ function DocCard({ url, nome, pdf }: { url: string; nome: string; pdf: boolean }
   );
 }
 
-// Formata um instante (ms) pro <input type="datetime-local"> (horário LOCAL do navegador).
-function paraInputLocal(ms: number): string {
+// Data local "YYYY-MM-DD" e hora local "HH:MM" — pros seletores fáceis do "Chamar IA".
+function dataLocalStr(ms: number): string {
   const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000);
-  return d.toISOString().slice(0, 16);
+  return d.toISOString().slice(0, 10);
+}
+function horaLocalStr(ms: number): string {
+  const d = new Date(ms); const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 // Rótulo curto "05/08 às 09:00" pro agendamento.
 function agendadoLabel(ms: number): string {
@@ -705,10 +709,13 @@ function agendadoLabel(ms: number): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(d.getDate())}/${p(d.getMonth() + 1)} às ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+// Horários "de bater o olho e clicar" (horário comercial).
+const HORAS_AG = ["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
 function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; onAgendar?: (quando: number | null) => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.estado === "atendimento-humano";
   const [agOpen, setAgOpen] = useState(false);
-  const [agVal, setAgVal] = useState("");
+  const [agDia, setAgDia] = useState("");   // "YYYY-MM-DD"
+  const [agHora, setAgHora] = useState(""); // "HH:MM"
   // No card: nome da PESSOA em cima (quem está no WhatsApp) e, embaixo, o nome da LOJA.
   // Se só um dos dois existe, ele vira a linha de cima sozinho (sem duplicar embaixo).
   const pessoa = c.contato_nome || c.nome || telBonito(c.telefone);
@@ -724,7 +731,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
           <div className="fx-sub">{loja ? `🏬 ${loja}` : ((c.nome || c.contato_nome) ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—")}</div>
         </div>
         {onAgendar && (
-          <button onClick={(e) => { e.stopPropagation(); setAgVal(paraInputLocal(c.agendado_ia || Date.now() + 3600e3)); setAgOpen((v) => !v); }} onPointerDown={(e) => e.stopPropagation()}
+          <button onClick={(e) => { e.stopPropagation(); const base = c.agendado_ia || (Date.now() + 3600e3); setAgDia(dataLocalStr(base)); setAgHora(c.agendado_ia ? horaLocalStr(base) : "09:00"); setAgOpen((v) => !v); }} onPointerDown={(e) => e.stopPropagation()}
             title={c.agendado_ia ? (c.agendado_enviado ? "IA já chamou — aguardando o cliente responder" : `IA vai chamar em ${agendadoLabel(c.agendado_ia)}`) : "Chamar IA — agendar uma saudação (bom dia/boa tarde) pra um dia e horário"}
             style={{ flex: "0 0 auto", background: c.agendado_ia ? "#dbeafe" : "transparent", border: "1px solid " + (c.agendado_ia ? "#60a5fa" : "var(--line)"), color: c.agendado_ia ? "#1d4ed8" : "var(--muted)", borderRadius: 8, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "4px 6px" }}>⏰</button>
         )}
@@ -734,22 +741,43 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
             style={{ flex: "0 0 auto", background: lembrete ? "#facc15" : "transparent", border: "1px solid " + (lembrete ? "#eab308" : "var(--line)"), color: lembrete ? "#713f12" : "var(--muted)", borderRadius: 8, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "4px 6px" }}>🔔</button>
         )}
       </div>
-      {onAgendar && agOpen && (
-        <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}
-          style={{ marginTop: 8, padding: 8, border: "1px solid var(--line)", borderRadius: 10, background: "var(--bg-soft, #f8fafc)", display: "grid", gap: 6 }}>
-          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>⏰ A IA vai mandar uma saudação neste dia/horário:</div>
-          <input className="at-dt" type="datetime-local" value={agVal} min={paraInputLocal(Date.now())} onChange={(e) => setAgVal(e.target.value)}
-            style={{ width: "100%", fontSize: 13, padding: "5px 6px", borderRadius: 8, border: "1px solid var(--line)" }} />
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <button onClick={() => { const ms = agVal ? new Date(agVal).getTime() : 0; if (!ms || isNaN(ms)) return; onAgendar(ms); setAgOpen(false); }}
-              style={{ flex: 1, background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "6px 8px", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>📅 Chamar IA</button>
-            {c.agendado_ia && (
-              <button onClick={() => { onAgendar(null); setAgOpen(false); }}
-                style={{ background: "transparent", color: "#b91c1c", border: "1px solid #fca5a5", borderRadius: 8, padding: "6px 8px", cursor: "pointer", fontSize: 12.5 }}>Cancelar agendamento</button>
-            )}
+      {onAgendar && agOpen && (() => {
+        const hoje = dataLocalStr(Date.now()), amanha = dataLocalStr(Date.now() + 864e5);
+        const ms = agDia && agHora ? new Date(`${agDia}T${agHora}`).getTime() : 0;
+        const valido = !!ms && !isNaN(ms) && ms > Date.now();
+        return (
+          <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}
+            style={{ marginTop: 8, padding: 10, border: "1px solid var(--line)", borderRadius: 10, background: "var(--bg-soft, #f8fafc)", display: "grid", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>⏰ Quando a IA deve chamar?</div>
+              <button onClick={() => setAgOpen(false)} title="Fechar"
+                style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 2 }}>✕</button>
+            </div>
+            {/* Dia: atalhos Hoje/Amanhã + calendário simples pra outro dia */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <button className={"at-chip" + (agDia === hoje ? " on" : "")} onClick={() => setAgDia(hoje)}>Hoje</button>
+              <button className={"at-chip" + (agDia === amanha ? " on" : "")} onClick={() => setAgDia(amanha)}>Amanhã</button>
+              <input className="at-dt" type="date" value={agDia} min={hoje} onChange={(e) => setAgDia(e.target.value)}
+                style={{ fontSize: 12.5, padding: "4px 6px", borderRadius: 8, border: "1px solid var(--line)", flex: 1, minWidth: 120 }} />
+            </div>
+            {/* Hora: é só clicar no horário */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4 }}>
+              {HORAS_AG.map((h) => (
+                <button key={h} className={"at-chip" + (agHora === h ? " on" : "")} onClick={() => setAgHora(h)}>{h}</button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button disabled={!valido} onClick={() => { if (!valido) return; onAgendar(ms); setAgOpen(false); }}
+                style={{ flex: 1, background: valido ? "#2563eb" : "#93c5fd", color: "#fff", border: "none", borderRadius: 8, padding: "8px", cursor: valido ? "pointer" : "default", fontSize: 12.5, fontWeight: 700 }}>
+                {valido ? `📅 Chamar IA — ${agendadoLabel(ms)}` : "Escolha dia e horário"}</button>
+              {c.agendado_ia && (
+                <button onClick={() => { onAgendar(null); setAgOpen(false); }}
+                  style={{ background: "transparent", color: "#b91c1c", border: "1px solid #fca5a5", borderRadius: 8, padding: "8px 10px", cursor: "pointer", fontSize: 12.5 }}>Cancelar</button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
       {c.ultima_msg && (() => { const p = extrairIaNota(c.ultima_msg); const t = MSG_PLACEHOLDER.test((p.visivel || "").trim()) ? "" : p.visivel; return <div className="at-prev">{t || (p.iaNota ? "📷 foto" : c.ultima_msg)}</div>; })()}
       <div className="fx-foot">
         {c.cliente_id && <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="Já é cliente cadastrado na base">📇 Cliente</span>}
