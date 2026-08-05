@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type ChatMensagem, type AtendColuna } from "../api";
 import { getUser, pode } from "../auth";
@@ -746,8 +747,9 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
         const hoje = dataLocalStr(Date.now()), amanha = dataLocalStr(Date.now() + 864e5);
         const ms = agDia && agHora ? new Date(`${agDia}T${agHora}`).getTime() : 0;
         const valido = !!ms && !isNaN(ms) && ms > Date.now();
-        // Modal centralizado (não cabe dentro do card estreito — antes ficava cortado).
-        return (
+        // Modal centralizado via PORTAL (renderiza no <body>): assim não é "cortado" por nenhum
+        // ancestral com transform/overflow (o card/coluna), que antes prendia o position:fixed.
+        return createPortal((
           <div onClick={(e) => { e.stopPropagation(); setAgOpen(false); }} onPointerDown={(e) => e.stopPropagation()}
             style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
             <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}
@@ -785,7 +787,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
               </div>
             </div>
           </div>
-        );
+        ), document.body);
       })()}
       {c.ultima_msg && (() => { const p = extrairIaNota(c.ultima_msg); const t = MSG_PLACEHOLDER.test((p.visivel || "").trim()) ? "" : p.visivel; return <div className="at-prev">{t || (p.iaNota ? "📷 foto" : c.ultima_msg)}</div>; })()}
       <div className="fx-foot">
