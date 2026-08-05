@@ -54,8 +54,9 @@ export function LojasParceiras() {
   const casa = (l: LojaParceira) =>
     (!fUf || String(l.uf ?? "").trim().toUpperCase() === fUf) &&
     (!fCidade.trim() || String(l.cidade ?? "").toLowerCase().includes(fCidade.trim().toLowerCase()));
-  const pendentes = lojas.filter((l) => !l.ativo && casa(l));
-  const ativas = lojas.filter((l) => l.ativo && casa(l));
+  const emOrdem = (arr: LojaParceira[]) => [...arr].sort((a, b) => String(a.nome ?? "").localeCompare(String(b.nome ?? ""), "pt-BR", { sensitivity: "base" }));
+  const pendentes = emOrdem(lojas.filter((l) => !l.ativo && casa(l)));
+  const ativas = emOrdem(lojas.filter((l) => l.ativo && casa(l)));
   const filtrando = !!fUf || !!fCidade.trim();
   // Links PÚBLICOS (domínios oficiais) — não o endereço interno do sistema (workers.dev).
   const linkCadastro = "https://cadastro.bigtricot.com.br";
