@@ -30,7 +30,7 @@ parceiros.get("/", async (c) => {
 parceiros.get("/publico", async (c) => {
   const uf = String(c.req.query("uf") ?? "").trim().toUpperCase();
   const cidade = String(c.req.query("cidade") ?? "").trim();
-  const cond = ["COALESCE(ativo,1)=1", "COALESCE(pendente,0)=0"]; const args: unknown[] = [];
+  const cond = ["COALESCE(ativo,1)=1", "COALESCE(pendente,0)=0", "TRIM(COALESCE(uf,'')) <> ''"]; const args: unknown[] = [];
   if (uf) { cond.push("UPPER(COALESCE(uf,''))=?"); args.push(uf); }
   if (cidade) { cond.push("UPPER(COALESCE(cidade,'')) LIKE ?"); args.push("%" + cidade.toUpperCase() + "%"); }
   const { results } = await c.env.DB.prepare(
@@ -99,13 +99,20 @@ parceiros.post("/importar-clientes", async (c) => {
   return c.json({ ok: true, criados });
 });
 
-// Aprovar: a loja passa a aparecer na vitrine (precisa de UF — a vitrine exige estado).
+// Aprovar EM LOTE: aprova todas as pendentes de uma vez (as sem UF ficam aprovadas, mas só
+// aparecem na vitrine quando o estado for preenchido).
+parceiros.post("/aprovar-todos", async (c) => {
+  const r = await c.env.DB.prepare("UPDATE lojas_parceiras SET pendente=0, ativo=1 WHERE COALESCE(pendente,0)=1").run();
+  return c.json({ ok: true, aprovadas: r.meta?.changes ?? 0 });
+});
+
+// Aprovar: marca a loja como aprovada (sai da fila e vai pra "Publicadas"). Se ainda estiver
+// SEM UF, ela continua fora da vitrine pública até o estado ser preenchido — mas a aprovação
+// em si sempre funciona (o gestor só clica "Aprovar").
 parceiros.post("/:id/aprovar", async (c) => {
   const id = c.req.param("id");
-  const loja = await c.env.DB.prepare("SELECT uf FROM lojas_parceiras WHERE id=?").bind(id).first<{ uf: string | null }>();
-  if (!loja) return c.json({ error: "loja não encontrada" }, 404);
-  if (!String(loja.uf ?? "").trim()) return c.json({ error: "Preencha o estado (UF) antes de aprovar — sem ele a loja não aparece na vitrine." }, 400);
-  await c.env.DB.prepare("UPDATE lojas_parceiras SET pendente=0, ativo=1 WHERE id=?").bind(id).run();
+  const r = await c.env.DB.prepare("UPDATE lojas_parceiras SET pendente=0, ativo=1 WHERE id=?").bind(id).run();
+  if (!r.meta?.changes) return c.json({ error: "loja não encontrada" }, 404);
   return c.json({ ok: true });
 });
 
@@ -231,7 +238,7 @@ export function cadastroHtml(): string {
 
 export async function vitrineHtml(env: Env, uf?: string, cidade?: string): Promise<string> {
   const { results } = await env.DB.prepare(
-    "SELECT nome, endereco, cidade, uf, whatsapp, instagram, site FROM lojas_parceiras WHERE COALESCE(ativo,1)=1 AND COALESCE(pendente,0)=0 ORDER BY uf, cidade, nome"
+    "SELECT nome, endereco, cidade, uf, whatsapp, instagram, site FROM lojas_parceiras WHERE COALESCE(ativo,1)=1 AND COALESCE(pendente,0)=0 AND TRIM(COALESCE(uf,'')) <> '' ORDER BY uf, cidade, nome"
   ).all<Omit<LojaParceiraRow, "id" | "ativo" | "criado_em">>().catch(() => ({ results: [] as Omit<LojaParceiraRow, "id" | "ativo" | "criado_em">[] }));
   const dados = JSON.stringify(results).replace(/</g, "\\u003c");
   const ufSel = esc(String(uf ?? "").toUpperCase().slice(0, 2));

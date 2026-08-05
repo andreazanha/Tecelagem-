@@ -24,9 +24,17 @@ export function LojasParceiras() {
     catch { setMsg("Erro ao salvar."); }
   }
   async function aprovar(l: LojaParceira) {
-    if (!String(l.uf ?? "").trim()) { setMsg(`⚠️ "${l.nome}" está sem estado (UF). Clique em Editar, informe o estado e salve — aí dá pra aprovar.`); return; }
-    try { await api.aprovarParceiro(l.id); setMsg(`✓ "${l.nome}" aprovada — já aparece na vitrine.`); carregar(); setTimeout(() => setMsg(""), 2500); }
-    catch { setMsg("Não consegui aprovar. Confira o estado (UF) da loja."); }
+    try {
+      await api.aprovarParceiro(l.id);
+      setMsg(String(l.uf ?? "").trim() ? `✓ "${l.nome}" aprovada — já aparece na vitrine.` : `✓ "${l.nome}" aprovada. Falta o estado (UF) pra aparecer na vitrine — dá pra preencher depois em Editar.`);
+      carregar(); setTimeout(() => setMsg(""), 3500);
+    } catch { setMsg("Não consegui aprovar."); }
+  }
+  async function aprovarTodos() {
+    if (!confirm(`Aprovar todas as ${pendentes.length} lojas pendentes de uma vez?`)) return;
+    setMsg("Aprovando…");
+    try { const r = await api.aprovarTodosParceiros(); setMsg(`✓ ${r.aprovadas} loja(s) aprovadas. As que estão sem estado (UF) só aparecem na vitrine depois de preencher.`); carregar(); setTimeout(() => setMsg(""), 4000); }
+    catch { setMsg("Não consegui aprovar em lote."); }
   }
   async function recusar(l: LojaParceira) { if (confirm(`Recusar "${l.nome}"? (some da fila e não vai pra vitrine)`)) { await api.recusarParceiro(l.id); carregar(); } }
   async function importar() {
@@ -111,8 +119,11 @@ export function LojasParceiras() {
         <>
           {pendentes.length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              <h3 style={{ margin: "0 0 8px", color: "#b45309" }}>⏳ Aguardando aprovação ({pendentes.length})</h3>
-              <p className="muted" style={{ margin: "0 0 8px", fontSize: 12.5 }}>Clientes da base e cadastros pelo link entram aqui. <b>Aprovar</b> publica na vitrine; <b>Recusar</b> descarta.</p>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", margin: "0 0 8px" }}>
+                <h3 style={{ margin: 0, color: "#b45309" }}>⏳ Aguardando aprovação ({pendentes.length})</h3>
+                <button className="btn btn-primary" onClick={aprovarTodos}>✓ Aprovar todos ({pendentes.length})</button>
+              </div>
+              <p className="muted" style={{ margin: "0 0 8px", fontSize: 12.5 }}>Clientes da base e cadastros pelo link entram aqui. <b>Aprovar</b> publica na vitrine; <b>Recusar</b> descarta. Lojas sem estado (UF) ficam aprovadas mas só aparecem na vitrine depois de preencher o estado.</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {pendentes.map((l) => <Cartao key={l.id} l={l} pendente onEditar={() => setForm(l)} onAprovar={() => aprovar(l)} onRecusar={() => recusar(l)} onExcluir={() => excluir(l)} onAlternar={() => alternar(l)} />)}
               </div>
@@ -153,7 +164,7 @@ function Cartao({ l, pendente, onEditar, onAprovar, onRecusar, onExcluir, onAlte
         )}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {pendente && onAprovar && <button className="btn btn-primary" onClick={onAprovar} title={semUf ? "Falta o estado (UF) — edite antes de aprovar" : "Publicar na vitrine"} style={semUf ? { opacity: 0.55 } : undefined}>✓ Aprovar</button>}
+        {pendente && onAprovar && <button className="btn btn-primary" onClick={onAprovar} title={semUf ? "Aprova, mas só aparece na vitrine depois de preencher o estado (UF)" : "Publicar na vitrine"}>✓ Aprovar</button>}
         {pendente && onRecusar && <button className="btn btn-soft" onClick={onRecusar} title="Descartar (não vai pra vitrine)" style={{ color: "#b91c1c" }}>✕ Recusar</button>}
         {!pendente && <button className="btn btn-soft" onClick={onAlternar} title="Tirar da vitrine">Despublicar</button>}
         <button className="btn btn-soft" onClick={onEditar}>Editar</button>
