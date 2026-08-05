@@ -608,6 +608,13 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Detecta interesse comercial + modelos citados (vale inclusive no atendimento humano).
   const cfgAt = await lerConfig(env);
   await detectarInteresse(env, conv.id, texto, cfgAt.interesse_modelos || "");
+  // Cliente CHAMOU antes do "Chamar IA" agendado → cancela o agendamento (o robô não precisa
+  // mais dar o "oi", ele já veio). O card sai da coluna de follow-up e volta pro fluxo normal:
+  // como há mensagem nova sem resposta, cai em "Aguardando atendimento humano" e fica piscando.
+  try {
+    const ag = lerAgendamentos(cfgAt);
+    if (ag.some((a) => a && a.conversaId === conv.id)) await salvarConfigJson(env, "atend_agendamentos", ag.filter((a) => a && a.conversaId !== conv.id));
+  } catch { /* ok */ }
 
   // EQUIPE: números do time NÃO recebem atendimento automático — a Big fica quieta pra vocês
   // conversarem/testarem sem o robô responder. (Cadastrados na aba "Equipe".)

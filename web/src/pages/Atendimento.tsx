@@ -194,7 +194,27 @@ export function Atendimento() {
   const mudoRef = useRef(mudo);
   useEffect(() => { mudoRef.current = mudo; }, [mudo]);
 
-  function recarregar() { const u = getUser(); api.atendBoard(u?.nome, ehGestorAtend()).then(setBoard).catch(() => {}); }
+  // Agendamentos "Chamar IA" recém-feitos: guarda o valor esperado (id → ms | null) até o
+  // servidor refletir. Assim um refresh que chegou ANTES do POST persistir não desfaz o
+  // movimento do card pra coluna de follow-up (a corrida que fazia o card "voltar").
+  const agendaPend = useRef<Map<string, number | null>>(new Map());
+  function recarregar() {
+    const u = getUser();
+    api.atendBoard(u?.nome, ehGestorAtend()).then((bd) => {
+      const pend = agendaPend.current;
+      if (pend.size) {
+        bd = { ...bd, conversas: bd.conversas.map((c) => {
+          if (!pend.has(c.id)) return c;
+          const want = pend.get(c.id) ?? null;
+          const has = c.agendado_ia ?? null;
+          const igual = want ? (!!has && Math.abs(Number(has) - want) < 1000) : !has;
+          if (igual) { pend.delete(c.id); return c; }            // servidor já refletiu → confirma
+          return { ...c, agendado_ia: want, coluna: want ? "contato-followup" : c.coluna }; // ainda não → mantém otimista
+        }) };
+      }
+      setBoard(bd);
+    }).catch(() => {});
+  }
   // Marca/desmarca o lembrete de um card (deixa pulsando pra não esquecer de falar com o lead).
   async function toggleLembrete(id: string) {
     setBoard((b) => (b ? { ...b, conversas: b.conversas.map((c) => (c.id === id ? { ...c, lembrete: c.lembrete ? 0 : 1 } : c)) } : b));
@@ -203,8 +223,10 @@ export function Atendimento() {
   // "Chamar IA": agenda (ou cancela) a saudação automática pro dia/horário escolhido.
   // Ao agendar, já MOVE o card pra coluna "⏰ Contato follow-up" na hora (sem esperar o refresh).
   async function agendarIa(id: string, quando: number | null) {
+    agendaPend.current.set(id, quando);
     setBoard((b) => (b ? { ...b, conversas: b.conversas.map((c) => (c.id === id ? { ...c, agendado_ia: quando, coluna: quando ? "contato-followup" : c.coluna } : c)) } : b));
-    try { await api.atendAgendarIa(id, quando); if (!quando) recarregar(); } catch { recarregar(); }
+    try { await api.atendAgendarIa(id, quando); } catch { agendaPend.current.delete(id); }
+    recarregar();
   }
   function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance && !!c.zapi_token)).catch(() => setConectado(false)); }
   useEffect(() => { recarregar(); checarConexao(); const t = setInterval(recarregar, 8000); return () => clearInterval(t); }, []);
@@ -716,7 +738,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
         <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}
           style={{ marginTop: 8, padding: 8, border: "1px solid var(--line)", borderRadius: 10, background: "var(--bg-soft, #f8fafc)", display: "grid", gap: 6 }}>
           <div style={{ fontSize: 11.5, color: "var(--muted)" }}>⏰ A IA vai mandar uma saudação neste dia/horário:</div>
-          <input className="at-dt" type="datetime-local" value={agVal} onChange={(e) => setAgVal(e.target.value)}
+          <input className="at-dt" type="datetime-local" value={agVal} min={paraInputLocal(Date.now())} onChange={(e) => setAgVal(e.target.value)}
             style={{ width: "100%", fontSize: 13, padding: "5px 6px", borderRadius: 8, border: "1px solid var(--line)" }} />
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <button onClick={() => { const ms = agVal ? new Date(agVal).getTime() : 0; if (!ms || isNaN(ms)) return; onAgendar(ms); setAgOpen(false); }}
