@@ -2091,12 +2091,29 @@ const CT_POR_EXT: Record<string, string> = {
 };
 atendimento.get("/arquivo/:nome", async (c) => {
   const nome = c.req.param("nome");
-  const obj = await c.env.BUCKET.get(`atend/${nome}`);
-  if (!obj) return c.json({ error: "arquivo não encontrado" }, 404);
+  const key = `atend/${nome}`;
   const ext = (nome.split(".").pop() || "").toLowerCase();
+  // RANGE: o Safari (Mac/iPhone) e alguns players SÓ tocam áudio/vídeo se o servidor responder
+  // 206 Partial Content ao pedido de faixa (Range). Antes a gente só anunciava Accept-Ranges mas
+  // devolvia o arquivo inteiro (200) — por isso o play "só piscava" em outro computador.
+  const rangeHeader = c.req.header("range");
+  const obj = await c.env.BUCKET.get(key, rangeHeader ? { range: c.req.raw.headers } : undefined);
+  if (!obj) return c.json({ error: "arquivo não encontrado" }, 404);
   const ct = CT_POR_EXT[ext] || obj.httpMetadata?.contentType || "application/octet-stream";
-  // Accept-Ranges ajuda o visualizador de PDF do Chrome a renderizar a prévia.
-  return new Response(obj.body, { headers: { "Content-Type": ct, "Cache-Control": "public, max-age=31536000, immutable", "Accept-Ranges": "bytes" } });
+  const headers = new Headers({ "Content-Type": ct, "Cache-Control": "public, max-age=31536000, immutable", "Accept-Ranges": "bytes" });
+  if (obj.httpEtag) headers.set("ETag", obj.httpEtag);
+  const rng = (obj as { range?: { offset?: number; length?: number } }).range;
+  const temBody = (obj as { body?: ReadableStream }).body;
+  if (rangeHeader && rng && temBody) {
+    const offset = rng.offset ?? 0;
+    const length = rng.length ?? (obj.size - offset);
+    const fim = offset + length - 1;
+    headers.set("Content-Range", `bytes ${offset}-${fim}/${obj.size}`);
+    headers.set("Content-Length", String(length));
+    return new Response(temBody, { status: 206, headers });
+  }
+  headers.set("Content-Length", String(obj.size));
+  return new Response(temBody ?? null, { headers });
 });
 
 // ── ARQUIVOS RÁPIDOS: catálogos/PDFs salvos pra mandar com 1 clique ─────────────────
