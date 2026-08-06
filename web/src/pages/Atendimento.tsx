@@ -1707,7 +1707,7 @@ function ColunasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: ()
 }
 
 // ── Nova conversa: escolhe um contato do WhatsApp (ou digita o número) e manda a 1ª msg ──
-type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado"; cidade?: string | null; uf?: string | null };
+type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm"; cidade?: string | null; uf?: string | null; falou?: boolean };
 function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; onAbrir: (id: string) => void; onMudou: () => void }) {
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -1814,14 +1814,19 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
   const [campanhas, setCampanhas] = useState<{ id: string; nome: string | null; status: string; total: number; enviados: number; pendentes: number; falhas: number }[]>([]);
   function carregarCampanhas() { api.atendCampanhas().then(setCampanhas).catch(() => {}); }
   useEffect(() => {
-    Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp(), api.atendRespostasEmpresa()]).then(([cl, w, emp]) => {
-      const lista: Contato[] = []; const vistos = new Set<string>();
-      const add = (n: string, tel: string, origem: "cliente" | "whats", cidade?: string | null, uf?: string | null) => {
+    const u = getUser();
+    Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp(), api.atendRespostasEmpresa(), api.atendBoard(u?.nome, ehGestorAtend())]).then(([cl, w, emp, bd]) => {
+      const lista: Contato[] = []; const idx = new Map<string, Contato>();
+      const add = (n: string, tel: string, origem: Contato["origem"], cidade?: string | null, uf?: string | null, falou = false) => {
         const d = (tel || "").replace(/\D/g, ""); if (d.length < 10) return;
-        const key = d.slice(-11); if (vistos.has(key)) return; vistos.add(key);
-        lista.push({ nome: n || telBonito(d), telefone: d, origem, cidade, uf });
+        const key = d.slice(-11); const ex = idx.get(key);
+        if (ex) { if (falou) ex.falou = true; if ((!ex.nome || ex.nome === telBonito(ex.telefone)) && n) ex.nome = n; return; }
+        const c: Contato = { nome: n || telBonito(d), telefone: d, origem, cidade, uf, falou };
+        idx.set(key, c); lista.push(c);
       };
       if (cl.status === "fulfilled") for (const c of cl.value) add(c.nome, c.whatsapp || "", "cliente", c.cidade, c.uf);
+      // "Já falaram com a gente": conversas do CRM com mensagem RECEBIDA do cliente.
+      if (bd.status === "fulfilled") for (const cv of bd.value.conversas) if (cv.telefone && cv.ultima_in_em && cv.estado !== "grupo") add(cv.contato_nome || cv.nome || "", cv.telefone, "crm", cv.cidade, cv.uf, true);
       if (w.status === "fulfilled") for (const c of (w.value.contatos || [])) add(c.nome, c.telefone, "whats");
       lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
       setContatos(lista);
@@ -1829,18 +1834,23 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     }).finally(() => setCarregando(false));
     carregarCampanhas();
   }, []);
+  const [fonte, setFonte] = useState<"todos" | "cliente" | "falou" | "colado">("todos");
   const CAP_CONTATOS = 1000; // limite de exibição (perf). O resto acha-se pela busca.
+  const porFonte = (c: Contato) => fonte === "todos" || (fonte === "cliente" ? c.origem === "cliente" : fonte === "falou" ? !!c.falou : c.origem === "colado");
   const filtrados = (() => {
-    const q = busca.trim().toLowerCase(); if (!q) return contatos.slice(0, CAP_CONTATOS);
+    const q = busca.trim().toLowerCase();
+    const base = contatos.filter(porFonte);
+    if (!q) return base.slice(0, CAP_CONTATOS);
     const dig = q.replace(/\D/g, "");
-    // Busca por NOME, CIDADE/UF ou NÚMERO — sobre a base TODA (não só os que estão à mostra).
-    return contatos.filter((c) =>
+    // Busca por NOME, CIDADE/UF ou NÚMERO — sobre a fonte escolhida (não só os que estão à mostra).
+    return base.filter((c) =>
       c.nome.toLowerCase().includes(q)
       || (c.cidade || "").toLowerCase().includes(q)
       || (c.uf || "").toLowerCase() === q
       || (dig.length >= 3 && c.telefone.includes(dig))
     ).slice(0, CAP_CONTATOS);
   })();
+  const contarFonte = (f: typeof fonte) => contatos.filter((c) => f === "todos" || (f === "cliente" ? c.origem === "cliente" : f === "falou" ? !!c.falou : c.origem === "colado")).length;
   // PROSPECÇÃO: cola uma lista de números (1 por linha, ou separados por vírgula) — inclusive de
   // quem NÃO está na base. Vira contato selecionado na campanha. Aceita "Nome, número" ou só número.
   function adicionarColados() {
@@ -1913,6 +1923,11 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
               </div>
             </div>
           )}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+            {([["todos", "Todos"], ["cliente", "📇 Base de clientes"], ["falou", "💬 Já falaram aqui"], ["colado", "📋 Colados"]] as const).map(([f, lb]) => (
+              <button key={f} className={"at-chip" + (fonte === f ? " on" : "")} onClick={() => setFonte(f)}>{lb} ({contarFonte(f)})</button>
+            ))}
+          </div>
           <input placeholder="🔎 Buscar por nome, cidade ou número…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: "100%", marginBottom: 6 }} />
           <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10 }}>
             {carregando ? <div className="muted" style={{ padding: 12 }}>Carregando contatos…</div>
@@ -1921,7 +1936,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
                 <label key={c.origem + c.telefone} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderBottom: "1px solid var(--line)", cursor: "pointer" }}>
                   <input type="checkbox" checked={sel.has(c.telefone)} onChange={() => toggle(c.telefone)} />
                   <div><div><b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span></div>
-                    <div className="muted2" style={{ fontSize: 11 }}>{c.origem === "cliente" ? "📇 base" : c.origem === "colado" ? "📋 colado" : "📱 zap"}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : ""}</div></div>
+                    <div className="muted2" style={{ fontSize: 11 }}>{c.origem === "cliente" ? "📇 base" : c.origem === "colado" ? "📋 colado" : c.origem === "crm" ? "💬 já falou" : "📱 zap"}{c.falou && c.origem !== "crm" ? " · 💬 já falou" : ""}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : ""}</div></div>
                 </label>
               ))}
           </div>
