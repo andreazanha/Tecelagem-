@@ -1811,6 +1811,15 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
   const [busy, setBusy] = useState(false);
   const [colar, setColar] = useState("");           // prospecção: colar lista de números
   const [mostrarColar, setMostrarColar] = useState(false);
+  const [anexo, setAnexo] = useState<{ url: string; tipo: string; nome: string; ext: string } | null>(null);
+  const [subindo, setSubindo] = useState(false);
+  const arqRef = useRef<HTMLInputElement>(null);
+  async function subirAnexo(file: File) {
+    if (file.size > 40 * 1024 * 1024) { alert("Arquivo muito grande (máx. 40MB)."); return; }
+    setSubindo(true);
+    try { const r = await api.atendCampanhaUpload(file); if (r.error) { alert(r.error); return; } setAnexo({ url: r.url, tipo: r.tipo, nome: r.nome, ext: r.ext }); }
+    catch { alert("Não consegui subir o arquivo."); } finally { setSubindo(false); }
+  }
   const [campanhas, setCampanhas] = useState<{ id: string; nome: string | null; status: string; total: number; enviados: number; pendentes: number; falhas: number }[]>([]);
   function carregarCampanhas() { api.atendCampanhas().then(setCampanhas).catch(() => {}); }
   useEffect(() => {
@@ -1884,18 +1893,18 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
   const marcarFiltrados = () => setSel((s) => { const n = new Set(s); filtrados.forEach((c) => n.add(c.telefone)); return n; });
   const limpar = () => setSel(new Set());
   async function criar(rascunho = false) {
-    if (!mensagem.trim()) { alert("Escreva a mensagem da campanha."); return; }
+    if (!mensagem.trim() && !anexo) { alert("Escreva a mensagem ou anexe uma foto/arquivo."); return; }
     if (sel.size === 0) { alert("Selecione pelo menos um contato."); return; }
     if (!rascunho && !confirm(`Criar e ENVIAR a campanha para ${sel.size} contato(s)? A Big vai enviando 1 a cada ${intervalo}s pra não bloquear o número.`)) return;
     setBusy(true);
     try {
       const alvos = contatos.filter((c) => sel.has(c.telefone)).map((c) => ({ telefone: c.telefone, nome: c.nome }));
-      const r = await api.atendCriarCampanha({ nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 40, alvos, rascunho });
+      const r = await api.atendCriarCampanha({ nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 40, alvos, rascunho, arquivo_url: anexo?.url, arquivo_tipo: anexo?.tipo, arquivo_nome: anexo?.nome, arquivo_ext: anexo?.ext });
       if (r.error) { alert(r.error); return; }
       alert(rascunho
         ? `Campanha salva como rascunho (${r.total} contato[s]). Ela NÃO envia até você clicar em "▶️ Ativar" na lista abaixo.`
         : `Campanha criada! ${r.total} contato(s). A Big começa a enviar aos poucos.`);
-      setSel(new Set()); setNome(""); carregarCampanhas();
+      setSel(new Set()); setNome(""); setAnexo(null); carregarCampanhas();
     } catch (e) { alert((e as Error).message || "Não consegui criar a campanha."); } finally { setBusy(false); }
   }
   async function mudarStatus(id: string, status: string) { await api.atendStatusCampanha(id, status).catch(() => {}); carregarCampanhas(); }
@@ -1909,6 +1918,18 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
           <div className="muted2" style={{ fontSize: 12.5, marginBottom: 8 }}>Escolha os contatos, escreva a mensagem (com o link) e a Big vai enviando <b>aos poucos</b> pra não correr risco de bloqueio.</div>
           <label className="fld full">Nome da campanha (opcional)<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Convite cadastro — agosto" /></label>
           <label className="fld full" style={{ marginTop: 8 }}>Mensagem<textarea value={mensagem} onChange={(e) => setMensagem(e.target.value)} rows={5} placeholder="Escreva a mensagem com o link…" style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} /></label>
+          {/* Anexo (foto/arquivo) opcional — vai pra todos os contatos */}
+          <input ref={arqRef} type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) subirAnexo(f); e.currentTarget.value = ""; }} />
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            {!anexo
+              ? <button className="btn btn-soft" disabled={subindo} onClick={() => arqRef.current?.click()}>{subindo ? "Subindo…" : "📎 Anexar foto/arquivo"}</button>
+              : <span style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid var(--line)", borderRadius: 8, padding: "5px 10px", fontSize: 12.5, background: "var(--bg-soft,#f8fafc)" }}>
+                  {anexo.tipo === "imagem" ? "🖼️" : anexo.tipo === "audio" ? "🎤" : "📎"} {anexo.nome}
+                  <button onClick={() => setAnexo(null)} title="Remover anexo" style={{ background: "transparent", border: 0, cursor: "pointer", color: "#b91c1c", fontSize: 14 }}>✕</button>
+                </span>}
+            {anexo && <span className="muted2" style={{ fontSize: 11.5 }}>{anexo.tipo === "imagem" ? "A mensagem vai como legenda da foto." : "A foto/arquivo vai primeiro; a mensagem em seguida."}</span>}
+          </div>
+          {anexo && anexo.tipo === "imagem" && <img src={anexo.url} alt="anexo" style={{ maxWidth: 160, maxHeight: 120, borderRadius: 8, marginTop: 6, border: "1px solid var(--line)" }} />}
           <label className="fld" style={{ marginTop: 8, display: "inline-flex", flexDirection: "column" }}>Enviar 1 a cada
             <span><input type="number" min={15} max={600} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} style={{ width: 70 }} /> segundos <span className="muted2">(recomendado ≥ 40s)</span></span>
           </label>

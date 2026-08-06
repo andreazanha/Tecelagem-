@@ -1370,10 +1370,28 @@ atendimento.get("/campanhas", async (c) => {
   ).all().catch(() => ({ results: [] as unknown[] }));
   return c.json(results);
 });
+// Upload de um anexo (foto/arquivo) pra usar na campanha. Salva no R2 e devolve a URL + tipo.
+atendimento.post("/campanhas/upload", async (c) => {
+  const form = await c.req.formData().catch(() => null);
+  const entry = form?.get("file");
+  if (!entry || typeof entry === "string") return c.json({ error: "arquivo é obrigatório" }, 400);
+  const file = entry as Blob & { name?: string };
+  if (file.size === 0) return c.json({ error: "arquivo vazio" }, 400);
+  if (file.size > 40 * 1024 * 1024) return c.json({ error: "arquivo muito grande (máx. 40MB)" }, 400);
+  const nomeArq = (file.name || "arquivo").slice(0, 120);
+  const ext = (nomeArq.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
+  const ct = file.type || CT_POR_EXT[ext] || "application/octet-stream";
+  const tipo = ct.startsWith("image/") ? "imagem" : ct.startsWith("audio/") ? "audio" : "arquivo";
+  const nome = `${uid()}.${ext}`;
+  try { await c.env.BUCKET.put(`atend/${nome}`, await file.arrayBuffer(), { httpMetadata: { contentType: ct } }); }
+  catch (e) { return c.json({ error: "não consegui salvar (" + String((e as Error)?.message || e).slice(0, 100) + ")" }, 500); }
+  return c.json({ ok: true, url: `${new URL(c.req.url).origin}/api/atendimento/arquivo/${nome}`, tipo, nome: nomeArq, ext });
+});
 atendimento.post("/campanhas", async (c) => {
-  const b = await c.req.json<{ nome?: string; mensagem?: string; intervalo_seg?: number; alvos?: { telefone: string; nome?: string }[]; rascunho?: boolean }>().catch(() => ({}) as Record<string, never>);
+  const b = await c.req.json<{ nome?: string; mensagem?: string; intervalo_seg?: number; alvos?: { telefone: string; nome?: string }[]; rascunho?: boolean; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string }>().catch(() => ({}) as Record<string, never>);
   const mensagem = String(b.mensagem ?? "").trim();
-  if (!mensagem) return c.json({ error: "mensagem é obrigatória" }, 400);
+  const arqUrl = String(b.arquivo_url ?? "").trim();
+  if (!mensagem && !arqUrl) return c.json({ error: "escreva a mensagem ou anexe um arquivo" }, 400);
   const vistos = new Set<string>();
   const alvos = (Array.isArray(b.alvos) ? b.alvos : [])
     .map((a) => ({ telefone: digitos(a.telefone), nome: String(a.nome ?? "").slice(0, 80) }))
@@ -1383,8 +1401,9 @@ atendimento.post("/campanhas", async (c) => {
   const intervalo = Math.max(15, Number(b.intervalo_seg) || 40);
   // rascunho=true → entra PAUSADA (salva sem enviar). É só clicar em "Ativar" quando quiser disparar.
   const status = b.rascunho ? "pausada" : "ativa";
-  await c.env.DB.prepare("INSERT INTO atend_campanhas (id, nome, mensagem, intervalo_seg, status) VALUES (?, ?, ?, ?, ?)")
-    .bind(id, String(b.nome ?? "").slice(0, 80) || null, mensagem, intervalo, status).run();
+  const arqTipo = ["imagem", "audio", "arquivo"].includes(String(b.arquivo_tipo)) ? String(b.arquivo_tipo) : (arqUrl ? "arquivo" : null);
+  await c.env.DB.prepare("INSERT INTO atend_campanhas (id, nome, mensagem, intervalo_seg, status, arquivo_url, arquivo_tipo, arquivo_nome, arquivo_ext) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(id, String(b.nome ?? "").slice(0, 80) || null, mensagem, intervalo, status, arqUrl || null, arqTipo, String(b.arquivo_nome ?? "").slice(0, 120) || null, String(b.arquivo_ext ?? "").slice(0, 8) || null).run();
   const stmts = alvos.map((a) => c.env.DB.prepare("INSERT INTO atend_campanha_alvos (id, campanha_id, telefone, nome) VALUES (?, ?, ?, ?)").bind(uid(), id, a.telefone, a.nome || null));
   for (let i = 0; i < stmts.length; i += 50) await c.env.DB.batch(stmts.slice(i, i + 50));
   return c.json({ ok: true, id, total: alvos.length });
@@ -2686,12 +2705,21 @@ export async function processarCampanhas(env: Env): Promise<number> {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return 0;
   const { results: camps } = await env.DB.prepare(
-    "SELECT id, mensagem, intervalo_seg FROM atend_campanhas WHERE status='ativa'"
-  ).all<{ id: string; mensagem: string; intervalo_seg: number }>().catch(() => ({ results: [] as { id: string; mensagem: string; intervalo_seg: number }[] }));
+    "SELECT id, mensagem, intervalo_seg, arquivo_url, arquivo_tipo, arquivo_nome, arquivo_ext FROM atend_campanhas WHERE status='ativa'"
+  ).all<{ id: string; mensagem: string; intervalo_seg: number; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null }>().catch(() => ({ results: [] as { id: string; mensagem: string; intervalo_seg: number; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null }[] }));
   let enviados = 0;
   const inicio = Date.now();
   for (const camp of camps) {
     const intervalo = Math.max(15, Number(camp.intervalo_seg) || 40);
+    const ehImagem = camp.arquivo_tipo === "imagem", ehAudio = camp.arquivo_tipo === "audio";
+    // Documento: baixa UMA vez e manda embutido (base64) — mais confiável que a Z-API buscar a URL.
+    let docData: string | undefined;
+    if (camp.arquivo_url && !ehImagem && !ehAudio) {
+      try {
+        const fr = await fetch(camp.arquivo_url, { signal: AbortSignal.timeout(15000) });
+        if (fr.ok) { const buf = await fr.arrayBuffer(); if (buf.byteLength <= 8 * 1024 * 1024) docData = `data:${CT_POR_EXT[camp.arquivo_ext || "bin"] || "application/octet-stream"};base64,${abParaBase64(buf)}`; }
+      } catch { docData = undefined; }
+    }
     const { results: alvos } = await env.DB.prepare(
       "SELECT id, telefone FROM atend_campanha_alvos WHERE campanha_id=? AND status='pendente' ORDER BY rowid LIMIT 500"
     ).bind(camp.id).all<{ id: string; telefone: string }>();
@@ -2701,10 +2729,17 @@ export async function processarCampanhas(env: Env): Promise<number> {
       // Confere se a campanha ainda está ativa (pode ter sido pausada no meio).
       const ativa = await env.DB.prepare("SELECT 1 FROM atend_campanhas WHERE id=? AND status='ativa'").bind(camp.id).first();
       if (!ativa) break;
-      const r = await enviarWhatsapp(env, alvo.telefone, { tipo: "texto", texto: camp.mensagem });
+      let r: { enviado: boolean; messageId?: string | null; motivo?: string };
+      if (camp.arquivo_url) {
+        r = await enviarMidiaZapi(env, alvo.telefone, { url: camp.arquivo_url, docData, ehImagem, ehAudio, ext: camp.arquivo_ext || "bin", fileName: camp.arquivo_nome || `arquivo.${camp.arquivo_ext || "bin"}`, caption: ehImagem ? (camp.mensagem || "") : "" });
+        // Imagem leva a mensagem como legenda; documento/áudio → manda o texto logo em seguida.
+        if (r.enviado && camp.mensagem && !ehImagem) await enviarWhatsapp(env, alvo.telefone, { tipo: "texto", texto: camp.mensagem }).catch(() => ({}));
+      } else {
+        r = await enviarWhatsapp(env, alvo.telefone, { tipo: "texto", texto: camp.mensagem });
+      }
       const st = r.enviado ? "enviado" : (r.motivo === "cliente-bloqueado" ? "bloqueado" : "falhou");
       // Enviou de verdade → grava a mensagem NA CONVERSA do cliente (aparece no histórico, com ✓✓).
-      if (r.enviado) await registrarEnvioNaConversa(env, alvo.telefone, camp.mensagem, r.messageId ?? null);
+      if (r.enviado) await registrarEnvioNaConversa(env, alvo.telefone, camp.mensagem || `📎 ${camp.arquivo_nome || "arquivo"}`, r.messageId ?? null);
       await env.DB.prepare("UPDATE atend_campanha_alvos SET status=?, motivo=?, enviado_em=datetime('now') WHERE id=?").bind(st, r.motivo || null, alvo.id).run();
       await env.DB.prepare("UPDATE atend_campanhas SET ultimo_envio_em=datetime('now') WHERE id=?").bind(camp.id).run();
       if (r.enviado) enviados++;
