@@ -1371,7 +1371,7 @@ atendimento.get("/campanhas", async (c) => {
   return c.json(results);
 });
 atendimento.post("/campanhas", async (c) => {
-  const b = await c.req.json<{ nome?: string; mensagem?: string; intervalo_seg?: number; alvos?: { telefone: string; nome?: string }[] }>().catch(() => ({}) as Record<string, never>);
+  const b = await c.req.json<{ nome?: string; mensagem?: string; intervalo_seg?: number; alvos?: { telefone: string; nome?: string }[]; rascunho?: boolean }>().catch(() => ({}) as Record<string, never>);
   const mensagem = String(b.mensagem ?? "").trim();
   if (!mensagem) return c.json({ error: "mensagem é obrigatória" }, 400);
   const vistos = new Set<string>();
@@ -1381,8 +1381,10 @@ atendimento.post("/campanhas", async (c) => {
   if (!alvos.length) return c.json({ error: "escolha pelo menos um contato válido" }, 400);
   const id = uid();
   const intervalo = Math.max(15, Number(b.intervalo_seg) || 40);
-  await c.env.DB.prepare("INSERT INTO atend_campanhas (id, nome, mensagem, intervalo_seg, status) VALUES (?, ?, ?, ?, 'ativa')")
-    .bind(id, String(b.nome ?? "").slice(0, 80) || null, mensagem, intervalo).run();
+  // rascunho=true → entra PAUSADA (salva sem enviar). É só clicar em "Ativar" quando quiser disparar.
+  const status = b.rascunho ? "pausada" : "ativa";
+  await c.env.DB.prepare("INSERT INTO atend_campanhas (id, nome, mensagem, intervalo_seg, status) VALUES (?, ?, ?, ?, ?)")
+    .bind(id, String(b.nome ?? "").slice(0, 80) || null, mensagem, intervalo, status).run();
   const stmts = alvos.map((a) => c.env.DB.prepare("INSERT INTO atend_campanha_alvos (id, campanha_id, telefone, nome) VALUES (?, ?, ?, ?)").bind(uid(), id, a.telefone, a.nome || null));
   for (let i = 0; i < stmts.length; i += 50) await c.env.DB.batch(stmts.slice(i, i + 50));
   return c.json({ ok: true, id, total: alvos.length });
@@ -1976,6 +1978,21 @@ atendimento.post("/:id/agendar-ia", async (c) => {
   arr.push({ id: uid(), conversaId: id, telefone: conv.telefone, quando, criado_em: Date.now(), mensagem });
   await salvarConfigJson(c.env, "atend_agendamentos", arr.slice(-500));
   return c.json({ ok: true, agendado: quando });
+});
+
+// Palavras-chave (interesses detectados) por contato — pra filtrar a lista da campanha por
+// assunto ("manta", "almofada"…). Junta os termos + a última mensagem de cada conversa.
+atendimento.get("/interesses-contatos", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT co.telefone AS telefone,
+            (SELECT GROUP_CONCAT(ai.termo, ' ') FROM atend_interesses ai WHERE ai.conversa_id = co.id) AS termos,
+            (SELECT m.texto FROM atend_mensagens m WHERE m.conversa_id=co.id AND m.direcao='in' AND m.tipo NOT IN ('nota','sistema') ORDER BY m.criado_em DESC LIMIT 1) AS ultima_in
+       FROM atend_conversas co
+      WHERE COALESCE(co.estado,'') <> 'grupo'
+        AND (EXISTS (SELECT 1 FROM atend_interesses ai WHERE ai.conversa_id = co.id) OR co.ultima_in_em IS NOT NULL)`
+  ).all<{ telefone: string; termos: string | null; ultima_in: string | null }>().catch(() => ({ results: [] as { telefone: string; termos: string | null; ultima_in: string | null }[] }));
+  const contatos = (results || []).map((r) => ({ telefone: r.telefone, palavras: `${r.termos || ""} ${r.ultima_in || ""}`.trim().slice(0, 300) }));
+  return c.json({ contatos });
 });
 
 // ── CONTATOS salvos no WhatsApp (via Z-API) — pra iniciar conversa com alguém ───────

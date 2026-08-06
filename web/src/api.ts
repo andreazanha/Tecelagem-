@@ -699,8 +699,10 @@ export const api = {
     jsonPost(`/api/atendimento/${id}/encerrar`, { autor, reabrir }).then((r) => j<{ ok: boolean }>(r)),
   atendFotoPerfil: (id: string) => fetch(`/api/atendimento/${id}/foto-perfil`).then((r) => j<{ link: string | null }>(r)),
   atendCampanhas: () => fetch("/api/atendimento/campanhas").then((r) => j<{ id: string; nome: string | null; mensagem: string; intervalo_seg: number; status: string; criado_em: string; total: number; enviados: number; pendentes: number; falhas: number }[]>(r)),
-  atendCriarCampanha: (b: { nome?: string; mensagem: string; intervalo_seg: number; alvos: { telefone: string; nome?: string }[] }) =>
+  atendCriarCampanha: (b: { nome?: string; mensagem: string; intervalo_seg: number; alvos: { telefone: string; nome?: string }[]; rascunho?: boolean }) =>
     jsonPost("/api/atendimento/campanhas", b).then((r) => j<{ ok: boolean; id: string; total: number; error?: string }>(r)),
+  atendInteressesContatos: () =>
+    fetch("/api/atendimento/interesses-contatos").then((r) => j<{ contatos: { telefone: string; palavras: string }[] }>(r)),
   atendStatusCampanha: (id: string, status: string) =>
     jsonPost(`/api/atendimento/campanhas/${id}/status`, { status }).then((r) => j<{ ok: boolean }>(r)),
   atendConversa: (id: string) => fetch(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),

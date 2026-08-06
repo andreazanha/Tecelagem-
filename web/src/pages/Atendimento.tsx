@@ -1707,7 +1707,7 @@ function ColunasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: ()
 }
 
 // ── Nova conversa: escolhe um contato do WhatsApp (ou digita o número) e manda a 1ª msg ──
-type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm"; cidade?: string | null; uf?: string | null; falou?: boolean };
+type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string };
 function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; onAbrir: (id: string) => void; onMudou: () => void }) {
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -1815,7 +1815,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
   function carregarCampanhas() { api.atendCampanhas().then(setCampanhas).catch(() => {}); }
   useEffect(() => {
     const u = getUser();
-    Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp(), api.atendRespostasEmpresa(), api.atendBoard(u?.nome, ehGestorAtend())]).then(([cl, w, emp, bd]) => {
+    Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp(), api.atendRespostasEmpresa(), api.atendBoard(u?.nome, ehGestorAtend()), api.atendInteressesContatos()]).then(([cl, w, emp, bd, ie]) => {
       const lista: Contato[] = []; const idx = new Map<string, Contato>();
       const add = (n: string, tel: string, origem: Contato["origem"], cidade?: string | null, uf?: string | null, falou = false) => {
         const d = (tel || "").replace(/\D/g, ""); if (d.length < 10) return;
@@ -1828,6 +1828,8 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
       // "Já falaram com a gente": conversas do CRM com mensagem RECEBIDA do cliente.
       if (bd.status === "fulfilled") for (const cv of bd.value.conversas) if (cv.telefone && cv.ultima_in_em && cv.estado !== "grupo") add(cv.contato_nome || cv.nome || "", cv.telefone, "crm", cv.cidade, cv.uf, true);
       if (w.status === "fulfilled") for (const c of (w.value.contatos || [])) add(c.nome, c.telefone, "whats");
+      // Palavras-chave (interesses + última mensagem) pra busca por assunto.
+      if (ie.status === "fulfilled") for (const p of (ie.value.contatos || [])) { const ex = idx.get((p.telefone || "").replace(/\D/g, "").slice(-11)); if (ex) ex.palavras = (p.palavras || "").toLowerCase(); }
       lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
       setContatos(lista);
       if (emp.status === "fulfilled") { const conv = emp.value.find((r) => /cadast/i.test(r.titulo)); if (conv) setMensagem(conv.texto); }
@@ -1847,6 +1849,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
       c.nome.toLowerCase().includes(q)
       || (c.cidade || "").toLowerCase().includes(q)
       || (c.uf || "").toLowerCase() === q
+      || (c.palavras || "").includes(q)          // palavra-chave: assunto/interesse/última mensagem
       || (dig.length >= 3 && c.telefone.includes(dig))
     ).slice(0, CAP_CONTATOS);
   })();
@@ -1880,16 +1883,18 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
   const toggle = (tel: string) => setSel((s) => { const n = new Set(s); if (n.has(tel)) n.delete(tel); else n.add(tel); return n; });
   const marcarFiltrados = () => setSel((s) => { const n = new Set(s); filtrados.forEach((c) => n.add(c.telefone)); return n; });
   const limpar = () => setSel(new Set());
-  async function criar() {
+  async function criar(rascunho = false) {
     if (!mensagem.trim()) { alert("Escreva a mensagem da campanha."); return; }
     if (sel.size === 0) { alert("Selecione pelo menos um contato."); return; }
-    if (!confirm(`Criar campanha para ${sel.size} contato(s)? A Big vai enviando 1 a cada ${intervalo}s pra não bloquear o número.`)) return;
+    if (!rascunho && !confirm(`Criar e ENVIAR a campanha para ${sel.size} contato(s)? A Big vai enviando 1 a cada ${intervalo}s pra não bloquear o número.`)) return;
     setBusy(true);
     try {
       const alvos = contatos.filter((c) => sel.has(c.telefone)).map((c) => ({ telefone: c.telefone, nome: c.nome }));
-      const r = await api.atendCriarCampanha({ nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 40, alvos });
+      const r = await api.atendCriarCampanha({ nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 40, alvos, rascunho });
       if (r.error) { alert(r.error); return; }
-      alert(`Campanha criada! ${r.total} contato(s). A Big começa a enviar aos poucos.`);
+      alert(rascunho
+        ? `Campanha salva como rascunho (${r.total} contato[s]). Ela NÃO envia até você clicar em "▶️ Ativar" na lista abaixo.`
+        : `Campanha criada! ${r.total} contato(s). A Big começa a enviar aos poucos.`);
       setSel(new Set()); setNome(""); carregarCampanhas();
     } catch (e) { alert((e as Error).message || "Não consegui criar a campanha."); } finally { setBusy(false); }
   }
@@ -1928,7 +1933,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
               <button key={f} className={"at-chip" + (fonte === f ? " on" : "")} onClick={() => setFonte(f)}>{lb} ({contarFonte(f)})</button>
             ))}
           </div>
-          <input placeholder="🔎 Buscar por nome, cidade ou número…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: "100%", marginBottom: 6 }} />
+          <input placeholder="🔎 Buscar por nome, cidade, número ou palavra-chave (ex.: manta, almofada)…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: "100%", marginBottom: 6 }} />
           <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10 }}>
             {carregando ? <div className="muted" style={{ padding: 12 }}>Carregando contatos…</div>
               : filtrados.length === 0 ? <div className="muted" style={{ padding: 12 }}>Nenhum contato.</div>
@@ -1945,8 +1950,9 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
               Mostrando {filtrados.length} de <b>{contatos.length}</b> contatos. Pra achar qualquer um (inclusive além do que aparece aqui), <b>digite no campo acima</b> — nome, cidade ou número. A busca varre a lista toda. 🔎
             </div>
           )}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-            <button className="kbtn go" disabled={busy} onClick={criar}>{busy ? "Criando…" : `📣 Criar campanha (${sel.size})`}</button>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+            <button className="btn btn-soft" disabled={busy} onClick={() => criar(true)} title="Salva a campanha sem enviar. Você ativa depois na lista abaixo.">💾 Salvar rascunho</button>
+            <button className="kbtn go" disabled={busy} onClick={() => criar(false)}>{busy ? "Criando…" : `📣 Criar e enviar (${sel.size})`}</button>
           </div>
 
           {campanhas.length > 0 && (
