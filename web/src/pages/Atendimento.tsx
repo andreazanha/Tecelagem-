@@ -49,8 +49,17 @@ function iniciais(s?: string | null) {
 }
 function telBonito(t: string) {
   const d = (t || "").replace(/\D/g, "");
-  const n = d.startsWith("55") ? d.slice(2) : d;
-  return n.length >= 10 ? `(${n.slice(0, 2)}) ${n.slice(2, 3)} ${n.slice(3, 7)}-${n.slice(7, 11)}` : t;
+  const n = d.startsWith("55") && d.length >= 12 ? d.slice(2) : d;
+  if (n.length === 11) return `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}`;   // celular (9 dígitos)
+  if (n.length === 10) return `(${n.slice(0, 2)}) ${n.slice(2, 6)}-${n.slice(6)}`;    // fixo/antigo (8 dígitos)
+  return t;
+}
+// Núcleo do telefone (DDD + últimos 8 dígitos) — mesma pessoa mesmo com/sem o 9º dígito ou o 55.
+// Usado pra NÃO repetir o contato na lista da campanha.
+function nucleoTel(t: string): string {
+  let d = (t || "").replace(/\D/g, "");
+  if (d.startsWith("55") && d.length >= 12) d = d.slice(2);
+  return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d;
 }
 function hora(iso?: string | null) {
   if (!iso) return "";
@@ -1827,8 +1836,8 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp(), api.atendRespostasEmpresa(), api.atendBoard(u?.nome, ehGestorAtend()), api.atendInteressesContatos()]).then(([cl, w, emp, bd, ie]) => {
       const lista: Contato[] = []; const idx = new Map<string, Contato>();
       const add = (n: string, tel: string, origem: Contato["origem"], cidade?: string | null, uf?: string | null, falou = false) => {
-        const d = (tel || "").replace(/\D/g, ""); if (d.length < 10) return;
-        const key = d.slice(-11); const ex = idx.get(key);
+        const d = (tel || "").replace(/\D/g, ""); if (d.length < 10 || d.length > 13) return;  // fora do tamanho BR: ignora
+        const key = nucleoTel(d); const ex = idx.get(key);
         if (ex) { if (falou) ex.falou = true; if ((!ex.nome || ex.nome === telBonito(ex.telefone)) && n) ex.nome = n; return; }
         const c: Contato = { nome: n || telBonito(d), telefone: d, origem, cidade, uf, falou };
         idx.set(key, c); lista.push(c);
@@ -1838,7 +1847,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
       if (bd.status === "fulfilled") for (const cv of bd.value.conversas) if (cv.telefone && cv.ultima_in_em && cv.estado !== "grupo") add(cv.contato_nome || cv.nome || "", cv.telefone, "crm", cv.cidade, cv.uf, true);
       if (w.status === "fulfilled") for (const c of (w.value.contatos || [])) add(c.nome, c.telefone, "whats");
       // Palavras-chave (interesses + última mensagem) pra busca por assunto.
-      if (ie.status === "fulfilled") for (const p of (ie.value.contatos || [])) { const ex = idx.get((p.telefone || "").replace(/\D/g, "").slice(-11)); if (ex) ex.palavras = (p.palavras || "").toLowerCase(); }
+      if (ie.status === "fulfilled") for (const p of (ie.value.contatos || [])) { const ex = idx.get(nucleoTel(p.telefone || "")); if (ex) ex.palavras = (p.palavras || "").toLowerCase(); }
       lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
       setContatos(lista);
       if (emp.status === "fulfilled") { const conv = emp.value.find((r) => /cadast/i.test(r.titulo)); if (conv) setMensagem(conv.texto); }
@@ -1866,24 +1875,35 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
   // PROSPECÇÃO: cola uma lista de números (1 por linha, ou separados por vírgula) — inclusive de
   // quem NÃO está na base. Vira contato selecionado na campanha. Aceita "Nome, número" ou só número.
   function adicionarColados() {
-    const tokens = colar.split(/[\n;,]+/).map((s) => s.trim()).filter(Boolean);
-    const existentes = new Map(contatos.map((c) => [c.telefone.slice(-11), c] as const));
+    const linhas = colar.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const existentes = new Map(contatos.map((c) => [nucleoTel(c.telefone), c] as const));
     const novos: Contato[] = [];
     const selNovos = new Set<string>();
+    const vistos = new Set<string>();
     let add = 0, jaTinha = 0;
-    for (const ln of tokens) {
-      const dig = ln.replace(/\D/g, "");
-      if (dig.length < 10) continue;
+    for (const raw of linhas) {
+      // Tira numeração de lista no começo ("95." / "95)" / "95 -") pra não colar no telefone.
+      const ln = raw.replace(/^\s*\d{1,3}\s*[.):\-]\s+/, "");
+      // "Nome | número" ou "Nome, número": separa a parte do número (a última) do nome.
+      const partes = ln.split(/[|;]/);
+      const telParte = partes.length > 1 ? partes[partes.length - 1] : ln;
+      const nomeParte = partes.length > 1 ? partes.slice(0, -1).join(" ") : "";
+      let dig = telParte.replace(/\D/g, "");
+      // 12-13 dígitos que NÃO começam com 55 = provavelmente tem lixo colado na frente
+      // (ex.: o número da lista "95"): fica com os últimos 11.
+      if (dig.length >= 12 && !dig.startsWith("55")) dig = dig.slice(-11);
+      if (dig.length < 10 || dig.length > 13) continue;      // fora do tamanho de telefone BR: ignora
       const tel = dig.length <= 11 ? "55" + dig : dig;       // sem DDI → assume Brasil
-      const nm = ln.replace(/[+\d()\-.]/g, " ").replace(/\s+/g, " ").trim();
-      const key = tel.slice(-11);
+      let nm = (nomeParte || ln).replace(/[+\d()\-.,;|]/g, " ").replace(/\s+/g, " ").trim();
+      if (/^sem nome$/i.test(nm)) nm = "";
+      const key = nucleoTel(tel);
       const ex = existentes.get(key);
-      if (ex) { selNovos.add(ex.telefone); jaTinha++; continue; }   // já está na base → só seleciona
-      if (novos.some((n) => n.telefone.slice(-11) === key)) continue;
+      if (ex) { selNovos.add(ex.telefone); jaTinha++; continue; }   // já está na lista → só seleciona
+      if (vistos.has(key)) continue; vistos.add(key);
       novos.push({ nome: nm || telBonito(tel), telefone: tel, origem: "colado" });
       selNovos.add(tel); add++;
     }
-    if (!add && !jaTinha) { alert("Não encontrei números válidos (precisa de DDD + número)."); return; }
+    if (!add && !jaTinha) { alert("Não encontrei números válidos (precisa de DDD + número, ex.: (11) 99999-8888)."); return; }
     if (novos.length) setContatos((cs) => [...novos, ...cs]);
     setSel((s) => { const n = new Set(s); selNovos.forEach((t) => n.add(t)); return n; });
     setColar("");
