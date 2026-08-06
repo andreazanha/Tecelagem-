@@ -1707,7 +1707,7 @@ function ColunasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: ()
 }
 
 // ── Nova conversa: escolhe um contato do WhatsApp (ou digita o número) e manda a 1ª msg ──
-type Contato = { nome: string; telefone: string; origem: "cliente" | "whats"; cidade?: string | null; uf?: string | null };
+type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado"; cidade?: string | null; uf?: string | null };
 function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; onAbrir: (id: string) => void; onMudou: () => void }) {
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -1809,6 +1809,8 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
   const [intervalo, setIntervalo] = useState("40");
   const [nome, setNome] = useState("");
   const [busy, setBusy] = useState(false);
+  const [colar, setColar] = useState("");           // prospecção: colar lista de números
+  const [mostrarColar, setMostrarColar] = useState(false);
   const [campanhas, setCampanhas] = useState<{ id: string; nome: string | null; status: string; total: number; enviados: number; pendentes: number; falhas: number }[]>([]);
   function carregarCampanhas() { api.atendCampanhas().then(setCampanhas).catch(() => {}); }
   useEffect(() => {
@@ -1839,6 +1841,32 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
       || (dig.length >= 3 && c.telefone.includes(dig))
     ).slice(0, CAP_CONTATOS);
   })();
+  // PROSPECÇÃO: cola uma lista de números (1 por linha, ou separados por vírgula) — inclusive de
+  // quem NÃO está na base. Vira contato selecionado na campanha. Aceita "Nome, número" ou só número.
+  function adicionarColados() {
+    const tokens = colar.split(/[\n;,]+/).map((s) => s.trim()).filter(Boolean);
+    const existentes = new Map(contatos.map((c) => [c.telefone.slice(-11), c] as const));
+    const novos: Contato[] = [];
+    const selNovos = new Set<string>();
+    let add = 0, jaTinha = 0;
+    for (const ln of tokens) {
+      const dig = ln.replace(/\D/g, "");
+      if (dig.length < 10) continue;
+      const tel = dig.length <= 11 ? "55" + dig : dig;       // sem DDI → assume Brasil
+      const nm = ln.replace(/[+\d()\-.]/g, " ").replace(/\s+/g, " ").trim();
+      const key = tel.slice(-11);
+      const ex = existentes.get(key);
+      if (ex) { selNovos.add(ex.telefone); jaTinha++; continue; }   // já está na base → só seleciona
+      if (novos.some((n) => n.telefone.slice(-11) === key)) continue;
+      novos.push({ nome: nm || telBonito(tel), telefone: tel, origem: "colado" });
+      selNovos.add(tel); add++;
+    }
+    if (!add && !jaTinha) { alert("Não encontrei números válidos (precisa de DDD + número)."); return; }
+    if (novos.length) setContatos((cs) => [...novos, ...cs]);
+    setSel((s) => { const n = new Set(s); selNovos.forEach((t) => n.add(t)); return n; });
+    setColar("");
+    alert(`✓ ${add} número(s) novo(s) adicionado(s)` + (jaTinha ? ` e ${jaTinha} que já estava(m) na base foram selecionados.` : "."));
+  }
   const toggle = (tel: string) => setSel((s) => { const n = new Set(s); if (n.has(tel)) n.delete(tel); else n.add(tel); return n; });
   const marcarFiltrados = () => setSel((s) => { const n = new Set(s); filtrados.forEach((c) => n.add(c.telefone)); return n; });
   const limpar = () => setSel(new Set());
@@ -1873,8 +1901,18 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
             <b style={{ fontSize: 13 }}>Contatos</b>
             <span className="at-chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{sel.size} selecionado(s)</span>
             <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={marcarFiltrados}>Selecionar os {filtrados.length} da busca</button>
+            <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => setMostrarColar((v) => !v)}>📋 Colar lista de números</button>
             {sel.size > 0 && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={limpar}>Limpar</button>}
           </div>
+          {mostrarColar && (
+            <div style={{ margin: "0 0 8px", padding: 10, border: "1px dashed var(--line)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)" }}>
+              <div className="muted2" style={{ fontSize: 12, marginBottom: 6 }}>Cole os números (1 por linha, ou separados por vírgula). Pode ser <b>"Nome, número"</b> ou só o número. Serve pra prospecção — <b>inclusive de quem ainda não está na base</b>.</div>
+              <textarea value={colar} onChange={(e) => setColar(e.target.value)} rows={4} placeholder={"Ex.:\nMaria, (11) 99999-8888\n(31) 98888-7777\n5541977776666"} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} />
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+                <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={adicionarColados}>➕ Adicionar à lista</button>
+              </div>
+            </div>
+          )}
           <input placeholder="🔎 Buscar por nome, cidade ou número…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: "100%", marginBottom: 6 }} />
           <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10 }}>
             {carregando ? <div className="muted" style={{ padding: 12 }}>Carregando contatos…</div>
@@ -1883,7 +1921,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
                 <label key={c.origem + c.telefone} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderBottom: "1px solid var(--line)", cursor: "pointer" }}>
                   <input type="checkbox" checked={sel.has(c.telefone)} onChange={() => toggle(c.telefone)} />
                   <div><div><b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span></div>
-                    <div className="muted2" style={{ fontSize: 11 }}>{c.origem === "cliente" ? "📇 base" : "📱 zap"}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : ""}</div></div>
+                    <div className="muted2" style={{ fontSize: 11 }}>{c.origem === "cliente" ? "📇 base" : c.origem === "colado" ? "📋 colado" : "📱 zap"}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : ""}</div></div>
                 </label>
               ))}
           </div>
