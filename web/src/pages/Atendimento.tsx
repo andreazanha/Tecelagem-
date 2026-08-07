@@ -1928,6 +1928,14 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     } catch (e) { alert((e as Error).message || "Não consegui criar a campanha."); } finally { setBusy(false); }
   }
   async function mudarStatus(id: string, status: string) { await api.atendStatusCampanha(id, status).catch(() => {}); carregarCampanhas(); }
+  async function dispararAgora(id: string) {
+    try {
+      const r = await api.atendDispararCampanha(id);
+      if (r.enviado) alert("✓ Enviei já a próxima mensagem! O resto segue sozinho, 1 a cada X segundos.");
+      else alert("Não enviou agora — motivo: " + (r.motivo || "desconhecido") + ".");
+      carregarCampanhas();
+    } catch { alert("Não consegui disparar agora."); }
+  }
   // Reusar uma campanha: carrega a MESMA lista de contatos e pré-preenche texto/foto pra você
   // só alterar e disparar de novo (sem re-selecionar tudo).
   async function reusar(cmp: typeof campanhas[number]) {
@@ -2036,6 +2044,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
                     {c.status !== "concluida" && (c.status === "ativa"
                       ? <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => mudarStatus(c.id, "pausada")}>⏸ Pausar</button>
                       : <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => mudarStatus(c.id, "ativa")}>▶️ Retomar</button>)}
+                    {c.status !== "concluida" && c.pendentes > 0 && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#15803d", fontWeight: 700 }} onClick={() => dispararAgora(c.id)} title="Manda já a próxima mensagem (sem esperar o cron de 5 min)">🚀 Disparar agora</button>}
                     {c.status !== "concluida" && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#dc2626" }} onClick={() => mudarStatus(c.id, "concluida")}>⏹ Encerrar</button>}
                     <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#2563eb" }} disabled={busy} onClick={() => reusar(c)} title="Usa a MESMA lista de contatos numa campanha nova — você só altera o texto/foto">♻️ Reusar (mesma lista)</button>
                   </div>

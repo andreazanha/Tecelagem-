@@ -1427,6 +1427,33 @@ atendimento.post("/campanhas/:id/status", async (c) => {
   await c.env.DB.prepare("UPDATE atend_campanhas SET status=? WHERE id=?").bind(st, c.req.param("id")).run();
   return c.json({ ok: true });
 });
+// DISPARAR AGORA: manda JÁ a próxima mensagem pendente (o resto segue no cron, aos poucos).
+// Serve pra não esperar o cron de 5 min e pra DIAGNOSTICAR (devolve o motivo se falhar).
+atendimento.post("/campanhas/:id/disparar", async (c) => {
+  const id = c.req.param("id");
+  const cfg = await lerConfig(c.env);
+  if (cfg.zapi_ativo !== "1") return c.json({ ok: false, motivo: "WhatsApp desconectado (Z-API desligado nas configurações)." });
+  const camp = await c.env.DB.prepare("SELECT id, mensagem, arquivo_url, arquivo_tipo, arquivo_nome, arquivo_ext, status FROM atend_campanhas WHERE id=?")
+    .bind(id).first<{ id: string; mensagem: string; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null; status: string }>();
+  if (!camp) return c.json({ error: "campanha não encontrada" }, 404);
+  if (camp.status !== "ativa") await c.env.DB.prepare("UPDATE atend_campanhas SET status='ativa' WHERE id=?").bind(id).run();
+  const alvo = await c.env.DB.prepare("SELECT id, telefone FROM atend_campanha_alvos WHERE campanha_id=? AND status='pendente' ORDER BY rowid LIMIT 1")
+    .bind(id).first<{ id: string; telefone: string }>();
+  if (!alvo) { await c.env.DB.prepare("UPDATE atend_campanhas SET status='concluida' WHERE id=?").bind(id).run(); return c.json({ ok: true, enviado: false, motivo: "não há contatos pendentes (campanha concluída)." }); }
+  const ehImagem = camp.arquivo_tipo === "imagem", ehAudio = camp.arquivo_tipo === "audio";
+  let r: { enviado: boolean; messageId?: string | null; motivo?: string };
+  if (camp.arquivo_url) {
+    r = await enviarMidiaZapi(c.env, alvo.telefone, { url: camp.arquivo_url, ehImagem, ehAudio, ext: camp.arquivo_ext || "bin", fileName: camp.arquivo_nome || `arquivo.${camp.arquivo_ext || "bin"}`, caption: ehImagem ? (camp.mensagem || "") : "" });
+    if (r.enviado && camp.mensagem && !ehImagem) await enviarWhatsapp(c.env, alvo.telefone, { tipo: "texto", texto: camp.mensagem }).catch(() => ({}));
+  } else {
+    r = await enviarWhatsapp(c.env, alvo.telefone, { tipo: "texto", texto: camp.mensagem });
+  }
+  const stAlvo = r.enviado ? "enviado" : (r.motivo === "cliente-bloqueado" ? "bloqueado" : "falhou");
+  if (r.enviado) await registrarEnvioNaConversa(c.env, alvo.telefone, camp.mensagem || `📎 ${camp.arquivo_nome || "arquivo"}`, r.messageId ?? null, "Campanha", camp.arquivo_url || "");
+  await c.env.DB.prepare("UPDATE atend_campanha_alvos SET status=?, motivo=?, enviado_em=datetime('now') WHERE id=?").bind(stAlvo, r.motivo || null, alvo.id).run();
+  await c.env.DB.prepare("UPDATE atend_campanhas SET ultimo_envio_em=datetime('now') WHERE id=?").bind(id).run();
+  return c.json({ ok: true, enviado: r.enviado, motivo: r.motivo || "" });
+});
 
 // ── PROXY DO CATÁLOGO (Firestore → JSON limpo, com cache) ────────────────────────
 // Busca o documento catalogo/main no Firestore público do catálogo, decodifica o

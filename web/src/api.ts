@@ -707,6 +707,8 @@ export const api = {
     fetch("/api/atendimento/interesses-contatos").then((r) => j<{ contatos: { telefone: string; palavras: string }[] }>(r)),
   atendStatusCampanha: (id: string, status: string) =>
     jsonPost(`/api/atendimento/campanhas/${id}/status`, { status }).then((r) => j<{ ok: boolean }>(r)),
+  atendDispararCampanha: (id: string) =>
+    jsonPost(`/api/atendimento/campanhas/${id}/disparar`, {}).then((r) => j<{ ok: boolean; enviado?: boolean; motivo?: string }>(r)),
   atendConversa: (id: string) => fetch(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),
   atendEntrada: (b: { telefone: string; texto: string }) =>
     jsonPost("/api/atendimento/entrada", b).then((r) => j<AtendResposta>(r)),
