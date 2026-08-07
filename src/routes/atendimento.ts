@@ -704,6 +704,15 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     return { conversa_id: conv.id, estado: "atendimento-humano", coluna: colunaDe("atendimento-humano"), respostas: [], notificarHumano: true };
   }
 
+  // TRIAGEM automática: se o contato responde com uma MENSAGEM AUTOMÁTICA (robô de outra loja:
+  // "recebemos sua mensagem", "fora do horário"…), NÃO deixa a IA conversar com robô nem manda pro
+  // humano — o card FICA na Triagem, quietinho. Só mensagem de GENTE de verdade segue o fluxo (a IA
+  // qualifica e, quando for o caso, manda pra "Aguardando atendimento humano").
+  const emTriagem = ["novo", "ia-triagem", "triagem-vendas", "triagem-nome", "aguardando-cnpj", "aguardando-cidade-parceiro"].includes(String(conv.estado));
+  if (emTriagem && !arquivoUrl && RESPOSTA_AUTOMATICA_RE.test(texto || "")) {
+    return { conversa_id: conv.id, estado: conv.estado, coluna: "triagem", respostas: [], notificarHumano: false };
+  }
+
   // Cliente CONHECIDO (já é cliente ou lojista confirmado) mandou FOTO/ÁUDIO (lista de
   // produtos, pedido, comprovante, print) → é assunto de gente: passa DIRETO pro humano.
   // Se a pessoa AINDA não foi qualificada (não sabemos se é lojista ou consumidor final),
