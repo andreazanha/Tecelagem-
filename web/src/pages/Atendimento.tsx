@@ -727,29 +727,97 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   );
 }
 
-// Áudio (nota de voz) na conversa. Usa o player nativo, mas se o navegador NÃO conseguir tocar
-// inline (acontece com alguns formatos/ áudios do WhatsApp), mostra um link "▶️ Abrir / baixar"
-// que funciona sempre — assim nunca fica um player que não toca ao clicar.
+// Áudio (nota de voz) na conversa — player PRÓPRIO que toca DENTRO da conversa (sem abrir aba).
+// Ao apertar ▶ pela 1ª vez ele BAIXA o arquivo inteiro (fetch → blob) e toca do blob. Isso evita
+// o problema de streaming/Range que fazia o player nativo do Chrome mostrar a duração mas não tocar.
+function fmtSeg(s: number): string {
+  if (!isFinite(s) || s < 0) s = 0;
+  const m = Math.floor(s / 60), ss = Math.floor(s % 60);
+  return `${m}:${ss < 10 ? "0" : ""}${ss}`;
+}
 function AudioMsg({ url }: { url: string }) {
+  const aRef = useRef<HTMLAudioElement | null>(null);
+  const blobRef = useRef<string | null>(null);
+  const [tocando, setTocando] = useState(false);
+  const [carregando, setCarregando] = useState(false);
+  const [dur, setDur] = useState(0);
+  const [pos, setPos] = useState(0);
   const [erro, setErro] = useState(false);
-  if (erro) {
-    return (
-      <a href={url} target="_blank" rel="noreferrer" className="at-doc" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 12px", textDecoration: "none" }}>
-        <span style={{ fontSize: 18 }}>🎤</span>
-        <span style={{ fontWeight: 700 }}>Abrir áudio ▶︎</span>
-      </a>
-    );
+
+  useEffect(() => () => {
+    if (aRef.current) { aRef.current.pause(); aRef.current.src = ""; }
+    if (blobRef.current) URL.revokeObjectURL(blobRef.current);
+  }, []);
+
+  function ligarEventos(a: HTMLAudioElement) {
+    a.onloadedmetadata = () => setDur(a.duration || 0);
+    a.ontimeupdate = () => setPos(a.currentTime || 0);
+    a.onended = () => { setTocando(false); setPos(0); };
+    a.onpause = () => setTocando(false);
+    a.onplay = () => setTocando(true);
   }
+  // Garante que o áudio já está baixado (blob) e pronto pra tocar. Retorna o elemento ou null.
+  async function preparar(): Promise<HTMLAudioElement | null> {
+    if (aRef.current && blobRef.current) return aRef.current;
+    setCarregando(true); setErro(false);
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("http " + r.status);
+      const blob = await r.blob();
+      const bu = URL.createObjectURL(blob);
+      blobRef.current = bu;
+      const a = new Audio();
+      ligarEventos(a);
+      a.src = bu;
+      await new Promise<void>((res, rej) => {
+        a.onloadedmetadata = () => { setDur(a.duration || 0); res(); };
+        a.onerror = () => rej(new Error("decode"));
+        // fallback: se não disparar metadata em 6s, segue mesmo assim (alguns formatos não dão duração)
+        setTimeout(res, 6000);
+      });
+      ligarEventos(a); // re-liga (o onloadedmetadata acima sobrescreveu)
+      aRef.current = a;
+      return a;
+    } catch {
+      setErro(true);
+      return null;
+    } finally {
+      setCarregando(false);
+    }
+  }
+  async function alternar() {
+    const a = await preparar();
+    if (!a) return;
+    if (a.paused) { try { await a.play(); } catch { setErro(true); } }
+    else a.pause();
+  }
+  function buscar(e: React.ChangeEvent<HTMLInputElement>) {
+    const a = aRef.current; if (!a || !dur) return;
+    const t = (Number(e.target.value) / 100) * dur;
+    a.currentTime = t; setPos(t);
+  }
+
+  const pct = dur ? Math.min(100, (pos / dur) * 100) : 0;
   return (
-    <div style={{ maxWidth: 230 }}>
-      <audio
-        controls
-        preload="metadata"
-        src={url}
-        onError={() => setErro(true)}
-        style={{ width: "100%", display: "block" }}
-      />
-      <a href={url} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 2, fontSize: 11, color: "inherit", opacity: 0.7, textDecoration: "underline" }}>não tocou? abrir áudio ▶︎</a>
+    <div style={{ display: "flex", alignItems: "center", gap: 9, maxWidth: 240, background: "rgba(148,163,184,.14)", borderRadius: 12, padding: "7px 11px 7px 8px" }}>
+      <button
+        onClick={alternar}
+        title={tocando ? "Pausar" : "Ouvir"}
+        style={{ flex: "0 0 auto", width: 34, height: 34, borderRadius: "50%", border: 0, cursor: "pointer", background: erro ? "#ef4444" : "#12a150", color: "#fff", fontSize: 15, display: "grid", placeItems: "center", lineHeight: 1 }}
+      >
+        {carregando ? "…" : erro ? "↻" : tocando ? "❚❚" : "▶"}
+      </button>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <input
+          type="range" min={0} max={100} value={pct} onChange={buscar}
+          aria-label="Posição do áudio"
+          style={{ width: "100%", accentColor: "#12a150", cursor: "pointer", height: 4 }}
+        />
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, opacity: 0.75, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>
+          <span>{erro ? "toque ↻ pra tentar de novo" : "🎤 áudio"}</span>
+          <span>{fmtSeg(pos)} / {fmtSeg(dur)}</span>
+        </div>
+      </div>
     </div>
   );
 }
