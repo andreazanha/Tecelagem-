@@ -73,6 +73,8 @@ function hora(iso?: string | null) {
   return mm ? `${mm[1]}:${mm[2]}` : "";
 }
 const SETOR_EMOJI: Record<string, string> = { vendas: "🛒", financeiro: "💰", "pos-venda": "📦", outros: "💬" };
+// Fonte/origem do contato (mostra no card só quando NÃO é WhatsApp direto — pra destacar de onde veio).
+const FONTE_LABEL: Record<string, string> = { campanha: "📣 Campanha", catalogo: "📖 Catálogo", reativacao: "🔁 Reativação", manual: "✍️ Manual", instagram: "📸 Instagram", formulario: "📝 Formulário" };
 
 // ── Página do robô de atendimento ────────────────────────────────────────────────
 export function Atendimento() {
@@ -494,7 +496,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
     if (!cfg) return;
     setSalvando(true); setMsg("");
     try {
-      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, ia_prompt: cfg.ia_prompt, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, reativacao_ativo: cfg.reativacao_ativo, reativacao_dias: cfg.reativacao_dias, reativacao_limite: cfg.reativacao_limite, reativacao_intervalo_seg: cfg.reativacao_intervalo_seg, reativacao_msg: cfg.reativacao_msg, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
+      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, ia_prompt: cfg.ia_prompt, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, reativacao_ativo: cfg.reativacao_ativo, reativacao_dias: cfg.reativacao_dias, reativacao_limite: cfg.reativacao_limite, reativacao_intervalo_seg: cfg.reativacao_intervalo_seg, reativacao_msg: cfg.reativacao_msg, aniversario_ativo: cfg.aniversario_ativo, aniversario_msg: cfg.aniversario_msg, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
       setMsg("✓ Salvo!"); onMudou(); setTimeout(() => setMsg(""), 2500);
     } catch { setMsg("Erro ao salvar."); } finally { setSalvando(false); }
   }
@@ -661,6 +663,16 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
               <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Manda o catálogo como “desculpa” pra reabrir conversa — só pra cliente com WhatsApp que ainda não falou com a gente. O link do catálogo é anexado sozinho e envia 1× por cliente. Vale pra cliente de representante ou não.</div>
             </div>
 
+            <div style={{ border: "1px solid #fbcfe8", background: "#fdf2f8", color: "#1e293b", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 6 }}>🎂 Parabéns de aniversário</div>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
+                <input type="checkbox" checked={cfg.aniversario_ativo} onChange={(e) => set("aniversario_ativo", e.target.checked)} /> Ativar — manda parabéns no aniversário do cliente
+              </label>
+              <label className="campo" style={{ margin: "8px 0 0" }}><span className="campo-label">Mensagem (use {"{nome}"})</span>
+                <textarea rows={2} value={cfg.aniversario_msg} onChange={(e) => set("aniversario_msg", e.target.value)} placeholder={cfg.aniversario_msg_padrao} /></label>
+              <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Todo dia de manhã, manda a mensagem pros clientes que fazem aniversário no dia (precisa da <b>data de nascimento</b> preenchida no cadastro do cliente). Envia 1× por cliente, espaçado.</div>
+            </div>
+
             <div style={{ border: "1px solid #ddd6fe", background: "#f5f3ff", color: "#1e293b", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
               <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 6 }}>🔗 Catálogo — ler atividade</div>
               <div style={{ fontSize: 12.5, marginBottom: 6 }}>O CRM lê os acessos do catálogo daqui e cria os leads. Cole a <b>URL de leitura</b> (o GET <code>/log</code> com o código):</div>
@@ -823,6 +835,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
       })()}
       {c.ultima_msg && (() => { const p = extrairIaNota(c.ultima_msg); const t = MSG_PLACEHOLDER.test((p.visivel || "").trim()) ? "" : p.visivel; return <div className="at-prev">{t || (p.iaNota ? "📷 foto" : c.ultima_msg)}</div>; })()}
       <div className="fx-foot">
+        {c.origem && FONTE_LABEL[c.origem] && <span className="at-badge" style={{ background: "#f5f3ff", color: "#6d28d9" }} title="De onde veio o contato">{FONTE_LABEL[c.origem]}</span>}
         {c.cliente_id && <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="Já é cliente cadastrado na base">📇 Cliente</span>}
         {c.autorizado === 0
           ? <span className="at-badge" style={{ background: "#fef3c7", color: "#92400e" }} title="Aguardando autorização da equipe">⏳ Autorizar</span>

@@ -1154,7 +1154,8 @@ export async function lerAtividadeCatalogo(env: Env): Promise<number> {
 
 // ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
-const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo", "reativacao_ativo", "atend_domingo"]);
+const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo", "reativacao_ativo", "atend_domingo", "aniversario_ativo"]);
+const MSG_ANIVERSARIO_PADRAO = "🎉 Feliz aniversário, {nome}! A equipe da *Big Tricot* deseja um dia cheio de alegria! 💛 Conte com a gente sempre. 🧶";
 
 atendimento.get("/config", async (c) => {
   const cfg = await lerConfig(c.env);
@@ -1190,6 +1191,9 @@ atendimento.get("/config", async (c) => {
     reativacao_intervalo_seg: cfg.reativacao_intervalo_seg || "40",
     reativacao_msg: cfg.reativacao_msg || "",
     reativacao_msg_padrao: MSG_REATIVACAO_PADRAO,
+    aniversario_ativo: (cfg.aniversario_ativo ?? "0") === "1",
+    aniversario_msg: cfg.aniversario_msg || "",
+    aniversario_msg_padrao: MSG_ANIVERSARIO_PADRAO,
     catalogo_evento_token: cfg.catalogo_evento_token || "",
     catalogo_evento_url: new URL(c.req.url).origin + "/api/atendimento/catalogo-evento",
     catalogo_log_url: cfg.catalogo_log_url || "",
@@ -1200,7 +1204,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -2764,6 +2768,34 @@ function montarMsgReativacao(cfg: Record<string, string>, nome: string, dias: nu
   const link = linkCatalogo(cfg);
   if (link && !/https?:\/\//i.test(base)) txt += `\n\n${link}`;
   return txt;
+}
+
+// ── ANIVERSÁRIO (chamado 1x/dia pelo cron) ────────────────────────────────────────────
+// Manda parabéns pros clientes que fazem aniversário HOJE (casa mês-dia, ignora o ano).
+// Só roda se ligado na config (aniversario_ativo) e uma vez por dia.
+export async function parabensAniversario(env: Env): Promise<number> {
+  const cfg = await lerConfig(env);
+  if ((cfg.aniversario_ativo ?? "0") !== "1" || cfg.zapi_ativo !== "1") return 0;
+  const hoje = await env.DB.prepare("SELECT strftime('%m-%d','now','-3 hours') AS md, date('now','-3 hours') AS dia").first<{ md: string; dia: string }>();
+  const md = hoje?.md || "", dia = hoje?.dia || "";
+  if (!md || cfg.aniversario_ultimo === dia) return 0;   // já rodou hoje
+  // Marca ANTES de enviar pra não repetir se o cron rodar de novo hoje.
+  await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('aniversario_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(dia).run();
+  const { results } = await env.DB.prepare(
+    "SELECT nome, whatsapp FROM clientes WHERE COALESCE(whatsapp,'') <> '' AND substr(COALESCE(nascimento,''), -5) = ?"
+  ).bind(md).all<{ nome: string; whatsapp: string }>().catch(() => ({ results: [] as { nome: string; whatsapp: string }[] }));
+  const modelo = (cfg.aniversario_msg || "").trim() || MSG_ANIVERSARIO_PADRAO;
+  let n = 0;
+  for (const cli of (results || [])) {
+    try {
+      const nome = String(cli.nome || "").trim().split(/\s+/)[0] || "";
+      const texto = modelo.replace(/\{nome\}/gi, nome);
+      const r = await enviarWhatsapp(env, cli.whatsapp, { tipo: "texto", texto });
+      if (r.enviado) { await registrarEnvioNaConversa(env, cli.whatsapp, texto, r.messageId ?? null, "Aniversário"); n++; }
+    } catch { /* segue os demais */ }
+    await new Promise((res) => setTimeout(res, 4000));   // espaça um pouco (anti-ban)
+  }
+  return n;
 }
 
 // Processa as campanhas ativas: envia aos poucos, respeitando o intervalo (anti-ban).

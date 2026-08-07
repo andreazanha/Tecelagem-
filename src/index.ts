@@ -16,7 +16,7 @@ import { materiais } from "./routes/materiais";
 import { colecoes } from "./routes/colecoes";
 import { chat } from "./routes/chat";
 import { etiquetas } from "./routes/etiquetas";
-import { atendimento, followupAtendimento, sincronizarPedidos, posVendaRecompra, prospeccaoCatalogo, processarCampanhas, processarAgendamentos } from "./routes/atendimento";
+import { atendimento, followupAtendimento, sincronizarPedidos, posVendaRecompra, prospeccaoCatalogo, processarCampanhas, processarAgendamentos, parabensAniversario } from "./routes/atendimento";
 import { assistente } from "./routes/assistente";
 import { relatorios } from "./routes/relatorios";
 import { tecelagem } from "./routes/tecelagem";
@@ -143,6 +143,7 @@ export default {
     ctx.waitUntil(posVendaRecompra(env));    // pós-venda e recompra por tempo
     ctx.waitUntil(prospeccaoCatalogo(env));  // reativação: catálogo X dias após o faturamento
     ctx.waitUntil(processarCampanhas(env));  // também nos crons diários (garantia)
+    ctx.waitUntil(parabensAniversario(env)); // parabéns de aniversário (1x/dia, se ligado)
     // (desativado a pedido) lerAtividadeCatalogo — quem só VÊ o catálogo NÃO vira lead aqui.
   },
 };
