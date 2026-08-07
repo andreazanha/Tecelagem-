@@ -674,6 +674,13 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   if (conv.estado === "atendimento-humano" || conv.estado === "reclamacao" || String(conv.responsavel ?? "").trim()) {
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
   }
+  // RESPOSTA a uma CAMPANHA / prospecção em massa: é um LEAD respondendo. NÃO deixa a IA
+  // "conversar" — ela se confunde com autorresposta de loja ("em que posso ajudar?") e responde
+  // como se fosse cliente. Manda direto pro HUMANO (card piscando em "Aguardando humano").
+  if (conv.origem === "campanha" || conv.origem === "reativacao") {
+    await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    return { conversa_id: conv.id, estado: "atendimento-humano", coluna: colunaDe("atendimento-humano"), respostas: [], notificarHumano: true };
+  }
 
   // Cliente CONHECIDO (já é cliente ou lojista confirmado) mandou FOTO/ÁUDIO (lista de
   // produtos, pedido, comprovante, print) → é assunto de gente: passa DIRETO pro humano.
