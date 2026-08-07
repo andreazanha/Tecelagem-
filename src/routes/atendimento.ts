@@ -656,6 +656,12 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     const ag = lerAgendamentos(cfgAt);
     if (ag.some((a) => a && a.conversaId === conv.id)) await salvarConfigJson(env, "atend_agendamentos", ag.filter((a) => a && a.conversaId !== conv.id));
   } catch { /* ok */ }
+  // REMARKET: cliente respondeu → cancela o remarket agendado (ele já engajou; o card sai da coluna
+  // "Remarket" pra "Aguardando humano" via a limpeza do coluna_manual acima).
+  try {
+    const rm = lerRemarket(cfgAt);
+    if (rm.some((r) => r && r.conversaId === conv.id)) await salvarConfigJson(env, "atend_remarket", rm.filter((r) => r && r.conversaId !== conv.id));
+  } catch { /* ok */ }
 
   // EQUIPE: números do time NÃO recebem atendimento automático — a Big fica quieta pra vocês
   // conversarem/testarem sem o robô responder. (Cadastrados na aba "Equipe".)
@@ -1237,6 +1243,9 @@ atendimento.get("/config", async (c) => {
     aniversario_ativo: (cfg.aniversario_ativo ?? "0") === "1",
     aniversario_msg: cfg.aniversario_msg || "",
     aniversario_msg_padrao: MSG_ANIVERSARIO_PADRAO,
+    remarket_horas: cfg.remarket_horas || "24",
+    remarket_msg: cfg.remarket_msg || "",
+    remarket_msg_padrao: MSG_REMARKET_PADRAO,
     catalogo_evento_token: cfg.catalogo_evento_token || "",
     catalogo_evento_url: new URL(c.req.url).origin + "/api/atendimento/catalogo-evento",
     catalogo_log_url: cfg.catalogo_log_url || "",
@@ -1247,7 +1256,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -1412,9 +1421,20 @@ atendimento.get("/:id/foto-perfil", async (c) => {
 
 // Mover um card pra outra coluna (arrastar) — grava a coluna manual.
 atendimento.post("/:id/coluna", async (c) => {
+  const id = c.req.param("id");
   const b = await c.req.json<{ coluna?: string }>().catch(() => ({}) as Record<string, string>);
   const coluna = String(b.coluna ?? "").trim() || null;
-  await c.env.DB.prepare("UPDATE atend_conversas SET coluna_manual=?, atualizado_em=datetime('now') WHERE id=?").bind(coluna, c.req.param("id")).run();
+  await c.env.DB.prepare("UPDATE atend_conversas SET coluna_manual=?, atualizado_em=datetime('now') WHERE id=?").bind(coluna, id).run();
+  // REMARKET: entrou na coluna "Remarket" → começa a contagem de 24h. Saiu → cancela.
+  try {
+    const cfg = await lerConfig(c.env);
+    let arr = lerRemarket(cfg).filter((r) => r && r.conversaId !== id);
+    if (coluna === "remarket") {
+      const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
+      if (conv) arr.push({ conversaId: id, telefone: conv.telefone, desde: Date.now(), enviado: false });
+    }
+    await salvarConfigJson(c.env, "atend_remarket", arr.slice(-1000));
+  } catch { /* não bloqueia o mover */ }
   return c.json({ ok: true });
 });
 
@@ -2033,6 +2053,9 @@ atendimento.get("/", async (c) => {
   try { const s = JSON.parse(cfgB.atend_silenciados || "[]"); if (Array.isArray(s)) mudos = new Set(s.map(String)); } catch { mudos = new Set(); }
   const agendados = new Map<string, { quando: number; enviado: boolean; mensagem?: string }>();
   for (const a of lerAgendamentos(cfgB)) if (a && a.conversaId) agendados.set(String(a.conversaId), { quando: Number(a.quando), enviado: !!a.enviado, mensagem: a.mensagem });
+  const remarkets = new Map<string, { desde: number; enviado: boolean }>();
+  for (const rm of lerRemarket(cfgB)) if (rm && rm.conversaId) remarkets.set(String(rm.conversaId), { desde: Number(rm.desde), enviado: !!rm.enviado });
+  const remarketHoras = Math.max(1, parseInt(cfgB.remarket_horas || "24", 10) || 24);
   const conversas = results.map((r) => {
     const manual = r.coluna_manual && validos.has(String(r.coluna_manual)) ? String(r.coluna_manual) : null;
     // Card com "Chamar IA" agendado fica na coluna de follow-up: antes de disparar (esperando a
@@ -2045,7 +2068,18 @@ atendimento.get("/", async (c) => {
     // agenda pendente — senão o card fica preso no follow-up e não sai por nada ao encerrar.
     const encerrado = !!r.encerrado_em;
     const agAtivo = ag && !encerrado;
-    return { ...r, coluna: agAtivo ? "contato-followup" : (manual || colunaAtendimento(r)), lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: mudos.has(String(r.id)) ? 1 : 0, agendado_ia: agAtivo ? ag!.quando : null, agendado_enviado: agAtivo && ag!.enviado ? 1 : 0, agendado_msg: agAtivo ? (ag!.mensagem || null) : null };
+    const rm = remarkets.get(String(r.id));
+    const silenciadoR = mudos.has(String(r.id));
+    let coluna = agAtivo ? "contato-followup" : (manual || colunaAtendimento(r));
+    // GRUPO (não silenciado): mensagem NOVA (depois do último "encerrar") sobe pra "Aguardando
+    // atendimento humano" (piscando). Se VOCÊ já respondeu (sua saída depois da última entrada), vai
+    // pra "Em atendimento". Silenciado, ou já "encerrado"/visto, fica em "Grupos". ENCERRAR → Grupos.
+    if (String(r.estado) === "grupo" || String(r.origem) === "grupo") {
+      const inn = String(r.ultima_in_em || ""), out = String(r.ultima_out_em || ""), enc = String(r.encerrado_em || "");
+      if (silenciadoR || !inn || inn <= enc) coluna = "grupos";
+      else coluna = out > inn ? "em-atendimento" : "aguardando-humano";
+    }
+    return { ...r, coluna, lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: silenciadoR ? 1 : 0, agendado_ia: agAtivo ? ag!.quando : null, agendado_enviado: agAtivo && ag!.enviado ? 1 : 0, agendado_msg: agAtivo ? (ag!.mensagem || null) : null, remarket_em: rm ? rm.desde + remarketHoras * 3600e3 : null, remarket_enviado: rm && rm.enviado ? 1 : 0 };
   });
   return c.json({ colunas, conversas });
 });
@@ -2142,6 +2176,15 @@ type Agendamento = { id: string; conversaId: string; telefone: string; quando: n
 function lerAgendamentos(cfg: Record<string, string>): Agendamento[] {
   try { const l = JSON.parse(cfg.atend_agendamentos || "[]"); return Array.isArray(l) ? l as Agendamento[] : []; } catch { return []; }
 }
+
+// REMARKET: cards que o atendente arrasta pra coluna "🔁 Remarket". Depois de X horas (padrão 24)
+// o cron manda UMA mensagem de remarketing pro cliente. Se o cliente responder antes, sai da coluna
+// (vai pra "Aguardando humano") e o remarket é cancelado. Lista JSON em atend_remarket.
+type Remarket = { conversaId: string; telefone: string; desde: number; enviado?: boolean };
+function lerRemarket(cfg: Record<string, string>): Remarket[] {
+  try { const l = JSON.parse(cfg.atend_remarket || "[]"); return Array.isArray(l) ? l as Remarket[] : []; } catch { return []; }
+}
+const MSG_REMARKET_PADRAO = "Oi {nome}! 😊 Passando aqui pra saber se posso te ajudar a fechar seu pedido. Temos novidades lindas saindo agora e consigo uma condição especial pra você. Quer dar uma olhada? 💛🧶";
 atendimento.post("/:id/agendar-ia", async (c) => {
   const id = c.req.param("id");
   const b = await c.req.json<{ quando?: number; cancelar?: boolean; mensagem?: string }>().catch(() => ({} as { quando?: number; cancelar?: boolean; mensagem?: string }));
@@ -2651,7 +2694,7 @@ atendimento.post("/:id/enviar", async (c) => {
   // ele ASSUME o atendimento: o card passa pra "Em atendimento" com o nome de quem respondeu.
   const GENERICOS = ["atendente", "sistema", "bot", "ia", "big", "robô", "robo"];
   if (autor && !GENERICOS.includes(autor.toLowerCase())) {
-    await c.env.DB.prepare("UPDATE atend_conversas SET responsavel=? WHERE id=? AND estado='atendimento-humano' AND (responsavel IS NULL OR responsavel='')").bind(autor, id).run();
+    await c.env.DB.prepare("UPDATE atend_conversas SET responsavel=? WHERE id=? AND estado IN ('atendimento-humano','grupo') AND (responsavel IS NULL OR responsavel='')").bind(autor, id).run();
   }
   // O CLIENTE vê o NOME de quem está atendendo na frente da mensagem — assim a conversa fica
   // identificada e passa pelo sistema (não pelo WhatsApp pessoal do vendedor). No CRM a mensagem
@@ -2738,6 +2781,46 @@ export async function processarAgendamentos(env: Env): Promise<number> {
       }
       enviados++;
     } catch { /* erro pontual num envio — segue os demais */ }
+  }
+  return enviados;
+}
+
+// ── REMARKET (chamado pelo cron de 5 min) ─────────────────────────────────────────────
+// Cards parados na coluna "Remarket" há +24h (config remarket_horas) recebem UMA mensagem de
+// remarketing. Marca como enviado (não repete). Se o cliente responder, receberMensagem remove
+// o card da lista (e o card sai da coluna pra "Aguardando humano").
+export async function processarRemarket(env: Env): Promise<number> {
+  const cfg = await lerConfig(env);
+  const arr = lerRemarket(cfg);
+  if (!arr.length) return 0;
+  const horas = Math.max(1, parseInt(cfg.remarket_horas || "24", 10) || 24);
+  const limite = horas * 3600 * 1000;
+  const agora = Date.now();
+  const venceu = (r: Remarket) => r && r.telefone && !r.enviado && (agora - Number(r.desde)) >= limite;
+  const vencidos = arr.filter(venceu);
+  if (!vencidos.length) return 0;
+  // Marca ENVIADO antes de disparar (não reenvia se reprocessar). Mantém na lista pro card mostrar
+  // "remarket enviado" e continuar na coluna até o cliente responder (aí some).
+  const ids = new Set(vencidos.map((r) => r.conversaId));
+  await salvarConfigJson(env, "atend_remarket", arr.map((r) => ids.has(r.conversaId) ? { ...r, enviado: true } : r));
+  const modelo = (cfg.remarket_msg || "").trim() || MSG_REMARKET_PADRAO;
+  let enviados = 0;
+  for (const rm of vencidos) {
+    try {
+      const conv = await env.DB.prepare("SELECT id, telefone, nome, contato_nome FROM atend_conversas WHERE id=?")
+        .bind(rm.conversaId).first<{ id: string; telefone: string; nome: string | null; contato_nome: string | null }>();
+      const tel = conv?.telefone || rm.telefone;
+      const nome = String(conv?.contato_nome || conv?.nome || "").trim().split(/\s+/)[0] || "";
+      const texto = modelo.replace(/\{nome\}/gi, nome).replace(/\s{2,}/g, " ").trim();
+      if (conv) {
+        await enviarBot(env, conv.id, tel, { tipo: "texto", texto }, "bot");
+        await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      } else {
+        const r = await enviarWhatsapp(env, tel, { tipo: "texto", texto });
+        await registrarEnvioNaConversa(env, tel, texto, r.messageId ?? null, "Remarket");
+      }
+      enviados++;
+    } catch { /* erro pontual — segue os demais */ }
   }
   return enviados;
 }
