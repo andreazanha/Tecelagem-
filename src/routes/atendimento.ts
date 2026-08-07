@@ -1340,6 +1340,13 @@ atendimento.post("/:id/encerrar", async (c) => {
   // Encerrar: marca a data E limpa a fixação manual da coluna — senão, se o card já tinha
   // sido movido na mão (ex.: pra "Aguardando atendimento humano"), ele continuaria travado lá.
   await c.env.DB.prepare("UPDATE atend_conversas SET encerrado_em=datetime('now'), coluna_manual=NULL, atualizado_em=datetime('now') WHERE id=?").bind(id).run();
+  // Cancela QUALQUER agendamento de "Chamar IA" pendente — senão o card fica preso no follow-up
+  // (a agenda ganha da coluna) mesmo depois de finalizado, e não sai de lá de jeito nenhum.
+  try {
+    const cfgEnc = await lerConfig(c.env);
+    const agsEnc = lerAgendamentos(cfgEnc);
+    if (agsEnc.some((a) => a && a.conversaId === id)) await salvarConfigJson(c.env, "atend_agendamentos", agsEnc.filter((a) => a && a.conversaId !== id));
+  } catch { /* se falhar, o guard no quadro (encerrado sai do follow-up) já cobre */ }
   await addMsg(c.env, id, "out", "sistema", "sistema", `Atendimento encerrado${b.autor ? " por " + String(b.autor).trim() : ""}.`);
   return c.json({ ok: true });
 });
@@ -1979,7 +1986,11 @@ atendimento.get("/", async (c) => {
     // O agendamento MANDA na coluna: mesmo que o card tenha sido arrastado à mão pra outro lugar
     // (coluna_manual), enquanto houver "Chamar IA" ele fica no follow-up. Sai só quando cancelar
     // o agendamento ou o cliente responder (aí volta pra coluna manual/natural).
-    return { ...r, coluna: ag ? "contato-followup" : (manual || colunaAtendimento(r)), lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: mudos.has(String(r.id)) ? 1 : 0, agendado_ia: ag ? ag.quando : null, agendado_enviado: ag && ag.enviado ? 1 : 0, agendado_msg: ag?.mensagem || null };
+    // EXCEÇÃO: se o atendimento foi FINALIZADO (encerrado_em), ele vai pra "finalizado" mesmo com
+    // agenda pendente — senão o card fica preso no follow-up e não sai por nada ao encerrar.
+    const encerrado = !!r.encerrado_em;
+    const agAtivo = ag && !encerrado;
+    return { ...r, coluna: agAtivo ? "contato-followup" : (manual || colunaAtendimento(r)), lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: mudos.has(String(r.id)) ? 1 : 0, agendado_ia: agAtivo ? ag!.quando : null, agendado_enviado: agAtivo && ag!.enviado ? 1 : 0, agendado_msg: agAtivo ? (ag!.mensagem || null) : null };
   });
   return c.json({ colunas, conversas });
 });
