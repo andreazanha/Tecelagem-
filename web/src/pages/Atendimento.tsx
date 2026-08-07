@@ -729,11 +729,6 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   );
 }
 
-function fmtSeg(s: number): string {
-  if (!isFinite(s) || s < 0) s = 0;
-  const m = Math.floor(s / 60), ss = Math.floor(s % 60);
-  return `${m}:${ss < 10 ? "0" : ""}${ss}`;
-}
 // Converte um AudioBuffer (já decodificado) num WAV 16-bit LIMPO. Regravar assim conserta arquivos
 // que o <audio> nativo recusava — o WAV novo é impecável e o player nativo toca de boa.
 function audioBufferParaWav(buf: AudioBuffer): ArrayBuffer {
@@ -760,18 +755,14 @@ function audioBufferParaWav(buf: AudioBuffer): ArrayBuffer {
   }
   return ab;
 }
-// Áudio (nota de voz). Híbrido à prova de falha: DECODIFICA com Web Audio (decodeAudioData, que abre
-// arquivos que o <audio> engasga), REGRAVA num WAV limpo e toca num ELEMENTO DE ÁUDIO NATIVO — que
-// move a barrinha sozinho (timeupdate) e nunca fica travado. Botão verde visível nos 2 temas.
+// Áudio (nota de voz). DECODIFICA com Web Audio (abre arquivos que o <audio> engasga), REGRAVA num
+// WAV limpo e entrega pro PLAYER NATIVO do navegador — que cuida de tocar, da barra e do tempo SOZINHO
+// (mais confiável que qualquer player que eu desenhe). Damos largura suficiente pra não virar "bola".
 function AudioMsg({ url }: { url: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const blobRef = useRef<string | null>(null);
   const [visivel, setVisivel] = useState(false);
-  const [pronto, setPronto] = useState(false);
-  const [tocando, setTocando] = useState(false);
-  const [dur, setDur] = useState(0);
-  const [pos, setPos] = useState(0);
+  const [src, setSrc] = useState<string | null>(null);
   const [erro, setErro] = useState<string>("");
 
   useEffect(() => {
@@ -785,7 +776,6 @@ function AudioMsg({ url }: { url: string }) {
   useEffect(() => {
     if (!visivel) return;
     let vivo = true;
-    const tmo = setTimeout(() => { if (vivo && !audioRef.current) setErro("demorou"); }, 12000);
     (async () => {
       let ctx: AudioContext | null = null;
       try {
@@ -801,52 +791,22 @@ function AudioMsg({ url }: { url: string }) {
         const wav = audioBufferParaWav(audioBuf);
         const bu = URL.createObjectURL(new Blob([wav], { type: "audio/wav" }));
         blobRef.current = bu;
-        const a = new Audio();
-        a.preload = "auto";
-        a.src = bu;
-        a.onloadedmetadata = () => setDur(a.duration && isFinite(a.duration) ? a.duration : (audioBuf.duration || 0));
-        a.ontimeupdate = () => setPos(a.currentTime || 0);
-        a.onplay = () => setTocando(true);
-        a.onpause = () => setTocando(false);
-        a.onended = () => { setTocando(false); setPos(0); try { a.currentTime = 0; } catch { /* ok */ } };
-        audioRef.current = a;
-        setDur(audioBuf.duration || 0);
-        setPronto(true);
+        setSrc(bu);
       } catch { if (vivo) setErro("não abriu"); }
-      finally { if (ctx) ctx.close().catch(() => {}); clearTimeout(tmo); }
+      finally { if (ctx) ctx.close().catch(() => {}); }
     })();
-    return () => { vivo = false; clearTimeout(tmo); };
+    return () => { vivo = false; };
   }, [visivel, url]);
 
-  useEffect(() => () => { const a = audioRef.current; if (a) { a.pause(); a.src = ""; } if (blobRef.current) URL.revokeObjectURL(blobRef.current); }, []);
+  useEffect(() => () => { if (blobRef.current) URL.revokeObjectURL(blobRef.current); }, []);
 
-  function alternar() {
-    const a = audioRef.current; if (!a) return;
-    if (a.paused) { const p = a.play(); if (p && p.catch) p.catch(() => setErro("bloqueado")); }
-    else a.pause();
-  }
-  function buscar(e: React.ChangeEvent<HTMLInputElement>) {
-    const a = audioRef.current; if (!a || !dur) return;
-    const t = (Number(e.target.value) / 100) * dur; a.currentTime = t; setPos(t);
-  }
-
-  const pct = dur ? Math.min(100, (pos / dur) * 100) : 0;
   return (
-    <div ref={ref} style={{ display: "flex", alignItems: "center", gap: 9, maxWidth: 248, background: "rgba(148,163,184,.16)", borderRadius: 12, padding: "7px 11px 7px 8px" }}>
-      <button
-        onClick={() => { if (!erro) alternar(); }}
-        title={erro ? "" : tocando ? "Pausar" : "Ouvir"}
-        style={{ flex: "0 0 auto", width: 36, height: 36, borderRadius: "50%", border: 0, cursor: erro ? "default" : "pointer", background: erro ? "#94a3b8" : "#12a150", color: "#fff", fontSize: 15, display: "grid", placeItems: "center", lineHeight: 1, boxShadow: "0 1px 3px rgba(0,0,0,.25)" }}
-      >
-        {erro ? "🎤" : !pronto ? "…" : tocando ? "❚❚" : "▶"}
-      </button>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <input type="range" min={0} max={100} value={pct} onChange={buscar} disabled={!pronto} aria-label="Posição do áudio"
-          style={{ width: "100%", accentColor: "#12a150", cursor: pronto ? "pointer" : "default", height: 4 }} />
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, opacity: 0.75, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>
-          <span>{erro ? "🎤 não tocou aqui" : !pronto ? "🎤 carregando…" : "🎤 áudio"}</span><span>{fmtSeg(pos)} / {fmtSeg(dur)}</span>
-        </div>
-      </div>
+    <div ref={ref} style={{ maxWidth: 260 }}>
+      {src
+        ? <audio controls preload="metadata" src={src} style={{ width: 250, height: 40, display: "block" }} />
+        : <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(148,163,184,.16)", borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: "var(--muted,#64748b)" }}>
+            <span style={{ fontSize: 15 }}>🎤</span> {erro ? "não consegui abrir o áudio aqui" : "carregando áudio…"}
+          </div>}
     </div>
   );
 }
