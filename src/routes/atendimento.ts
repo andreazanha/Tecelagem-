@@ -2005,21 +2005,23 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
   const estado = String(c.estado || "");
   const origem = String(c.origem || "");
   if (estado === "grupo") return "grupos";                            // mensagens de grupo → coluna própria
+  if (enc && inn <= enc) return "finalizado";                         // encerrado e sem msg nova depois
+  // ATENDIMENTO HUMANO ganha de tudo (menos do "finalizado sem msg nova" acima): é o estado que o
+  // REABRIR põe quando um card FINALIZADO recebe mensagem nova. Assim ele volta pra fila humana
+  // mesmo que seja consumidor. Sem isto, a regra de "consumidor" abaixo prendia o card em finalizado.
+  if (estado === "atendimento-humano") {
+    if (String(c.responsavel || "").trim()) return "em-atendimento"; // já tem quem atende → Em atendimento
+    return "aguardando-humano";                                        // ninguém assumiu → fila humana (pisca)
+  }
   // Consumidor final (não é lojista): a IA já indica a loja parceira sozinha — não precisa de
   // humano, então cai em "finalizado" (não polui a fila de atendimento de lojista).
   if (String(c.tipo || "") === "consumidor" || estado === "indicado-parceiro" || estado === "aguardando-cidade-parceiro") return "finalizado";
-  if (enc && inn <= enc) return "finalizado";                         // encerrado e sem msg nova depois
   if (estado === "reclamacao") return "reclamacao";
   if (estado === "aguardando-setor") return "aguardando-setor";
   // Contato de CAMPANHA/reativação que ainda NÃO virou atendimento humano (ex.: só chegou uma
   // autorresposta da loja) fica na coluna "Campanhas". Quando responder de verdade, o webhook põe
   // estado='atendimento-humano' e aí ele sai daqui e cai em "Aguardando humano" (piscando).
   if ((origem === "campanha" || origem === "reativacao") && estado !== "atendimento-humano") return "campanha";
-  if (estado === "atendimento-humano") {
-    // Com responsável, fica sempre em "Em atendimento" (removida a coluna "Aguardando cliente").
-    if (String(c.responsavel || "").trim()) return "em-atendimento";
-    return "aguardando-humano";                                        // precisa de humano, ninguém assumiu
-  }
   if (["ia-triagem", "triagem-vendas", "triagem-nome", "aguardando-cnpj", "aguardando-cidade-parceiro"].includes(estado)) return "triagem";
   if (estado === "novo") return "triagem";                            // contato novo → cai na triagem automática
   // Estados de funil/venda: no ATENDIMENTO só importam se o cliente está esperando resposta.

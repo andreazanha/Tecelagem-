@@ -739,18 +739,22 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   );
 }
 
-// Áudio (nota de voz) na conversa. Estratégia à prova de falha: BAIXA o arquivo inteiro (fetch →
-// blob) e entrega pro player NATIVO do navegador via blob URL. Assim:
-//  • o botão ▶ é o nativo (não perde o "gesto do clique" — não cai na trava de autoplay do Chrome);
-//  • toca do arquivo COMPLETO em memória (sem streaming/Range, que fazia mostrar a duração e não tocar);
-//  • fetch "no-store" evita um pedaço cacheado (206) antigo virar um arquivo quebrado.
-// Se o download falhar, cai pro player nativo direto na URL (ainda dentro da conversa, sem abrir aba).
+// MIME certo pelo tipo do arquivo. Um content-type ambíguo (application/octet-stream) faz o Chrome
+// mostrar a DURAÇÃO mas não TOCAR. Recriando o blob com o MIME certo, o navegador escolhe o decoder.
+function mimeDoAudio(url: string): string {
+  const ext = (url.split(/[?#]/)[0].split(".").pop() || "").toLowerCase();
+  const m: Record<string, string> = { ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/ogg", mp3: "audio/mpeg", m4a: "audio/mp4", mp4: "audio/mp4", aac: "audio/aac", wav: "audio/wav", webm: "audio/webm", amr: "audio/amr" };
+  return m[ext] || "audio/ogg";
+}
+// Áudio (nota de voz) na conversa. BAIXA o arquivo inteiro, recria o blob com o MIME CERTO (pelo
+// tipo do arquivo) e entrega pro player NATIVO. Toca do arquivo completo em memória (sem streaming/
+// Range, que fazia mostrar a duração e não tocar). Se der erro, mostra o motivo + botão de baixar.
 function AudioMsg({ url }: { url: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const blobRef = useRef<string | null>(null);
   const [visivel, setVisivel] = useState(false);
   const [src, setSrc] = useState<string | null>(null);
-  const [falhouBaixar, setFalhouBaixar] = useState(false);
+  const [erro, setErro] = useState<string>("");
 
   // Só baixa quando o áudio aparece na tela (conversa com muitos áudios não baixa todos de uma vez).
   useEffect(() => {
@@ -768,13 +772,16 @@ function AudioMsg({ url }: { url: string }) {
       try {
         const r = await fetch(url, { cache: "no-store" });
         if (!r.ok) throw new Error("http " + r.status);
-        const blob = await r.blob();
+        const buf = await r.arrayBuffer();
         if (!vivo) return;
+        if (!buf.byteLength) throw new Error("arquivo vazio");
+        // Recria o blob com o MIME certo pelo tipo do arquivo (o do servidor pode vir ambíguo).
+        const blob = new Blob([buf], { type: mimeDoAudio(url) });
         const bu = URL.createObjectURL(blob);
         blobRef.current = bu;
         setSrc(bu);
-      } catch {
-        if (vivo) setFalhouBaixar(true); // usa a URL direto como último recurso (ainda inline)
+      } catch (e) {
+        if (vivo) setErro(String((e as Error)?.message || e).slice(0, 60));
       }
     })();
     return () => { vivo = false; };
@@ -782,13 +789,22 @@ function AudioMsg({ url }: { url: string }) {
 
   useEffect(() => () => { if (blobRef.current) URL.revokeObjectURL(blobRef.current); }, []);
 
+  function aoErrarPlayer(e: React.SyntheticEvent<HTMLAudioElement>) {
+    const err = (e.currentTarget.error as MediaError | null);
+    const cods: Record<number, string> = { 1: "abortado", 2: "rede", 3: "não consegui decodificar", 4: "formato não suportado" };
+    setErro(err ? (cods[err.code] || ("erro " + err.code)) : "não tocou");
+  }
+
   return (
     <div ref={ref} style={{ maxWidth: 240 }}>
-      {src
-        ? <audio controls preload="metadata" src={src} style={{ width: "100%", display: "block" }} />
-        : falhouBaixar
-          ? <audio controls preload="metadata" src={url} style={{ width: "100%", display: "block" }} />
-          : <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(148,163,184,.14)", borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: "var(--ink2, #64748b)" }}><span style={{ fontSize: 15 }}>🎤</span> carregando áudio…</div>}
+      {src && !erro && <audio controls preload="metadata" src={src} onError={aoErrarPlayer} style={{ width: "100%", display: "block" }} />}
+      {!src && !erro && <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(148,163,184,.14)", borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: "var(--ink2, #64748b)" }}><span style={{ fontSize: 15 }}>🎤</span> carregando áudio…</div>}
+      {erro && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, background: "rgba(148,163,184,.14)", borderRadius: 12, padding: "9px 12px" }}>
+          <span style={{ fontSize: 12, color: "var(--ink2,#64748b)" }}>🎤 áudio não tocou aqui ({erro})</span>
+          <a href={url} download style={{ fontSize: 12.5, fontWeight: 700, color: "#12a150", textDecoration: "none" }}>⤓ Baixar áudio pra ouvir</a>
+        </div>
+      )}
     </div>
   );
 }
@@ -1303,7 +1319,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     )}
                     <button title="Excluir mensagem" onClick={() => setMenuMsg(menuMsg === m.id ? null : m.id)} style={{ position: "absolute", top: 3, right: 4, background: "rgba(148,163,184,.22)", border: 0, borderRadius: 6, cursor: "pointer", fontSize: 14, opacity: 0.9, lineHeight: 1, padding: "2px 5px", fontWeight: 800 }}>⋮</button>
                     {menuMsg === m.id && (
-                      <div style={{ position: "absolute", top: 18, right: 2, zIndex: 30, background: "var(--card,#fff)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 6px 16px rgba(0,0,0,.2)", overflow: "hidden", minWidth: 162 }}>
+                      <div style={{ position: "absolute", top: 18, right: 2, zIndex: 30, background: "var(--card,#fff)", color: "var(--ink,#0f172a)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 6px 16px rgba(0,0,0,.2)", overflow: "hidden", minWidth: 162 }}>
                         {m.direcao === "out" && m.autor !== "sistema" && !m.arquivo_url && (m.texto || "").trim() && (
                           <button onClick={() => editarMsg(m.id, m.texto || "")} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "inherit" }}>✏️ Editar (corrigir erro)</button>
                         )}
