@@ -192,7 +192,11 @@ export function Atendimento() {
   useEffect(() => {
     if (!board) return;
     const naFila = new Set(filaFoto.current);
-    for (const c of board.conversas) if (!(c.id in fotoCache.current) && !naFila.has(c.id)) { filaFoto.current.push(c.id); naFila.add(c.id); }
+    for (const c of board.conversas) {
+      // Foto já veio em cache do servidor → mostra NA HORA (não some no reload).
+      if (c.foto_url && !(c.id in fotoCache.current)) fotoCache.current[c.id] = c.foto_url;
+      if (!(c.id in fotoCache.current) && !naFila.has(c.id)) { filaFoto.current.push(c.id); naFila.add(c.id); }
+    }
     if (buscandoFotos.current || !filaFoto.current.length) return;
     buscandoFotos.current = true;
     (async () => {

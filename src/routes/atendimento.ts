@@ -1346,21 +1346,30 @@ atendimento.post("/:id/encerrar", async (c) => {
 
 // Foto de perfil do contato (Z-API) — pra mostrar o avatar real na conversa.
 atendimento.get("/:id/foto-perfil", async (c) => {
-  const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(c.req.param("id")).first<{ telefone: string }>();
+  const id = c.req.param("id");
+  const conv = await c.env.DB.prepare("SELECT telefone, foto_url, foto_em FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string; foto_url: string | null; foto_em: string | null }>();
   if (!conv) return c.json({ link: null });
+  // Já buscamos faz pouco? Devolve o que está em cache (evita bater na Z-API toda vez).
+  // Reconsulta só a cada ~7 dias (a foto de perfil quase não muda).
+  if (conv.foto_em) {
+    const fresco = await c.env.DB.prepare("SELECT (julianday('now') - julianday(?)) < 7 AS ok").bind(conv.foto_em).first<{ ok: number }>().catch(() => null);
+    if (fresco?.ok) return c.json({ link: conv.foto_url || null });
+  }
   const cfg = await lerConfig(c.env);
-  if (cfg.zapi_ativo !== "1") return c.json({ link: null });
+  if (cfg.zapi_ativo !== "1") return c.json({ link: conv.foto_url || null });
   const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
   const inst = cfg.zapi_instance || "", token = cfg.zapi_token || "";
-  if (!inst || !token) return c.json({ link: null });
+  if (!inst || !token) return c.json({ link: conv.foto_url || null });
   const headers: Record<string, string> = {};
   if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
+  let link: string | null = null;
   try {
     const r = await fetch(`${base}/instances/${inst}/token/${token}/profile-picture?phone=${digitos(conv.telefone)}`, { headers, signal: AbortSignal.timeout(8000) });
-    if (!r.ok) return c.json({ link: null });
-    const d = await r.json().catch(() => ({})) as { link?: string; imgUrl?: string };
-    return c.json({ link: d?.link || d?.imgUrl || null });
-  } catch { return c.json({ link: null }); }
+    if (r.ok) { const d = await r.json().catch(() => ({})) as { link?: string; imgUrl?: string }; link = d?.link || d?.imgUrl || null; }
+  } catch { /* rede: mantém o que tinha */ link = conv.foto_url || null; }
+  // Grava no cache (mesmo null — marca que já tentamos, pra não ficar re-buscando quem esconde a foto).
+  await c.env.DB.prepare("UPDATE atend_conversas SET foto_url=?, foto_em=datetime('now') WHERE id=?").bind(link, id).run().catch(() => {});
+  return c.json({ link });
 });
 
 // Mover um card pra outra coluna (arrastar) — grava a coluna manual.
@@ -1947,7 +1956,7 @@ atendimento.get("/", async (c) => {
   const binds: string[] = [];
   if (!gestor && usuario) { cond.push("(c.responsavel = ? OR c.responsavel IS NULL OR c.responsavel = '')"); binds.push(usuario); }
   const stmt = c.env.DB.prepare(
-    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.cliente_id, c.responsavel, c.atualizado_em, c.ultima_in_em, c.ultima_out_em, c.encerrado_em, c.coluna_manual, c.tipo, c.representante, c.origem, c.contato_nome, c.autorizado, c.interessado,
+    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.cliente_id, c.responsavel, c.atualizado_em, c.ultima_in_em, c.ultima_out_em, c.encerrado_em, c.coluna_manual, c.tipo, c.representante, c.origem, c.contato_nome, c.autorizado, c.interessado, c.foto_url,
             (SELECT texto FROM atend_mensagens m WHERE m.conversa_id=c.id AND m.tipo NOT IN ('nota','sistema') ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 1) AS ultima_msg,
             (SELECT etapa FROM funil_cards fc WHERE fc.id = c.card_id) AS funil_etapa
        FROM atend_conversas c WHERE ${cond.join(" AND ")} ORDER BY c.atualizado_em DESC`

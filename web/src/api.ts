@@ -289,7 +289,7 @@ export interface AtendConversa {
   setor: string | null; cnpj: string | null; cidade: string | null; uf: string | null;
   lojista: number | null; cliente_id?: string | null; responsavel: string | null; atualizado_em: string; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null; coluna_manual?: string | null; ultima_msg: string | null;
   tipo: string | null; representante: string | null; origem: string | null; contato_nome: string | null; autorizado: number | null; interessado: number | null;
-  funil_etapa?: string | null; lembrete?: number | null; silenciado?: number | null; agendado_ia?: number | null; agendado_enviado?: number | null; agendado_msg?: string | null;
+  funil_etapa?: string | null; lembrete?: number | null; silenciado?: number | null; agendado_ia?: number | null; agendado_enviado?: number | null; agendado_msg?: string | null; foto_url?: string | null;
 }
 export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; responder_texto?: string | null; arquivo_url?: string | null; status?: string | null; criado_em: string }
 export interface ArqRapido { id: string; nome: string; nomeArq: string; key: string; ct: string; tamanho: number }
