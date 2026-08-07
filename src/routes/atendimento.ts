@@ -1427,6 +1427,27 @@ atendimento.post("/campanhas/:id/status", async (c) => {
   await c.env.DB.prepare("UPDATE atend_campanhas SET status=? WHERE id=?").bind(st, c.req.param("id")).run();
   return c.json({ ok: true });
 });
+// EDITAR uma campanha (texto/foto/nome/intervalo). NÃO mexe na lista de contatos.
+atendimento.post("/campanhas/:id/editar", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ nome?: string; mensagem?: string; intervalo_seg?: number; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string }>().catch(() => ({} as Record<string, never>));
+  const camp = await c.env.DB.prepare("SELECT id FROM atend_campanhas WHERE id=?").bind(id).first();
+  if (!camp) return c.json({ error: "campanha não encontrada" }, 404);
+  const mensagem = String(b.mensagem ?? "").trim();
+  const arqUrl = String(b.arquivo_url ?? "").trim();
+  if (!mensagem && !arqUrl) return c.json({ error: "escreva a mensagem ou anexe um arquivo" }, 400);
+  const arqTipo = ["imagem", "audio", "arquivo"].includes(String(b.arquivo_tipo)) ? String(b.arquivo_tipo) : (arqUrl ? "arquivo" : null);
+  await c.env.DB.prepare("UPDATE atend_campanhas SET nome=?, mensagem=?, intervalo_seg=?, arquivo_url=?, arquivo_tipo=?, arquivo_nome=?, arquivo_ext=? WHERE id=?")
+    .bind(String(b.nome ?? "").slice(0, 80) || null, mensagem, Math.max(15, Number(b.intervalo_seg) || 40), arqUrl || null, arqTipo, String(b.arquivo_nome ?? "").slice(0, 120) || null, String(b.arquivo_ext ?? "").slice(0, 8) || null, id).run();
+  return c.json({ ok: true });
+});
+// Telefones que JÁ estão em alguma campanha — pra sinalizar na hora de montar uma campanha nova.
+atendimento.get("/campanhas/em-campanha", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT DISTINCT a.telefone AS telefone FROM atend_campanha_alvos a JOIN atend_campanhas c ON c.id = a.campanha_id`
+  ).all<{ telefone: string }>().catch(() => ({ results: [] as { telefone: string }[] }));
+  return c.json({ telefones: (results || []).map((r) => r.telefone) });
+});
 // DISPARAR AGORA: manda JÁ a próxima mensagem pendente (o resto segue no cron, aos poucos).
 // Serve pra não esperar o cron de 5 min e pra DIAGNOSTICAR (devolve o motivo se falhar).
 atendimento.post("/campanhas/:id/disparar", async (c) => {

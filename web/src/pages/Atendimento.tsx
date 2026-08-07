@@ -176,19 +176,27 @@ export function Atendimento() {
   const fotoCache = useRef<Record<string, string | null>>({});
   const colRefs = useRef<Record<string, HTMLDivElement | null>>({}); // p/ pular pra coluna no mobile
   const [, setFotosV] = useState(0);
+  // Busca as fotos de perfil de TODOS os contatos — numa fila persistente (uma por vez, com uma
+  // folga pra não sobrecarregar a Z-API). Cada foto é buscada só UMA vez e fica em cache; a fila
+  // NÃO é cancelada a cada refresh do quadro, então as fotos não "somem" mais no meio do caminho.
+  const filaFoto = useRef<string[]>([]);
+  const buscandoFotos = useRef(false);
   useEffect(() => {
     if (!board) return;
-    const ids = board.conversas.slice(0, 30).map((c) => c.id).filter((cid) => !(cid in fotoCache.current));
-    if (!ids.length) return;
-    let cancel = false;
+    const naFila = new Set(filaFoto.current);
+    for (const c of board.conversas) if (!(c.id in fotoCache.current) && !naFila.has(c.id)) { filaFoto.current.push(c.id); naFila.add(c.id); }
+    if (buscandoFotos.current || !filaFoto.current.length) return;
+    buscandoFotos.current = true;
     (async () => {
-      for (const cid of ids) {
-        if (cancel) break;
-        fotoCache.current[cid] = null; // marca (evita buscar de novo)
-        try { const r = await api.atendFotoPerfil(cid); if (!cancel && r.link) { fotoCache.current[cid] = r.link; setFotosV((v) => v + 1); } } catch { /* ignora */ }
+      while (filaFoto.current.length) {
+        const cid = filaFoto.current.shift()!;
+        if (cid in fotoCache.current) continue;
+        try { const r = await api.atendFotoPerfil(cid); fotoCache.current[cid] = r.link || null; if (r.link) setFotosV((v) => v + 1); }
+        catch { fotoCache.current[cid] = null; }
+        await new Promise((res) => setTimeout(res, 120));
       }
+      buscandoFotos.current = false;
     })();
-    return () => { cancel = true; };
   }, [board]);
 
   const [alerta, setAlerta] = useState<AtendConversa | null>(null); // banner de backup na tela
@@ -1725,7 +1733,7 @@ function ColunasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: ()
 }
 
 // ── Nova conversa: escolhe um contato do WhatsApp (ou digita o número) e manda a 1ª msg ──
-type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string };
+type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string; emCamp?: boolean };
 function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; onAbrir: (id: string) => void; onMudou: () => void }) {
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -1831,6 +1839,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
   const [mostrarColar, setMostrarColar] = useState(false);
   const [anexo, setAnexo] = useState<{ url: string; tipo: string; nome: string; ext: string } | null>(null);
   const [subindo, setSubindo] = useState(false);
+  const [editandoId, setEditandoId] = useState<string | null>(null);   // editando uma campanha existente
   const arqRef = useRef<HTMLInputElement>(null);
   async function subirAnexo(file: File) {
     if (file.size > 40 * 1024 * 1024) { alert("Arquivo muito grande (máx. 40MB)."); return; }
@@ -1842,7 +1851,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
   function carregarCampanhas() { api.atendCampanhas().then(setCampanhas).catch(() => {}); }
   useEffect(() => {
     const u = getUser();
-    Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp(), api.atendRespostasEmpresa(), api.atendBoard(u?.nome, ehGestorAtend()), api.atendInteressesContatos()]).then(([cl, w, emp, bd, ie]) => {
+    Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp(), api.atendRespostasEmpresa(), api.atendBoard(u?.nome, ehGestorAtend()), api.atendInteressesContatos(), api.atendContatosEmCampanha()]).then(([cl, w, emp, bd, ie, ec]) => {
       const lista: Contato[] = []; const idx = new Map<string, Contato>();
       const add = (n: string, tel: string, origem: Contato["origem"], cidade?: string | null, uf?: string | null, falou = false) => {
         const d = (tel || "").replace(/\D/g, ""); if (d.length < 10 || d.length > 13) return;  // fora do tamanho BR: ignora
@@ -1857,6 +1866,8 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
       if (w.status === "fulfilled") for (const c of (w.value.contatos || [])) add(c.nome, c.telefone, "whats");
       // Palavras-chave (interesses + última mensagem) pra busca por assunto.
       if (ie.status === "fulfilled") for (const p of (ie.value.contatos || [])) { const ex = idx.get(nucleoTel(p.telefone || "")); if (ex) ex.palavras = (p.palavras || "").toLowerCase(); }
+      // Quem já está em alguma campanha → marca pra você não mandar de novo sem querer.
+      if (ec.status === "fulfilled") for (const tel of (ec.value.telefones || [])) { const ex = idx.get(nucleoTel(tel || "")); if (ex) ex.emCamp = true; }
       lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
       setContatos(lista);
       if (emp.status === "fulfilled") { const conv = emp.value.find((r) => /cadast/i.test(r.titulo)); if (conv) setMensagem(conv.texto); }
@@ -1924,6 +1935,8 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
   async function criar(rascunho = false) {
     if (!mensagem.trim() && !anexo) { alert("Escreva a mensagem ou anexe uma foto/arquivo."); return; }
     if (sel.size === 0) { alert("Selecione pelo menos um contato."); return; }
+    const jaEmCamp = contatos.filter((c) => sel.has(c.telefone) && c.emCamp).length;
+    if (jaEmCamp && !confirm(`⚠️ ${jaEmCamp} contato(s) selecionado(s) JÁ estão em outra campanha. Quer incluir mesmo assim?`)) return;
     if (!rascunho && !confirm(`Criar e ENVIAR a campanha para ${sel.size} contato(s)? A Big vai enviando 1 a cada ${intervalo}s pra não bloquear o número.`)) return;
     setBusy(true);
     try {
@@ -1937,6 +1950,26 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     } catch (e) { alert((e as Error).message || "Não consegui criar a campanha."); } finally { setBusy(false); }
   }
   async function mudarStatus(id: string, status: string) { await api.atendStatusCampanha(id, status).catch(() => {}); carregarCampanhas(); }
+  function editar(cmp: typeof campanhas[number]) {
+    setEditandoId(cmp.id);
+    setNome(cmp.nome || "");
+    setMensagem(cmp.mensagem || "");
+    setAnexo(cmp.arquivo_url ? { url: cmp.arquivo_url, tipo: cmp.arquivo_tipo || "arquivo", nome: cmp.arquivo_nome || "anexo", ext: cmp.arquivo_ext || "bin" } : null);
+    setSel(new Set());
+    const el = document.querySelector(".modal-card"); if (el) el.scrollTop = 0;
+  }
+  function cancelarEdicao() { setEditandoId(null); setNome(""); setMensagem(""); setAnexo(null); }
+  async function salvarEdicao() {
+    if (!editandoId) return;
+    if (!mensagem.trim() && !anexo) { alert("Escreva a mensagem ou anexe uma foto/arquivo."); return; }
+    setBusy(true);
+    try {
+      const r = await api.atendEditarCampanha(editandoId, { nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 40, arquivo_url: anexo?.url, arquivo_tipo: anexo?.tipo, arquivo_nome: anexo?.nome, arquivo_ext: anexo?.ext });
+      if (r.error) { alert(r.error); return; }
+      alert("✓ Campanha atualizada! (o texto/foto novos valem pros contatos que ainda não receberam)");
+      cancelarEdicao(); carregarCampanhas();
+    } catch { alert("Não consegui salvar as alterações."); } finally { setBusy(false); }
+  }
   async function dispararAgora(id: string) {
     try {
       const r = await api.atendDispararCampanha(id);
@@ -2021,7 +2054,8 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
               : filtrados.map((c) => (
                 <label key={c.origem + c.telefone} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderBottom: "1px solid var(--line)", cursor: "pointer" }}>
                   <input type="checkbox" checked={sel.has(c.telefone)} onChange={() => toggle(c.telefone)} />
-                  <div><div><b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span></div>
+                  <div><div><b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span>
+                    {c.emCamp && <span className="at-chip" style={{ background: "#fef3c7", color: "#92400e", fontSize: 10, marginLeft: 6 }} title="Este contato já está em outra campanha">📣 já em campanha</span>}</div>
                     <div className="muted2" style={{ fontSize: 11 }}>{c.origem === "cliente" ? "📇 base" : c.origem === "colado" ? "📋 colado" : c.origem === "crm" ? "💬 já falou" : "📱 zap"}{c.falou && c.origem !== "crm" ? " · 💬 já falou" : ""}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : ""}</div></div>
                 </label>
               ))}
@@ -2032,8 +2066,14 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
             </div>
           )}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
-            <button className="btn btn-soft" disabled={busy} onClick={() => criar(true)} title="Salva a campanha sem enviar. Você ativa depois na lista abaixo.">💾 Salvar rascunho</button>
-            <button className="kbtn go" disabled={busy} onClick={() => criar(false)}>{busy ? "Criando…" : `📣 Criar e enviar (${sel.size})`}</button>
+            {editandoId ? (<>
+              <span className="muted2" style={{ fontSize: 12, alignSelf: "center", marginRight: "auto" }}>✏️ Editando campanha (a lista de contatos não muda)</span>
+              <button className="btn btn-soft" disabled={busy} onClick={cancelarEdicao}>Cancelar</button>
+              <button className="kbtn go" disabled={busy} onClick={salvarEdicao}>{busy ? "Salvando…" : "💾 Salvar alterações"}</button>
+            </>) : (<>
+              <button className="btn btn-soft" disabled={busy} onClick={() => criar(true)} title="Salva a campanha sem enviar. Você ativa depois na lista abaixo.">💾 Salvar rascunho</button>
+              <button className="kbtn go" disabled={busy} onClick={() => criar(false)}>{busy ? "Criando…" : `📣 Criar e enviar (${sel.size})`}</button>
+            </>)}
           </div>
 
           {campanhas.length > 0 && (
@@ -2054,6 +2094,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
                       ? <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => mudarStatus(c.id, "pausada")}>⏸ Pausar</button>
                       : <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => mudarStatus(c.id, "ativa")}>▶️ Retomar</button>)}
                     {c.status !== "concluida" && c.pendentes > 0 && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#15803d", fontWeight: 700 }} onClick={() => dispararAgora(c.id)} title="Manda já a próxima mensagem (sem esperar o cron de 5 min)">🚀 Disparar agora</button>}
+                    {c.status !== "concluida" && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => editar(c)} title="Editar o texto/foto/nome desta campanha (a lista de contatos não muda)">✏️ Editar</button>}
                     {c.status !== "concluida" && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#dc2626" }} onClick={() => mudarStatus(c.id, "concluida")}>⏹ Encerrar</button>}
                     <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#2563eb" }} disabled={busy} onClick={() => reusar(c)} title="Usa a MESMA lista de contatos numa campanha nova — você só altera o texto/foto">♻️ Reusar (mesma lista)</button>
                   </div>

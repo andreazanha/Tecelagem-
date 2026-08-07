@@ -709,6 +709,10 @@ export const api = {
     jsonPost(`/api/atendimento/campanhas/${id}/status`, { status }).then((r) => j<{ ok: boolean }>(r)),
   atendDispararCampanha: (id: string) =>
     jsonPost(`/api/atendimento/campanhas/${id}/disparar`, {}).then((r) => j<{ ok: boolean; enviado?: boolean; motivo?: string }>(r)),
+  atendEditarCampanha: (id: string, b: { nome?: string; mensagem: string; intervalo_seg: number; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string }) =>
+    jsonPost(`/api/atendimento/campanhas/${id}/editar`, b).then((r) => j<{ ok: boolean; error?: string }>(r)),
+  atendContatosEmCampanha: () =>
+    fetch("/api/atendimento/campanhas/em-campanha").then((r) => j<{ telefones: string[] }>(r)),
   atendConversa: (id: string) => fetch(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),
   atendEntrada: (b: { telefone: string; texto: string }) =>
     jsonPost("/api/atendimento/entrada", b).then((r) => j<AtendResposta>(r)),
