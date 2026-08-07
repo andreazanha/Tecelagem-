@@ -1959,7 +1959,7 @@ function ColunasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: ()
 }
 
 // ── Nova conversa: escolhe um contato do WhatsApp (ou digita o número) e manda a 1ª msg ──
-type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string; emCamp?: boolean };
+type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string; emCamp?: boolean; foto?: string | null };
 function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; onAbrir: (id: string) => void; onMudou: () => void }) {
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -1977,16 +1977,16 @@ function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; on
     Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp()]).then(([cl, w]) => {
       const lista: Contato[] = [];
       const vistos = new Set<string>();
-      const add = (nome: string, tel: string, origem: "cliente" | "whats", cidade?: string | null, uf?: string | null) => {
+      const add = (nome: string, tel: string, origem: "cliente" | "whats", cidade?: string | null, uf?: string | null, foto?: string | null) => {
         const d = (tel || "").replace(/\D/g, "");
         if (d.length < 10) return;
         const key = d.slice(-11);
         if (vistos.has(key)) return;
         vistos.add(key);
-        lista.push({ nome: nome || telBonito(d), telefone: d, origem, cidade, uf });
+        lista.push({ nome: nome || telBonito(d), telefone: d, origem, cidade, uf, foto: foto || null });
       };
       if (cl.status === "fulfilled") for (const c of cl.value) add(c.nome, c.whatsapp || "", "cliente", c.cidade, c.uf);
-      if (w.status === "fulfilled") for (const c of (w.value.contatos || [])) add(c.nome, c.telefone, "whats");
+      if (w.status === "fulfilled") for (const c of (w.value.contatos || [])) add(c.nome, c.telefone, "whats", null, null, c.foto);
       lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
       setContatos(lista);
       if (cl.status !== "fulfilled" && w.status !== "fulfilled") setErro("Não consegui carregar os contatos agora. Digite o número abaixo.");
@@ -2031,11 +2031,16 @@ function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; on
           {carregando ? <div className="muted" style={{ padding: 12 }}>Carregando contatos…</div>
             : filtrados.length === 0 ? <div className="muted" style={{ padding: 12 }}>Nenhum contato encontrado. Digite o número abaixo. 👇</div>
             : filtrados.map((c) => (
-              <button key={c.origem + c.telefone} type="button" onClick={() => { setSel(c); setTelManual(""); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", border: "none", borderBottom: "1px solid var(--line)", background: sel?.telefone === c.telefone ? "#eef2ff" : "transparent", cursor: "pointer", color: "var(--ink)" }}>
-                <div><b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span></div>
-                <div className="muted" style={{ fontSize: 11.5 }}>
-                  {c.origem === "cliente" ? "📇 Cliente da base" : "📱 WhatsApp"}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : ""}
-                </div>
+              <button key={c.origem + c.telefone} type="button" onClick={() => { setSel(c); setTelManual(""); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "8px 12px", border: "none", borderBottom: "1px solid var(--line)", background: sel?.telefone === c.telefone ? "#eef2ff" : "transparent", cursor: "pointer", color: "var(--ink)" }}>
+                <span style={{ flex: "0 0 auto", width: 34, height: 34, borderRadius: "50%", display: "grid", placeItems: "center", overflow: "hidden", background: c.foto ? "#e5e7eb" : corDoNome(c.nome), color: "#fff", fontSize: 12.5, fontWeight: 800 }}>
+                  {c.foto ? <img src={c.foto} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : iniciais(c.nome)}
+                </span>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}><b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span></div>
+                  <div className="muted" style={{ fontSize: 11.5 }}>
+                    {c.origem === "cliente" ? "📇 Cliente da base" : "📱 WhatsApp"}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : ""}
+                  </div>
+                </span>
               </button>
             ))}
         </div>

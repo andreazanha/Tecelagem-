@@ -2250,7 +2250,15 @@ atendimento.get("/contatos-whatsapp", async (c) => {
       if (arr.length < 200) break;
     }
   } catch { /* devolve o que já tiver */ }
-  const contatos = [...map.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  // Anexa a FOTO de perfil já em cache (dos contatos que a gente já conversou) — casa pelo núcleo
+  // do telefone (DDD + 8 dígitos). Quem nunca conversou fica sem foto (o front mostra as iniciais).
+  const fotos = new Map<string, string>();
+  try {
+    const { results } = await c.env.DB.prepare("SELECT telefone, foto_url FROM atend_conversas WHERE foto_url IS NOT NULL AND foto_url <> ''").all<{ telefone: string; foto_url: string }>();
+    for (const r of (results || [])) { const n = nucleoTel(String(r.telefone || "")); if (n.length >= 10 && !fotos.has(n)) fotos.set(n, r.foto_url); }
+  } catch { /* sem fotos, tudo bem */ }
+  const contatos = [...map.values()].map((ct) => ({ ...ct, foto: fotos.get(nucleoTel(ct.telefone)) || null }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   return c.json({ contatos });
 });
 
