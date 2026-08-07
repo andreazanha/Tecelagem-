@@ -73,6 +73,12 @@ function hora(iso?: string | null) {
   return mm ? `${mm[1]}:${mm[2]}` : "";
 }
 const SETOR_EMOJI: Record<string, string> = { vendas: "🛒", financeiro: "💰", "pos-venda": "📦", outros: "💬" };
+// Cor fixa por nome (pra o avatar do vendedor ficar sempre com a mesma cor).
+function corDoNome(nome: string): string {
+  const cores = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
+  let h = 0; for (let i = 0; i < nome.length; i++) h = (h * 31 + nome.charCodeAt(i)) >>> 0;
+  return cores[h % cores.length];
+}
 // Fonte/origem do contato (mostra no card só quando NÃO é WhatsApp direto — pra destacar de onde veio).
 const FONTE_LABEL: Record<string, string> = { campanha: "📣 Campanha", catalogo: "📖 Catálogo", reativacao: "🔁 Reativação", manual: "✍️ Manual", instagram: "📸 Instagram", formulario: "📝 Formulário" };
 
@@ -1160,7 +1166,12 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 : m.tipo === "nota"
                 ? <div className="at-nota" key={m.id}><span className="at-nota-hd">📝 {m.autor || "Equipe"} · nota interna (o cliente não vê)</span>{formatarMsg(m.texto)}<span className="at-tm">{hora(m.criado_em)}</span></div>
                 : <div key={m.id} className={"at-b " + (m.direcao === "in" ? "in" : "out")} style={{ position: "relative" }}>
-                    {m.autor && m.direcao === "out" && <div className="at-aut">{m.autor === "bot" ? "🤖 Big (automático) · só você vê" : m.autor}</div>}
+                    {m.autor && m.direcao === "out" && (m.autor === "bot"
+                      ? <div className="at-aut">🤖 Big (automático) · só você vê</div>
+                      : <div className="at-aut" style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ display: "inline-flex", width: 17, height: 17, borderRadius: "50%", background: corDoNome(m.autor), color: "#fff", fontSize: 8.5, fontWeight: 800, alignItems: "center", justifyContent: "center", flex: "0 0 auto" }}>{iniciais(m.autor)}</span>
+                          {m.autor}
+                        </div>)}
                     {m.responder_texto && <div className="at-quote">↪ {m.responder_texto}</div>}
                     {m.arquivo_url
                       ? <>
