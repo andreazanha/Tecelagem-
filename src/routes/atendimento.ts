@@ -2058,6 +2058,8 @@ atendimento.get("/", async (c) => {
   const remarkets = new Map<string, { desde: number; enviado: boolean }>();
   for (const rm of lerRemarket(cfgB)) if (rm && rm.conversaId) remarkets.set(String(rm.conversaId), { desde: Number(rm.desde), enviado: !!rm.enviado });
   const remarketHoras = Math.max(1, parseInt(cfgB.remarket_horas || "24", 10) || 24);
+  let transferidos = new Set<string>();
+  try { const a = JSON.parse(cfgB.atend_transferidos || "[]"); if (Array.isArray(a)) transferidos = new Set(a.map(String)); } catch { transferidos = new Set(); }
   const conversas = results.map((r) => {
     const manual = r.coluna_manual && validos.has(String(r.coluna_manual)) ? String(r.coluna_manual) : null;
     // Card com "Chamar IA" agendado fica na coluna de follow-up: antes de disparar (esperando a
@@ -2081,7 +2083,11 @@ atendimento.get("/", async (c) => {
       if (silenciadoR || !inn || inn <= enc) coluna = "grupos";
       else coluna = out > inn ? "em-atendimento" : "aguardando-humano";
     }
-    return { ...r, coluna, lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: silenciadoR ? 1 : 0, agendado_ia: agAtivo ? ag!.quando : null, agendado_enviado: agAtivo && ag!.enviado ? 1 : 0, agendado_msg: agAtivo ? (ag!.mensagem || null) : null, remarket_em: rm ? rm.desde + remarketHoras * 3600e3 : null, remarket_enviado: rm && rm.enviado ? 1 : 0 };
+    // TRANSFERIDO e o novo responsável ainda não respondeu → fica em "Aguardando atendimento humano"
+    // (pra ele pegar). Assim que ele responde, o /enviar tira da lista e o card vira "Em atendimento".
+    const transferido = transferidos.has(String(r.id));
+    if (transferido && coluna === "em-atendimento") coluna = "aguardando-humano";
+    return { ...r, coluna, lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: silenciadoR ? 1 : 0, transferido: transferido ? 1 : 0, agendado_ia: agAtivo ? ag!.quando : null, agendado_enviado: agAtivo && ag!.enviado ? 1 : 0, agendado_msg: agAtivo ? (ag!.mensagem || null) : null, remarket_em: rm ? rm.desde + remarketHoras * 3600e3 : null, remarket_enviado: rm && rm.enviado ? 1 : 0 };
   });
   return c.json({ colunas, conversas });
 });
@@ -2476,12 +2482,20 @@ atendimento.get("/:id", async (c) => {
 
 // ── Atendente humano assume ─────────────────────────────────────────────────────────
 atendimento.post("/:id/assumir", async (c) => {
-  const b = await c.req.json<{ responsavel?: string }>().catch(() => ({}) as Record<string, string>);
+  const b = await c.req.json<{ responsavel?: string; pendente?: boolean }>().catch(() => ({}) as { responsavel?: string; pendente?: boolean });
   const resp = (b.responsavel || "").trim() || "Atendente";
   const id = c.req.param("id");
   await c.env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', responsavel=?, atualizado_em=datetime('now') WHERE id=?").bind(resp, id).run();
-  // Registro INTERNO (só a equipe vê) de quem assumiu. NÃO manda nada pro cliente.
-  await addMsg(c.env, id, "out", "sistema", "sistema", `${resp} assumiu o atendimento.`);
+  // TRANSFERÊNCIA (pendente): o card aparece pro NOVO responsável em "Aguardando atendimento humano"
+  // (pra ele pegar), não em "Em atendimento". Some da lista quando ele responde (assume de fato).
+  try {
+    const cfg = await lerConfig(c.env);
+    let tr = (() => { try { const a = JSON.parse(cfg.atend_transferidos || "[]"); return Array.isArray(a) ? a.map(String) : []; } catch { return [] as string[]; } })().filter((x) => x !== id);
+    if (b.pendente) tr.push(id);
+    await salvarConfigJson(c.env, "atend_transferidos", tr.slice(-500));
+  } catch { /* não bloqueia o assumir */ }
+  // Registro INTERNO (só a equipe vê) de quem assumiu/recebeu. NÃO manda nada pro cliente.
+  await addMsg(c.env, id, "out", "sistema", "sistema", `${b.pendente ? "Atendimento transferido para " + resp : resp + " assumiu o atendimento"}.`);
   return c.json({ ok: true });
 });
 
@@ -2698,6 +2712,13 @@ atendimento.post("/:id/enviar", async (c) => {
   if (autor && !GENERICOS.includes(autor.toLowerCase())) {
     await c.env.DB.prepare("UPDATE atend_conversas SET responsavel=? WHERE id=? AND estado IN ('atendimento-humano','grupo') AND (responsavel IS NULL OR responsavel='')").bind(autor, id).run();
   }
+  // Respondeu → se estava TRANSFERIDO (aguardando o novo responsável pegar), agora ele pegou:
+  // tira da lista pra o card sair de "Aguardando humano" e ir pra "Em atendimento".
+  try {
+    const cfgT = await lerConfig(c.env);
+    const tr = (() => { try { const a = JSON.parse(cfgT.atend_transferidos || "[]"); return Array.isArray(a) ? a.map(String) : []; } catch { return [] as string[]; } })();
+    if (tr.includes(id)) await salvarConfigJson(c.env, "atend_transferidos", tr.filter((x) => x !== id));
+  } catch { /* ok */ }
   // O CLIENTE vê o NOME de quem está atendendo na frente da mensagem — assim a conversa fica
   // identificada e passa pelo sistema (não pelo WhatsApp pessoal do vendedor). No CRM a mensagem
   // fica limpa (o nome já aparece do lado); o prefixo vai só pro WhatsApp do cliente.

@@ -1007,6 +1007,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
         {c.autorizado === 0
           ? <span className="at-badge" style={{ background: "#fef3c7", color: "#92400e" }} title="Aguardando autorização da equipe">⏳ Autorizar</span>
           : <span className="at-badge">{c.responsavel ? `👤 ${c.responsavel}` : humano ? "👤 humano" : "🤖 robô"}</span>}
+        {!!c.transferido && <span className="at-badge" style={{ background: "#e0e7ff", color: "#4338ca" }} title="Transferido — aguardando o responsável pegar">↗️ transferido</span>}
         {/* Card parado em "Em atendimento" há +24h (sem mensagem nova): avisa que precisa retomar ou finalizar */}
         {c.coluna === "em-atendimento" && (() => {
           const ult = [c.ultima_in_em, c.ultima_out_em].filter(Boolean).map(String).sort().pop() || c.atualizado_em;
@@ -1214,12 +1215,15 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   async function assumir() {
     const u = getUser();
     setBusy(true);
-    try { await api.atendAssumir(id, u?.nome || "Atendente"); carregar(); onMudou(); } finally { setBusy(false); }
+    try { await api.atendAssumir(id, u?.nome || "Atendente", false); carregar(); onMudou(); } finally { setBusy(false); }
   }
   async function transferir(nome: string) {
     if (!nome) return;
+    // Transferir pra OUTRA pessoa = pendente (aparece pra ela em "Aguardando atendimento humano").
+    // Escolher a si mesmo = assumir (vai direto pra "Em atendimento").
+    const pendente = nome !== (getUser()?.nome || "");
     setBusy(true);
-    try { await api.atendAssumir(id, nome); carregar(); onMudou(); } finally { setBusy(false); }
+    try { await api.atendAssumir(id, nome, pendente); carregar(); onMudou(); } finally { setBusy(false); }
   }
   // Devolve a conversa pra Big (IA) — inverso do "assumir". A Big assume e, se houver uma
   // pergunta do cliente esperando, já responde agora; senão responde na próxima mensagem.
