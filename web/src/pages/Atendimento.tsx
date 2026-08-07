@@ -244,7 +244,16 @@ export function Atendimento() {
     catch { alert("Não consegui juntar os duplicados agora. Tente de novo."); }
   }
   function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance && !!c.zapi_token)).catch(() => setConectado(false)); }
-  useEffect(() => { recarregar(); checarConexao(); const t = setInterval(recarregar, 8000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    recarregar(); checarConexao();
+    const t = setInterval(recarregar, 4000);
+    // O navegador CONGELA o timer quando a aba fica em segundo plano — por isso "às vezes" a
+    // mensagem só aparecia depois. Ao voltar pra aba (ou focar a janela), atualiza NA HORA.
+    const aoVoltar = () => { if (!document.hidden) { recarregar(); checarConexao(); } };
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("focus", aoVoltar);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", aoVoltar); window.removeEventListener("focus", aoVoltar); };
+  }, []);
 
   // Libera o áudio no primeiro clique (política de autoplay) e pede permissão de notificação.
   useEffect(() => {
