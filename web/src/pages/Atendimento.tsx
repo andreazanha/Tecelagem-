@@ -764,6 +764,7 @@ function AudioMsg({ url }: { url: string }) {
   useEffect(() => {
     if (!visivel) return;
     let vivo = true;
+    const tmo = setTimeout(() => { if (vivo && !bufRef.current) setErro("demorou pra abrir"); }, 9000);
     (async () => {
       try {
         const r = await fetch(url, { cache: "no-store" });
@@ -774,14 +775,15 @@ function AudioMsg({ url }: { url: string }) {
         const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         const ctx = new AC();
         ctxRef.current = ctx;
-        const audioBuf = await ctx.decodeAudioData(ab);
+        const audioBuf = await ctx.decodeAudioData(ab.slice(0));
         if (!vivo) { ctx.close().catch(() => {}); return; }
         bufRef.current = audioBuf;
         setDur(audioBuf.duration || 0);
         setPronto(true);
-      } catch { if (vivo) setErro("não consegui abrir o áudio aqui"); }
+      } catch { if (vivo) setErro("não abriu aqui"); }
+      finally { clearTimeout(tmo); }
     })();
-    return () => { vivo = false; };
+    return () => { vivo = false; clearTimeout(tmo); };
   }, [visivel, url]);
 
   useEffect(() => () => {
@@ -796,10 +798,12 @@ function AudioMsg({ url }: { url: string }) {
     setPos(Math.min(t, dur || 0));
     rafRef.current = requestAnimationFrame(loop);
   }
-  function tocar() {
+  async function tocar() {
     const ctx = ctxRef.current, buf = bufRef.current;
     if (!ctx || !buf) return;
-    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    // Resume ANTES de tocar (o contexto nasce "suspenso" fora de um clique). Espera resolver pra o
+    // ctx.currentTime já estar andando — senão a barrinha ficava parada no zero.
+    try { if (ctx.state !== "running") await ctx.resume(); } catch { /* ok */ }
     let off = offsetRef.current;
     if (off >= buf.duration - 0.05) off = 0;
     const src = ctx.createBufferSource();
@@ -838,28 +842,25 @@ function AudioMsg({ url }: { url: string }) {
 
   const pct = dur ? Math.min(100, (pos / dur) * 100) : 0;
   return (
-    <div ref={ref} style={{ display: "flex", alignItems: "center", gap: 9, maxWidth: 244, background: "rgba(148,163,184,.16)", borderRadius: 12, padding: "7px 11px 7px 8px" }}>
-      <button
-        onClick={erro ? undefined : alternar}
-        disabled={!pronto && !erro}
-        title={erro ? "" : tocando ? "Pausar" : "Ouvir"}
-        style={{ flex: "0 0 auto", width: 36, height: 36, borderRadius: "50%", border: 0, cursor: erro ? "default" : "pointer", background: erro ? "#94a3b8" : "#12a150", color: "#fff", fontSize: 15, display: "grid", placeItems: "center", lineHeight: 1, boxShadow: "0 1px 3px rgba(0,0,0,.25)" }}
-      >
-        {erro ? "🎤" : !pronto ? "…" : tocando ? "❚❚" : "▶"}
-      </button>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {erro ? (
-          <a href={url} download style={{ fontSize: 12.5, fontWeight: 700, color: "#12a150", textDecoration: "none" }}>⤓ Baixar áudio ({erro})</a>
-        ) : (
-          <>
-            <input type="range" min={0} max={100} value={pct} onChange={buscar} aria-label="Posição do áudio"
-              style={{ width: "100%", accentColor: "#12a150", cursor: "pointer", height: 4 }} />
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, opacity: 0.75, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>
-              <span>🎤 áudio</span><span>{fmtSeg(pos)} / {fmtSeg(dur)}</span>
-            </div>
-          </>
-        )}
+    <div ref={ref} style={{ maxWidth: 250 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, background: "rgba(148,163,184,.16)", borderRadius: 12, padding: "7px 11px 7px 8px" }}>
+        <button
+          onClick={() => { if (!erro) alternar(); }}
+          title={erro ? "" : tocando ? "Pausar" : "Ouvir"}
+          style={{ flex: "0 0 auto", width: 36, height: 36, borderRadius: "50%", border: 0, cursor: erro ? "default" : "pointer", background: erro ? "#94a3b8" : "#12a150", color: "#fff", fontSize: 15, display: "grid", placeItems: "center", lineHeight: 1, boxShadow: "0 1px 3px rgba(0,0,0,.25)" }}
+        >
+          {erro ? "🎤" : !pronto ? "…" : tocando ? "❚❚" : "▶"}
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <input type="range" min={0} max={100} value={pct} onChange={buscar} disabled={!pronto} aria-label="Posição do áudio"
+            style={{ width: "100%", accentColor: "#12a150", cursor: pronto ? "pointer" : "default", height: 4 }} />
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, opacity: 0.75, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>
+            <span>{erro ? "🎤 não tocou aqui" : !pronto ? "🎤 carregando…" : "🎤 áudio"}</span><span>{fmtSeg(pos)} / {fmtSeg(dur)}</span>
+          </div>
+        </div>
       </div>
+      {/* Baixar SEMPRE disponível — garante ouvir o áudio mesmo se o player inline não rolar aqui. */}
+      <a href={url} download style={{ display: "inline-block", marginTop: 3, fontSize: 11, fontWeight: 700, color: "#12a150", textDecoration: "none" }}>⤓ baixar áudio</a>
     </div>
   );
 }
