@@ -96,7 +96,7 @@ export const ATEND_COLUNAS = [
   { id: "triagem", label: "Triagem automática", cor: "#8b5cf6" },
   { id: "aguardando-humano", label: "Aguardando atendimento humano", cor: "#f59e0b" },
   { id: "em-atendimento", label: "Em atendimento", cor: "#6366f1" },
-  { id: "aguardando-setor", label: "Aguardando setor interno", cor: "#a855f7" },
+  { id: "aguardando-setor", label: "💰 Orçando", cor: "#a855f7" },
   { id: "montando-pedido", label: "Montando pedido", cor: "#f97316" },
   { id: "grupos", label: "👥 Grupos", cor: "#0891b2" },
   { id: "finalizado", label: "Atendimento finalizado", cor: "#22c55e" },
