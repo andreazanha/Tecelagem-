@@ -1307,6 +1307,16 @@ body.dark .fx-card.pulsando { background: #0f2a1c; }
 body.dark .fx-card.lembrete { background: #2a2410 !important; }
 /* Avatar (foto de perfil ou iniciais) no card da conversa */
 .conv-av { width: 34px; height: 34px; border-radius: 50%; flex: 0 0 auto; background: #6366f1; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; overflow: hidden; }
+/* ── Polimento visual do card (mais “bonito”: cantos, sombra, avatar, badges) ── */
+.fx-card { border-radius: 13px; padding: 11px 12px; box-shadow: 0 1px 2px #0f172a10, 0 1px 3px #0f172a0a; transition: box-shadow .16s ease, transform .16s ease, border-color .16s ease; }
+.fx-card:hover { box-shadow: 0 8px 20px #0f172a22; transform: translateY(-1px); border-color: #c7d2fe; }
+body.dark .fx-card:hover { border-color: #3b4a6b; }
+.conv-av { width: 38px; height: 38px; font-size: 13px; background: linear-gradient(135deg, #6366f1, #8b5cf6); box-shadow: 0 0 0 2px #fff, 0 0 0 3px #e6e9f4; }
+body.dark .conv-av { box-shadow: 0 0 0 2px #18202f, 0 0 0 3px #2a3550; }
+.fx-nm { font-size: 13.5px; }
+.at-badge { border-radius: 999px; padding: 2px 8px; }
+.fx-foot { gap: 5px 6px; margin-top: 10px; }
+.at-prev { margin-top: 7px; }
 /* Seletor de mover no card (clica e escolhe a coluna) */
 .fx-mover-sel { border: 1px solid var(--line); border-radius: 6px; background: var(--card,#fff); color: var(--ink,#334155); font-size: 11px; padding: 1px 2px; cursor: pointer; max-width: 30px; }
 .fx-mover-sel:hover { border-color: #6366f1; }
