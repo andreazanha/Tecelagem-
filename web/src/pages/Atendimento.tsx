@@ -727,6 +727,33 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   );
 }
 
+// Áudio (nota de voz) na conversa. Usa o player nativo, mas se o navegador NÃO conseguir tocar
+// inline (acontece com alguns formatos/ áudios do WhatsApp), mostra um link "▶️ Abrir / baixar"
+// que funciona sempre — assim nunca fica um player que não toca ao clicar.
+function AudioMsg({ url }: { url: string }) {
+  const [erro, setErro] = useState(false);
+  if (erro) {
+    return (
+      <a href={url} target="_blank" rel="noreferrer" className="at-doc" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 12px", textDecoration: "none" }}>
+        <span style={{ fontSize: 18 }}>🎤</span>
+        <span style={{ fontWeight: 700 }}>Abrir áudio ▶︎</span>
+      </a>
+    );
+  }
+  return (
+    <div style={{ maxWidth: 230 }}>
+      <audio
+        controls
+        preload="metadata"
+        src={url}
+        onError={() => setErro(true)}
+        style={{ width: "100%", display: "block" }}
+      />
+      <a href={url} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 2, fontSize: 11, color: "inherit", opacity: 0.7, textDecoration: "underline" }}>não tocou? abrir áudio ▶︎</a>
+    </div>
+  );
+}
+
 // Card de documento (PDF/doc) na conversa. A prévia do PDF só CARREGA quando o card entra na
 // tela (conforme você rola) — assim uma conversa com muitos PDFs não carrega todos de uma vez.
 function DocCard({ url, nome, pdf }: { url: string; nome: string; pdf: boolean }) {
@@ -1067,6 +1094,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   }
   // Menu de excluir mensagem (para mim / para todos).
   const [menuMsg, setMenuMsg] = useState<string | null>(null);
+  const [imgZoom, setImgZoom] = useState<string | null>(null); // imagem aberta em tela cheia (lightbox)
   const [encMsg, setEncMsg] = useState<string | null>(null); // mensagem sendo encaminhada
   async function excluirMsg(msgId: string, paraTodos: boolean) {
     if (paraTodos && !confirm("Apagar esta mensagem PARA TODOS? Ela some também no WhatsApp do cliente.")) return;
@@ -1185,9 +1213,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     {m.arquivo_url
                       ? <>
                           {/\.(jpg|jpeg|png|gif|webp)$/i.test(m.arquivo_url)
-                            ? <a href={m.arquivo_url} target="_blank" rel="noreferrer"><img src={m.arquivo_url} alt={m.texto || "imagem"} style={{ maxWidth: 220, maxHeight: 260, borderRadius: 8, display: "block" }} /></a>
+                            ? <img src={m.arquivo_url} alt={m.texto || "imagem"} onClick={() => setImgZoom(m.arquivo_url!)} style={{ maxWidth: 220, maxHeight: 260, borderRadius: 8, display: "block", cursor: "zoom-in" }} />
                             : /\.(ogg|opus|mp3|m4a|wav|webm|aac|amr)$/i.test(m.arquivo_url)
-                              ? <audio controls src={m.arquivo_url} style={{ maxWidth: 230, display: "block" }} />
+                              ? <AudioMsg url={m.arquivo_url} />
                               : (() => {
                                   const raw = (m.texto || "").trim(); const i = raw.lastIndexOf("📎");
                                   const nome = ((i >= 0 ? raw.slice(i + 1) : raw).trim() || "arquivo");
@@ -1455,6 +1483,13 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
       {gerenciarResp && <RespostasModal onFechar={() => setGerenciarResp(false)} onSalvo={() => { setGerenciarResp(false); carregarRespostas(); }} />}
       {arqRapidoOpen && <ArquivosRapidosModal convId={id} autor={d?.responsavel || "Atendente"} onFechar={() => setArqRapidoOpen(false)} onEnviado={() => { setArqRapidoOpen(false); carregar(); onMudou(); }} />}
       {encMsg && <EncaminharModal convId={id} msgId={encMsg} onFechar={() => setEncMsg(null)} />}
+      {imgZoom && createPortal((
+        <div onClick={() => setImgZoom(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.88)", zIndex: 100000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <button onClick={() => setImgZoom(null)} title="Fechar" style={{ position: "fixed", top: 16, right: 20, width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,.15)", color: "#fff", border: "1px solid rgba(255,255,255,.3)", fontSize: 24, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}>×</button>
+          <a href={imgZoom} target="_blank" rel="noreferrer" download onClick={(e) => e.stopPropagation()} title="Baixar imagem" style={{ position: "fixed", top: 16, right: 74, height: 44, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 22, background: "rgba(255,255,255,.15)", color: "#fff", border: "1px solid rgba(255,255,255,.3)", fontSize: 15, fontWeight: 700, textDecoration: "none" }}>⤓ Baixar</a>
+          <img src={imgZoom} alt="imagem" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "94vw", maxHeight: "90vh", borderRadius: 10, boxShadow: "0 10px 40px rgba(0,0,0,.6)" }} />
+        </div>
+      ), document.body)}
     </div>
   );
 }
