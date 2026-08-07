@@ -2647,6 +2647,12 @@ atendimento.post("/:id/enviar", async (c) => {
   const autor = (b.autor || "Atendente").trim();
   const msgId = await addMsg(c.env, id, "out", autor, "texto", texto, { responderTexto: quote.texto || null });
   await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
+  // Atendente respondeu um card que estava em "Aguardando atendimento humano" (sem responsável) →
+  // ele ASSUME o atendimento: o card passa pra "Em atendimento" com o nome de quem respondeu.
+  const GENERICOS = ["atendente", "sistema", "bot", "ia", "big", "robô", "robo"];
+  if (autor && !GENERICOS.includes(autor.toLowerCase())) {
+    await c.env.DB.prepare("UPDATE atend_conversas SET responsavel=? WHERE id=? AND estado='atendimento-humano' AND (responsavel IS NULL OR responsavel='')").bind(autor, id).run();
+  }
   // O CLIENTE vê o NOME de quem está atendendo na frente da mensagem — assim a conversa fica
   // identificada e passa pelo sistema (não pelo WhatsApp pessoal do vendedor). No CRM a mensagem
   // fica limpa (o nome já aparece do lado); o prefixo vai só pro WhatsApp do cliente.

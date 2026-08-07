@@ -916,6 +916,12 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
         {c.autorizado === 0
           ? <span className="at-badge" style={{ background: "#fef3c7", color: "#92400e" }} title="Aguardando autorização da equipe">⏳ Autorizar</span>
           : <span className="at-badge">{humano ? `👤 ${c.responsavel || "humano"}` : `🤖 robô`}</span>}
+        {/* Card parado em "Em atendimento" há +24h (sem mensagem nova): avisa que precisa retomar ou finalizar */}
+        {c.coluna === "em-atendimento" && (() => {
+          const ult = [c.ultima_in_em, c.ultima_out_em].filter(Boolean).map(String).sort().pop() || c.atualizado_em;
+          const ms = ult ? Date.parse(String(ult).replace(" ", "T") + "Z") : 0;
+          return ms && (Date.now() - ms) >= 864e5 ? <span className="at-badge at-parado" title="Esse atendimento está parado há mais de 24h — responda ou finalize a conversa">⏳ +24h parado</span> : null;
+        })()}
         {c.funil_etapa && <span className="at-badge" style={{ background: "#ecfdf5", color: "#047857" }} title="Etapa no funil de vendas">🎯 {etapaLabel(c.funil_etapa)}</span>}
         {c.interessado === 1 && <span className="at-badge" style={{ background: "#fee2e2", color: "#b91c1c" }} title="Demonstrou interesse comercial">🔥 Interessado</span>}
         {c.representante && <span className="at-badge" style={{ background: "#eef2ff", color: "#4338ca" }} title={c.autorizado === 0 ? "Representante sugerido" : "Representante"}>🧑‍💼 {c.representante}</span>}
@@ -1205,7 +1211,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   async function enviar() {
     if (!texto.trim()) return;
     setBusy(true);
-    try { await api.atendEnviar(id, { texto: texto.trim(), autor: d?.responsavel || "Atendente", responder_a: respondendo?.id }); setTexto(""); setRespondendo(null); carregar(); onMudou(); }
+    try { await api.atendEnviar(id, { texto: texto.trim(), autor: getUser()?.nome || d?.responsavel || "Atendente", responder_a: respondendo?.id }); setTexto(""); setRespondendo(null); carregar(); onMudou(); }
     finally { setBusy(false); }
   }
   // Nota interna: recado da equipe DENTRO da conversa — o cliente NÃO recebe.

@@ -1256,6 +1256,10 @@ body.dark .at-status { background: #2a2410; border-color: #5c4a12; color: #fcd34
 .at-prev { font-size: 12.5px; color: var(--muted); margin-top: 8px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.4; }
 .at-badge { font-size: 10px; font-weight: 800; background: #eef2f7; color: #334155; border-radius: 6px; padding: 2px 7px; }
 body.dark .at-badge { background: #243044; color: #c7d2e0; }
+.at-badge.at-parado { background: #fef3c7; color: #92400e; box-shadow: 0 0 0 1px #f59e0b55; animation: atParadoPulse 1.8s ease-in-out infinite; }
+body.dark .at-badge.at-parado { background: #3a2a08; color: #fcd34d; }
+@keyframes atParadoPulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .at-badge.at-parado { animation: none; } }
 /* modal conversa */
 .at-modal { max-width: 900px; width: 95vw; padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh; }
 .at-thd { display: flex; align-items: center; gap: 11px; padding: 12px 14px; background: #075e54; color: #fff; }

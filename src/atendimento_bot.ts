@@ -93,12 +93,12 @@ export interface Resultado { conv: Conversa; saidas: Saida[]; notificarHumano: b
 // + responsável + últimas mensagens (ver colunaAtendimento em routes/atendimento.ts).
 export const ATEND_COLUNAS = [
   { id: "aguardando-humano", label: "Aguardando atendimento humano", cor: "#f59e0b" },
-  { id: "campanha", label: "📣 Campanhas", cor: "#0ea5e9" },
   { id: "em-atendimento", label: "Em atendimento", cor: "#6366f1" },
+  { id: "montando-pedido", label: "Montando pedido", cor: "#f97316" },
   { id: "aguardando-setor", label: "💰 Orçando", cor: "#a855f7" },
+  { id: "campanha", label: "📣 Campanhas", cor: "#0ea5e9" },
   { id: "contato-followup", label: "⏰ Contato follow-up", cor: "#3b82f6" },
   { id: "triagem", label: "Triagem automática", cor: "#8b5cf6" },
-  { id: "montando-pedido", label: "Montando pedido", cor: "#f97316" },
   { id: "grupos", label: "👥 Grupos", cor: "#0891b2" },
   { id: "finalizado", label: "Atendimento finalizado", cor: "#22c55e" },
   { id: "reclamacao", label: "Reclamação ou pendência", cor: "#ef4444" },
