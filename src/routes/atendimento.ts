@@ -135,6 +135,12 @@ const INTERESSE_RE = /pre[çc]o|valor|quanto (custa|sai|fica|é)|\bcores?\b|esto
 // Sinais de reclamação/problema → prioriza atendimento humano (§12/§16).
 const RECLAMACAO_RE = /reclama|problema|defeito|quebrad|rasgad|estragad|veio errad|errad[oa]|faltou|faltando|falta (uma|um|de)|troca(r)?|devolu|devolv|atras(ad|o)|n[ãa]o chegou|ainda n[ãa]o (chegou|recebi)|insatisfeit|p[ée]ssim/i;
 
+// Resposta AUTOMÁTICA de loja (WhatsApp Business, "mensagem de saudação/ausência"). Quando um
+// contato de CAMPANHA responde com um desses textos, é o robô DELE — não é a pessoa. A gente
+// mantém o card na coluna "Campanhas" SEM piscar. Se vier uma mensagem de gente de verdade, aí sim
+// vai pra "Aguardando humano" e pisca. É um palpite (heurística) — não acerta 100%, mas pega os casos comuns.
+const RESPOSTA_AUTOMATICA_RE = /mensagem autom[áa]tica|resposta autom[áa]tica|recebemos (a |sua |a sua )?mensagem|assim que poss[íi]vel|retornaremos|responderemos|obrigad[oa] (por |pelo )?(entrar em contato|seu contato|contatar|nos contatar|a mensagem|sua mensagem)|agradecemos (o |seu )?contato|hor[áa]rio de (atendimento|funcionamento)|no momento (n[ãa]o|estamos|nossa)|fora do (hor[áa]rio|expediente)|em breve (retornaremos|entraremos|responderemos)|nossa equipe (ir[áa]|vai|entrar)|estamos (ausentes?|fora|offline|indispon[íi]vel)|volto a? (falar|responder)|assim que (poss[íi]vel|pudermos|retornarmos)|este (é|e) um(a)? (atendimento|resposta|mensagem) autom/i;
+
 async function detectarInteresse(env: Env, convId: string, texto: string, modelosCsv: string): Promise<boolean> {
   const t = texto || "";
   const interessou = INTERESSE_RE.test(t);
@@ -633,6 +639,13 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // NÃO sai dessas colunas só porque a cliente escreveu (ele continua lá, mas piscando c/ msg nova).
   await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now'), coluna_manual = CASE WHEN coluna_manual IN ('montando-pedido','aguardando-setor') THEN coluna_manual ELSE NULL END WHERE id = ?").bind(conv.id).run();
 
+  // Conversa JÁ FINALIZADA e o cliente voltou a falar → REABRE e joga pra fila humana
+  // ("Aguardando atendimento humano", piscando), sem responsável fixo, pra alguém retomar.
+  if (conv.encerrado_em) {
+    await env.DB.prepare("UPDATE atend_conversas SET encerrado_em=NULL, estado='atendimento-humano', responsavel=NULL, coluna_manual=NULL, atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    conv.encerrado_em = null; conv.estado = "atendimento-humano"; conv.responsavel = null;
+  }
+
   // Detecta interesse comercial + modelos citados (vale inclusive no atendimento humano).
   const cfgAt = await lerConfig(env);
   await detectarInteresse(env, conv.id, texto, cfgAt.interesse_modelos || "");
@@ -675,10 +688,18 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   if (conv.estado === "atendimento-humano" || conv.estado === "reclamacao" || String(conv.responsavel ?? "").trim()) {
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
   }
-  // RESPOSTA a uma CAMPANHA / prospecção em massa: é um LEAD respondendo. NÃO deixa a IA
-  // "conversar" — ela se confunde com autorresposta de loja ("em que posso ajudar?") e responde
-  // como se fosse cliente. Manda direto pro HUMANO (card piscando em "Aguardando humano").
+  // RESPOSTA a uma CAMPANHA / prospecção em massa. NÃO deixa a IA "conversar" (ela se confunde com
+  // autorresposta de loja e responde como se fosse cliente). Duas situações:
+  //  • O texto parece uma RESPOSTA AUTOMÁTICA (robô da loja) → mantém o card na coluna "Campanhas",
+  //    SEM piscar (não é gente falando, não precisa de atenção).
+  //  • Mensagem de GENTE de verdade → manda pro HUMANO (card piscando em "Aguardando humano").
   if (conv.origem === "campanha" || conv.origem === "reativacao") {
+    const ehAuto = !arquivoUrl && RESPOSTA_AUTOMATICA_RE.test(texto || "");
+    if (ehAuto) {
+      // Fica na coluna "Campanhas" (colunaAtendimento devolve "campanha" p/ origem campanha/reativação
+      // que ainda não virou atendimento humano). Não avisa humano, não pisca.
+      return { conversa_id: conv.id, estado: conv.estado, coluna: "campanha", respostas: [], notificarHumano: false };
+    }
     await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
     return { conversa_id: conv.id, estado: "atendimento-humano", coluna: colunaDe("atendimento-humano"), respostas: [], notificarHumano: true };
   }
@@ -1950,9 +1971,10 @@ atendimento.get("/painel", async (c) => {
 
 // Coluna do ATENDIMENTO derivada do estado + responsável + últimas mensagens + encerrado.
 // É isso que faz os cards se moverem SOZINHOS conforme a conversa anda.
-function colunaAtendimento(c: { estado?: string | null; responsavel?: string | null; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null; tipo?: string | null }): string {
+function colunaAtendimento(c: { estado?: string | null; responsavel?: string | null; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null; tipo?: string | null; origem?: string | null }): string {
   const inn = c.ultima_in_em || "", out = c.ultima_out_em || "", enc = c.encerrado_em || "";
   const estado = String(c.estado || "");
+  const origem = String(c.origem || "");
   if (estado === "grupo") return "grupos";                            // mensagens de grupo → coluna própria
   // Consumidor final (não é lojista): a IA já indica a loja parceira sozinha — não precisa de
   // humano, então cai em "finalizado" (não polui a fila de atendimento de lojista).
@@ -1960,6 +1982,10 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
   if (enc && inn <= enc) return "finalizado";                         // encerrado e sem msg nova depois
   if (estado === "reclamacao") return "reclamacao";
   if (estado === "aguardando-setor") return "aguardando-setor";
+  // Contato de CAMPANHA/reativação que ainda NÃO virou atendimento humano (ex.: só chegou uma
+  // autorresposta da loja) fica na coluna "Campanhas". Quando responder de verdade, o webhook põe
+  // estado='atendimento-humano' e aí ele sai daqui e cai em "Aguardando humano" (piscando).
+  if ((origem === "campanha" || origem === "reativacao") && estado !== "atendimento-humano") return "campanha";
   if (estado === "atendimento-humano") {
     // Com responsável, fica sempre em "Em atendimento" (removida a coluna "Aguardando cliente").
     if (String(c.responsavel || "").trim()) return "em-atendimento";
