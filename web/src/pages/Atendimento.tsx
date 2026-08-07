@@ -727,97 +727,56 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   );
 }
 
-// Áudio (nota de voz) na conversa — player PRÓPRIO que toca DENTRO da conversa (sem abrir aba).
-// Ao apertar ▶ pela 1ª vez ele BAIXA o arquivo inteiro (fetch → blob) e toca do blob. Isso evita
-// o problema de streaming/Range que fazia o player nativo do Chrome mostrar a duração mas não tocar.
-function fmtSeg(s: number): string {
-  if (!isFinite(s) || s < 0) s = 0;
-  const m = Math.floor(s / 60), ss = Math.floor(s % 60);
-  return `${m}:${ss < 10 ? "0" : ""}${ss}`;
-}
+// Áudio (nota de voz) na conversa. Estratégia à prova de falha: BAIXA o arquivo inteiro (fetch →
+// blob) e entrega pro player NATIVO do navegador via blob URL. Assim:
+//  • o botão ▶ é o nativo (não perde o "gesto do clique" — não cai na trava de autoplay do Chrome);
+//  • toca do arquivo COMPLETO em memória (sem streaming/Range, que fazia mostrar a duração e não tocar);
+//  • fetch "no-store" evita um pedaço cacheado (206) antigo virar um arquivo quebrado.
+// Se o download falhar, cai pro player nativo direto na URL (ainda dentro da conversa, sem abrir aba).
 function AudioMsg({ url }: { url: string }) {
-  const aRef = useRef<HTMLAudioElement | null>(null);
+  const ref = useRef<HTMLDivElement | null>(null);
   const blobRef = useRef<string | null>(null);
-  const [tocando, setTocando] = useState(false);
-  const [carregando, setCarregando] = useState(false);
-  const [dur, setDur] = useState(0);
-  const [pos, setPos] = useState(0);
-  const [erro, setErro] = useState(false);
+  const [visivel, setVisivel] = useState(false);
+  const [src, setSrc] = useState<string | null>(null);
+  const [falhouBaixar, setFalhouBaixar] = useState(false);
 
-  useEffect(() => () => {
-    if (aRef.current) { aRef.current.pause(); aRef.current.src = ""; }
-    if (blobRef.current) URL.revokeObjectURL(blobRef.current);
+  // Só baixa quando o áudio aparece na tela (conversa com muitos áudios não baixa todos de uma vez).
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") { setVisivel(true); return; }
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { setVisivel(true); io.disconnect(); } }, { rootMargin: "300px" });
+    io.observe(el);
+    return () => io.disconnect();
   }, []);
 
-  function ligarEventos(a: HTMLAudioElement) {
-    a.onloadedmetadata = () => setDur(a.duration || 0);
-    a.ontimeupdate = () => setPos(a.currentTime || 0);
-    a.onended = () => { setTocando(false); setPos(0); };
-    a.onpause = () => setTocando(false);
-    a.onplay = () => setTocando(true);
-  }
-  // Garante que o áudio já está baixado (blob) e pronto pra tocar. Retorna o elemento ou null.
-  async function preparar(): Promise<HTMLAudioElement | null> {
-    if (aRef.current && blobRef.current) return aRef.current;
-    setCarregando(true); setErro(false);
-    try {
-      const r = await fetch(url);
-      if (!r.ok) throw new Error("http " + r.status);
-      const blob = await r.blob();
-      const bu = URL.createObjectURL(blob);
-      blobRef.current = bu;
-      const a = new Audio();
-      ligarEventos(a);
-      a.src = bu;
-      await new Promise<void>((res, rej) => {
-        a.onloadedmetadata = () => { setDur(a.duration || 0); res(); };
-        a.onerror = () => rej(new Error("decode"));
-        // fallback: se não disparar metadata em 6s, segue mesmo assim (alguns formatos não dão duração)
-        setTimeout(res, 6000);
-      });
-      ligarEventos(a); // re-liga (o onloadedmetadata acima sobrescreveu)
-      aRef.current = a;
-      return a;
-    } catch {
-      setErro(true);
-      return null;
-    } finally {
-      setCarregando(false);
-    }
-  }
-  async function alternar() {
-    const a = await preparar();
-    if (!a) return;
-    if (a.paused) { try { await a.play(); } catch { setErro(true); } }
-    else a.pause();
-  }
-  function buscar(e: React.ChangeEvent<HTMLInputElement>) {
-    const a = aRef.current; if (!a || !dur) return;
-    const t = (Number(e.target.value) / 100) * dur;
-    a.currentTime = t; setPos(t);
-  }
+  useEffect(() => {
+    if (!visivel) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) throw new Error("http " + r.status);
+        const blob = await r.blob();
+        if (!vivo) return;
+        const bu = URL.createObjectURL(blob);
+        blobRef.current = bu;
+        setSrc(bu);
+      } catch {
+        if (vivo) setFalhouBaixar(true); // usa a URL direto como último recurso (ainda inline)
+      }
+    })();
+    return () => { vivo = false; };
+  }, [visivel, url]);
 
-  const pct = dur ? Math.min(100, (pos / dur) * 100) : 0;
+  useEffect(() => () => { if (blobRef.current) URL.revokeObjectURL(blobRef.current); }, []);
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 9, maxWidth: 240, background: "rgba(148,163,184,.14)", borderRadius: 12, padding: "7px 11px 7px 8px" }}>
-      <button
-        onClick={alternar}
-        title={tocando ? "Pausar" : "Ouvir"}
-        style={{ flex: "0 0 auto", width: 34, height: 34, borderRadius: "50%", border: 0, cursor: "pointer", background: erro ? "#ef4444" : "#12a150", color: "#fff", fontSize: 15, display: "grid", placeItems: "center", lineHeight: 1 }}
-      >
-        {carregando ? "…" : erro ? "↻" : tocando ? "❚❚" : "▶"}
-      </button>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <input
-          type="range" min={0} max={100} value={pct} onChange={buscar}
-          aria-label="Posição do áudio"
-          style={{ width: "100%", accentColor: "#12a150", cursor: "pointer", height: 4 }}
-        />
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, opacity: 0.75, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>
-          <span>{erro ? "toque ↻ pra tentar de novo" : "🎤 áudio"}</span>
-          <span>{fmtSeg(pos)} / {fmtSeg(dur)}</span>
-        </div>
-      </div>
+    <div ref={ref} style={{ maxWidth: 240 }}>
+      {src
+        ? <audio controls preload="metadata" src={src} style={{ width: "100%", display: "block" }} />
+        : falhouBaixar
+          ? <audio controls preload="metadata" src={url} style={{ width: "100%", display: "block" }} />
+          : <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(148,163,184,.14)", borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: "var(--ink2, #64748b)" }}><span style={{ fontSize: 15 }}>🎤</span> carregando áudio…</div>}
     </div>
   );
 }
@@ -1173,6 +1132,18 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
       carregar(); onMudou();
     } catch { alert("Não consegui excluir a mensagem."); } finally { setBusy(false); }
   }
+  async function editarMsg(msgId: string, textoAtual: string) {
+    const novo = prompt("Corrigir a mensagem (o WhatsApp permite editar por ~15 min depois de enviada):", textoAtual);
+    if (novo == null) return;
+    const t = novo.trim();
+    if (!t || t === textoAtual.trim()) { setMenuMsg(null); return; }
+    setMenuMsg(null); setBusy(true);
+    try {
+      const r = await api.atendEditarMsg(id, msgId, t);
+      if (r && r.editadoZap === false) alert("Corrigi aqui no CRM, mas não consegui editar no WhatsApp do cliente" + (r.motivo ? ` (${r.motivo})` : "") + ". O WhatsApp só deixa editar por cerca de 15 minutos.");
+      carregar(); onMudou();
+    } catch { alert("Não consegui editar a mensagem."); } finally { setBusy(false); }
+  }
   const [sugerindo, setSugerindo] = useState(false);
   async function sugerir() {
     setSugerindo(true);
@@ -1302,6 +1273,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     <button title="Excluir mensagem" onClick={() => setMenuMsg(menuMsg === m.id ? null : m.id)} style={{ position: "absolute", top: 3, right: 4, background: "rgba(148,163,184,.22)", border: 0, borderRadius: 6, cursor: "pointer", fontSize: 14, opacity: 0.9, lineHeight: 1, padding: "2px 5px", fontWeight: 800 }}>⋮</button>
                     {menuMsg === m.id && (
                       <div style={{ position: "absolute", top: 18, right: 2, zIndex: 30, background: "var(--card,#fff)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 6px 16px rgba(0,0,0,.2)", overflow: "hidden", minWidth: 162 }}>
+                        {m.direcao === "out" && m.autor !== "sistema" && !m.arquivo_url && (m.texto || "").trim() && (
+                          <button onClick={() => editarMsg(m.id, m.texto || "")} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "inherit" }}>✏️ Editar (corrigir erro)</button>
+                        )}
                         <button onClick={() => { setEncMsg(m.id); setMenuMsg(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "inherit" }}>↪️ Encaminhar</button>
                         <button onClick={() => excluirMsg(m.id, false)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "inherit" }}>🙈 Excluir para mim</button>
                         {m.direcao === "out" && m.autor !== "sistema" && (

@@ -629,8 +629,9 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Cliente mandou mensagem NOVA → "chamou de volta". Se o card estava ESTACIONADO numa
   // coluna à mão (coluna_manual), destrava: ele volta pro fluxo automático (Em atendimento /
   // Aguardando humano) pra ninguém esquecer que a cliente está esperando resposta.
-  // Exceção: "Montando pedido" é trabalho em andamento — não sai só porque a cliente escreveu.
-  await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now'), coluna_manual = CASE WHEN coluna_manual = 'montando-pedido' THEN coluna_manual ELSE NULL END WHERE id = ?").bind(conv.id).run();
+  // Exceção: "Montando pedido" e "Orçando" (aguardando-setor) são trabalho em andamento — o card
+  // NÃO sai dessas colunas só porque a cliente escreveu (ele continua lá, mas piscando c/ msg nova).
+  await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now'), coluna_manual = CASE WHEN coluna_manual IN ('montando-pedido','aguardando-setor') THEN coluna_manual ELSE NULL END WHERE id = ?").bind(conv.id).run();
 
   // Detecta interesse comercial + modelos citados (vale inclusive no atendimento humano).
   const cfgAt = await lerConfig(env);
@@ -1680,6 +1681,25 @@ async function apagarWhatsapp(env: Env, tel: string, zapId: string): Promise<{ o
   }
 }
 
+// Editar (corrigir) no WhatsApp uma mensagem de TEXTO que NÓS enviamos. O WhatsApp só deixa editar
+// por ~15 min depois do envio; passou disso, a Z-API recusa e a gente avisa.
+async function editarWhatsapp(env: Env, tel: string, zapId: string, novoTexto: string): Promise<{ ok: boolean; motivo?: string }> {
+  const cfg = await lerConfig(env);
+  if (cfg.zapi_ativo !== "1") return { ok: false, motivo: "desligado" };
+  const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
+  const inst = cfg.zapi_instance || "", token = cfg.zapi_token || "";
+  if (!inst || !token || !zapId) return { ok: false, motivo: "sem-dados" };
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
+  const body = { phone: digitos(tel), messageId: zapId, message: linksClicaveis(novoTexto) };
+  try {
+    const resp = await fetch(`${base}/instances/${inst}/token/${token}/edit-message`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+    return { ok: resp.ok, motivo: resp.ok ? "" : `http-${resp.status}` };
+  } catch {
+    return { ok: false, motivo: "erro-rede" };
+  }
+}
+
 // Deixa os links CLICÁVEIS no WhatsApp: (1) tira asteriscos colados numa URL — o "negrito" em
 // cima do link impede o clique; (2) põe https:// em domínio "pelado". Não mexe em e-mail nem em
 // links que já estão certos.
@@ -2478,6 +2498,27 @@ atendimento.post("/:id/mensagem/:msgId/excluir", async (c) => {
   // Marca como apagada no CRM (mantém o registro pra equipe ver que foi revogada).
   await c.env.DB.prepare("UPDATE atend_mensagens SET tipo='sistema', texto='🚫 Mensagem apagada', arquivo_url=NULL WHERE id=?").bind(msgId).run();
   return c.json({ ok: true, paraTodos: true, revogada: r.ok, motivo: r.ok ? "" : (r.motivo || "") });
+});
+
+// Editar (corrigir) uma mensagem de texto que a gente enviou — quando saiu com erro de digitação.
+// Corrige no WhatsApp do cliente (via Z-API, até ~15 min) E no histórico do CRM.
+atendimento.post("/:id/mensagem/:msgId/editar", async (c) => {
+  const id = c.req.param("id"), msgId = c.req.param("msgId");
+  const b = await c.req.json<{ texto?: string }>().catch(() => ({}) as { texto?: string });
+  const novo = String(b.texto || "").trim();
+  if (!novo) return c.json({ error: "escreva o novo texto da mensagem" }, 400);
+  const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
+  if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  const m = await c.env.DB.prepare("SELECT id, direcao, tipo, zap_id, arquivo_url FROM atend_mensagens WHERE id=? AND conversa_id=?").bind(msgId, id).first<{ id: string; direcao: string; tipo: string; zap_id: string | null; arquivo_url: string | null }>();
+  if (!m) return c.json({ error: "mensagem não encontrada" }, 404);
+  if (m.direcao !== "out") return c.json({ error: "só dá pra editar mensagens que a gente enviou" }, 400);
+  if (m.arquivo_url) return c.json({ error: "só dá pra editar mensagens de texto (não anexo/áudio)" }, 400);
+  // Corrige no WhatsApp da cliente (se a mensagem tiver id da Z-API e ainda estiver no prazo).
+  let editadoZap = false, motivo = "";
+  if (m.zap_id) { const r = await editarWhatsapp(c.env, conv.telefone, m.zap_id, novo); editadoZap = r.ok; motivo = r.motivo || ""; }
+  // Sempre corrige no CRM (o histórico fica certo pra equipe), mesmo se o WhatsApp recusar por tempo.
+  await c.env.DB.prepare("UPDATE atend_mensagens SET texto=? WHERE id=?").bind(novo, msgId).run();
+  return c.json({ ok: true, editadoZap, motivo });
 });
 
 // Encaminhar (forward) uma mensagem pra outro contato: manda o MESMO conteúdo (texto ou mídia)
