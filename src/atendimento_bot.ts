@@ -96,7 +96,7 @@ export const ATEND_COLUNAS = [
   { id: "em-atendimento", label: "Em atendimento", cor: "#6366f1" },
   { id: "montando-pedido", label: "Montando pedido", cor: "#f97316" },
   { id: "aguardando-setor", label: "💰 Orçando", cor: "#a855f7" },
-  { id: "remarket", label: "🔁 Remarket", cor: "#db2777" },
+  { id: "pendente", label: "⏸️ Pendente", cor: "#db2777" },
   { id: "campanha", label: "📣 Campanhas", cor: "#0ea5e9" },
   { id: "contato-followup", label: "⏰ Contato follow-up", cor: "#3b82f6" },
   { id: "triagem", label: "Triagem automática", cor: "#8b5cf6" },

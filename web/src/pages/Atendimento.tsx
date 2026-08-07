@@ -685,16 +685,6 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
               <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Todo dia de manhã, manda a mensagem pros clientes que fazem aniversário no dia (precisa da <b>data de nascimento</b> preenchida no cadastro do cliente). Envia 1× por cliente, espaçado.</div>
             </div>
 
-            <div style={{ border: "1px solid #fbcfe8", background: "#fdf2f8", color: "#1e293b", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
-              <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 6 }}>🔁 Remarket (coluna do quadro)</div>
-              <div style={{ fontSize: 12.5, marginBottom: 6 }}>Arraste um card pra coluna <b>🔁 Remarket</b> no quadro. Depois das horas abaixo, mando essa mensagem sozinho. Se o cliente responder antes, cancela e o card vai pra <b>Aguardando humano</b>.</div>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>Enviar depois de
-                <input type="number" min={1} max={720} value={cfg.remarket_horas} onChange={(e) => set("remarket_horas", e.target.value)} style={{ width: 62 }} /> horas na coluna</label>
-              <label className="campo" style={{ margin: "8px 0 0" }}><span className="campo-label">Mensagem (use {"{nome}"})</span>
-                <textarea rows={3} value={cfg.remarket_msg} onChange={(e) => set("remarket_msg", e.target.value)} placeholder={cfg.remarket_msg_padrao} /></label>
-              <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Em branco = usa a mensagem padrão. Envia 1× por card.</div>
-            </div>
-
             <div style={{ border: "1px solid #ddd6fe", background: "#f5f3ff", color: "#1e293b", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
               <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 6 }}>🔗 Catálogo — ler atividade</div>
               <div style={{ fontSize: 12.5, marginBottom: 6 }}>O CRM lê os acessos do catálogo daqui e cria os leads. Cole a <b>URL de leitura</b> (o GET <code>/log</code> com o código):</div>
@@ -1021,9 +1011,6 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
         {c.agendado_ia ? (c.agendado_enviado
           ? <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="IA já mandou a saudação — aguardando o cliente responder">⏰ chamado · aguardando</span>
           : <span className="at-badge" style={{ background: "#dbeafe", color: "#1d4ed8" }} title="IA vai enviar uma saudação neste horário">⏰ {agendadoLabel(c.agendado_ia)}</span>) : null}
-        {c.remarket_em ? (c.remarket_enviado
-          ? <span className="at-badge" style={{ background: "#fce7f3", color: "#9d174d" }} title="Mensagem de remarketing já enviada — aguardando o cliente responder">🔁 remarket enviado</span>
-          : <span className="at-badge" style={{ background: "#fbcfe8", color: "#9d174d" }} title="Vou mandar a mensagem de remarketing neste horário (24h após entrar na coluna)">🔁 {agendadoLabel(c.remarket_em)}</span>) : null}
         {c.setor && <span className="fx-sub">{SETOR_EMOJI[c.setor] || ""}</span>}
         <span className="fx-sub" style={{ marginLeft: "auto" }}>{hora(c.atualizado_em)}</span>
         {/* Mover pra outra coluna sem arrastar: clica e escolhe o nome da coluna */}

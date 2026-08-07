@@ -639,6 +639,13 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // NÃO sai dessas colunas só porque a cliente escreveu (ele continua lá, mas piscando c/ msg nova).
   await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now'), coluna_manual = CASE WHEN coluna_manual IN ('montando-pedido','aguardando-setor') THEN coluna_manual ELSE NULL END WHERE id = ?").bind(conv.id).run();
 
+  // Card estava estacionado em "Pendente" e o CLIENTE CHAMOU → vai direto pra "Aguardando
+  // atendimento humano" (piscando), sem responsável fixo. (Essa é a única função da coluna Pendente.)
+  if (conv.coluna_manual === "pendente") {
+    await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', responsavel=NULL WHERE id=?").bind(conv.id).run();
+    conv.estado = "atendimento-humano"; conv.responsavel = null;
+  }
+
   // Conversa JÁ FINALIZADA e o cliente voltou a falar → REABRE e joga pra fila humana
   // ("Aguardando atendimento humano", piscando), sem responsável fixo, pra alguém retomar.
   if (conv.encerrado_em) {
@@ -1425,16 +1432,6 @@ atendimento.post("/:id/coluna", async (c) => {
   const b = await c.req.json<{ coluna?: string }>().catch(() => ({}) as Record<string, string>);
   const coluna = String(b.coluna ?? "").trim() || null;
   await c.env.DB.prepare("UPDATE atend_conversas SET coluna_manual=?, atualizado_em=datetime('now') WHERE id=?").bind(coluna, id).run();
-  // REMARKET: entrou na coluna "Remarket" → começa a contagem de 24h. Saiu → cancela.
-  try {
-    const cfg = await lerConfig(c.env);
-    let arr = lerRemarket(cfg).filter((r) => r && r.conversaId !== id);
-    if (coluna === "remarket") {
-      const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
-      if (conv) arr.push({ conversaId: id, telefone: conv.telefone, desde: Date.now(), enviado: false });
-    }
-    await salvarConfigJson(c.env, "atend_remarket", arr.slice(-1000));
-  } catch { /* não bloqueia o mover */ }
   return c.json({ ok: true });
 });
 
