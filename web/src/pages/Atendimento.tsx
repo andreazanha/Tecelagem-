@@ -734,18 +734,39 @@ function fmtSeg(s: number): string {
   const m = Math.floor(s / 60), ss = Math.floor(s % 60);
   return `${m}:${ss < 10 ? "0" : ""}${ss}`;
 }
-// Áudio (nota de voz) — player PRÓPRIO usando a WEB AUDIO API (decodeAudioData). O player nativo
-// (<audio>) recusava alguns arquivos com "não consegui decodificar"; o decodeAudioData é um decoder
-// mais robusto e toca WAV/Opus válidos que o <audio> engasga. Botão verde bem visível nos 2 temas.
+// Converte um AudioBuffer (já decodificado) num WAV 16-bit LIMPO. Regravar assim conserta arquivos
+// que o <audio> nativo recusava — o WAV novo é impecável e o player nativo toca de boa.
+function audioBufferParaWav(buf: AudioBuffer): ArrayBuffer {
+  const numCh = buf.numberOfChannels || 1;
+  const rate = buf.sampleRate;
+  const len = buf.length;
+  const blockAlign = numCh * 2;
+  const dataSize = len * blockAlign;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(ab);
+  const wstr = (o: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+  wstr(0, "RIFF"); view.setUint32(4, 36 + dataSize, true); wstr(8, "WAVE");
+  wstr(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, numCh, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate * blockAlign, true); view.setUint16(32, blockAlign, true); view.setUint16(34, 16, true);
+  wstr(36, "data"); view.setUint32(40, dataSize, true);
+  const chans: Float32Array[] = [];
+  for (let c = 0; c < numCh; c++) chans.push(buf.getChannelData(c));
+  let o = 44;
+  for (let i = 0; i < len; i++) {
+    for (let c = 0; c < numCh; c++) {
+      const s = Math.max(-1, Math.min(1, chans[c][i]));
+      view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true); o += 2;
+    }
+  }
+  return ab;
+}
+// Áudio (nota de voz). Híbrido à prova de falha: DECODIFICA com Web Audio (decodeAudioData, que abre
+// arquivos que o <audio> engasga), REGRAVA num WAV limpo e toca num ELEMENTO DE ÁUDIO NATIVO — que
+// move a barrinha sozinho (timeupdate) e nunca fica travado. Botão verde visível nos 2 temas.
 function AudioMsg({ url }: { url: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const ctxRef = useRef<AudioContext | null>(null);
-  const bufRef = useRef<AudioBuffer | null>(null);
-  const srcRef = useRef<AudioBufferSourceNode | null>(null);
-  const startRef = useRef(0);      // ctx.currentTime quando começou a tocar
-  const offsetRef = useRef(0);     // segundos dentro do áudio onde começou/pausou
-  const rafRef = useRef(0);
-  const pausaManual = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const blobRef = useRef<string | null>(null);
   const [visivel, setVisivel] = useState(false);
   const [pronto, setPronto] = useState(false);
   const [tocando, setTocando] = useState(false);
@@ -764,8 +785,9 @@ function AudioMsg({ url }: { url: string }) {
   useEffect(() => {
     if (!visivel) return;
     let vivo = true;
-    const tmo = setTimeout(() => { if (vivo && !bufRef.current) setErro("demorou pra abrir"); }, 9000);
+    const tmo = setTimeout(() => { if (vivo && !audioRef.current) setErro("demorou"); }, 12000);
     (async () => {
+      let ctx: AudioContext | null = null;
       try {
         const r = await fetch(url, { cache: "no-store" });
         if (!r.ok) throw new Error("http " + r.status);
@@ -773,94 +795,58 @@ function AudioMsg({ url }: { url: string }) {
         if (!vivo) return;
         if (!ab.byteLength) throw new Error("vazio");
         const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        const ctx = new AC();
-        ctxRef.current = ctx;
+        ctx = new AC();
         const audioBuf = await ctx.decodeAudioData(ab.slice(0));
-        if (!vivo) { ctx.close().catch(() => {}); return; }
-        bufRef.current = audioBuf;
+        if (!vivo) return;
+        const wav = audioBufferParaWav(audioBuf);
+        const bu = URL.createObjectURL(new Blob([wav], { type: "audio/wav" }));
+        blobRef.current = bu;
+        const a = new Audio();
+        a.preload = "auto";
+        a.src = bu;
+        a.onloadedmetadata = () => setDur(a.duration && isFinite(a.duration) ? a.duration : (audioBuf.duration || 0));
+        a.ontimeupdate = () => setPos(a.currentTime || 0);
+        a.onplay = () => setTocando(true);
+        a.onpause = () => setTocando(false);
+        a.onended = () => { setTocando(false); setPos(0); try { a.currentTime = 0; } catch { /* ok */ } };
+        audioRef.current = a;
         setDur(audioBuf.duration || 0);
         setPronto(true);
-      } catch { if (vivo) setErro("não abriu aqui"); }
-      finally { clearTimeout(tmo); }
+      } catch { if (vivo) setErro("não abriu"); }
+      finally { if (ctx) ctx.close().catch(() => {}); clearTimeout(tmo); }
     })();
     return () => { vivo = false; clearTimeout(tmo); };
   }, [visivel, url]);
 
-  useEffect(() => () => {
-    cancelAnimationFrame(rafRef.current);
-    try { srcRef.current?.stop(); } catch { /* ok */ }
-    ctxRef.current?.close().catch(() => {});
-  }, []);
+  useEffect(() => () => { const a = audioRef.current; if (a) { a.pause(); a.src = ""; } if (blobRef.current) URL.revokeObjectURL(blobRef.current); }, []);
 
-  function loop() {
-    const ctx = ctxRef.current; if (!ctx) return;
-    const t = offsetRef.current + (ctx.currentTime - startRef.current);
-    setPos(Math.min(t, dur || 0));
-    rafRef.current = requestAnimationFrame(loop);
+  function alternar() {
+    const a = audioRef.current; if (!a) return;
+    if (a.paused) { const p = a.play(); if (p && p.catch) p.catch(() => setErro("bloqueado")); }
+    else a.pause();
   }
-  async function tocar() {
-    const ctx = ctxRef.current, buf = bufRef.current;
-    if (!ctx || !buf) return;
-    // Resume ANTES de tocar (o contexto nasce "suspenso" fora de um clique). Espera resolver pra o
-    // ctx.currentTime já estar andando — senão a barrinha ficava parada no zero.
-    try { if (ctx.state !== "running") await ctx.resume(); } catch { /* ok */ }
-    let off = offsetRef.current;
-    if (off >= buf.duration - 0.05) off = 0;
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    pausaManual.current = false;
-    src.onended = () => {
-      cancelAnimationFrame(rafRef.current);
-      if (pausaManual.current) return;              // pause/seek → não zera
-      setTocando(false); offsetRef.current = 0; setPos(0);
-    };
-    src.start(0, off);
-    srcRef.current = src;
-    startRef.current = ctx.currentTime;
-    offsetRef.current = off;
-    setTocando(true);
-    rafRef.current = requestAnimationFrame(loop);
-  }
-  function pausar() {
-    const ctx = ctxRef.current, src = srcRef.current;
-    if (!ctx || !src) return;
-    pausaManual.current = true;
-    offsetRef.current = offsetRef.current + (ctx.currentTime - startRef.current);
-    try { src.stop(); } catch { /* ok */ }
-    srcRef.current = null;
-    cancelAnimationFrame(rafRef.current);
-    setTocando(false);
-  }
-  function alternar() { if (!pronto) return; if (tocando) pausar(); else tocar(); }
   function buscar(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!dur) return;
-    const t = (Number(e.target.value) / 100) * dur;
-    if (tocando) { pausar(); offsetRef.current = t; setPos(t); tocar(); }
-    else { offsetRef.current = t; setPos(t); }
+    const a = audioRef.current; if (!a || !dur) return;
+    const t = (Number(e.target.value) / 100) * dur; a.currentTime = t; setPos(t);
   }
 
   const pct = dur ? Math.min(100, (pos / dur) * 100) : 0;
   return (
-    <div ref={ref} style={{ maxWidth: 250 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 9, background: "rgba(148,163,184,.16)", borderRadius: 12, padding: "7px 11px 7px 8px" }}>
-        <button
-          onClick={() => { if (!erro) alternar(); }}
-          title={erro ? "" : tocando ? "Pausar" : "Ouvir"}
-          style={{ flex: "0 0 auto", width: 36, height: 36, borderRadius: "50%", border: 0, cursor: erro ? "default" : "pointer", background: erro ? "#94a3b8" : "#12a150", color: "#fff", fontSize: 15, display: "grid", placeItems: "center", lineHeight: 1, boxShadow: "0 1px 3px rgba(0,0,0,.25)" }}
-        >
-          {erro ? "🎤" : !pronto ? "…" : tocando ? "❚❚" : "▶"}
-        </button>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <input type="range" min={0} max={100} value={pct} onChange={buscar} disabled={!pronto} aria-label="Posição do áudio"
-            style={{ width: "100%", accentColor: "#12a150", cursor: pronto ? "pointer" : "default", height: 4 }} />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, opacity: 0.75, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>
-            <span>{erro ? "🎤 não tocou aqui" : !pronto ? "🎤 carregando…" : "🎤 áudio"}</span><span>{fmtSeg(pos)} / {fmtSeg(dur)}</span>
-          </div>
+    <div ref={ref} style={{ display: "flex", alignItems: "center", gap: 9, maxWidth: 248, background: "rgba(148,163,184,.16)", borderRadius: 12, padding: "7px 11px 7px 8px" }}>
+      <button
+        onClick={() => { if (!erro) alternar(); }}
+        title={erro ? "" : tocando ? "Pausar" : "Ouvir"}
+        style={{ flex: "0 0 auto", width: 36, height: 36, borderRadius: "50%", border: 0, cursor: erro ? "default" : "pointer", background: erro ? "#94a3b8" : "#12a150", color: "#fff", fontSize: 15, display: "grid", placeItems: "center", lineHeight: 1, boxShadow: "0 1px 3px rgba(0,0,0,.25)" }}
+      >
+        {erro ? "🎤" : !pronto ? "…" : tocando ? "❚❚" : "▶"}
+      </button>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <input type="range" min={0} max={100} value={pct} onChange={buscar} disabled={!pronto} aria-label="Posição do áudio"
+          style={{ width: "100%", accentColor: "#12a150", cursor: pronto ? "pointer" : "default", height: 4 }} />
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, opacity: 0.75, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>
+          <span>{erro ? "🎤 não tocou aqui" : !pronto ? "🎤 carregando…" : "🎤 áudio"}</span><span>{fmtSeg(pos)} / {fmtSeg(dur)}</span>
         </div>
       </div>
-      {/* Baixar SEMPRE disponível — garante ouvir o áudio mesmo se o player inline não rolar aqui. */}
-      <a href={url} download style={{ display: "inline-block", marginTop: 3, fontSize: 11, fontWeight: 700, color: "#12a150", textDecoration: "none" }}>⤓ baixar áudio</a>
     </div>
   );
 }
