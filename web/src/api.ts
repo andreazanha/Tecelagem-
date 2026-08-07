@@ -698,7 +698,8 @@ export const api = {
   atendEncerrar: (id: string, autor?: string, reabrir?: boolean) =>
     jsonPost(`/api/atendimento/${id}/encerrar`, { autor, reabrir }).then((r) => j<{ ok: boolean }>(r)),
   atendFotoPerfil: (id: string) => fetch(`/api/atendimento/${id}/foto-perfil`).then((r) => j<{ link: string | null }>(r)),
-  atendCampanhas: () => fetch("/api/atendimento/campanhas").then((r) => j<{ id: string; nome: string | null; mensagem: string; intervalo_seg: number; status: string; criado_em: string; total: number; enviados: number; pendentes: number; falhas: number }[]>(r)),
+  atendCampanhas: () => fetch("/api/atendimento/campanhas").then((r) => j<{ id: string; nome: string | null; mensagem: string; intervalo_seg: number; status: string; criado_em: string; total: number; enviados: number; pendentes: number; falhas: number; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null }[]>(r)),
+  atendCampanhaAlvos: (id: string) => fetch(`/api/atendimento/campanhas/${id}/alvos`).then((r) => j<{ alvos: { telefone: string; nome: string | null }[] }>(r)),
   atendCriarCampanha: (b: { nome?: string; mensagem: string; intervalo_seg: number; alvos: { telefone: string; nome?: string }[]; rascunho?: boolean; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string }) =>
     jsonPost("/api/atendimento/campanhas", b).then((r) => j<{ ok: boolean; id: string; total: number; error?: string }>(r)),
   atendCampanhaUpload: (file: File) => { const fd = new FormData(); fd.append("file", file); return fetch("/api/atendimento/campanhas/upload", { method: "POST", body: fd }).then((r) => j<{ ok: boolean; url: string; tipo: string; nome: string; ext: string; error?: string }>(r)); },

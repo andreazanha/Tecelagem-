@@ -1829,7 +1829,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     try { const r = await api.atendCampanhaUpload(file); if (r.error) { alert(r.error); return; } setAnexo({ url: r.url, tipo: r.tipo, nome: r.nome, ext: r.ext }); }
     catch { alert("Não consegui subir o arquivo."); } finally { setSubindo(false); }
   }
-  const [campanhas, setCampanhas] = useState<{ id: string; nome: string | null; status: string; total: number; enviados: number; pendentes: number; falhas: number }[]>([]);
+  const [campanhas, setCampanhas] = useState<{ id: string; nome: string | null; mensagem: string; status: string; total: number; enviados: number; pendentes: number; falhas: number; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null }[]>([]);
   function carregarCampanhas() { api.atendCampanhas().then(setCampanhas).catch(() => {}); }
   useEffect(() => {
     const u = getUser();
@@ -1928,6 +1928,29 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     } catch (e) { alert((e as Error).message || "Não consegui criar a campanha."); } finally { setBusy(false); }
   }
   async function mudarStatus(id: string, status: string) { await api.atendStatusCampanha(id, status).catch(() => {}); carregarCampanhas(); }
+  // Reusar uma campanha: carrega a MESMA lista de contatos e pré-preenche texto/foto pra você
+  // só alterar e disparar de novo (sem re-selecionar tudo).
+  async function reusar(cmp: typeof campanhas[number]) {
+    setBusy(true);
+    try {
+      const r = await api.atendCampanhaAlvos(cmp.id);
+      const novos: Contato[] = []; const selNovos = new Set<string>();
+      const idx = new Map(contatos.map((c) => [nucleoTel(c.telefone), c] as const));
+      for (const a of (r.alvos || [])) {
+        const d = (a.telefone || "").replace(/\D/g, ""); if (d.length < 10 || d.length > 13) continue;
+        const ex = idx.get(nucleoTel(d));
+        if (ex) { selNovos.add(ex.telefone); continue; }
+        if (novos.some((n) => nucleoTel(n.telefone) === nucleoTel(d))) continue;
+        novos.push({ nome: a.nome || telBonito(d), telefone: d, origem: "colado" }); selNovos.add(d);
+      }
+      if (novos.length) setContatos((cs) => [...novos, ...cs]);
+      setSel(selNovos);
+      setNome(cmp.nome ? `${cmp.nome} (cópia)` : "");
+      setMensagem(cmp.mensagem || "");
+      setAnexo(cmp.arquivo_url ? { url: cmp.arquivo_url, tipo: cmp.arquivo_tipo || "arquivo", nome: cmp.arquivo_nome || "anexo", ext: cmp.arquivo_ext || "bin" } : null);
+      alert(`Lista da campanha carregada (${selNovos.size} contato[s]). Altere o texto/foto e clique em "📣 Criar e enviar".`);
+    } catch { alert("Não consegui carregar a lista dessa campanha."); } finally { setBusy(false); }
+  }
   return (
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card" style={{ maxWidth: 620, width: "min(620px,96vw)" }} onClick={(e) => e.stopPropagation()}>
@@ -2009,14 +2032,13 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
                   <div style={{ height: 6, background: "var(--bg-soft,#eef2f7)", borderRadius: 4, marginTop: 6, overflow: "hidden" }}>
                     <div style={{ height: "100%", width: `${c.total ? Math.round((c.enviados / c.total) * 100) : 0}%`, background: "#22c55e" }} />
                   </div>
-                  {c.status !== "concluida" && (
-                    <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
-                      {c.status === "ativa"
-                        ? <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => mudarStatus(c.id, "pausada")}>⏸ Pausar</button>
-                        : <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => mudarStatus(c.id, "ativa")}>▶️ Retomar</button>}
-                      <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#dc2626" }} onClick={() => mudarStatus(c.id, "concluida")}>⏹ Encerrar</button>
-                    </div>
-                  )}
+                  <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {c.status !== "concluida" && (c.status === "ativa"
+                      ? <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => mudarStatus(c.id, "pausada")}>⏸ Pausar</button>
+                      : <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => mudarStatus(c.id, "ativa")}>▶️ Retomar</button>)}
+                    {c.status !== "concluida" && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#dc2626" }} onClick={() => mudarStatus(c.id, "concluida")}>⏹ Encerrar</button>}
+                    <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#2563eb" }} disabled={busy} onClick={() => reusar(c)} title="Usa a MESMA lista de contatos numa campanha nova — você só altera o texto/foto">♻️ Reusar (mesma lista)</button>
+                  </div>
                 </div>
               ))}
             </div>

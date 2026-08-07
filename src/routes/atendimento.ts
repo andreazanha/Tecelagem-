@@ -181,7 +181,7 @@ async function enviarBot(env: Env, convId: string, tel: string, saida: { tipo: s
 // massa) — assim ela aparece no histórico da conversa (com ✓✓), não só no controle da campanha.
 // Acha a conversa pelo telefone; se não existir, cria uma "quieta" (origem 'campanha', que o
 // board só mostra depois que o cliente responder).
-async function registrarEnvioNaConversa(env: Env, tel: string, texto: string, messageId: string | null, autor = "Campanha") {
+async function registrarEnvioNaConversa(env: Env, tel: string, texto: string, messageId: string | null, autor = "Campanha", arquivoUrl = "") {
   const t = digitos(tel);
   if (t.length < 8) return;
   const conv = await acharConversaPorTelefone(env, t);
@@ -194,7 +194,11 @@ async function registrarEnvioNaConversa(env: Env, tel: string, texto: string, me
       "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, cliente_id, nome, ultima_out_em, atualizado_em) VALUES (?, ?, 'ia-triagem', 'campanha', ?, ?, ?, datetime('now'), datetime('now'))"
     ).bind(convId, t, cli ? "lojista" : null, cli?.id ?? null, cli?.nome ?? null).run();
   }
-  const msgId = await addMsg(env, convId, "out", autor, "texto", texto, { zapId: messageId || null });
+  // Se a campanha tinha ANEXO, grava a mídia na conversa (imagem mostra a foto; doc vira link),
+  // com a mensagem como legenda — pra aparecer no CRM que a foto/arquivo FOI enviado.
+  const ehImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(arquivoUrl);
+  const tipoMsg = arquivoUrl ? (ehImg ? "texto" : "arquivo") : "texto";
+  const msgId = await addMsg(env, convId, "out", autor, tipoMsg, texto, { zapId: messageId || null, arquivoUrl: arquivoUrl || null });
   if (messageId) await env.DB.prepare("UPDATE atend_mensagens SET status='sent' WHERE id=?").bind(msgId).run();
   await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(convId).run();
 }
@@ -1362,6 +1366,7 @@ atendimento.get("/webhook-debug", async (c) => {
 atendimento.get("/campanhas", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT c.id, c.nome, c.mensagem, c.intervalo_seg, c.status, c.criado_em, c.ultimo_envio_em,
+       c.arquivo_url, c.arquivo_tipo, c.arquivo_nome, c.arquivo_ext,
        (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id) AS total,
        (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id AND a.status='enviado') AS enviados,
        (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id AND a.status='pendente') AS pendentes,
@@ -1369,6 +1374,13 @@ atendimento.get("/campanhas", async (c) => {
      FROM atend_campanhas c ORDER BY c.criado_em DESC LIMIT 50`
   ).all().catch(() => ({ results: [] as unknown[] }));
   return c.json(results);
+});
+// Alvos de uma campanha — pra REUSAR a mesma lista noutra campanha (mudando texto/foto).
+atendimento.get("/campanhas/:id/alvos", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT telefone, nome FROM atend_campanha_alvos WHERE campanha_id=? ORDER BY rowid"
+  ).bind(c.req.param("id")).all<{ telefone: string; nome: string | null }>().catch(() => ({ results: [] as { telefone: string; nome: string | null }[] }));
+  return c.json({ alvos: results || [] });
 });
 // Upload de um anexo (foto/arquivo) pra usar na campanha. Salva no R2 e devolve a URL + tipo.
 atendimento.post("/campanhas/upload", async (c) => {
@@ -2739,7 +2751,7 @@ export async function processarCampanhas(env: Env): Promise<number> {
       }
       const st = r.enviado ? "enviado" : (r.motivo === "cliente-bloqueado" ? "bloqueado" : "falhou");
       // Enviou de verdade → grava a mensagem NA CONVERSA do cliente (aparece no histórico, com ✓✓).
-      if (r.enviado) await registrarEnvioNaConversa(env, alvo.telefone, camp.mensagem || `📎 ${camp.arquivo_nome || "arquivo"}`, r.messageId ?? null);
+      if (r.enviado) await registrarEnvioNaConversa(env, alvo.telefone, camp.mensagem || `📎 ${camp.arquivo_nome || "arquivo"}`, r.messageId ?? null, "Campanha", camp.arquivo_url || "");
       await env.DB.prepare("UPDATE atend_campanha_alvos SET status=?, motivo=?, enviado_em=datetime('now') WHERE id=?").bind(st, r.motivo || null, alvo.id).run();
       await env.DB.prepare("UPDATE atend_campanhas SET ultimo_envio_em=datetime('now') WHERE id=?").bind(camp.id).run();
       if (r.enviado) enviados++;
