@@ -589,7 +589,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     if (cliente) {
       tipo = "lojista"; clienteId = cliente.id; nome = cliente.nome; cnpj = cliente.cnpj;
       cidade = cliente.cidade; uf = cliente.uf;
-      representante = cliente.representante || (await representantePorRegiao(env, cliente.uf));
+      representante = cliente.representante || (await representantePorRegiao(env, cliente.uf).catch(() => null));
     } else if (rep) {
       tipo = "representante"; representante = rep.nome;
     }
@@ -916,7 +916,13 @@ atendimento.post("/webhook", async (c) => {
   const soRegistrar = cfg.atendimento_ativo !== "1";
   // GRUPOS: o robô NUNCA responde no grupo, mas ARQUIVA a mensagem na coluna "👥 Grupos"
   // pra você ver e responder à mão. (Não segue pro fluxo do robô.)
-  if (b.isGroup === true || b.isGroupMessage === true) {
+  // Detecta grupo também por HEURÍSTICA: o "phone" do grupo é um id LONGO (bem maior que um
+  // telefone), e/ou vem participantPhone (quem falou). Assim, se a Z-API parar de mandar o
+  // flag isGroup, os grupos NÃO param de chegar.
+  const ehGrupo = b.isGroup === true || b.isGroupMessage === true
+    || digitos(b.phone).length > 14
+    || (!!b.participantPhone && digitos(b.participantPhone as string) !== digitos(b.phone));
+  if (ehGrupo) {
     const okG = await registrarGrupo(c.env, new URL(c.req.url).origin, b);
     return c.json({ ok: okG, grupo: true });
   }
@@ -935,9 +941,15 @@ atendimento.post("/webhook", async (c) => {
   // mensagem NÃO vai pro robô de clientes — ela cai no chat interno da equipe (canal ext:<id>).
   {
     const coreM = phone.replace(/^55/, "").slice(-8);
-    const membro = coreM.length >= 8
-      ? await c.env.DB.prepare("SELECT id, nome FROM chat_membros WHERE telefone <> '' AND telefone LIKE '%' || ? LIMIT 1").bind(coreM).first<{ id: string; nome: string }>().catch(() => null)
-      : null;
+    // Casa por NÚCLEO (DDD + 8), não só últimos 8 — senão um cliente com os mesmos 8 dígitos
+    // finais de um membro da equipe (DDD diferente) tinha a mensagem "engolida" pro chat interno.
+    let membro: { id: string; nome: string } | null = null;
+    if (coreM.length >= 8) {
+      const cand = await c.env.DB.prepare("SELECT id, nome, telefone FROM chat_membros WHERE telefone <> '' AND telefone LIKE '%' || ?").bind(coreM).all<{ id: string; nome: string; telefone: string }>().catch(() => ({ results: [] as { id: string; nome: string; telefone: string }[] }));
+      const nuc = nucleoTel(phone);
+      const m = (cand.results || []).find((x) => nucleoTel(x.telefone) === nuc);
+      if (m) membro = { id: m.id, nome: m.nome };
+    }
     if (membro) {
       let txt = String((b.text as { message?: string } | undefined)?.message ?? (b.image as { caption?: string } | undefined)?.caption ?? "").trim();
       if (!txt && b.audio) { const a = b.audio as { audioUrl?: string; url?: string }; txt = (await transcreverAudio(c.env, a.audioUrl || a.url || "").catch(() => "")) || "🎤 (áudio)"; }
@@ -1906,13 +1918,15 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
   const inn = c.ultima_in_em || "", out = c.ultima_out_em || "", enc = c.encerrado_em || "";
   const estado = String(c.estado || "");
   if (estado === "grupo") return "grupos";                            // mensagens de grupo → coluna própria
-  // Consumidor final (não é lojista): coluna própria pra não poluir a fila de atendimento de lojista.
-  if (String(c.tipo || "") === "consumidor" || estado === "indicado-parceiro" || estado === "aguardando-cidade-parceiro") return "consumidor-final";
+  // Consumidor final (não é lojista): a IA já indica a loja parceira sozinha — não precisa de
+  // humano, então cai em "finalizado" (não polui a fila de atendimento de lojista).
+  if (String(c.tipo || "") === "consumidor" || estado === "indicado-parceiro" || estado === "aguardando-cidade-parceiro") return "finalizado";
   if (enc && inn <= enc) return "finalizado";                         // encerrado e sem msg nova depois
   if (estado === "reclamacao") return "reclamacao";
   if (estado === "aguardando-setor") return "aguardando-setor";
   if (estado === "atendimento-humano") {
-    if (String(c.responsavel || "").trim()) return (inn && inn > out) ? "em-atendimento" : "aguardando-cliente";
+    // Com responsável, fica sempre em "Em atendimento" (removida a coluna "Aguardando cliente").
+    if (String(c.responsavel || "").trim()) return "em-atendimento";
     return "aguardando-humano";                                        // precisa de humano, ninguém assumiu
   }
   if (["ia-triagem", "triagem-vendas", "triagem-nome", "aguardando-cnpj", "aguardando-cidade-parceiro"].includes(estado)) return "triagem";

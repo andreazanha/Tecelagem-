@@ -1097,8 +1097,13 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   }
   const encerrado = !!d?.encerrado_em && (d.encerrado_em || "") >= (d.ultima_in_em || "");
   async function encerrar() {
+    const estavaEncerrado = encerrado;
     setBusy(true);
-    try { await api.atendEncerrar(id, getUser()?.nome, encerrado); carregar(); onMudou(); } finally { setBusy(false); }
+    try {
+      await api.atendEncerrar(id, getUser()?.nome, encerrado); onMudou();
+      if (!estavaEncerrado) { onFechar(); return; }   // acabou de encerrar → fecha o card sozinho
+      carregar();
+    } finally { setBusy(false); }
   }
   async function enviarCatalogo() {
     if (!confirm("Enviar o link do catálogo para este cliente?")) return;
@@ -1339,11 +1344,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d?.lembrete ? { borderColor: "#eab308", background: "#fffbeb", color: "#854d0e", fontWeight: 700 } : {}) }} disabled={busy} onClick={toggleLembreteConv} title="Deixa o card pulsando (amarelo) no quadro pra você lembrar de falar com esse lead.">
               {d?.lembrete ? "🔔 Lembrete ativo — tirar (para de pulsar)" : "🔔 Lembrar de falar (deixa o card pulsando)"}
             </button>
-            {(d?.origem === "grupo" || d?.estado === "grupo") && (
-              <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d?.silenciado ? { borderColor: "#94a3b8", background: "#f1f5f9", color: "#475569", fontWeight: 700 } : {}) }} disabled={busy} onClick={toggleSilenciar} title="Silencia este grupo: o card NÃO pisca e não toca som/aviso.">
-                {d?.silenciado ? "🔕 Grupo silenciado — reativar" : "🔕 Silenciar este grupo"}
-              </button>
-            )}
+            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d?.silenciado ? { borderColor: "#94a3b8", background: "#f1f5f9", color: "#475569", fontWeight: 700 } : {}) }} disabled={busy} onClick={toggleSilenciar} title="O card NÃO pisca e não toca som/aviso. Bom pra quando o cliente tem autorresposta e não há o que responder.">
+              {d?.silenciado
+                ? ((d?.origem === "grupo" || d?.estado === "grupo") ? "🔕 Grupo silenciado — reativar" : "🔕 Não pisca — voltar a piscar")
+                : ((d?.origem === "grupo" || d?.estado === "grupo") ? "🔕 Silenciar este grupo" : "🔕 Parar de piscar este card")}
+            </button>
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5 }} disabled={busy} onClick={toggleNaoPerturbe} title="Para/retoma as mensagens automáticas para este cliente">
               {d?.nao_perturbe ? "🔕 Automáticas pausadas — retomar" : "🔔 Pausar mensagens automáticas"}
             </button>

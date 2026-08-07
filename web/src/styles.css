@@ -1317,6 +1317,9 @@ body.dark .conv-av { box-shadow: 0 0 0 2px #18202f, 0 0 0 3px #2a3550; }
 .at-badge { border-radius: 999px; padding: 2px 8px; }
 .fx-foot { gap: 5px 6px; margin-top: 10px; }
 .at-prev { margin-top: 7px; }
+/* Tema escuro: os campos de texto usam esquema escuro NATIVO (fundo escuro + letra clara).
+   Corrige a "observação do cliente" (e afins) que ficava fundo branco com letra clara = ilegível. */
+body.dark input, body.dark textarea, body.dark select { color-scheme: dark; }
 /* Seletor de mover no card (clica e escolhe a coluna) */
 .fx-mover-sel { border: 1px solid var(--line); border-radius: 6px; background: var(--card,#fff); color: var(--ink,#334155); font-size: 11px; padding: 1px 2px; cursor: pointer; max-width: 30px; }
 .fx-mover-sel:hover { border-color: #6366f1; }
