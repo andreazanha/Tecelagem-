@@ -2105,27 +2105,58 @@ atendimento.post("/juntar-duplicados", async (c) => {
   }
   const remap = new Map<string, string>();       // id apagado → id que ficou (pra config)
   let mesclados = 0, removidos = 0;
-  for (const lista of grupos.values()) {
-    if (lista.length < 2) continue;
-    lista.sort((a, b) => String(a.criado_em || "").localeCompare(String(b.criado_em || "")));
+  // Mescla uma lista (canon = 1º item) numa só conversa: move histórico, preenche vazios, apaga o resto.
+  const mesclar = async (lista: Record<string, string | null>[]) => {
     const canon = lista[0], dups = lista.slice(1);
     const dupIds = dups.map((d) => String(d.id));
     const ph = dupIds.map(() => "?").join(",");
     const recente = [...lista].sort((a, b) => String(b.atualizado_em || "").localeCompare(String(a.atualizado_em || "")))[0];
     const maxOf = (col: string) => lista.map((x) => String(x[col] || "")).filter(Boolean).sort().pop() || null;
     const pick = (col: string) => canon[col] || dups.map((d) => d[col]).find(Boolean) || null;
-    // 1) MOVE as mensagens pra canônica ANTES de apagar (senão o ON DELETE CASCADE apaga o histórico).
     await c.env.DB.prepare(`UPDATE atend_mensagens SET conversa_id=? WHERE conversa_id IN (${ph})`).bind(canon.id, ...dupIds).run();
     await c.env.DB.prepare(`UPDATE OR IGNORE atend_interesses SET conversa_id=? WHERE conversa_id IN (${ph})`).bind(canon.id, ...dupIds).run().catch(() => {});
-    // 2) Preenche os campos vazios da canônica com o que houver nas duplicadas; estado/encerrado
-    //    vêm da conversa mais RECENTE (refletem a situação atual).
     await c.env.DB.prepare(
       `UPDATE atend_conversas SET cliente_id=?, nome=?, cnpj=?, cidade=?, uf=?, contato_nome=?, card_id=?, responsavel=?, tipo=?, representante=?, pedido_id=?, estado=?, ultima_in_em=?, ultima_out_em=?, encerrado_em=?, atualizado_em=datetime('now') WHERE id=?`
     ).bind(pick("cliente_id"), pick("nome"), pick("cnpj"), pick("cidade"), pick("uf"), pick("contato_nome"), pick("card_id"), pick("responsavel"), pick("tipo"), pick("representante"), pick("pedido_id"), recente.estado || canon.estado, maxOf("ultima_in_em"), maxOf("ultima_out_em"), recente.encerrado_em || null, canon.id).run();
-    // 3) Apaga as duplicadas.
     await c.env.DB.prepare(`DELETE FROM atend_conversas WHERE id IN (${ph})`).bind(...dupIds).run();
     for (const dId of dupIds) remap.set(dId, String(canon.id));
     mesclados++; removidos += dupIds.length;
+  };
+  // 1ª passada: MESMO número (núcleo DDD+8). Canônica = a mais ANTIGA.
+  for (const lista of grupos.values()) {
+    if (lista.length < 2) continue;
+    lista.sort((a, b) => String(a.criado_em || "").localeCompare(String(b.criado_em || "")));
+    await mesclar(lista);
+  }
+  // Um número é VÁLIDO (WhatsApp de verdade) se, tirando o 55, sobra DDD (11–99) + 8 ou 9 dígitos.
+  const telValido = (t: string) => {
+    let d = digitos(t);
+    if ((d.length === 12 || d.length === 13) && d.startsWith("55")) d = d.slice(2);
+    const ddd = parseInt(d.slice(0, 2), 10);
+    return (d.length === 10 || d.length === 11) && ddd >= 11 && ddd <= 99;
+  };
+  // 2ª passada: MESMA LOJA (nome idêntico) mas um card com número TORTO (inválido, ex.: fantasma de
+  // campanha) → junta o fantasma no card do número REAL. Só mescla quando há ao menos 1 número
+  // inválido no grupo — assim dois contatos diferentes com números válidos NUNCA se fundem por engano.
+  const vivos = (results || []).filter((r) => !remap.has(String(r.id)));
+  const porNome = new Map<string, Record<string, string | null>[]>();
+  for (const r of vivos) {
+    const nome = String(r.nome || r.contato_nome || "").trim().toLowerCase().replace(/\s+/g, " ");
+    if (nome.length < 4) continue;               // nome curto/genérico: não arrisca juntar
+    (porNome.get(nome) || porNome.set(nome, []).get(nome)!).push(r);
+  }
+  for (const lista of porNome.values()) {
+    if (lista.length < 2) continue;
+    if (lista.every((x) => telValido(String(x.telefone || "")))) continue;   // todos válidos → não junta
+    // Canônica: número VÁLIDO primeiro; depois quem tem mais dados (cliente/cnpj); depois a mais antiga.
+    lista.sort((a, b) => {
+      const va = telValido(String(a.telefone || "")) ? 1 : 0, vb = telValido(String(b.telefone || "")) ? 1 : 0;
+      if (va !== vb) return vb - va;
+      const da = (a.cliente_id ? 2 : 0) + (a.cnpj ? 1 : 0), db = (b.cliente_id ? 2 : 0) + (b.cnpj ? 1 : 0);
+      if (da !== db) return db - da;
+      return String(a.criado_em || "").localeCompare(String(b.criado_em || ""));
+    });
+    await mesclar(lista);
   }
   // 4) Conserta as listas de config (lembretes/silenciados/agendamentos) que apontavam pros ids apagados.
   if (remap.size) {
