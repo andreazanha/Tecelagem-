@@ -831,25 +831,34 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
   const pessoa = c.contato_nome || c.nome || telBonito(c.telefone);
   const loja = c.contato_nome && c.nome && c.nome !== c.contato_nome ? c.nome : "";
   const lembrete = !!c.lembrete;
+  // Faixa colorida na lateral esquerda = cor da coluna onde o card está (só quando não está
+  // piscando/lembrete, que já têm cor própria de destaque).
+  const corColuna = colunas?.find((col) => col.id === c.coluna)?.cor;
+  const cidadeUf = [c.cidade, c.uf].filter(Boolean).join("/");
+  const linhaLoja = [loja ? `🏬 ${loja}` : "", cidadeUf].filter(Boolean).join(" · ");
   return (
-    <div className={"fx-card" + (pulsando || lembrete ? " pulsando" : "") + (lembrete ? " lembrete" : "")} style={arrastando ? { opacity: 0.5 } : undefined}
+    <div className={"fx-card" + (pulsando || lembrete ? " pulsando" : "") + (lembrete ? " lembrete" : "")}
+      style={{ ...(arrastando ? { opacity: 0.5 } : {}), ...(!pulsando && !lembrete && corColuna ? { borderLeftColor: corColuna } : {}) }}
       onClick={onAbrir} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
         <div className="conv-av" style={foto ? { backgroundImage: `url(${foto})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{foto ? "" : iniciais(pessoa)}</div>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="fx-nm">{pessoa}</div>
-          <div className="fx-sub">{loja ? `🏬 ${loja}` : ((c.nome || c.contato_nome) ? telBonito(c.telefone) : [c.cidade, c.uf].filter(Boolean).join("/") || "—")}</div>
+          {linhaLoja && <div className="fx-sub">{linhaLoja}</div>}
+          <div className="fx-tel">📞 {telBonito(c.telefone)}</div>
         </div>
-        {onAgendar && (
-          <button onClick={(e) => { e.stopPropagation(); const base = c.agendado_ia || (Date.now() + 3600e3); setAgDia(dataLocalStr(base)); setAgHora(c.agendado_ia ? horaLocalStr(base) : "09:00"); setAgMsg(c.agendado_msg || ""); setAgOpen((v) => !v); }} onPointerDown={(e) => e.stopPropagation()}
-            title={c.agendado_ia ? (c.agendado_enviado ? "IA já chamou — aguardando o cliente responder" : `IA vai chamar em ${agendadoLabel(c.agendado_ia)}`) : "Chamar IA — agendar uma saudação (bom dia/boa tarde) pra um dia e horário"}
-            style={{ flex: "0 0 auto", background: c.agendado_ia ? "#dbeafe" : "transparent", border: "1px solid " + (c.agendado_ia ? "#60a5fa" : "var(--line)"), color: c.agendado_ia ? "#1d4ed8" : "var(--muted)", borderRadius: 8, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "4px 6px" }}>⏰</button>
-        )}
-        {onLembrete && (
-          <button onClick={(e) => { e.stopPropagation(); onLembrete(); }} onPointerDown={(e) => e.stopPropagation()}
-            title={lembrete ? "Lembrete ativo — clique pra tirar (o card para de pulsar)" : "Lembrar de falar com esse lead (deixa o card pulsando)"}
-            style={{ flex: "0 0 auto", background: lembrete ? "#facc15" : "transparent", border: "1px solid " + (lembrete ? "#eab308" : "var(--line)"), color: lembrete ? "#713f12" : "var(--muted)", borderRadius: 8, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "4px 6px" }}>🔔</button>
-        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 5, flex: "0 0 auto" }}>
+          {onAgendar && (
+            <button onClick={(e) => { e.stopPropagation(); const base = c.agendado_ia || (Date.now() + 3600e3); setAgDia(dataLocalStr(base)); setAgHora(c.agendado_ia ? horaLocalStr(base) : "09:00"); setAgMsg(c.agendado_msg || ""); setAgOpen((v) => !v); }} onPointerDown={(e) => e.stopPropagation()}
+              title={c.agendado_ia ? (c.agendado_enviado ? "IA já chamou — aguardando o cliente responder" : `IA vai chamar em ${agendadoLabel(c.agendado_ia)}`) : "Chamar IA — agendar uma saudação (bom dia/boa tarde) pra um dia e horário"}
+              style={{ background: c.agendado_ia ? "#dbeafe" : "transparent", border: "1px solid " + (c.agendado_ia ? "#60a5fa" : "var(--line)"), color: c.agendado_ia ? "#1d4ed8" : "var(--muted)", borderRadius: 8, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "5px 7px" }}>⏰</button>
+          )}
+          {onLembrete && (
+            <button onClick={(e) => { e.stopPropagation(); onLembrete(); }} onPointerDown={(e) => e.stopPropagation()}
+              title={lembrete ? "Lembrete ativo — clique pra tirar (o card para de pulsar)" : "Lembrar de falar com esse lead (deixa o card pulsando)"}
+              style={{ background: lembrete ? "#facc15" : "transparent", border: "1px solid " + (lembrete ? "#eab308" : "var(--line)"), color: lembrete ? "#713f12" : "var(--muted)", borderRadius: 8, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "5px 7px" }}>🔔</button>
+          )}
+        </div>
       </div>
       {onAgendar && agOpen && (() => {
         const hoje = dataLocalStr(Date.now()), amanha = dataLocalStr(Date.now() + 864e5);
@@ -898,6 +907,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
         ), document.body);
       })()}
       {c.ultima_msg && (() => { const p = extrairIaNota(c.ultima_msg); const t = MSG_PLACEHOLDER.test((p.visivel || "").trim()) ? "" : p.visivel; return <div className="at-prev">{t || (p.iaNota ? "📷 foto" : c.ultima_msg)}</div>; })()}
+      <div className="fx-div" />
       <div className="fx-foot">
         {c.origem && FONTE_LABEL[c.origem] && <span className="at-badge" style={{ background: "#f5f3ff", color: "#6d28d9" }} title="De onde veio o contato">{FONTE_LABEL[c.origem]}</span>}
         {c.cliente_id && <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="Já é cliente cadastrado na base">📇 Cliente</span>}

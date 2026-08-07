@@ -1139,7 +1139,7 @@ body.dark .fx-alertbar { background: #2a2410; border-color: #5c4a12; color: #fcd
    Assim os cards nunca "passam por trás" da caixa da coluna e o cabeçalho fica fixo no topo. */
 .fx-board.at-board { height: calc(100dvh - 255px); max-height: none; overflow-x: auto; overflow-y: hidden; align-items: stretch; }
 .fx-board.fx-fix { height: calc(100dvh - 210px); max-height: none; overflow-x: auto; overflow-y: hidden; align-items: stretch; }
-.fx-col { flex: 0 0 224px; max-width: 224px; background: #eef1f6; border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-height: calc(100dvh - 260px); display: flex; flex-direction: column; }
+.fx-col { flex: 0 0 366px; max-width: 366px; background: #eef1f6; border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-height: calc(100dvh - 260px); display: flex; flex-direction: column; }
 .fx-board.at-board .fx-col, .fx-board.fx-fix .fx-col { height: 100%; min-height: 0; }
 body.dark .fx-col { background: #111826; border-color: #243044; }
 /* Cabeçalho da coluna fica fixo; só o corpo (cards) rola. */
@@ -1156,8 +1156,11 @@ body.dark .fx-hd { background: #17202f; box-shadow: 0 5px 6px -4px rgba(0,0,0,.5
 .fx-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
 .fx-hd .ct { margin-left: auto; background: #fff; border: 1px solid var(--line); border-radius: 20px; font-size: 11px; font-weight: 800; padding: 1px 8px; color: var(--muted); }
 body.dark .fx-hd .ct { background: #1b2536; border-color: #26324a; }
-.fx-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; box-shadow: 0 1px 2px #0f172a12; border-left: 3px solid transparent; cursor: pointer; overflow: hidden; min-width: 0; user-select: none; -webkit-user-select: none; }
-.fx-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; box-shadow: 0 1px 2px #0f172a12; border-left: 4px solid transparent; cursor: pointer; overflow: hidden; min-width: 0; user-select: none; -webkit-user-select: none; }
+.fx-nm { overflow-wrap: anywhere; }
+.fx-tel { font-size: 11.5px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 4px; }
+.fx-div { height: 1px; background: var(--line); margin: 10px -1px 9px; }
+body.dark .fx-div { background: #26324a; }
 .fx-foot { flex-wrap: wrap; }
 .fx-card:hover { box-shadow: 0 3px 10px #0f172a20; }
 body.dark .fx-card { background: #18202f; border-color: #26324a; }
@@ -1194,8 +1197,8 @@ body.dark .fx-colnav-chip b { background: #1e293b; color: #a5b4fc; }
   .fx-alertbar { margin-bottom: 10px; padding: 7px 11px; font-size: 12px; }
 }
 .fx-card.alert { border-left-color: #f59e0b; }
-.fx-nm { font-weight: 800; font-size: 13px; letter-spacing: -.2px; }
-.fx-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.fx-nm { font-weight: 800; font-size: 15.5px; letter-spacing: -.2px; line-height: 1.2; }
+.fx-sub { font-size: 12px; color: var(--muted); margin-top: 1px; overflow-wrap: anywhere; }
 .fx-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
 .fx-chip { font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 6px; background: #eef2f7; color: #334155; }
 body.dark .fx-chip { background: #243044; color: #c7d2e0; }
@@ -1250,7 +1253,7 @@ body.dark .fx-peds tr:hover { background: #1b2740; }
 /* ══ Atendimento — robô do WhatsApp ═══════════════════════════════════════════ */
 .at-status { font-size: 12px; font-weight: 700; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; border-radius: 20px; padding: 6px 12px; }
 body.dark .at-status { background: #2a2410; border-color: #5c4a12; color: #fcd34d; }
-.at-prev { font-size: 11.5px; color: var(--muted); margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-prev { font-size: 12.5px; color: var(--muted); margin-top: 8px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.4; }
 .at-badge { font-size: 10px; font-weight: 800; background: #eef2f7; color: #334155; border-radius: 6px; padding: 2px 7px; }
 body.dark .at-badge { background: #243044; color: #c7d2e0; }
 /* modal conversa */
@@ -1306,12 +1309,12 @@ body.dark .fx-card.pulsando { background: #0f2a1c; }
 .fx-card.lembrete { border-left-color: #eab308 !important; background: #fffbeb !important; }
 body.dark .fx-card.lembrete { background: #2a2410 !important; }
 /* Avatar (foto de perfil ou iniciais) no card da conversa */
-.conv-av { width: 34px; height: 34px; border-radius: 50%; flex: 0 0 auto; background: #6366f1; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; overflow: hidden; }
+.conv-av { width: 46px; height: 46px; border-radius: 13px; flex: 0 0 auto; background: #6366f1; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; overflow: hidden; }
 /* ── Polimento visual do card (mais “bonito”: cantos, sombra, avatar, badges) ── */
 .fx-card { border-radius: 13px; padding: 11px 12px; box-shadow: 0 1px 2px #0f172a10, 0 1px 3px #0f172a0a; transition: box-shadow .16s ease, transform .16s ease, border-color .16s ease; }
 .fx-card:hover { box-shadow: 0 8px 20px #0f172a22; transform: translateY(-1px); border-color: #c7d2fe; }
 body.dark .fx-card:hover { border-color: #3b4a6b; }
-.conv-av { width: 38px; height: 38px; font-size: 13px; background: linear-gradient(135deg, #6366f1, #8b5cf6); box-shadow: 0 0 0 2px #fff, 0 0 0 3px #e6e9f4; }
+.conv-av { width: 46px; height: 46px; font-size: 16px; border-radius: 13px; background: linear-gradient(135deg, #6366f1, #8b5cf6); box-shadow: 0 0 0 2px #fff, 0 0 0 3px #e6e9f4; }
 body.dark .conv-av { box-shadow: 0 0 0 2px #18202f, 0 0 0 3px #2a3550; }
 .fx-nm { font-size: 13.5px; }
 .at-badge { border-radius: 999px; padding: 2px 8px; }
