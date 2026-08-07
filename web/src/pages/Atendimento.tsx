@@ -1319,16 +1319,16 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     )}
                     <button title="Excluir mensagem" onClick={() => setMenuMsg(menuMsg === m.id ? null : m.id)} style={{ position: "absolute", top: 3, right: 4, background: "rgba(148,163,184,.22)", border: 0, borderRadius: 6, cursor: "pointer", fontSize: 14, opacity: 0.9, lineHeight: 1, padding: "2px 5px", fontWeight: 800 }}>⋮</button>
                     {menuMsg === m.id && (
-                      <div style={{ position: "absolute", top: 18, right: 2, zIndex: 30, background: "var(--card,#fff)", color: "var(--ink,#0f172a)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 6px 16px rgba(0,0,0,.2)", overflow: "hidden", minWidth: 162 }}>
+                      <div className="at-msgmenu">
                         {m.direcao === "out" && m.autor !== "sistema" && !m.arquivo_url && (m.texto || "").trim() && (
-                          <button onClick={() => editarMsg(m.id, m.texto || "")} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "inherit" }}>✏️ Editar (corrigir erro)</button>
+                          <button onClick={() => editarMsg(m.id, m.texto || "")}>✏️ Editar (corrigir erro)</button>
                         )}
-                        <button onClick={() => { setEncMsg(m.id); setMenuMsg(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "inherit" }}>↪️ Encaminhar</button>
-                        <button onClick={() => excluirMsg(m.id, false)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "inherit" }}>🙈 Excluir para mim</button>
+                        <button onClick={() => { setEncMsg(m.id); setMenuMsg(null); }}>↪️ Encaminhar</button>
+                        <button onClick={() => excluirMsg(m.id, false)}>🙈 Excluir para mim</button>
                         {m.direcao === "out" && m.autor !== "sistema" && (
-                          <button onClick={() => excluirMsg(m.id, true)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "#dc2626" }}>🗑 Excluir para todos</button>
+                          <button className="danger" onClick={() => excluirMsg(m.id, true)}>🗑 Excluir para todos</button>
                         )}
-                        <button onClick={() => setMenuMsg(null)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12.5, background: "transparent", border: 0, cursor: "pointer", color: "var(--muted)" }}>Cancelar</button>
+                        <button className="cancel" onClick={() => setMenuMsg(null)}>Cancelar</button>
                       </div>
                     )}
                   </div>
