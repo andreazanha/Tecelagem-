@@ -251,20 +251,22 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
       conv.cnpj = formatCnpj(digitos);
       const r = await deps.consultarCnpj(digitos);
       if (r.erro) {
-        // Consulta indisponível → não trava o lojista; confirma cadastro e segue com a IA.
-        // NÃO envia catálogo automático — só quando o cliente pedir (a IA cuida disso).
+        // Consulta indisponível → não trava o lojista; confirma cadastro e PASSA PRO VENDEDOR (humano).
+        // O catálogo/preço quem manda é o vendedor (o robô não envia).
         conv.lojista = 1;
         if (!conv.nome && r.nome) conv.nome = r.nome;
-        push("Perfeito, cadastro anotado! ✅ Como posso te ajudar? Se quiser, posso te enviar nosso catálogo. 😊");
-        conv.estado = "ia-triagem";
+        push("Perfeito, cadastro anotado! ✅ Já vou te passar pra um dos nossos vendedores pra te atender e te enviar o catálogo com os valores, tá? 💛");
+        conv.estado = "atendimento-humano";
+        notificarHumano = true;
         qualificado = true;
       } else if (r.existe && r.ativa) {
         conv.lojista = 1;
         if (!conv.nome && r.nome) conv.nome = r.nome;
         if (r.uf && !conv.uf) conv.uf = r.uf;
         if (r.cidade && !conv.cidade) conv.cidade = r.cidade;
-        push(`Show! Confirmei seu CNPJ${r.nome ? ` (*${r.nome}*)` : ""}. ✅ Cadastro feito!\nComo posso te ajudar? Se quiser, posso te enviar nosso catálogo. 😊`);
-        conv.estado = "ia-triagem";
+        push(`Show! Confirmei seu CNPJ${r.nome ? ` (*${r.nome}*)` : ""}. ✅ Cadastro feito!\nJá vou te passar pra um dos nossos vendedores pra te atender e te mandar o catálogo com os valores. 💛`);
+        conv.estado = "atendimento-humano";
+        notificarHumano = true;
         qualificado = true;
       } else if (r.existe && !r.ativa) {
         conv.lojista = 0;

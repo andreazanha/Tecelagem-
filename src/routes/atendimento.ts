@@ -313,8 +313,8 @@ SEU PAPEL: acolher quem chama, conversar de forma natural e humana, ENTENDER o q
 
 REGRAS IMPORTANTES:
 - NÃO peça o CNPJ logo de cara. Primeiro converse, entenda a necessidade (que tipo de produto procura, se já conhece a marca, etc.) e só depois, quando fizer sentido, encaminhe pra pegar os dados.
-- Se perceber que é LOJISTA e a pessoa quer comprar/revender/fazer cadastro: use acao "coletar_lojista" e, na sua resposta, peça gentilmente o NOME DA LOJA (o sistema pede o CNPJ na sequência).
-- CATÁLOGO: nosso catálogo é DIGITAL (um link) e tem os *PREÇOS DE ATACADO* — por isso ele SÓ pode ir pra LOJISTA com CNPJ. Se a pessoa pedir o catálogo mas ainda NÃO confirmou o CNPJ, NÃO use "enviar_catalogo" nem prometa mandar: use acao "coletar_lojista" e peça o *CNPJ da loja* de forma curta. Só use "enviar_catalogo" quando a pessoa JÁ for lojista confirmado (CNPJ já validado no cadastro). NUNCA mande nem prometa o catálogo pra quem não tem CNPJ.
+- Se perceber que é LOJISTA (quer comprar/revender/fazer cadastro): use acao "coletar_lojista" e, na sua resposta CURTA, peça o *CNPJ* da loja. O sistema confirma o CNPJ e passa pro *vendedor humano* — você NÃO continua vendendo nem manda catálogo. ⚠️ Falar que "compra no atacado" NÃO prova que é lojista — só o CNPJ confirma; então peça o CNPJ.
+- 🚫 CATÁLOGO: VOCÊ NUNCA ENVIA O CATÁLOGO nem promete mandar. O catálogo tem os *PREÇOS DE ATACADO* e quem envia é o *VENDEDOR humano*. Seu papel é só a TRIAGEM: se a pessoa quer comprar/revender (lojista), peça o *CNPJ* (acao "coletar_lojista") — o sistema confirma e passa pro vendedor. Se for consumidor final, use "indicar_parceiro". NUNCA use a acao "enviar_catalogo", NUNCA diga "vou te enviar o catálogo".
 - Se for CONSUMIDOR FINAL (pessoa física, "pra mim", "uso pessoal", "presente", sem loja/CNPJ): use acao "indicar_parceiro". Explique com carinho, em 1 linha, que a Big Tricot vende no atacado para lojistas, mas que você indica as lojas parceiras da região dele. Você só precisa do ESTADO — se ainda não souber, pergunte "de qual estado você é?". Preencha o campo "uf" com a sigla (ex.: MG). O SISTEMA envia automaticamente o link do site de lojas parceiras filtrado pelo estado; NUNCA diga "vou te passar os dados/contatos depois", NUNCA tente listar lojas você mesmo, e NÃO fale de modelos/cores com o consumidor final. ⚠️ NUNCA escreva um link, uma URL ou um "[link]" na sua resposta — QUEM MANDA O LINK É O SISTEMA, sozinho. Você só diz que vai indicar as lojas da região; não escreva "aqui está o link", nem "[link]", nem invente endereço.
 - STATUS DE PEDIDO: se o cliente perguntar sobre um pedido dele (ex.: "como está meu pedido?", "meu pedido já saiu?", "em que fase está?"): use acao "consultar_pedido". O sistema identifica pelo CNPJ e responde a fase de produção + a data prevista — você não precisa inventar nada. Se você JÁ sabe o CNPJ dele, preencha o campo "cnpj". Se NÃO souber, peça o CNPJ da loja na resposta. IMPORTANTE: depois que o status for informado, se o cliente fizer MAIS perguntas sobre o pedido (adiantar, alterar, reclamar do prazo), use acao "humano" e diga que vai chamar alguém do *time de produção* pra ajudar (NÃO fale a sigla "PCP" pro cliente — é interno).
 - Se o cliente pedir PRIVATE LABEL (marca própria, etiqueta própria, fabricar com a marca dele): use acao "humano" — isso é com um vendedor especializado. Na resposta, diga que já vai chamar o vendedor.
@@ -811,53 +811,50 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     // Conversa em andamento: a IA responde. Cliente já cadastrado entra com contexto extra.
     let sistema = sistemaIa(cfgAt.ia_prompt) + await lerConhecimento(env);
     if (conv.cliente_id) {
-      sistema += `\n\nCONTEXTO IMPORTANTE: este contato JÁ É CLIENTE cadastrado da Big Tricot (loja: ${conv.nome || "?"}${conv.cidade ? ", de " + conv.cidade + (conv.uf ? "/" + conv.uf : "") : ""}). Trate como cliente conhecido: NÃO peça CNPJ nem o nome da loja de novo. Ajude no que precisar; se ele PEDIR o catálogo use acao "enviar_catalogo"; se for pedido ou assunto comercial, use acao "humano" pra chamar o vendedor.`;
+      sistema += `\n\nCONTEXTO IMPORTANTE: este contato JÁ É CLIENTE cadastrado da Big Tricot (loja: ${conv.nome || "?"}${conv.cidade ? ", de " + conv.cidade + (conv.uf ? "/" + conv.uf : "") : ""}). Trate como cliente conhecido: NÃO peça CNPJ nem o nome da loja de novo. Se for pedido, catálogo ou qualquer assunto comercial, use acao "humano" pra chamar o vendedor (você NÃO manda catálogo nem preço).`;
     } else if (conv.lojista === 1 || conv.cnpj) {
-      sistema += `\n\nCONTEXTO: este lojista JÁ FOI QUALIFICADO (CNPJ confirmado${conv.nome ? ", loja: " + conv.nome : ""}). NÃO peça CNPJ nem nome da loja de novo. Ajude no que precisar; se ele PEDIR o catálogo use acao "enviar_catalogo".`;
+      sistema += `\n\nCONTEXTO: este lojista JÁ FOI QUALIFICADO (CNPJ confirmado${conv.nome ? ", loja: " + conv.nome : ""}). NÃO peça CNPJ de novo. Para qualquer assunto comercial (comprar, catálogo, preço), use acao "humano" pra chamar o vendedor.`;
     }
     const ia = await iaTriagem(env, conv, sistema, cfgAt.vitrine_url || VITRINE_PUBLICA);
-    // 🔒 O CATÁLOGO TEM PREÇO DE ATACADO → só vai pra LOJISTA CONFIRMADO (cadastrado, marcado lojista,
-    // ou com CNPJ já validado). Enquanto NÃO for confirmado, o sistema qualifica ANTES de mandar:
-    //   • sinal de uso pessoal        → indica loja parceira (consumidor).
-    //   • "só tenho CPF" / sem CNPJ    → explica que atacado é só com CNPJ (não manda preço).
-    //   • pediu o catálogo             → pede o CNPJ ANTES de enviar (nada de catálogo sem CNPJ).
+    // 🔒 A IA FAZ SÓ A TRIAGEM — NUNCA manda o catálogo (ele tem preço de atacado; quem manda é o
+    // VENDEDOR humano). Regra:
+    //   • Consumidor final (uso pessoal)      → indica a loja parceira da região (link).
+    //   • Quem quer comprar/revender (lojista) → confirma o CNPJ e PASSA PRO VENDEDOR (humano).
+    ia.catalogo = false; // trava dura: a IA nunca envia catálogo
     const lojistaConfirmado = !!conv.cliente_id || conv.lojista === 1 || digitos(conv.cnpj).length === 14;
     if (!lojistaConfirmado) {
       const consumidorSinal = CONSUMIDOR_FINAL_RE.test(texto) || conv.tipo === "consumidor" || conv.estado === "indicado-parceiro";
       const semCnpjSinal = SEM_CNPJ_RE.test(texto);
-      const querCatalogo = !!ia.catalogo || PEDE_CATALOGO_RE.test(texto);
+      // Sinal de que quer COMPRAR/revender (não é só um "oi"): a IA quis coletar lojista/catálogo, ou
+      // o texto pede catálogo/preço/comprar. Aí a gente pede o CNPJ (e o fluxo passa pro vendedor).
+      const intencaoComprar = ia.novoEstado === "triagem-nome" || PEDE_CATALOGO_RE.test(texto) || /compr|revend|atacad|pre[çc]o|valor|pedido|encomend|quero (as|essa|uma|umas)/i.test(texto);
       const ufC = ufDe(conv.uf);
       if (consumidorSinal) {
-        ia.catalogo = false; ia.tipo = "consumidor"; ia.notificarHumano = false;
+        ia.tipo = "consumidor"; ia.notificarHumano = false;
         if (ufC) {
           const link = `${(cfgAt.vitrine_url || VITRINE_PUBLICA).replace(/\/+$/, "")}?uf=${encodeURIComponent(ufC)}`;
-          ia.saidas = [{ tipo: "texto", texto: `Oi! 💛 A *Big Tricot* vende no *atacado, só para lojistas*. Mas você encontra nossas peças nas *lojas parceiras*! Abre o link, escolha a cidade mais perto e veja os contatos em ${ufC} 👇\n${link}` }];
+          ia.saidas = [{ tipo: "texto", texto: `Oi! 💛 A *Big Tricot* vende no *atacado, só para lojistas*. Mas você encontra nossas peças nas *lojas parceiras*! Abre o link e escolha a cidade mais perto de você 👇\n${link}` }];
           ia.novoEstado = "indicado-parceiro";
         } else {
-          ia.saidas = [{ tipo: "texto", texto: "Oi! 💛 A *Big Tricot* vende no *atacado, só para lojistas* — mas você acha nossas peças em *lojas parceiras*! De qual *cidade/estado* você é? Assim te indico a mais perto. 😊" }];
+          ia.saidas = [{ tipo: "texto", texto: "Oi! 💛 A *Big Tricot* vende no *atacado, só para lojistas* — mas você acha nossas peças em *lojas parceiras*! De qual *cidade/estado* você é? Aí te indico a mais perto. 😊" }];
           ia.novoEstado = "aguardando-cidade-parceiro";
         }
       } else if (semCnpjSinal) {
-        ia.catalogo = false; ia.notificarHumano = false;
-        ia.saidas = [{ tipo: "texto", texto: "Entendi! 💛 A compra no *atacado* da Big Tricot é só pra *lojista com CNPJ*. Se você tem (ou consegue) um CNPJ, me manda que já te cadastro. Se for pra *uso pessoal*, me diz sua cidade que te indico uma loja parceira. 😊" }];
+        ia.notificarHumano = false;
+        ia.saidas = [{ tipo: "texto", texto: "Entendi! 💛 A compra no *atacado* da Big Tricot é só pra *lojista com CNPJ*. Se você tem (ou consegue) um CNPJ, me manda. Se for pra *uso pessoal*, me diz sua cidade que te indico uma loja parceira. 😊" }];
         ia.novoEstado = "aguardando-cnpj";
-      } else if (querCatalogo) {
-        ia.catalogo = false; ia.tipo = "lojista";
-        ia.saidas = [{ tipo: "texto", texto: "Que ótimo! 💛 Nosso catálogo tem os valores de *atacado*, então primeiro preciso confirmar seu cadastro de lojista. Me passa o *CNPJ* da sua loja, por favor?" }];
+      } else if (intencaoComprar) {
+        ia.tipo = "lojista"; ia.notificarHumano = false;
+        ia.saidas = [{ tipo: "texto", texto: "Que ótimo! 💛 Pra te atender no *atacado*, primeiro preciso confirmar seu cadastro de lojista. Me passa o *CNPJ* da sua loja, por favor?" }];
         ia.novoEstado = "aguardando-cnpj";
       }
+      // else: ainda é um "oi"/conversa — deixa a IA conversar normalmente (acao conversar).
     }
-    // Rede de segurança: cliente JÁ LOJISTA pediu o catálogo mas a IA não classificou → força o envio.
-    if (lojistaConfirmado && !ia.catalogo && PEDE_CATALOGO_RE.test(texto)) { ia.catalogo = true; ia.saidas = []; ia.novoEstado = "catalogo-enviado"; }
-    // Cliente pediu o catálogo → anexa a mensagem do catálogo (virtual/link), montada da config.
-    if (ia.catalogo) {
-      // Manda a tabela da REGIÃO do cliente (Norte/NE vs Sul), pela UF.
-      for (const s of montarCatalogo(deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }))) {
-        s.texto = ajustarCatalogoRegiao(s.texto, conv.uf, tel);
-        ia.saidas.push(s);
-      }
-      // Registra na coluna "📥 Catálogo (contato)" do funil — cliente que entrou em contato e recebeu.
-      await garantirCardDaConversa(env, conv.id, "Catálogo enviado (cliente entrou em contato)");
+    // Se a IA (por hábito) tentou "enviar_catalogo" — inclusive pra lojista já confirmado — a gente
+    // NÃO manda o catálogo; passa pro VENDEDOR (senão a resposta ficaria vazia).
+    if (ia.novoEstado === "catalogo-enviado" && !ia.saidas.length) {
+      ia.novoEstado = "atendimento-humano"; ia.notificarHumano = true;
+      ia.saidas = [{ tipo: "texto", texto: "Já vou te passar pra um dos nossos vendedores pra te atender e te mandar o catálogo com os valores! 💛" }];
     }
     // Cliente quer o status do pedido → resolve o CNPJ (do cadastro, da IA, ou da própria
     // mensagem) e consulta a produção. Sem CNPJ, pede. Guarda o CNPJ na conversa pra próxima.
