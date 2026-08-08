@@ -141,6 +141,11 @@ const RECLAMACAO_RE = /reclama|problema|defeito|quebrad|rasgad|estragad|veio err
 // vai pra "Aguardando humano" e pisca. É um palpite (heurística) — não acerta 100%, mas pega os casos comuns.
 const RESPOSTA_AUTOMATICA_RE = /mensagem autom[áa]tica|resposta autom[áa]tica|recebemos (a |sua |a sua )?mensagem|assim que poss[íi]vel|retornaremos|responderemos|obrigad[oa] (por |pelo )?(entrar em contato|seu contato|contatar|nos contatar|a mensagem|sua mensagem)|agradecemos (o |seu )?contato|hor[áa]rio de (atendimento|funcionamento)|no momento (n[ãa]o|estamos|nossa)|fora do (hor[áa]rio|expediente)|em breve (retornaremos|entraremos|responderemos)|nossa equipe (ir[áa]|vai|entrar)|estamos (ausentes?|fora|offline|indispon[íi]vel)|volto a? (falar|responder)|assim que (poss[íi]vel|pudermos|retornarmos)|este (é|e) um(a)? (atendimento|resposta|mensagem) autom/i;
 
+// CONSUMIDOR FINAL: sinais claros de que a pessoa quer comprar PRA USO PRÓPRIO (não é lojista). A Big
+// vende SÓ no atacado pra lojista — então, com esses sinais, NUNCA mandamos o catálogo com preços de
+// atacado; indicamos a loja parceira. "uso pessoal", "pra mim", "não sou lojista", "não tenho CNPJ"…
+const CONSUMIDOR_FINAL_RE = /uso pessoal|uso pr[óo]prio|consumo pr[óo]prio|(pra|para) uso pessoal|é pra mim|e pra mim|pra mim mesm|para mim mesm|(n[ãa]o|nao) (sou|é) (lojist|revend)|(n[ãa]o|nao) tenho (loja|cnpj|empresa)|sem cnpj|sou consumidor|consumidor final|pessoa f[íi]sica|(n[ãa]o|nao) (vou|quero|pretendo) revend/i;
+
 async function detectarInteresse(env: Env, convId: string, texto: string, modelosCsv: string): Promise<boolean> {
   const t = texto || "";
   const interessou = INTERESSE_RE.test(t);
@@ -805,10 +810,27 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       sistema += `\n\nCONTEXTO: este lojista JÁ FOI QUALIFICADO (CNPJ confirmado${conv.nome ? ", loja: " + conv.nome : ""}). NÃO peça CNPJ nem nome da loja de novo. Ajude no que precisar; se ele PEDIR o catálogo use acao "enviar_catalogo".`;
     }
     const ia = await iaTriagem(env, conv, sistema, cfgAt.vitrine_url || VITRINE_PUBLICA);
+    // 🚫 TRAVA CONSUMIDOR FINAL: se a mensagem tem sinal claro de uso pessoal (e a pessoa NÃO é
+    // lojista confirmado), NUNCA manda o catálogo de atacado com preços — indica a loja parceira.
+    // (Isso corrige o caso do consumidor pedir "catálogo e preços uso pessoal" e receber o atacado.)
+    const lojistaConfirmado = !!conv.cliente_id || conv.lojista === 1;
+    const bloquearCatalogo = !lojistaConfirmado && (CONSUMIDOR_FINAL_RE.test(texto) || conv.tipo === "consumidor" || conv.estado === "indicado-parceiro");
+    if (bloquearCatalogo) {
+      ia.catalogo = false; ia.tipo = "consumidor"; ia.notificarHumano = false;
+      const ufC = ufDe(conv.uf);
+      if (ufC) {
+        const link = `${(cfgAt.vitrine_url || VITRINE_PUBLICA).replace(/\/+$/, "")}?uf=${encodeURIComponent(ufC)}`;
+        ia.saidas = [{ tipo: "texto", texto: `Oi! 💛 Que bom seu interesse! A *Big Tricot* é uma fábrica que vende no *atacado, só para lojistas*. Mas você encontra nossas peças com as *lojas parceiras*! Abre esse link, escolha a *cidade mais perto de você* e veja os contatos em ${ufC} 👇\n${link}` }];
+        ia.novoEstado = "indicado-parceiro";
+      } else {
+        ia.saidas = [{ tipo: "texto", texto: "Oi! 💛 Que bom seu interesse! A *Big Tricot* é uma fábrica que vende no *atacado, só para lojistas* — mas você encontra nossas peças em *lojas parceiras*! De qual *cidade/estado* você é? Assim te indico a loja mais perto de você. 😊" }];
+        ia.novoEstado = "aguardando-cidade-parceiro";
+      }
+    }
     // Rede de segurança: se o cliente PEDIU o catálogo de forma clara mas a IA não
     // classificou (às vezes ela responde "vou enviar… aguarde" e não manda), força o
-    // envio do link agora — sem a resposta enrolada.
-    if (!ia.catalogo && PEDE_CATALOGO_RE.test(texto)) { ia.catalogo = true; ia.saidas = []; ia.novoEstado = "catalogo-enviado"; }
+    // envio do link agora — sem a resposta enrolada. (Não força se for consumidor final.)
+    if (!ia.catalogo && !bloquearCatalogo && PEDE_CATALOGO_RE.test(texto)) { ia.catalogo = true; ia.saidas = []; ia.novoEstado = "catalogo-enviado"; }
     // Cliente pediu o catálogo → anexa a mensagem do catálogo (virtual/link), montada da config.
     if (ia.catalogo) {
       // Manda a tabela da REGIÃO do cliente (Norte/NE vs Sul), pela UF.
