@@ -93,6 +93,7 @@ export function Atendimento() {
   const [campanhaOpen, setCampanhaOpen] = useState(false);
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [filtroAtend, setFiltroAtend] = useState<string>("todos"); // gestor: filtra por vendedor
+  const [busca, setBusca] = useState<string>(""); // busca de conversa no quadro (nome/loja/telefone/cidade)
   const [membros, setMembros] = useState<string[]>([]); // equipe (chat interno)
   const [chatCom, setChatCom] = useState<string | null>(null); // membro com quem estou conversando
   const [dmResumo, setDmResumo] = useState<{ outro: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean }[]>([]);
@@ -181,6 +182,18 @@ export function Atendimento() {
   // A coluna "Campanhas" nunca pisca: são autorrespostas de loja (robô), não gente esperando.
   // (Quando responder de verdade, o card sai pra "Aguardando humano" e aí sim pisca.)
   const pulsaVerde = (c: AtendConversa) => !c.silenciado && c.coluna !== "campanha" && aguardando(c);
+
+  // Busca do quadro: um card "bate" com a busca por nome/loja/cidade/UF/representante ou pelo telefone
+  // (a partir de 3 dígitos). Vazio = mostra todos.
+  const casaBusca = (c: AtendConversa) => {
+    const q = busca.trim().toLowerCase();
+    if (!q) return true;
+    const texto = [c.contato_nome, c.nome, c.cidade, c.uf, c.representante, c.setor].filter(Boolean).join(" ").toLowerCase();
+    if (texto.includes(q)) return true;
+    const dig = q.replace(/\D/g, "");
+    if (dig.length >= 3 && (c.telefone || "").replace(/\D/g, "").includes(dig)) return true;
+    return false;
+  };
 
   // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
   const fotoCache = useRef<Record<string, string | null>>({});
@@ -434,6 +447,22 @@ export function Atendimento() {
         );
       })()}
 
+      {/* Busca de conversa no quadro: filtra os cards por nome, loja, telefone ou cidade. */}
+      {board && (() => {
+        const q = busca.trim().toLowerCase();
+        const dig = q.replace(/\D/g, "");
+        const total = q ? board.conversas.filter((c) => casaBusca(c)).length : 0;
+        return (
+          <div style={{ position: "relative", marginBottom: 10, maxWidth: 460 }}>
+            <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", fontSize: 14, opacity: 0.6, pointerEvents: "none" }}>🔎</span>
+            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar conversa por nome, loja, telefone ou cidade…"
+              style={{ width: "100%", padding: "9px 34px 9px 32px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 13.5 }} />
+            {busca && <button onClick={() => setBusca("")} title="Limpar" style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "transparent", border: 0, cursor: "pointer", fontSize: 15, opacity: 0.6, lineHeight: 1 }}>✕</button>}
+            {q && <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>{total} conversa(s) encontrada(s){dig.length >= 3 ? "" : ""} — mostrando só quem bate com a busca.</div>}
+          </div>
+        );
+      })()}
+
       {!board ? (
         <div className="card pad muted">Carregando…</div>
       ) : (
@@ -441,7 +470,7 @@ export function Atendimento() {
         {/* Atalho de colunas (só no celular): toque num chip pra pular direto pra coluna. */}
         <div className="fx-colnav">
           {board.colunas.map((col) => {
-            const n = board.conversas.filter((c) => c.coluna === col.id).filter((c) =>
+            const n = board.conversas.filter((c) => c.coluna === col.id).filter(casaBusca).filter((c) =>
               filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend
             ).length;
             return (
@@ -453,7 +482,7 @@ export function Atendimento() {
         </div>
         <div className="fx-board at-board">
           {board.colunas.map((col) => {
-            const cs = board.conversas.filter((c) => c.coluna === col.id).filter((c) =>
+            const cs = board.conversas.filter((c) => c.coluna === col.id).filter(casaBusca).filter((c) =>
               filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend
             ).sort((a, b) =>
               (Number(aguardando(b)) - Number(aguardando(a))) ||
