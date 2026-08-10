@@ -905,10 +905,38 @@ function AudioMsg({ url }: { url: string }) {
     return () => { vivo = false; };
   }, [visivel, url]);
 
+  // Player CUSTOM estilo WhatsApp (bolinha verde + ondinha + tempo). A reprodução usa um <audio>
+  // ESCONDIDO (confiável); a barrinha só reflete o estado dele. Assim fica com a cara do WhatsApp
+  // sem perder a robustez de tocar que a gente sofreu pra acertar.
+  const aud = useRef<HTMLAudioElement | null>(null);
+  const [tocando, setTocando] = useState(false);
+  const [cur, setCur] = useState(0);
+  const [dur, setDur] = useState(0);
+  // Ondinha: alturas fixas (determinísticas) — só pra visual, como o WhatsApp faz.
+  const barras = [38, 62, 45, 80, 55, 90, 48, 70, 40, 85, 52, 66, 44, 78, 58, 92, 46, 72, 50, 84, 42, 68, 56, 60];
+  const pct = dur > 0 ? cur / dur : 0;
+  function fmt(s: number) { const t = Math.max(0, Math.floor(s || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; }
+  function toggle() { const a = aud.current; if (!a) return; if (a.paused) a.play().catch(() => {}); else a.pause(); }
+  function buscar(i: number) { const a = aud.current; if (!a || !dur) return; a.currentTime = Math.min(dur, (i / barras.length) * dur); }
   return (
     <div ref={ref} style={{ maxWidth: 260 }}>
       {src
-        ? <audio controls preload="metadata" src={src} style={{ width: 250, height: 40, display: "block" }} />
+        ? <div className="at-audio">
+            <button className="at-audio-play" onClick={toggle} aria-label={tocando ? "Pausar" : "Tocar"}>
+              {tocando
+                ? <svg viewBox="0 0 24 24"><path d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>
+                : <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>}
+            </button>
+            <div className="at-audio-wave">
+              {barras.map((h, i) => <i key={i} className={(i + 0.5) / barras.length <= pct ? "on" : ""} style={{ height: h + "%" }} onClick={() => buscar(i)} />)}
+            </div>
+            <span className="at-audio-time">{tocando || cur > 0 ? fmt(cur) : fmt(dur)}</span>
+            <audio ref={aud} src={src} preload="metadata" style={{ display: "none" }}
+              onLoadedMetadata={(e) => { const d = e.currentTarget.duration; if (isFinite(d)) setDur(d); }}
+              onTimeUpdate={(e) => setCur(e.currentTarget.currentTime || 0)}
+              onPlay={() => setTocando(true)} onPause={() => setTocando(false)}
+              onEnded={() => { setTocando(false); setCur(0); }} />
+          </div>
         : <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(148,163,184,.16)", borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: "var(--muted,#64748b)" }}>
             <span style={{ fontSize: 15 }}>🎤</span> {erro ? "não consegui abrir o áudio aqui" : "carregando áudio…"}
           </div>}
