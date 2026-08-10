@@ -1137,7 +1137,7 @@ body.dark .fx-alertbar { background: #2a2410; border-color: #5c4a12; color: #fcd
    espaço pra a barra de rolagem de baixo não cair fora da tela. */
 /* Atendimento: altura FIXA no quadro → cada coluna ocupa a altura toda e ROLA POR DENTRO.
    Assim os cards nunca "passam por trás" da caixa da coluna e o cabeçalho fica fixo no topo. */
-.fx-board.at-board { height: calc(100dvh - 255px); max-height: none; overflow-x: auto; overflow-y: hidden; align-items: stretch; }
+.fx-board.at-board { height: calc(100dvh - 305px); max-height: none; overflow-x: auto; overflow-y: hidden; align-items: stretch; }
 .fx-board.fx-fix { height: calc(100dvh - 210px); max-height: none; overflow-x: auto; overflow-y: hidden; align-items: stretch; }
 .fx-col { flex: 0 0 366px; max-width: 366px; background: #eef1f6; border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-height: calc(100dvh - 260px); display: flex; flex-direction: column; }
 .fx-board.at-board .fx-col, .fx-board.fx-fix .fx-col { height: 100%; min-height: 0; }
