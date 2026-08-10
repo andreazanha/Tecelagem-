@@ -336,6 +336,10 @@ RESPONDA **SOMENTE** com um JSON válido, sem texto fora dele, neste formato exa
 // Estados "terminados" em que a Big reengaja o contato que volta a falar (ela usa o
 // histórico e continua). Ficam de fora: coleta determinística e estados de pedido/pós-venda.
 const IA_REENGATA = new Set<string>(["indicado-parceiro", "catalogo-enviado", "nao-qualificado", "sem-retorno", "follow-up-24h"]);
+// Estados de reengajamento que aparecem na fila "Aguardando atendimento humano": quando o cliente
+// VOLTA a falar num card desses, a IA NÃO responde sozinha — o card pisca e um HUMANO responde
+// (decisão do André). Fica de fora "indicado-parceiro" (consumidor final, cai em "finalizado").
+const REENGATA_HUMANO = new Set<string>(["catalogo-enviado", "nao-qualificado", "sem-retorno", "follow-up-24h"]);
 
 // Saudação fixa do primeiro contato (lead novo, desconhecido) quando a IA está ligada.
 const SAUDACAO_NOVO =
@@ -712,8 +716,15 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Também vale pros cards ESTACIONADOS em "Montando pedido" ou "Orçando" (aguardando-setor): quem
   // caiu numa dessas 3 colunas (Em atendimento / Montando pedido / Orçando) é trabalho de HUMANO —
   // a IA fica quieta, só registra a mensagem e o card pisca pra alguém do time responder.
-  const emColunaHumana = conv.coluna_manual === "montando-pedido" || conv.coluna_manual === "aguardando-setor" || conv.coluna_manual === "em-atendimento" || conv.estado === "aguardando-setor";
-  if (conv.estado === "atendimento-humano" || conv.estado === "reclamacao" || String(conv.responsavel ?? "").trim() || emColunaHumana) {
+  // Se o card foi ESTACIONADO À MÃO em QUALQUER coluna (não só as 3 antigas), quem manda é o humano —
+  // a IA fica quieta e o card pisca pra alguém responder. Exceção: "campanha" (tem tratamento próprio
+  // logo abaixo pra autorresposta de loja). coluna_manual aqui ainda é o valor de ANTES da limpeza.
+  const cm = String(conv.coluna_manual ?? "").trim();
+  const emColunaHumana = (!!cm && cm !== "campanha") || conv.estado === "aguardando-setor";
+  // Cliente voltou a falar num card que estava na fila humana (catálogo enviado / sem retorno /
+  // não qualificado / follow-up 24h) → NÃO deixa a IA reengajar sozinha; avisa o humano.
+  const reengatarHumano = REENGATA_HUMANO.has(conv.estado);
+  if (conv.estado === "atendimento-humano" || conv.estado === "reclamacao" || String(conv.responsavel ?? "").trim() || emColunaHumana || reengatarHumano) {
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
   }
   // RESPOSTA a uma CAMPANHA / prospecção em massa. NÃO deixa a IA "conversar" (ela se confunde com
@@ -2051,11 +2062,13 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
     if (String(c.responsavel || "").trim()) return "em-atendimento"; // já tem quem atende → Em atendimento
     return "aguardando-humano";                                        // ninguém assumiu → fila humana (pisca)
   }
+  // Reclamação e "orçando" (aguardando-setor) valem ATÉ pra consumidor: uma reclamação de consumidor
+  // não pode sumir em "finalizado" — alguém precisa ver. Por isso vêm ANTES da regra de consumidor.
+  if (estado === "reclamacao") return "reclamacao";
+  if (estado === "aguardando-setor") return "aguardando-setor";
   // Consumidor final (não é lojista): a IA já indica a loja parceira sozinha — não precisa de
   // humano, então cai em "finalizado" (não polui a fila de atendimento de lojista).
   if (String(c.tipo || "") === "consumidor" || estado === "indicado-parceiro" || estado === "aguardando-cidade-parceiro") return "finalizado";
-  if (estado === "reclamacao") return "reclamacao";
-  if (estado === "aguardando-setor") return "aguardando-setor";
   // Contato de CAMPANHA/reativação que ainda NÃO virou atendimento humano (ex.: só chegou uma
   // autorresposta da loja) fica na coluna "Campanhas". Quando responder de verdade, o webhook põe
   // estado='atendimento-humano' e aí ele sai daqui e cai em "Aguardando humano" (piscando).
@@ -2397,6 +2410,13 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
           responsavel = CASE WHEN (responsavel IS NULL OR responsavel='') AND ? <> '' THEN ? ELSE responsavel END,
           ultima_out_em = datetime('now'), atualizado_em = datetime('now') WHERE id = ?`
     ).bind(nomeReal, nomeReal, id).run();
+    // Responder com ARQUIVO também tira o card da lista de "transferidos" (igual ao /enviar de texto),
+    // senão o card transferido ficava preso em "Aguardando humano" quando a pessoa respondia só com anexo.
+    try {
+      const cfgT = await lerConfig(c.env);
+      const tr = (() => { try { const a = JSON.parse(cfgT.atend_transferidos || "[]"); return Array.isArray(a) ? a.map(String) : []; } catch { return [] as string[]; } })();
+      if (tr.includes(id)) await salvarConfigJson(c.env, "atend_transferidos", tr.filter((x) => x !== id));
+    } catch { /* ok */ }
   }
   // Documento (PDF, etc.): arquivos PEQUENOS vão EMBUTIDOS (base64), o que é mais confiável.
   // Arquivos MAIORES (>8MB) vão por URL (a Z-API baixa do nosso R2) — base64 grande demais
