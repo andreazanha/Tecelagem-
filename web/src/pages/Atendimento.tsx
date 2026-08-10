@@ -1668,7 +1668,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 {colsAtend.filter((x) => x.id !== d?.coluna).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
               </select>
             </div>
-            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: encerrado ? "#a7f3d0" : undefined, background: encerrado ? "#ecfdf5" : undefined, color: encerrado ? "#065f46" : undefined }} disabled={busy} onClick={encerrar} title="Marca o atendimento como resolvido (para de piscar). NÃO envia nada ao cliente.">
+            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, fontWeight: 700, borderColor: encerrado ? "#a7f3d0" : "#1f7a53", background: encerrado ? "#ecfdf5" : "#1f7a53", color: encerrado ? "#065f46" : "#fff" }} disabled={busy} onClick={encerrar} title="Marca o atendimento como resolvido (para de piscar). NÃO envia nada ao cliente.">
               {encerrado ? "✅ Encerrado — reabrir" : "✅ Encerrar atendimento"}
             </button>
             {(humano || d?.responsavel) && (

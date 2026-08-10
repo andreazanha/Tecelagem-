@@ -1381,8 +1381,22 @@ body.dark .at-doc-sub, body.dark .at-doc-load { color: #667781; }
 .at-doc-sub { font-size: 11px; color: var(--muted); }
 .at-sys { align-self: center; background: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 body.dark .at-sys { background: #dbeafe; color: #1e40af; }
-.at-ctx { border-left: 1px solid var(--line); padding: 14px; overflow-y: auto; min-height: 0; }
-body.dark .at-ctx { border-color: #26324a; }
+.at-ctx { border-left: 1px solid #e5e8ec; padding: 14px; overflow-y: auto; min-height: 0; background: #f7f8fa; color: #1f2b33;
+  /* variáveis LOCAIS: tudo que usa var(--muted)/var(--ink)/var(--line)/var(--card) dentro do painel
+     resolve pro tema CLARO, mesmo com o CRM no escuro — deixa o painel idêntico ao mockup. */
+  --muted: #5b6b75; --ink: #1f2b33; --line: #e5e8ec; --card: #fff; --text: #1f2b33; }
+/* Painel de dados SEMPRE claro (idêntico ao mockup), mesmo com o CRM no modo escuro. */
+body.dark .at-ctx { border-color: #e5e8ec; background: #f7f8fa; color: #1f2b33; }
+.at-ctx .at-row b, body.dark .at-ctx .at-row b { color: #1f2b33; }
+.at-ctx .at-row span, body.dark .at-ctx .at-row span { color: #7a8792; }
+body.dark .at-ctx .at-row { border-color: #eceef1; }
+/* Botões do painel: brancos e limpos como o mockup (os coloridos mantêm a cor pelo estilo próprio). */
+.at-ctx .btn, body.dark .at-ctx .btn { background: #fff; border: 1px solid #dfe3e8; color: #243b34; }
+.at-ctx .btn:hover, body.dark .at-ctx .btn:hover { background: #eef2f1; color: #243b34; }
+/* Selects (Vendedor responsável / Mover coluna) claros no painel. */
+.at-ctx .at-sel, body.dark .at-ctx .at-sel { background: #fff; color: #1f2b33; border-color: #dfe3e8; }
+.at-ctx .at-sel option, body.dark .at-ctx .at-sel option { background: #fff; color: #1f2b33; }
+.at-ctx .at-sel.on, body.dark .at-ctx .at-sel.on { background: #ecfdf5; color: #065f46; border-color: #34d399; }
 .at-block-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-bottom: 8px; }
 .at-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid #eef1f6; }
 body.dark .at-row { border-color: #1b2536; }
