@@ -2428,7 +2428,8 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   const enviarBg = (async () => {
     const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
     if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
-  })().catch(() => { /* falha no envio não derruba a resposta; o arquivo já está na conversa */ });
+    else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); // marca "⚠️ não entregue"
+  })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); } catch { /* ok */ } });
   try { c.executionCtx.waitUntil(enviarBg); } catch { /* sem executionCtx: segue sem bloquear */ }
   return c.json({ ok: true, enviado: true, url });
 });
@@ -2523,7 +2524,8 @@ atendimento.post("/:id/enviar-rapido", async (c) => {
   const enviarBg = (async () => {
     const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: alvo.nomeArq || alvo.nome, caption: "" });
     if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
-  })().catch(() => { /* falha não derruba a resposta */ });
+    else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); // marca "⚠️ não entregue"
+  })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); } catch { /* ok */ } });
   try { c.executionCtx.waitUntil(enviarBg); } catch { /* ok */ }
   return c.json({ ok: true });
 });
@@ -2840,7 +2842,10 @@ atendimento.post("/:id/enviar", async (c) => {
   const r = await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto: textoWpp }, quote);
   // Guarda o id da Z-API pra casar com os callbacks de status (✓ enviado / ✓✓ lido).
   if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
-  return c.json({ ok: true });
+  // Falhou no WhatsApp (cliente bloqueou, sem credencial, etc.) → marca a mensagem como "falha"
+  // pra aparecer "⚠️ não entregue" no CRM (antes mostrava ✓ como se tivesse ido).
+  else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run();
+  return c.json({ ok: true, enviado: r.enviado, motivo: r.enviado ? undefined : ((r as { motivo?: string }).motivo || "falha") });
 });
 
 // ── FOLLOW-UP 24h (chamado pelo cron) ────────────────────────────────────────────────

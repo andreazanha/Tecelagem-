@@ -1412,7 +1412,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                         </>
                       : m.tipo === "arquivo" ? <span className="at-file">📒 {m.texto}</span> : corpoMsg(m.texto)}
                     <span className="at-tm">{hora(m.criado_em)}{m.direcao === "out" && m.autor !== "sistema" && m.status && (
-                      <span title={m.status === "read" ? "Visto" : m.status === "delivered" ? "Entregue" : "Enviado"} style={{ marginLeft: 4, color: m.status === "read" ? "#53bdeb" : "#8696a0", fontWeight: 700 }}>{m.status === "sent" ? "✓" : "✓✓"}</span>
+                      m.status === "falha"
+                        ? <span title="NÃO foi entregue ao cliente (WhatsApp recusou). Tente reenviar." style={{ marginLeft: 4, color: "#dc2626", fontWeight: 700 }}>⚠️ não entregue</span>
+                        : <span title={m.status === "read" ? "Visto" : m.status === "delivered" ? "Entregue" : "Enviado"} style={{ marginLeft: 4, color: m.status === "read" ? "#53bdeb" : "#8696a0", fontWeight: 700 }}>{m.status === "sent" ? "✓" : "✓✓"}</span>
                     )}</span>
                     {humano && m.direcao === "in" && m.tipo !== "arquivo" && (m.texto || "").trim() && (
                       <button className="at-reply" title="Responder esta mensagem" onClick={() => setRespondendo({ id: m.id, texto: (extrairIaNota(m.texto).visivel || "foto").slice(0, 180) })}>↩︎</button>
