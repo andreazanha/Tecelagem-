@@ -851,11 +851,14 @@ function audioBufferParaWav(buf: AudioBuffer): ArrayBuffer {
 // Áudio (nota de voz). DECODIFICA com Web Audio (abre arquivos que o <audio> engasga), REGRAVA num
 // WAV limpo e entrega pro PLAYER NATIVO do navegador — que cuida de tocar, da barra e do tempo SOZINHO
 // (mais confiável que qualquer player que eu desenhe). Damos largura suficiente pra não virar "bola".
+// Cache do WAV já decodificado por URL de origem: a conversa recarrega a cada 5s e você rola a
+// lista o tempo todo — sem cache, cada áudio era RE-BAIXADO e RE-DECODIFICADO toda vez (pesado no
+// tablet) e ainda vazava blobs. Com o cache, decodifica UMA vez e reaproveita.
+const wavCache = new Map<string, string>();
 function AudioMsg({ url }: { url: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const blobRef = useRef<string | null>(null);
   const [visivel, setVisivel] = useState(false);
-  const [src, setSrc] = useState<string | null>(null);
+  const [src, setSrc] = useState<string | null>(() => wavCache.get(url) ?? null);
   const [erro, setErro] = useState<string>("");
 
   useEffect(() => {
@@ -868,6 +871,8 @@ function AudioMsg({ url }: { url: string }) {
 
   useEffect(() => {
     if (!visivel) return;
+    const cached = wavCache.get(url);
+    if (cached) { setSrc(cached); return; } // já decodificado antes → reaproveita na hora
     let vivo = true;
     (async () => {
       let ctx: AudioContext | null = null;
@@ -875,23 +880,19 @@ function AudioMsg({ url }: { url: string }) {
         const r = await fetch(url, { cache: "no-store" });
         if (!r.ok) throw new Error("http " + r.status);
         const ab = await r.arrayBuffer();
-        if (!vivo) return;
         if (!ab.byteLength) throw new Error("vazio");
         const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         ctx = new AC();
         const audioBuf = await ctx.decodeAudioData(ab.slice(0));
-        if (!vivo) return;
         const wav = audioBufferParaWav(audioBuf);
-        const bu = URL.createObjectURL(new Blob([wav], { type: "audio/wav" }));
-        blobRef.current = bu;
-        setSrc(bu);
+        const bu = wavCache.get(url) ?? URL.createObjectURL(new Blob([wav], { type: "audio/wav" }));
+        wavCache.set(url, bu); // guarda no cache (fica pela vida da página; não revoga pra poder reusar)
+        if (vivo) setSrc(bu);
       } catch { if (vivo) setErro("não abriu"); }
       finally { if (ctx) ctx.close().catch(() => {}); }
     })();
     return () => { vivo = false; };
   }, [visivel, url]);
-
-  useEffect(() => () => { if (blobRef.current) URL.revokeObjectURL(blobRef.current); }, []);
 
   return (
     <div ref={ref} style={{ maxWidth: 260 }}>
@@ -1118,7 +1119,10 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   async function iniciarGravacao() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-      const tipos = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm", "audio/mp4"];
+      // Preferimos formatos que o WhatsApp TOCA direto (mp4/m4a, ogg/opus) ANTES do webm: assim, se a
+      // conversão pra WAV falhar e cair no fallback (manda como gravou), o áudio ainda toca pro cliente.
+      // No Chrome só o webm/opus é suportado — mas aí a conversão pra WAV (caminho normal) resolve.
+      const tipos = ["audio/mp4", "audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm"];
       const mime = tipos.find((m) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(m)) || "";
       const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       const chunks: BlobPart[] = [];
@@ -1141,10 +1145,10 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
         const AC: typeof AudioContext = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         ctx = new AC();
         // Converter (decode + regravar WAV) é PESADO em tablet/celular fraco e o Safari às vezes
-        // TRAVA no decode. Timeout de 10s: se demorar, cai no fallback (manda o áudio como gravou).
+        // TRAVA no decode. Timeout de 15s: se demorar, cai no fallback (manda o áudio como gravou).
         const audioBuf = await Promise.race([
           ctx.decodeAudioData(ab.slice(0)),
-          new Promise<AudioBuffer>((_, rej) => setTimeout(() => rej(new Error("timeout")), 10000)),
+          new Promise<AudioBuffer>((_, rej) => setTimeout(() => rej(new Error("timeout")), 15000)),
         ]);
         const wav = audioBufferParaWav(audioBuf);
         if (wav.byteLength <= 44) throw new Error("vazio");
@@ -1158,6 +1162,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             const mm = (g.mime || "").toLowerCase();
             const ext = mm.includes("mp4") ? "m4a" : mm.includes("ogg") ? "ogg" : mm.includes("mpeg") ? "mp3" : "webm";
             escolherAnexo(new File([blob], `audio-${Date.now()}.${ext}`, { type: blob.type || "audio/webm" }));
+            // webm é o único formato que o WhatsApp NÃO toca como nota de voz. Avisa (mesmo tocando aqui
+            // na prévia, pode não tocar no celular do cliente) pra o atendente regravar pelo computador.
+            if (ext === "webm") alert("⚠️ Consegui gravar, mas neste aparelho o áudio pode NÃO tocar no WhatsApp do cliente.\n\nSe puder, grave pelo computador — lá ele sai no formato certo.");
           } else { alert("Não consegui gravar o áudio. Tente de novo."); }
         } catch { alert("Não consegui gravar o áudio. Tente de novo."); }
       } finally {
@@ -1359,6 +1366,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     if (!texto.trim()) return;
     setBusy(true);
     try { await api.atendEnviar(id, { texto: texto.trim(), autor: getUser()?.nome || d?.responsavel || "Atendente", responder_a: respondendo?.id }); setTexto(""); setRespondendo(null); carregar(); onMudou(); }
+    catch { alert("Não consegui enviar a mensagem agora. Verifique a conexão e tente de novo (seu texto continua no campo)."); }
     finally { setBusy(false); }
   }
   // Nota interna: recado da equipe DENTRO da conversa — o cliente NÃO recebe.
@@ -1366,6 +1374,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     if (!texto.trim()) return;
     setBusy(true);
     try { await api.atendNota(id, { texto: texto.trim(), autor: getUser()?.nome || "Equipe" }); setTexto(""); carregar(); onMudou(); }
+    catch { alert("Não consegui salvar a nota agora. Tente de novo (seu texto continua no campo)."); }
     finally { setBusy(false); }
   }
 
