@@ -1083,6 +1083,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   // pedaços do áudio — o método antigo, ScriptProcessor, picotava e o cliente reclamava que "cortava").
   // Depois converte pra WAV limpo (o WhatsApp não toca webm) via decodeAudioData → audioBufferParaWav.
   const [gravando, setGravando] = useState(false);
+  const [processandoAudio, setProcessandoAudio] = useState(false); // convertendo o áudio (mostra "preparando…")
   const gravRef = useRef<{ rec: MediaRecorder; stream: MediaStream; chunks: BlobPart[]; mime: string } | null>(null);
   async function iniciarGravacao() {
     try {
@@ -1100,21 +1101,42 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   function pararGravacao() {
     const g = gravRef.current; gravRef.current = null; setGravando(false);
     if (!g) return;
+    setProcessandoAudio(true);
     g.rec.onstop = async () => {
+      let ctx: AudioContext | null = null;
       try {
         const blob = new Blob(g.chunks, { type: g.mime });
         if (blob.size < 200) throw new Error("vazio");
         const ab = await blob.arrayBuffer();
         const AC: typeof AudioContext = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        const ctx = new AC();
-        const audioBuf = await ctx.decodeAudioData(ab);
-        ctx.close().catch(() => { /* ok */ });
+        ctx = new AC();
+        // Converter (decode + regravar WAV) é PESADO em tablet/celular fraco e o Safari às vezes
+        // TRAVA no decode. Timeout de 10s: se demorar, cai no fallback (manda o áudio como gravou).
+        const audioBuf = await Promise.race([
+          ctx.decodeAudioData(ab.slice(0)),
+          new Promise<AudioBuffer>((_, rej) => setTimeout(() => rej(new Error("timeout")), 10000)),
+        ]);
         const wav = audioBufferParaWav(audioBuf);
-        if (wav.byteLength > 44) escolherAnexo(new File([wav], `audio-${Date.now()}.wav`, { type: "audio/wav" }));
-      } catch { alert("Não consegui gravar o áudio. Tente de novo."); }
-      finally { g.stream.getTracks().forEach((t) => t.stop()); }
+        if (wav.byteLength <= 44) throw new Error("vazio");
+        escolherAnexo(new File([wav], `audio-${Date.now()}.wav`, { type: "audio/wav" }));
+      } catch {
+        // FALLBACK (tablet/Safari): se a conversão travar/falhar, manda o áudio GRAVADO como veio
+        // (comprimido, leve) — sem re-encodar. Melhor mandar assim do que travar/perder o áudio.
+        try {
+          const blob = new Blob(g.chunks, { type: g.mime });
+          if (blob.size > 200) {
+            const mm = (g.mime || "").toLowerCase();
+            const ext = mm.includes("mp4") ? "m4a" : mm.includes("ogg") ? "ogg" : mm.includes("mpeg") ? "mp3" : "webm";
+            escolherAnexo(new File([blob], `audio-${Date.now()}.${ext}`, { type: blob.type || "audio/webm" }));
+          } else { alert("Não consegui gravar o áudio. Tente de novo."); }
+        } catch { alert("Não consegui gravar o áudio. Tente de novo."); }
+      } finally {
+        try { ctx?.close(); } catch { /* ok */ }
+        g.stream.getTracks().forEach((t) => t.stop());
+        setProcessandoAudio(false);
+      }
     };
-    try { g.rec.stop(); } catch { g.stream.getTracks().forEach((t) => t.stop()); }
+    try { g.rec.stop(); } catch { g.stream.getTracks().forEach((t) => t.stop()); setProcessandoAudio(false); }
   }
   function cancelarAnexo() { if (anexo?.url) URL.revokeObjectURL(anexo.url); setAnexo(null); setLegendaAnexo(""); if (arqRef.current) arqRef.current.value = ""; }
   async function confirmarAnexo() {
@@ -1611,7 +1633,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <button className="at-send" style={{ background: "transparent" }} onClick={() => setMostrarResp((v) => !v)} title="Respostas prontas">📋</button>
                 <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={() => arqRef.current?.click()} title="Anexar arquivo (foto/documento/áudio) — ou cole um print com Ctrl+V">📎</button>
                 <input ref={arqRef} type="file" multiple accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length === 1) escolherAnexo(fs[0]); else if (fs.length > 1) enviarVarios(fs); e.currentTarget.value = ""; }} />
-                <button className="at-send" style={{ background: gravando ? "#ef4444" : "transparent", color: gravando ? "#fff" : undefined }} disabled={busy} onClick={() => (gravando ? pararGravacao() : iniciarGravacao())} title={gravando ? "Parar e ouvir antes de enviar" : "Gravar áudio (nota de voz)"}>{gravando ? "⏹" : "🎤"}</button>
+                <button className="at-send" style={{ background: gravando ? "#ef4444" : "transparent", color: gravando ? "#fff" : undefined }} disabled={busy || processandoAudio} onClick={() => (gravando ? pararGravacao() : iniciarGravacao())} title={processandoAudio ? "Preparando o áudio…" : gravando ? "Parar e ouvir antes de enviar" : "Gravar áudio (nota de voz)"}>{processandoAudio ? "⏳" : gravando ? "⏹" : "🎤"}</button>
                 <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={enviarCatalogo} title="Enviar o link do catálogo">📖</button>
                 <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={() => setArqRapidoOpen(true)} title="Arquivos rápidos (catálogos salvos) — enviar com 1 clique">📚</button>
                 <textarea ref={inputRef} rows={1} placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
