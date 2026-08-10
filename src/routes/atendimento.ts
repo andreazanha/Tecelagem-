@@ -1079,15 +1079,30 @@ atendimento.post("/webhook", async (c) => {
   let arquivoUrl = "";
   if (!texto.trim() && audio) {
     const audioSrc = audio.audioUrl || audio.url || "";
-    texto = await transcreverAudio(c.env, audioSrc);
-    arquivoUrl = await guardarMidiaExterna(c.env, origin, audioSrc, "ogg"); // pra o atendente OUVIR
+    // Transcrição E download são BEST-EFFORT: se QUALQUER um falhar (erro/timeout), NÃO pode perder a
+    // mensagem. Antes, um erro na transcrição estourava e o áudio sumia inteiro do CRM. Agora, mesmo
+    // sem transcrição, o áudio aparece com o player pra o atendente OUVIR.
+    try { texto = await transcreverAudio(c.env, audioSrc); } catch { texto = ""; }
+    try { arquivoUrl = await guardarMidiaExterna(c.env, origin, audioSrc, "ogg"); } catch { arquivoUrl = ""; }
     if (!texto.trim()) {
-      // Sem transcrição, mas guardamos o áudio: registra a conversa com o player, avisa o cliente.
-      if (arquivoUrl) { await receberMensagem(c.env, phone, "🎤 (áudio)", "whatsapp", nomeContato, origin, String(b.messageId ?? ""), arquivoUrl, soRegistrar); return c.json({ ok: true, audio: true }); }
-      if (!soRegistrar) await enviarWhatsapp(c.env, phone, { tipo: "texto", texto: "Oi! 😊 Recebi seu áudio, mas não consegui ouvir direitinho por aqui. Pode me mandar por *escrito*, por favor? Assim já te respondo! 💛" });
-      else await receberMensagem(c.env, phone, "🎤 (áudio)", "whatsapp", nomeContato, origin, String(b.messageId ?? ""), "", soRegistrar);
-      return c.json({ ignorado: "audio-sem-transcricao" });
+      // Sem transcrição: registra a conversa com o player (se baixou o áudio) pra o atendente ouvir.
+      const label = arquivoUrl ? "🎤 (áudio)" : "🎤 (áudio — abra no WhatsApp)";
+      await receberMensagem(c.env, phone, label, "whatsapp", nomeContato, origin, zid, arquivoUrl, soRegistrar);
+      // Só pede "por escrito" se NÃO conseguimos nem baixar o áudio E o robô ainda está conduzindo.
+      if (!arquivoUrl && !soRegistrar) await enviarWhatsapp(c.env, phone, { tipo: "texto", texto: "Oi! 😊 Recebi seu áudio, mas não consegui ouvir direitinho por aqui. Pode me mandar por *escrito*, por favor? Assim já te respondo! 💛" });
+      return;
     }
+    // Com transcrição: segue o fluxo normal levando o arquivoUrl (mostra o player + o texto transcrito).
+  }
+  // Vídeo do cliente: guarda no nosso R2 pra o atendente ASSISTIR na conversa (antes o vídeo era
+  // ignorado — era o "os vídeos não ficam comigo"). A legenda (se houver) vira a fala do cliente.
+  const video = b.video as { videoUrl?: string; url?: string; caption?: string; mimeType?: string } | undefined;
+  if (!arquivoUrl && video && (video.videoUrl || video.url)) {
+    const vidSrc = video.videoUrl || video.url || "";
+    const vext = String(video.mimeType || "").includes("mp4") ? "mp4" : "mp4";
+    try { arquivoUrl = await guardarMidiaExterna(c.env, origin, vidSrc, vext); } catch { arquivoUrl = ""; }
+    const legenda = (video.caption || "").trim();
+    if (!texto.trim()) texto = legenda || (arquivoUrl ? "🎬 (vídeo)" : "🎬 (vídeo — abra no WhatsApp)");
   }
   // Imagem: a Big "enxerga" a foto com IA de visão e usa o que viu como contexto. Mantém
   // a legenda (se houver) como a fala do cliente e anexa a descrição do que aparece.

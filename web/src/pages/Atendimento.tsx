@@ -1125,8 +1125,17 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   // pedaços do áudio — o método antigo, ScriptProcessor, picotava e o cliente reclamava que "cortava").
   // Depois converte pra WAV limpo (o WhatsApp não toca webm) via decodeAudioData → audioBufferParaWav.
   const [gravando, setGravando] = useState(false);
+  const [gravSeg, setGravSeg] = useState(0); // cronômetro da gravação (segundos)
   const [processandoAudio, setProcessandoAudio] = useState(false); // convertendo o áudio (mostra "preparando…")
   const gravRef = useRef<{ rec: MediaRecorder; stream: MediaStream; chunks: BlobPart[]; mime: string } | null>(null);
+  // Conta o tempo enquanto grava (mostra 0:07 do lado do botão). Zera ao parar.
+  useEffect(() => {
+    if (!gravando) { setGravSeg(0); return; }
+    setGravSeg(0);
+    const t = setInterval(() => setGravSeg((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [gravando]);
+  const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   async function iniciarGravacao() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
@@ -1454,6 +1463,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                       ? <>
                           {/\.(jpg|jpeg|png|gif|webp)$/i.test(m.arquivo_url)
                             ? <img src={m.arquivo_url} alt={m.texto || "imagem"} onClick={() => setImgZoom(m.arquivo_url!)} style={{ maxWidth: 220, maxHeight: 260, borderRadius: 8, display: "block", cursor: "zoom-in" }} />
+                            : /\.(mp4|mov|3gp|m4v)$/i.test(m.arquivo_url)
+                              ? <video controls preload="metadata" src={m.arquivo_url} style={{ maxWidth: 240, maxHeight: 300, borderRadius: 8, display: "block" }} />
                             : /\.(ogg|opus|mp3|m4a|wav|webm|aac|amr)$/i.test(m.arquivo_url)
                               ? <AudioMsg url={m.arquivo_url} />
                               : (() => {
@@ -1462,7 +1473,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                                   const pdf = /\.pdf($|[?#])/i.test(m.arquivo_url!) || /\.pdf$/i.test(nome);
                                   return <DocCard url={m.arquivo_url!} nome={nome} pdf={pdf} />;
                                 })()}
-                          {/\.(jpg|jpeg|png|gif|webp|ogg|opus|mp3|m4a|wav|webm|aac|amr)$/i.test(m.arquivo_url) && m.tipo !== "arquivo" && (m.texto || "").trim() && <div style={{ marginTop: 4 }}>{corpoMsg(m.texto)}</div>}
+                          {/\.(jpg|jpeg|png|gif|webp|mp4|mov|3gp|m4v|ogg|opus|mp3|m4a|wav|webm|aac|amr)$/i.test(m.arquivo_url) && m.tipo !== "arquivo" && (m.texto || "").trim() && !/^🎬 \(vídeo/.test((m.texto || "").trim()) && <div style={{ marginTop: 4 }}>{corpoMsg(m.texto)}</div>}
                         </>
                       : m.tipo === "arquivo" ? <span className="at-file">📒 {m.texto}</span> : corpoMsg(m.texto)}
                     <span className="at-tm">{hora(m.criado_em)}{m.direcao === "out" && m.autor !== "sistema" && m.status && (
@@ -1716,6 +1727,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={() => arqRef.current?.click()} title="Anexar arquivo (foto/documento/áudio) — ou cole um print com Ctrl+V">📎</button>
                 <input ref={arqRef} type="file" multiple accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length === 1) escolherAnexo(fs[0]); else if (fs.length > 1) enviarVarios(fs); e.currentTarget.value = ""; }} />
                 <button className="at-send" style={{ background: gravando ? "#ef4444" : "transparent", color: gravando ? "#fff" : undefined }} disabled={busy || processandoAudio} onClick={() => (gravando ? pararGravacao() : iniciarGravacao())} title={processandoAudio ? "Preparando o áudio…" : gravando ? "Parar e ouvir antes de enviar" : "Gravar áudio (nota de voz)"}>{processandoAudio ? "⏳" : gravando ? "⏹" : "🎤"}</button>
+                {gravando && <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#ef4444", fontWeight: 800, fontSize: 13, fontVariantNumeric: "tabular-nums" }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", animation: "atpulse 1s ease-in-out infinite" }} />{mmss(gravSeg)}</span>}
+                {processandoAudio && <span style={{ color: "var(--muted)", fontSize: 12.5 }}>preparando…</span>}
                 <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={enviarCatalogo} title="Enviar o link do catálogo">📖</button>
                 <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={() => setArqRapidoOpen(true)} title="Arquivos rápidos (catálogos salvos) — enviar com 1 clique">📚</button>
                 <textarea ref={inputRef} rows={1} placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
