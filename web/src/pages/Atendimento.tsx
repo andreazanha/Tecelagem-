@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type ChatMensagem, type AtendColuna } from "../api";
@@ -71,6 +71,24 @@ function hora(iso?: string | null) {
   }
   const mm = iso.match(/(\d{2}):(\d{2})/);
   return mm ? `${mm[1]}:${mm[2]}` : "";
+}
+// Dia (Brasília) de um timestamp UTC — "DD/MM/AAAA". Usado pra separar mensagens por dia na conversa.
+function diaBrasilia(iso?: string | null): string {
+  if (!iso) return "";
+  const m = iso.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return "";
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
+  return d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+}
+// Rótulo do separador de dia: "Hoje", "Ontem" ou a data.
+function rotuloDia(iso?: string | null): string {
+  const dia = diaBrasilia(iso);
+  if (!dia) return "";
+  const hojeD = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  const ontemD = new Date(Date.now() - 864e5).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  if (dia === hojeD) return "Hoje";
+  if (dia === ontemD) return "Ontem";
+  return dia;
 }
 const SETOR_EMOJI: Record<string, string> = { vendas: "🛒", financeiro: "💰", "pos-venda": "📦", outros: "💬" };
 // Cor fixa por nome (pra o avatar do vendedor ficar sempre com a mesma cor).
@@ -1003,33 +1021,6 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
   );
 }
 
-// Codifica PCM (Float32) em WAV 16-bit mono. O WhatsApp NÃO toca áudio webm (formato padrão
-// do navegador) — por isso a gravação sai em WAV, que a Z-API/WhatsApp aceitam em qualquer
-// navegador (inclusive Chrome). Faz downsample p/ 16kHz (voz) pra o arquivo ficar leve.
-function baixaAmostragem(buf: Float32Array, inRate: number, outRate: number): Float32Array {
-  if (!outRate || outRate >= inRate) return buf;
-  const ratio = inRate / outRate;
-  const outLen = Math.floor(buf.length / ratio);
-  const out = new Float32Array(outLen);
-  for (let i = 0; i < outLen; i++) out[i] = buf[Math.floor(i * ratio)] || 0;
-  return out;
-}
-function pcmParaWav(chunks: Float32Array[], inRate: number, outRate = 16000): ArrayBuffer {
-  let len = 0; for (const c of chunks) len += c.length;
-  const flat = new Float32Array(len); let off = 0;
-  for (const c of chunks) { flat.set(c, off); off += c.length; }
-  const rate = outRate && outRate < inRate ? outRate : inRate;
-  const data = baixaAmostragem(flat, inRate, rate);
-  const buffer = new ArrayBuffer(44 + data.length * 2);
-  const view = new DataView(buffer);
-  const wstr = (o: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
-  wstr(0, "RIFF"); view.setUint32(4, 36 + data.length * 2, true); wstr(8, "WAVE");
-  wstr(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
-  view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
-  wstr(36, "data"); view.setUint32(40, data.length * 2, true);
-  let o = 44; for (let i = 0; i < data.length; i++) { const s = Math.max(-1, Math.min(1, data[i])); view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true); o += 2; }
-  return buffer;
-}
 
 // ── Conversa (thread estilo WhatsApp + contexto + ações do atendente) ──────────────
 export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => void; onMudou: () => void }) {
@@ -1071,34 +1062,42 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     setAnexo((a) => { if (a?.url) URL.revokeObjectURL(a.url); return { file, url: (ehImg || ehAudio) ? URL.createObjectURL(file) : "", ehImg, ehAudio }; });
     setLegendaAnexo("");
   }
-  // Gravar áudio (nota de voz) pelo microfone — captura PCM cru e gera WAV (o WhatsApp não
-  // toca webm, o formato padrão do navegador). Assim o áudio abre na conversa do cliente.
+  // Gravar áudio (nota de voz) pelo microfone. Grava com o MediaRecorder (confiável, NÃO derruba
+  // pedaços do áudio — o método antigo, ScriptProcessor, picotava e o cliente reclamava que "cortava").
+  // Depois converte pra WAV limpo (o WhatsApp não toca webm) via decodeAudioData → audioBufferParaWav.
   const [gravando, setGravando] = useState(false);
-  const gravRef = useRef<{ ctx: AudioContext; stream: MediaStream; source: MediaStreamAudioSourceNode; processor: ScriptProcessorNode; chunks: Float32Array[]; sampleRate: number } | null>(null);
+  const gravRef = useRef<{ rec: MediaRecorder; stream: MediaStream; chunks: BlobPart[]; mime: string } | null>(null);
   async function iniciarGravacao() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-      const AC: typeof AudioContext = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const ctx = new AC();
-      const source = ctx.createMediaStreamSource(stream);
-      const processor = ctx.createScriptProcessor(4096, 1, 1);
-      const chunks: Float32Array[] = [];
-      processor.onaudioprocess = (e) => { chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
-      source.connect(processor); processor.connect(ctx.destination);
-      gravRef.current = { ctx, stream, source, processor, chunks, sampleRate: ctx.sampleRate };
+      const tipos = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm", "audio/mp4"];
+      const mime = tipos.find((m) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(m)) || "";
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      const chunks: BlobPart[] = [];
+      rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      rec.start(); // sem timeslice: entrega tudo de uma vez ao parar (menos chance de picotar)
+      gravRef.current = { rec, stream, chunks, mime: rec.mimeType || mime || "audio/webm" };
       setGravando(true);
     } catch { alert("Não consegui acessar o microfone. Autorize o microfone no navegador e tente de novo."); }
   }
   function pararGravacao() {
     const g = gravRef.current; gravRef.current = null; setGravando(false);
     if (!g) return;
-    try { g.processor.disconnect(); g.source.disconnect(); } catch { /* ok */ }
-    g.stream.getTracks().forEach((t) => t.stop());
-    try {
-      const wav = pcmParaWav(g.chunks, g.sampleRate);
-      if (wav.byteLength > 44) escolherAnexo(new File([wav], `audio-${Date.now()}.wav`, { type: "audio/wav" }));
-    } catch { alert("Não consegui gravar o áudio. Tente de novo."); }
-    g.ctx.close().catch(() => { /* ok */ });
+    g.rec.onstop = async () => {
+      try {
+        const blob = new Blob(g.chunks, { type: g.mime });
+        if (blob.size < 200) throw new Error("vazio");
+        const ab = await blob.arrayBuffer();
+        const AC: typeof AudioContext = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const ctx = new AC();
+        const audioBuf = await ctx.decodeAudioData(ab);
+        ctx.close().catch(() => { /* ok */ });
+        const wav = audioBufferParaWav(audioBuf);
+        if (wav.byteLength > 44) escolherAnexo(new File([wav], `audio-${Date.now()}.wav`, { type: "audio/wav" }));
+      } catch { alert("Não consegui gravar o áudio. Tente de novo."); }
+      finally { g.stream.getTracks().forEach((t) => t.stop()); }
+    };
+    try { g.rec.stop(); } catch { g.stream.getTracks().forEach((t) => t.stop()); }
   }
   function cancelarAnexo() { if (anexo?.url) URL.revokeObjectURL(anexo.url); setAnexo(null); setLegendaAnexo(""); if (arqRef.current) arqRef.current.value = ""; }
   async function confirmarAnexo() {
@@ -1315,7 +1314,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
 
         <div className="at-body">
           <div className="at-msgs">
-            {d?.mensagens.map((m) => (
+            {d?.mensagens.map((m, i, arr) => {
+              // Separador de DIA (estilo WhatsApp): mostra "Hoje / Ontem / data" quando muda o dia.
+              const sep = (i === 0 || diaBrasilia(arr[i - 1].criado_em) !== diaBrasilia(m.criado_em))
+                ? <div className="at-diasep"><span>{rotuloDia(m.criado_em)}</span></div> : null;
+              const corpo = (
               m.tipo === "sistema"
                 ? <div className="at-sys" key={m.id}>⚙️ {m.texto}</div>
                 : m.tipo === "nota"
@@ -1364,7 +1367,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                       </div>
                     )}
                   </div>
-            ))}
+              );
+              return <Fragment key={m.id}>{sep}{corpo}</Fragment>;
+            })}
             <div ref={fim} />
           </div>
 
