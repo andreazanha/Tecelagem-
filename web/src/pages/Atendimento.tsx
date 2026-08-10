@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type ChatMensagem, type AtendColuna } from "../api";
@@ -217,6 +217,25 @@ export function Atendimento() {
     if (dig.length >= 3 && (c.telefone || "").replace(/\D/g, "").includes(dig)) return true;
     return false;
   };
+
+  // Agrupa as conversas por coluna UMA vez por render (já filtrado por busca/vendedor e ordenado),
+  // em vez de refazer 3 filtros × cada coluna × 2 laços a cada atualização (4s) — pesava no tablet.
+  const gruposPorColuna = useMemo(() => {
+    const m = new Map<string, AtendConversa[]>();
+    if (!board) return m;
+    const passaFiltro = (c: AtendConversa) => casaBusca(c) && (filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend);
+    for (const c of board.conversas) {
+      if (!passaFiltro(c)) continue;
+      const arr = m.get(c.coluna); if (arr) arr.push(c); else m.set(c.coluna, [c]);
+    }
+    for (const arr of m.values()) arr.sort((a, b) =>
+      (Number(aguardando(b)) - Number(aguardando(a))) ||
+      (b.ultima_in_em || "").localeCompare(a.ultima_in_em || "") ||
+      (b.atualizado_em || "").localeCompare(a.atualizado_em || "")
+    );
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board, busca, filtroAtend]);
 
   // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
   const fotoCache = useRef<Record<string, string | null>>({});
@@ -517,9 +536,7 @@ export function Atendimento() {
         {/* Atalho de colunas (só no celular): toque num chip pra pular direto pra coluna. */}
         <div className="fx-colnav">
           {board.colunas.map((col) => {
-            const n = board.conversas.filter((c) => c.coluna === col.id).filter(casaBusca).filter((c) =>
-              filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend
-            ).length;
+            const n = (gruposPorColuna.get(col.id) || []).length;
             return (
               <button key={col.id} className="fx-colnav-chip" onClick={() => colRefs.current[col.id]?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })}>
                 <span className="fx-dot" style={{ background: col.cor }} />{col.label}{n > 0 && <b>{n}</b>}
@@ -529,13 +546,7 @@ export function Atendimento() {
         </div>
         <div className="fx-board at-board">
           {board.colunas.map((col) => {
-            const cs = board.conversas.filter((c) => c.coluna === col.id).filter(casaBusca).filter((c) =>
-              filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend
-            ).sort((a, b) =>
-              (Number(aguardando(b)) - Number(aguardando(a))) ||
-              (b.ultima_in_em || "").localeCompare(a.ultima_in_em || "") ||
-              (b.atualizado_em || "").localeCompare(a.atualizado_em || "")
-            );
+            const cs = gruposPorColuna.get(col.id) || [];
             return (
               <div className={"fx-col" + (sobre === col.id ? " drag-over" : "")} key={col.id} data-coluna={col.id} ref={(el) => { colRefs.current[col.id] = el; }}>
                 <div className="fx-hd"><span className="fx-dot" style={{ background: col.cor }} />{col.label}<span className="ct">{cs.length}</span></div>
@@ -1152,7 +1163,16 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
         ]);
         const wav = audioBufferParaWav(audioBuf);
         if (wav.byteLength <= 44) throw new Error("vazio");
-        escolherAnexo(new File([wav], `audio-${Date.now()}.wav`, { type: "audio/wav" }));
+        if (wav.byteLength > 40 * 1024 * 1024) {
+          // Gravação longa: o WAV passou de 40MB (limite do envio). Em vez de PERDER o áudio, manda o
+          // gravado (opus/mp4, bem mais leve). Melhor mandar comprimido do que jogar fora a gravação.
+          const mm = (g.mime || "").toLowerCase();
+          const ext = mm.includes("mp4") ? "m4a" : mm.includes("ogg") ? "ogg" : mm.includes("mpeg") ? "mp3" : "webm";
+          escolherAnexo(new File([blob], `audio-${Date.now()}.${ext}`, { type: blob.type || "audio/webm" }));
+          if (ext === "webm") alert("⚠️ Áudio longo: enviei no formato leve, mas neste aparelho ele pode não tocar no WhatsApp do cliente. Se puder, grave pelo computador.");
+        } else {
+          escolherAnexo(new File([wav], `audio-${Date.now()}.wav`, { type: "audio/wav" }));
+        }
       } catch {
         // FALLBACK (tablet/Safari): se a conversão travar/falhar, manda o áudio GRAVADO como veio
         // (comprimido, leve) — sem re-encodar. Melhor mandar assim do que travar/perder o áudio.
