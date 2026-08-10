@@ -571,6 +571,17 @@ export interface TvTecelagemData {
   geradoEm: string;
 }
 
+// GET com tempo-limite: em rede lenta (tablet) um fetch podia ficar PENDURADO por minutos.
+// Isso, junto com a trava anti-empilhamento no front, congelava a atualização até recarregar
+// a página. Aqui abortamos em `ms` (padrão 20s) pra a promise SEMPRE resolver/rejeitar e liberar.
+function getT(url: string, ms = 20000): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal })
+    .catch((e) => { if ((e as Error)?.name === "AbortError") throw new Error("sem resposta (conexão lenta)"); throw e; })
+    .finally(() => clearTimeout(t)) as Promise<Response>;
+}
+
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let msg = `Erro ${res.status}`;
@@ -691,7 +702,7 @@ export const api = {
   abrirConversaDoCard: (b: { telefone?: string | null; nome?: string | null; card_id?: string; cliente_id?: string; criar_card?: boolean; destino?: "prospeccao" | "atendimento" }) =>
     jsonPost("/api/atendimento/abrir-conversa", b).then((r) => j<{ id?: string; card_id?: string | null; error?: string }>(r)),
   // Robô de atendimento (WhatsApp)
-  atendBoard: (usuario?: string, gestor?: boolean) => fetch(`/api/atendimento?usuario=${encodeURIComponent(usuario || "")}&gestor=${gestor ? 1 : 0}`).then((r) => j<AtendBoard>(r)),
+  atendBoard: (usuario?: string, gestor?: boolean) => getT(`/api/atendimento?usuario=${encodeURIComponent(usuario || "")}&gestor=${gestor ? 1 : 0}`).then((r) => j<AtendBoard>(r)),
   atendColunas: () => fetch("/api/atendimento/colunas").then((r) => j<{ colunas: AtendColuna[] }>(r)),
   atendSalvarColunas: (extra: { id?: string; label: string; cor: string }[], ordem: string[]) =>
     jsonPost("/api/atendimento/colunas", { extra, ordem }).then((r) => j<{ ok: boolean; colunas: AtendColuna[] }>(r)),
@@ -715,7 +726,7 @@ export const api = {
     jsonPost(`/api/atendimento/campanhas/${id}/editar`, b).then((r) => j<{ ok: boolean; error?: string }>(r)),
   atendContatosEmCampanha: () =>
     fetch("/api/atendimento/campanhas/em-campanha").then((r) => j<{ telefones: string[] }>(r)),
-  atendConversa: (id: string) => fetch(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),
+  atendConversa: (id: string) => getT(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),
   atendEntrada: (b: { telefone: string; texto: string }) =>
     jsonPost("/api/atendimento/entrada", b).then((r) => j<AtendResposta>(r)),
   atendReset: (telefone: string) =>
@@ -891,14 +902,14 @@ export const api = {
   atribuirFioCores: (fio_id: string | null, cores: string[]) =>
     jsonPost("/api/cores/atribuir-fio", { fio_id, cores }).then((r) => j<{ ok: boolean; atualizadas: number }>(r)),
   // Chat interno da equipe
-  listarChat: (canal: string) => fetch(`/api/chat/${encodeURIComponent(canal)}`).then((r) => j<ChatMensagem[]>(r)),
+  listarChat: (canal: string) => getT(`/api/chat/${encodeURIComponent(canal)}`).then((r) => j<ChatMensagem[]>(r)),
   enviarChat: (canal: string, autor: string, texto: string) =>
     jsonPost(`/api/chat/${encodeURIComponent(canal)}`, { autor, texto }).then((r) => j<{ id: string }>(r)),
   naoLidasChat: (desde: string, autor: string) =>
     fetch(`/api/chat/nao-lidas?desde=${encodeURIComponent(desde)}&autor=${encodeURIComponent(autor)}`).then((r) => j<{ nao_lidas: number; ultima: ChatMensagem | null }>(r)),
   contatosChat: () => fetch("/api/chat/contatos").then((r) => j<string[]>(r)),
   dmsChat: (me: string) => fetch(`/api/chat/dms?me=${encodeURIComponent(me)}`).then((r) => j<ChatDM[]>(r)),
-  dmResumoChat: (me: string) => fetch(`/api/chat/dm-resumo?me=${encodeURIComponent(me)}`).then((r) => j<{ outro: string; canal: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean }[]>(r)),
+  dmResumoChat: (me: string) => getT(`/api/chat/dm-resumo?me=${encodeURIComponent(me)}`).then((r) => j<{ outro: string; canal: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean }[]>(r)),
   marcarLidoChat: (usuario: string, canal: string) =>
     jsonPost("/api/chat/marcar-lido", { usuario, canal }).then((r) => j<{ ok: boolean }>(r)),
   // Membros da equipe por OUTRO número de WhatsApp (canal ext:<id>).

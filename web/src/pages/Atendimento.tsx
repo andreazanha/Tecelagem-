@@ -120,7 +120,8 @@ export function Atendimento() {
   useEffect(() => { api.contatosChat().then(setMembros).catch(() => {}); }, []);
   useEffect(() => {
     if (!eu) return;
-    const carregar = () => api.dmResumoChat(eu).then(setDmResumo).catch(() => {});
+    let carregando = false; // não empilha (rede lenta)
+    const carregar = () => { if (carregando) return; carregando = true; api.dmResumoChat(eu).then(setDmResumo).catch(() => {}).finally(() => { carregando = false; }); };
     carregar(); const t = setInterval(carregar, 8000); return () => clearInterval(t);
   }, [eu]);
   // "Lido" é controlado no SERVIDOR (chat_lido), então a bolinha fica igual em qualquer aparelho.
@@ -133,7 +134,8 @@ export function Atendimento() {
   // Enquanto o chat está aberto, vai marcando como lido no servidor.
   useEffect(() => {
     if (!chatCom || !eu) return;
-    const marcar = () => api.marcarLidoChat(eu, canalDM(chatCom)).catch(() => {});
+    let marcando = false; // não empilha POSTs de "lido" em rede lenta
+    const marcar = () => { if (marcando) return; marcando = true; api.marcarLidoChat(eu, canalDM(chatCom)).catch(() => {}).finally(() => { marcando = false; }); };
     marcar(); const t = setInterval(marcar, 4000); return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatCom, eu]);
@@ -1163,7 +1165,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
       if (!ctrl.signal.aborted) alert("Não consegui enviar o arquivo: " + ((e as Error)?.message || "erro") + "\n\nSe o arquivo for muito grande (acima de 40MB), tente um menor.");
       // se foi cancelado pelo usuário (aborted), não mostra erro — o cancelarAnexo já limpou tudo.
     }
-    finally { if (uploadAbort.current === ctrl) uploadAbort.current = null; setBusy(false); enviandoRef.current = false; }
+    finally {
+      // Só destrava se ESTE envio ainda é o atual. Se o usuário cancelou este e já começou outro,
+      // não podemos zerar a trava anti-duplicado do NOVO envio (senão dava pra reenviar 2×).
+      if (uploadAbort.current === ctrl) { uploadAbort.current = null; setBusy(false); enviandoRef.current = false; }
+    }
   }
   // Vários arquivos de uma vez: manda um por um (pula os que passam de 40MB).
   async function enviarVarios(files: File[]) {
@@ -1898,7 +1904,12 @@ function ChatEquipeModal({ outro, onFechar }: { outro: string; onFechar: () => v
   const [texto, setTexto] = useState("");
   const [busy, setBusy] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
-  function carregar() { api.listarChat(canal).then(setMsgs).catch(() => {}); }
+  const carregandoChat = useRef(false);
+  function carregar() {
+    if (carregandoChat.current) return; // não empilha o poll em rede lenta
+    carregandoChat.current = true;
+    api.listarChat(canal).then(setMsgs).catch(() => {}).finally(() => { carregandoChat.current = false; });
+  }
   useEffect(() => { carregar(); const t = setInterval(carregar, 3500); return () => clearInterval(t); /* eslint-disable-next-line */ }, [canal]);
   useEffect(() => { fim.current?.scrollIntoView(); }, [msgs.length]);
   async function enviar() {
