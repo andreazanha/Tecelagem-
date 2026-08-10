@@ -148,6 +148,10 @@ const CONSUMIDOR_FINAL_RE = /uso pessoal|uso pr[óo]prio|consumo pr[óo]prio|(pr
 // SEM CNPJ (mas querendo comprar/revender): a Big só vende no atacado pra LOJISTA COM CNPJ. Quem diz
 // "só tenho CPF" / "não tenho CNPJ" ainda NÃO é lojista → não recebe catálogo/preço até ter CNPJ.
 const SEM_CNPJ_RE = /s[óo] (tenho |o |tenho o )?cpf|tenho s[óo] (o )?cpf|apenas (o )?cpf|s[óo] cpf|(n[ãa]o|nao) tenho (o )?cnpj|sem cnpj|(cpf|cnpj) n[ãa]o tenho/i;
+// JÁ É CLIENTE: a pessoa diz que já é cliente / já compra da Big. Nesse caso NÃO fica na triagem
+// pedindo CNPJ — passa direto pro atendente (o vendedor confirma o cadastro). Ex.: "sou cliente de
+// vocês", "já sou cliente", "já compro com vocês", "meu vendedor é o Pedro".
+const JA_CLIENTE_RE = /sou cliente|j[áa] sou cliente|j[áa] sou seu cliente|cliente (de |da )?voc[êe]s|cliente aqui|j[áa] (sou )?cadastrad|j[áa] compr(o|ei|amos|ava)|(compro|comprei|compramos) (com |de |na |a )?voc[êe]s|(compro|comprei) (com |de |na )?(a )?big|meu vendedor|minha vendedora|meu atendente/i;
 
 async function detectarInteresse(env: Env, convId: string, texto: string, modelosCsv: string): Promise<boolean> {
   const t = texto || "";
@@ -843,8 +847,13 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       // Sinal de que quer COMPRAR/revender (não é só um "oi"): a IA quis coletar lojista/catálogo, ou
       // o texto pede catálogo/preço/comprar. Aí a gente pede o CNPJ (e o fluxo passa pro vendedor).
       const intencaoComprar = ia.novoEstado === "triagem-nome" || PEDE_CATALOGO_RE.test(texto) || /compr|revend|atacad|pre[çc]o|valor|pedido|encomend|quero (as|essa|uma|umas)/i.test(texto);
+      const jaCliente = JA_CLIENTE_RE.test(texto);
       const ufC = ufDe(conv.uf);
-      if (consumidorSinal) {
+      if (jaCliente && !consumidorSinal) {
+        // Cliente diz que JÁ é cliente da Big → não pede CNPJ; passa pro atendente (fila humana, piscando).
+        ia.tipo = "lojista"; ia.novoEstado = "atendimento-humano"; ia.notificarHumano = true;
+        ia.saidas = [{ tipo: "texto", texto: "Que bom te ver de novo por aqui! 💛 Já vou te passar pra um dos nossos vendedores continuar seu atendimento, tá? 😊" }];
+      } else if (consumidorSinal) {
         ia.tipo = "consumidor"; ia.notificarHumano = false;
         if (ufC) {
           const link = `${(cfgAt.vitrine_url || VITRINE_PUBLICA).replace(/\/+$/, "")}?uf=${encodeURIComponent(ufC)}`;
