@@ -764,7 +764,7 @@ export const api = {
     jsonPost(`/api/atendimento/${id}/dados`, b).then((r) => j<{ ok: boolean }>(r)),
   atendNota: (id: string, b: { texto: string; autor?: string }) =>
     jsonPost(`/api/atendimento/${id}/nota`, b).then((r) => j<{ ok: boolean }>(r)),
-  atendEnviarArquivo: (id: string, file: File, autor?: string, legenda?: string) => {
+  atendEnviarArquivo: (id: string, file: File, autor?: string, legenda?: string, signal?: AbortSignal) => {
     const fd = new FormData();
     fd.append("file", file);
     if (autor) fd.append("autor", autor);
@@ -773,9 +773,21 @@ export const api = {
     // Aborta em 90s e devolve um erro claro pra o botão destravar.
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 90000);
+    // Se o usuário clicar em "Cancelar", o signal externo aborta o envio na hora.
+    let cancelado = false;
+    if (signal) {
+      if (signal.aborted) { cancelado = true; ctrl.abort(); }
+      else signal.addEventListener("abort", () => { cancelado = true; ctrl.abort(); }, { once: true });
+    }
     return fetch(`/api/atendimento/${id}/enviar-arquivo`, { method: "POST", body: fd, signal: ctrl.signal })
       .then((r) => j<{ ok: boolean; enviado: boolean; motivo?: string; url: string }>(r))
-      .catch((e) => { if ((e as Error)?.name === "AbortError") throw new Error("demorou demais (conexão lenta). Tente de novo."); throw e; })
+      .catch((e) => {
+        if ((e as Error)?.name === "AbortError") {
+          if (cancelado) throw new Error("cancelado");
+          throw new Error("demorou demais (conexão lenta). Tente de novo.");
+        }
+        throw e;
+      })
       .finally(() => clearTimeout(t));
   },
   atendSugerir: (id: string) =>

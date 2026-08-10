@@ -1138,16 +1138,26 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     };
     try { g.rec.stop(); } catch { g.stream.getTracks().forEach((t) => t.stop()); setProcessandoAudio(false); }
   }
-  function cancelarAnexo() { if (anexo?.url) URL.revokeObjectURL(anexo.url); setAnexo(null); setLegendaAnexo(""); if (arqRef.current) arqRef.current.value = ""; }
+  const uploadAbort = useRef<AbortController | null>(null); // pra o "Cancelar" ABORTAR o envio em andamento
+  function cancelarAnexo() {
+    if (uploadAbort.current) { try { uploadAbort.current.abort(); } catch { /* ok */ } uploadAbort.current = null; }
+    if (anexo?.url) URL.revokeObjectURL(anexo.url);
+    setAnexo(null); setLegendaAnexo(""); if (arqRef.current) arqRef.current.value = "";
+    enviandoRef.current = false; setBusy(false); // destrava na hora, mesmo se estava enviando
+  }
   async function confirmarAnexo() {
     if (!anexo || enviandoRef.current) return; // trava: não deixa mandar 2× (clique duplo / Enter)
     enviandoRef.current = true; setBusy(true);
+    const ctrl = new AbortController(); uploadAbort.current = ctrl;
     try {
-      const r = await api.atendEnviarArquivo(id, anexo.file, d?.responsavel || "Atendente", legendaAnexo.trim() || undefined);
+      const r = await api.atendEnviarArquivo(id, anexo.file, d?.responsavel || "Atendente", legendaAnexo.trim() || undefined, ctrl.signal);
       if (!r.enviado && r.motivo && r.motivo !== "desligado") alert("Arquivo salvo na conversa, mas não foi enviado ao cliente: " + r.motivo);
       cancelarAnexo(); carregar(); onMudou();
-    } catch (e) { alert("Não consegui enviar o arquivo: " + ((e as Error)?.message || "erro") + "\n\nSe o arquivo for muito grande (acima de 40MB), tente um menor."); }
-    finally { setBusy(false); enviandoRef.current = false; }
+    } catch (e) {
+      if (!ctrl.signal.aborted) alert("Não consegui enviar o arquivo: " + ((e as Error)?.message || "erro") + "\n\nSe o arquivo for muito grande (acima de 40MB), tente um menor.");
+      // se foi cancelado pelo usuário (aborted), não mostra erro — o cancelarAnexo já limpou tudo.
+    }
+    finally { if (uploadAbort.current === ctrl) uploadAbort.current = null; setBusy(false); enviandoRef.current = false; }
   }
   // Vários arquivos de uma vez: manda um por um (pula os que passam de 40MB).
   async function enviarVarios(files: File[]) {
@@ -1570,7 +1580,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
-                <button className="btn btn-soft" disabled={busy} onClick={cancelarAnexo}>Cancelar</button>
+                <button className="btn btn-soft" onClick={cancelarAnexo}>Cancelar</button>
                 <button className="kbtn go" disabled={busy} onClick={confirmarAnexo}>{busy ? "Enviando…" : "📤 Enviar"}</button>
               </div>
             </div>
