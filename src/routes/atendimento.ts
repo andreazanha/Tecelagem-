@@ -709,7 +709,11 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Atendente humano assumiu (ou já é reclamação), OU já existe um responsável (ex.: Pedro
   // já estava atendendo) → o robô NÃO responde de jeito nenhum, só registra e avisa o humano.
   // Isso impede a IA de se meter numa conversa que já está com alguém do time.
-  if (conv.estado === "atendimento-humano" || conv.estado === "reclamacao" || String(conv.responsavel ?? "").trim()) {
+  // Também vale pros cards ESTACIONADOS em "Montando pedido" ou "Orçando" (aguardando-setor): quem
+  // caiu numa dessas 3 colunas (Em atendimento / Montando pedido / Orçando) é trabalho de HUMANO —
+  // a IA fica quieta, só registra a mensagem e o card pisca pra alguém do time responder.
+  const emColunaHumana = conv.coluna_manual === "montando-pedido" || conv.coluna_manual === "aguardando-setor" || conv.estado === "aguardando-setor";
+  if (conv.estado === "atendimento-humano" || conv.estado === "reclamacao" || String(conv.responsavel ?? "").trim() || emColunaHumana) {
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
   }
   // RESPOSTA a uma CAMPANHA / prospecção em massa. NÃO deixa a IA "conversar" (ela se confunde com
