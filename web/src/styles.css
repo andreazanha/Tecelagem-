@@ -1274,18 +1274,27 @@ body.dark .at-badge.at-parado { background: #3a2a08; color: #fcd34d; }
 @keyframes atParadoPulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .at-badge.at-parado { animation: none; } }
 /* modal conversa */
-.at-modal { max-width: 900px; width: 95vw; padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh; }
+.at-modal { max-width: 1180px; width: 96vw; padding: 0; overflow: hidden; display: flex; flex-direction: column; height: 94vh; max-height: 94vh; }
 .at-thd { display: flex; align-items: center; gap: 11px; padding: 12px 14px; background: #075e54; color: #fff; }
 .at-thd .at-av { width: 40px; height: 40px; border-radius: 50%; background: #25d366; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
 .at-thd .info { flex: 1; } .at-thd .info .nm { font-weight: 800; font-size: 14.5px; } .at-thd .info .sub { font-size: 11.5px; color: #bfeee4; }
 .at-thd .modal-x { color: #fff; }
 .at-chip { font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 7px; text-transform: capitalize; }
-.at-body { display: grid; grid-template-columns: 1fr 250px; flex: 1 1 auto; min-height: 320px; }
+.at-body { display: grid; grid-template-columns: 1fr 275px; flex: 1 1 auto; min-height: 420px; }
 /* o compose (campo de escrever) nunca encolhe — fica sempre visível no rodapé do modal */
 .at-compose { flex: 0 0 auto; }
-.at-msgs { background: #e5ddd3; padding: 14px 16px; display: flex; flex-direction: column; gap: 7px; overflow-y: auto; min-height: 0; }
-body.dark .at-msgs { background: #0c1a17; }
-.at-b { max-width: 78%; padding: 7px 10px 6px; border-radius: 9px; font-size: 13px; line-height: 1.42; box-shadow: 0 1px .5px #0002; white-space: pre-wrap; position: relative; }
+/* Fundo estilo WhatsApp: bege + textura clarinha (pontinhos discretos), como o app. */
+.at-msgs { background-color: #e6ddd4; padding: 16px 4%; display: flex; flex-direction: column; gap: 7px; overflow-y: auto; min-height: 0;
+  background-image:
+    radial-gradient(circle at 18% 28%, #00000009 0 2px, transparent 3px),
+    radial-gradient(circle at 72% 62%, #00000008 0 2px, transparent 3px),
+    radial-gradient(circle at 45% 88%, #00000007 0 2px, transparent 3px);
+  background-size: 190px 190px, 240px 240px, 150px 150px; }
+body.dark .at-msgs { background-color: #0c1a17;
+  background-image:
+    radial-gradient(circle at 18% 28%, #ffffff08 0 2px, transparent 3px),
+    radial-gradient(circle at 72% 62%, #ffffff06 0 2px, transparent 3px); }
+.at-b { max-width: 76%; padding: 8px 11px 6px; border-radius: 9px; font-size: 14px; line-height: 1.45; box-shadow: 0 1px .5px #0002; white-space: pre-wrap; position: relative; }
 .at-b.in { align-self: flex-start; background: #fff; border-top-left-radius: 2px; }
 .at-b.out { align-self: flex-end; background: #d9fdd3; border-top-right-radius: 2px; }
 body.dark .at-b.in { background: #1f2c34; color: #e7ebf3; } body.dark .at-b.out { background: #144d37; color: #e7ebf3; }
