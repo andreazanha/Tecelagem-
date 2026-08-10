@@ -1383,19 +1383,19 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     try { await api.atendAutorizar(id, rep); carregar(); onMudou(); } finally { setBusy(false); }
   }
   async function enviar() {
-    if (!texto.trim()) return;
-    setBusy(true);
+    if (!texto.trim() || enviandoRef.current) return; // trava anti-duplicado: Enter 2-3× rápido mandava a MESMA msg várias vezes
+    enviandoRef.current = true; setBusy(true);
     try { await api.atendEnviar(id, { texto: texto.trim(), autor: getUser()?.nome || d?.responsavel || "Atendente", responder_a: respondendo?.id }); setTexto(""); setRespondendo(null); carregar(); onMudou(); }
     catch { alert("Não consegui enviar a mensagem agora. Verifique a conexão e tente de novo (seu texto continua no campo)."); }
-    finally { setBusy(false); }
+    finally { setBusy(false); enviandoRef.current = false; }
   }
   // Nota interna: recado da equipe DENTRO da conversa — o cliente NÃO recebe.
   async function enviarNota() {
-    if (!texto.trim()) return;
-    setBusy(true);
+    if (!texto.trim() || enviandoRef.current) return; // mesma trava anti-duplicado da mensagem
+    enviandoRef.current = true; setBusy(true);
     try { await api.atendNota(id, { texto: texto.trim(), autor: getUser()?.nome || "Equipe" }); setTexto(""); carregar(); onMudou(); }
     catch { alert("Não consegui salvar a nota agora. Tente de novo (seu texto continua no campo)."); }
-    finally { setBusy(false); }
+    finally { setBusy(false); enviandoRef.current = false; }
   }
 
   const humano = d?.estado === "atendimento-humano";

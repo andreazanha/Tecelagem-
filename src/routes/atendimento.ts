@@ -2805,6 +2805,12 @@ atendimento.post("/:id/enviar", async (c) => {
   const id = c.req.param("id");
   const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  // Anti-duplicado (defesa no SERVIDOR): se a MESMA mensagem já saiu nesta conversa nos últimos ~6s,
+  // não manda de novo. Assim, Enter apertado 2-3× / clique duplo / reenvio não chega repetido ao cliente.
+  const jaSaiu = await c.env.DB.prepare(
+    "SELECT 1 FROM atend_mensagens WHERE conversa_id=? AND direcao='out' AND texto=? AND criado_em >= datetime('now','-6 seconds') LIMIT 1"
+  ).bind(id, texto).first().catch(() => null);
+  if (jaSaiu) return c.json({ ok: true, duplicado: true });
   // Responder uma mensagem marcada: busca a original (dela vem o trecho citado e o id da Z-API).
   let quote: { zapId?: string | null; texto?: string | null } = {};
   if (b.responder_a) {
