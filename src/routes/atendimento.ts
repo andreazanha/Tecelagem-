@@ -648,7 +648,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Aguardando humano) pra ninguém esquecer que a cliente está esperando resposta.
   // Exceção: "Montando pedido" e "Orçando" (aguardando-setor) são trabalho em andamento — o card
   // NÃO sai dessas colunas só porque a cliente escreveu (ele continua lá, mas piscando c/ msg nova).
-  await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now'), coluna_manual = CASE WHEN coluna_manual IN ('montando-pedido','aguardando-setor') THEN coluna_manual ELSE NULL END WHERE id = ?").bind(conv.id).run();
+  await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now'), coluna_manual = CASE WHEN coluna_manual IN ('montando-pedido','aguardando-setor','em-atendimento') THEN coluna_manual ELSE NULL END WHERE id = ?").bind(conv.id).run();
 
   // Card estava estacionado em "Pendente" e o CLIENTE CHAMOU → vai direto pra "Aguardando
   // atendimento humano" (piscando), sem responsável fixo. (Essa é a única função da coluna Pendente.)
@@ -712,7 +712,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Também vale pros cards ESTACIONADOS em "Montando pedido" ou "Orçando" (aguardando-setor): quem
   // caiu numa dessas 3 colunas (Em atendimento / Montando pedido / Orçando) é trabalho de HUMANO —
   // a IA fica quieta, só registra a mensagem e o card pisca pra alguém do time responder.
-  const emColunaHumana = conv.coluna_manual === "montando-pedido" || conv.coluna_manual === "aguardando-setor" || conv.estado === "aguardando-setor";
+  const emColunaHumana = conv.coluna_manual === "montando-pedido" || conv.coluna_manual === "aguardando-setor" || conv.coluna_manual === "em-atendimento" || conv.estado === "aguardando-setor";
   if (conv.estado === "atendimento-humano" || conv.estado === "reclamacao" || String(conv.responsavel ?? "").trim() || emColunaHumana) {
     return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: true };
   }
@@ -2388,7 +2388,16 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   }
   const url = `${new URL(c.req.url).origin}/api/atendimento/arquivo/${nome}`;
   const msgId = await addMsg(c.env, id, "out", autor, "arquivo", legenda || nomeArq, { arquivoUrl: url });
-  await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
+  // Enviar arquivo também é ação de humano → ASSUME o atendimento (a IA para de responder).
+  {
+    const generico = ["atendente", "sistema", "bot", "ia", "big", "robô", "robo"].includes((autor || "").toLowerCase());
+    const nomeReal = autor && !generico ? autor : "";
+    await c.env.DB.prepare(
+      `UPDATE atend_conversas SET estado = CASE WHEN estado IN ('grupo','reclamacao') THEN estado ELSE 'atendimento-humano' END,
+          responsavel = CASE WHEN (responsavel IS NULL OR responsavel='') AND ? <> '' THEN ? ELSE responsavel END,
+          ultima_out_em = datetime('now'), atualizado_em = datetime('now') WHERE id = ?`
+    ).bind(nomeReal, nomeReal, id).run();
+  }
   // Documento (PDF, etc.): arquivos PEQUENOS vão EMBUTIDOS (base64), o que é mais confiável.
   // Arquivos MAIORES (>8MB) vão por URL (a Z-API baixa do nosso R2) — base64 grande demais
   // estoura o corpo da requisição. Imagem/áudio seguem por URL (já funcionam).
@@ -2783,12 +2792,19 @@ atendimento.post("/:id/enviar", async (c) => {
   const autor = (b.autor || "Atendente").trim();
   const msgId = await addMsg(c.env, id, "out", autor, "texto", texto, { responderTexto: quote.texto || null });
   await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
-  // Atendente respondeu um card que estava em "Aguardando atendimento humano" (sem responsável) →
-  // ele ASSUME o atendimento: o card passa pra "Em atendimento" com o nome de quem respondeu.
+  // Responder pelo /enviar é SEMPRE ação de HUMANO → quem respondeu ASSUME o atendimento: a conversa
+  // vira "atendimento-humano" e a IA PARA de responder (corrige "do nada a IA assumiu": antes, se o
+  // card ainda estava em triagem, a resposta do humano não marcava como humano e a IA voltava a falar).
+  // Grupo e Reclamação mantêm o estado; os demais viram atendimento-humano. Responsável ganha o nome.
   const GENERICOS = ["atendente", "sistema", "bot", "ia", "big", "robô", "robo"];
-  if (autor && !GENERICOS.includes(autor.toLowerCase())) {
-    await c.env.DB.prepare("UPDATE atend_conversas SET responsavel=? WHERE id=? AND estado IN ('atendimento-humano','grupo') AND (responsavel IS NULL OR responsavel='')").bind(autor, id).run();
-  }
+  const nomeReal = autor && !GENERICOS.includes(autor.toLowerCase()) ? autor : "";
+  await c.env.DB.prepare(
+    `UPDATE atend_conversas SET
+        estado = CASE WHEN estado IN ('grupo','reclamacao') THEN estado ELSE 'atendimento-humano' END,
+        responsavel = CASE WHEN (responsavel IS NULL OR responsavel='') AND ? <> '' THEN ? ELSE responsavel END,
+        atualizado_em = datetime('now')
+      WHERE id = ?`
+  ).bind(nomeReal, nomeReal, id).run();
   // Respondeu → se estava TRANSFERIDO (aguardando o novo responsável pegar), agora ele pegou:
   // tira da lista pra o card sair de "Aguardando humano" e ir pra "Em atendimento".
   try {
