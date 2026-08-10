@@ -261,7 +261,12 @@ export function Atendimento() {
   // servidor refletir. Assim um refresh que chegou ANTES do POST persistir não desfaz o
   // movimento do card pra coluna de follow-up (a corrida que fazia o card "voltar").
   const agendaPend = useRef<Map<string, number | null>>(new Map());
+  const recarregandoRef = useRef(false); // evita EMPILHAR polls quando a rede está lenta (tablet travava)
   function recarregar() {
+    // Se o poll anterior ainda não voltou (rede lenta do tablet), NÃO dispara outro por cima —
+    // era isso que empilhava requisições e travava o aparelho. Espera o atual terminar.
+    if (recarregandoRef.current) return;
+    recarregandoRef.current = true;
     const u = getUser();
     api.atendBoard(u?.nome, ehGestorAtend()).then((bd) => {
       const pend = agendaPend.current;
@@ -276,7 +281,7 @@ export function Atendimento() {
         }) };
       }
       setBoard(bd);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => { recarregandoRef.current = false; });
   }
   // Marca/desmarca o lembrete de um card (deixa pulsando pra não esquecer de falar com o lead).
   async function toggleLembrete(id: string) {
@@ -1060,6 +1065,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const arqRef = useRef<HTMLInputElement>(null);
   const enviandoRef = useRef(false); // trava anti-duplicado (evita mandar o arquivo 2×)
+  const carregandoRef = useRef(false); // evita empilhar o poll da conversa (rede lenta do tablet)
   // Anexo: primeiro mostra uma PRÉVIA (com legenda) e só envia ao confirmar.
   const [anexo, setAnexo] = useState<{ file: File; url: string; ehImg: boolean; ehAudio: boolean } | null>(null);
   const [legendaAnexo, setLegendaAnexo] = useState("");
@@ -1208,7 +1214,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     setBusy(true);
     try { await api.atendMoverColuna(id, colId); carregar(); onMudou(); } finally { setBusy(false); }
   }
-  function carregar() { api.atendConversa(id).then((c) => { setD(c); setRepSel((s) => s || c.representante || ""); }); }
+  function carregar() {
+    if (carregandoRef.current) return; // não empilha requisição por cima da anterior (tablet lento)
+    carregandoRef.current = true;
+    api.atendConversa(id).then((c) => { setD(c); setRepSel((s) => s || c.representante || ""); }).catch(() => {}).finally(() => { carregandoRef.current = false; });
+  }
   useEffect(() => { carregar(); const t = setInterval(carregar, 5000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => { api.listarRepresentantes().then((r) => setReps(r.filter((x) => x.ativo))).catch(() => {}); }, []);
   useEffect(() => { api.listarUsuarios().then((u) => setUsuarios(Array.isArray(u) ? u : [])).catch(() => {}); }, []);
