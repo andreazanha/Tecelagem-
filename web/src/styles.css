@@ -1257,7 +1257,7 @@ body.dark .at-status { background: #2a2410; border-color: #5c4a12; color: #fcd34
 /* Separador de dia na conversa (estilo WhatsApp): pílula centralizada com Hoje/Ontem/data. */
 .at-diasep { display: flex; justify-content: center; margin: 12px 0 8px; }
 .at-diasep span { background: #e6eaf0; color: #475569; font-size: 11.5px; font-weight: 700; padding: 3px 12px; border-radius: 999px; box-shadow: 0 1px 2px #0f172a14; }
-body.dark .at-diasep span { background: #22314a; color: #b6c4dc; }
+body.dark .at-diasep span { background: #ffffffcc; color: #54656f; }
 .at-badge { font-size: 10px; font-weight: 800; background: #eef2f7; color: #334155; border-radius: 6px; padding: 2px 7px; }
 body.dark .at-badge { background: #243044; color: #c7d2e0; }
 /* Menu ⋮ da mensagem (editar/encaminhar/excluir). Fundo E letra combinam no claro e no escuro
@@ -1290,14 +1290,17 @@ body.dark .at-badge.at-parado { background: #3a2a08; color: #fcd34d; }
     radial-gradient(circle at 72% 62%, #00000008 0 2px, transparent 3px),
     radial-gradient(circle at 45% 88%, #00000007 0 2px, transparent 3px);
   background-size: 190px 190px, 240px 240px, 150px 150px; }
-body.dark .at-msgs { background-color: #0c1a17;
+/* O CHAT fica SEMPRE com a cara CLARA do WhatsApp (bege), mesmo com o CRM no modo escuro —
+   é o visual que o André aprovou no mockup. Só o painel de dados segue o tema. */
+body.dark .at-msgs { background-color: #e6ddd4;
   background-image:
-    radial-gradient(circle at 18% 28%, #ffffff08 0 2px, transparent 3px),
-    radial-gradient(circle at 72% 62%, #ffffff06 0 2px, transparent 3px); }
+    radial-gradient(circle at 18% 28%, #00000009 0 2px, transparent 3px),
+    radial-gradient(circle at 72% 62%, #00000008 0 2px, transparent 3px),
+    radial-gradient(circle at 45% 88%, #00000007 0 2px, transparent 3px); }
 .at-b { max-width: 76%; padding: 8px 11px 6px; border-radius: 9px; font-size: 14px; line-height: 1.45; box-shadow: 0 1px .5px #0002; white-space: pre-wrap; position: relative; }
 .at-b.in { align-self: flex-start; background: #fff; border-top-left-radius: 2px; }
 .at-b.out { align-self: flex-end; background: #d9fdd3; border-top-right-radius: 2px; }
-body.dark .at-b.in { background: #1f2c34; color: #e7ebf3; } body.dark .at-b.out { background: #144d37; color: #e7ebf3; }
+body.dark .at-b.in { background: #fff; color: #111b21; } body.dark .at-b.out { background: #d9fdd3; color: #111b21; }
 /* Seletores da lateral (Vendedor responsável / Mover coluna): legíveis nos 2 temas. */
 .at-sel { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: #0f172a; font: inherit; font-size: 13px; }
 .at-sel:disabled { opacity: .7; }
@@ -1310,23 +1313,23 @@ body.dark .at-sel option { background: #0b1220; color: #e7ebf3; }
 .at-aut { font-size: 11px; font-weight: 800; color: #16a34a; margin-bottom: 2px; }
 /* Nome do autor no balão verde (out): contraste FORTE — verde-escuro no claro, quase branco no escuro */
 .at-b.out .at-aut { color: #075e34; text-shadow: 0 1px 0 rgba(255,255,255,.35); }
-body.dark .at-b.out .at-aut { color: #eafff4; text-shadow: 0 1px 2px rgba(0,0,0,.55); }
+body.dark .at-b.out .at-aut { color: #075e34; text-shadow: 0 1px 0 rgba(255,255,255,.35); }
 .at-tm { font-size: 9.5px; color: #667781; float: right; margin: 6px 0 -2px 10px; }
 /* Citação (responder mensagem específica) dentro do balão */
 .at-quote { border-left: 3px solid #16a34a; background: #00000010; border-radius: 5px; padding: 3px 7px; margin-bottom: 4px; font-size: 11.5px; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-body.dark .at-quote { background: #ffffff14; color: #b8c2cc; }
+body.dark .at-quote { background: #00000010; color: #475569; }
 /* Botão de responder (aparece no balão) */
 .at-reply { position: absolute; top: -9px; right: -9px; width: 23px; height: 23px; border-radius: 50%; border: 1px solid var(--line,#e2e8f0); background: #fff; color: #16a34a; font-size: 12px; line-height: 1; cursor: pointer; box-shadow: 0 1px 3px #0003; opacity: 0; transition: opacity .12s; padding: 0; }
 .at-b:hover .at-reply { opacity: 1; }
 @media (hover: none) { .at-reply { opacity: .85; } }
-body.dark .at-reply { background: #1f2c34; border-color: #33454f; }
+body.dark .at-reply { background: #fff; border-color: #e2e8f0; color: #16a34a; }
 /* Nota interna (chat da equipe dentro da conversa) — o cliente não vê */
 .at-nota { align-self: center; max-width: 92%; background: #fef9c3; border: 1px solid #fde68a; color: #713f12; border-radius: 10px; padding: 7px 11px 6px; font-size: 12.5px; line-height: 1.4; white-space: pre-wrap; box-shadow: 0 1px 1px #0001; }
-body.dark .at-nota { background: #3a3011; border-color: #665318; color: #fde68a; }
+body.dark .at-nota { background: #fef9c3; border-color: #fde68a; color: #713f12; }
 .at-nota-hd { display: block; font-size: 10px; font-weight: 800; opacity: .8; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .3px; }
 /* Alternador cliente/interno no compose */
 .at-modo-pill { font: inherit; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line,#d5dbe6); background: var(--card,#fff); color: var(--ink,#334155); cursor: pointer; }
-body.dark .at-modo-pill { background: #0b1220; border-color: #ffffff1a; color: #cbd5e1; }
+body.dark .at-modo-pill { background: #fff; border-color: #d5dbe6; color: #334155; }
 /* Card aguardando resposta (mensagem nova do cliente): pisca e sobe pro topo */
 @keyframes atCardPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,.75); } 50% { box-shadow: 0 0 0 9px rgba(34,197,94,0); } }
 .fx-card.pulsando { border-left: 5px solid #16a34a; background: #f0fdf4; animation: atCardPulse 1.15s ease-in-out infinite; }
@@ -1355,31 +1358,32 @@ body.dark input, body.dark textarea, body.dark select { color-scheme: dark; }
 body.dark .fx-mover-sel { background: #18202f; color: #cbd5e1; border-color: #26324a; }
 /* Notinha discreta da visão da IA sobre a foto (o cliente NÃO vê isso) */
 .at-ianota { margin-top: 4px; font-size: 11px; font-style: italic; color: #64748b; opacity: .9; border-left: 2px solid #cbd5e1; padding-left: 6px; }
-body.dark .at-ianota { color: #94a3b8; border-color: #33455f; }
-.at-file { font-weight: 700; color: #0b3d2e; } body.dark .at-file { color: #86efac; }
+body.dark .at-ianota { color: #64748b; border-color: #cbd5e1; }
+.at-file { font-weight: 700; color: #0b3d2e; } body.dark .at-file { color: #0b3d2e; }
 /* Card de documento (PDF/doc) com prévia da 1ª página */
 .at-doc { display: block; text-decoration: none; color: inherit; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; max-width: 240px; background: #fff; }
-body.dark .at-doc { background: #0f1626; border-color: #26324a; }
+body.dark .at-doc { background: #fff; border-color: #e2e8f0; }
 .at-doc-prev { width: 100%; height: 150px; border: 0; display: block; pointer-events: none; background: #eef2f7; }
-body.dark .at-doc-prev { background: #0b1220; }
+body.dark .at-doc-prev { background: #eef2f7; }
+body.dark .at-doc-sub, body.dark .at-doc-load { color: #667781; }
 .at-doc-load { display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); gap: 6px; }
 .at-doc-hd { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
 .at-doc-ic { font-size: 20px; flex: 0 0 auto; }
 .at-doc-nm { font-weight: 700; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .at-doc-sub { font-size: 11px; color: var(--muted); }
 .at-sys { align-self: center; background: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
-body.dark .at-sys { background: #12233f; color: #93c5fd; }
+body.dark .at-sys { background: #dbeafe; color: #1e40af; }
 .at-ctx { border-left: 1px solid var(--line); padding: 14px; overflow-y: auto; min-height: 0; }
 body.dark .at-ctx { border-color: #26324a; }
 .at-block-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-bottom: 8px; }
 .at-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid #eef1f6; }
 body.dark .at-row { border-color: #1b2536; }
 .at-compose { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; background: #f0f2f5; border-top: 1px solid var(--line); padding: 10px 14px; }
-body.dark .at-compose { background: #111826; border-color: #26324a; }
+body.dark .at-compose { background: #f0f2f5; border-color: #d9e0e4; }
 .at-compose input, .at-compose textarea { flex: 1; border: 1px solid var(--line); border-radius: 20px; padding: 10px 15px; font-size: 13.5px; background: #fff; font-family: inherit; }
 /* Campo cresce na VERTICAL (linhas) em vez de esticar na horizontal */
 .at-compose textarea { resize: none; line-height: 1.4; max-height: 130px; overflow-y: auto; min-height: 42px; }
-body.dark .at-compose input, body.dark .at-compose textarea { background: #0b1220; border-color: #ffffff1a; color: #e7ebf3; }
+body.dark .at-compose input, body.dark .at-compose textarea { background: #fff; border-color: #d9e0e4; color: #111b21; }
 .at-send { width: 42px; height: 42px; border-radius: 50%; background: #25d366; color: #fff; border: none; font-size: 17px; cursor: pointer; flex: 0 0 auto; }
 .at-send:disabled { opacity: .5; }
 /* MOBILE: a conversa vira tela cheia e EMPILHA — mensagens em cima (com bastante altura),
