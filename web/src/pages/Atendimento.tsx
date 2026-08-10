@@ -190,8 +190,11 @@ export function Atendimento() {
   async function soltarConversa(coluna: string, id: string) {
     const c = board?.conversas.find((x) => x.id === id);
     if (!c || c.coluna === coluna) return;
+    movePend.current.set(id, coluna); movePendSince.current.set(id, Date.now()); // segura o card no lugar até confirmar
     setBoard((b) => (b ? { ...b, conversas: b.conversas.map((x) => (x.id === id ? { ...x, coluna, coluna_manual: coluna } : x)) } : b));
-    try { await api.atendMoverColuna(id, coluna); recarregar(); } catch { recarregar(); }
+    try { await api.atendMoverColuna(id, coluna); }
+    catch { movePend.current.delete(id); movePendSince.current.delete(id); alert("Não consegui mover o card agora. Verifique a conexão e tente de novo."); }
+    recarregar();
   }
   // Card "aguardando": cliente escreveu depois da nossa última resposta (ou nunca respondemos)
   // E o atendimento não foi encerrado depois disso. Encerrar para de piscar sem mandar nada.
@@ -263,6 +266,10 @@ export function Atendimento() {
   // servidor refletir. Assim um refresh que chegou ANTES do POST persistir não desfaz o
   // movimento do card pra coluna de follow-up (a corrida que fazia o card "voltar").
   const agendaPend = useRef<Map<string, number | null>>(new Map());
+  const agendaPendSince = useRef<Map<string, number>>(new Map()); // p/ o TTL: nunca prender o card pra sempre
+  const movePend = useRef<Map<string, string>>(new Map());        // id → coluna alvo (arrasto otimista)
+  const movePendSince = useRef<Map<string, number>>(new Map());
+  const PEND_TTL_MS = 15000; // se o servidor não confirmar em 15s, desiste do otimista (evita card preso)
   const recarregandoRef = useRef(false); // evita EMPILHAR polls quando a rede está lenta (tablet travava)
   function recarregar() {
     // Se o poll anterior ainda não voltou (rede lenta do tablet), NÃO dispara outro por cima —
@@ -271,15 +278,30 @@ export function Atendimento() {
     recarregandoRef.current = true;
     const u = getUser();
     api.atendBoard(u?.nome, ehGestorAtend()).then((bd) => {
-      const pend = agendaPend.current;
-      if (pend.size) {
+      const agora = Date.now();
+      const pend = agendaPend.current, pendSince = agendaPendSince.current;
+      const mv = movePend.current, mvSince = movePendSince.current;
+      if (pend.size || mv.size) {
         bd = { ...bd, conversas: bd.conversas.map((c) => {
-          if (!pend.has(c.id)) return c;
-          const want = pend.get(c.id) ?? null;
-          const has = c.agendado_ia ?? null;
-          const igual = want ? (!!has && Math.abs(Number(has) - want) < 1000) : !has;
-          if (igual) { pend.delete(c.id); return c; }            // servidor já refletiu → confirma
-          return { ...c, agendado_ia: want, coluna: want ? "contato-followup" : c.coluna }; // ainda não → mantém otimista
+          let cc = c;
+          // "Chamar IA" agendado (otimista): mantém o card em follow-up até o servidor confirmar.
+          if (pend.has(cc.id)) {
+            const want = pend.get(cc.id) ?? null;
+            const has = cc.agendado_ia ?? null;
+            const igual = want ? (!!has && Math.abs(Number(has) - want) < 1000) : !has;
+            const expirou = agora - (pendSince.get(cc.id) ?? agora) > PEND_TTL_MS; // TTL: nunca prende pra sempre
+            if (igual || expirou) { pend.delete(cc.id); pendSince.delete(cc.id); }
+            else cc = { ...cc, agendado_ia: want, coluna: want ? "contato-followup" : cc.coluna };
+          }
+          // Arrasto de coluna (otimista): mantém o card na coluna alvo até o servidor refletir —
+          // era o poll chegando ANTES do POST persistir que fazia o card "voltar e pular".
+          if (mv.has(cc.id)) {
+            const alvo = mv.get(cc.id)!;
+            const expirou = agora - (mvSince.get(cc.id) ?? agora) > PEND_TTL_MS;
+            if (cc.coluna === alvo || expirou) { mv.delete(cc.id); mvSince.delete(cc.id); }
+            else cc = { ...cc, coluna: alvo, coluna_manual: alvo };
+          }
+          return cc;
         }) };
       }
       setBoard(bd);
@@ -293,9 +315,9 @@ export function Atendimento() {
   // "Chamar IA": agenda (ou cancela) a saudação automática pro dia/horário escolhido.
   // Ao agendar, já MOVE o card pra coluna "⏰ Contato follow-up" na hora (sem esperar o refresh).
   async function agendarIa(id: string, quando: number | null, mensagem?: string) {
-    agendaPend.current.set(id, quando);
+    agendaPend.current.set(id, quando); agendaPendSince.current.set(id, Date.now());
     setBoard((b) => (b ? { ...b, conversas: b.conversas.map((c) => (c.id === id ? { ...c, agendado_ia: quando, agendado_msg: mensagem ?? null, coluna: quando ? "contato-followup" : c.coluna } : c)) } : b));
-    try { await api.atendAgendarIa(id, quando, mensagem); } catch { agendaPend.current.delete(id); }
+    try { await api.atendAgendarIa(id, quando, mensagem); } catch { agendaPend.current.delete(id); agendaPendSince.current.delete(id); }
     recarregar();
   }
   async function juntarDuplicados() {
