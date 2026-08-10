@@ -776,29 +776,46 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   );
 }
 
-// Converte um AudioBuffer (já decodificado) num WAV 16-bit LIMPO. Regravar assim conserta arquivos
-// que o <audio> nativo recusava — o WAV novo é impecável e o player nativo toca de boa.
+// Converte um AudioBuffer (já decodificado) num WAV 16-bit LIMPO, em MONO e 16 kHz (voz). Regravar
+// assim: (1) conserta arquivos que o <audio> nativo recusava; (2) deixa o arquivo LEVE (16 kHz mono
+// ≈ 32 KB/s) — em 48 kHz estéreo um áudio de poucos minutos passava dos 40 MB e dava "muito grande".
 function audioBufferParaWav(buf: AudioBuffer): ArrayBuffer {
+  const outRate = 16000;
+  const inRate = buf.sampleRate;
   const numCh = buf.numberOfChannels || 1;
-  const rate = buf.sampleRate;
-  const len = buf.length;
-  const blockAlign = numCh * 2;
-  const dataSize = len * blockAlign;
+  const inLen = buf.length;
+  // 1) Downmix pra MONO.
+  const mono = new Float32Array(inLen);
+  for (let c = 0; c < numCh; c++) {
+    const ch = buf.getChannelData(c);
+    for (let i = 0; i < inLen; i++) mono[i] += ch[i] / numCh;
+  }
+  // 2) Reamostra pra 16 kHz (interpolação linear) — só se a taxa de entrada for maior.
+  let data: Float32Array, rate: number;
+  if (inRate > outRate) {
+    const ratio = inRate / outRate;
+    const outLen = Math.floor(inLen / ratio);
+    data = new Float32Array(outLen);
+    for (let i = 0; i < outLen; i++) {
+      const pos = i * ratio, i0 = Math.floor(pos), frac = pos - i0;
+      const a = mono[i0] || 0, b = mono[i0 + 1] ?? a;
+      data[i] = a + (b - a) * frac;
+    }
+    rate = outRate;
+  } else { data = mono; rate = inRate; }
+  // 3) Escreve WAV 16-bit mono.
+  const dataSize = data.length * 2;
   const ab = new ArrayBuffer(44 + dataSize);
   const view = new DataView(ab);
   const wstr = (o: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
   wstr(0, "RIFF"); view.setUint32(4, 36 + dataSize, true); wstr(8, "WAVE");
-  wstr(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, numCh, true);
-  view.setUint32(24, rate, true); view.setUint32(28, rate * blockAlign, true); view.setUint16(32, blockAlign, true); view.setUint16(34, 16, true);
+  wstr(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
   wstr(36, "data"); view.setUint32(40, dataSize, true);
-  const chans: Float32Array[] = [];
-  for (let c = 0; c < numCh; c++) chans.push(buf.getChannelData(c));
   let o = 44;
-  for (let i = 0; i < len; i++) {
-    for (let c = 0; c < numCh; c++) {
-      const s = Math.max(-1, Math.min(1, chans[c][i]));
-      view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true); o += 2;
-    }
+  for (let i = 0; i < data.length; i++) {
+    const s = Math.max(-1, Math.min(1, data[i]));
+    view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true); o += 2;
   }
   return ab;
 }
