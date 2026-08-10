@@ -1093,6 +1093,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [mostrarResp, setMostrarResp] = useState(false);
   const [gerenciarResp, setGerenciarResp] = useState(false);
   const [arqRapidoOpen, setArqRapidoOpen] = useState(false);
+  const [transfOpen, setTransfOpen] = useState(false); // picker do botão "Transferir para outro vendedor"
   const [editDados, setEditDados] = useState(false);
   const [formD, setFormD] = useState({ contato_nome: "", nome: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
   const [respondendo, setRespondendo] = useState<{ id: string; texto: string } | null>(null);
@@ -1614,6 +1615,22 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 {usuarios.map((u) => <option key={u.usuario} value={u.nome}>{u.nome}</option>)}
               </select>
             </div>
+            {/* Botão dedicado de TRANSFERIR: manda a conversa pra outro vendedor (cai na fila
+                "Aguardando atendimento humano" dele, piscando, pra ele pegar). */}
+            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: "#bfdbfe", background: "#eff6ff", color: "#1d4ed8", fontWeight: 700 }} disabled={busy} onClick={() => setTransfOpen((v) => !v)} title="Transferir esta conversa para outro vendedor — cai na fila 'Aguardando atendimento humano' dele.">
+              🔄 Transferir para outro vendedor
+            </button>
+            {transfOpen && (
+              <div style={{ marginTop: 6, border: "1px solid var(--line)", borderRadius: 10, padding: 6, display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto" }}>
+                {usuarios.filter((u) => u.nome !== d?.responsavel).map((u) => (
+                  <button key={u.usuario} className="btn btn-soft" style={{ fontSize: 12.5, textAlign: "left", padding: "7px 10px" }} disabled={busy}
+                    onClick={async () => { await transferir(u.nome); setTransfOpen(false); alert(`✓ Conversa transferida para ${u.nome}. Ela aparece pra ${u.nome} em "Aguardando atendimento humano".`); }}>
+                    👤 {u.nome}
+                  </button>
+                ))}
+                {usuarios.filter((u) => u.nome !== d?.responsavel).length === 0 && <div className="muted" style={{ fontSize: 12, padding: "4px 6px" }}>Nenhum outro vendedor cadastrado.</div>}
+              </div>
+            )}
             {/* Mover pra outra coluna do quadro (lendo a conversa, você decide pra onde vai). */}
             <div style={{ marginTop: 10 }}>
               <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>↔️ Mover para coluna</div>
