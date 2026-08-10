@@ -1385,7 +1385,10 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   async function enviar() {
     if (!texto.trim() || enviandoRef.current) return; // trava anti-duplicado: Enter 2-3× rápido mandava a MESMA msg várias vezes
     enviandoRef.current = true; setBusy(true);
-    try { await api.atendEnviar(id, { texto: texto.trim(), autor: getUser()?.nome || d?.responsavel || "Atendente", responder_a: respondendo?.id }); setTexto(""); setRespondendo(null); carregar(); onMudou(); }
+    // Manda em NOME do vendedor responsável (o cliente conhece ele). Só usa quem está logado
+    // quando ainda NÃO tem responsável (aí quem responde primeiro assume). Antes ia sempre como
+    // o usuário logado (ex.: Administrador), mesmo com o Pedro escolhido como responsável.
+    try { await api.atendEnviar(id, { texto: texto.trim(), autor: d?.responsavel || getUser()?.nome || "Atendente", responder_a: respondendo?.id }); setTexto(""); setRespondendo(null); carregar(); onMudou(); }
     catch { alert("Não consegui enviar a mensagem agora. Verifique a conexão e tente de novo (seu texto continua no campo)."); }
     finally { setBusy(false); enviandoRef.current = false; }
   }
