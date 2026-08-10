@@ -769,7 +769,14 @@ export const api = {
     fd.append("file", file);
     if (autor) fd.append("autor", autor);
     if (legenda) fd.append("legenda", legenda);
-    return fetch(`/api/atendimento/${id}/enviar-arquivo`, { method: "POST", body: fd }).then((r) => j<{ ok: boolean; enviado: boolean; motivo?: string; url: string }>(r));
+    // Tempo-limite: em conexão instável (tablet), o upload podia ficar "Enviando…" pra sempre.
+    // Aborta em 90s e devolve um erro claro pra o botão destravar.
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 90000);
+    return fetch(`/api/atendimento/${id}/enviar-arquivo`, { method: "POST", body: fd, signal: ctrl.signal })
+      .then((r) => j<{ ok: boolean; enviado: boolean; motivo?: string; url: string }>(r))
+      .catch((e) => { if ((e as Error)?.name === "AbortError") throw new Error("demorou demais (conexão lenta). Tente de novo."); throw e; })
+      .finally(() => clearTimeout(t));
   },
   atendSugerir: (id: string) =>
     jsonPost(`/api/atendimento/${id}/sugerir`, {}).then((r) => j<{ sugestao: string }>(r)),
