@@ -3158,7 +3158,15 @@ export async function processarAgendamentos(env: Env): Promise<number> {
       const horaBr = new Date(Number(a.quando) - 3 * 3600 * 1000).getUTCHours();
       const saud = horaBr >= 5 && horaBr < 12 ? "Bom dia" : horaBr >= 12 && horaBr < 18 ? "Boa tarde" : "Boa noite";
       // Se o atendente escreveu uma mensagem própria no agendamento, manda ela; senão, a saudação padrão.
-      const texto = String(a.mensagem ?? "").trim() || `Olá${nome ? `, ${nome}` : ""}! ${saud}, tudo bem? 😊`;
+      // NOME: a mensagem própria pode usar {nome} (troca pelo 1º nome). Se ela NÃO tiver {nome} nem já
+      // citar o nome, a IA põe o nome no começo sozinha ("Marie, ...") — foi o que o André pediu.
+      let texto = String(a.mensagem ?? "").trim();
+      if (texto) {
+        if (/\{nome\}/i.test(texto)) texto = texto.replace(/\{nome\}/gi, nome).replace(/\s{2,}/g, " ").trim();
+        else if (nome && !new RegExp(`\\b${nome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(texto)) texto = `${nome}, ${texto}`;
+      } else {
+        texto = `Olá${nome ? `, ${nome}` : ""}! ${saud}, tudo bem? 😊`;
+      }
       if (conv) {
         await enviarBot(env, conv.id, tel, { tipo: "texto", texto }, "bot");
         await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();

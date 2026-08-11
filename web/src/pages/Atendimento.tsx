@@ -1090,7 +1090,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
               </div>
               {/* Mensagem própria (opcional): se vazio, a IA manda a saudação padrão */}
               <textarea value={agMsg} onChange={(e) => setAgMsg(e.target.value)} rows={3}
-                placeholder="Mensagem (opcional). Se deixar vazio, mando um bom dia/boa tarde automático."
+                placeholder="Mensagem (opcional). Use {nome} pra puxar o nome do cliente. Se deixar vazio, mando um bom dia/boa tarde automático."
                 style={{ width: "100%", fontSize: 13, padding: "7px 9px", borderRadius: 8, border: "1px solid var(--line)", resize: "vertical", fontFamily: "inherit", background: "var(--bg-soft,#fff)", color: "var(--ink)", boxSizing: "border-box" }} />
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <button disabled={!valido} onClick={() => { if (!valido) return; onAgendar(ms, agMsg.trim() || undefined); setAgOpen(false); }}
