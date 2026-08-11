@@ -1122,6 +1122,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [gerenciarResp, setGerenciarResp] = useState(false);
   const [arqRapidoOpen, setArqRapidoOpen] = useState(false);
   const [transfOpen, setTransfOpen] = useState(false); // picker do botão "Transferir para outro vendedor"
+  const [anexoMenu, setAnexoMenu] = useState(false); // menu do clipe (📎): opções de anexo, como no WhatsApp
   const [editDados, setEditDados] = useState(false);
   const [formD, setFormD] = useState({ contato_nome: "", nome: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
   const [respondendo, setRespondendo] = useState<{ id: string; texto: string } | null>(null);
@@ -1767,17 +1768,27 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
               </>
             : humano
             ? <>
-                <button className="at-send" style={{ background: "transparent", color: "var(--accent,#7c3aed)" }} disabled={busy || sugerindo} onClick={sugerir} title="Sugerir resposta com IA (você pode editar)">{sugerindo ? "…" : "✨"}</button>
-                <button className="at-send" style={{ background: "transparent" }} onClick={() => setMostrarResp((v) => !v)} title="Respostas prontas">📋</button>
-                <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={() => arqRef.current?.click()} title="Anexar arquivo (foto/documento/áudio) — ou cole um print com Ctrl+V">📎</button>
+                {/* Clipe (📎): abre o menu de anexos/ações, como no WhatsApp. */}
+                <div style={{ position: "relative", flex: "0 0 auto" }}>
+                  <button className="at-send" style={{ background: anexoMenu ? "rgba(0,128,105,.12)" : "transparent" }} disabled={busy} onClick={() => setAnexoMenu((v) => !v)} title="Anexar / mais opções">📎</button>
+                  {anexoMenu && (<>
+                    <div onClick={() => setAnexoMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 19 }} />
+                    <div style={{ position: "absolute", bottom: "100%", left: 0, marginBottom: 8, background: "var(--card,#fff)", border: "1px solid var(--line,#e2e8f0)", borderRadius: 12, boxShadow: "0 12px 32px #0003", zIndex: 20, minWidth: 218, overflow: "hidden", paddingBlock: 4 }}>
+                      <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); arqRef.current?.click(); }}>🖼️ Foto ou documento</button>
+                      <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); enviarCatalogo(); }}>📖 Enviar catálogo</button>
+                      <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); setArqRapidoOpen(true); }}>📚 Arquivos rápidos</button>
+                      <button className="at-anexo-opt" onClick={() => { setAnexoMenu(false); setMostrarResp(true); }}>📋 Respostas prontas</button>
+                      <button className="at-anexo-opt" disabled={busy || sugerindo} onClick={() => { setAnexoMenu(false); sugerir(); }}>✨ Sugerir resposta (IA)</button>
+                    </div>
+                  </>)}
+                </div>
                 <input ref={arqRef} type="file" multiple accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length === 1) escolherAnexo(fs[0]); else if (fs.length > 1) enviarVarios(fs); e.currentTarget.value = ""; }} />
-                <button className="at-send" style={{ background: gravando ? "#ef4444" : "transparent", color: gravando ? "#fff" : undefined }} disabled={busy || processandoAudio} onClick={() => (gravando ? pararGravacao() : iniciarGravacao())} title={processandoAudio ? "Preparando o áudio…" : gravando ? "Parar e ouvir antes de enviar" : "Gravar áudio (nota de voz)"}>{processandoAudio ? "⏳" : gravando ? "⏹" : "🎤"}</button>
-                {gravando && <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#ef4444", fontWeight: 800, fontSize: 13, fontVariantNumeric: "tabular-nums" }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", animation: "atpulse 1s ease-in-out infinite" }} />{mmss(gravSeg)}</span>}
-                {processandoAudio && <span style={{ color: "var(--muted)", fontSize: 12.5 }}>preparando…</span>}
-                <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={enviarCatalogo} title="Enviar o link do catálogo">📖</button>
-                <button className="at-send" style={{ background: "transparent" }} disabled={busy} onClick={() => setArqRapidoOpen(true)} title="Arquivos rápidos (catálogos salvos) — enviar com 1 clique">📚</button>
                 <textarea ref={inputRef} rows={1} placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
-                <button className="at-send" disabled={busy} onClick={enviar}>➤</button>
+                {gravando && <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#ef4444", fontWeight: 800, fontSize: 13, fontVariantNumeric: "tabular-nums", flex: "0 0 auto" }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", animation: "atpulse 1s ease-in-out infinite" }} />{mmss(gravSeg)}</span>}
+                {/* Direita: digitando → enviar (➤); vazio → gravar áudio (🎤), como no WhatsApp. */}
+                {texto.trim() && !gravando
+                  ? <button className="at-send" disabled={busy} onClick={enviar} title="Enviar">➤</button>
+                  : <button className="at-send" style={{ background: gravando ? "#ef4444" : "transparent", color: gravando ? "#fff" : undefined }} disabled={busy || processandoAudio} onClick={() => (gravando ? pararGravacao() : iniciarGravacao())} title={processandoAudio ? "Preparando o áudio…" : gravando ? "Parar e ouvir antes de enviar" : "Gravar áudio (nota de voz)"}>{processandoAudio ? "⏳" : gravando ? "⏹" : "🎤"}</button>}
               </>
             : <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", flexWrap: "wrap" }}>
                 <span className="muted2" style={{ flex: 1, minWidth: 160 }}>🤖 O robô está conduzindo.</span>

@@ -1406,6 +1406,12 @@ body.dark .at-compose { background: #f0f2f5; border-color: #d9e0e4; }
 /* Campo cresce na VERTICAL (linhas) em vez de esticar na horizontal */
 .at-compose textarea { resize: none; line-height: 1.4; max-height: 130px; overflow-y: auto; min-height: 42px; }
 body.dark .at-compose input, body.dark .at-compose textarea { background: #fff; border-color: #d9e0e4; color: #111b21; }
+.at-compose textarea { flex: 1 1 auto; min-width: 120px; }
+/* Opções do menu do clipe (📎) — como no WhatsApp */
+.at-anexo-opt { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 10px 14px; border: 0; background: transparent; color: var(--ink,#0f172a); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.at-anexo-opt:hover { background: rgba(0,128,105,.10); }
+.at-anexo-opt:disabled { opacity: .5; cursor: default; }
+body.dark .at-anexo-opt { color: #e7ebf3; }
 .at-send { width: 42px; height: 42px; border-radius: 50%; background: #25d366; color: #fff; border: none; font-size: 17px; cursor: pointer; flex: 0 0 auto; }
 .at-send:disabled { opacity: .5; }
 /* MOBILE: a conversa vira tela cheia e EMPILHA — mensagens em cima (com bastante altura),
