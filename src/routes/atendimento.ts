@@ -360,12 +360,14 @@ const MENU_SETORES =
   "*2* 🤝 Já sou cliente — falar com meu vendedor\n" +
   "*3* 📦 Status do meu pedido\n" +
   "*4* 💰 Financeiro (nota fiscal, boleto, pagamento)\n" +
-  "*5* 🏠 Uso pessoal (consumidor final)";
-// Descobre a opção escolhida: pelo número (1-5) OU por palavras-chave (quem não gosta de menu).
+  "*5* 🏠 Uso pessoal (consumidor final)\n" +
+  "*6* 📝 Receber novidades / fazer meu cadastro";
+// Descobre a opção escolhida: pelo número (1-6) OU por palavras-chave (quem não gosta de menu).
 function escolhaMenu(t: string): number {
   const s = String(t ?? "").trim().toLowerCase();
-  const m = s.match(/(?:^|\b)([1-5])(?:\b|[)\-.º°]|$)/); // número solto (aceita "1", "1)", "opção 2"…)
+  const m = s.match(/(?:^|\b)([1-6])(?:\b|[)\-.º°]|$)/); // número solto (aceita "1", "1)", "opção 2"…)
   if (m) return Number(m[1]);
+  if (/cadastr|novidade|promo[çc]|lan[çc]ament|receber\s+(as\s+)?ofert/.test(s)) return 6;
   if (/nota fiscal|boleto|fatura|pagament|financeir|cobran/.test(s)) return 4;
   if (/(status|onde est[aá]|rastre|andament|chegou|entrega).*pedido|meu pedido|do pedido/.test(s)) return 3;
   if (/j[aá] sou cliente|meu vendedor|minha vendedora|j[aá] compr|sou cliente de/.test(s)) return 2;
@@ -857,6 +859,16 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       await enviarBot(env, conv.id, tel, { tipo: "texto", texto: msg });
       await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
       return { conversa_id: conv.id, estado: "indicado-parceiro", coluna: colunaDe("indicado-parceiro"), respostas: [{ tipo: "texto", texto: msg }], notificarHumano: false };
+    }
+    if (op === 6) { // Cadastro/novidades → manda o link do cadastro e avisa o time.
+      const link = `${origin || ""}/api/atendimento/cadastro/${conv.id}`;
+      const msg = `Que ótimo! 💛 Pra te deixar por dentro de todos os *lançamentos e promoções*, é só preencher esse cadastrinho rápido (1 minutinho) 👇\n${link}\n\nAssim que preencher, um dos nossos vendedores te chama! 😊`;
+      await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      await garantirCardDaConversa(env, conv.id, "Menu: cadastro/novidades", "atendimento");
+      await avisarHumanoPush(env, conv).catch(() => {});
+      await enviarBot(env, conv.id, tel, { tipo: "texto", texto: msg });
+      await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: msg }], notificarHumano: true };
     }
     // Não entendeu a escolha (escreveu texto solto) → deixa a IA conduzir, sem travar.
     await env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
@@ -2530,6 +2542,66 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); } catch { /* ok */ } });
   try { c.executionCtx.waitUntil(enviarBg); } catch { /* sem executionCtx: segue sem bloquear */ }
   return c.json({ ok: true, enviado: true, url });
+});
+
+// ── CADASTRO DO CLIENTE (link enviado pela opção 6 do menu) ──────────────────────────
+// Página pública que o PRÓPRIO cliente abre e preenche; ao enviar, os "Dados coletados"
+// do card são preenchidos sozinhos e cai uma nota interna avisando o time.
+function escHtml(s: string): string { return String(s ?? "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m] as string)); }
+function cadastroClienteHtml(cv: { contato_nome?: string | null; nome?: string | null; cnpj?: string | null; cidade?: string | null; uf?: string | null }): string {
+  const v = (x?: string | null) => escHtml(x ?? "");
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cadastro — Big Tricot</title>
+<style>*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:#efe9df;color:#20302a;padding:20px 14px 40px}
+.card{max-width:440px;margin:0 auto;background:#fff;border-radius:18px;box-shadow:0 16px 40px -18px rgba(20,50,35,.35);overflow:hidden}
+.hd{background:#0a7a53;color:#fff;padding:22px 22px 18px;font-size:22px;font-weight:800}
+.bd{padding:20px 22px 26px}.sub{margin:0 0 18px;font-size:14.5px;color:#5c6b63;line-height:1.5}
+label{display:block;font-size:12.5px;font-weight:700;color:#35463f;margin:14px 0 5px}
+.opt{font-weight:500;color:#93a89c}
+input{width:100%;padding:12px 13px;border:1px solid #d8ddd7;border-radius:10px;font-size:15px;background:#fafbfa;color:#20302a}
+input:focus{outline:none;border-color:#0a7a53;background:#fff}
+.row{display:flex;gap:10px}
+button{margin-top:22px;width:100%;background:#0a7a53;color:#fff;border:0;border-radius:12px;padding:14px;font-size:16px;font-weight:800;cursor:pointer}
+button:active{background:#086044}</style></head>
+<body><div class="card"><div class="hd">💛 Big Tricot</div><div class="bd">
+<p class="sub">Preencha seu cadastro pra ficar por dentro de todos os <b>lançamentos e promoções</b> — leva 1 minutinho 😊</p>
+<form method="POST">
+<label>Seu nome<input name="nome" value="${v(cv.contato_nome)}" required></label>
+<label>Nome da sua loja<input name="loja" value="${v(cv.nome)}"></label>
+<label>CNPJ<input name="cnpj" value="${v(cv.cnpj)}" inputmode="numeric" placeholder="00.000.000/0000-00"></label>
+<div class="row"><label style="flex:2">Cidade<input name="cidade" value="${v(cv.cidade)}"></label><label style="flex:1">UF<input name="uf" value="${v(cv.uf)}" maxlength="2" placeholder="UF"></label></div>
+<label>E-mail<input name="email" type="email" placeholder="voce@email.com"></label>
+<label>Instagram <span class="opt">(opcional)</span><input name="instagram" placeholder="@sualoja"></label>
+<button type="submit">Enviar cadastro 💛</button>
+</form></div></div></body></html>`;
+}
+function cadastroOkHtml(): string {
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cadastro enviado — Big Tricot</title>
+<style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:#efe9df;color:#20302a;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.card{max-width:400px;background:#fff;border-radius:18px;box-shadow:0 16px 40px -18px rgba(20,50,35,.35);padding:34px 26px;text-align:center}
+.big{font-size:52px}h1{font-size:22px;margin:12px 0 8px;color:#0a7a53}p{color:#5c6b63;font-size:15px;line-height:1.5;margin:0}</style></head>
+<body><div class="card"><div class="big">💛</div><h1>Cadastro enviado!</h1><p>Obrigado! Recebemos seus dados. Um dos nossos vendedores já vai falar com você por aqui. 😊</p></div></body></html>`;
+}
+atendimento.get("/cadastro/:id", async (c) => {
+  const conv = await c.env.DB.prepare("SELECT contato_nome, nome, cnpj, cidade, uf FROM atend_conversas WHERE id=?").bind(c.req.param("id")).first<{ contato_nome: string | null; nome: string | null; cnpj: string | null; cidade: string | null; uf: string | null }>();
+  if (!conv) return c.html("<h1 style='font-family:sans-serif;text-align:center;margin-top:60px'>Cadastro não encontrado 😕</h1>", 404);
+  return c.html(cadastroClienteHtml(conv), 200, { "Cache-Control": "no-cache" });
+});
+atendimento.post("/cadastro/:id", async (c) => {
+  const id = c.req.param("id");
+  const conv = await c.env.DB.prepare("SELECT id FROM atend_conversas WHERE id=?").bind(id).first<{ id: string }>();
+  if (!conv) return c.html("<h1 style='font-family:sans-serif;text-align:center;margin-top:60px'>Cadastro não encontrado 😕</h1>", 404);
+  const form = await c.req.formData().catch(() => null);
+  const g = (k: string) => String(form?.get(k) ?? "").trim();
+  const nome = g("nome").slice(0, 120), loja = g("loja").slice(0, 120);
+  const cnpj = g("cnpj").replace(/\D/g, "").slice(0, 14);
+  const cidade = g("cidade").slice(0, 80), uf = g("uf").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+  const email = g("email").slice(0, 120), insta = g("instagram").slice(0, 60);
+  await c.env.DB.prepare(
+    "UPDATE atend_conversas SET contato_nome=COALESCE(NULLIF(?,''),contato_nome), nome=COALESCE(NULLIF(?,''),nome), cnpj=COALESCE(NULLIF(?,''),cnpj), cidade=COALESCE(NULLIF(?,''),cidade), uf=COALESCE(NULLIF(?,''),uf), lojista=CASE WHEN ?<>'' THEN 1 ELSE lojista END, atualizado_em=datetime('now') WHERE id=?"
+  ).bind(nome, loja, cnpj, cidade, uf, cnpj, id).run();
+  const resumo = [nome && "👤 " + nome, loja && "🏪 " + loja, cnpj && "CNPJ " + cnpj, (cidade || uf) && "📍 " + [cidade, uf].filter(Boolean).join("/"), email && "✉️ " + email, insta && "📸 " + insta].filter(Boolean).join("\n");
+  await addMsg(c.env, id, "out", "sistema", "sistema", "📝 Cliente preencheu o cadastro:\n" + resumo);
+  return c.html(cadastroOkHtml(), 200, { "Cache-Control": "no-cache" });
 });
 
 // Serve o arquivo anexado (do R2). A Z-API também busca por esta URL pública.
