@@ -283,6 +283,33 @@ async function clienteBloqueado(env: Env, tel: string): Promise<boolean> {
   return !!bloq;
 }
 
+// ── OPT-OUT (descadastro de divulgação) ──────────────────────────────────────────────
+// Lista de núcleos (DDD+8) que pediram pra SAIR das mensagens de divulgação. Vale SÓ para
+// DISPARO EM MASSA (campanha / remarket / prospecção) — NUNCA bloqueia resposta humana nem
+// o robô respondendo quem escreveu. Guardada em config JSON (atend_optout). Protege o número
+// do WhatsApp: quem respondeu "SAIR" nunca mais recebe divulgação automática.
+function nucleoOptout(tel: string): string { return digitos(tel).replace(/^55/, "").slice(-8); }
+function lerOptout(cfg: Record<string, string>): Set<string> {
+  try { const l = JSON.parse(cfg.atend_optout || "[]"); return new Set(Array.isArray(l) ? l.map((x) => String(x)) : []); } catch { return new Set(); }
+}
+function estaOptout(cfg: Record<string, string>, tel: string): boolean {
+  const n = nucleoOptout(tel); return n.length >= 8 && lerOptout(cfg).has(n);
+}
+async function addOptout(env: Env, tel: string): Promise<void> {
+  const n = nucleoOptout(tel); if (n.length < 8) return;
+  const cfg = await lerConfig(env); const set = lerOptout(cfg); if (set.has(n)) return;
+  set.add(n); await salvarConfigJson(env, "atend_optout", [...set].slice(-20000));
+}
+// A mensagem do cliente é um pedido de descadastro? (só quando é ESSENCIALMENTE a palavra de saída,
+// pra não confundir com "vou sair" no meio de uma frase). Sem acento, minúsculo, sem pontuação.
+function ehPedidoOptout(texto: string): boolean {
+  const t = String(texto || "").normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!t || t.length > 40) return false;
+  const EXATO = new Set(["sair", "parar", "stop", "descadastrar", "descadastro", "desinscrever", "remover", "sair da lista", "remover meu numero", "cancelar inscricao"]);
+  if (EXATO.has(t)) return true;
+  return /\bnao quero (mais )?receber\b/.test(t) || /\bpara de (me )?(mandar|enviar)\b/.test(t) || /\bnao quero mais mensagen/.test(t);
+}
+
 // Garante um card na coluna "📥 Catálogo (contato)" para uma conversa vinda do
 // catálogo (cliente entrou em contato / atividade do catálogo). Idempotente: se a
 // conversa já tem card, não duplica. Lê os dados direto da conversa.
@@ -701,6 +728,15 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Detecta interesse comercial + modelos citados (vale inclusive no atendimento humano).
   const cfgAt = await lerConfig(env);
   await detectarInteresse(env, conv.id, texto, cfgAt.interesse_modelos || "");
+  // OPT-OUT: cliente respondeu "SAIR" (ou PARAR/DESCADASTRAR/"não quero mais receber"...) → registra
+  // o descadastro (não recebe mais DIVULGAÇÃO automática: campanha/remarket/prospecção) e confirma.
+  // NÃO derruba o atendimento humano: se ele voltar a escrever de verdade, é atendido normalmente.
+  if (ehPedidoOptout(texto)) {
+    try { await addOptout(env, tel); } catch { /* não bloqueia */ }
+    try { await enviarBot(env, conv.id, tel, { tipo: "texto", texto: "Pronto! ✅ Você não vai mais receber nossas mensagens de divulgação. Se um dia quiser voltar a receber novidades, é só escrever aqui. 💚" }, "bot"); } catch { /* ok */ }
+    await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    return { conversa_id: conv.id, estado: conv.estado, coluna: colunaDe(conv.estado), respostas: [], notificarHumano: false };
+  }
   // AUTO-CNPJ: se a mensagem trouxe um CNPJ válido (14 dígitos) e ainda não temos, salva e já puxa
   // Loja/Cidade/UF (da base própria ou da Receita/BrasilAPI) — preenche os "Dados coletados" sozinho.
   try {
@@ -1740,6 +1776,11 @@ atendimento.post("/campanhas/:id/disparar", async (c) => {
   const alvo = await c.env.DB.prepare("SELECT id, telefone FROM atend_campanha_alvos WHERE campanha_id=? AND status='pendente' ORDER BY rowid LIMIT 1")
     .bind(id).first<{ id: string; telefone: string }>();
   if (!alvo) { await c.env.DB.prepare("UPDATE atend_campanhas SET status='concluida' WHERE id=?").bind(id).run(); return c.json({ ok: true, enviado: false, motivo: "não há contatos pendentes (campanha concluída)." }); }
+  // OPT-OUT: descadastrado não recebe — marca e pede pra clicar de novo (vai pro próximo pendente).
+  if (estaOptout(cfg, alvo.telefone)) {
+    await c.env.DB.prepare("UPDATE atend_campanha_alvos SET status='optout', motivo='descadastrado', enviado_em=datetime('now') WHERE id=?").bind(alvo.id).run();
+    return c.json({ ok: true, enviado: false, motivo: "contato descadastrado (pulado) — clique de novo para o próximo." });
+  }
   const ehImagem = camp.arquivo_tipo === "imagem", ehAudio = camp.arquivo_tipo === "audio";
   let r: { enviado: boolean; messageId?: string | null; motivo?: string };
   if (camp.arquivo_url) {
@@ -3209,6 +3250,7 @@ export async function processarRemarket(env: Env): Promise<number> {
       const conv = await env.DB.prepare("SELECT id, telefone, nome, contato_nome FROM atend_conversas WHERE id=?")
         .bind(rm.conversaId).first<{ id: string; telefone: string; nome: string | null; contato_nome: string | null }>();
       const tel = conv?.telefone || rm.telefone;
+      if (estaOptout(cfg, tel)) continue;   // descadastrado da divulgação → não manda remarket
       const nome = String(conv?.contato_nome || conv?.nome || "").trim().split(/\s+/)[0] || "";
       const texto = modelo.replace(/\{nome\}/gi, nome).replace(/\s{2,}/g, " ").trim();
       if (conv) {
@@ -3426,6 +3468,11 @@ export async function processarCampanhas(env: Env): Promise<number> {
       // Confere se a campanha ainda está ativa (pode ter sido pausada no meio).
       const ativa = await env.DB.prepare("SELECT 1 FROM atend_campanhas WHERE id=? AND status='ativa'").bind(camp.id).first();
       if (!ativa) break;
+      // OPT-OUT: quem pediu pra sair da divulgação NÃO recebe campanha (protege o número). Só marca e segue.
+      if (estaOptout(cfg, alvo.telefone)) {
+        await env.DB.prepare("UPDATE atend_campanha_alvos SET status='optout', motivo='descadastrado', enviado_em=datetime('now') WHERE id=?").bind(alvo.id).run();
+        continue;
+      }
       let r: { enviado: boolean; messageId?: string | null; motivo?: string };
       if (camp.arquivo_url) {
         r = await enviarMidiaZapi(env, alvo.telefone, { url: camp.arquivo_url, docData, ehImagem, ehAudio, ext: camp.arquivo_ext || "bin", fileName: camp.arquivo_nome || `arquivo.${camp.arquivo_ext || "bin"}`, caption: ehImagem ? (camp.mensagem || "") : "" });
@@ -3483,6 +3530,7 @@ export async function prospeccaoCatalogo(env: Env): Promise<number> {
     if (ehClienteInterno(cli.nome)) continue;
     const tel = digitos(cli.whatsapp || "");
     if (tel.length < 10) continue;
+    if (estaOptout(cfg, tel)) continue;   // descadastrado da divulgação → não reativa
     if (jaFalou.has("id:" + cli.id) || jaFalou.has("tel:" + tel.slice(-8))) continue;
     if (enviados > 0) await dormir((gapMin + Math.floor(Math.random() * 30)) * 1000); // espaço entre um cliente e o próximo
     // Só usa nome quando há CONTATO (pessoa). Sem contato, chama só "Olá!" —
