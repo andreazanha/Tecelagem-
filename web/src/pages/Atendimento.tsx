@@ -2167,7 +2167,7 @@ function ColunasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: ()
 }
 
 // ── Nova conversa: escolhe um contato do WhatsApp (ou digita o número) e manda a 1ª msg ──
-type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string; emCamp?: boolean; foto?: string | null };
+type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm" | "catalogo"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string; emCamp?: boolean; foto?: string | null; rep?: string | null };
 function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; onAbrir: (id: string) => void; onMudou: () => void }) {
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -2276,6 +2276,9 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
   const [busy, setBusy] = useState(false);
   const [colar, setColar] = useState("");           // prospecção: colar lista de números
   const [mostrarColar, setMostrarColar] = useState(false);
+  const [mostrarCatalogo, setMostrarCatalogo] = useState(false);  // puxar quem viu o catálogo
+  const [diasCat, setDiasCat] = useState("60");
+  const [puxando, setPuxando] = useState(false);
   const [anexo, setAnexo] = useState<{ url: string; tipo: string; nome: string; ext: string } | null>(null);
   const [subindo, setSubindo] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);   // editando uma campanha existente
@@ -2313,9 +2316,10 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     }).finally(() => setCarregando(false));
     carregarCampanhas();
   }, []);
-  const [fonte, setFonte] = useState<"todos" | "cliente" | "falou" | "colado">("todos");
+  const [fonte, setFonte] = useState<"todos" | "cliente" | "falou" | "colado" | "catalogo">("todos");
   const CAP_CONTATOS = 1000; // limite de exibição (perf). O resto acha-se pela busca.
-  const porFonte = (c: Contato) => fonte === "todos" || (fonte === "cliente" ? c.origem === "cliente" : fonte === "falou" ? !!c.falou : c.origem === "colado");
+  const casaFonte = (c: Contato, f: typeof fonte) => f === "todos" || (f === "cliente" ? c.origem === "cliente" : f === "falou" ? !!c.falou : f === "catalogo" ? c.origem === "catalogo" : c.origem === "colado");
+  const porFonte = (c: Contato) => casaFonte(c, fonte);
   const filtrados = (() => {
     const q = busca.trim().toLowerCase();
     const base = contatos.filter(porFonte);
@@ -2330,7 +2334,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
       || (dig.length >= 3 && c.telefone.includes(dig))
     ).slice(0, CAP_CONTATOS);
   })();
-  const contarFonte = (f: typeof fonte) => contatos.filter((c) => f === "todos" || (f === "cliente" ? c.origem === "cliente" : f === "falou" ? !!c.falou : c.origem === "colado")).length;
+  const contarFonte = (f: typeof fonte) => contatos.filter((c) => casaFonte(c, f)).length;
   // PROSPECÇÃO: cola uma lista de números (1 por linha, ou separados por vírgula) — inclusive de
   // quem NÃO está na base. Vira contato selecionado na campanha. Aceita "Nome, número" ou só número.
   function adicionarColados() {
@@ -2367,6 +2371,32 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     setSel((s) => { const n = new Set(s); selNovos.forEach((t) => n.add(t)); return n; });
     setColar("");
     alert(`✓ ${add} número(s) novo(s) adicionado(s)` + (jaTinha ? ` e ${jaTinha} que já estava(m) na base foram selecionados.` : "."));
+  }
+  // CATÁLOGO: puxa quem VISUALIZOU o catálogo (últimos N dias) e adiciona à lista, já selecionados.
+  // O backend já tira bloqueados e descadastrados. Nome do vendedor/região vão pra busca (palavras).
+  async function puxarCatalogo() {
+    setPuxando(true);
+    try {
+      const r = await api.atendFonteCatalogo(Math.max(1, Number(diasCat) || 60));
+      if (r.error) { alert(r.error); return; }
+      if (!r.viewers?.length) { alert(`Ninguém visualizou o catálogo nos últimos ${r.dias} dias (ou o log está vazio).`); return; }
+      const idx = new Map(contatos.map((c) => [nucleoTel(c.telefone), c] as const));
+      const novos: Contato[] = []; const selNovos = new Set<string>();
+      for (const v of r.viewers) {
+        const d = (v.telefone || "").replace(/\D/g, ""); if (d.length < 10 || d.length > 13) continue;
+        const palavras = [v.rep, v.regiao].filter(Boolean).join(" ").toLowerCase();  // busca por vendedor/região
+        const ex = idx.get(nucleoTel(d));
+        if (ex) { selNovos.add(ex.telefone); if (palavras) ex.palavras = ((ex.palavras || "") + " " + palavras).trim(); continue; }
+        if (novos.some((n) => nucleoTel(n.telefone) === nucleoTel(d))) continue;
+        novos.push({ nome: v.nome || telBonito(d), telefone: d, origem: "catalogo", uf: v.regiao || null, rep: v.rep || null, palavras });
+        selNovos.add(d);
+      }
+      if (novos.length) setContatos((cs) => [...novos, ...cs]);
+      setSel((s) => { const n = new Set(s); selNovos.forEach((t) => n.add(t)); return n; });
+      setFonte("catalogo"); setMostrarCatalogo(false);
+      const extra = (r.bloqueados || r.optout) ? ` (pulei ${r.bloqueados} bloqueado[s] e ${r.optout} descadastrado[s])` : "";
+      alert(`✓ ${selNovos.size} contato(s) que viram o catálogo nos últimos ${r.dias} dias, já selecionados${extra}. Escreva a mensagem e crie a campanha.`);
+    } catch (e) { alert((e as Error).message || "Não consegui puxar a lista do catálogo."); } finally { setPuxando(false); }
   }
   const toggle = (tel: string) => setSel((s) => { const n = new Set(s); if (n.has(tel)) n.delete(tel); else n.add(tel); return n; });
   const marcarFiltrados = () => setSel((s) => { const n = new Set(s); filtrados.forEach((c) => n.add(c.telefone)); return n; });
@@ -2470,8 +2500,18 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
             <span className="at-chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{sel.size} selecionado(s)</span>
             <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={marcarFiltrados}>Selecionar os {filtrados.length} da busca</button>
             <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => setMostrarColar((v) => !v)}>📋 Colar lista de números</button>
+            <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => setMostrarCatalogo((v) => !v)}>📖 Puxar quem viu o catálogo</button>
             {sel.size > 0 && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={limpar}>Limpar</button>}
           </div>
+          {mostrarCatalogo && (
+            <div style={{ margin: "0 0 8px", padding: 10, border: "1px dashed var(--line)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)" }}>
+              <div className="muted2" style={{ fontSize: 12, marginBottom: 6 }}>Puxa <b>quem visualizou o catálogo</b> (do log do catálogo). Já tira <b>bloqueados</b> e <b>descadastrados</b>. Depois, pra filtrar por <b>vendedor</b> ou <b>região</b>, é só digitar no campo de busca abaixo.</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <label className="muted2" style={{ fontSize: 12.5 }}>Últimos <input type="number" min={1} max={365} value={diasCat} onChange={(e) => setDiasCat(e.target.value)} style={{ width: 64, margin: "0 4px" }} /> dias</label>
+                <button className="btn btn-primary" style={{ fontSize: 12.5 }} disabled={puxando} onClick={puxarCatalogo}>{puxando ? "Puxando…" : "📖 Puxar e selecionar"}</button>
+              </div>
+            </div>
+          )}
           {mostrarColar && (
             <div style={{ margin: "0 0 8px", padding: 10, border: "1px dashed var(--line)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)" }}>
               <div className="muted2" style={{ fontSize: 12, marginBottom: 6 }}>Cole os números (1 por linha, ou separados por vírgula). Pode ser <b>"Nome, número"</b> ou só o número. Serve pra prospecção — <b>inclusive de quem ainda não está na base</b>.</div>
@@ -2482,7 +2522,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
             </div>
           )}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-            {([["todos", "Todos"], ["cliente", "📇 Base de clientes"], ["falou", "💬 Já falaram aqui"], ["colado", "📋 Colados"]] as const).map(([f, lb]) => (
+            {([["todos", "Todos"], ["cliente", "📇 Base de clientes"], ["falou", "💬 Já falaram aqui"], ["catalogo", "📖 Viram o catálogo"], ["colado", "📋 Colados"]] as const).map(([f, lb]) => (
               <button key={f} className={"at-chip" + (fonte === f ? " on" : "")} onClick={() => setFonte(f)}>{lb} ({contarFonte(f)})</button>
             ))}
           </div>
@@ -2495,7 +2535,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
                   <input type="checkbox" checked={sel.has(c.telefone)} onChange={() => toggle(c.telefone)} />
                   <div><div><b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span>
                     {c.emCamp && <span className="at-chip" style={{ background: "#fef3c7", color: "#92400e", fontSize: 10, marginLeft: 6 }} title="Este contato já está em outra campanha">📣 já em campanha</span>}</div>
-                    <div className="muted2" style={{ fontSize: 11 }}>{c.origem === "cliente" ? "📇 base" : c.origem === "colado" ? "📋 colado" : c.origem === "crm" ? "💬 já falou" : "📱 zap"}{c.falou && c.origem !== "crm" ? " · 💬 já falou" : ""}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : ""}</div></div>
+                    <div className="muted2" style={{ fontSize: 11 }}>{c.origem === "cliente" ? "📇 base" : c.origem === "colado" ? "📋 colado" : c.origem === "crm" ? "💬 já falou" : c.origem === "catalogo" ? "📖 viu o catálogo" : "📱 zap"}{c.rep ? ` · 👤 ${c.rep}` : ""}{c.falou && c.origem !== "crm" ? " · 💬 já falou" : ""}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : (c.uf ? ` · ${c.uf}` : "")}</div></div>
                 </label>
               ))}
           </div>

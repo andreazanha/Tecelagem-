@@ -728,6 +728,8 @@ export const api = {
     jsonPost(`/api/atendimento/campanhas/${id}/editar`, b).then((r) => j<{ ok: boolean; error?: string }>(r)),
   atendContatosEmCampanha: () =>
     fetch("/api/atendimento/campanhas/em-campanha").then((r) => j<{ telefones: string[] }>(r)),
+  atendFonteCatalogo: (dias: number) =>
+    fetch(`/api/atendimento/campanhas/fonte-catalogo?dias=${dias}`).then((r) => j<{ viewers: { telefone: string; nome: string; regiao: string; rep: string; ts: number }[]; total: number; bloqueados: number; optout: number; dias: number; error?: string }>(r)),
   atendConversa: (id: string) => getT(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),
   atendEntrada: (b: { telefone: string; texto: string }) =>
     jsonPost("/api/atendimento/entrada", b).then((r) => j<AtendResposta>(r)),

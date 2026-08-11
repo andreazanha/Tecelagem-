@@ -1763,6 +1763,70 @@ atendimento.get("/campanhas/em-campanha", async (c) => {
   ).all<{ telefone: string }>().catch(() => ({ results: [] as { telefone: string }[] }));
   return c.json({ telefones: (results || []).map((r) => r.telefone) });
 });
+// FONTE CATÁLOGO: lista de quem VISUALIZOU o catálogo (log de atividade bt-atividade), pronta pra
+// virar campanha. Filtra por período (dias), junta por telefone (mais recente), resolve o nome do
+// vendedor e JÁ TIRA bloqueados e descadastrados (opt-out). Só leitura — não escreve no catálogo.
+atendimento.get("/campanhas/fonte-catalogo", async (c) => {
+  const cfg = await lerConfig(c.env);
+  const url = urlLogAtividade(cfg);
+  if (!url) return c.json({ error: "O catálogo ainda não tem o log de atividade configurado (config.catalogo_log_url)." }, 400);
+  const dias = Math.min(365, Math.max(1, parseInt(c.req.query("dias") || "60", 10) || 60));
+  const desde = Date.now() - dias * 86400000;
+  let eventos: Array<Record<string, unknown>> = [];
+  try {
+    const resp = await buscarLogAtividade(c.env, url);
+    if (!resp.ok) return c.json({ error: `Não consegui ler o log do catálogo (HTTP ${resp.status}).` }, 502);
+    const dados = await resp.json<{ eventos?: Array<Record<string, unknown>> }>();
+    eventos = Array.isArray(dados?.eventos) ? dados.eventos : [];
+  } catch (e) { return c.json({ error: "Erro ao ler o log do catálogo: " + String((e as Error)?.message || e).slice(0, 120) }, 502); }
+  // repId → repNome (representantes cadastrados no catálogo + eventos "envio" que já trazem o nome).
+  const repMap = new Map<string, string>();
+  try {
+    const cat = await catalogoExterno();
+    const reps = (cat as { representantes?: unknown }).representantes;
+    if (Array.isArray(reps)) for (const r of reps as Record<string, unknown>[]) {
+      const rid = String(r?.repId ?? r?.id ?? r?.codigo ?? "").trim();
+      const rnome = String(r?.nome ?? r?.name ?? r?.repNome ?? "").trim();
+      if (rid && rnome) repMap.set(rid, rnome);
+    }
+  } catch { /* sem catálogo agora → cai no mapa por eventos */ }
+  for (const e of eventos) { const rid = String(e.repId ?? ""); const rnome = String(e.repNome ?? "").trim(); if (rid && rnome) repMap.set(rid, rnome); }
+  // Bloqueados (uma consulta só) — núcleo DDD+8 → não bater no banco por contato.
+  const bloqSet = new Set<string>();
+  try {
+    const { results } = await c.env.DB.prepare(`SELECT ${LIMPA_WPP} AS w FROM clientes WHERE COALESCE(bloqueado,0)=1`).all<{ w: string }>();
+    for (const r of (results || [])) { const n = String(r.w || "").replace(/\D/g, "").replace(/^55/, "").slice(-8); if (n.length >= 8) bloqSet.add(n); }
+  } catch { /* segue sem a lista */ }
+  // Só eventos de VISUALIZAÇÃO do cliente (não "envio" nosso, não "rep_acesso" do vendedor).
+  const VER = new Set(["acesso", "abertura", "download", "visualizacao", "view"]);
+  const porTel = new Map<string, { telefone: string; nome: string; regiao: string; rep: string; ts: number }>();
+  for (const e of eventos) {
+    if (!VER.has(String(e.tipo ?? "").trim().toLowerCase())) continue;
+    const ts = Number(e.ts ?? 0);
+    if (ts && ts < desde) continue;
+    let dig = String(e.telefone ?? e.clienteTel ?? "").replace(/\D/g, "");
+    if (!dig) continue;
+    if (dig.length >= 10 && dig.length <= 11) dig = "55" + dig;   // sem DDI → assume Brasil
+    const nuc = dig.replace(/^55/, "").slice(-8);
+    if (nuc.length < 8) continue;
+    const rep = String(e.repNome ?? "").trim() || repMap.get(String(e.repId ?? "")) || "";
+    const nome = String(e.loja ?? e.clienteNome ?? "").trim().slice(0, 80);
+    const regiao = String(e.regiao ?? "").trim();
+    const cur = porTel.get(nuc);
+    if (!cur || ts > cur.ts) porTel.set(nuc, { telefone: dig, nome: nome || cur?.nome || "", regiao: regiao || cur?.regiao || "", rep: rep || cur?.rep || "", ts });
+    else { if (!cur.nome && nome) cur.nome = nome; if (!cur.rep && rep) cur.rep = rep; if (!cur.regiao && regiao) cur.regiao = regiao; }
+  }
+  const viewers: Array<{ telefone: string; nome: string; regiao: string; rep: string; ts: number }> = [];
+  let bloqueados = 0, optout = 0;
+  for (const v of porTel.values()) {
+    const nuc = v.telefone.replace(/^55/, "").slice(-8);
+    if (estaOptout(cfg, v.telefone)) { optout++; continue; }
+    if (bloqSet.has(nuc)) { bloqueados++; continue; }
+    viewers.push(v);
+  }
+  viewers.sort((a, b) => b.ts - a.ts);
+  return c.json({ viewers, total: viewers.length, bloqueados, optout, dias });
+});
 // DISPARAR AGORA: manda JÁ a próxima mensagem pendente (o resto segue no cron, aos poucos).
 // Serve pra não esperar o cron de 5 min e pra DIAGNOSTICAR (devolve o motivo se falhar).
 atendimento.post("/campanhas/:id/disparar", async (c) => {
