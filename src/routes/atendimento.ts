@@ -549,7 +549,7 @@ async function consultarStatusPedido(env: Env, cnpjDig: string): Promise<Saida[]
   return [{ tipo: "texto", texto: txt }];
 }
 
-interface IaSaida { saidas: Saida[]; novoEstado: EstadoAtend; notificarHumano: boolean; tipo: string | null; catalogo?: boolean; consultarPedido?: boolean; cnpjConsulta?: string; setor?: string }
+interface IaSaida { saidas: Saida[]; novoEstado: EstadoAtend; notificarHumano: boolean; tipo: string | null; catalogo?: boolean; consultarPedido?: boolean; cnpjConsulta?: string; setor?: string; dados?: { cnpj?: string; cidade?: string; uf?: string } }
 
 // Roda a IA de triagem e traduz a decisão em resposta + próximo estado do fluxo.
 // `origin` é usado pra montar o link da vitrine (indicação de consumidor final).
@@ -563,6 +563,8 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, vitrineBase: 
   // indicar_parceiro OU disse que é consumidor, tratamos como indicação. Com o ESTADO em mãos,
   // o sistema JÁ envia o link da vitrine filtrado por UF (a pessoa escolhe a cidade mais perto lá).
   const uf = ufDe(dec.uf) || ufDe(conv.uf);
+  // Dados que a IA extraiu da mensagem (pra preencher o painel sozinho — "Dados coletados").
+  const dados = { cnpj: (digitos(dec.cnpj) || "").length === 14 ? digitos(dec.cnpj) : undefined, cidade: String(dec.cidade ?? "").trim() || undefined, uf: uf || undefined };
   const querIndicar = dec.acao === "indicar_parceiro" || dec.intencao === "consumidor";
   if (querIndicar) {
     if (uf) {
@@ -581,7 +583,7 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, vitrineBase: 
   switch (dec.acao) {
     case "coletar_lojista":
       // A IA já pediu o nome da loja na resposta → o fluxo determinístico captura o nome e pede o CNPJ.
-      return { saidas, novoEstado: "triagem-nome", notificarHumano: false, tipo: "lojista", setor: setor || "vendas" };
+      return { saidas, novoEstado: "triagem-nome", notificarHumano: false, tipo: "lojista", setor: setor || "vendas", dados };
     case "enviar_catalogo":
       // SÓ quando o cliente PEDE o catálogo. A mensagem do catálogo (link virtual) é
       // anexada no núcleo (receberMensagem) e JÁ é o convite completo (texto + link +
@@ -592,9 +594,9 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, vitrineBase: 
       // Cliente quer saber o status do pedido. O núcleo resolve o CNPJ e consulta a produção.
       return { saidas, novoEstado: "ia-triagem", notificarHumano: false, tipo: conv.tipo ?? null, consultarPedido: true, cnpjConsulta: digitos(dec.cnpj) || digitos(conv.cnpj), setor: setor || "pcp" };
     case "humano":
-      return { saidas, novoEstado: "atendimento-humano", notificarHumano: true, tipo: conv.tipo ?? null, setor };
+      return { saidas, novoEstado: "atendimento-humano", notificarHumano: true, tipo: conv.tipo ?? null, setor, dados };
     default:
-      return { saidas, novoEstado: "ia-triagem", notificarHumano: false, tipo: conv.tipo ?? null, setor };
+      return { saidas, novoEstado: "ia-triagem", notificarHumano: false, tipo: conv.tipo ?? null, setor, dados };
   }
 }
 
@@ -974,8 +976,16 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
         ia.saidas = [{ tipo: "texto", texto: "Pra localizar seu pedido, me passa o *CNPJ* da sua loja (só os números)? 😊" }];
       }
     }
-    await env.DB.prepare("UPDATE atend_conversas SET estado=?, tipo=COALESCE(?, tipo), setor=COALESCE(NULLIF(?,''), setor), atualizado_em=datetime('now') WHERE id=?")
-      .bind(ia.novoEstado, ia.tipo, ia.setor ?? "", conv.id).run();
+    // Salva também o que a IA extraiu (CNPJ/Cidade/UF) nos campos VAZIOS — preenche o painel sozinho.
+    await env.DB.prepare("UPDATE atend_conversas SET estado=?, tipo=COALESCE(?, tipo), setor=COALESCE(NULLIF(?,''), setor), cnpj=COALESCE(NULLIF(cnpj,''), ?), cidade=COALESCE(NULLIF(cidade,''), ?), uf=COALESCE(NULLIF(uf,''), ?), atualizado_em=datetime('now') WHERE id=?")
+      .bind(ia.novoEstado, ia.tipo, ia.setor ?? "", ia.dados?.cnpj ?? null, ia.dados?.cidade ?? null, ia.dados?.uf ?? null, conv.id).run();
+    // Se a IA achou um CNPJ válido, puxa Loja/Cidade/UF da Receita pra completar o painel.
+    if (ia.dados?.cnpj && digitos(conv.cnpj).length !== 14) {
+      try {
+        const info = await deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, cfgAt.vitrine_url || VITRINE_PUBLICA).consultarCnpj(ia.dados.cnpj);
+        if (info?.nome || info?.cidade || info?.uf) await env.DB.prepare("UPDATE atend_conversas SET nome=COALESCE(NULLIF(nome,''), ?), cidade=COALESCE(NULLIF(cidade,''), ?), uf=COALESCE(NULLIF(uf,''), ?) WHERE id=?").bind(info?.nome ?? null, info?.cidade ?? null, info?.uf ?? null, conv.id).run();
+      } catch { /* ok */ }
+    }
     if (ia.novoEstado === "atendimento-humano" && estadoAntes !== "atendimento-humano") await avisarHumanoPush(env, conv);
     // Fora do horário e a IA está passando pra humano → avisa o cliente sobre o horário.
     if (ia.novoEstado === "atendimento-humano" && aviso) {
