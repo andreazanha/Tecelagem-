@@ -112,6 +112,14 @@ export function Atendimento() {
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [filtroAtend, setFiltroAtend] = useState<string>("todos"); // gestor: filtra por vendedor
   const [busca, setBusca] = useState<string>(""); // busca de conversa no quadro (nome/loja/telefone/cidade)
+  const [buscaServ, setBuscaServ] = useState<{ id: string; telefone: string; nome: string | null; contato_nome: string | null; cidade: string | null; uf: string | null; coluna: string; ultima_msg: string | null }[] | null>(null);
+  const [buscandoServ, setBuscandoServ] = useState(false);
+  async function buscarNoServidor() {
+    const q = busca.trim();
+    if (q.length < 2) return;
+    setBuscandoServ(true);
+    try { const r = await api.atendBuscarTudo(q); setBuscaServ(r.resultados); } catch { setBuscaServ([]); } finally { setBuscandoServ(false); }
+  }
   const [membros, setMembros] = useState<string[]>([]); // equipe (chat interno)
   const [chatCom, setChatCom] = useState<string | null>(null); // membro com quem estou conversando
   const [dmResumo, setDmResumo] = useState<{ outro: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean }[]>([]);
@@ -534,7 +542,25 @@ export function Atendimento() {
             <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar conversa por nome, loja, telefone ou cidade…"
               style={{ width: "100%", padding: "9px 34px 9px 32px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 13.5 }} />
             {busca && <button onClick={() => setBusca("")} title="Limpar" style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "transparent", border: 0, cursor: "pointer", fontSize: 15, opacity: 0.6, lineHeight: 1 }}>✕</button>}
-            {q && <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>{total} conversa(s) encontrada(s){dig.length >= 3 ? "" : ""} — mostrando só quem bate com a busca.</div>}
+            {q && <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>{total} conversa(s) no quadro{dig.length >= 3 ? "" : ""} — <button onClick={buscarNoServidor} disabled={buscandoServ || busca.trim().length < 2} style={{ background: "transparent", border: 0, color: "var(--accent,#2563eb)", fontWeight: 700, cursor: "pointer", fontSize: 11.5, padding: 0, textDecoration: "underline" }}>{buscandoServ ? "procurando…" : "🔎 procurar em TODAS as conversas"}</button></div>}
+            {buscaServ && (
+              <div style={{ position: "absolute", left: 0, right: 0, top: "100%", marginTop: 6, background: "var(--card,#fff)", border: "1px solid var(--line)", borderRadius: 12, boxShadow: "0 12px 32px #0003", zIndex: 30, maxHeight: 380, overflowY: "auto" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid var(--line)", fontSize: 12 }}>
+                  <b>{buscaServ.length} resultado(s) no servidor</b>
+                  <button onClick={() => setBuscaServ(null)} style={{ background: "transparent", border: 0, cursor: "pointer", fontSize: 15, opacity: 0.6 }}>✕</button>
+                </div>
+                {buscaServ.length === 0 && <div className="muted2" style={{ padding: 12, fontSize: 12.5 }}>Nada encontrado. Confere o nome ou o número.</div>}
+                {buscaServ.map((r) => {
+                  const lbl = board.colunas.find((x) => x.id === r.coluna)?.label || r.coluna;
+                  return (
+                    <button key={r.id} onClick={() => { setAbrir(r.id); setBuscaServ(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: 0, borderTop: "1px solid var(--line)", background: "transparent", cursor: "pointer" }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{r.contato_nome || r.nome || telBonito(r.telefone)} <span className="muted" style={{ fontWeight: 400 }}>· {telBonito(r.telefone)}</span></div>
+                      <div className="muted2" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>📍 {lbl}{r.ultima_msg ? " · " + r.ultima_msg : ""}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })()}

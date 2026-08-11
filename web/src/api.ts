@@ -703,6 +703,8 @@ export const api = {
     jsonPost("/api/atendimento/abrir-conversa", b).then((r) => j<{ id?: string; card_id?: string | null; error?: string }>(r)),
   // Robô de atendimento (WhatsApp)
   atendBoard: (usuario?: string, gestor?: boolean) => getT(`/api/atendimento?usuario=${encodeURIComponent(usuario || "")}&gestor=${gestor ? 1 : 0}`).then((r) => j<AtendBoard>(r)),
+  // Busca em TODAS as conversas no servidor (acha até as que o quadro não carregou).
+  atendBuscarTudo: (q: string) => getT(`/api/atendimento/buscar/tudo?q=${encodeURIComponent(q)}`).then((r) => j<{ resultados: { id: string; telefone: string; nome: string | null; contato_nome: string | null; cnpj: string | null; cidade: string | null; uf: string | null; estado: string | null; responsavel: string | null; ultima_msg: string | null; coluna: string }[] }>(r)),
   atendColunas: () => fetch("/api/atendimento/colunas").then((r) => j<{ colunas: AtendColuna[] }>(r)),
   atendSalvarColunas: (extra: { id?: string; label: string; cor: string }[], ordem: string[]) =>
     jsonPost("/api/atendimento/colunas", { extra, ordem }).then((r) => j<{ ok: boolean; colunas: AtendColuna[] }>(r)),

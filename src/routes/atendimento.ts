@@ -2747,6 +2747,33 @@ atendimento.post("/:id/enviar-catalogo", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── BUSCA GERAL: procura em TODAS as conversas (não só as que o quadro carregou), por
+// nome, loja, telefone, cidade ou CNPJ. Mostra em que coluna cada uma está e deixa abrir.
+atendimento.get("/buscar/tudo", async (c) => {
+  const q = String(c.req.query("q") ?? "").trim().toLowerCase();
+  if (q.length < 2) return c.json({ resultados: [] });
+  const dig = q.replace(/\D/g, "");
+  const like = `%${q}%`;
+  const telLike = dig.length >= 3 ? `%${dig.slice(-8)}%` : "\x00";
+  const cnpjLike = dig ? `%${dig}%` : "\x00";
+  const { results } = await c.env.DB.prepare(
+    `SELECT c.id, c.telefone, c.nome, c.contato_nome, c.cnpj, c.cidade, c.uf, c.estado, c.responsavel, c.ultima_in_em, c.ultima_out_em, c.encerrado_em, c.tipo, c.origem, c.atualizado_em,
+        (SELECT texto FROM atend_mensagens m WHERE m.conversa_id=c.id AND m.tipo NOT IN ('nota','sistema') ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 1) AS ultima_msg
+       FROM atend_conversas c
+      WHERE lower(COALESCE(c.nome,'')) LIKE ? OR lower(COALESCE(c.contato_nome,'')) LIKE ? OR lower(COALESCE(c.cidade,'')) LIKE ?
+         OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.telefone,''),'+',''),'-',''),' ',''),'(',''),')','') LIKE ?
+         OR REPLACE(REPLACE(REPLACE(COALESCE(c.cnpj,''),'.',''),'/',''),'-','') LIKE ?
+      ORDER BY c.atualizado_em DESC LIMIT 40`
+  ).bind(like, like, like, telLike, cnpjLike).all<Record<string, unknown>>().catch(() => ({ results: [] as Record<string, unknown>[] }));
+  const resultados = (results || []).map((r) => ({
+    id: String(r.id), telefone: String(r.telefone ?? ""), nome: (r.nome as string) ?? null, contato_nome: (r.contato_nome as string) ?? null,
+    cnpj: (r.cnpj as string) ?? null, cidade: (r.cidade as string) ?? null, uf: (r.uf as string) ?? null,
+    estado: (r.estado as string) ?? null, responsavel: (r.responsavel as string) ?? null, ultima_msg: (r.ultima_msg as string) ?? null,
+    coluna: colunaAtendimento(r as { estado?: string | null; responsavel?: string | null; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null; tipo?: string | null; origem?: string | null }),
+  }));
+  return c.json({ resultados });
+});
+
 // ── DETALHE (conversa + histórico) ─────────────────────────────────────────────────
 atendimento.get("/:id", async (c) => {
   const conv = await c.env.DB.prepare("SELECT * FROM atend_conversas WHERE id = ?").bind(c.req.param("id")).first<ConvRow>();
