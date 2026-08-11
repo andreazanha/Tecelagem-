@@ -1775,7 +1775,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                   </button>
                   {anexoMenu && (<>
                     <div onClick={() => setAnexoMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 19 }} />
-                    <div style={{ position: "absolute", bottom: "100%", left: 0, marginBottom: 8, background: "var(--card,#fff)", border: "1px solid var(--line,#e2e8f0)", borderRadius: 12, boxShadow: "0 12px 32px #0003", zIndex: 20, minWidth: 218, overflow: "hidden", paddingBlock: 4 }}>
+                    <div style={{ position: "absolute", bottom: "100%", left: 0, marginBottom: 8, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, boxShadow: "0 12px 32px #0003", zIndex: 20, minWidth: 218, overflow: "hidden", paddingBlock: 4 }}>
                       <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); arqRef.current?.click(); }}>🖼️ Foto ou documento</button>
                       <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); enviarCatalogo(); }}>📖 Enviar catálogo</button>
                       <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); setArqRapidoOpen(true); }}>📚 Arquivos rápidos</button>
