@@ -202,9 +202,13 @@ export function Atendimento() {
   // recente que a nossa saída) e a conversa não foi encerrada depois. Se a última mensagem for
   // NOSSA (já respondemos), para de piscar.
   const aguardando = (c: AtendConversa) => !!c.ultima_in_em && (c.ultima_in_em || "") > (c.ultima_out_em || "") && (c.ultima_in_em || "") > (c.encerrado_em || "");
+  // Card em TRIAGEM com cliente ativo (a IA está atendendo): TAMBÉM pisca — pra o time VER toda
+  // conversa em triagem e poder entrar (o lead não fica "preso" com a IA sem vocês saberem).
+  // Não pisca autorresposta de campanha (é robô de loja, não gente). Silenciar tira o piscar.
+  const emTriagemAtiva = (c: AtendConversa) => c.coluna === "triagem" && c.origem !== "campanha" && !!c.ultima_in_em && (c.ultima_in_em || "") > (c.encerrado_em || "");
   // A coluna "Campanhas" nunca pisca: são autorrespostas de loja (robô), não gente esperando.
   // (Quando responder de verdade, o card sai pra "Aguardando humano" e aí sim pisca.)
-  const pulsaVerde = (c: AtendConversa) => !c.silenciado && c.coluna !== "campanha" && aguardando(c);
+  const pulsaVerde = (c: AtendConversa) => !c.silenciado && c.coluna !== "campanha" && (aguardando(c) || emTriagemAtiva(c));
 
   // Busca do quadro: um card "bate" com a busca por nome/loja/cidade/UF/representante ou pelo telefone
   // (a partir de 3 dígitos). Vazio = mostra todos.
