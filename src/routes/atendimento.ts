@@ -3161,8 +3161,12 @@ export async function processarAgendamentos(env: Env): Promise<number> {
       // NOME: a mensagem própria pode usar {nome} (troca pelo 1º nome). Se ela NÃO tiver {nome} nem já
       // citar o nome, a IA põe o nome no começo sozinha ("Marie, ...") — foi o que o André pediu.
       let texto = String(a.mensagem ?? "").trim();
+      const TOKEN_NOME = /[\{\[\(]\s*nome\s*[\}\]\)]/gi;   // aceita {nome}, [nome] ou (nome)
       if (texto) {
-        if (/\{nome\}/i.test(texto)) texto = texto.replace(/\{nome\}/gi, nome).replace(/\s{2,}/g, " ").trim();
+        if (TOKEN_NOME.test(texto)) {
+          texto = texto.replace(TOKEN_NOME, nome).replace(/\s{2,}/g, " ").trim();
+          if (!nome) texto = texto.replace(/,\s*([!?.…])/g, "$1").replace(/,\s*$/, "").replace(/\s{2,}/g, " ").trim();  // "Bom dia, !" → "Bom dia!"
+        }
         else if (nome && !new RegExp(`\\b${nome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(texto)) texto = `${nome}, ${texto}`;
       } else {
         texto = `Olá${nome ? `, ${nome}` : ""}! ${saud}, tudo bem? 😊`;
