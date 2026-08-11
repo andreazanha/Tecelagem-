@@ -869,9 +869,19 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
       return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: msg }], notificarHumano: true };
     }
-    // Não entendeu a escolha (escreveu texto solto) → deixa a IA conduzir, sem travar.
-    await env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
-    conv.estado = "ia-triagem";
+    // Resposta que não bateu com número nem palavra-chave. Regra do André: SÓ consumidor final
+    // não vai pro humano. Então: se sinaliza uso pessoal → manda o link das lojas; senão →
+    // Aguardando atendimento humano (não deixa a IA "segurar" o card na triagem).
+    if (CONSUMIDOR_FINAL_RE.test(texto) || SEM_CNPJ_RE.test(texto)) {
+      const base = (cfgAt.vitrine_url || VITRINE_PUBLICA).replace(/\/+$/, "");
+      const link = ufMenu ? `${base}?uf=${encodeURIComponent(ufMenu)}` : base;
+      const msg = `Oi! 💛 A *Big Tricot* vende no *atacado, só para lojistas* — mas você encontra nossas peças nas *lojas parceiras*! Escolha a mais perto de você aqui 👇\n${link}`;
+      await env.DB.prepare("UPDATE atend_conversas SET estado='indicado-parceiro', tipo='consumidor', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      await enviarBot(env, conv.id, tel, { tipo: "texto", texto: msg });
+      await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      return { conversa_id: conv.id, estado: "indicado-parceiro", coluna: colunaDe("indicado-parceiro"), respostas: [{ tipo: "texto", texto: msg }], notificarHumano: false };
+    }
+    return await paraHumano("", "Perfeito! 💛 Já vou te passar pra um dos nossos vendedores pra continuar seu atendimento, tá? 😊", "Menu: resposta livre → humano");
   }
 
   // IA de triagem (se ligada). A Big responde TODO MUNDO de forma natural — inclusive
