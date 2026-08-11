@@ -841,13 +841,10 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
       return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: msg + aviso }], notificarHumano: true };
     };
-    if (op === 1) { // Comprar (lojista) → pede CNPJ; o fluxo determinístico (processar) cuida do resto.
-      await env.DB.prepare("UPDATE atend_conversas SET estado='aguardando-cnpj', tipo='lojista', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
-      const msg = "Que ótimo! 💛 Pra te atender no *atacado*, primeiro preciso confirmar seu cadastro de lojista. Me passa o *CNPJ* da sua loja (só os números), por favor? 😊";
-      await enviarBot(env, conv.id, tel, { tipo: "texto", texto: msg });
-      await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
-      return { conversa_id: conv.id, estado: "aguardando-cnpj", coluna: colunaDe("aguardando-cnpj"), respostas: [{ tipo: "texto", texto: msg }], notificarHumano: false };
-    }
+    // Opção 1 (comprar/lojista) → JÁ vai pra fila humana (o card aparece pro time), pedindo o CNPJ
+    // pra adiantar — e o CNPJ, quando o cliente mandar, preenche o card sozinho (auto-CNPJ).
+    if (op === 1) { await env.DB.prepare("UPDATE atend_conversas SET tipo='lojista' WHERE id=?").bind(conv.id).run();
+      return await paraHumano("vendas", "Que ótimo! 💛 Já vou te passar pra um dos nossos vendedores pra te atender no *atacado*. Pra adiantar, me manda o *CNPJ* da sua loja (só os números)? 😊", "Menu: comprar (lojista)"); }
     if (op === 2) return await paraHumano("vendas", "Que bom te ver! 💛 Já vou te passar pra um dos nossos vendedores pra continuar seu atendimento, tá? 😊", "Menu: já é cliente");
     if (op === 3) return await paraHumano("pcp", "Perfeito! 💛 Já vou te passar pro time que acompanha os pedidos pra verificar o status pra você, tá? 😊", "Menu: status do pedido");
     if (op === 4) return await paraHumano("fiscal", "Certo! 💛 Já te passo pro nosso *financeiro* pra resolver isso pra você, tá? 😊", "Menu: financeiro");
