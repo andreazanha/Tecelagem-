@@ -352,6 +352,28 @@ const SAUDACAO_NOVO =
   "Somos uma fábrica especializada em tricô para decoração e atendemos exclusivamente lojistas no atacado.\n\n" +
   "Para eu te ajudar melhor, você já é nosso cliente ou está entrando em contato pela primeira vez?";
 
+// MENU DE SETORES (novo esquema): contato novo recebe as opções logo no início e responde com o número.
+const MENU_SETORES =
+  "Olá! 👋 Seja bem-vindo à *Big Tricot* — fábrica de tricô para decoração (atacado, só para lojistas).\n\n" +
+  "Pra te direcionar rápido, é só responder com o *número* da opção:\n\n" +
+  "*1* 🛍️ Comprar / ver produtos (sou lojista)\n" +
+  "*2* 🤝 Já sou cliente — falar com meu vendedor\n" +
+  "*3* 📦 Status do meu pedido\n" +
+  "*4* 💰 Financeiro (nota fiscal, boleto, pagamento)\n" +
+  "*5* 🏠 Uso pessoal (consumidor final)";
+// Descobre a opção escolhida: pelo número (1-5) OU por palavras-chave (quem não gosta de menu).
+function escolhaMenu(t: string): number {
+  const s = String(t ?? "").trim().toLowerCase();
+  const m = s.match(/(?:^|\b)([1-5])(?:\b|[)\-.º°]|$)/); // número solto (aceita "1", "1)", "opção 2"…)
+  if (m) return Number(m[1]);
+  if (/nota fiscal|boleto|fatura|pagament|financeir|cobran/.test(s)) return 4;
+  if (/(status|onde est[aá]|rastre|andament|chegou|entrega).*pedido|meu pedido|do pedido/.test(s)) return 3;
+  if (/j[aá] sou cliente|meu vendedor|minha vendedora|j[aá] compr|sou cliente de/.test(s)) return 2;
+  if (/uso pessoal|uso pr[oó]prio|consumidor|pra mim|para mim|pessoa f[ií]sica|n[aã]o sou lojist/.test(s)) return 5;
+  if (/comprar|produto|atacad|revend|cat[aá]logo|pre[çc]o|lojist/.test(s)) return 1;
+  return 0;
+}
+
 // Junta as regras base (fixas, incluindo o formato JSON) com os ajustes que o lojista
 // escreve na config. Ajustes se SOMAM — nunca substituem o núcleo, pra não quebrar a Big.
 function sistemaIa(extra?: string | null): string {
@@ -789,6 +811,43 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     return { conversa_id: conv.id, estado: "reclamacao", coluna: "reclamacao", respostas: [{ tipo: "texto", texto: ack }], notificarHumano: true };
   }
 
+  // ── MENU DE SETORES: o contato novo (estado 'menu') escolheu uma opção (número ou palavra). ──
+  if (conv.estado === "menu") {
+    const op = escolhaMenu(texto);
+    const ufMenu = ufDe(conv.uf);
+    // Encaminha pro humano (com o setor certo) e avisa o time — usado pelas opções 2, 3 e 4.
+    const paraHumano = async (setor: string, msg: string, motivo: string) => {
+      await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', setor=COALESCE(NULLIF(?,''), setor), atualizado_em=datetime('now') WHERE id=?").bind(setor, conv.id).run();
+      await garantirCardDaConversa(env, conv.id, motivo, "atendimento");
+      await avisarHumanoPush(env, conv).catch(() => {});
+      await enviarBot(env, conv.id, tel, { tipo: "texto", texto: msg + aviso });
+      await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: msg + aviso }], notificarHumano: true };
+    };
+    if (op === 1) { // Comprar (lojista) → pede CNPJ; o fluxo determinístico (processar) cuida do resto.
+      await env.DB.prepare("UPDATE atend_conversas SET estado='aguardando-cnpj', tipo='lojista', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      const msg = "Que ótimo! 💛 Pra te atender no *atacado*, primeiro preciso confirmar seu cadastro de lojista. Me passa o *CNPJ* da sua loja (só os números), por favor? 😊";
+      await enviarBot(env, conv.id, tel, { tipo: "texto", texto: msg });
+      await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      return { conversa_id: conv.id, estado: "aguardando-cnpj", coluna: colunaDe("aguardando-cnpj"), respostas: [{ tipo: "texto", texto: msg }], notificarHumano: false };
+    }
+    if (op === 2) return await paraHumano("vendas", "Que bom te ver! 💛 Já vou te passar pra um dos nossos vendedores pra continuar seu atendimento, tá? 😊", "Menu: já é cliente");
+    if (op === 3) return await paraHumano("pcp", "Perfeito! 💛 Já vou te passar pro time que acompanha os pedidos pra verificar o status pra você, tá? 😊", "Menu: status do pedido");
+    if (op === 4) return await paraHumano("fiscal", "Certo! 💛 Já te passo pro nosso *financeiro* pra resolver isso pra você, tá? 😊", "Menu: financeiro");
+    if (op === 5) { // Consumidor final → link das lojas parceiras (não precisa de humano).
+      const base = (cfgAt.vitrine_url || VITRINE_PUBLICA).replace(/\/+$/, "");
+      const link = ufMenu ? `${base}?uf=${encodeURIComponent(ufMenu)}` : base;
+      const msg = `Oi! 💛 A *Big Tricot* vende no *atacado, só para lojistas* — mas você encontra nossas peças nas *lojas parceiras*! Escolha a mais perto de você aqui 👇\n${link}`;
+      await env.DB.prepare("UPDATE atend_conversas SET estado='indicado-parceiro', tipo='consumidor', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      await enviarBot(env, conv.id, tel, { tipo: "texto", texto: msg });
+      await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      return { conversa_id: conv.id, estado: "indicado-parceiro", coluna: colunaDe("indicado-parceiro"), respostas: [{ tipo: "texto", texto: msg }], notificarHumano: false };
+    }
+    // Não entendeu a escolha (escreveu texto solto) → deixa a IA conduzir, sem travar.
+    await env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    conv.estado = "ia-triagem";
+  }
+
   // IA de triagem (se ligada). A Big responde TODO MUNDO de forma natural — inclusive
   // representantes (nada de menu numerado "digite 1/2/3"). Reengaja também quem já tinha
   // terminado a conversa e voltou a falar. NÃO reengaja estados de coleta determinística
@@ -819,13 +878,13 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
         await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
         return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: saud }], notificarHumano: true };
       }
-      // Contato novo → saudação padrão + a IA qualifica. Já cria o card no Funil (coluna Atendimento).
-      const saud = SAUDACAO_NOVO;
-      await env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      // Contato novo → MENU DE SETORES (o cliente escolhe o número). Fica em 'menu' esperando a escolha.
+      const saud = MENU_SETORES;
+      await env.DB.prepare("UPDATE atend_conversas SET estado='menu', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
       await garantirCardDaConversa(env, conv.id, "Novo contato no WhatsApp", "atendimento");
       await enviarBot(env, conv.id, tel, { tipo: "texto", texto: saud });
       await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
-      return { conversa_id: conv.id, estado: "ia-triagem", coluna: colunaDe("ia-triagem"), respostas: [{ tipo: "texto", texto: saud }], notificarHumano: false };
+      return { conversa_id: conv.id, estado: "menu", coluna: colunaDe("ia-triagem"), respostas: [{ tipo: "texto", texto: saud }], notificarHumano: false };
     }
     // Conversa em andamento: a IA responde. Cliente já cadastrado entra com contexto extra.
     let sistema = sistemaIa(cfgAt.ia_prompt) + await lerConhecimento(env);
@@ -2097,7 +2156,7 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
   // autorresposta da loja) fica na coluna "Campanhas". Quando responder de verdade, o webhook põe
   // estado='atendimento-humano' e aí ele sai daqui e cai em "Aguardando humano" (piscando).
   if ((origem === "campanha" || origem === "reativacao") && estado !== "atendimento-humano") return "campanha";
-  if (["ia-triagem", "triagem-vendas", "triagem-nome", "aguardando-cnpj", "aguardando-cidade-parceiro"].includes(estado)) return "triagem";
+  if (["menu", "ia-triagem", "triagem-vendas", "triagem-nome", "aguardando-cnpj", "aguardando-cidade-parceiro"].includes(estado)) return "triagem";
   if (estado === "novo") return "triagem";                            // contato novo → cai na triagem automática
   // Estados de funil/venda: no ATENDIMENTO só importam se o cliente está esperando resposta.
   if (inn && inn > out) return "aguardando-humano";

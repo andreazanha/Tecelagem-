@@ -3,7 +3,7 @@
 // Não fala com banco nem com provedor — isso fica no route. Assim é testável.
 
 export type EstadoAtend =
-  | "novo" | "ia-triagem" | "aguardando-setor" | "triagem-nome" | "aguardando-cnpj"
+  | "novo" | "menu" | "ia-triagem" | "aguardando-setor" | "triagem-nome" | "aguardando-cnpj"
   | "aguardando-cidade-parceiro" | "catalogo-enviado" | "follow-up-24h"
   | "atendimento-humano" | "reclamacao" | "nao-qualificado" | "indicado-parceiro" | "sem-retorno"
   | "pedido-realizado" | "pedido-faturado" | "pedido-enviado" | "pos-venda" | "recompra";
@@ -108,7 +108,7 @@ export const ATEND_COLUNAS = [
 // Mapa simples estado → coluna (aproximação; o quadro usa colunaAtendimento, mais rico).
 export function colunaDe(estado: string): string {
   switch (estado) {
-    case "novo": return "triagem";
+    case "novo": case "menu": return "triagem";
     case "ia-triagem": case "triagem-vendas": case "triagem-nome": case "aguardando-cnpj": case "aguardando-cidade-parceiro": return "triagem";
     case "aguardando-setor": return "aguardando-setor";
     case "atendimento-humano": return "em-atendimento";
