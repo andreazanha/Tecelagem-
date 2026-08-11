@@ -2266,6 +2266,21 @@ atendimento.get("/", async (c) => {
     const rm = remarkets.get(String(r.id));
     const silenciadoR = mudos.has(String(r.id));
     let coluna = agAtivo ? "contato-followup" : (manual || colunaAtendimento(r));
+    // SEMPRE TRAZER PRA TRIAGEM quando o cliente mandou mensagem nova e ninguém respondeu depois —
+    // não importa onde o card esteja (arrastado à mão pra "finalizado", campanha, follow-up...).
+    // Sem isto, o card ficava preso na coluna manual/finalizado e o cliente "sumia": só aparecia a
+    // tarja verde no topo, mas nenhum card. Cliente esperando = precisa estar visível na Triagem.
+    {
+      const innR = String(r.ultima_in_em || ""), outR = String(r.ultima_out_em || ""), encR = String(r.encerrado_em || "");
+      const ehGrupo = String(r.estado) === "grupo" || String(r.origem) === "grupo";
+      const clienteEsperando = !!innR && innR > outR && innR > encR;   // cliente escreveu por último, ninguém respondeu
+      if (clienteEsperando && !agAtivo && !ehGrupo) {
+        // Já está numa fila viva/visível? Então deixa onde está (não atrapalha quem já atende).
+        const jaVisivelViva = coluna === "aguardando-humano" || coluna === "reclamacao" || coluna === "aguardando-setor"
+          || (coluna === "em-atendimento" && String(r.responsavel || "").trim());
+        if (!jaVisivelViva) coluna = "triagem";
+      }
+    }
     // GRUPO (não silenciado): mensagem NOVA (depois do último "encerrar") sobe pra "Aguardando
     // atendimento humano" (piscando). Se VOCÊ já respondeu (sua saída depois da última entrada), vai
     // pra "Em atendimento". Silenciado, ou já "encerrado"/visto, fica em "Grupos". ENCERRAR → Grupos.

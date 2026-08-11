@@ -92,8 +92,8 @@ export interface Resultado { conv: Conversa; saidas: Saida[]; notificarHumano: b
 // (Etapas de venda ficam no Funil.) A coluna de cada conversa é derivada do estado
 // + responsável + últimas mensagens (ver colunaAtendimento em routes/atendimento.ts).
 export const ATEND_COLUNAS = [
-  { id: "aguardando-humano", label: "Aguardando atendimento humano", cor: "#f59e0b" },
   { id: "triagem", label: "🟣 Triagem (chegando agora)", cor: "#8b5cf6" },
+  { id: "aguardando-humano", label: "Aguardando atendimento humano", cor: "#f59e0b" },
   { id: "em-atendimento", label: "Em atendimento", cor: "#6366f1" },
   { id: "montando-pedido", label: "Montando pedido", cor: "#f97316" },
   { id: "aguardando-setor", label: "💰 Orçando", cor: "#a855f7" },
