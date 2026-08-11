@@ -883,6 +883,19 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     // PRIMEIRO CONTATO: saudação fixa (sem gastar chamada de IA). Se o número já está
     // na base de clientes, identifica e saúda pelo nome; senão manda a saudação padrão.
     if (conv.estado === "novo") {
+      // BLINDAGEM anti-menu-repetido: se ESTE número JÁ recebeu resposta antes (mesma conversa ou
+      // uma duplicada criada por engano), NÃO é primeiro contato de verdade → NÃO repete a
+      // saudação/menu; passa direto pro humano. (Corrige o robô mandar o menu 2×.)
+      const nuc8 = tel.slice(-8);
+      const jaRespondido = nuc8.length >= 8 ? await env.DB.prepare(
+        "SELECT 1 FROM atend_conversas WHERE ultima_out_em IS NOT NULL AND (telefone=? OR telefone LIKE '%' || ?) LIMIT 1"
+      ).bind(tel, nuc8).first().catch(() => null) : null;
+      if (jaRespondido) {
+        await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+        await garantirCardDaConversa(env, conv.id, "Contato voltou a falar", "atendimento");
+        await avisarHumanoPush(env, conv).catch(() => {});
+        return { conversa_id: conv.id, estado: "atendimento-humano", coluna: colunaDe("atendimento-humano"), respostas: [], notificarHumano: true };
+      }
       const primeiro = String(conv.nome ?? conv.contato_nome ?? "").trim().split(/\s+/)[0] || "";
       const hBR = (new Date().getUTCHours() + 21) % 24;                    // Brasil (UTC-3)
       const ola = hBR < 12 ? "Bom dia" : hBR < 18 ? "Boa tarde" : "Boa noite";
