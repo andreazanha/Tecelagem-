@@ -1412,8 +1412,11 @@ body.dark .at-compose input, body.dark .at-compose textarea { background: #fff; 
 .at-anexo-opt:hover { background: rgba(0,128,105,.10); }
 .at-anexo-opt:disabled { opacity: .5; cursor: default; }
 body.dark .at-anexo-opt { color: #e7ebf3; }
-.at-send { width: 42px; height: 42px; border-radius: 50%; background: #25d366; color: #fff; border: none; font-size: 17px; cursor: pointer; flex: 0 0 auto; }
+.at-send { width: 42px; height: 42px; border-radius: 50%; background: #25d366; color: #fff; border: none; font-size: 17px; cursor: pointer; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; }
 .at-send:disabled { opacity: .5; }
+.at-send svg { display: block; }
+/* No desktop, o campo de escrever para ANTES do painel lateral (não corre por baixo dele). */
+@media (min-width: 701px) { .at-compose { padding-right: 289px; } }
 /* MOBILE: a conversa vira tela cheia e EMPILHA — mensagens em cima (com bastante altura),
    "Dados coletados" embaixo, cada um rolando sozinho, e o campo de escrever fixo no rodapé.
    Antes era um grid fixo de 2 colunas: no celular as mensagens ficavam num filete e sumiam. */

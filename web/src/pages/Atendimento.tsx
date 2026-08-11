@@ -1770,7 +1770,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             ? <>
                 {/* Clipe (📎): abre o menu de anexos/ações, como no WhatsApp. */}
                 <div style={{ position: "relative", flex: "0 0 auto" }}>
-                  <button className="at-send" style={{ background: anexoMenu ? "rgba(0,128,105,.12)" : "transparent" }} disabled={busy} onClick={() => setAnexoMenu((v) => !v)} title="Anexar / mais opções">📎</button>
+                  <button className="at-send" style={{ background: anexoMenu ? "rgba(0,128,105,.12)" : "transparent" }} disabled={busy} onClick={() => setAnexoMenu((v) => !v)} title="Anexar / mais opções">
+                    <svg viewBox="0 0 24 24" width="23" height="23" fill="#54656f"><path d="M16.5 6v11a4.5 4.5 0 01-9 0V5a3 3 0 016 0v10a1.5 1.5 0 01-3 0V6H9v9a3 3 0 006 0V5a4.5 4.5 0 00-9 0v12a6 6 0 0012 0V6z"/></svg>
+                  </button>
                   {anexoMenu && (<>
                     <div onClick={() => setAnexoMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 19 }} />
                     <div style={{ position: "absolute", bottom: "100%", left: 0, marginBottom: 8, background: "var(--card,#fff)", border: "1px solid var(--line,#e2e8f0)", borderRadius: 12, boxShadow: "0 12px 32px #0003", zIndex: 20, minWidth: 218, overflow: "hidden", paddingBlock: 4 }}>
@@ -1787,8 +1789,14 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 {gravando && <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#ef4444", fontWeight: 800, fontSize: 13, fontVariantNumeric: "tabular-nums", flex: "0 0 auto" }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", animation: "atpulse 1s ease-in-out infinite" }} />{mmss(gravSeg)}</span>}
                 {/* Direita: digitando → enviar (➤); vazio → gravar áudio (🎤), como no WhatsApp. */}
                 {texto.trim() && !gravando
-                  ? <button className="at-send" disabled={busy} onClick={enviar} title="Enviar">➤</button>
-                  : <button className="at-send" style={{ background: gravando ? "#ef4444" : "transparent", color: gravando ? "#fff" : undefined }} disabled={busy || processandoAudio} onClick={() => (gravando ? pararGravacao() : iniciarGravacao())} title={processandoAudio ? "Preparando o áudio…" : gravando ? "Parar e ouvir antes de enviar" : "Gravar áudio (nota de voz)"}>{processandoAudio ? "⏳" : gravando ? "⏹" : "🎤"}</button>}
+                  ? <button className="at-send" disabled={busy} onClick={enviar} title="Enviar"><svg viewBox="0 0 24 24" width="21" height="21" fill="#fff"><path d="M3 20.5l18.5-8.5L3 3.5v6.6l12 1.9-12 1.9z"/></svg></button>
+                  : <button className="at-send" style={{ background: gravando ? "#ef4444" : "transparent" }} disabled={busy || processandoAudio} onClick={() => (gravando ? pararGravacao() : iniciarGravacao())} title={processandoAudio ? "Preparando o áudio…" : gravando ? "Parar e ouvir antes de enviar" : "Gravar áudio (nota de voz)"}>
+                      {processandoAudio
+                        ? <span style={{ fontSize: 17 }}>⏳</span>
+                        : gravando
+                          ? <svg viewBox="0 0 24 24" width="17" height="17" fill="#fff"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>
+                          : <svg viewBox="0 0 24 24" width="22" height="22" fill="#54656f"><path d="M12 15a3.5 3.5 0 003.5-3.5V6a3.5 3.5 0 00-7 0v5.5A3.5 3.5 0 0012 15zm6-3.5a6 6 0 01-12 0H4a8 8 0 007 7.94V23h2v-3.56a8 8 0 007-7.94h-2z"/></svg>}
+                    </button>}
               </>
             : <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", flexWrap: "wrap" }}>
                 <span className="muted2" style={{ flex: 1, minWidth: 160 }}>🤖 O robô está conduzindo.</span>
