@@ -697,6 +697,21 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Detecta interesse comercial + modelos citados (vale inclusive no atendimento humano).
   const cfgAt = await lerConfig(env);
   await detectarInteresse(env, conv.id, texto, cfgAt.interesse_modelos || "");
+  // AUTO-CNPJ: se a mensagem trouxe um CNPJ válido (14 dígitos) e ainda não temos, salva e já puxa
+  // Loja/Cidade/UF (da base própria ou da Receita/BrasilAPI) — preenche os "Dados coletados" sozinho.
+  try {
+    const cnpjMsg = (texto.match(/\d[\d.\-/ ]{11,}\d/g) || []).map((x) => x.replace(/\D/g, "")).find((x) => x.length === 14);
+    if (cnpjMsg && digitos(conv.cnpj).length !== 14) {
+      const info = await deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, cfgAt.vitrine_url || VITRINE_PUBLICA).consultarCnpj(cnpjMsg);
+      await env.DB.prepare(
+        "UPDATE atend_conversas SET cnpj=?, nome=COALESCE(NULLIF(nome,''), ?), cidade=COALESCE(NULLIF(cidade,''), ?), uf=COALESCE(NULLIF(uf,''), ?), atualizado_em=datetime('now') WHERE id=?"
+      ).bind(cnpjMsg, info?.nome ?? null, info?.cidade ?? null, info?.uf ?? null, conv.id).run();
+      conv.cnpj = cnpjMsg;
+      if (info?.nome && !String(conv.nome ?? "").trim()) conv.nome = info.nome;
+      if (info?.cidade && !String(conv.cidade ?? "").trim()) conv.cidade = info.cidade;
+      if (info?.uf && !String(conv.uf ?? "").trim()) conv.uf = info.uf;
+    }
+  } catch { /* não bloqueia o atendimento */ }
   // Cliente CHAMOU antes do "Chamar IA" agendado → cancela o agendamento (o robô não precisa
   // mais dar o "oi", ele já veio). O card sai da coluna de follow-up e volta pro fluxo normal:
   // como há mensagem nova sem resposta, cai em "Aguardando atendimento humano" e fica piscando.
