@@ -213,8 +213,14 @@ export function Atendimento() {
     if (!q) return true;
     const texto = [c.contato_nome, c.nome, c.cidade, c.uf, c.representante, c.setor].filter(Boolean).join(" ").toLowerCase();
     if (texto.includes(q)) return true;
+    // Busca por NÚMERO: pega só os dígitos e compara ignorando o "55" (país) e o 9º dígito, pra
+    // achar em qualquer formato — com/sem DDI, com/sem o 9, com ou sem parênteses/traço.
     const dig = q.replace(/\D/g, "");
-    if (dig.length >= 3 && (c.telefone || "").replace(/\D/g, "").includes(dig)) return true;
+    if (dig.length >= 3) {
+      const alvo = dig.replace(/^55/, "");
+      const tel = (c.telefone || "").replace(/\D/g, "").replace(/^55/, "");
+      if (tel.includes(alvo) || nucleoTel(c.telefone || "").includes(nucleoTel(dig))) return true;
+    }
     return false;
   };
 
