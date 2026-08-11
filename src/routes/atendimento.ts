@@ -2274,12 +2274,10 @@ atendimento.get("/", async (c) => {
       const innR = String(r.ultima_in_em || ""), outR = String(r.ultima_out_em || ""), encR = String(r.encerrado_em || "");
       const ehGrupo = String(r.estado) === "grupo" || String(r.origem) === "grupo";
       const clienteEsperando = !!innR && innR > outR && innR > encR;   // cliente escreveu por último, ninguém respondeu
-      if (clienteEsperando && !agAtivo && !ehGrupo) {
-        // Já está numa fila viva/visível? Então deixa onde está (não atrapalha quem já atende).
-        const jaVisivelViva = coluna === "aguardando-humano" || coluna === "reclamacao" || coluna === "aguardando-setor"
-          || (coluna === "em-atendimento" && String(r.responsavel || "").trim());
-        if (!jaVisivelViva) coluna = "triagem";
-      }
+      // SÓ ressuscita quem estava MORTO (finalizado). Card em coluna de trabalho — montando pedido,
+      // em atendimento, orçando, aguardando humano, reclamação, follow-up... — NÃO se mexe: quem está
+      // sendo atendido não pode saltar pra Triagem só porque o cliente mandou mais uma mensagem.
+      if (clienteEsperando && !agAtivo && !ehGrupo && coluna === "finalizado") coluna = "triagem";
     }
     // GRUPO (não silenciado): mensagem NOVA (depois do último "encerrar") sobe pra "Aguardando
     // atendimento humano" (piscando). Se VOCÊ já respondeu (sua saída depois da última entrada), vai
