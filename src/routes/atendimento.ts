@@ -2428,8 +2428,8 @@ atendimento.get("/", async (c) => {
 // ── JUNTAR DUPLICADOS: mescla conversas do MESMO contato (núcleo DDD+8 dígitos) ────────
 // Ex.: o número chegou ora com o 9º dígito, ora sem, e viraram dois cards. Junta o histórico
 // no card mais ANTIGO, preenche os campos vazios com os dados dos outros e apaga os repetidos.
-atendimento.post("/juntar-duplicados", async (c) => {
-  const { results } = await c.env.DB.prepare(
+export async function juntarDuplicadosAtend(env: Env): Promise<{ mesclados: number; removidos: number }> {
+  const { results } = await env.DB.prepare(
     `SELECT id, telefone, criado_em, atualizado_em, estado, cliente_id, nome, cnpj, cidade, uf, contato_nome, card_id, responsavel, tipo, representante, pedido_id, ultima_in_em, ultima_out_em, encerrado_em
        FROM atend_conversas WHERE COALESCE(origem,'') <> 'grupo' AND COALESCE(estado,'') <> 'grupo'`
   ).all<Record<string, string | null>>().catch(() => ({ results: [] as Record<string, string | null>[] }));
@@ -2449,12 +2449,12 @@ atendimento.post("/juntar-duplicados", async (c) => {
     const recente = [...lista].sort((a, b) => String(b.atualizado_em || "").localeCompare(String(a.atualizado_em || "")))[0];
     const maxOf = (col: string) => lista.map((x) => String(x[col] || "")).filter(Boolean).sort().pop() || null;
     const pick = (col: string) => canon[col] || dups.map((d) => d[col]).find(Boolean) || null;
-    await c.env.DB.prepare(`UPDATE atend_mensagens SET conversa_id=? WHERE conversa_id IN (${ph})`).bind(canon.id, ...dupIds).run();
-    await c.env.DB.prepare(`UPDATE OR IGNORE atend_interesses SET conversa_id=? WHERE conversa_id IN (${ph})`).bind(canon.id, ...dupIds).run().catch(() => {});
-    await c.env.DB.prepare(
+    await env.DB.prepare(`UPDATE atend_mensagens SET conversa_id=? WHERE conversa_id IN (${ph})`).bind(canon.id, ...dupIds).run();
+    await env.DB.prepare(`UPDATE OR IGNORE atend_interesses SET conversa_id=? WHERE conversa_id IN (${ph})`).bind(canon.id, ...dupIds).run().catch(() => {});
+    await env.DB.prepare(
       `UPDATE atend_conversas SET cliente_id=?, nome=?, cnpj=?, cidade=?, uf=?, contato_nome=?, card_id=?, responsavel=?, tipo=?, representante=?, pedido_id=?, estado=?, ultima_in_em=?, ultima_out_em=?, encerrado_em=?, atualizado_em=datetime('now') WHERE id=?`
     ).bind(pick("cliente_id"), pick("nome"), pick("cnpj"), pick("cidade"), pick("uf"), pick("contato_nome"), pick("card_id"), pick("responsavel"), pick("tipo"), pick("representante"), pick("pedido_id"), recente.estado || canon.estado, maxOf("ultima_in_em"), maxOf("ultima_out_em"), recente.encerrado_em || null, canon.id).run();
-    await c.env.DB.prepare(`DELETE FROM atend_conversas WHERE id IN (${ph})`).bind(...dupIds).run();
+    await env.DB.prepare(`DELETE FROM atend_conversas WHERE id IN (${ph})`).bind(...dupIds).run();
     for (const dId of dupIds) remap.set(dId, String(canon.id));
     mesclados++; removidos += dupIds.length;
   };
@@ -2496,18 +2496,23 @@ atendimento.post("/juntar-duplicados", async (c) => {
   }
   // 4) Conserta as listas de config (lembretes/silenciados/agendamentos) que apontavam pros ids apagados.
   if (remap.size) {
-    const cfg = await lerConfig(c.env);
+    const cfg = await lerConfig(env);
     const remapa = (id: string) => remap.get(id) || id;
     for (const chave of ["atend_lembretes", "atend_silenciados"]) {
-      try { const arr = JSON.parse(cfg[chave] || "[]"); if (Array.isArray(arr)) await salvarConfigJson(c.env, chave, [...new Set(arr.map((x) => remapa(String(x))))]); } catch { /* ok */ }
+      try { const arr = JSON.parse(cfg[chave] || "[]"); if (Array.isArray(arr)) await salvarConfigJson(env, chave, [...new Set(arr.map((x) => remapa(String(x))))]); } catch { /* ok */ }
     }
     try {
       const ags = lerAgendamentos(cfg).map((a) => ({ ...a, conversaId: remapa(String(a.conversaId)) }));
       const vistos = new Set<string>(); const limpo = ags.filter((a) => (vistos.has(a.conversaId) ? false : vistos.add(a.conversaId)));
-      await salvarConfigJson(c.env, "atend_agendamentos", limpo);
+      await salvarConfigJson(env, "atend_agendamentos", limpo);
     } catch { /* ok */ }
   }
-  return c.json({ ok: true, mesclados, removidos });
+  return { mesclados, removidos };
+}
+// Botão "Juntar duplicados" — chama a mesma lógica que o cron roda sozinho.
+atendimento.post("/juntar-duplicados", async (c) => {
+  const r = await juntarDuplicadosAtend(c.env);
+  return c.json({ ok: true, ...r });
 });
 
 // Silencia/reativa uma conversa (grupo barulhento, etc.): o card NÃO pisca e não toca som/aviso.
