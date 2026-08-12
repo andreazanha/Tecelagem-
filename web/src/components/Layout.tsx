@@ -9,6 +9,52 @@ import { Icon } from "./Icon";
 import { InstalarApp } from "./InstalarApp";
 import { DemoMode } from "./DemoMode";
 
+// Aviso de NOVA VERSÃO pra TODOS os usuários: compara o "hash" do build que este navegador carregou
+// com o que o servidor está entregando agora. Assim que sai um deploy novo (o arquivo muda de hash),
+// aparece um popup pedindo pra atualizar. Checa a cada 1 min e sempre que a aba volta ao foco.
+function AvisoNovaVersao() {
+  const [nova, setNova] = useState(false);
+  useEffect(() => {
+    const hashCarregado = (() => {
+      const src = Array.from(document.scripts).map((s) => s.src).find((s) => /\/assets\/index-.*\.js/.test(s));
+      return src ? (src.match(/index-([^.]+)\.js/)?.[1] || "") : "";
+    })();
+    if (!hashCarregado) return;      // dev/sem bundle hasheado → não faz nada
+    let vivo = true;
+    const checar = async () => {
+      try {
+        const r = await fetch(`/?_=${Date.now()}`, { cache: "no-store" });
+        if (!r.ok) return;
+        const html = await r.text();
+        const novo = html.match(/\/assets\/index-([^."]+)\.js/)?.[1] || "";
+        if (vivo && novo && novo !== hashCarregado) setNova(true);
+      } catch { /* offline / rede — ignora, tenta de novo depois */ }
+    };
+    const t = setInterval(checar, 60000);
+    const onFoco = () => checar();
+    window.addEventListener("focus", onFoco);
+    checar();
+    return () => { vivo = false; clearInterval(t); window.removeEventListener("focus", onFoco); };
+  }, []);
+  async function atualizar() {
+    // Limpa service worker/caches (PWA) pra garantir que vem o arquivo NOVO, não o do cache.
+    try { if ("serviceWorker" in navigator) { const rs = await navigator.serviceWorker.getRegistrations(); for (const r of rs) await r.update().catch(() => {}); } } catch { /* ok */ }
+    try { if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); } } catch { /* ok */ }
+    location.reload();
+  }
+  if (!nova) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#fff", color: "#0f172a", borderRadius: 16, padding: 24, maxWidth: 360, width: "100%", textAlign: "center", boxShadow: "0 24px 60px rgba(0,0,0,.4)" }}>
+        <div style={{ fontSize: 38, marginBottom: 6 }}>🎉</div>
+        <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 6 }}>Nova versão disponível!</div>
+        <div style={{ fontSize: 13.5, color: "#475569", marginBottom: 18, lineHeight: 1.45 }}>Saiu uma atualização do sistema. Clique em atualizar pra usar a versão nova e não ficar com tela antiga.</div>
+        <button onClick={atualizar} style={{ background: "#1f7a53", color: "#fff", border: 0, borderRadius: 11, padding: "12px 18px", fontSize: 14.5, fontWeight: 800, cursor: "pointer", width: "100%" }}>🔄 Atualizar agora</button>
+      </div>
+    </div>
+  );
+}
+
 // Sino de avisos: liga/desliga o Web Push de "pedido novo" neste aparelho.
 function SinoPush() {
   const [ativo, setAtivo] = useState(false);
@@ -458,6 +504,7 @@ export function Layout() {
       <main className="content">
         <Outlet />
       </main>
+      <AvisoNovaVersao />
     </div>
   );
 }

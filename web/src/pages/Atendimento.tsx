@@ -72,6 +72,22 @@ function hora(iso?: string | null) {
   const mm = iso.match(/(\d{2}):(\d{2})/);
   return mm ? `${mm[1]}:${mm[2]}` : "";
 }
+// Data + hora pro card (fechado): "hoje 09:08", "ontem 17:26" ou "10/08 14:22". Horário de Brasília.
+function horaData(iso?: string | null) {
+  if (!iso) return "";
+  const m = iso.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return hora(iso);
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
+  const hhmm = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+  // Dia (em Brasília) do card e de hoje, pra decidir "hoje/ontem/data".
+  const diaBr = (x: Date) => x.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }); // YYYY-MM-DD
+  const hojeStr = diaBr(new Date()), cardStr = diaBr(d);
+  const ontem = new Date(Date.now() - 864e5);
+  if (cardStr === hojeStr) return `hoje ${hhmm}`;
+  if (cardStr === diaBr(ontem)) return `ontem ${hhmm}`;
+  const dm = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo" });
+  return `${dm} ${hhmm}`;
+}
 // Dia (Brasília) de um timestamp UTC — "DD/MM/AAAA". Usado pra separar mensagens por dia na conversa.
 function diaBrasilia(iso?: string | null): string {
   if (!iso) return "";
@@ -1132,7 +1148,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
           ? <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="IA já mandou a saudação — aguardando o cliente responder">⏰ chamado · aguardando</span>
           : <span className="at-badge" style={{ background: "#dbeafe", color: "#1d4ed8" }} title="IA vai enviar uma saudação neste horário">⏰ {agendadoLabel(c.agendado_ia)}</span>) : null}
         {c.setor && <span className="fx-sub">{SETOR_EMOJI[c.setor] || ""}</span>}
-        <span className="fx-sub" style={{ marginLeft: "auto" }}>{hora(c.atualizado_em)}</span>
+        <span className="fx-sub" style={{ marginLeft: "auto" }}>{horaData(c.atualizado_em)}</span>
         {/* Mover pra outra coluna sem arrastar: clica e escolhe o nome da coluna */}
         {colunas && onMover && (
           <select className="fx-mover-sel" title="Mover para outra coluna" value=""
