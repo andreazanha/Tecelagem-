@@ -394,6 +394,13 @@ export function Atendimento() {
     try { const r = await api.atendJuntarDuplicados(); alert(r.mesclados ? `✓ ${r.mesclados} contato(s) juntados, ${r.removidos} card(s) duplicado(s) removido(s).` : "Nenhum duplicado encontrado. 👍"); recarregar(); }
     catch { alert("Não consegui juntar os duplicados agora. Tente de novo."); }
   }
+  const [cruzando, setCruzando] = useState(false);
+  async function cruzarBase() {
+    setCruzando(true);
+    try { const r = await api.atendCruzarBase(); alert(r.ligados ? `✓ ${r.ligados} contato(s) cruzados com a base de clientes (nome/CNPJ/cidade preenchidos).` : "Nenhum contato novo pra cruzar — os que estão na base já estão ligados. 👍"); recarregar(); }
+    catch { alert("Não consegui cruzar com a base agora. Tente de novo."); }
+    finally { setCruzando(false); }
+  }
   function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance && !!c.zapi_token)).catch(() => setConectado(false)); }
   useEffect(() => {
     recarregar(); checarConexao();
@@ -550,6 +557,7 @@ export function Atendimento() {
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setSim(true)}>💬 Simular cliente</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={juntarDuplicados} title="Junta cards repetidos do mesmo contato (número com/sem o 9º dígito) num só, preservando o histórico">🧹 Juntar duplicados</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" disabled={cruzando} onClick={cruzarBase} title="Liga os contatos à base de clientes agora (preenche nome/CNPJ/cidade/UF/lojista sozinho). O sistema também faz isso automático 3x/dia.">{cruzando ? "Cruzando…" : "🔗 Cruzar com a base"}</button>}
         </div>
       </div>
 

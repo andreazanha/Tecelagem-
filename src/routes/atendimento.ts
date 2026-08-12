@@ -2517,6 +2517,15 @@ atendimento.post("/juntar-duplicados", async (c) => {
   const r = await juntarDuplicadosAtend(c.env);
   return c.json({ ok: true, ...r });
 });
+// "Cruzar com a base agora": roda o cruzamento na hora (o cron também roda sozinho 3x/dia). Repete
+// em lotes de 400 até acabar (ou 10 lotes = 4000). GET pra poder rodar abrindo o link no navegador.
+const cruzarBaseAgora = async (c: { env: Env }) => {
+  let total = 0;
+  for (let i = 0; i < 10; i++) { const n = await cruzarContatosBase(c.env); total += n; if (n < 400) break; }
+  return total;
+};
+atendimento.get("/cruzar-base", async (c) => c.json({ ok: true, ligados: await cruzarBaseAgora(c) }));
+atendimento.post("/cruzar-base", async (c) => c.json({ ok: true, ligados: await cruzarBaseAgora(c) }));
 
 // Silencia/reativa uma conversa (grupo barulhento, etc.): o card NÃO pisca e não toca som/aviso.
 atendimento.post("/:id/silenciar", async (c) => {
