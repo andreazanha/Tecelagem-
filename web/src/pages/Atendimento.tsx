@@ -1395,7 +1395,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
       if (!r.achou) { alert(r.erro_rede ? "Não consegui consultar a Receita agora. Tente de novo em instantes." : "CNPJ não encontrado — nem na sua base, nem na Receita."); return; }
       setFormD((f) => ({ ...f, nome: f.nome || r.nome || "", cidade: f.cidade || r.cidade || "", uf: f.uf || r.uf || "", lojista: f.lojista || "1" }));
       const onde = r.na_base ? "sua base de clientes" : "Receita Federal";
-      alert(`✓ Achei na ${onde}: ${r.nome || "(sem nome)"}${r.cidade ? " · " + r.cidade + "/" + (r.uf || "") : ""}.${r.ativa === false ? "\n\n⚠️ Atenção: consta INATIVO/baixado na Receita." : ""}\n\nConfira e clique em Salvar.`);
+      alert(`✓ Achei na ${onde}: ${r.nome || "(sem nome)"}${r.cidade ? " · " + r.cidade + "/" + (r.uf || "") : ""}${r.representante ? "\nRepresentante: " + r.representante : ""}.${r.ativa === false ? "\n\n⚠️ Atenção: consta INATIVO/baixado na Receita." : ""}\n\nConfira e clique em Salvar.`);
     } catch { alert("Não consegui buscar agora. Tente de novo."); }
     finally { setBuscandoCnpj(false); }
   }

@@ -2580,16 +2580,46 @@ atendimento.post("/:id/status-cliente", async (c) => {
 // Consulta um CNPJ e devolve os dados (NÃO grava — o front preenche o formulário pra revisar/Salvar).
 // Busca 1º na BASE própria (pega até o representante) e, se não achar, na RECEITA (BrasilAPI).
 // Serve pra um lead vazio: digita o CNPJ, clica buscar, e nome/cidade/UF vêm sozinhos.
+// Tira o CNPJ/CPF que vem GRUDADO no nome no cadastro do ERP: "43 825 218 MARCIO..." → "MARCIO...",
+// "FULANA 91320534368" → "FULANA". Só mexe se for um bloco de ≥7 dígitos/pontuação no começo ou fim.
+function limparNomeDoc(n: string): string {
+  return String(n || "")
+    .replace(/^[\d][\d.\-/\s]{6,}?(?=[A-Za-zÀ-ÿ])/, "")   // documento colado no INÍCIO
+    .replace(/\s+[\d][\d.\-/\s]{6,}$/, "")                 // documento colado no FIM
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
 atendimento.post("/consultar-cnpj", async (c) => {
   const b = await c.req.json<{ cnpj?: string }>().catch(() => ({} as { cnpj?: string }));
   const cnpj = digitos(b.cnpj || "");
   if (cnpj.length !== 14) return c.json({ ok: false, erro: "CNPJ precisa ter 14 dígitos." }, 400);
-  const cliBase = await c.env.DB.prepare(
-    "SELECT nome, cidade, uf, representante FROM clientes WHERE REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-','') = ? LIMIT 1"
-  ).bind(cnpj).first<{ nome: string | null; cidade: string | null; uf: string | null; representante: string | null }>().catch(() => null);
-  if (cliBase) return c.json({ ok: true, achou: true, na_base: true, ativa: true, nome: cliBase.nome, cidade: cliBase.cidade, uf: cliBase.uf, representante: cliBase.representante, fonte: "base" });
+  const root8 = cnpj.slice(0, 8);   // raiz do CNPJ (identifica a empresa, sem a filial)
+  // Muitos cadastros vêm do ERP com o CNPJ/CPF COLADO no nome ("43 825 218 FULANO") e a coluna cnpj
+  // vazia. Então procura nas DUAS colunas, ignorando pontuação E espaços: casa pelo CNPJ completo na
+  // coluna cnpj, ou pelo documento embutido no nome (completo ou pela raiz de 8 dígitos).
+  const stripCnpj = "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','')";
+  const stripNome = "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(nome,''),'.',''),'/',''),'-',''),' ','')";
+  type Row = { nome: string | null; cidade: string | null; uf: string | null; representante: string | null };
+  let cliBase = await c.env.DB.prepare(
+    `SELECT nome, cidade, uf, representante FROM clientes WHERE ${stripCnpj} = ? LIMIT 1`
+  ).bind(cnpj).first<Row>().catch(() => null);
+  if (!cliBase) cliBase = await c.env.DB.prepare(
+    `SELECT nome, cidade, uf, representante FROM clientes WHERE ${stripNome} LIKE ? OR ${stripNome} LIKE ? LIMIT 1`
+  ).bind("%" + cnpj + "%", "%" + root8 + "%").first<Row>().catch(() => null);
   const cfgAt = await lerConfig(c.env);
-  const info = await deps(c.env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, cfgAt.vitrine_url || VITRINE_PUBLICA).consultarCnpj(cnpj);
+  const consultarReceita = () => deps(c.env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, cfgAt.vitrine_url || VITRINE_PUBLICA).consultarCnpj(cnpj);
+  if (cliBase) {
+    let nome = limparNomeDoc(cliBase.nome || "");     // tira o número grudado no nome
+    let cidade = cliBase.cidade, uf = cliBase.uf;
+    // Cadastro incompleto (sem nome/cidade/UF)? Completa os buracos com a Receita — sem perder o
+    // representante nem o que a base já tinha.
+    if (!nome || !cidade || !uf) {
+      const r = await consultarReceita().catch(() => null);
+      if (r && r.existe) { nome = nome || (r.nome || ""); cidade = cidade || r.cidade || null; uf = uf || r.uf || null; }
+    }
+    return c.json({ ok: true, achou: true, na_base: true, ativa: true, nome: nome || null, cidade, uf, representante: cliBase.representante, fonte: "base" });
+  }
+  const info = await consultarReceita();
   if (!info.existe) return c.json({ ok: true, achou: false, erro_rede: !!info.erro, fonte: info.fonte });
   return c.json({ ok: true, achou: true, na_base: false, ativa: info.ativa, nome: info.nome, cidade: info.cidade, uf: info.uf, representante: null, fonte: info.fonte });
 });
