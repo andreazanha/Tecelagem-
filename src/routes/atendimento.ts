@@ -1665,13 +1665,22 @@ atendimento.get("/:id/foto-perfil", async (c) => {
   const headers: Record<string, string> = {};
   if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
   let link: string | null = null;
+  let alcancou = false;   // conseguimos resposta da Z-API? (pra não renovar o cache sem falar com ela)
   try {
     const r = await fetch(`${base}/instances/${inst}/token/${token}/profile-picture?phone=${digitos(conv.telefone)}`, { headers, signal: AbortSignal.timeout(8000) });
-    if (r.ok) { const d = await r.json().catch(() => ({})) as { link?: string; imgUrl?: string }; link = d?.link || d?.imgUrl || null; }
-  } catch { /* rede: mantém o que tinha */ link = conv.foto_url || null; }
-  // Grava no cache (mesmo null — marca que já tentamos, pra não ficar re-buscando quem esconde a foto).
-  await c.env.DB.prepare("UPDATE atend_conversas SET foto_url=?, foto_em=datetime('now') WHERE id=?").bind(link, id).run().catch(() => {});
-  return c.json({ link });
+    if (r.ok) { alcancou = true; const d = await r.json().catch(() => ({})) as { link?: string; imgUrl?: string }; link = d?.link || d?.imgUrl || null; }
+  } catch { /* rede: não alcançou — mantém o que tinha */ }
+  // Veio um link NOVO? Baixa a imagem pro NOSSO R2 e usa uma URL estável — a URL do WhatsApp
+  // (pps.whatsapp.net) EXPIRA e a foto sumiria sozinha depois de um tempo.
+  let estavel: string | null = null;
+  if (link) { const origin = new URL(c.req.url).origin; estavel = (await guardarMidiaExterna(c.env, origin, link, "jpg")) || null; }
+  // NUNCA apaga uma foto boa por causa de uma resposta vazia/erro momentâneo: se não conseguimos
+  // uma foto nova, mantém a que já tínhamos. (Era isso que fazia "sumir e voltar".)
+  const final = estavel || conv.foto_url || null;
+  // Só renova o cache de 7 dias quando REALMENTE falamos com a Z-API; se deu erro de rede, deixa
+  // foto_em como estava pra tentar de novo na próxima em vez de esperar 7 dias.
+  if (alcancou) await c.env.DB.prepare("UPDATE atend_conversas SET foto_url=?, foto_em=datetime('now') WHERE id=?").bind(final, id).run().catch(() => {});
+  return c.json({ link: final });
 });
 
 // Mover um card pra outra coluna (arrastar) — grava a coluna manual.
