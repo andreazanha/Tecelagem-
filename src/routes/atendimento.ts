@@ -45,22 +45,42 @@ function deps(env: Env, cat?: { url?: string | null; senha?: string | null; msg?
         "SELECT nome, cidade, uf FROM clientes WHERE REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-','') = ? LIMIT 1"
       ).bind(cnpj).first<{ nome: string | null; cidade: string | null; uf: string | null }>().catch(() => null);
       if (cli) return { existe: true, ativa: true, nome: cli.nome ?? null, uf: cli.uf, cidade: cli.cidade, fonte: "base" };
-      try {
-        const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, {
-          headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000),
-        });
-        if (resp.status === 404) return { existe: false, ativa: false, nome: null, fonte: "brasilapi" };
-        if (!resp.ok) return { existe: false, ativa: false, nome: null, erro: true, fonte: `brasilapi-${resp.status}` };
-        const j = await resp.json<{ razao_social?: string; nome_fantasia?: string; descricao_situacao_cadastral?: string; situacao_cadastral?: number | string; uf?: string; municipio?: string }>();
-        const desc = String(j.descricao_situacao_cadastral ?? "").toUpperCase();
-        const ativa = desc.includes("ATIVA") || Number(j.situacao_cadastral) === 2;
-        const nome = (j.nome_fantasia || j.razao_social || "").trim() || null;
-        const uf = (j.uf || "").trim().toUpperCase() || null;
-        const cidade = (j.municipio || "").trim() || null;
-        return { existe: true, ativa, nome, uf, cidade, fonte: "brasilapi" };
-      } catch {
-        return { existe: false, ativa: false, nome: null, erro: true, fonte: "erro-rede" };
+      // Não depende de UMA fonte só: tenta 3 provedores públicos em cascata. Se um cai/limita,
+      // vai pro próximo. Cada um é normalizado pro mesmo formato; parsing tolerante (campo faltando
+      // vira null, nunca quebra). Só conclui "não existe" se algum respondeu 404 e nenhum achou.
+      type Achado = { existe: boolean; ativa: boolean; nome: string | null; uf: string | null; cidade: string | null; fonte: string };
+      const provedores: Array<() => Promise<Achado | null>> = [
+        async () => {   // BrasilAPI
+          const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+          if (r.status === 404) return null;
+          if (!r.ok) throw new Error(`brasilapi-${r.status}`);
+          const j = await r.json<{ razao_social?: string; nome_fantasia?: string; descricao_situacao_cadastral?: string; situacao_cadastral?: number | string; uf?: string; municipio?: string }>();
+          const desc = String(j.descricao_situacao_cadastral ?? "").toUpperCase();
+          return { existe: true, ativa: desc.includes("ATIVA") || Number(j.situacao_cadastral) === 2, nome: (j.nome_fantasia || j.razao_social || "").trim() || null, uf: (j.uf || "").trim().toUpperCase() || null, cidade: (j.municipio || "").trim() || null, fonte: "brasilapi" };
+        },
+        async () => {   // open.cnpja.com
+          const r = await fetch(`https://open.cnpja.com/office/${cnpj}`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+          if (r.status === 404) return null;
+          if (!r.ok) throw new Error(`cnpja-${r.status}`);
+          const j = await r.json<{ alias?: string; company?: { name?: string }; status?: { text?: string }; address?: { city?: string; state?: string } }>();
+          return { existe: true, ativa: String(j.status?.text ?? "").toUpperCase().includes("ATIVA"), nome: (j.alias || j.company?.name || "").trim() || null, uf: (j.address?.state || "").trim().toUpperCase() || null, cidade: (j.address?.city || "").trim() || null, fonte: "cnpja" };
+        },
+        async () => {   // publica.cnpj.ws
+          const r = await fetch(`https://publica.cnpj.ws/cnpj/${cnpj}`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+          if (r.status === 404) return null;
+          if (!r.ok) throw new Error(`cnpjws-${r.status}`);
+          const j = await r.json<{ razao_social?: string; estabelecimento?: { nome_fantasia?: string; situacao_cadastral?: string; cidade?: { nome?: string }; estado?: { sigla?: string } } }>();
+          const est = j.estabelecimento ?? {};
+          return { existe: true, ativa: String(est.situacao_cadastral ?? "").toUpperCase().includes("ATIVA"), nome: (est.nome_fantasia || j.razao_social || "").trim() || null, uf: (est.estado?.sigla || "").trim().toUpperCase() || null, cidade: (est.cidade?.nome || "").trim() || null, fonte: "cnpjws" };
+        },
+      ];
+      let viu404 = false, erro = "";
+      for (const p of provedores) {
+        try { const res = await p(); if (res) return res; viu404 = true; }
+        catch (e) { erro = String((e as { message?: string })?.message || e); }
       }
+      if (viu404) return { existe: false, ativa: false, nome: null, fonte: "checou" };
+      return { existe: false, ativa: false, nome: null, erro: true, fonte: erro || "erro-rede" };
     },
     // Lojas parceiras perto da cidade/UF: cadastro próprio (tabela lojas_parceiras).
     async parceiros(cidade, uf) {
