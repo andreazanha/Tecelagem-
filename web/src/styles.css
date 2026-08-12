@@ -1397,6 +1397,15 @@ body.dark .at-ctx .at-row { border-color: #eceef1; }
 .at-ctx .at-sel, body.dark .at-ctx .at-sel { background: #fff; color: #1f2b33; border-color: #dfe3e8; }
 .at-ctx .at-sel option, body.dark .at-ctx .at-sel option { background: #fff; color: #1f2b33; }
 .at-ctx .at-sel.on, body.dark .at-ctx .at-sel.on { background: #ecfdf5; color: #065f46; border-color: #34d399; }
+/* Formulário de EDITAR os dados coletados: força todos os campos a ficarem CLAROS (antes herdavam o
+   tema escuro e apareciam pretos, ilegíveis — Setor/Loja/Cidade/UF). */
+.at-ctx input, .at-ctx select, .at-ctx textarea,
+body.dark .at-ctx input, body.dark .at-ctx select, body.dark .at-ctx textarea {
+  background: #fff; color: #1f2b33; border: 1px solid #dfe3e8; border-radius: 8px; padding: 7px 9px; font-size: 13px;
+}
+.at-ctx input::placeholder, body.dark .at-ctx input::placeholder { color: #9aa6ae; }
+.at-ctx option, body.dark .at-ctx option { background: #fff; color: #1f2b33; }
+.at-ctx .fld, body.dark .at-ctx .fld { color: #5a6b74; display: grid; gap: 3px; }
 .at-block-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-bottom: 8px; }
 .at-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid #eef1f6; }
 body.dark .at-row { border-color: #1b2536; }
