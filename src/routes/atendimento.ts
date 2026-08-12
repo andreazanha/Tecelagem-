@@ -2371,6 +2371,10 @@ atendimento.get("/", async (c) => {
     const rm = remarkets.get(String(r.id));
     const silenciadoR = mudos.has(String(r.id));
     let coluna = agAtivo ? "contato-followup" : (manual || colunaAtendimento(r));
+    // TRAVA DE TRABALHO: card posto À MÃO em "Montando pedido" ou "Orçando" fica CRAVADO ali —
+    // nem agendamento de IA, nem mensagem nova do cliente, nem nenhuma outra regra tira do lugar.
+    // Só sai quando o atendente mover à mão. (É trabalho em andamento; não pode "saltar" pra Triagem.)
+    if (manual === "montando-pedido" || manual === "aguardando-setor") coluna = manual;
     // SEMPRE TRAZER PRA TRIAGEM quando o cliente mandou mensagem nova e ninguém respondeu depois —
     // não importa onde o card esteja (arrastado à mão pra "finalizado", campanha, follow-up...).
     // Sem isto, o card ficava preso na coluna manual/finalizado e o cliente "sumia": só aparecia a
