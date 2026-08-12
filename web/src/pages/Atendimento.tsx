@@ -72,6 +72,8 @@ function hora(iso?: string | null) {
   const mm = iso.match(/(\d{2}):(\d{2})/);
   return mm ? `${mm[1]}:${mm[2]}` : "";
 }
+// Emojis mais usados no atendimento (estilo WhatsApp) — pro seletor do campo de mensagem.
+const EMOJIS = "😀 😁 😂 🤣 😊 😇 🙂 😉 😍 🥰 😘 😗 😋 😎 🤩 🥳 🤗 🤔 🤝 👍 👎 👌 ✌️ 🙏 👏 🙌 💪 👋 🫶 ❤️ 🧡 💛 💚 💙 💜 🖤 💔 💯 🔥 ✨ ⭐ 🎉 🎊 🎁 💐 🌹 😅 😌 😏 😴 😅 😢 😭 😔 😟 😕 🙃 😬 😳 🥺 😱 😤 😡 🤦 🤷 💰 🛒 📦 🚚 ✅ ❌ ⚠️ 📌 📎 📷 🎤 ⏰ 📢 🤑 🥂".split(" ");
 // Data + hora pro card (fechado): "hoje 09:08", "ontem 17:26" ou "10/08 14:22". Horário de Brasília.
 function horaData(iso?: string | null) {
   if (!iso) return "";
@@ -388,7 +390,7 @@ export function Atendimento() {
     const t = setInterval(recarregar, 4000);
     // O navegador CONGELA o timer quando a aba fica em segundo plano — por isso "às vezes" a
     // mensagem só aparecia depois. Ao voltar pra aba (ou focar a janela), atualiza NA HORA.
-    const aoVoltar = () => { if (!document.hidden) { recarregar(); checarConexao(); } };
+    const aoVoltar = () => { if (!document.hidden) { recarregar(); checarConexao(); try { audioRef.current?.resume?.(); } catch { /* ok */ } } };
     document.addEventListener("visibilitychange", aoVoltar);
     window.addEventListener("focus", aoVoltar);
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", aoVoltar); window.removeEventListener("focus", aoVoltar); };
@@ -401,10 +403,14 @@ export function Atendimento() {
       audioRef.current?.resume?.();
       if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
       window.removeEventListener("pointerdown", liberar);
+      window.removeEventListener("keydown", liberar);
+      window.removeEventListener("touchstart", liberar);
     };
     window.addEventListener("pointerdown", liberar);
+    window.addEventListener("keydown", liberar);
+    window.addEventListener("touchstart", liberar);
     if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
-    return () => window.removeEventListener("pointerdown", liberar);
+    return () => { window.removeEventListener("pointerdown", liberar); window.removeEventListener("keydown", liberar); window.removeEventListener("touchstart", liberar); };
   }, []);
 
   // Som IRRITANTE (bipes agudos alternados) gerado na hora, sem depender de arquivo.
@@ -451,7 +457,9 @@ export function Atendimento() {
   useEffect(() => {
     if (!board) return;
     let maxIn = "";
-    for (const c of board.conversas) { if (c.silenciado) continue; const t = c.ultima_in_em || ""; if (t > maxIn) maxIn = t; }
+    // Toca o som/aviso mesmo em card "não pisca": parar de piscar é só VISUAL, a notificação continua
+    // (foi o pedido do Pedro). Só GRUPO fica sem som (é barulhento demais e já não pisca).
+    for (const c of board.conversas) { if (ehGrupoCard(c)) continue; const t = c.ultima_in_em || ""; if (t > maxIn) maxIn = t; }
     if (primeiraInRef.current) { ultimoInRef.current = maxIn; primeiraInRef.current = false; return; }
     if (maxIn && maxIn > ultimoInRef.current) {
       ultimoInRef.current = maxIn;
@@ -525,7 +533,7 @@ export function Atendimento() {
         <div><h1>Atendimento</h1><div className="breadcrumb">Comercial › Atendimento (robô do WhatsApp)</div></div>
         <div className="row-gap at-actions" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
-          <button className="btn btn-soft" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); return n; })} title={mudo ? "Som desligado — clique para ligar" : "Toca um som quando chega mensagem nova"}>{mudo ? "🔕 Som off" : "🔔 Som on"}</button>
+          <button className="btn btn-soft" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); if (!n) { try { if (!audioRef.current) audioRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)(); } catch { /* ok */ } audioRef.current?.resume?.(); setTimeout(() => tocarDing(), 60); } return n; })} title={mudo ? "Som desligado — clique para ligar (toca um teste)" : "Toca um som quando chega mensagem nova. Clique para desligar."}>{mudo ? "🔕 Som off" : "🔔 Som on"}</button>
           <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
@@ -1143,7 +1151,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
         {c.funil_etapa && <span className="at-badge" style={{ background: "#ecfdf5", color: "#047857" }} title="Etapa no funil de vendas">🎯 {etapaLabel(c.funil_etapa)}</span>}
         {c.interessado === 1 && <span className="at-badge" style={{ background: "#fee2e2", color: "#b91c1c" }} title="Demonstrou interesse comercial">🔥 Interessado</span>}
         {c.representante && <span className="at-badge" style={{ background: "#eef2ff", color: "#4338ca" }} title={c.autorizado === 0 ? "Representante sugerido" : "Representante"}>🧑‍💼 {c.representante}</span>}
-        {!!c.silenciado && <span className="at-badge" style={{ background: "#f1f5f9", color: "#475569" }} title="Silenciado — não pisca / sem som">🔕</span>}
+        {!!c.silenciado && <span className="at-badge" style={{ background: "#f1f5f9", color: "#475569" }} title="Não pisca (mas você continua sendo avisado com som). Grupo fica sem som.">🔕</span>}
         {c.agendado_ia ? (c.agendado_enviado
           ? <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="IA já mandou a saudação — aguardando o cliente responder">⏰ chamado · aguardando</span>
           : <span className="at-badge" style={{ background: "#dbeafe", color: "#1d4ed8" }} title="IA vai enviar uma saudação neste horário">⏰ {agendadoLabel(c.agendado_ia)}</span>) : null}
@@ -1179,6 +1187,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [arqRapidoOpen, setArqRapidoOpen] = useState(false);
   const [transfOpen, setTransfOpen] = useState(false); // picker do botão "Transferir para outro vendedor"
   const [anexoMenu, setAnexoMenu] = useState(false); // menu do clipe (📎): opções de anexo, como no WhatsApp
+  const [emojiOpen, setEmojiOpen] = useState(false); // seletor de emojis (😊) do campo de mensagem
   const [editDados, setEditDados] = useState(false);
   const [formD, setFormD] = useState({ contato_nome: "", nome: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
   const [respondendo, setRespondendo] = useState<{ id: string; texto: string } | null>(null);
@@ -1495,6 +1504,16 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     catch { alert("Não consegui salvar a nota agora. Tente de novo (seu texto continua no campo)."); }
     finally { setBusy(false); enviandoRef.current = false; }
   }
+  // Insere o emoji no ponto do cursor (ou no fim) e mantém o foco no campo.
+  function inserirEmoji(emo: string) {
+    const el = inputRef.current;
+    if (el) {
+      const s = el.selectionStart ?? texto.length, e = el.selectionEnd ?? texto.length;
+      const novo = texto.slice(0, s) + emo + texto.slice(e);
+      setTexto(novo);
+      requestAnimationFrame(() => { try { el.focus(); const p = s + emo.length; el.setSelectionRange(p, p); } catch { /* ok */ } });
+    } else setTexto(texto + emo);
+  }
 
   const humano = d?.estado === "atendimento-humano";
   const bloqueado = !!d?.bloqueado;
@@ -1737,7 +1756,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d?.lembrete ? { borderColor: "#eab308", background: "#fffbeb", color: "#854d0e", fontWeight: 700 } : {}) }} disabled={busy} onClick={toggleLembreteConv} title="Deixa o card pulsando (amarelo) no quadro pra você lembrar de falar com esse lead.">
               {d?.lembrete ? "🔔 Lembrete ativo — tirar (para de pulsar)" : "🔔 Lembrar de falar (deixa o card pulsando)"}
             </button>
-            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d?.silenciado ? { borderColor: "#94a3b8", background: "#f1f5f9", color: "#475569", fontWeight: 700 } : {}) }} disabled={busy} onClick={toggleSilenciar} title="O card NÃO pisca e não toca som/aviso. Bom pra quando o cliente tem autorresposta e não há o que responder.">
+            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d?.silenciado ? { borderColor: "#94a3b8", background: "#f1f5f9", color: "#475569", fontWeight: 700 } : {}) }} disabled={busy} onClick={toggleSilenciar} title="O card para de PISCAR (mas você continua sendo avisado com som quando o cliente escreve). Em grupo, também tira o som.">
               {d?.silenciado
                 ? ((d?.origem === "grupo" || d?.estado === "grupo") ? "🔕 Grupo silenciado — reativar" : "🔕 Não pisca — voltar a piscar")
                 : ((d?.origem === "grupo" || d?.estado === "grupo") ? "🔕 Silenciar este grupo" : "🔕 Parar de piscar este card")}
@@ -1842,6 +1861,20 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                   </>)}
                 </div>
                 <input ref={arqRef} type="file" multiple accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length === 1) escolherAnexo(fs[0]); else if (fs.length > 1) enviarVarios(fs); e.currentTarget.value = ""; }} />
+                {/* Emojis (😊): abre um painel pra clicar, como no WhatsApp do computador. */}
+                <div style={{ position: "relative", flex: "0 0 auto" }}>
+                  <button className="at-send" style={{ background: emojiOpen ? "rgba(0,128,105,.12)" : "transparent" }} disabled={busy} onClick={() => setEmojiOpen((v) => !v)} title="Emojis">
+                    <svg viewBox="0 0 24 24" width="23" height="23" fill="#54656f"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16zm-3.5-9a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm7 0a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM12 17.5c2.03 0 3.8-1.11 4.74-2.75a.75.75 0 00-1.3-.75A3.98 3.98 0 0112 16a3.98 3.98 0 01-3.44-1.99.75.75 0 10-1.3.74A5.48 5.48 0 0012 17.5z"/></svg>
+                  </button>
+                  {emojiOpen && (<>
+                    <div onClick={() => setEmojiOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 19 }} />
+                    <div style={{ position: "absolute", bottom: "100%", left: 0, marginBottom: 8, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, boxShadow: "0 12px 32px #0003", zIndex: 20, width: 268, maxHeight: 210, overflowY: "auto", padding: 8, display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 2 }}>
+                      {EMOJIS.map((emo, i) => (
+                        <button key={i} onClick={() => inserirEmoji(emo)} title={emo} style={{ background: "transparent", border: 0, cursor: "pointer", fontSize: 21, lineHeight: 1, padding: "4px 0", borderRadius: 6 }}>{emo}</button>
+                      ))}
+                    </div>
+                  </>)}
+                </div>
                 <textarea ref={inputRef} rows={1} placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
                 {gravando && <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#ef4444", fontWeight: 800, fontSize: 13, fontVariantNumeric: "tabular-nums", flex: "0 0 auto" }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", animation: "atpulse 1s ease-in-out infinite" }} />{mmss(gravSeg)}</span>}
                 {/* Direita: digitando → enviar (➤); vazio → gravar áudio (🎤), como no WhatsApp. */}
