@@ -3743,3 +3743,32 @@ export async function followupAtendimento(env: Env): Promise<number> {
   }
   return enviados;
 }
+
+// ── CRUZA os contatos do atendimento com a BASE DE CLIENTES (chamado pelo cron) ────────
+// Liga conversas ainda SEM cliente_id ao cliente cadastrado (casa por telefone). Preenche só o que
+// está VAZIO — nunca sobrescreve o que foi preenchido à mão. NÃO mexe no atualizado_em (pra não
+// reordenar/"mover" cards à toa). Assim, os contatos vão ficando cruzados sozinhos, sem apertar nada.
+export async function cruzarContatosBase(env: Env): Promise<number> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, telefone, nome, cnpj, cidade, uf, representante, tipo FROM atend_conversas
+      WHERE cliente_id IS NULL AND COALESCE(estado,'') <> 'grupo' AND COALESCE(origem,'') <> 'grupo'
+        AND COALESCE(telefone,'') <> '' ORDER BY atualizado_em DESC LIMIT 400`
+  ).all<{ id: string; telefone: string; nome: string | null; cnpj: string | null; cidade: string | null; uf: string | null; representante: string | null; tipo: string | null }>().catch(() => ({ results: [] as { id: string; telefone: string; nome: string | null; cnpj: string | null; cidade: string | null; uf: string | null; representante: string | null; tipo: string | null }[] }));
+  let n = 0;
+  for (const cv of (results || [])) {
+    const cli = await identificarCliente(env, cv.telefone).catch(() => null);
+    if (!cli) continue;
+    const nome = cv.nome || cli.nome || null;
+    const cnpj = cv.cnpj || cli.cnpj || null;
+    const cidade = cv.cidade || cli.cidade || null;
+    const uf = cv.uf || cli.uf || null;
+    const rep = cv.representante || cli.representante || (await representantePorRegiao(env, cli.uf).catch(() => null)) || null;
+    const tipo = cv.tipo || "lojista";   // quem está na base é lojista (atacado)
+    // atualizado_em=atualizado_em → NÃO bumpa o horário (não reordena nem "move" o card).
+    await env.DB.prepare(
+      "UPDATE atend_conversas SET cliente_id=?, nome=?, cnpj=?, cidade=?, uf=?, representante=?, tipo=?, atualizado_em=atualizado_em WHERE id=?"
+    ).bind(cli.id, nome, cnpj, cidade, uf, rep, tipo, cv.id).run();
+    n++;
+  }
+  return n;
+}
