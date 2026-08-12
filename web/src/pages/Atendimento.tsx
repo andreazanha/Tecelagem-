@@ -1557,6 +1557,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     <button title="Excluir mensagem" onClick={() => setMenuMsg(menuMsg === m.id ? null : m.id)} style={{ position: "absolute", top: 3, right: 4, background: "rgba(148,163,184,.22)", border: 0, borderRadius: 6, cursor: "pointer", fontSize: 14, opacity: 0.9, lineHeight: 1, padding: "2px 5px", fontWeight: 800 }}>⋮</button>
                     {menuMsg === m.id && (
                       <div className="at-msgmenu">
+                        <button onClick={() => { setRespondendo({ id: m.id, texto: (extrairIaNota(m.texto).visivel || (m.arquivo_url ? "arquivo" : "mensagem")).slice(0, 180) }); setMenuMsg(null); }}>↩️ Responder</button>
                         {m.direcao === "out" && m.autor !== "sistema" && !m.arquivo_url && (m.texto || "").trim() && (
                           <button onClick={() => editarMsg(m.id, m.texto || "")}>✏️ Editar (corrigir erro)</button>
                         )}
