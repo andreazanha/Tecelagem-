@@ -748,7 +748,7 @@ export const api = {
   atendJuntarDuplicados: () =>
     jsonPost("/api/atendimento/juntar-duplicados", {}).then((r) => j<{ ok: boolean; mesclados: number; removidos: number }>(r)),
   atendCruzarBase: () =>
-    jsonPost("/api/atendimento/cruzar-base", {}).then((r) => j<{ ok: boolean; ligados: number }>(r)),
+    jsonPost("/api/atendimento/cruzar-base", {}).then((r) => j<{ ok: boolean; ligados: number; nomes: number }>(r)),
   atendAgendarIa: (id: string, quando: number | null, mensagem?: string) =>
     jsonPost(`/api/atendimento/${id}/agendar-ia`, quando === null ? { cancelar: true } : { quando, mensagem }).then((r) => j<{ ok: boolean; agendado: number | null }>(r)),
   atendExcluirMsg: (id: string, msgId: string, paraTodos: boolean) =>

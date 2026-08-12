@@ -397,7 +397,14 @@ export function Atendimento() {
   const [cruzando, setCruzando] = useState(false);
   async function cruzarBase() {
     setCruzando(true);
-    try { const r = await api.atendCruzarBase(); alert(r.ligados ? `✓ ${r.ligados} contato(s) cruzados com a base de clientes (nome/CNPJ/cidade preenchidos).` : "Nenhum contato novo pra cruzar — os que estão na base já estão ligados. 👍"); recarregar(); }
+    try {
+      const r = await api.atendCruzarBase();
+      const p: string[] = [];
+      if (r.ligados) p.push(`${r.ligados} ligado(s) à base de clientes (nome/CNPJ/cidade)`);
+      if (r.nomes) p.push(`${r.nomes} nome(s) puxado(s) da agenda do WhatsApp`);
+      alert(p.length ? "✓ " + p.join("\n✓ ") : "Nada novo pra preencher — já está tudo cruzado. 👍");
+      recarregar();
+    }
     catch { alert("Não consegui cruzar com a base agora. Tente de novo."); }
     finally { setCruzando(false); }
   }
@@ -557,7 +564,7 @@ export function Atendimento() {
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setSim(true)}>💬 Simular cliente</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={juntarDuplicados} title="Junta cards repetidos do mesmo contato (número com/sem o 9º dígito) num só, preservando o histórico">🧹 Juntar duplicados</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" disabled={cruzando} onClick={cruzarBase} title="Liga os contatos à base de clientes agora (preenche nome/CNPJ/cidade/UF/lojista sozinho). O sistema também faz isso automático 3x/dia.">{cruzando ? "Cruzando…" : "🔗 Cruzar com a base"}</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" disabled={cruzando} onClick={cruzarBase} title="Liga os contatos à base de clientes E puxa os nomes salvos na sua agenda do WhatsApp (preenche nome/CNPJ/cidade/UF sozinho). O sistema também faz isso automático 3x/dia.">{cruzando ? "Cruzando…" : "🔗 Cruzar com a base"}</button>}
         </div>
       </div>
 

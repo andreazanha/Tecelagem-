@@ -2520,12 +2520,13 @@ atendimento.post("/juntar-duplicados", async (c) => {
 // "Cruzar com a base agora": roda o cruzamento na hora (o cron também roda sozinho 3x/dia). Repete
 // em lotes de 400 até acabar (ou 10 lotes = 4000). GET pra poder rodar abrindo o link no navegador.
 const cruzarBaseAgora = async (c: { env: Env }) => {
-  let total = 0;
-  for (let i = 0; i < 10; i++) { const n = await cruzarContatosBase(c.env); total += n; if (n < 400) break; }
-  return total;
+  let ligados = 0;
+  for (let i = 0; i < 10; i++) { const n = await cruzarContatosBase(c.env); ligados += n; if (n < 400) break; }
+  const nomes = await sincronizarNomesWhatsapp(c.env).catch(() => 0);  // puxa nomes da agenda do WhatsApp
+  return { ligados, nomes };
 };
-atendimento.get("/cruzar-base", async (c) => c.json({ ok: true, ligados: await cruzarBaseAgora(c) }));
-atendimento.post("/cruzar-base", async (c) => c.json({ ok: true, ligados: await cruzarBaseAgora(c) }));
+atendimento.get("/cruzar-base", async (c) => c.json({ ok: true, ...(await cruzarBaseAgora(c)) }));
+atendimento.post("/cruzar-base", async (c) => c.json({ ok: true, ...(await cruzarBaseAgora(c)) }));
 
 // Silencia/reativa uma conversa (grupo barulhento, etc.): o card NÃO pisca e não toca som/aviso.
 atendimento.post("/:id/silenciar", async (c) => {
@@ -3777,6 +3778,53 @@ export async function cruzarContatosBase(env: Env): Promise<number> {
     await env.DB.prepare(
       "UPDATE atend_conversas SET cliente_id=?, nome=?, cnpj=?, cidade=?, uf=?, representante=?, tipo=?, atualizado_em=atualizado_em WHERE id=?"
     ).bind(cli.id, nome, cnpj, cidade, uf, rep, tipo, cv.id).run();
+    n++;
+  }
+  return n;
+}
+
+// ── PUXA os NOMES salvos na sua AGENDA do WhatsApp (via Z-API) pros cards ──────────────
+// Preenche o `nome` (que está VAZIO) com o nome que VOCÊ salvou na agenda — assim o card mostra
+// "Maria Tricô Atacado" no lugar do número/pushName. NÃO mexe em quem já tem nome (ERP ou manual),
+// nem no atualizado_em (não reordena/"move" card). O pushName original fica intacto em contato_nome.
+export async function sincronizarNomesWhatsapp(env: Env): Promise<number> {
+  const cfg = await lerConfig(env);
+  const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
+  const inst = cfg.zapi_instance || "", token = cfg.zapi_token || "";
+  if (!inst || !token) return 0;
+  const headers: Record<string, string> = {};
+  if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
+  // 1) Baixa a agenda: mapa núcleo-do-telefone (DDD+8) → nome salvo. Usa name/short/vname (o nome
+  //    que VOCÊ salvou) — NÃO usa "notify" (que é o nome que a pessoa pôs no WhatsApp dela).
+  const agenda = new Map<string, string>();
+  try {
+    for (let page = 1; page <= 30; page++) {
+      const r = await fetch(`${base}/instances/${inst}/token/${token}/contacts?page=${page}&pageSize=200`, { headers, signal: AbortSignal.timeout(12000) });
+      if (!r.ok) break;
+      const data = await r.json() as unknown;
+      const arr: Array<Record<string, unknown>> = Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
+      if (!arr.length) break;
+      for (const ct of arr) {
+        const tel = digitos(ct.phone ?? ct.id ?? "");
+        if (tel.length < 10 || tel.length > 15) continue;                 // pula grupos/inválidos
+        const nome = String(ct.name ?? ct.short ?? ct.vname ?? "").trim().slice(0, 80);
+        if (!nome) continue;
+        const nuc = nucleoTel(tel);
+        if (nuc.length >= 10 && !agenda.has(nuc)) agenda.set(nuc, nome);
+      }
+      if (arr.length < 200) break;
+    }
+  } catch { return 0; }
+  if (!agenda.size) return 0;
+  // 2) Preenche só os cards SEM nome (nome NULL/''); quem já tem nome (ERP/manual) fica intocado.
+  const { results } = await env.DB.prepare(
+    "SELECT id, telefone FROM atend_conversas WHERE (nome IS NULL OR nome='') AND COALESCE(telefone,'')<>'' LIMIT 3000"
+  ).all<{ id: string; telefone: string }>().catch(() => ({ results: [] as { id: string; telefone: string }[] }));
+  let n = 0;
+  for (const cv of (results || [])) {
+    const nome = agenda.get(nucleoTel(String(cv.telefone)));
+    if (!nome) continue;
+    await env.DB.prepare("UPDATE atend_conversas SET nome=?, atualizado_em=atualizado_em WHERE id=? AND (nome IS NULL OR nome='')").bind(nome, cv.id).run();
     n++;
   }
   return n;

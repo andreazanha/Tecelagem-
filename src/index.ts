@@ -16,7 +16,7 @@ import { materiais } from "./routes/materiais";
 import { colecoes } from "./routes/colecoes";
 import { chat } from "./routes/chat";
 import { etiquetas } from "./routes/etiquetas";
-import { atendimento, followupAtendimento, sincronizarPedidos, posVendaRecompra, prospeccaoCatalogo, processarCampanhas, processarAgendamentos, parabensAniversario, juntarDuplicadosAtend, cruzarContatosBase } from "./routes/atendimento";
+import { atendimento, followupAtendimento, sincronizarPedidos, posVendaRecompra, prospeccaoCatalogo, processarCampanhas, processarAgendamentos, parabensAniversario, juntarDuplicadosAtend, cruzarContatosBase, sincronizarNomesWhatsapp } from "./routes/atendimento";
 import { assistente } from "./routes/assistente";
 import { relatorios } from "./routes/relatorios";
 import { tecelagem } from "./routes/tecelagem";
@@ -140,6 +140,7 @@ export default {
     ctx.waitUntil(lembreteReposicao(env));
     ctx.waitUntil(followupAtendimento(env)); // retomada 24h do robô de atendimento
     ctx.waitUntil(cruzarContatosBase(env)); // liga contatos à base de clientes (sozinho)
+    ctx.waitUntil(sincronizarNomesWhatsapp(env)); // puxa nomes salvos na agenda do WhatsApp
     ctx.waitUntil(sincronizarPedidos(env));  // status do pedido → conversa (realizado/faturado/enviado)
     ctx.waitUntil(posVendaRecompra(env));    // pós-venda e recompra por tempo
     ctx.waitUntil(prospeccaoCatalogo(env));  // reativação: catálogo X dias após o faturamento
