@@ -1677,6 +1677,26 @@ atendimento.get("/webhook-debug", async (c) => {
   });
 });
 
+// Diagnóstico de um card: mostra o dado REAL (coluna_manual/estado/encerrado) + a coluna calculada.
+// Abra no navegador: /api/atendimento/debug-card?q=marcio  (ou ?q=98240)
+atendimento.get("/debug-card", async (c) => {
+  const q = String(c.req.query("q") || "").trim();
+  if (!q) return c.json({ erro: "passe ?q=nome ou parte do telefone" });
+  const dig = q.replace(/\D/g, "");
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, telefone, nome, contato_nome, estado, coluna_manual, encerrado_em, responsavel, ultima_in_em, ultima_out_em, origem, tipo, atualizado_em
+       FROM atend_conversas
+      WHERE nome LIKE '%'||?||'%' OR contato_nome LIKE '%'||?||'%' OR (?<>'' AND telefone LIKE '%'||?||'%')
+      ORDER BY atualizado_em DESC LIMIT 20`
+  ).bind(q, q, dig, dig).all<Record<string, unknown>>().catch(() => ({ results: [] as Record<string, unknown>[] }));
+  const cols = await lerColunasAtend(c.env);
+  const validos = new Set(cols.map((x) => x.id));
+  const cards = (results || []).map((r) => {
+    const manual = r.coluna_manual && validos.has(String(r.coluna_manual)) ? String(r.coluna_manual) : null;
+    return { ...r, _manual_valido: manual, _coluna_calculada: manual || colunaAtendimento(r) };
+  });
+  return c.json({ total: cards.length, duplicados_mesmo_nucleo: cards.length > 1, cards });
+});
 // ── CAMPANHAS (envio em massa aos poucos) ─────────────────────────────────────────
 atendimento.get("/campanhas", async (c) => {
   const { results } = await c.env.DB.prepare(
