@@ -1214,7 +1214,10 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     const ehImg = (file.type || "").startsWith("image/");
     const ehAudio = (file.type || "").startsWith("audio/");
     setAnexo((a) => { if (a?.url) URL.revokeObjectURL(a.url); return { file, url: (ehImg || ehAudio) ? URL.createObjectURL(file) : "", ehImg, ehAudio }; });
-    setLegendaAnexo("");
+    // Se você já tinha digitado um texto no campo de mensagem, ele VIRA a legenda da foto/arquivo
+    // (antes esse texto ficava esquecido no campo e não ia junto). Áudio não leva legenda.
+    if (ehAudio) setLegendaAnexo("");
+    else { setLegendaAnexo(texto.trim()); if (texto.trim()) setTexto(""); }
   }
   // Gravar áudio (nota de voz) pelo microfone. Grava com o MediaRecorder (confiável, NÃO derruba
   // pedaços do áudio — o método antigo, ScriptProcessor, picotava e o cliente reclamava que "cortava").
