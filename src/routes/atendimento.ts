@@ -874,8 +874,8 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: saud }], notificarHumano: true };
   }
 
-  // Reclamação/problema → coluna própria "Reclamação": a Big dá um retorno acolhedor,
-  // avisa o time e deixa o caso separado e visível pra resolver com prioridade.
+  // Reclamação/problema → fila humana: a Big dá um retorno acolhedor, avisa o time e o caso cai
+  // em "Aguardando atendimento humano" (piscando) pra resolver com prioridade.
   // Guarda contra falso positivo ("sem problema", "tudo certo").
   if (RECLAMACAO_RE.test(texto) && !/sem problema|nenhum problema|tranquil|tudo certo|tudo (ó|o)k|sem reclama/i.test(texto)) {
     await env.DB.prepare("UPDATE atend_conversas SET estado='reclamacao', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
@@ -883,7 +883,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     const ack = "Poxa, sinto muito por isso! 😟 Já vou passar pro nosso time resolver o quanto antes. Obrigada por avisar, viu? 💛" + aviso;
     await enviarBot(env, conv.id, tel, { tipo: "texto", texto: ack });
     await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
-    return { conversa_id: conv.id, estado: "reclamacao", coluna: "reclamacao", respostas: [{ tipo: "texto", texto: ack }], notificarHumano: true };
+    return { conversa_id: conv.id, estado: "reclamacao", coluna: "aguardando-humano", respostas: [{ tipo: "texto", texto: ack }], notificarHumano: true };
   }
 
   // ── MENU DE SETORES: o contato novo (estado 'menu') escolheu uma opção (número ou palavra). ──
@@ -1608,8 +1608,8 @@ async function lerColunasAtend(env: Env): Promise<{ id: string; label: string; c
   const customPos = (id: string) => { const i = ordem.indexOf(id); return i < 0 ? 9999 : i; };
   const chave = (id: string) => (baseIdx.has(id) ? baseIdx.get(id)! : 1000 + customPos(id));
   const ordenadas = todas.map((c0, i) => ({ ...c0, _i: i })).sort((a, b) => (chave(a.id) - chave(b.id)) || (a._i - b._i)).map(({ _i, ...c0 }) => { void _i; return c0; });
-  // "Reclamação ou pendência" SEMPRE por último (depois inclusive das colunas criadas).
-  const iRec = ordenadas.findIndex((c0) => c0.id === "reclamacao");
+  // "🏠 Cliente final" SEMPRE por último (depois inclusive das colunas criadas).
+  const iRec = ordenadas.findIndex((c0) => c0.id === "cliente-final");
   if (iRec >= 0) ordenadas.push(ordenadas.splice(iRec, 1)[0]);
   return ordenadas;
 }
@@ -2343,26 +2343,21 @@ atendimento.get("/painel", async (c) => {
 
 // Coluna do ATENDIMENTO derivada do estado + responsável + últimas mensagens + encerrado.
 // É isso que faz os cards se moverem SOZINHOS conforme a conversa anda.
-function colunaAtendimento(c: { estado?: string | null; responsavel?: string | null; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null; tipo?: string | null; origem?: string | null }): string {
+function colunaAtendimento(c: { estado?: string | null; responsavel?: string | null; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null; tipo?: string | null; lojista?: number | null; origem?: string | null }): string {
   const inn = c.ultima_in_em || "", out = c.ultima_out_em || "", enc = c.encerrado_em || "";
   const estado = String(c.estado || "");
   const origem = String(c.origem || "");
   if (estado === "grupo") return "grupos";                            // mensagens de grupo → coluna própria
-  if (enc && inn <= enc) return "finalizado";                         // encerrado e sem msg nova depois
-  // ATENDIMENTO HUMANO ganha de tudo (menos do "finalizado sem msg nova" acima): é o estado que o
-  // REABRIR põe quando um card FINALIZADO recebe mensagem nova. Assim ele volta pra fila humana
-  // mesmo que seja consumidor. Sem isto, a regra de "consumidor" abaixo prendia o card em finalizado.
-  if (estado === "atendimento-humano") {
-    if (String(c.responsavel || "").trim()) return "em-atendimento"; // já tem quem atende → Em atendimento
-    return "aguardando-humano";                                        // ninguém assumiu → fila humana (pisca)
-  }
-  // Reclamação e "orçando" (aguardando-setor) valem ATÉ pra consumidor: uma reclamação de consumidor
-  // não pode sumir em "finalizado" — alguém precisa ver. Por isso vêm ANTES da regra de consumidor.
-  if (estado === "reclamacao") return "reclamacao";
+  // Reclamação (defeito/troca/atraso) → fila humana: precisa de gente, mesmo se for consumidor.
+  if (estado === "reclamacao") return String(c.responsavel || "").trim() ? "em-atendimento" : "aguardando-humano";
+  // CLIENTE FINAL (consumidor): vai SEMPRE pra coluna própria "🏠 Cliente final" — mesmo reaberto ou
+  // já finalizado antes. Não some no "finalizado" nem entope a fila de lojista, e fica guardado
+  // ("não sabemos o dia de amanhã"). Só não vem pra cá reclamação (tratada acima, precisa de humano).
+  if (String(c.tipo || "") === "consumidor" || c.lojista === 0 || estado === "indicado-parceiro" || estado === "aguardando-cidade-parceiro") return "cliente-final";
+  if (enc && inn <= enc) return "finalizado";                         // (lojista) encerrado e sem msg nova
+  // ATENDIMENTO HUMANO (lojista): já tem quem atende → Em atendimento; senão → fila (pisca).
+  if (estado === "atendimento-humano") return String(c.responsavel || "").trim() ? "em-atendimento" : "aguardando-humano";
   if (estado === "aguardando-setor") return "aguardando-setor";
-  // Consumidor final (não é lojista): a IA já indica a loja parceira sozinha — não precisa de
-  // humano, então cai em "finalizado" (não polui a fila de atendimento de lojista).
-  if (String(c.tipo || "") === "consumidor" || estado === "indicado-parceiro" || estado === "aguardando-cidade-parceiro") return "finalizado";
   // Contato de CAMPANHA/reativação que ainda NÃO virou atendimento humano (ex.: só chegou uma
   // autorresposta da loja) fica na coluna "Campanhas". Quando responder de verdade, o webhook põe
   // estado='atendimento-humano' e aí ele sai daqui e cai em "Aguardando humano" (piscando).

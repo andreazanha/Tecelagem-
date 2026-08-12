@@ -102,7 +102,7 @@ export const ATEND_COLUNAS = [
   { id: "campanha", label: "📣 Campanhas", cor: "#0ea5e9" },
   { id: "grupos", label: "👥 Grupos", cor: "#0891b2" },
   { id: "finalizado", label: "Atendimento finalizado", cor: "#22c55e" },
-  { id: "reclamacao", label: "Reclamação ou pendência", cor: "#ef4444" },
+  { id: "cliente-final", label: "🏠 Cliente final", cor: "#14b8a6" },
 ] as const;
 
 // Mapa simples estado → coluna (aproximação; o quadro usa colunaAtendimento, mais rico).
@@ -112,7 +112,8 @@ export function colunaDe(estado: string): string {
     case "ia-triagem": case "triagem-vendas": case "triagem-nome": case "aguardando-cnpj": case "aguardando-cidade-parceiro": return "triagem";
     case "aguardando-setor": return "aguardando-setor";
     case "atendimento-humano": return "em-atendimento";
-    case "reclamacao": return "reclamacao";
+    case "reclamacao": return "aguardando-humano";                       // reclamação → fila humana
+    case "indicado-parceiro": case "aguardando-cidade-parceiro": return "cliente-final";   // consumidor final
     default: return "finalizado";
   }
 }
