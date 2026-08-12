@@ -117,15 +117,16 @@ function corDoNome(nome: string): string {
 }
 // Fonte/origem do contato (mostra no card só quando NÃO é WhatsApp direto — pra destacar de onde veio).
 const FONTE_LABEL: Record<string, string> = { campanha: "📣 Campanha", catalogo: "📖 Catálogo", reativacao: "🔁 Reativação", manual: "✍️ Manual", instagram: "📸 Instagram", formulario: "📝 Formulário" };
-// Status do cliente (marcado à mão) — selo no card fechado + seletor no painel da conversa.
+// RELAÇÃO DE COMPRA (jornada) — marcada à mão. É SEPARADA do perfil (lojista/consumidor): um lojista
+// pode ainda não ter comprado (Lead). Vira selo no card + seletor no painel da conversa.
 const STATUS_CLIENTE: Record<string, { label: string; bg: string; cor: string }> = {
-  "primeira-compra": { label: "🆕 Primeira compra", bg: "#dbeafe", cor: "#1e40af" },
-  "recorrente": { label: "🔁 Compra recorrente", bg: "#dcfce7", cor: "#15803d" },
-  "fiel": { label: "⭐ Cliente fiel", bg: "#fef9c3", cor: "#854d0e" },
+  "lead": { label: "👀 Lead (não comprou)", bg: "#f5f3ff", cor: "#6d28d9" },
+  "primeira-compra": { label: "🆕 1ª compra", bg: "#dbeafe", cor: "#1e40af" },
+  "recorrente": { label: "🔁 Recorrente", bg: "#dcfce7", cor: "#15803d" },
+  "fiel": { label: "⭐ Fiel", bg: "#fef9c3", cor: "#854d0e" },
   "inativo": { label: "💤 Inativo (sumiu)", bg: "#f1f5f9", cor: "#475569" },
-  "lead": { label: "👀 Só cotou (lead)", bg: "#f5f3ff", cor: "#6d28d9" },
 };
-const STATUS_CLIENTE_ORDEM = ["primeira-compra", "recorrente", "fiel", "inativo", "lead"];
+const STATUS_CLIENTE_ORDEM = ["lead", "primeira-compra", "recorrente", "fiel", "inativo"];
 
 // ── Página do robô de atendimento ────────────────────────────────────────────────
 export function Atendimento() {
@@ -1146,8 +1147,12 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
       <div className="fx-div" />
       <div className="fx-foot">
         {c.origem && FONTE_LABEL[c.origem] && <span className="at-badge" style={{ background: "#f5f3ff", color: "#6d28d9" }} title="De onde veio o contato">{FONTE_LABEL[c.origem]}</span>}
-        {c.cliente_id && <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="Já é cliente cadastrado na base">📇 Cliente</span>}
-        {c.status_cliente && STATUS_CLIENTE[c.status_cliente] && <span className="at-badge" style={{ background: STATUS_CLIENTE[c.status_cliente].bg, color: STATUS_CLIENTE[c.status_cliente].cor }} title="Status do cliente (marcado à mão)">{STATUS_CLIENTE[c.status_cliente].label}</span>}
+        {/* PERFIL (lojista x consumidor) — separado da relação de compra. */}
+        {(c.lojista === 1 || c.tipo === "lojista") && <span className="at-badge" style={{ background: "#e0e7ff", color: "#3730a3" }} title="Perfil: lojista (revende / compra no atacado)">🏪 Lojista</span>}
+        {(c.lojista === 0 || c.tipo === "consumidor") && <span className="at-badge" style={{ background: "#fff7ed", color: "#9a3412" }} title="Perfil: consumidor final (não é lojista)">🏠 Consumidor</span>}
+        {c.cliente_id && <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="Já cadastrado na base de clientes">📇 Na base</span>}
+        {/* RELAÇÃO DE COMPRA (jornada) — marcada à mão. */}
+        {c.status_cliente && STATUS_CLIENTE[c.status_cliente] && <span className="at-badge" style={{ background: STATUS_CLIENTE[c.status_cliente].bg, color: STATUS_CLIENTE[c.status_cliente].cor }} title="Relação de compra (marcada à mão)">{STATUS_CLIENTE[c.status_cliente].label}</span>}
         {c.autorizado === 0
           ? <span className="at-badge" style={{ background: "#fef3c7", color: "#92400e" }} title="Aguardando autorização da equipe">⏳ Autorizar</span>
           : <span className="at-badge">{c.responsavel ? `👤 ${c.responsavel}` : humano ? "👤 humano" : "🤖 robô"}</span>}
@@ -1730,11 +1735,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <Link to="/funil" className="btn btn-soft" style={{ marginTop: 8, display: "block", textAlign: "center", fontSize: 12 }}>Abrir no funil completo →</Link>
               </div>
             )}
-            {/* Status do cliente (marcado à mão): Primeira compra / Compra recorrente / etc. Vira selo no card. */}
+            {/* RELAÇÃO DE COMPRA (jornada), separada do perfil lojista/consumidor. Vira selo no card. */}
             <div style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>🏷️ Status do cliente</div>
+              <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>🏷️ Relação de compra</div>
               <select className={"at-sel" + (d?.status_cliente ? " on" : "")} value={d?.status_cliente || ""} onChange={(e) => mudarStatusCliente(e.target.value)} disabled={busy}>
-                <option value="">— sem status —</option>
+                <option value="">— não definido —</option>
                 {STATUS_CLIENTE_ORDEM.map((k) => <option key={k} value={k}>{STATUS_CLIENTE[k].label}</option>)}
               </select>
             </div>
