@@ -214,10 +214,13 @@ export function Atendimento() {
   // conversa em triagem e poder entrar (o lead não fica "preso" com a IA sem vocês saberem).
   // Não pisca autorresposta de campanha (é robô de loja, não gente). Silenciar tira o piscar.
   const emTriagemAtiva = (c: AtendConversa) => c.coluna === "triagem" && c.origem !== "campanha" && !!c.ultima_in_em && (c.ultima_in_em || "") > (c.encerrado_em || "");
-  // As colunas "Campanhas" e "Grupos" nunca piscam: campanha é autorresposta de loja (robô) e grupo
-  // tem mensagem o tempo todo — ficaria piscando à toa. (Quando um card de campanha vira atendimento
-  // de verdade, ele sai pra "Aguardando humano" e aí sim pisca.)
-  const pulsaVerde = (c: AtendConversa) => !c.silenciado && c.coluna !== "campanha" && c.coluna !== "grupos" && (aguardando(c) || emTriagemAtiva(c));
+  // GRUPO nunca pisca (mensagem o tempo todo): detecta pelo estado/origem — não só pela coluna, porque
+  // um grupo com msg nova o sistema joga pra "Aguardando humano" e aí voltava a piscar. Assim o grupo
+  // importante continua RECEBENDO (não é silenciar), só não fica piscando.
+  const ehGrupoCard = (c: AtendConversa) => c.estado === "grupo" || c.origem === "grupo" || c.coluna === "grupos";
+  // A coluna "Campanhas" também nunca pisca: é autorresposta de loja (robô), não gente esperando.
+  // (Quando um card de campanha vira atendimento de verdade, sai pra "Aguardando humano" e aí sim pisca.)
+  const pulsaVerde = (c: AtendConversa) => !c.silenciado && !ehGrupoCard(c) && c.coluna !== "campanha" && (aguardando(c) || emTriagemAtiva(c));
 
   // Busca do quadro: um card "bate" com a busca por nome/loja/cidade/UF/representante ou pelo telefone
   // (a partir de 3 dígitos). Vazio = mostra todos.
