@@ -289,7 +289,7 @@ export interface AtendConversa {
   setor: string | null; cnpj: string | null; cidade: string | null; uf: string | null;
   lojista: number | null; cliente_id?: string | null; responsavel: string | null; atualizado_em: string; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null; coluna_manual?: string | null; ultima_msg: string | null;
   tipo: string | null; representante: string | null; origem: string | null; contato_nome: string | null; autorizado: number | null; interessado: number | null;
-  funil_etapa?: string | null; lembrete?: number | null; silenciado?: number | null; agendado_ia?: number | null; agendado_enviado?: number | null; agendado_msg?: string | null; foto_url?: string | null;
+  funil_etapa?: string | null; lembrete?: number | null; silenciado?: number | null; agendado_ia?: number | null; agendado_enviado?: number | null; agendado_msg?: string | null; foto_url?: string | null; status_cliente?: string | null;
   remarket_em?: number | null; remarket_enviado?: number | null; transferido?: number | null;
 }
 export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; responder_texto?: string | null; arquivo_url?: string | null; status?: string | null; criado_em: string }
@@ -743,6 +743,8 @@ export const api = {
     jsonPost(`/api/atendimento/${id}/lembrete`, on === undefined ? {} : { on }).then((r) => j<{ ok: boolean; lembrete: boolean }>(r)),
   atendSilenciar: (id: string, on?: boolean) =>
     jsonPost(`/api/atendimento/${id}/silenciar`, on === undefined ? {} : { on }).then((r) => j<{ ok: boolean; silenciado: boolean }>(r)),
+  atendStatusCliente: (id: string, status: string) =>
+    jsonPost(`/api/atendimento/${id}/status-cliente`, { status }).then((r) => j<{ ok: boolean; status: string | null }>(r)),
   atendJuntarDuplicados: () =>
     jsonPost("/api/atendimento/juntar-duplicados", {}).then((r) => j<{ ok: boolean; mesclados: number; removidos: number }>(r)),
   atendAgendarIa: (id: string, quando: number | null, mensagem?: string) =>

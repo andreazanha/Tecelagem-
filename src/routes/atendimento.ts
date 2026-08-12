@@ -2376,6 +2376,9 @@ atendimento.get("/", async (c) => {
   const remarketHoras = Math.max(1, parseInt(cfgB.remarket_horas || "24", 10) || 24);
   let transferidos = new Set<string>();
   try { const a = JSON.parse(cfgB.atend_transferidos || "[]"); if (Array.isArray(a)) transferidos = new Set(a.map(String)); } catch { transferidos = new Set(); }
+  // Status do cliente (marcado à mão): mapa { conversaId: "primeira-compra"|"recorrente"|... }.
+  let statusCli: Record<string, string> = {};
+  try { const m = JSON.parse(cfgB.atend_status_cliente || "{}"); if (m && typeof m === "object") statusCli = m as Record<string, string>; } catch { statusCli = {}; }
   const conversas = results.map((r) => {
     const manual = r.coluna_manual && validos.has(String(r.coluna_manual)) ? String(r.coluna_manual) : null;
     // Card com "Chamar IA" agendado fica na coluna de follow-up: antes de disparar (esperando a
@@ -2420,7 +2423,7 @@ atendimento.get("/", async (c) => {
     // (pra ele pegar). Assim que ele responde, o /enviar tira da lista e o card vira "Em atendimento".
     const transferido = transferidos.has(String(r.id));
     if (transferido && coluna === "em-atendimento") coluna = "aguardando-humano";
-    return { ...r, coluna, lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: silenciadoR ? 1 : 0, transferido: transferido ? 1 : 0, agendado_ia: agAtivo ? ag!.quando : null, agendado_enviado: agAtivo && ag!.enviado ? 1 : 0, agendado_msg: agAtivo ? (ag!.mensagem || null) : null, remarket_em: rm ? rm.desde + remarketHoras * 3600e3 : null, remarket_enviado: rm && rm.enviado ? 1 : 0 };
+    return { ...r, coluna, status_cliente: statusCli[String(r.id)] || null, lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: silenciadoR ? 1 : 0, transferido: transferido ? 1 : 0, agendado_ia: agAtivo ? ag!.quando : null, agendado_enviado: agAtivo && ag!.enviado ? 1 : 0, agendado_msg: agAtivo ? (ag!.mensagem || null) : null, remarket_em: rm ? rm.desde + remarketHoras * 3600e3 : null, remarket_enviado: rm && rm.enviado ? 1 : 0 };
   });
   return c.json({ colunas, conversas });
 });
@@ -2528,6 +2531,20 @@ atendimento.post("/:id/silenciar", async (c) => {
   else { if (set.has(id)) set.delete(id); else set.add(id); }
   await salvarConfigJson(c.env, "atend_silenciados", [...set]);
   return c.json({ ok: true, silenciado: set.has(id) });
+});
+
+// Status do cliente (marcado à mão): Primeira compra / Compra recorrente / etc. Guardado num mapa
+// na config { conversaId: status }. Aparece como selo no card fechado e no painel da conversa.
+atendimento.post("/:id/status-cliente", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ status?: string }>().catch(() => ({} as { status?: string }));
+  const cfg = await lerConfig(c.env);
+  let mapa: Record<string, string> = {};
+  try { const m = JSON.parse(cfg.atend_status_cliente || "{}"); if (m && typeof m === "object") mapa = m as Record<string, string>; } catch { mapa = {}; }
+  const st = String(b.status ?? "").trim().slice(0, 30);
+  if (st) mapa[id] = st; else delete mapa[id];
+  await salvarConfigJson(c.env, "atend_status_cliente", mapa);
+  return c.json({ ok: true, status: st || null });
 });
 
 // Marca/desmarca um LEMBRETE no card (deixa o card pulsando pra não esquecer de falar com o lead).
@@ -2957,9 +2974,9 @@ atendimento.get("/:id", async (c) => {
   }
   const colManual = conv.coluna_manual && ATEND_COLUNAS.some((x) => x.id === conv.coluna_manual) ? conv.coluna_manual : null;
   // Lembrete (pulsa) e silenciado (não pulsa/sem som) — listas JSON de config.
-  let lembrete = 0, silenciado = 0, agendado_ia: number | null = null, agendado_enviado = 0;
-  try { const cfgL = await lerConfig(c.env); const l = JSON.parse(cfgL.atend_lembretes || "[]"); if (Array.isArray(l) && l.map(String).includes(String(conv.id))) lembrete = 1; const s = JSON.parse(cfgL.atend_silenciados || "[]"); if (Array.isArray(s) && s.map(String).includes(String(conv.id))) silenciado = 1; const ag = lerAgendamentos(cfgL).find((a) => a && a.conversaId === conv.id); if (ag) { agendado_ia = Number(ag.quando); agendado_enviado = ag.enviado ? 1 : 0; } } catch { /* ok */ }
-  return c.json({ ...conv, coluna: agendado_ia ? "contato-followup" : (colManual || colunaAtendimento(conv)), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado, lembrete, silenciado, agendado_ia, agendado_enviado });
+  let lembrete = 0, silenciado = 0, agendado_ia: number | null = null, agendado_enviado = 0, status_cliente: string | null = null;
+  try { const cfgL = await lerConfig(c.env); const l = JSON.parse(cfgL.atend_lembretes || "[]"); if (Array.isArray(l) && l.map(String).includes(String(conv.id))) lembrete = 1; const s = JSON.parse(cfgL.atend_silenciados || "[]"); if (Array.isArray(s) && s.map(String).includes(String(conv.id))) silenciado = 1; const ag = lerAgendamentos(cfgL).find((a) => a && a.conversaId === conv.id); if (ag) { agendado_ia = Number(ag.quando); agendado_enviado = ag.enviado ? 1 : 0; } const sc = JSON.parse(cfgL.atend_status_cliente || "{}"); if (sc && typeof sc === "object") status_cliente = sc[String(conv.id)] || null; } catch { /* ok */ }
+  return c.json({ ...conv, coluna: agendado_ia ? "contato-followup" : (colManual || colunaAtendimento(conv)), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado, lembrete, silenciado, agendado_ia, agendado_enviado, status_cliente });
 });
 
 // ── Atendente humano assume ─────────────────────────────────────────────────────────

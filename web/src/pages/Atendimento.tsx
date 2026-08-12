@@ -117,6 +117,15 @@ function corDoNome(nome: string): string {
 }
 // Fonte/origem do contato (mostra no card só quando NÃO é WhatsApp direto — pra destacar de onde veio).
 const FONTE_LABEL: Record<string, string> = { campanha: "📣 Campanha", catalogo: "📖 Catálogo", reativacao: "🔁 Reativação", manual: "✍️ Manual", instagram: "📸 Instagram", formulario: "📝 Formulário" };
+// Status do cliente (marcado à mão) — selo no card fechado + seletor no painel da conversa.
+const STATUS_CLIENTE: Record<string, { label: string; bg: string; cor: string }> = {
+  "primeira-compra": { label: "🆕 Primeira compra", bg: "#dbeafe", cor: "#1e40af" },
+  "recorrente": { label: "🔁 Compra recorrente", bg: "#dcfce7", cor: "#15803d" },
+  "fiel": { label: "⭐ Cliente fiel", bg: "#fef9c3", cor: "#854d0e" },
+  "inativo": { label: "💤 Inativo (sumiu)", bg: "#f1f5f9", cor: "#475569" },
+  "lead": { label: "👀 Só cotou (lead)", bg: "#f5f3ff", cor: "#6d28d9" },
+};
+const STATUS_CLIENTE_ORDEM = ["primeira-compra", "recorrente", "fiel", "inativo", "lead"];
 
 // ── Página do robô de atendimento ────────────────────────────────────────────────
 export function Atendimento() {
@@ -1138,6 +1147,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
       <div className="fx-foot">
         {c.origem && FONTE_LABEL[c.origem] && <span className="at-badge" style={{ background: "#f5f3ff", color: "#6d28d9" }} title="De onde veio o contato">{FONTE_LABEL[c.origem]}</span>}
         {c.cliente_id && <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="Já é cliente cadastrado na base">📇 Cliente</span>}
+        {c.status_cliente && STATUS_CLIENTE[c.status_cliente] && <span className="at-badge" style={{ background: STATUS_CLIENTE[c.status_cliente].bg, color: STATUS_CLIENTE[c.status_cliente].cor }} title="Status do cliente (marcado à mão)">{STATUS_CLIENTE[c.status_cliente].label}</span>}
         {c.autorizado === 0
           ? <span className="at-badge" style={{ background: "#fef3c7", color: "#92400e" }} title="Aguardando autorização da equipe">⏳ Autorizar</span>
           : <span className="at-badge">{c.responsavel ? `👤 ${c.responsavel}` : humano ? "👤 humano" : "🤖 robô"}</span>}
@@ -1375,6 +1385,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   async function moverColuna(colId: string) {
     setBusy(true);
     try { await api.atendMoverColuna(id, colId); carregar(); onMudou(); } finally { setBusy(false); }
+  }
+  // Status do cliente (Primeira compra / Compra recorrente / etc.) — marca à mão; vira selo no card.
+  async function mudarStatusCliente(status: string) {
+    setD((x) => (x ? { ...x, status_cliente: status || null } : x));   // otimista
+    try { await api.atendStatusCliente(id, status); onMudou(); } catch { carregar(); }
   }
   function carregar() {
     if (carregandoRef.current) return; // não empilha requisição por cima da anterior (tablet lento)
@@ -1715,6 +1730,14 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <Link to="/funil" className="btn btn-soft" style={{ marginTop: 8, display: "block", textAlign: "center", fontSize: 12 }}>Abrir no funil completo →</Link>
               </div>
             )}
+            {/* Status do cliente (marcado à mão): Primeira compra / Compra recorrente / etc. Vira selo no card. */}
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>🏷️ Status do cliente</div>
+              <select className={"at-sel" + (d?.status_cliente ? " on" : "")} value={d?.status_cliente || ""} onChange={(e) => mudarStatusCliente(e.target.value)} disabled={busy}>
+                <option value="">— sem status —</option>
+                {STATUS_CLIENTE_ORDEM.map((k) => <option key={k} value={k}>{STATUS_CLIENTE[k].label}</option>)}
+              </select>
+            </div>
             {/* Vendedor responsável: mostra o nome de quem atende e deixa escolher/trocar direto aqui. */}
             <div style={{ marginTop: 10 }}>
               <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>🧑‍💼 Vendedor responsável</div>
