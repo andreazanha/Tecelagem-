@@ -874,8 +874,8 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: saud }], notificarHumano: true };
   }
 
-  // Reclamação/problema → fila humana: a Big dá um retorno acolhedor, avisa o time e o caso cai
-  // em "Aguardando atendimento humano" (piscando) pra resolver com prioridade.
+  // Reclamação/problema → coluna própria "Reclamação": a Big dá um retorno acolhedor, avisa o time
+  // e deixa o caso separado e visível pra resolver com prioridade.
   // Guarda contra falso positivo ("sem problema", "tudo certo").
   if (RECLAMACAO_RE.test(texto) && !/sem problema|nenhum problema|tranquil|tudo certo|tudo (ó|o)k|sem reclama/i.test(texto)) {
     await env.DB.prepare("UPDATE atend_conversas SET estado='reclamacao', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
@@ -883,7 +883,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     const ack = "Poxa, sinto muito por isso! 😟 Já vou passar pro nosso time resolver o quanto antes. Obrigada por avisar, viu? 💛" + aviso;
     await enviarBot(env, conv.id, tel, { tipo: "texto", texto: ack });
     await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
-    return { conversa_id: conv.id, estado: "reclamacao", coluna: "aguardando-humano", respostas: [{ tipo: "texto", texto: ack }], notificarHumano: true };
+    return { conversa_id: conv.id, estado: "reclamacao", coluna: "reclamacao", respostas: [{ tipo: "texto", texto: ack }], notificarHumano: true };
   }
 
   // ── MENU DE SETORES: o contato novo (estado 'menu') escolheu uma opção (número ou palavra). ──
@@ -1608,9 +1608,11 @@ async function lerColunasAtend(env: Env): Promise<{ id: string; label: string; c
   const customPos = (id: string) => { const i = ordem.indexOf(id); return i < 0 ? 9999 : i; };
   const chave = (id: string) => (baseIdx.has(id) ? baseIdx.get(id)! : 1000 + customPos(id));
   const ordenadas = todas.map((c0, i) => ({ ...c0, _i: i })).sort((a, b) => (chave(a.id) - chave(b.id)) || (a._i - b._i)).map(({ _i, ...c0 }) => { void _i; return c0; });
-  // "🏠 Cliente final" SEMPRE por último (depois inclusive das colunas criadas).
-  const iRec = ordenadas.findIndex((c0) => c0.id === "cliente-final");
-  if (iRec >= 0) ordenadas.push(ordenadas.splice(iRec, 1)[0]);
+  // "Reclamação" e "🏠 Cliente final" SEMPRE por último (depois inclusive das colunas criadas).
+  for (const id of ["reclamacao", "cliente-final"]) {
+    const i = ordenadas.findIndex((c0) => c0.id === id);
+    if (i >= 0) ordenadas.push(ordenadas.splice(i, 1)[0]);
+  }
   return ordenadas;
 }
 atendimento.get("/colunas", async (c) => c.json({ colunas: await lerColunasAtend(c.env) }));
@@ -2348,8 +2350,9 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
   const estado = String(c.estado || "");
   const origem = String(c.origem || "");
   if (estado === "grupo") return "grupos";                            // mensagens de grupo → coluna própria
-  // Reclamação (defeito/troca/atraso) → fila humana: precisa de gente, mesmo se for consumidor.
-  if (estado === "reclamacao") return String(c.responsavel || "").trim() ? "em-atendimento" : "aguardando-humano";
+  // Reclamação (defeito/troca/atraso) → coluna própria "Reclamação", separada e visível. Vem ANTES
+  // de tudo (até de consumidor): uma reclamação não pode se perder no "finalizado" nem no cliente final.
+  if (estado === "reclamacao") return "reclamacao";
   // CLIENTE FINAL (consumidor): vai SEMPRE pra coluna própria "🏠 Cliente final" — mesmo reaberto ou
   // já finalizado antes. Não some no "finalizado" nem entope a fila de lojista, e fica guardado
   // ("não sabemos o dia de amanhã"). Só não vem pra cá reclamação (tratada acima, precisa de humano).

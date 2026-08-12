@@ -1285,7 +1285,7 @@ body.dark .at-badge.at-parado { background: #3a2a08; color: #fcd34d; }
 .at-audio-wave i.on { background: #008069; }
 .at-audio-time { font-size: 11px; color: #667781; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
 .at-thd .at-av { width: 40px; height: 40px; border-radius: 50%; background: #25d366; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
-.at-thd .info { flex: 1; } .at-thd .info .nm { font-weight: 800; font-size: 14.5px; } .at-thd .info .sub { font-size: 11.5px; color: #bfeee4; }
+.at-thd .info { flex: 1; min-width: 0; } .at-thd .info .nm { font-weight: 800; font-size: 14.5px; overflow-wrap: anywhere; } .at-thd .info .sub { font-size: 11.5px; color: #bfeee4; }
 .at-thd .modal-x { color: #fff; }
 .at-chip { font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 7px; text-transform: capitalize; }
 .at-body { display: grid; grid-template-columns: 1fr 275px; flex: 1 1 auto; min-height: 420px; }
@@ -1407,7 +1407,11 @@ body.dark .at-ctx input, body.dark .at-ctx select, body.dark .at-ctx textarea {
 .at-ctx option, body.dark .at-ctx option { background: #fff; color: #1f2b33; }
 .at-ctx .fld, body.dark .at-ctx .fld { color: #5a6b74; display: grid; gap: 3px; }
 .at-block-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-bottom: 8px; }
-.at-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid #eef1f6; }
+.at-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid #eef1f6; }
+/* Rótulo fixo à esquerda; VALOR ocupa o resto e QUEBRA linha (não vaza pra fora nem é cortado no
+   celular). Antes um nome de loja/CNPJ longo estourava pra direita e sumia. */
+.at-row > span { flex: 0 0 auto; white-space: nowrap; }
+.at-row > b { flex: 1 1 auto; min-width: 0; text-align: right; overflow-wrap: anywhere; word-break: break-word; }
 body.dark .at-row { border-color: #1b2536; }
 .at-compose { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; background: #f0f2f5; border-top: 1px solid var(--line); padding: 10px 14px; }
 body.dark .at-compose { background: #f0f2f5; border-color: #d9e0e4; }
@@ -1430,9 +1434,12 @@ body.dark .at-anexo-opt { color: #1f2b33; }
    "Dados coletados" embaixo, cada um rolando sozinho, e o campo de escrever fixo no rodapé.
    Antes era um grid fixo de 2 colunas: no celular as mensagens ficavam num filete e sumiam. */
 @media (max-width: 700px) {
-  .at-modal { width: 100vw; max-width: 100vw; height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+  .at-modal { width: 100vw; max-width: 100vw; height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; overflow-x: hidden; }
   .at-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1.4fr) minmax(0, 0.9fr); }
-  .at-ctx { border-left: 0; border-top: 1px solid var(--line); }
+  /* Nada pode vazar pra fora da largura da tela (evita corte à direita e rolagem lateral). */
+  .at-ctx { border-left: 0; border-top: 1px solid var(--line); overflow-x: hidden; max-width: 100vw; }
+  .at-ctx *, .at-body * { min-width: 0; }
+  .at-ctx select, .at-ctx input, .at-ctx textarea, .at-ctx .btn { max-width: 100%; }
 }
 /* simulador */
 .at-sim { max-width: 460px; width: 94vw; padding: 0; overflow: hidden; }
