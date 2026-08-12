@@ -1383,6 +1383,22 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     try { await api.atendSalvarDados(id, formD); setEditDados(false); carregar(); onMudou(); }
     catch { alert("Não consegui salvar os dados."); } finally { setBusy(false); }
   }
+  // Varredura pelo CNPJ: digita o CNPJ (num lead vazio) e busca nome/cidade/UF na BASE própria
+  // e, se não achar, na RECEITA. Preenche só os campos vazios do formulário — depois é só Salvar.
+  const [buscandoCnpj, setBuscandoCnpj] = useState(false);
+  async function buscarPorCnpj() {
+    const cnpj = formD.cnpj.replace(/\D/g, "");
+    if (cnpj.length !== 14) { alert("Digite o CNPJ completo (14 dígitos) antes de buscar."); return; }
+    setBuscandoCnpj(true);
+    try {
+      const r = await api.atendConsultarCnpj(cnpj);
+      if (!r.achou) { alert(r.erro_rede ? "Não consegui consultar a Receita agora. Tente de novo em instantes." : "CNPJ não encontrado — nem na sua base, nem na Receita."); return; }
+      setFormD((f) => ({ ...f, nome: f.nome || r.nome || "", cidade: f.cidade || r.cidade || "", uf: f.uf || r.uf || "", lojista: f.lojista || "1" }));
+      const onde = r.na_base ? "sua base de clientes" : "Receita Federal";
+      alert(`✓ Achei na ${onde}: ${r.nome || "(sem nome)"}${r.cidade ? " · " + r.cidade + "/" + (r.uf || "") : ""}.${r.ativa === false ? "\n\n⚠️ Atenção: consta INATIVO/baixado na Receita." : ""}\n\nConfira e clique em Salvar.`);
+    } catch { alert("Não consegui buscar agora. Tente de novo."); }
+    finally { setBuscandoCnpj(false); }
+  }
   // Botão de 1 clique: marca/desmarca o PERFIL lojista (revende/atacado). Com isso a Big trata
   // como lojista (informa preço, não manda pro "onde comprar") e foto/áudio dele vai direto pro
   // humano. Se já é cliente/comprou é outra coisa — isso vai no campo "Relação de compra".
@@ -1674,6 +1690,10 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <label className="fld" style={{ fontSize: 11.5 }}>CNPJ
                   <input value={formD.cnpj} onChange={(e) => setFormD((f) => ({ ...f, cnpj: e.target.value }))} placeholder="00.000.000/0000-00" />
                 </label>
+                <button type="button" className="btn btn-soft" style={{ fontSize: 11.5, borderColor: "#bfdbfe", background: "#eff6ff", color: "#1d4ed8", fontWeight: 700 }} disabled={busy || buscandoCnpj} onClick={buscarPorCnpj}
+                  title="Busca nome, cidade e UF pelo CNPJ — primeiro na sua base de clientes, senão na Receita Federal. Preenche os campos vazios; depois é só Salvar.">
+                  {buscandoCnpj ? "🔎 Buscando…" : "🔎 Buscar dados pelo CNPJ"}
+                </button>
                 <label className="fld" style={{ fontSize: 11.5 }}>Lojista?
                   <select value={formD.lojista} onChange={(e) => setFormD((f) => ({ ...f, lojista: e.target.value }))}>
                     <option value="">— não sei —</option>

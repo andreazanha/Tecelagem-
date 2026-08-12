@@ -2557,6 +2557,23 @@ atendimento.post("/:id/status-cliente", async (c) => {
   return c.json({ ok: true, status: st || null });
 });
 
+// Consulta um CNPJ e devolve os dados (NÃO grava — o front preenche o formulário pra revisar/Salvar).
+// Busca 1º na BASE própria (pega até o representante) e, se não achar, na RECEITA (BrasilAPI).
+// Serve pra um lead vazio: digita o CNPJ, clica buscar, e nome/cidade/UF vêm sozinhos.
+atendimento.post("/consultar-cnpj", async (c) => {
+  const b = await c.req.json<{ cnpj?: string }>().catch(() => ({} as { cnpj?: string }));
+  const cnpj = digitos(b.cnpj || "");
+  if (cnpj.length !== 14) return c.json({ ok: false, erro: "CNPJ precisa ter 14 dígitos." }, 400);
+  const cliBase = await c.env.DB.prepare(
+    "SELECT nome, cidade, uf, representante FROM clientes WHERE REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-','') = ? LIMIT 1"
+  ).bind(cnpj).first<{ nome: string | null; cidade: string | null; uf: string | null; representante: string | null }>().catch(() => null);
+  if (cliBase) return c.json({ ok: true, achou: true, na_base: true, ativa: true, nome: cliBase.nome, cidade: cliBase.cidade, uf: cliBase.uf, representante: cliBase.representante, fonte: "base" });
+  const cfgAt = await lerConfig(c.env);
+  const info = await deps(c.env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, cfgAt.vitrine_url || VITRINE_PUBLICA).consultarCnpj(cnpj);
+  if (!info.existe) return c.json({ ok: true, achou: false, erro_rede: !!info.erro, fonte: info.fonte });
+  return c.json({ ok: true, achou: true, na_base: false, ativa: info.ativa, nome: info.nome, cidade: info.cidade, uf: info.uf, representante: null, fonte: info.fonte });
+});
+
 // Marca/desmarca um LEMBRETE no card (deixa o card pulsando pra não esquecer de falar com o lead).
 atendimento.post("/:id/lembrete", async (c) => {
   const id = c.req.param("id");

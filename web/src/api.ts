@@ -749,6 +749,8 @@ export const api = {
     jsonPost("/api/atendimento/juntar-duplicados", {}).then((r) => j<{ ok: boolean; mesclados: number; removidos: number }>(r)),
   atendCruzarBase: () =>
     jsonPost("/api/atendimento/cruzar-base", {}).then((r) => j<{ ok: boolean; ligados: number; nomes: number }>(r)),
+  atendConsultarCnpj: (cnpj: string) =>
+    jsonPost("/api/atendimento/consultar-cnpj", { cnpj }).then((r) => j<{ ok: boolean; achou: boolean; na_base?: boolean; ativa?: boolean; nome?: string | null; cidade?: string | null; uf?: string | null; representante?: string | null; erro_rede?: boolean; fonte?: string }>(r)),
   atendAgendarIa: (id: string, quando: number | null, mensagem?: string) =>
     jsonPost(`/api/atendimento/${id}/agendar-ia`, quando === null ? { cancelar: true } : { quando, mensagem }).then((r) => j<{ ok: boolean; agendado: number | null }>(r)),
   atendExcluirMsg: (id: string, msgId: string, paraTodos: boolean) =>
