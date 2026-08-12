@@ -1156,7 +1156,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
           ? <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="IA já mandou a saudação — aguardando o cliente responder">⏰ chamado · aguardando</span>
           : <span className="at-badge" style={{ background: "#dbeafe", color: "#1d4ed8" }} title="IA vai enviar uma saudação neste horário">⏰ {agendadoLabel(c.agendado_ia)}</span>) : null}
         {c.setor && <span className="fx-sub">{SETOR_EMOJI[c.setor] || ""}</span>}
-        <span className="fx-sub" style={{ marginLeft: "auto" }}>{horaData(c.atualizado_em)}</span>
+        <span className="fx-sub" style={{ marginLeft: "auto" }}>{horaData([c.ultima_in_em, c.ultima_out_em].filter(Boolean).map(String).sort().pop() || c.atualizado_em)}</span>
         {/* Mover pra outra coluna sem arrastar: clica e escolhe o nome da coluna */}
         {colunas && onMover && (
           <select className="fx-mover-sel" title="Mover para outra coluna" value=""
