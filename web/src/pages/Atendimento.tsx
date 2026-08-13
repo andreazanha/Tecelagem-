@@ -1078,6 +1078,16 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
   const [agDia, setAgDia] = useState("");   // "YYYY-MM-DD"
   const [agHora, setAgHora] = useState(""); // "HH:MM"
   const [agMsg, setAgMsg] = useState("");   // mensagem própria (opcional)
+  const [agRespostas, setAgRespostas] = useState<RespostaPronta[]>([]); // respostas prontas p/ escolher no agendamento
+  useEffect(() => {
+    if (!agOpen || agRespostas.length) return; // carrega só quando abre a telinha (e uma vez)
+    Promise.allSettled([api.atendRespostasEmpresa(), api.atendRespostas()]).then(([e, m]) => {
+      const emp = e.status === "fulfilled" ? e.value : [];
+      const min = m.status === "fulfilled" ? m.value : [];
+      setAgRespostas([...emp, ...min].filter((r) => r.texto.trim())); // só as que têm TEXTO (agendamento manda texto)
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agOpen]);
   // No card: nome da PESSOA em cima (quem está no WhatsApp) e, embaixo, o nome da LOJA.
   // Se só um dos dois existe, ele vira a linha de cima sozinho (sem duplicar embaixo).
   const pessoa = c.contato_nome || c.nome || telBonito(c.telefone);
@@ -1141,6 +1151,14 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
                   <button key={h} className={"at-chip" + (agHora === h ? " on" : "")} onClick={() => setAgHora(h)}>{h}</button>
                 ))}
               </div>
+              {/* Escolher uma RESPOSTA PRONTA: joga o texto dela no campo abaixo (dá pra editar depois). */}
+              {agRespostas.length > 0 && (
+                <select defaultValue="" onChange={(e) => { const r = agRespostas[Number(e.target.value)]; if (r) setAgMsg(r.texto); e.currentTarget.selectedIndex = 0; }}
+                  style={{ width: "100%", fontSize: 13, padding: "7px 9px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg-soft,#fff)", color: "var(--ink)", fontFamily: "inherit", boxSizing: "border-box" }}>
+                  <option value="">📋 Usar uma resposta pronta…</option>
+                  {agRespostas.map((r, i) => <option key={i} value={i}>{r.titulo || r.texto.slice(0, 40)}</option>)}
+                </select>
+              )}
               {/* Mensagem própria (opcional): se vazio, a IA manda a saudação padrão */}
               <textarea value={agMsg} onChange={(e) => setAgMsg(e.target.value)} rows={3}
                 placeholder="Mensagem (opcional). Use {nome} pra puxar o nome do cliente. Se deixar vazio, mando um bom dia/boa tarde automático."
