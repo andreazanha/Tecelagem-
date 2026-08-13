@@ -3051,17 +3051,27 @@ atendimento.post("/:id/enviar-resposta", async (c) => {
   const ct = obj0.httpMetadata?.contentType || CT_POR_EXT[ext] || "application/octet-stream";
   const ehImagem = ct.startsWith("image/"), ehAudio = ct.startsWith("audio/");
   const url = `${new URL(c.req.url).origin}/api/atendimento/arquivo/${key}`;
-  const msgId = await addMsg(c.env, id, "out", autor, "arquivo", caption || nomeArq, { arquivoUrl: url });
+  // O TEXTO vai como mensagem SEPARADA (não como legenda da mídia): legenda de mídia com texto longo
+  // — e respostas prontas costumam ter texto longo — o WhatsApp CORTA/derruba, e só chegava a foto/vídeo.
+  // Registra as duas no histórico: a mídia e, logo depois, o texto.
+  const msgMidiaId = await addMsg(c.env, id, "out", autor, "arquivo", nomeArq, { arquivoUrl: url });
+  const msgTxtId = caption ? await addMsg(c.env, id, "out", autor, "texto", caption) : null;
   await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
   let docData: string | undefined;
   if (!ehImagem && !ehAudio) {
     try { const bytes = await obj0.arrayBuffer(); if (bytes.byteLength <= 8 * 1024 * 1024) docData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { docData = undefined; }
   }
   const enviarBg = (async () => {
-    const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: nomeArq, caption });
-    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
-    else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run();
-  })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); } catch { /* ok */ } });
+    const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: nomeArq, caption: "" });
+    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgMidiaId).run();
+    else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgMidiaId).run();
+    // TEXTO logo DEPOIS da mídia (aparece embaixo, como se fosse a legenda — mas inteiro e garantido).
+    if (caption && msgTxtId) {
+      const rt = await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto: caption });
+      if (rt.enviado && rt.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(rt.messageId, msgTxtId).run();
+      else if (!rt.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgTxtId).run();
+    }
+  })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgMidiaId).run(); } catch { /* ok */ } });
   try { c.executionCtx.waitUntil(enviarBg); } catch { /* ok */ }
   return c.json({ ok: true });
 });
