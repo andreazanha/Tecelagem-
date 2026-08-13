@@ -747,6 +747,15 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
 
   // Detecta interesse comercial + modelos citados (vale inclusive no atendimento humano).
   const cfgAt = await lerConfig(env);
+  // SILENCIAR (🔕) é TEMPORÁRIO pra card de CLIENTE: mensagem NOVA do cliente REATIVA o piscar
+  // (tira do silêncio), pra ninguém perder a mensagem. GRUPO continua silenciado (é barulhento de
+  // propósito — silenciar grupo é justamente pra parar de piscar a cada mensagem).
+  if (String(conv.estado) !== "grupo" && String(conv.origem) !== "grupo") {
+    try {
+      const sil = (() => { try { const a = JSON.parse(cfgAt.atend_silenciados || "[]"); return Array.isArray(a) ? a.map(String) : []; } catch { return [] as string[]; } })();
+      if (sil.includes(conv.id)) await salvarConfigJson(env, "atend_silenciados", sil.filter((x) => x !== conv.id));
+    } catch { /* não bloqueia o atendimento */ }
+  }
   await detectarInteresse(env, conv.id, texto, cfgAt.interesse_modelos || "");
   // OPT-OUT: cliente respondeu "SAIR" (ou PARAR/DESCADASTRAR/"não quero mais receber"...) → registra
   // o descadastro (não recebe mais DIVULGAÇÃO automática: campanha/remarket/prospecção) e confirma.
