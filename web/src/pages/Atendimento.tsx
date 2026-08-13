@@ -2105,7 +2105,9 @@ function ArquivosRapidosModal({ convId, autor, onFechar, onEnviado }: { convId: 
 
 function RespostasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => void }) {
   const gestor = ehGestorAtend();
-  const [aba, setAba] = useState<"minhas" | "empresa">("minhas");
+  // Padrão: "Da empresa" pro gestor (assim toda resposta nova já nasce compartilhada com a equipe).
+  // Quem não é gestor só tem as pessoais mesmo.
+  const [aba, setAba] = useState<"minhas" | "empresa">(gestor ? "empresa" : "minhas");
   const [minhas, setMinhas] = useState<RespostaPronta[]>([]);
   const [empresa, setEmpresa] = useState<RespostaPronta[]>([]);
   const [carregando, setCarregando] = useState(true);
