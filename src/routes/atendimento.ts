@@ -2206,14 +2206,19 @@ export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string
   if (await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
-  const endpoint = opts.ehAudio ? "send-audio" : opts.ehImagem ? "send-image" : `send-document/${opts.ext || "bin"}`;
-  const body = opts.ehAudio
+  // VÍDEO (mp4/mov/…): endpoint próprio "send-video", que aceita legenda (caption). Antes caía no
+  // "else" de documento e ia SEM legenda (por isso a resposta pronta com vídeo+texto só mandava o vídeo).
+  const ehVideo = !opts.ehImagem && !opts.ehAudio && /^(mp4|mov|3gp|m4v|webm|avi|mkv|mpeg|mpg)$/i.test(opts.ext || "");
+  const endpoint = opts.ehAudio ? "send-audio" : opts.ehImagem ? "send-image" : ehVideo ? "send-video" : `send-document/${opts.ext || "bin"}`;
+  const body: Record<string, string> = opts.ehAudio
     ? { phone, audio: opts.url }
     : opts.ehImagem
     ? { phone, image: opts.url, caption: opts.caption || "" }
+    : ehVideo
+    ? { phone, video: opts.url, caption: opts.caption || "" }
     // Documento: manda EMBUTIDO (base64) quando disponível — não depende da Z-API baixar nossa
-    // URL (era o que fazia o PDF não chegar). Cai pra URL só se não tiver o base64.
-    : { phone, document: opts.docData || opts.url, fileName: opts.fileName };
+    // URL (era o que fazia o PDF não chegar). Cai pra URL só se não tiver o base64. Leva legenda também.
+    : { phone, document: opts.docData || opts.url, fileName: opts.fileName, caption: opts.caption || "" };
   try {
     // Timeout: a Z-API baixa o arquivo da nossa URL e reenvia — se travar, não deixa pendurado.
     const resp = await fetch(`${base}/instances/${inst}/token/${token}/${endpoint}`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(90000) });
