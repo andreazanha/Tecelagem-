@@ -1288,11 +1288,11 @@ body.dark .at-badge.at-parado { background: #3a2a08; color: #fcd34d; }
 .at-thd .info { flex: 1; min-width: 0; } .at-thd .info .nm { font-weight: 800; font-size: 14.5px; overflow-wrap: anywhere; } .at-thd .info .sub { font-size: 11.5px; color: #bfeee4; }
 .at-thd .modal-x { color: #fff; }
 .at-chip { font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 7px; text-transform: capitalize; }
-.at-body { display: grid; grid-template-columns: 1fr 275px; flex: 1 1 auto; min-height: 420px; }
+.at-body { display: grid; grid-template-columns: minmax(0, 1fr) 275px; flex: 1 1 auto; min-height: 420px; }
 /* o compose (campo de escrever) nunca encolhe — fica sempre visível no rodapé do modal */
 .at-compose { flex: 0 0 auto; }
 /* Fundo estilo WhatsApp: bege + textura clarinha (pontinhos discretos), como o app. */
-.at-msgs { background-color: #e6ddd4; padding: 16px 4%; display: flex; flex-direction: column; gap: 7px; overflow-y: auto; min-height: 0;
+.at-msgs { background-color: #e6ddd4; padding: 16px 4%; display: flex; flex-direction: column; gap: 7px; overflow-y: auto; overflow-x: hidden; min-width: 0; min-height: 0;
   background-image:
     radial-gradient(circle at 18% 28%, #00000009 0 2px, transparent 3px),
     radial-gradient(circle at 72% 62%, #00000008 0 2px, transparent 3px),
@@ -1305,7 +1305,7 @@ body.dark .at-msgs { background-color: #e6ddd4;
     radial-gradient(circle at 18% 28%, #00000009 0 2px, transparent 3px),
     radial-gradient(circle at 72% 62%, #00000008 0 2px, transparent 3px),
     radial-gradient(circle at 45% 88%, #00000007 0 2px, transparent 3px); }
-.at-b { max-width: 76%; padding: 8px 11px 6px; border-radius: 9px; font-size: 14px; line-height: 1.45; box-shadow: 0 1px .5px #0002; white-space: pre-wrap; position: relative; }
+.at-b { max-width: 76%; padding: 8px 11px 6px; border-radius: 9px; font-size: 14px; line-height: 1.45; box-shadow: 0 1px .5px #0002; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; position: relative; }
 .at-b.in { align-self: flex-start; background: #fff; border-top-left-radius: 2px; }
 .at-b.out { align-self: flex-end; background: #d9fdd3; border-top-right-radius: 2px; }
 body.dark .at-b.in { background: #fff; color: #111b21; } body.dark .at-b.out { background: #d9fdd3; color: #111b21; }
@@ -1435,7 +1435,7 @@ body.dark .at-anexo-opt { color: #1f2b33; }
    Antes era um grid fixo de 2 colunas: no celular as mensagens ficavam num filete e sumiam. */
 @media (max-width: 700px) {
   .at-modal { width: 100vw; max-width: 100vw; height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; overflow-x: hidden; }
-  .at-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1.4fr) minmax(0, 0.9fr); }
+  .at-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1.4fr) minmax(0, 0.9fr); }
   /* Nada pode vazar pra fora da largura da tela (evita corte à direita e rolagem lateral). */
   .at-ctx { border-left: 0; border-top: 1px solid var(--line); overflow-x: hidden; max-width: 100vw; }
   .at-ctx *, .at-body * { min-width: 0; }
