@@ -1113,6 +1113,9 @@ tr.cli-grp:hover td { background: var(--bg-soft, #eef2f7); cursor: pointer; }
 .fld.uf { max-width: 90px; }
 @media (max-width: 900px) { .ficha { grid-template-columns: 1fr; } .crm-stats, .fkpis { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 560px) { .form-grid { grid-template-columns: 1fr; } }
+/* Celular estreito: KPIs do CRM em 1 coluna (em 2 colunas os números de 26px com rótulos longos
+   ficavam espremidos). */
+@media (max-width: 430px) { .crm-stats, .fkpis { grid-template-columns: 1fr; } }
 /* Dark */
 body.dark .crm-st, body.dark .crm-card, body.dark .fbox, body.dark .fkpi { background: #0f1629; border-color: #ffffff12; }
 body.dark table.crm td { color: #e7ebf3; border-color: #ffffff0d; }
@@ -1434,7 +1437,9 @@ body.dark .at-anexo-opt { color: #1f2b33; }
    "Dados coletados" embaixo, cada um rolando sozinho, e o campo de escrever fixo no rodapé.
    Antes era um grid fixo de 2 colunas: no celular as mensagens ficavam num filete e sumiam. */
 @media (max-width: 700px) {
-  .at-modal { width: 100vw; max-width: 100vw; height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; overflow-x: hidden; }
+  /* Fixa na viewport (inset:0) pra IGNORAR o padding do .modal-bg — senão o card de 100vw não cabe
+     na área com padding e é empurrado ~16px pra direita, cortando os dados. Foi a causa do corte. */
+  .at-modal { position: fixed; inset: 0; width: 100vw; max-width: 100vw; height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; overflow-x: hidden; }
   .at-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1.4fr) minmax(0, 0.9fr); }
   /* Nada pode vazar pra fora da largura da tela (evita corte à direita e rolagem lateral). */
   .at-ctx { border-left: 0; border-top: 1px solid var(--line); overflow-x: hidden; max-width: 100vw; }

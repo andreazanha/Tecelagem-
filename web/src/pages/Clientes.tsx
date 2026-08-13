@@ -196,8 +196,8 @@ export function Clientes() {
     <div className="quadro-page">
       <div className="page-head">
         <div><h1>Clientes</h1><div className="breadcrumb">Comercial › Clientes</div></div>
-        <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <input className="busca-ped" placeholder="🔎 Buscar nome, cidade, WhatsApp, CNPJ…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ minWidth: 240 }} />
+        <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <input className="busca-ped" placeholder="🔎 Buscar nome, cidade, WhatsApp, CNPJ…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ flex: "1 1 240px", minWidth: 0 }} />
           <button className="btn btn-soft" onClick={() => setImportar(true)}>📥 Importar planilha</button>
           <button className="btn btn-primary" onClick={() => setNovo({ id: "", nome: "" })}>＋ Novo cliente</button>
         </div>
@@ -283,7 +283,7 @@ export function Clientes() {
 
       {/* Barra flutuante quando há clientes marcados → montar campanha de reativação */}
       {selCli.size > 0 && (
-        <div style={{ position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: 20, zIndex: 60, background: "var(--card,#fff)", border: "1px solid var(--line)", borderRadius: 999, boxShadow: "0 10px 28px rgba(0,0,0,.25)", padding: "8px 10px 8px 18px", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: 20, zIndex: 60, background: "var(--card,#fff)", border: "1px solid var(--line)", borderRadius: 24, boxShadow: "0 10px 28px rgba(0,0,0,.25)", padding: "8px 10px 8px 18px", display: "flex", alignItems: "center", justifyContent: "center", gap: 12, flexWrap: "wrap", maxWidth: "calc(100vw - 24px)" }}>
           <b style={{ fontSize: 13 }}>{selCli.size} cliente(s) selecionado(s)</b>
           <button className="btn btn-soft" onClick={() => setSelCli(new Set())}>Limpar</button>
           <button className="btn btn-primary" onClick={() => setCampanha(true)}>📣 Campanha de reativação</button>
