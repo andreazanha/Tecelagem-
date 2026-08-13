@@ -2389,7 +2389,12 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
   // já finalizado antes. Não some no "finalizado" nem entope a fila de lojista, e fica guardado
   // ("não sabemos o dia de amanhã"). Só não vem pra cá reclamação (tratada acima, precisa de humano).
   if (String(c.tipo || "") === "consumidor" || c.lojista === 0 || estado === "indicado-parceiro" || estado === "aguardando-cidade-parceiro") return "cliente-final";
-  if (enc && inn <= enc) return "finalizado";                         // (lojista) encerrado e sem msg nova
+  // FINALIZADO é PEGAJOSO: uma vez encerrado, o card SÓ sai quando o CLIENTE mandar mensagem nova
+  // (inn > enc) — e aí vai DIRETO pra fila humana (Em atendimento se já tem responsável, senão
+  // Aguardando humano), NUNCA pra triagem. Sem mensagem nova, fica em Finalizado (não volta sozinho).
+  // Este check vem ANTES da triagem de propósito: um card encerrado com estado antigo de triagem
+  // (ia-triagem, aguardando-cnpj…) escorregava pra "Triagem" ao receber msg — era o bug do "marcio".
+  if (enc) return (inn > enc) ? (String(c.responsavel || "").trim() ? "em-atendimento" : "aguardando-humano") : "finalizado";
   // ATENDIMENTO HUMANO (lojista): já tem quem atende → Em atendimento; senão → fila (pisca).
   if (estado === "atendimento-humano") return String(c.responsavel || "").trim() ? "em-atendimento" : "aguardando-humano";
   if (estado === "aguardando-setor") return "aguardando-setor";
