@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type ChatMensagem, type AtendColuna } from "../api";
+import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type ChatMensagem, type AtendColuna, type RespostaPronta } from "../api";
 import { getUser, pode } from "../auth";
 
 // Etapas do funil (venda) mostradas dentro da conversa.
@@ -1210,8 +1210,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [reps, setReps] = useState<Representante[]>([]);
   const [repSel, setRepSel] = useState("");
   const [usuarios, setUsuarios] = useState<{ nome: string; usuario: string }[]>([]);
-  const [respostas, setRespostas] = useState<{ titulo: string; texto: string }[]>([]);
-  const [respEmpresa, setRespEmpresa] = useState<{ titulo: string; texto: string }[]>([]);
+  const [respostas, setRespostas] = useState<RespostaPronta[]>([]);
+  const [respEmpresa, setRespEmpresa] = useState<RespostaPronta[]>([]);
   const [mostrarResp, setMostrarResp] = useState(false);
   const [gerenciarResp, setGerenciarResp] = useState(false);
   const [arqRapidoOpen, setArqRapidoOpen] = useState(false);
@@ -1414,6 +1414,20 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     api.atendRespostasEmpresa().then(setRespEmpresa).catch(() => {});
   }
   useEffect(() => { carregarRespostas(); }, []);
+  // Escolher uma resposta pronta na conversa: se ela TEM anexo, ENVIA na hora (arquivo + texto como
+  // legenda); se for só texto, joga no campo pra você revisar e mandar.
+  async function escolherResposta(r: RespostaPronta) {
+    setMostrarResp(false);
+    if (r.arquivo_key) {
+      if (!confirm(`Enviar "${r.titulo || r.arquivo_nome || "anexo"}" para o cliente agora?`)) return;
+      setBusy(true);
+      try { await api.atendEnviarResposta(id, { arquivo_key: r.arquivo_key, arquivo_nome: r.arquivo_nome, texto: r.texto, autor: d?.responsavel || getUser()?.nome || "Atendente" }); carregar(); onMudou(); }
+      catch { alert("Não consegui enviar a resposta com anexo. Confira a conexão do WhatsApp."); }
+      finally { setBusy(false); }
+    } else {
+      setTexto(r.texto);
+    }
+  }
   const [fotoPerfil, setFotoPerfil] = useState<string | null>(null);
   useEffect(() => { api.atendFotoPerfil(id).then((r) => setFotoPerfil(r.link)).catch(() => {}); }, [id]);
   const [colsAtend, setColsAtend] = useState<{ id: string; label: string }[]>([]);
@@ -1868,18 +1882,18 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 : <>
                     {respEmpresa.length > 0 && <div className="muted2" style={{ padding: "6px 12px 2px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: .3 }}>📌 Da empresa</div>}
                     {respEmpresa.map((r, i) => (
-                      <button key={"e" + i} onClick={() => { setTexto(r.texto); setMostrarResp(false); }} title="Coloca no campo — você edita e envia"
+                      <button key={"e" + i} onClick={() => escolherResposta(r)} title={r.arquivo_key ? "Envia o anexo + texto pro cliente" : "Coloca no campo — você edita e envia"}
                         style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderTop: "1px solid var(--line,#f1f5f9)", background: "transparent", cursor: "pointer" }}>
-                        <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.titulo || "(sem título)"}</div>
-                        <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto}</div>
+                        <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.arquivo_key ? "📎 " : ""}{r.titulo || "(sem título)"}</div>
+                        <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto || (r.arquivo_key ? (r.arquivo_nome || "anexo") : "")}</div>
                       </button>
                     ))}
                     {respostas.length > 0 && <div className="muted2" style={{ padding: "8px 12px 2px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: .3 }}>🙋 Minhas</div>}
                     {respostas.map((r, i) => (
-                      <button key={"m" + i} onClick={() => { setTexto(r.texto); setMostrarResp(false); }} title="Coloca no campo — você edita e envia"
+                      <button key={"m" + i} onClick={() => escolherResposta(r)} title={r.arquivo_key ? "Envia o anexo + texto pro cliente" : "Coloca no campo — você edita e envia"}
                         style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderTop: "1px solid var(--line,#f1f5f9)", background: "transparent", cursor: "pointer" }}>
-                        <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.titulo || "(sem título)"}</div>
-                        <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto}</div>
+                        <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.arquivo_key ? "📎 " : ""}{r.titulo || "(sem título)"}</div>
+                        <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto || (r.arquivo_key ? (r.arquivo_nome || "anexo") : "")}</div>
                       </button>
                     ))}
                   </>}
@@ -2092,10 +2106,11 @@ function ArquivosRapidosModal({ convId, autor, onFechar, onEnviado }: { convId: 
 function RespostasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => void }) {
   const gestor = ehGestorAtend();
   const [aba, setAba] = useState<"minhas" | "empresa">("minhas");
-  const [minhas, setMinhas] = useState<{ titulo: string; texto: string }[]>([]);
-  const [empresa, setEmpresa] = useState<{ titulo: string; texto: string }[]>([]);
+  const [minhas, setMinhas] = useState<RespostaPronta[]>([]);
+  const [empresa, setEmpresa] = useState<RespostaPronta[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [subindoIdx, setSubindoIdx] = useState<number | null>(null);
   useEffect(() => {
     Promise.allSettled([api.atendRespostas(), api.atendRespostasEmpresa()]).then(([m, e]) => {
       if (m.status === "fulfilled") setMinhas(m.value);
@@ -2106,13 +2121,25 @@ function RespostasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: 
   const lista = empresaMode ? empresa : minhas;
   const setLista = empresaMode ? setEmpresa : setMinhas;
   const set = (i: number, k: "titulo" | "texto", v: string) => setLista((l) => l.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+  const setArq = (i: number, campos: Partial<RespostaPronta>) => setLista((l) => l.map((x, j) => (j === i ? { ...x, ...campos } : x)));
   const add = () => setLista((l) => [...l, { titulo: "", texto: "" }]);
   const remover = (i: number) => setLista((l) => l.filter((_, j) => j !== i));
+  async function anexar(i: number, file: File) {
+    if (file.size > 40 * 1024 * 1024) { alert("Esse arquivo passa de 40 MB. Comprima e tente de novo."); return; }
+    setSubindoIdx(i);
+    try {
+      const r = await api.atendRespostaUpload(file);
+      if (r.error || !r.key) { alert("Não consegui subir o anexo: " + (r.error || "erro")); return; }
+      setArq(i, { arquivo_key: r.key, arquivo_nome: r.nome, arquivo_ct: r.ct });
+    } catch { alert("Não consegui subir o anexo."); } finally { setSubindoIdx(null); }
+  }
   async function salvar() {
     setBusy(true);
     try {
-      if (empresaMode) await api.atendSalvarRespostasEmpresa(empresa.filter((x) => x.texto.trim()));
-      else await api.atendSalvarRespostas(minhas.filter((x) => x.texto.trim()));
+      // Guarda respostas que têm texto OU anexo (uma foto sem legenda vale).
+      const limpar = (l: RespostaPronta[]) => l.filter((x) => x.texto.trim() || x.arquivo_key);
+      if (empresaMode) await api.atendSalvarRespostasEmpresa(limpar(empresa));
+      else await api.atendSalvarRespostas(limpar(minhas));
       onSalvo();
     } catch { alert("Não consegui salvar as respostas."); } finally { setBusy(false); }
   }
@@ -2138,7 +2165,20 @@ function RespostasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: 
                 <input placeholder="Título (ex.: Cadastro no site)" value={r.titulo} onChange={(e) => set(i, "titulo", e.target.value)} style={{ flex: 1 }} />
                 <button className="btn btn-soft" style={{ color: "#dc2626" }} onClick={() => remover(i)} title="Remover">🗑️</button>
               </div>
-              <textarea placeholder="Texto da mensagem…" rows={3} value={r.texto} onChange={(e) => set(i, "texto", e.target.value)} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} />
+              <textarea placeholder="Texto da mensagem… (pode deixar vazio se for só o anexo)" rows={3} value={r.texto} onChange={(e) => set(i, "texto", e.target.value)} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} />
+              {/* Anexo opcional: foto/arquivo que vai junto quando você escolher esta resposta na conversa. */}
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+                {r.arquivo_key
+                  ? <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--bg-soft,#f1f5f9)", borderRadius: 8, padding: "5px 10px", fontSize: 12.5, maxWidth: "100%" }}>
+                      {r.arquivo_ct?.startsWith("image/") ? "🖼️" : r.arquivo_ct?.startsWith("audio/") ? "🎤" : "📎"}
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>{r.arquivo_nome || "anexo"}</span>
+                      <button onClick={() => setArq(i, { arquivo_key: undefined, arquivo_nome: undefined, arquivo_ct: undefined })} title="Remover anexo" style={{ background: "transparent", border: 0, cursor: "pointer", color: "#dc2626", fontSize: 14, lineHeight: 1 }}>✕</button>
+                    </span>
+                  : <label className="btn btn-soft" style={{ fontSize: 12, cursor: subindoIdx === i ? "default" : "pointer" }}>
+                      {subindoIdx === i ? "Subindo…" : "📎 Anexar foto/arquivo"}
+                      <input type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,audio/*" style={{ display: "none" }} disabled={subindoIdx != null} onChange={(e) => { const f = e.target.files?.[0]; if (f) anexar(i, f); e.currentTarget.value = ""; }} />
+                    </label>}
+              </div>
             </div>
           ))}
           <button className="btn btn-soft" onClick={add} style={{ width: "100%" }}>＋ Nova resposta</button>

@@ -294,6 +294,8 @@ export interface AtendConversa {
 }
 export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; responder_texto?: string | null; arquivo_url?: string | null; status?: string | null; criado_em: string }
 export interface ArqRapido { id: string; nome: string; nomeArq: string; key: string; ct: string; tamanho: number }
+// Resposta pronta = atalho de texto; opcionalmente com um anexo (foto/arquivo) salvo no R2.
+export interface RespostaPronta { titulo: string; texto: string; arquivo_key?: string; arquivo_nome?: string; arquivo_ct?: string }
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
 export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; bloqueado?: number | null; interesses: string[]; pedidos_resumo: { nome: string; qtd: number; total: number; ultima: string | null } | null; mensagens: AtendMensagem[] }
 export interface AtendResposta { conversa_id: string; estado: string; coluna: string; respostas: { tipo: string; texto: string }[]; notificarHumano: boolean }
@@ -770,13 +772,18 @@ export const api = {
   atendEnviar: (id: string, b: { texto: string; autor?: string; responder_a?: string }) =>
     jsonPost(`/api/atendimento/${id}/enviar`, b).then((r) => j<{ ok: boolean }>(r)),
   atendRespostas: () =>
-    fetch(`/api/atendimento/respostas?u=${encodeURIComponent(getUser()?.usuario || "")}`).then((r) => j<{ titulo: string; texto: string }[]>(r)),
-  atendSalvarRespostas: (respostas: { titulo: string; texto: string }[]) =>
-    jsonPost("/api/atendimento/respostas", { usuario: getUser()?.usuario || "", respostas }).then((r) => j<{ ok: boolean; respostas: { titulo: string; texto: string }[] }>(r)),
+    fetch(`/api/atendimento/respostas?u=${encodeURIComponent(getUser()?.usuario || "")}`).then((r) => j<RespostaPronta[]>(r)),
+  atendSalvarRespostas: (respostas: RespostaPronta[]) =>
+    jsonPost("/api/atendimento/respostas", { usuario: getUser()?.usuario || "", respostas }).then((r) => j<{ ok: boolean; respostas: RespostaPronta[] }>(r)),
   atendRespostasEmpresa: () =>
-    fetch("/api/atendimento/respostas-empresa").then((r) => j<{ titulo: string; texto: string }[]>(r)),
-  atendSalvarRespostasEmpresa: (respostas: { titulo: string; texto: string }[]) =>
-    jsonPost("/api/atendimento/respostas-empresa", { respostas }).then((r) => j<{ ok: boolean; respostas: { titulo: string; texto: string }[] }>(r)),
+    fetch("/api/atendimento/respostas-empresa").then((r) => j<RespostaPronta[]>(r)),
+  atendSalvarRespostasEmpresa: (respostas: RespostaPronta[]) =>
+    jsonPost("/api/atendimento/respostas-empresa", { respostas }).then((r) => j<{ ok: boolean; respostas: RespostaPronta[] }>(r)),
+  // Sobe um anexo pra uma resposta pronta (devolve a key que fica salva na resposta).
+  atendRespostaUpload: (file: File) => { const fd = new FormData(); fd.append("file", file); return fetch("/api/atendimento/respostas/upload", { method: "POST", body: fd }).then((r) => j<{ ok: boolean; key: string; nome: string; ct: string; url: string; error?: string }>(r)); },
+  // Envia uma resposta pronta COM anexo (arquivo + texto como legenda).
+  atendEnviarResposta: (id: string, b: { arquivo_key: string; arquivo_nome?: string; texto?: string; autor?: string }) =>
+    jsonPost(`/api/atendimento/${id}/enviar-resposta`, b).then((r) => j<{ ok: boolean; error?: string }>(r)),
   atendAutorizar: (id: string, representante?: string) =>
     jsonPost(`/api/atendimento/${id}/autorizar`, { representante }).then((r) => j<{ ok: boolean; representante: string }>(r)),
   atendNaoPerturbe: (id: string, nao_perturbe: boolean) =>

@@ -1542,12 +1542,28 @@ const respostasKey = (u?: string | null) => {
   const s = String(u ?? "").trim().toLowerCase();
   return s ? `respostas_rapidas:${s}` : "respostas_rapidas";
 };
-// Normaliza uma lista de respostas recebida do cliente (título + texto).
-function normalizarRespostas(src: unknown): { titulo: string; texto: string }[] {
-  return Array.isArray(src)
-    ? src.filter((x): x is { titulo?: unknown; texto?: unknown } => !!x && typeof x === "object" && typeof (x as { texto?: unknown }).texto === "string" && String((x as { texto: string }).texto).trim() !== "")
-        .map((x) => ({ titulo: String(x.titulo ?? "").slice(0, 60), texto: String(x.texto).slice(0, 1000) }))
-    : [];
+// Uma resposta pronta = título + texto, e OPCIONALMENTE um anexo (foto/arquivo salvo no R2).
+interface RespostaPronta { titulo: string; texto: string; arquivo_key?: string; arquivo_nome?: string; arquivo_ct?: string }
+// Normaliza uma lista de respostas recebida do cliente. Preserva o anexo (arquivo_key) quando houver;
+// aceita resposta que tenha SÓ anexo (sem texto) — ex.: mandar uma foto sem legenda.
+function normalizarRespostas(src: unknown): RespostaPronta[] {
+  if (!Array.isArray(src)) return [];
+  const out: RespostaPronta[] = [];
+  for (const x of src) {
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    const texto = typeof o.texto === "string" ? o.texto : "";
+    const arquivoKey = typeof o.arquivo_key === "string" ? o.arquivo_key.replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 80) : "";
+    if (texto.trim() === "" && !arquivoKey) continue; // precisa de texto OU anexo
+    const r: RespostaPronta = { titulo: String(o.titulo ?? "").slice(0, 60), texto: String(texto).slice(0, 1000) };
+    if (arquivoKey) {
+      r.arquivo_key = arquivoKey;
+      r.arquivo_nome = String(o.arquivo_nome ?? "arquivo").slice(0, 120);
+      r.arquivo_ct = String(o.arquivo_ct ?? "application/octet-stream").slice(0, 80);
+    }
+    out.push(r);
+  }
+  return out;
 }
 async function salvarConfigJson(env: Env, chave: string, valor: unknown) {
   await env.DB.prepare(
@@ -1583,6 +1599,22 @@ atendimento.post("/respostas-empresa", async (c) => {
   const arr = normalizarRespostas(Array.isArray(b) ? b : (b as { respostas?: unknown })?.respostas);
   await salvarConfigJson(c.env, "respostas_empresa", arr);
   return c.json({ ok: true, respostas: arr });
+});
+// Upload de um anexo pra uma resposta pronta: salva no R2 e devolve a key/URL (NÃO entra em lista).
+// A resposta pronta guarda só a "key"; na hora de enviar, o /:id/enviar-resposta manda o arquivo.
+atendimento.post("/respostas/upload", async (c) => {
+  const form = await c.req.formData().catch(() => null);
+  const entry = form?.get("file");
+  if (!entry || typeof entry === "string") return c.json({ error: "arquivo é obrigatório" }, 400);
+  const file = entry as Blob & { name?: string };
+  if (file.size === 0) return c.json({ error: "arquivo vazio" }, 400);
+  if (file.size > 40 * 1024 * 1024) return c.json({ error: "arquivo muito grande (máx. 40MB)" }, 400);
+  const nomeFile = (file.name || "arquivo").slice(0, 120);
+  const ext = (nomeFile.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
+  const ct = file.type || CT_POR_EXT[ext] || "application/octet-stream";
+  const key = `${uid()}.${ext}`;
+  await c.env.BUCKET.put(`atend/${key}`, await file.arrayBuffer(), { httpMetadata: { contentType: ct } });
+  return c.json({ ok: true, key, nome: nomeFile, ct, url: `${new URL(c.req.url).origin}/api/atendimento/arquivo/${key}` });
 });
 
 // ── COLUNAS do quadro de atendimento (built-in + customizadas + ordem) ────────────
@@ -2973,6 +3005,38 @@ atendimento.post("/:id/enviar-rapido", async (c) => {
     const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: alvo.nomeArq || alvo.nome, caption: "" });
     if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
     else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); // marca "⚠️ não entregue"
+  })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); } catch { /* ok */ } });
+  try { c.executionCtx.waitUntil(enviarBg); } catch { /* ok */ }
+  return c.json({ ok: true });
+});
+
+// Enviar uma RESPOSTA PRONTA COM ANEXO: manda o arquivo (pela key salva) usando o texto como legenda.
+atendimento.post("/:id/enviar-resposta", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ arquivo_key?: string; arquivo_nome?: string; texto?: string; autor?: string }>().catch(() => ({} as { arquivo_key?: string; arquivo_nome?: string; texto?: string; autor?: string }));
+  const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
+  if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  const key = String(b.arquivo_key || "").replace(/[^a-zA-Z0-9._-]/g, "");
+  if (!key) return c.json({ error: "arquivo_key é obrigatório" }, 400);
+  const obj0 = await c.env.BUCKET.get(`atend/${key}`).catch(() => null);
+  if (!obj0) return c.json({ error: "arquivo não encontrado" }, 404);
+  const autor = (b.autor || "Atendente").trim();
+  const caption = String(b.texto || "").trim().slice(0, 1000);
+  const nomeArq = (b.arquivo_nome || "arquivo").slice(0, 120);
+  const ext = (key.split(".").pop() || "bin").toLowerCase();
+  const ct = obj0.httpMetadata?.contentType || CT_POR_EXT[ext] || "application/octet-stream";
+  const ehImagem = ct.startsWith("image/"), ehAudio = ct.startsWith("audio/");
+  const url = `${new URL(c.req.url).origin}/api/atendimento/arquivo/${key}`;
+  const msgId = await addMsg(c.env, id, "out", autor, "arquivo", caption || nomeArq, { arquivoUrl: url });
+  await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
+  let docData: string | undefined;
+  if (!ehImagem && !ehAudio) {
+    try { const bytes = await obj0.arrayBuffer(); if (bytes.byteLength <= 8 * 1024 * 1024) docData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { docData = undefined; }
+  }
+  const enviarBg = (async () => {
+    const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: nomeArq, caption });
+    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
+    else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run();
   })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); } catch { /* ok */ } });
   try { c.executionCtx.waitUntil(enviarBg); } catch { /* ok */ }
   return c.json({ ok: true });
