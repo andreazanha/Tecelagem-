@@ -2348,7 +2348,7 @@ function ColunasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: ()
 }
 
 // ── Nova conversa: escolhe um contato do WhatsApp (ou digita o número) e manda a 1ª msg ──
-type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm" | "catalogo"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string; emCamp?: boolean; foto?: string | null; rep?: string | null };
+type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm" | "catalogo"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string; emCamp?: boolean; foto?: string | null; rep?: string | null; ultimaSaida?: string | null };
 function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; onAbrir: (id: string) => void; onMudou: () => void }) {
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -2487,6 +2487,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [mensagem, setMensagem] = useState("");
   const [intervalo, setIntervalo] = useState("40");
+  const [avisarDias, setAvisarDias] = useState("3");   // avisa se JÁ enviei mensagem nos últimos N dias
   const [nome, setNome] = useState("");
   const [busy, setBusy] = useState(false);
   const [colar, setColar] = useState("");           // prospecção: colar lista de números
@@ -2510,16 +2511,17 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     const u = getUser();
     Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp(), api.atendRespostasEmpresa(), api.atendBoard(u?.nome, ehGestorAtend()), api.atendInteressesContatos(), api.atendContatosEmCampanha()]).then(([cl, w, emp, bd, ie, ec]) => {
       const lista: Contato[] = []; const idx = new Map<string, Contato>();
-      const add = (n: string, tel: string, origem: Contato["origem"], cidade?: string | null, uf?: string | null, falou = false) => {
+      const add = (n: string, tel: string, origem: Contato["origem"], cidade?: string | null, uf?: string | null, falou = false, ultimaSaida?: string | null) => {
         const d = (tel || "").replace(/\D/g, ""); if (d.length < 10 || d.length > 13) return;  // fora do tamanho BR: ignora
         const key = nucleoTel(d); const ex = idx.get(key);
-        if (ex) { if (falou) ex.falou = true; if ((!ex.nome || ex.nome === telBonito(ex.telefone)) && n) ex.nome = n; return; }
-        const c: Contato = { nome: n || telBonito(d), telefone: d, origem, cidade, uf, falou };
+        if (ex) { if (falou) ex.falou = true; if (ultimaSaida && (!ex.ultimaSaida || ultimaSaida > ex.ultimaSaida)) ex.ultimaSaida = ultimaSaida; if ((!ex.nome || ex.nome === telBonito(ex.telefone)) && n) ex.nome = n; return; }
+        const c: Contato = { nome: n || telBonito(d), telefone: d, origem, cidade, uf, falou, ultimaSaida: ultimaSaida || null };
         idx.set(key, c); lista.push(c);
       };
       if (cl.status === "fulfilled") for (const c of cl.value) add(c.nome, c.whatsapp || "", "cliente", c.cidade, c.uf);
-      // "Já falaram com a gente": conversas do CRM com mensagem RECEBIDA do cliente.
-      if (bd.status === "fulfilled") for (const cv of bd.value.conversas) if (cv.telefone && cv.ultima_in_em && cv.estado !== "grupo") add(cv.contato_nome || cv.nome || "", cv.telefone, "crm", cv.cidade, cv.uf, true);
+      // "Já falaram com a gente": conversas do CRM com mensagem RECEBIDA do cliente. Guarda também a
+      // ÚLTIMA SAÍDA (ultima_out_em) pra avisar se você já mandou mensagem recente pra esse contato.
+      if (bd.status === "fulfilled") for (const cv of bd.value.conversas) if (cv.telefone && cv.ultima_in_em && cv.estado !== "grupo") add(cv.contato_nome || cv.nome || "", cv.telefone, "crm", cv.cidade, cv.uf, true, cv.ultima_out_em);
       if (w.status === "fulfilled") for (const c of (w.value.contatos || [])) add(c.nome, c.telefone, "whats");
       // Palavras-chave (interesses + última mensagem) pra busca por assunto.
       if (ie.status === "fulfilled") for (const p of (ie.value.contatos || [])) { const ex = idx.get(nucleoTel(p.telefone || "")); if (ex) ex.palavras = (p.palavras || "").toLowerCase(); }
@@ -2550,6 +2552,9 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     ).slice(0, CAP_CONTATOS);
   })();
   const contarFonte = (f: typeof fonte) => contatos.filter((c) => casaFonte(c, f)).length;
+  // "Enviei recente?": true se a ÚLTIMA saída pra esse contato foi dentro dos últimos N dias (0 = desliga o aviso).
+  const diasRecente = Math.max(0, Number(avisarDias) || 0);
+  const ehRecente = (c: Contato) => !!c.ultimaSaida && diasRecente > 0 && (Date.now() - new Date(String(c.ultimaSaida).replace(" ", "T") + "Z").getTime()) < diasRecente * 864e5;
   // PROSPECÇÃO: cola uma lista de números (1 por linha, ou separados por vírgula) — inclusive de
   // quem NÃO está na base. Vira contato selecionado na campanha. Aceita "Nome, número" ou só número.
   function adicionarColados() {
@@ -2621,6 +2626,9 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     if (sel.size === 0) { alert("Selecione pelo menos um contato."); return; }
     const jaEmCamp = contatos.filter((c) => sel.has(c.telefone) && c.emCamp).length;
     if (jaEmCamp && !confirm(`⚠️ ${jaEmCamp} contato(s) selecionado(s) JÁ estão em outra campanha. Quer incluir mesmo assim?`)) return;
+    // Aviso: contatos que JÁ receberam mensagem sua nos últimos N dias (pra não parecer spam).
+    const recentes = contatos.filter((c) => sel.has(c.telefone) && ehRecente(c)).length;
+    if (recentes && !confirm(`⚠️ ${recentes} contato(s) selecionado(s) JÁ receberam uma mensagem sua nos últimos ${diasRecente} dia(s). Mandar a campanha pra eles também?`)) return;
     if (!rascunho && !confirm(`Criar e ENVIAR a campanha para ${sel.size} contato(s)? A Big vai enviando 1 a cada ${intervalo}s pra não bloquear o número.`)) return;
     setBusy(true);
     try {
@@ -2710,6 +2718,9 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
           <label className="fld" style={{ marginTop: 8, display: "inline-flex", flexDirection: "column" }}>Enviar 1 a cada
             <span><input type="number" min={15} max={600} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} style={{ width: 70 }} /> segundos <span className="muted2">(recomendado ≥ 40s)</span></span>
           </label>
+          <label className="fld" style={{ marginTop: 8, display: "inline-flex", flexDirection: "column" }}>⚠️ Avisar se já enviei nos últimos
+            <span><input type="number" min={0} max={90} value={avisarDias} onChange={(e) => setAvisarDias(e.target.value)} style={{ width: 70 }} /> dia(s) <span className="muted2">(0 = não avisar)</span></span>
+          </label>
           <div style={{ marginTop: 10, marginBottom: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <b style={{ fontSize: 13 }}>Contatos</b>
             <span className="at-chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{sel.size} selecionado(s)</span>
@@ -2749,7 +2760,8 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
                 <label key={c.origem + c.telefone} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderBottom: "1px solid var(--line)", cursor: "pointer" }}>
                   <input type="checkbox" checked={sel.has(c.telefone)} onChange={() => toggle(c.telefone)} />
                   <div><div><b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span>
-                    {c.emCamp && <span className="at-chip" style={{ background: "#fef3c7", color: "#92400e", fontSize: 10, marginLeft: 6 }} title="Este contato já está em outra campanha">📣 já em campanha</span>}</div>
+                    {c.emCamp && <span className="at-chip" style={{ background: "#fef3c7", color: "#92400e", fontSize: 10, marginLeft: 6 }} title="Este contato já está em outra campanha">📣 já em campanha</span>}
+                    {ehRecente(c) && <span className="at-chip" style={{ background: "#fee2e2", color: "#b91c1c", fontSize: 10, marginLeft: 6 }} title={`Você já enviou mensagem pra este contato nos últimos ${diasRecente} dia(s)`}>⚠️ enviado recente</span>}</div>
                     <div className="muted2" style={{ fontSize: 11 }}>{c.origem === "cliente" ? "📇 base" : c.origem === "colado" ? "📋 colado" : c.origem === "crm" ? "💬 já falou" : c.origem === "catalogo" ? "📖 viu o catálogo" : "📱 zap"}{c.rep ? ` · 👤 ${c.rep}` : ""}{c.falou && c.origem !== "crm" ? " · 💬 já falou" : ""}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : (c.uf ? ` · ${c.uf}` : "")}</div></div>
                 </label>
               ))}
