@@ -747,14 +747,19 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
 
   // Detecta interesse comercial + modelos citados (vale inclusive no atendimento humano).
   const cfgAt = await lerConfig(env);
-  // SILENCIAR (🔕) é TEMPORÁRIO pra card de CLIENTE: mensagem NOVA do cliente REATIVA o piscar
-  // (tira do silêncio), pra ninguém perder a mensagem. GRUPO continua silenciado (é barulhento de
-  // propósito — silenciar grupo é justamente pra parar de piscar a cada mensagem).
-  if (String(conv.estado) !== "grupo" && String(conv.origem) !== "grupo") {
-    try {
-      const sil = (() => { try { const a = JSON.parse(cfgAt.atend_silenciados || "[]"); return Array.isArray(a) ? a.map(String) : []; } catch { return [] as string[]; } })();
-      if (sil.includes(conv.id)) await salvarConfigJson(env, "atend_silenciados", sil.filter((x) => x !== conv.id));
-    } catch { /* não bloqueia o atendimento */ }
+  // SILENCIAR (🔕) é TEMPORÁRIO pra card de CLIENTE: mensagem NOVA de GENTE de verdade REATIVA o piscar
+  // (tira do silêncio), pra ninguém perder a mensagem. NÃO reativa por:
+  //  • GRUPO (é barulhento de propósito — silenciar grupo é pra parar de piscar a cada mensagem);
+  //  • AUTORRESPOSTA de robô da loja do cliente ("recebemos sua mensagem", "fora do horário"…) —
+  //    senão o card piscava "sem a pessoa ter chamado", que foi o que o André viu.
+  {
+    const ehAutoResp = !arquivoUrl && RESPOSTA_AUTOMATICA_RE.test(texto || "");
+    if (String(conv.estado) !== "grupo" && String(conv.origem) !== "grupo" && !ehAutoResp) {
+      try {
+        const sil = (() => { try { const a = JSON.parse(cfgAt.atend_silenciados || "[]"); return Array.isArray(a) ? a.map(String) : []; } catch { return [] as string[]; } })();
+        if (sil.includes(conv.id)) await salvarConfigJson(env, "atend_silenciados", sil.filter((x) => x !== conv.id));
+      } catch { /* não bloqueia o atendimento */ }
+    }
   }
   await detectarInteresse(env, conv.id, texto, cfgAt.interesse_modelos || "");
   // OPT-OUT: cliente respondeu "SAIR" (ou PARAR/DESCADASTRAR/"não quero mais receber"...) → registra
