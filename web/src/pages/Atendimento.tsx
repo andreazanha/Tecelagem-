@@ -1894,6 +1894,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
               <button className="modal-x" style={{ position: "static" }} onClick={() => setRespondendo(null)} title="Cancelar resposta">✕</button>
             </div>
           )}
+          {/* Input de arquivo ÚNICO — fica sempre no DOM pra os dois modos (robô e humano) acionarem. */}
+          <input ref={arqRef} type="file" multiple accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length === 1) escolherAnexo(fs[0]); else if (fs.length > 1) enviarVarios(fs); e.currentTarget.value = ""; }} />
           {/* Alternar: falar com o CLIENTE (WhatsApp) ou deixar NOTA INTERNA (só a equipe vê) */}
           <div style={{ flexBasis: "100%", display: "flex", gap: 6, marginBottom: 4 }}>
             <button className="at-modo-pill" style={modo === "cliente" ? { background: "#25d366", color: "#fff", borderColor: "#25d366" } : {}} onClick={() => setModo("cliente")}>💬 Cliente</button>
@@ -1926,7 +1928,6 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     </div>
                   </>)}
                 </div>
-                <input ref={arqRef} type="file" multiple accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length === 1) escolherAnexo(fs[0]); else if (fs.length > 1) enviarVarios(fs); e.currentTarget.value = ""; }} />
                 {/* Emojis (😊): abre um painel pra clicar, como no WhatsApp do computador. */}
                 <div style={{ position: "relative", flex: "0 0 auto" }}>
                   <button className="at-send" style={{ background: emojiOpen ? "rgba(0,128,105,.12)" : "transparent" }} disabled={busy} onClick={() => setEmojiOpen((v) => !v)} title="Emojis">
@@ -1954,8 +1955,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                           : <svg viewBox="0 0 24 24" width="22" height="22" fill="#54656f"><path d="M12 15a3.5 3.5 0 003.5-3.5V6a3.5 3.5 0 00-7 0v5.5A3.5 3.5 0 0012 15zm6-3.5a6 6 0 01-12 0H4a8 8 0 007 7.94V23h2v-3.56a8 8 0 007-7.94h-2z"/></svg>}
                     </button>}
               </>
-            : <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", flexWrap: "wrap" }}>
-                <span className="muted2" style={{ flex: 1, minWidth: 160 }}>🤖 O robô está conduzindo.</span>
+            : <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", flexWrap: "wrap" }}>
+                <span className="muted2" style={{ flex: 1, minWidth: 120 }}>🤖 O robô está conduzindo.</span>
+                <button className="btn btn-soft" disabled={busy} onClick={() => arqRef.current?.click()} title="Enviar foto ou arquivo pro cliente agora (sem precisar assumir)">📎 Anexar</button>
                 <button className="kbtn go" disabled={busy} onClick={assumir}>🙋 Assumir e responder</button>
               </div>}
         </div>
