@@ -790,8 +790,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // mais dar o "oi", ele já veio). O card sai da coluna de follow-up e volta pro fluxo normal:
   // como há mensagem nova sem resposta, cai em "Aguardando atendimento humano" e fica piscando.
   try {
-    const ag = lerAgendamentos(cfgAt);
-    if (ag.some((a) => a && a.conversaId === conv.id)) await salvarConfigJson(env, "atend_agendamentos", ag.filter((a) => a && a.conversaId !== conv.id));
+    await env.DB.prepare("DELETE FROM atend_agendamentos WHERE conversa_id=?").bind(conv.id).run();
   } catch { /* ok */ }
   // REMARKET: cliente respondeu → cancela o remarket agendado (ele já engajou; o card sai da coluna
   // "Remarket" pra "Aguardando humano" via a limpeza do coluna_manual acima).
@@ -1686,9 +1685,7 @@ atendimento.post("/:id/encerrar", async (c) => {
   // Cancela QUALQUER agendamento de "Chamar IA" pendente — senão o card fica preso no follow-up
   // (a agenda ganha da coluna) mesmo depois de finalizado, e não sai de lá de jeito nenhum.
   try {
-    const cfgEnc = await lerConfig(c.env);
-    const agsEnc = lerAgendamentos(cfgEnc);
-    if (agsEnc.some((a) => a && a.conversaId === id)) await salvarConfigJson(c.env, "atend_agendamentos", agsEnc.filter((a) => a && a.conversaId !== id));
+    await c.env.DB.prepare("DELETE FROM atend_agendamentos WHERE conversa_id=?").bind(id).run();
   } catch { /* se falhar, o guard no quadro (encerrado sai do follow-up) já cobre */ }
   await addMsg(c.env, id, "out", "sistema", "sistema", `Atendimento encerrado${b.autor ? " por " + String(b.autor).trim() : ""}.`);
   return c.json({ ok: true });
@@ -2452,8 +2449,9 @@ atendimento.get("/", async (c) => {
   let lembretes = new Set<string>(), mudos = new Set<string>();
   try { const l = JSON.parse(cfgB.atend_lembretes || "[]"); if (Array.isArray(l)) lembretes = new Set(l.map(String)); } catch { lembretes = new Set(); }
   try { const s = JSON.parse(cfgB.atend_silenciados || "[]"); if (Array.isArray(s)) mudos = new Set(s.map(String)); } catch { mudos = new Set(); }
+  await migrarAgendamentosLegado(c.env, cfgB);   // move agendamentos do formato antigo pra tabela (1x)
   const agendados = new Map<string, { quando: number; enviado: boolean; mensagem?: string }>();
-  for (const a of lerAgendamentos(cfgB)) if (a && a.conversaId) agendados.set(String(a.conversaId), { quando: Number(a.quando), enviado: !!a.enviado, mensagem: a.mensagem });
+  for (const a of await lerAgendamentos(c.env)) if (a && a.conversaId) agendados.set(String(a.conversaId), { quando: Number(a.quando), enviado: !!a.enviado, mensagem: a.mensagem });
   const remarkets = new Map<string, { desde: number; enviado: boolean }>();
   for (const rm of lerRemarket(cfgB)) if (rm && rm.conversaId) remarkets.set(String(rm.conversaId), { desde: Number(rm.desde), enviado: !!rm.enviado });
   const remarketHoras = Math.max(1, parseInt(cfgB.remarket_horas || "24", 10) || 24);
@@ -2588,9 +2586,9 @@ export async function juntarDuplicadosAtend(env: Env): Promise<{ mesclados: numb
       try { const arr = JSON.parse(cfg[chave] || "[]"); if (Array.isArray(arr)) await salvarConfigJson(env, chave, [...new Set(arr.map((x) => remapa(String(x))))]); } catch { /* ok */ }
     }
     try {
-      const ags = lerAgendamentos(cfg).map((a) => ({ ...a, conversaId: remapa(String(a.conversaId)) }));
-      const vistos = new Set<string>(); const limpo = ags.filter((a) => (vistos.has(a.conversaId) ? false : vistos.add(a.conversaId)));
-      await salvarConfigJson(env, "atend_agendamentos", limpo);
+      // Repõe o conversa_id dos agendamentos dos cards mesclados e mantém 1 por conversa.
+      for (const [de, para] of remap) if (de !== para) await env.DB.prepare("UPDATE atend_agendamentos SET conversa_id=? WHERE conversa_id=?").bind(para, de).run();
+      await env.DB.prepare("DELETE FROM atend_agendamentos WHERE id NOT IN (SELECT id FROM atend_agendamentos GROUP BY conversa_id)").run();
     } catch { /* ok */ }
   }
   return { mesclados, removidos };
@@ -2707,8 +2705,30 @@ atendimento.post("/:id/lembrete", async (c) => {
 // O cron de 5 min (processarAgendamentos) dispara quando chega a hora, com a saudação
 // certa pelo período: manhã → "Bom dia", tarde → "Boa tarde", noite → "Boa noite".
 type Agendamento = { id: string; conversaId: string; telefone: string; quando: number; criado_em: number; enviado?: boolean; mensagem?: string };
-function lerAgendamentos(cfg: Record<string, string>): Agendamento[] {
-  try { const l = JSON.parse(cfg.atend_agendamentos || "[]"); return Array.isArray(l) ? l as Agendamento[] : []; } catch { return []; }
+// Agora vem da TABELA atend_agendamentos (uma linha por agendamento) — não mais do blob JSON, que
+// sofria corrida ao agendar vários e perdia a maioria.
+async function lerAgendamentos(env: Env): Promise<Agendamento[]> {
+  const { results } = await env.DB.prepare(
+    "SELECT id, conversa_id, telefone, quando, criado_em, enviado, mensagem FROM atend_agendamentos"
+  ).all<{ id: string; conversa_id: string; telefone: string | null; quando: number; criado_em: number | null; enviado: number | null; mensagem: string | null }>()
+    .catch(() => ({ results: [] as { id: string; conversa_id: string; telefone: string | null; quando: number; criado_em: number | null; enviado: number | null; mensagem: string | null }[] }));
+  return results.map((r) => ({ id: r.id, conversaId: String(r.conversa_id), telefone: r.telefone || "", quando: Number(r.quando), criado_em: Number(r.criado_em || 0), enviado: !!r.enviado, mensagem: r.mensagem || undefined }));
+}
+// Migra agendamentos do formato ANTIGO (blob JSON em config) pra tabela — UMA vez. Chamado no cron
+// e no endpoint, pra não perder os que já estavam agendados quando a mudança subiu.
+async function migrarAgendamentosLegado(env: Env, cfg: Record<string, string>): Promise<void> {
+  const raw = cfg.atend_agendamentos;
+  if (!raw || raw === "[]") return;
+  let velhos: Agendamento[] = [];
+  try { const l = JSON.parse(raw); velhos = Array.isArray(l) ? l : []; } catch { velhos = []; }
+  for (const a of velhos) {
+    if (!a || !a.conversaId || !a.quando) continue;
+    try {
+      await env.DB.prepare("INSERT OR IGNORE INTO atend_agendamentos (id, conversa_id, telefone, quando, criado_em, enviado, mensagem) VALUES (?,?,?,?,?,?,?)")
+        .bind(a.id || uid(), String(a.conversaId), a.telefone || "", Number(a.quando), Number(a.criado_em || Date.now()), a.enviado ? 1 : 0, a.mensagem || null).run();
+    } catch { /* ok */ }
+  }
+  await salvarConfigJson(env, "atend_agendamentos", []);
 }
 
 // REMARKET: cards que o atendente arrasta pra coluna "🔁 Remarket". Depois de X horas (padrão 24)
@@ -2722,17 +2742,17 @@ const MSG_REMARKET_PADRAO = "Oi {nome}! 😊 Passando aqui pra saber se posso te
 atendimento.post("/:id/agendar-ia", async (c) => {
   const id = c.req.param("id");
   const b = await c.req.json<{ quando?: number; cancelar?: boolean; mensagem?: string }>().catch(() => ({} as { quando?: number; cancelar?: boolean; mensagem?: string }));
-  const cfg = await lerConfig(c.env);
-  // Só um agendamento por conversa: remove o anterior antes de gravar o novo.
-  let arr = lerAgendamentos(cfg).filter((a) => a && a.conversaId !== id);
-  if (b.cancelar) { await salvarConfigJson(c.env, "atend_agendamentos", arr); return c.json({ ok: true, agendado: null }); }
+  // Só um agendamento por conversa: apaga o anterior DESTA conversa (atômico — não mexe nos outros,
+  // por isso agendar vários seguidos não se sobrescreve mais).
+  await c.env.DB.prepare("DELETE FROM atend_agendamentos WHERE conversa_id=?").bind(id).run();
+  if (b.cancelar) return c.json({ ok: true, agendado: null });
   const quando = Number(b.quando || 0);
   if (!quando || !isFinite(quando)) return c.json({ error: "Escolha o dia e o horário." }, 400);
   const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
   if (!conv) return c.json({ error: "Conversa não encontrada." }, 404);
-  const mensagem = String(b.mensagem ?? "").trim().slice(0, 2000) || undefined;
-  arr.push({ id: uid(), conversaId: id, telefone: conv.telefone, quando, criado_em: Date.now(), mensagem });
-  await salvarConfigJson(c.env, "atend_agendamentos", arr.slice(-500));
+  const mensagem = String(b.mensagem ?? "").trim().slice(0, 2000) || null;
+  await c.env.DB.prepare("INSERT INTO atend_agendamentos (id, conversa_id, telefone, quando, criado_em, enviado, mensagem) VALUES (?,?,?,?,?,0,?)")
+    .bind(uid(), id, conv.telefone, quando, Date.now(), mensagem).run();
   return c.json({ ok: true, agendado: quando });
 });
 
@@ -3157,7 +3177,7 @@ atendimento.get("/:id", async (c) => {
   const colManual = conv.coluna_manual && ATEND_COLUNAS.some((x) => x.id === conv.coluna_manual) ? conv.coluna_manual : null;
   // Lembrete (pulsa) e silenciado (não pulsa/sem som) — listas JSON de config.
   let lembrete = 0, silenciado = 0, agendado_ia: number | null = null, agendado_enviado = 0, status_cliente: string | null = null;
-  try { const cfgL = await lerConfig(c.env); const l = JSON.parse(cfgL.atend_lembretes || "[]"); if (Array.isArray(l) && l.map(String).includes(String(conv.id))) lembrete = 1; const s = JSON.parse(cfgL.atend_silenciados || "[]"); if (Array.isArray(s) && s.map(String).includes(String(conv.id))) silenciado = 1; const ag = lerAgendamentos(cfgL).find((a) => a && a.conversaId === conv.id); if (ag) { agendado_ia = Number(ag.quando); agendado_enviado = ag.enviado ? 1 : 0; } const sc = JSON.parse(cfgL.atend_status_cliente || "{}"); if (sc && typeof sc === "object") status_cliente = sc[String(conv.id)] || null; } catch { /* ok */ }
+  try { const cfgL = await lerConfig(c.env); const l = JSON.parse(cfgL.atend_lembretes || "[]"); if (Array.isArray(l) && l.map(String).includes(String(conv.id))) lembrete = 1; const s = JSON.parse(cfgL.atend_silenciados || "[]"); if (Array.isArray(s) && s.map(String).includes(String(conv.id))) silenciado = 1; const ag = await c.env.DB.prepare("SELECT quando, enviado FROM atend_agendamentos WHERE conversa_id=? LIMIT 1").bind(conv.id).first<{ quando: number; enviado: number }>(); if (ag) { agendado_ia = Number(ag.quando); agendado_enviado = ag.enviado ? 1 : 0; } const sc = JSON.parse(cfgL.atend_status_cliente || "{}"); if (sc && typeof sc === "object") status_cliente = sc[String(conv.id)] || null; } catch { /* ok */ }
   return c.json({ ...conv, coluna: agendado_ia ? "contato-followup" : (colManual || colunaAtendimento(conv)), mensagens, interesses: interesses.map((i) => i.termo), pedidos_resumo, bloqueado, lembrete, silenciado, agendado_ia, agendado_enviado, status_cliente });
 });
 
@@ -3468,18 +3488,21 @@ async function horarioComercialOk(env: Env, cfg: Record<string, string>): Promis
 // escolhido pelo atendente (Brasil, UTC-3): manhã → Bom dia, tarde → Boa tarde, noite → Boa noite.
 export async function processarAgendamentos(env: Env): Promise<number> {
   const cfg = await lerConfig(env);
-  const arr = lerAgendamentos(cfg);
+  await migrarAgendamentosLegado(env, cfg);   // move os que ficaram no formato antigo (uma vez)
+  // Limpa agendamentos JÁ ENVIADOS bem antigos (>30 dias) pra a tabela não crescer sem fim.
+  try { await env.DB.prepare("DELETE FROM atend_agendamentos WHERE enviado=1 AND quando < ?").bind(Date.now() - 30 * 864e5).run(); } catch { /* ok */ }
+  const arr = await lerAgendamentos(env);
   if (!arr.length) return 0;
   const agora = Date.now();
-  // Vence só o que ainda NÃO foi enviado (o já-enviado fica na lista pra o card seguir no follow-up).
+  // Vence só o que ainda NÃO foi enviado (o já-enviado fica na tabela pra o card seguir no follow-up).
   const venceu = (a: Agendamento) => a && a.telefone && !a.enviado && Number(a.quando) <= agora;
   const vencidos = arr.filter(venceu);
   if (!vencidos.length) return 0;
-  // Marca como ENVIADO antes de disparar (evita reenvio se travar/reprocessar) e MANTÉM na lista:
+  // Marca como ENVIADO antes de disparar (evita reenvio se travar/reprocessar) e MANTÉM na tabela:
   // assim, se o cliente não responder, o card continua na coluna de follow-up. Ele só sai quando
   // o cliente escreve (receberMensagem apaga o agendamento) — aí vai pra "Aguardando humano".
-  const idsVencidos = new Set(vencidos.map((a) => a.id));
-  await salvarConfigJson(env, "atend_agendamentos", arr.map((a) => idsVencidos.has(a.id) ? { ...a, enviado: true } : a));
+  const idsVencidos = vencidos.map((a) => a.id);
+  if (idsVencidos.length) await env.DB.prepare(`UPDATE atend_agendamentos SET enviado=1 WHERE id IN (${idsVencidos.map(() => "?").join(",")})`).bind(...idsVencidos).run();
   let enviados = 0;
   for (const a of vencidos) {
     try {
