@@ -2814,7 +2814,7 @@ atendimento.post("/nova-conversa", async (c) => {
   const tel = digitos(b.telefone);
   const texto = String(b.texto ?? "").trim();
   if (tel.length < 10) return c.json({ error: "número inválido" }, 400);
-  if (!texto) return c.json({ error: "escreva uma mensagem" }, 400);
+  // texto é OPCIONAL: dá pra abrir a conversa só com um ANEXO (mandado logo depois, em chamada separada).
   const resp = (b.responsavel || "").trim() || "Atendente";
   const nomeManual = String(b.nome ?? "").trim().slice(0, 80) || null;
   const conv = await acharConversaPorTelefone(c.env, tel);
@@ -2829,9 +2829,12 @@ atendimento.post("/nova-conversa", async (c) => {
       "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, cliente_id, nome, contato_nome, responsavel, ultima_out_em, atualizado_em) VALUES (?, ?, 'atendimento-humano', 'manual', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))"
     ).bind(convId, tel, cliente ? "lojista" : null, cliente?.id ?? null, cliente?.nome ?? nomeManual, nomeManual, resp).run();
   }
-  await addMsg(c.env, convId, "out", resp, "texto", texto);
-  await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(convId).run();
-  await enviarWhatsapp(c.env, tel, { tipo: "texto", texto });
+  // Só manda/registra a 1ª mensagem se houver TEXTO (senão a conversa abre só com o anexo, que vem depois).
+  if (texto) {
+    await addMsg(c.env, convId, "out", resp, "texto", texto);
+    await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(convId).run();
+    await enviarWhatsapp(c.env, tel, { tipo: "texto", texto });
+  }
   return c.json({ ok: true, conversa_id: convId });
 });
 
