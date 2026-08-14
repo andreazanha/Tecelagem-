@@ -1182,19 +1182,28 @@ atendimento.post("/webhook", async (c) => {
   // IMPORTANTE: mensagem RECEBIDA da Z-API também traz status:"RECEIVED" — por isso NÃO
   // pode capturar aqui pelo status; só o callback de status real (type MessageStatusCallback,
   // que manda "ids" em array). ReceivedCallback é sempre tratado como mensagem, mais abaixo.
-  if (b.type !== "ReceivedCallback" && (b.type === "MessageStatusCallback" || b.type === "DeliveryCallback" || Array.isArray(b.ids))) {
-    const ids = Array.isArray(b.ids) ? (b.ids as unknown[]).map(String) : (b.messageId ? [String(b.messageId)] : []);
+  // Um callback de STATUS tem um "status" e IDs, mas NÃO tem corpo de mensagem (texto/mídia). É assim
+  // que a gente separa dele uma mensagem RECEBIDA (que também traz status:"RECEIVED", mas com conteúdo).
+  const temConteudo = b.text != null || b.image != null || b.audio != null || b.video != null || b.document != null || b.sticker != null || b.contact != null || b.location != null || b.buttonsResponseMessage != null || b.listResponseMessage != null;
+  const ehStatus = b.type !== "ReceivedCallback" && (b.type === "MessageStatusCallback" || b.type === "DeliveryCallback" || b.type === "MessageStatusUpdate" || Array.isArray(b.ids) || (!temConteudo && b.status != null && (b.ids != null || b.messageId != null || b.id != null)));
+  if (ehStatus) {
+    const idsRaw = Array.isArray(b.ids) ? (b.ids as unknown[]) : (b.ids != null ? [b.ids] : (b.messageId != null ? [b.messageId] : (b.id != null ? [b.id] : [])));
+    const ids = idsRaw.map(String).filter(Boolean);
     const st = String(b.status ?? "").toUpperCase();
-    const novo = (st === "READ" || st === "PLAYED") ? "read" : (st === "RECEIVED" || st === "DELIVERED") ? "delivered" : (st === "SENT") ? "sent" : "";
+    const novo = (st === "READ" || st === "PLAYED") ? "read" : (st === "RECEIVED" || st === "DELIVERED" || st === "DELIVERY_ACK") ? "delivered" : (st === "SENT" || st === "SERVER_ACK") ? "sent" : "";
     const rank = novo === "read" ? 3 : novo === "delivered" ? 2 : novo === "sent" ? 1 : 0;
+    let casou = 0;
     if (novo && ids.length) {
       for (const mid of ids) {
-        await c.env.DB.prepare(
+        const res = await c.env.DB.prepare(
           "UPDATE atend_mensagens SET status=? WHERE zap_id=? AND (CASE status WHEN 'read' THEN 3 WHEN 'delivered' THEN 2 WHEN 'sent' THEN 1 ELSE 0 END) < ?"
         ).bind(novo, mid, rank).run();
+        casou += Number((res as { meta?: { changes?: number } })?.meta?.changes ?? 0);
       }
     }
-    return c.json({ ok: true, status: novo, n: ids.length });
+    // DIAGNÓSTICO: guarda o último status recebido + quantas mensagens casaram (pra depurar os ✓✓).
+    try { await salvarConfigJson(c.env, "webhook_status_ultimo", { status_bruto: st, novo, ids, casou, raw: JSON.stringify(b).slice(0, 1500) }); } catch { /* ok */ }
+    return c.json({ ok: true, status: novo, n: ids.length, casou });
   }
   // Interruptor mestre: se o atendimento automático estiver desligado, NÃO responde
   // clientes reais (fica em modo teste interno pelo Simulador). Ignora silenciosamente.
@@ -1742,12 +1751,18 @@ atendimento.get("/webhook-debug", async (c) => {
   const cfg = await lerConfig(c.env);
   let ultimo: unknown = null;
   try { ultimo = JSON.parse(cfg.webhook_ultimo || "null"); } catch { ultimo = cfg.webhook_ultimo || null; }
+  let ultimoStatus: unknown = null;
+  try { ultimoStatus = JSON.parse(cfg.webhook_status_ultimo || "null"); } catch { ultimoStatus = cfg.webhook_status_ultimo || null; }
+  // Quando chegou o último callback de STATUS (pra saber se a Z-API está mandando os ✓✓).
+  const stAt = await c.env.DB.prepare("SELECT atualizado_em FROM config WHERE chave='webhook_status_ultimo'").first<{ atualizado_em: string }>().catch(() => null);
   return c.json({
     atendimento_ativo: cfg.atendimento_ativo === "1",
     atendimento_ia: cfg.atendimento_ia === "1",
     zapi_ativo: cfg.zapi_ativo === "1",
     equipe_numeros: cfg.equipe_numeros || "",
     ultimo_webhook: ultimo,
+    ultimo_status: ultimoStatus,           // último callback de entrega/leitura (✓✓) + se casou
+    ultimo_status_em: stAt?.atualizado_em || null,
   });
 });
 
