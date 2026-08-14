@@ -248,7 +248,12 @@ export function Atendimento() {
   const ehGrupoCard = (c: AtendConversa) => c.estado === "grupo" || c.origem === "grupo" || c.coluna === "grupos";
   // A coluna "Campanhas" também nunca pisca: é autorresposta de loja (robô), não gente esperando.
   // (Quando um card de campanha vira atendimento de verdade, sai pra "Aguardando humano" e aí sim pisca.)
-  const pulsaVerde = (c: AtendConversa) => !c.silenciado && !ehGrupoCard(c) && c.coluna !== "campanha" && (aguardando(c) || emTriagemAtiva(c));
+  // AGUARDANDO HUMANO: pisca SEMPRE enquanto está nessa fila — mesmo que a ÚLTIMA mensagem tenha sido
+  // da IA (a saudação/transferência da triagem). Antes, essa saída da IA fazia o card parar de piscar
+  // sem ninguém ter atendido. Só para quando um humano RESPONDE (o card sai pra "Em atendimento"),
+  // quando você silencia (🔕) ou encerra. Assim nenhum lead transferido fica esquecido sem piscar.
+  const emEsperaHumano = (c: AtendConversa) => c.coluna === "aguardando-humano";
+  const pulsaVerde = (c: AtendConversa) => !c.silenciado && !ehGrupoCard(c) && c.coluna !== "campanha" && (aguardando(c) || emTriagemAtiva(c) || emEsperaHumano(c));
 
   // Busca do quadro: um card "bate" com a busca por nome/loja/cidade/UF/representante ou pelo telefone
   // (a partir de 3 dígitos). Vazio = mostra todos.
