@@ -2359,12 +2359,14 @@ function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; on
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
   const [respostas, setRespostas] = useState<RespostaPronta[]>([]);   // respostas prontas p/ escolher
-  const [anexo, setAnexo] = useState<File | null>(null);              // anexo opcional (foto/arquivo)
+  const [anexo, setAnexo] = useState<File | null>(null);              // anexo opcional (arquivo local)
+  const [respAnexo, setRespAnexo] = useState<{ arquivo_key: string; arquivo_nome?: string; arquivo_ct?: string } | null>(null); // anexo da resposta pronta escolhida
   useEffect(() => {
     Promise.allSettled([api.atendRespostasEmpresa(), api.atendRespostas()]).then(([e, m]) => {
       const emp = e.status === "fulfilled" ? e.value : [];
       const min = m.status === "fulfilled" ? m.value : [];
-      setRespostas([...emp, ...min].filter((r) => r.texto.trim()));
+      // Inclui respostas que têm TEXTO ou ANEXO (uma resposta pode ser só um vídeo/foto).
+      setRespostas([...emp, ...min].filter((r) => r.texto.trim() || r.arquivo_key));
     });
   }, []);
 
@@ -2404,13 +2406,20 @@ function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; on
   async function enviar() {
     const tel = (sel?.telefone || telManual).replace(/\D/g, "");
     if (tel.length < 10) { alert("Escolha um contato ou digite um número válido (com DDD)."); return; }
-    if (!texto.trim() && !anexo) { alert("Escreva a primeira mensagem ou anexe um arquivo."); return; }
+    if (!texto.trim() && !anexo && !respAnexo) { alert("Escreva a primeira mensagem ou anexe um arquivo."); return; }
     setBusy(true);
     try {
       const u = getUser();
-      const r = await api.atendNovaConversa({ telefone: tel, texto: texto.trim() || undefined, nome: sel?.nome, responsavel: u?.nome || "Atendente" });
+      const autor = u?.nome || "Atendente";
+      // Se a resposta pronta escolhida tem ANEXO (vídeo/foto), a conversa abre SEM texto e o
+      // anexo + texto vão juntos via enviar-resposta (mídia + texto como mensagem separada).
+      const r = await api.atendNovaConversa({ telefone: tel, texto: respAnexo ? undefined : (texto.trim() || undefined), nome: sel?.nome, responsavel: autor });
+      if (respAnexo) {
+        try { await api.atendEnviarResposta(r.conversa_id, { arquivo_key: respAnexo.arquivo_key, arquivo_nome: respAnexo.arquivo_nome, texto: texto.trim(), autor }); }
+        catch (e) { alert("Conversa criada, mas não consegui enviar o anexo da resposta: " + ((e as Error)?.message || "erro")); }
+      }
       if (anexo) {
-        try { await api.atendEnviarArquivo(r.conversa_id, anexo, u?.nome || "Atendente"); }
+        try { await api.atendEnviarArquivo(r.conversa_id, anexo, autor); }
         catch (e) { alert("Conversa criada, mas não consegui enviar o anexo: " + ((e as Error)?.message || "erro")); }
       }
       onMudou();
@@ -2450,11 +2459,18 @@ function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; on
         <input placeholder="Ex.: 35 9 9999-9999" value={telManual} onChange={(e) => { setTelManual(e.target.value); setSel(null); }} style={{ width: "100%", marginBottom: 10 }} />
         {/* Escolher uma RESPOSTA PRONTA: joga o texto no campo (dá pra editar). */}
         {respostas.length > 0 && (
-          <select defaultValue="" onChange={(e) => { const r = respostas[Number(e.target.value)]; if (r) setTexto(r.texto); e.currentTarget.selectedIndex = 0; }}
+          <select defaultValue="" onChange={(e) => { const r = respostas[Number(e.target.value)]; if (r) { setTexto(r.texto); setRespAnexo(r.arquivo_key ? { arquivo_key: r.arquivo_key, arquivo_nome: r.arquivo_nome, arquivo_ct: r.arquivo_ct } : null); } e.currentTarget.selectedIndex = 0; }}
             style={{ width: "100%", marginBottom: 6, fontSize: 13, padding: "8px 9px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg-soft,#fff)", color: "var(--ink)", fontFamily: "inherit" }}>
             <option value="">📋 Usar uma resposta pronta…</option>
-            {respostas.map((r, i) => <option key={i} value={i}>{r.titulo || r.texto.slice(0, 40)}</option>)}
+            {respostas.map((r, i) => <option key={i} value={i}>{(r.arquivo_key ? "📎 " : "") + (r.titulo || r.texto.slice(0, 40) || "anexo")}</option>)}
           </select>
+        )}
+        {respAnexo && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, background: "#ecfeff", border: "1px solid #a5f3fc", borderRadius: 8, padding: "5px 10px", fontSize: 12.5, color: "#155e75" }}>
+            {respAnexo.arquivo_ct?.startsWith("image/") ? "🖼️" : respAnexo.arquivo_ct?.startsWith("video/") ? "🎬" : "📎"}
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>Anexo da resposta: {respAnexo.arquivo_nome || "arquivo"} — vai junto</span>
+            <button onClick={() => setRespAnexo(null)} title="Não enviar o anexo" style={{ background: "transparent", border: 0, cursor: "pointer", color: "#0e7490", fontSize: 14, lineHeight: 1 }}>✕</button>
+          </div>
         )}
         <textarea placeholder="Escreva a primeira mensagem… (opcional se anexar arquivo)" value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", marginBottom: 8 }} />
         {/* Anexo opcional (foto/arquivo) — enviado logo depois da mensagem. */}
