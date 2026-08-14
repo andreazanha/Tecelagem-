@@ -239,6 +239,7 @@ export interface ClienteCrm {
   razao_social?: string | null;
   cnpj_situacao?: string | null;   // situação cadastral na Receita: ATIVA / BAIXADA / INAPTA / SUSPENSA / NÃO ENCONTRADO
   cnpj_checado_em?: string | null;
+  prospectado_em?: string | null;  // data da última prospecção/reativação (marcado ao criar a campanha)
   pedidos?: number;
   total?: number;
   ultima?: string | null;
@@ -680,6 +681,8 @@ export const api = {
   enriquecerCnpj: (limite?: number) => jsonPost("/api/atendimento/enriquecer-cnpj", { limite }).then((r) => j<{ checados: number; inativos: number; faltam: number }>(r)),
   // Restaura os representantes pelos pedidos (desfaz nomes compridos do ERP vindos de importação).
   restaurarRepresentantes: () => jsonPost("/api/clientes/restaurar-representantes", {}).then((r) => j<{ ok: boolean; corrigidos: number }>(r)),
+  // Marca clientes como prospectados hoje (ao criar campanha de reativação a partir da seleção).
+  marcarProspectados: (ids: string[]) => jsonPost("/api/clientes/marcar-prospectados", { ids }).then((r) => j<{ ok: boolean; marcados: number }>(r)),
   salvarCliente: (b: Partial<ClienteCrm>) =>
     jsonPost("/api/clientes", b).then((r) => j<{ id: string; nome: string }>(r)),
   importarClientes: (b: { representante?: string; clientes: Record<string, string>[] }) =>

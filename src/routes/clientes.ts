@@ -35,7 +35,7 @@ clientes.get("/", async (c) => {
     return c.json(results);
   }
   const { results: cliAll } = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, ultima_compra, ultimo_faturamento, created_at FROM clientes ORDER BY nome"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, ultima_compra, ultimo_faturamento, prospectado_em, created_at FROM clientes ORDER BY nome"
   ).all<ClienteRow>();
   // Nomes internos (ESTOQUE, OP CONSOLIDADA, REPOSIÇÃO, BIG TRICOT) não são clientes reais.
   const cli = cliAll.filter((c0) => !ehClienteInterno(c0.nome));
@@ -159,6 +159,22 @@ clientes.post("/restaurar-representantes", async (c) => {
     corrigidos++;
   }
   return c.json({ ok: true, corrigidos });
+});
+
+// Marca uma lista de clientes como PROSPECTADOS hoje (chamado quando você cria a campanha de
+// reativação a partir da seleção). Fica visível na lista com a data, pra não prospectar de novo.
+clientes.post("/marcar-prospectados", async (c) => {
+  const b = await c.req.json<{ ids?: string[] }>().catch(() => ({} as { ids?: string[] }));
+  const ids = (Array.isArray(b.ids) ? b.ids : []).map((x) => String(x)).filter(Boolean).slice(0, 5000);
+  if (!ids.length) return c.json({ ok: true, marcados: 0 });
+  let marcados = 0;
+  for (let i = 0; i < ids.length; i += 100) {
+    const lote = ids.slice(i, i + 100);
+    const ph = lote.map(() => "?").join(",");
+    const r = await c.env.DB.prepare(`UPDATE clientes SET prospectado_em=datetime('now') WHERE id IN (${ph})`).bind(...lote).run().catch(() => null);
+    marcados += Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0);
+  }
+  return c.json({ ok: true, marcados });
 });
 
 clientes.post("/", async (c) => {

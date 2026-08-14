@@ -178,7 +178,7 @@ export function Clientes() {
         <td style={{ textAlign: "center", width: 34 }} onClick={(e) => e.stopPropagation()}>
           {c.whatsapp ? <input type="checkbox" checked={selCli.has(c.id)} onChange={() => toggleSel(c.id)} title="Selecionar para campanha" /> : null}
         </td>
-        <td><div className="cli-nm">{c.nome}</div><div className="muted2">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div></td>
+        <td><div className="cli-nm">{c.nome}{c.prospectado_em ? <span title={`Prospectado em ${dataBr(c.prospectado_em)}`} style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: "#7c3aed", background: "#f3e8ff", borderRadius: 6, padding: "1px 6px", whiteSpace: "nowrap" }}>🎯 {dataBr(c.prospectado_em)}</span> : null}</div><div className="muted2">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div></td>
         <td>{c.representante ? <span className="rep-cli">🧑‍💼 {c.representante}</span> : <span className="muted2">—</span>}</td>
         <td>{c.whatsapp ? (
           <button className="wa wa-btn" disabled={abrindo === c.id} onClick={(e) => { e.stopPropagation(); setEscolha(c); }} title="Abrir conversa no funil">
@@ -320,7 +320,7 @@ export function Clientes() {
           <button className="btn btn-primary" onClick={() => setCampanha(true)}>📣 Campanha de reativação</button>
         </div>
       )}
-      {campanha && <CampanhaReativacaoModal clientes={lista.filter((c) => selCli.has(c.id) && c.whatsapp)} onFechar={() => setCampanha(false)} onCriada={() => { setCampanha(false); setSelCli(new Set()); }} />}
+      {campanha && <CampanhaReativacaoModal clientes={lista.filter((c) => selCli.has(c.id) && c.whatsapp)} onFechar={() => setCampanha(false)} onCriada={() => { setCampanha(false); setSelCli(new Set()); recarregar(); }} />}
     </div>
   );
 }
@@ -353,6 +353,8 @@ function CampanhaReativacaoModal({ clientes, onFechar, onCriada }: { clientes: C
     try {
       const r = await api.atendCriarCampanha({ nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 40, iniciar_em, alvos: alvos.map((c) => ({ telefone: c.whatsapp as string, nome: c.nome })) });
       if (r.error) { alert(r.error); return; }
+      // Marca os selecionados como PROSPECTADOS hoje — fica na lista com a data (não prospectar de novo).
+      await api.marcarProspectados(alvos.map((c) => c.id)).catch(() => {});
       alert(agendar
         ? `Campanha agendada! ${r.total} cliente(s). A Big começa a enviar em ${agData.split("-").reverse().join("/")} às ${agHora}, aos poucos.`
         : `Campanha criada! ${r.total} cliente(s). A Big começa a enviar aos poucos — cada mensagem aparece na conversa do cliente.`);
