@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { api, type ClienteCrm, type ClienteFicha as TFicha } from "../api";
+import { ConversaModal } from "./Atendimento";
 
 const brl = (n?: number) => "R$ " + (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
@@ -72,6 +73,7 @@ export function Clientes() {
   const [sel, setSel] = useState<string | null>(null); // grupo selecionado (UF, representante, letra)
   const [abrindo, setAbrindo] = useState<string | null>(null);
   const [escolha, setEscolha] = useState<ClienteCrm | null>(null); // cliente aguardando "prospecção x só conversar"
+  const [conversaAberta, setConversaAberta] = useState<string | null>(null); // conversa aberta como janela por cima da lista
   const [selCli, setSelCli] = useState<Set<string>>(new Set()); // clientes marcados p/ campanha
   const [campanha, setCampanha] = useState(false);
   const toggleSel = (id: string) => setSelCli((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -89,7 +91,9 @@ export function Clientes() {
     setAbrindo(c.id);
     try {
       const r = await api.abrirConversaDoCard({ telefone: c.whatsapp, nome: c.nome, cliente_id: c.id, destino });
-      if (r.id) nav("/funil", { state: { abrirConversa: r.id } });
+      // Abre a conversa como JANELA por cima da lista (não navega pro funil) — assim, ao fechar, você
+      // continua exatamente onde estava, sem ter que voltar e procurar o cliente de novo.
+      if (r.id) setConversaAberta(r.id);
       else alert(r.error || "Este cliente não tem WhatsApp no cadastro. Adicione o número em Clientes e tente de novo.");
     } catch {
       alert("Não consegui abrir a conversa agora. Tente de novo em instantes.");
@@ -262,12 +266,13 @@ export function Clientes() {
 
       {novo && <ClienteModal cliente={novo} onFechar={() => setNovo(null)} onSalvo={() => { setNovo(null); recarregar(); }} />}
       {importar && <ImportarClientesModal onFechar={() => setImportar(false)} onImportou={() => { setImportar(false); recarregar(); }} />}
+      {conversaAberta && <ConversaModal id={conversaAberta} onFechar={() => setConversaAberta(null)} onMudou={recarregar} />}
 
       {escolha && (
         <div className="modal-bg" onClick={() => setEscolha(null)}>
           <div className="modal-card" style={{ maxWidth: 460, width: "min(460px,96vw)" }} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>Falar com {escolha.nome}</h3>
-            <p className="muted" style={{ fontSize: 13.5 }}>Isso abre a conversa no <b>funil</b>. Escolha em qual coluna ela entra:</p>
+            <p className="muted" style={{ fontSize: 13.5 }}>Abre a conversa aqui mesmo (numa janela). Escolha em qual coluna do funil o card entra:</p>
             <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
               <button className="btn btn-primary" style={{ textAlign: "left", lineHeight: 1.35, height: "auto", padding: "10px 14px" }} onClick={() => atender(escolha, "prospeccao")}>
                 🎯 <b>Iniciar prospecção</b><br /><small style={{ opacity: .9 }}>Entra na coluna “Novo lead” do funil e abre a conversa</small>
@@ -342,6 +347,7 @@ export function ClienteFicha() {
   const [editar, setEditar] = useState(false);
   const [escolha, setEscolha] = useState(false); // abrir chooser "prospecção x só conversar"
   const [abrindo, setAbrindo] = useState(false);
+  const [conversaAberta, setConversaAberta] = useState<string | null>(null); // conversa aberta como janela por cima da ficha
 
   function recarregar() {
     if (!id) return;
@@ -356,7 +362,9 @@ export function ClienteFicha() {
     setEscolha(false); setAbrindo(true);
     try {
       const r = await api.abrirConversaDoCard({ telefone: f.whatsapp, nome: f.nome, cliente_id: f.id, destino });
-      if (r.id) nav("/funil", { state: { abrirConversa: r.id } });
+      // Abre a conversa como JANELA por cima da ficha (não navega pro funil) — ao fechar, você volta
+      // pra ficha do cliente e continua de onde parou.
+      if (r.id) setConversaAberta(r.id);
       else alert(r.error || "Este cliente não tem WhatsApp no cadastro. Adicione o número e tente de novo.");
     } catch {
       alert("Não consegui abrir a conversa agora. Tente de novo em instantes.");
@@ -387,7 +395,7 @@ export function ClienteFicha() {
             <div><div style={{ fontWeight: 800, fontSize: 17 }}>{f.nome}</div><div className="muted2">Cliente desde {dataBr(f.created_at)}</div></div>
           </div>
           {wa ? (
-            <button className="wa wa-big wa-btn" disabled={abrindo} onClick={() => setEscolha(true)}>{abrindo ? "abrindo…" : "🟢 Abrir conversa no funil"}</button>
+            <button className="wa wa-big wa-btn" disabled={abrindo} onClick={() => setEscolha(true)}>{abrindo ? "abrindo…" : "🟢 Abrir conversa"}</button>
           ) : (
             <div className="wa wa-big off">WhatsApp não cadastrado</div>
           )}
@@ -445,7 +453,7 @@ export function ClienteFicha() {
         <div className="modal-bg" onClick={() => setEscolha(false)}>
           <div className="modal-card" style={{ maxWidth: 460, width: "min(460px,96vw)" }} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>Falar com {f.nome}</h3>
-            <p className="muted" style={{ fontSize: 13.5 }}>Isso abre a conversa no <b>funil</b>. Escolha em qual coluna ela entra:</p>
+            <p className="muted" style={{ fontSize: 13.5 }}>Abre a conversa aqui mesmo (numa janela). Escolha em qual coluna do funil o card entra:</p>
             <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
               <button className="btn btn-primary" style={{ textAlign: "left", lineHeight: 1.35, height: "auto", padding: "10px 14px" }} onClick={() => atender("prospeccao")}>
                 🎯 <b>Iniciar prospecção</b><br /><small style={{ opacity: .9 }}>Entra na coluna “Novo lead” do funil e abre a conversa</small>
@@ -459,6 +467,7 @@ export function ClienteFicha() {
         </div>
       )}
       {editar && <ClienteModal cliente={f} onFechar={() => setEditar(false)} onSalvo={() => { setEditar(false); recarregar(); }} />}
+      {conversaAberta && <ConversaModal id={conversaAberta} onFechar={() => setConversaAberta(null)} onMudou={recarregar} />}
     </div>
   );
 }

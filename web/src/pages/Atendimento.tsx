@@ -1236,6 +1236,12 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [transfOpen, setTransfOpen] = useState(false); // picker do botão "Transferir para outro vendedor"
   const [anexoMenu, setAnexoMenu] = useState(false); // menu do clipe (📎): opções de anexo, como no WhatsApp
   const [emojiOpen, setEmojiOpen] = useState(false); // seletor de emojis (😊) do campo de mensagem
+  // Agendar mensagem (mandar mais tarde) — reaproveita o agendamento do "Chamar IA": no horário, o
+  // sistema envia a mensagem escolhida (se vazia, manda uma saudação da IA). Útil pra não mandar de madrugada.
+  const [agOpen, setAgOpen] = useState(false);
+  const [agDia, setAgDia] = useState("");
+  const [agHora, setAgHora] = useState("09:00");
+  const [agMsg, setAgMsg] = useState("");
   const [editDados, setEditDados] = useState(false);
   const [formD, setFormD] = useState({ contato_nome: "", nome: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
   const [respondendo, setRespondendo] = useState<{ id: string; texto: string } | null>(null);
@@ -1581,6 +1587,14 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     try { await api.atendEnviar(id, { texto: texto.trim(), autor: d?.responsavel || getUser()?.nome || "Atendente", responder_a: respondendo?.id }); setTexto(""); setRespondendo(null); carregar(); onMudou(); }
     catch { alert("Não consegui enviar a mensagem agora. Verifique a conexão e tente de novo (seu texto continua no campo)."); }
     finally { setBusy(false); enviandoRef.current = false; }
+  }
+  // Agendar mensagem: em vez de mandar agora, guarda pra enviar no dia/horário escolhido (mesmo
+  // motor do "Chamar IA"). Se "mensagem" vazia, o sistema manda uma saudação da IA no horário.
+  async function agendarMensagem(quando: number | null, mensagem?: string) {
+    setBusy(true);
+    try { await api.atendAgendarIa(id, quando, mensagem); setTexto(""); setAgOpen(false); carregar(); onMudou(); }
+    catch { alert("Não consegui agendar a mensagem agora. Verifique a conexão e tente de novo."); }
+    finally { setBusy(false); }
   }
   // Nota interna: recado da equipe DENTRO da conversa — o cliente NÃO recebe.
   async function enviarNota() {
@@ -1957,6 +1971,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                       <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); setArqRapidoOpen(true); }}>📚 Arquivos rápidos</button>
                       <button className="at-anexo-opt" onClick={() => { setAnexoMenu(false); setMostrarResp(true); }}>📋 Respostas prontas</button>
                       <button className="at-anexo-opt" disabled={busy || sugerindo} onClick={() => { setAnexoMenu(false); sugerir(); }}>✨ Sugerir resposta (IA)</button>
+                      <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); const base = d?.agendado_ia || (Date.now() + 3600e3); setAgDia(dataLocalStr(base)); setAgHora(d?.agendado_ia ? horaLocalStr(base) : "09:00"); setAgMsg(texto.trim()); setAgOpen(true); }}>⏰ Agendar mensagem (mandar mais tarde)</button>
                     </div>
                   </>)}
                 </div>
@@ -2004,6 +2019,45 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
           <img src={imgZoom} alt="imagem" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "94vw", maxHeight: "90vh", borderRadius: 10, boxShadow: "0 10px 40px rgba(0,0,0,.6)" }} />
         </div>
       ), document.body)}
+      {agOpen && createPortal((() => {
+        const hoje = dataLocalStr(Date.now()), amanha = dataLocalStr(Date.now() + 864e5);
+        const ms = agDia && agHora ? new Date(`${agDia}T${agHora}`).getTime() : 0;
+        const valido = !!ms && !isNaN(ms) && ms > Date.now();
+        const agResps = [...respEmpresa, ...respostas].filter((r) => r.texto?.trim());
+        return (
+          <div onClick={() => setAgOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 100000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 360, padding: 16, border: "1px solid var(--line)", borderRadius: 14, background: "var(--card,#fff)", color: "var(--ink)", display: "grid", gap: 11, boxShadow: "0 16px 40px rgba(0,0,0,.35)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ fontSize: 14.5, fontWeight: 800 }}>⏰ Agendar mensagem</div>
+                <button onClick={() => setAgOpen(false)} title="Fechar" style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: 2 }}>✕</button>
+              </div>
+              {/* Dia: atalhos Hoje/Amanhã + calendário */}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <button className={"at-chip" + (agDia === hoje ? " on" : "")} onClick={() => setAgDia(hoje)}>Hoje</button>
+                <button className={"at-chip" + (agDia === amanha ? " on" : "")} onClick={() => setAgDia(amanha)}>Amanhã</button>
+                <input type="date" value={agDia} min={hoje} onChange={(e) => setAgDia(e.target.value)} style={{ fontSize: 13, padding: "5px 7px", borderRadius: 8, border: "1px solid var(--line)", flex: 1, minWidth: 130 }} />
+              </div>
+              {/* Hora: clique no horário */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
+                {HORAS_AG.map((h) => (<button key={h} className={"at-chip" + (agHora === h ? " on" : "")} onClick={() => setAgHora(h)}>{h}</button>))}
+              </div>
+              {/* Escolher uma resposta pronta → joga o texto no campo (dá pra editar) */}
+              {agResps.length > 0 && (
+                <select defaultValue="" onChange={(e) => { const r = agResps[Number(e.target.value)]; if (r) setAgMsg(r.texto); e.currentTarget.selectedIndex = 0; }} style={{ width: "100%", fontSize: 13, padding: "7px 9px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg-soft,#fff)", color: "var(--ink)", fontFamily: "inherit", boxSizing: "border-box" }}>
+                  <option value="">📋 Usar uma resposta pronta…</option>
+                  {agResps.map((r, i) => <option key={i} value={i}>{r.titulo || r.texto.slice(0, 40)}</option>)}
+                </select>
+              )}
+              <textarea value={agMsg} onChange={(e) => setAgMsg(e.target.value)} rows={3} placeholder="Mensagem que vai ser enviada no horário. Use {nome} pro nome do cliente. Se deixar vazio, mando um bom dia/boa tarde automático." style={{ width: "100%", fontSize: 13, padding: "8px 9px", borderRadius: 8, border: "1px solid var(--line)", resize: "vertical", fontFamily: "inherit", background: "var(--bg-soft,#fff)", color: "var(--ink)", boxSizing: "border-box" }} />
+              <div style={{ display: "flex", gap: 6 }}>
+                <button disabled={!valido || busy} onClick={() => { if (valido) agendarMensagem(ms, agMsg.trim() || undefined); }} style={{ flex: 1, background: valido && !busy ? "#2563eb" : "#93c5fd", color: "#fff", border: "none", borderRadius: 8, padding: "10px", cursor: valido && !busy ? "pointer" : "default", fontSize: 13.5, fontWeight: 700 }}>{valido ? `📅 Agendar — ${agendadoLabel(ms)}` : "Escolha dia e horário"}</button>
+                {d?.agendado_ia ? (<button disabled={busy} onClick={() => agendarMensagem(null)} style={{ background: "transparent", color: "#b91c1c", border: "1px solid #fca5a5", borderRadius: 8, padding: "10px 12px", cursor: "pointer", fontSize: 13 }}>Cancelar</button>) : null}
+              </div>
+              {d?.agendado_ia ? <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Já há um agendamento pra {agendadoLabel(d.agendado_ia)} — agendar de novo substitui.</div> : null}
+            </div>
+          </div>
+        );
+      })(), document.body)}
     </div>
   );
 }
