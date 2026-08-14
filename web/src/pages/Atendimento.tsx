@@ -871,6 +871,10 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
               <label className="campo" style={{ margin: 0 }}><span className="campo-label">Enviada ao cliente quando o atendimento é encerrado (use {"{nome}"})</span>
                 <textarea rows={2} value={cfg.encerramento_msg} onChange={(e) => set("encerramento_msg", e.target.value)} placeholder={cfg.encerramento_msg_padrao} /></label>
               <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Ao clicar em <b>Encerrar atendimento</b>, o cliente recebe essa mensagem (aparece na conversa com ✓). Não é enviada em grupos. Deixe em branco pra usar o texto padrão mostrado acima.</div>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, marginTop: 10 }}>
+                <input type="checkbox" checked={cfg.fechar_inativos_ativo} onChange={(e) => set("fechar_inativos_ativo", e.target.checked)} /> Encerrar automaticamente quem ficar <b>24h sem conversa</b> (e mandar essa despedida)
+              </label>
+              <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>Só fecha cards em <b>atendimento humano</b> parados há 24h. Não mexe em grupos, reclamações nem clientes finais. Roda algumas vezes ao dia, em horário comercial.</div>
             </div>
 
             <div style={{ border: "1px solid #ddd6fe", background: "#f5f3ff", color: "#1e293b", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
