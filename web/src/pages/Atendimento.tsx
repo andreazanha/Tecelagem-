@@ -874,7 +874,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
               <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, marginTop: 10 }}>
                 <input type="checkbox" checked={cfg.fechar_inativos_ativo} onChange={(e) => set("fechar_inativos_ativo", e.target.checked)} /> Encerrar automaticamente quem ficar <b>24h sem conversa</b> (e mandar essa despedida)
               </label>
-              <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>Só fecha cards em <b>atendimento humano</b> parados há 24h. Não mexe em grupos, reclamações nem clientes finais. Roda algumas vezes ao dia, em horário comercial.</div>
+              <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>Só fecha cards em <b>atendimento humano</b> parados há 24h. <b>Não</b> mexe em grupos, reclamações, clientes finais, nem em <b>Montando pedido / Orçando</b> (venda em andamento). Roda algumas vezes ao dia, em horário comercial.</div>
             </div>
 
             <div style={{ border: "1px solid #ddd6fe", background: "#f5f3ff", color: "#1e293b", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>

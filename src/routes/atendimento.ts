@@ -3887,8 +3887,8 @@ export async function processarCampanhas(env: Env): Promise<number> {
 
 // ── FECHO AUTOMÁTICO: encerra sozinho quem está em atendimento humano e ficou 24h SEM conversa ──
 // (nenhuma mensagem, de nenhum lado, nas últimas 24h). Manda a mensagem de despedida (mesma do encerrar
-// manual). EXCLUI: grupos, reclamações (estado próprio), consumidor/cliente final (fica guardado) e
-// quem ainda está na triagem/campanha (estado != atendimento-humano). Roda nos crons diários.
+// manual). EXCLUI: grupos, reclamações, consumidor/cliente final, quem ainda está na triagem/campanha
+// e — importante — "Montando pedido" / "Orçando" / "Pendente" (venda/trabalho em andamento). Cron diário.
 export async function fecharInativos24h(env: Env): Promise<number> {
   const cfg = await lerConfig(env);
   if ((cfg.fechar_inativos_ativo ?? "1") !== "1") return 0;
@@ -3897,6 +3897,7 @@ export async function fecharInativos24h(env: Env): Promise<number> {
       WHERE estado='atendimento-humano' AND encerrado_em IS NULL
         AND COALESCE(origem,'') <> 'grupo'
         AND COALESCE(tipo,'') <> 'consumidor' AND COALESCE(lojista,1) <> 0
+        AND COALESCE(coluna_manual,'') NOT IN ('montando-pedido','aguardando-setor','pendente')
         AND max(COALESCE(ultima_in_em,''), COALESCE(ultima_out_em,'')) <> ''
         AND max(COALESCE(ultima_in_em,''), COALESCE(ultima_out_em,'')) < datetime('now','-24 hours')
       ORDER BY atualizado_em ASC LIMIT 40`
