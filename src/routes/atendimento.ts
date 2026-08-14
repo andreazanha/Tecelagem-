@@ -1505,6 +1505,8 @@ export async function lerAtividadeCatalogo(env: Env): Promise<number> {
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
 const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo", "reativacao_ativo", "atend_domingo", "aniversario_ativo"]);
 const MSG_ANIVERSARIO_PADRAO = "🎉 Feliz aniversário, {nome}! A equipe da *Big Tricot* deseja um dia cheio de alegria! 💛 Conte com a gente sempre. 🧶";
+// Mensagem enviada ao cliente quando o atendimento é ENCERRADO (na mão ou pelo fecho automático de 24h).
+const MSG_ENCERRAMENTO_PADRAO = "Atendimento finalizado por aqui 💛 Se precisar de mais alguma coisa, é só me mandar uma mensagem que eu te respondo. 😊 — *Big Tricot*";
 
 atendimento.get("/config", async (c) => {
   const cfg = await lerConfig(c.env);
@@ -1546,6 +1548,8 @@ atendimento.get("/config", async (c) => {
     remarket_horas: cfg.remarket_horas || "24",
     remarket_msg: cfg.remarket_msg || "",
     remarket_msg_padrao: MSG_REMARKET_PADRAO,
+    encerramento_msg: cfg.encerramento_msg || "",
+    encerramento_msg_padrao: MSG_ENCERRAMENTO_PADRAO,
     catalogo_evento_token: cfg.catalogo_evento_token || "",
     catalogo_evento_url: new URL(c.req.url).origin + "/api/atendimento/catalogo-evento",
     catalogo_log_url: cfg.catalogo_log_url || "",
@@ -1556,7 +1560,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -1704,6 +1708,24 @@ atendimento.post("/colunas", async (c) => {
   return c.json({ ok: true, colunas: await lerColunasAtend(c.env) });
 });
 // Encerrar atendimento: só marca como resolvido (para de piscar). NÃO envia nada ao cliente.
+// Envia a mensagem de encerramento PRO CLIENTE (usada no encerrar manual e no fecho automático de 24h).
+// Não manda em grupo, sem telefone, cliente bloqueado ou mensagem vazia. Registra na conversa (com ✓).
+async function enviarMsgEncerramento(env: Env, id: string, autor: string) {
+  const conv = await env.DB.prepare("SELECT telefone, estado, origem, nome, contato_nome FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string; estado: string | null; origem: string | null; nome: string | null; contato_nome: string | null }>().catch(() => null);
+  if (!conv || !conv.telefone) return { enviado: false, motivo: "sem-telefone" };
+  if (conv.estado === "grupo" || conv.origem === "grupo") return { enviado: false, motivo: "grupo" };
+  const cfg = await lerConfig(env);
+  const base = (cfg.encerramento_msg || "").trim() || MSG_ENCERRAMENTO_PADRAO;
+  if (!base) return { enviado: false, motivo: "sem-mensagem" };
+  const primeiro = String(conv.contato_nome || conv.nome || "").trim().split(/\s+/)[0] || "";
+  const msg = base.replace(/\{nome\}/gi, primeiro).replace(/\s{2,}/g, " ").trim();
+  const msgId = await addMsg(env, id, "out", autor || "Atendente", "texto", msg);
+  const r = await enviarWhatsapp(env, conv.telefone, { tipo: "texto", texto: msg });
+  if (r.enviado && r.messageId) await env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgId).run();
+  else if (!r.enviado) await env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run();
+  await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(id).run();
+  return r;
+}
 atendimento.post("/:id/encerrar", async (c) => {
   const b = await c.req.json<{ autor?: string; reabrir?: boolean }>().catch(() => ({}) as Record<string, string>);
   const id = c.req.param("id");
@@ -1719,8 +1741,11 @@ atendimento.post("/:id/encerrar", async (c) => {
   try {
     await c.env.DB.prepare("DELETE FROM atend_agendamentos WHERE conversa_id=?").bind(id).run();
   } catch { /* se falhar, o guard no quadro (encerrado sai do follow-up) já cobre */ }
+  // Mensagem de despedida PRO CLIENTE (com ✓ na conversa). Best-effort: se o envio falhar, o
+  // encerramento continua valendo.
+  const rEnc = await enviarMsgEncerramento(c.env, id, String(b.autor ?? "").trim()).catch(() => ({ enviado: false }));
   await addMsg(c.env, id, "out", "sistema", "sistema", `Atendimento encerrado${b.autor ? " por " + String(b.autor).trim() : ""}.`);
-  return c.json({ ok: true });
+  return c.json({ ok: true, mensagem_enviada: !!(rEnc as { enviado?: boolean }).enviado });
 });
 
 // Foto de perfil do contato (Z-API) — pra mostrar o avatar real na conversa.

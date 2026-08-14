@@ -866,6 +866,13 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
               <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Todo dia de manhã, manda a mensagem pros clientes que fazem aniversário no dia (precisa da <b>data de nascimento</b> preenchida no cadastro do cliente). Envia 1× por cliente, espaçado.</div>
             </div>
 
+            <div style={{ border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#1e293b", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 6 }}>✅ Mensagem de encerramento</div>
+              <label className="campo" style={{ margin: 0 }}><span className="campo-label">Enviada ao cliente quando o atendimento é encerrado (use {"{nome}"})</span>
+                <textarea rows={2} value={cfg.encerramento_msg} onChange={(e) => set("encerramento_msg", e.target.value)} placeholder={cfg.encerramento_msg_padrao} /></label>
+              <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Ao clicar em <b>Encerrar atendimento</b>, o cliente recebe essa mensagem (aparece na conversa com ✓). Não é enviada em grupos. Deixe em branco pra usar o texto padrão mostrado acima.</div>
+            </div>
+
             <div style={{ border: "1px solid #ddd6fe", background: "#f5f3ff", color: "#1e293b", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
               <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 6 }}>🔗 Catálogo — ler atividade</div>
               <div style={{ fontSize: 12.5, marginBottom: 6 }}>O CRM lê os acessos do catálogo daqui e cria os leads. Cole a <b>URL de leitura</b> (o GET <code>/log</code> com o código):</div>
