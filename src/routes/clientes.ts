@@ -130,7 +130,7 @@ clientes.post("/importar", async (c) => {
          cidade = COALESCE(NULLIF(excluded.cidade,''), clientes.cidade),
          uf = COALESCE(NULLIF(excluded.uf,''), clientes.uf),
          cnpj = COALESCE(NULLIF(excluded.cnpj,''), clientes.cnpj),
-         representante = COALESCE(NULLIF(excluded.representante,''), clientes.representante),
+         representante = COALESCE(NULLIF(clientes.representante,''), NULLIF(excluded.representante,'')),
          observacao = COALESCE(NULLIF(excluded.observacao,''), clientes.observacao),
          ultima_compra = COALESCE(NULLIF(excluded.ultima_compra,''), clientes.ultima_compra),
          ultimo_faturamento = COALESCE(NULLIF(excluded.ultimo_faturamento,''), clientes.ultimo_faturamento)`
@@ -138,6 +138,27 @@ clientes.post("/importar", async (c) => {
     if (ex) atualizados++; else { criados++; await garantirParceiroPendente(c.env, id).catch(() => {}); }
   }
   return c.json({ ok: true, criados, atualizados, ignorados });
+});
+
+// RESTAURA os representantes pelos PEDIDOS: usa o vendedor real dos pedidos (nome curto: "Augusto",
+// "Anderson"…) como representante do cliente. Só mexe em quem está SEM representante ou com um nome
+// "de ERP" (LTDA / REPRESENTAÇÕES / muito comprido) — não toca em quem você definiu à mão com nome curto.
+// Serve pra desfazer a bagunça de uma importação que trouxe os nomes compridos do ERP.
+clientes.post("/restaurar-representantes", async (c) => {
+  const vmap = await ultimoVendedorPorCliente(c.env);
+  const { results } = await c.env.DB.prepare("SELECT id, nome, representante FROM clientes").all<{ id: string; nome: string; representante: string | null }>().catch(() => ({ results: [] as { id: string; nome: string; representante: string | null }[] }));
+  const ehNomeErp = (s: string) => { const u = s.toUpperCase(); return u.length > 24 || /\b(LTDA|EIRELI|REPRESENTA|COMERCIAL|COM\.|ASSESSORIA|ME\b|S\/?A)\b/.test(u); };
+  let corrigidos = 0;
+  for (const cli of (results || [])) {
+    const v = vmap.get(cli.nome);
+    if (!v) continue;                                   // sem vendedor nos pedidos: não tem como restaurar
+    const atual = String(cli.representante ?? "").trim();
+    if (atual && atual === v) continue;                  // já está certo
+    if (atual && !ehNomeErp(atual)) continue;            // tem um nome curto (provável manual): preserva
+    await c.env.DB.prepare("UPDATE clientes SET representante=? WHERE id=?").bind(v, cli.id).run().catch(() => {});
+    corrigidos++;
+  }
+  return c.json({ ok: true, corrigidos });
 });
 
 clientes.post("/", async (c) => {

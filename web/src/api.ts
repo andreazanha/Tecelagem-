@@ -678,6 +678,8 @@ export const api = {
   obterCliente: (id: string) => fetch(`/api/clientes/${id}`).then((r) => j<ClienteFicha>(r)),
   // Varredura por CNPJ na Receita (situação + preenche cidade/UF/razão em branco). Roda um lote agora.
   enriquecerCnpj: (limite?: number) => jsonPost("/api/atendimento/enriquecer-cnpj", { limite }).then((r) => j<{ checados: number; inativos: number; faltam: number }>(r)),
+  // Restaura os representantes pelos pedidos (desfaz nomes compridos do ERP vindos de importação).
+  restaurarRepresentantes: () => jsonPost("/api/clientes/restaurar-representantes", {}).then((r) => j<{ ok: boolean; corrigidos: number }>(r)),
   salvarCliente: (b: Partial<ClienteCrm>) =>
     jsonPost("/api/clientes", b).then((r) => j<{ id: string; nome: string }>(r)),
   importarClientes: (b: { representante?: string; clientes: Record<string, string>[] }) =>

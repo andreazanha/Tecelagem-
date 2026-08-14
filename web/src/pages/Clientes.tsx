@@ -86,6 +86,17 @@ export function Clientes() {
     } catch { setCnpjMsg("Não consegui checar agora — tente de novo em instantes."); }
     finally { setChecandoCnpj(false); setTimeout(() => setCnpjMsg(""), 9000); }
   }
+  async function restaurarReps() {
+    if (checandoCnpj) return;
+    if (!confirm("Restaurar os representantes pelos PEDIDOS?\n\nCorrige os clientes que ficaram com o nome comprido do ERP (ex.: 'REPRESENTACAO ... LTDA'), colocando de volta o nome curto do vendedor dos pedidos (Augusto, Anderson…). Não mexe em quem você definiu à mão com nome curto.")) return;
+    setChecandoCnpj(true); setCnpjMsg("");
+    try {
+      const r = await api.restaurarRepresentantes();
+      setCnpjMsg(`✓ ${r.corrigidos} cliente(s) tiveram o representante restaurado pelos pedidos.`);
+      recarregar();
+    } catch { setCnpjMsg("Não consegui restaurar agora — tente de novo em instantes."); }
+    finally { setChecandoCnpj(false); setTimeout(() => setCnpjMsg(""), 9000); }
+  }
   const [selCli, setSelCli] = useState<Set<string>>(new Set()); // clientes marcados p/ campanha
   const [campanha, setCampanha] = useState(false);
   const toggleSel = (id: string) => setSelCli((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -216,6 +227,7 @@ export function Clientes() {
           <input className="busca-ped" placeholder="🔎 Buscar nome, cidade, WhatsApp, CNPJ…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ flex: "1 1 240px", minWidth: 0 }} />
           <button className="btn btn-soft" onClick={() => setImportar(true)}>📥 Importar planilha</button>
           <button className="btn btn-soft" disabled={checandoCnpj} onClick={checarCnpjs} title="Consulta a Receita: marca CNPJ inativo/baixado e preenche cidade/UF/razão que estiverem em branco. Roda um lote agora; o resto vai sozinho aos poucos.">{checandoCnpj ? "🔎 Checando…" : "🔎 Checar CNPJs"}</button>
+          <button className="btn btn-soft" disabled={checandoCnpj} onClick={restaurarReps} title="Corrige os representantes que ficaram com o nome comprido do ERP (importação), voltando pro nome curto do vendedor dos pedidos.">🧑‍💼 Restaurar representantes</button>
           <button className="btn btn-primary" onClick={() => setNovo({ id: "", nome: "" })}>＋ Novo cliente</button>
         </div>
       </div>
