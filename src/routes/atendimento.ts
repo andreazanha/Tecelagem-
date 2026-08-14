@@ -1799,7 +1799,7 @@ atendimento.get("/debug-card", async (c) => {
   if (!q) return c.json({ erro: "passe ?q=nome ou parte do telefone" });
   const dig = q.replace(/\D/g, "");
   const { results } = await c.env.DB.prepare(
-    `SELECT id, telefone, nome, contato_nome, estado, coluna_manual, encerrado_em, responsavel, ultima_in_em, ultima_out_em, origem, tipo, atualizado_em
+    `SELECT id, telefone, lid, nome, contato_nome, estado, coluna_manual, encerrado_em, responsavel, ultima_in_em, ultima_out_em, origem, tipo, atualizado_em
        FROM atend_conversas
       WHERE nome LIKE '%'||?||'%' OR contato_nome LIKE '%'||?||'%' OR (?<>'' AND telefone LIKE '%'||?||'%')
       ORDER BY atualizado_em DESC LIMIT 20`
@@ -2221,7 +2221,7 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
     const dj = await resp.json().catch(() => ({})) as { messageId?: string; id?: string; zaapId?: string };
     // DIAGNÓSTICO (temporário): guarda os ids que a Z-API devolve NO ENVIO — pra comparar com o id
     // que chega no callback de status e descobrir qual salvar como zap_id.
-    try { await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('webhook_send_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify({ messageId: dj?.messageId ?? null, id: dj?.id ?? null, zaapId: dj?.zaapId ?? null, msgIn: String(saida.texto ?? ""), msg: texto, msgLen: texto.length })).run(); } catch { /* ok */ }
+    try { await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('webhook_send_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify({ para: phone, messageId: dj?.messageId ?? null, id: dj?.id ?? null, zaapId: dj?.zaapId ?? null, msgIn: String(saida.texto ?? ""), msg: texto, msgLen: texto.length })).run(); } catch { /* ok */ }
     return { enviado: true, messageId: dj?.messageId || dj?.id || dj?.zaapId || null, zaapId: dj?.zaapId || null };
   } catch (e) {
     return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
