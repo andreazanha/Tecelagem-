@@ -1190,7 +1190,7 @@ atendimento.post("/webhook", async (c) => {
     const idsRaw = Array.isArray(b.ids) ? (b.ids as unknown[]) : (b.ids != null ? [b.ids] : (b.messageId != null ? [b.messageId] : (b.id != null ? [b.id] : [])));
     const ids = idsRaw.map(String).filter(Boolean);
     const st = String(b.status ?? "").toUpperCase();
-    const novo = (st === "READ" || st === "PLAYED") ? "read" : (st === "RECEIVED" || st === "DELIVERED" || st === "DELIVERY_ACK") ? "delivered" : (st === "SENT" || st === "SERVER_ACK") ? "sent" : "";
+    const novo = (st === "READ" || st === "PLAYED" || st === "LIDO") ? "read" : (st === "RECEIVED" || st === "DELIVERED" || st === "DELIVERY_ACK" || st === "RECEBIDO" || st === "ENTREGUE") ? "delivered" : (st === "SENT" || st === "SERVER_ACK" || st === "ENVIADO") ? "sent" : "";
     const rank = novo === "read" ? 3 : novo === "delivered" ? 2 : novo === "sent" ? 1 : 0;
     let casou = 0, existe = 0;
     if (novo && ids.length) {
