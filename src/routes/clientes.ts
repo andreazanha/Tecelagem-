@@ -66,7 +66,7 @@ clientes.get("/", async (c) => {
 clientes.get("/:id", async (c) => {
   const id = c.req.param("id");
   const cli = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, ultima_compra, ultimo_faturamento, created_at FROM clientes WHERE id = ?"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, ultima_compra, ultimo_faturamento, razao_social, cnpj_situacao, cnpj_checado_em, created_at FROM clientes WHERE id = ?"
   ).bind(id).first<ClienteRow>();
   if (!cli) return c.json({ error: "cliente não encontrado" }, 404);
 

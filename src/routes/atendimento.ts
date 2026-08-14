@@ -4025,6 +4025,82 @@ export async function cruzarContatosBase(env: Env): Promise<number> {
   return n;
 }
 
+// ── ENRIQUECIMENTO por CNPJ na Receita (chamado pelo cron, AOS POUCOS) ─────────────────
+// Consulta SÓ a Receita (BrasilAPI → cnpj.ws), sem o atalho pela própria base (que o consultarCnpj usa).
+// Retorna null quando NÃO deu pra concluir (rede/limite) — aí tentamos de novo depois, sem marcar.
+type ReceitaInfo = { existe: boolean; situacao: string; ativa: boolean; razao: string | null; fantasia: string | null; uf: string | null; cidade: string | null };
+async function consultarReceitaCnpj(cnpj: string): Promise<ReceitaInfo | null> {
+  const naoAchou: ReceitaInfo = { existe: false, situacao: "NÃO ENCONTRADO", ativa: false, razao: null, fantasia: null, uf: null, cidade: null };
+  const provedores: Array<() => Promise<ReceitaInfo | null>> = [
+    async () => {   // BrasilAPI
+      const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+      if (r.status === 404) return naoAchou;
+      if (!r.ok) throw new Error(`brasilapi-${r.status}`);
+      const j = await r.json<{ razao_social?: string; nome_fantasia?: string; descricao_situacao_cadastral?: string; situacao_cadastral?: number | string; uf?: string; municipio?: string }>();
+      const desc = String(j.descricao_situacao_cadastral ?? "").toUpperCase();
+      const ativa = desc.includes("ATIVA") || Number(j.situacao_cadastral) === 2;
+      return { existe: true, situacao: desc || (ativa ? "ATIVA" : ""), ativa, razao: (j.razao_social || "").trim() || null, fantasia: (j.nome_fantasia || "").trim() || null, uf: (j.uf || "").trim().toUpperCase() || null, cidade: (j.municipio || "").trim() || null };
+    },
+    async () => {   // publica.cnpj.ws
+      const r = await fetch(`https://publica.cnpj.ws/cnpj/${cnpj}`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+      if (r.status === 404) return naoAchou;
+      if (!r.ok) throw new Error(`cnpjws-${r.status}`);
+      const j = await r.json<{ razao_social?: string; estabelecimento?: { nome_fantasia?: string; situacao_cadastral?: string; cidade?: { nome?: string }; estado?: { sigla?: string } } }>();
+      const est = j.estabelecimento ?? {};
+      const sit = String(est.situacao_cadastral ?? "").toUpperCase();
+      return { existe: true, situacao: sit, ativa: sit.includes("ATIVA"), razao: (j.razao_social || "").trim() || null, fantasia: (est.nome_fantasia || "").trim() || null, uf: (est.estado?.sigla || "").trim().toUpperCase() || null, cidade: (est.cidade?.nome || "").trim() || null };
+    },
+  ];
+  let concluiu = false;
+  for (const p of provedores) {
+    try { const res = await p(); if (res) { if (res.existe) return res; concluiu = true; } }
+    catch { /* tenta o próximo provedor */ }
+  }
+  return concluiu ? naoAchou : null;   // null = não deu pra falar com ninguém (tenta depois)
+}
+// Roda no cron: pega um punhado de clientes com CNPJ ainda NÃO checados (ou faz +180 dias), consulta a
+// Receita e (1) marca a situação cadastral e (2) preenche cidade/UF/razão social que estiverem em branco.
+// Nunca sobrescreve cidade/UF/razão que já existem. Lote pequeno pra respeitar o limite dos serviços.
+export async function enriquecerClientesCnpj(env: Env, limite = 5): Promise<{ checados: number; inativos: number }> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-','') AS cnpjd
+       FROM clientes
+      WHERE LENGTH(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-','')) = 14
+        AND (cnpj_checado_em IS NULL OR cnpj_checado_em < datetime('now','-180 days'))
+      ORDER BY (CASE WHEN COALESCE(cidade,'')='' OR COALESCE(uf,'')='' THEN 0 ELSE 1 END), cnpj_checado_em IS NOT NULL, id
+      LIMIT ?`
+  ).bind(Math.max(1, Math.min(30, limite))).all<{ id: string; cnpjd: string }>().catch(() => ({ results: [] as { id: string; cnpjd: string }[] }));
+  let checados = 0, inativos = 0;
+  for (const c of (results || [])) {
+    const info = await consultarReceitaCnpj(c.cnpjd);
+    if (!info) continue;   // rede/limite: não marca, tenta no próximo tick
+    const situacao = info.situacao || (info.existe ? "ATIVA" : "NÃO ENCONTRADO");
+    if (info.existe && !info.ativa) inativos++;
+    await env.DB.prepare(
+      `UPDATE clientes SET
+         cnpj_situacao = ?, cnpj_checado_em = datetime('now'),
+         cidade = CASE WHEN COALESCE(cidade,'')='' AND ?<>'' THEN ? ELSE cidade END,
+         uf = CASE WHEN COALESCE(uf,'')='' AND ?<>'' THEN ? ELSE uf END,
+         razao_social = CASE WHEN COALESCE(razao_social,'')='' AND ?<>'' THEN ? ELSE razao_social END
+       WHERE id = ?`
+    ).bind(situacao, info.cidade || "", info.cidade || "", info.uf || "", info.uf || "", info.razao || "", info.razao || "", c.id).run().catch(() => {});
+    checados++;
+  }
+  return { checados, inativos };
+}
+// Botão "Checar CNPJs agora": roda um lote maior na hora (pra você VER acontecendo, sem esperar o cron).
+atendimento.post("/enriquecer-cnpj", async (c) => {
+  const b = await c.req.json<{ limite?: number }>().catch(() => ({} as { limite?: number }));
+  const r = await enriquecerClientesCnpj(c.env, Math.max(1, Math.min(20, Number(b.limite) || 12)));
+  // Quantos ainda faltam checar (pra mostrar progresso).
+  const falta = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM clientes
+      WHERE LENGTH(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-','')) = 14
+        AND (cnpj_checado_em IS NULL OR cnpj_checado_em < datetime('now','-180 days'))`
+  ).first<{ n: number }>().catch(() => ({ n: 0 }));
+  return c.json({ ...r, faltam: Number(falta?.n ?? 0) });
+});
+
 // ── PUXA os NOMES salvos na sua AGENDA do WhatsApp (via Z-API) pros cards ──────────────
 // Preenche o `nome` (que está VAZIO) com o nome que VOCÊ salvou na agenda — assim o card mostra
 // "Maria Tricô Atacado" no lugar do número/pushName. NÃO mexe em quem já tem nome (ERP ou manual),

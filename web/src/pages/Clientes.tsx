@@ -74,6 +74,18 @@ export function Clientes() {
   const [abrindo, setAbrindo] = useState<string | null>(null);
   const [escolha, setEscolha] = useState<ClienteCrm | null>(null); // cliente aguardando "prospecção x só conversar"
   const [conversaAberta, setConversaAberta] = useState<string | null>(null); // conversa aberta como janela por cima da lista
+  const [checandoCnpj, setChecandoCnpj] = useState(false);
+  const [cnpjMsg, setCnpjMsg] = useState("");
+  async function checarCnpjs() {
+    if (checandoCnpj) return;
+    setChecandoCnpj(true); setCnpjMsg("");
+    try {
+      const r = await api.enriquecerCnpj(12);
+      setCnpjMsg(`✓ ${r.checados} checados${r.inativos ? `, ${r.inativos} com CNPJ inativo/baixado` : ""} · faltam ${r.faltam}. O resto vai sozinho aos poucos.`);
+      recarregar();
+    } catch { setCnpjMsg("Não consegui checar agora — tente de novo em instantes."); }
+    finally { setChecandoCnpj(false); setTimeout(() => setCnpjMsg(""), 9000); }
+  }
   const [selCli, setSelCli] = useState<Set<string>>(new Set()); // clientes marcados p/ campanha
   const [campanha, setCampanha] = useState(false);
   const toggleSel = (id: string) => setSelCli((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -203,9 +215,11 @@ export function Clientes() {
         <div className="row-gap" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <input className="busca-ped" placeholder="🔎 Buscar nome, cidade, WhatsApp, CNPJ…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ flex: "1 1 240px", minWidth: 0 }} />
           <button className="btn btn-soft" onClick={() => setImportar(true)}>📥 Importar planilha</button>
+          <button className="btn btn-soft" disabled={checandoCnpj} onClick={checarCnpjs} title="Consulta a Receita: marca CNPJ inativo/baixado e preenche cidade/UF/razão que estiverem em branco. Roda um lote agora; o resto vai sozinho aos poucos.">{checandoCnpj ? "🔎 Checando…" : "🔎 Checar CNPJs"}</button>
           <button className="btn btn-primary" onClick={() => setNovo({ id: "", nome: "" })}>＋ Novo cliente</button>
         </div>
       </div>
+      {cnpjMsg && <div style={{ background: "#ecfdf5", color: "#065f46", borderRadius: 8, padding: "8px 12px", fontSize: 13.5, margin: "0 0 10px" }}>{cnpjMsg}</div>}
 
       <div className="crm-stats">
         <div className="crm-st"><div className="n">{lista.length}</div><div className="l">Clientes</div></div>
@@ -407,6 +421,10 @@ export function ClienteFicha() {
           <div className="frow"><span className="k">E-mail</span> {f.email || "—"}</div>
           <div className="frow"><span className="k">Cidade</span> {[f.cidade, f.uf].filter(Boolean).join(" · ") || "—"}</div>
           <div className="frow"><span className="k">CNPJ</span> {f.cnpj || "—"}</div>
+          {f.razao_social && <div className="frow"><span className="k">Razão social</span> {f.razao_social}</div>}
+          {f.cnpj && <div className="frow"><span className="k">Situação CNPJ</span> {f.cnpj_situacao
+            ? <span style={{ fontWeight: 700, color: f.cnpj_situacao.toUpperCase().includes("ATIVA") ? "#059669" : "#dc2626" }}>{f.cnpj_situacao.toUpperCase().includes("ATIVA") ? "✅ " : "⚠️ "}{f.cnpj_situacao}</span>
+            : <span className="muted2">— (na fila pra checar)</span>}</div>}
           <div className="frow"><span className="k">Representante</span> {f.representante ? <span className="rep-cli">🧑‍💼 {f.representante}</span> : "—"}</div>
           <div className="frow"><span className="k">Último faturamento</span> {f.ultimo_faturamento
             ? <>🧾 {dataBr(f.ultimo_faturamento)} <span className="muted2">({desde(f.ultimo_faturamento)})</span></>

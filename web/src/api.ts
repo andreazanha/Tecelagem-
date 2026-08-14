@@ -236,6 +236,9 @@ export interface ClienteCrm {
   nascimento?: string | null;
   created_at?: string | null;
   ultimo_faturamento?: string | null;
+  razao_social?: string | null;
+  cnpj_situacao?: string | null;   // situação cadastral na Receita: ATIVA / BAIXADA / INAPTA / SUSPENSA / NÃO ENCONTRADO
+  cnpj_checado_em?: string | null;
   pedidos?: number;
   total?: number;
   ultima?: string | null;
@@ -673,6 +676,8 @@ export const api = {
   // CRM: lista com estatísticas, ficha 360 e salvar.
   listarClientesCrm: () => fetch("/api/clientes?crm=1").then((r) => j<ClienteCrm[]>(r)),
   obterCliente: (id: string) => fetch(`/api/clientes/${id}`).then((r) => j<ClienteFicha>(r)),
+  // Varredura por CNPJ na Receita (situação + preenche cidade/UF/razão em branco). Roda um lote agora.
+  enriquecerCnpj: (limite?: number) => jsonPost("/api/atendimento/enriquecer-cnpj", { limite }).then((r) => j<{ checados: number; inativos: number; faltam: number }>(r)),
   salvarCliente: (b: Partial<ClienteCrm>) =>
     jsonPost("/api/clientes", b).then((r) => j<{ id: string; nome: string }>(r)),
   importarClientes: (b: { representante?: string; clientes: Record<string, string>[] }) =>

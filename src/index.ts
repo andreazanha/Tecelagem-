@@ -16,7 +16,7 @@ import { materiais } from "./routes/materiais";
 import { colecoes } from "./routes/colecoes";
 import { chat } from "./routes/chat";
 import { etiquetas } from "./routes/etiquetas";
-import { atendimento, followupAtendimento, sincronizarPedidos, posVendaRecompra, prospeccaoCatalogo, processarCampanhas, processarAgendamentos, parabensAniversario, juntarDuplicadosAtend, cruzarContatosBase, sincronizarNomesWhatsapp } from "./routes/atendimento";
+import { atendimento, followupAtendimento, sincronizarPedidos, posVendaRecompra, prospeccaoCatalogo, processarCampanhas, processarAgendamentos, parabensAniversario, juntarDuplicadosAtend, cruzarContatosBase, sincronizarNomesWhatsapp, enriquecerClientesCnpj } from "./routes/atendimento";
 import { assistente } from "./routes/assistente";
 import { relatorios } from "./routes/relatorios";
 import { tecelagem } from "./routes/tecelagem";
@@ -136,7 +136,7 @@ export default {
   fetch: (req: Request, env: Env, ctx: ExecutionContext) => app.fetch(req, env, ctx),
   scheduled: (event: ScheduledController, env: Env, ctx: ExecutionContext) => {
     // Cron frequente (a cada 5 min): só as campanhas — dispara aos poucos, sem banir.
-    if (event.cron === "*/5 * * * *") { ctx.waitUntil(processarCampanhas(env)); ctx.waitUntil(processarAgendamentos(env)); ctx.waitUntil(juntarDuplicadosAtend(env).then(() => {})); return; }
+    if (event.cron === "*/5 * * * *") { ctx.waitUntil(processarCampanhas(env)); ctx.waitUntil(processarAgendamentos(env)); ctx.waitUntil(juntarDuplicadosAtend(env).then(() => {})); ctx.waitUntil(enriquecerClientesCnpj(env, 4).then(() => {})); return; }
     ctx.waitUntil(lembreteReposicao(env));
     ctx.waitUntil(followupAtendimento(env)); // retomada 24h do robô de atendimento
     ctx.waitUntil(cruzarContatosBase(env)); // liga contatos à base de clientes (sozinho)
