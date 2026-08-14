@@ -1192,18 +1192,21 @@ atendimento.post("/webhook", async (c) => {
     const st = String(b.status ?? "").toUpperCase();
     const novo = (st === "READ" || st === "PLAYED") ? "read" : (st === "RECEIVED" || st === "DELIVERED" || st === "DELIVERY_ACK") ? "delivered" : (st === "SENT" || st === "SERVER_ACK") ? "sent" : "";
     const rank = novo === "read" ? 3 : novo === "delivered" ? 2 : novo === "sent" ? 1 : 0;
-    let casou = 0;
+    let casou = 0, existe = 0;
     if (novo && ids.length) {
       for (const mid of ids) {
+        const ex = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM atend_mensagens WHERE zap_id=?").bind(mid).first<{ n: number }>().catch(() => null);
+        existe += Number(ex?.n ?? 0);
         const res = await c.env.DB.prepare(
           "UPDATE atend_mensagens SET status=? WHERE zap_id=? AND (CASE status WHEN 'read' THEN 3 WHEN 'delivered' THEN 2 WHEN 'sent' THEN 1 ELSE 0 END) < ?"
         ).bind(novo, mid, rank).run();
         casou += Number((res as { meta?: { changes?: number } })?.meta?.changes ?? 0);
       }
     }
-    // DIAGNÓSTICO: guarda o último status recebido + quantas mensagens casaram (pra depurar os ✓✓).
-    try { await salvarConfigJson(c.env, "webhook_status_ultimo", { status_bruto: st, novo, ids, casou, raw: JSON.stringify(b).slice(0, 1500) }); } catch { /* ok */ }
-    return c.json({ ok: true, status: novo, n: ids.length, casou });
+    // DIAGNÓSTICO: guarda o último status + se o id EXISTE como zap_id (existe>0 = id bate, só faltou
+    // um status melhor; existe=0 = id do envio ≠ id do status → precisa ajustar o que a gente salva).
+    try { await salvarConfigJson(c.env, "webhook_status_ultimo", { status_bruto: st, novo, ids, existe, casou, raw: JSON.stringify(b).slice(0, 1500) }); } catch { /* ok */ }
+    return c.json({ ok: true, status: novo, n: ids.length, existe, casou });
   }
   // Interruptor mestre: se o atendimento automático estiver desligado, NÃO responde
   // clientes reais (fica em modo teste interno pelo Simulador). Ignora silenciosamente.
@@ -1753,6 +1756,8 @@ atendimento.get("/webhook-debug", async (c) => {
   try { ultimo = JSON.parse(cfg.webhook_ultimo || "null"); } catch { ultimo = cfg.webhook_ultimo || null; }
   let ultimoStatus: unknown = null;
   try { ultimoStatus = JSON.parse(cfg.webhook_status_ultimo || "null"); } catch { ultimoStatus = cfg.webhook_status_ultimo || null; }
+  let ultimoSend: unknown = null;
+  try { ultimoSend = JSON.parse(cfg.webhook_send_ultimo || "null"); } catch { ultimoSend = cfg.webhook_send_ultimo || null; }
   // Quando chegou o último callback de STATUS (pra saber se a Z-API está mandando os ✓✓).
   const stAt = await c.env.DB.prepare("SELECT atualizado_em FROM config WHERE chave='webhook_status_ultimo'").first<{ atualizado_em: string }>().catch(() => null);
   return c.json({
@@ -1763,6 +1768,7 @@ atendimento.get("/webhook-debug", async (c) => {
     ultimo_webhook: ultimo,
     ultimo_status: ultimoStatus,           // último callback de entrega/leitura (✓✓) + se casou
     ultimo_status_em: stAt?.atualizado_em || null,
+    ultimo_send: ultimoSend,               // ids que a Z-API devolveu no ÚLTIMO envio (pra comparar)
   });
 });
 
@@ -2193,6 +2199,9 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
     });
     if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}` };
     const dj = await resp.json().catch(() => ({})) as { messageId?: string; id?: string; zaapId?: string };
+    // DIAGNÓSTICO (temporário): guarda os ids que a Z-API devolve NO ENVIO — pra comparar com o id
+    // que chega no callback de status e descobrir qual salvar como zap_id.
+    try { await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('webhook_send_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify({ messageId: dj?.messageId ?? null, id: dj?.id ?? null, zaapId: dj?.zaapId ?? null })).run(); } catch { /* ok */ }
     return { enviado: true, messageId: dj?.messageId || dj?.id || dj?.zaapId || null };
   } catch (e) {
     return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
