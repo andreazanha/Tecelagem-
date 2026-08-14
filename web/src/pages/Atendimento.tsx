@@ -2575,7 +2575,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     try { const r = await api.atendCampanhaUpload(file); if (r.error) { alert(r.error); return; } setAnexo({ url: r.url, tipo: r.tipo, nome: r.nome, ext: r.ext }); }
     catch { alert("Não consegui subir o arquivo."); } finally { setSubindo(false); }
   }
-  const [campanhas, setCampanhas] = useState<{ id: string; nome: string | null; mensagem: string; status: string; total: number; enviados: number; pendentes: number; falhas: number; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null }[]>([]);
+  const [campanhas, setCampanhas] = useState<{ id: string; nome: string | null; mensagem: string; status: string; total: number; enviados: number; pendentes: number; falhas: number; iniciar_em: string | null; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null }[]>([]);
   function carregarCampanhas() { api.atendCampanhas().then(setCampanhas).catch(() => {}); }
   useEffect(() => {
     const u = getUser();
@@ -2860,6 +2860,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <b style={{ fontSize: 12.5 }}>{c.nome || "Campanha"}</b>
                     <span className="at-chip" style={{ background: c.status === "concluida" ? "#dcfce7" : c.status === "pausada" ? "#fef3c7" : "#e0f2fe", color: "#1e293b", fontSize: 11 }}>{c.status}</span>
+                    {(() => { const ini = c.iniciar_em ? Date.parse(c.iniciar_em.replace(" ", "T") + "Z") : 0; return ini && ini > Date.now() && c.enviados === 0 ? <span className="at-chip" style={{ background: "#dbeafe", color: "#1d4ed8", fontSize: 11 }}>⏰ agendada: {new Date(ini).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span> : null; })()}
                     <span className="muted2" style={{ fontSize: 11.5, marginLeft: "auto" }}>{c.enviados}/{c.total} enviados{c.falhas ? ` · ${c.falhas} falha(s)` : ""}</span>
                   </div>
                   <div style={{ height: 6, background: "var(--bg-soft,#eef2f7)", borderRadius: 4, marginTop: 6, overflow: "hidden" }}>

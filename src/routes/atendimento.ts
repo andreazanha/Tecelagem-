@@ -1815,7 +1815,7 @@ atendimento.get("/debug-card", async (c) => {
 // ── CAMPANHAS (envio em massa aos poucos) ─────────────────────────────────────────
 atendimento.get("/campanhas", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT c.id, c.nome, c.mensagem, c.intervalo_seg, c.status, c.criado_em, c.ultimo_envio_em,
+    `SELECT c.id, c.nome, c.mensagem, c.intervalo_seg, c.status, c.criado_em, c.ultimo_envio_em, c.iniciar_em,
        c.arquivo_url, c.arquivo_tipo, c.arquivo_nome, c.arquivo_ext,
        (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id) AS total,
        (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id AND a.status='enviado') AS enviados,
@@ -1850,7 +1850,7 @@ atendimento.post("/campanhas/upload", async (c) => {
   return c.json({ ok: true, url: `${new URL(c.req.url).origin}/api/atendimento/arquivo/${nome}`, tipo, nome: nomeArq, ext });
 });
 atendimento.post("/campanhas", async (c) => {
-  const b = await c.req.json<{ nome?: string; mensagem?: string; intervalo_seg?: number; alvos?: { telefone: string; nome?: string }[]; rascunho?: boolean; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string }>().catch(() => ({}) as Record<string, never>);
+  const b = await c.req.json<{ nome?: string; mensagem?: string; intervalo_seg?: number; alvos?: { telefone: string; nome?: string }[]; rascunho?: boolean; iniciar_em?: number; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string }>().catch(() => ({}) as Record<string, never>);
   const mensagem = String(b.mensagem ?? "").trim();
   const arqUrl = String(b.arquivo_url ?? "").trim();
   if (!mensagem && !arqUrl) return c.json({ error: "escreva a mensagem ou anexe um arquivo" }, 400);
@@ -1864,8 +1864,12 @@ atendimento.post("/campanhas", async (c) => {
   // rascunho=true → entra PAUSADA (salva sem enviar). É só clicar em "Ativar" quando quiser disparar.
   const status = b.rascunho ? "pausada" : "ativa";
   const arqTipo = ["imagem", "audio", "arquivo"].includes(String(b.arquivo_tipo)) ? String(b.arquivo_tipo) : (arqUrl ? "arquivo" : null);
-  await c.env.DB.prepare("INSERT INTO atend_campanhas (id, nome, mensagem, intervalo_seg, status, arquivo_url, arquivo_tipo, arquivo_nome, arquivo_ext) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(id, String(b.nome ?? "").slice(0, 80) || null, mensagem, intervalo, status, arqUrl || null, arqTipo, String(b.arquivo_nome ?? "").slice(0, 120) || null, String(b.arquivo_ext ?? "").slice(0, 8) || null).run();
+  // Agendar início: converte o timestamp (ms) do navegador pra UTC 'YYYY-MM-DD HH:MM:SS'. Só vale se
+  // for FUTURO (senão começa já). Enquanto não chegar a hora, o cron pula a campanha.
+  const iniMs = Number(b.iniciar_em) || 0;
+  const iniciarEm = iniMs > Date.now() + 30000 ? new Date(iniMs).toISOString().slice(0, 19).replace("T", " ") : null;
+  await c.env.DB.prepare("INSERT INTO atend_campanhas (id, nome, mensagem, intervalo_seg, status, iniciar_em, arquivo_url, arquivo_tipo, arquivo_nome, arquivo_ext) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(id, String(b.nome ?? "").slice(0, 80) || null, mensagem, intervalo, status, iniciarEm, arqUrl || null, arqTipo, String(b.arquivo_nome ?? "").slice(0, 120) || null, String(b.arquivo_ext ?? "").slice(0, 8) || null).run();
   const stmts = alvos.map((a) => c.env.DB.prepare("INSERT INTO atend_campanha_alvos (id, campanha_id, telefone, nome) VALUES (?, ?, ?, ?)").bind(uid(), id, a.telefone, a.nome || null));
   for (let i = 0; i < stmts.length; i += 50) await c.env.DB.batch(stmts.slice(i, i + 50));
   return c.json({ ok: true, id, total: alvos.length });
@@ -3806,7 +3810,7 @@ export async function processarCampanhas(env: Env): Promise<number> {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return 0;
   const { results: camps } = await env.DB.prepare(
-    "SELECT id, mensagem, intervalo_seg, arquivo_url, arquivo_tipo, arquivo_nome, arquivo_ext FROM atend_campanhas WHERE status='ativa'"
+    "SELECT id, mensagem, intervalo_seg, arquivo_url, arquivo_tipo, arquivo_nome, arquivo_ext FROM atend_campanhas WHERE status='ativa' AND (iniciar_em IS NULL OR iniciar_em <= datetime('now'))"
   ).all<{ id: string; mensagem: string; intervalo_seg: number; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null }>().catch(() => ({ results: [] as { id: string; mensagem: string; intervalo_seg: number; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null }[] }));
   let enviados = 0;
   const inicio = Date.now();

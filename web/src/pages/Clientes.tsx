@@ -332,16 +332,30 @@ function CampanhaReativacaoModal({ clientes, onFechar, onCriada }: { clientes: C
   const [nome, setNome] = useState("");
   const [intervalo, setIntervalo] = useState("40");
   const [busy, setBusy] = useState(false);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const hojeStr = (() => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; })();
+  const [agendar, setAgendar] = useState(false);
+  const [agData, setAgData] = useState(() => { const d = new Date(Date.now() + 864e5); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; });
+  const [agHora, setAgHora] = useState("09:00");
   const alvos = clientes.filter((c) => (c.whatsapp || "").replace(/\D/g, "").length >= 10);
   async function criar() {
     if (!mensagem.trim()) { alert("Escreva a mensagem da campanha."); return; }
     if (!alvos.length) { alert("Nenhum dos selecionados tem WhatsApp válido."); return; }
-    if (!confirm(`Criar campanha de reativação para ${alvos.length} cliente(s)? A Big vai enviando 1 a cada ${intervalo}s pra não bloquear o número.`)) return;
+    let iniciar_em: number | undefined;
+    if (agendar) {
+      const ms = new Date(`${agData}T${agHora}`).getTime();
+      if (!ms || isNaN(ms) || ms < Date.now() + 60000) { alert("Escolha uma data e hora FUTURAS para agendar o início."); return; }
+      iniciar_em = ms;
+    }
+    const quando = agendar ? `Vai COMEÇAR em ${agData.split("-").reverse().join("/")} às ${agHora}` : "Começa agora";
+    if (!confirm(`Criar campanha de reativação para ${alvos.length} cliente(s)?\n\n${quando}, enviando 1 a cada ${intervalo}s pra não bloquear o número.`)) return;
     setBusy(true);
     try {
-      const r = await api.atendCriarCampanha({ nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 40, alvos: alvos.map((c) => ({ telefone: c.whatsapp as string, nome: c.nome })) });
+      const r = await api.atendCriarCampanha({ nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 40, iniciar_em, alvos: alvos.map((c) => ({ telefone: c.whatsapp as string, nome: c.nome })) });
       if (r.error) { alert(r.error); return; }
-      alert(`Campanha criada! ${r.total} cliente(s). A Big começa a enviar aos poucos — cada mensagem aparece na conversa do cliente.`);
+      alert(agendar
+        ? `Campanha agendada! ${r.total} cliente(s). A Big começa a enviar em ${agData.split("-").reverse().join("/")} às ${agHora}, aos poucos.`
+        : `Campanha criada! ${r.total} cliente(s). A Big começa a enviar aos poucos — cada mensagem aparece na conversa do cliente.`);
       onCriada();
     } catch (e) { alert((e as Error).message || "Não consegui criar a campanha."); } finally { setBusy(false); }
   }
@@ -355,9 +369,20 @@ function CampanhaReativacaoModal({ clientes, onFechar, onCriada }: { clientes: C
         <label className="fld" style={{ marginTop: 8, display: "inline-flex", flexDirection: "column" }}>Enviar 1 a cada
           <span><input type="number" min={15} max={600} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} style={{ width: 70 }} /> segundos <span className="muted2">(recomendado ≥ 40s)</span></span>
         </label>
+        <label style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13.5, fontWeight: 600 }}>
+          <input type="checkbox" checked={agendar} onChange={(e) => setAgendar(e.target.checked)} style={{ width: 16, height: 16 }} />
+          ⏰ Agendar o início para outro dia (em vez de começar agora)
+        </label>
+        {agendar && (
+          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input type="date" value={agData} min={hojeStr} onChange={(e) => setAgData(e.target.value)} style={{ padding: "7px 9px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13 }} />
+            <input type="time" value={agHora} onChange={(e) => setAgHora(e.target.value)} style={{ padding: "7px 9px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13 }} />
+            <span className="muted2" style={{ fontSize: 12 }}>A Big começa nesse dia/horário, aí vai aos poucos.</span>
+          </div>
+        )}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
           <button className="btn" onClick={onFechar}>Cancelar</button>
-          <button className="btn btn-primary" disabled={busy} onClick={criar}>{busy ? "Criando…" : `📣 Criar campanha (${alvos.length})`}</button>
+          <button className="btn btn-primary" disabled={busy} onClick={criar}>{busy ? "Criando…" : agendar ? `⏰ Agendar campanha (${alvos.length})` : `📣 Criar campanha (${alvos.length})`}</button>
         </div>
       </div>
     </div>
