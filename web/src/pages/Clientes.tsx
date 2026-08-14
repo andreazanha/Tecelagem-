@@ -537,18 +537,26 @@ function ImportarClientesModal({ onFechar, onImportou }: { onFechar: () => void;
       const col = (...ns: string[]) => head.findIndex((h) => ns.includes(h));
       const iNome = col("nome", "razaosocial", "cliente"), iFant = col("fantasia", "nomefantasia"), iUf = col("uf", "estado"),
         iCid = col("cidade"), iCel = col("celular", "whatsapp", "whats", "cel"), iDdd = col("ddd"),
-        iFone = col("fones", "fone", "telefone", "tel"), iMail = col("email"), iCnpj = col("cnpjcpf", "cnpj", "cpf");
+        iFone = col("fones", "fone", "telefone", "tel"), iMail = col("email"), iCnpj = col("cnpjcpf", "cnpj", "cpf"),
+        iRep = col("representante", "representantenome", "vendedor", "rep");
       // Data da última compra: aceita "Data Ult_Venda", "Ultima Compra" etc.
       let iUlt = col("dataultvenda", "dataultimavenda", "ultimacompra", "dataultimacompra", "ultvenda", "ultimavenda");
       if (iUlt < 0) iUlt = head.findIndex((h) => h.includes("ult") && (h.includes("venda") || h.includes("compra")));
       // Data do último faturamento: "Data faturamento".
       let iFat = col("datafaturamento", "faturamento", "dataultimofaturamento", "dataultfaturamento", "ultimofaturamento");
       if (iFat < 0) iFat = head.findIndex((h) => h.includes("fatur"));
-      if (iNome < 0) { setErro("Não achei a coluna 'Nome'. Confira o cabeçalho da planilha."); return; }
+      if (iNome < 0 && iFant < 0) { setErro("Não achei a coluna 'Nome' (nem 'Razão Social'/'Fantasia'). Confira o cabeçalho da planilha."); return; }
+      // Se a planilha traz o representante POR LINHA, não força um rep único pra todos (senão marcaria
+      // todo mundo com o nome do arquivo). Limpa o código do ERP ("43 - PEDRO HENRIQUE" → "PEDRO HENRIQUE").
+      if (iRep >= 0) setRep("");
+      const limpaRep = (s: unknown) => String(s ?? "").trim().replace(/^\s*\d+\s*-\s*/, "").trim();
       const out: Record<string, string>[] = [];
       for (const r of rows.slice(1)) {
         const row = r as unknown[];
-        const nome = String(row[iNome] ?? "").trim();
+        const razao = iNome >= 0 ? String(row[iNome] ?? "").trim() : "";
+        const fant = iFant >= 0 ? String(row[iFant] ?? "").trim() : "";
+        // Nome do cliente = nome FANTASIA (mais reconhecível na lista); cai pra razão social se não tiver.
+        const nome = fant || razao;
         if (!nome) continue;
         const ddd = iDdd >= 0 ? dig(row[iDdd]) : "";
         const num = dig(iCel >= 0 ? row[iCel] : "") || dig(iFone >= 0 ? row[iFone] : "");
@@ -557,9 +565,11 @@ function ImportarClientesModal({ onFechar, onImportou }: { onFechar: () => void;
           nome, uf: iUf >= 0 ? String(row[iUf] ?? "").trim().toUpperCase().slice(0, 2) : "",
           cidade: iCid >= 0 ? String(row[iCid] ?? "").trim() : "", whatsapp: wa,
           email: iMail >= 0 ? String(row[iMail] ?? "").trim() : "", cnpj: iCnpj >= 0 ? String(row[iCnpj] ?? "").trim() : "",
+          representante: iRep >= 0 ? limpaRep(row[iRep]) : "",
           ultima_compra: iUlt >= 0 ? toISO(row[iUlt]) : "",
           ultimo_faturamento: iFat >= 0 ? toISO(row[iFat]) : "",
-          observacao: iFant >= 0 && row[iFant] ? `Fantasia: ${String(row[iFant]).trim()}` : "",
+          // Guarda a razão social (nome legal) na observação quando o nome usado foi o fantasia.
+          observacao: razao && razao !== nome ? `Razão social: ${razao}` : "",
         });
       }
       if (!out.length) { setErro("Nenhum cliente com nome encontrado."); return; }
@@ -569,11 +579,20 @@ function ImportarClientesModal({ onFechar, onImportou }: { onFechar: () => void;
 
   async function importar() {
     if (!linhas.length) return;
-    setBusy(true); setMsg("");
+    setBusy(true); setMsg(""); setErro("");
     try {
-      const r = await api.importarClientes({ representante: rep.trim(), clientes: linhas });
-      if (r.error) setErro(r.error);
-      else { setMsg(`✓ ${r.criados || 0} novos, ${r.atualizados || 0} atualizados${rep.trim() ? ` · vinculados a ${rep.trim()}` : ""}.`); setTimeout(onImportou, 1600); }
+      // Importa em LOTES (planilhas grandes, tipo 1.200+ linhas, estouram o tempo do servidor se vão
+      // de uma vez só). Cada lote é uma chamada; vai somando o resultado e mostrando o progresso.
+      const LOTE = 150;
+      let criados = 0, atualizados = 0;
+      for (let i = 0; i < linhas.length; i += LOTE) {
+        const r = await api.importarClientes({ representante: rep.trim(), clientes: linhas.slice(i, i + LOTE) });
+        if (r.error) { setErro(r.error); return; }
+        criados += r.criados || 0; atualizados += r.atualizados || 0;
+        setMsg(`Importando… ${Math.min(i + LOTE, linhas.length)}/${linhas.length}`);
+      }
+      setMsg(`✓ ${criados} novos, ${atualizados} atualizados${rep.trim() ? ` · vinculados a ${rep.trim()}` : ""}.`);
+      setTimeout(onImportou, 1800);
     } catch { setErro("Erro ao importar."); } finally { setBusy(false); }
   }
 
@@ -581,7 +600,7 @@ function ImportarClientesModal({ onFechar, onImportou }: { onFechar: () => void;
     <div className="modal-bg" onClick={onFechar}>
       <div className="modal-card" style={{ maxWidth: 560, width: "min(560px,96vw)", color: "#1e293b" }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>📥 Importar clientes por planilha</h2>
-        <p className="muted" style={{ fontSize: 13 }}>Aceita Excel (.xlsx) ou CSV. Cabeçalho esperado: <b>Nome, Fantasia, UF, Cidade, DDD, Fones, Celular, email, CNPJ_CPF</b>. Casa com quem já existe pelo CNPJ ou nome.</p>
+        <p className="muted" style={{ fontSize: 13 }}>Aceita Excel (.xlsx) ou CSV. Entende: <b>Razão Social, Fantasia, UF, Cidade, DDD, Fones, Celular, email, CNPJ_CPF, Representante, Última Compra</b>. Casa com quem já existe pelo <b>CNPJ</b> (ou nome) e <b>preenche só o que está faltando</b>, sem apagar o que já é bom.</p>
 
         <input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => e.target.files?.[0] && carregar(e.target.files[0])} style={{ margin: "8px 0" }} />
 
