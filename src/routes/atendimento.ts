@@ -2949,7 +2949,7 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
 // Página pública que o PRÓPRIO cliente abre e preenche; ao enviar, os "Dados coletados"
 // do card são preenchidos sozinhos e cai uma nota interna avisando o time.
 function escHtml(s: string): string { return String(s ?? "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m] as string)); }
-function cadastroClienteHtml(cv: { contato_nome?: string | null; nome?: string | null; cnpj?: string | null; cidade?: string | null; uf?: string | null }): string {
+function cadastroClienteHtml(cv: { contato_nome?: string | null; nome?: string | null; razao_social?: string | null; cnpj?: string | null; cidade?: string | null; uf?: string | null }): string {
   const v = (x?: string | null) => escHtml(x ?? "");
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cadastro — Big Tricot</title>
 <style>*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:#efe9df;color:#20302a;padding:20px 14px 40px}
@@ -2967,10 +2967,10 @@ button:active{background:#086044}</style></head>
 <p class="sub">Preencha seu cadastro pra ficar por dentro de todos os <b>lançamentos e promoções</b> — leva 1 minutinho 😊</p>
 <form method="POST">
 <label>Seu nome<input name="nome" value="${v(cv.contato_nome)}" required></label>
-<label>Nome da sua loja<input name="loja" value="${v(cv.nome)}"></label>
+<label>Razão social<input name="razao" value="${v(cv.razao_social)}" placeholder="Nome registrado no CNPJ"></label>
+<label>Nome fantasia <span class="opt">(nome da loja)</span><input name="fantasia" value="${v(cv.nome)}" placeholder="Como sua loja é conhecida"></label>
 <label>CNPJ<input name="cnpj" value="${v(cv.cnpj)}" inputmode="numeric" placeholder="00.000.000/0000-00"></label>
 <div class="row"><label style="flex:2">Cidade<input name="cidade" value="${v(cv.cidade)}"></label><label style="flex:1">UF<input name="uf" value="${v(cv.uf)}" maxlength="2" placeholder="UF"></label></div>
-<label>E-mail<input name="email" type="email" placeholder="voce@email.com"></label>
 <label>Instagram <span class="opt">(opcional)</span><input name="instagram" placeholder="@sualoja"></label>
 <button type="submit">Enviar cadastro 💛</button>
 </form></div></div></body></html>`;
@@ -2983,7 +2983,7 @@ function cadastroOkHtml(): string {
 <body><div class="card"><div class="big">💛</div><h1>Cadastro enviado!</h1><p>Obrigado! Recebemos seus dados. Um dos nossos vendedores já vai falar com você por aqui. 😊</p></div></body></html>`;
 }
 atendimento.get("/cadastro/:id", async (c) => {
-  const conv = await c.env.DB.prepare("SELECT contato_nome, nome, cnpj, cidade, uf FROM atend_conversas WHERE id=?").bind(c.req.param("id")).first<{ contato_nome: string | null; nome: string | null; cnpj: string | null; cidade: string | null; uf: string | null }>();
+  const conv = await c.env.DB.prepare("SELECT contato_nome, nome, razao_social, cnpj, cidade, uf FROM atend_conversas WHERE id=?").bind(c.req.param("id")).first<{ contato_nome: string | null; nome: string | null; razao_social: string | null; cnpj: string | null; cidade: string | null; uf: string | null }>();
   if (!conv) return c.html("<h1 style='font-family:sans-serif;text-align:center;margin-top:60px'>Cadastro não encontrado 😕</h1>", 404);
   return c.html(cadastroClienteHtml(conv), 200, { "Cache-Control": "no-cache" });
 });
@@ -2993,14 +2993,14 @@ atendimento.post("/cadastro/:id", async (c) => {
   if (!conv) return c.html("<h1 style='font-family:sans-serif;text-align:center;margin-top:60px'>Cadastro não encontrado 😕</h1>", 404);
   const form = await c.req.formData().catch(() => null);
   const g = (k: string) => String(form?.get(k) ?? "").trim();
-  const nome = g("nome").slice(0, 120), loja = g("loja").slice(0, 120);
+  const nome = g("nome").slice(0, 120), fantasia = g("fantasia").slice(0, 120), razao = g("razao").slice(0, 160);
   const cnpj = g("cnpj").replace(/\D/g, "").slice(0, 14);
   const cidade = g("cidade").slice(0, 80), uf = g("uf").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
-  const email = g("email").slice(0, 120), insta = g("instagram").slice(0, 60);
+  const email = g("email").slice(0, 120), insta = g("instagram").replace(/^@+/, "").slice(0, 60);
   await c.env.DB.prepare(
-    "UPDATE atend_conversas SET contato_nome=COALESCE(NULLIF(?,''),contato_nome), nome=COALESCE(NULLIF(?,''),nome), cnpj=COALESCE(NULLIF(?,''),cnpj), cidade=COALESCE(NULLIF(?,''),cidade), uf=COALESCE(NULLIF(?,''),uf), lojista=CASE WHEN ?<>'' THEN 1 ELSE lojista END, atualizado_em=datetime('now') WHERE id=?"
-  ).bind(nome, loja, cnpj, cidade, uf, cnpj, id).run();
-  const resumo = [nome && "👤 " + nome, loja && "🏪 " + loja, cnpj && "CNPJ " + cnpj, (cidade || uf) && "📍 " + [cidade, uf].filter(Boolean).join("/"), email && "✉️ " + email, insta && "📸 " + insta].filter(Boolean).join("\n");
+    "UPDATE atend_conversas SET contato_nome=COALESCE(NULLIF(?,''),contato_nome), nome=COALESCE(NULLIF(?,''),nome), razao_social=COALESCE(NULLIF(?,''),razao_social), cnpj=COALESCE(NULLIF(?,''),cnpj), cidade=COALESCE(NULLIF(?,''),cidade), uf=COALESCE(NULLIF(?,''),uf), lojista=CASE WHEN ?<>'' THEN 1 ELSE lojista END, atualizado_em=datetime('now') WHERE id=?"
+  ).bind(nome, fantasia, razao, cnpj, cidade, uf, cnpj, id).run();
+  const resumo = [nome && "👤 " + nome, fantasia && "🏪 " + fantasia, razao && "🏢 " + razao, cnpj && "CNPJ " + cnpj, (cidade || uf) && "📍 " + [cidade, uf].filter(Boolean).join("/"), email && "✉️ " + email, insta && "📸 @" + insta].filter(Boolean).join("\n");
   await addMsg(c.env, id, "out", "sistema", "sistema", "📝 Cliente preencheu o cadastro:\n" + resumo);
   return c.html(cadastroOkHtml(), 200, { "Cache-Control": "no-cache" });
 });
