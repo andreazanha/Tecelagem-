@@ -1204,10 +1204,23 @@ atendimento.post("/webhook", async (c) => {
         casou += Number((res as { meta?: { changes?: number } })?.meta?.changes ?? 0);
       }
     }
-    // DIAGNÓSTICO: guarda o último status + se o id EXISTE como zap_id (existe>0 = id bate, só faltou
-    // um status melhor; existe=0 = id do envio ≠ id do status → precisa ajustar o que a gente salva).
-    try { await salvarConfigJson(c.env, "webhook_status_ultimo", { status_bruto: st, novo, ids, existe, casou, raw: JSON.stringify(b).slice(0, 1500) }); } catch { /* ok */ }
-    return c.json({ ok: true, status: novo, n: ids.length, existe, casou });
+    // FALLBACK @lid: se o id NÃO casou (existe=0) e o status veio de um contato @lid, casa pela
+    // CONVERSA — atualiza as mensagens de saída RECENTES dela pro novo status. (O recibo de leitura do
+    // WhatsApp é cumulativo, então marcar as recentes está correto.) Resolve os @lid tipo a Eliana.
+    let casouLid = 0;
+    const phoneRaw = String((b as { phone?: unknown }).phone ?? "");
+    if (existe === 0 && novo && phoneRaw.endsWith("@lid")) {
+      const cv = await c.env.DB.prepare("SELECT id FROM atend_conversas WHERE lid=? LIMIT 1").bind(phoneRaw).first<{ id: string }>().catch(() => null);
+      if (cv) {
+        const res = await c.env.DB.prepare(
+          "UPDATE atend_mensagens SET status=? WHERE conversa_id=? AND direcao='out' AND (CASE status WHEN 'read' THEN 3 WHEN 'delivered' THEN 2 WHEN 'sent' THEN 1 ELSE 0 END) < ? AND criado_em >= datetime('now','-14 days')"
+        ).bind(novo, cv.id, rank).run();
+        casouLid = Number((res as { meta?: { changes?: number } })?.meta?.changes ?? 0);
+      }
+    }
+    // DIAGNÓSTICO: guarda o último status + se casou (por id ou por @lid).
+    try { await salvarConfigJson(c.env, "webhook_status_ultimo", { status_bruto: st, novo, ids, existe, casou, casouLid, raw: JSON.stringify(b).slice(0, 1500) }); } catch { /* ok */ }
+    return c.json({ ok: true, status: novo, n: ids.length, existe, casou, casouLid });
   }
   // Interruptor mestre: se o atendimento automático estiver desligado, NÃO responde
   // clientes reais (fica em modo teste interno pelo Simulador). Ignora silenciosamente.
@@ -1274,6 +1287,12 @@ atendimento.post("/webhook", async (c) => {
   // IA/transcrição (que levam segundos) e PARA de reenviar o webhook — fim da demora e das duplicações.
   const origin = new URL(c.req.url).origin;
   const trabalho = (async () => {
+  // Aprende o @lid do contato (o webhook de mensagem traz chatLid). Guarda na conversa pra depois
+  // casar o status de entrega/leitura desses contatos, que vem identificado pelo @lid, não pelo id.
+  try {
+    const cl = String((b as { chatLid?: unknown }).chatLid ?? "").trim();
+    if (cl.endsWith("@lid")) { const cv = await acharConversaPorTelefone(c.env, phone); if (cv) await c.env.DB.prepare("UPDATE atend_conversas SET lid=? WHERE id=? AND (lid IS NULL OR lid<>?)").bind(cl, cv.id, cl).run(); }
+  } catch { /* ok */ }
   let arquivoUrl = "";
   if (!texto.trim() && audio) {
     const audioSrc = audio.audioUrl || audio.url || "";
