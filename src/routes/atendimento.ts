@@ -1749,6 +1749,36 @@ atendimento.post("/:id/encerrar", async (c) => {
   return c.json({ ok: true, mensagem_enviada: !!(rEnc as { enviado?: boolean }).enviado });
 });
 
+// ENVIAR o contato da LOJA pro WhatsApp de um REPRESENTANTE — pra ele atender do próprio número.
+// A gente só manda pro rep uma mensagem com os dados do cliente (nome, telefone, cidade, CNPJ) +
+// um link wa.me clicável. O rep abre e fala com o cliente pelo WhatsApp DELE.
+atendimento.post("/:id/enviar-representante", async (c) => {
+  const b = await c.req.json<{ rep_id?: string }>().catch(() => ({} as { rep_id?: string }));
+  const id = c.req.param("id");
+  const conv = await c.env.DB.prepare("SELECT telefone, nome, contato_nome, cidade, uf, cnpj FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string; nome: string | null; contato_nome: string | null; cidade: string | null; uf: string | null; cnpj: string | null }>();
+  if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  const rep = await c.env.DB.prepare("SELECT nome, whatsapp FROM representantes WHERE id=?").bind(String(b.rep_id ?? "")).first<{ nome: string; whatsapp: string | null }>().catch(() => null);
+  if (!rep) return c.json({ error: "representante não encontrado" }, 404);
+  if (!rep.whatsapp || digitos(rep.whatsapp).length < 10) return c.json({ error: "esse representante está sem WhatsApp cadastrado (preencha em Representantes)" }, 400);
+  const tel = digitos(conv.telefone);
+  const full = tel.length <= 11 ? "55" + tel : tel;   // link wa.me precisa do código do país
+  const linhas = [
+    "🧑‍💼 *Novo contato pra você atender!*",
+    "",
+    conv.nome ? `🏪 *${conv.nome}*` : "",
+    conv.contato_nome ? `👤 ${conv.contato_nome}` : "",
+    (conv.cidade || conv.uf) ? `📍 ${[conv.cidade, conv.uf].filter(Boolean).join("/")}` : "",
+    conv.cnpj ? `🧾 CNPJ ${conv.cnpj}` : "",
+    tel ? `📱 Falar no WhatsApp: https://wa.me/${full}` : "",
+    "",
+    "Pode chamar direto pelo seu WhatsApp. 💛 — *Big Tricot*",
+  ].filter((l) => l !== "").join("\n");
+  const r = await enviarWhatsapp(c.env, rep.whatsapp, { tipo: "texto", texto: linhas });
+  if (!r.enviado) return c.json({ error: "não consegui enviar pro representante (" + ((r as { motivo?: string }).motivo || "falha") + ")" }, 502);
+  await addMsg(c.env, id, "out", "sistema", "sistema", `📤 Contato enviado ao representante *${rep.nome}* (ele vai falar com o cliente pelo número dele).`);
+  return c.json({ ok: true, representante: rep.nome });
+});
+
 // Foto de perfil do contato (Z-API) — pra mostrar o avatar real na conversa.
 atendimento.get("/:id/foto-perfil", async (c) => {
   const id = c.req.param("id");

@@ -1382,6 +1382,8 @@ export const api = {
 
   // ── Comercial / Representantes ───────────────────────────────────────────
   listarRepresentantes: () => fetch("/api/representantes").then((r) => j<Representante[]>(r)),
+  // Envia o contato do cliente pro WhatsApp de um representante (ele atende pelo número dele).
+  atendEnviarRepresentante: (id: string, rep_id: string) => jsonPost(`/api/atendimento/${id}/enviar-representante`, { rep_id }).then((r) => j<{ ok?: boolean; representante?: string; error?: string }>(r)),
   salvarRepresentante: (rep: Partial<Representante>) =>
     jsonPost("/api/representantes", rep).then((r) => j<{ id: string; nome: string }>(r)),
   ativarRepresentante: (id: string, ativo: boolean) =>

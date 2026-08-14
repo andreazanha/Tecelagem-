@@ -1206,11 +1206,17 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
           ? <span className="at-badge" style={{ background: "#fef3c7", color: "#92400e" }} title="Aguardando autorização da equipe">⏳ Autorizar</span>
           : <span className="at-badge">{c.responsavel ? `👤 ${c.responsavel}` : humano ? "👤 humano" : "🤖 robô"}</span>}
         {!!c.transferido && <span className="at-badge" style={{ background: "#e0e7ff", color: "#4338ca" }} title="Transferido — aguardando o responsável pegar">↗️ transferido</span>}
-        {/* Card parado em "Em atendimento" há +24h (sem mensagem nova): avisa que precisa retomar ou finalizar */}
-        {c.coluna === "em-atendimento" && (() => {
+        {/* Card parado em atendimento humano: aviso graduado (a partir de ~10h) que fica URGENTE perto de
+            encerrar sozinho (24h). Vale pra "Em atendimento" e "Aguardando humano". */}
+        {(c.coluna === "em-atendimento" || c.coluna === "aguardando-humano") && (() => {
           const ult = [c.ultima_in_em, c.ultima_out_em].filter(Boolean).map(String).sort().pop() || c.atualizado_em;
           const ms = ult ? Date.parse(String(ult).replace(" ", "T") + "Z") : 0;
-          return ms && (Date.now() - ms) >= 864e5 ? <span className="at-badge at-parado" title="Esse atendimento está parado há mais de 24h — responda ou finalize a conversa">⏳ +24h parado</span> : null;
+          if (!ms) return null;
+          const h = Math.floor((Date.now() - ms) / 3600e3);
+          if (h < 10) return null;
+          const urgente = h >= 20;
+          return <span className={"at-badge" + (urgente ? " at-parado" : "")} style={urgente ? undefined : { background: "#fef9c3", color: "#854d0e", fontWeight: 700 }}
+            title={urgente ? "Parado — vai encerrar sozinho em breve (24h sem conversa). Responda ou finalize." : "Atendimento parado — responda ou finalize a conversa."}>⏳ parado {h >= 24 ? "+24h" : h + "h"}{urgente ? " · fecha logo" : ""}</span>;
         })()}
         {c.funil_etapa && <span className="at-badge" style={{ background: "#ecfdf5", color: "#047857" }} title="Etapa no funil de vendas">🎯 {etapaLabel(c.funil_etapa)}</span>}
         {c.interessado === 1 && <span className="at-badge" style={{ background: "#fee2e2", color: "#b91c1c" }} title="Demonstrou interesse comercial">🔥 Interessado</span>}
@@ -1258,6 +1264,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [agDia, setAgDia] = useState("");
   const [agHora, setAgHora] = useState("09:00");
   const [agMsg, setAgMsg] = useState("");
+  const [repEnvOpen, setRepEnvOpen] = useState(false); // picker "enviar contato pro representante"
   const [editDados, setEditDados] = useState(false);
   const [formD, setFormD] = useState({ contato_nome: "", nome: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
   const [respondendo, setRespondendo] = useState<{ id: string; texto: string } | null>(null);
@@ -1610,6 +1617,17 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     setBusy(true);
     try { await api.atendAgendarIa(id, quando, mensagem); setTexto(""); setAgOpen(false); carregar(); onMudou(); }
     catch { alert("Não consegui agendar a mensagem agora. Verifique a conexão e tente de novo."); }
+    finally { setBusy(false); }
+  }
+  // Envia o contato do cliente pro WhatsApp de um representante (ele atende pelo número dele).
+  async function enviarRepresentante(repId: string) {
+    setBusy(true);
+    try {
+      const r = await api.atendEnviarRepresentante(id, repId);
+      if (r.error) { alert(r.error); return; }
+      setRepEnvOpen(false); carregar(); onMudou();
+      alert(`✓ Contato enviado pro representante ${r.representante}. Ele vai falar com o cliente pelo número dele.`);
+    } catch { alert("Não consegui enviar agora. Verifique a conexão e tente de novo."); }
     finally { setBusy(false); }
   }
   // Nota interna: recado da equipe DENTRO da conversa — o cliente NÃO recebe.
@@ -1988,6 +2006,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                       <button className="at-anexo-opt" onClick={() => { setAnexoMenu(false); setMostrarResp(true); }}>📋 Respostas prontas</button>
                       <button className="at-anexo-opt" disabled={busy || sugerindo} onClick={() => { setAnexoMenu(false); sugerir(); }}>✨ Sugerir resposta (IA)</button>
                       <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); const base = d?.agendado_ia || (Date.now() + 3600e3); setAgDia(dataLocalStr(base)); setAgHora(d?.agendado_ia ? horaLocalStr(base) : "09:00"); setAgMsg(texto.trim()); setAgOpen(true); }}>⏰ Agendar mensagem (mandar mais tarde)</button>
+                      <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); setRepEnvOpen(true); }}>📤 Enviar contato pro representante</button>
                     </div>
                   </>)}
                 </div>
@@ -2074,6 +2093,25 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
           </div>
         );
       })(), document.body)}
+      {repEnvOpen && createPortal((
+        <div onClick={() => setRepEnvOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 100000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 380, maxHeight: "80vh", display: "flex", flexDirection: "column", padding: 16, border: "1px solid var(--line)", borderRadius: 14, background: "var(--card,#fff)", color: "var(--ink)", boxShadow: "0 16px 40px rgba(0,0,0,.35)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <div style={{ fontSize: 14.5, fontWeight: 800 }}>📤 Enviar contato pro representante</div>
+              <button onClick={() => setRepEnvOpen(false)} title="Fechar" style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 20, lineHeight: 1 }}>✕</button>
+            </div>
+            <div className="muted2" style={{ fontSize: 12, marginBottom: 8 }}>O representante recebe os dados de <b>{d?.nome || d?.contato_nome || "cliente"}</b> no WhatsApp dele e fala com o cliente pelo próprio número.</div>
+            <div style={{ overflowY: "auto", display: "grid", gap: 4 }}>
+              {reps.filter((r) => (r.whatsapp || "").replace(/\D/g, "").length >= 10).map((r) => (
+                <button key={r.id} disabled={busy} onClick={() => enviarRepresentante(r.id)} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 11px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg-soft,#fff)", color: "var(--ink)", cursor: "pointer", fontSize: 13 }}>
+                  🧑‍💼 <b>{r.nome}</b>{r.ufs ? <span className="muted2"> · {r.ufs}</span> : null}
+                </button>
+              ))}
+              {reps.filter((r) => (r.whatsapp || "").replace(/\D/g, "").length >= 10).length === 0 && <div className="muted2" style={{ fontSize: 12.5, padding: "6px 2px" }}>Nenhum representante com WhatsApp cadastrado. Preencha o WhatsApp em <b>Representantes</b>.</div>}
+            </div>
+          </div>
+        </div>
+      ), document.body)}
     </div>
   );
 }
