@@ -211,7 +211,7 @@ async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: st
 async function enviarBot(env: Env, convId: string, tel: string, saida: { tipo: string; texto: string }, autor = "bot") {
   const msgId = await addMsg(env, convId, "out", autor, saida.tipo, saida.texto);
   const r = await enviarWhatsapp(env, tel, saida);
-  if (r.enviado && r.messageId) await env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
+  if (r.enviado && r.messageId) await env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgId).run();
   return r;
 }
 
@@ -1195,11 +1195,12 @@ atendimento.post("/webhook", async (c) => {
     let casou = 0, existe = 0;
     if (novo && ids.length) {
       for (const mid of ids) {
-        const ex = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM atend_mensagens WHERE zap_id=?").bind(mid).first<{ n: number }>().catch(() => null);
+        const ex = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM atend_mensagens WHERE zap_id=? OR zap_id2=?").bind(mid, mid).first<{ n: number }>().catch(() => null);
         existe += Number(ex?.n ?? 0);
+        // Casa por zap_id (messageId) OU zap_id2 (zaapId): contatos @lid mandam o status pelo zaapId.
         const res = await c.env.DB.prepare(
-          "UPDATE atend_mensagens SET status=? WHERE zap_id=? AND (CASE status WHEN 'read' THEN 3 WHEN 'delivered' THEN 2 WHEN 'sent' THEN 1 ELSE 0 END) < ?"
-        ).bind(novo, mid, rank).run();
+          "UPDATE atend_mensagens SET status=? WHERE (zap_id=? OR zap_id2=?) AND (CASE status WHEN 'read' THEN 3 WHEN 'delivered' THEN 2 WHEN 'sent' THEN 1 ELSE 0 END) < ?"
+        ).bind(novo, mid, mid, rank).run();
         casou += Number((res as { meta?: { changes?: number } })?.meta?.changes ?? 0);
       }
     }
@@ -2202,7 +2203,7 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
     // DIAGNÓSTICO (temporário): guarda os ids que a Z-API devolve NO ENVIO — pra comparar com o id
     // que chega no callback de status e descobrir qual salvar como zap_id.
     try { await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('webhook_send_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify({ messageId: dj?.messageId ?? null, id: dj?.id ?? null, zaapId: dj?.zaapId ?? null })).run(); } catch { /* ok */ }
-    return { enviado: true, messageId: dj?.messageId || dj?.id || dj?.zaapId || null };
+    return { enviado: true, messageId: dj?.messageId || dj?.id || dj?.zaapId || null, zaapId: dj?.zaapId || null };
   } catch (e) {
     return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
   }
@@ -2245,7 +2246,7 @@ export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string
     const resp = await fetch(`${base}/instances/${inst}/token/${token}/${endpoint}`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(90000) });
     if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}` };
     const dj = await resp.json().catch(() => ({})) as { messageId?: string; id?: string; zaapId?: string };
-    return { enviado: true, messageId: dj?.messageId || dj?.id || dj?.zaapId || null };
+    return { enviado: true, messageId: dj?.messageId || dj?.id || dj?.zaapId || null, zaapId: dj?.zaapId || null };
   } catch (e) {
     return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
   }
@@ -2918,7 +2919,7 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   // deixar o botão "Enviando…" travado.
   const enviarBg = (async () => {
     const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
-    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
+    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgId).run();
     else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); // marca "⚠️ não entregue"
   })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); } catch { /* ok */ } });
   try { c.executionCtx.waitUntil(enviarBg); } catch { /* sem executionCtx: segue sem bloquear */ }
@@ -3074,7 +3075,7 @@ atendimento.post("/:id/enviar-rapido", async (c) => {
   }
   const enviarBg = (async () => {
     const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: alvo.nomeArq || alvo.nome, caption: "" });
-    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
+    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgId).run();
     else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); // marca "⚠️ não entregue"
   })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); } catch { /* ok */ } });
   try { c.executionCtx.waitUntil(enviarBg); } catch { /* ok */ }
@@ -3110,12 +3111,12 @@ atendimento.post("/:id/enviar-resposta", async (c) => {
   }
   const enviarBg = (async () => {
     const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: nomeArq, caption: "" });
-    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgMidiaId).run();
+    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgMidiaId).run();
     else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgMidiaId).run();
     // TEXTO logo DEPOIS da mídia (aparece embaixo, como se fosse a legenda — mas inteiro e garantido).
     if (caption && msgTxtId) {
       const rt = await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto: caption });
-      if (rt.enviado && rt.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(rt.messageId, msgTxtId).run();
+      if (rt.enviado && rt.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(rt.messageId, rt.zaapId ?? null, msgTxtId).run();
       else if (!rt.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgTxtId).run();
     }
   })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgMidiaId).run(); } catch { /* ok */ } });
@@ -3467,7 +3468,7 @@ atendimento.post("/:id/enviar", async (c) => {
   const textoWpp = autor && autor.toLowerCase() !== "atendente" ? `*${primeiro}:*\n${texto}` : texto;
   const r = await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto: textoWpp }, quote);
   // Guarda o id da Z-API pra casar com os callbacks de status (✓ enviado / ✓✓ lido).
-  if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, status='sent' WHERE id=?").bind(r.messageId, msgId).run();
+  if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgId).run();
   // Falhou no WhatsApp (cliente bloqueou, sem credencial, etc.) → marca a mensagem como "falha"
   // pra aparecer "⚠️ não entregue" no CRM (antes mostrava ✓ como se tivesse ido).
   else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run();
