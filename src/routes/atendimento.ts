@@ -3917,14 +3917,17 @@ export async function processarCampanhas(env: Env): Promise<number> {
 
 // ── FECHO AUTOMÁTICO: encerra sozinho quem está em atendimento humano e ficou 24h SEM conversa ──
 // (nenhuma mensagem, de nenhum lado, nas últimas 24h). Manda a mensagem de despedida (mesma do encerrar
-// manual). EXCLUI: grupos, reclamações, consumidor/cliente final, quem ainda está na triagem/campanha
-// e — importante — "Montando pedido" / "Orçando" / "Pendente" (venda/trabalho em andamento). Cron diário.
+// manual). EXCLUI: grupos, reclamações, consumidor/cliente final, quem ainda está na triagem/campanha,
+// "Montando pedido" / "Orçando" / "Pendente" (venda/trabalho em andamento) e — importante — quem ainda
+// está na fila "Aguardando atendimento humano" (sem responsável): esse card NUNCA foi atendido, então
+// não faz sentido "dar tchau" pra ele. Só fecha quem alguém realmente assumiu (Em atendimento). Cron diário.
 export async function fecharInativos24h(env: Env): Promise<number> {
   const cfg = await lerConfig(env);
   if ((cfg.fechar_inativos_ativo ?? "1") !== "1") return 0;
   const { results } = await env.DB.prepare(
     `SELECT id FROM atend_conversas
       WHERE estado='atendimento-humano' AND encerrado_em IS NULL
+        AND COALESCE(responsavel,'') <> ''
         AND COALESCE(origem,'') <> 'grupo'
         AND COALESCE(tipo,'') <> 'consumidor' AND COALESCE(lojista,1) <> 0
         AND COALESCE(coluna_manual,'') NOT IN ('montando-pedido','aguardando-setor','pendente')
