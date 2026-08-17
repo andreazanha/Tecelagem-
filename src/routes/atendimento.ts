@@ -3233,6 +3233,20 @@ atendimento.post("/:id/enviar-catalogo", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── PRÉVIA do texto do catálogo (pra editar antes de enviar) — NÃO envia nada ──────
+// O botão do atendente joga este texto no campo de mensagem; ele edita e manda pelo /enviar normal.
+atendimento.get("/:id/catalogo-texto", async (c) => {
+  const id = c.req.param("id");
+  const conv = await c.env.DB.prepare("SELECT telefone, uf FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string; uf: string | null }>();
+  if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  const cfgAt = await lerConfig(c.env);
+  const texto = montarCatalogo(deps(c.env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }))
+    .filter((s) => s.tipo === "texto" && s.texto)
+    .map((s) => ajustarCatalogoRegiao(s.texto, conv.uf, conv.telefone))
+    .join("\n\n");
+  return c.json({ texto });
+});
+
 // ── BUSCA GERAL: procura em TODAS as conversas (não só as que o quadro carregou), por
 // nome, loja, telefone, cidade ou CNPJ. Mostra em que coluna cada uma está e deixa abrir.
 atendimento.get("/buscar/tudo", async (c) => {
