@@ -1910,7 +1910,20 @@ atendimento.get("/debug-agendas", async (c) => {
       mensagem: r.mensagem ? String(r.mensagem).slice(0, 60) : "(saudação automática da IA)",
     };
   });
-  return c.json({ total: agendas.length, agora: new Date(agora).toLocaleString("pt-BR"), agendas });
+  // Campanhas (todas) — pra ver se a campanha agendada foi salva e o estado dela.
+  const camps = await c.env.DB.prepare(
+    `SELECT c.id, c.nome, c.status, c.iniciar_em, c.criado_em, c.ultimo_envio_em,
+        (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id) AS total,
+        (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id AND a.status='enviado') AS enviados,
+        (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id AND a.status='pendente') AS pendentes,
+        (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id AND a.status='falhou') AS falhas
+       FROM atend_campanhas c ORDER BY c.criado_em DESC LIMIT 50`
+  ).all<Record<string, unknown>>().catch(() => ({ results: [] as Record<string, unknown>[] }));
+  return c.json({
+    total_agendas: agendas.length, agora: new Date(agora).toLocaleString("pt-BR"),
+    total_campanhas: (camps.results || []).length, campanhas: camps.results || [],
+    agendas,
+  });
 });
 // ── CAMPANHAS (envio em massa aos poucos) ─────────────────────────────────────────
 atendimento.get("/campanhas", async (c) => {
