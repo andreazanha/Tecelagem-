@@ -1877,6 +1877,41 @@ atendimento.get("/debug-card", async (c) => {
   });
   return c.json({ total: cards.length, duplicados_mesmo_nucleo: cards.length > 1, cards });
 });
+// Diagnóstico: lista TODAS as mensagens agendadas (atend_agendamentos) e, pra cada uma, o motivo de
+// aparecer ou sumir do quadro. Abra no navegador: /api/atendimento/debug-agendas
+atendimento.get("/debug-agendas", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT a.id AS ag_id, a.conversa_id, a.quando, a.enviado, a.mensagem,
+            co.id AS conv_id, co.nome, co.contato_nome, co.origem, co.ultima_in_em, co.encerrado_em, co.coluna_manual, co.responsavel
+       FROM atend_agendamentos a LEFT JOIN atend_conversas co ON co.id = a.conversa_id
+      ORDER BY a.quando ASC`
+  ).all<Record<string, unknown>>().catch(() => ({ results: [] as Record<string, unknown>[] }));
+  const agora = Date.now();
+  const agendas = (results || []).map((r) => {
+    const orfao = r.conv_id == null;                       // agendamento sem conversa (foi apagada?)
+    const respondeu = !!r.ultima_in_em;
+    const encerrado = !!r.encerrado_em;
+    const origem = (r.origem as string) ?? null;
+    const escondidaPorProspec = !orfao && !respondeu && ["catalogo", "reativacao", "campanha"].includes(origem || "");
+    let motivo = "deve aparecer no follow-up";
+    if (orfao) motivo = "❌ a CONVERSA não existe mais (agendamento órfão)";
+    else if (encerrado) motivo = "❌ conversa ENCERRADA → vai pra Finalizado, não follow-up";
+    else if (r.coluna_manual === "montando-pedido" || r.coluna_manual === "aguardando-setor") motivo = "⚠️ presa em " + r.coluna_manual + " (trava de trabalho)";
+    return {
+      conversa: (r.nome as string) || (r.contato_nome as string) || (orfao ? "(conversa apagada)" : "(sem nome)"),
+      quando: new Date(Number(r.quando)).toLocaleString("pt-BR"),
+      ja_passou_da_hora: Number(r.quando) < agora,
+      enviado: !!r.enviado,
+      origem, respondeu, encerrado,
+      coluna_manual: r.coluna_manual ?? null,
+      responsavel: r.responsavel ?? null,
+      escondida_por_prospeccao_sem_resposta: escondidaPorProspec,
+      motivo,
+      mensagem: r.mensagem ? String(r.mensagem).slice(0, 60) : "(saudação automática da IA)",
+    };
+  });
+  return c.json({ total: agendas.length, agora: new Date(agora).toLocaleString("pt-BR"), agendas });
+});
 // ── CAMPANHAS (envio em massa aos poucos) ─────────────────────────────────────────
 atendimento.get("/campanhas", async (c) => {
   const { results } = await c.env.DB.prepare(
