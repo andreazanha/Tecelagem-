@@ -2501,6 +2501,11 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
   const inn = c.ultima_in_em || "", out = c.ultima_out_em || "", enc = c.encerrado_em || "";
   const estado = String(c.estado || "");
   const origem = String(c.origem || "");
+  // "Alguém está atendendo?" — SIM se tem responsável fixo OU se JÁ respondemos depois da última
+  // mensagem do cliente (out >= inn). Isso vale pra QUALQUER envio nosso: texto, áudio, foto, arquivo,
+  // resposta pronta… Antes, só o texto marcava responsável e movia o card; foto/áudio/etc. deixavam
+  // o contato preso em "Aguardando atendimento humano" mesmo já respondido ("alguns vão, outros não").
+  const atendendo = !!String(c.responsavel || "").trim() || (!!out && out >= inn);
   if (estado === "grupo") return "grupos";                            // mensagens de grupo → coluna própria
   // Reclamação (defeito/troca/atraso) → coluna própria "Reclamação", separada e visível. Vem ANTES
   // de tudo (até de consumidor): uma reclamação não pode se perder no "finalizado" nem no cliente final.
@@ -2514,9 +2519,9 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
   // Aguardando humano), NUNCA pra triagem. Sem mensagem nova, fica em Finalizado (não volta sozinho).
   // Este check vem ANTES da triagem de propósito: um card encerrado com estado antigo de triagem
   // (ia-triagem, aguardando-cnpj…) escorregava pra "Triagem" ao receber msg — era o bug do "marcio".
-  if (enc) return (inn > enc) ? (String(c.responsavel || "").trim() ? "em-atendimento" : "aguardando-humano") : "finalizado";
-  // ATENDIMENTO HUMANO (lojista): já tem quem atende → Em atendimento; senão → fila (pisca).
-  if (estado === "atendimento-humano") return String(c.responsavel || "").trim() ? "em-atendimento" : "aguardando-humano";
+  if (enc) return (inn > enc) ? (atendendo ? "em-atendimento" : "aguardando-humano") : "finalizado";
+  // ATENDIMENTO HUMANO (lojista): já respondemos/assumimos → Em atendimento; senão → fila (pisca).
+  if (estado === "atendimento-humano") return atendendo ? "em-atendimento" : "aguardando-humano";
   if (estado === "aguardando-setor") return "aguardando-setor";
   // Contato de CAMPANHA/reativação que ainda NÃO virou atendimento humano (ex.: só chegou uma
   // autorresposta da loja) fica na coluna "Campanhas". Quando responder de verdade, o webhook põe
