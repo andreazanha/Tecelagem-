@@ -1086,6 +1086,21 @@ function agendadoLabel(ms: number): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(d.getDate())}/${p(d.getMonth() + 1)} às ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+// Baixa uma foto/documento da conversa. Os arquivos são do mesmo domínio
+// (/api/atendimento/arquivo/…), então o atributo download força o salvamento; se for de outra
+// origem (campanha etc.), abre em nova aba pra salvar. Nome do arquivo = final da URL (já com extensão).
+function baixarArquivo(url: string) {
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = (url.split("/").pop() || "arquivo").split("?")[0];
+    a.target = "_blank";
+    a.rel = "noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch { window.open(url, "_blank"); }
+}
 // Horários "de bater o olho e clicar" (horário comercial).
 const HORAS_AG = ["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
 function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; onAgendar?: (quando: number | null, mensagem?: string) => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
@@ -1734,6 +1749,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     {menuMsg === m.id && (
                       <div className="at-msgmenu">
                         <button onClick={() => { setRespondendo({ id: m.id, texto: (extrairIaNota(m.texto).visivel || (m.arquivo_url ? "arquivo" : "mensagem")).slice(0, 180) }); setMenuMsg(null); }}>↩️ Responder</button>
+                        {m.arquivo_url && (
+                          <button onClick={() => { baixarArquivo(m.arquivo_url!); setMenuMsg(null); }}>⤓ Baixar arquivo</button>
+                        )}
                         {m.direcao === "out" && m.autor !== "sistema" && !m.arquivo_url && (m.texto || "").trim() && (
                           <button onClick={() => editarMsg(m.id, m.texto || "")}>✏️ Editar (corrigir erro)</button>
                         )}
