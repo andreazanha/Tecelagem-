@@ -1822,6 +1822,14 @@ atendimento.post("/:id/coluna", async (c) => {
   const b = await c.req.json<{ coluna?: string }>().catch(() => ({}) as Record<string, string>);
   const coluna = String(b.coluna ?? "").trim() || null;
   await c.env.DB.prepare("UPDATE atend_conversas SET coluna_manual=?, atualizado_em=datetime('now') WHERE id=?").bind(coluna, id).run();
+  // Mover à mão = o atendente decidiu a coluna. Tira o card da lista de "transferidos" (pendente de
+  // pickup); senão a regra do transferido forçava o card de volta pra "Aguardando" e ele "voltava
+  // sozinho" logo depois de você arrastar pra "Em atendimento". (Igual ao /enviar, que também limpa.)
+  try {
+    const cfgT = await lerConfig(c.env);
+    const tr = (() => { try { const a = JSON.parse(cfgT.atend_transferidos || "[]"); return Array.isArray(a) ? a.map(String) : []; } catch { return [] as string[]; } })();
+    if (tr.includes(id)) await salvarConfigJson(c.env, "atend_transferidos", tr.filter((x) => x !== id));
+  } catch { /* ok */ }
   return c.json({ ok: true });
 });
 
