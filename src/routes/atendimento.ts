@@ -2259,6 +2259,21 @@ export function linksClicaveis(t: string): string {
   return t;
 }
 
+// Contatos @lid (vindos de anúncio/Instagram, com o número "protegido") SÓ recebem quando a
+// resposta é endereçada ao @lid. Mandar pro número o WhatsApp até aceita (✓), mas NÃO entrega (sem
+// ✓✓) — é o caso da Eliana. Aqui: se a conversa desse número tem um @lid salvo, o destino vira o @lid
+// (a Z-API aceita "xxxx@lid" no mesmo campo phone). Sem @lid, devolve o próprio número — nada muda.
+async function destinoWhatsapp(env: Env, phone: string): Promise<string> {
+  try {
+    const core = phone.replace(/^55/, "").slice(-8);
+    if (core.length < 8) return phone;
+    const r = await env.DB.prepare(
+      "SELECT lid FROM atend_conversas WHERE COALESCE(lid,'') LIKE '%@lid' AND telefone LIKE '%' || ? ORDER BY atualizado_em DESC LIMIT 1"
+    ).bind(core).first<{ lid: string }>().catch(() => null);
+    return (r?.lid && r.lid.endsWith("@lid")) ? r.lid : phone;
+  } catch { return phone; }
+}
+
 export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; texto: string }, quote: { zapId?: string | null; texto?: string | null } = {}) {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
@@ -2271,9 +2286,11 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
   if (!phone || !texto) return { enviado: false, motivo: "vazio" };
   // Cliente BLOQUEADO (caloteiro/inadimplente): não envia NADA — nem robô, nem campanha.
   if (await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
+  // Destino real: para contatos @lid, endereça ao @lid (senão o WhatsApp não entrega).
+  const dest = await destinoWhatsapp(env, phone);
   // Responder uma mensagem específica: se temos o id da Z-API, cita de forma NATIVA
   // (messageId). Se não (mensagem antiga sem id), cai num fallback citando o trecho.
-  const body: Record<string, unknown> = { phone };
+  const body: Record<string, unknown> = { phone: dest };
   if (quote.zapId) body.messageId = quote.zapId;
   else if (quote.texto) texto = `↪ _"${String(quote.texto).slice(0, 120)}"_\n\n${texto}`;
   // "Digitando…": a Z-API mostra o status de digitação por N segundos antes de enviar.
@@ -2290,7 +2307,7 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
     const dj = await resp.json().catch(() => ({})) as { messageId?: string; id?: string; zaapId?: string };
     // DIAGNÓSTICO (temporário): guarda os ids que a Z-API devolve NO ENVIO — pra comparar com o id
     // que chega no callback de status e descobrir qual salvar como zap_id.
-    try { await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('webhook_send_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify({ para: phone, messageId: dj?.messageId ?? null, id: dj?.id ?? null, zaapId: dj?.zaapId ?? null, msgIn: String(saida.texto ?? ""), msg: texto, msgLen: texto.length })).run(); } catch { /* ok */ }
+    try { await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('webhook_send_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify({ para: dest, numero: phone, viaLid: dest !== phone, messageId: dj?.messageId ?? null, id: dj?.id ?? null, zaapId: dj?.zaapId ?? null, msgIn: String(saida.texto ?? ""), msg: texto, msgLen: texto.length })).run(); } catch { /* ok */ }
     return { enviado: true, messageId: dj?.messageId || dj?.id || dj?.zaapId || null, zaapId: dj?.zaapId || null };
   } catch (e) {
     return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
@@ -2314,6 +2331,8 @@ export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string
   const phone = digitos(tel);
   if (!phone) return { enviado: false, motivo: "vazio" };
   if (await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
+  // Destino real: para contatos @lid, endereça ao @lid (senão o WhatsApp não entrega a mídia).
+  const dest = await destinoWhatsapp(env, phone);
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
   // VÍDEO (mp4/mov/…): endpoint próprio "send-video", que aceita legenda (caption). Antes caía no
@@ -2321,14 +2340,14 @@ export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string
   const ehVideo = !opts.ehImagem && !opts.ehAudio && /^(mp4|mov|3gp|m4v|webm|avi|mkv|mpeg|mpg)$/i.test(opts.ext || "");
   const endpoint = opts.ehAudio ? "send-audio" : opts.ehImagem ? "send-image" : ehVideo ? "send-video" : `send-document/${opts.ext || "bin"}`;
   const body: Record<string, string> = opts.ehAudio
-    ? { phone, audio: opts.url }
+    ? { phone: dest, audio: opts.url }
     : opts.ehImagem
-    ? { phone, image: opts.url, caption: opts.caption || "" }
+    ? { phone: dest, image: opts.url, caption: opts.caption || "" }
     : ehVideo
-    ? { phone, video: opts.url, caption: opts.caption || "" }
+    ? { phone: dest, video: opts.url, caption: opts.caption || "" }
     // Documento: manda EMBUTIDO (base64) quando disponível — não depende da Z-API baixar nossa
     // URL (era o que fazia o PDF não chegar). Cai pra URL só se não tiver o base64. Leva legenda também.
-    : { phone, document: opts.docData || opts.url, fileName: opts.fileName, caption: opts.caption || "" };
+    : { phone: dest, document: opts.docData || opts.url, fileName: opts.fileName, caption: opts.caption || "" };
   try {
     // Timeout: a Z-API baixa o arquivo da nossa URL e reenvia — se travar, não deixa pendurado.
     const resp = await fetch(`${base}/instances/${inst}/token/${token}/${endpoint}`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(90000) });
