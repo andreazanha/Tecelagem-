@@ -2685,6 +2685,14 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
   }
   const [campanhas, setCampanhas] = useState<{ id: string; nome: string | null; mensagem: string; status: string; total: number; enviados: number; pendentes: number; falhas: number; iniciar_em: string | null; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null }[]>([]);
   function carregarCampanhas() { api.atendCampanhas().then(setCampanhas).catch(() => {}); }
+  // Lista de contatos de UMA campanha (quem recebeu / respondeu). Abre embaixo do card.
+  const [listaAberta, setListaAberta] = useState<string | null>(null);
+  const [listaContatos, setListaContatos] = useState<{ nome: string | null; telefone: string; status: string; respondeu: boolean; motivo: string | null }[] | "carregando" | null>(null);
+  function verLista(cid: string) {
+    if (listaAberta === cid) { setListaAberta(null); setListaContatos(null); return; }
+    setListaAberta(cid); setListaContatos("carregando");
+    api.atendCampanhaLista(cid).then((r) => setListaContatos(r.contatos)).catch(() => setListaContatos([]));
+  }
   useEffect(() => {
     const u = getUser();
     Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp(), api.atendRespostasEmpresa(), api.atendBoard(u?.nome, ehGestorAtend()), api.atendInteressesContatos(), api.atendContatosEmCampanha()]).then(([cl, w, emp, bd, ie, ec]) => {
@@ -2981,8 +2989,36 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
                     {c.status !== "concluida" && c.pendentes > 0 && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#15803d", fontWeight: 700 }} onClick={() => dispararAgora(c.id)} title="Manda já a próxima mensagem (sem esperar o cron de 5 min)">🚀 Disparar agora</button>}
                     {c.status !== "concluida" && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => editar(c)} title="Editar o texto/foto/nome desta campanha (a lista de contatos não muda)">✏️ Editar</button>}
                     {c.status !== "concluida" && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#dc2626" }} onClick={() => mudarStatus(c.id, "concluida")}>⏹ Encerrar</button>}
+                    <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", fontWeight: 700 }} onClick={() => verLista(c.id)} title="Ver quem recebeu esta campanha e quem já respondeu">👥 {listaAberta === c.id ? "Ocultar lista" : "Ver lista"}</button>
                     <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#2563eb" }} disabled={busy} onClick={() => reusar(c)} title="Usa a MESMA lista de contatos numa campanha nova — você só altera o texto/foto">♻️ Reusar (mesma lista)</button>
                   </div>
+                  {listaAberta === c.id && (
+                    <div style={{ marginTop: 8, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+                      {listaContatos === "carregando"
+                        ? <div className="muted2" style={{ fontSize: 12 }}>Carregando…</div>
+                        : !listaContatos || listaContatos.length === 0
+                          ? <div className="muted2" style={{ fontSize: 12 }}>Sem contatos.</div>
+                          : (<>
+                            <div style={{ fontSize: 11.5, fontWeight: 700, marginBottom: 6 }}>💬 {listaContatos.filter((x) => x.respondeu).length} responderam · {listaContatos.length} contato(s)</div>
+                            <div style={{ maxHeight: 260, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3 }}>
+                              {listaContatos.map((x, i) => {
+                                const b = x.respondeu ? { t: "💬 Respondeu", bg: "#dcfce7", fg: "#166534" }
+                                  : x.status === "enviado" ? { t: "✓ Enviado", bg: "#e5e7eb", fg: "#374151" }
+                                  : x.status === "pendente" ? { t: "⏳ Pendente", bg: "#fef9c3", fg: "#854d0e" }
+                                  : x.status === "optout" ? { t: "🚫 Descadastrado", bg: "#f3f4f6", fg: "#6b7280" }
+                                  : x.status === "bloqueado" ? { t: "🚫 Bloqueado", bg: "#fee2e2", fg: "#991b1b" }
+                                  : { t: "✕ Falhou", bg: "#fee2e2", fg: "#991b1b" };
+                                return (
+                                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "2px 0" }}>
+                                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.nome || x.telefone}</span>
+                                    <span className="at-chip" style={{ background: b.bg, color: b.fg, fontSize: 10.5, flexShrink: 0 }}>{b.t}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>)}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

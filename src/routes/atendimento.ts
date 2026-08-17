@@ -1945,6 +1945,26 @@ atendimento.get("/campanhas/:id/alvos", async (c) => {
   ).bind(c.req.param("id")).all<{ telefone: string; nome: string | null }>().catch(() => ({ results: [] as { telefone: string; nome: string | null }[] }));
   return c.json({ alvos: results || [] });
 });
+// Lista DETALHADA de uma campanha: cada contato com o status do envio e se JÁ RESPONDEU.
+// "respondeu" = a conversa desse telefone tem alguma mensagem de entrada (mesmo critério do quadro).
+// Casa o telefone pelos últimos 11 dígitos pra não perder por causa do 55/9º dígito.
+atendimento.get("/campanhas/:id/lista", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT a.nome, a.telefone, a.status, a.enviado_em, a.motivo,
+        (SELECT co.ultima_in_em FROM atend_conversas co
+           WHERE co.telefone = a.telefone OR co.telefone LIKE '%'||substr(a.telefone,-11)
+           ORDER BY (co.ultima_in_em IS NOT NULL) DESC LIMIT 1) AS ultima_in_em
+       FROM atend_campanha_alvos a WHERE a.campanha_id=? ORDER BY a.rowid`
+  ).bind(c.req.param("id")).all<Record<string, unknown>>().catch(() => ({ results: [] as Record<string, unknown>[] }));
+  const contatos = (results || []).map((r) => ({
+    nome: (r.nome as string) || null,
+    telefone: r.telefone as string,
+    status: (r.status as string) || "pendente",
+    respondeu: !!r.ultima_in_em,
+    motivo: (r.motivo as string) || null,
+  }));
+  return c.json({ contatos, responderam: contatos.filter((x) => x.respondeu).length });
+});
 // Upload de um anexo (foto/arquivo) pra usar na campanha. Salva no R2 e devolve a URL + tipo.
 atendimento.post("/campanhas/upload", async (c) => {
   const form = await c.req.formData().catch(() => null);
