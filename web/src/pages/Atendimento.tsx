@@ -665,7 +665,7 @@ export function Atendimento() {
       {sim && <Simulador onFechar={() => setSim(false)} onMudou={recarregar} />}
       {novaConv && <NovaConversa onFechar={() => setNovaConv(false)} onAbrir={(cid) => { setNovaConv(false); setAbrir(cid); }} onMudou={recarregar} />}
       {equipeOpen && <EquipeModal onFechar={() => setEquipeOpen(false)} />}
-      {campanhaOpen && <CampanhaModal onFechar={() => setCampanhaOpen(false)} />}
+      {campanhaOpen && <CampanhaModal onFechar={() => setCampanhaOpen(false)} onMudou={recarregar} />}
       {chatCom && <ChatEquipeModal outro={chatCom} onFechar={() => setChatCom(null)} />}
       {abrir && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
       {cfgOpen && <ConfigZapi onFechar={() => setCfgOpen(false)} onMudou={checarConexao} />}
@@ -2658,7 +2658,7 @@ function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; on
 }
 
 // ── Campanha: escolhe contatos e a IA envia a mensagem aos poucos (anti-ban) ───────
-function CampanhaModal({ onFechar }: { onFechar: () => void }) {
+function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: () => void }) {
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
@@ -2683,7 +2683,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     try { const r = await api.atendCampanhaUpload(file); if (r.error) { alert(r.error); return; } setAnexo({ url: r.url, tipo: r.tipo, nome: r.nome, ext: r.ext }); }
     catch { alert("Não consegui subir o arquivo."); } finally { setSubindo(false); }
   }
-  const [campanhas, setCampanhas] = useState<{ id: string; nome: string | null; mensagem: string; status: string; total: number; enviados: number; pendentes: number; falhas: number; iniciar_em: string | null; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null }[]>([]);
+  const [campanhas, setCampanhas] = useState<{ id: string; nome: string | null; mensagem: string; status: string; total: number; enviados: number; pendentes: number; falhas: number; iniciar_em: string | null; no_quadro: number | null; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null }[]>([]);
   function carregarCampanhas() { api.atendCampanhas().then(setCampanhas).catch(() => {}); }
   // Lista de contatos de UMA campanha (quem recebeu / respondeu). Abre embaixo do card.
   const [listaAberta, setListaAberta] = useState<string | null>(null);
@@ -2692,6 +2692,11 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
     if (listaAberta === cid) { setListaAberta(null); setListaContatos(null); return; }
     setListaAberta(cid); setListaContatos("carregando");
     api.atendCampanhaLista(cid).then((r) => setListaContatos(r.contatos)).catch(() => setListaContatos([]));
+  }
+  // Liga/desliga "trazer os contatos da campanha pro quadro" (coluna Campanhas do Atendimento).
+  async function toggleQuadro(cid: string, mostrar: boolean) {
+    await api.atendCampanhaQuadro(cid, mostrar).catch(() => {});
+    carregarCampanhas(); onMudou?.();
   }
   useEffect(() => {
     const u = getUser();
@@ -2990,6 +2995,7 @@ function CampanhaModal({ onFechar }: { onFechar: () => void }) {
                     {c.status !== "concluida" && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => editar(c)} title="Editar o texto/foto/nome desta campanha (a lista de contatos não muda)">✏️ Editar</button>}
                     {c.status !== "concluida" && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#dc2626" }} onClick={() => mudarStatus(c.id, "concluida")}>⏹ Encerrar</button>}
                     <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", fontWeight: 700 }} onClick={() => verLista(c.id)} title="Ver quem recebeu esta campanha e quem já respondeu">👥 {listaAberta === c.id ? "Ocultar lista" : "Ver lista"}</button>
+                    <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", fontWeight: 700, color: c.no_quadro ? "#b45309" : "#15803d" }} onClick={() => toggleQuadro(c.id, !c.no_quadro)} title={c.no_quadro ? "Tirar os contatos desta campanha da coluna Campanhas do quadro" : "Fazer os contatos desta campanha aparecerem na coluna Campanhas do quadro, pra acompanhar quem recebeu/respondeu"}>{c.no_quadro ? "📤 Tirar do quadro" : "📥 Trazer pro quadro"}</button>
                     <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px", color: "#2563eb" }} disabled={busy} onClick={() => reusar(c)} title="Usa a MESMA lista de contatos numa campanha nova — você só altera o texto/foto">♻️ Reusar (mesma lista)</button>
                   </div>
                   {listaAberta === c.id && (

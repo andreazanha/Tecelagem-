@@ -1928,7 +1928,7 @@ atendimento.get("/debug-agendas", async (c) => {
 // ── CAMPANHAS (envio em massa aos poucos) ─────────────────────────────────────────
 atendimento.get("/campanhas", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT c.id, c.nome, c.mensagem, c.intervalo_seg, c.status, c.criado_em, c.ultimo_envio_em, c.iniciar_em,
+    `SELECT c.id, c.nome, c.mensagem, c.intervalo_seg, c.status, c.criado_em, c.ultimo_envio_em, c.iniciar_em, c.no_quadro,
        c.arquivo_url, c.arquivo_tipo, c.arquivo_nome, c.arquivo_ext,
        (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id) AS total,
        (SELECT COUNT(*) FROM atend_campanha_alvos a WHERE a.campanha_id=c.id AND a.status='enviado') AS enviados,
@@ -1937,6 +1937,13 @@ atendimento.get("/campanhas", async (c) => {
      FROM atend_campanhas c ORDER BY c.criado_em DESC LIMIT 50`
   ).all().catch(() => ({ results: [] as unknown[] }));
   return c.json(results);
+});
+// Liga/desliga "Trazer pro quadro": quando ligado, os contatos que receberam esta campanha
+// aparecem na coluna "Campanhas" do Atendimento (mesmo sem responder) pra acompanhamento.
+atendimento.post("/campanhas/:id/quadro", async (c) => {
+  const b = await c.req.json<{ mostrar?: boolean }>().catch(() => ({}) as { mostrar?: boolean });
+  await c.env.DB.prepare("UPDATE atend_campanhas SET no_quadro=? WHERE id=?").bind(b.mostrar ? 1 : 0, c.req.param("id")).run();
+  return c.json({ ok: true, no_quadro: b.mostrar ? 1 : 0 });
 });
 // Alvos de uma campanha — pra REUSAR a mesma lista noutra campanha (mudando texto/foto).
 atendimento.get("/campanhas/:id/alvos", async (c) => {
@@ -2639,7 +2646,9 @@ atendimento.get("/", async (c) => {
   // entrada — só entra no inbox quem realmente escreveu. (O lead segue rastreado no Funil.)
   // EXCEÇÃO: se tem mensagem AGENDADA (atend_agendamentos), a conversa PRECISA aparecer (no
   // follow-up) mesmo sendo prospecção sem resposta — senão o card agendado "some" do quadro.
-  const cond: string[] = ["(COALESCE(c.origem,'') NOT IN ('catalogo','reativacao','campanha') OR c.ultima_in_em IS NOT NULL OR EXISTS (SELECT 1 FROM atend_agendamentos a WHERE a.conversa_id = c.id))"];
+  // EXCEÇÃO 2: campanha marcada "Trazer pro quadro" (no_quadro=1) → mostra TODOS os contatos dela
+  // (casados por telefone), mesmo sem resposta, pra você ver quem recebeu e acompanhar.
+  const cond: string[] = ["(COALESCE(c.origem,'') NOT IN ('catalogo','reativacao','campanha') OR c.ultima_in_em IS NOT NULL OR EXISTS (SELECT 1 FROM atend_agendamentos a WHERE a.conversa_id = c.id) OR EXISTS (SELECT 1 FROM atend_campanha_alvos ca JOIN atend_campanhas cc ON cc.id = ca.campanha_id WHERE cc.no_quadro = 1 AND ca.telefone = c.telefone))"];
   const binds: string[] = [];
   if (!gestor && usuario) { cond.push("(c.responsavel = ? OR c.responsavel IS NULL OR c.responsavel = '')"); binds.push(usuario); }
   const stmt = c.env.DB.prepare(
