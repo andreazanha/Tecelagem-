@@ -3091,6 +3091,8 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
     await c.env.DB.prepare(
       `UPDATE atend_conversas SET estado = CASE WHEN estado IN ('grupo','reclamacao') THEN estado ELSE 'atendimento-humano' END,
           responsavel = CASE WHEN (responsavel IS NULL OR responsavel='') AND ? <> '' THEN ? ELSE responsavel END,
+          encerrado_em = NULL,
+          coluna_manual = CASE WHEN coluna_manual='finalizado' THEN NULL ELSE coluna_manual END,
           ultima_out_em = datetime('now'), atualizado_em = datetime('now') WHERE id = ?`
     ).bind(nomeReal, nomeReal, id).run();
     // Responder com ARQUIVO também tira o card da lista de "transferidos" (igual ao /enviar de texto),
@@ -3652,10 +3654,16 @@ atendimento.post("/:id/enviar", async (c) => {
   // Grupo e Reclamação mantêm o estado; os demais viram atendimento-humano. Responsável ganha o nome.
   const GENERICOS = ["atendente", "sistema", "bot", "ia", "big", "robô", "robo"];
   const nomeReal = autor && !GENERICOS.includes(autor.toLowerCase()) ? autor : "";
+  // Responder um card FINALIZADO = você REABRIU o contato você mesmo → tira de "Finalizados".
+  // Sem isto, o card ficava pegajoso em Finalizado (só o cliente reabria) mesmo você mandando
+  // mensagem, que ia e era lida (2 risquinhos azuis) porém o card não saía de lá. Limpa o
+  // encerrado_em e, se o card tinha sido arrastado à mão pra "finalizado", também esse manual.
   await c.env.DB.prepare(
     `UPDATE atend_conversas SET
         estado = CASE WHEN estado IN ('grupo','reclamacao') THEN estado ELSE 'atendimento-humano' END,
         responsavel = CASE WHEN (responsavel IS NULL OR responsavel='') AND ? <> '' THEN ? ELSE responsavel END,
+        encerrado_em = NULL,
+        coluna_manual = CASE WHEN coluna_manual='finalizado' THEN NULL ELSE coluna_manual END,
         atualizado_em = datetime('now')
       WHERE id = ?`
   ).bind(nomeReal, nomeReal, id).run();
