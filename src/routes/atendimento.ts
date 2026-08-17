@@ -105,8 +105,8 @@ async function identificarCliente(env: Env, tel: string) {
   const core = digitos(tel).slice(-8);
   if (core.length < 8) return null;
   return env.DB.prepare(
-    `SELECT id, nome, cnpj, cidade, uf, representante, instagram FROM clientes WHERE ${LIMPA_WPP} LIKE '%' || ? LIMIT 1`
-  ).bind(core).first<{ id: string; nome: string; cnpj: string | null; cidade: string | null; uf: string | null; representante: string | null; instagram: string | null }>().catch(() => null);
+    `SELECT id, nome, contato, cnpj, cidade, uf, representante, instagram FROM clientes WHERE ${LIMPA_WPP} LIKE '%' || ? LIMIT 1`
+  ).bind(core).first<{ id: string; nome: string; contato: string | null; cnpj: string | null; cidade: string | null; uf: string | null; representante: string | null; instagram: string | null }>().catch(() => null);
 }
 
 // Núcleo canônico do telefone: DDD (2) + últimos 8 dígitos. Serve pra reconhecer a MESMA pessoa
@@ -228,9 +228,10 @@ async function registrarEnvioNaConversa(env: Env, tel: string, texto: string, me
   else {
     convId = uid();
     const cli = await identificarCliente(env, t).catch(() => null);
+    // Cliente da base → já grava os "Dados coletados" (loja, contato, CNPJ, cidade/UF) do cadastro.
     await env.DB.prepare(
-      "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, cliente_id, nome, ultima_out_em, atualizado_em) VALUES (?, ?, 'ia-triagem', 'campanha', ?, ?, ?, datetime('now'), datetime('now'))"
-    ).bind(convId, t, cli ? "lojista" : null, cli?.id ?? null, cli?.nome ?? null).run();
+      "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, cliente_id, nome, contato_nome, cnpj, cidade, uf, representante, ultima_out_em, atualizado_em) VALUES (?, ?, 'ia-triagem', 'campanha', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))"
+    ).bind(convId, t, cli ? "lojista" : null, cli?.id ?? null, cli?.nome ?? null, cli?.contato ?? null, cli?.cnpj ?? null, cli?.cidade ?? null, cli?.uf ?? null, cli?.representante ?? null).run();
   }
   // Se a campanha tinha ANEXO, grava a mídia na conversa (imagem mostra a foto; doc vira link),
   // com a mensagem como legenda — pra aparecer no CRM que a foto/arquivo FOI enviado.
@@ -3984,11 +3985,11 @@ export async function prospeccaoCatalogo(env: Env): Promise<number> {
   const limite = Math.max(1, parseInt(cfg.reativacao_limite || "12", 10) || 12);
 
   const { results: clientes } = await env.DB.prepare(
-    `SELECT id, nome, contato, whatsapp, cidade, uf, representante, ultimo_faturamento FROM clientes
+    `SELECT id, nome, contato, whatsapp, cnpj, cidade, uf, representante, ultimo_faturamento FROM clientes
       WHERE COALESCE(whatsapp,'') <> '' AND COALESCE(ultimo_faturamento,'') <> ''
         AND ultimo_faturamento <= date('now', ?)
       ORDER BY ultimo_faturamento ASC`
-  ).bind(`-${dias} day`).all<{ id: string; nome: string; contato: string | null; whatsapp: string | null; cidade: string | null; uf: string | null; representante: string | null; ultimo_faturamento: string | null }>();
+  ).bind(`-${dias} day`).all<{ id: string; nome: string; contato: string | null; whatsapp: string | null; cnpj: string | null; cidade: string | null; uf: string | null; representante: string | null; ultimo_faturamento: string | null }>();
   if (!clientes.length) return 0;
 
   // Já tem conversa? (não reenvia nem incomoda quem já falou com a gente)
@@ -4022,9 +4023,10 @@ export async function prospeccaoCatalogo(env: Env): Promise<number> {
     // saiu. Se falhar (número inválido, cliente bloqueado, Z-API fora do ar), apaga a conversa e
     // segue — nada de card fantasma marcado como "enviado" sem ter saído.
     const convId = uid();
+    // Já preenche os "Dados coletados" com o cadastro (loja, contato, CNPJ, cidade/UF, representante).
     await env.DB.prepare(
-      "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, cliente_id, nome, pedido_marco, ultima_out_em, atualizado_em) VALUES (?, ?, 'prospeccao-catalogo', 'reativacao', 'lojista', ?, ?, 'reativacao', datetime('now'), datetime('now'))"
-    ).bind(convId, tel, cli.id, cli.nome).run();
+      "INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, cliente_id, nome, contato_nome, cnpj, cidade, uf, representante, pedido_marco, ultima_out_em, atualizado_em) VALUES (?, ?, 'prospeccao-catalogo', 'reativacao', 'lojista', ?, ?, ?, ?, ?, ?, ?, 'reativacao', datetime('now'), datetime('now'))"
+    ).bind(convId, tel, cli.id, cli.nome, cli.contato ?? null, cli.cnpj ?? null, cli.cidade ?? null, cli.uf ?? null, cli.representante ?? null).run();
     const envio = await enviarBot(env, convId, tel, { tipo: "texto", texto });
     if (!envio.enviado) {
       await env.DB.prepare("DELETE FROM atend_mensagens WHERE conversa_id=?").bind(convId).run();
@@ -4115,20 +4117,25 @@ export async function followupAtendimento(env: Env): Promise<number> {
 }
 
 // ── CRUZA os contatos do atendimento com a BASE DE CLIENTES (chamado pelo cron) ────────
-// Liga conversas ainda SEM cliente_id ao cliente cadastrado (casa por telefone). Preenche só o que
-// está VAZIO — nunca sobrescreve o que foi preenchido à mão. NÃO mexe no atualizado_em (pra não
-// reordenar/"mover" cards à toa). Assim, os contatos vão ficando cruzados sozinhos, sem apertar nada.
+// Liga conversas ao cliente cadastrado (casa por telefone) e PREENCHE os "Dados coletados" a partir
+// do cadastro (loja, contato, CNPJ, cidade/UF, representante). Pega tanto conversas ainda sem
+// cliente_id COMO as que já estão vinculadas mas ficaram com campos vazios — ex.: prospecção/campanha,
+// que nascem com cliente_id porém sem CNPJ/cidade. Preenche só o que está VAZIO — nunca sobrescreve o
+// que foi preenchido à mão. NÃO mexe no atualizado_em (pra não reordenar/"mover" cards à toa).
 export async function cruzarContatosBase(env: Env): Promise<number> {
   const { results } = await env.DB.prepare(
-    `SELECT id, telefone, nome, cnpj, cidade, uf, representante, tipo FROM atend_conversas
-      WHERE cliente_id IS NULL AND COALESCE(estado,'') <> 'grupo' AND COALESCE(origem,'') <> 'grupo'
+    `SELECT id, telefone, nome, contato_nome, cnpj, cidade, uf, representante, tipo FROM atend_conversas
+      WHERE (cliente_id IS NULL
+             OR COALESCE(cnpj,'')='' OR COALESCE(cidade,'')='' OR COALESCE(contato_nome,'')='')
+        AND COALESCE(estado,'') <> 'grupo' AND COALESCE(origem,'') <> 'grupo'
         AND COALESCE(telefone,'') <> '' ORDER BY atualizado_em DESC LIMIT 400`
-  ).all<{ id: string; telefone: string; nome: string | null; cnpj: string | null; cidade: string | null; uf: string | null; representante: string | null; tipo: string | null }>().catch(() => ({ results: [] as { id: string; telefone: string; nome: string | null; cnpj: string | null; cidade: string | null; uf: string | null; representante: string | null; tipo: string | null }[] }));
+  ).all<{ id: string; telefone: string; nome: string | null; contato_nome: string | null; cnpj: string | null; cidade: string | null; uf: string | null; representante: string | null; tipo: string | null }>().catch(() => ({ results: [] as { id: string; telefone: string; nome: string | null; contato_nome: string | null; cnpj: string | null; cidade: string | null; uf: string | null; representante: string | null; tipo: string | null }[] }));
   let n = 0;
   for (const cv of (results || [])) {
     const cli = await identificarCliente(env, cv.telefone).catch(() => null);
     if (!cli) continue;
-    const nome = cv.nome || cli.nome || null;
+    const nome = cv.nome || cli.nome || null;                 // Loja (nome fantasia/razão da base)
+    const contatoNome = cv.contato_nome || cli.contato || null; // Nome do contato
     const cnpj = cv.cnpj || cli.cnpj || null;
     const cidade = cv.cidade || cli.cidade || null;
     const uf = cv.uf || cli.uf || null;
@@ -4136,8 +4143,8 @@ export async function cruzarContatosBase(env: Env): Promise<number> {
     const tipo = cv.tipo || "lojista";   // quem está na base é lojista (atacado)
     // atualizado_em=atualizado_em → NÃO bumpa o horário (não reordena nem "move" o card).
     await env.DB.prepare(
-      "UPDATE atend_conversas SET cliente_id=?, nome=?, cnpj=?, cidade=?, uf=?, representante=?, tipo=?, atualizado_em=atualizado_em WHERE id=?"
-    ).bind(cli.id, nome, cnpj, cidade, uf, rep, tipo, cv.id).run();
+      "UPDATE atend_conversas SET cliente_id=?, nome=?, contato_nome=?, cnpj=?, cidade=?, uf=?, representante=?, tipo=?, atualizado_em=atualizado_em WHERE id=?"
+    ).bind(cli.id, nome, contatoNome, cnpj, cidade, uf, rep, tipo, cv.id).run();
     n++;
   }
   return n;

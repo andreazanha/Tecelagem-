@@ -1257,6 +1257,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [arqRapidoOpen, setArqRapidoOpen] = useState(false);
   const [transfOpen, setTransfOpen] = useState(false); // picker do botão "Transferir para outro vendedor"
   const [anexoMenu, setAnexoMenu] = useState(false); // menu do clipe (📎): opções de anexo, como no WhatsApp
+  const [movMenu, setMovMenu] = useState(false); // "Mover para coluna": submenu recolhível (deixa a tela limpa)
   const [emojiOpen, setEmojiOpen] = useState(false); // seletor de emojis (😊) do campo de mensagem
   // Agendar mensagem (mandar mais tarde) — reaproveita o agendamento do "Chamar IA": no horário, o
   // sistema envia a mensagem escolhida (se vazia, manda uma saudação da IA). Útil pra não mandar de madrugada.
@@ -1891,25 +1892,40 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             {/* Mover pra outra coluna do quadro (lendo a conversa, você decide pra onde vai).
                Lista de botões (um embaixo do outro) — vê todas as colunas de uma vez e clica direto. */}
             <div style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>↔️ Mover para coluna</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <button type="button" className="at-colbtn" disabled={busy} onClick={() => moverColuna("")}
-                  style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 8, border: "1px solid var(--border, #e5e7eb)", background: "var(--card, #fff)", color: "inherit", fontSize: 12.5, fontWeight: 600, cursor: busy ? "default" : "pointer" }}>
-                  <span style={{ fontSize: 13 }}>🔄</span>
-                  <span style={{ flex: 1 }}>Automático (segue o estado da conversa)</span>
-                </button>
-                {colsAtend.map((x) => {
-                  const atual = x.id === d?.coluna;
-                  return (
-                    <button type="button" key={x.id} className="at-colbtn" disabled={busy || atual} onClick={() => moverColuna(x.id)}
-                      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 8, border: atual ? "1px solid #1f7a53" : "1px solid var(--border, #e5e7eb)", background: atual ? "#ecfdf5" : "var(--card, #fff)", color: atual ? "#065f46" : "inherit", fontSize: 12.5, fontWeight: atual ? 800 : 600, cursor: (busy || atual) ? "default" : "pointer" }}>
-                      <span className="fx-dot" style={{ background: x.cor || "#94a3b8", flex: "0 0 auto" }} />
-                      <span style={{ flex: 1 }}>{x.label}</span>
-                      {atual && <span style={{ fontSize: 11, fontWeight: 800 }}>✓ aqui</span>}
-                    </button>
-                  );
-                })}
-              </div>
+              {/* Cabeçalho clicável: mostra a coluna atual e ABRE/FECHA a lista. Recolhido por padrão
+                 pra não poluir a tela (são muitas colunas). */}
+              {(() => { const colAtual = colsAtend.find((x) => x.id === d?.coluna); return (
+              <button type="button" onClick={() => setMovMenu((v) => !v)}
+                style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 8, border: "1px solid var(--border, #e5e7eb)", background: "var(--card, #fff)", color: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+                <span style={{ fontSize: 11, fontWeight: 800 }}>↔️</span>
+                <span style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                  {colAtual
+                    ? <><span className="fx-dot" style={{ background: colAtual.cor || "#94a3b8", flex: "0 0 auto" }} /><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{colAtual.label}</span></>
+                    : <span style={{ color: "var(--muted)" }}>Mover para coluna</span>}
+                </span>
+                <span style={{ fontSize: 10, color: "var(--muted)", display: "inline-block", transform: movMenu ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▼</span>
+              </button>
+              ); })()}
+              {movMenu && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
+                  <button type="button" className="at-colbtn" disabled={busy} onClick={() => { moverColuna(""); setMovMenu(false); }}
+                    style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 8, border: "1px solid var(--border, #e5e7eb)", background: "var(--card, #fff)", color: "inherit", fontSize: 12.5, fontWeight: 600, cursor: busy ? "default" : "pointer" }}>
+                    <span style={{ fontSize: 13 }}>🔄</span>
+                    <span style={{ flex: 1 }}>Automático (segue o estado da conversa)</span>
+                  </button>
+                  {colsAtend.map((x) => {
+                    const atual = x.id === d?.coluna;
+                    return (
+                      <button type="button" key={x.id} className="at-colbtn" disabled={busy || atual} onClick={() => { moverColuna(x.id); setMovMenu(false); }}
+                        style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 8, border: atual ? "1px solid #1f7a53" : "1px solid var(--border, #e5e7eb)", background: atual ? "#ecfdf5" : "var(--card, #fff)", color: atual ? "#065f46" : "inherit", fontSize: 12.5, fontWeight: atual ? 800 : 600, cursor: (busy || atual) ? "default" : "pointer" }}>
+                        <span className="fx-dot" style={{ background: x.cor || "#94a3b8", flex: "0 0 auto" }} />
+                        <span style={{ flex: 1 }}>{x.label}</span>
+                        {atual && <span style={{ fontSize: 11, fontWeight: 800 }}>✓ aqui</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, fontWeight: 700, borderColor: encerrado ? "#a7f3d0" : "#1f7a53", background: encerrado ? "#ecfdf5" : "#1f7a53", color: encerrado ? "#065f46" : "#fff" }} disabled={busy} onClick={encerrar} title="Marca o atendimento como resolvido (para de piscar). NÃO envia nada ao cliente.">
               {encerrado ? "✅ Encerrado — reabrir" : "✅ Encerrar atendimento"}
