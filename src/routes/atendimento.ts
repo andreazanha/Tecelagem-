@@ -2569,7 +2569,9 @@ atendimento.get("/", async (c) => {
   const gestor = c.req.query("gestor") === "1";
   // Quem SÓ entrou no catálogo/prospecção (nunca mandou mensagem) não aparece na Caixa de
   // entrada — só entra no inbox quem realmente escreveu. (O lead segue rastreado no Funil.)
-  const cond: string[] = ["(COALESCE(c.origem,'') NOT IN ('catalogo','reativacao','campanha') OR c.ultima_in_em IS NOT NULL)"];
+  // EXCEÇÃO: se tem mensagem AGENDADA (atend_agendamentos), a conversa PRECISA aparecer (no
+  // follow-up) mesmo sendo prospecção sem resposta — senão o card agendado "some" do quadro.
+  const cond: string[] = ["(COALESCE(c.origem,'') NOT IN ('catalogo','reativacao','campanha') OR c.ultima_in_em IS NOT NULL OR EXISTS (SELECT 1 FROM atend_agendamentos a WHERE a.conversa_id = c.id))"];
   const binds: string[] = [];
   if (!gestor && usuario) { cond.push("(c.responsavel = ? OR c.responsavel IS NULL OR c.responsavel = '')"); binds.push(usuario); }
   const stmt = c.env.DB.prepare(
