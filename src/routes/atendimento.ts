@@ -267,8 +267,12 @@ async function registrarGrupo(env: Env, origin: string, b: Record<string, unknow
   if (b.fromMe === true) return false;                       // não registra o que NÓS mandamos no grupo
   const groupId = digitos(b.phone ?? (b as { chatId?: unknown }).chatId ?? "");
   if (groupId.length < 6) return false;
-  const nomeGrupo = String(b.chatName ?? "Grupo").trim().slice(0, 80) || "Grupo";
+  // Nome REAL do grupo (quando a Z-API manda). Fica vazio quando não vem — aí o card usaria só
+  // "Grupo" (genérico e confuso: "esse grupo não existe"). Solução: se não veio o nome do grupo,
+  // rotula o card com QUEM ESCREVEU (a loja), que é o que dá pra identificar.
+  const nomeGrupoReal = String(b.chatName ?? "").trim().slice(0, 80);
   const remetente = String((b as { senderName?: unknown }).senderName ?? (b as { pushName?: unknown }).pushName ?? "").trim();
+  const nomeCard = nomeGrupoReal || remetente || "Grupo";
   const t = b.text as { message?: string } | undefined;
   const img = b.image as { caption?: string; imageUrl?: string; url?: string } | undefined;
   const audio = b.audio as { audioUrl?: string; url?: string } | undefined;
@@ -284,10 +288,21 @@ async function registrarGrupo(env: Env, origin: string, b: Record<string, unknow
   let convId: string;
   if (conv) {
     convId = conv.id;
-    await env.DB.prepare("UPDATE atend_conversas SET estado='grupo', origem='grupo', nome=?, atualizado_em=datetime('now') WHERE id=?").bind(nomeGrupo, convId).run();
+    // Atualiza o nome só quando faz sentido: (1) veio o nome REAL do grupo → usa; (2) o card ainda
+    // está genérico ("Grupo"/vazio) e temos quem escreveu → rotula com a loja. Se já tem um nome
+    // (real ou de loja), NÃO fica trocando a cada mensagem de gente diferente (mantém estável).
+    await env.DB.prepare(
+      `UPDATE atend_conversas SET estado='grupo', origem='grupo',
+          nome = CASE
+            WHEN ? <> '' THEN ?
+            WHEN (nome IS NULL OR nome='' OR nome='Grupo') AND ? <> '' THEN ?
+            ELSE nome END,
+          atualizado_em=datetime('now')
+        WHERE id=?`
+    ).bind(nomeGrupoReal, nomeGrupoReal, remetente, remetente, convId).run();
   } else {
     convId = uid();
-    await env.DB.prepare("INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, nome, atualizado_em) VALUES (?, ?, 'grupo', 'grupo', 'grupo', ?, datetime('now'))").bind(convId, groupId, nomeGrupo).run();
+    await env.DB.prepare("INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, nome, atualizado_em) VALUES (?, ?, 'grupo', 'grupo', 'grupo', ?, datetime('now'))").bind(convId, groupId, nomeCard).run();
   }
   await addMsg(env, convId, "in", "cliente", "texto", texto, { zapId: String(b.messageId ?? "") || null, arquivoUrl: arquivoUrl || null });
   await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(convId).run();
