@@ -1566,7 +1566,7 @@ atendimento.get("/config", async (c) => {
     remarket_msg_padrao: MSG_REMARKET_PADRAO,
     encerramento_msg: cfg.encerramento_msg || "",
     encerramento_msg_padrao: MSG_ENCERRAMENTO_PADRAO,
-    fechar_inativos_ativo: (cfg.fechar_inativos_ativo ?? "1") === "1",
+    fechar_inativos_ativo: (cfg.fechar_inativos_ativo ?? "0") === "1",   // desligado por padrão
     catalogo_evento_token: cfg.catalogo_evento_token || "",
     catalogo_evento_url: new URL(c.req.url).origin + "/api/atendimento/catalogo-evento",
     catalogo_log_url: cfg.catalogo_log_url || "",
@@ -4072,7 +4072,7 @@ export async function processarCampanhas(env: Env): Promise<number> {
 // não faz sentido "dar tchau" pra ele. Só fecha quem alguém realmente assumiu (Em atendimento). Cron diário.
 export async function fecharInativos24h(env: Env): Promise<number> {
   const cfg = await lerConfig(env);
-  if ((cfg.fechar_inativos_ativo ?? "1") !== "1") return 0;
+  if ((cfg.fechar_inativos_ativo ?? "0") !== "1") return 0;   // DESLIGADO por padrão (só roda se ligarem no Configurações)
   const { results } = await env.DB.prepare(
     `SELECT id FROM atend_conversas
       WHERE estado='atendimento-humano' AND encerrado_em IS NULL
