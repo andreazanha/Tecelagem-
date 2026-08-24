@@ -475,6 +475,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   // Tassel: por parte. Alguns modelos usam só na peseira (G); outros na peseira e
   // na almofada/capa (P). 4 por peça; R$1 por cor; feito por prestadora; entra no romaneio.
   const [tasselSel, setTasselSel] = useState<{ peseira: boolean; almofada: boolean }>({ peseira: false, almofada: false });
+  // Combinações de cores: peça tricotada com várias cores. Nome = cor do pedido; guias GFx → cor.
+  const [combinacoes, setCombinacoes] = useState<{ nome: string; guias: { guia: string; cor: string }[] }[]>([]);
   const fioSeeded = useRef(false); // ao editar, restaura o "Tipo de fio" a partir das cores salvas (só 1x)
 
   useEffect(() => {
@@ -533,6 +535,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         if (tg.length) setTagSel({ material_id: tg[0].material_id, qtd: tg[0].quantidade != null ? String(tg[0].quantidade) : "1" });
         // Tassel: por parte — peseira e/ou almofada, conforme a qtd salva em cada uma.
         setTasselSel({ peseira: (Number(m.tassel_peseira) || 0) > 0, almofada: (Number(m.tassel_almofada) || 0) > 0 });
+        // Combinações de cores + guias.
+        setCombinacoes((m.combinacoes || []).map((c) => ({ nome: c.nome, guias: (c.guias || []).map((g) => ({ guia: g.guia, cor: g.cor })) })));
       }).catch((e) => setErro((e as Error).message));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -666,6 +670,9 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     try {
       await api.salvarModelo(
         { nome: nome.trim(), parte, ref: ref.trim(), composicao: composicao.trim(), cores: [...sel], tamanhos, materiais,
+          combinacoes: combinacoes
+            .map((c) => ({ nome: c.nome.trim(), guias: c.guias.map((g) => ({ guia: g.guia.trim(), cor: g.cor.trim() })).filter((g) => g.guia && g.cor) }))
+            .filter((c) => c.nome && c.guias.length),
           tassel_peseira: tasselSel.peseira ? 4 : 0, tassel_almofada: tasselSel.almofada ? 4 : 0 },
         refNome || undefined
       );
@@ -729,6 +736,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
     { id: "tamanhos", nome: "Tamanhos" },
     { id: "fio", nome: "Tipo de fio" },
     { id: "cores", nome: "Cores" },
+    { id: "combinacoes", nome: "Combinações" },
     { id: "tempo", nome: "Tempo" },
     { id: "peso", nome: "Peso" },
     { id: "ziper", nome: "Zíper", cat: "ziper" },
@@ -747,6 +755,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
       // ou quando um fio foi escolhido na tela (mesmo antes de marcar cores).
       case "fio": return [...sel].some((n) => !!(cores.find((c) => c.nome === n)?.fio_nome)) || (fioSel !== null && fioSel !== "");
       case "cores": return sel.size > 0;
+      case "combinacoes": return combinacoes.some((c) => c.nome.trim() !== "" && c.guias.some((g) => g.guia.trim() !== "" && g.cor.trim() !== ""));
       case "tempo": return tamsProdSel.some((t) => (tempos[t] || "").trim() !== "");
       case "peso": return tamsProdSel.some((t) => (pesos[t] || "").trim() !== "");
       case "tassel": return tasselSel.peseira || tasselSel.almofada;
@@ -1161,6 +1170,45 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
                     </tbody>
                   </table>
                 </div>
+          )}
+
+          {secao === "combinacoes" && (
+            <>
+              <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+                Para peças tricotadas com <strong>várias cores juntas</strong>. O <strong>nome da combinação</strong> é a cor que aparece no pedido (ex.: <strong>Tropical</strong>). Em cada <strong>guia de fio (GF)</strong> escolha a cor — isso sai no <strong>PDF da tecelagem</strong> pra saber qual cor colocar em cada guia. Cadastre também esse nome na seção <strong>Cores</strong> pra poder ser pedido.
+              </p>
+              {combinacoes.map((combo, ci) => (
+                <div key={ci} className="card" style={{ marginBottom: 12, padding: 12 }}>
+                  <div className="row-gap" style={{ gap: 10, alignItems: "flex-end", marginBottom: 10 }}>
+                    <Campo label="Nome da combinação (= cor do pedido)">
+                      <input value={combo.nome} placeholder="ex.: Tropical" onChange={(e) => { setSalvo(false); setCombinacoes((cs) => cs.map((c, i) => i === ci ? { ...c, nome: e.target.value } : c)); }} />
+                    </Campo>
+                    <button type="button" className="btn btn-soft" style={{ color: "#b91c1c" }} onClick={() => { setSalvo(false); setCombinacoes((cs) => cs.filter((_, i) => i !== ci)); }}>🗑 Remover combinação</button>
+                  </div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table className="table">
+                      <thead><tr><th style={{ width: 90 }}>Guia</th><th>Cor</th><th style={{ width: 40 }}></th></tr></thead>
+                      <tbody>
+                        {combo.guias.map((g, gi) => (
+                          <tr key={gi}>
+                            <td><input value={g.guia} placeholder="GF4" style={{ width: 76 }} onChange={(e) => { setSalvo(false); setCombinacoes((cs) => cs.map((c, i) => i === ci ? { ...c, guias: c.guias.map((x, j) => j === gi ? { ...x, guia: e.target.value } : x) } : c)); }} /></td>
+                            <td>
+                              <select value={g.cor} onChange={(e) => { setSalvo(false); setCombinacoes((cs) => cs.map((c, i) => i === ci ? { ...c, guias: c.guias.map((x, j) => j === gi ? { ...x, cor: e.target.value } : x) } : c)); }}>
+                                <option value="">— escolha a cor —</option>
+                                {cores.map((c) => <option key={c.nome} value={c.nome}>{c.nome}</option>)}
+                              </select>
+                            </td>
+                            <td><button type="button" className="icon-btn" title="Remover guia" onClick={() => { setSalvo(false); setCombinacoes((cs) => cs.map((c, i) => i === ci ? { ...c, guias: c.guias.filter((_, j) => j !== gi) } : c)); }}>✕</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button type="button" className="btn btn-soft" style={{ marginTop: 8 }} onClick={() => { setSalvo(false); setCombinacoes((cs) => cs.map((c, i) => i === ci ? { ...c, guias: [...c.guias, { guia: "", cor: "" }] } : c)); }}>+ Adicionar guia</button>
+                </div>
+              ))}
+              <button type="button" className="btn btn-primary" onClick={() => { setSalvo(false); setCombinacoes((cs) => [...cs, { nome: "", guias: [{ guia: "", cor: "" }] }]); }}>+ Nova combinação</button>
+            </>
           )}
 
           {SECOES.filter((s) => s.cat).map((s) => secao === s.id && (

@@ -29,6 +29,9 @@ export interface Bloco {
   sizes: { tipo: string; tamanho: string; qtd: number; valorUnit?: number }[];
   total: number;
   valorTotal?: number; // soma de qtd × valor_unit das linhas (espelho do cliente)
+  // Combinação de cores casada (nome do pedido = nome da combinação): as guias de fio GFx → cor.
+  // Preenchida só no PDF da tecelagem, quando o produto tem uma combinação com o nome desta cor.
+  guias?: { guia: string; cor: string }[];
 }
 
 export interface Classificacao {

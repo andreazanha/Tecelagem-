@@ -8,6 +8,7 @@ import {
   ehKit,
   agrupar,
   romaneioTassel,
+  norm,
   type ItemBase,
   type Catalogo,
 } from "../classificar";
@@ -78,6 +79,29 @@ async function coresParaPdf(
 }
 function coresUsadas(itens: { cor_grade?: string | null }[]): Set<string> {
   return new Set(itens.map((i) => (i.cor_grade || "").trim().toUpperCase()).filter(Boolean));
+}
+// Anexa aos blocos (SÓ do PDF da tecelagem) as guias de fio da combinação de cores casada:
+// combinação cujo NOME bate com a cor do pedido (bloco.cor). Ex.: pedido cor "Tropical" →
+// mostra GF4 Verde · GF5 Marrom · GF6 Amarelo. Casa por nome normalizado (acento/caixa).
+async function anexarCombinacoes(env: Env, blocos: { modelo: string; cor: string; guias?: { guia: string; cor: string }[] }[]): Promise<void> {
+  if (!blocos.length) return;
+  const { results } = await env.DB.prepare(
+    `SELECT mc.modelo_nome, mc.nome AS combo, g.guia, g.cor_nome
+       FROM modelo_combinacoes mc
+       JOIN modelo_combinacao_guias g ON g.combinacao_id = mc.id
+      ORDER BY mc.modelo_nome, mc.nome, g.ordem`
+  ).all<{ modelo_nome: string; combo: string; guia: string; cor_nome: string }>();
+  if (!results.length) return;
+  const map = new Map<string, { guia: string; cor: string }[]>();
+  for (const r of results) {
+    const k = norm(r.modelo_nome) + "::" + norm(r.combo);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k)!.push({ guia: r.guia, cor: r.cor_nome });
+  }
+  for (const b of blocos) {
+    const g = map.get(norm(b.modelo) + "::" + norm(b.cor));
+    if (g && g.length) b.guias = g;
+  }
 }
 
 type Job = { tipo: string; label: string; banda: "gold" | "green"; sub: string; blocos: ReturnType<typeof classificar>["kits"] };
@@ -213,6 +237,7 @@ pedidos.post("/previa", async (c) => {
     ...montarJobs(cl),
     ...buildPEJobs(itens.filter(ehKit), b.entregas || {}, kitOpt, modelos, baseNum),
   ];
+  for (const job of jobs) await anexarCombinacoes(c.env, job.blocos);
   const partes: Uint8Array[] = [];
   for (const job of jobs) {
     const codigo = codigoParte(baseNum, TIPOS_PDF[job.tipo]?.suf ?? "");
@@ -725,6 +750,7 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     await c.env.BUCKET.delete(`pedidos/${id}/${t}.pdf`);
   }
 
+  for (const job of jobs) await anexarCombinacoes(c.env, job.blocos);
   const arquivos: { tipo: string; label: string; url: string }[] = [];
   for (const job of jobs) {
     const codigo = codigoParte(baseNum, TIPOS_PDF[job.tipo]?.suf ?? "");

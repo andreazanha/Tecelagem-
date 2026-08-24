@@ -116,10 +116,13 @@ export interface ColecaoProduto {
   parte?: number;
   composicao?: string | null;
 }
+// Combinação de cores de um produto: o NOME é a cor do pedido; guias = GFx → cor.
+export interface Combinacao { nome: string; guias: { guia: string; cor: string }[] }
 export interface ModeloDetalhe extends Modelo {
   cores: string[];
   tamanhos: { tamanho: string; peso: number | null; tempo: number | null }[];
   materiais: ModeloMaterial[];
+  combinacoes?: Combinacao[];
 }
 
 export interface ChatMensagem {
@@ -884,7 +887,7 @@ export const api = {
   obterModelo: (nome: string) =>
     fetch(`/api/modelos/${encodeURIComponent(nome)}`).then((r) => j<ModeloDetalhe>(r)),
   salvarModelo: (
-    m: Modelo & { cores?: string[]; tamanhos?: { tamanho: string; peso: number | null; tempo: number | null }[]; materiais?: { tamanho: string; material_id: string; quantidade: number | null; unidade?: string | null; obs?: string | null; status?: string; fonte?: string; cor_produto?: string | null }[] },
+    m: Modelo & { cores?: string[]; tamanhos?: { tamanho: string; peso: number | null; tempo: number | null }[]; materiais?: { tamanho: string; material_id: string; quantidade: number | null; unidade?: string | null; obs?: string | null; status?: string; fonte?: string; cor_produto?: string | null }[]; combinacoes?: { nome: string; guias: { guia: string; cor: string }[] }[] },
     de?: string
   ) =>
     fetch("/api/modelos", {

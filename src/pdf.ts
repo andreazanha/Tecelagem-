@@ -210,7 +210,12 @@ export async function gerarPdfParte(
   const total = blocos.reduce((a, b) => a + b.total, 0);
 
   for (const b of blocos) {
-    const blocoH = 26 + 16 + b.sizes.length * 18 + 10;
+    // Linha das guias de fio (combinação de cores): "Guias: GF4 Verde · GF5 Marrom · GF6 Amarelo".
+    const guiaTxt = (b.guias && b.guias.length)
+      ? b.guias.map((g) => `${g.guia} ${g.cor}`).join("  ·  ")
+      : "";
+    const guiaH = guiaTxt ? 18 : 0;
+    const blocoH = 26 + guiaH + 16 + b.sizes.length * 18 + 10;
     if (y + blocoH > A4H - 70) {
       page = doc.addPage([A4W, A4H]);
       y = headerCont();
@@ -233,8 +238,20 @@ export async function gerarPdfParte(
     }
     T(b.cor, qx + 18, y + 17, 10.5, bld);
     TR(`Total: ${b.total} ${b.total === 1 ? "peça" : "peças"}`, ix + iw - 10, y + 17, 10, bld);
-    // cabeçalho tabela
     let ry = y + 26;
+    // Faixa das guias de fio (qual cor em cada guia) — só a tecelagem usa.
+    if (guiaTxt) {
+      R(ix, ry, iw, 18, hx("#eaf6ef"));
+      const lbl = "Guias:";
+      T(lbl, ix + 10, ry + 13, 8.5, bld, hx("#0a7a53"));
+      const lx = ix + 10 + bld.widthOfTextAtSize(lbl, 8.5) + 8;
+      const avail = ix + iw - 10 - lx;
+      let gt = guiaTxt;
+      while (gt.length > 1 && bld.widthOfTextAtSize(gt, 9) > avail) gt = gt.slice(0, -2);
+      T(gt === guiaTxt ? gt : gt + "…", lx, ry + 13, 9, bld, hx("#14532d"));
+      ry += 18;
+    }
+    // cabeçalho tabela
     T("PRODUTO / TAMANHO", ix + 10, ry + 13, 8, bld, MUTE);
     T("QUANTIDADE PEDIDA", qx + 14, ry + 13, 8, bld, MUTE);
     L(ix, ry + 18, ix + iw, LINEC, 1);

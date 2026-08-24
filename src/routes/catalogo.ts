@@ -28,6 +28,7 @@ modelos.post("/", async (c) => {
     cores?: string[]; // cores do produto (nomes)
     tamanhos?: { tamanho?: string; peso?: number; tempo?: number }[]; // tamanhos + fio(kg)/peça + tempo
     materiais?: { tamanho?: string; material_id?: string; quantidade?: number; unidade?: string; obs?: string; status?: string; fonte?: string; cor_produto?: string }[]; // ficha de consumo por tamanho
+    combinacoes?: { nome?: string; guias?: { guia?: string; cor?: string }[] }[]; // combinações de cores (nome = cor do pedido) + guias
   }>();
   const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
@@ -61,6 +62,7 @@ modelos.post("/", async (c) => {
     stmts.push(c.env.DB.prepare("UPDATE modelo_cores SET modelo_nome = ? WHERE modelo_nome = ?").bind(nome, de));
     stmts.push(c.env.DB.prepare("UPDATE modelo_tamanhos SET modelo_nome = ? WHERE modelo_nome = ?").bind(nome, de));
     stmts.push(c.env.DB.prepare("UPDATE modelo_materiais SET modelo_nome = ? WHERE modelo_nome = ?").bind(nome, de));
+    stmts.push(c.env.DB.prepare("UPDATE modelo_combinacoes SET modelo_nome = ? WHERE modelo_nome = ?").bind(nome, de));
   }
   // Cores do produto (substitui o conjunto quando enviado).
   const coresProd = Array.isArray(b.cores) ? [...new Set(b.cores.map((x) => (x || "").trim()).filter(Boolean))] : [];
@@ -112,6 +114,30 @@ modelos.post("/", async (c) => {
       ).bind(nome, tam, mid, q, un, obs, status, fonte, corProd));
     }
   }
+  // Combinações de cores (substitui o conjunto quando enviado). Cada combinação tem um NOME
+  // (= a cor do pedido) e uma lista de guias GFx → cor. Apaga guias e combinações antigas e
+  // reinsere; só grava combinação com nome e pelo menos uma guia preenchida.
+  if (Array.isArray(b.combinacoes)) {
+    stmts.push(c.env.DB.prepare("DELETE FROM modelo_combinacao_guias WHERE combinacao_id IN (SELECT id FROM modelo_combinacoes WHERE modelo_nome = ?)").bind(nome));
+    stmts.push(c.env.DB.prepare("DELETE FROM modelo_combinacoes WHERE modelo_nome = ?").bind(nome));
+    const vistas = new Set<string>();
+    for (const combo of b.combinacoes) {
+      const cnome = (combo?.nome || "").trim();
+      if (!cnome) continue;
+      const guias = (Array.isArray(combo?.guias) ? combo!.guias : [])
+        .map((g) => ({ guia: (g?.guia || "").trim(), cor: (g?.cor || "").trim() }))
+        .filter((g) => g.guia && g.cor);
+      if (!guias.length) continue;
+      const chave = cnome.toLowerCase();
+      if (vistas.has(chave)) continue; // não duplica combinação com mesmo nome
+      vistas.add(chave);
+      const cid = crypto.randomUUID();
+      stmts.push(c.env.DB.prepare("INSERT INTO modelo_combinacoes (id, modelo_nome, nome) VALUES (?, ?, ?)").bind(cid, nome, cnome));
+      guias.forEach((g, i) =>
+        stmts.push(c.env.DB.prepare("INSERT INTO modelo_combinacao_guias (combinacao_id, ordem, guia, cor_nome) VALUES (?, ?, ?, ?)").bind(cid, i, g.guia, g.cor))
+      );
+    }
+  }
   await c.env.DB.batch(stmts);
 
   return c.json(
@@ -141,7 +167,20 @@ modelos.get("/:nome", async (c) => {
        LEFT JOIN tipos_fio  tf ON tf.id = mm.material_id AND mm.fonte  = 'fio'
       WHERE mm.modelo_nome = ? ORDER BY categoria, mm.tamanho, nome`
   ).bind(nome).all();
-  return c.json({ ...m, cores: cores.map((x) => x.cor_nome), tamanhos, materiais });
+  // Combinações de cores + guias (uma linha por guia, ordenadas).
+  const { results: combRows } = await c.env.DB.prepare(
+    `SELECT mc.id, mc.nome, g.guia, g.cor_nome, g.ordem
+       FROM modelo_combinacoes mc
+       LEFT JOIN modelo_combinacao_guias g ON g.combinacao_id = mc.id
+      WHERE mc.modelo_nome = ? ORDER BY mc.nome, g.ordem`
+  ).bind(nome).all<{ id: string; nome: string; guia: string | null; cor_nome: string | null; ordem: number | null }>();
+  const combMap = new Map<string, { nome: string; guias: { guia: string; cor: string }[] }>();
+  for (const r of combRows) {
+    if (!combMap.has(r.id)) combMap.set(r.id, { nome: r.nome, guias: [] });
+    if (r.guia && r.cor_nome) combMap.get(r.id)!.guias.push({ guia: r.guia, cor: r.cor_nome });
+  }
+  const combinacoes = [...combMap.values()];
+  return c.json({ ...m, cores: cores.map((x) => x.cor_nome), tamanhos, materiais, combinacoes });
 });
 
 // IMPORTAÇÃO em lote (nome + código). Cria os modelos que faltam e atualiza o código dos
