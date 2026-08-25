@@ -2809,6 +2809,26 @@ export async function juntarDuplicadosAtend(env: Env): Promise<{ mesclados: numb
     });
     await mesclar(lista);
   }
+  // 3ª passada: PRIMEIRO NOME igual + um card com número FANTASMA (inválido, ex.: @lid de anúncio,
+  // ou id torto) → junta o fantasma no card do número REAL. Ex.: "Cida" (número torto) junta na
+  // "Cida (BONUCH) - COMERCIAL DE ROUPAS AGUIAR" (número real). TRAVA DE SEGURANÇA: só junta quando
+  // há EXATAMENTE UM número válido no grupo — se houver duas clientes de verdade com o mesmo primeiro
+  // nome, não dá pra saber de quem é o fantasma, então NÃO arrisca (nunca funde dois clientes reais).
+  const vivos2 = (results || []).filter((r) => !remap.has(String(r.id)));
+  const porPrimeiro = new Map<string, Record<string, string | null>[]>();
+  for (const r of vivos2) {
+    const nome = String(r.nome || r.contato_nome || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const primeiro = nome.split(" ")[0] || "";
+    if (primeiro.length < 3) continue;          // primeiro nome curto/genérico: não arrisca
+    (porPrimeiro.get(primeiro) || porPrimeiro.set(primeiro, []).get(primeiro)!).push(r);
+  }
+  for (const lista of porPrimeiro.values()) {
+    if (lista.length < 2) continue;
+    const validos = lista.filter((x) => telValido(String(x.telefone || "")));
+    const invalidos = lista.filter((x) => !telValido(String(x.telefone || "")));
+    if (validos.length !== 1 || invalidos.length < 1) continue;  // ambíguo (0 ou 2+ válidos) ou nada a juntar → pula
+    await mesclar([validos[0], ...invalidos]);   // canônica = o único número real; junta os fantasmas nele
+  }
   // 4) Conserta as listas de config (lembretes/silenciados/agendamentos) que apontavam pros ids apagados.
   if (remap.size) {
     const cfg = await lerConfig(env);
