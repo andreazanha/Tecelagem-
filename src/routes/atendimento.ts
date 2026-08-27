@@ -788,7 +788,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Aguardando humano) pra ninguém esquecer que a cliente está esperando resposta.
   // Exceção: "Montando pedido" e "Orçando" (aguardando-setor) são trabalho em andamento — o card
   // NÃO sai dessas colunas só porque a cliente escreveu (ele continua lá, mas piscando c/ msg nova).
-  await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now'), coluna_manual = CASE WHEN coluna_manual IN ('montando-pedido','aguardando-setor','em-atendimento') THEN coluna_manual ELSE NULL END WHERE id = ?").bind(conv.id).run();
+  await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now'), coluna_manual = CASE WHEN coluna_manual IN ('montando-pedido','aguardando-setor','efetuou-pedido','em-atendimento') THEN coluna_manual ELSE NULL END WHERE id = ?").bind(conv.id).run();
 
   // Card estava estacionado em "Pendente" e o CLIENTE CHAMOU → vai direto pra "Aguardando
   // atendimento humano" (piscando), sem responsável fixo. (Essa é a única função da coluna Pendente.)
@@ -2762,7 +2762,7 @@ atendimento.get("/", async (c) => {
     // TRAVA DE TRABALHO: card posto À MÃO em "Montando pedido" ou "Orçando" fica CRAVADO ali —
     // nem agendamento de IA, nem mensagem nova do cliente, nem nenhuma outra regra tira do lugar.
     // Só sai quando o atendente mover à mão. (É trabalho em andamento; não pode "saltar" pra Triagem.)
-    if (manual === "montando-pedido" || manual === "aguardando-setor") coluna = manual;
+    if (manual === "montando-pedido" || manual === "aguardando-setor" || manual === "efetuou-pedido") coluna = manual;
     // SEMPRE TRAZER PRA TRIAGEM quando o cliente mandou mensagem nova e ninguém respondeu depois —
     // não importa onde o card esteja (arrastado à mão pra "finalizado", campanha, follow-up...).
     // Sem isto, o card ficava preso na coluna manual/finalizado e o cliente "sumia": só aparecia a
@@ -4196,7 +4196,7 @@ export async function fecharInativos24h(env: Env): Promise<number> {
         AND COALESCE(responsavel,'') <> ''
         AND COALESCE(origem,'') <> 'grupo'
         AND COALESCE(tipo,'') <> 'consumidor' AND COALESCE(lojista,1) <> 0
-        AND COALESCE(coluna_manual,'') NOT IN ('montando-pedido','aguardando-setor','pendente')
+        AND COALESCE(coluna_manual,'') NOT IN ('montando-pedido','aguardando-setor','efetuou-pedido','pendente')
         AND max(COALESCE(ultima_in_em,''), COALESCE(ultima_out_em,'')) <> ''
         AND max(COALESCE(ultima_in_em,''), COALESCE(ultima_out_em,'')) < datetime('now','-24 hours')
       ORDER BY atualizado_em ASC LIMIT 40`
