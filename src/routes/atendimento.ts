@@ -171,6 +171,13 @@ async function acharConversaPorTelefone(env: Env, tel: string): Promise<ConvRow 
   const nuc = nucleoTel(t);
   const { results } = await env.DB.prepare("SELECT * FROM atend_conversas WHERE telefone LIKE '%' || ? ORDER BY atualizado_em DESC").bind(core8).all<ConvRow>().catch(() => ({ results: [] as ConvRow[] }));
   for (const r of (results || [])) if (nucleoTel(String(r.telefone)) === nuc) return r;
+  // Fallback @lid: número protegido (id longo, 15+ díg, de anúncio/Instagram) que já está LIGADO a
+  // uma conversa real (coluna lid = "<esses dígitos>@lid"). Roteia a mensagem pra ela em vez de
+  // criar um card fantasma separado — evita o contato duplicar (ex.: a Cida).
+  if (t.length >= 14) {
+    const porLid = await env.DB.prepare("SELECT * FROM atend_conversas WHERE REPLACE(COALESCE(lid,''),'@lid','') = ? LIMIT 1").bind(t).first<ConvRow>().catch(() => null);
+    if (porLid) return porLid;
+  }
   return null;
 }
 
@@ -1294,9 +1301,15 @@ atendimento.post("/webhook", async (c) => {
   // Detecta grupo também por HEURÍSTICA: o "phone" do grupo é um id LONGO (bem maior que um
   // telefone), e/ou vem participantPhone (quem falou). Assim, se a Z-API parar de mandar o
   // flag isGroup, os grupos NÃO param de chegar.
-  const ehGrupo = b.isGroup === true || b.isGroupMessage === true
+  // @lid (contato de anúncio/Instagram, número protegido) tem id LONGO (15+ dígitos) igual a um
+  // grupo — mas NÃO é grupo. Se veio chatLid/senderLid (ou @lid no phone), trata como CONTATO, senão
+  // caía na heurística de "número longo = grupo" e virava uma conversa 'grupo' que nunca juntava.
+  const ehLid = String((b as { chatLid?: unknown }).chatLid ?? "").includes("@lid")
+    || String((b as { senderLid?: unknown }).senderLid ?? "").includes("@lid")
+    || String(b.phone ?? "").includes("@lid");
+  const ehGrupo = !ehLid && (b.isGroup === true || b.isGroupMessage === true
     || digitos(b.phone).length > 14
-    || (!!b.participantPhone && digitos(b.participantPhone as string) !== digitos(b.phone));
+    || (!!b.participantPhone && digitos(b.participantPhone as string) !== digitos(b.phone)));
   if (ehGrupo) {
     const okG = await registrarGrupo(c.env, new URL(c.req.url).origin, b);
     return c.json({ ok: okG, grupo: true });
@@ -2799,7 +2812,7 @@ atendimento.get("/", async (c) => {
 export async function juntarDuplicadosAtend(env: Env): Promise<{ mesclados: number; removidos: number }> {
   const { results } = await env.DB.prepare(
     `SELECT id, telefone, criado_em, atualizado_em, estado, cliente_id, nome, cnpj, cidade, uf, contato_nome, card_id, responsavel, tipo, representante, pedido_id, ultima_in_em, ultima_out_em, encerrado_em
-       FROM atend_conversas WHERE COALESCE(origem,'') <> 'grupo' AND COALESCE(estado,'') <> 'grupo'`
+       FROM atend_conversas WHERE COALESCE(estado,'') <> 'grupo'`
   ).all<Record<string, string | null>>().catch(() => ({ results: [] as Record<string, string | null>[] }));
   const grupos = new Map<string, Record<string, string | null>[]>();
   for (const r of (results || [])) {
