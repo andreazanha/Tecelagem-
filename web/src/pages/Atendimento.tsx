@@ -1251,12 +1251,6 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
             {colunas.filter((col) => col.id !== c.coluna).map((col) => <option key={col.id} value={col.id}>{col.label}</option>)}
           </select>
         )}
-        {/* Atalho: cliente COMPROU → manda o card direto pra "Efetuou pedido" (sem arrastar). */}
-        {onMover && c.coluna !== "efetuou-pedido" && (
-          <button className="at-badge" style={{ background: "#059669", color: "#fff", border: "none", cursor: "pointer", fontWeight: 700 }}
-            title="Cliente comprou — mover o card pra 'Efetuou pedido'"
-            onClick={(e) => { e.stopPropagation(); onMover("efetuou-pedido"); }} onPointerDown={(e) => e.stopPropagation()}>🛒 Comprou</button>
-        )}
       </div>
     </div>
   );
@@ -1951,6 +1945,12 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 </div>
               )}
             </div>
+            {/* Cliente COMPROU → move a conversa pra coluna "Efetuou pedido" (só aparece com a conversa aberta). */}
+            {d && d.coluna !== "efetuou-pedido" && (
+              <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, fontWeight: 700, borderColor: "#059669", background: "#059669", color: "#fff" }} disabled={busy} onClick={() => moverColuna("efetuou-pedido")} title="Cliente comprou — move o card pra 'Efetuou pedido'">
+                🛒 Comprou (mover pra Efetuou pedido)
+              </button>
+            )}
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, fontWeight: 700, borderColor: encerrado ? "#a7f3d0" : "#1f7a53", background: encerrado ? "#ecfdf5" : "#1f7a53", color: encerrado ? "#065f46" : "#fff" }} disabled={busy} onClick={encerrar} title="Marca o atendimento como resolvido (para de piscar). NÃO envia nada ao cliente.">
               {encerrado ? "✅ Encerrado — reabrir" : "✅ Encerrar atendimento"}
             </button>
