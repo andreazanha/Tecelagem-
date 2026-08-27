@@ -1144,6 +1144,8 @@ body.dark .fx-alertbar { background: #2a2410; border-color: #5c4a12; color: #fcd
 .fx-board.fx-fix { height: calc(100dvh - 210px); max-height: none; overflow-x: auto; overflow-y: hidden; align-items: stretch; }
 .fx-col { flex: 0 0 366px; max-width: 366px; background: #eef1f6; border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-height: calc(100dvh - 260px); display: flex; flex-direction: column; }
 .fx-board.at-board .fx-col, .fx-board.fx-fix .fx-col { height: 100%; min-height: 0; }
+/* Atendimento: card (conversa fechada) mais ESTREITO que no Funil — cabe mais coluna na tela. */
+.fx-board.at-board .fx-col { flex-basis: 300px; max-width: 300px; padding: 8px; }
 body.dark .fx-col { background: #111826; border-color: #243044; }
 /* Cabeçalho da coluna fica fixo; só o corpo (cards) rola. */
 /* No Funil quem rola é o quadro (overflow visível, cabeçalho sticky). No Atendimento
