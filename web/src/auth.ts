@@ -47,7 +47,15 @@ export function getUser(): Usuario | null {
 }
 export function setUser(u: Usuario | null) {
   if (u) localStorage.setItem("usuario", JSON.stringify(u));
-  else localStorage.removeItem("usuario");
+  else { localStorage.removeItem("usuario"); localStorage.removeItem("token"); }
+}
+// Token de sessão (crachá): o servidor confere em toda chamada sensível pra saber quem é a
+// pessoa, sem confiar no navegador. Guardado no login; enviado no cabeçalho Authorization.
+export function getToken(): string | null {
+  try { return localStorage.getItem("token"); } catch { return null; }
+}
+export function setToken(t: string | null) {
+  try { if (t) localStorage.setItem("token", t); else localStorage.removeItem("token"); } catch { /* ok */ }
 }
 export function pode(u: Usuario | null, key: string): boolean {
   if (!u) return false;

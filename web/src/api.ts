@@ -1,10 +1,17 @@
-import { getUser } from "./auth";
+import { getUser, getToken, setToken } from "./auth";
 // Nome do usuário logado (para auditoria: quem gerou / quem deu retorno).
 const quemSou = () => getUser()?.nome || undefined;
 
+// Cabeçalho do crachá (token de sessão): vai em TODA chamada; o servidor usa pra saber quem é a
+// pessoa com segurança. Sem token (não logado) manda vazio — o servidor então nega o que é sensível.
+function authHeaders(): Record<string, string> {
+  const t = getToken();
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
 // Atalho para POST com corpo JSON (usado nas rotas de produtos/insumos).
 const jsonPost = (url: string, body: unknown) =>
-  fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) });
 
 export interface PedidoItem {
   id?: string;
@@ -586,12 +593,23 @@ export interface TvTecelagemData {
 function getT(url: string, ms = 20000): Promise<Response> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
-  return fetch(url, { signal: ctrl.signal })
+  return fetch(url, { signal: ctrl.signal, headers: authHeaders() })
     .catch((e) => { if ((e as Error)?.name === "AbortError") throw new Error("sem resposta (conexão lenta)"); throw e; })
     .finally(() => clearTimeout(t)) as Promise<Response>;
 }
 
+// Sessão expirada/inválida: o servidor responde 401 com {relogar:true}. Limpa o login e volta pra
+// tela de entrada (uma vez só). O 401 do próprio /login (senha errada) NÃO traz relogar, então não
+// entra em loop.
+function relogar() {
+  try { localStorage.removeItem("usuario"); localStorage.removeItem("token"); } catch { /* ok */ }
+  if (!location.pathname.startsWith("/login")) location.href = "/login";
+}
+
 async function j<T>(res: Response): Promise<T> {
+  if (res.status === 401) {
+    try { const b = await res.clone().json() as { relogar?: boolean }; if (b?.relogar) relogar(); } catch { /* ok */ }
+  }
   if (!res.ok) {
     let msg = `Erro ${res.status}`;
     try {
@@ -824,7 +842,7 @@ export const api = {
       if (signal.aborted) { cancelado = true; ctrl.abort(); }
       else signal.addEventListener("abort", () => { cancelado = true; ctrl.abort(); }, { once: true });
     }
-    return fetch(`/api/atendimento/${id}/enviar-arquivo`, { method: "POST", body: fd, signal: ctrl.signal })
+    return fetch(`/api/atendimento/${id}/enviar-arquivo`, { method: "POST", body: fd, signal: ctrl.signal, headers: authHeaders() })
       .then((r) => j<{ ok: boolean; enviado: boolean; motivo?: string; url: string }>(r))
       .catch((e) => {
         if ((e as Error)?.name === "AbortError") {
@@ -1176,7 +1194,9 @@ export const api = {
       body: JSON.stringify({ usuario, senha }),
     });
     if (r.status === 401) return { ok: false as const };
-    return j<{ ok: boolean; user: import("./auth").Usuario }>(r);
+    const data = await j<{ ok: boolean; token?: string; user: import("./auth").Usuario }>(r);
+    if (data.token) setToken(data.token);   // guarda o crachá pra mandar nas próximas chamadas
+    return data;
   },
   listarUsuarios: () =>
     fetch("/api/usuarios").then((r) => j<import("./auth").Usuario[]>(r)),

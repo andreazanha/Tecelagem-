@@ -2,6 +2,7 @@
 // roda a máquina de estados, persiste conversa+histórico e responde. O envio real
 // pela Z-API e a consulta SINTEGRA entram nos stubs marcados com TODO.
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { Env } from "../index";
 import { processar, colunaDe, ATEND_COLUNAS, BOAS_VINDAS, montarCatalogo, type Conversa, type Deps, type LojaParceira, type Saida, type EstadoAtend } from "../atendimento_bot";
 import { ehClienteInterno } from "./funil";
@@ -11,6 +12,48 @@ export const atendimento = new Hono<{ Bindings: Env }>();
 
 const uid = () => crypto.randomUUID();
 const digitos = (s: unknown) => String(s ?? "").replace(/\D/g, "");
+
+// ── SESSÃO / IDENTIDADE (barreira de acesso) ─────────────────────────────────────────
+// Lê o token de sessão (crachá) do cabeçalho, confere no servidor e devolve o usuário REAL —
+// sem confiar em nada que o navegador mande (usuario/gestor por query eram burláveis). As
+// permissões vêm frescas do cadastro (join usuarios), então revogar cargo vale já no próximo request.
+export interface UsuarioAuth { id: string; nome: string; usuario: string; admin: boolean; paginas: string[] }
+export async function usuarioLogado(env: Env, c: Context): Promise<UsuarioAuth | null> {
+  const auth = c.req.header("authorization") || "";
+  const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : (c.req.header("x-auth-token") || "").trim();
+  if (!token) return null;
+  const row = await env.DB.prepare(
+    `SELECT u.id, u.nome, u.usuario, u.admin, u.paginas
+       FROM sessoes s JOIN usuarios u ON u.id = s.usuario_id
+      WHERE s.token = ? AND s.expira_em > datetime('now')`
+  ).bind(token).first<{ id: string; nome: string; usuario: string; admin: number; paginas: string }>().catch(() => null);
+  if (!row) return null;
+  let paginas: string[] = [];
+  try { paginas = JSON.parse(row.paginas || "[]"); } catch { paginas = []; }
+  return { id: row.id, nome: row.nome, usuario: row.usuario, admin: !!row.admin, paginas };
+}
+// Gestor de atendimento = admin OU tem a permissão "atendimento-gestor" (vê tudo). Os demais
+// atendentes só veem as conversas DELES + a fila de novos sem dono.
+export function ehGestorAtend(u: UsuarioAuth | null): boolean {
+  return !!u && (u.admin || u.paginas.includes("atendimento-gestor"));
+}
+// Pode abrir/responder ESTA conversa? Gestor: sempre. Atendente: só se for DELE (responsável) ou
+// ainda sem dono (fila). Impede abrir/responder conversa de outro atendente direto pela URL.
+async function podeVerConversa(env: Env, u: UsuarioAuth | null, convId: string): Promise<boolean> {
+  if (!u) return false;
+  if (ehGestorAtend(u)) return true;
+  const r = await env.DB.prepare("SELECT responsavel FROM atend_conversas WHERE id=?").bind(convId).first<{ responsavel: string | null }>().catch(() => null);
+  if (!r) return false;
+  const resp = String(r.responsavel || "").trim();
+  return resp === "" || resp === u.nome.trim();
+}
+// Atalho pros endpoints: valida o token e o acesso à conversa; devolve o usuário ou um erro pronto.
+async function guardConversa(c: Context, convId: string): Promise<{ u: UsuarioAuth } | { erro: Response }> {
+  const u = await usuarioLogado((c.env as Env), c);
+  if (!u) return { erro: c.json({ error: "sessao_invalida", relogar: true }, 401) };
+  if (!(await podeVerConversa((c.env as Env), u, convId))) return { erro: c.json({ error: "sem_acesso" }, 403) };
+  return { u };
+}
 
 // ── Config (chave/valor no banco) ────────────────────────────────────────────────
 async function lerConfig(env: Env): Promise<Record<string, string>> {
@@ -1744,6 +1787,8 @@ async function enviarMsgEncerramento(env: Env, id: string, autor: string) {
   return r;
 }
 atendimento.post("/:id/encerrar", async (c) => {
+  const gA = await guardConversa(c, c.req.param("id"));
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ autor?: string; reabrir?: boolean }>().catch(() => ({}) as Record<string, string>);
   const id = c.req.param("id");
   if (b.reabrir) {
@@ -1771,6 +1816,8 @@ atendimento.post("/:id/encerrar", async (c) => {
 atendimento.post("/:id/enviar-representante", async (c) => {
   const b = await c.req.json<{ rep_id?: string }>().catch(() => ({} as { rep_id?: string }));
   const id = c.req.param("id");
+  const g = await guardConversa(c, id);
+  if ("erro" in g) return g.erro;
   const conv = await c.env.DB.prepare("SELECT telefone, nome, contato_nome, cidade, uf, cnpj FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string; nome: string | null; contato_nome: string | null; cidade: string | null; uf: string | null; cnpj: string | null }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
   const rep = await c.env.DB.prepare("SELECT nome, whatsapp FROM representantes WHERE id=?").bind(String(b.rep_id ?? "")).first<{ nome: string; whatsapp: string | null }>().catch(() => null);
@@ -1835,6 +1882,8 @@ atendimento.get("/:id/foto-perfil", async (c) => {
 // Mover um card pra outra coluna (arrastar) — grava a coluna manual.
 atendimento.post("/:id/coluna", async (c) => {
   const id = c.req.param("id");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ coluna?: string }>().catch(() => ({}) as Record<string, string>);
   const coluna = String(b.coluna ?? "").trim() || null;
   await c.env.DB.prepare("UPDATE atend_conversas SET coluna_manual=?, atualizado_em=datetime('now') WHERE id=?").bind(coluna, id).run();
@@ -2654,9 +2703,13 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
 
 // ── BOARD (conversas por coluna) ──────────────────────────────────────────────────
 atendimento.get("/", async (c) => {
-  // Atendente (gestor≠1) vê só as conversas DELE + as não assumidas (fila). Gestor/admin vê tudo.
-  const usuario = String(c.req.query("usuario") ?? "").trim();
-  const gestor = c.req.query("gestor") === "1";
+  // Atendente (não-gestor) vê só as conversas DELE + as não assumidas (fila). Gestor/admin vê tudo.
+  // A identidade vem do TOKEN de sessão (servidor), NÃO do que o navegador manda — senão dava pra
+  // burlar passando gestor=1 ou o nome de outro. Sem token válido → 401 (o app manda relogar).
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  const gestor = ehGestorAtend(u);
+  const usuario = u.nome.trim();
   // Quem SÓ entrou no catálogo/prospecção (nunca mandou mensagem) não aparece na Caixa de
   // entrada — só entra no inbox quem realmente escreveu. (O lead segue rastreado no Funil.)
   // EXCEÇÃO: se tem mensagem AGENDADA (atend_agendamentos), a conversa PRECISA aparecer (no
@@ -2861,6 +2914,8 @@ atendimento.post("/cruzar-base", async (c) => c.json({ ok: true, ...(await cruza
 // Silencia/reativa uma conversa (grupo barulhento, etc.): o card NÃO pisca e não toca som/aviso.
 atendimento.post("/:id/silenciar", async (c) => {
   const id = c.req.param("id");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ on?: boolean }>().catch(() => ({} as { on?: boolean }));
   const cfg = await lerConfig(c.env);
   let arr: string[] = [];
@@ -2877,6 +2932,8 @@ atendimento.post("/:id/silenciar", async (c) => {
 // na config { conversaId: status }. Aparece como selo no card fechado e no painel da conversa.
 atendimento.post("/:id/status-cliente", async (c) => {
   const id = c.req.param("id");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ status?: string }>().catch(() => ({} as { status?: string }));
   const cfg = await lerConfig(c.env);
   let mapa: Record<string, string> = {};
@@ -2937,6 +2994,8 @@ atendimento.post("/consultar-cnpj", async (c) => {
 // Marca/desmarca um LEMBRETE no card (deixa o card pulsando pra não esquecer de falar com o lead).
 atendimento.post("/:id/lembrete", async (c) => {
   const id = c.req.param("id");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ on?: boolean }>().catch(() => ({} as { on?: boolean }));
   const cfg = await lerConfig(c.env);
   let arr: string[] = [];
@@ -2990,6 +3049,8 @@ function lerRemarket(cfg: Record<string, string>): Remarket[] {
 const MSG_REMARKET_PADRAO = "Oi {nome}! 😊 Passando aqui pra saber se posso te ajudar a fechar seu pedido. Temos novidades lindas saindo agora e consigo uma condição especial pra você. Quer dar uma olhada? 💛🧶";
 atendimento.post("/:id/agendar-ia", async (c) => {
   const id = c.req.param("id");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ quando?: number; cancelar?: boolean; mensagem?: string }>().catch(() => ({} as { quando?: number; cancelar?: boolean; mensagem?: string }));
   // Só um agendamento por conversa: apaga o anterior DESTA conversa (atômico — não mexe nos outros,
   // por isso agendar vários seguidos não se sobrescreve mais).
@@ -3090,6 +3151,8 @@ atendimento.post("/nova-conversa", async (c) => {
 // ── ANEXAR e ENVIAR um arquivo (imagem/documento) pro cliente ─────────────────────
 atendimento.post("/:id/enviar-arquivo", async (c) => {
   const id = c.req.param("id");
+  const g = await guardConversa(c, id);
+  if ("erro" in g) return g.erro;
   const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
   const form = await c.req.formData().catch(() => null);
@@ -3284,6 +3347,8 @@ atendimento.delete("/arquivos-rapidos/:aid", async (c) => {
 });
 atendimento.post("/:id/enviar-rapido", async (c) => {
   const id = c.req.param("id");
+  const g = await guardConversa(c, id);
+  if ("erro" in g) return g.erro;
   const b = await c.req.json<{ aid?: string; autor?: string }>().catch(() => ({} as { aid?: string; autor?: string }));
   const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
@@ -3311,6 +3376,8 @@ atendimento.post("/:id/enviar-rapido", async (c) => {
 // Enviar uma RESPOSTA PRONTA COM ANEXO: manda o arquivo (pela key salva) usando o texto como legenda.
 atendimento.post("/:id/enviar-resposta", async (c) => {
   const id = c.req.param("id");
+  const g = await guardConversa(c, id);
+  if ("erro" in g) return g.erro;
   const b = await c.req.json<{ arquivo_key?: string; arquivo_nome?: string; texto?: string; autor?: string }>().catch(() => ({} as { arquivo_key?: string; arquivo_nome?: string; texto?: string; autor?: string }));
   const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
@@ -3353,6 +3420,8 @@ atendimento.post("/:id/enviar-resposta", async (c) => {
 // ── ENVIAR o link do catálogo numa conversa (botão do atendente) ───────────────────
 atendimento.post("/:id/enviar-catalogo", async (c) => {
   const id = c.req.param("id");
+  const g = await guardConversa(c, id);
+  if ("erro" in g) return g.erro;
   const conv = await c.env.DB.prepare("SELECT id, telefone, uf FROM atend_conversas WHERE id=?").bind(id).first<{ id: string; telefone: string; uf: string | null }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
   const cfgAt = await lerConfig(c.env);
@@ -3384,21 +3453,27 @@ atendimento.get("/:id/catalogo-texto", async (c) => {
 // ── BUSCA GERAL: procura em TODAS as conversas (não só as que o quadro carregou), por
 // nome, loja, telefone, cidade ou CNPJ. Mostra em que coluna cada uma está e deixa abrir.
 atendimento.get("/buscar/tudo", async (c) => {
+  // Mesma barreira do quadro: sem token não busca; atendente comum só acha as DELE + as sem dono.
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
   const q = String(c.req.query("q") ?? "").trim().toLowerCase();
   if (q.length < 2) return c.json({ resultados: [] });
   const dig = q.replace(/\D/g, "");
   const like = `%${q}%`;
   const telLike = dig.length >= 3 ? `%${dig.slice(-8)}%` : "\x00";
   const cnpjLike = dig ? `%${dig}%` : "\x00";
+  const escopo = ehGestorAtend(u) ? "" : " AND (c.responsavel = ? OR c.responsavel IS NULL OR c.responsavel = '')";
+  const binds: string[] = [like, like, like, telLike, cnpjLike];
+  if (!ehGestorAtend(u)) binds.push(u.nome.trim());
   const { results } = await c.env.DB.prepare(
     `SELECT c.id, c.telefone, c.nome, c.contato_nome, c.cnpj, c.cidade, c.uf, c.estado, c.responsavel, c.ultima_in_em, c.ultima_out_em, c.encerrado_em, c.tipo, c.origem, c.atualizado_em,
         (SELECT texto FROM atend_mensagens m WHERE m.conversa_id=c.id AND m.tipo NOT IN ('nota','sistema') ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 1) AS ultima_msg
        FROM atend_conversas c
-      WHERE lower(COALESCE(c.nome,'')) LIKE ? OR lower(COALESCE(c.contato_nome,'')) LIKE ? OR lower(COALESCE(c.cidade,'')) LIKE ?
+      WHERE (lower(COALESCE(c.nome,'')) LIKE ? OR lower(COALESCE(c.contato_nome,'')) LIKE ? OR lower(COALESCE(c.cidade,'')) LIKE ?
          OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.telefone,''),'+',''),'-',''),' ',''),'(',''),')','') LIKE ?
-         OR REPLACE(REPLACE(REPLACE(COALESCE(c.cnpj,''),'.',''),'/',''),'-','') LIKE ?
+         OR REPLACE(REPLACE(REPLACE(COALESCE(c.cnpj,''),'.',''),'/',''),'-','') LIKE ?)${escopo}
       ORDER BY c.atualizado_em DESC LIMIT 40`
-  ).bind(like, like, like, telLike, cnpjLike).all<Record<string, unknown>>().catch(() => ({ results: [] as Record<string, unknown>[] }));
+  ).bind(...binds).all<Record<string, unknown>>().catch(() => ({ results: [] as Record<string, unknown>[] }));
   const resultados = (results || []).map((r) => ({
     id: String(r.id), telefone: String(r.telefone ?? ""), nome: (r.nome as string) ?? null, contato_nome: (r.contato_nome as string) ?? null,
     cnpj: (r.cnpj as string) ?? null, cidade: (r.cidade as string) ?? null, uf: (r.uf as string) ?? null,
@@ -3410,6 +3485,8 @@ atendimento.get("/buscar/tudo", async (c) => {
 
 // ── DETALHE (conversa + histórico) ─────────────────────────────────────────────────
 atendimento.get("/:id", async (c) => {
+  const g = await guardConversa(c, c.req.param("id"));
+  if ("erro" in g) return g.erro;
   const conv = await c.env.DB.prepare("SELECT * FROM atend_conversas WHERE id = ?").bind(c.req.param("id")).first<ConvRow>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
   // Só as ÚLTIMAS 250 mensagens: conversas antigas (ou floods) podem ter centenas
@@ -3451,6 +3528,8 @@ atendimento.get("/:id", async (c) => {
 
 // ── Atendente humano assume ─────────────────────────────────────────────────────────
 atendimento.post("/:id/assumir", async (c) => {
+  const gA = await guardConversa(c, c.req.param("id"));
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ responsavel?: string; pendente?: boolean }>().catch(() => ({}) as { responsavel?: string; pendente?: boolean });
   const resp = (b.responsavel || "").trim() || "Atendente";
   const id = c.req.param("id");
@@ -3474,6 +3553,8 @@ atendimento.post("/:id/assumir", async (c) => {
 // (Precisa da IA de atendimento LIGADA em Configurações; senão ninguém responde.)
 atendimento.post("/:id/ia-assumir", async (c) => {
   const id = c.req.param("id");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
   const conv = await c.env.DB.prepare("SELECT id, telefone FROM atend_conversas WHERE id=?").bind(id).first<{ id: string; telefone: string }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
   const cfg = await lerConfig(c.env);
@@ -3500,6 +3581,8 @@ atendimento.post("/:id/ia-assumir", async (c) => {
 // ── Sugestão de resposta por IA (o vendedor edita antes de enviar) ────────────────
 atendimento.post("/:id/sugerir", async (c) => {
   const id = c.req.param("id");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
   const conv = await c.env.DB.prepare("SELECT nome FROM atend_conversas WHERE id=?").bind(id).first<{ nome: string | null }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
   const { results } = await c.env.DB.prepare(
@@ -3524,6 +3607,8 @@ atendimento.post("/:id/sugerir", async (c) => {
 // ── Preencher/corrigir os "Dados coletados" à mão (quando a IA não pegou) ──────────
 atendimento.post("/:id/dados", async (c) => {
   const id = c.req.param("id");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ contato_nome?: string; nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown }>().catch(() => ({} as { contato_nome?: string; nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown }));
   const campos: string[] = [];
   const vals: (string | number | null)[] = [];
@@ -3545,6 +3630,8 @@ atendimento.post("/:id/dados", async (c) => {
 // ── Excluir mensagem: "para mim" (só some do CRM) ou "para todos" (apaga no WhatsApp) ──
 atendimento.post("/:id/mensagem/:msgId/excluir", async (c) => {
   const id = c.req.param("id"), msgId = c.req.param("msgId");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ paraTodos?: boolean }>().catch(() => ({}) as { paraTodos?: boolean });
   const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
@@ -3567,6 +3654,8 @@ atendimento.post("/:id/mensagem/:msgId/excluir", async (c) => {
 // Corrige no WhatsApp do cliente (via Z-API, até ~15 min) E no histórico do CRM.
 atendimento.post("/:id/mensagem/:msgId/editar", async (c) => {
   const id = c.req.param("id"), msgId = c.req.param("msgId");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ texto?: string }>().catch(() => ({}) as { texto?: string });
   const novo = String(b.texto || "").trim();
   if (!novo) return c.json({ error: "escreva o novo texto da mensagem" }, 400);
@@ -3588,6 +3677,8 @@ atendimento.post("/:id/mensagem/:msgId/editar", async (c) => {
 // pro número/conversa escolhido e registra o envio na conversa de destino.
 atendimento.post("/:id/mensagem/:msgId/encaminhar", async (c) => {
   const id = c.req.param("id"), msgId = c.req.param("msgId");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ telefone?: string; conversaId?: string }>().catch(() => ({} as { telefone?: string; conversaId?: string }));
   const m = await c.env.DB.prepare("SELECT tipo, texto, arquivo_url FROM atend_mensagens WHERE id=? AND conversa_id=?")
     .bind(msgId, id).first<{ tipo: string; texto: string | null; arquivo_url: string | null }>();
@@ -3618,6 +3709,8 @@ atendimento.post("/:id/mensagem/:msgId/encaminhar", async (c) => {
 });
 
 atendimento.post("/:id/nota", async (c) => {
+  const gA = await guardConversa(c, c.req.param("id"));
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ texto?: string; autor?: string }>().catch(() => ({}) as Record<string, string>);
   const texto = (b.texto || "").trim();
   if (!texto) return c.json({ error: "texto é obrigatório" }, 400);
@@ -3632,6 +3725,8 @@ atendimento.post("/:id/nota", async (c) => {
 
 // ── Opt-out: não enviar mensagens automáticas para este cliente ───────────────────
 atendimento.post("/:id/nao-perturbe", async (c) => {
+  const gA = await guardConversa(c, c.req.param("id"));
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ nao_perturbe?: boolean }>().catch(() => ({}) as Record<string, boolean>);
   await c.env.DB.prepare("UPDATE atend_conversas SET nao_perturbe=?, atualizado_em=datetime('now') WHERE id=?")
     .bind(b.nao_perturbe ? 1 : 0, c.req.param("id")).run();
@@ -3641,6 +3736,8 @@ atendimento.post("/:id/nao-perturbe", async (c) => {
 // ── Autorizar encaminhamento ao representante (aprovação da equipe) ────────────────
 // Nada vai pro cliente/representante automaticamente — só depois de alguém autorizar.
 atendimento.post("/:id/autorizar", async (c) => {
+  const gA = await guardConversa(c, c.req.param("id"));
+  if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ representante?: string }>().catch(() => ({}) as Record<string, string>);
   const id = c.req.param("id");
   const conv = await c.env.DB.prepare("SELECT telefone, representante FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string; representante: string | null }>();
@@ -3664,6 +3761,8 @@ atendimento.post("/:id/enviar", async (c) => {
   const texto = (b.texto || "").trim();
   if (!texto) return c.json({ error: "texto é obrigatório" }, 400);
   const id = c.req.param("id");
+  const g = await guardConversa(c, id);
+  if ("erro" in g) return g.erro;
   const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
   // Anti-duplicado (defesa no SERVIDOR): se a MESMA mensagem já saiu nesta conversa nos últimos ~6s,

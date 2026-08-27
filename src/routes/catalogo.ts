@@ -721,8 +721,15 @@ usuarios.post("/login", async (c) => {
     .bind(usuario)
     .first<{ id: string; nome: string; usuario: string; senha: string; admin: number; paginas: string }>();
   if (!row || row.senha !== (b.senha || "")) return c.json({ ok: false }, 401);
+  // Cria a SESSÃO (crachá): token aleatório guardado no servidor, válido por 30 dias. É esse token
+  // que o servidor confere depois pra saber, com segurança, quem é a pessoa (sem confiar no navegador).
+  const token = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, "");
+  await c.env.DB.prepare("INSERT INTO sessoes (token, usuario_id, expira_em) VALUES (?, ?, datetime('now','+30 days'))").bind(token, row.id).run();
+  // Aproveita pra limpar sessões vencidas (higiene, não trava o login se falhar).
+  await c.env.DB.prepare("DELETE FROM sessoes WHERE expira_em < datetime('now')").run().catch(() => {});
   return c.json({
     ok: true,
+    token,
     user: { id: row.id, nome: row.nome, usuario: row.usuario, admin: !!row.admin, paginas: JSON.parse(row.paginas || "[]") },
   });
 });
