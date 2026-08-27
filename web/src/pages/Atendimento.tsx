@@ -1234,7 +1234,6 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
             title={urgente ? "Parado — vai encerrar sozinho em breve (24h sem conversa). Responda ou finalize." : "Atendimento parado — responda ou finalize a conversa."}>⏳ parado {h >= 24 ? "+24h" : h + "h"}{urgente ? " · fecha logo" : ""}</span>;
         })()}
         {c.funil_etapa && <span className="at-badge" style={{ background: "#ecfdf5", color: "#047857" }} title="Etapa no funil de vendas">🎯 {etapaLabel(c.funil_etapa)}</span>}
-        {c.interessado === 1 && <span className="at-badge" style={{ background: "#fee2e2", color: "#b91c1c" }} title="Demonstrou interesse comercial">🔥 Interessado</span>}
         {c.representante && <span className="at-badge" style={{ background: "#eef2ff", color: "#4338ca" }} title={c.autorizado === 0 ? "Representante sugerido" : "Representante"}>🧑‍💼 {c.representante}</span>}
         {!!c.silenciado && <span className="at-badge" style={{ background: "#f1f5f9", color: "#475569" }} title="Não pisca (mas você continua sendo avisado com som). Grupo fica sem som.">🔕</span>}
         {c.agendado_ia ? (c.agendado_enviado
