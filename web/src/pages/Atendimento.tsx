@@ -1834,14 +1834,6 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
               </button>
             )}
             {d?.representante && d?.autorizado !== 0 && <div className="at-row"><span>Representante</span><b>🧑‍💼 {d.representante}</b></div>}
-            {d && d.interesses && d.interesses.length > 0 && (
-              <div style={{ marginTop: 8 }}>
-                <div className="at-row" style={{ borderBottom: 0, paddingBottom: 2 }}><span>🔥 Interesse</span><b></b></div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {d.interesses.map((t) => <span key={t} className="at-chip" style={{ background: "#fee2e2", color: "#b91c1c", fontSize: 11.5 }}>{t}</span>)}
-                </div>
-              </div>
-            )}
 
             {d?.autorizado === 0 && (
               <div style={{ marginTop: 10, padding: "10px 11px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" }}>
