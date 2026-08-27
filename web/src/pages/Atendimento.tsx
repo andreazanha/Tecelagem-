@@ -1945,12 +1945,6 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 </div>
               )}
             </div>
-            {/* Cliente COMPROU → move a conversa pra coluna "Efetuou pedido" (só aparece com a conversa aberta). */}
-            {d && d.coluna !== "efetuou-pedido" && (
-              <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, fontWeight: 700, borderColor: "#059669", background: "#059669", color: "#fff" }} disabled={busy} onClick={() => moverColuna("efetuou-pedido")} title="Cliente comprou — move o card pra 'Efetuou pedido'">
-                🛒 Comprou (mover pra Efetuou pedido)
-              </button>
-            )}
             <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, fontWeight: 700, borderColor: encerrado ? "#a7f3d0" : "#1f7a53", background: encerrado ? "#ecfdf5" : "#1f7a53", color: encerrado ? "#065f46" : "#fff" }} disabled={busy} onClick={encerrar} title="Marca o atendimento como resolvido (para de piscar). NÃO envia nada ao cliente.">
               {encerrado ? "✅ Encerrado — reabrir" : "✅ Encerrar atendimento"}
             </button>
@@ -2086,6 +2080,12 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 </div>
                 <textarea ref={inputRef} rows={1} placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
                 {gravando && <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#ef4444", fontWeight: 800, fontSize: 13, fontVariantNumeric: "tabular-nums", flex: "0 0 auto" }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", animation: "atpulse 1s ease-in-out infinite" }} />{mmss(gravSeg)}</span>}
+                {/* Cliente COMPROU → move a conversa pra "Efetuou pedido" (botão ao lado do microfone). */}
+                {d && d.coluna !== "efetuou-pedido" && !gravando && (
+                  <button className="at-send" style={{ background: "#059669", flex: "0 0 auto" }} disabled={busy} onClick={() => moverColuna("efetuou-pedido")} title="Cliente comprou — mover pra 'Efetuou pedido'">
+                    <span style={{ fontSize: 18 }}>🛒</span>
+                  </button>
+                )}
                 {/* Direita: digitando → enviar (➤); vazio → gravar áudio (🎤), como no WhatsApp. */}
                 {texto.trim() && !gravando
                   ? <button className="at-send" disabled={busy} onClick={enviar} title="Enviar"><svg viewBox="0 0 24 24" width="21" height="21" fill="#fff"><path d="M3 20.5l18.5-8.5L3 3.5v6.6l12 1.9-12 1.9z"/></svg></button>
