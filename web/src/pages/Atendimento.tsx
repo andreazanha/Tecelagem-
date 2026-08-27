@@ -1251,6 +1251,12 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
             {colunas.filter((col) => col.id !== c.coluna).map((col) => <option key={col.id} value={col.id}>{col.label}</option>)}
           </select>
         )}
+        {/* Atalho: cliente COMPROU → manda o card direto pra "Efetuou pedido" (sem arrastar). */}
+        {onMover && c.coluna !== "efetuou-pedido" && (
+          <button className="at-badge" style={{ background: "#059669", color: "#fff", border: "none", cursor: "pointer", fontWeight: 700 }}
+            title="Cliente comprou — mover o card pra 'Efetuou pedido'"
+            onClick={(e) => { e.stopPropagation(); onMover("efetuou-pedido"); }} onPointerDown={(e) => e.stopPropagation()}>🛒 Comprou</button>
+        )}
       </div>
     </div>
   );
