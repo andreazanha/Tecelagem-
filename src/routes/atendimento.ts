@@ -3622,7 +3622,7 @@ atendimento.post("/:id/dados", async (c) => {
   const id = c.req.param("id");
   const gA = await guardConversa(c, id);
   if ("erro" in gA) return gA.erro;
-  const b = await c.req.json<{ contato_nome?: string; nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown }>().catch(() => ({} as { contato_nome?: string; nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown }));
+  const b = await c.req.json<{ contato_nome?: string; nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown; representante?: string }>().catch(() => ({} as { contato_nome?: string; nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown; representante?: string }));
   const campos: string[] = [];
   const vals: (string | number | null)[] = [];
   const setTxt = (col: string, v: unknown) => { if (v !== undefined) { campos.push(`${col}=?`); const s = String(v ?? "").trim(); vals.push(s || null); } };
@@ -3630,6 +3630,7 @@ atendimento.post("/:id/dados", async (c) => {
   setTxt("nome", b.nome);
   setTxt("cnpj", b.cnpj);
   setTxt("cidade", b.cidade);
+  setTxt("representante", b.representante);   // trocar o representante da conversa (à mão)
   if (b.uf !== undefined) { campos.push("uf=?"); vals.push(b.uf ? String(b.uf).trim().toUpperCase().slice(0, 2) : null); }
   if (b.setor !== undefined) { campos.push("setor=?"); vals.push(setorDe(b.setor) || null); }
   if (b.lojista !== undefined) { campos.push("lojista=?"); vals.push(b.lojista === "" || b.lojista == null ? null : (b.lojista === "1" || b.lojista === 1 || b.lojista === true ? 1 : 0)); }

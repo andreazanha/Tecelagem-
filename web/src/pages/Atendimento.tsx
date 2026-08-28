@@ -1833,7 +1833,17 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 {d.lojista === 1 ? "🏪 É lojista ✓ (desmarcar)" : "🏪 Marcar como lojista"}
               </button>
             )}
-            {d?.representante && d?.autorizado !== 0 && <div className="at-row"><span>Representante</span><b>🧑‍💼 {d.representante}</b></div>}
+            {d && d.autorizado !== 0 && (
+              <div className="at-row"><span>🧑‍💼 Representante</span>
+                <select value={d.representante || ""} disabled={busy}
+                  onChange={async (e) => { const v = e.target.value; setBusy(true); try { await api.atendSalvarDados(id, { representante: v }); carregar(); onMudou(); } finally { setBusy(false); } }}
+                  style={{ maxWidth: 180, fontSize: 12.5, fontWeight: 700 }} title="Trocar o representante desta conversa">
+                  <option value="">— sem representante —</option>
+                  {reps.map((r) => <option key={r.id} value={r.nome}>{r.nome}</option>)}
+                  {d.representante && !reps.some((r) => r.nome === d.representante) && <option value={d.representante}>{d.representante}</option>}
+                </select>
+              </div>
+            )}
 
             {d?.autorizado === 0 && (
               <div style={{ marginTop: 10, padding: "10px 11px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" }}>
