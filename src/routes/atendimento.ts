@@ -1899,7 +1899,14 @@ atendimento.post("/:id/coluna", async (c) => {
   if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ coluna?: string }>().catch(() => ({}) as Record<string, string>);
   const coluna = String(b.coluna ?? "").trim() || null;
-  await c.env.DB.prepare("UPDATE atend_conversas SET coluna_manual=?, atualizado_em=datetime('now') WHERE id=?").bind(coluna, id).run();
+  // Mover À MÃO pra "Finalizado" = ENCERRAR de verdade (marca encerrado_em). Sem isto, a regra que
+  // traz "cliente esperando" de volta pra Triagem atropelava e o card não ficava em Finalizado.
+  // (Não manda despedida — é só organização; o botão "Encerrar" é que avisa o cliente.)
+  // Mover pra QUALQUER OUTRA coluna reabre (limpa encerrado_em), pra o card voltar a ficar ativo lá.
+  const finalizar = coluna === "finalizado" ? 1 : 0;
+  await c.env.DB.prepare(
+    "UPDATE atend_conversas SET coluna_manual=?, encerrado_em = CASE WHEN ?=1 THEN datetime('now') ELSE NULL END, atualizado_em=datetime('now') WHERE id=?"
+  ).bind(coluna, finalizar, id).run();
   // Mover à mão = o atendente decidiu a coluna. Tira o card da lista de "transferidos" (pendente de
   // pickup); senão a regra do transferido forçava o card de volta pra "Aguardando" e ele "voltava
   // sozinho" logo depois de você arrastar pra "Em atendimento". (Igual ao /enviar, que também limpa.)
