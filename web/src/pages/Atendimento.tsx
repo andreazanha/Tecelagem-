@@ -2203,7 +2203,8 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
   const [msg, setMsg] = useState("");
   useEffect(() => {
     const u = getUser();
-    api.atendBoard(u?.nome, ehGestorAtend()).then((b) => setContatos(b.conversas.filter((c) => c.id !== convId && c.estado !== "grupo"))).catch(() => {});
+    // Traz TODOS os contatos e também os grupos (estado 'grupo') — assim dá pra encaminhar pra um grupo.
+    api.atendBoard(u?.nome, ehGestorAtend()).then((b) => setContatos(b.conversas.filter((c) => c.id !== convId))).catch(() => {});
   }, [convId]);
   async function enviar(dest: { telefone?: string; conversaId?: string }) {
     setBusy(true); setMsg("");
@@ -2211,9 +2212,9 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
     catch { setMsg("Não consegui encaminhar. Confira o número/conexão."); setBusy(false); }
   }
   const termo = busca.trim().toLowerCase();
-  const filtrados = (termo
-    ? contatos.filter((c) => [c.contato_nome, c.nome, c.telefone].some((x) => String(x ?? "").toLowerCase().includes(termo)))
-    : contatos).slice(0, 40);
+  const casa = (c: AtendConversa) => !termo || [c.contato_nome, c.nome, c.telefone].some((x) => String(x ?? "").toLowerCase().includes(termo));
+  const grupos = contatos.filter((c) => c.estado === "grupo" && casa(c)).slice(0, 20);
+  const filtrados = contatos.filter((c) => c.estado !== "grupo" && casa(c)).slice(0, 40);
   return (
     <div className="modal-bg" onClick={onFechar} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--card,#fff)", color: "var(--ink,#0f172a)", borderRadius: 14, width: "100%", maxWidth: 420, maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "hidden", border: "1px solid var(--line)" }}>
@@ -2231,9 +2232,28 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
           </div>
         </div>
         <div style={{ padding: "10px 14px 6px" }}>
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔎 Buscar contato pelo nome ou número…" style={{ width: "100%", fontSize: 13, padding: "7px 8px", borderRadius: 8, border: "1px solid var(--line)" }} />
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔎 Buscar grupo ou contato pelo nome/número…" style={{ width: "100%", fontSize: 13, padding: "7px 8px", borderRadius: 8, border: "1px solid var(--line)" }} />
         </div>
         <div style={{ overflowY: "auto", padding: "0 8px 10px" }}>
+          {grupos.length > 0 && (
+            <>
+              <div style={{ padding: "6px 10px 2px", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>👥 Grupos</div>
+              {grupos.map((c) => {
+                const nm = c.nome || c.contato_nome || "Grupo";
+                return (
+                  <button key={c.id} disabled={busy} onClick={() => enviar({ conversaId: c.id })}
+                    style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "8px 10px", background: "transparent", border: 0, borderRadius: 8, cursor: "pointer", color: "inherit" }}>
+                    <span className="conv-av" style={{ width: 30, height: 30, fontSize: 14, background: "#dcfce7", color: "#166534" }}>👥</span>
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: "block", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nm}</span>
+                      <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)" }}>Grupo do WhatsApp</span>
+                    </span>
+                  </button>
+                );
+              })}
+              {filtrados.length > 0 && <div style={{ padding: "8px 10px 2px", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>👤 Contatos</div>}
+            </>
+          )}
           {filtrados.map((c) => {
             const nm = c.contato_nome || c.nome || telBonito(c.telefone);
             return (
@@ -2247,7 +2267,7 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
               </button>
             );
           })}
-          {filtrados.length === 0 && <div style={{ padding: 12, fontSize: 12.5, color: "var(--muted)" }}>Nenhum contato encontrado.</div>}
+          {filtrados.length === 0 && grupos.length === 0 && <div style={{ padding: 12, fontSize: 12.5, color: "var(--muted)" }}>Nenhum grupo ou contato encontrado.</div>}
         </div>
       </div>
     </div>
