@@ -680,10 +680,10 @@ usuarios.get("/", async (c) => {
   // Inclui a senha: o cadastro é só do admin e as senhas ficam em texto, então o
   // gestor consegue conferir a senha que definiu para cada usuário.
   const { results } = await c.env.DB.prepare(
-    "SELECT id, nome, usuario, senha, admin, paginas FROM usuarios ORDER BY nome"
-  ).all<{ id: string; nome: string; usuario: string; senha: string; admin: number; paginas: string }>();
+    "SELECT id, nome, usuario, senha, admin, paginas, COALESCE(bloqueado,0) AS bloqueado FROM usuarios ORDER BY nome"
+  ).all<{ id: string; nome: string; usuario: string; senha: string; admin: number; paginas: string; bloqueado: number }>();
   return c.json(
-    results.map((u) => ({ id: u.id, nome: u.nome, usuario: u.usuario, senha: u.senha, admin: !!u.admin, paginas: JSON.parse(u.paginas || "[]") }))
+    results.map((u) => ({ id: u.id, nome: u.nome, usuario: u.usuario, senha: u.senha, admin: !!u.admin, paginas: JSON.parse(u.paginas || "[]"), bloqueado: !!u.bloqueado }))
   );
 });
 
@@ -714,13 +714,25 @@ usuarios.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// Bloquear / desbloquear acesso (ex-funcionário). Bloquear também APAGA as sessões dele — assim ele
+// é deslogado NA HORA, não só no próximo login. O usuário 'admin' nunca pode ser bloqueado.
+usuarios.post("/:id/bloquear", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ bloqueado?: boolean }>().catch(() => ({}) as { bloqueado?: boolean });
+  const bloq = b.bloqueado ? 1 : 0;
+  await c.env.DB.prepare("UPDATE usuarios SET bloqueado=? WHERE id=? AND usuario <> 'admin'").bind(bloq, id).run();
+  if (bloq) await c.env.DB.prepare("DELETE FROM sessoes WHERE usuario_id=?").bind(id).run().catch(() => {}); // derruba a sessão ativa
+  return c.json({ ok: true, bloqueado: !!bloq });
+});
+
 usuarios.post("/login", async (c) => {
   const b = await c.req.json<{ usuario?: string; senha?: string }>().catch(() => ({}) as { usuario?: string; senha?: string });
   const usuario = (b.usuario || "").trim().toLowerCase();
-  const row = await c.env.DB.prepare("SELECT id, nome, usuario, senha, admin, paginas FROM usuarios WHERE usuario = ?")
+  const row = await c.env.DB.prepare("SELECT id, nome, usuario, senha, admin, paginas, COALESCE(bloqueado,0) AS bloqueado FROM usuarios WHERE usuario = ?")
     .bind(usuario)
-    .first<{ id: string; nome: string; usuario: string; senha: string; admin: number; paginas: string }>();
+    .first<{ id: string; nome: string; usuario: string; senha: string; admin: number; paginas: string; bloqueado: number }>();
   if (!row || row.senha !== (b.senha || "")) return c.json({ ok: false }, 401);
+  if (row.bloqueado) return c.json({ ok: false, bloqueado: true, erro: "Acesso bloqueado. Fale com o administrador." }, 403);
   // Cria a SESSÃO (crachá): token aleatório guardado no servidor, válido por 30 dias. É esse token
   // que o servidor confere depois pra saber, com segurança, quem é a pessoa (sem confiar no navegador).
   const token = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, "");

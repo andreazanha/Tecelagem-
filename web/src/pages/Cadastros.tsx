@@ -2906,6 +2906,12 @@ function UsuariosCadastro() {
     await api.removerUsuario(u.id);
     recarregar();
   }
+  async function bloquear(u: Usuario) {
+    if (u.usuario === "admin") return alert("O usuário admin não pode ser bloqueado.");
+    const vaiBloquear = !u.bloqueado;
+    if (vaiBloquear && !confirm(`Bloquear o acesso de ${u.nome}?\n\nEle é deslogado na hora e não consegue mais entrar (o cadastro continua salvo).`)) return;
+    try { await api.bloquearUsuario(u.id, vaiBloquear); recarregar(); } catch (e) { alert((e as Error).message); }
+  }
 
   return (
     <>
@@ -2965,7 +2971,7 @@ function UsuariosCadastro() {
           {itens.length === 0 && <tr><td colSpan={5} className="muted">Nenhum usuário ainda.</td></tr>}
           {itens.map((u) => (
             <tr key={u.id}>
-              <td data-label="Nome"><strong>{u.nome}</strong></td>
+              <td data-label="Nome"><strong>{u.nome}</strong>{u.bloqueado && <span className="chip" style={{ background: "#fee2e2", color: "#b91c1c", marginLeft: 6, fontSize: 11, fontWeight: 700 }}>🔒 bloqueado</span>}</td>
               <td data-label="Usuário">{u.usuario}</td>
               <td data-label="Senha">
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -2981,6 +2987,7 @@ function UsuariosCadastro() {
               <td data-label="Acesso">{u.admin ? "Admin (tudo)" : u.paginas.length ? u.paginas.length + " tela(s)" : "nenhuma"}</td>
               <td>
                 <button className="icon-btn" title="Editar" onClick={() => editar(u)}>✎</button>
+                {u.usuario !== "admin" && <button className="icon-btn" title={u.bloqueado ? "Desbloquear acesso" : "Bloquear acesso (desloga na hora)"} onClick={() => bloquear(u)}>{u.bloqueado ? "🔓" : "🔒"}</button>}
                 <button className="icon-btn" title="Remover" onClick={() => remover(u)}>✕</button>
               </td>
             </tr>

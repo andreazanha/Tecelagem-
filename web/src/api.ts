@@ -1208,6 +1208,8 @@ export const api = {
     }).then((r) => j<import("./auth").Usuario>(r)),
   removerUsuario: (id: string) =>
     fetch(`/api/usuarios/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  bloquearUsuario: (id: string, bloqueado: boolean) =>
+    jsonPost(`/api/usuarios/${id}/bloquear`, { bloqueado }).then((r) => j<{ ok: boolean; bloqueado: boolean }>(r)),
   validarOperador: async (id: string, senha: string) => {
     const r = await fetch("/api/operadores/validar", {
       method: "POST",

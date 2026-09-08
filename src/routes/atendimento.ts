@@ -25,7 +25,7 @@ export async function usuarioLogado(env: Env, c: Context): Promise<UsuarioAuth |
   const row = await env.DB.prepare(
     `SELECT u.id, u.nome, u.usuario, u.admin, u.paginas
        FROM sessoes s JOIN usuarios u ON u.id = s.usuario_id
-      WHERE s.token = ? AND s.expira_em > datetime('now')`
+      WHERE s.token = ? AND s.expira_em > datetime('now') AND COALESCE(u.bloqueado,0)=0`
   ).bind(token).first<{ id: string; nome: string; usuario: string; admin: number; paginas: string }>().catch(() => null);
   if (!row) return null;
   let paginas: string[] = [];

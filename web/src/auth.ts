@@ -5,6 +5,7 @@ export interface Usuario {
   nome: string;
   usuario: string;
   admin: boolean;
+  bloqueado?: boolean;
   paginas: string[];
   senha?: string; // só vem na listagem do cadastro (admin), pra o gestor conferir
 }
