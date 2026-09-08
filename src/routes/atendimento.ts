@@ -746,7 +746,7 @@ function ajustarCatalogoRegiao(texto: string, uf?: string | null, tel?: string |
 
 // ── Núcleo: recebe uma mensagem do cliente, roda o robô, responde e qualifica ────
 // Usado tanto pelo simulador (/entrada) quanto pelo webhook real da Z-API (/webhook).
-async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "", origin: string | null = null, zapId = "", arquivoUrl = "", soRegistrar = false, jaRegistrada = false) {
+async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "", origin: string | null = null, zapId = "", arquivoUrl = "", soRegistrar = false, jaRegistrada = false, respostaA = "") {
   const tel = digitos(telRaw);
   const texto = String(textoRaw ?? "");
   const contato = String(contatoNome ?? "").trim().slice(0, 80) || null;
@@ -799,7 +799,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   } catch { /* não bloqueia o recebimento */ }
   // jaRegistrada: a mensagem já está no histórico (ex.: a IA está reassumindo e respondendo
   // uma pergunta que o cliente já tinha mandado) → NÃO registra de novo, só reprocessa.
-  if (!jaRegistrada) await addMsg(env, conv.id, "in", "cliente", "texto", texto, { zapId: zapId || null, arquivoUrl: arquivoUrl || null });
+  if (!jaRegistrada) await addMsg(env, conv.id, "in", "cliente", "texto", texto, { zapId: zapId || null, arquivoUrl: arquivoUrl || null, responderTexto: respostaA || null });
   // Cliente mandou mensagem NOVA → "chamou de volta". Se o card estava ESTACIONADO numa
   // coluna à mão (coluna_manual), destrava: ele volta pro fluxo automático (Em atendimento /
   // Aguardando humano) pra ninguém esquecer que a cliente está esperando resposta.
@@ -1375,6 +1375,18 @@ atendimento.post("/webhook", async (c) => {
     const cl = String((b as { chatLid?: unknown }).chatLid ?? "").trim();
     if (cl.endsWith("@lid")) { const cv = await acharConversaPorTelefone(c.env, phone); if (cv) await c.env.DB.prepare("UPDATE atend_conversas SET lid=? WHERE id=? AND (lid IS NULL OR lid<>?)").bind(cl, cv.id, cl).run(); }
   } catch { /* ok */ }
+  // RESPOSTA/CITAÇÃO: quando o cliente RESPONDE ("marca") uma mensagem específica, a Z-API manda o
+  // id da mensagem citada. Buscamos o texto dela no nosso histórico pra mostrar o trecho citado na
+  // conversa do CRM (o mesmo balãozinho ↪ que aparece no WhatsApp). Se não achar, ignora sem erro.
+  let respostaA = "";
+  try {
+    const bb = b as Record<string, unknown>;
+    const refId = String(bb.referenceMessageId ?? bb.quotedMsgId ?? bb.stanzaId ?? (bb.message as { quotedMsgId?: unknown } | undefined)?.quotedMsgId ?? "").trim();
+    if (refId) {
+      const orig = await c.env.DB.prepare("SELECT texto, arquivo_url FROM atend_mensagens WHERE zap_id=? LIMIT 1").bind(refId).first<{ texto: string | null; arquivo_url: string | null }>().catch(() => null);
+      if (orig) respostaA = (String(orig.texto || "").trim() || (orig.arquivo_url ? "📎 arquivo" : "")).slice(0, 180);
+    }
+  } catch { /* não bloqueia o recebimento */ }
   let arquivoUrl = "";
   if (!texto.trim() && audio) {
     const audioSrc = audio.audioUrl || audio.url || "";
@@ -1385,7 +1397,7 @@ atendimento.post("/webhook", async (c) => {
     if (!texto.trim()) {
       // Sem transcrição: registra a conversa com o player (se baixou o áudio) pra o atendente ouvir.
       const label = arquivoUrl ? "🎤 (áudio)" : "🎤 (áudio — abra no WhatsApp)";
-      await receberMensagem(c.env, phone, label, "whatsapp", nomeContato, origin, zid, arquivoUrl, soRegistrar);
+      await receberMensagem(c.env, phone, label, "whatsapp", nomeContato, origin, zid, arquivoUrl, soRegistrar, false, respostaA);
       // Só pede "por escrito" se NÃO conseguimos nem baixar o áudio E o robô ainda está conduzindo.
       if (!arquivoUrl && !soRegistrar) await enviarWhatsapp(c.env, phone, { tipo: "texto", texto: "Oi! 😊 Recebi seu áudio, mas não consegui ouvir direitinho por aqui. Pode me mandar por *escrito*, por favor? Assim já te respondo! 💛" });
       return;
@@ -1434,12 +1446,12 @@ atendimento.post("/webhook", async (c) => {
     // Foto que não deu pra descrever e sem legenda: responde em vez de ignorar.
     if (img) {
       if (!soRegistrar) await enviarWhatsapp(c.env, phone, { tipo: "texto", texto: "Oi! 😊 Recebi sua foto! Me conta em uma frase o que você procura (produto, cor, tamanho) que eu já te ajudo? 💛" });
-      else await receberMensagem(c.env, phone, "📷 (foto)", "whatsapp", nomeContato, origin, String(b.messageId ?? ""), arquivoUrl, soRegistrar);
+      else await receberMensagem(c.env, phone, "📷 (foto)", "whatsapp", nomeContato, origin, String(b.messageId ?? ""), arquivoUrl, soRegistrar, false, respostaA);
       return c.json({ ignorado: "imagem-sem-descricao" });
     }
     return c.json({ ignorado: "sem-texto" });
   }
-  await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, origin, zid, arquivoUrl, soRegistrar);
+  await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, origin, zid, arquivoUrl, soRegistrar, false, respostaA);
   })();
   // waitUntil deixa o processamento seguir DEPOIS de já termos respondido 200 à Z-API.
   try { c.executionCtx.waitUntil(trabalho.catch(() => {})); } catch { await trabalho.catch(() => {}); }
