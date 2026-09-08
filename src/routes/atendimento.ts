@@ -1340,7 +1340,7 @@ atendimento.post("/webhook", async (c) => {
     }
     if (membro) {
       let txt = String((b.text as { message?: string } | undefined)?.message ?? (b.image as { caption?: string } | undefined)?.caption ?? "").trim();
-      if (!txt && b.audio) { const a = b.audio as { audioUrl?: string; url?: string }; txt = (await transcreverAudio(c.env, a.audioUrl || a.url || "").catch(() => "")) || "🎤 (áudio)"; }
+      if (!txt && b.audio) txt = "🎤 (áudio)";   // transcrição desligada (a pedido)
       if (!txt && b.image) txt = "📷 (foto)";
       if (!txt) txt = "(mensagem)";
       await c.env.DB.prepare("INSERT INTO chat_mensagens (id, canal, autor, texto) VALUES (?, ?, ?, ?)").bind(crypto.randomUUID(), "ext:" + membro.id, membro.nome, txt.slice(0, 2000)).run();
@@ -1368,10 +1368,9 @@ atendimento.post("/webhook", async (c) => {
   let arquivoUrl = "";
   if (!texto.trim() && audio) {
     const audioSrc = audio.audioUrl || audio.url || "";
-    // Transcrição E download são BEST-EFFORT: se QUALQUER um falhar (erro/timeout), NÃO pode perder a
-    // mensagem. Antes, um erro na transcrição estourava e o áudio sumia inteiro do CRM. Agora, mesmo
-    // sem transcrição, o áudio aparece com o player pra o atendente OUVIR.
-    try { texto = await transcreverAudio(c.env, audioSrc); } catch { texto = ""; }
+    // TRANSCRIÇÃO DESLIGADA (a pedido: errava muito). Não transcreve — só baixa o áudio e mostra o
+    // PLAYER pra o atendente OUVIR. Download é best-effort: se falhar, avisa pra mandar por escrito.
+    texto = "";
     try { arquivoUrl = await guardarMidiaExterna(c.env, origin, audioSrc, "ogg"); } catch { arquivoUrl = ""; }
     if (!texto.trim()) {
       // Sem transcrição: registra a conversa com o player (se baixou o áudio) pra o atendente ouvir.
