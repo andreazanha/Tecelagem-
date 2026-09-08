@@ -1292,6 +1292,12 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   // Anexo: primeiro mostra uma PRÉVIA (com legenda) e só envia ao confirmar.
   const [anexo, setAnexo] = useState<{ file: File; url: string; ehImg: boolean; ehAudio: boolean } | null>(null);
   const [legendaAnexo, setLegendaAnexo] = useState("");
+  const [recortando, setRecortando] = useState(false); // abre o recorte da imagem (igual ao WhatsApp)
+  // Troca a imagem anexada pela versão recortada (revoga a prévia antiga pra não vazar memória).
+  function aplicarRecorte(novo: File) {
+    setAnexo((a) => { if (a?.url) URL.revokeObjectURL(a.url); return { file: novo, url: URL.createObjectURL(novo), ehImg: true, ehAudio: false }; });
+    setRecortando(false);
+  }
   function escolherAnexo(file: File) {
     if (!file) return;
     // Confere o TAMANHO já na escolha (antes de tentar subir). Arquivo grande demais era
@@ -2003,10 +2009,14 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
+                {anexo.ehImg && <button className="btn btn-soft" disabled={busy} onClick={() => setRecortando(true)} title="Recortar a imagem antes de enviar">✂️ Recortar</button>}
                 <button className="btn btn-soft" onClick={cancelarAnexo}>Cancelar</button>
                 <button className="kbtn go" disabled={busy} onClick={confirmarAnexo}>{busy ? "Enviando…" : "📤 Enviar"}</button>
               </div>
             </div>
+          )}
+          {recortando && anexo?.ehImg && (
+            <RecortarImagemModal file={anexo.file} url={anexo.url} onCancelar={() => setRecortando(false)} onAplicar={aplicarRecorte} />
           )}
           {/* Lista de respostas prontas (abre acima do campo) */}
           {mostrarResp && humano && (
@@ -2192,6 +2202,93 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
       ), document.body)}
     </div>
   );
+}
+
+// ── Recortar imagem antes de enviar (igual ao WhatsApp) ───────────────────────────
+// Mostra o print em tela cheia com uma moldura que dá pra arrastar/redimensionar pelas
+// quatro pontas. Ao aplicar, corta de verdade num <canvas> e devolve um arquivo novo.
+function RecortarImagemModal({ file, url, onCancelar, onAplicar }: { file: File; url: string; onCancelar: () => void; onAplicar: (novo: File) => void }) {
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [disp, setDisp] = useState<{ w: number; h: number } | null>(null); // tamanho da imagem exibida (px na tela)
+  const [crop, setCrop] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  function aoCarregar() {
+    const img = imgRef.current; if (!img) return;
+    const w = img.clientWidth, h = img.clientHeight;
+    setDisp({ w, h });
+    const cw = w * 0.8, ch = h * 0.8; // moldura inicial: 80% central
+    setCrop({ x: (w - cw) / 2, y: (h - ch) / 2, w: cw, h: ch });
+  }
+  // Arrastar a moldura (mover) ou uma ponta (redimensionar). Usa listeners na janela pra
+  // seguir o dedo/mouse mesmo saindo de cima da moldura.
+  function arrastar(modo: string, e: RPointerEvent) {
+    e.preventDefault(); e.stopPropagation();
+    const orig = crop, tela = disp; if (!orig || !tela) return;
+    const x0 = e.clientX, y0 = e.clientY;
+    const mover = (ev: globalThis.PointerEvent) => {
+      const dx = ev.clientX - x0, dy = ev.clientY - y0;
+      let { x, y, w, h } = orig;
+      if (modo === "move") { x += dx; y += dy; }
+      else {
+        if (modo.includes("e")) w += dx;
+        if (modo.includes("s")) h += dy;
+        if (modo.includes("w")) { x += dx; w -= dx; }
+        if (modo.includes("n")) { y += dy; h -= dy; }
+      }
+      const MIN = 30;
+      if (w < MIN) { if (modo.includes("w")) x = orig.x + orig.w - MIN; w = MIN; }
+      if (h < MIN) { if (modo.includes("n")) y = orig.y + orig.h - MIN; h = MIN; }
+      if (x < 0) { if (modo === "move") x = 0; else { w += x; x = 0; } }
+      if (y < 0) { if (modo === "move") y = 0; else { h += y; y = 0; } }
+      if (x + w > tela.w) { if (modo === "move") x = tela.w - w; else w = tela.w - x; }
+      if (y + h > tela.h) { if (modo === "move") y = tela.h - h; else h = tela.h - y; }
+      setCrop({ x, y, w, h });
+    };
+    const soltar = () => { window.removeEventListener("pointermove", mover); window.removeEventListener("pointerup", soltar); };
+    window.addEventListener("pointermove", mover); window.addEventListener("pointerup", soltar);
+  }
+  async function aplicar() {
+    const img = imgRef.current; if (!img || !crop || !disp) return;
+    setBusy(true);
+    try {
+      const ex = img.naturalWidth / disp.w, ey = img.naturalHeight / disp.h; // tela → pixels reais
+      const sx = Math.max(0, Math.round(crop.x * ex)), sy = Math.max(0, Math.round(crop.y * ey));
+      const sw = Math.max(1, Math.round(crop.w * ex)), sh = Math.max(1, Math.round(crop.h * ey));
+      const canvas = document.createElement("canvas"); canvas.width = sw; canvas.height = sh;
+      const ctx = canvas.getContext("2d"); if (!ctx) { onCancelar(); return; }
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+      // PNG guarda a qualidade do print; JPEG/WebP mantêm o tipo original se já for foto.
+      const tipo = (file.type === "image/jpeg" || file.type === "image/webp") ? file.type : "image/png";
+      const blob: Blob | null = await new Promise((res) => canvas.toBlob((b) => res(b), tipo, 0.92));
+      if (!blob) { onCancelar(); return; }
+      const base = (file.name || "print").replace(/\.[^.]+$/, "");
+      const ext = tipo === "image/jpeg" ? "jpg" : tipo === "image/webp" ? "webp" : "png";
+      onAplicar(new File([blob], `${base}-recorte.${ext}`, { type: tipo }));
+    } catch { onCancelar(); } finally { setBusy(false); }
+  }
+  const alca = { position: "absolute" as const, width: 16, height: 16, background: "#fff", border: "2px solid #0a8", borderRadius: 3, touchAction: "none" as const };
+  return createPortal((
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.92)", zIndex: 100001, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16, gap: 12 }}>
+      <div style={{ color: "#fff", fontSize: 13, opacity: .85 }}>Arraste as pontas para recortar</div>
+      <div style={{ position: "relative", overflow: "hidden", lineHeight: 0, maxWidth: "94vw", maxHeight: "76vh" }}>
+        <img ref={imgRef} src={url} alt="recorte" onLoad={aoCarregar} draggable={false}
+          style={{ display: "block", maxWidth: "94vw", maxHeight: "76vh", userSelect: "none", touchAction: "none" }} />
+        {crop && (
+          <div onPointerDown={(e) => arrastar("move", e)}
+            style={{ position: "absolute", left: crop.x, top: crop.y, width: crop.w, height: crop.h, boxShadow: "0 0 0 9999px rgba(0,0,0,.55)", border: "1.5px solid #fff", cursor: "move", touchAction: "none" }}>
+            <div onPointerDown={(e) => arrastar("nw", e)} style={{ ...alca, left: -8, top: -8, cursor: "nwse-resize" }} />
+            <div onPointerDown={(e) => arrastar("ne", e)} style={{ ...alca, right: -8, top: -8, cursor: "nesw-resize" }} />
+            <div onPointerDown={(e) => arrastar("sw", e)} style={{ ...alca, left: -8, bottom: -8, cursor: "nesw-resize" }} />
+            <div onPointerDown={(e) => arrastar("se", e)} style={{ ...alca, right: -8, bottom: -8, cursor: "nwse-resize" }} />
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <button className="btn btn-soft" disabled={busy} onClick={onCancelar}>Cancelar</button>
+        <button className="kbtn go" disabled={busy} onClick={aplicar}>{busy ? "Recortando…" : "✂️ Recortar"}</button>
+      </div>
+    </div>
+  ), document.body);
 }
 
 // ── Encaminhar mensagem: escolhe um contato (busca) ou digita um número e reenvia ──

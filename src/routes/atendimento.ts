@@ -2490,7 +2490,7 @@ export function abParaBase64(buf: ArrayBuffer): string {
   for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
   return btoa(bin);
 }
-export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string; docData?: string; ehImagem: boolean; ehAudio?: boolean; ext: string; fileName: string; caption?: string }) {
+export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string; docData?: string; dataUri?: string; ehImagem: boolean; ehAudio?: boolean; ext: string; fileName: string; caption?: string }) {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
   const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
@@ -2510,7 +2510,7 @@ export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string
   const body: Record<string, string> = opts.ehAudio
     ? { phone: dest, audio: opts.url }
     : opts.ehImagem
-    ? { phone: dest, image: opts.url, caption: opts.caption || "" }
+    ? { phone: dest, image: opts.dataUri || opts.url, caption: opts.caption || "" }
     : ehVideo
     ? { phone: dest, video: opts.url, caption: opts.caption || "" }
     // Documento: manda EMBUTIDO (base64) quando disponível — não depende da Z-API baixar nossa
@@ -3233,10 +3233,15 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   // estoura o corpo da requisição. Imagem/áudio seguem por URL (já funcionam).
   let docData: string | undefined;
   try { if (!ehImagem && !ehAudio && bytes.byteLength <= 8 * 1024 * 1024) docData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { docData = undefined; }
+  // IMAGEM com legenda: manda a foto EMBUTIDA (base64) junto com a legenda no MESMO pedido — assim a
+  // legenda vai colada na imagem de forma garantida (por URL a Z-API às vezes entregava a foto SEM a
+  // legenda). Só quando há legenda e a imagem é pequena (prints/fotos); acima disso segue por URL.
+  let imgData: string | undefined;
+  try { if (ehImagem && legenda && bytes.byteLength <= 5 * 1024 * 1024) imgData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { imgData = undefined; }
   // Envia pro Z-API em BACKGROUND: a resposta volta NA HORA (o arquivo já está na conversa), sem
   // deixar o botão "Enviando…" travado.
   const enviarBg = (async () => {
-    const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
+    const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, dataUri: imgData, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
     if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgId).run();
     else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); // marca "⚠️ não entregue"
   })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); } catch { /* ok */ } });
