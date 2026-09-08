@@ -1624,13 +1624,30 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   }
   async function enviar() {
     if (!texto.trim() || enviandoRef.current) return; // trava anti-duplicado: Enter 2-3× rápido mandava a MESMA msg várias vezes
-    enviandoRef.current = true; setBusy(true);
+    const msg = texto.trim();
+    const respA = respondendo;
     // Manda em NOME do vendedor responsável (o cliente conhece ele). Só usa quem está logado
-    // quando ainda NÃO tem responsável (aí quem responde primeiro assume). Antes ia sempre como
-    // o usuário logado (ex.: Administrador), mesmo com o Pedro escolhido como responsável.
-    try { await api.atendEnviar(id, { texto: texto.trim(), autor: d?.responsavel || getUser()?.nome || "Atendente", responder_a: respondendo?.id }); setTexto(""); setRespondendo(null); carregar(); onMudou(); }
-    catch { alert("Não consegui enviar a mensagem agora. Verifique a conexão e tente de novo (seu texto continua no campo)."); }
-    finally { setBusy(false); enviandoRef.current = false; }
+    // quando ainda NÃO tem responsável (aí quem responde primeiro assume).
+    const autor = d?.responsavel || getUser()?.nome || "Atendente";
+    // OTIMISTA: LIMPA o campo e mostra a mensagem NA HORA; o envio vai por trás. Assim some o
+    // "delay ao apertar Enter" E não corta a mensagem seguinte (antes o campo só limpava depois do
+    // servidor responder — o texto novo que você já tinha digitado era apagado junto).
+    enviandoRef.current = true;
+    setTexto(""); setRespondendo(null);
+    const tmpId = "tmp-" + Date.now();
+    const agora = new Date().toISOString().slice(0, 19).replace("T", " ");
+    setD((cur) => cur ? { ...cur, mensagens: [...cur.mensagens, { id: tmpId, direcao: "out", autor, tipo: "texto", texto: msg, responder_texto: respA?.texto || null, status: "sending", criado_em: agora }] } : cur);
+    setTimeout(() => fim.current?.scrollIntoView({ behavior: "smooth" }), 30);
+    api.atendEnviar(id, { texto: msg, autor, responder_a: respA?.id })
+      .then(() => { carregar(); onMudou(); })
+      .catch(() => {
+        // Falhou: tira a mensagem otimista e devolve o texto (só se o campo ainda estiver vazio, pra
+        // não atropelar algo que a pessoa já começou a digitar).
+        setD((cur) => cur ? { ...cur, mensagens: cur.mensagens.filter((m) => m.id !== tmpId) } : cur);
+        setTexto((t) => t || msg); setRespondendo((r) => r || respA);
+        alert("Não consegui enviar a mensagem agora. Verifique a conexão e tente de novo (seu texto voltou pro campo).");
+      })
+      .finally(() => { enviandoRef.current = false; });
   }
   // Agendar mensagem: em vez de mandar agora, guarda pra enviar no dia/horário escolhido (mesmo
   // motor do "Chamar IA"). Se "mensagem" vazia, o sistema manda uma saudação da IA no horário.
