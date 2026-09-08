@@ -605,10 +605,15 @@ function relogar() {
   try { localStorage.removeItem("usuario"); localStorage.removeItem("token"); } catch { /* ok */ }
   if (!location.pathname.startsWith("/login")) location.href = "/login";
 }
+// Só desloga depois de DOIS 401 "sessão inválida" SEGUIDOS. Um 401 passageiro (soluço do banco,
+// upload pesado de imagem competindo por recurso) NÃO derruba o app — a próxima chamada (o quadro
+// recarrega a cada 4s) zera o contador. Antes, um único 401 já redirecionava pro login ("desconectou").
+let relogar401 = 0;
 
 async function j<T>(res: Response): Promise<T> {
+  if (res.ok) relogar401 = 0;
   if (res.status === 401) {
-    try { const b = await res.clone().json() as { relogar?: boolean }; if (b?.relogar) relogar(); } catch { /* ok */ }
+    try { const b = await res.clone().json() as { relogar?: boolean }; if (b?.relogar) { relogar401++; if (relogar401 >= 2) relogar(); } } catch { /* ok */ }
   }
   if (!res.ok) {
     let msg = `Erro ${res.status}`;
