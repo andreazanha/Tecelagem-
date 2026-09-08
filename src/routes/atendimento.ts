@@ -2776,7 +2776,12 @@ atendimento.get("/", async (c) => {
   // follow-up) mesmo sendo prospecção sem resposta — senão o card agendado "some" do quadro.
   // EXCEÇÃO 2: campanha marcada "Trazer pro quadro" (no_quadro=1) → mostra TODOS os contatos dela
   // (casados por telefone), mesmo sem resposta, pra você ver quem recebeu e acompanhar.
-  const cond: string[] = ["(COALESCE(c.origem,'') NOT IN ('catalogo','reativacao','campanha') OR c.ultima_in_em IS NOT NULL OR EXISTS (SELECT 1 FROM atend_agendamentos a WHERE a.conversa_id = c.id) OR EXISTS (SELECT 1 FROM atend_campanha_alvos ca JOIN atend_campanhas cc ON cc.id = ca.campanha_id WHERE cc.no_quadro = 1 AND ca.telefone = c.telefone))"];
+  // Um contato de campanha/reativação que já virou ATENDIMENTO DE VERDADE (a loja respondeu →
+  // estado 'atendimento-humano', ou alguém assumiu → tem responsável) TEM que aparecer, mesmo sem o
+  // cliente ter respondido ainda. Sem isto o card ficava "escondido" (só achava pela busca em TODAS as
+  // conversas) — era o caso do Felipe: respondido, em "Em atendimento", mas sumido do quadro. O disparo
+  // cru de campanha continua oculto (fica em 'ia-triagem'/'novo' e sem responsável) pra não lotar o quadro.
+  const cond: string[] = ["(COALESCE(c.origem,'') NOT IN ('catalogo','reativacao','campanha') OR c.ultima_in_em IS NOT NULL OR c.estado='atendimento-humano' OR COALESCE(c.responsavel,'')<>'' OR EXISTS (SELECT 1 FROM atend_agendamentos a WHERE a.conversa_id = c.id) OR EXISTS (SELECT 1 FROM atend_campanha_alvos ca JOIN atend_campanhas cc ON cc.id = ca.campanha_id WHERE cc.no_quadro = 1 AND ca.telefone = c.telefone))"];
   const binds: string[] = [];
   if (!gestor && usuario) { cond.push("(c.responsavel = ? OR c.responsavel IS NULL OR c.responsavel = '')"); binds.push(usuario); }
   const stmt = c.env.DB.prepare(
