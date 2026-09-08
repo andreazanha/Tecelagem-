@@ -797,6 +797,14 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       conv.cliente_id = cli.id; conv.nome = nome; conv.cnpj = cnpj; conv.cidade = cidade; conv.uf = uf; conv.representante = rep; conv.tipo = tipo;
     }
   } catch { /* não bloqueia o recebimento */ }
+  // CURA de card marcado como GRUPO por engano: esta função só roda em conversa 1:1 (grupo de verdade
+  // vai pro registrarGrupo e volta antes daqui). Se mesmo assim o card veio com estado/origem 'grupo'
+  // e o telefone é um número normal (não é id de grupo), ele foi corrompido quando o cliente RESPONDEU/
+  // marcou uma mensagem — devolve pro fluxo humano pra o card voltar a aparecer na fila normal.
+  if ((String(conv.estado) === "grupo" || String(conv.origem) === "grupo") && digitos(conv.telefone).length <= 14) {
+    await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', origem='whatsapp', coluna_manual=NULL, atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    conv.estado = "atendimento-humano"; conv.origem = "whatsapp";
+  }
   // jaRegistrada: a mensagem já está no histórico (ex.: a IA está reassumindo e respondendo
   // uma pergunta que o cliente já tinha mandado) → NÃO registra de novo, só reprocessa.
   if (!jaRegistrada) await addMsg(env, conv.id, "in", "cliente", "texto", texto, { zapId: zapId || null, arquivoUrl: arquivoUrl || null, responderTexto: respostaA || null });
@@ -1317,9 +1325,20 @@ atendimento.post("/webhook", async (c) => {
   const ehLid = String((b as { chatLid?: unknown }).chatLid ?? "").includes("@lid")
     || String((b as { senderLid?: unknown }).senderLid ?? "").includes("@lid")
     || String(b.phone ?? "").includes("@lid");
+  // participantPhone só indica GRUPO quando quem falou é MESMO um TERCEIRO: num grupo, o participante
+  // (quem escreveu) é diferente do id do grupo (phone) E do nosso próprio número (connectedPhone).
+  // Numa conversa 1:1, quando o cliente RESPONDE/marca uma mensagem, a Z-API manda participantPhone =
+  // autor da citada (o próprio cliente ou a loja). Antes isso disparava "grupo" por engano e o card do
+  // cliente virava grupo (sumia da fila e ia parar em "👥 Grupos"). Compara por NÚCLEO (últimos 8, sem
+  // o 55) pra não tropeçar em diferença de código de país.
+  const coreTel = (x: string) => digitos(x).replace(/^55/, "").slice(-8);
+  const partCore = coreTel(String(b.participantPhone ?? ""));
+  const phoneCore = coreTel(String(b.phone ?? ""));
+  const connCore = coreTel(String((b as { connectedPhone?: unknown }).connectedPhone ?? ""));
+  const participanteTerceiro = partCore.length >= 8 && partCore !== phoneCore && partCore !== connCore;
   const ehGrupo = !ehLid && (b.isGroup === true || b.isGroupMessage === true
     || digitos(b.phone).length > 14
-    || (!!b.participantPhone && digitos(b.participantPhone as string) !== digitos(b.phone)));
+    || participanteTerceiro);
   if (ehGrupo) {
     const okG = await registrarGrupo(c.env, new URL(c.req.url).origin, b);
     return c.json({ ok: okG, grupo: true });
@@ -3810,8 +3829,16 @@ atendimento.post("/:id/enviar", async (c) => {
   const id = c.req.param("id");
   const g = await guardConversa(c, id);
   if ("erro" in g) return g.erro;
-  const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
+  const conv = await c.env.DB.prepare("SELECT telefone, estado, origem FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string; estado: string | null; origem: string | null }>();
   if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  // CURA card marcado como GRUPO por engano: se o card está como 'grupo' mas o telefone é um número
+  // normal (não é id de grupo, que é bem mais longo), ele foi corrompido quando o cliente RESPONDEU/
+  // marcou uma mensagem (a Z-API mandava participantPhone). Ao responder, devolve pro fluxo humano —
+  // assim o card volta a aparecer na fila normal em vez de sumir para "👥 Grupos".
+  if ((String(conv.estado) === "grupo" || String(conv.origem) === "grupo") && digitos(conv.telefone).length <= 14) {
+    await c.env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', origem='whatsapp', coluna_manual=NULL WHERE id=?").bind(id).run();
+    conv.estado = "atendimento-humano"; conv.origem = "whatsapp";
+  }
   // Anti-duplicado (defesa no SERVIDOR): se a MESMA mensagem já saiu nesta conversa nos últimos ~6s,
   // não manda de novo. Assim, Enter apertado 2-3× / clique duplo / reenvio não chega repetido ao cliente.
   const jaSaiu = await c.env.DB.prepare(
