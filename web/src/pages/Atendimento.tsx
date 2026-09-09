@@ -257,11 +257,15 @@ export function Atendimento() {
       if (!passaFiltro(c)) continue;
       const arr = m.get(c.coluna); if (arr) arr.push(c); else m.set(c.coluna, [c]);
     }
-    for (const arr of m.values()) arr.sort((a, b) =>
-      (Number(aguardando(b)) - Number(aguardando(a))) ||
-      (b.ultima_in_em || "").localeCompare(a.ultima_in_em || "") ||
-      (b.atualizado_em || "").localeCompare(a.atualizado_em || "")
-    );
+    // Ordena como o WhatsApp: a conversa com a MENSAGEM mais recente (recebida OU enviada) fica no
+    // TOPO. Chegou mensagem nova do cliente → sobe; você respondeu → continua no topo (não "some");
+    // outra conversa mais nova entra por cima e as demais descem; se o cliente escreve de novo, sobe
+    // de novo. Simples e previsível — antes a ordem misturava "aguardando" e confundia.
+    const ultimaAtividade = (c: AtendConversa) => {
+      const inn = c.ultima_in_em || "", out = c.ultima_out_em || "";
+      return (inn > out ? inn : out) || c.atualizado_em || "";
+    };
+    for (const arr of m.values()) arr.sort((a, b) => ultimaAtividade(b).localeCompare(ultimaAtividade(a)));
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, busca, filtroAtend]);
