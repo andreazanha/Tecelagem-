@@ -1802,24 +1802,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
               <div className="at-row"><span>Lojista</span><b>{d?.lojista == null ? "—" : d.lojista ? "✅ sim" : "🙅 não"}</b></div>
               <div className="at-row"><span>Cidade</span><b>{[d?.cidade, d?.uf].filter(Boolean).join("/") || "—"}</b></div>
             </>)}
-            {d && !editDados && (
-              <button className="btn btn-soft" disabled={busy} onClick={marcarLojista}
-                style={{ marginTop: 8, width: "100%", fontSize: 12.5, ...(d.lojista === 1 ? { borderColor: "#a7f3d0", background: "#ecfdf5", color: "#065f46", fontWeight: 700 } : {}) }}
-                title="Marca o PERFIL como lojista (revende/atacado). A Big passa a tratá-la como lojista: informa preço e não manda pro 'onde comprar'. Se já comprou ou não, você marca em 'Relação de compra'.">
-                {d.lojista === 1 ? "🏪 É lojista ✓ (desmarcar)" : "🏪 Marcar como lojista"}
-              </button>
-            )}
-            {d && d.autorizado !== 0 && (
-              <div className="at-row"><span>🧑‍💼 Representante</span>
-                <select value={d.representante || ""} disabled={busy}
-                  onChange={async (e) => { const v = e.target.value; setBusy(true); try { await api.atendSalvarDados(id, { representante: v }); carregar(); onMudou(); } finally { setBusy(false); } }}
-                  style={{ maxWidth: 180, fontSize: 12.5, fontWeight: 700 }} title="Trocar o representante desta conversa">
-                  <option value="">— sem representante —</option>
-                  {reps.map((r) => <option key={r.id} value={r.nome}>{r.nome}</option>)}
-                  {d.representante && !reps.some((r) => r.nome === d.representante) && <option value={d.representante}>{d.representante}</option>}
-                </select>
-              </div>
-            )}
+            {/* (Removidos a pedido: botão "Marcar como lojista" e o seletor de "Representante".) */}
 
             {d?.autorizado === 0 && (
               <div style={{ marginTop: 10, padding: "10px 11px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" }}>
@@ -1852,14 +1835,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <Link to="/funil" className="btn btn-soft" style={{ marginTop: 8, display: "block", textAlign: "center", fontSize: 12 }}>Abrir no funil completo →</Link>
               </div>
             )}
-            {/* RELAÇÃO DE COMPRA (jornada), separada do perfil lojista/consumidor. Vira selo no card. */}
-            <div style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>🏷️ Relação de compra</div>
-              <select className={"at-sel" + (d?.status_cliente ? " on" : "")} value={d?.status_cliente || ""} onChange={(e) => mudarStatusCliente(e.target.value)} disabled={busy}>
-                <option value="">— não definido —</option>
-                {STATUS_CLIENTE_ORDEM.map((k) => <option key={k} value={k}>{STATUS_CLIENTE[k].label}</option>)}
-              </select>
-            </div>
+            {/* (Removido a pedido: seletor "Relação de compra".) */}
             {/* Vendedor responsável: mostra o nome de quem atende e deixa escolher/trocar direto aqui. */}
             <div style={{ marginTop: 10 }}>
               <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>🧑‍💼 Vendedor responsável</div>
