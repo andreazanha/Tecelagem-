@@ -3246,6 +3246,9 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
       if (tr.includes(id)) await salvarConfigJson(c.env, "atend_transferidos", tr.filter((x) => x !== id));
     } catch { /* ok */ }
   }
+  // Mandar arquivo à mão também = VOCÊ assumiu → cancela o "Chamar IA" agendado (tira o card do
+  // follow-up e evita o robô disparar a mensagem agendada em cima da sua conversa).
+  try { await c.env.DB.prepare("DELETE FROM atend_agendamentos WHERE conversa_id=?").bind(id).run(); } catch { /* ok */ }
   // Documento (PDF, etc.): arquivos PEQUENOS vão EMBUTIDOS (base64), o que é mais confiável.
   // Arquivos MAIORES (>8MB) vão por URL (a Z-API baixa do nosso R2) — base64 grande demais
   // estoura o corpo da requisição. Imagem/áudio seguem por URL (já funcionam).
@@ -3860,6 +3863,11 @@ atendimento.post("/:id/enviar", async (c) => {
         atualizado_em = datetime('now')
       WHERE id = ?`
   ).bind(nomeReal, nomeReal, id).run();
+  // Você mandou mensagem À MÃO → VOCÊ assumiu: cancela qualquer "Chamar IA" agendado desta conversa.
+  // Sem isto: (1) o card ficava PRESO na coluna "Contato / Follow-up" (a agenda ganha da coluna) mesmo
+  // depois de você já estar conversando — parecia que o card "sumia"; e (2) o robô ainda dispararia a
+  // mensagem agendada mais tarde, em cima da sua conversa. Agora o card vai pra "Em atendimento".
+  try { await c.env.DB.prepare("DELETE FROM atend_agendamentos WHERE conversa_id=?").bind(id).run(); } catch { /* ok */ }
   // Respondeu → se estava TRANSFERIDO (aguardando o novo responsável pegar), agora ele pegou:
   // tira da lista pra o card sair de "Aguardando humano" e ir pra "Em atendimento".
   try {
