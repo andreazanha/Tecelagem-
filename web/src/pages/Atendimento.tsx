@@ -666,7 +666,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
     if (!cfg) return;
     setSalvando(true); setMsg("");
     try {
-      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, ia_prompt: cfg.ia_prompt, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, reativacao_ativo: cfg.reativacao_ativo, reativacao_dias: cfg.reativacao_dias, reativacao_limite: cfg.reativacao_limite, reativacao_intervalo_seg: cfg.reativacao_intervalo_seg, reativacao_msg: cfg.reativacao_msg, aniversario_ativo: cfg.aniversario_ativo, aniversario_msg: cfg.aniversario_msg, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
+      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, ia_prompt: cfg.ia_prompt, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, reativacao_ativo: cfg.reativacao_ativo, reativacao_dias: cfg.reativacao_dias, reativacao_limite: cfg.reativacao_limite, reativacao_intervalo_seg: cfg.reativacao_intervalo_seg, reativacao_msg: cfg.reativacao_msg, aniversario_ativo: cfg.aniversario_ativo, aniversario_msg: cfg.aniversario_msg, encerramento_msg: cfg.encerramento_msg, encerramento_ativo: cfg.encerramento_ativo, fechar_inativos_ativo: cfg.fechar_inativos_ativo, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
       setMsg("✓ Salvo!"); onMudou(); setTimeout(() => setMsg(""), 2500);
     } catch { setMsg("Erro ao salvar."); } finally { setSalvando(false); }
   }
@@ -845,9 +845,14 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
 
             <div style={{ border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#1e293b", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
               <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 6 }}>✅ Mensagem de encerramento</div>
-              <label className="campo" style={{ margin: 0 }}><span className="campo-label">Enviada ao cliente quando o atendimento é encerrado (use {"{nome}"})</span>
-                <textarea rows={2} value={cfg.encerramento_msg} onChange={(e) => set("encerramento_msg", e.target.value)} placeholder={cfg.encerramento_msg_padrao} /></label>
-              <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Ao clicar em <b>Encerrar atendimento</b>, o cliente recebe essa mensagem (aparece na conversa com ✓). Não é enviada em grupos. Deixe em branco pra usar o texto padrão mostrado acima.</div>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+                <input type="checkbox" checked={cfg.encerramento_ativo} onChange={(e) => set("encerramento_ativo", e.target.checked)} /> Enviar mensagem de encerramento ao cliente
+              </label>
+              {cfg.encerramento_ativo ? <>
+                <label className="campo" style={{ margin: 0 }}><span className="campo-label">Enviada ao cliente quando o atendimento é encerrado (use {"{nome}"})</span>
+                  <textarea rows={2} value={cfg.encerramento_msg} onChange={(e) => set("encerramento_msg", e.target.value)} placeholder={cfg.encerramento_msg_padrao} /></label>
+                <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Ao clicar em <b>Encerrar atendimento</b>, o cliente recebe essa mensagem (aparece na conversa com ✓). Não é enviada em grupos. Deixe em branco pra usar o texto padrão mostrado acima.</div>
+              </> : <div className="muted" style={{ fontSize: 11.5 }}>Desligado: ao encerrar um atendimento, <b>nada</b> é enviado ao cliente — o card só é marcado como resolvido no quadro.</div>}
               <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, marginTop: 10 }}>
                 <input type="checkbox" checked={cfg.fechar_inativos_ativo} onChange={(e) => set("fechar_inativos_ativo", e.target.checked)} /> Encerrar automaticamente quem ficar <b>24h sem conversa</b> (e mandar essa despedida)
               </label>

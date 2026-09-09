@@ -1597,7 +1597,7 @@ export async function lerAtividadeCatalogo(env: Env): Promise<number> {
 
 // ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
-const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo", "reativacao_ativo", "atend_domingo", "aniversario_ativo", "fechar_inativos_ativo"]);
+const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo", "reativacao_ativo", "atend_domingo", "aniversario_ativo", "fechar_inativos_ativo", "encerramento_ativo"]);
 const MSG_ANIVERSARIO_PADRAO = "🎉 Feliz aniversário, {nome}! A equipe da *Big Tricot* deseja um dia cheio de alegria! 💛 Conte com a gente sempre. 🧶";
 // Mensagem enviada ao cliente quando o atendimento é ENCERRADO (na mão ou pelo fecho automático de 24h).
 const MSG_ENCERRAMENTO_PADRAO = "Atendimento finalizado por aqui 💛 Se precisar de mais alguma coisa, é só me mandar uma mensagem que eu te respondo. 😊 — *Big Tricot*";
@@ -1644,6 +1644,8 @@ atendimento.get("/config", async (c) => {
     remarket_msg_padrao: MSG_REMARKET_PADRAO,
     encerramento_msg: cfg.encerramento_msg || "",
     encerramento_msg_padrao: MSG_ENCERRAMENTO_PADRAO,
+    encerramento_ativo: (cfg.encerramento_ativo ?? "1") === "1",   // ligado por padrão; desligar = não manda despedida
+
     fechar_inativos_ativo: (cfg.fechar_inativos_ativo ?? "0") === "1",   // desligado por padrão
     catalogo_evento_token: cfg.catalogo_evento_token || "",
     catalogo_evento_url: new URL(c.req.url).origin + "/api/atendimento/catalogo-evento",
@@ -1655,7 +1657,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "fechar_inativos_ativo", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "encerramento_ativo", "fechar_inativos_ativo", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -1810,6 +1812,8 @@ async function enviarMsgEncerramento(env: Env, id: string, autor: string) {
   if (!conv || !conv.telefone) return { enviado: false, motivo: "sem-telefone" };
   if (conv.estado === "grupo" || conv.origem === "grupo") return { enviado: false, motivo: "grupo" };
   const cfg = await lerConfig(env);
+  // Desligada nas Configurações → encerra sem mandar NADA pro cliente (só marca resolvido no quadro).
+  if ((cfg.encerramento_ativo ?? "1") !== "1") return { enviado: false, motivo: "desligado" };
   const base = (cfg.encerramento_msg || "").trim() || MSG_ENCERRAMENTO_PADRAO;
   if (!base) return { enviado: false, motivo: "sem-mensagem" };
   const primeiro = String(conv.contato_nome || conv.nome || "").trim().split(/\s+/)[0] || "";
