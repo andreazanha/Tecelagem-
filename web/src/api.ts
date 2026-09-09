@@ -132,17 +132,6 @@ export interface ModeloDetalhe extends Modelo {
   combinacoes?: Combinacao[];
 }
 
-export interface ChatMensagem {
-  id: string;
-  canal: string;
-  autor: string;
-  texto: string;
-  imagem_key?: string | null;
-  midia_tipo?: "imagem" | "audio" | "arquivo" | null;
-  criado_em: string;
-}
-export interface ChatDM { canal: string; outro: string }
-export interface ChatMembro { id: string; nome: string; telefone: string; tipo?: "interno" | "externo" }
 export interface TipoFio {
   id: string;
   nome: string;
@@ -958,28 +947,6 @@ export const api = {
     ),
   atribuirFioCores: (fio_id: string | null, cores: string[]) =>
     jsonPost("/api/cores/atribuir-fio", { fio_id, cores }).then((r) => j<{ ok: boolean; atualizadas: number }>(r)),
-  // Chat interno da equipe
-  listarChat: (canal: string) => getT(`/api/chat/${encodeURIComponent(canal)}`).then((r) => j<ChatMensagem[]>(r)),
-  enviarChat: (canal: string, autor: string, texto: string) =>
-    jsonPost(`/api/chat/${encodeURIComponent(canal)}`, { autor, texto }).then((r) => j<{ id: string }>(r)),
-  naoLidasChat: (desde: string, autor: string) =>
-    fetch(`/api/chat/nao-lidas?desde=${encodeURIComponent(desde)}&autor=${encodeURIComponent(autor)}`).then((r) => j<{ nao_lidas: number; ultima: ChatMensagem | null }>(r)),
-  contatosChat: () => fetch("/api/chat/contatos").then((r) => j<string[]>(r)),
-  dmsChat: (me: string) => fetch(`/api/chat/dms?me=${encodeURIComponent(me)}`).then((r) => j<ChatDM[]>(r)),
-  dmResumoChat: (me: string) => getT(`/api/chat/dm-resumo?me=${encodeURIComponent(me)}`).then((r) => j<{ outro: string; canal: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean }[]>(r)),
-  marcarLidoChat: (usuario: string, canal: string) =>
-    jsonPost("/api/chat/marcar-lido", { usuario, canal }).then((r) => j<{ ok: boolean }>(r)),
-  // Membros da equipe por OUTRO número de WhatsApp (canal ext:<id>).
-  chatMembros: () => fetch("/api/chat/membros").then((r) => j<ChatMembro[]>(r)),
-  addChatMembro: (nome: string, telefone: string, tipo: "interno" | "externo" = "externo") =>
-    jsonPost("/api/chat/membros", { nome, telefone, tipo }).then((r) => j<ChatMembro>(r)),
-  delChatMembro: (id: string) => fetch(`/api/chat/membros/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
-  // O tipo (imagem/audio/arquivo) é deduzido no servidor pelo content-type do arquivo.
-  enviarFotoChat: (canal: string, autor: string, file: File, texto?: string) => {
-    const fd = new FormData();
-    fd.append("file", file); fd.append("autor", autor); if (texto) fd.append("texto", texto);
-    return fetch(`/api/chat/${encodeURIComponent(canal)}/foto`, { method: "POST", body: fd }).then((r) => j<{ id: string; imagem_key: string; midia_tipo: string }>(r));
-  },
   listarTiposFio: () => fetch("/api/tipos-fio").then((r) => j<TipoFio[]>(r)),
   salvarTipoFio: (b: { id?: string; nome: string; fornecedor_id: string | null; cor?: string | null; preco?: number | null }) =>
     jsonPost("/api/tipos-fio", b).then((r) => j<TipoFio>(r)),

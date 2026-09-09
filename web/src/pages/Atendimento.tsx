@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type ChatMensagem, type AtendColuna, type RespostaPronta } from "../api";
+import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type AtendColuna, type RespostaPronta } from "../api";
 import { getUser, pode } from "../auth";
 
 // Etapas do funil (venda) mostradas dentro da conversa.
@@ -148,33 +148,7 @@ export function Atendimento() {
     setBuscandoServ(true);
     try { const r = await api.atendBuscarTudo(q); setBuscaServ(r.resultados); } catch { setBuscaServ([]); } finally { setBuscandoServ(false); }
   }
-  const [membros, setMembros] = useState<string[]>([]); // equipe (chat interno)
-  const [chatCom, setChatCom] = useState<string | null>(null); // membro com quem estou conversando
-  const [dmResumo, setDmResumo] = useState<{ outro: string; ultima_em: string; ultimo_autor: string; nao_lido: boolean }[]>([]);
-  const eu = getUser()?.nome || "";
-  const canalDM = (o: string) => "dm:" + [eu, o].sort().join("|");
-  useEffect(() => { api.contatosChat().then(setMembros).catch(() => {}); }, []);
-  useEffect(() => {
-    if (!eu) return;
-    let carregando = false; // não empilha (rede lenta)
-    const carregar = () => { if (carregando) return; carregando = true; api.dmResumoChat(eu).then(setDmResumo).catch(() => {}).finally(() => { carregando = false; }); };
-    carregar(); const t = setInterval(carregar, 8000); return () => clearInterval(t);
-  }, [eu]);
-  // "Lido" é controlado no SERVIDOR (chat_lido), então a bolinha fica igual em qualquer aparelho.
-  const temNovoDe = (o: string) => !!dmResumo.find((x) => x.outro === o)?.nao_lido;
-  async function abrirChatEquipe(o: string) {
-    setChatCom(o);
-    setDmResumo((ds) => ds.map((x) => (x.outro === o ? { ...x, nao_lido: false } : x))); // limpa na hora
-    try { await api.marcarLidoChat(eu, canalDM(o)); } catch { /* ignora */ }
-  }
-  // Enquanto o chat está aberto, vai marcando como lido no servidor.
-  useEffect(() => {
-    if (!chatCom || !eu) return;
-    let marcando = false; // não empilha POSTs de "lido" em rede lenta
-    const marcar = () => { if (marcando) return; marcando = true; api.marcarLidoChat(eu, canalDM(chatCom)).catch(() => {}).finally(() => { marcando = false; }); };
-    marcar(); const t = setInterval(marcar, 4000); return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatCom, eu]);
+  // (Chat interno da equipe REMOVIDO — a "Comunicação interna" não existe mais.)
 
   // ── Arrastar card entre colunas (pointer + listeners no window = confiável) ──
   const [arrastando, setArrastando] = useState<string | null>(null);
@@ -666,7 +640,6 @@ export function Atendimento() {
       {novaConv && <NovaConversa onFechar={() => setNovaConv(false)} onAbrir={(cid) => { setNovaConv(false); setAbrir(cid); }} onMudou={recarregar} />}
       {equipeOpen && <EquipeModal onFechar={() => setEquipeOpen(false)} />}
       {campanhaOpen && <CampanhaModal onFechar={() => setCampanhaOpen(false)} onMudou={recarregar} />}
-      {chatCom && <ChatEquipeModal outro={chatCom} onFechar={() => setChatCom(null)} />}
       {abrir && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
       {cfgOpen && <ConfigZapi onFechar={() => setCfgOpen(false)} onMudou={checarConexao} />}
     </div>
@@ -2547,57 +2520,6 @@ function EquipeModal({ onFechar }: { onFechar: () => void }) {
           {salvou && <span style={{ color: "#16a34a", fontSize: 13, fontWeight: 700 }}>✓ Salvo</span>}
           <button className="btn btn-soft" onClick={onFechar}>Fechar</button>
           <button className="btn btn-primary" disabled={busy || carregando} onClick={salvar}>{busy ? "Salvando…" : "Salvar"}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Chat interno da equipe (DM) — abre da coluna "Equipe" ──────────────────────────
-function ChatEquipeModal({ outro, onFechar }: { outro: string; onFechar: () => void }) {
-  const nome = getUser()?.nome || "";
-  const canal = "dm:" + [nome, outro].sort().join("|");
-  const [msgs, setMsgs] = useState<ChatMensagem[]>([]);
-  const [texto, setTexto] = useState("");
-  const [busy, setBusy] = useState(false);
-  const fim = useRef<HTMLDivElement>(null);
-  const carregandoChat = useRef(false);
-  function carregar() {
-    if (carregandoChat.current) return; // não empilha o poll em rede lenta
-    carregandoChat.current = true;
-    api.listarChat(canal).then(setMsgs).catch(() => {}).finally(() => { carregandoChat.current = false; });
-  }
-  useEffect(() => { carregar(); const t = setInterval(carregar, 3500); return () => clearInterval(t); /* eslint-disable-next-line */ }, [canal]);
-  useEffect(() => { fim.current?.scrollIntoView(); }, [msgs.length]);
-  async function enviar() {
-    if (!texto.trim()) return;
-    setBusy(true);
-    try { await api.enviarChat(canal, nome, texto.trim()); setTexto(""); carregar(); } finally { setBusy(false); }
-  }
-  return (
-    <div className="modal-bg" onClick={onFechar}>
-      <div className="modal-card at-modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
-        <div className="at-thd" style={{ background: "#4f46e5" }}>
-          <div className="at-av" style={{ background: "#6366f1" }}>{iniciais(outro)}</div>
-          <div className="info"><div className="nm">👤 {outro}</div><div className="sub">Chat interno da equipe (o cliente não vê)</div></div>
-          <button className="modal-x" onClick={onFechar}>✕</button>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", flex: "1 1 auto", minHeight: 320 }}>
-          <div className="at-msgs" style={{ flex: 1 }}>
-            {msgs.length === 0 && <div className="muted2" style={{ margin: "auto", fontSize: 12.5 }}>Sem mensagens ainda. Diga oi pra {outro}! 👋</div>}
-            {msgs.map((m) => (
-              <div key={m.id} className={"at-b " + (m.autor === nome ? "out" : "in")}>
-                {m.autor !== nome && <div className="at-aut">{m.autor}</div>}
-                {formatarMsg(m.texto)}
-                <span className="at-tm">{hora(m.criado_em)}</span>
-              </div>
-            ))}
-            <div ref={fim} />
-          </div>
-          <div className="at-compose">
-            <textarea rows={1} placeholder={"Mensagem para " + outro + "…"} value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
-            <button className="at-send" disabled={busy} onClick={enviar}>➤</button>
-          </div>
         </div>
       </div>
     </div>

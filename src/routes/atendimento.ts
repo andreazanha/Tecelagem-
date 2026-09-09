@@ -1354,28 +1354,10 @@ atendimento.post("/webhook", async (c) => {
   let texto = (t?.message ?? img?.caption ?? "").toString();
   const nomeContato = String(b.senderName ?? b.chatName ?? b.pushName ?? "").trim();
   if (!phone) return c.json({ ignorado: "sem-telefone" });
-  // É um MEMBRO da equipe (número externo cadastrado na Comunicação interna)? Então a
-  // mensagem NÃO vai pro robô de clientes — ela cai no chat interno da equipe (canal ext:<id>).
-  {
-    const coreM = phone.replace(/^55/, "").slice(-8);
-    // Casa por NÚCLEO (DDD + 8), não só últimos 8 — senão um cliente com os mesmos 8 dígitos
-    // finais de um membro da equipe (DDD diferente) tinha a mensagem "engolida" pro chat interno.
-    let membro: { id: string; nome: string } | null = null;
-    if (coreM.length >= 8) {
-      const cand = await c.env.DB.prepare("SELECT id, nome, telefone FROM chat_membros WHERE telefone <> '' AND telefone LIKE '%' || ?").bind(coreM).all<{ id: string; nome: string; telefone: string }>().catch(() => ({ results: [] as { id: string; nome: string; telefone: string }[] }));
-      const nuc = nucleoTel(phone);
-      const m = (cand.results || []).find((x) => nucleoTel(x.telefone) === nuc);
-      if (m) membro = { id: m.id, nome: m.nome };
-    }
-    if (membro) {
-      let txt = String((b.text as { message?: string } | undefined)?.message ?? (b.image as { caption?: string } | undefined)?.caption ?? "").trim();
-      if (!txt && b.audio) txt = "🎤 (áudio)";   // transcrição desligada (a pedido)
-      if (!txt && b.image) txt = "📷 (foto)";
-      if (!txt) txt = "(mensagem)";
-      await c.env.DB.prepare("INSERT INTO chat_mensagens (id, canal, autor, texto) VALUES (?, ?, ?, ?)").bind(crypto.randomUUID(), "ext:" + membro.id, membro.nome, txt.slice(0, 2000)).run();
-      return c.json({ ok: true, membro: membro.id });
-    }
-  }
+  // ANTES: se o número fosse de um MEMBRO da equipe (cadastrado na antiga "Comunicação interna"),
+  // a mensagem era DESVIADA pro chat interno (canal ext:<id>) e NÃO chegava no quadro. Como a
+  // Comunicação interna foi REMOVIDA, esse desvio fazia a mensagem SUMIR (era o caso da Beatriz:
+  // mandava e não chegava pra ninguém). Removido: agora TODA mensagem segue pro atendimento normal.
   // IDEMPOTÊNCIA: se JÁ processamos esta mensagem (mesmo messageId da Z-API), NÃO reprocessa.
   // A Z-API REENVIA o webhook quando a resposta demora — sem isto, cada reenvio criava
   // mensagem/card DUPLICADO (e a Big respondia de novo).
