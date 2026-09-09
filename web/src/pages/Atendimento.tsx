@@ -1192,36 +1192,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
       {c.ultima_msg && (() => { const p = extrairIaNota(c.ultima_msg); const t = MSG_PLACEHOLDER.test((p.visivel || "").trim()) ? "" : p.visivel; return <div className="at-prev">{t || (p.iaNota ? "📷 foto" : c.ultima_msg)}</div>; })()}
       <div className="fx-div" />
       <div className="fx-foot">
-        {c.origem && FONTE_LABEL[c.origem] && <span className="at-badge" style={{ background: "#f5f3ff", color: "#6d28d9" }} title="De onde veio o contato">{FONTE_LABEL[c.origem]}</span>}
-        {/* PERFIL (lojista x consumidor) — separado da relação de compra. */}
-        {(c.lojista === 1 || c.tipo === "lojista") && <span className="at-badge" style={{ background: "#e0e7ff", color: "#3730a3" }} title="Perfil: lojista (revende / compra no atacado)">🏪 Lojista</span>}
-        {(c.lojista === 0 || c.tipo === "consumidor") && <span className="at-badge" style={{ background: "#fff7ed", color: "#9a3412" }} title="Perfil: consumidor final (não é lojista)">🏠 Consumidor</span>}
-        {c.cliente_id && <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="Já cadastrado na base de clientes">📇 Na base</span>}
-        {/* RELAÇÃO DE COMPRA (jornada) — marcada à mão. */}
-        {c.status_cliente && STATUS_CLIENTE[c.status_cliente] && <span className="at-badge" style={{ background: STATUS_CLIENTE[c.status_cliente].bg, color: STATUS_CLIENTE[c.status_cliente].cor }} title="Relação de compra (marcada à mão)">{STATUS_CLIENTE[c.status_cliente].label}</span>}
-        {c.autorizado === 0
-          ? <span className="at-badge" style={{ background: "#fef3c7", color: "#92400e" }} title="Aguardando autorização da equipe">⏳ Autorizar</span>
-          : <span className="at-badge">{c.responsavel ? `👤 ${c.responsavel}` : humano ? "👤 humano" : "🤖 robô"}</span>}
-        {!!c.transferido && <span className="at-badge" style={{ background: "#e0e7ff", color: "#4338ca" }} title="Transferido — aguardando o responsável pegar">↗️ transferido</span>}
-        {/* Card parado em atendimento humano: aviso graduado (a partir de ~10h) que fica URGENTE perto de
-            encerrar sozinho (24h). Vale pra "Em atendimento" e "Aguardando humano". */}
-        {(c.coluna === "em-atendimento" || c.coluna === "aguardando-humano") && (() => {
-          const ult = [c.ultima_in_em, c.ultima_out_em].filter(Boolean).map(String).sort().pop() || c.atualizado_em;
-          const ms = ult ? Date.parse(String(ult).replace(" ", "T") + "Z") : 0;
-          if (!ms) return null;
-          const h = Math.floor((Date.now() - ms) / 3600e3);
-          if (h < 10) return null;
-          const urgente = h >= 20;
-          return <span className={"at-badge" + (urgente ? " at-parado" : "")} style={urgente ? undefined : { background: "#fef9c3", color: "#854d0e", fontWeight: 700 }}
-            title={urgente ? "Parado — vai encerrar sozinho em breve (24h sem conversa). Responda ou finalize." : "Atendimento parado — responda ou finalize a conversa."}>⏳ parado {h >= 24 ? "+24h" : h + "h"}{urgente ? " · fecha logo" : ""}</span>;
-        })()}
-        {c.funil_etapa && <span className="at-badge" style={{ background: "#ecfdf5", color: "#047857" }} title="Etapa no funil de vendas">🎯 {etapaLabel(c.funil_etapa)}</span>}
-        {c.representante && <span className="at-badge" style={{ background: "#eef2ff", color: "#4338ca" }} title={c.autorizado === 0 ? "Representante sugerido" : "Representante"}>🧑‍💼 {c.representante}</span>}
-        {!!c.silenciado && <span className="at-badge" style={{ background: "#f1f5f9", color: "#475569" }} title="Não pisca (mas você continua sendo avisado com som). Grupo fica sem som.">🔕</span>}
-        {c.agendado_ia ? (c.agendado_enviado
-          ? <span className="at-badge" style={{ background: "#dcfce7", color: "#15803d" }} title="IA já mandou a saudação — aguardando o cliente responder">⏰ chamado · aguardando</span>
-          : <span className="at-badge" style={{ background: "#dbeafe", color: "#1d4ed8" }} title="IA vai enviar uma saudação neste horário">⏰ {agendadoLabel(c.agendado_ia)}</span>) : null}
-        {c.setor && <span className="fx-sub">{SETOR_EMOJI[c.setor] || ""}</span>}
+        {/* Card LIMPO (a pedido): sem tags/selos. Fica só a hora da última mensagem + o mover coluna. */}
         <span className="fx-sub" style={{ marginLeft: "auto" }}>{horaData([c.ultima_in_em, c.ultima_out_em].filter(Boolean).map(String).sort().pop() || c.atualizado_em)}</span>
         {/* Mover pra outra coluna sem arrastar: clica e escolhe o nome da coluna */}
         {colunas && onMover && (
