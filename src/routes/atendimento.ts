@@ -3675,7 +3675,20 @@ atendimento.post("/:id/dados", async (c) => {
   setTxt("representante", b.representante);   // trocar o representante da conversa (à mão)
   if (b.uf !== undefined) { campos.push("uf=?"); vals.push(b.uf ? String(b.uf).trim().toUpperCase().slice(0, 2) : null); }
   if (b.setor !== undefined) { campos.push("setor=?"); vals.push(setorDe(b.setor) || null); }
-  if (b.lojista !== undefined) { campos.push("lojista=?"); vals.push(b.lojista === "" || b.lojista == null ? null : (b.lojista === "1" || b.lojista === 1 || b.lojista === true ? 1 : 0)); }
+  if (b.lojista !== undefined) {
+    const lv = b.lojista === "" || b.lojista == null ? null : (b.lojista === "1" || b.lojista === 1 || b.lojista === true ? 1 : 0);
+    campos.push("lojista=?"); vals.push(lv);
+    // "Cliente final" é decidido por TRÊS coisas juntas: tipo='consumidor', lojista=0 OU o estado de
+    // parceiro. Marcar só lojista=1 não bastava — o tipo/estado antigos seguravam o card lá. Então:
+    if (lv === 1) {
+      // Marcou como LOJISTA → corrige o perfil e TIRA dos estados de consumidor/parceiro, devolvendo
+      // o card pro atendimento normal (sai de "Cliente final").
+      campos.push("tipo=?"); vals.push("lojista");
+      campos.push("estado=CASE WHEN estado IN ('indicado-parceiro','aguardando-cidade-parceiro') THEN 'atendimento-humano' ELSE estado END");
+    } else if (lv === 0) {
+      campos.push("tipo=?"); vals.push("consumidor");   // marcou como consumidor final
+    }
+  }
   if (!campos.length) return c.json({ ok: true });
   vals.push(id);
   await c.env.DB.prepare(`UPDATE atend_conversas SET ${campos.join(", ")}, atualizado_em=datetime('now') WHERE id=?`).bind(...vals).run();
