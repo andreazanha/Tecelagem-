@@ -159,32 +159,13 @@ function cardLoja(l: LojaParceira): string {
   return linhas.filter(Boolean).join("\n");
 }
 
-async function indicar(conv: Conversa, saidas: Saida[], deps: Deps): Promise<Resultado> {
-  const uf = String(conv.uf ?? "").trim().toUpperCase();
-  // Sem estado nem cidade → pergunta o estado e aguarda.
-  if (!uf && !conv.cidade) {
-    saidas.push({ tipo: "texto", texto: "Me diz de qual *estado* você é? Aí já te mando as lojas parceiras da Big Tricot da sua região. 😊" });
-    conv.estado = "aguardando-cidade-parceiro";
-    return { conv, saidas, notificarHumano: false, qualificado: false };
-  }
-  if (deps.vitrineUrl) {
-    // Link da vitrine filtrado pelo ESTADO: a pessoa escolhe a cidade mais perto dela lá dentro.
-    const q = new URLSearchParams();
-    if (uf) q.set("uf", uf); else if (conv.cidade) q.set("cidade", String(conv.cidade));
-    const link = deps.vitrineUrl + "?" + q.toString();
-    saidas.push({ tipo: "texto", texto: `Prontinho! 💛 Abre esse link, escolha a *cidade mais perto de você* e veja os contatos das lojas parceiras 👇\n${link}` });
-  } else {
-    // Sem vitrine configurada → mostra os cards no chat (comportamento antigo).
-    const lojas = await deps.parceiros(conv.cidade ?? null, conv.uf ?? null);
-    if (lojas.length) {
-      saidas.push({ tipo: "texto", texto: "Achei essas lojas parceiras pertinho de você: 👇" });
-      for (const l of lojas.slice(0, 3)) saidas.push({ tipo: "texto", texto: cardLoja(l) });
-    } else {
-      saidas.push({ tipo: "texto", texto: `No momento não achei uma loja parceira pertinho de ${conv.cidade || "você"}. 😕 Assim que abrir uma, te aviso!` });
-    }
-  }
-  conv.estado = "indicado-parceiro";
-  return { conv, saidas, notificarHumano: false, qualificado: false };
+// Consumidor final: a Big Tricot passou a vender também no VAREJO. O robô NÃO manda mais o link de
+// "onde comprar", NÃO indica loja parceira e NÃO fala de atacado/varejo. Só avisa, com carinho, que
+// vai passar pra um vendedor e encaminha pro atendimento humano (o vendedor cuida da venda).
+async function indicar(conv: Conversa, saidas: Saida[]): Promise<Resultado> {
+  saidas.push({ tipo: "texto", texto: "Perfeito! 💛 Já vou te passar pra um dos nossos vendedores continuar seu atendimento, tá? 😊" });
+  conv.estado = "atendimento-humano";
+  return { conv, saidas, notificarHumano: true, qualificado: false };
 }
 
 // ── Motor ─────────────────────────────────────────────────────────────────────
@@ -239,12 +220,10 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
         notificarHumano = true;
         break;
       }
-      // Poucos dígitos / "não tenho" → é consumidor final: trilha de loja parceira.
+      // Poucos dígitos / "não tenho CNPJ" → consumidor final. Agora vendemos varejo: sem falar de
+      // atacado nem indicar loja parceira, só passa pro vendedor (humano).
       if (digitos.length < 8) {
-        push(NAO_LOJISTA);
-        if (conv.cidade && conv.uf) return await indicar(conv, saidas, deps);
-        conv.estado = "aguardando-cidade-parceiro";
-        break;
+        return await indicar(conv, saidas);
       }
       // Tentou um CNPJ, mas os dígitos verificadores não batem → pede pra reenviar.
       if (!cnpjValido(digitos)) {
@@ -285,10 +264,8 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
     }
 
     case "aguardando-cidade-parceiro": {
-      const loc = parseCidadeUf(t);
-      conv.cidade = loc.cidade || conv.cidade;
-      conv.uf = loc.uf || conv.uf;
-      return await indicar(conv, saidas, deps);
+      // Estado legado (contatos que já estavam esperando a cidade): agora só passa pro vendedor.
+      return await indicar(conv, saidas);
     }
 
     default:
