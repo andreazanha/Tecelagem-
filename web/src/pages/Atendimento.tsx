@@ -2021,9 +2021,12 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
           {/* Lista de respostas prontas (abre acima do campo) */}
           {mostrarResp && humano && (
             <div style={{ position: "absolute", left: 8, right: 8, bottom: "100%", marginBottom: 8, background: "var(--card,#fff)", border: "1px solid var(--line,#e2e8f0)", borderRadius: 12, boxShadow: "0 12px 32px #0002", maxHeight: 280, overflowY: "auto", zIndex: 20 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--line,#eef2f7)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--line,#eef2f7)" }}>
                 <b style={{ fontSize: 13 }}>📋 Respostas prontas</b>
-                <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => { setMostrarResp(false); setGerenciarResp(true); }}>⚙️ Gerenciar</button>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => { setMostrarResp(false); setGerenciarResp(true); }}>⚙️ Gerenciar</button>
+                  <button title="Fechar" onClick={() => setMostrarResp(false)} style={{ background: "transparent", border: 0, cursor: "pointer", fontSize: 17, lineHeight: 1, color: "var(--muted,#64748b)", padding: "0 2px" }}>✕</button>
+                </div>
               </div>
               {respEmpresa.length === 0 && respostas.length === 0
                 ? <div className="muted2" style={{ padding: "12px" }}>Nenhuma resposta salva. Clique em <b>⚙️ Gerenciar</b> para criar.</div>
