@@ -257,11 +257,21 @@ async function avisarHumanoPush(env: Env, c: { id: string; nome?: string | null;
   await enviarPush(env, { titulo: "🔔 Atendimento humano", corpo: `${quem} precisa de um atendente no WhatsApp.`, url: "/atendimento", tag: "atend-" + c.id }).catch(() => {});
 }
 
+// Autores AUTOMÁTICOS (robô/campanha/etc.): mensagens deles NÃO contam como "atendimento humano".
+const AUTORES_AUTO = new Set(["bot", "sistema", "system", "ia", "big", "robô", "robo", "campanha", "remarket", "aniversário", "aniversario"]);
+
 async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: string, tipo: string, texto: string, opts: { zapId?: string | null; responderTexto?: string | null; arquivoUrl?: string | null } = {}) {
   const id = uid();
   await env.DB.prepare(
     "INSERT INTO atend_mensagens (id, conversa_id, direcao, autor, tipo, texto, zap_id, responder_texto, arquivo_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).bind(id, convId, direcao, autor, tipo, texto, opts.zapId || null, opts.responderTexto || null, opts.arquivoUrl || null).run();
+  // Marca QUANDO um HUMANO respondeu o cliente (não robô, não nota interna, não sistema). É isso que
+  // mantém o card em "Em atendimento". Sem uma resposta humana depois da última mensagem do cliente, o
+  // card fica em "Aguardando atendimento humano" (piscando) — inclusive quando só o robô respondeu
+  // (ex.: "vou passar pra vendedor") ou quando o cliente mandou mensagem nova depois de já atendido.
+  if (direcao === "out" && tipo !== "nota" && tipo !== "sistema" && !AUTORES_AUTO.has(String(autor || "").trim().toLowerCase())) {
+    await env.DB.prepare("UPDATE atend_conversas SET ultima_out_humano_em=datetime('now') WHERE id=?").bind(convId).run().catch(() => {});
+  }
   return id;
 }
 
@@ -2698,15 +2708,17 @@ atendimento.get("/painel", async (c) => {
 
 // Coluna do ATENDIMENTO derivada do estado + responsável + últimas mensagens + encerrado.
 // É isso que faz os cards se moverem SOZINHOS conforme a conversa anda.
-function colunaAtendimento(c: { estado?: string | null; responsavel?: string | null; ultima_in_em?: string | null; ultima_out_em?: string | null; encerrado_em?: string | null; tipo?: string | null; lojista?: number | null; origem?: string | null }): string {
+function colunaAtendimento(c: { estado?: string | null; responsavel?: string | null; ultima_in_em?: string | null; ultima_out_em?: string | null; ultima_out_humano_em?: string | null; encerrado_em?: string | null; tipo?: string | null; lojista?: number | null; origem?: string | null }): string {
   const inn = c.ultima_in_em || "", out = c.ultima_out_em || "", enc = c.encerrado_em || "";
+  const outHumano = c.ultima_out_humano_em || "";
   const estado = String(c.estado || "");
   const origem = String(c.origem || "");
-  // "Alguém está atendendo?" — SIM se tem responsável fixo OU se JÁ respondemos depois da última
-  // mensagem do cliente (out >= inn). Isso vale pra QUALQUER envio nosso: texto, áudio, foto, arquivo,
-  // resposta pronta… Antes, só o texto marcava responsável e movia o card; foto/áudio/etc. deixavam
-  // o contato preso em "Aguardando atendimento humano" mesmo já respondido ("alguns vão, outros não").
-  const atendendo = !!String(c.responsavel || "").trim() || (!!out && out >= inn);
+  // "Alguém está atendendo?" = um HUMANO respondeu DEPOIS da última mensagem do cliente (outHumano >= inn).
+  // SÓ isso mantém o card em "Em atendimento". Se o cliente mandou mensagem nova depois (ou se só o robô
+  // respondeu — ex.: "vou passar pra vendedor"), o card volta pra "Aguardando atendimento humano" e PISCA,
+  // pra ninguém esquecer de responder. (Antes bastava ter responsável OU qualquer envio nosso, então o
+  // card ficava preso em "Em atendimento" sem piscar mesmo com o cliente esperando.)
+  const atendendo = !!outHumano && outHumano >= inn;
   if (estado === "grupo") return "grupos";                            // mensagens de grupo → coluna própria
   // Reclamação (defeito/troca/atraso) → coluna própria "Reclamação", separada e visível. Vem ANTES
   // de tudo (até de consumidor): uma reclamação não pode se perder no "finalizado" nem no cliente final.
@@ -2759,7 +2771,7 @@ atendimento.get("/", async (c) => {
   const binds: string[] = [];
   if (!gestor && usuario) { cond.push("(c.responsavel = ? OR c.responsavel IS NULL OR c.responsavel = '')"); binds.push(usuario); }
   const stmt = c.env.DB.prepare(
-    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.cliente_id, c.responsavel, c.atualizado_em, c.ultima_in_em, c.ultima_out_em, c.encerrado_em, c.coluna_manual, c.tipo, c.representante, c.origem, c.contato_nome, c.autorizado, c.interessado, c.foto_url,
+    `SELECT c.id, c.telefone, c.nome, c.estado, c.setor, c.cnpj, c.cidade, c.uf, c.lojista, c.cliente_id, c.responsavel, c.atualizado_em, c.ultima_in_em, c.ultima_out_em, c.ultima_out_humano_em, c.encerrado_em, c.coluna_manual, c.tipo, c.representante, c.origem, c.contato_nome, c.autorizado, c.interessado, c.foto_url,
             (SELECT texto FROM atend_mensagens m WHERE m.conversa_id=c.id AND m.tipo NOT IN ('nota','sistema') ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 1) AS ultima_msg,
             (SELECT etapa FROM funil_cards fc WHERE fc.id = c.card_id) AS funil_etapa
        FROM atend_conversas c WHERE ${cond.join(" AND ")} ORDER BY c.atualizado_em DESC`
