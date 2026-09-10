@@ -3256,16 +3256,17 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   // Documento (PDF, etc.): arquivos PEQUENOS vão EMBUTIDOS (base64), o que é mais confiável.
   // Arquivos MAIORES (>8MB) vão por URL (a Z-API baixa do nosso R2) — base64 grande demais
   // estoura o corpo da requisição. Imagem/áudio seguem por URL (já funcionam).
-  let docData: string | undefined;
-  try { if (!ehImagem && !ehAudio && bytes.byteLength <= 8 * 1024 * 1024) docData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { docData = undefined; }
-  // IMAGEM com legenda: manda a foto EMBUTIDA (base64) junto com a legenda no MESMO pedido — assim a
-  // legenda vai colada na imagem de forma garantida (por URL a Z-API às vezes entregava a foto SEM a
-  // legenda). Só quando há legenda e a imagem é pequena (prints/fotos); acima disso segue por URL.
-  let imgData: string | undefined;
-  try { if (ehImagem && legenda && bytes.byteLength <= 5 * 1024 * 1024) imgData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { imgData = undefined; }
   // Envia pro Z-API em BACKGROUND: a resposta volta NA HORA (o arquivo já está na conversa), sem
-  // deixar o botão "Enviando…" travado.
+  // deixar o botão "Enviando…" travado. O base64 (embutir doc/foto) é PESADO e agora é feito AQUI DENTRO,
+  // no fundo — antes era calculado ANTES de responder e segurava a tela "carregando" em foto com legenda.
   const enviarBg = (async () => {
+    // Documento pequeno (PDF etc.): vai embutido (base64) — mais confiável que a Z-API baixar nossa URL.
+    let docData: string | undefined;
+    try { if (!ehImagem && !ehAudio && bytes.byteLength <= 8 * 1024 * 1024) docData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { docData = undefined; }
+    // IMAGEM com legenda: manda a foto embutida (base64) junto da legenda no MESMO pedido, pra a legenda
+    // ir colada na foto (por URL a Z-API às vezes entregava a foto SEM a legenda). Só imagem pequena.
+    let imgData: string | undefined;
+    try { if (ehImagem && legenda && bytes.byteLength <= 5 * 1024 * 1024) imgData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { imgData = undefined; }
     const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, dataUri: imgData, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
     if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgId).run();
     else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); // marca "⚠️ não entregue"
