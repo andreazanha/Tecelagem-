@@ -372,6 +372,10 @@ export function Atendimento() {
     try { await api.atendAgendarIa(id, quando, mensagem); } catch { agendaPend.current.delete(id); agendaPendSince.current.delete(id); }
     recarregar();
   }
+  async function reativarIaCard(id: string, nome: string) {
+    if (!confirm(`Ligar a Big (IA) na conversa com ${nome || "este contato"}?\n\nA Big vai mandar uma saudação e voltar a responder essa pessoa automaticamente (triagem + catálogo de varejo).`)) return;
+    try { await api.atendReativarIa([id]); recarregar(); } catch { alert("Não consegui ligar a IA agora. Tente de novo."); }
+  }
   async function reativarIaColuna(label: string, ids: string[]) {
     if (!ids.length) return;
     if (!confirm(`Reativar a IA em ${ids.length} lead(s) da coluna "${label}"?\n\nA Big vai mandar uma saudação pra cada um e recomeçar o atendimento (triagem + catálogo de varejo). Use com leads PARADOS — não com quem já está sendo atendido por uma pessoa.`)) return;
@@ -640,6 +644,7 @@ export function Atendimento() {
                       onAbrir={() => { if (arrastou.current) { arrastou.current = false; return; } setAbrir(c.id); }}
                       onLembrete={() => toggleLembrete(c.id)}
                       onAgendar={(quando, mensagem) => agendarIa(c.id, quando, mensagem)}
+                      onReativarIa={ehGestorAtend() ? () => reativarIaCard(c.id, c.contato_nome || c.nome || telBonito(c.telefone)) : undefined}
                       onPointerDown={(e) => dragDownC(e, c.id)} />
                   ))}
                 </div>
@@ -1109,7 +1114,7 @@ function baixarArquivo(url: string) {
 }
 // Horários "de bater o olho e clicar" (horário comercial).
 const HORAS_AG = ["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
-function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; onAgendar?: (quando: number | null, mensagem?: string) => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
+function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, onReativarIa, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; onAgendar?: (quando: number | null, mensagem?: string) => void; onReativarIa?: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.estado === "atendimento-humano";
   const [agOpen, setAgOpen] = useState(false);
   const [agDia, setAgDia] = useState("");   // "YYYY-MM-DD"
@@ -1218,6 +1223,11 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, p
       <div className="fx-foot">
         {/* Card LIMPO (a pedido): sem tags/selos. Fica só a hora da última mensagem + o mover coluna. */}
         <span className="fx-sub" style={{ marginLeft: "auto" }}>{horaData([c.ultima_in_em, c.ultima_out_em].filter(Boolean).map(String).sort().pop() || c.atualizado_em)}</span>
+        {/* Botão de LIGAR A IA (Big) nesta conversa — ao lado da data. */}
+        {onReativarIa && (
+          <button title="🤖 Ligar a Big (IA) nesta conversa: manda uma saudação e recomeça o atendimento automático." onClick={(e) => { e.stopPropagation(); onReativarIa(); }} onPointerDown={(e) => e.stopPropagation()}
+            style={{ background: "transparent", border: 0, cursor: "pointer", fontSize: 13, opacity: 0.7, padding: "0 3px", lineHeight: 1 }}>🤖</button>
+        )}
         {/* Mover pra outra coluna sem arrastar: clica e escolhe o nome da coluna */}
         {colunas && onMover && (
           <select className="fx-mover-sel" title="Mover para outra coluna" value=""
