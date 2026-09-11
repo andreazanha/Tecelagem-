@@ -1225,8 +1225,8 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
         <span className="fx-sub" style={{ marginLeft: "auto" }}>{horaData([c.ultima_in_em, c.ultima_out_em].filter(Boolean).map(String).sort().pop() || c.atualizado_em)}</span>
         {/* Botão de LIGAR A IA (Big) nesta conversa — ao lado da data. */}
         {onReativarIa && (
-          <button title="🤖 Ligar a Big (IA) nesta conversa: manda uma saudação e recomeça o atendimento automático." onClick={(e) => { e.stopPropagation(); onReativarIa(); }} onPointerDown={(e) => e.stopPropagation()}
-            style={{ background: "transparent", border: 0, cursor: "pointer", fontSize: 13, opacity: 0.7, padding: "0 3px", lineHeight: 1 }}>🤖</button>
+          <button title="Ligar a Big (IA) nesta conversa: manda uma saudação e recomeça o atendimento automático." onClick={(e) => { e.stopPropagation(); onReativarIa(); }} onPointerDown={(e) => e.stopPropagation()}
+            style={{ background: "#e8f0ff", color: "#1a56db", border: "1px solid #bcd3ff", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700, padding: "1px 7px", lineHeight: 1.4, letterSpacing: 0.3 }}>IA</button>
         )}
         {/* Mover pra outra coluna sem arrastar: clica e escolhe o nome da coluna */}
         {colunas && onMover && (
