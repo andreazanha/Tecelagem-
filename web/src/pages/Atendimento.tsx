@@ -372,6 +372,12 @@ export function Atendimento() {
     try { await api.atendAgendarIa(id, quando, mensagem); } catch { agendaPend.current.delete(id); agendaPendSince.current.delete(id); }
     recarregar();
   }
+  async function reativarIaColuna(label: string, ids: string[]) {
+    if (!ids.length) return;
+    if (!confirm(`Reativar a IA em ${ids.length} lead(s) da coluna "${label}"?\n\nA Big vai mandar uma saudação pra cada um e recomeçar o atendimento (triagem + catálogo de varejo). Use com leads PARADOS — não com quem já está sendo atendido por uma pessoa.`)) return;
+    try { const r = await api.atendReativarIa(ids); alert(`✅ IA reativada em ${r.reativados} lead(s). A Big já mandou a saudação e vai cuidar das respostas.`); recarregar(); }
+    catch { alert("Não consegui reativar a IA agora. Tente de novo."); }
+  }
   async function juntarDuplicados() {
     if (!confirm("Juntar os cards duplicados do mesmo contato (número com/sem o 9º dígito)?\n\nO histórico é preservado no card mais antigo e os repetidos são removidos.")) return;
     try { const r = await api.atendJuntarDuplicados(); alert(r.mesclados ? `✓ ${r.mesclados} contato(s) juntados, ${r.removidos} card(s) duplicado(s) removido(s).` : "Nenhum duplicado encontrado. 👍"); recarregar(); }
@@ -621,7 +627,13 @@ export function Atendimento() {
             const cs = gruposPorColuna.get(col.id) || [];
             return (
               <div className={"fx-col" + (sobre === col.id ? " drag-over" : "")} key={col.id} data-coluna={col.id} ref={(el) => { colRefs.current[col.id] = el; }}>
-                <div className="fx-hd"><span className="fx-dot" style={{ background: col.cor }} />{col.label}<span className="ct">{cs.length}</span></div>
+                <div className="fx-hd"><span className="fx-dot" style={{ background: col.cor }} />{col.label}<span className="ct">{cs.length}</span>
+                  {ehGestorAtend() && cs.length > 0 && (
+                    <button title="🤖 Reativar a IA nesses leads: manda uma saudação e a Big recomeça o atendimento (triagem + catálogo de varejo). Use com leads parados."
+                      onClick={(e) => { e.stopPropagation(); reativarIaColuna(col.label, cs.map((x) => x.id)); }}
+                      style={{ marginLeft: "auto", background: "transparent", border: 0, cursor: "pointer", fontSize: 13.5, opacity: 0.75, padding: "0 2px", lineHeight: 1 }}>🤖</button>
+                  )}
+                </div>
                 <div className="fx-col-body">
                   {cs.map((c) => (
                     <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board.colunas} onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)} arrastando={arrastando === c.id}

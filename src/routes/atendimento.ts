@@ -450,7 +450,8 @@ SEU PAPEL: acolher quem chama de um jeito MUITO humano e caloroso (como uma vend
 
 REGRAS IMPORTANTES:
 - NÃO peça o CNPJ logo de cara. Primeiro converse, entenda a necessidade (que tipo de produto procura, se já conhece a marca, etc.) e só depois, quando fizer sentido, encaminhe pra pegar os dados.
-- Se perceber que é LOJISTA (quer comprar/revender/fazer cadastro): use acao "coletar_lojista" e, na sua resposta CURTA, peça o *CNPJ* da loja. O sistema confirma o CNPJ e passa pro *vendedor humano* — você NÃO continua vendendo nem manda catálogo. ⚠️ Falar que "compra no atacado" NÃO prova que é lojista — só o CNPJ confirma; então peça o CNPJ.
+- 🔎 DESCUBRA DE VERDADE se é LOJISTA ou CONSUMIDOR — NÃO confie no que a pessoa diz nem na opção que ela escolheu (muita gente marca a opção errada, ex.: diz que "já é cliente" ou que "é lojista" sem ser). Você tem que INVESTIGAR gentilmente: pergunte se é pra *revender na loja dela* (lojista) ou pra *uso pessoal/presente* (consumidor). Se a pessoa AFIRMAR que é lojista / que já é cliente, CONFIRME pedindo o *CNPJ* (acao "coletar_lojista") — só trate como lojista DEPOIS que o CNPJ for confirmado. Se ela não tiver CNPJ, disser que é pra uso próprio, ou não conseguir confirmar → é VAREJO (consumidor): siga o fluxo de varejo (catálogo de varejo).
+- Se perceber que é LOJISTA (quer comprar/revender/fazer cadastro, ou afirma ser lojista/cliente): use acao "coletar_lojista" e, na sua resposta CURTA, peça o *CNPJ* da loja pra confirmar o cadastro. O sistema confirma o CNPJ e passa pro *vendedor humano* — você NÃO continua vendendo nem manda catálogo. ⚠️ Falar que "compra no atacado" ou "já sou cliente" NÃO prova que é lojista — só o CNPJ confirma; então peça o CNPJ.
 - 🚫 CATÁLOGO DE ATACADO (lojista): VOCÊ NUNCA envia o catálogo de atacado nem promete mandar. Ele tem *PREÇOS DE ATACADO* e quem envia é o *VENDEDOR humano*. Se a pessoa quer comprar/revender (lojista), peça o *CNPJ* (acao "coletar_lojista") — o sistema confirma e passa pro vendedor. NUNCA use a acao "enviar_catalogo".
 - 🛍️ CONSUMIDOR FINAL (VAREJO) — pessoa física, "pra mim", "uso pessoal", "presente", veio de anúncio/Instagram ("quero mais informações", "vi no instagram"), sem loja/CNPJ: ATENDA COM CARINHO, como uma vendedora de varejo. Converse de forma humana, pergunte o que ela procura/pra quem é (triagem). Quando ela demonstrar interesse em ver os produtos, use acao "catalogo_varejo": o SISTEMA envia o *catálogo de varejo* (link) com uma mensagem convidativa — você NÃO escreve o link nem inventa um, só ajuda a pessoa a escolher e tira dúvidas de produto/cor/entrega. ⚠️ NÃO fale de PREÇO/VALOR você mesma (o preço a pessoa vê no catálogo). Quando ela QUISER FECHAR a compra (escolheu, "quero comprar", "como pago", "quanto fica com frete"), use acao "humano" e diga que já vai passar pra um vendedor finalizar o pedido pelo WhatsApp. NÃO fale de atacado, NÃO diga "só vendemos pra lojista", NÃO indique loja parceira.
 - STATUS DE PEDIDO: se o cliente perguntar sobre um pedido dele (ex.: "como está meu pedido?", "meu pedido já saiu?", "em que fase está?"): use acao "consultar_pedido". O sistema identifica pelo CNPJ e responde a fase de produção + a data prevista — você não precisa inventar nada. Se você JÁ sabe o CNPJ dele, preencha o campo "cnpj". Se NÃO souber, peça o CNPJ da loja na resposta. IMPORTANTE: depois que o status for informado, se o cliente fizer MAIS perguntas sobre o pedido (adiantar, alterar, reclamar do prazo), use acao "humano" e diga que vai chamar alguém do *time de produção* pra ajudar (NÃO fale a sigla "PCP" pro cliente — é interno).
@@ -1116,14 +1117,16 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
       // Sinal claro de LOJISTA/atacado (revenda). Só "quero comprar/preço" NÃO é lojista — pode ser varejo,
       // e aí quem cuida é a IA (conversa + catálogo de varejo). Só forçamos o CNPJ com sinal de revenda.
       const sinalLojista = ia.novoEstado === "triagem-nome" || /revend|atacad|lojist|\bcnpj\b|(pra|para)( a| minha)? loja|nota fiscal/i.test(texto);
-      if (jaCliente && !consumidorSinal) {
-        // Cliente diz que JÁ é cliente da Big → não pede CNPJ; passa pro atendente (fila humana, piscando).
+      if (jaCliente && conv.cliente_id && !consumidorSinal) {
+        // Cliente CONFIRMADO na base (o telefone bateu) → é cliente mesmo; passa pro vendedor dele.
         ia.tipo = "lojista"; ia.novoEstado = "atendimento-humano"; ia.notificarHumano = true;
         ia.saidas = [{ tipo: "texto", texto: "Que bom te ver de novo por aqui! 💛 Já vou te passar pra um dos nossos vendedores continuar seu atendimento, tá? 😊" }];
-      } else if (sinalLojista && !consumidorSinal) {
-        // Quer revender/atacado (e não é sinal de consumidor) → confirma CNPJ e passa pro vendedor.
-        ia.tipo = "lojista"; ia.notificarHumano = false;
-        ia.saidas = [{ tipo: "texto", texto: "Que ótimo! 💛 Pra te atender no *atacado*, primeiro preciso confirmar seu cadastro de lojista. Me passa o *CNPJ* da sua loja, por favor?" }];
+      } else if ((sinalLojista || (jaCliente && !consumidorSinal)) && !consumidorSinal) {
+        // Diz que revende/é lojista/já é cliente, mas NÃO confirmamos → pede o CNPJ pra confirmar de
+        // verdade (não confia só na palavra — muita gente marca a opção errada). Se não tiver CNPJ, o
+        // fluxo trata como consumidor. tipo fica indefinido até o CNPJ confirmar.
+        ia.tipo = null; ia.notificarHumano = false;
+        ia.saidas = [{ tipo: "texto", texto: "Perfeito! 💛 Pra eu confirmar seu cadastro certinho, me passa o *CNPJ* da sua loja, por favor? 😊" }];
         ia.novoEstado = "aguardando-cnpj";
       }
       // else (consumidor/varejo OU ainda só conversando): NÃO sobrescreve — a IA cuida (converse de forma
@@ -2846,6 +2849,36 @@ atendimento.get("/", async (c) => {
     return { ...r, coluna, status_cliente: statusCli[String(r.id)] || null, lembrete: lembretes.has(String(r.id)) ? 1 : 0, silenciado: silenciadoR ? 1 : 0, transferido: transferido ? 1 : 0, agendado_ia: agAtivo ? ag!.quando : null, agendado_enviado: agAtivo && ag!.enviado ? 1 : 0, agendado_msg: agAtivo ? (ag!.mensagem || null) : null, remarket_em: rm ? rm.desde + remarketHoras * 3600e3 : null, remarket_enviado: rm && rm.enviado ? 1 : 0 };
   });
   return c.json({ colunas, conversas });
+});
+
+// ── REATIVAR A IA EM VÁRIOS LEADS (ex.: leads da campanha parados) ────────────────────
+// Devolve as conversas pra IA e manda uma saudação de reengajamento, pra a Big recomeçar o
+// atendimento (triagem + varejo). Só gestor. Pula grupos. Não mexe em quem já está sendo atendido
+// se não estiver na lista enviada — o app manda os ids da coluna escolhida.
+atendimento.post("/reativar-ia", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  if (!ehGestorAtend(u)) return c.json({ error: "sem_acesso" }, 403);
+  const b = await c.req.json<{ ids?: string[] }>().catch(() => ({} as { ids?: string[] }));
+  const ids = Array.isArray(b.ids) ? [...new Set(b.ids.map(String))].slice(0, 300) : [];
+  if (!ids.length) return c.json({ error: "sem leads" }, 400);
+  const saud = "Oi! 💛 Aqui é a *Big Tricot* 🧶 Passando pra te contar que estamos com uma *promoção especial no varejo: até 50% OFF em vários produtos, só até 16/09!* 🎉 Me conta o que você procura que eu já te ajudo por aqui 😊";
+  // Lê a lista de transferidos UMA vez (tira os reativados dela no fim).
+  let transf: string[] = [];
+  try { const cfg = await lerConfig(c.env); const a = JSON.parse(cfg.atend_transferidos || "[]"); if (Array.isArray(a)) transf = a.map(String); } catch { transf = []; }
+  let reativados = 0;
+  for (const id of ids) {
+    const conv = await c.env.DB.prepare("SELECT id, telefone, estado, origem FROM atend_conversas WHERE id=?").bind(id).first<{ id: string; telefone: string; estado: string | null; origem: string | null }>().catch(() => null);
+    if (!conv || !conv.telefone) continue;
+    if (conv.estado === "grupo" || conv.origem === "grupo") continue;       // não mexe em grupo
+    await c.env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', responsavel=NULL, encerrado_em=NULL, coluna_manual=NULL, atualizado_em=datetime('now') WHERE id=?").bind(id).run();
+    await c.env.DB.prepare("DELETE FROM atend_agendamentos WHERE conversa_id=?").bind(id).run().catch(() => {});
+    await enviarBot(c.env, id, conv.telefone, { tipo: "texto", texto: saud });
+    await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(id).run();
+    reativados++;
+  }
+  if (transf.length) { const novo = transf.filter((x) => !ids.includes(x)); if (novo.length !== transf.length) await salvarConfigJson(c.env, "atend_transferidos", novo); }
+  return c.json({ ok: true, reativados });
 });
 
 // ── JUNTAR DUPLICADOS: mescla conversas do MESMO contato (núcleo DDD+8 dígitos) ────────
