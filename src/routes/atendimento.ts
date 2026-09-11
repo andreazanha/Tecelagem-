@@ -937,7 +937,10 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // a IA fica quieta e o card pisca pra alguém responder. Exceção: "campanha" (tem tratamento próprio
   // logo abaixo pra autorresposta de loja). coluna_manual aqui ainda é o valor de ANTES da limpeza.
   const cm = String(conv.coluna_manual ?? "").trim();
-  const emColunaHumana = (!!cm && cm !== "campanha") || conv.estado === "aguardando-setor";
+  // "cliente-final" NÃO conta como coluna humana: a Big (IA) atende os do Cliente final (varejo)
+  // quando mandam mensagem — MENOS quem já está com um vendedor (responsável) ou em atendimento
+  // humano, que continuam barrados pela regra logo abaixo. (Decisão da Andrea.)
+  const emColunaHumana = (!!cm && cm !== "campanha" && cm !== "cliente-final") || conv.estado === "aguardando-setor";
   // Cliente voltou a falar num card que estava na fila humana (catálogo enviado / sem retorno /
   // não qualificado / follow-up 24h) → NÃO deixa a IA reengajar sozinha; avisa o humano.
   const reengatarHumano = REENGATA_HUMANO.has(conv.estado);
@@ -1051,6 +1054,21 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     return await paraHumano("", "Perfeito! 💛 Já vou te passar pra um dos nossos vendedores pra continuar seu atendimento, tá? 😊", "Menu: resposta livre → humano");
   }
 
+  // CLIENTE FINAL (varejo): quando alguém da coluna "🏠 Cliente final" manda mensagem e ninguém
+  // do time está atendendo (sem responsável, não é atendimento-humano/reclamação), a Big (IA)
+  // ASSUME — trata como triagem de varejo. Cobre também os cards que a Andrea moveu À MÃO pra lá
+  // (tipo consumidor / lojista=0 / coluna_manual "cliente-final"). Só empurra pra ia-triagem os
+  // estados que a IA ainda não pega sozinha (os de reengajamento já caem no dispatch abaixo).
+  const ehClienteFinal = String(conv.tipo || "") === "consumidor" || conv.lojista === 0
+    || cm === "cliente-final" || conv.estado === "indicado-parceiro" || conv.estado === "aguardando-cidade-parceiro";
+  // (estado "atendimento-humano"/"reclamacao" já retornaram lá em cima — aqui nem chegam.)
+  if (ehClienteFinal && cfgAt.atendimento_ia === "1"
+      && !String(conv.responsavel ?? "").trim()
+      && conv.origem !== "campanha" && conv.origem !== "reativacao"
+      && conv.estado !== "novo" && conv.estado !== "ia-triagem" && !IA_REENGATA.has(conv.estado)) {
+    conv.estado = "ia-triagem";
+    await env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+  }
   // IA de triagem (se ligada). A Big responde TODO MUNDO de forma natural — inclusive
   // representantes (nada de menu numerado "digite 1/2/3"). Reengaja também quem já tinha
   // terminado a conversa e voltou a falar. NÃO reengaja estados de coleta determinística
