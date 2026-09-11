@@ -1089,13 +1089,13 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
         await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
         return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: saud }], notificarHumano: true };
       }
-      // Contato novo → MENU DE SETORES (o cliente escolhe o número). Fica em 'menu' esperando a escolha.
-      const saud = MENU_SETORES;
-      await env.DB.prepare("UPDATE atend_conversas SET estado='menu', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+      // Contato novo → a Big (IA) ATENDE de forma humana já na primeira mensagem (triagem natural,
+      // sem menu de números). NÃO retorna aqui: passa o estado pra 'ia-triagem' e cai no fluxo da IA
+      // logo abaixo, que responde a própria mensagem do cliente. (Antes mandava um menu numerado e a
+      // IA nunca entrava — era o "a IA só faz o primeiro atendimento".)
+      conv.estado = "ia-triagem";
+      await env.DB.prepare("UPDATE atend_conversas SET estado='ia-triagem', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
       await garantirCardDaConversa(env, conv.id, "Novo contato no WhatsApp", "atendimento");
-      await enviarBot(env, conv.id, tel, { tipo: "texto", texto: saud });
-      await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em = datetime('now') WHERE id = ?").bind(conv.id).run();
-      return { conversa_id: conv.id, estado: "menu", coluna: colunaDe("ia-triagem"), respostas: [{ tipo: "texto", texto: saud }], notificarHumano: false };
     }
     // Conversa em andamento: a IA responde. Cliente já cadastrado entra com contexto extra.
     let sistema = sistemaIa(cfgAt.ia_prompt) + await lerConhecimento(env);
@@ -2820,7 +2820,14 @@ atendimento.get("/", async (c) => {
     // TRAVA DE TRABALHO: card posto À MÃO em "Montando pedido" ou "Orçando" fica CRAVADO ali —
     // nem agendamento de IA, nem mensagem nova do cliente, nem nenhuma outra regra tira do lugar.
     // Só sai quando o atendente mover à mão. (É trabalho em andamento; não pode "saltar" pra Triagem.)
-    if (manual === "montando-pedido" || manual === "aguardando-setor" || manual === "efetuou-pedido") coluna = manual;
+    if (manual === "montando-pedido" || manual === "aguardando-setor" || manual === "efetuou-pedido") {
+      coluna = manual;
+      // EXCEÇÃO: cliente do "Efetuou pedido" que MANDOU MENSAGEM NOVA e nenhum humano respondeu ainda →
+      // vai pra "Aguardando atendimento humano" (piscando), pra alguém responder. Quando um humano
+      // responder, ele volta pro "Efetuou pedido" sozinho (a coluna manual continua guardada).
+      const innT = String(r.ultima_in_em || ""), outHT = String(r.ultima_out_humano_em || ""), encT = String(r.encerrado_em || "");
+      if (manual === "efetuou-pedido" && innT && innT > outHT && innT > encT) coluna = "aguardando-humano";
+    }
     // SEMPRE TRAZER PRA TRIAGEM quando o cliente mandou mensagem nova e ninguém respondeu depois —
     // não importa onde o card esteja (arrastado à mão pra "finalizado", campanha, follow-up...).
     // Sem isto, o card ficava preso na coluna manual/finalizado e o cliente "sumia": só aparecia a

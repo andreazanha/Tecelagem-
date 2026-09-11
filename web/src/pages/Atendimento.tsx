@@ -2266,8 +2266,11 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
   }
   const termo = busca.trim().toLowerCase();
   const casa = (c: AtendConversa) => !termo || [c.contato_nome, c.nome, c.telefone].some((x) => String(x ?? "").toLowerCase().includes(termo));
-  const grupos = contatos.filter((c) => c.estado === "grupo" && casa(c)).slice(0, 20);
-  const filtrados = contatos.filter((c) => c.estado !== "grupo" && casa(c)).slice(0, 40);
+  // Ordena pela conversa mais recente (como o WhatsApp), pra as conversas ativas ficarem no topo.
+  const ultAt = (c: AtendConversa) => { const inn = c.ultima_in_em || "", out = c.ultima_out_em || ""; return (inn > out ? inn : out) || c.atualizado_em || ""; };
+  const porRecente = (a: AtendConversa, b: AtendConversa) => ultAt(b).localeCompare(ultAt(a));
+  const filtrados = contatos.filter((c) => c.estado !== "grupo" && casa(c)).sort(porRecente).slice(0, 60);
+  const grupos = contatos.filter((c) => c.estado === "grupo" && casa(c)).sort(porRecente).slice(0, 30);
   return (
     <div className="modal-bg" onClick={onFechar} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--card,#fff)", color: "var(--ink,#0f172a)", borderRadius: 14, width: "100%", maxWidth: 420, maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "hidden", border: "1px solid var(--line)" }}>
@@ -2288,25 +2291,8 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔎 Buscar grupo ou contato pelo nome/número…" style={{ width: "100%", fontSize: 13, padding: "7px 8px", borderRadius: 8, border: "1px solid var(--line)" }} />
         </div>
         <div style={{ overflowY: "auto", padding: "0 8px 10px" }}>
-          {grupos.length > 0 && (
-            <>
-              <div style={{ padding: "6px 10px 2px", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>👥 Grupos</div>
-              {grupos.map((c) => {
-                const nm = c.nome || c.contato_nome || "Grupo";
-                return (
-                  <button key={c.id} disabled={busy} onClick={() => enviar({ conversaId: c.id })}
-                    style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "8px 10px", background: "transparent", border: 0, borderRadius: 8, cursor: "pointer", color: "inherit" }}>
-                    <span className="conv-av" style={{ width: 30, height: 30, fontSize: 14, background: "#dcfce7", color: "#166534" }}>👥</span>
-                    <span style={{ minWidth: 0 }}>
-                      <span style={{ display: "block", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nm}</span>
-                      <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)" }}>Grupo do WhatsApp</span>
-                    </span>
-                  </button>
-                );
-              })}
-              {filtrados.length > 0 && <div style={{ padding: "8px 10px 2px", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>👤 Contatos</div>}
-            </>
-          )}
+          {/* CONVERSAS primeiro (as ativas, mais recentes no topo) — é o que você mais usa pra encaminhar. */}
+          {filtrados.length > 0 && <div style={{ padding: "6px 10px 2px", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>💬 Conversas</div>}
           {filtrados.map((c) => {
             const nm = c.contato_nome || c.nome || telBonito(c.telefone);
             return (
@@ -2316,6 +2302,20 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
                 <span style={{ minWidth: 0 }}>
                   <span style={{ display: "block", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nm}</span>
                   <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)" }}>{telBonito(c.telefone)}</span>
+                </span>
+              </button>
+            );
+          })}
+          {grupos.length > 0 && <div style={{ padding: "8px 10px 2px", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>👥 Grupos</div>}
+          {grupos.map((c) => {
+            const nm = c.nome || c.contato_nome || "Grupo";
+            return (
+              <button key={c.id} disabled={busy} onClick={() => enviar({ conversaId: c.id })}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "8px 10px", background: "transparent", border: 0, borderRadius: 8, cursor: "pointer", color: "inherit" }}>
+                <span className="conv-av" style={{ width: 30, height: 30, fontSize: 14, background: "#dcfce7", color: "#166534" }}>👥</span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nm}</span>
+                  <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)" }}>Grupo do WhatsApp</span>
                 </span>
               </button>
             );
