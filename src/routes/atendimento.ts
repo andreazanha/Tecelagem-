@@ -827,7 +827,11 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // Aguardando humano) pra ninguém esquecer que a cliente está esperando resposta.
   // Exceção: "Montando pedido" e "Orçando" (aguardando-setor) são trabalho em andamento — o card
   // NÃO sai dessas colunas só porque a cliente escreveu (ele continua lá, mas piscando c/ msg nova).
-  await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now'), coluna_manual = CASE WHEN coluna_manual IN ('montando-pedido','aguardando-setor','efetuou-pedido','em-atendimento') THEN coluna_manual ELSE NULL END WHERE id = ?").bind(conv.id).run();
+  // Cliente mandou mensagem NOVA. Card estacionado à mão continua onde está SÓ nas colunas de trabalho
+  // em andamento (montando pedido / orçando / em atendimento). "Efetuou pedido" NÃO segura mais: uma
+  // mensagem nova aqui = o cliente precisa de resposta → o card volta pro fluxo (Aguardando atendimento
+  // humano, piscando). Assim só sai de "Efetuou pedido" quando chega mensagem DE VERDADE (não por horário).
+  await env.DB.prepare("UPDATE atend_conversas SET ultima_in_em = datetime('now'), coluna_manual = CASE WHEN coluna_manual IN ('montando-pedido','aguardando-setor','em-atendimento') THEN coluna_manual ELSE NULL END WHERE id = ?").bind(conv.id).run();
 
   // Card estava estacionado em "Pendente" e o CLIENTE CHAMOU → vai direto pra "Aguardando
   // atendimento humano" (piscando), sem responsável fixo. (Essa é a única função da coluna Pendente.)
@@ -2820,14 +2824,7 @@ atendimento.get("/", async (c) => {
     // TRAVA DE TRABALHO: card posto À MÃO em "Montando pedido" ou "Orçando" fica CRAVADO ali —
     // nem agendamento de IA, nem mensagem nova do cliente, nem nenhuma outra regra tira do lugar.
     // Só sai quando o atendente mover à mão. (É trabalho em andamento; não pode "saltar" pra Triagem.)
-    if (manual === "montando-pedido" || manual === "aguardando-setor" || manual === "efetuou-pedido") {
-      coluna = manual;
-      // EXCEÇÃO: cliente do "Efetuou pedido" que MANDOU MENSAGEM NOVA e nenhum humano respondeu ainda →
-      // vai pra "Aguardando atendimento humano" (piscando), pra alguém responder. Quando um humano
-      // responder, ele volta pro "Efetuou pedido" sozinho (a coluna manual continua guardada).
-      const innT = String(r.ultima_in_em || ""), outHT = String(r.ultima_out_humano_em || ""), encT = String(r.encerrado_em || "");
-      if (manual === "efetuou-pedido" && innT && innT > outHT && innT > encT) coluna = "aguardando-humano";
-    }
+    if (manual === "montando-pedido" || manual === "aguardando-setor" || manual === "efetuou-pedido") coluna = manual;
     // SEMPRE TRAZER PRA TRIAGEM quando o cliente mandou mensagem nova e ninguém respondeu depois —
     // não importa onde o card esteja (arrastado à mão pra "finalizado", campanha, follow-up...).
     // Sem isto, o card ficava preso na coluna manual/finalizado e o cliente "sumia": só aparecia a
