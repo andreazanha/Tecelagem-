@@ -2737,7 +2737,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
   const [busca, setBusca] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [mensagem, setMensagem] = useState("");
-  const [intervalo, setIntervalo] = useState("40");
+  const [intervalo, setIntervalo] = useState("120");   // padrão: 1 envio a cada 2 min (anti-ban)
   const [avisarDias, setAvisarDias] = useState("3");   // avisa se JÁ enviei mensagem nos últimos N dias
   const [nome, setNome] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2912,7 +2912,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
     setBusy(true);
     try {
       const alvos = contatos.filter((c) => sel.has(c.telefone)).map((c) => ({ telefone: c.telefone, nome: c.nome }));
-      const r = await api.atendCriarCampanha({ nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 40, alvos, rascunho, arquivo_url: anexo?.url, arquivo_tipo: anexo?.tipo, arquivo_nome: anexo?.nome, arquivo_ext: anexo?.ext });
+      const r = await api.atendCriarCampanha({ nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 120, alvos, rascunho, arquivo_url: anexo?.url, arquivo_tipo: anexo?.tipo, arquivo_nome: anexo?.nome, arquivo_ext: anexo?.ext });
       if (r.error) { alert(r.error); return; }
       alert(rascunho
         ? `Campanha salva como rascunho (${r.total} contato[s]). Ela NÃO envia até você clicar em "▶️ Ativar" na lista abaixo.`
@@ -2935,7 +2935,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
     if (!mensagem.trim() && !anexo) { alert("Escreva a mensagem ou anexe uma foto/arquivo."); return; }
     setBusy(true);
     try {
-      const r = await api.atendEditarCampanha(editandoId, { nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 40, arquivo_url: anexo?.url, arquivo_tipo: anexo?.tipo, arquivo_nome: anexo?.nome, arquivo_ext: anexo?.ext });
+      const r = await api.atendEditarCampanha(editandoId, { nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 120, arquivo_url: anexo?.url, arquivo_tipo: anexo?.tipo, arquivo_nome: anexo?.nome, arquivo_ext: anexo?.ext });
       if (r.error) { alert(r.error); return; }
       alert("✓ Campanha atualizada! (o texto/foto novos valem pros contatos que ainda não receberam)");
       cancelarEdicao(); carregarCampanhas();
@@ -2995,7 +2995,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
           </div>
           {anexo && anexo.tipo === "imagem" && <img src={anexo.url} alt="anexo" style={{ maxWidth: 160, maxHeight: 120, borderRadius: 8, marginTop: 6, border: "1px solid var(--line)" }} />}
           <label className="fld" style={{ marginTop: 8, display: "inline-flex", flexDirection: "column" }}>Enviar 1 a cada
-            <span><input type="number" min={15} max={600} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} style={{ width: 70 }} /> segundos <span className="muted2">(recomendado ≥ 40s)</span></span>
+            <span><input type="number" min={15} max={600} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} style={{ width: 70 }} /> segundos <span className="muted2">(padrão 120s = 2 min, pra não bloquear)</span></span>
           </label>
           <label className="fld" style={{ marginTop: 8, display: "inline-flex", flexDirection: "column" }}>⚠️ Avisar se já enviei nos últimos
             <span><input type="number" min={0} max={90} value={avisarDias} onChange={(e) => setAvisarDias(e.target.value)} style={{ width: 70 }} /> dia(s) <span className="muted2">(0 = não avisar)</span></span>
