@@ -2566,7 +2566,7 @@ function ColunasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: ()
 }
 
 // ── Nova conversa: escolhe um contato do WhatsApp (ou digita o número) e manda a 1ª msg ──
-type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm" | "catalogo"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string; emCamp?: boolean; foto?: string | null; rep?: string | null; ultimaSaida?: string | null };
+type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm" | "catalogo"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string; emCamp?: boolean; foto?: string | null; rep?: string | null; ultimaSaida?: string | null; coluna?: string | null };
 function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; onAbrir: (id: string) => void; onMudou: () => void }) {
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -2732,6 +2732,9 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
   const [anexo, setAnexo] = useState<{ url: string; tipo: string; nome: string; ext: string } | null>(null);
   const [subindo, setSubindo] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);   // editando uma campanha existente
+  // Colunas do quadro (pra "puxar todo mundo da coluna X", ex.: Cliente final) e a coluna escolhida.
+  const [colsQuadro, setColsQuadro] = useState<import("../api").AtendColuna[]>([]);
+  const [colFonte, setColFonte] = useState("");
   const arqRef = useRef<HTMLInputElement>(null);
   async function subirAnexo(file: File) {
     if (file.size > 40 * 1024 * 1024) { alert("Arquivo muito grande (máx. 40MB)."); return; }
@@ -2758,17 +2761,18 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
     const u = getUser();
     Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp(), api.atendRespostasEmpresa(), api.atendBoard(u?.nome, ehGestorAtend()), api.atendInteressesContatos(), api.atendContatosEmCampanha()]).then(([cl, w, emp, bd, ie, ec]) => {
       const lista: Contato[] = []; const idx = new Map<string, Contato>();
-      const add = (n: string, tel: string, origem: Contato["origem"], cidade?: string | null, uf?: string | null, falou = false, ultimaSaida?: string | null) => {
+      const add = (n: string, tel: string, origem: Contato["origem"], cidade?: string | null, uf?: string | null, falou = false, ultimaSaida?: string | null, coluna?: string | null) => {
         const d = (tel || "").replace(/\D/g, ""); if (d.length < 10 || d.length > 13) return;  // fora do tamanho BR: ignora
         const key = nucleoTel(d); const ex = idx.get(key);
-        if (ex) { if (falou) ex.falou = true; if (ultimaSaida && (!ex.ultimaSaida || ultimaSaida > ex.ultimaSaida)) ex.ultimaSaida = ultimaSaida; if ((!ex.nome || ex.nome === telBonito(ex.telefone)) && n) ex.nome = n; return; }
-        const c: Contato = { nome: n || telBonito(d), telefone: d, origem, cidade, uf, falou, ultimaSaida: ultimaSaida || null };
+        if (ex) { if (falou) ex.falou = true; if (ultimaSaida && (!ex.ultimaSaida || ultimaSaida > ex.ultimaSaida)) ex.ultimaSaida = ultimaSaida; if (coluna) ex.coluna = coluna; if ((!ex.nome || ex.nome === telBonito(ex.telefone)) && n) ex.nome = n; return; }
+        const c: Contato = { nome: n || telBonito(d), telefone: d, origem, cidade, uf, falou, ultimaSaida: ultimaSaida || null, coluna: coluna || null };
         idx.set(key, c); lista.push(c);
       };
       if (cl.status === "fulfilled") for (const c of cl.value) add(c.nome, c.whatsapp || "", "cliente", c.cidade, c.uf);
       // "Já falaram com a gente": conversas do CRM com mensagem RECEBIDA do cliente. Guarda também a
-      // ÚLTIMA SAÍDA (ultima_out_em) pra avisar se você já mandou mensagem recente pra esse contato.
-      if (bd.status === "fulfilled") for (const cv of bd.value.conversas) if (cv.telefone && cv.ultima_in_em && cv.estado !== "grupo") add(cv.contato_nome || cv.nome || "", cv.telefone, "crm", cv.cidade, cv.uf, true, cv.ultima_out_em);
+      // ÚLTIMA SAÍDA (ultima_out_em) pra avisar se você já mandou mensagem recente pra esse contato,
+      // e a COLUNA do quadro (pra você poder selecionar "todos da coluna Cliente final", por exemplo).
+      if (bd.status === "fulfilled") for (const cv of bd.value.conversas) if (cv.telefone && cv.ultima_in_em && cv.estado !== "grupo") add(cv.contato_nome || cv.nome || "", cv.telefone, "crm", cv.cidade, cv.uf, true, cv.ultima_out_em, cv.coluna);
       if (w.status === "fulfilled") for (const c of (w.value.contatos || [])) add(c.nome, c.telefone, "whats");
       // Palavras-chave (interesses + última mensagem) pra busca por assunto.
       if (ie.status === "fulfilled") for (const p of (ie.value.contatos || [])) { const ex = idx.get(nucleoTel(p.telefone || "")); if (ex) ex.palavras = (p.palavras || "").toLowerCase(); }
@@ -2779,7 +2783,18 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
       if (emp.status === "fulfilled") { const conv = emp.value.find((r) => /cadast/i.test(r.titulo)); if (conv) setMensagem(conv.texto); }
     }).finally(() => setCarregando(false));
     carregarCampanhas();
+    api.atendColunas().then((r) => setColsQuadro(r.colunas || [])).catch(() => {});
   }, []);
+  // Seleciona TODO MUNDO que está numa coluna do quadro (ex.: 🏠 Cliente final). Usa a coluna
+  // que veio do board em cada contato. Só conta quem realmente já falou aqui (tem card no quadro).
+  function selecionarColuna(colId: string) {
+    if (!colId) return;
+    const alvos = contatos.filter((c) => c.coluna === colId);
+    if (!alvos.length) { alert("Ninguém nessa coluna no momento (ou os cards ainda não carregaram)."); return; }
+    setSel((s) => { const n = new Set(s); alvos.forEach((c) => n.add(c.telefone)); return n; });
+    const lb = colsQuadro.find((k) => k.id === colId)?.label || colId;
+    alert(`✓ Selecionei ${alvos.length} contato(s) da coluna "${lb}". Escreva a mensagem e clique em "📣 Criar e enviar".`);
+  }
   const [fonte, setFonte] = useState<"todos" | "cliente" | "falou" | "colado" | "catalogo">("todos");
   const CAP_CONTATOS = 1000; // limite de exibição (perf). O resto acha-se pela busca.
   const casaFonte = (c: Contato, f: typeof fonte) => f === "todos" || (f === "cliente" ? c.origem === "cliente" : f === "falou" ? !!c.falou : f === "catalogo" ? c.origem === "catalogo" : c.origem === "colado");
@@ -2975,6 +2990,18 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
             <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => setMostrarColar((v) => !v)}>📋 Colar lista de números</button>
             <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => setMostrarCatalogo((v) => !v)}>📖 Puxar quem viu o catálogo</button>
             {sel.size > 0 && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={limpar}>Limpar</button>}
+          </div>
+          {/* Puxar todo mundo de uma COLUNA do quadro (ex.: 🏠 Cliente final) de uma vez. */}
+          <div style={{ margin: "0 0 8px", padding: 10, border: "1px dashed var(--line)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span className="muted2" style={{ fontSize: 12.5 }}>📋 Puxar todo mundo de uma <b>coluna do quadro</b>:</span>
+            <select value={colFonte} onChange={(e) => setColFonte(e.target.value)} style={{ fontSize: 12.5, padding: "3px 6px" }}>
+              <option value="">Escolha a coluna…</option>
+              {colsQuadro.filter((k) => k.id !== "grupos").map((k) => {
+                const q = contatos.filter((c) => c.coluna === k.id).length;
+                return <option key={k.id} value={k.id}>{k.label} ({q})</option>;
+              })}
+            </select>
+            <button className="btn btn-primary" style={{ fontSize: 12.5 }} disabled={!colFonte} onClick={() => selecionarColuna(colFonte)}>➕ Selecionar todos</button>
           </div>
           {mostrarCatalogo && (
             <div style={{ margin: "0 0 8px", padding: 10, border: "1px dashed var(--line)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)" }}>
