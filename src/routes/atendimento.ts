@@ -442,25 +442,25 @@ async function garantirCardDaConversa(env: Env, convId: string, texto = "Catálo
 //  • ainda conversando              → "conversar"
 // O motor determinístico (CNPJ, catálogo, parceiros) segue intacto — a IA só faz a frente.
 const IA_SISTEMA = `Você é a *Big*, atendente virtual da *Big Tricot* no WhatsApp.
-A Big Tricot é uma fábrica de tricô (mantas, capas de almofada, almofadas e afins) que vende **no ATACADO, apenas para LOJISTAS** (revendedores com CNPJ).
+A Big Tricot é uma fábrica de tricô (mantas, capas de almofada, almofadas e afins). Ela atende LOJISTAS (atacado, revenda com CNPJ) E TAMBÉM CONSUMIDOR FINAL (varejo, pra uso próprio/presente) — os dois são bem-vindos.
 
-SEU PAPEL: acolher quem chama, conversar de forma natural e humana, ENTENDER o que a pessoa quer e descobrir se ela é LOJISTA (compra pra revender) ou CONSUMIDOR FINAL (compra pra usar/presente).
+SEU PAPEL: acolher quem chama de um jeito MUITO humano e caloroso (como uma vendedora simpática de verdade, não um robô), conversar naturalmente, ENTENDER o que a pessoa procura e descobrir se ela é LOJISTA (compra pra revender) ou CONSUMIDOR FINAL (compra pra usar/presente). NUNCA diga que é um robô/atendimento automático. NÃO fique explicando a política de "atacado x varejo" pro cliente — apenas atenda com naturalidade.
 
 ✂️ ANTES DE TUDO: escreva CURTO. Cada resposta deve ter no MÁXIMO 2 frases curtas (2-3 linhas), como uma mensagem de WhatsApp normal. Direto ao ponto, sem enrolação, sem repetir a mesma coisa, 1 pergunta por vez, no máximo 1 emoji.
 
 REGRAS IMPORTANTES:
 - NÃO peça o CNPJ logo de cara. Primeiro converse, entenda a necessidade (que tipo de produto procura, se já conhece a marca, etc.) e só depois, quando fizer sentido, encaminhe pra pegar os dados.
 - Se perceber que é LOJISTA (quer comprar/revender/fazer cadastro): use acao "coletar_lojista" e, na sua resposta CURTA, peça o *CNPJ* da loja. O sistema confirma o CNPJ e passa pro *vendedor humano* — você NÃO continua vendendo nem manda catálogo. ⚠️ Falar que "compra no atacado" NÃO prova que é lojista — só o CNPJ confirma; então peça o CNPJ.
-- 🚫 CATÁLOGO: VOCÊ NUNCA ENVIA O CATÁLOGO nem promete mandar. O catálogo tem os *PREÇOS DE ATACADO* e quem envia é o *VENDEDOR humano*. Seu papel é só a TRIAGEM: se a pessoa quer comprar/revender (lojista), peça o *CNPJ* (acao "coletar_lojista") — o sistema confirma e passa pro vendedor. Se for consumidor final, use acao "humano" (passa pro vendedor). NUNCA use a acao "enviar_catalogo", NUNCA diga "vou te enviar o catálogo".
-- Se for CONSUMIDOR FINAL (pessoa física, "pra mim", "uso pessoal", "presente", sem loja/CNPJ): use acao "humano" e diga, com carinho e em 1 linha, que já vai passar pra um dos nossos vendedores continuar o atendimento. ⚠️ NÃO fale de atacado NEM de varejo, NÃO diga que a Big "só vende pra lojista" nem que "vende pra consumidor", NÃO indique loja parceira, NÃO mande nenhum link, NÃO peça a cidade/estado por causa de loja parceira, e NÃO fale de preço/modelos/cores. É só um encaminhamento gentil pro vendedor — nada além disso.
+- 🚫 CATÁLOGO DE ATACADO (lojista): VOCÊ NUNCA envia o catálogo de atacado nem promete mandar. Ele tem *PREÇOS DE ATACADO* e quem envia é o *VENDEDOR humano*. Se a pessoa quer comprar/revender (lojista), peça o *CNPJ* (acao "coletar_lojista") — o sistema confirma e passa pro vendedor. NUNCA use a acao "enviar_catalogo".
+- 🛍️ CONSUMIDOR FINAL (VAREJO) — pessoa física, "pra mim", "uso pessoal", "presente", veio de anúncio/Instagram ("quero mais informações", "vi no instagram"), sem loja/CNPJ: ATENDA COM CARINHO, como uma vendedora de varejo. Converse de forma humana, pergunte o que ela procura/pra quem é (triagem). Quando ela demonstrar interesse em ver os produtos, use acao "catalogo_varejo": o SISTEMA envia o *catálogo de varejo* (link) com uma mensagem convidativa — você NÃO escreve o link nem inventa um, só ajuda a pessoa a escolher e tira dúvidas de produto/cor/entrega. ⚠️ NÃO fale de PREÇO/VALOR você mesma (o preço a pessoa vê no catálogo). Quando ela QUISER FECHAR a compra (escolheu, "quero comprar", "como pago", "quanto fica com frete"), use acao "humano" e diga que já vai passar pra um vendedor finalizar o pedido pelo WhatsApp. NÃO fale de atacado, NÃO diga "só vendemos pra lojista", NÃO indique loja parceira.
 - STATUS DE PEDIDO: se o cliente perguntar sobre um pedido dele (ex.: "como está meu pedido?", "meu pedido já saiu?", "em que fase está?"): use acao "consultar_pedido". O sistema identifica pelo CNPJ e responde a fase de produção + a data prevista — você não precisa inventar nada. Se você JÁ sabe o CNPJ dele, preencha o campo "cnpj". Se NÃO souber, peça o CNPJ da loja na resposta. IMPORTANTE: depois que o status for informado, se o cliente fizer MAIS perguntas sobre o pedido (adiantar, alterar, reclamar do prazo), use acao "humano" e diga que vai chamar alguém do *time de produção* pra ajudar (NÃO fale a sigla "PCP" pro cliente — é interno).
 - Se o cliente pedir PRIVATE LABEL (marca própria, etiqueta própria, fabricar com a marca dele): use acao "humano" — isso é com um vendedor especializado. Na resposta, diga que já vai chamar o vendedor.
 - Se pedir Financeiro, Pós-venda, tratar de um pedido já feito, reclamação/problema, ou pedir pra falar com uma pessoa: use acao "humano".
 - 🤝 CLIENTE QUE JÁ ESTÁ COMPRANDO/PEDINDO: se a pessoa manda uma LISTA de produtos, cita nomes/códigos de produtos nossos (ex.: "peseira genebra", "pipoca bege saara", "kit rice", "manta bali", "55x35 cheia"), fala em "esses valores", "tira o marinho", "veja se tem essas opções", cita QUANTIDADES/variedade ou claramente está montando um pedido de REVENDA → é um LOJISTA fazendo pedido. NÃO fique perguntando se é loja ou uso pessoal: use acao "humano" imediatamente e diga na resposta que já vai chamar o vendedor pra fechar o pedido.
-- ⚠️ CUIDADO pra NÃO confundir: quem manda a foto de UMA peça (ex.: uma almofada) e pergunta "quanto custa?/gostaria de um orçamento" SEM dizer que tem loja/revenda, especialmente em PRIMEIRO CONTATO, é quase sempre CONSUMIDOR FINAL — NÃO trate como pedido de lojista. Primeiro descubra: pergunte gentilmente se é pra *revender na loja dele* ou pra *uso pessoal*. Se for uso pessoal, use acao "humano" e diga que já vai passar pra um vendedor (sem falar de preço, sem link, sem falar de atacado/varejo). "Orçamento de 1 peça" por si só NÃO é sinal de lojista.
+- ⚠️ CUIDADO pra NÃO confundir: quem manda a foto de UMA peça (ex.: uma almofada) e pergunta "quanto custa?/gostaria de um orçamento" SEM dizer que tem loja/revenda, especialmente em PRIMEIRO CONTATO, é quase sempre CONSUMIDOR FINAL — NÃO trate como pedido de lojista. Primeiro descubra: pergunte gentilmente se é pra *revender na loja dele* ou pra *uso pessoal*. Se for uso pessoal (varejo), atenda com carinho e, quando fizer sentido, use acao "catalogo_varejo" pra mandar o catálogo — sem falar preço você mesma. "Orçamento de 1 peça" por si só NÃO é sinal de lojista.
 - Enquanto ainda está entendendo se é lojista ou consumidor, use acao "conversar". Assim que descobrir, seja decidido e use a acao certa — não enrole.
 - Não invente preços, prazos, pedido mínimo ou políticas POR CONTA PRÓPRIA. PORÉM, se a pergunta tiver resposta na BASE DE CONHECIMENTO (mais abaixo), use EXATAMENTE aquela informação — ela é oficial da empresa e tem prioridade sobre esta regra. Só quando NÃO houver nada na base sobre o assunto é que você diz que o vendedor passa os detalhes.
-- 🔒 PREÇO É SÓ PARA LOJISTA (REGRA ABSOLUTA, VALE MAIS QUE QUALQUER OUTRA, INCLUSIVE A BASE DE CONHECIMENTO): NUNCA, EM HIPÓTESE ALGUMA, informe preço, valor, tabela, pedido mínimo, valor de frete ou qualquer política comercial a CONSUMIDOR FINAL. Se a intenção for "consumidor" (pra uso pessoal/presente, pessoa física sem loja/CNPJ), não fale de valores de jeito nenhum — use acao "humano" e diga com carinho que já vai passar pra um vendedor (sem falar de atacado/varejo e sem mandar link). E ENQUANTO você ainda NÃO tiver certeza de que a pessoa é LOJISTA, também NÃO adiante preço/valor/mínimo: primeiro descubra se é lojista (revenda) ou uso pessoal. Preço e pedido mínimo (mesmo os que estão na BASE DE CONHECIMENTO) só podem ser ditos DEPOIS de ficar claro que é LOJISTA.
+- 🔒 VOCÊ NUNCA FALA PREÇO/VALOR VOCÊ MESMA (REGRA ABSOLUTA): nunca informe preço, valor, tabela, pedido mínimo ou frete NO CHAT — nem pra lojista, nem pra consumidor. Pro LOJISTA, quem passa preço é o vendedor (depois do CNPJ). Pro CONSUMIDOR (varejo), o preço aparece no CATÁLOGO que o sistema manda (acao "catalogo_varejo") — você só ajuda a escolher; quando a pessoa quiser fechar/pagar, use acao "humano" pra um vendedor finalizar. Se a BASE DE CONHECIMENTO tiver um valor específico e a pessoa perguntar, você pode usar aquela informação; fora isso, não invente valores.
 - FOTOS: quando aparecer no histórico algo como "[O cliente enviou uma foto. O que aparece nela: ...]", é porque ele mandou uma imagem e um sistema de visão descreveu o conteúdo. Use essa descrição pra entender o que ele quer (reconheceu um produto, mandou um comprovante, um print de conversa etc.). Comente de forma natural o que você "viu" (ex.: "Que linda essa manta cinza! 😍") e siga as regras normais — inclusive preço só pra lojista. NUNCA leia o texto entre colchetes em voz alta pro cliente nem diga "sistema de visão"; é uma nota interna.
 - ✂️ SEJA CURTA (REGRA FORTE, VALE SEMPRE): responda em NO MÁXIMO 2 frases curtas (2 a 3 linhas no total, como uma mensagem de WhatsApp de verdade). Vá DIRETO ao ponto. NÃO faça introduções longas, NÃO explique demais, NÃO repita a mesma ideia com outras palavras, NÃO escreva parágrafos. Faça só UMA pergunta ou UM pedido por mensagem. No máximo 1 emoji. Mensagem comprida afasta o cliente — se der pra dizer em 1 frase, diga em 1 frase.
 - Tom: caloroso, brasileiro, informal de WhatsApp. Nunca repita a mesma pergunta que já foi respondida.
@@ -468,7 +468,7 @@ REGRAS IMPORTANTES:
 - SETOR: identifique de qual setor o cliente precisa e preencha o campo "setor": "vendas" (comprar, ver produtos, preço, catálogo, revenda), "fiscal" (nota fiscal, boleto, pagamento, cobrança, financeiro), "estoque" (disponibilidade, se tem tal cor/modelo, quando repõe), "pcp" (andamento/status de um pedido em produção). Se ainda não der pra saber, deixe vazio.
 
 RESPONDA **SOMENTE** com um JSON válido, sem texto fora dele, neste formato exato:
-{"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "enviar_catalogo" | "consultar_pedido" | "indicar_parceiro" | "humano", "uf": "<sigla do estado, ex.: MG, se souber; senão vazio>", "cidade": "<cidade se souber; senão vazio>", "cnpj": "<CNPJ do cliente se ele informar ou você já souber; senão vazio>", "setor": "vendas" | "fiscal" | "estoque" | "pcp" | ""}`;
+{"resposta": "<o que enviar pro cliente>", "intencao": "lojista" | "consumidor" | "indefinido", "acao": "conversar" | "coletar_lojista" | "catalogo_varejo" | "consultar_pedido" | "humano", "uf": "<sigla do estado, ex.: MG, se souber; senão vazio>", "cidade": "<cidade se souber; senão vazio>", "cnpj": "<CNPJ do cliente se ele informar ou você já souber; senão vazio>", "setor": "vendas" | "fiscal" | "estoque" | "pcp" | ""}`;
 
 // Estados "terminados" em que a Big reengaja o contato que volta a falar (ela usa o
 // histórico e continua). Ficam de fora: coleta determinística e estados de pedido/pós-venda.
@@ -692,29 +692,34 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, vitrineBase: 
   if (!dec) return { saidas: [{ tipo: "texto", texto: BOAS_VINDAS }], novoEstado: "aguardando-setor", notificarHumano: false, tipo: null };
   const setor = setorDe(dec.setor); // setor que a Big identificou (vendas/fiscal/estoque/pcp)
 
-  // CONSUMIDOR FINAL: guardrail robusto — não depende só do "acao" do modelo. Se ele marcou
-  // indicar_parceiro OU disse que é consumidor, tratamos como indicação. Com o ESTADO em mãos,
-  // o sistema JÁ envia o link da vitrine filtrado por UF (a pessoa escolhe a cidade mais perto lá).
   const uf = ufDe(dec.uf) || ufDe(conv.uf);
   // Dados que a IA extraiu da mensagem (pra preencher o painel sozinho — "Dados coletados").
   const dados = { cnpj: (digitos(dec.cnpj) || "").length === 14 ? digitos(dec.cnpj) : undefined, cidade: String(dec.cidade ?? "").trim() || undefined, uf: uf || undefined };
-  const querIndicar = dec.acao === "indicar_parceiro" || dec.intencao === "consumidor";
-  if (querIndicar) {
-    // CONSUMIDOR FINAL — agora a Big vende também no VAREJO. NÃO manda link de "onde comprar", NÃO
-    // indica loja parceira e NÃO fala de atacado/varejo. Só passa pra um vendedor (humano); o card
-    // vai pra fila de atendimento humano (tipo fica como está — não marca "consumidor" pra não cair
-    // na coluna "Cliente final").
-    return {
-      saidas: [{ tipo: "texto", texto: "Perfeito! 💛 Já vou te passar pra um dos nossos vendedores continuar seu atendimento, tá? 😊" }],
-      novoEstado: "atendimento-humano", notificarHumano: true, tipo: conv.tipo ?? null, setor: setor || "vendas", dados,
-    };
-  }
 
   const saidas: Saida[] = [{ tipo: "texto", texto: dec.resposta }];
   switch (dec.acao) {
     case "coletar_lojista":
       // A IA já pediu o nome da loja na resposta → o fluxo determinístico captura o nome e pede o CNPJ.
       return { saidas, novoEstado: "triagem-nome", notificarHumano: false, tipo: "lojista", setor: setor || "vendas", dados };
+    case "catalogo_varejo": {
+      // CONSUMIDOR FINAL (varejo): manda o CATÁLOGO DE VAREJO (link + senha) com a mensagem convidativa,
+      // junto da fala da IA. A IA continua conversando (triagem) — não fala preço; o preço tá no catálogo.
+      const cfgV = await lerConfig(env);
+      const url = (cfgV.catalogo_varejo_url || "").trim();
+      if (!url) {
+        // Catálogo de varejo ainda não configurado → não trava: passa pro vendedor mostrar.
+        return { saidas: [{ tipo: "texto", texto: dec.resposta || "Que ótimo! 💛 Já vou te passar pra um vendedor pra te mostrar tudo, tá? 😊" }], novoEstado: "atendimento-humano", notificarHumano: true, tipo: conv.tipo ?? null, setor: setor || "vendas", dados };
+      }
+      const senha = (cfgV.catalogo_varejo_senha || "").trim();
+      const base = (cfgV.catalogo_varejo_msg || "").trim() || MSG_CATALOGO_VAREJO_PADRAO;
+      let msg = base.replace(/\{link\}/gi, url).replace(/\{senha\}/gi, senha);
+      if (!/https?:\/\//i.test(msg)) msg += `\n${url}`;                                      // garante o link
+      if (senha && !/\{senha\}/i.test(base) && !msg.toLowerCase().includes(senha.toLowerCase())) msg += `\n🔑 Senha: *${senha}*`;
+      const out: Saida[] = [];
+      if (dec.resposta && dec.resposta.trim()) out.push({ tipo: "texto", texto: dec.resposta.trim() });
+      out.push({ tipo: "texto", texto: msg });
+      return { saidas: out, novoEstado: "ia-triagem", notificarHumano: false, tipo: conv.tipo ?? null, setor: setor || "vendas", dados };
+    }
     case "enviar_catalogo":
       // SÓ quando o cliente PEDE o catálogo. A mensagem do catálogo (link virtual) é
       // anexada no núcleo (receberMensagem) e JÁ é o convite completo (texto + link +
@@ -1103,35 +1108,26 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     // VENDEDOR humano). Regra:
     //   • Consumidor final (uso pessoal)      → indica a loja parceira da região (link).
     //   • Quem quer comprar/revender (lojista) → confirma o CNPJ e PASSA PRO VENDEDOR (humano).
-    ia.catalogo = false; // trava dura: a IA nunca envia catálogo
+    ia.catalogo = false; // trava dura: a IA nunca envia o catálogo de ATACADO (o de varejo é outro fluxo)
     const lojistaConfirmado = !!conv.cliente_id || conv.lojista === 1 || digitos(conv.cnpj).length === 14;
     if (!lojistaConfirmado) {
-      const consumidorSinal = CONSUMIDOR_FINAL_RE.test(texto) || conv.tipo === "consumidor" || conv.estado === "indicado-parceiro";
-      const semCnpjSinal = SEM_CNPJ_RE.test(texto);
-      // Sinal de que quer COMPRAR/revender (não é só um "oi"): a IA quis coletar lojista/catálogo, ou
-      // o texto pede catálogo/preço/comprar. Aí a gente pede o CNPJ (e o fluxo passa pro vendedor).
-      const intencaoComprar = ia.novoEstado === "triagem-nome" || PEDE_CATALOGO_RE.test(texto) || /compr|revend|atacad|pre[çc]o|valor|pedido|encomend|quero (as|essa|uma|umas)/i.test(texto);
+      const consumidorSinal = CONSUMIDOR_FINAL_RE.test(texto) || conv.tipo === "consumidor";
       const jaCliente = JA_CLIENTE_RE.test(texto);
-      const ufC = ufDe(conv.uf);
+      // Sinal claro de LOJISTA/atacado (revenda). Só "quero comprar/preço" NÃO é lojista — pode ser varejo,
+      // e aí quem cuida é a IA (conversa + catálogo de varejo). Só forçamos o CNPJ com sinal de revenda.
+      const sinalLojista = ia.novoEstado === "triagem-nome" || /revend|atacad|lojist|\bcnpj\b|(pra|para)( a| minha)? loja|nota fiscal/i.test(texto);
       if (jaCliente && !consumidorSinal) {
         // Cliente diz que JÁ é cliente da Big → não pede CNPJ; passa pro atendente (fila humana, piscando).
         ia.tipo = "lojista"; ia.novoEstado = "atendimento-humano"; ia.notificarHumano = true;
         ia.saidas = [{ tipo: "texto", texto: "Que bom te ver de novo por aqui! 💛 Já vou te passar pra um dos nossos vendedores continuar seu atendimento, tá? 😊" }];
-      } else if (consumidorSinal) {
-        // Consumidor final (agora a Big vende varejo): sem link, sem falar de atacado/varejo — passa
-        // pra um vendedor. tipo fica como está (não marca "consumidor" pra não cair em "Cliente final").
-        ia.tipo = conv.tipo ?? null; ia.notificarHumano = true; ia.novoEstado = "atendimento-humano";
-        ia.saidas = [{ tipo: "texto", texto: "Perfeito! 💛 Já vou te passar pra um dos nossos vendedores continuar seu atendimento, tá? 😊" }];
-      } else if (semCnpjSinal) {
-        // Sem CNPJ: agora vendemos varejo também, então não exige CNPJ nem fala de atacado — passa pro vendedor.
-        ia.notificarHumano = true; ia.novoEstado = "atendimento-humano";
-        ia.saidas = [{ tipo: "texto", texto: "Perfeito! 💛 Já vou te passar pra um dos nossos vendedores continuar seu atendimento, tá? 😊" }];
-      } else if (intencaoComprar) {
+      } else if (sinalLojista && !consumidorSinal) {
+        // Quer revender/atacado (e não é sinal de consumidor) → confirma CNPJ e passa pro vendedor.
         ia.tipo = "lojista"; ia.notificarHumano = false;
         ia.saidas = [{ tipo: "texto", texto: "Que ótimo! 💛 Pra te atender no *atacado*, primeiro preciso confirmar seu cadastro de lojista. Me passa o *CNPJ* da sua loja, por favor?" }];
         ia.novoEstado = "aguardando-cnpj";
       }
-      // else: ainda é um "oi"/conversa — deixa a IA conversar normalmente (acao conversar).
+      // else (consumidor/varejo OU ainda só conversando): NÃO sobrescreve — a IA cuida (converse de forma
+      // humana e, quando fizer sentido, manda o catálogo de VAREJO; ao fechar, ela passa pro vendedor).
     }
     // Se a IA (por hábito) tentou "enviar_catalogo" — inclusive pra lojista já confirmado — a gente
     // NÃO manda o catálogo; passa pro VENDEDOR (senão a resposta ficaria vazia).
@@ -1599,6 +1595,9 @@ const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia"
 const MSG_ANIVERSARIO_PADRAO = "🎉 Feliz aniversário, {nome}! A equipe da *Big Tricot* deseja um dia cheio de alegria! 💛 Conte com a gente sempre. 🧶";
 // Mensagem enviada ao cliente quando o atendimento é ENCERRADO (na mão ou pelo fecho automático de 24h).
 const MSG_ENCERRAMENTO_PADRAO = "Atendimento finalizado por aqui 💛 Se precisar de mais alguma coisa, é só me mandar uma mensagem que eu te respondo. 😊 — *Big Tricot*";
+// Mensagem convidativa que a IA manda junto do CATÁLOGO DE VAREJO (campanha p/ consumidor final).
+// {link} vira o link do catálogo de varejo e {senha} a senha (se houver). Editável em Configurações.
+const MSG_CATALOGO_VAREJO_PADRAO = "Aaah, que delícia de escolha! 💛 Nossas peças são tricô de verdade, super macias e caprichadas 🧶\n\nDá uma espiadinha no nosso catálogo, tem cada coisa linda que você vai se apaixonar 👇\n{link}\n\nVai escolhendo o que amar que eu te ajudo com tudo por aqui, tá? 😍";
 
 atendimento.get("/config", async (c) => {
   const cfg = await lerConfig(c.env);
@@ -1616,6 +1615,11 @@ atendimento.get("/config", async (c) => {
     catalogo_url: cfg.catalogo_url || "",
     catalogo_senha: cfg.catalogo_senha || "",
     catalogo_msg: cfg.catalogo_msg || "",
+    // Catálogo de VAREJO (campanha p/ consumidor final): link + senha + mensagem convidativa da IA.
+    catalogo_varejo_url: cfg.catalogo_varejo_url || "",
+    catalogo_varejo_senha: cfg.catalogo_varejo_senha || "",
+    catalogo_varejo_msg: cfg.catalogo_varejo_msg || "",
+    catalogo_varejo_msg_padrao: MSG_CATALOGO_VAREJO_PADRAO,
     atend_hora_ini: cfg.atend_hora_ini || "7",
     atend_hora_fim: cfg.atend_hora_fim || "17",
     atend_domingo: cfg.atend_domingo === "1",
@@ -1655,7 +1659,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "encerramento_ativo", "fechar_inativos_ativo", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "catalogo_varejo_url", "catalogo_varejo_senha", "catalogo_varejo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "encerramento_ativo", "fechar_inativos_ativo", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
