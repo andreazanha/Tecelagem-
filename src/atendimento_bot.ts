@@ -93,6 +93,7 @@ export interface Resultado { conv: Conversa; saidas: Saida[]; notificarHumano: b
 // + responsável + últimas mensagens (ver colunaAtendimento em routes/atendimento.ts).
 export const ATEND_COLUNAS = [
   { id: "triagem", label: "🟣 Triagem (chegando agora)", cor: "#8b5cf6" },
+  { id: "ia-atende", label: "🤖 IA atende", cor: "#06b6d4" },
   { id: "aguardando-humano", label: "Aguardando atendimento humano", cor: "#f59e0b" },
   { id: "em-atendimento", label: "Em atendimento", cor: "#6366f1" },
   { id: "montando-pedido", label: "Montando pedido", cor: "#f97316" },

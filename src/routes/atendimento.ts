@@ -2752,7 +2752,11 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
   // autorresposta da loja) fica na coluna "Campanhas". Quando responder de verdade, o webhook põe
   // estado='atendimento-humano' e aí ele sai daqui e cai em "Aguardando humano" (piscando).
   if ((origem === "campanha" || origem === "reativacao") && estado !== "atendimento-humano") return "campanha";
-  if (["menu", "ia-triagem", "triagem-vendas", "triagem-nome", "aguardando-cnpj", "aguardando-cidade-parceiro"].includes(estado)) return "triagem";
+  // A IA está atendendo sozinha (varejo/triagem automática): vai pra coluna própria "🤖 IA atende",
+  // pra esses leads não se misturarem com a fila humana. Pisca só quando o cliente está esperando
+  // (o botão "Fim" silencia; nova mensagem do cliente tira do silêncio e o card volta pra cá).
+  if (estado === "ia-triagem") return "ia-atende";
+  if (["menu", "triagem-vendas", "triagem-nome", "aguardando-cnpj", "aguardando-cidade-parceiro"].includes(estado)) return "triagem";
   if (estado === "novo") return "triagem";                            // contato novo → cai na triagem automática
   // Estados de funil/venda: no ATENDIMENTO só importam se o cliente está esperando resposta.
   if (inn && inn > out) return "aguardando-humano";

@@ -376,6 +376,16 @@ export function Atendimento() {
     if (!confirm(`Ligar a Big (IA) na conversa com ${nome || "este contato"}?\n\nA Big vai mandar uma saudação e voltar a responder essa pessoa automaticamente (triagem + catálogo de varejo).`)) return;
     try { await api.atendReativarIa([id]); recarregar(); } catch { alert("Não consegui ligar a IA agora. Tente de novo."); }
   }
+  // Botão "Fim" do card: se a IA está atendendo (coluna IA atende / varejo), só SILENCIA (para de
+  // piscar; a IA continua e o card volta quando o cliente escrever). Se for lojista/fila humana,
+  // ENCERRA de vez (vai pra "Atendimento finalizado") — não pode ficar junto do varejo.
+  async function fimCard(c: AtendConversa) {
+    try {
+      if (c.coluna === "ia-atende") { await api.atendSilenciar(c.id, true); }
+      else { await api.atendEncerrar(c.id); }
+      recarregar();
+    } catch { alert("Não consegui concluir agora. Tente de novo."); }
+  }
   async function reativarIaColuna(label: string, ids: string[]) {
     if (!ids.length) return;
     if (!confirm(`Reativar a IA em ${ids.length} lead(s) da coluna "${label}"?\n\nA Big vai mandar uma saudação pra cada um e recomeçar o atendimento (triagem + catálogo de varejo). Use com leads PARADOS — não com quem já está sendo atendido por uma pessoa.`)) return;
@@ -645,6 +655,7 @@ export function Atendimento() {
                       onLembrete={() => toggleLembrete(c.id)}
                       onAgendar={(quando, mensagem) => agendarIa(c.id, quando, mensagem)}
                       onReativarIa={ehGestorAtend() ? () => reativarIaCard(c.id, c.contato_nome || c.nome || telBonito(c.telefone)) : undefined}
+                      onFim={() => fimCard(c)}
                       onPointerDown={(e) => dragDownC(e, c.id)} />
                   ))}
                 </div>
@@ -1114,7 +1125,7 @@ function baixarArquivo(url: string) {
 }
 // Horários "de bater o olho e clicar" (horário comercial).
 const HORAS_AG = ["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
-function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, onReativarIa, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; onAgendar?: (quando: number | null, mensagem?: string) => void; onReativarIa?: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
+function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, onReativarIa, onFim, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; onAgendar?: (quando: number | null, mensagem?: string) => void; onReativarIa?: () => void; onFim?: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.estado === "atendimento-humano";
   const [agOpen, setAgOpen] = useState(false);
   const [agDia, setAgDia] = useState("");   // "YYYY-MM-DD"
@@ -1227,6 +1238,12 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
         {onReativarIa && (
           <button title="Ligar a Big (IA) nesta conversa: manda uma saudação e recomeça o atendimento automático." onClick={(e) => { e.stopPropagation(); onReativarIa(); }} onPointerDown={(e) => e.stopPropagation()}
             style={{ background: "#e8f0ff", color: "#1a56db", border: "1px solid #bcd3ff", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700, padding: "1px 7px", lineHeight: 1.4, letterSpacing: 0.3 }}>IA</button>
+        )}
+        {/* Botão FIM: se a IA estiver atendendo (varejo) só para de piscar (IA continua); se for
+            lojista/fila humana, encerra a conversa (vai pra "Atendimento finalizado"). */}
+        {onFim && (
+          <button title={c.coluna === "ia-atende" ? "Para de piscar. A Big (IA) continua atendendo; quando o cliente escrever de novo o card volta pra cá." : "Encerrar: manda a conversa para 'Atendimento finalizado'."} onClick={(e) => { e.stopPropagation(); onFim(); }} onPointerDown={(e) => e.stopPropagation()}
+            style={{ background: "#fee2e2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700, padding: "1px 7px", lineHeight: 1.4, letterSpacing: 0.3 }}>Fim</button>
         )}
         {/* Mover pra outra coluna sem arrastar: clica e escolhe o nome da coluna */}
         {colunas && onMover && (
