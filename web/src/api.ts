@@ -762,14 +762,14 @@ export const api = {
   atendFonteCatalogo: (dias: number) =>
     fetch(`/api/atendimento/campanhas/fonte-catalogo?dias=${dias}`).then((r) => j<{ viewers: { telefone: string; nome: string; regiao: string; rep: string; ts: number }[]; total: number; bloqueados: number; optout: number; dias: number; error?: string }>(r)),
   // ── Postagens em grupo (lojista / pessoa física) ──
-  atendGruposLista: () => fetch("/api/atendimento/grupos/lista").then((r) => j<{ grupos: { id: string; nome: string }[]; numero_big: string }>(r)),
+  atendGruposLista: () => getT("/api/atendimento/grupos/lista").then((r) => j<{ grupos: { id: string; nome: string }[]; numero_big: string }>(r)),
   atendGrupoPostar: (b: { grupos: { id: string; nome?: string }[]; mensagem?: string; comLink?: boolean; linkTexto?: string; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string }) =>
     jsonPost("/api/atendimento/grupos/postar", b).then((r) => j<{ ok: boolean; enviados: number; falhas: string[]; error?: string }>(r)),
   atendGrupoAgendar: (b: { grupos: { id: string; nome?: string }[]; mensagem?: string; comLink?: boolean; linkTexto?: string; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string; quando?: number; recorrencia?: string; dia_semana?: number; hora?: string }) =>
     jsonPost("/api/atendimento/grupos/agendar", b).then((r) => j<{ ok: boolean; criados: number; error?: string }>(r)),
-  atendGruposAgendados: () => fetch("/api/atendimento/grupos/agendados").then((r) => j<{ posts: { id: string; grupo_id: string; grupo_nome: string | null; mensagem: string; com_link: number; arquivo_nome: string | null; quando: string | null; recorrencia: string; dia_semana: number | null; hora: string | null; ativo: number; ultimo_envio_em: string | null }[] }>(r)),
+  atendGruposAgendados: () => getT("/api/atendimento/grupos/agendados").then((r) => j<{ posts: { id: string; grupo_id: string; grupo_nome: string | null; mensagem: string; com_link: number; arquivo_nome: string | null; quando: string | null; recorrencia: string; dia_semana: number | null; hora: string | null; ativo: number; ultimo_envio_em: string | null }[] }>(r)),
   atendGrupoAgendadoAtivo: (id: string, on: boolean) => jsonPost(`/api/atendimento/grupos/agendados/${id}/ativo`, { on }).then((r) => j<{ ok: boolean }>(r)),
-  atendGrupoAgendadoDel: (id: string) => fetch(`/api/atendimento/grupos/agendados/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  atendGrupoAgendadoDel: (id: string) => fetch(`/api/atendimento/grupos/agendados/${id}`, { method: "DELETE", headers: { ...authHeaders() } }).then((r) => j<{ ok: boolean }>(r)),
   atendConversa: (id: string) => getT(`/api/atendimento/${id}`).then((r) => j<AtendConversaDetalhe>(r)),
   atendEntrada: (b: { telefone: string; texto: string }) =>
     jsonPost("/api/atendimento/entrada", b).then((r) => j<AtendResposta>(r)),
