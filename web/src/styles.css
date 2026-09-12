@@ -10,6 +10,13 @@
   --sidebar: #0f1629;
 }
 * { box-sizing: border-box; }
+/* CONTRASTE GLOBAL: um <button> puro NÃO herda a cor do tema (o navegador força um cinza
+   escuro/preto), então textos dentro de botões customizados ficavam quase invisíveis no dark.
+   Fazer o botão herdar a cor do texto do tema corrige isso em TODAS as telas de uma vez.
+   As classes (.btn, .at-chip, .kbtn…) continuam definindo suas próprias cores por cima. */
+button { color: inherit; }
+/* Cards de escolha de público (campanha): realce sutil no hover. */
+.cmp-modo:hover { border-color: #6366f1 !important; }
 /* Seletor de data/hora do "Chamar IA": no tema escuro o iconezinho do calendário
    ficava preto sobre o fundo navy (quase invisível). color-scheme deixa o navegador
    renderizar o campo (e o ícone) com as cores do tema — branco no escuro. */
@@ -602,7 +609,10 @@ body.dark .row-novo td { background: #0b1120; }
 body.dark input, body.dark select, body.dark textarea, body.dark .busca-ped {
   background: #0b1120; border-color: #ffffff1c; color: var(--ink);
 }
-body.dark input::placeholder { color: #5b6478; }
+body.dark input::placeholder, body.dark textarea::placeholder { color: #64748b; }
+/* Hierarquia de texto no dark (legibilidade): auxiliar/desabilitado mais claros. */
+body.dark .muted2 { color: #94a3b8; }
+body.dark :disabled, body.dark [disabled], body.dark button:disabled { opacity: .55; }
 
 /* tabelas */
 body.dark .table th { color: var(--muted); border-color: #ffffff14; }

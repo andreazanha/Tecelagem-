@@ -3194,8 +3194,8 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
             {([[1, "Mensagem"], [2, "Público"], [3, "Envio"], [4, "Revisar"]] as const).map(([n, lb], i) => (
               <Fragment key={n}>
                 <button onClick={() => setEtapa(n)} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "transparent", border: 0, cursor: "pointer", padding: "2px 4px" }}>
-                  <span style={{ minWidth: 26, height: 26, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, background: etapa === n ? "#6366f1" : etapa > n ? "#4f46e5" : "rgba(148,163,184,0.25)", color: etapa >= n ? "#fff" : "#94a3b8" }}>{etapa > n ? "✓" : n}</span>
-                  <span style={{ fontSize: 13.5, fontWeight: etapa === n ? 800 : 500, opacity: etapa === n ? 1 : 0.6 }}>{lb}</span>
+                  <span style={{ minWidth: 26, height: 26, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, background: etapa === n ? "#6366f1" : etapa > n ? "#4f46e5" : "rgba(148,163,184,0.28)", color: etapa >= n ? "#fff" : "var(--muted)" }}>{etapa > n ? "✓" : n}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: etapa === n ? 800 : 600, color: etapa === n ? "var(--ink)" : "var(--muted)" }}>{lb}</span>
                 </button>
                 {i < 3 && <span style={{ width: 26, height: 2, background: "var(--line)", borderRadius: 2 }} />}
               </Fragment>
@@ -3242,9 +3242,9 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
           <div className="muted2" style={{ fontSize: 12.5, marginBottom: 14 }}>Escolha como quer selecionar as pessoas:</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(148px,1fr))", gap: 10, marginBottom: 16 }}>
             {([["coluna", "📋", "Por coluna do quadro"], ["tipo", "🏷️", "Por tipo"], ["buscar", "🔎", "Buscar pessoa"], ["colar", "📥", "Colar números"], ["catalogo", "📖", "Viu o catálogo"]] as const).map(([m, ic, lb]) => (
-              <button key={m} onClick={() => { setModo(m); if (m !== "coluna") setColFiltro(""); if (m === "buscar") setFonte("todos"); }} style={{ cursor: "pointer", textAlign: "left", padding: "12px 14px", borderRadius: 12, border: "1.5px solid " + (modo === m ? "#6366f1" : "var(--line)"), background: modo === m ? "rgba(99,102,241,0.12)" : "rgba(148,163,184,0.06)" }}>
+              <button key={m} className="cmp-modo" onClick={() => { setModo(m); if (m !== "coluna") setColFiltro(""); if (m === "buscar") setFonte("todos"); }} style={{ cursor: "pointer", textAlign: "left", padding: "12px 14px", borderRadius: 12, border: "1.5px solid " + (modo === m ? "#6366f1" : "var(--line)"), background: modo === m ? "rgba(99,102,241,0.14)" : "rgba(148,163,184,0.08)", color: "var(--ink)" }}>
                 <div style={{ fontSize: 20 }}>{ic}</div>
-                <div style={{ fontSize: 12.5, fontWeight: modo === m ? 800 : 600, marginTop: 4 }}>{lb}</div>
+                <div style={{ fontSize: 12.5, fontWeight: modo === m ? 800 : 700, marginTop: 4, color: "var(--ink)" }}>{lb}</div>
               </button>
             ))}
           </div>
