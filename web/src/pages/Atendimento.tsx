@@ -1276,6 +1276,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [respostas, setRespostas] = useState<RespostaPronta[]>([]);
   const [respEmpresa, setRespEmpresa] = useState<RespostaPronta[]>([]);
   const [mostrarResp, setMostrarResp] = useState(false);
+  const [buscaResp, setBuscaResp] = useState("");            // busca no painel de respostas prontas
+  const [filtroResp, setFiltroResp] = useState<"todas" | "empresa" | "minhas">("todas");   // filtro por origem
   const [gerenciarResp, setGerenciarResp] = useState(false);
   const [arqRapidoOpen, setArqRapidoOpen] = useState(false);
   const [transfOpen, setTransfOpen] = useState(false); // picker do botão "Transferir para outro vendedor"
@@ -2003,36 +2005,53 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
           {recortando && anexo?.ehImg && (
             <RecortarImagemModal file={anexo.file} url={anexo.url} onCancelar={() => setRecortando(false)} onAplicar={aplicarRecorte} />
           )}
-          {/* Lista de respostas prontas (abre acima do campo) */}
+          {/* Painel de respostas prontas: flutuante À DIREITA, acima do campo — a conversa continua
+              visível à esquerda. Busca + filtros + cards com prévia. Clicar coloca no campo (escolherResposta). */}
           {mostrarResp && humano && (
-            <div style={{ position: "absolute", left: 8, right: 8, bottom: "100%", marginBottom: 8, background: "var(--card,#fff)", border: "1px solid var(--line,#e2e8f0)", borderRadius: 12, boxShadow: "0 12px 32px #0002", maxHeight: 280, overflowY: "auto", zIndex: 20 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--line,#eef2f7)" }}>
-                <b style={{ fontSize: 13 }}>📋 Respostas prontas</b>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => { setMostrarResp(false); setGerenciarResp(true); }}>⚙️ Gerenciar</button>
-                  <button title="Fechar" onClick={() => setMostrarResp(false)} style={{ background: "transparent", border: 0, cursor: "pointer", fontSize: 17, lineHeight: 1, color: "var(--muted,#64748b)", padding: "0 2px" }}>✕</button>
+            <div style={{ position: "absolute", right: 8, bottom: "calc(100% + 8px)", width: "min(420px, calc(100% - 16px))", maxHeight: "70vh", display: "flex", flexDirection: "column", background: "var(--card,#fff)", border: "1px solid var(--line,#e2e8f0)", borderRadius: 14, boxShadow: "0 16px 40px #0004", zIndex: 20, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 12px 8px" }}>
+                <b style={{ fontSize: 13.5, color: "var(--ink)" }}>Respostas prontas</b>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <button title="Gerenciar respostas" onClick={() => { setMostrarResp(false); setGerenciarResp(true); }} style={{ background: "transparent", border: 0, cursor: "pointer", fontSize: 12, color: "var(--muted)", padding: "2px 6px", borderRadius: 6 }}>⚙️ Gerenciar</button>
+                  <button title="Fechar" onClick={() => setMostrarResp(false)} style={{ background: "transparent", border: 0, cursor: "pointer", fontSize: 17, lineHeight: 1, color: "var(--muted)", padding: "0 2px" }}>✕</button>
                 </div>
               </div>
-              {respEmpresa.length === 0 && respostas.length === 0
-                ? <div className="muted2" style={{ padding: "12px" }}>Nenhuma resposta salva. Clique em <b>⚙️ Gerenciar</b> para criar.</div>
-                : <>
-                    {respEmpresa.length > 0 && <div className="muted2" style={{ padding: "6px 12px 2px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: .3 }}>📌 Da empresa</div>}
-                    {respEmpresa.map((r, i) => (
-                      <button key={"e" + i} onClick={() => escolherResposta(r)} title={r.arquivo_key ? "Envia o anexo + texto pro cliente" : "Coloca no campo — você edita e envia"}
-                        style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderTop: "1px solid var(--line,#f1f5f9)", background: "transparent", cursor: "pointer" }}>
-                        <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.arquivo_key ? "📎 " : ""}{r.titulo || "(sem título)"}</div>
-                        <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto || (r.arquivo_key ? (r.arquivo_nome || "anexo") : "")}</div>
-                      </button>
-                    ))}
-                    {respostas.length > 0 && <div className="muted2" style={{ padding: "8px 12px 2px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: .3 }}>🙋 Minhas</div>}
-                    {respostas.map((r, i) => (
-                      <button key={"m" + i} onClick={() => escolherResposta(r)} title={r.arquivo_key ? "Envia o anexo + texto pro cliente" : "Coloca no campo — você edita e envia"}
-                        style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderTop: "1px solid var(--line,#f1f5f9)", background: "transparent", cursor: "pointer" }}>
-                        <div style={{ fontWeight: 700, fontSize: 12.5 }}>{r.arquivo_key ? "📎 " : ""}{r.titulo || "(sem título)"}</div>
-                        <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.texto || (r.arquivo_key ? (r.arquivo_nome || "anexo") : "")}</div>
-                      </button>
-                    ))}
-                  </>}
+              <div style={{ padding: "0 12px 8px" }}>
+                <input autoFocus value={buscaResp} onChange={(e) => setBuscaResp(e.target.value)} placeholder="🔎 Buscar resposta…" style={{ width: "100%", fontSize: 13 }} />
+                <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                  {([["todas", "Todas"], ["empresa", "📌 Da empresa"], ["minhas", "🙋 Minhas"]] as const).map(([f, lb]) => (
+                    <button key={f} onClick={() => setFiltroResp(f)} style={{ cursor: "pointer", fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 999, border: "1px solid " + (filtroResp === f ? "#4f46e5" : "var(--line)"), background: filtroResp === f ? "#4f46e5" : "transparent", color: filtroResp === f ? "#fff" : "var(--muted)" }}>{lb}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ flex: 1, overflowY: "auto", padding: "4px 12px 12px" }}>
+                {(() => {
+                  const q = buscaResp.trim().toLowerCase();
+                  const bate = (r: RespostaPronta) => !q || (r.titulo || "").toLowerCase().includes(q) || (r.texto || "").toLowerCase().includes(q);
+                  const emp = filtroResp === "minhas" ? [] : respEmpresa.filter(bate);
+                  const min = filtroResp === "empresa" ? [] : respostas.filter(bate);
+                  const card = (r: RespostaPronta, key: string) => (
+                    <button key={key} onClick={() => escolherResposta(r)} title={r.arquivo_key ? "Envia o anexo + texto pro cliente" : "Coloca no campo — você edita e envia"}
+                      style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 12px", marginBottom: 8, borderRadius: 10, border: "1px solid var(--line)", background: "var(--bg-soft,#f8fafc)", cursor: "pointer" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 12.5, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.arquivo_key ? "📎 " : ""}{r.titulo || "(sem título)"}</span>
+                        <span style={{ fontSize: 10.5, fontWeight: 800, color: "#4f46e5", flexShrink: 0 }}>Usar →</span>
+                      </div>
+                      <div className="muted2" style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{r.texto || (r.arquivo_key ? (r.arquivo_nome || "anexo") : "")}</div>
+                    </button>
+                  );
+                  if (respEmpresa.length === 0 && respostas.length === 0)
+                    return <div className="muted2" style={{ padding: "12px 2px", fontSize: 12.5 }}>Nenhuma resposta salva. Clique em <b>⚙️ Gerenciar</b> para criar.</div>;
+                  if (emp.length === 0 && min.length === 0)
+                    return <div className="muted2" style={{ padding: "12px 2px", fontSize: 12.5 }}>Nada encontrado pra “{buscaResp}”.</div>;
+                  return (<>
+                    {emp.length > 0 && filtroResp === "todas" && <div className="muted2" style={{ fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: .3, margin: "2px 0 6px" }}>📌 Da empresa</div>}
+                    {emp.map((r, i) => card(r, "e" + i))}
+                    {min.length > 0 && filtroResp === "todas" && <div className="muted2" style={{ fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: .3, margin: "8px 0 6px" }}>🙋 Minhas</div>}
+                    {min.map((r, i) => card(r, "m" + i))}
+                  </>);
+                })()}
+              </div>
             </div>
           )}
           {respondendo && humano && (
