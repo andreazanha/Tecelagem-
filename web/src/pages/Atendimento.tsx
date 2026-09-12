@@ -2933,6 +2933,9 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
   // Colunas do quadro (pra "puxar todo mundo da coluna X", ex.: Cliente final) e a coluna escolhida.
   const [colsQuadro, setColsQuadro] = useState<import("../api").AtendColuna[]>([]);
   const [colFonte, setColFonte] = useState("");
+  // Assistente (UI): etapa 1..4 e aba (criar campanha x histórico). Só apresentação — a lógica é a mesma.
+  const [etapa, setEtapa] = useState<1 | 2 | 3 | 4>(1);
+  const [aba, setAba] = useState<"criar" | "historico">("criar");
   const arqRef = useRef<HTMLInputElement>(null);
   async function subirAnexo(file: File) {
     if (file.size > 40 * 1024 * 1024) { alert("Arquivo muito grande (máx. 40MB)."); return; }
@@ -3117,6 +3120,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
     setMensagem(cmp.mensagem || "");
     setAnexo(cmp.arquivo_url ? { url: cmp.arquivo_url, tipo: cmp.arquivo_tipo || "arquivo", nome: cmp.arquivo_nome || "anexo", ext: cmp.arquivo_ext || "bin" } : null);
     setSel(new Set());
+    setAba("criar"); setEtapa(1);
     const el = document.querySelector(".modal-card"); if (el) el.scrollTop = 0;
   }
   function cancelarEdicao() { setEditandoId(null); setNome(""); setMensagem(""); setAnexo(null); }
@@ -3159,23 +3163,50 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
       setNome(cmp.nome ? `${cmp.nome} (cópia)` : "");
       setMensagem(cmp.mensagem || "");
       setAnexo(cmp.arquivo_url ? { url: cmp.arquivo_url, tipo: cmp.arquivo_tipo || "arquivo", nome: cmp.arquivo_nome || "anexo", ext: cmp.arquivo_ext || "bin" } : null);
+      setAba("criar"); setEtapa(1);
       alert(`Lista da campanha carregada (${selNovos.size} contato[s]). Altere o texto/foto e clique em "📣 Criar e enviar".`);
     } catch { alert("Não consegui carregar a lista dessa campanha."); } finally { setBusy(false); }
   }
+  // Estimativa e resumo (só apresentação).
+  const nSel = sel.size;
+  const segInt = Math.max(15, Number(intervalo) || 120);
+  const totSeg = nSel * segInt;
+  const tempoEstimado = nSel === 0 ? "—" : totSeg < 60 ? `${totSeg}s` : totSeg < 3600 ? `${Math.round(totSeg / 60)} min` : `${(totSeg / 3600).toFixed(1)} h`;
+  const FONTE_NOMES: Record<string, string> = { todos: "Todos os contatos", lojista: "Lojistas (já falaram)", cliente: "Base de clientes", falou: "Já falaram aqui", catalogo: "Viram o catálogo", colado: "Colados" };
+  const publicoResumo = colFiltro ? (colsQuadro.find((k) => k.id === colFiltro)?.label || "Coluna do quadro") : modo === "tipo" ? FONTE_NOMES[fonte] : modo === "buscar" ? "Busca manual" : modo === "colar" ? "Números colados" : modo === "catalogo" ? "Viram o catálogo" : "Por coluna do quadro";
+  const cardBox = { border: "1px solid var(--line)", borderRadius: 14, background: "rgba(148,163,184,0.08)", padding: 18 } as const;
   return (
     <div className="modal-bg" onClick={onFechar}>
-      <div className="modal-card" style={{ maxWidth: 620, width: "min(620px,96vw)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-hd" style={{ background: "linear-gradient(130deg,#0ea5e9,#4f46e5)" }}>
-          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📣 Nova campanha</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
+      <div className="modal-card" style={{ maxWidth: 1080, width: "min(1080px,93vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd" style={{ background: "linear-gradient(130deg,#4f46e5,#7c3aed)" }}>
+          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📣 Campanhas</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
         </div>
         <div className="modal-bd">
-          <div className="muted2" style={{ fontSize: 12.5, marginBottom: 12 }}>A Big envia <b>aos poucos</b> pra não bloquear o número. É só seguir os 3 passos. 👇</div>
-
-          {/* PASSO 1 — Mensagem */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ minWidth: 22, height: 22, borderRadius: "50%", background: "#4f46e5", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>1</span>
-            <b style={{ fontSize: 14 }}>Escreva a mensagem</b>
+          {/* Abas: Nova campanha x Histórico */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+            <button onClick={() => setAba("criar")} style={{ cursor: "pointer", fontWeight: 700, fontSize: 13, padding: "8px 16px", borderRadius: 10, border: "1px solid " + (aba === "criar" ? "#6366f1" : "var(--line)"), background: aba === "criar" ? "#6366f1" : "transparent", color: aba === "criar" ? "#fff" : "inherit" }}>✨ Nova campanha</button>
+            <button onClick={() => { setAba("historico"); carregarCampanhas(); }} style={{ cursor: "pointer", fontWeight: 700, fontSize: 13, padding: "8px 16px", borderRadius: 10, border: "1px solid " + (aba === "historico" ? "#6366f1" : "var(--line)"), background: aba === "historico" ? "#6366f1" : "transparent", color: aba === "historico" ? "#fff" : "inherit" }}>🗂️ Histórico{campanhas.length ? ` (${campanhas.length})` : ""}</button>
           </div>
+
+          {aba === "criar" ? (<>
+          {/* Indicador de etapas */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 24, flexWrap: "wrap" }}>
+            {([[1, "Mensagem"], [2, "Público"], [3, "Envio"], [4, "Revisar"]] as const).map(([n, lb], i) => (
+              <Fragment key={n}>
+                <button onClick={() => setEtapa(n)} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "transparent", border: 0, cursor: "pointer", padding: "2px 4px" }}>
+                  <span style={{ minWidth: 26, height: 26, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, background: etapa === n ? "#6366f1" : etapa > n ? "#4f46e5" : "rgba(148,163,184,0.25)", color: etapa >= n ? "#fff" : "#94a3b8" }}>{etapa > n ? "✓" : n}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: etapa === n ? 800 : 500, opacity: etapa === n ? 1 : 0.6 }}>{lb}</span>
+                </button>
+                {i < 3 && <span style={{ width: 26, height: 2, background: "var(--line)", borderRadius: 2 }} />}
+              </Fragment>
+            ))}
+          </div>
+
+          {etapa === 1 && (
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 300px", gap: 24, alignItems: "start" }}>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>Escreva a mensagem</div>
+              <div className="muted2" style={{ fontSize: 12.5, marginBottom: 16 }}>É isso que cada pessoa vai receber no WhatsApp.</div>
           <label className="fld full">Nome da campanha (só pra você, opcional)<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Convite grupo lojistas — setembro" /></label>
           <label className="fld full" style={{ marginTop: 8 }}>Mensagem (pode colar o link do grupo aqui)<textarea value={mensagem} onChange={(e) => setMensagem(e.target.value)} rows={5} placeholder="Escreva aqui a mensagem que vai pra cada pessoa…" style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} /></label>
           <input ref={arqRef} type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) subirAnexo(f); e.currentTarget.value = ""; }} />
@@ -3189,17 +3220,32 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
             {anexo && <span className="muted2" style={{ fontSize: 11.5 }}>{anexo.tipo === "imagem" ? "A mensagem vai como legenda da foto." : "A foto/arquivo vai primeiro; a mensagem em seguida."}</span>}
           </div>
           {anexo && anexo.tipo === "imagem" && <img src={anexo.url} alt="anexo" style={{ maxWidth: 160, maxHeight: 120, borderRadius: 8, marginTop: 6, border: "1px solid var(--line)" }} />}
-
-          {/* PASSO 2 — Quem vai receber */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "18px 0 8px" }}>
-            <span style={{ minWidth: 22, height: 22, borderRadius: "50%", background: "#4f46e5", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>2</span>
-            <b style={{ fontSize: 14 }}>Quem vai receber</b>
-            <span className="at-chip" style={{ background: "#dcfce7", color: "#166534", marginLeft: "auto", fontWeight: 700 }}>✅ {sel.size} selecionado(s)</span>
+            </div>
+            {/* Prévia no WhatsApp */}
+            <div style={{ background: "#0b141a", borderRadius: 14, padding: 14, border: "1px solid var(--line)" }}>
+              <div style={{ fontSize: 11, color: "#8aa0ac", marginBottom: 8, textAlign: "center" }}>Prévia no WhatsApp</div>
+              <div style={{ background: "#005c4b", color: "#e9edef", borderRadius: "10px 10px 2px 10px", padding: "8px 10px", fontSize: 12.5, whiteSpace: "pre-wrap", wordBreak: "break-word", maxWidth: 252, marginLeft: "auto", boxShadow: "0 1px 1px rgba(0,0,0,0.25)" }}>
+                {anexo && anexo.tipo === "imagem" && <img src={anexo.url} alt="" style={{ width: "100%", borderRadius: 6, marginBottom: 6, display: "block" }} />}
+                {anexo && anexo.tipo !== "imagem" && <div style={{ background: "rgba(255,255,255,0.12)", borderRadius: 6, padding: "6px 8px", marginBottom: 6, fontSize: 11.5 }}>📎 {anexo.nome}</div>}
+                {mensagem.trim() ? mensagem : <span style={{ opacity: 0.5 }}>Sua mensagem aparece aqui…</span>}
+                <div style={{ textAlign: "right", fontSize: 10, color: "#8aa0ac", marginTop: 4 }}>agora ✓✓</div>
+              </div>
+            </div>
           </div>
-          <div className="muted2" style={{ fontSize: 12, marginBottom: 8 }}>Escolha COMO quer selecionar as pessoas:</div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-            {([["coluna", "📋 Por coluna do quadro"], ["tipo", "🏷️ Por tipo"], ["buscar", "🔎 Buscar pessoa"], ["colar", "📥 Colar números"], ["catalogo", "📖 Viu o catálogo"]] as const).map(([m, lb]) => (
-              <button key={m} className={"at-chip" + (modo === m ? " on" : "")} style={{ fontSize: 12.5, padding: "5px 10px" }} onClick={() => { setModo(m); if (m !== "coluna") setColFiltro(""); if (m === "buscar") setFonte("todos"); }}>{lb}</button>
+          )}
+
+          {etapa === 2 && (<>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+            <div style={{ fontSize: 17, fontWeight: 800 }}>Quem vai receber</div>
+            <span className="at-chip" style={{ background: "#4f46e5", color: "#fff", marginLeft: "auto", fontWeight: 700, fontSize: 12.5, padding: "5px 12px" }}>{sel.size} contato(s) selecionado(s)</span>
+          </div>
+          <div className="muted2" style={{ fontSize: 12.5, marginBottom: 14 }}>Escolha como quer selecionar as pessoas:</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(148px,1fr))", gap: 10, marginBottom: 16 }}>
+            {([["coluna", "📋", "Por coluna do quadro"], ["tipo", "🏷️", "Por tipo"], ["buscar", "🔎", "Buscar pessoa"], ["colar", "📥", "Colar números"], ["catalogo", "📖", "Viu o catálogo"]] as const).map(([m, ic, lb]) => (
+              <button key={m} onClick={() => { setModo(m); if (m !== "coluna") setColFiltro(""); if (m === "buscar") setFonte("todos"); }} style={{ cursor: "pointer", textAlign: "left", padding: "12px 14px", borderRadius: 12, border: "1.5px solid " + (modo === m ? "#6366f1" : "var(--line)"), background: modo === m ? "rgba(99,102,241,0.12)" : "rgba(148,163,184,0.06)" }}>
+                <div style={{ fontSize: 20 }}>{ic}</div>
+                <div style={{ fontSize: 12.5, fontWeight: modo === m ? 800 : 600, marginTop: 4 }}>{lb}</div>
+              </button>
             ))}
           </div>
           {modo === "coluna" && (
@@ -3266,30 +3312,80 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
           {modo === "buscar" && !carregando && contatos.length > filtrados.length && (
             <div className="muted2" style={{ fontSize: 11, marginTop: 5 }}>Mostrando {filtrados.length} de <b>{contatos.length}</b>. Digite mais pra refinar. 🔎</div>
           )}
+          </>)}
 
-          {/* PASSO 3 — Enviar */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "18px 0 8px" }}>
-            <span style={{ minWidth: 22, height: 22, borderRadius: "50%", background: "#4f46e5", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>3</span>
-            <b style={{ fontSize: 14 }}>Enviar</b>
+          {etapa === 3 && (<>
+          <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>Configurações de envio</div>
+          <div className="muted2" style={{ fontSize: 12.5, marginBottom: 16 }}>A Big envia devagar pra proteger o número contra bloqueio.</div>
+          <div style={{ ...cardBox, marginBottom: 12, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 22 }}>⏱️</span>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5 }}>Intervalo entre mensagens</div>
+              <div className="muted2" style={{ fontSize: 12 }}>Tempo de espera entre um envio e o próximo.</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span className="muted2" style={{ fontSize: 12.5 }}>a cada</span>
+              <input type="number" min={15} max={600} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} style={{ width: 72, textAlign: "center" }} />
+              <span className="muted2" style={{ fontSize: 12.5 }}>segundos</span>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 12 }}>
-            <label className="fld" style={{ display: "inline-flex", flexDirection: "column" }}>Enviar 1 a cada
-              <span><input type="number" min={15} max={600} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} style={{ width: 70 }} /> seg <span className="muted2">(padrão 120s)</span></span>
-            </label>
-            <label className="fld" style={{ display: "inline-flex", flexDirection: "column" }}>Avisar se já enviei nos últimos
-              <span><input type="number" min={0} max={90} value={avisarDias} onChange={(e) => setAvisarDias(e.target.value)} style={{ width: 70 }} /> dia(s) <span className="muted2">(0 = não)</span></span>
-            </label>
+          <div style={{ ...cardBox, marginBottom: 16, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 22 }}>🛡️</span>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5 }}>Proteção contra reenvio</div>
+              <div className="muted2" style={{ fontSize: 12 }}>Avisa se alguém já recebeu campanha nos últimos dias (0 = não avisar).</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span className="muted2" style={{ fontSize: 12.5 }}>últimos</span>
+              <input type="number" min={0} max={90} value={avisarDias} onChange={(e) => setAvisarDias(e.target.value)} style={{ width: 62, textAlign: "center" }} />
+              <span className="muted2" style={{ fontSize: 12.5 }}>dias</span>
+            </div>
           </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            {editandoId ? (<>
-              <span className="muted2" style={{ fontSize: 12, alignSelf: "center", marginRight: "auto" }}>✏️ Editando campanha (a lista de contatos não muda)</span>
-              <button className="btn btn-soft" disabled={busy} onClick={cancelarEdicao}>Cancelar</button>
-              <button className="kbtn go" disabled={busy} onClick={salvarEdicao}>{busy ? "Salvando…" : "💾 Salvar alterações"}</button>
-            </>) : (<>
-              <button className="btn btn-soft" disabled={busy} onClick={() => criar(true)} title="Salva a campanha sem enviar. Você ativa depois na lista abaixo.">💾 Salvar rascunho</button>
-              <button className="kbtn go" disabled={busy || !sel.size} onClick={() => criar(false)}>{busy ? "Criando…" : `📣 Criar e enviar (${sel.size})`}</button>
-            </>)}
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ ...cardBox, flex: 1, minWidth: 160, textAlign: "center" }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "#6366f1" }}>{nSel}</div>
+              <div className="muted2" style={{ fontSize: 12 }}>contatos selecionados</div>
+            </div>
+            <div style={{ ...cardBox, flex: 1, minWidth: 160, textAlign: "center" }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "#6366f1" }}>{tempoEstimado}</div>
+              <div className="muted2" style={{ fontSize: 12 }}>tempo estimado de envio</div>
+            </div>
           </div>
+          </>)}
+
+          {etapa === 4 && (<>
+          <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>Revise antes de enviar</div>
+          <div className="muted2" style={{ fontSize: 12.5, marginBottom: 16 }}>Confira tudo — depois é só criar e enviar.</div>
+          <div style={{ ...cardBox, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", gap: 12 }}><div className="muted2" style={{ fontSize: 12.5, width: 130, flexShrink: 0 }}>Nome</div><div style={{ fontSize: 13, fontWeight: 600 }}>{nome.trim() || "—"}</div></div>
+            <div style={{ display: "flex", gap: 12 }}><div className="muted2" style={{ fontSize: 12.5, width: 130, flexShrink: 0 }}>Mensagem</div><div style={{ fontSize: 13, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{mensagem.trim() || <span className="muted2">(sem texto)</span>}</div></div>
+            <div style={{ display: "flex", gap: 12 }}><div className="muted2" style={{ fontSize: 12.5, width: 130, flexShrink: 0 }}>Anexo</div><div style={{ fontSize: 13 }}>{anexo ? `${anexo.tipo === "imagem" ? "🖼️" : "📎"} ${anexo.nome}` : "—"}</div></div>
+            <div style={{ display: "flex", gap: 12 }}><div className="muted2" style={{ fontSize: 12.5, width: 130, flexShrink: 0 }}>Público</div><div style={{ fontSize: 13, fontWeight: 600 }}>{publicoResumo} · <b style={{ color: "#6366f1" }}>{nSel} contato(s)</b></div></div>
+            <div style={{ display: "flex", gap: 12 }}><div className="muted2" style={{ fontSize: 12.5, width: 130, flexShrink: 0 }}>Envio</div><div style={{ fontSize: 13 }}>1 a cada {segInt}s · ⏱️ ~{tempoEstimado}</div></div>
+            <div style={{ display: "flex", gap: 12 }}><div className="muted2" style={{ fontSize: 12.5, width: 130, flexShrink: 0 }}>Reenvio</div><div style={{ fontSize: 13 }}>{Number(avisarDias) > 0 ? `avisar se já enviei nos últimos ${avisarDias} dia(s)` : "sem aviso"}</div></div>
+          </div>
+          </>)}
+
+          {/* Navegação do assistente */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+            {etapa > 1 && <button className="btn btn-soft" onClick={() => setEtapa((e) => (e > 1 ? ((e - 1) as 1 | 2 | 3 | 4) : e))}>← Voltar</button>}
+            {editandoId && <span className="muted2" style={{ fontSize: 12 }}>✏️ Editando (a lista não muda)</span>}
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              {etapa < 4 && <button onClick={() => setEtapa((e) => (e < 4 ? ((e + 1) as 1 | 2 | 3 | 4) : e))} style={{ cursor: "pointer", fontWeight: 700, fontSize: 13, padding: "9px 22px", borderRadius: 10, border: 0, background: "#6366f1", color: "#fff" }}>Próximo →</button>}
+              {etapa === 4 && editandoId && (<>
+                <button className="btn btn-soft" disabled={busy} onClick={cancelarEdicao}>Cancelar</button>
+                <button disabled={busy} onClick={salvarEdicao} style={{ cursor: "pointer", fontWeight: 800, fontSize: 13, padding: "9px 22px", borderRadius: 10, border: 0, background: "#16a34a", color: "#fff" }}>{busy ? "Salvando…" : "💾 Salvar alterações"}</button>
+              </>)}
+              {etapa === 4 && !editandoId && (<>
+                <button className="btn btn-soft" disabled={busy} onClick={() => criar(true)} title="Salva sem enviar. Você ativa depois no Histórico.">💾 Salvar rascunho</button>
+                <button disabled={busy || !sel.size} onClick={() => criar(false)} style={{ cursor: busy || !sel.size ? "not-allowed" : "pointer", opacity: busy || !sel.size ? 0.5 : 1, fontWeight: 800, fontSize: 13, padding: "9px 22px", borderRadius: 10, border: 0, background: "#16a34a", color: "#fff" }}>{busy ? "Criando…" : `📣 Criar e enviar (${sel.size})`}</button>
+              </>)}
+            </div>
+          </div>
+          </>) : (<>
+          <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>Histórico de campanhas</div>
+          <div className="muted2" style={{ fontSize: 12.5, marginBottom: 16 }}>Acompanhe o que já foi enviado, veja quem recebeu e reuse campanhas.</div>
+          {campanhas.length === 0 && <div className="muted" style={{ padding: 24, textAlign: "center", border: "1px dashed var(--line)", borderRadius: 12, fontSize: 13 }}>Nenhuma campanha ainda. Crie a primeira na aba "Nova campanha". 💛</div>}
 
           {campanhas.length > 0 && (
             <div style={{ marginTop: 16 }}>
@@ -3347,6 +3443,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
               ))}
             </div>
           )}
+          </>)}
         </div>
       </div>
     </div>
