@@ -2588,7 +2588,7 @@ function ColunasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: ()
 }
 
 // ── Nova conversa: escolhe um contato do WhatsApp (ou digita o número) e manda a 1ª msg ──
-type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm" | "catalogo"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string; emCamp?: boolean; foto?: string | null; rep?: string | null; ultimaSaida?: string | null; coluna?: string | null };
+type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm" | "catalogo"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string; emCamp?: boolean; foto?: string | null; rep?: string | null; ultimaSaida?: string | null; coluna?: string | null; lojista?: boolean };
 function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; onAbrir: (id: string) => void; onMudou: () => void }) {
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -2936,18 +2936,22 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
     const u = getUser();
     Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp(), api.atendRespostasEmpresa(), api.atendBoard(u?.nome, ehGestorAtend()), api.atendInteressesContatos(), api.atendContatosEmCampanha()]).then(([cl, w, emp, bd, ie, ec]) => {
       const lista: Contato[] = []; const idx = new Map<string, Contato>();
-      const add = (n: string, tel: string, origem: Contato["origem"], cidade?: string | null, uf?: string | null, falou = false, ultimaSaida?: string | null, coluna?: string | null) => {
+      const add = (n: string, tel: string, origem: Contato["origem"], cidade?: string | null, uf?: string | null, falou = false, ultimaSaida?: string | null, coluna?: string | null, lojista?: boolean) => {
         const d = (tel || "").replace(/\D/g, ""); if (d.length < 10 || d.length > 13) return;  // fora do tamanho BR: ignora
         const key = nucleoTel(d); const ex = idx.get(key);
-        if (ex) { if (falou) ex.falou = true; if (ultimaSaida && (!ex.ultimaSaida || ultimaSaida > ex.ultimaSaida)) ex.ultimaSaida = ultimaSaida; if (coluna) ex.coluna = coluna; if ((!ex.nome || ex.nome === telBonito(ex.telefone)) && n) ex.nome = n; return; }
-        const c: Contato = { nome: n || telBonito(d), telefone: d, origem, cidade, uf, falou, ultimaSaida: ultimaSaida || null, coluna: coluna || null };
+        if (ex) { if (falou) ex.falou = true; if (ultimaSaida && (!ex.ultimaSaida || ultimaSaida > ex.ultimaSaida)) ex.ultimaSaida = ultimaSaida; if (coluna) ex.coluna = coluna; if (lojista) ex.lojista = true; if ((!ex.nome || ex.nome === telBonito(ex.telefone)) && n) ex.nome = n; return; }
+        const c: Contato = { nome: n || telBonito(d), telefone: d, origem, cidade, uf, falou, ultimaSaida: ultimaSaida || null, coluna: coluna || null, lojista: !!lojista };
         idx.set(key, c); lista.push(c);
       };
-      if (cl.status === "fulfilled") for (const c of cl.value) add(c.nome, c.whatsapp || "", "cliente", c.cidade, c.uf);
+      // Base de clientes cadastrados = lojistas (a Big só cadastra lojista) → marca lojista=true.
+      if (cl.status === "fulfilled") for (const c of cl.value) add(c.nome, c.whatsapp || "", "cliente", c.cidade, c.uf, false, null, null, true);
       // "Já falaram com a gente": conversas do CRM com mensagem RECEBIDA do cliente. Guarda também a
       // ÚLTIMA SAÍDA (ultima_out_em) pra avisar se você já mandou mensagem recente pra esse contato,
-      // e a COLUNA do quadro (pra você poder selecionar "todos da coluna Cliente final", por exemplo).
-      if (bd.status === "fulfilled") for (const cv of bd.value.conversas) if (cv.telefone && cv.ultima_in_em && cv.estado !== "grupo") add(cv.contato_nome || cv.nome || "", cv.telefone, "crm", cv.cidade, cv.uf, true, cv.ultima_out_em, cv.coluna);
+      // a COLUNA do quadro e se é LOJISTA (pra filtrar "lojistas que já falaram aqui").
+      if (bd.status === "fulfilled") for (const cv of bd.value.conversas) if (cv.telefone && cv.ultima_in_em && cv.estado !== "grupo") {
+        const ehLoj = (cv.tipo === "lojista" || cv.lojista === 1 || !!cv.cliente_id || (cv.cnpj || "").replace(/\D/g, "").length >= 14) && cv.tipo !== "consumidor" && cv.lojista !== 0;
+        add(cv.contato_nome || cv.nome || "", cv.telefone, "crm", cv.cidade, cv.uf, true, cv.ultima_out_em, cv.coluna, ehLoj);
+      }
       if (w.status === "fulfilled") for (const c of (w.value.contatos || [])) add(c.nome, c.telefone, "whats");
       // Palavras-chave (interesses + última mensagem) pra busca por assunto.
       if (ie.status === "fulfilled") for (const p of (ie.value.contatos || [])) { const ex = idx.get(nucleoTel(p.telefone || "")); if (ex) ex.palavras = (p.palavras || "").toLowerCase(); }
@@ -2970,9 +2974,9 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
     const lb = colsQuadro.find((k) => k.id === colId)?.label || colId;
     alert(`✓ Selecionei ${alvos.length} contato(s) da coluna "${lb}". Escreva a mensagem e clique em "📣 Criar e enviar".`);
   }
-  const [fonte, setFonte] = useState<"todos" | "cliente" | "falou" | "colado" | "catalogo">("todos");
+  const [fonte, setFonte] = useState<"todos" | "cliente" | "falou" | "lojista" | "colado" | "catalogo">("todos");
   const CAP_CONTATOS = 1000; // limite de exibição (perf). O resto acha-se pela busca.
-  const casaFonte = (c: Contato, f: typeof fonte) => f === "todos" || (f === "cliente" ? c.origem === "cliente" : f === "falou" ? !!c.falou : f === "catalogo" ? c.origem === "catalogo" : c.origem === "colado");
+  const casaFonte = (c: Contato, f: typeof fonte) => f === "todos" || (f === "cliente" ? c.origem === "cliente" : f === "falou" ? !!c.falou : f === "lojista" ? (!!c.lojista && !!c.falou) : f === "catalogo" ? c.origem === "catalogo" : c.origem === "colado");
   const porFonte = (c: Contato) => casaFonte(c, fonte);
   const filtrados = (() => {
     const q = busca.trim().toLowerCase();
@@ -3197,7 +3201,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
             </div>
           )}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-            {([["todos", "Todos"], ["cliente", "📇 Base de clientes"], ["falou", "💬 Já falaram aqui"], ["catalogo", "📖 Viram o catálogo"], ["colado", "📋 Colados"]] as const).map(([f, lb]) => (
+            {([["todos", "Todos"], ["lojista", "🏪 Lojistas (já falaram)"], ["cliente", "📇 Base de clientes"], ["falou", "💬 Já falaram aqui"], ["catalogo", "📖 Viram o catálogo"], ["colado", "📋 Colados"]] as const).map(([f, lb]) => (
               <button key={f} className={"at-chip" + (fonte === f ? " on" : "")} onClick={() => setFonte(f)}>{lb} ({contarFonte(f)})</button>
             ))}
           </div>
