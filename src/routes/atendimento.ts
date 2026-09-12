@@ -2334,6 +2334,47 @@ atendimento.get("/grupos/lista", async (c) => {
   ).all<{ id: string; nome: string }>().catch(() => ({ results: [] as { id: string; nome: string }[] }));
   return c.json({ grupos: results || [], numero_big: (await lerConfig(c.env)).numero_whatsapp || "" });
 });
+// BUSCAR os grupos direto do WhatsApp (Z-API /chats) e registrá-los — útil quando o grupo foi
+// criado PELA Big (dona) e ninguém escreveu ainda, então ele nunca gerou webhook pra aparecer.
+atendimento.post("/grupos/buscar", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  if (!ehGestorAtend(u)) return c.json({ error: "sem_acesso" }, 403);
+  const cfg = await lerConfig(c.env);
+  const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
+  const inst = cfg.zapi_instance || "", token = cfg.zapi_token || "";
+  if (!inst || !token) return c.json({ error: "sem-credenciais" }, 400);
+  const headers: Record<string, string> = {};
+  if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
+  let achados = 0; const vistos = new Set<string>();
+  try {
+    for (let page = 1; page <= 6; page++) {
+      const resp = await fetch(`${base}/instances/${inst}/token/${token}/chats?page=${page}&pageSize=200`, { headers, signal: AbortSignal.timeout(15000) });
+      if (!resp.ok) break;
+      const arr = await resp.json().catch(() => []) as Array<Record<string, unknown>>;
+      if (!Array.isArray(arr) || !arr.length) break;
+      for (const ch of arr) {
+        const isG = ch.isGroup === true || ch.isGroup === "true";
+        const gid = digitos(String(ch.phone ?? ch.id ?? (ch as { chatId?: unknown }).chatId ?? ""));
+        if (!isG && gid.length <= 14) continue;           // não é grupo (contato normal)
+        if (!gid || vistos.has(gid)) continue; vistos.add(gid);
+        const nome = String(ch.name ?? (ch as { chatName?: unknown }).chatName ?? (ch as { notify?: unknown }).notify ?? "").trim().slice(0, 80) || "Grupo";
+        const existe = await c.env.DB.prepare("SELECT id, nome FROM atend_conversas WHERE telefone=?").bind(gid).first<{ id: string; nome: string | null }>();
+        if (existe) {
+          if (nome !== "Grupo" && (!existe.nome || existe.nome === "Grupo")) await c.env.DB.prepare("UPDATE atend_conversas SET nome=?, estado='grupo', origem='grupo' WHERE id=?").bind(nome, existe.id).run();
+        } else {
+          await c.env.DB.prepare("INSERT INTO atend_conversas (id, telefone, estado, origem, tipo, nome, atualizado_em) VALUES (?, ?, 'grupo', 'grupo', 'grupo', ?, datetime('now'))").bind(uid(), gid, nome).run();
+          achados++;
+        }
+      }
+      if (arr.length < 200) break;
+    }
+  } catch { return c.json({ error: "não consegui buscar os grupos agora" }, 502); }
+  const { results } = await c.env.DB.prepare(
+    "SELECT telefone AS id, COALESCE(NULLIF(nome,''),'Grupo') AS nome FROM atend_conversas WHERE (estado='grupo' OR origem='grupo') AND telefone IS NOT NULL ORDER BY atualizado_em DESC LIMIT 200"
+  ).all<{ id: string; nome: string }>().catch(() => ({ results: [] as { id: string; nome: string }[] }));
+  return c.json({ ok: true, achados, grupos: results || [] });
+});
 // POSTAR AGORA em um ou mais grupos.
 atendimento.post("/grupos/postar", async (c) => {
   const u = await usuarioLogado(c.env, c);

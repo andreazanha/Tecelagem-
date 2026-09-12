@@ -2750,10 +2750,20 @@ function GruposModal({ onFechar }: { onFechar: () => void }) {
   const [hora, setHora] = useState("09:00");        // recorrente
   const [diaSemana, setDiaSemana] = useState("1");  // 0=dom..6=sáb
   const [busy, setBusy] = useState(false);
+  const [buscando, setBuscando] = useState(false);
   const [agendados, setAgendados] = useState<{ id: string; grupo_nome: string | null; mensagem: string; recorrencia: string; dia_semana: number | null; hora: string | null; quando: string | null; ativo: number }[]>([]);
   const arqRef = useRef<HTMLInputElement>(null);
   const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
   function carregarAgendados() { api.atendGruposAgendados().then((r) => setAgendados(r.posts)).catch(() => {}); }
+  async function buscarGrupos() {
+    setBuscando(true);
+    try {
+      const r = await api.atendGruposBuscar();
+      if (r.error) { alert(r.error); return; }
+      setGrupos(r.grupos);
+      alert(r.achados > 0 ? `✓ Encontrei ${r.achados} grupo(s) novo(s)!` : (r.grupos.length ? "Nenhum grupo novo — os que apareceram já estavam na lista." : "Não encontrei grupos. Confirme que o número da Big está nos grupos e tente de novo."));
+    } catch { alert("Não consegui buscar os grupos agora."); } finally { setBuscando(false); }
+  }
   useEffect(() => {
     api.atendGruposLista().then((r) => { setGrupos(r.grupos); setNumeroBig(r.numero_big || ""); }).catch(() => {});
     carregarAgendados();
@@ -2823,9 +2833,12 @@ function GruposModal({ onFechar }: { onFechar: () => void }) {
           <div className="muted2" style={{ fontSize: 12.5, marginBottom: 8 }}>A Big posta no grupo com um <b>link "chamar no privado"</b>: quem quiser comprar clica e cai no seu WhatsApp (no CRM). 💡 Dica: no WhatsApp, deixe o grupo como <b>"só admins enviam mensagem"</b> pra ninguém conversar lá dentro.</div>
           {!numeroBig && <div style={{ fontSize: 12, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", borderRadius: 8, padding: "6px 10px", marginBottom: 8 }}>⚠️ Ainda não sei o número da Big pro link do privado. Ele é preenchido sozinho quando chegar uma mensagem no WhatsApp — ou coloque em <b>Config</b>.</div>}
           {/* Grupos */}
-          <b style={{ fontSize: 13 }}>Grupos</b>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <b style={{ fontSize: 13 }}>Grupos</b>
+            <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} disabled={buscando} onClick={buscarGrupos}>{buscando ? "Buscando…" : "🔄 Buscar meus grupos do WhatsApp"}</button>
+          </div>
           <div style={{ maxHeight: 130, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10, margin: "6px 0 10px" }}>
-            {grupos.length === 0 ? <div className="muted" style={{ padding: 12, fontSize: 12.5 }}>Nenhum grupo encontrado ainda. Mande uma mensagem no grupo (ou aguarde chegar uma) pra ele aparecer aqui.</div>
+            {grupos.length === 0 ? <div className="muted" style={{ padding: 12, fontSize: 12.5 }}>Nenhum grupo na lista ainda. Clique em <b>"🔄 Buscar meus grupos do WhatsApp"</b> acima (ou mande uma mensagem no grupo) pra ele aparecer.</div>
               : grupos.map((g) => (
                 <label key={g.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderBottom: "1px solid var(--line)", cursor: "pointer" }}>
                   <input type="checkbox" checked={sel.has(g.id)} onChange={() => toggle(g.id)} />
