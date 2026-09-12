@@ -137,6 +137,7 @@ export function Atendimento() {
   const [novaConv, setNovaConv] = useState(false);
   const [equipeOpen, setEquipeOpen] = useState(false);
   const [campanhaOpen, setCampanhaOpen] = useState(false);
+  const [gruposOpen, setGruposOpen] = useState(false);
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [filtroAtend, setFiltroAtend] = useState<string>("todos"); // gestor: filtra por vendedor
   const [busca, setBusca] = useState<string>(""); // busca de conversa no quadro (nome/loja/telefone/cidade)
@@ -564,6 +565,7 @@ export function Atendimento() {
           <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setGruposOpen(true)}>👥 Postar em grupo</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setSim(true)}>💬 Simular cliente</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={juntarDuplicados} title="Junta cards repetidos do mesmo contato (número com/sem o 9º dígito) num só, preservando o histórico">🧹 Juntar duplicados</button>}
@@ -672,6 +674,7 @@ export function Atendimento() {
       {novaConv && <NovaConversa onFechar={() => setNovaConv(false)} onAbrir={(cid) => { setNovaConv(false); setAbrir(cid); }} onMudou={recarregar} />}
       {equipeOpen && <EquipeModal onFechar={() => setEquipeOpen(false)} />}
       {campanhaOpen && <CampanhaModal onFechar={() => setCampanhaOpen(false)} onMudou={recarregar} />}
+      {gruposOpen && <GruposModal onFechar={() => setGruposOpen(false)} />}
       {abrir && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
       {cfgOpen && <ConfigZapi onFechar={() => setCfgOpen(false)} onMudou={checarConexao} />}
     </div>
@@ -694,7 +697,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
     if (!cfg) return;
     setSalvando(true); setMsg("");
     try {
-      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, ia_prompt: cfg.ia_prompt, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, catalogo_varejo_url: cfg.catalogo_varejo_url, catalogo_varejo_senha: cfg.catalogo_varejo_senha, catalogo_varejo_msg: cfg.catalogo_varejo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, reativacao_ativo: cfg.reativacao_ativo, reativacao_dias: cfg.reativacao_dias, reativacao_limite: cfg.reativacao_limite, reativacao_intervalo_seg: cfg.reativacao_intervalo_seg, reativacao_msg: cfg.reativacao_msg, aniversario_ativo: cfg.aniversario_ativo, aniversario_msg: cfg.aniversario_msg, encerramento_msg: cfg.encerramento_msg, encerramento_ativo: cfg.encerramento_ativo, fechar_inativos_ativo: cfg.fechar_inativos_ativo, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
+      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, numero_whatsapp: cfg.numero_whatsapp, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, ia_prompt: cfg.ia_prompt, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, catalogo_varejo_url: cfg.catalogo_varejo_url, catalogo_varejo_senha: cfg.catalogo_varejo_senha, catalogo_varejo_msg: cfg.catalogo_varejo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, reativacao_ativo: cfg.reativacao_ativo, reativacao_dias: cfg.reativacao_dias, reativacao_limite: cfg.reativacao_limite, reativacao_intervalo_seg: cfg.reativacao_intervalo_seg, reativacao_msg: cfg.reativacao_msg, aniversario_ativo: cfg.aniversario_ativo, aniversario_msg: cfg.aniversario_msg, encerramento_msg: cfg.encerramento_msg, encerramento_ativo: cfg.encerramento_ativo, fechar_inativos_ativo: cfg.fechar_inativos_ativo, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
       setMsg("✓ Salvo!"); onMudou(); setTimeout(() => setMsg(""), 2500);
     } catch { setMsg("Erro ao salvar."); } finally { setSalvando(false); }
   }
@@ -789,6 +792,8 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
               <input value={cfg.zapi_client_token} onChange={(e) => set("zapi_client_token", e.target.value)} placeholder="Account Security Token (menu Segurança do painel)" /></label>
             <label className="campo"><span className="campo-label">URL base (deixe o padrão)</span>
               <input value={cfg.zapi_base} onChange={(e) => set("zapi_base", e.target.value)} placeholder="https://api.z-api.io" /></label>
+            <label className="campo"><span className="campo-label">📱 Número da Big (link "chamar no privado" nos grupos)</span>
+              <input value={cfg.numero_whatsapp} onChange={(e) => set("numero_whatsapp", e.target.value)} placeholder="ex.: 5531999998888 (preenche sozinho quando chega mensagem)" /></label>
             <label className="campo"><span className="campo-label">📒 Link do catálogo (enviado ao lojista)</span>
               <input value={cfg.catalogo_url} onChange={(e) => set("catalogo_url", e.target.value)} placeholder="cole o link público do catálogo" /></label>
             <label className="campo"><span className="campo-label">🔑 Senha do catálogo (única p/ lojistas)</span>
@@ -2724,6 +2729,159 @@ function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; on
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
           <button className="btn btn-primary" disabled={busy} onClick={enviar}>{busy ? "Enviando…" : "📤 Enviar e abrir"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Postar em grupo: a Big posta no grupo (agora/agendado/recorrente) com link "chamar no privado" ──
+function GruposModal({ onFechar }: { onFechar: () => void }) {
+  const [grupos, setGrupos] = useState<{ id: string; nome: string }[]>([]);
+  const [numeroBig, setNumeroBig] = useState("");
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [mensagem, setMensagem] = useState("");
+  const [comLink, setComLink] = useState(true);
+  const [linkTexto, setLinkTexto] = useState("Oi! Vi no grupo e quero atendimento 💛");
+  const [anexo, setAnexo] = useState<{ url: string; tipo: string; nome: string; ext: string } | null>(null);
+  const [subindo, setSubindo] = useState(false);
+  const [quando, setQuando] = useState<"agora" | "agendar" | "diaria" | "semanal">("agora");
+  const [dataHora, setDataHora] = useState("");     // datetime-local (agendar)
+  const [hora, setHora] = useState("09:00");        // recorrente
+  const [diaSemana, setDiaSemana] = useState("1");  // 0=dom..6=sáb
+  const [busy, setBusy] = useState(false);
+  const [agendados, setAgendados] = useState<{ id: string; grupo_nome: string | null; mensagem: string; recorrencia: string; dia_semana: number | null; hora: string | null; quando: string | null; ativo: number }[]>([]);
+  const arqRef = useRef<HTMLInputElement>(null);
+  const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+  function carregarAgendados() { api.atendGruposAgendados().then((r) => setAgendados(r.posts)).catch(() => {}); }
+  useEffect(() => {
+    api.atendGruposLista().then((r) => { setGrupos(r.grupos); setNumeroBig(r.numero_big || ""); }).catch(() => {});
+    carregarAgendados();
+  }, []);
+  async function subirAnexo(file: File) {
+    if (file.size > 40 * 1024 * 1024) { alert("Arquivo muito grande (máx. 40MB)."); return; }
+    setSubindo(true);
+    try { const r = await api.atendCampanhaUpload(file); if (r.error) { alert(r.error); return; } setAnexo({ url: r.url, tipo: r.tipo, nome: r.nome, ext: r.ext }); }
+    catch { alert("Não consegui subir o arquivo."); } finally { setSubindo(false); }
+  }
+  const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  function payloadBase() {
+    return { grupos: grupos.filter((g) => sel.has(g.id)).map((g) => ({ id: g.id, nome: g.nome })), mensagem: mensagem.trim(), comLink, linkTexto: linkTexto.trim(), arquivo_url: anexo?.url, arquivo_tipo: anexo?.tipo, arquivo_nome: anexo?.nome, arquivo_ext: anexo?.ext };
+  }
+  function validar(): boolean {
+    if (sel.size === 0) { alert("Escolha pelo menos um grupo."); return false; }
+    if (!mensagem.trim() && !anexo) { alert("Escreva a mensagem ou anexe uma foto/arquivo."); return false; }
+    if (comLink && !numeroBig) { if (!confirm("⚠️ Ainda não sei o número da Big pra montar o link 'chamar no privado' (ele aparece depois que chegar uma mensagem no WhatsApp, ou você preenche na Config). Postar mesmo assim, SEM o link?")) return false; }
+    return true;
+  }
+  async function postarAgora() {
+    if (!validar()) return;
+    if (!confirm(`Postar agora em ${sel.size} grupo(s)?`)) return;
+    setBusy(true);
+    try {
+      const r = await api.atendGrupoPostar(payloadBase());
+      if (r.error) { alert(r.error); return; }
+      alert(`✓ Postado em ${r.enviados} grupo(s).` + (r.falhas?.length ? `\n\nNão foi em: ${r.falhas.join(", ")}` : ""));
+      if (r.enviados > 0) { setMensagem(""); setAnexo(null); setSel(new Set()); }
+    } catch { alert("Não consegui postar agora."); } finally { setBusy(false); }
+  }
+  async function agendar() {
+    if (!validar()) return;
+    const b: Parameters<typeof api.atendGrupoAgendar>[0] = payloadBase();
+    if (quando === "agendar") {
+      if (!dataHora) { alert("Escolha a data e a hora."); return; }
+      const ts = new Date(dataHora).getTime();
+      if (!ts || ts <= Date.now()) { alert("Escolha uma data/hora futura."); return; }
+      b.quando = ts;
+    } else {
+      b.recorrencia = quando; b.hora = hora;
+      if (quando === "semanal") b.dia_semana = Number(diaSemana);
+    }
+    const quandoTxt = quando === "agendar" ? `em ${new Date(dataHora).toLocaleString("pt-BR")}` : quando === "diaria" ? `todo dia às ${hora}` : `toda ${DIAS[Number(diaSemana)]} às ${hora}`;
+    if (!confirm(`Agendar post em ${sel.size} grupo(s) — ${quandoTxt}?`)) return;
+    setBusy(true);
+    try {
+      const r = await api.atendGrupoAgendar(b);
+      if (r.error) { alert(r.error); return; }
+      alert(`✓ Agendado! (${r.criados} grupo[s])`);
+      setMensagem(""); setAnexo(null); setSel(new Set()); carregarAgendados();
+    } catch { alert("Não consegui agendar."); } finally { setBusy(false); }
+  }
+  async function toggleAtivo(id: string, on: boolean) { await api.atendGrupoAgendadoAtivo(id, on).catch(() => {}); carregarAgendados(); }
+  async function apagar(id: string) { if (!confirm("Apagar este agendamento?")) return; await api.atendGrupoAgendadoDel(id).catch(() => {}); carregarAgendados(); }
+  const descAgendado = (p: typeof agendados[number]) =>
+    p.recorrencia === "semanal" ? `🔁 toda ${DIAS[Number(p.dia_semana ?? 1)]} às ${p.hora}`
+    : p.recorrencia === "diaria" ? `🔁 todo dia às ${p.hora}`
+    : p.quando ? `📅 ${new Date(p.quando.replace(" ", "T") + "Z").toLocaleString("pt-BR")}` : "—";
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 620, width: "min(620px,96vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd" style={{ background: "linear-gradient(130deg,#0891b2,#4f46e5)" }}>
+          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">👥 Postar em grupo</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
+        </div>
+        <div className="modal-bd">
+          <div className="muted2" style={{ fontSize: 12.5, marginBottom: 8 }}>A Big posta no grupo com um <b>link "chamar no privado"</b>: quem quiser comprar clica e cai no seu WhatsApp (no CRM). 💡 Dica: no WhatsApp, deixe o grupo como <b>"só admins enviam mensagem"</b> pra ninguém conversar lá dentro.</div>
+          {!numeroBig && <div style={{ fontSize: 12, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", borderRadius: 8, padding: "6px 10px", marginBottom: 8 }}>⚠️ Ainda não sei o número da Big pro link do privado. Ele é preenchido sozinho quando chegar uma mensagem no WhatsApp — ou coloque em <b>Config</b>.</div>}
+          {/* Grupos */}
+          <b style={{ fontSize: 13 }}>Grupos</b>
+          <div style={{ maxHeight: 130, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10, margin: "6px 0 10px" }}>
+            {grupos.length === 0 ? <div className="muted" style={{ padding: 12, fontSize: 12.5 }}>Nenhum grupo encontrado ainda. Mande uma mensagem no grupo (ou aguarde chegar uma) pra ele aparecer aqui.</div>
+              : grupos.map((g) => (
+                <label key={g.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderBottom: "1px solid var(--line)", cursor: "pointer" }}>
+                  <input type="checkbox" checked={sel.has(g.id)} onChange={() => toggle(g.id)} />
+                  <span style={{ fontSize: 13 }}>👥 {g.nome}</span>
+                </label>
+              ))}
+          </div>
+          <label className="fld full">Mensagem<textarea value={mensagem} onChange={(e) => setMensagem(e.target.value)} rows={4} placeholder="Escreva o que vai postar no grupo…" style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} /></label>
+          <input ref={arqRef} type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) subirAnexo(f); e.currentTarget.value = ""; }} />
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            {!anexo
+              ? <button className="btn btn-soft" disabled={subindo} onClick={() => arqRef.current?.click()}>{subindo ? "Subindo…" : "📎 Anexar foto/arquivo"}</button>
+              : <span style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid var(--line)", borderRadius: 8, padding: "5px 10px", fontSize: 12.5 }}>{anexo.tipo === "imagem" ? "🖼️" : "📎"} {anexo.nome}<button onClick={() => setAnexo(null)} style={{ background: "transparent", border: 0, cursor: "pointer", color: "#b91c1c", fontSize: 14 }}>✕</button></span>}
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 13 }}>
+            <input type="checkbox" checked={comLink} onChange={(e) => setComLink(e.target.checked)} />
+            <b>Incluir botão "chamar no privado"</b>
+          </label>
+          {comLink && <label className="fld full" style={{ marginTop: 6 }}>Texto que já vai preenchido no privado<input value={linkTexto} onChange={(e) => setLinkTexto(e.target.value)} placeholder="Oi! Vi no grupo e quero atendimento 💛" /></label>}
+          {/* Quando postar */}
+          <div style={{ marginTop: 12, marginBottom: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {([["agora", "Postar agora"], ["agendar", "📅 Agendar"], ["diaria", "🔁 Todo dia"], ["semanal", "🔁 Toda semana"]] as const).map(([v, lb]) => (
+              <button key={v} className={"at-chip" + (quando === v ? " on" : "")} onClick={() => setQuando(v)}>{lb}</button>
+            ))}
+          </div>
+          {quando === "agendar" && <label className="fld full">Data e hora<input type="datetime-local" value={dataHora} onChange={(e) => setDataHora(e.target.value)} /></label>}
+          {quando === "diaria" && <label className="fld">Hora<input type="time" value={hora} onChange={(e) => setHora(e.target.value)} /></label>}
+          {quando === "semanal" && (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <label className="fld">Dia<select value={diaSemana} onChange={(e) => setDiaSemana(e.target.value)}>{DIAS.map((d, i) => <option key={i} value={i}>{d}</option>)}</select></label>
+              <label className="fld">Hora<input type="time" value={hora} onChange={(e) => setHora(e.target.value)} /></label>
+            </div>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+            {quando === "agora"
+              ? <button className="btn btn-primary" disabled={busy} onClick={postarAgora}>{busy ? "Postando…" : "👥 Postar agora"}</button>
+              : <button className="btn btn-primary" disabled={busy} onClick={agendar}>{busy ? "Agendando…" : "📅 Agendar post"}</button>}
+          </div>
+          {/* Agendados */}
+          {agendados.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <b style={{ fontSize: 13 }}>Agendados / recorrentes</b>
+              <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+                {agendados.map((p) => (
+                  <div key={p.id} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, opacity: p.ativo ? 1 : 0.5 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700 }}>👥 {p.grupo_nome || "Grupo"} <span className="muted2" style={{ fontWeight: 400 }}>· {descAgendado(p)}</span></div>
+                      <div className="muted" style={{ fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.mensagem || "(sem texto — só arquivo)"}</div>
+                    </div>
+                    {p.recorrencia !== "nenhuma" && <button className="btn btn-soft" style={{ fontSize: 11, padding: "3px 8px" }} onClick={() => toggleAtivo(p.id, !p.ativo)}>{p.ativo ? "⏸️ Pausar" : "▶️ Ativar"}</button>}
+                    <button className="btn btn-soft" style={{ fontSize: 11, padding: "3px 8px", color: "#b91c1c" }} onClick={() => apagar(p.id)}>🗑️</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

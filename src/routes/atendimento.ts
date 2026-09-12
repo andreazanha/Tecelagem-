@@ -1355,6 +1355,12 @@ atendimento.post("/webhook", async (c) => {
   const partCore = coreTel(String(b.participantPhone ?? ""));
   const phoneCore = coreTel(String(b.phone ?? ""));
   const connCore = coreTel(String((b as { connectedPhone?: unknown }).connectedPhone ?? ""));
+  // Aprende o NÚMERO DA BIG (connectedPhone) 1x — usado pra montar o link "chamar no privado"
+  // nas postagens de grupo. Só grava se ainda estiver vazio (a gestora pode sobrescrever na Config).
+  const meuNumero = digitos(String((b as { connectedPhone?: unknown }).connectedPhone ?? ""));
+  if (meuNumero.length >= 10) {
+    try { c.executionCtx.waitUntil(c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('numero_whatsapp', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now') WHERE config.valor IS NULL OR config.valor=''").bind(meuNumero).run().then(() => {}).catch(() => {})); } catch { /* ok */ }
+  }
   const participanteTerceiro = partCore.length >= 8 && partCore !== phoneCore && partCore !== connCore;
   const ehGrupo = !ehLid && (b.isGroup === true || b.isGroupMessage === true
     || digitos(b.phone).length > 14
@@ -1633,6 +1639,7 @@ atendimento.get("/config", async (c) => {
     zapi_token: cfg.zapi_token || "",
     zapi_client_token: cfg.zapi_client_token || "",
     zapi_ativo: cfg.zapi_ativo === "1",
+    numero_whatsapp: cfg.numero_whatsapp || "",   // número da Big (link "chamar no privado" nos grupos)
     atendimento_ativo: cfg.atendimento_ativo === "1",
     atendimento_ia: cfg.atendimento_ia === "1",
     equipe_numeros: cfg.equipe_numeros || "",
@@ -1685,7 +1692,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "catalogo_varejo_url", "catalogo_varejo_senha", "catalogo_varejo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "encerramento_ativo", "fechar_inativos_ativo", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "numero_whatsapp", "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "catalogo_varejo_url", "catalogo_varejo_senha", "catalogo_varejo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "encerramento_ativo", "fechar_inativos_ativo", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -2275,6 +2282,133 @@ atendimento.post("/campanhas/:id/disparar", async (c) => {
   await c.env.DB.prepare("UPDATE atend_campanha_alvos SET status=?, motivo=?, enviado_em=datetime('now') WHERE id=?").bind(stAlvo, r.motivo || null, alvo.id).run();
   await c.env.DB.prepare("UPDATE atend_campanhas SET ultimo_envio_em=datetime('now') WHERE id=?").bind(id).run();
   return c.json({ ok: true, enviado: r.enviado, motivo: r.motivo || "" });
+});
+
+// ── POSTAGENS EM GRUPO (lojista / pessoa física) ─────────────────────────────────
+// A Big posta no grupo (na hora, agendado ou recorrente) com um LINK "chamar no privado"
+// (wa.me do número da Big). Ideia: ninguém conversa no grupo — quem quer comprar clica no
+// link e cai no privado (CRM → IA/vendedor). A Big NUNCA "conversa" dentro do grupo.
+type GrupoPost = { id: string; grupo_id: string; grupo_nome: string | null; mensagem: string; com_link: number; link_texto: string | null; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null; quando: string | null; recorrencia: string; dia_semana: number | null; hora: string | null; ativo: number; ultimo_envio_em: string | null };
+// Número da Big em formato internacional (pro link wa.me). Vazio se não souber ainda.
+function numeroBigWa(cfg: Record<string, string>): string {
+  const d = digitos(cfg.numero_whatsapp || "");
+  if (d.length < 10) return "";
+  return d.length <= 11 ? "55" + d : d;   // sem DDI → assume Brasil
+}
+// Monta o texto do post: mensagem + (opcional) bloco "chamar no privado" com o link wa.me.
+function montarTextoGrupo(mensagem: string, comLink: boolean, linkTexto: string, numeroBig: string): string {
+  let txt = String(mensagem || "").trim();
+  if (comLink && numeroBig) {
+    const pre = String(linkTexto || "").trim() || "Oi! Vi no grupo e quero atendimento 💛";
+    const link = `https://wa.me/${numeroBig}?text=${encodeURIComponent(pre)}`;
+    txt += (txt ? "\n\n" : "") + `━━━━━━━━━━━━━\n🛒 *Quer comprar ou tirar dúvida?* Fale com a gente no *privado* 👇\n${link}`;
+  }
+  return txt;
+}
+// Envia UM post pro grupo (texto ou mídia + texto). Não bloqueia por "cliente bloqueado"
+// (grupo não é cliente). Devolve se foi enviado.
+async function enviarPostGrupo(env: Env, cfg: Record<string, string>, post: Pick<GrupoPost, "grupo_id" | "mensagem" | "com_link" | "link_texto" | "arquivo_url" | "arquivo_tipo" | "arquivo_nome" | "arquivo_ext">): Promise<{ enviado: boolean; motivo?: string }> {
+  const grupo = digitos(post.grupo_id);
+  if (!grupo) return { enviado: false, motivo: "sem-grupo" };
+  const texto = montarTextoGrupo(post.mensagem, post.com_link === 1, post.link_texto || "", numeroBigWa(cfg));
+  if (post.arquivo_url) {
+    const ehImagem = post.arquivo_tipo === "imagem", ehAudio = post.arquivo_tipo === "audio";
+    let docData: string | undefined;
+    if (!ehImagem && !ehAudio) {
+      try { const fr = await fetch(post.arquivo_url, { signal: AbortSignal.timeout(15000) }); if (fr.ok) { const buf = await fr.arrayBuffer(); if (buf.byteLength <= 8 * 1024 * 1024) docData = `data:${CT_POR_EXT[post.arquivo_ext || "bin"] || "application/octet-stream"};base64,${abParaBase64(buf)}`; } } catch { docData = undefined; }
+    }
+    const r = await enviarMidiaZapi(env, grupo, { url: post.arquivo_url, docData, ehImagem, ehAudio, ext: post.arquivo_ext || "bin", fileName: post.arquivo_nome || `arquivo.${post.arquivo_ext || "bin"}`, caption: ehImagem ? texto : "" });
+    if (r.enviado && texto && !ehImagem) await enviarWhatsapp(env, grupo, { tipo: "texto", texto }).catch(() => ({}));
+    return { enviado: r.enviado, motivo: r.motivo };
+  }
+  if (!texto) return { enviado: false, motivo: "vazio" };
+  const r = await enviarWhatsapp(env, grupo, { tipo: "texto", texto });
+  return { enviado: r.enviado, motivo: r.motivo };
+}
+// Lista os grupos disponíveis (conversas na coluna "👥 Grupos").
+atendimento.get("/grupos/lista", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  const { results } = await c.env.DB.prepare(
+    "SELECT telefone AS id, COALESCE(NULLIF(nome,''),'Grupo') AS nome FROM atend_conversas WHERE (estado='grupo' OR origem='grupo') AND telefone IS NOT NULL ORDER BY atualizado_em DESC LIMIT 200"
+  ).all<{ id: string; nome: string }>().catch(() => ({ results: [] as { id: string; nome: string }[] }));
+  return c.json({ grupos: results || [], numero_big: (await lerConfig(c.env)).numero_whatsapp || "" });
+});
+// POSTAR AGORA em um ou mais grupos.
+atendimento.post("/grupos/postar", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  if (!ehGestorAtend(u)) return c.json({ error: "sem_acesso" }, 403);
+  const b = await c.req.json<{ grupos?: { id: string; nome?: string }[]; mensagem?: string; comLink?: boolean; linkTexto?: string; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string }>().catch(() => ({} as Record<string, never>));
+  const grupos = Array.isArray(b.grupos) ? b.grupos.filter((g) => g && g.id) : [];
+  if (!grupos.length) return c.json({ error: "escolha ao menos um grupo" }, 400);
+  if (!String(b.mensagem ?? "").trim() && !b.arquivo_url) return c.json({ error: "escreva a mensagem ou anexe um arquivo" }, 400);
+  const cfg = await lerConfig(c.env);
+  let enviados = 0; const falhas: string[] = [];
+  for (const g of grupos) {
+    const r = await enviarPostGrupo(c.env, cfg, { grupo_id: g.id, mensagem: String(b.mensagem ?? ""), com_link: b.comLink === false ? 0 : 1, link_texto: b.linkTexto || null, arquivo_url: b.arquivo_url || null, arquivo_tipo: b.arquivo_tipo || null, arquivo_nome: b.arquivo_nome || null, arquivo_ext: b.arquivo_ext || null });
+    if (r.enviado) enviados++; else falhas.push((g.nome || g.id) + (r.motivo ? `: ${r.motivo}` : ""));
+  }
+  return c.json({ ok: true, enviados, falhas });
+});
+// AGENDAR um post (uma vez OU recorrente) em um ou mais grupos.
+atendimento.post("/grupos/agendar", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  if (!ehGestorAtend(u)) return c.json({ error: "sem_acesso" }, 403);
+  const b = await c.req.json<{ grupos?: { id: string; nome?: string }[]; mensagem?: string; comLink?: boolean; linkTexto?: string; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string; quando?: number; recorrencia?: string; dia_semana?: number; hora?: string }>().catch(() => ({} as Record<string, never>));
+  const grupos = Array.isArray(b.grupos) ? b.grupos.filter((g) => g && g.id) : [];
+  if (!grupos.length) return c.json({ error: "escolha ao menos um grupo" }, 400);
+  if (!String(b.mensagem ?? "").trim() && !b.arquivo_url) return c.json({ error: "escreva a mensagem ou anexe um arquivo" }, 400);
+  const rec = ["diaria", "semanal"].includes(String(b.recorrencia)) ? String(b.recorrencia) : "nenhuma";
+  let quandoIso: string | null = null;
+  if (rec === "nenhuma") {
+    if (!b.quando || Number(b.quando) <= Date.now()) return c.json({ error: "escolha uma data/hora futura" }, 400);
+    quandoIso = new Date(Number(b.quando)).toISOString().slice(0, 19).replace("T", " ");
+  }
+  const hora = rec !== "nenhuma" ? String(b.hora || "09:00").slice(0, 5) : null;
+  const diaSem = rec === "semanal" ? (Number.isInteger(b.dia_semana) ? Number(b.dia_semana) : 1) : null;
+  // Recorrente: se o horário de hoje JÁ passou (no dia certo), começa só na próxima ocorrência
+  // (marca ultimo_envio_em = agora pra não disparar de imediato ao criar).
+  let ultimoInicial: string | null = null;
+  if (rec !== "nenhuma" && hora) {
+    const agoraBR = new Date(Date.now() - 3 * 3600e3);
+    const hhmm = `${String(agoraBR.getUTCHours()).padStart(2, "0")}:${String(agoraBR.getUTCMinutes()).padStart(2, "0")}`;
+    const diaOk = rec === "diaria" || agoraBR.getUTCDay() === diaSem;
+    if (diaOk && hhmm >= hora) ultimoInicial = new Date().toISOString().slice(0, 19).replace("T", " ");
+  }
+  const stmts = grupos.map((g) => c.env.DB.prepare(
+    "INSERT INTO atend_grupo_posts (id, grupo_id, grupo_nome, mensagem, com_link, link_texto, arquivo_url, arquivo_tipo, arquivo_nome, arquivo_ext, quando, recorrencia, dia_semana, hora, ativo, ultimo_envio_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)"
+  ).bind(uid(), g.id, g.nome || null, String(b.mensagem ?? ""), b.comLink === false ? 0 : 1, b.linkTexto || null, b.arquivo_url || null, b.arquivo_tipo || null, b.arquivo_nome || null, b.arquivo_ext || null, quandoIso, rec, diaSem, hora, ultimoInicial));
+  await c.env.DB.batch(stmts);
+  return c.json({ ok: true, criados: grupos.length });
+});
+// Lista os posts agendados/recorrentes (os únicos já enviados somem).
+atendimento.get("/grupos/agendados", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  if (!ehGestorAtend(u)) return c.json({ error: "sem_acesso" }, 403);
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, grupo_id, grupo_nome, mensagem, com_link, arquivo_nome, quando, recorrencia, dia_semana, hora, ativo, ultimo_envio_em FROM atend_grupo_posts WHERE recorrencia<>'nenhuma' OR ultimo_envio_em IS NULL ORDER BY criado_em DESC LIMIT 100"
+  ).all().catch(() => ({ results: [] as unknown[] }));
+  return c.json({ posts: results || [] });
+});
+// Liga/desliga um post recorrente.
+atendimento.post("/grupos/agendados/:id/ativo", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  if (!ehGestorAtend(u)) return c.json({ error: "sem_acesso" }, 403);
+  const on = (await c.req.json<{ on?: boolean }>().catch(() => ({} as { on?: boolean }))).on;
+  await c.env.DB.prepare("UPDATE atend_grupo_posts SET ativo=? WHERE id=?").bind(on ? 1 : 0, c.req.param("id")).run();
+  return c.json({ ok: true });
+});
+// Apaga um post agendado/recorrente.
+atendimento.delete("/grupos/agendados/:id", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  if (!ehGestorAtend(u)) return c.json({ error: "sem_acesso" }, 403);
+  await c.env.DB.prepare("DELETE FROM atend_grupo_posts WHERE id=?").bind(c.req.param("id")).run();
+  return c.json({ ok: true });
 });
 
 // ── PROXY DO CATÁLOGO (Firestore → JSON limpo, com cache) ────────────────────────
@@ -4328,6 +4462,42 @@ export async function processarCampanhas(env: Env): Promise<number> {
       if (r.enviado) enviados++;
       await new Promise((res) => setTimeout(res, intervalo * 1000));
     }
+  }
+  return enviados;
+}
+
+// Processa as POSTAGENS EM GRUPO agendadas/recorrentes (roda no cron). Dispara os agendamentos
+// únicos cujo horário chegou e os recorrentes (diária/semanal) no horário de Brasília.
+export async function processarGruposPosts(env: Env): Promise<number> {
+  const cfg = await lerConfig(env);
+  if (cfg.zapi_ativo !== "1") return 0;
+  let enviados = 0;
+  // 1) Agendados de disparo ÚNICO cujo horário já chegou.
+  const { results: umaVez } = await env.DB.prepare(
+    "SELECT * FROM atend_grupo_posts WHERE ativo=1 AND recorrencia='nenhuma' AND quando IS NOT NULL AND quando <= datetime('now') AND ultimo_envio_em IS NULL ORDER BY quando LIMIT 50"
+  ).all<GrupoPost>().catch(() => ({ results: [] as GrupoPost[] }));
+  for (const p of (umaVez || [])) {
+    const r = await enviarPostGrupo(env, cfg, p);
+    await env.DB.prepare("UPDATE atend_grupo_posts SET ultimo_envio_em=datetime('now'), ativo=0 WHERE id=?").bind(p.id).run();
+    if (r.enviado) enviados++;
+  }
+  // 2) Recorrentes: dispara quando bate o horário (Brasília) e ainda não enviou HOJE.
+  const agoraBR = new Date(Date.now() - 3 * 3600e3);
+  const hhmm = `${String(agoraBR.getUTCHours()).padStart(2, "0")}:${String(agoraBR.getUTCMinutes()).padStart(2, "0")}`;
+  const diaBR = agoraBR.getUTCDay();               // 0=domingo .. 6=sábado
+  const hojeBR = agoraBR.toISOString().slice(0, 10);
+  const { results: recs } = await env.DB.prepare(
+    "SELECT * FROM atend_grupo_posts WHERE ativo=1 AND recorrencia IN ('diaria','semanal')"
+  ).all<GrupoPost>().catch(() => ({ results: [] as GrupoPost[] }));
+  for (const p of (recs || [])) {
+    if (p.recorrencia === "semanal" && Number(p.dia_semana) !== diaBR) continue;
+    const alvoHora = String(p.hora || "09:00").slice(0, 5);
+    if (hhmm < alvoHora) continue;                 // ainda não chegou a hora hoje
+    const ultimoBR = p.ultimo_envio_em ? new Date(new Date(p.ultimo_envio_em.replace(" ", "T") + "Z").getTime() - 3 * 3600e3).toISOString().slice(0, 10) : "";
+    if (ultimoBR === hojeBR) continue;             // já enviou hoje
+    const r = await enviarPostGrupo(env, cfg, p);
+    await env.DB.prepare("UPDATE atend_grupo_posts SET ultimo_envio_em=datetime('now') WHERE id=?").bind(p.id).run();
+    if (r.enviado) enviados++;
   }
   return enviados;
 }
