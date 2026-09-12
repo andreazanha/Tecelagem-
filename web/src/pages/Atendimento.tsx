@@ -2913,8 +2913,6 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
   const [nome, setNome] = useState("");
   const [busy, setBusy] = useState(false);
   const [colar, setColar] = useState("");           // prospecção: colar lista de números
-  const [mostrarColar, setMostrarColar] = useState(false);
-  const [mostrarCatalogo, setMostrarCatalogo] = useState(false);  // puxar quem viu o catálogo
   const [diasCat, setDiasCat] = useState("60");
   const [puxando, setPuxando] = useState(false);
   const [anexo, setAnexo] = useState<{ url: string; tipo: string; nome: string; ext: string } | null>(null);
@@ -2979,18 +2977,23 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
   }, []);
   // Seleciona TODO MUNDO que está numa coluna do quadro (ex.: 🏠 Cliente final). Usa a coluna
   // que veio do board em cada contato. Só conta quem realmente já falou aqui (tem card no quadro).
+  // Filtro por COLUNA do quadro: quando escolhida, a lista mostra SÓ quem está nessa coluna
+  // (e todos já ficam selecionados) — assim você vê exatamente quem vai receber.
+  const [colFiltro, setColFiltro] = useState("");
+  // Modo de escolher quem recebe (categorias): só o escolhido aparece, pra não empilhar tudo.
+  const [modo, setModo] = useState<"coluna" | "tipo" | "buscar" | "colar" | "catalogo">("coluna");
   function selecionarColuna(colId: string) {
     if (!colId) return;
     const alvos = contatos.filter((c) => c.coluna === colId);
     if (!alvos.length) { alert("Ninguém nessa coluna no momento (ou os cards ainda não carregaram)."); return; }
     setSel((s) => { const n = new Set(s); alvos.forEach((c) => n.add(c.telefone)); return n; });
-    const lb = colsQuadro.find((k) => k.id === colId)?.label || colId;
-    alert(`✓ Selecionei ${alvos.length} contato(s) da coluna "${lb}". Escreva a mensagem e clique em "📣 Criar e enviar".`);
+    setColFiltro(colId);   // mostra só essa coluna na lista abaixo
   }
-  const [fonte, setFonte] = useState<"todos" | "cliente" | "falou" | "lojista" | "colado" | "catalogo">("todos");
+  const [fonte, setFonteRaw] = useState<"todos" | "cliente" | "falou" | "lojista" | "colado" | "catalogo">("todos");
+  const setFonte = (f: typeof fonte) => { setColFiltro(""); setFonteRaw(f); };   // trocar de filtro por tipo limpa o filtro por coluna
   const CAP_CONTATOS = 1000; // limite de exibição (perf). O resto acha-se pela busca.
   const casaFonte = (c: Contato, f: typeof fonte) => f === "todos" || (f === "cliente" ? c.origem === "cliente" : f === "falou" ? !!c.falou : f === "lojista" ? (!!c.lojista && !!c.falou) : f === "catalogo" ? c.origem === "catalogo" : c.origem === "colado");
-  const porFonte = (c: Contato) => casaFonte(c, fonte);
+  const porFonte = (c: Contato) => (colFiltro ? c.coluna === colFiltro : casaFonte(c, fonte));
   const filtrados = (() => {
     const q = busca.trim().toLowerCase();
     const base = contatos.filter(porFonte);
@@ -3043,7 +3046,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
     if (!add && !jaTinha) { alert("Não encontrei números válidos (precisa de DDD + número, ex.: (11) 99999-8888)."); return; }
     if (novos.length) setContatos((cs) => [...novos, ...cs]);
     setSel((s) => { const n = new Set(s); selNovos.forEach((t) => n.add(t)); return n; });
-    setColar("");
+    setColar(""); setModo("tipo"); setFonte("colado");   // mostra os colados na lista
     alert(`✓ ${add} número(s) novo(s) adicionado(s)` + (jaTinha ? ` e ${jaTinha} que já estava(m) na base foram selecionados.` : "."));
   }
   // CATÁLOGO: puxa quem VISUALIZOU o catálogo (últimos N dias) e adiciona à lista, já selecionados.
@@ -3067,7 +3070,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
       }
       if (novos.length) setContatos((cs) => [...novos, ...cs]);
       setSel((s) => { const n = new Set(s); selNovos.forEach((t) => n.add(t)); return n; });
-      setFonte("catalogo"); setMostrarCatalogo(false);
+      setModo("tipo"); setFonte("catalogo");
       const extra = (r.bloqueados || r.optout) ? ` (pulei ${r.bloqueados} bloqueado[s] e ${r.optout} descadastrado[s])` : "";
       alert(`✓ ${selNovos.size} contato(s) que viram o catálogo nos últimos ${r.dias} dias, já selecionados${extra}. Escreva a mensagem e crie a campanha.`);
     } catch (e) { alert((e as Error).message || "Não consegui puxar a lista do catálogo."); } finally { setPuxando(false); }
@@ -3154,10 +3157,15 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
           <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📣 Nova campanha</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
         </div>
         <div className="modal-bd">
-          <div className="muted2" style={{ fontSize: 12.5, marginBottom: 8 }}>Escolha os contatos, escreva a mensagem (com o link) e a Big vai enviando <b>aos poucos</b> pra não correr risco de bloqueio.</div>
-          <label className="fld full">Nome da campanha (opcional)<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Convite cadastro — agosto" /></label>
-          <label className="fld full" style={{ marginTop: 8 }}>Mensagem<textarea value={mensagem} onChange={(e) => setMensagem(e.target.value)} rows={5} placeholder="Escreva a mensagem com o link…" style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} /></label>
-          {/* Anexo (foto/arquivo) opcional — vai pra todos os contatos */}
+          <div className="muted2" style={{ fontSize: 12.5, marginBottom: 12 }}>A Big envia <b>aos poucos</b> pra não bloquear o número. É só seguir os 3 passos. 👇</div>
+
+          {/* PASSO 1 — Mensagem */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{ minWidth: 22, height: 22, borderRadius: "50%", background: "#4f46e5", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>1</span>
+            <b style={{ fontSize: 14 }}>Escreva a mensagem</b>
+          </div>
+          <label className="fld full">Nome da campanha (só pra você, opcional)<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Convite grupo lojistas — setembro" /></label>
+          <label className="fld full" style={{ marginTop: 8 }}>Mensagem (pode colar o link do grupo aqui)<textarea value={mensagem} onChange={(e) => setMensagem(e.target.value)} rows={5} placeholder="Escreva aqui a mensagem que vai pra cada pessoa…" style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} /></label>
           <input ref={arqRef} type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) subirAnexo(f); e.currentTarget.value = ""; }} />
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             {!anexo
@@ -3169,82 +3177,105 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
             {anexo && <span className="muted2" style={{ fontSize: 11.5 }}>{anexo.tipo === "imagem" ? "A mensagem vai como legenda da foto." : "A foto/arquivo vai primeiro; a mensagem em seguida."}</span>}
           </div>
           {anexo && anexo.tipo === "imagem" && <img src={anexo.url} alt="anexo" style={{ maxWidth: 160, maxHeight: 120, borderRadius: 8, marginTop: 6, border: "1px solid var(--line)" }} />}
-          <label className="fld" style={{ marginTop: 8, display: "inline-flex", flexDirection: "column" }}>Enviar 1 a cada
-            <span><input type="number" min={15} max={600} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} style={{ width: 70 }} /> segundos <span className="muted2">(padrão 120s = 2 min, pra não bloquear)</span></span>
-          </label>
-          <label className="fld" style={{ marginTop: 8, display: "inline-flex", flexDirection: "column" }}>⚠️ Avisar se já enviei nos últimos
-            <span><input type="number" min={0} max={90} value={avisarDias} onChange={(e) => setAvisarDias(e.target.value)} style={{ width: 70 }} /> dia(s) <span className="muted2">(0 = não avisar)</span></span>
-          </label>
-          <div style={{ marginTop: 10, marginBottom: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <b style={{ fontSize: 13 }}>Contatos</b>
-            <span className="at-chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{sel.size} selecionado(s)</span>
-            <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={marcarFiltrados}>Selecionar os {filtrados.length} da busca</button>
-            <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => setMostrarColar((v) => !v)}>📋 Colar lista de números</button>
-            <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={() => setMostrarCatalogo((v) => !v)}>📖 Puxar quem viu o catálogo</button>
-            {sel.size > 0 && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={limpar}>Limpar</button>}
+
+          {/* PASSO 2 — Quem vai receber */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "18px 0 8px" }}>
+            <span style={{ minWidth: 22, height: 22, borderRadius: "50%", background: "#4f46e5", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>2</span>
+            <b style={{ fontSize: 14 }}>Quem vai receber</b>
+            <span className="at-chip" style={{ background: "#dcfce7", color: "#166534", marginLeft: "auto", fontWeight: 700 }}>✅ {sel.size} selecionado(s)</span>
           </div>
-          {/* Puxar todo mundo de uma COLUNA do quadro (ex.: 🏠 Cliente final) de uma vez. */}
-          <div style={{ margin: "0 0 8px", padding: 10, border: "1px dashed var(--line)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span className="muted2" style={{ fontSize: 12.5 }}>📋 Puxar todo mundo de uma <b>coluna do quadro</b>:</span>
-            <select value={colFonte} onChange={(e) => setColFonte(e.target.value)} style={{ fontSize: 12.5, padding: "3px 6px" }}>
-              <option value="">Escolha a coluna…</option>
-              {colsQuadro.filter((k) => k.id !== "grupos").map((k) => {
-                const q = contatos.filter((c) => c.coluna === k.id).length;
-                return <option key={k.id} value={k.id}>{k.label} ({q})</option>;
-              })}
-            </select>
-            <button className="btn btn-primary" style={{ fontSize: 12.5 }} disabled={!colFonte} onClick={() => selecionarColuna(colFonte)}>➕ Selecionar todos</button>
+          <div className="muted2" style={{ fontSize: 12, marginBottom: 8 }}>Escolha COMO quer selecionar as pessoas:</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+            {([["coluna", "📋 Por coluna do quadro"], ["tipo", "🏷️ Por tipo"], ["buscar", "🔎 Buscar pessoa"], ["colar", "📥 Colar números"], ["catalogo", "📖 Viu o catálogo"]] as const).map(([m, lb]) => (
+              <button key={m} className={"at-chip" + (modo === m ? " on" : "")} style={{ fontSize: 12.5, padding: "5px 10px" }} onClick={() => { setModo(m); if (m !== "coluna") setColFiltro(""); if (m === "buscar") setFonte("todos"); }}>{lb}</button>
+            ))}
           </div>
-          {mostrarCatalogo && (
-            <div style={{ margin: "0 0 8px", padding: 10, border: "1px dashed var(--line)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)" }}>
-              <div className="muted2" style={{ fontSize: 12, marginBottom: 6 }}>Puxa <b>quem visualizou o catálogo</b> (do log do catálogo). Já tira <b>bloqueados</b> e <b>descadastrados</b>. Depois, pra filtrar por <b>vendedor</b> ou <b>região</b>, é só digitar no campo de busca abaixo.</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <label className="muted2" style={{ fontSize: 12.5 }}>Últimos <input type="number" min={1} max={365} value={diasCat} onChange={(e) => setDiasCat(e.target.value)} style={{ width: 64, margin: "0 4px" }} /> dias</label>
-                <button className="btn btn-primary" style={{ fontSize: 12.5 }} disabled={puxando} onClick={puxarCatalogo}>{puxando ? "Puxando…" : "📖 Puxar e selecionar"}</button>
+          {modo === "coluna" && (
+            <div style={{ margin: "0 0 10px", padding: 12, border: "1px solid var(--line)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)" }}>
+              <div className="muted2" style={{ fontSize: 12, marginBottom: 6 }}>Escolha uma coluna — <b>todo mundo dela</b> já entra na lista abaixo:</div>
+              <select value={colFonte} onChange={(e) => { setColFonte(e.target.value); if (e.target.value) selecionarColuna(e.target.value); }} style={{ fontSize: 13, padding: "6px 8px", width: "100%" }}>
+                <option value="">Escolha a coluna…</option>
+                {colsQuadro.filter((k) => k.id !== "grupos").map((k) => { const q = contatos.filter((c) => c.coluna === k.id).length; return <option key={k.id} value={k.id}>{k.label} ({q})</option>; })}
+              </select>
+            </div>
+          )}
+          {modo === "tipo" && (
+            <div style={{ margin: "0 0 10px", padding: 12, border: "1px solid var(--line)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)" }}>
+              <div className="muted2" style={{ fontSize: 12, marginBottom: 6 }}>Escolha um grupo de pessoas:</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {([["todos", "Todos"], ["lojista", "🏪 Lojistas (já falaram)"], ["cliente", "📇 Base de clientes"], ["falou", "💬 Já falaram aqui"], ["catalogo", "📖 Viram o catálogo"], ["colado", "📥 Colados"]] as const).map(([f, lb]) => (
+                  <button key={f} className={"at-chip" + (fonte === f ? " on" : "")} onClick={() => setFonte(f)}>{lb} ({contarFonte(f)})</button>
+                ))}
               </div>
             </div>
           )}
-          {mostrarColar && (
-            <div style={{ margin: "0 0 8px", padding: 10, border: "1px dashed var(--line)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)" }}>
-              <div className="muted2" style={{ fontSize: 12, marginBottom: 6 }}>Cole os números (1 por linha, ou separados por vírgula). Pode ser <b>"Nome, número"</b> ou só o número. Serve pra prospecção — <b>inclusive de quem ainda não está na base</b>.</div>
+          {modo === "buscar" && (
+            <input placeholder="🔎 Digite nome, cidade, número ou palavra (ex.: manta, almofada)…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: "100%", marginBottom: 10 }} />
+          )}
+          {modo === "colar" && (
+            <div style={{ margin: "0 0 10px", padding: 12, border: "1px solid var(--line)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)" }}>
+              <div className="muted2" style={{ fontSize: 12, marginBottom: 6 }}>Cole os números (1 por linha, ou separados por vírgula). Pode ser <b>"Nome, número"</b> — serve inclusive pra quem ainda não está na base.</div>
               <textarea value={colar} onChange={(e) => setColar(e.target.value)} rows={4} placeholder={"Ex.:\nMaria, (11) 99999-8888\n(31) 98888-7777\n5541977776666"} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} />
               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
                 <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={adicionarColados}>➕ Adicionar à lista</button>
               </div>
             </div>
           )}
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-            {([["todos", "Todos"], ["lojista", "🏪 Lojistas (já falaram)"], ["cliente", "📇 Base de clientes"], ["falou", "💬 Já falaram aqui"], ["catalogo", "📖 Viram o catálogo"], ["colado", "📋 Colados"]] as const).map(([f, lb]) => (
-              <button key={f} className={"at-chip" + (fonte === f ? " on" : "")} onClick={() => setFonte(f)}>{lb} ({contarFonte(f)})</button>
-            ))}
-          </div>
-          <input placeholder="🔎 Buscar por nome, cidade, número ou palavra-chave (ex.: manta, almofada)…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: "100%", marginBottom: 6 }} />
-          <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10 }}>
-            {carregando ? <div className="muted" style={{ padding: 12 }}>Carregando contatos…</div>
-              : filtrados.length === 0 ? <div className="muted" style={{ padding: 12 }}>Nenhum contato.</div>
-              : filtrados.map((c) => (
-                <label key={c.origem + c.telefone} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderBottom: "1px solid var(--line)", cursor: "pointer" }}>
-                  <input type="checkbox" checked={sel.has(c.telefone)} onChange={() => toggle(c.telefone)} />
-                  <div><div><b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span>
-                    {c.emCamp && <span className="at-chip" style={{ background: "#fef3c7", color: "#92400e", fontSize: 10, marginLeft: 6 }} title="Este contato já está em outra campanha">📣 já em campanha</span>}
-                    {ehRecente(c) && <span className="at-chip" style={{ background: "#fee2e2", color: "#b91c1c", fontSize: 10, marginLeft: 6 }} title={`Você já enviou mensagem pra este contato nos últimos ${diasRecente} dia(s)`}>⚠️ enviado recente</span>}</div>
-                    <div className="muted2" style={{ fontSize: 11 }}>{c.origem === "cliente" ? "📇 base" : c.origem === "colado" ? "📋 colado" : c.origem === "crm" ? "💬 já falou" : c.origem === "catalogo" ? "📖 viu o catálogo" : "📱 zap"}{c.rep ? ` · 👤 ${c.rep}` : ""}{c.falou && c.origem !== "crm" ? " · 💬 já falou" : ""}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : (c.uf ? ` · ${c.uf}` : "")}</div></div>
-                </label>
-              ))}
-          </div>
-          {!carregando && contatos.length > filtrados.length && (
-            <div className="muted2" style={{ fontSize: 11, marginTop: 5 }}>
-              Mostrando {filtrados.length} de <b>{contatos.length}</b> contatos. Pra achar qualquer um (inclusive além do que aparece aqui), <b>digite no campo acima</b> — nome, cidade ou número. A busca varre a lista toda. 🔎
+          {modo === "catalogo" && (
+            <div style={{ margin: "0 0 10px", padding: 12, border: "1px solid var(--line)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)" }}>
+              <div className="muted2" style={{ fontSize: 12, marginBottom: 6 }}>Puxa <b>quem visualizou o catálogo</b> (já tira bloqueados e descadastrados).</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <label className="muted2" style={{ fontSize: 12.5 }}>Últimos <input type="number" min={1} max={365} value={diasCat} onChange={(e) => setDiasCat(e.target.value)} style={{ width: 64, margin: "0 4px" }} /> dias</label>
+                <button className="btn btn-primary" style={{ fontSize: 12.5 }} disabled={puxando} onClick={puxarCatalogo}>{puxando ? "Puxando…" : "📖 Puxar e selecionar"}</button>
+              </div>
             </div>
           )}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+          {/* Barra de ação + LISTA de pessoas (mostra quem vai receber) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+            <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} disabled={!filtrados.length} onClick={marcarFiltrados}>✅ Selecionar todos ({filtrados.length})</button>
+            {sel.size > 0 && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={limpar}>Limpar seleção</button>}
+            {colFiltro && <span className="at-chip" style={{ background: "#e0f2fe", color: "#075985" }}>📋 {colsQuadro.find((k) => k.id === colFiltro)?.label || "coluna"} <span onClick={() => { setColFiltro(""); setColFonte(""); }} style={{ cursor: "pointer", marginLeft: 4, fontWeight: 800 }}>✕</span></span>}
+          </div>
+          {modo === "coluna" && !colFiltro
+            ? <div className="muted" style={{ padding: 14, border: "1px dashed var(--line)", borderRadius: 10, fontSize: 12.5, textAlign: "center" }}>👆 Escolha uma coluna acima pra ver quem vai receber.</div>
+            : <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10 }}>
+                {carregando ? <div className="muted" style={{ padding: 12 }}>Carregando…</div>
+                  : filtrados.length === 0 ? <div className="muted" style={{ padding: 12 }}>Ninguém encontrado aqui.</div>
+                  : filtrados.map((c) => (
+                    <label key={c.origem + c.telefone} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderBottom: "1px solid var(--line)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={sel.has(c.telefone)} onChange={() => toggle(c.telefone)} />
+                      <div><div><b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span>
+                        {c.emCamp && <span className="at-chip" style={{ background: "#fef3c7", color: "#92400e", fontSize: 10, marginLeft: 6 }} title="Este contato já está em outra campanha">📣 já em campanha</span>}
+                        {ehRecente(c) && <span className="at-chip" style={{ background: "#fee2e2", color: "#b91c1c", fontSize: 10, marginLeft: 6 }} title={`Você já enviou mensagem pra este contato nos últimos ${diasRecente} dia(s)`}>⚠️ enviado recente</span>}</div>
+                        <div className="muted2" style={{ fontSize: 11 }}>{c.origem === "cliente" ? "📇 base" : c.origem === "colado" ? "📥 colado" : c.origem === "crm" ? "💬 já falou" : c.origem === "catalogo" ? "📖 viu o catálogo" : "📱 zap"}{c.rep ? ` · 👤 ${c.rep}` : ""}{c.falou && c.origem !== "crm" ? " · 💬 já falou" : ""}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : (c.uf ? ` · ${c.uf}` : "")}</div></div>
+                    </label>
+                  ))}
+              </div>}
+          {modo === "buscar" && !carregando && contatos.length > filtrados.length && (
+            <div className="muted2" style={{ fontSize: 11, marginTop: 5 }}>Mostrando {filtrados.length} de <b>{contatos.length}</b>. Digite mais pra refinar. 🔎</div>
+          )}
+
+          {/* PASSO 3 — Enviar */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "18px 0 8px" }}>
+            <span style={{ minWidth: 22, height: 22, borderRadius: "50%", background: "#4f46e5", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>3</span>
+            <b style={{ fontSize: 14 }}>Enviar</b>
+          </div>
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 12 }}>
+            <label className="fld" style={{ display: "inline-flex", flexDirection: "column" }}>Enviar 1 a cada
+              <span><input type="number" min={15} max={600} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} style={{ width: 70 }} /> seg <span className="muted2">(padrão 120s)</span></span>
+            </label>
+            <label className="fld" style={{ display: "inline-flex", flexDirection: "column" }}>Avisar se já enviei nos últimos
+              <span><input type="number" min={0} max={90} value={avisarDias} onChange={(e) => setAvisarDias(e.target.value)} style={{ width: 70 }} /> dia(s) <span className="muted2">(0 = não)</span></span>
+            </label>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
             {editandoId ? (<>
               <span className="muted2" style={{ fontSize: 12, alignSelf: "center", marginRight: "auto" }}>✏️ Editando campanha (a lista de contatos não muda)</span>
               <button className="btn btn-soft" disabled={busy} onClick={cancelarEdicao}>Cancelar</button>
               <button className="kbtn go" disabled={busy} onClick={salvarEdicao}>{busy ? "Salvando…" : "💾 Salvar alterações"}</button>
             </>) : (<>
               <button className="btn btn-soft" disabled={busy} onClick={() => criar(true)} title="Salva a campanha sem enviar. Você ativa depois na lista abaixo.">💾 Salvar rascunho</button>
-              <button className="kbtn go" disabled={busy} onClick={() => criar(false)}>{busy ? "Criando…" : `📣 Criar e enviar (${sel.size})`}</button>
+              <button className="kbtn go" disabled={busy || !sel.size} onClick={() => criar(false)}>{busy ? "Criando…" : `📣 Criar e enviar (${sel.size})`}</button>
             </>)}
           </div>
 
