@@ -2780,7 +2780,9 @@ function GruposModal({ onFechar }: { onFechar: () => void }) {
   }
   function validar(): boolean {
     if (sel.size === 0) { alert("Escolha pelo menos um grupo."); return false; }
-    if (!mensagem.trim() && !anexo) { alert("Escreva a mensagem ou anexe uma foto/arquivo."); return false; }
+    // Precisa ter ALGO pra postar: uma mensagem, um anexo, OU o link "chamar no privado" (que já tem texto).
+    const temLink = comLink && !!numeroBig;
+    if (!mensagem.trim() && !anexo && !temLink) { alert("✍️ Escreva a mensagem no campo MENSAGEM (é o que vai ser postado no grupo). Ou anexe uma foto/arquivo."); return false; }
     if (comLink && !numeroBig) { if (!confirm("⚠️ Ainda não sei o número da Big pra montar o link 'chamar no privado' (ele aparece depois que chegar uma mensagem no WhatsApp, ou você preenche na Config). Postar mesmo assim, SEM o link?")) return false; }
     return true;
   }
