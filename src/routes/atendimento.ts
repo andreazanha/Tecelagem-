@@ -2321,6 +2321,11 @@ async function enviarPostGrupo(env: Env, cfg: Record<string, string>, post: Pick
   const grupo = digitos(post.grupo_id);
   if (!grupo) return { enviado: false, motivo: "sem-grupo" };
   const texto = montarTextoGrupo(post.mensagem, post.com_link === 1, post.link_texto || "", numeroBigWa(cfg));
+  // Grava a postagem no histórico do GRUPO (no CRM), com o messageId da Z-API, pra você ver o que foi
+  // postado (autor "campanha" = não conta como atendimento humano nem faz o card piscar).
+  const registrar = async (msgId: string | null) => {
+    try { const cv = await env.DB.prepare("SELECT id FROM atend_conversas WHERE telefone=?").bind(grupo).first<{ id: string }>(); if (cv) await addMsg(env, cv.id, "out", "campanha", "texto", texto || `📎 ${post.arquivo_nome || "arquivo"}`, { zapId: msgId, arquivoUrl: post.arquivo_url || null }); } catch { /* ok */ }
+  };
   if (post.arquivo_url) {
     const ehImagem = post.arquivo_tipo === "imagem", ehAudio = post.arquivo_tipo === "audio";
     let docData: string | undefined;
@@ -2329,10 +2334,12 @@ async function enviarPostGrupo(env: Env, cfg: Record<string, string>, post: Pick
     }
     const r = await enviarMidiaZapi(env, grupo, { url: post.arquivo_url, docData, ehImagem, ehAudio, ext: post.arquivo_ext || "bin", fileName: post.arquivo_nome || `arquivo.${post.arquivo_ext || "bin"}`, caption: ehImagem ? texto : "" });
     if (r.enviado && texto && !ehImagem) await enviarWhatsapp(env, grupo, { tipo: "texto", texto }).catch(() => ({}));
+    if (r.enviado) await registrar(r.messageId ?? null);
     return { enviado: r.enviado, motivo: r.motivo };
   }
   if (!texto) return { enviado: false, motivo: "vazio" };
   const r = await enviarWhatsapp(env, grupo, { tipo: "texto", texto });
+  if (r.enviado) await registrar(r.messageId ?? null);
   return { enviado: r.enviado, motivo: r.motivo };
 }
 // Lista os grupos disponíveis (conversas na coluna "👥 Grupos").
@@ -2685,10 +2692,12 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
   const phone = digitos(tel);
   let texto = linksClicaveis(String(saida.texto ?? "").trim());
   if (!phone || !texto) return { enviado: false, motivo: "vazio" };
-  // Cliente BLOQUEADO (caloteiro/inadimplente): não envia NADA — nem robô, nem campanha.
-  if (await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
+  // GRUPO: envia DIRETO pelo id do grupo. NÃO passa por "cliente bloqueado" (grupo não é cliente)
+  // nem por destinoWhatsapp (que é pra @lid de pessoa e desviaria a mensagem do grupo).
+  const ehGrupoDest = pareceIdDeGrupo(phone);
+  if (!ehGrupoDest && await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
   // Destino real: para contatos @lid, endereça ao @lid (senão o WhatsApp não entrega).
-  const dest = await destinoWhatsapp(env, phone);
+  const dest = ehGrupoDest ? phone : await destinoWhatsapp(env, phone);
   // Responder uma mensagem específica: se temos o id da Z-API, cita de forma NATIVA
   // (messageId). Se não (mensagem antiga sem id), cai num fallback citando o trecho.
   const body: Record<string, unknown> = { phone: dest };
@@ -2731,9 +2740,11 @@ export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string
   if (!inst || !token) return { enviado: false, motivo: "sem-credenciais" };
   const phone = digitos(tel);
   if (!phone) return { enviado: false, motivo: "vazio" };
-  if (await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
+  // GRUPO: envia direto pelo id (sem checar bloqueio nem desviar por @lid).
+  const ehGrupoDest = pareceIdDeGrupo(phone);
+  if (!ehGrupoDest && await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
   // Destino real: para contatos @lid, endereça ao @lid (senão o WhatsApp não entrega a mídia).
-  const dest = await destinoWhatsapp(env, phone);
+  const dest = ehGrupoDest ? phone : await destinoWhatsapp(env, phone);
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
   // VÍDEO (mp4/mov/…): endpoint próprio "send-video", que aceita legenda (caption). Antes caía no
