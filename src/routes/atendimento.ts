@@ -12,6 +12,11 @@ export const atendimento = new Hono<{ Bindings: Env }>();
 
 const uid = () => crypto.randomUUID();
 const digitos = (s: unknown) => String(s ?? "").replace(/\D/g, "");
+// Um ID de GRUPO de verdade do WhatsApp começa com "120363" (grupos novos) ou é um id bem longo
+// (grupos antigos: número do criador + timestamp). Já um contato @lid (privacidade nova do WhatsApp)
+// também vem como número longo, mas NÃO começa com 120363 e tem ~15-16 dígitos — por isso NÃO é grupo.
+// Isso evita que cliente individual (ex.: @lid) seja confundido com grupo.
+const pareceIdDeGrupo = (tel: unknown) => { const d = digitos(tel); return d.startsWith("120363") || d.length >= 19; };
 
 // ── SESSÃO / IDENTIDADE (barreira de acesso) ─────────────────────────────────────────
 // Lê o token de sessão (crachá) do cabeçalho, confere no servidor e devolve o usuário REAL —
@@ -816,7 +821,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // vai pro registrarGrupo e volta antes daqui). Se mesmo assim o card veio com estado/origem 'grupo'
   // e o telefone é um número normal (não é id de grupo), ele foi corrompido quando o cliente RESPONDEU/
   // marcou uma mensagem — devolve pro fluxo humano pra o card voltar a aparecer na fila normal.
-  if ((String(conv.estado) === "grupo" || String(conv.origem) === "grupo") && digitos(conv.telefone).length <= 14) {
+  if ((String(conv.estado) === "grupo" || String(conv.origem) === "grupo") && !pareceIdDeGrupo(conv.telefone)) {
     await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', origem='whatsapp', coluna_manual=NULL, atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
     conv.estado = "atendimento-humano"; conv.origem = "whatsapp";
   }
@@ -1362,8 +1367,13 @@ atendimento.post("/webhook", async (c) => {
     try { c.executionCtx.waitUntil(c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('numero_whatsapp', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now') WHERE config.valor IS NULL OR config.valor=''").bind(meuNumero).run().then(() => {}).catch(() => {})); } catch { /* ok */ }
   }
   const participanteTerceiro = partCore.length >= 8 && partCore !== phoneCore && partCore !== connCore;
+  // GRUPO só quando o WhatsApp diz que é (isGroup), quando o id É de grupo de verdade (@g.us, formato
+  // antigo com hífen, ou id 120363…), ou quem falou é um TERCEIRO. NÃO trata @lid/número longo comum
+  // como grupo (era o que jogava cliente individual pra coluna Grupos por engano).
+  const rawPhone = String(b.phone ?? "");
+  const pareceGrupoId = /@g\.us/i.test(rawPhone) || /-\d{5,}/.test(rawPhone) || pareceIdDeGrupo(rawPhone);
   const ehGrupo = !ehLid && (b.isGroup === true || b.isGroupMessage === true
-    || digitos(b.phone).length > 14
+    || pareceGrupoId
     || participanteTerceiro);
   if (ehGrupo) {
     const okG = await registrarGrupo(c.env, new URL(c.req.url).origin, b);
@@ -2330,7 +2340,7 @@ atendimento.get("/grupos/lista", async (c) => {
   const u = await usuarioLogado(c.env, c);
   if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
   const { results } = await c.env.DB.prepare(
-    "SELECT telefone AS id, COALESCE(NULLIF(nome,''),'Grupo') AS nome FROM atend_conversas WHERE (estado='grupo' OR origem='grupo') AND telefone IS NOT NULL ORDER BY atualizado_em DESC LIMIT 200"
+    "SELECT telefone AS id, COALESCE(NULLIF(nome,''),'Grupo') AS nome FROM atend_conversas WHERE (estado='grupo' OR origem='grupo') AND telefone IS NOT NULL AND (telefone LIKE '120363%' OR length(telefone) >= 19) ORDER BY atualizado_em DESC LIMIT 200"
   ).all<{ id: string; nome: string }>().catch(() => ({ results: [] as { id: string; nome: string }[] }));
   return c.json({ grupos: results || [], numero_big: (await lerConfig(c.env)).numero_whatsapp || "" });
 });
@@ -2355,8 +2365,11 @@ atendimento.post("/grupos/buscar", async (c) => {
       if (!Array.isArray(arr) || !arr.length) break;
       for (const ch of arr) {
         const isG = ch.isGroup === true || ch.isGroup === "true";
-        const gid = digitos(String(ch.phone ?? ch.id ?? (ch as { chatId?: unknown }).chatId ?? ""));
-        if (!isG && gid.length <= 14) continue;           // não é grupo (contato normal)
+        const rawId = String(ch.phone ?? ch.id ?? (ch as { chatId?: unknown }).chatId ?? "");
+        const gid = digitos(rawId);
+        // Só registra GRUPO de verdade (flag isGroup, @g.us, formato antigo com hífen, ou id 120363…).
+        // NÃO registra contato individual @lid (número longo comum) como grupo.
+        if (!isG && !/@g\.us/i.test(rawId) && !/-\d{5,}/.test(rawId) && !pareceIdDeGrupo(gid)) continue;
         if (!gid || vistos.has(gid)) continue; vistos.add(gid);
         const nome = String(ch.name ?? (ch as { chatName?: unknown }).chatName ?? (ch as { notify?: unknown }).notify ?? "").trim().slice(0, 80) || "Grupo";
         const existe = await c.env.DB.prepare("SELECT id, nome FROM atend_conversas WHERE telefone=?").bind(gid).first<{ id: string; nome: string | null }>();
@@ -2371,7 +2384,7 @@ atendimento.post("/grupos/buscar", async (c) => {
     }
   } catch { return c.json({ error: "não consegui buscar os grupos agora" }, 502); }
   const { results } = await c.env.DB.prepare(
-    "SELECT telefone AS id, COALESCE(NULLIF(nome,''),'Grupo') AS nome FROM atend_conversas WHERE (estado='grupo' OR origem='grupo') AND telefone IS NOT NULL ORDER BY atualizado_em DESC LIMIT 200"
+    "SELECT telefone AS id, COALESCE(NULLIF(nome,''),'Grupo') AS nome FROM atend_conversas WHERE (estado='grupo' OR origem='grupo') AND telefone IS NOT NULL AND (telefone LIKE '120363%' OR length(telefone) >= 19) ORDER BY atualizado_em DESC LIMIT 200"
   ).all<{ id: string; nome: string }>().catch(() => ({ results: [] as { id: string; nome: string }[] }));
   return c.json({ ok: true, achados, grupos: results || [] });
 });
@@ -2913,7 +2926,7 @@ atendimento.get("/painel", async (c) => {
 
 // Coluna do ATENDIMENTO derivada do estado + responsável + últimas mensagens + encerrado.
 // É isso que faz os cards se moverem SOZINHOS conforme a conversa anda.
-function colunaAtendimento(c: { estado?: string | null; responsavel?: string | null; ultima_in_em?: string | null; ultima_out_em?: string | null; ultima_out_humano_em?: string | null; encerrado_em?: string | null; tipo?: string | null; lojista?: number | null; origem?: string | null }): string {
+function colunaAtendimento(c: { estado?: string | null; responsavel?: string | null; ultima_in_em?: string | null; ultima_out_em?: string | null; ultima_out_humano_em?: string | null; encerrado_em?: string | null; tipo?: string | null; lojista?: number | null; origem?: string | null; telefone?: string | null }): string {
   const inn = c.ultima_in_em || "", out = c.ultima_out_em || "", enc = c.encerrado_em || "";
   const outHumano = c.ultima_out_humano_em || "";
   const estado = String(c.estado || "");
@@ -2924,7 +2937,9 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
   // pra ninguém esquecer de responder. (Antes bastava ter responsável OU qualquer envio nosso, então o
   // card ficava preso em "Em atendimento" sem piscar mesmo com o cliente esperando.)
   const atendendo = !!outHumano && outHumano >= inn;
-  if (estado === "grupo") return "grupos";                            // mensagens de grupo → coluna própria
+  // Só é GRUPO de verdade se o id parece de grupo (120363… ou id longo). Card marcado "grupo" por
+  // engano (cliente individual @lid) cai fora daqui e segue pro fluxo normal (fila humana).
+  if (estado === "grupo" && pareceIdDeGrupo(c.telefone)) return "grupos";
   // Reclamação (defeito/troca/atraso) → coluna própria "Reclamação", separada e visível. Vem ANTES
   // de tudo (até de consumidor): uma reclamação não pode se perder no "finalizado" nem no cliente final.
   if (estado === "reclamacao") return "reclamacao";
@@ -3029,7 +3044,7 @@ atendimento.get("/", async (c) => {
     // tarja verde no topo, mas nenhum card. Cliente esperando = precisa estar visível na Triagem.
     {
       const innR = String(r.ultima_in_em || ""), outR = String(r.ultima_out_em || ""), encR = String(r.encerrado_em || "");
-      const ehGrupo = String(r.estado) === "grupo" || String(r.origem) === "grupo";
+      const ehGrupo = (String(r.estado) === "grupo" || String(r.origem) === "grupo") && pareceIdDeGrupo(r.telefone as string);
       const clienteEsperando = !!innR && innR > outR && innR > encR;   // cliente escreveu por último, ninguém respondeu
       // SÓ ressuscita quem estava MORTO (finalizado). Card em coluna de trabalho — montando pedido,
       // em atendimento, orçando, aguardando humano, reclamação, follow-up... — NÃO se mexe: quem está
@@ -3039,7 +3054,7 @@ atendimento.get("/", async (c) => {
     // GRUPO (não silenciado): mensagem NOVA (depois do último "encerrar") sobe pra "Aguardando
     // atendimento humano" (piscando). Se VOCÊ já respondeu (sua saída depois da última entrada), vai
     // pra "Em atendimento". Silenciado, ou já "encerrado"/visto, fica em "Grupos". ENCERRAR → Grupos.
-    if (String(r.estado) === "grupo" || String(r.origem) === "grupo") {
+    if ((String(r.estado) === "grupo" || String(r.origem) === "grupo") && pareceIdDeGrupo(r.telefone as string)) {
       const inn = String(r.ultima_in_em || ""), out = String(r.ultima_out_em || ""), enc = String(r.encerrado_em || "");
       if (silenciadoR || !inn || inn <= enc) coluna = "grupos";
       else coluna = out > inn ? "em-atendimento" : "aguardando-humano";
