@@ -764,6 +764,7 @@ export const api = {
   // ── Postagens em grupo (lojista / pessoa física) ──
   atendGruposLista: () => getT("/api/atendimento/grupos/lista").then((r) => j<{ grupos: { id: string; nome: string }[]; numero_big: string }>(r)),
   atendGruposBuscar: () => jsonPost("/api/atendimento/grupos/buscar", {}).then((r) => j<{ ok: boolean; achados: number; grupos: { id: string; nome: string }[]; error?: string }>(r)),
+  atendGruposDiagnostico: () => getT("/api/atendimento/grupos/diagnostico").then((r) => j<{ ultimo: string; error?: string }>(r)),
   atendGrupoPostar: (b: { grupos: { id: string; nome?: string }[]; mensagem?: string; comLink?: boolean; linkTexto?: string; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string }) =>
     jsonPost("/api/atendimento/grupos/postar", b).then((r) => j<{ ok: boolean; enviados: number; falhas: string[]; error?: string }>(r)),
   atendGrupoAgendar: (b: { grupos: { id: string; nome?: string }[]; mensagem?: string; comLink?: boolean; linkTexto?: string; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string; quando?: number; recorrencia?: string; dia_semana?: number; hora?: string }) =>

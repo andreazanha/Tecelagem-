@@ -2343,6 +2343,15 @@ async function enviarPostGrupo(env: Env, cfg: Record<string, string>, post: Pick
   return { enviado: r.enviado, motivo: r.motivo };
 }
 // Lista os grupos disponíveis (conversas na coluna "👥 Grupos").
+// Diagnóstico do ÚLTIMO envio (resposta crua da Z-API) — pra descobrir por que um post de grupo
+// "disse que enviou" mas não chegou.
+atendimento.get("/grupos/diagnostico", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  if (!ehGestorAtend(u)) return c.json({ error: "sem_acesso" }, 403);
+  const cfg = await lerConfig(c.env);
+  return c.json({ ultimo: cfg.webhook_send_ultimo || "" });
+});
 atendimento.get("/grupos/lista", async (c) => {
   const u = await usuarioLogado(c.env, c);
   if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
@@ -2713,12 +2722,15 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
     const resp = await fetch(`${base}/instances/${inst}/token/${token}/send-text`, {
       method: "POST", headers, body: JSON.stringify(body),
     });
-    if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}` };
-    const dj = await resp.json().catch(() => ({})) as { messageId?: string; id?: string; zaapId?: string };
-    // DIAGNÓSTICO (temporário): guarda os ids que a Z-API devolve NO ENVIO — pra comparar com o id
-    // que chega no callback de status e descobrir qual salvar como zap_id.
-    try { await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('webhook_send_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify({ para: dest, numero: phone, viaLid: dest !== phone, messageId: dj?.messageId ?? null, id: dj?.id ?? null, zaapId: dj?.zaapId ?? null, msgIn: String(saida.texto ?? ""), msg: texto, msgLen: texto.length })).run(); } catch { /* ok */ }
-    return { enviado: true, messageId: dj?.messageId || dj?.id || dj?.zaapId || null, zaapId: dj?.zaapId || null };
+    const rawTxt = await resp.text();
+    const dj = (() => { try { return JSON.parse(rawTxt) as { messageId?: string; id?: string; zaapId?: string; error?: string; message?: string }; } catch { return {} as { messageId?: string; id?: string; zaapId?: string; error?: string; message?: string }; } })();
+    const msgId = dj?.messageId || dj?.id || dj?.zaapId || null;
+    // DIAGNÓSTICO: guarda a resposta CRUA da Z-API do último envio (pra ver por que não entregou).
+    try { await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('webhook_send_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify({ endpoint: "send-text", para: dest, numero: phone, grupo: ehGrupoDest, status: resp.status, messageId: msgId, resp: rawTxt.slice(0, 400), quando: new Date().toISOString() })).run(); } catch { /* ok */ }
+    if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}: ${rawTxt.slice(0, 120)}` };
+    // A Z-API às vezes responde 200 COM erro no corpo (ex.: não é membro do grupo). Isso NÃO é envio.
+    if (dj?.error || (!msgId && dj?.message)) return { enviado: false, motivo: `zapi: ${String(dj.error || dj.message).slice(0, 150)}` };
+    return { enviado: true, messageId: msgId, zaapId: dj?.zaapId || null };
   } catch (e) {
     return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
   }
@@ -2763,9 +2775,13 @@ export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string
   try {
     // Timeout: a Z-API baixa o arquivo da nossa URL e reenvia — se travar, não deixa pendurado.
     const resp = await fetch(`${base}/instances/${inst}/token/${token}/${endpoint}`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(90000) });
-    if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}` };
-    const dj = await resp.json().catch(() => ({})) as { messageId?: string; id?: string; zaapId?: string };
-    return { enviado: true, messageId: dj?.messageId || dj?.id || dj?.zaapId || null, zaapId: dj?.zaapId || null };
+    const rawTxt = await resp.text();
+    const dj = (() => { try { return JSON.parse(rawTxt) as { messageId?: string; id?: string; zaapId?: string; error?: string; message?: string }; } catch { return {} as { messageId?: string; id?: string; zaapId?: string; error?: string; message?: string }; } })();
+    const msgId = dj?.messageId || dj?.id || dj?.zaapId || null;
+    try { await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('webhook_send_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify({ endpoint, para: dest, numero: phone, grupo: ehGrupoDest, status: resp.status, messageId: msgId, resp: rawTxt.slice(0, 400), quando: new Date().toISOString() })).run(); } catch { /* ok */ }
+    if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}: ${rawTxt.slice(0, 120)}` };
+    if (dj?.error || (!msgId && dj?.message)) return { enviado: false, motivo: `zapi: ${String(dj.error || dj.message).slice(0, 150)}` };
+    return { enviado: true, messageId: msgId, zaapId: dj?.zaapId || null };
   } catch (e) {
     return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
   }

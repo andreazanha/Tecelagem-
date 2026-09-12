@@ -2764,6 +2764,15 @@ function GruposModal({ onFechar }: { onFechar: () => void }) {
       alert(r.achados > 0 ? `✓ Encontrei ${r.achados} grupo(s) novo(s)!` : (r.grupos.length ? "Nenhum grupo novo — os que apareceram já estavam na lista." : "Não encontrei grupos. Confirme que o número da Big está nos grupos e tente de novo."));
     } catch { alert("Não consegui buscar os grupos agora."); } finally { setBuscando(false); }
   }
+  async function verDiagnostico() {
+    try {
+      const r = await api.atendGruposDiagnostico();
+      if (r.error) { alert(r.error); return; }
+      if (!r.ultimo) { alert("Ainda não há registro de envio. Faça um post primeiro, depois clique aqui."); return; }
+      let txt = r.ultimo; try { txt = JSON.stringify(JSON.parse(r.ultimo), null, 2); } catch { /* mostra cru */ }
+      alert("🔧 Resposta do WhatsApp no último envio:\n\n" + txt);
+    } catch { alert("Não consegui ler o diagnóstico agora."); }
+  }
   useEffect(() => {
     api.atendGruposLista().then((r) => { setGrupos(r.grupos); setNumeroBig(r.numero_big || ""); }).catch(() => {});
     carregarAgendados();
@@ -2838,6 +2847,7 @@ function GruposModal({ onFechar }: { onFechar: () => void }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <b style={{ fontSize: 13 }}>Grupos</b>
             <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} disabled={buscando} onClick={buscarGrupos}>{buscando ? "Buscando…" : "🔄 Buscar meus grupos do WhatsApp"}</button>
+            <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={verDiagnostico} title="Mostra a resposta do WhatsApp no último envio (pra descobrir por que um post não chegou).">🔧 Diagnóstico</button>
           </div>
           <div style={{ maxHeight: 130, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10, margin: "6px 0 10px" }}>
             {grupos.length === 0 ? <div className="muted" style={{ padding: 12, fontSize: 12.5 }}>Nenhum grupo na lista ainda. Clique em <b>"🔄 Buscar meus grupos do WhatsApp"</b> acima (ou mande uma mensagem no grupo) pra ele aparecer.</div>
