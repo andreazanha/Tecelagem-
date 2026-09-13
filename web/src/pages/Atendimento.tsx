@@ -2951,7 +2951,6 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
   const [editandoId, setEditandoId] = useState<string | null>(null);   // editando uma campanha existente
   // Colunas do quadro (pra "puxar todo mundo da coluna X", ex.: Cliente final) e a coluna escolhida.
   const [colsQuadro, setColsQuadro] = useState<import("../api").AtendColuna[]>([]);
-  const [colFonte, setColFonte] = useState("");
   // Assistente (UI): etapa 1..4 e aba (criar campanha x histórico). Só apresentação — a lógica é a mesma.
   const [etapa, setEtapa] = useState<1 | 2 | 3 | 4>(1);
   const [aba, setAba] = useState<"criar" | "historico">("criar");
@@ -3013,7 +3012,9 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
   // que veio do board em cada contato. Só conta quem realmente já falou aqui (tem card no quadro).
   // Filtro por COLUNA do quadro: quando escolhida, a lista mostra SÓ quem está nessa coluna
   // (e todos já ficam selecionados) — assim você vê exatamente quem vai receber.
-  const [colFiltro, setColFiltro] = useState("");
+  // colFiltro guarda VÁRIAS colunas escolhidas (elas se somam na lista/seleção — pode combinar
+  // "Efetuou pedido" + "Cliente final" etc. sem refazer nada).
+  const [colFiltro, setColFiltro] = useState<Set<string>>(new Set());
   // Modo de escolher quem recebe (categorias): só o escolhido aparece, pra não empilhar tudo.
   const [modo, setModo] = useState<"coluna" | "tipo" | "buscar" | "colar" | "catalogo">("coluna");
   function selecionarColuna(colId: string) {
@@ -3021,13 +3022,19 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
     const alvos = contatos.filter((c) => c.coluna === colId);
     if (!alvos.length) { alert("Ninguém nessa coluna no momento (ou os cards ainda não carregaram)."); return; }
     setSel((s) => { const n = new Set(s); alvos.forEach((c) => n.add(c.telefone)); return n; });
-    setColFiltro(colId);   // mostra só essa coluna na lista abaixo
+    setColFiltro((s) => { const n = new Set(s); n.add(colId); return n; });   // ADICIONA (não substitui)
+  }
+  // Tira uma coluna: some da lista e desmarca os contatos daquela coluna.
+  function removerColuna(colId: string) {
+    const alvos = new Set(contatos.filter((c) => c.coluna === colId).map((c) => c.telefone));
+    setSel((s) => { const n = new Set(s); alvos.forEach((t) => n.delete(t)); return n; });
+    setColFiltro((s) => { const n = new Set(s); n.delete(colId); return n; });
   }
   const [fonte, setFonteRaw] = useState<"todos" | "cliente" | "falou" | "lojista" | "colado" | "catalogo">("todos");
-  const setFonte = (f: typeof fonte) => { setColFiltro(""); setFonteRaw(f); };   // trocar de filtro por tipo limpa o filtro por coluna
+  const setFonte = (f: typeof fonte) => { setColFiltro(new Set()); setFonteRaw(f); };   // trocar de filtro por tipo limpa as colunas
   const CAP_CONTATOS = 1000; // limite de exibição (perf). O resto acha-se pela busca.
   const casaFonte = (c: Contato, f: typeof fonte) => f === "todos" || (f === "cliente" ? c.origem === "cliente" : f === "falou" ? !!c.falou : f === "lojista" ? (!!c.lojista && !!c.falou) : f === "catalogo" ? c.origem === "catalogo" : c.origem === "colado");
-  const porFonte = (c: Contato) => (colFiltro ? c.coluna === colFiltro : casaFonte(c, fonte));
+  const porFonte = (c: Contato) => (colFiltro.size ? colFiltro.has(c.coluna || "") : casaFonte(c, fonte));
   const filtrados = (() => {
     const q = busca.trim().toLowerCase();
     const base = contatos.filter(porFonte);
@@ -3192,7 +3199,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
   const totSeg = nSel * segInt;
   const tempoEstimado = nSel === 0 ? "—" : totSeg < 60 ? `${totSeg}s` : totSeg < 3600 ? `${Math.round(totSeg / 60)} min` : `${(totSeg / 3600).toFixed(1)} h`;
   const FONTE_NOMES: Record<string, string> = { todos: "Todos os contatos", lojista: "Lojistas (já falaram)", cliente: "Base de clientes", falou: "Já falaram aqui", catalogo: "Viram o catálogo", colado: "Colados" };
-  const publicoResumo = colFiltro ? (colsQuadro.find((k) => k.id === colFiltro)?.label || "Coluna do quadro") : modo === "tipo" ? FONTE_NOMES[fonte] : modo === "buscar" ? "Busca manual" : modo === "colar" ? "Números colados" : modo === "catalogo" ? "Viram o catálogo" : "Por coluna do quadro";
+  const publicoResumo = colFiltro.size ? (colFiltro.size === 1 ? (colsQuadro.find((k) => k.id === [...colFiltro][0])?.label || "Coluna do quadro") : `${colFiltro.size} colunas do quadro`) : modo === "tipo" ? FONTE_NOMES[fonte] : modo === "buscar" ? "Busca manual" : modo === "colar" ? "Números colados" : modo === "catalogo" ? "Viram o catálogo" : "Por coluna do quadro";
   const cardBox = { border: "1px solid var(--line)", borderRadius: 14, background: "rgba(148,163,184,0.08)", padding: 18 } as const;
   return (
     <div className="modal-bg" onClick={onFechar}>
@@ -3261,7 +3268,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
           <div className="muted2" style={{ fontSize: 12.5, marginBottom: 14 }}>Escolha como quer selecionar as pessoas:</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(148px,1fr))", gap: 10, marginBottom: 16 }}>
             {([["coluna", "📋", "Por coluna do quadro"], ["tipo", "🏷️", "Por tipo"], ["buscar", "🔎", "Buscar pessoa"], ["colar", "📥", "Colar números"], ["catalogo", "📖", "Viu o catálogo"]] as const).map(([m, ic, lb]) => (
-              <button key={m} className="cmp-modo" onClick={() => { setModo(m); if (m !== "coluna") setColFiltro(""); if (m === "buscar") setFonte("todos"); }} style={{ cursor: "pointer", textAlign: "left", padding: "12px 14px", borderRadius: 12, border: "1.5px solid " + (modo === m ? "#6366f1" : "var(--line)"), background: modo === m ? "rgba(99,102,241,0.14)" : "rgba(148,163,184,0.08)", color: "var(--ink)" }}>
+              <button key={m} className="cmp-modo" onClick={() => { setModo(m); if (m !== "coluna") setColFiltro(new Set()); if (m === "buscar") setFonte("todos"); }} style={{ cursor: "pointer", textAlign: "left", padding: "12px 14px", borderRadius: 12, border: "1.5px solid " + (modo === m ? "#6366f1" : "var(--line)"), background: modo === m ? "rgba(99,102,241,0.14)" : "rgba(148,163,184,0.08)", color: "var(--ink)" }}>
                 <div style={{ fontSize: 20 }}>{ic}</div>
                 <div style={{ fontSize: 12.5, fontWeight: modo === m ? 800 : 700, marginTop: 4, color: "var(--ink)" }}>{lb}</div>
               </button>
@@ -3269,11 +3276,18 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
           </div>
           {modo === "coluna" && (
             <div style={{ margin: "0 0 10px", padding: 12, border: "1px solid var(--line)", borderRadius: 10, background: "var(--bg-soft,#f8fafc)" }}>
-              <div className="muted2" style={{ fontSize: 12, marginBottom: 6 }}>Escolha uma coluna — <b>todo mundo dela</b> já entra na lista abaixo:</div>
-              <select value={colFonte} onChange={(e) => { setColFonte(e.target.value); if (e.target.value) selecionarColuna(e.target.value); }} style={{ fontSize: 13, padding: "6px 8px", width: "100%" }}>
-                <option value="">Escolha a coluna…</option>
-                {colsQuadro.filter((k) => k.id !== "grupos").map((k) => { const q = contatos.filter((c) => c.coluna === k.id).length; return <option key={k.id} value={k.id}>{k.label} ({q})</option>; })}
+              <div className="muted2" style={{ fontSize: 12, marginBottom: 6 }}>Escolha uma coluna — <b>todo mundo dela</b> entra na lista. Pode <b>adicionar mais de uma</b> (elas se somam):</div>
+              <select value="" onChange={(e) => { const v = e.target.value; if (v) selecionarColuna(v); e.currentTarget.value = ""; }} style={{ fontSize: 13, padding: "6px 8px", width: "100%" }}>
+                <option value="">➕ Adicionar coluna…</option>
+                {colsQuadro.filter((k) => k.id !== "grupos" && !colFiltro.has(k.id)).map((k) => { const q = contatos.filter((c) => c.coluna === k.id).length; return <option key={k.id} value={k.id}>{k.label} ({q})</option>; })}
               </select>
+              {colFiltro.size > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                  {[...colFiltro].map((cid) => (
+                    <span key={cid} className="at-chip" style={{ background: "#4f46e5", color: "#fff", fontWeight: 700 }}>{colsQuadro.find((k) => k.id === cid)?.label || cid} <span onClick={() => removerColuna(cid)} style={{ cursor: "pointer", marginLeft: 4, fontWeight: 800 }}>✕</span></span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {modo === "tipo" && (
@@ -3311,10 +3325,9 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
             <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} disabled={!filtrados.length} onClick={marcarFiltrados}>✅ Selecionar todos ({filtrados.length})</button>
             {sel.size > 0 && <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "3px 8px" }} onClick={limpar}>Limpar seleção</button>}
-            {colFiltro && <span className="at-chip" style={{ background: "#e0f2fe", color: "#075985" }}>📋 {colsQuadro.find((k) => k.id === colFiltro)?.label || "coluna"} <span onClick={() => { setColFiltro(""); setColFonte(""); }} style={{ cursor: "pointer", marginLeft: 4, fontWeight: 800 }}>✕</span></span>}
           </div>
-          {modo === "coluna" && !colFiltro
-            ? <div className="muted" style={{ padding: 14, border: "1px dashed var(--line)", borderRadius: 10, fontSize: 12.5, textAlign: "center" }}>👆 Escolha uma coluna acima pra ver quem vai receber.</div>
+          {modo === "coluna" && colFiltro.size === 0
+            ? <div className="muted" style={{ padding: 14, border: "1px dashed var(--line)", borderRadius: 10, fontSize: 12.5, textAlign: "center" }}>👆 Escolha uma ou mais colunas acima pra ver quem vai receber.</div>
             : <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10 }}>
                 {carregando ? <div className="muted" style={{ padding: 12 }}>Carregando…</div>
                   : filtrados.length === 0 ? <div className="muted" style={{ padding: 12 }}>Ninguém encontrado aqui.</div>
