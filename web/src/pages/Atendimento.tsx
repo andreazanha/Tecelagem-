@@ -2955,6 +2955,16 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
   const [avisarDias, setAvisarDias] = useState("3");   // avisa se JÁ enviei mensagem nos últimos N dias
   const [nome, setNome] = useState("");
   const [busy, setBusy] = useState(false);
+  // Respostas prontas (empresa + minhas) pra usar como texto da campanha — só as que têm texto.
+  const [respsProntas, setRespsProntas] = useState<RespostaPronta[]>([]);
+  useEffect(() => {
+    Promise.allSettled([api.atendRespostasEmpresa(), api.atendRespostas()]).then(([e, m]) => {
+      const lst: RespostaPronta[] = [];
+      if (e.status === "fulfilled") lst.push(...e.value);
+      if (m.status === "fulfilled") lst.push(...m.value);
+      setRespsProntas(lst.filter((r) => (r.texto || "").trim()));
+    }).catch(() => {});
+  }, []);
   const [colar, setColar] = useState("");           // prospecção: colar lista de números
   const [diasCat, setDiasCat] = useState("60");
   const [puxando, setPuxando] = useState(false);
@@ -3252,6 +3262,12 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
               <div className="muted2" style={{ fontSize: 12.5, marginBottom: 16 }}>É isso que cada pessoa vai receber no WhatsApp.</div>
           <label className="fld full">Nome da campanha (só pra você, opcional)<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Convite grupo lojistas — setembro" /></label>
           <label className="fld full" style={{ marginTop: 8 }}>Mensagem (pode colar o link do grupo aqui)<textarea value={mensagem} onChange={(e) => setMensagem(e.target.value)} rows={5} placeholder="Escreva aqui a mensagem que vai pra cada pessoa…" style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} /></label>
+          {respsProntas.length > 0 && (
+            <select value="" onChange={(e) => { const r = respsProntas[Number(e.target.value)]; if (r) setMensagem(r.texto); e.currentTarget.value = ""; }} style={{ width: "100%", marginTop: 6, fontSize: 13, padding: "7px 9px" }}>
+              <option value="">📋 Usar uma resposta pronta…</option>
+              {respsProntas.map((r, i) => <option key={i} value={i}>{r.titulo || (r.texto || "").slice(0, 40)}</option>)}
+            </select>
+          )}
           <input ref={arqRef} type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) subirAnexo(f); e.currentTarget.value = ""; }} />
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             {!anexo
