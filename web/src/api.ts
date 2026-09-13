@@ -758,7 +758,7 @@ export const api = {
   atendEditarCampanha: (id: string, b: { nome?: string; mensagem: string; intervalo_seg: number; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string }) =>
     jsonPost(`/api/atendimento/campanhas/${id}/editar`, b).then((r) => j<{ ok: boolean; error?: string }>(r)),
   atendContatosEmCampanha: () =>
-    fetch("/api/atendimento/campanhas/em-campanha").then((r) => j<{ telefones: string[] }>(r)),
+    fetch("/api/atendimento/campanhas/em-campanha").then((r) => j<{ telefones: string[]; detalhes?: { telefone: string; campanha: string; data: string | null }[] }>(r)),
   atendFonteCatalogo: (dias: number) =>
     fetch(`/api/atendimento/campanhas/fonte-catalogo?dias=${dias}`).then((r) => j<{ viewers: { telefone: string; nome: string; regiao: string; rep: string; ts: number }[]; total: number; bloqueados: number; optout: number; dias: number; error?: string }>(r)),
   // ── Postagens em grupo (lojista / pessoa física) ──

@@ -2192,10 +2192,15 @@ atendimento.post("/campanhas/:id/editar", async (c) => {
 });
 // Telefones que JÁ estão em alguma campanha — pra sinalizar na hora de montar uma campanha nova.
 atendimento.get("/campanhas/em-campanha", async (c) => {
+  // Traz por telefone a campanha MAIS RECENTE em que ele entrou + a data (pra mostrar qual e quando).
   const { results } = await c.env.DB.prepare(
-    `SELECT DISTINCT a.telefone AS telefone FROM atend_campanha_alvos a JOIN atend_campanhas c ON c.id = a.campanha_id`
-  ).all<{ telefone: string }>().catch(() => ({ results: [] as { telefone: string }[] }));
-  return c.json({ telefones: (results || []).map((r) => r.telefone) });
+    `SELECT a.telefone AS telefone, c.nome AS campanha, COALESCE(a.enviado_em, c.criado_em) AS data
+       FROM atend_campanha_alvos a JOIN atend_campanhas c ON c.id = a.campanha_id
+      ORDER BY COALESCE(a.enviado_em, c.criado_em) DESC`
+  ).all<{ telefone: string; campanha: string | null; data: string | null }>().catch(() => ({ results: [] as { telefone: string; campanha: string | null; data: string | null }[] }));
+  const vistos = new Set<string>(); const detalhes: { telefone: string; campanha: string; data: string | null }[] = [];
+  for (const r of results || []) { if (!r.telefone || vistos.has(r.telefone)) continue; vistos.add(r.telefone); detalhes.push({ telefone: r.telefone, campanha: r.campanha || "Campanha", data: r.data || null }); }
+  return c.json({ telefones: [...vistos], detalhes });
 });
 // FONTE CATÁLOGO: lista de quem VISUALIZOU o catálogo (log de atividade bt-atividade), pronta pra
 // virar campanha. Filtra por período (dias), junta por telefone (mais recente), resolve o nome do

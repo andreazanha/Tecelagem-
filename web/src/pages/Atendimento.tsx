@@ -1495,6 +1495,15 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   useEffect(() => { carregarRespostas(); }, []);
   // Escolher uma resposta pronta na conversa: se ela TEM anexo, ENVIA na hora (arquivo + texto como
   // legenda); se for só texto, joga no campo pra você revisar e mandar.
+  // Agendar uma resposta pronta pra outra data/horário: fecha o painel e abre o "⏰ Agendar mensagem"
+  // já com o texto preenchido (usa o MESMO fluxo de agendamento — data/hora + agendarMensagem).
+  function agendarResposta(r: RespostaPronta) {
+    setMostrarResp(false);
+    const base = d?.agendado_ia || (Date.now() + 3600e3);
+    setAgDia(dataLocalStr(base)); setAgHora(d?.agendado_ia ? horaLocalStr(base) : "09:00");
+    setAgMsg(r.texto || "");
+    setAgOpen(true);
+  }
   async function escolherResposta(r: RespostaPronta) {
     setMostrarResp(false);
     if (r.arquivo_key) {
@@ -2031,14 +2040,17 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                   const emp = filtroResp === "minhas" ? [] : respEmpresa.filter(bate);
                   const min = filtroResp === "empresa" ? [] : respostas.filter(bate);
                   const card = (r: RespostaPronta, key: string) => (
-                    <button key={key} onClick={() => escolherResposta(r)} title={r.arquivo_key ? "Envia o anexo + texto pro cliente" : "Coloca no campo — você edita e envia"}
-                      style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 12px", marginBottom: 8, borderRadius: 10, border: "1px solid var(--line)", background: "var(--bg-soft,#f8fafc)", cursor: "pointer" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 12.5, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.arquivo_key ? "📎 " : ""}{r.titulo || "(sem título)"}</span>
-                        <span style={{ fontSize: 10.5, fontWeight: 800, color: "#4f46e5", flexShrink: 0 }}>Usar →</span>
+                    <div key={key} style={{ marginBottom: 8, borderRadius: 10, border: "1px solid var(--line)", background: "var(--bg-soft,#f8fafc)", overflow: "hidden" }}>
+                      <button onClick={() => escolherResposta(r)} title={r.arquivo_key ? "Envia o anexo + texto pro cliente" : "Coloca no campo — você edita e envia"}
+                        style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 12px 6px", border: 0, background: "transparent", cursor: "pointer" }}>
+                        <div style={{ fontWeight: 700, fontSize: 12.5, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.arquivo_key ? "📎 " : ""}{r.titulo || "(sem título)"}</div>
+                        <div className="muted2" style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{r.texto || (r.arquivo_key ? (r.arquivo_nome || "anexo") : "")}</div>
+                      </button>
+                      <div style={{ display: "flex", gap: 6, padding: "0 10px 8px" }}>
+                        <button onClick={() => escolherResposta(r)} style={{ cursor: "pointer", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8, border: "1px solid #c7d2fe", background: "#eef2ff", color: "#4338ca" }}>Usar agora</button>
+                        {!r.arquivo_key && <button onClick={() => agendarResposta(r)} title="Programar esta resposta pra outra data/horário" style={{ cursor: "pointer", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", color: "var(--muted)" }}>⏰ Agendar</button>}
                       </div>
-                      <div className="muted2" style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{r.texto || (r.arquivo_key ? (r.arquivo_nome || "anexo") : "")}</div>
-                    </button>
+                    </div>
                   );
                   if (respEmpresa.length === 0 && respostas.length === 0)
                     return <div className="muted2" style={{ padding: "12px 2px", fontSize: 12.5 }}>Nenhuma resposta salva. Clique em <b>⚙️ Gerenciar</b> para criar.</div>;
@@ -2607,7 +2619,7 @@ function ColunasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: ()
 }
 
 // ── Nova conversa: escolhe um contato do WhatsApp (ou digita o número) e manda a 1ª msg ──
-type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm" | "catalogo"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string; emCamp?: boolean; foto?: string | null; rep?: string | null; ultimaSaida?: string | null; coluna?: string | null; lojista?: boolean };
+type Contato = { nome: string; telefone: string; origem: "cliente" | "whats" | "colado" | "crm" | "catalogo"; cidade?: string | null; uf?: string | null; falou?: boolean; palavras?: string; emCamp?: boolean; campNome?: string; campData?: string | null; foto?: string | null; rep?: string | null; ultimaSaida?: string | null; coluna?: string | null; lojista?: boolean; tipoPessoa?: "lojista" | "consumidor" };
 function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; onAbrir: (id: string) => void; onMudou: () => void }) {
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -2980,27 +2992,32 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
     const u = getUser();
     Promise.allSettled([api.listarClientesCrm(), api.atendContatosWhatsapp(), api.atendRespostasEmpresa(), api.atendBoard(u?.nome, ehGestorAtend()), api.atendInteressesContatos(), api.atendContatosEmCampanha()]).then(([cl, w, emp, bd, ie, ec]) => {
       const lista: Contato[] = []; const idx = new Map<string, Contato>();
-      const add = (n: string, tel: string, origem: Contato["origem"], cidade?: string | null, uf?: string | null, falou = false, ultimaSaida?: string | null, coluna?: string | null, lojista?: boolean) => {
+      const add = (n: string, tel: string, origem: Contato["origem"], cidade?: string | null, uf?: string | null, falou = false, ultimaSaida?: string | null, coluna?: string | null, lojista?: boolean, tipoPessoa?: "lojista" | "consumidor") => {
         const d = (tel || "").replace(/\D/g, ""); if (d.length < 10 || d.length > 13) return;  // fora do tamanho BR: ignora
         const key = nucleoTel(d); const ex = idx.get(key);
-        if (ex) { if (falou) ex.falou = true; if (ultimaSaida && (!ex.ultimaSaida || ultimaSaida > ex.ultimaSaida)) ex.ultimaSaida = ultimaSaida; if (coluna) ex.coluna = coluna; if (lojista) ex.lojista = true; if ((!ex.nome || ex.nome === telBonito(ex.telefone)) && n) ex.nome = n; return; }
-        const c: Contato = { nome: n || telBonito(d), telefone: d, origem, cidade, uf, falou, ultimaSaida: ultimaSaida || null, coluna: coluna || null, lojista: !!lojista };
+        if (ex) { if (falou) ex.falou = true; if (ultimaSaida && (!ex.ultimaSaida || ultimaSaida > ex.ultimaSaida)) ex.ultimaSaida = ultimaSaida; if (coluna) ex.coluna = coluna; if (lojista) ex.lojista = true; if (tipoPessoa) ex.tipoPessoa = tipoPessoa; if ((!ex.nome || ex.nome === telBonito(ex.telefone)) && n) ex.nome = n; return; }
+        const c: Contato = { nome: n || telBonito(d), telefone: d, origem, cidade, uf, falou, ultimaSaida: ultimaSaida || null, coluna: coluna || null, lojista: !!lojista, tipoPessoa };
         idx.set(key, c); lista.push(c);
       };
       // Base de clientes cadastrados = lojistas (a Big só cadastra lojista) → marca lojista=true.
-      if (cl.status === "fulfilled") for (const c of cl.value) add(c.nome, c.whatsapp || "", "cliente", c.cidade, c.uf, false, null, null, true);
+      if (cl.status === "fulfilled") for (const c of cl.value) add(c.nome, c.whatsapp || "", "cliente", c.cidade, c.uf, false, null, null, true, "lojista");
       // "Já falaram com a gente": conversas do CRM com mensagem RECEBIDA do cliente. Guarda também a
       // ÚLTIMA SAÍDA (ultima_out_em) pra avisar se você já mandou mensagem recente pra esse contato,
       // a COLUNA do quadro e se é LOJISTA (pra filtrar "lojistas que já falaram aqui").
       if (bd.status === "fulfilled") for (const cv of bd.value.conversas) if (cv.telefone && cv.ultima_in_em && cv.estado !== "grupo") {
         const ehLoj = (cv.tipo === "lojista" || cv.lojista === 1 || !!cv.cliente_id || (cv.cnpj || "").replace(/\D/g, "").length >= 14) && cv.tipo !== "consumidor" && cv.lojista !== 0;
-        add(cv.contato_nome || cv.nome || "", cv.telefone, "crm", cv.cidade, cv.uf, true, cv.ultima_out_em, cv.coluna, ehLoj);
+        const ehCons = cv.tipo === "consumidor" || cv.lojista === 0 || cv.coluna === "cliente-final";
+        add(cv.contato_nome || cv.nome || "", cv.telefone, "crm", cv.cidade, cv.uf, true, cv.ultima_out_em, cv.coluna, ehLoj, ehCons ? "consumidor" : ehLoj ? "lojista" : undefined);
       }
       if (w.status === "fulfilled") for (const c of (w.value.contatos || [])) add(c.nome, c.telefone, "whats");
       // Palavras-chave (interesses + última mensagem) pra busca por assunto.
       if (ie.status === "fulfilled") for (const p of (ie.value.contatos || [])) { const ex = idx.get(nucleoTel(p.telefone || "")); if (ex) ex.palavras = (p.palavras || "").toLowerCase(); }
       // Quem já está em alguma campanha → marca pra você não mandar de novo sem querer.
-      if (ec.status === "fulfilled") for (const tel of (ec.value.telefones || [])) { const ex = idx.get(nucleoTel(tel || "")); if (ex) ex.emCamp = true; }
+      if (ec.status === "fulfilled") {
+        if (ec.value.detalhes && ec.value.detalhes.length) {
+          for (const d of ec.value.detalhes) { const ex = idx.get(nucleoTel(d.telefone || "")); if (ex) { ex.emCamp = true; ex.campNome = d.campanha; ex.campData = d.data; } }
+        } else for (const tel of (ec.value.telefones || [])) { const ex = idx.get(nucleoTel(tel || "")); if (ex) ex.emCamp = true; }
+      }
       lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
       setContatos(lista);
       if (emp.status === "fulfilled") { const conv = emp.value.find((r) => /cadast/i.test(r.titulo)); if (conv) setMensagem(conv.texto); }
@@ -3335,7 +3352,9 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
                     <label key={c.origem + c.telefone} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderBottom: "1px solid var(--line)", cursor: "pointer" }}>
                       <input type="checkbox" checked={sel.has(c.telefone)} onChange={() => toggle(c.telefone)} />
                       <div><div><b>{c.nome}</b> <span className="muted" style={{ fontSize: 12 }}>{telBonito(c.telefone)}</span>
-                        {c.emCamp && <span className="at-chip" style={{ background: "#fef3c7", color: "#92400e", fontSize: 10, marginLeft: 6 }} title="Este contato já está em outra campanha">📣 já em campanha</span>}
+                        {c.tipoPessoa === "lojista" && <span className="at-chip" style={{ background: "#dbeafe", color: "#1e40af", fontSize: 10, marginLeft: 6 }} title="Lojista (atacado)">🏪 Lojista</span>}
+                        {c.tipoPessoa === "consumidor" && <span className="at-chip" style={{ background: "#ccfbf1", color: "#0f766e", fontSize: 10, marginLeft: 6 }} title="Consumidor final (varejo)">🏠 Consumidor</span>}
+                        {c.emCamp && (() => { const dt = c.campData ? new Date(c.campData.replace(" ", "T") + "Z").toLocaleDateString("pt-BR") : ""; return <span className="at-chip" style={{ background: "#fef3c7", color: "#92400e", fontSize: 10, marginLeft: 6, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-block", verticalAlign: "middle" }} title={`Já entrou na campanha "${c.campNome || "campanha"}"${dt ? " em " + dt : ""}`}>📣 {c.campNome || "já em campanha"}{dt ? ` · ${dt}` : ""}</span>; })()}
                         {ehRecente(c) && <span className="at-chip" style={{ background: "#fee2e2", color: "#b91c1c", fontSize: 10, marginLeft: 6 }} title={`Você já enviou mensagem pra este contato nos últimos ${diasRecente} dia(s)`}>⚠️ enviado recente</span>}</div>
                         <div className="muted2" style={{ fontSize: 11 }}>{c.origem === "cliente" ? "📇 base" : c.origem === "colado" ? "📥 colado" : c.origem === "crm" ? "💬 já falou" : c.origem === "catalogo" ? "📖 viu o catálogo" : "📱 zap"}{c.rep ? ` · 👤 ${c.rep}` : ""}{c.falou && c.origem !== "crm" ? " · 💬 já falou" : ""}{c.cidade ? ` · ${c.cidade}${c.uf ? "/" + c.uf : ""}` : (c.uf ? ` · ${c.uf}` : "")}</div></div>
                     </label>
