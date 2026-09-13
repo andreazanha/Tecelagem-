@@ -2955,6 +2955,10 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
   const [avisarDias, setAvisarDias] = useState("3");   // avisa se JÁ enviei mensagem nos últimos N dias
   const [nome, setNome] = useState("");
   const [busy, setBusy] = useState(false);
+  // Agendar o INÍCIO da campanha (ex.: criar à noite e só disparar de manhã).
+  const [agendarCamp, setAgendarCamp] = useState(false);
+  const [campData, setCampData] = useState("");
+  const [campHora, setCampHora] = useState("09:00");
   // Respostas prontas (empresa + minhas) pra usar como texto da campanha — só as que têm texto.
   const [respsProntas, setRespsProntas] = useState<RespostaPronta[]>([]);
   useEffect(() => {
@@ -3154,16 +3158,27 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
     // Aviso: contatos que JÁ receberam mensagem sua nos últimos N dias (pra não parecer spam).
     const recentes = contatos.filter((c) => sel.has(c.telefone) && ehRecente(c)).length;
     if (recentes && !confirm(`⚠️ ${recentes} contato(s) selecionado(s) JÁ receberam uma mensagem sua nos últimos ${diasRecente} dia(s). Mandar a campanha pra eles também?`)) return;
-    if (!rascunho && !confirm(`Criar e ENVIAR a campanha para ${sel.size} contato(s)? A Big vai enviando 1 a cada ${intervalo}s pra não bloquear o número.`)) return;
+    // Agendamento do início (opcional). Se ligado, calcula o horário e valida que é no futuro.
+    let iniciarEm: number | undefined;
+    if (!rascunho && agendarCamp) {
+      if (!campData) { alert("Escolha a data do agendamento."); return; }
+      const ts = new Date(`${campData}T${campHora || "09:00"}`).getTime();
+      if (!ts || isNaN(ts) || ts <= Date.now()) { alert("Escolha uma data e hora FUTURAS pro agendamento."); return; }
+      iniciarEm = ts;
+    }
+    if (!rascunho && !iniciarEm && !confirm(`Criar e ENVIAR AGORA a campanha para ${sel.size} contato(s)? A Big vai enviando 1 a cada ${intervalo}s pra não bloquear o número.`)) return;
+    if (!rascunho && iniciarEm && !confirm(`Agendar a campanha para ${new Date(iniciarEm).toLocaleString("pt-BR")} — ${sel.size} contato(s)?`)) return;
     setBusy(true);
     try {
       const alvos = contatos.filter((c) => sel.has(c.telefone)).map((c) => ({ telefone: c.telefone, nome: c.nome }));
-      const r = await api.atendCriarCampanha({ nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 120, alvos, rascunho, arquivo_url: anexo?.url, arquivo_tipo: anexo?.tipo, arquivo_nome: anexo?.nome, arquivo_ext: anexo?.ext });
+      const r = await api.atendCriarCampanha({ nome: nome.trim() || undefined, mensagem: mensagem.trim(), intervalo_seg: Number(intervalo) || 120, alvos, rascunho, iniciar_em: iniciarEm, arquivo_url: anexo?.url, arquivo_tipo: anexo?.tipo, arquivo_nome: anexo?.nome, arquivo_ext: anexo?.ext });
       if (r.error) { alert(r.error); return; }
       alert(rascunho
         ? `Campanha salva como rascunho (${r.total} contato[s]). Ela NÃO envia até você clicar em "▶️ Ativar" na lista abaixo.`
+        : iniciarEm
+        ? `Campanha agendada para ${new Date(iniciarEm).toLocaleString("pt-BR")}! (${r.total} contato[s]) A Big começa a enviar nesse horário.`
         : `Campanha criada! ${r.total} contato(s). A Big começa a enviar aos poucos.`);
-      setSel(new Set()); setNome(""); setAnexo(null); carregarCampanhas();
+      setSel(new Set()); setNome(""); setAnexo(null); setAgendarCamp(false); carregarCampanhas();
     } catch (e) { alert((e as Error).message || "Não consegui criar a campanha."); } finally { setBusy(false); }
   }
   async function mudarStatus(id: string, status: string) { await api.atendStatusCampanha(id, status).catch(() => {}); carregarCampanhas(); }
@@ -3418,6 +3433,20 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
               <div className="muted2" style={{ fontSize: 12 }}>tempo estimado de envio</div>
             </div>
           </div>
+          {/* Quando começar: agora ou agendar (ex.: criou à noite, dispara de manhã). */}
+          <div style={{ ...cardBox, marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: agendarCamp ? 12 : 0 }}>
+              <button onClick={() => setAgendarCamp(false)} style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 10, border: "1.5px solid " + (!agendarCamp ? "#6366f1" : "var(--line)"), background: !agendarCamp ? "rgba(99,102,241,0.14)" : "transparent", color: "var(--ink)" }}>▶️ Enviar assim que criar</button>
+              <button onClick={() => { setAgendarCamp(true); if (!campData) setCampData(new Date(Date.now() + 864e5).toISOString().slice(0, 10)); }} style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 10, border: "1.5px solid " + (agendarCamp ? "#6366f1" : "var(--line)"), background: agendarCamp ? "rgba(99,102,241,0.14)" : "transparent", color: "var(--ink)" }}>📅 Agendar início</button>
+            </div>
+            {agendarCamp && (
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <label className="fld" style={{ display: "inline-flex", flexDirection: "column" }}>Data<input type="date" value={campData} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setCampData(e.target.value)} /></label>
+                <label className="fld" style={{ display: "inline-flex", flexDirection: "column" }}>Hora<input type="time" value={campHora} onChange={(e) => setCampHora(e.target.value)} /></label>
+                <div className="muted2" style={{ fontSize: 12 }}>A Big só começa a enviar nesse horário. Você pode fechar a tela — ela dispara sozinha. 💛</div>
+              </div>
+            )}
+          </div>
           </>)}
 
           {etapa === 4 && (<>
@@ -3429,6 +3458,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
             <div style={{ display: "flex", gap: 12 }}><div className="muted2" style={{ fontSize: 12.5, width: 130, flexShrink: 0 }}>Anexo</div><div style={{ fontSize: 13 }}>{anexo ? `${anexo.tipo === "imagem" ? "🖼️" : "📎"} ${anexo.nome}` : "—"}</div></div>
             <div style={{ display: "flex", gap: 12 }}><div className="muted2" style={{ fontSize: 12.5, width: 130, flexShrink: 0 }}>Público</div><div style={{ fontSize: 13, fontWeight: 600 }}>{publicoResumo} · <b style={{ color: "#6366f1" }}>{nSel} contato(s)</b></div></div>
             <div style={{ display: "flex", gap: 12 }}><div className="muted2" style={{ fontSize: 12.5, width: 130, flexShrink: 0 }}>Envio</div><div style={{ fontSize: 13 }}>1 a cada {segInt}s · ⏱️ ~{tempoEstimado}</div></div>
+            <div style={{ display: "flex", gap: 12 }}><div className="muted2" style={{ fontSize: 12.5, width: 130, flexShrink: 0 }}>Quando</div><div style={{ fontSize: 13, fontWeight: 600 }}>{agendarCamp && campData ? `📅 ${new Date(`${campData}T${campHora || "09:00"}`).toLocaleString("pt-BR")}` : "▶️ assim que criar"}</div></div>
             <div style={{ display: "flex", gap: 12 }}><div className="muted2" style={{ fontSize: 12.5, width: 130, flexShrink: 0 }}>Reenvio</div><div style={{ fontSize: 13 }}>{Number(avisarDias) > 0 ? `avisar se já enviei nos últimos ${avisarDias} dia(s)` : "sem aviso"}</div></div>
           </div>
           </>)}
@@ -3445,7 +3475,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
               </>)}
               {etapa === 4 && !editandoId && (<>
                 <button className="btn btn-soft" disabled={busy} onClick={() => criar(true)} title="Salva sem enviar. Você ativa depois no Histórico.">💾 Salvar rascunho</button>
-                <button disabled={busy || !sel.size} onClick={() => criar(false)} style={{ cursor: busy || !sel.size ? "not-allowed" : "pointer", opacity: busy || !sel.size ? 0.5 : 1, fontWeight: 800, fontSize: 13, padding: "9px 22px", borderRadius: 10, border: 0, background: "#16a34a", color: "#fff" }}>{busy ? "Criando…" : `📣 Criar e enviar (${sel.size})`}</button>
+                <button disabled={busy || !sel.size} onClick={() => criar(false)} style={{ cursor: busy || !sel.size ? "not-allowed" : "pointer", opacity: busy || !sel.size ? 0.5 : 1, fontWeight: 800, fontSize: 13, padding: "9px 22px", borderRadius: 10, border: 0, background: "#16a34a", color: "#fff" }}>{busy ? "Criando…" : agendarCamp ? `📅 Agendar (${sel.size})` : `📣 Criar e enviar (${sel.size})`}</button>
               </>)}
             </div>
           </div>
