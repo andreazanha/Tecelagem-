@@ -3395,6 +3395,10 @@ atendimento.post("/:id/agendar-ia", async (c) => {
   const mensagem = String(b.mensagem ?? "").trim().slice(0, 2000) || null;
   await c.env.DB.prepare("INSERT INTO atend_agendamentos (id, conversa_id, telefone, quando, criado_em, enviado, mensagem) VALUES (?,?,?,?,?,0,?)")
     .bind(uid(), id, conv.telefone, quando, Date.now(), mensagem).run();
+  // Agendar uma mensagem REABRE o atendimento: se o card estava "finalizado", tira o encerrado_em
+  // pra ele ir (e ficar) na coluna "Contato follow-up" — senão a regra do encerrado o puxava de volta
+  // pra "Atendimento finalizado" logo depois de agendar.
+  await c.env.DB.prepare("UPDATE atend_conversas SET encerrado_em=NULL, atualizado_em=datetime('now') WHERE id=?").bind(id).run();
   return c.json({ ok: true, agendado: quando });
 });
 
