@@ -765,6 +765,17 @@ export const api = {
   atendGruposLista: () => getT("/api/atendimento/grupos/lista").then((r) => j<{ grupos: { id: string; nome: string }[]; numero_big: string }>(r)),
   atendGruposBuscar: () => jsonPost("/api/atendimento/grupos/buscar", {}).then((r) => j<{ ok: boolean; achados: number; grupos: { id: string; nome: string }[]; error?: string }>(r)),
   atendGruposDiagnostico: () => getT("/api/atendimento/grupos/diagnostico").then((r) => j<{ ultimo: string; error?: string }>(r)),
+  // ── Reservas de peças (quem pede primeiro leva) ──
+  atendReservaPecas: () => getT("/api/atendimento/reservas/pecas").then((r) => j<{ pecas: { id: string; nome: string; cor: string | null; tamanho: string | null; quantidade: number; foto_url: string | null; ativo: number; criado_em: string; reservadas: number }[] }>(r)),
+  atendReservaSalvarPeca: (b: { id?: string; nome: string; cor?: string; tamanho?: string; quantidade: number; foto_url?: string; ativo?: boolean }) =>
+    jsonPost("/api/atendimento/reservas/pecas", b).then((r) => j<{ ok: boolean; id: string; error?: string }>(r)),
+  atendReservaDelPeca: (id: string) => fetch(`/api/atendimento/reservas/pecas/${id}`, { method: "DELETE", headers: { ...authHeaders() } }).then((r) => j<{ ok: boolean }>(r)),
+  atendReservaFila: (pecaId: string) => getT(`/api/atendimento/reservas/fila/${pecaId}`).then((r) => j<{ fila: { id: string; conversa_id: string | null; telefone: string | null; cliente_nome: string | null; quando: string; status: string; obs: string | null }[] }>(r)),
+  atendReservar: (b: { peca_id: string; conversa_id?: string; telefone?: string; cliente_nome?: string; obs?: string }) =>
+    jsonPost("/api/atendimento/reservas", b).then((r) => j<{ ok: boolean; id: string; error?: string }>(r)),
+  atendReservaStatus: (id: string, status: string) => jsonPost(`/api/atendimento/reservas/${id}/status`, { status }).then((r) => j<{ ok: boolean }>(r)),
+  atendReservaDel: (id: string) => fetch(`/api/atendimento/reservas/${id}`, { method: "DELETE", headers: { ...authHeaders() } }).then((r) => j<{ ok: boolean }>(r)),
+  atendReservasConversa: (convId: string) => getT(`/api/atendimento/reservas/conversa/${convId}`).then((r) => j<{ reservas: { id: string; peca_id: string; quando: string; status: string; peca_nome: string; cor: string | null; tamanho: string | null; foto_url: string | null }[] }>(r)),
   atendGrupoPostar: (b: { grupos: { id: string; nome?: string }[]; mensagem?: string; comLink?: boolean; linkTexto?: string; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string }) =>
     jsonPost("/api/atendimento/grupos/postar", b).then((r) => j<{ ok: boolean; enviados: number; falhas: string[]; error?: string }>(r)),
   atendGrupoAgendar: (b: { grupos: { id: string; nome?: string }[]; mensagem?: string; comLink?: boolean; linkTexto?: string; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string; quando?: number; recorrencia?: string; dia_semana?: number; hora?: string }) =>

@@ -2486,6 +2486,94 @@ atendimento.delete("/grupos/agendados/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── RESERVAS DE PEÇAS (grupo VIP: quem pede primeiro leva) ────────────────────────
+// Peça = a "arte" que a gestora posta (foto + nome + cor + tamanho + quantidade). As reservas
+// guardam a ORDEM de chegada; os primeiros até a quantidade "levam", o resto fica em fila.
+atendimento.get("/reservas/pecas", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  const { results } = await c.env.DB.prepare(
+    `SELECT p.id, p.nome, p.cor, p.tamanho, p.quantidade, p.foto_url, p.ativo, p.criado_em,
+            (SELECT COUNT(*) FROM atend_reservas r WHERE r.peca_id=p.id AND r.status<>'cancelado') AS reservadas
+       FROM atend_reserva_pecas p ORDER BY p.ativo DESC, p.criado_em DESC LIMIT 300`
+  ).all().catch(() => ({ results: [] as unknown[] }));
+  return c.json({ pecas: results || [] });
+});
+atendimento.post("/reservas/pecas", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  if (!ehGestorAtend(u)) return c.json({ error: "sem_acesso" }, 403);
+  const b = await c.req.json<{ id?: string; nome?: string; cor?: string; tamanho?: string; quantidade?: number; foto_url?: string; ativo?: boolean }>().catch(() => ({} as Record<string, never>));
+  const nome = String(b.nome ?? "").trim().slice(0, 120);
+  if (!nome) return c.json({ error: "dê um nome pra peça" }, 400);
+  const qtd = Math.max(1, Math.min(9999, Number(b.quantidade) || 1));
+  if (b.id) {
+    await c.env.DB.prepare("UPDATE atend_reserva_pecas SET nome=?, cor=?, tamanho=?, quantidade=?, foto_url=COALESCE(?,foto_url), ativo=? WHERE id=?")
+      .bind(nome, String(b.cor ?? "").slice(0, 60) || null, String(b.tamanho ?? "").slice(0, 60) || null, qtd, b.foto_url || null, b.ativo === false ? 0 : 1, b.id).run();
+    return c.json({ ok: true, id: b.id });
+  }
+  const id = uid();
+  await c.env.DB.prepare("INSERT INTO atend_reserva_pecas (id, nome, cor, tamanho, quantidade, foto_url, ativo) VALUES (?,?,?,?,?,?,1)")
+    .bind(id, nome, String(b.cor ?? "").slice(0, 60) || null, String(b.tamanho ?? "").slice(0, 60) || null, qtd, b.foto_url || null).run();
+  return c.json({ ok: true, id });
+});
+atendimento.delete("/reservas/pecas/:id", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  if (!ehGestorAtend(u)) return c.json({ error: "sem_acesso" }, 403);
+  const id = c.req.param("id");
+  await c.env.DB.prepare("DELETE FROM atend_reservas WHERE peca_id=?").bind(id).run();
+  await c.env.DB.prepare("DELETE FROM atend_reserva_pecas WHERE id=?").bind(id).run();
+  return c.json({ ok: true });
+});
+// Fila de UMA peça — por ordem de chegada (quem pediu primeiro no topo).
+atendimento.get("/reservas/fila/:id", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, conversa_id, telefone, cliente_nome, quando, status, obs FROM atend_reservas WHERE peca_id=? ORDER BY quando ASC, rowid ASC"
+  ).bind(c.req.param("id")).all().catch(() => ({ results: [] as unknown[] }));
+  return c.json({ fila: results || [] });
+});
+// Criar uma reserva (cliente pediu a peça). quando = agora (ordem de chegada).
+atendimento.post("/reservas", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  const b = await c.req.json<{ peca_id?: string; conversa_id?: string; telefone?: string; cliente_nome?: string; obs?: string }>().catch(() => ({} as Record<string, never>));
+  if (!b.peca_id) return c.json({ error: "escolha a peça" }, 400);
+  const peca = await c.env.DB.prepare("SELECT id FROM atend_reserva_pecas WHERE id=?").bind(b.peca_id).first();
+  if (!peca) return c.json({ error: "peça não encontrada" }, 404);
+  const id = uid();
+  await c.env.DB.prepare("INSERT INTO atend_reservas (id, peca_id, conversa_id, telefone, cliente_nome, quando, status, obs) VALUES (?,?,?,?,?,datetime('now'),'reservado',?)")
+    .bind(id, b.peca_id, b.conversa_id || null, digitos(b.telefone) || null, String(b.cliente_nome ?? "").slice(0, 120) || null, String(b.obs ?? "").slice(0, 300) || null).run();
+  return c.json({ ok: true, id });
+});
+atendimento.post("/reservas/:id/status", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  const st = String((await c.req.json<{ status?: string }>().catch(() => ({} as { status?: string }))).status || "");
+  if (!["reservado", "confirmado", "cancelado"].includes(st)) return c.json({ error: "status inválido" }, 400);
+  await c.env.DB.prepare("UPDATE atend_reservas SET status=? WHERE id=?").bind(st, c.req.param("id")).run();
+  return c.json({ ok: true });
+});
+atendimento.delete("/reservas/:id", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  await c.env.DB.prepare("DELETE FROM atend_reservas WHERE id=?").bind(c.req.param("id")).run();
+  return c.json({ ok: true });
+});
+// Reservas de UMA conversa (o que o cliente daquela conversa reservou) — com nome/foto da peça.
+atendimento.get("/reservas/conversa/:convId", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  const { results } = await c.env.DB.prepare(
+    `SELECT r.id, r.peca_id, r.quando, r.status, p.nome AS peca_nome, p.cor, p.tamanho, p.foto_url
+       FROM atend_reservas r JOIN atend_reserva_pecas p ON p.id=r.peca_id
+      WHERE r.conversa_id=? ORDER BY r.quando DESC`
+  ).bind(c.req.param("convId")).all().catch(() => ({ results: [] as unknown[] }));
+  return c.json({ reservas: results || [] });
+});
+
 // ── PROXY DO CATÁLOGO (Firestore → JSON limpo, com cache) ────────────────────────
 // Busca o documento catalogo/main no Firestore público do catálogo, decodifica o
 // formato tipado e devolve JSON limpo (produtos, preços por região, representantes).

@@ -138,6 +138,7 @@ export function Atendimento() {
   const [equipeOpen, setEquipeOpen] = useState(false);
   const [campanhaOpen, setCampanhaOpen] = useState(false);
   const [gruposOpen, setGruposOpen] = useState(false);
+  const [reservasOpen, setReservasOpen] = useState(false);
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [filtroAtend, setFiltroAtend] = useState<string>("todos"); // gestor: filtra por vendedor
   const [busca, setBusca] = useState<string>(""); // busca de conversa no quadro (nome/loja/telefone/cidade)
@@ -571,6 +572,7 @@ export function Atendimento() {
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setGruposOpen(true)}>👥 Postar em grupo</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setReservasOpen(true)}>📋 Reservas</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setSim(true)}>💬 Simular cliente</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={juntarDuplicados} title="Junta cards repetidos do mesmo contato (número com/sem o 9º dígito) num só, preservando o histórico">🧹 Juntar duplicados</button>}
@@ -681,6 +683,7 @@ export function Atendimento() {
       {equipeOpen && <EquipeModal onFechar={() => setEquipeOpen(false)} />}
       {campanhaOpen && <CampanhaModal onFechar={() => setCampanhaOpen(false)} onMudou={recarregar} />}
       {gruposOpen && <GruposModal onFechar={() => setGruposOpen(false)} />}
+      {reservasOpen && <ReservasModal onFechar={() => setReservasOpen(false)} />}
       {abrir && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
       {cfgOpen && <ConfigZapi onFechar={() => setCfgOpen(false)} onMudou={checarConexao} />}
     </div>
@@ -1290,6 +1293,17 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [buscaResp, setBuscaResp] = useState("");            // busca no painel de respostas prontas
   const [filtroResp, setFiltroResp] = useState<"todas" | "empresa" | "minhas">("todas");   // filtro por origem
   const [gerenciarResp, setGerenciarResp] = useState(false);
+  const [reservarOpen, setReservarOpen] = useState(false);   // picker de peça pra reservar pro cliente
+  const [pecasRes, setPecasRes] = useState<ReservaPeca[]>([]);
+  function abrirReservar() { setAnexoMenu(false); setReservarOpen(true); api.atendReservaPecas().then((r) => setPecasRes(r.pecas)).catch(() => {}); }
+  async function reservarPeca(pecaId: string) {
+    try {
+      const r = await api.atendReservar({ peca_id: pecaId, conversa_id: id, telefone: d?.telefone, cliente_nome: d?.contato_nome || d?.nome || undefined });
+      if (r.error) { alert(r.error); return; }
+      setReservarOpen(false);
+      alert("✅ Peça reservada pra este cliente! Entrou na fila (na ordem de chegada). Veja em 📋 Reservas.");
+    } catch { alert("Não consegui reservar agora."); }
+  }
   const [arqRapidoOpen, setArqRapidoOpen] = useState(false);
   const [transfOpen, setTransfOpen] = useState(false); // picker do botão "Transferir para outro vendedor"
   const [anexoMenu, setAnexoMenu] = useState(false); // menu do clipe (📎): opções de anexo, como no WhatsApp
@@ -2116,6 +2130,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                       <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); enviarCatalogo(); }} title="Coloca o texto do catálogo (link + senha) no campo de mensagem pra você editar e enviar">📖 Catálogo (editar e enviar)</button>
                       <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); setArqRapidoOpen(true); }}>📚 Arquivos rápidos</button>
                       <button className="at-anexo-opt" onClick={() => { setAnexoMenu(false); setMostrarResp(true); }}>📋 Respostas prontas</button>
+                      <button className="at-anexo-opt" onClick={abrirReservar}>🛒 Reservar peça (pro cliente)</button>
                       <button className="at-anexo-opt" disabled={busy || sugerindo} onClick={() => { setAnexoMenu(false); sugerir(); }}>✨ Sugerir resposta (IA)</button>
                       <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); const base = d?.agendado_ia || (Date.now() + 3600e3); setAgDia(dataLocalStr(base)); setAgHora(d?.agendado_ia ? horaLocalStr(base) : "09:00"); setAgMsg(texto.trim()); setAgOpen(true); }}>⏰ Agendar mensagem (mandar mais tarde)</button>
                       <button className="at-anexo-opt" disabled={busy} onClick={() => { setAnexoMenu(false); setRepEnvOpen(true); }}>📤 Enviar contato pro representante</button>
@@ -2211,6 +2226,31 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
           </div>
         );
       })(), document.body)}
+      {reservarOpen && createPortal((
+        <div onClick={() => setReservarOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 100000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 420, maxHeight: "80vh", display: "flex", flexDirection: "column", padding: 16, border: "1px solid var(--line)", borderRadius: 14, background: "var(--card,#fff)", color: "var(--ink)", boxShadow: "0 16px 40px rgba(0,0,0,.35)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <div style={{ fontSize: 14.5, fontWeight: 800 }}>🛒 Reservar peça</div>
+              <button onClick={() => setReservarOpen(false)} title="Fechar" style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: 2 }}>✕</button>
+            </div>
+            <div className="muted2" style={{ fontSize: 12, marginBottom: 10 }}>Escolha a peça que <b>{d?.contato_nome || d?.nome || "este cliente"}</b> pediu. Ele entra na fila na ordem de chegada. 🥇</div>
+            <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+              {pecasRes.length === 0
+                ? <div className="muted2" style={{ fontSize: 12.5, padding: "8px 2px" }}>Nenhuma peça cadastrada. Cadastre no botão <b>📋 Reservas</b> (lá em cima).</div>
+                : pecasRes.map((p) => { const disp = Math.max(0, p.quantidade - p.reservadas); return (
+                  <button key={p.id} onClick={() => reservarPeca(p.id)} style={{ display: "flex", alignItems: "center", gap: 10, textAlign: "left", padding: 8, borderRadius: 10, border: "1px solid var(--line)", background: "var(--bg-soft,#f8fafc)", cursor: "pointer" }}>
+                    {p.foto_url ? <img src={p.foto_url} alt="" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 8, flexShrink: 0 }} /> : <div style={{ width: 44, height: 44, borderRadius: 8, background: "#0001", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>🧶</div>}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12.5, color: "var(--ink)" }}>{p.nome}</div>
+                      <div className="muted2" style={{ fontSize: 11 }}>{[p.cor, p.tamanho].filter(Boolean).join(" · ")}{(p.cor || p.tamanho) ? " · " : ""}<b style={{ color: disp > 0 ? "#0d9488" : "#b91c1c" }}>{disp > 0 ? `${disp} disponível(is)` : "esgotada — entra em espera"}</b></div>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: "#0d9488", flexShrink: 0 }}>Reservar →</span>
+                  </button>
+                ); })}
+            </div>
+          </div>
+        </div>
+      ), document.body)}
       {repEnvOpen && createPortal((
         <div onClick={() => setRepEnvOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 100000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 380, maxHeight: "80vh", display: "flex", flexDirection: "column", padding: 16, border: "1px solid var(--line)", borderRadius: 14, background: "var(--card,#fff)", color: "var(--ink)", boxShadow: "0 16px 40px rgba(0,0,0,.35)" }}>
@@ -2778,6 +2818,144 @@ function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; on
 }
 
 // ── Postar em grupo: a Big posta no grupo (agora/agendado/recorrente) com link "chamar no privado" ──
+// ── Reservas: cadastra a "peça" (arte + dados + quantidade) e vê a FILA de quem pediu primeiro ──
+type ReservaPeca = { id: string; nome: string; cor: string | null; tamanho: string | null; quantidade: number; foto_url: string | null; ativo: number; criado_em: string; reservadas: number };
+type ReservaFila = { id: string; conversa_id: string | null; telefone: string | null; cliente_nome: string | null; quando: string; status: string; obs: string | null };
+function ReservasModal({ onFechar }: { onFechar: () => void }) {
+  const [pecas, setPecas] = useState<ReservaPeca[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [form, setForm] = useState(false);            // form de nova/editar peça aberto
+  const [editId, setEditId] = useState<string | null>(null);
+  const [nome, setNome] = useState(""); const [cor, setCor] = useState(""); const [tam, setTam] = useState(""); const [qtd, setQtd] = useState("1");
+  const [foto, setFoto] = useState<string | null>(null); const [subindo, setSubindo] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [aberta, setAberta] = useState<string | null>(null);       // peça com a fila aberta
+  const [fila, setFila] = useState<Record<string, ReservaFila[]>>({});
+  const arqRef = useRef<HTMLInputElement>(null);
+  function carregar() { api.atendReservaPecas().then((r) => setPecas(r.pecas)).catch(() => {}).finally(() => setCarregando(false)); }
+  useEffect(() => { carregar(); }, []);
+  async function subir(file: File) {
+    if (file.size > 40 * 1024 * 1024) { alert("Imagem muito grande (máx. 40MB)."); return; }
+    setSubindo(true);
+    try { const r = await api.atendCampanhaUpload(file); if (r.error) { alert(r.error); return; } setFoto(r.url); }
+    catch { alert("Não consegui subir a arte."); } finally { setSubindo(false); }
+  }
+  function limparForm() { setForm(false); setEditId(null); setNome(""); setCor(""); setTam(""); setQtd("1"); setFoto(null); }
+  async function salvar() {
+    if (!nome.trim()) { alert("Dê um nome pra peça."); return; }
+    setBusy(true);
+    try {
+      const r = await api.atendReservaSalvarPeca({ id: editId || undefined, nome: nome.trim(), cor: cor.trim() || undefined, tamanho: tam.trim() || undefined, quantidade: Math.max(1, Number(qtd) || 1), foto_url: foto || undefined });
+      if (r.error) { alert(r.error); return; }
+      limparForm(); carregar();
+    } catch { alert("Não consegui salvar a peça."); } finally { setBusy(false); }
+  }
+  function editar(p: ReservaPeca) { setEditId(p.id); setNome(p.nome); setCor(p.cor || ""); setTam(p.tamanho || ""); setQtd(String(p.quantidade)); setFoto(p.foto_url); setForm(true); }
+  async function apagar(p: ReservaPeca) { if (!confirm(`Apagar a peça "${p.nome}" e todas as reservas dela?`)) return; await api.atendReservaDelPeca(p.id).catch(() => {}); carregar(); }
+  async function abrirFila(id: string) {
+    if (aberta === id) { setAberta(null); return; }
+    setAberta(id);
+    try { const r = await api.atendReservaFila(id); setFila((f) => ({ ...f, [id]: r.fila })); } catch { /* ok */ }
+  }
+  async function recFila(pecaId: string) { try { const r = await api.atendReservaFila(pecaId); setFila((f) => ({ ...f, [pecaId]: r.fila })); } catch { /* ok */ } carregar(); }
+  async function mudarStatus(pecaId: string, rid: string, st: string) { await api.atendReservaStatus(rid, st).catch(() => {}); recFila(pecaId); }
+  async function delReserva(pecaId: string, rid: string) { if (!confirm("Remover esta reserva da fila?")) return; await api.atendReservaDel(rid).catch(() => {}); recFila(pecaId); }
+  const dtBr = (s: string) => { try { return new Date(s.replace(" ", "T") + "Z").toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch { return s; } };
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 720, width: "min(720px,95vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd" style={{ background: "linear-gradient(130deg,#0d9488,#4f46e5)" }}>
+          <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📋 Reservas</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
+        </div>
+        <div className="modal-bd">
+          <div className="muted2" style={{ fontSize: 12.5, marginBottom: 12 }}>Cadastre a <b>peça</b> (a arte com foto + nome + cor + tamanho + quantidade). Quando o cliente pedir no privado, você reserva pra ele <b>dentro da conversa</b> — aqui você vê a <b>fila de quem pediu primeiro</b>. 🥇</div>
+          {!form
+            ? <button className="btn btn-primary" onClick={() => { limparForm(); setForm(true); }} style={{ marginBottom: 14 }}>➕ Nova peça</button>
+            : (
+              <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 14, marginBottom: 14, background: "var(--bg-soft,#f8fafc)" }}>
+                <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10 }}>{editId ? "Editar peça" : "Nova peça"}</div>
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                  <div style={{ flexShrink: 0 }}>
+                    <input ref={arqRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.currentTarget.value = ""; }} />
+                    {foto
+                      ? <div style={{ position: "relative" }}><img src={foto} alt="arte" style={{ width: 120, height: 120, objectFit: "cover", borderRadius: 10, border: "1px solid var(--line)" }} /><button onClick={() => setFoto(null)} title="Trocar" style={{ position: "absolute", top: 4, right: 4, background: "#0009", color: "#fff", border: 0, borderRadius: 6, cursor: "pointer", fontSize: 11, padding: "2px 6px" }}>✕</button></div>
+                      : <button className="btn btn-soft" disabled={subindo} onClick={() => arqRef.current?.click()} style={{ width: 120, height: 120, borderRadius: 10, fontSize: 12 }}>{subindo ? "Subindo…" : "🖼️ Subir arte"}</button>}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 220, display: "grid", gap: 8 }}>
+                    <label className="fld full">Nome da peça<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Manta Lumi" /></label>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <label className="fld" style={{ flex: 1, minWidth: 90 }}>Cor<input value={cor} onChange={(e) => setCor(e.target.value)} placeholder="Bege" /></label>
+                      <label className="fld" style={{ flex: 1, minWidth: 90 }}>Tamanho<input value={tam} onChange={(e) => setTam(e.target.value)} placeholder="Único / G" /></label>
+                      <label className="fld" style={{ width: 110 }}>Quantidade<input type="number" min={1} max={9999} value={qtd} onChange={(e) => setQtd(e.target.value)} /></label>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+                  <button className="btn btn-soft" onClick={limparForm}>Cancelar</button>
+                  <button className="btn btn-primary" disabled={busy} onClick={salvar}>{busy ? "Salvando…" : "💾 Salvar peça"}</button>
+                </div>
+              </div>
+            )}
+          {carregando ? <div className="muted" style={{ padding: 16 }}>Carregando…</div>
+            : pecas.length === 0 ? <div className="muted" style={{ padding: 20, textAlign: "center", border: "1px dashed var(--line)", borderRadius: 12 }}>Nenhuma peça cadastrada. Clique em <b>➕ Nova peça</b>.</div>
+            : pecas.map((p) => {
+              const disp = Math.max(0, p.quantidade - p.reservadas);
+              return (
+                <div key={p.id} style={{ border: "1px solid var(--line)", borderRadius: 12, marginBottom: 10, overflow: "hidden", opacity: p.ativo ? 1 : 0.6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 12 }}>
+                    {p.foto_url ? <img src={p.foto_url} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line)", flexShrink: 0 }} /> : <div style={{ width: 56, height: 56, borderRadius: 8, background: "var(--bg-soft,#eef2f7)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>🧶</div>}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: 13.5, color: "var(--ink)" }}>{p.nome}</div>
+                      <div className="muted2" style={{ fontSize: 12 }}>{[p.cor, p.tamanho].filter(Boolean).join(" · ") || "—"}</div>
+                      <div style={{ fontSize: 12, marginTop: 2 }}><b style={{ color: disp > 0 ? "#0d9488" : "#b91c1c" }}>{disp} disponível(is)</b> <span className="muted2">· {p.reservadas} reservada(s) de {p.quantidade}</span></div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0 }}>
+                      <button className="btn btn-soft" style={{ fontSize: 11.5, padding: "4px 10px", fontWeight: 700 }} onClick={() => abrirFila(p.id)}>🥇 {aberta === p.id ? "Ocultar fila" : "Ver fila"}</button>
+                      <div style={{ display: "flex", gap: 5 }}>
+                        <button className="btn btn-soft" style={{ fontSize: 11, padding: "3px 8px" }} onClick={() => editar(p)}>✏️</button>
+                        <button className="btn btn-soft" style={{ fontSize: 11, padding: "3px 8px", color: "#dc2626" }} onClick={() => apagar(p)}>🗑️</button>
+                      </div>
+                    </div>
+                  </div>
+                  {aberta === p.id && (
+                    <div style={{ borderTop: "1px solid var(--line)", padding: 10, background: "var(--bg-soft,#f8fafc)" }}>
+                      {!fila[p.id] ? <div className="muted2" style={{ fontSize: 12 }}>Carregando fila…</div>
+                        : (() => { const ativos = fila[p.id].filter((r) => r.status !== "cancelado"); if (fila[p.id].length === 0) return <div className="muted2" style={{ fontSize: 12 }}>Ninguém reservou ainda. Reserve pelo botão 🛒 dentro da conversa do cliente.</div>;
+                          let pos = 0;
+                          return fila[p.id].map((r) => {
+                            const cancel = r.status === "cancelado";
+                            if (!cancel) pos++;
+                            const leva = !cancel && pos <= p.quantidade;
+                            return (
+                              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px", borderBottom: "1px solid var(--line)", opacity: cancel ? 0.5 : 1 }}>
+                                <span style={{ width: 26, textAlign: "center", fontSize: 13, fontWeight: 800 }}>{cancel ? "—" : pos + "º"}</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.cliente_nome || telBonito(r.telefone || "") || "Cliente"}</div>
+                                  <div className="muted2" style={{ fontSize: 11 }}>{dtBr(r.quando)}{r.telefone ? ` · ${telBonito(r.telefone)}` : ""}</div>
+                                </div>
+                                {!cancel && <span className="at-chip" style={{ fontSize: 10, background: r.status === "confirmado" ? "#dcfce7" : leva ? "#ccfbf1" : "#fef9c3", color: r.status === "confirmado" ? "#166534" : leva ? "#0f766e" : "#854d0e" }}>{r.status === "confirmado" ? "✅ Confirmado" : leva ? "🥇 Vai levar" : "⏳ Espera"}</span>}
+                                {cancel && <span className="at-chip" style={{ fontSize: 10, background: "#fee2e2", color: "#991b1b" }}>Cancelado</span>}
+                                <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                                  {r.status !== "confirmado" && !cancel && <button className="btn btn-soft" style={{ fontSize: 10.5, padding: "2px 7px", color: "#166534", fontWeight: 700 }} title="Confirmar" onClick={() => mudarStatus(p.id, r.id, "confirmado")}>✓</button>}
+                                  {!cancel ? <button className="btn btn-soft" style={{ fontSize: 10.5, padding: "2px 7px", color: "#b45309" }} title="Cancelar (sai da fila, os de baixo sobem)" onClick={() => mudarStatus(p.id, r.id, "cancelado")}>Cancelar</button>
+                                    : <button className="btn btn-soft" style={{ fontSize: 10.5, padding: "2px 7px" }} title="Voltar pra fila" onClick={() => mudarStatus(p.id, r.id, "reservado")}>↩</button>}
+                                  <button className="btn btn-soft" style={{ fontSize: 10.5, padding: "2px 6px", color: "#dc2626" }} title="Apagar" onClick={() => delReserva(p.id, r.id)}>🗑️</button>
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GruposModal({ onFechar }: { onFechar: () => void }) {
   const [grupos, setGrupos] = useState<{ id: string; nome: string }[]>([]);
   const [numeroBig, setNumeroBig] = useState("");
