@@ -17,6 +17,10 @@
 button { color: inherit; }
 /* Cards de escolha de público (campanha): realce sutil no hover. */
 .cmp-modo:hover { border-color: #6366f1 !important; }
+/* Botõezinhos de ação do card (IA / lâmpada / Fim): feedback IMEDIATO ao clicar. */
+.card-fx-btn { transition: transform .05s ease, filter .05s ease, box-shadow .05s ease; }
+.card-fx-btn:hover { filter: brightness(1.05); }
+.card-fx-btn:active { transform: scale(.85); filter: brightness(.9); }
 /* Seletor de data/hora do "Chamar IA": no tema escuro o iconezinho do calendário
    ficava preto sobre o fundo navy (quase invisível). color-scheme deixa o navegador
    renderizar o campo (e o ícone) com as cores do tema — branco no escuro. */

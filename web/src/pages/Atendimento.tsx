@@ -382,16 +382,20 @@ export function Atendimento() {
   // piscar; a IA continua e o card volta quando o cliente escrever). Se for lojista/fila humana,
   // ENCERRA de vez (vai pra "Atendimento finalizado") — não pode ficar junto do varejo.
   async function fimCard(c: AtendConversa) {
-    try {
-      if (c.coluna === "ia-atende") { await api.atendSilenciar(c.id, true); }
-      else { await api.atendEncerrar(c.id); }
-      recarregar();
-    } catch { alert("Não consegui concluir agora. Tente de novo."); }
+    if (c.coluna === "ia-atende") {
+      // Varejo/IA: só para de piscar (silenciar) — atualiza NA HORA, chamada por trás.
+      setBoard((b) => (b ? { ...b, conversas: b.conversas.map((x) => (x.id === c.id ? { ...x, silenciado: 1 } : x)) } : b));
+      api.atendSilenciar(c.id, true).catch(() => recarregar());
+    } else {
+      // Lojista/fila humana: encerra — move o card pra "finalizado" NA HORA.
+      setBoard((b) => (b ? { ...b, conversas: b.conversas.map((x) => (x.id === c.id ? { ...x, coluna: "finalizado", encerrado_em: new Date().toISOString().slice(0, 19).replace("T", " ") } : x)) } : b));
+      api.atendEncerrar(c.id).catch(() => recarregar());
+    }
   }
-  // Lâmpada 💡: liga/desliga o piscar do card (silenciar). Sem enviar nada, sem encerrar.
+  // Lâmpada 💡: liga/desliga o piscar do card (silenciar) — atualiza NA HORA, chamada por trás.
   async function silenciarCard(id: string) {
-    try { await api.atendSilenciar(id); recarregar(); }
-    catch { alert("Não consegui agora. Tente de novo."); }
+    setBoard((b) => (b ? { ...b, conversas: b.conversas.map((x) => (x.id === id ? { ...x, silenciado: x.silenciado ? 0 : 1 } : x)) } : b));
+    api.atendSilenciar(id).catch(() => recarregar());
   }
   async function reativarIaColuna(label: string, ids: string[]) {
     if (!ids.length) return;
@@ -1250,18 +1254,18 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
         <span className="fx-sub" style={{ marginLeft: "auto" }}>{horaData([c.ultima_in_em, c.ultima_out_em].filter(Boolean).map(String).sort().pop() || c.atualizado_em)}</span>
         {/* Botão de LIGAR A IA (Big) nesta conversa — ao lado da data. */}
         {onReativarIa && (
-          <button title="Ligar a Big (IA) nesta conversa: manda uma saudação e recomeça o atendimento automático." onClick={(e) => { e.stopPropagation(); onReativarIa(); }} onPointerDown={(e) => e.stopPropagation()}
+          <button className="card-fx-btn" title="Ligar a Big (IA) nesta conversa: manda uma saudação e recomeça o atendimento automático." onClick={(e) => { e.stopPropagation(); onReativarIa(); }} onPointerDown={(e) => e.stopPropagation()}
             style={{ background: "#e8f0ff", color: "#1a56db", border: "1px solid #bcd3ff", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700, padding: "1px 7px", lineHeight: 1.4, letterSpacing: 0.3 }}>IA</button>
         )}
         {/* Lâmpada 💡: para de piscar (silenciar) — clica de novo pra voltar a piscar. */}
         {onSilenciar && (
-          <button title={c.silenciado ? "Voltar a piscar este card" : "Parar de piscar este card (silenciar)"} onClick={(e) => { e.stopPropagation(); onSilenciar(); }} onPointerDown={(e) => e.stopPropagation()}
+          <button className="card-fx-btn" title={c.silenciado ? "Voltar a piscar este card" : "Parar de piscar este card (silenciar)"} onClick={(e) => { e.stopPropagation(); onSilenciar(); }} onPointerDown={(e) => e.stopPropagation()}
             style={{ background: "transparent", border: 0, cursor: "pointer", fontSize: 13, padding: "0 3px", lineHeight: 1, opacity: c.silenciado ? 0.35 : 1 }}>💡</button>
         )}
         {/* Botão FIM: se a IA estiver atendendo (varejo) só para de piscar (IA continua); se for
             lojista/fila humana, encerra a conversa (vai pra "Atendimento finalizado"). */}
         {onFim && (
-          <button title={c.coluna === "ia-atende" ? "Para de piscar. A Big (IA) continua atendendo; quando o cliente escrever de novo o card volta pra cá." : "Encerrar: manda a conversa para 'Atendimento finalizado'."} onClick={(e) => { e.stopPropagation(); onFim(); }} onPointerDown={(e) => e.stopPropagation()}
+          <button className="card-fx-btn" title={c.coluna === "ia-atende" ? "Para de piscar. A Big (IA) continua atendendo; quando o cliente escrever de novo o card volta pra cá." : "Encerrar: manda a conversa para 'Atendimento finalizado'."} onClick={(e) => { e.stopPropagation(); onFim(); }} onPointerDown={(e) => e.stopPropagation()}
             style={{ background: "#fee2e2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700, padding: "1px 7px", lineHeight: 1.4, letterSpacing: 0.3 }}>Fim</button>
         )}
         {/* Mover pra outra coluna sem arrastar: clica e escolhe o nome da coluna */}
