@@ -4047,12 +4047,13 @@ atendimento.post("/:id/dados", async (c) => {
   const id = c.req.param("id");
   const gA = await guardConversa(c, id);
   if ("erro" in gA) return gA.erro;
-  const b = await c.req.json<{ contato_nome?: string; nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown; representante?: string }>().catch(() => ({} as { contato_nome?: string; nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown; representante?: string }));
+  const b = await c.req.json<{ contato_nome?: string; nome?: string; razao_social?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown; representante?: string }>().catch(() => ({} as { contato_nome?: string; nome?: string; razao_social?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: unknown; representante?: string }));
   const campos: string[] = [];
   const vals: (string | number | null)[] = [];
   const setTxt = (col: string, v: unknown) => { if (v !== undefined) { campos.push(`${col}=?`); const s = String(v ?? "").trim(); vals.push(s || null); } };
   setTxt("contato_nome", b.contato_nome);
   setTxt("nome", b.nome);
+  setTxt("razao_social", b.razao_social);
   setTxt("cnpj", b.cnpj);
   setTxt("cidade", b.cidade);
   setTxt("representante", b.representante);   // trocar o representante da conversa (à mão)

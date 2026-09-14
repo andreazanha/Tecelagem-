@@ -1321,7 +1321,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [agMsg, setAgMsg] = useState("");
   const [repEnvOpen, setRepEnvOpen] = useState(false); // picker "enviar contato pro representante"
   const [editDados, setEditDados] = useState(false);
-  const [formD, setFormD] = useState({ contato_nome: "", nome: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
+  const [formD, setFormD] = useState({ contato_nome: "", nome: "", razao_social: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
   const [respondendo, setRespondendo] = useState<{ id: string; texto: string } | null>(null);
   const [modo, setModo] = useState<"cliente" | "interno">("cliente");
   const fim = useRef<HTMLDivElement>(null);
@@ -1483,7 +1483,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   useEffect(() => { ajustarAltura(); }, [texto]);
 
   function abrirEdicaoDados() {
-    setFormD({ contato_nome: d?.contato_nome || "", nome: d?.nome || "", setor: d?.setor || "", cnpj: d?.cnpj || "", cidade: d?.cidade || "", uf: d?.uf || "", lojista: d?.lojista == null ? "" : String(d.lojista) });
+    setFormD({ contato_nome: d?.contato_nome || "", nome: d?.nome || "", razao_social: d?.razao_social || "", setor: d?.setor || "", cnpj: d?.cnpj || "", cidade: d?.cidade || "", uf: d?.uf || "", lojista: d?.lojista == null ? "" : String(d.lojista) });
     setEditDados(true);
   }
   async function salvarDados() {
@@ -1854,6 +1854,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <label className="fld" style={{ fontSize: 11.5 }}>Loja
                   <input value={formD.nome} onChange={(e) => setFormD((f) => ({ ...f, nome: e.target.value }))} placeholder="Nome da loja" />
                 </label>
+                <label className="fld" style={{ fontSize: 11.5 }}>Razão social
+                  <input value={formD.razao_social} onChange={(e) => setFormD((f) => ({ ...f, razao_social: e.target.value }))} placeholder="Nome registrado no CNPJ" />
+                </label>
                 <label className="fld" style={{ fontSize: 11.5 }}>Setor
                   <select value={formD.setor} onChange={(e) => setFormD((f) => ({ ...f, setor: e.target.value }))}>
                     <option value="">—</option>
@@ -1894,6 +1897,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
               <div className="at-row"><span>Nome</span><b>{d?.contato_nome || "—"}</b></div>
               <div className="at-row"><span>Setor</span><b>{d?.setor ? (SETOR_EMOJI[d.setor] || "") + " " + d.setor : "—"}</b></div>
               <div className="at-row"><span>Loja</span><b>{d?.nome || "—"}</b></div>
+              <div className="at-row"><span>Razão social</span><b>{d?.razao_social || "—"}</b></div>
               <div className="at-row"><span>CNPJ</span><b>{d?.cnpj || "—"}</b></div>
               <div className="at-row"><span>Lojista</span><b>{d?.lojista == null ? "—" : d.lojista ? "✅ sim" : "🙅 não"}</b></div>
               <div className="at-row"><span>Cidade</span><b>{[d?.cidade, d?.uf].filter(Boolean).join("/") || "—"}</b></div>

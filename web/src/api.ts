@@ -300,7 +300,7 @@ export interface ArqRapido { id: string; nome: string; nomeArq: string; key: str
 // Resposta pronta = atalho de texto; opcionalmente com um anexo (foto/arquivo) salvo no R2.
 export interface RespostaPronta { titulo: string; texto: string; arquivo_key?: string; arquivo_nome?: string; arquivo_ct?: string }
 export interface AtendBoard { colunas: AtendColuna[]; conversas: AtendConversa[] }
-export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; bloqueado?: number | null; interesses: string[]; pedidos_resumo: { nome: string; qtd: number; total: number; ultima: string | null } | null; mensagens: AtendMensagem[] }
+export interface AtendConversaDetalhe extends AtendConversa { card_id: string | null; nao_perturbe: number | null; razao_social?: string | null; bloqueado?: number | null; interesses: string[]; pedidos_resumo: { nome: string; qtd: number; total: number; ultima: string | null } | null; mensagens: AtendMensagem[] }
 export interface AtendResposta { conversa_id: string; estado: string; coluna: string; respostas: { tipo: string; texto: string }[]; notificarHumano: boolean }
 export interface ZapiConfig { zapi_base: string; zapi_instance: string; zapi_token: string; zapi_client_token: string; zapi_ativo: boolean; numero_whatsapp: string; atendimento_ativo: boolean; atendimento_ia: boolean; equipe_numeros: string; ia_prompt: string; ia_prompt_padrao: string; catalogo_url: string; catalogo_senha: string; catalogo_msg: string; catalogo_varejo_url: string; catalogo_varejo_senha: string; catalogo_varejo_msg: string; catalogo_varejo_msg_padrao: string; atend_hora_ini: string; atend_hora_fim: string; atend_domingo: boolean; followup_ativo: boolean; followup_hora_ini: string; followup_hora_fim: string; followup_domingo: boolean; followup_ia: boolean; pos_venda_ativo: boolean; pos_venda_dias: string; recompra_ativo: boolean; recompra_dias: string; reativacao_ativo: boolean; reativacao_dias: string; reativacao_limite: string; reativacao_intervalo_seg: string; reativacao_msg: string; reativacao_msg_padrao: string; aniversario_ativo: boolean; aniversario_msg: string; aniversario_msg_padrao: string; remarket_horas: string; remarket_msg: string; remarket_msg_padrao: string; encerramento_msg: string; encerramento_msg_padrao: string; encerramento_ativo: boolean; fechar_inativos_ativo: boolean; catalogo_evento_token: string; catalogo_evento_url: string; catalogo_log_url: string; webhook_url: string }
 
@@ -841,7 +841,7 @@ export const api = {
     jsonPost(`/api/atendimento/${id}/autorizar`, { representante }).then((r) => j<{ ok: boolean; representante: string }>(r)),
   atendNaoPerturbe: (id: string, nao_perturbe: boolean) =>
     jsonPost(`/api/atendimento/${id}/nao-perturbe`, { nao_perturbe }).then((r) => j<{ ok: boolean }>(r)),
-  atendSalvarDados: (id: string, b: { contato_nome?: string; nome?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: string; representante?: string }) =>
+  atendSalvarDados: (id: string, b: { contato_nome?: string; nome?: string; razao_social?: string; setor?: string; cnpj?: string; cidade?: string; uf?: string; lojista?: string; representante?: string }) =>
     jsonPost(`/api/atendimento/${id}/dados`, b).then((r) => j<{ ok: boolean }>(r)),
   atendNota: (id: string, b: { texto: string; autor?: string }) =>
     jsonPost(`/api/atendimento/${id}/nota`, b).then((r) => j<{ ok: boolean }>(r)),
