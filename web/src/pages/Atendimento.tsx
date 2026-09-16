@@ -608,7 +608,7 @@ export function Atendimento() {
   }, [board]);
 
   return (
-    <div className="quadro-page" style={{ maxWidth: "none" }}>
+    <div className="quadro-page at-central" style={{ maxWidth: "none" }}>
       {alerta && (
         <div onClick={() => { setAbrir(alerta.id); setAlerta(null); }} style={{ position: "fixed", top: 16, right: 16, zIndex: 200, background: "#dc2626", color: "#fff", borderRadius: 12, padding: "12px 16px", boxShadow: "0 10px 30px #0006", cursor: "pointer", maxWidth: 320, animation: "atpulse 1s ease-in-out infinite" }}>
           <div style={{ fontWeight: 800, fontSize: 14 }}>🔔 Atendimento humano!</div>

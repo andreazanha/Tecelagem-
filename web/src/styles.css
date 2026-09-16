@@ -1312,8 +1312,8 @@ body.dark .at-tab.on { background: #4f46e5; border-color: #4f46e5; color: #fff; 
 .at-viewtoggle button.on { background: #0f172a; color: #fff; }
 body.dark .at-viewtoggle button { background: #111826; }
 body.dark .at-viewtoggle button.on { background: #4f46e5; color: #fff; }
-.at-inbox { display: grid; grid-template-columns: minmax(260px, 27%) minmax(0, 1fr); gap: 14px; height: calc(100dvh - 248px); min-height: 460px; max-width: 100%; overflow: hidden; }
-.at-inline .at-body { grid-template-columns: minmax(0, 1fr) clamp(240px, 26%, 330px); }
+.at-inbox { display: grid; grid-template-columns: minmax(230px, 25%) minmax(0, 1fr); gap: 12px; height: calc(100dvh - 248px); min-height: 460px; max-width: 100%; overflow: hidden; }
+.at-inline .at-body { grid-template-columns: minmax(0, 1fr) clamp(210px, 24%, 320px); }
 .at-toolbar2-right { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
 .at-resp { position: relative; display: inline-flex; align-items: center; }
 .at-resp select { appearance: none; -webkit-appearance: none; padding: 8px 30px 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card,#fff); color: var(--ink); font-size: 12.5px; font-weight: 600; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
@@ -1796,3 +1796,55 @@ body.dark .demo-guia-ol li span { color: #8b97ab; }
 .a4-tam { font-size: 9.5px; font-weight: 700; color: #0f172a; white-space: nowrap; flex: none; }
 body.dark .a4-folha { background: #f8fafc; }
 body.dark .a4-et { color: #0f172a; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CENTRAL DE ATENDIMENTO — SEMPRE no tema CLARO premium (referência/mockup:
+   topo escuro + conteúdo claro). Mesmo com o app no modo escuro, esta tela
+   fica clara e limpa. Overrides ao final do arquivo pra vencer as regras dark.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.at-central { --ink: #0f172a; --muted: #64748b; --line: #e7ebf1; --bg-soft: #f5f7fb; --card: #ffffff; }
+/* No modo claro, não muda nada (já fica bom). No modo escuro, o fundo desta tela
+   vira claro pra combinar com os cards claros (senão apareceria o preto entre eles). */
+body.dark .at-central { background: #f4f6f9; color: #0f172a; }
+/* Barra de topo slim + abas + dropdowns */
+body.dark .at-central .at-conn { color: #64748b; }
+body.dark .at-central .at-tab { background: #fff; color: #0f172a; border-color: #e7ebf1; }
+body.dark .at-central .at-tab .n { background: #eef2ff; color: #4338ca; }
+body.dark .at-central .at-tab.on { background: #0f172a; color: #fff; border-color: #0f172a; }
+body.dark .at-central .at-tab.on .n { background: #ffffff38; color: #fff; }
+body.dark .at-central .at-tab-mais { color: #64748b; }
+body.dark .at-central .at-mais-pop, body.dark .at-central .at-menu-pop { background: #fff; border-color: #e7ebf1; }
+body.dark .at-central .at-mais-item { color: #0f172a; }
+body.dark .at-central .at-mais-item:hover, body.dark .at-central .at-menu-item:hover { background: #f1f5f9; }
+body.dark .at-central .at-mais-item .n { background: #eef1f6; color: #64748b; }
+body.dark .at-central .at-menu-item { color: #0f172a; }
+body.dark .at-central .at-resp select { background: #fff; color: #0f172a; border-color: #e7ebf1; }
+body.dark .at-central .at-viewtoggle { border-color: #e7ebf1; }
+body.dark .at-central .at-viewtoggle button { background: #fff; color: #64748b; }
+body.dark .at-central .at-viewtoggle button.on { background: #0f172a; color: #fff; }
+/* Lista + linhas */
+body.dark .at-central .at-inbox-list, body.dark .at-central .at-inbox-main { background: #fff; border-color: #e7ebf1; }
+body.dark .at-central .at-list-hd, body.dark .at-central .at-list-foot { border-color: #eef1f6; }
+body.dark .at-central .at-search2 input { background: #f5f7fb; color: #0f172a; border-color: #e7ebf1; }
+body.dark .at-central .at-crow { border-color: #eef1f6; }
+body.dark .at-central .at-crow:hover { background: #f6f8fb; }
+body.dark .at-central .at-crow.on { background: #eef2ff; }
+body.dark .at-central .at-crow-av { background: #e2e8f0; color: #475569; }
+body.dark .at-central .at-crow-nm { color: #0f172a; }
+body.dark .at-central .at-crow-vend { background: #eef1f6; color: #64748b; }
+body.dark .at-central .at-foot-link { color: #4f46e5; }
+body.dark .at-central .at-serv-item { color: #0f172a; }
+body.dark .at-central .at-serv-item:hover { background: #f6f8fb; }
+/* Resumo (tela sem conversa) */
+body.dark .at-central .at-resumo-card { background: #fff; border-color: #e7ebf1; }
+body.dark .at-central .at-resumo-t, body.dark .at-central .at-resumo-card b { color: #0f172a; }
+/* Chat inline: cabeçalho branco + fundo claro + bolhas claras */
+body.dark .at-central .at-inline .at-thd { background: #fff; color: #0f172a; border-color: #e7ebf1; }
+body.dark .at-central .at-inline .at-msgs { background-color: #f4f6f9; }
+body.dark .at-central .at-inline .at-b.in { background: #fff; color: #111b21; }
+body.dark .at-central .at-inline .at-b.out { background: #d9fdd3; color: #111b21; }
+body.dark .at-central .at-inbox-empty { color: #64748b; }
+/* Os modais (Campanha, Reservas, Conexão, etc.) ficam DENTRO desta tela: no modo
+   escuro, devolve o tema escuro pra eles (senão o texto claro ficaria forçado no
+   claro e sumiria). O chat inline (.at-inline-wrap) NÃO é .modal-bg, então segue claro. */
+body.dark .at-central .modal-bg { --ink: #eef1f8; --muted: #aab6d2; --line: #ffffff1a; --bg-soft: #131c30; --card: #0f1629; color: #eef1f8; }
