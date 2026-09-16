@@ -141,6 +141,14 @@ const STATUS_CLIENTE: Record<string, { label: string; bg: string; cor: string }>
   "inativo": { label: "💤 Inativo (sumiu)", bg: "#f1f5f9", cor: "#475569" },
 };
 const STATUS_CLIENTE_ORDEM = ["lead", "primeira-compra", "recorrente", "fiel", "inativo"];
+// Central de Atendimento: abas de status "principais" (curtas, sempre visíveis). As demais colunas
+// ficam escondidas dentro de "Mais filtros" — nada é removido, só desafoga a barra.
+const ABAS_PRINCIPAIS: { id: string; label: string }[] = [
+  { id: "em-atendimento", label: "Em atendimento" },
+  { id: "aguardando-setor", label: "Orçando" },
+  { id: "efetuou-pedido", label: "Pedido" },
+  { id: "contato-followup", label: "Follow-up" },
+];
 
 // ── Página do robô de atendimento ────────────────────────────────────────────────
 export function Atendimento() {
@@ -159,6 +167,7 @@ export function Atendimento() {
   const [vista, setVista] = useState<"lista" | "kanban">(() => (localStorage.getItem("atend-vista") === "kanban" ? "kanban" : "lista"));
   const trocarVista = (v: "lista" | "kanban") => { setVista(v); try { localStorage.setItem("atend-vista", v); } catch { /* ok */ } };
   const [statusFiltro, setStatusFiltro] = useState<string>("todos"); // aba de status (id da coluna) na visão lista
+  const [maisFiltros, setMaisFiltros] = useState(false); // popover "Mais filtros"
   const [busca, setBusca] = useState<string>(""); // busca de conversa no quadro (nome/loja/telefone/cidade)
   const [buscaServ, setBuscaServ] = useState<{ id: string; telefone: string; nome: string | null; contato_nome: string | null; cidade: string | null; uf: string | null; coluna: string; ultima_msg: string | null }[] | null>(null);
   const [buscandoServ, setBuscandoServ] = useState(false);
@@ -290,26 +299,46 @@ export function Atendimento() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, busca, filtroAtend]);
 
-  // Lista da Central (Inbox): todas as conversas já filtradas (busca/vendedor), opcionalmente por status
-  // (coluna), ordenadas pela atividade mais recente — como o WhatsApp. Reusa o gruposPorColuna.
-  const listaInbox = useMemo(() => {
-    if (!board) return [] as AtendConversa[];
-    let arr: AtendConversa[];
-    if (statusFiltro === "todos") { arr = []; for (const a of gruposPorColuna.values()) arr.push(...a); }
-    else arr = [...(gruposPorColuna.get(statusFiltro) || [])];
-    const ua = (c: AtendConversa) => { const inn = c.ultima_in_em || "", out = c.ultima_out_em || ""; return (inn > out ? inn : out) || c.atualizado_em || ""; };
-    arr.sort((a, b) => ua(b).localeCompare(ua(a)));
-    return arr;
-  }, [board, gruposPorColuna, statusFiltro]);
-
-  // Cor do "pontinho" de prioridade: 🔴 precisa de atenção · 🟡 aguardando ação · 🔵 follow-up · 🟢 concluído.
+  // Cor do "pontinho" de prioridade: 🔴 precisa de resposta · 🟡 aguardando ação · 🔵 follow-up · 🟢 concluído.
+  const precisaResposta = (c: AtendConversa) => c.coluna === "aguardando-humano" || (aguardando(c) && c.estado === "atendimento-humano");
   const prioridade = (c: AtendConversa): { cor: string; t: string } => {
-    if (c.coluna === "aguardando-humano" || c.estado === "atendimento-humano") return { cor: "#ef4444", t: "Precisa de atenção" };
+    if (precisaResposta(c)) return { cor: "#ef4444", t: "Precisa de resposta" };
     if (pulsaVerde(c)) return { cor: "#f59e0b", t: "Aguardando ação" };
-    if (/followup|follow-up/.test(c.coluna)) return { cor: "#3b82f6", t: "Follow-up" };
+    if (c.coluna === "contato-followup") return { cor: "#3b82f6", t: "Follow-up" };
     if (c.coluna === "efetuou-pedido" || c.coluna === "finalizado") return { cor: "#22c55e", t: "Concluído" };
     return { cor: "#cbd5e1", t: "" };
   };
+  const meuNome = getUser()?.nome || "";
+  // Passa no filtro de responsável + busca (base comum da lista e do resumo).
+  const passaBase = (c: AtendConversa) => casaBusca(c) && (filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend);
+
+  // Lista da Central (Inbox): conversas filtradas (responsável/busca) + aba de status, ordenadas pela
+  // atividade mais recente (como o WhatsApp). "todos", "__minhafila", "__atencao" ou o id de uma coluna.
+  const listaInbox = useMemo(() => {
+    if (!board) return [] as AtendConversa[];
+    let arr = board.conversas.filter(passaBase);
+    if (statusFiltro === "__minhafila") arr = arr.filter((c) => c.responsavel === meuNome);
+    else if (statusFiltro === "__atencao") arr = arr.filter((c) => precisaResposta(c));
+    else if (statusFiltro !== "todos") arr = arr.filter((c) => c.coluna === statusFiltro);
+    const ua = (c: AtendConversa) => { const inn = c.ultima_in_em || "", out = c.ultima_out_em || ""; return (inn > out ? inn : out) || c.atualizado_em || ""; };
+    arr.sort((a, b) => ua(b).localeCompare(ua(a)));
+    return arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board, busca, filtroAtend, statusFiltro]);
+
+  // Resumo (tela sem conversa aberta): contagens REAIS do que precisa de acompanhamento.
+  const resumo = useMemo(() => {
+    if (!board) return { vermelho: 0, amarelo: 0, azul: 0, total: 0 };
+    let v = 0, a = 0, az = 0;
+    for (const c of board.conversas) {
+      if (!passaBase(c)) continue;
+      const cor = prioridade(c).cor;
+      if (cor === "#ef4444") v++; else if (cor === "#f59e0b") a++;
+      if (c.coluna === "contato-followup") az++;
+    }
+    return { vermelho: v, amarelo: a, azul: az, total: v + a + az };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board, busca, filtroAtend]);
 
   // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
   const fotoCache = useRef<Record<string, string | null>>({});
@@ -623,21 +652,7 @@ export function Atendimento() {
         </div>
       </div>
 
-      {/* Gestor: acompanha cada vendedor — filtra o quadro por quem está atendendo. */}
-      {board && ehGestorAtend() && (() => {
-        const atendentes = [...new Set(board.conversas.map((c) => c.responsavel).filter(Boolean) as string[])].sort();
-        if (atendentes.length === 0) return null;
-        return (
-          <div className="fx-filtros" style={{ marginBottom: 10 }}>
-            <span style={{ fontSize: 12, color: "var(--muted)", alignSelf: "center" }}>👀 Acompanhar:</span>
-            <span className={"fx-pill" + (filtroAtend === "todos" ? " on" : "")} onClick={() => setFiltroAtend("todos")}>Todos</span>
-            {atendentes.map((a) => (
-              <span key={a} className={"fx-pill" + (filtroAtend === a ? " on" : "")} onClick={() => setFiltroAtend(a)}>{a}</span>
-            ))}
-            <span className={"fx-pill" + (filtroAtend === "__robo" ? " on" : "")} onClick={() => setFiltroAtend("__robo")}>🤖 Só robô</span>
-          </div>
-        );
-      })()}
+      {/* (A antiga barra horizontal de "Acompanhar" virou o dropdown 👤 Responsável na barra da Central.) */}
 
       {/* Busca de conversa no quadro: filtra os cards por nome, loja, telefone ou cidade. */}
       {board && (() => {
@@ -673,27 +688,57 @@ export function Atendimento() {
         );
       })()}
 
-      {/* Barra da Central: abas de status (à esquerda) + alternador Lista/Kanban (à direita). */}
+      {/* Barra da Central: abas de status curadas + "Mais filtros" · Responsável · Lista/Kanban. */}
       {board && (
         <div className="at-toolbar2">
           <div className="at-tabs">
             {(() => {
-              const total = board.conversas.filter((c) => casaBusca(c) && (filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend)).length;
-              return <button className={"at-tab" + (statusFiltro === "todos" ? " on" : "")} onClick={() => setStatusFiltro("todos")}>Todos <span className="n">{total}</span></button>;
-            })()}
-            {board.colunas.map((col) => {
-              const n = (gruposPorColuna.get(col.id) || []).length;
-              if (n === 0 && statusFiltro !== col.id) return null; // esconde status vazio pra ficar limpo
-              return (
-                <button key={col.id} className={"at-tab" + (statusFiltro === col.id ? " on" : "")} onClick={() => setStatusFiltro(col.id)}>
-                  <span className="fx-dot" style={{ background: col.cor }} />{col.label} <span className="n">{n}</span>
+              const base = board.conversas.filter(passaBase);
+              const nMinha = base.filter((c) => c.responsavel === meuNome).length;
+              const tab = (id: string, label: string, n: number, dot?: string) => (
+                <button key={id} className={"at-tab" + (statusFiltro === id ? " on" : "")} onClick={() => setStatusFiltro(id)}>
+                  {dot && <span className="fx-dot" style={{ background: dot }} />}{label} <span className="n">{n}</span>
                 </button>
               );
-            })}
+              return (<>
+                {tab("todos", "Todos", base.length)}
+                {meuNome ? tab("__minhafila", "Minha fila", nMinha) : null}
+                {tab("__atencao", "Atenção", resumo.vermelho, "#ef4444")}
+                {ABAS_PRINCIPAIS.map((a) => tab(a.id, a.label, (gruposPorColuna.get(a.id) || []).length, board.colunas.find((c) => c.id === a.id)?.cor))}
+              </>);
+            })()}
+            <div style={{ position: "relative" }}>
+              <button className={"at-tab at-tab-mais" + (maisFiltros ? " on" : "")} onClick={() => setMaisFiltros((v) => !v)}>+ Mais filtros ▾</button>
+              {maisFiltros && (<>
+                <div onClick={() => setMaisFiltros(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+                <div className="at-mais-pop">
+                  {board.colunas.filter((c) => !ABAS_PRINCIPAIS.some((a) => a.id === c.id)).map((col) => (
+                    <button key={col.id} className={"at-mais-item" + (statusFiltro === col.id ? " on" : "")} onClick={() => { setStatusFiltro(col.id); setMaisFiltros(false); }}>
+                      <span className="fx-dot" style={{ background: col.cor }} />{col.label}<span className="n">{(gruposPorColuna.get(col.id) || []).length}</span>
+                    </button>
+                  ))}
+                </div>
+              </>)}
+            </div>
           </div>
-          <div className="at-viewtoggle">
-            <button className={vista === "lista" ? "on" : ""} onClick={() => trocarVista("lista")} title="Central de atendimento (lista)">☰ Lista</button>
-            <button className={vista === "kanban" ? "on" : ""} onClick={() => trocarVista("kanban")} title="Quadro por colunas (Kanban)">▦ Kanban</button>
+          <div className="at-toolbar2-right">
+            {ehGestorAtend() && (() => {
+              const atendentes = [...new Set(board.conversas.map((c) => c.responsavel).filter(Boolean) as string[])].sort().filter((a) => a !== meuNome);
+              return (
+                <div className="at-resp">
+                  <select value={filtroAtend === meuNome && meuNome ? "__minha" : filtroAtend} onChange={(e) => { const v = e.target.value; setFiltroAtend(v === "__minha" ? meuNome : v); }}>
+                    <option value="todos">👤 Responsável: Todos</option>
+                    {meuNome ? <option value="__minha">Minha fila</option> : null}
+                    {atendentes.map((a) => <option key={a} value={a}>{a}</option>)}
+                    <option value="__robo">Só robô</option>
+                  </select>
+                </div>
+              );
+            })()}
+            <div className="at-viewtoggle">
+              <button className={vista === "lista" ? "on" : ""} onClick={() => trocarVista("lista")} title="Central de atendimento (lista)">☰ Lista</button>
+              <button className={vista === "kanban" ? "on" : ""} onClick={() => trocarVista("kanban")} title="Quadro por colunas (Kanban)">▦ Kanban</button>
+            </div>
           </div>
         </div>
       )}
@@ -713,7 +758,30 @@ export function Atendimento() {
           <div className="at-inbox-main">
             {abrir
               ? <ConversaModal key={abrir} id={abrir} inline onFechar={() => setAbrir(null)} onMudou={recarregar} />
-              : <div className="at-inbox-empty"><div style={{ fontSize: 42, opacity: .45 }}>💬</div><div style={{ fontWeight: 800, marginTop: 10, fontSize: 16 }}>Escolha uma conversa</div><div className="muted2" style={{ fontSize: 13, marginTop: 4, maxWidth: 320, textAlign: "center" }}>Clique numa conversa à esquerda pra ver o chat e os dados do cliente aqui.</div></div>}
+              : <div className="at-inbox-empty">
+                  <div className="at-resumo">
+                    <div className="at-resumo-emoji">👋</div>
+                    <div className="at-resumo-t">Bom trabalho!</div>
+                    <div className="at-resumo-s">Você tem <b>{resumo.total}</b> {resumo.total === 1 ? "conversa" : "conversas"} para acompanhar.</div>
+                    <div className="at-resumo-cards">
+                      <button className="at-resumo-card" onClick={() => setStatusFiltro("__atencao")} title="Ver quem precisa de resposta">
+                        <span className="d" style={{ background: "#ef4444" }} /><b>{resumo.vermelho}</b><span>precisam de resposta</span>
+                      </button>
+                      <button className="at-resumo-card" onClick={() => setStatusFiltro("todos")} title="Aguardando sua ação">
+                        <span className="d" style={{ background: "#f59e0b" }} /><b>{resumo.amarelo}</b><span>aguardando sua ação</span>
+                      </button>
+                      <button className="at-resumo-card" onClick={() => setStatusFiltro("contato-followup")} title="Ver follow-ups">
+                        <span className="d" style={{ background: "#3b82f6" }} /><b>{resumo.azul}</b><span>follow-ups</span>
+                      </button>
+                    </div>
+                    <button className="btn btn-primary at-resumo-btn" disabled={resumo.vermelho === 0} onClick={() => {
+                      setStatusFiltro("__atencao");
+                      const ua = (c: AtendConversa) => { const inn = c.ultima_in_em || "", out = c.ultima_out_em || ""; return (inn > out ? inn : out) || c.atualizado_em || ""; };
+                      const pri = board.conversas.filter((c) => passaBase(c) && precisaResposta(c)).sort((a, b) => ua(b).localeCompare(ua(a)));
+                      if (pri[0]) setAbrir(pri[0].id);
+                    }}>Ver conversas prioritárias →</button>
+                  </div>
+                </div>}
           </div>
         </div>
       ) : (

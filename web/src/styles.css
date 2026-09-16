@@ -1310,7 +1310,36 @@ body.dark .at-tab.on { background: #4f46e5; border-color: #4f46e5; color: #fff; 
 .at-viewtoggle button.on { background: #0f172a; color: #fff; }
 body.dark .at-viewtoggle button { background: #111826; }
 body.dark .at-viewtoggle button.on { background: #4f46e5; color: #fff; }
-.at-inbox { display: grid; grid-template-columns: 384px minmax(0, 1fr); gap: 14px; height: calc(100dvh - 248px); min-height: 460px; }
+.at-inbox { display: grid; grid-template-columns: minmax(300px, 30%) minmax(0, 1fr); gap: 14px; height: calc(100dvh - 248px); min-height: 460px; }
+.at-inline .at-body { grid-template-columns: minmax(0, 1fr) clamp(300px, 34%, 360px); }
+.at-toolbar2-right { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.at-resp { position: relative; display: inline-flex; align-items: center; }
+.at-resp select { appearance: none; -webkit-appearance: none; padding: 8px 30px 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card,#fff); color: var(--ink); font-size: 12.5px; font-weight: 600; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
+body.dark .at-resp select { background-color: #111826; }
+.at-tab-mais { border-style: dashed !important; color: var(--muted); }
+.at-mais-pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 41; background: var(--card,#fff); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 34px #0002; padding: 6px; min-width: 260px; max-height: 340px; overflow-y: auto; }
+body.dark .at-mais-pop { background: #131c2e; }
+.at-mais-item { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 9px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--ink); font-size: 13px; font-weight: 600; cursor: pointer; }
+.at-mais-item:hover { background: var(--bg-soft,#f1f5f9); }
+.at-mais-item.on { background: #eef2ff; color: #4338ca; }
+body.dark .at-mais-item:hover { background: #1b2536; }
+.at-mais-item .fx-dot { width: 9px; height: 9px; flex: 0 0 auto; }
+.at-mais-item .n { margin-left: auto; background: var(--bg-soft,#f1f5f9); border-radius: 999px; font-size: 11px; font-weight: 800; padding: 1px 7px; color: var(--muted); }
+body.dark .at-mais-item .n { background: #1e293b; }
+/* Resumo (tela sem conversa aberta) */
+.at-resumo { display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 440px; padding: 24px; }
+.at-resumo-emoji { font-size: 46px; }
+.at-resumo-t { font-size: 24px; font-weight: 800; color: var(--ink); margin-top: 6px; }
+.at-resumo-s { font-size: 14.5px; color: var(--muted); margin-top: 4px; }
+.at-resumo-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; margin: 22px 0 20px; }
+.at-resumo-card { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 16px 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--card,#fff); cursor: pointer; transition: border-color .12s, transform .06s; }
+.at-resumo-card:hover { border-color: #c7d2fe; }
+.at-resumo-card:active { transform: scale(.97); }
+body.dark .at-resumo-card { background: #131c2e; }
+.at-resumo-card .d { width: 11px; height: 11px; border-radius: 50%; }
+.at-resumo-card b { font-size: 26px; font-weight: 800; color: var(--ink); line-height: 1.1; }
+.at-resumo-card span:last-child { font-size: 11.5px; color: var(--muted); line-height: 1.25; }
+.at-resumo-btn { padding: 11px 22px; font-size: 14px; }
 .at-inbox-list { border: 1px solid var(--line); border-radius: 14px; background: var(--card,#fff); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
 body.dark .at-inbox-list { background: #0e1626; }
 .at-inbox-main { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; position: relative; min-width: 0; background: var(--card,#fff); }
