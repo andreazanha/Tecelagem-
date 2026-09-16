@@ -1337,20 +1337,20 @@ function ConvRow({ c, foto, colLabel, colCor, prio, pulsando, sel, onClick }: { 
   const prev = extrairIaNota(c.ultima_msg || "").visivel || "";
   const quando = (c.ultima_in_em || "") > (c.ultima_out_em || "") ? c.ultima_in_em : c.ultima_out_em;
   return (
-    <div className={"at-row" + (sel ? " on" : "")} onClick={onClick}>
-      <span className="at-row-dot" style={{ background: prio.cor }} title={prio.t} />
-      <div className="at-row-av" style={foto ? { backgroundImage: `url(${foto})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{foto ? "" : iniciais(nome)}</div>
-      <div className="at-row-mid">
-        <div className="at-row-l1"><span className="at-row-nm">{nome}</span>{pulsando && <span className="at-row-new" title="Aguardando resposta" />}</div>
-        <div className="at-row-sub">{sub}</div>
-        {prev && <div className="at-row-prev">{prev}</div>}
-        <div className="at-row-l3">
-          <span className="at-row-status" style={{ background: colCor + "22", color: colCor }}>{colLabel}</span>
-          {c.responsavel && <span className="at-row-vend">👤 {c.responsavel}</span>}
-          {c.lojista === 1 && <span className="at-row-vend">🏪 Lojista</span>}
+    <div className={"at-crow" + (sel ? " on" : "")} onClick={onClick}>
+      <span className="at-crow-dot" style={{ background: prio.cor }} title={prio.t} />
+      <div className="at-crow-av" style={foto ? { backgroundImage: `url(${foto})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{foto ? "" : iniciais(nome)}</div>
+      <div className="at-crow-mid">
+        <div className="at-crow-l1"><span className="at-crow-nm">{nome}</span>{pulsando && <span className="at-crow-new" title="Aguardando resposta" />}</div>
+        <div className="at-crow-sub">{sub}</div>
+        {prev && <div className="at-crow-prev">{prev}</div>}
+        <div className="at-crow-l3">
+          <span className="at-crow-status" style={{ background: colCor + "22", color: colCor }}>{colLabel}</span>
+          {c.responsavel && <span className="at-crow-vend">👤 {c.responsavel}</span>}
+          {c.lojista === 1 && <span className="at-crow-vend">🏪 Lojista</span>}
         </div>
       </div>
-      <div className="at-row-time">{tempoRel(quando)}</div>
+      <div className="at-crow-time">{tempoRel(quando)}</div>
     </div>
   );
 }
