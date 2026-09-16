@@ -168,6 +168,7 @@ export function Atendimento() {
   const trocarVista = (v: "lista" | "kanban") => { setVista(v); try { localStorage.setItem("atend-vista", v); } catch { /* ok */ } };
   const [statusFiltro, setStatusFiltro] = useState<string>("todos"); // aba de status (id da coluna) na visão lista
   const [maisFiltros, setMaisFiltros] = useState(false); // popover "Mais filtros"
+  const [menuMais, setMenuMais] = useState(false); // menu "⋯" com as ações secundárias (topo limpo)
   const [busca, setBusca] = useState<string>(""); // busca de conversa no quadro (nome/loja/telefone/cidade)
   const [buscaServ, setBuscaServ] = useState<{ id: string; telefone: string; nome: string | null; contato_nome: string | null; cidade: string | null; uf: string | null; coluna: string; ultima_msg: string | null }[] | null>(null);
   const [buscandoServ, setBuscandoServ] = useState(false);
@@ -635,27 +636,38 @@ export function Atendimento() {
           <span onClick={(e) => { e.stopPropagation(); setToastMsg(null); }} style={{ marginLeft: 6, fontSize: 18, opacity: .85, padding: "0 4px" }}>✕</span>
         </div>
       )}
-      <div className="page-head">
-        <div><h1>Atendimento</h1><div className="breadcrumb">Comercial › Atendimento (robô do WhatsApp)</div></div>
-        <div className="row-gap at-actions" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
-          <button className="btn btn-soft" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); if (!n) { try { if (!audioRef.current) audioRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)(); } catch { /* ok */ } audioRef.current?.resume?.(); setTimeout(() => tocarDing(), 60); } return n; })} title={mudo ? "Som desligado — clique para ligar (toca um teste)" : "Toca um som quando chega mensagem nova. Clique para desligar."}>{mudo ? "🔕 Som off" : "🔔 Som on"}</button>
+      <div className="at-topbar">
+        <div className="at-topbar-left">
+          <span className={"at-conn" + (conectado ? " ok" : conectado === false ? " off" : "")}>
+            <span className="at-conn-dot" />{conectado == null ? "verificando…" : conectado ? "WhatsApp conectado" : "WhatsApp desligado"}
+          </span>
+        </div>
+        <div className="at-topbar-right">
           <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setGruposOpen(true)}>👥 Postar em grupo</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setReservasOpen(true)}>📋 Reservas</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setSim(true)}>💬 Simular cliente</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={juntarDuplicados} title="Junta cards repetidos do mesmo contato (número com/sem o 9º dígito) num só, preservando o histórico">🧹 Juntar duplicados</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" disabled={cruzando} onClick={cruzarBase} title="Liga os contatos à base de clientes E puxa os nomes salvos na sua agenda do WhatsApp (preenche nome/CNPJ/cidade/UF sozinho). O sistema também faz isso automático 3x/dia.">{cruzando ? "Cruzando…" : "🔗 Cruzar com a base"}</button>}
+          <div style={{ position: "relative" }}>
+            <button className="btn btn-soft at-kebab" onClick={() => setMenuMais((v) => !v)} title="Mais ações">⋯</button>
+            {menuMais && (<>
+              <div onClick={() => setMenuMais(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+              <div className="at-menu-pop">
+                <button className="at-menu-item" onClick={() => { setMenuMais(false); setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); if (!n) { try { if (!audioRef.current) audioRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)(); } catch { /* ok */ } audioRef.current?.resume?.(); setTimeout(() => tocarDing(), 60); } return n; }); }}>{mudo ? "🔕 Som desligado" : "🔔 Som ligado"}</button>
+                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); setCampanhaOpen(true); }}>📣 Campanha</button>}
+                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); setReservasOpen(true); }}>📋 Reservas</button>}
+                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); setGruposOpen(true); }}>👥 Postar em grupo</button>}
+                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); setEquipeOpen(true); }}>👥 Equipe</button>}
+                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); setSim(true); }}>💬 Simular cliente</button>}
+                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); juntarDuplicados(); }}>🧹 Juntar duplicados</button>}
+                {ehGestorAtend() && <button className="at-menu-item" disabled={cruzando} onClick={() => { setMenuMais(false); cruzarBase(); }}>{cruzando ? "Cruzando…" : "🔗 Cruzar com a base"}</button>}
+                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); setCfgOpen(true); }}>⚙️ Conexão (Z-API)</button>}
+              </div>
+            </>)}
+          </div>
         </div>
       </div>
 
       {/* (A antiga barra horizontal de "Acompanhar" virou o dropdown 👤 Responsável na barra da Central.) */}
 
-      {/* Busca de conversa no quadro: filtra os cards por nome, loja, telefone ou cidade. */}
-      {board && (() => {
+      {/* Busca (Kanban): na visão Lista, a busca fica dentro da própria coluna de conversas. */}
+      {board && vista === "kanban" && (() => {
         const q = busca.trim().toLowerCase();
         const dig = q.replace(/\D/g, "");
         const total = q ? board.conversas.filter((c) => casaBusca(c)).length : 0;
@@ -748,12 +760,36 @@ export function Atendimento() {
       ) : vista === "lista" ? (
         <div className={"at-inbox" + (abrir ? " sel" : "")}>
           <div className="at-inbox-list">
-            {listaInbox.length === 0
-              ? <div className="muted2" style={{ padding: "22px 16px", fontSize: 13 }}>Nenhuma conversa {statusFiltro === "todos" ? "" : "nesse status "}por aqui.</div>
-              : listaInbox.map((c) => {
-                  const col = board.colunas.find((x) => x.id === c.coluna);
-                  return <ConvRow key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colLabel={col?.label || c.coluna} colCor={col?.cor || "#94a3b8"} prio={prioridade(c)} pulsando={pulsaVerde(c)} sel={abrir === c.id} onClick={() => setAbrir(c.id)} />;
-                })}
+            <div className="at-list-hd">
+              <div className="at-search2">
+                <span className="ic">🔎</span>
+                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar nesta lista…" />
+                {busca && <button className="x" onClick={() => setBusca("")} title="Limpar">✕</button>}
+              </div>
+            </div>
+            <div className="at-list-body">
+              {buscaServ ? (
+                <div className="at-serv">
+                  <div className="at-serv-hd"><b>{buscaServ.length} no servidor</b><button onClick={() => setBuscaServ(null)} title="Voltar">✕</button></div>
+                  {buscaServ.length === 0 && <div className="muted2" style={{ padding: 12, fontSize: 12.5 }}>Nada encontrado. Confere o nome ou o número.</div>}
+                  {buscaServ.map((r) => (
+                    <button key={r.id} className="at-serv-item" onClick={() => { setAbrir(r.id); setBuscaServ(null); }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{r.contato_nome || r.nome || telBonito(r.telefone)} <span className="muted" style={{ fontWeight: 400 }}>· {telBonito(r.telefone)}</span></div>
+                      <div className="muted2" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>📍 {board.colunas.find((x) => x.id === r.coluna)?.label || r.coluna}{r.ultima_msg ? " · " + r.ultima_msg : ""}</div>
+                    </button>
+                  ))}
+                </div>
+              ) : listaInbox.length === 0
+                ? <div className="muted2" style={{ padding: "22px 16px", fontSize: 13 }}>Nenhuma conversa {statusFiltro === "todos" ? "" : "nesse status "}por aqui.</div>
+                : listaInbox.map((c) => {
+                    const col = board.colunas.find((x) => x.id === c.coluna);
+                    return <ConvRow key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colLabel={col?.label || c.coluna} colCor={col?.cor || "#94a3b8"} prio={prioridade(c)} pulsando={pulsaVerde(c)} sel={abrir === c.id} onClick={() => setAbrir(c.id)} />;
+                  })}
+            </div>
+            <div className="at-list-foot">
+              <span>{listaInbox.length} {listaInbox.length === 1 ? "conversa" : "conversas"}</span>
+              {busca.trim().length >= 2 && !buscaServ && <button className="at-foot-link" onClick={buscarNoServidor} disabled={buscandoServ}>{buscandoServ ? "procurando…" : "buscar em todas →"}</button>}
+            </div>
           </div>
           <div className="at-inbox-main">
             {abrir
