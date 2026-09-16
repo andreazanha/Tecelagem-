@@ -1293,7 +1293,7 @@ body.dark .at-badge.at-parado { background: #3a2a08; color: #fcd34d; }
 @keyframes atParadoPulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .at-badge.at-parado { animation: none; } }
 /* modal conversa */
-.at-modal { max-width: 1180px; width: 96vw; padding: 0; overflow: hidden; display: flex; flex-direction: column; height: 94vh; height: 94dvh; max-height: 94vh; max-height: 94dvh; }
+.at-modal { max-width: 1180px; width: 96vw; padding: 0; overflow: hidden; display: flex; flex-direction: column; align-self: start; height: calc(100vh - 32px); height: calc(100dvh - 32px); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); }
 .at-thd { display: flex; align-items: center; gap: 11px; padding: 12px 14px; background: #008069; color: #fff; }
 /* Player de áudio estilo WhatsApp (bolinha verde + ondinha + tempo) */
 .at-audio { display: flex; align-items: center; gap: 9px; min-width: 200px; max-width: 250px; }
