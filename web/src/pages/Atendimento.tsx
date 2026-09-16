@@ -1231,7 +1231,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
                 </select>
               )}
               {/* Mensagem própria (opcional): se vazio, a IA manda a saudação padrão */}
-              <textarea value={agMsg} onChange={(e) => setAgMsg(e.target.value)} rows={3}
+              <textarea lang="pt-BR" spellCheck value={agMsg} onChange={(e) => setAgMsg(e.target.value)} rows={3}
                 placeholder="Mensagem (opcional). Use {nome} pra puxar o nome do cliente. Se deixar vazio, mando um bom dia/boa tarde automático."
                 style={{ width: "100%", fontSize: 13, padding: "7px 9px", borderRadius: 8, border: "1px solid var(--line)", resize: "vertical", fontFamily: "inherit", background: "var(--bg-soft,#fff)", color: "var(--ink)", boxSizing: "border-box" }} />
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -2032,7 +2032,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     : <div className="at-file" style={{ padding: "10px 12px", background: "var(--bg-soft,#f1f5f9)", borderRadius: 8 }}>📎 {anexo.file.name}</div>}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 4 }}>Enviar {anexo.ehImg ? "imagem" : anexo.ehAudio ? "áudio" : "arquivo"} para o cliente</div>
-                  {!anexo.ehAudio && <textarea placeholder="Escreva uma legenda (opcional)…" value={legendaAnexo} onChange={(e) => setLegendaAnexo(e.target.value)} rows={2} autoFocus
+                  {!anexo.ehAudio && <textarea lang="pt-BR" spellCheck placeholder="Escreva uma legenda (opcional)…" value={legendaAnexo} onChange={(e) => setLegendaAnexo(e.target.value)} rows={2} autoFocus
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); confirmarAnexo(); } }}
                     style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} />}
                 </div>
@@ -2121,7 +2121,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
               </div>
             : modo === "interno"
             ? <>
-                <textarea ref={inputRef} rows={1} placeholder="Recado pra equipe (o cliente NÃO vê)… ex.: cobra o boleto dele" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarNota(); } }} style={{ background: "#fffbeb", borderColor: "#fde68a" }} />
+                <textarea ref={inputRef} rows={1} lang="pt-BR" spellCheck placeholder="Recado pra equipe (o cliente NÃO vê)… ex.: cobra o boleto dele" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarNota(); } }} style={{ background: "#fffbeb", borderColor: "#fde68a" }} />
                 <button className="at-send" style={{ background: "#f59e0b" }} disabled={busy} onClick={enviarNota} title="Salvar nota interna">📝</button>
               </>
             : humano
@@ -2159,7 +2159,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     </div>
                   </>)}
                 </div>
-                <textarea ref={inputRef} rows={1} placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
+                <textarea ref={inputRef} rows={1} lang="pt-BR" spellCheck placeholder="Escreva uma mensagem…" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
                 {gravando && <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#ef4444", fontWeight: 800, fontSize: 13, fontVariantNumeric: "tabular-nums", flex: "0 0 auto" }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", animation: "atpulse 1s ease-in-out infinite" }} />{mmss(gravSeg)}</span>}
                 {/* Cliente COMPROU → move a conversa pra "Efetuou pedido" (botão ao lado do microfone). */}
                 {d && d.coluna !== "efetuou-pedido" && !gravando && (
@@ -2224,7 +2224,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                   {agResps.map((r, i) => <option key={i} value={i}>{r.titulo || r.texto.slice(0, 40)}</option>)}
                 </select>
               )}
-              <textarea value={agMsg} onChange={(e) => setAgMsg(e.target.value)} rows={3} placeholder="Mensagem que vai ser enviada no horário. Use {nome} pro nome do cliente. Se deixar vazio, mando um bom dia/boa tarde automático." style={{ width: "100%", fontSize: 13, padding: "8px 9px", borderRadius: 8, border: "1px solid var(--line)", resize: "vertical", fontFamily: "inherit", background: "var(--bg-soft,#fff)", color: "var(--ink)", boxSizing: "border-box" }} />
+              <textarea lang="pt-BR" spellCheck value={agMsg} onChange={(e) => setAgMsg(e.target.value)} rows={3} placeholder="Mensagem que vai ser enviada no horário. Use {nome} pro nome do cliente. Se deixar vazio, mando um bom dia/boa tarde automático." style={{ width: "100%", fontSize: 13, padding: "8px 9px", borderRadius: 8, border: "1px solid var(--line)", resize: "vertical", fontFamily: "inherit", background: "var(--bg-soft,#fff)", color: "var(--ink)", boxSizing: "border-box" }} />
               <div style={{ display: "flex", gap: 6 }}>
                 <button disabled={!valido || busy} onClick={() => { if (valido) agendarMensagem(ms, agMsg.trim() || undefined); }} style={{ flex: 1, background: valido && !busy ? "#2563eb" : "#93c5fd", color: "#fff", border: "none", borderRadius: 8, padding: "10px", cursor: valido && !busy ? "pointer" : "default", fontSize: 13.5, fontWeight: 700 }}>{valido ? `📅 Agendar — ${agendadoLabel(ms)}` : "Escolha dia e horário"}</button>
                 {d?.agendado_ia ? (<button disabled={busy} onClick={() => agendarMensagem(null)} style={{ background: "transparent", color: "#b91c1c", border: "1px solid #fca5a5", borderRadius: 8, padding: "10px 12px", cursor: "pointer", fontSize: 13 }}>Cancelar</button>) : null}
@@ -2566,7 +2566,7 @@ function RespostasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: 
                 <input placeholder="Título (ex.: Cadastro no site)" value={r.titulo} onChange={(e) => set(i, "titulo", e.target.value)} style={{ flex: 1 }} />
                 <button className="btn btn-soft" style={{ color: "#dc2626" }} onClick={() => remover(i)} title="Remover">🗑️</button>
               </div>
-              <textarea placeholder="Texto da mensagem… (pode deixar vazio se for só o anexo)" rows={3} value={r.texto} onChange={(e) => set(i, "texto", e.target.value)} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} />
+              <textarea lang="pt-BR" spellCheck placeholder="Texto da mensagem… (pode deixar vazio se for só o anexo)" rows={3} value={r.texto} onChange={(e) => set(i, "texto", e.target.value)} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} />
               {/* Anexo opcional: foto/arquivo que vai junto quando você escolher esta resposta na conversa. */}
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
                 {r.arquivo_key
@@ -2802,7 +2802,7 @@ function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; on
             <button onClick={() => setRespAnexo(null)} title="Não enviar o anexo" style={{ background: "transparent", border: 0, cursor: "pointer", color: "#0e7490", fontSize: 14, lineHeight: 1 }}>✕</button>
           </div>
         )}
-        <textarea placeholder="Escreva a primeira mensagem… (opcional se anexar arquivo)" value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", marginBottom: 8 }} />
+        <textarea lang="pt-BR" spellCheck placeholder="Escreva a primeira mensagem… (opcional se anexar arquivo)" value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", marginBottom: 8 }} />
         {/* Anexo opcional (foto/arquivo) — enviado logo depois da mensagem. */}
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
           {anexo
@@ -3086,7 +3086,7 @@ function GruposModal({ onFechar }: { onFechar: () => void }) {
                 </label>
               ))}
           </div>
-          <label className="fld full">Mensagem<textarea value={mensagem} onChange={(e) => setMensagem(e.target.value)} rows={4} placeholder="Escreva o que vai postar no grupo…" style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} /></label>
+          <label className="fld full">Mensagem<textarea lang="pt-BR" spellCheck value={mensagem} onChange={(e) => setMensagem(e.target.value)} rows={4} placeholder="Escreva o que vai postar no grupo…" style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} /></label>
           <input ref={arqRef} type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) subirAnexo(f); e.currentTarget.value = ""; }} />
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             {!anexo
@@ -3473,7 +3473,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
               <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>Escreva a mensagem</div>
               <div className="muted2" style={{ fontSize: 12.5, marginBottom: 16 }}>É isso que cada pessoa vai receber no WhatsApp.</div>
           <label className="fld full">Nome da campanha (só pra você, opcional)<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Convite grupo lojistas — setembro" /></label>
-          <label className="fld full" style={{ marginTop: 8 }}>Mensagem (pode colar o link do grupo aqui)<textarea value={mensagem} onChange={(e) => setMensagem(e.target.value)} rows={5} placeholder="Escreva aqui a mensagem que vai pra cada pessoa…" style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} /></label>
+          <label className="fld full" style={{ marginTop: 8 }}>Mensagem (pode colar o link do grupo aqui)<textarea lang="pt-BR" spellCheck value={mensagem} onChange={(e) => setMensagem(e.target.value)} rows={5} placeholder="Escreva aqui a mensagem que vai pra cada pessoa…" style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} /></label>
           {respsProntas.length > 0 && (
             <select value="" onChange={(e) => { const r = respsProntas[Number(e.target.value)]; if (r) setMensagem(r.texto); e.currentTarget.value = ""; }} style={{ width: "100%", marginTop: 6, fontSize: 13, padding: "7px 9px" }}>
               <option value="">📋 Usar uma resposta pronta…</option>
