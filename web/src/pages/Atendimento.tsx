@@ -72,6 +72,20 @@ function hora(iso?: string | null) {
   const mm = iso.match(/(\d{2}):(\d{2})/);
   return mm ? `${mm[1]}:${mm[2]}` : "";
 }
+// Tempo desde a última interação, curtinho: "agora", "12 min", "3 h", "2 d". (iso em UTC)
+function tempoRel(iso?: string | null): string {
+  if (!iso) return "";
+  const m = iso.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  const t = m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : new Date(iso).getTime();
+  if (!t || isNaN(t)) return "";
+  const min = Math.floor((Date.now() - t) / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return min + " min";
+  const h = Math.floor(min / 60);
+  if (h < 24) return h + " h";
+  const d = Math.floor(h / 24);
+  return d + " d";
+}
 // Emojis mais usados no atendimento (estilo WhatsApp) — pro seletor do campo de mensagem.
 const EMOJIS = "😀 😁 😂 🤣 😊 😇 🙂 😉 😍 🥰 😘 😗 😋 😎 🤩 🥳 🤗 🤔 🤝 👍 👎 👌 ✌️ 🙏 👏 🙌 💪 👋 🫶 ❤️ 🧡 💛 💚 💙 💜 🖤 💔 💯 🔥 ✨ ⭐ 🎉 🎊 🎁 💐 🌹 😅 😌 😏 😴 😅 😢 😭 😔 😟 😕 🙃 😬 😳 🥺 😱 😤 😡 🤦 🤷 💰 🛒 📦 🚚 ✅ ❌ ⚠️ 📌 📎 📷 🎤 ⏰ 📢 🤑 🥂".split(" ");
 // Data + hora pro card (fechado): "hoje 09:08", "ontem 17:26" ou "10/08 14:22". Horário de Brasília.
@@ -141,6 +155,10 @@ export function Atendimento() {
   const [reservasOpen, setReservasOpen] = useState(false);
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [filtroAtend, setFiltroAtend] = useState<string>("todos"); // gestor: filtra por vendedor
+  // Central de Atendimento: "lista" (inbox de 3 áreas) é o PADRÃO; "kanban" continua como visão alternativa.
+  const [vista, setVista] = useState<"lista" | "kanban">(() => (localStorage.getItem("atend-vista") === "kanban" ? "kanban" : "lista"));
+  const trocarVista = (v: "lista" | "kanban") => { setVista(v); try { localStorage.setItem("atend-vista", v); } catch { /* ok */ } };
+  const [statusFiltro, setStatusFiltro] = useState<string>("todos"); // aba de status (id da coluna) na visão lista
   const [busca, setBusca] = useState<string>(""); // busca de conversa no quadro (nome/loja/telefone/cidade)
   const [buscaServ, setBuscaServ] = useState<{ id: string; telefone: string; nome: string | null; contato_nome: string | null; cidade: string | null; uf: string | null; coluna: string; ultima_msg: string | null }[] | null>(null);
   const [buscandoServ, setBuscandoServ] = useState(false);
@@ -271,6 +289,27 @@ export function Atendimento() {
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, busca, filtroAtend]);
+
+  // Lista da Central (Inbox): todas as conversas já filtradas (busca/vendedor), opcionalmente por status
+  // (coluna), ordenadas pela atividade mais recente — como o WhatsApp. Reusa o gruposPorColuna.
+  const listaInbox = useMemo(() => {
+    if (!board) return [] as AtendConversa[];
+    let arr: AtendConversa[];
+    if (statusFiltro === "todos") { arr = []; for (const a of gruposPorColuna.values()) arr.push(...a); }
+    else arr = [...(gruposPorColuna.get(statusFiltro) || [])];
+    const ua = (c: AtendConversa) => { const inn = c.ultima_in_em || "", out = c.ultima_out_em || ""; return (inn > out ? inn : out) || c.atualizado_em || ""; };
+    arr.sort((a, b) => ua(b).localeCompare(ua(a)));
+    return arr;
+  }, [board, gruposPorColuna, statusFiltro]);
+
+  // Cor do "pontinho" de prioridade: 🔴 precisa de atenção · 🟡 aguardando ação · 🔵 follow-up · 🟢 concluído.
+  const prioridade = (c: AtendConversa): { cor: string; t: string } => {
+    if (c.coluna === "aguardando-humano" || c.estado === "atendimento-humano") return { cor: "#ef4444", t: "Precisa de atenção" };
+    if (pulsaVerde(c)) return { cor: "#f59e0b", t: "Aguardando ação" };
+    if (/followup|follow-up/.test(c.coluna)) return { cor: "#3b82f6", t: "Follow-up" };
+    if (c.coluna === "efetuou-pedido" || c.coluna === "finalizado") return { cor: "#22c55e", t: "Concluído" };
+    return { cor: "#cbd5e1", t: "" };
+  };
 
   // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
   const fotoCache = useRef<Record<string, string | null>>({});
@@ -634,8 +673,49 @@ export function Atendimento() {
         );
       })()}
 
+      {/* Barra da Central: abas de status (à esquerda) + alternador Lista/Kanban (à direita). */}
+      {board && (
+        <div className="at-toolbar2">
+          <div className="at-tabs">
+            {(() => {
+              const total = board.conversas.filter((c) => casaBusca(c) && (filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend)).length;
+              return <button className={"at-tab" + (statusFiltro === "todos" ? " on" : "")} onClick={() => setStatusFiltro("todos")}>Todos <span className="n">{total}</span></button>;
+            })()}
+            {board.colunas.map((col) => {
+              const n = (gruposPorColuna.get(col.id) || []).length;
+              if (n === 0 && statusFiltro !== col.id) return null; // esconde status vazio pra ficar limpo
+              return (
+                <button key={col.id} className={"at-tab" + (statusFiltro === col.id ? " on" : "")} onClick={() => setStatusFiltro(col.id)}>
+                  <span className="fx-dot" style={{ background: col.cor }} />{col.label} <span className="n">{n}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="at-viewtoggle">
+            <button className={vista === "lista" ? "on" : ""} onClick={() => trocarVista("lista")} title="Central de atendimento (lista)">☰ Lista</button>
+            <button className={vista === "kanban" ? "on" : ""} onClick={() => trocarVista("kanban")} title="Quadro por colunas (Kanban)">▦ Kanban</button>
+          </div>
+        </div>
+      )}
+
       {!board ? (
         <div className="card pad muted">Carregando…</div>
+      ) : vista === "lista" ? (
+        <div className={"at-inbox" + (abrir ? " sel" : "")}>
+          <div className="at-inbox-list">
+            {listaInbox.length === 0
+              ? <div className="muted2" style={{ padding: "22px 16px", fontSize: 13 }}>Nenhuma conversa {statusFiltro === "todos" ? "" : "nesse status "}por aqui.</div>
+              : listaInbox.map((c) => {
+                  const col = board.colunas.find((x) => x.id === c.coluna);
+                  return <ConvRow key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colLabel={col?.label || c.coluna} colCor={col?.cor || "#94a3b8"} prio={prioridade(c)} pulsando={pulsaVerde(c)} sel={abrir === c.id} onClick={() => setAbrir(c.id)} />;
+                })}
+          </div>
+          <div className="at-inbox-main">
+            {abrir
+              ? <ConversaModal key={abrir} id={abrir} inline onFechar={() => setAbrir(null)} onMudou={recarregar} />
+              : <div className="at-inbox-empty"><div style={{ fontSize: 42, opacity: .45 }}>💬</div><div style={{ fontWeight: 800, marginTop: 10, fontSize: 16 }}>Escolha uma conversa</div><div className="muted2" style={{ fontSize: 13, marginTop: 4, maxWidth: 320, textAlign: "center" }}>Clique numa conversa à esquerda pra ver o chat e os dados do cliente aqui.</div></div>}
+          </div>
+        </div>
       ) : (
         <>
         {/* Atalho de colunas (só no celular): toque num chip pra pular direto pra coluna. */}
@@ -679,7 +759,7 @@ export function Atendimento() {
         </div>
         </>
       )}
-      {ehGestorAtend() && board && <div style={{ marginTop: 10 }}><button className="btn btn-soft" onClick={() => setGerColunas(true)}>➕ Criar / organizar colunas</button></div>}
+      {ehGestorAtend() && board && vista === "kanban" && <div style={{ marginTop: 10 }}><button className="btn btn-soft" onClick={() => setGerColunas(true)}>➕ Criar / organizar colunas</button></div>}
       {gerColunas && <ColunasModal onFechar={() => setGerColunas(false)} onSalvo={() => { setGerColunas(false); recarregar(); }} />}
 
       {sim && <Simulador onFechar={() => setSim(false)} onMudou={recarregar} />}
@@ -688,7 +768,8 @@ export function Atendimento() {
       {campanhaOpen && <CampanhaModal onFechar={() => setCampanhaOpen(false)} onMudou={recarregar} />}
       {gruposOpen && <GruposModal onFechar={() => setGruposOpen(false)} />}
       {reservasOpen && <ReservasModal onFechar={() => setReservasOpen(false)} />}
-      {abrir && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
+      {/* Na Lista o chat abre INLINE (na área central). No Kanban abre como modal. */}
+      {abrir && vista === "kanban" && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
       {cfgOpen && <ConfigZapi onFechar={() => setCfgOpen(false)} onMudou={checarConexao} />}
     </div>
   );
@@ -1143,6 +1224,32 @@ function baixarArquivo(url: string) {
 }
 // Horários "de bater o olho e clicar" (horário comercial).
 const HORAS_AG = ["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
+
+// Linha da Central de Atendimento (Inbox): limpa, com o essencial pra bater o olho —
+// foto, nome, cidade, última mensagem, status, vendedor, tempo e o pontinho de prioridade.
+function ConvRow({ c, foto, colLabel, colCor, prio, pulsando, sel, onClick }: { c: AtendConversa; foto?: string; colLabel: string; colCor: string; prio: { cor: string; t: string }; pulsando?: boolean; sel?: boolean; onClick: () => void }) {
+  const nome = c.nome || c.contato_nome || telBonito(c.telefone);
+  const sub = c.cidade ? `${c.cidade}${c.uf ? "/" + c.uf : ""}` : telBonito(c.telefone);
+  const prev = extrairIaNota(c.ultima_msg || "").visivel || "";
+  const quando = (c.ultima_in_em || "") > (c.ultima_out_em || "") ? c.ultima_in_em : c.ultima_out_em;
+  return (
+    <div className={"at-row" + (sel ? " on" : "")} onClick={onClick}>
+      <span className="at-row-dot" style={{ background: prio.cor }} title={prio.t} />
+      <div className="at-row-av" style={foto ? { backgroundImage: `url(${foto})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{foto ? "" : iniciais(nome)}</div>
+      <div className="at-row-mid">
+        <div className="at-row-l1"><span className="at-row-nm">{nome}</span>{pulsando && <span className="at-row-new" title="Aguardando resposta" />}</div>
+        <div className="at-row-sub">{sub}</div>
+        {prev && <div className="at-row-prev">{prev}</div>}
+        <div className="at-row-l3">
+          <span className="at-row-status" style={{ background: colCor + "22", color: colCor }}>{colLabel}</span>
+          {c.responsavel && <span className="at-row-vend">👤 {c.responsavel}</span>}
+          {c.lojista === 1 && <span className="at-row-vend">🏪 Lojista</span>}
+        </div>
+      </div>
+      <div className="at-row-time">{tempoRel(quando)}</div>
+    </div>
+  );
+}
 function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, onReativarIa, onFim, onSilenciar, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; onAgendar?: (quando: number | null, mensagem?: string) => void; onReativarIa?: () => void; onFim?: () => void; onSilenciar?: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.estado === "atendimento-humano";
   const [agOpen, setAgOpen] = useState(false);
@@ -1284,7 +1391,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
 
 
 // ── Conversa (thread estilo WhatsApp + contexto + ações do atendente) ──────────────
-export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => void; onMudou: () => void }) {
+export function ConversaModal({ id, onFechar, onMudou, inline }: { id: string; onFechar: () => void; onMudou: () => void; inline?: boolean }) {
   const [d, setD] = useState<AtendConversaDetalhe | null>(null);
   const [texto, setTexto] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1759,8 +1866,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [humano, bloqueado]);
   return (
-    <div className="modal-bg" onClick={onFechar}>
-      <div className="modal-card at-modal" onClick={(e) => e.stopPropagation()}>
+    <div className={inline ? "at-inline-wrap" : "modal-bg"} onClick={inline ? undefined : onFechar}>
+      <div className={"modal-card at-modal" + (inline ? " at-inline" : "")} onClick={(e) => e.stopPropagation()}>
         <div className="at-thd">
           <div className="at-av" style={fotoPerfil ? { backgroundImage: `url(${fotoPerfil})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{fotoPerfil ? "" : iniciais(d?.nome || d?.contato_nome || d?.telefone)}</div>
           <div className="info">
