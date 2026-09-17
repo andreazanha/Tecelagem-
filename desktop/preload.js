@@ -5,7 +5,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("navcrmDesktop", {
-  versao: 1,
+  versao: 2,
   montar: (bounds) => ipcRenderer.invoke("navcrm:montar", bounds),
   bounds: (bounds) => ipcRenderer.invoke("navcrm:bounds", bounds),
   desmontar: () => ipcRenderer.invoke("navcrm:desmontar"),
@@ -17,4 +17,7 @@ contextBridge.exposeInMainWorld("navcrmDesktop", {
   // eventos: estado do navegador (url, botões, carregando) e pedido de reenviar bounds
   onEstado: (cb) => { const h = (_e, s) => cb(s); ipcRenderer.on("navcrm:estado", h); return () => ipcRenderer.removeListener("navcrm:estado", h); },
   onPedirBounds: (cb) => { const h = () => cb(); ipcRenderer.on("navcrm:pediu-bounds", h); return () => ipcRenderer.removeListener("navcrm:pediu-bounds", h); },
+  // evento: contato da conversa aberta no WhatsApp ({ titulo }) — só o nome/número
+  // do contato aberto, nunca mensagens. Serve pro painel carregar o cliente real.
+  onContato: (cb) => { const h = (_e, p) => cb(p); ipcRenderer.on("navcrm:contato", h); return () => ipcRenderer.removeListener("navcrm:contato", h); },
 });

@@ -37,6 +37,38 @@ app.userAgentFallback = UA_CHROME;
 let win = null;
 let view = null;
 let montado = false;
+let leituraTimer = null;   // relógio que lê o contato da conversa aberta
+let ultimoTitulo = null;   // último contato enviado (evita reenviar igual)
+
+// Lê APENAS o nome/número do contato da conversa aberta no WhatsApp Web (o texto
+// do cabeçalho da conversa). NÃO lê mensagens, não injeta nada, não modifica a
+// página — só devolve esse texto pro painel casar com o cadastro de clientes.
+const JS_LER_CONTATO = `(function(){try{
+  var m=document.querySelector('#main'); if(!m) return null;
+  var h=m.querySelector('header'); if(!h) return null;
+  var s=h.querySelector('span[title]');
+  var nome = s ? (s.getAttribute('title')||s.textContent||'') : '';
+  if(!nome){ var d=h.querySelector('span[dir="auto"]'); nome = d ? (d.textContent||'') : ''; }
+  nome=(nome||'').replace(/\\s+/g,' ').trim();
+  return nome || null;
+}catch(e){ return null; }})()`;
+
+function enviarContato(titulo) {
+  if (titulo === ultimoTitulo) return;
+  ultimoTitulo = titulo;
+  if (win && !win.isDestroyed()) win.webContents.send("navcrm:contato", { titulo });
+}
+function lerContato() {
+  if (!view || !montado || !win || win.isDestroyed()) return;
+  let u = "";
+  try { u = view.webContents.getURL() || ""; } catch { u = ""; }
+  if (!/whatsapp\.com/i.test(u)) { enviarContato(null); return; } // fora do WhatsApp: limpa
+  view.webContents.executeJavaScript(JS_LER_CONTATO)
+    .then((titulo) => { const t = titulo && String(titulo).trim(); enviarContato(t ? t : null); })
+    .catch(() => { /* ignore */ });
+}
+function iniciarLeitura() { if (!leituraTimer) { ultimoTitulo = undefined; leituraTimer = setInterval(lerContato, 1500); lerContato(); } }
+function pararLeitura() { if (leituraTimer) { clearInterval(leituraTimer); leituraTimer = null; } ultimoTitulo = null; }
 
 function urlValida(u) {
   try { const x = new URL(u); return x.protocol === "http:" || x.protocol === "https:"; }
@@ -65,14 +97,14 @@ function criarJanela() {
   });
   win.loadURL(START_URL);
   // Marcador de versão no título da janela — assim dá pra confirmar num relance
-  // se o programa NOVO está rodando (deve aparecer "Big Tricot • v0.3").
-  const TITULO = "Big Tricot • v0.3";
+  // se o programa NOVO está rodando (deve aparecer "Big Tricot • v0.4").
+  const TITULO = "Big Tricot • v0.4";
   win.setTitle(TITULO);
   win.on("page-title-updated", (e) => { e.preventDefault(); if (win && !win.isDestroyed()) win.setTitle(TITULO); });
   win.once("ready-to-show", () => win.show());
   // Reposiciona o navegador embutido quando a janela muda de tamanho.
   win.on("resize", () => { if (win && !win.isDestroyed()) win.webContents.send("navcrm:pediu-bounds"); });
-  win.on("closed", () => { win = null; view = null; montado = false; });
+  win.on("closed", () => { pararLeitura(); win = null; view = null; montado = false; });
 }
 
 // Cria (uma vez) o navegador embutido real, com sessão persistente e seguro.
@@ -143,10 +175,11 @@ ipcMain.handle("navcrm:montar", (_e, bounds) => {
   v.setVisible(true);
   v.setBounds(arred(bounds));
   if (!v.webContents.getURL()) v.webContents.loadURL(HOME_URL, { userAgent: UA_CHROME });
+  iniciarLeitura();
   return true;
 });
 ipcMain.handle("navcrm:bounds", (_e, bounds) => { if (view && montado) view.setBounds(arred(bounds)); return true; });
-ipcMain.handle("navcrm:desmontar", () => { if (view && montado) { try { view.setVisible(false); win && win.contentView.removeChildView(view); } catch { /* ignore */ } montado = false; } return true; });
+ipcMain.handle("navcrm:desmontar", () => { pararLeitura(); if (view && montado) { try { view.setVisible(false); win && win.contentView.removeChildView(view); } catch { /* ignore */ } montado = false; } return true; });
 ipcMain.handle("navcrm:navegar", (_e, url) => { if (!urlValida(url)) return false; garantirView().webContents.loadURL(url, { userAgent: UA_CHROME }); return true; });
 ipcMain.handle("navcrm:voltar", () => { if (view) irVoltar(view.webContents); return true; });
 ipcMain.handle("navcrm:avancar", () => { if (view) irAvancar(view.webContents); return true; });

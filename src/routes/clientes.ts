@@ -62,15 +62,10 @@ clientes.get("/", async (c) => {
   return c.json(lista);
 });
 
-// FICHA 360: dados do cliente + histórico de pedidos (não-reposição) + KPIs.
-clientes.get("/:id", async (c) => {
-  const id = c.req.param("id");
-  const cli = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, ultima_compra, ultimo_faturamento, razao_social, cnpj_situacao, cnpj_checado_em, created_at FROM clientes WHERE id = ?"
-  ).bind(id).first<ClienteRow>();
-  if (!cli) return c.json({ error: "cliente não encontrado" }, 404);
-
-  const { results: peds } = await c.env.DB.prepare(
+// Monta a "ficha 360" (dados + KPIs + histórico de pedidos não-reposição) de um
+// cliente já carregado. Reutilizada pela ficha por id e pelo resolvedor do CRM.
+async function fichaDoCliente(env: Env, cli: ClienteRow) {
+  const { results: peds } = await env.DB.prepare(
     `SELECT p.id, p.numero_erp, p.data_pedido, p.status,
             COALESCE(SUM(i.qtd * i.valor_unit), 0) AS valor
        FROM pedidos p LEFT JOIN pedido_itens i ON i.pedido_id = p.id
@@ -83,7 +78,7 @@ clientes.get("/:id", async (c) => {
   const situ = new Map<string, string>();
   if (peds.length) {
     const ph = peds.map(() => "?").join(",");
-    const { results: pr } = await c.env.DB.prepare(
+    const { results: pr } = await env.DB.prepare(
       `SELECT pedido_id, COUNT(*) AS tot, SUM(CASE WHEN setor='expedicao' THEN 1 ELSE 0 END) AS exp
          FROM producao WHERE pedido_id IN (${ph}) GROUP BY pedido_id`
     ).bind(...peds.map((p) => p.id)).all<{ pedido_id: string; tot: number; exp: number }>();
@@ -95,8 +90,55 @@ clientes.get("/:id", async (c) => {
   }));
   const total = pedidos.reduce((s, p) => s + p.valor, 0);
   const kpis = { total, pedidos: pedidos.length, ticket: pedidos.length ? total / pedidos.length : 0, ultima: pedidos[0]?.data || cli.ultima_compra || null };
-  const vmap = await ultimoVendedorPorCliente(c.env);
-  return c.json({ ...cli, representante: cli.representante || vmap.get(cli.nome) || null, kpis, historico: pedidos });
+  const vmap = await ultimoVendedorPorCliente(env);
+  return { ...cli, representante: cli.representante || vmap.get(cli.nome) || null, kpis, historico: pedidos };
+}
+
+// RESOLVEDOR do Navegador CRM (desktop): a partir do texto do cabeçalho da conversa
+// aberta no WhatsApp (nome do contato OU número), encontra o cliente e devolve a
+// ficha 360. Só recebe esse texto — nunca mensagens. Registrado ANTES de "/:id"
+// para não ser confundido com um id.
+clientes.get("/resolver", async (c) => {
+  const q = (c.req.query("q") || "").trim();
+  if (!q) return c.json({ cliente: null, motivo: "vazio" });
+  const dig = q.replace(/\D/g, "");
+  const { results: cliAll } = await c.env.DB.prepare(
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, ultima_compra, ultimo_faturamento, created_at FROM clientes"
+  ).all<ClienteRow>();
+  const cli = cliAll.filter((x) => !ehClienteInterno(x.nome));
+
+  let achado: ClienteRow | undefined;
+  let modo = "";
+  // 1) Se o texto parece um telefone, casa pelo whatsapp (últimos 8 dígitos).
+  if (dig.length >= 8) {
+    const alvo = dig.slice(-8);
+    achado = cli.find((x) => {
+      const w = (x.whatsapp || "").replace(/\D/g, "");
+      return w.length >= 8 && w.slice(-8) === alvo;
+    });
+    if (achado) modo = "telefone";
+  }
+  // 2) Senão, casa pelo nome: exato → começa com → contém.
+  if (!achado) {
+    const nq = q.toLowerCase();
+    achado =
+      cli.find((x) => x.nome.toLowerCase() === nq) ||
+      cli.find((x) => x.nome.toLowerCase().startsWith(nq)) ||
+      (nq.length >= 3 ? cli.find((x) => x.nome.toLowerCase().includes(nq)) : undefined);
+    if (achado) modo = "nome";
+  }
+  if (!achado) return c.json({ cliente: null, consulta: q });
+  return c.json({ cliente: await fichaDoCliente(c.env, achado), modo, consulta: q });
+});
+
+// FICHA 360: dados do cliente + histórico de pedidos (não-reposição) + KPIs.
+clientes.get("/:id", async (c) => {
+  const id = c.req.param("id");
+  const cli = await c.env.DB.prepare(
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, ultima_compra, ultimo_faturamento, razao_social, cnpj_situacao, cnpj_checado_em, created_at FROM clientes WHERE id = ?"
+  ).bind(id).first<ClienteRow>();
+  if (!cli) return c.json({ error: "cliente não encontrado" }, 404);
+  return c.json(await fichaDoCliente(c.env, cli));
 });
 
 // CRIA/ATUALIZA. Sem id, procura por nome (mantém 1 registro por cliente).

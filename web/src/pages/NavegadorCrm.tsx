@@ -29,6 +29,7 @@ declare global {
       inicio: () => Promise<boolean>;
       onEstado: (cb: (s: EstadoNav) => void) => () => void;
       onPedirBounds: (cb: () => void) => () => void;
+      onContato?: (cb: (p: { titulo: string | null }) => void) => () => void;
     };
   }
 }
@@ -52,6 +53,25 @@ function normaliza(u: string): string {
   return x;
 }
 
+type Pedido = { id: string; numero: string | null; data: string | null; valor: number; situacao: string };
+type ClienteFicha = {
+  id: string; nome: string; whatsapp: string | null; cidade: string | null; uf: string | null;
+  cnpj: string | null; representante: string | null; observacao: string | null; bloqueado?: number | boolean | null;
+  kpis: { total: number; pedidos: number; ticket: number; ultima: string | null };
+  historico: Pedido[];
+};
+
+const brl = (n: number) => "R$ " + (Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function dataBR(s: string | null): string {
+  if (!s) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+}
+function iniciais(nome: string): string {
+  const p = (nome || "").trim().split(/\s+/).filter(Boolean);
+  return ((p[0]?.[0] || "") + (p[1]?.[0] || "")).toUpperCase() || "?";
+}
+
 export function NavegadorCrm() {
   const dk = typeof window !== "undefined" ? window.navcrmDesktop : undefined;
 
@@ -63,6 +83,11 @@ export function NavegadorCrm() {
   // Estado extra do modo DESKTOP (vem do navegador real).
   const [dkPodeVoltar, setDkPodeVoltar] = useState(false);
   const [dkPodeAvancar, setDkPodeAvancar] = useState(false);
+  // Fase 2: contato lido da conversa aberta no WhatsApp → cliente real do sistema.
+  const [contatoTitulo, setContatoTitulo] = useState<string | null>(null);
+  const [clienteReal, setClienteReal] = useState<ClienteFicha | null>(null);
+  const [buscandoCli, setBuscandoCli] = useState(false);
+  const [naoAchou, setNaoAchou] = useState(false);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const holderRef = useRef<HTMLDivElement>(null);
@@ -79,10 +104,29 @@ export function NavegadorCrm() {
     window.addEventListener("resize", reenviar);
     const offBounds = d.onPedirBounds(reenviar);
     const offEstado = d.onEstado((s) => { setCampo(s.url); setCarregando(s.carregando); setDkPodeVoltar(s.podeVoltar); setDkPodeAvancar(s.podeAvancar); });
+    const offContato = d.onContato ? d.onContato((p) => setContatoTitulo(p && p.titulo ? p.titulo : null)) : () => {};
     const iv = window.setInterval(reenviar, 800); // segurança p/ mudanças de layout
-    return () => { ro.disconnect(); window.removeEventListener("resize", reenviar); offBounds(); offEstado(); window.clearInterval(iv); d.desmontar(); };
+    return () => { ro.disconnect(); window.removeEventListener("resize", reenviar); offBounds(); offEstado(); offContato(); window.clearInterval(iv); d.desmontar(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Fase 2: quando muda o contato da conversa aberta, busca o cliente real.
+  useEffect(() => {
+    if (!dk) return;
+    if (!contatoTitulo) { setClienteReal(null); setNaoAchou(false); setBuscandoCli(false); return; }
+    let cancel = false;
+    setBuscandoCli(true); setNaoAchou(false);
+    fetch("/api/clientes/resolver?q=" + encodeURIComponent(contatoTitulo), { credentials: "include" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancel) return;
+        if (j && j.cliente) { setClienteReal(j.cliente as ClienteFicha); setNaoAchou(false); }
+        else { setClienteReal(null); setNaoAchou(true); }
+      })
+      .catch(() => { if (!cancel) { setClienteReal(null); setNaoAchou(true); } })
+      .finally(() => { if (!cancel) setBuscandoCli(false); });
+    return () => { cancel = true; };
+  }, [contatoTitulo, dk]);
 
   function irPara(u: string) {
     const x = normaliza(u); if (!x) return;
@@ -140,9 +184,78 @@ export function NavegadorCrm() {
           </div>
         </section>
 
-        {/* ── DIREITA: painel CRM (dados demonstrativos) — inalterado ── */}
+        {/* ── DIREITA: painel CRM. No desktop, mostra o CLIENTE REAL da conversa
+             aberta no WhatsApp; na web (sem detecção), mostra o exemplo. ── */}
         <aside className="navcrm-crm">
           <div className="navcrm-crm-scroll">
+            {dk ? (
+              clienteReal ? (
+                <>
+                  <div className="navcrm-cli">
+                    <div className="navcrm-cli-av">{iniciais(clienteReal.nome)}</div>
+                    <div>
+                      <div className="navcrm-cli-nm">{clienteReal.nome}</div>
+                      {contatoTitulo && <div className="navcrm-cli-sub">Conversa: {contatoTitulo}</div>}
+                      {clienteReal.bloqueado
+                        ? <span className="navcrm-badge bloq">● Bloqueado</span>
+                        : <span className="navcrm-badge ok">● Cliente no sistema</span>}
+                    </div>
+                  </div>
+                  <div className="navcrm-sec">
+                    <div className="navcrm-sec-h">Dados do cliente</div>
+                    <div className="navcrm-kv"><span>Telefone</span><b>{clienteReal.whatsapp || "—"}</b></div>
+                    <div className="navcrm-kv"><span>Cidade</span><b>{[clienteReal.cidade, clienteReal.uf].filter(Boolean).join(" / ") || "—"}</b></div>
+                    <div className="navcrm-kv"><span>CNPJ</span><b>{clienteReal.cnpj || "—"}</b></div>
+                    <div className="navcrm-kv"><span>Representante</span><b>{clienteReal.representante || "—"}</b></div>
+                  </div>
+                  <div className="navcrm-sec">
+                    <div className="navcrm-sec-h">Resumo</div>
+                    <div className="navcrm-kv"><span>Último pedido</span><b>{clienteReal.historico[0] ? `${clienteReal.historico[0].numero ? "#" + clienteReal.historico[0].numero + " · " : ""}${dataBR(clienteReal.kpis.ultima)}` : "—"}</b></div>
+                    <div className="navcrm-kv"><span>Valor do último</span><b>{clienteReal.historico[0] ? brl(clienteReal.historico[0].valor) : "—"}</b></div>
+                    <div className="navcrm-kv"><span>Total comprado</span><b>{brl(clienteReal.kpis.total)}</b></div>
+                    <div className="navcrm-kv"><span>Ticket médio</span><b>{brl(clienteReal.kpis.ticket)}</b></div>
+                    <div className="navcrm-kv"><span>Pedidos</span><b>{clienteReal.kpis.pedidos}</b></div>
+                  </div>
+                  <div className="navcrm-sec">
+                    <div className="navcrm-sec-h">Ações rápidas</div>
+                    <div className="navcrm-acoes">
+                      {["Criar pedido", "Gerar orçamento", "Abrir cliente", "Consultar estoque", "Adicionar observação", "Criar follow-up"].map((a) => (
+                        <button key={a} className="navcrm-acao" onClick={() => alert(`"${a}" para ${clienteReal.nome} — vai ligar no sistema numa próxima versão.`)}>{a}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="navcrm-sec">
+                    <div className="navcrm-sec-h">Histórico</div>
+                    {clienteReal.historico.length
+                      ? clienteReal.historico.slice(0, 10).map((p) => (
+                          <div className="navcrm-hist" key={p.id}><b>{p.numero ? "#" + p.numero : "—"}</b> · {dataBR(p.data)} · {brl(p.valor)} <span className={"navcrm-pill" + (p.situacao === "entregue" ? "" : " prod")}>{p.situacao}</span></div>
+                        ))
+                      : <div className="navcrm-hist obs">Sem pedidos registrados.</div>}
+                    {clienteReal.observacao && <div className="navcrm-hist obs">📝 {clienteReal.observacao}</div>}
+                  </div>
+                  <div className="navcrm-nota">Cliente carregado automaticamente da conversa aberta. Dados reais do sistema.</div>
+                </>
+              ) : (
+                <div className="navcrm-vazio">
+                  <div className="navcrm-vazio-ic">{buscandoCli ? "⏳" : "👤"}</div>
+                  {buscandoCli ? (
+                    <div className="navcrm-vazio-t">Procurando cliente…</div>
+                  ) : contatoTitulo ? (
+                    <>
+                      <div className="navcrm-vazio-t">Conversa aberta</div>
+                      <div className="navcrm-vazio-nome">{contatoTitulo}</div>
+                      <div className="navcrm-vazio-sub">Esse contato ainda não está no seu cadastro de clientes. Quando você cadastrar (com esse nome ou telefone), os dados aparecem aqui sozinhos.</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="navcrm-vazio-t">Abra uma conversa</div>
+                      <div className="navcrm-vazio-sub">Clique numa conversa no WhatsApp ao lado que os dados do cliente aparecem aqui automaticamente.</div>
+                    </>
+                  )}
+                </div>
+              )
+            ) : (
+            <>
             <div className="navcrm-cli">
               <div className="navcrm-cli-av">CC</div>
               <div>
@@ -189,7 +302,9 @@ export function NavegadorCrm() {
               <div className="navcrm-hist obs">📝 Cliente trabalha com decoração de alto padrão.</div>
               <div className="navcrm-hist obs">💬 Última interação: pediu orçamento do kit Linea.</div>
             </div>
-            <div className="navcrm-nota">Dados de exemplo. Nesta 1ª versão o painel ainda não está ligado ao banco — é a prova do layout.</div>
+            <div className="navcrm-nota">Dados de exemplo (versão web). No app desktop, aqui aparece o cliente real da conversa aberta no WhatsApp.</div>
+            </>
+            )}
           </div>
         </aside>
       </div>
