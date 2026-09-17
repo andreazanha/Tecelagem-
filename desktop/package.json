@@ -1,6 +1,6 @@
 {
   "name": "bigtricot-desktop",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Camada desktop (Electron) do Big Tricot — abre o app web e o Navegador CRM com navegador real embutido.",
   "main": "main.js",
