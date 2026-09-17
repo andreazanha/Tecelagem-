@@ -1,41 +1,53 @@
 @echo off
 chcp 65001 >nul
 title Big Tricot - Gerar instalador (.exe)
-
-REM ─────────────────────────────────────────────────────────────────────────
-REM  Auto-elevar para ADMINISTRADOR.
-REM  O electron-builder baixa o "winCodeSign", que contem LINKS SIMBOLICOS.
-REM  Criar link simbolico no Windows exige privilegio de Administrador — sem
-REM  isso da o erro "Cannot create symbolic link / o cliente nao tem o
-REM  privilegio necessario". Rodando como Admin, isso resolve sozinho.
-REM ─────────────────────────────────────────────────────────────────────────
-net session >nul 2>nul
-if not errorlevel 1 goto :admin_ok
-
-echo.
-echo  Este passo precisa de permissao de ADMINISTRADOR (so pra gerar o .exe).
-echo  Vai aparecer uma janela do Windows pedindo permissao — clique em SIM.
-echo.
-powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs" 2>nul
-if errorlevel 1 (
-  echo.
-  echo [X] Nao consegui pedir permissao de Administrador automaticamente.
-  echo     Clique com o botao DIREITO neste arquivo e escolha
-  echo     "Executar como administrador".
-  echo.
-  pause
-)
-exit /b
-
-:admin_ok
 cd /d "%~dp0"
 
+REM ─────────────────────────────────────────────────────────────────────────
+REM  PROTECAO CONTRA LOOP: se este script foi reaberto por causa da elevacao,
+REM  ele recebe o argumento "elevated" e NUNCA tenta elevar de novo. Assim, na
+REM  pior das hipoteses, ele roda UMA vez sem admin — jamais fica em loop.
+REM ─────────────────────────────────────────────────────────────────────────
+if "%~1"=="elevated" goto :run
+
+REM  Checa se ja esta como Administrador (fsutil exige admin e NAO depende de
+REM  nenhum servico do Windows, entao e confiavel — diferente do "net session").
+fsutil dirty query %SystemDrive% >nul 2>nul
+if not errorlevel 1 goto :run
+
+echo.
+echo  Pra gerar o instalador .exe o Windows precisa de permissao de Administrador.
+echo  Vai abrir uma janela pedindo permissao — clique em SIM.
+echo  (Se voce clicar NAO, nada acontece: e so fechar e usar o ABRIR-NAVEGADOR-CRM.bat.)
+echo.
+powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList 'elevated' -Verb RunAs" 2>nul
+REM  Deu o pedido de elevacao (ou o usuario cancelou). De qualquer forma, este
+REM  processo TERMINA aqui. Nao ha re-tentativa — sem loop.
+exit /b 0
+
+:run
 echo ================================================
 echo    BIG TRICOT - Gerar instalador do Windows
-echo    (rodando como Administrador)
 echo ================================================
 echo.
-echo Isso cria um instalador .exe (como qualquer programa).
+
+REM  Confirma se realmente estamos com admin (pode ter clicado NAO na permissao).
+fsutil dirty query %SystemDrive% >nul 2>nul
+if errorlevel 1 (
+  echo [!] Voce nao esta como Administrador (clicou NAO na permissao?).
+  echo     Sem admin, o gerador costuma falhar no passo do "winCodeSign".
+  echo.
+  echo     Voce tem 2 opcoes:
+  echo       1) Feche esta janela e use o ABRIR-NAVEGADOR-CRM.bat
+  echo          (o programa abre normal, com todos os consertos).
+  echo       2) Clique com o botao DIREITO neste arquivo e escolha
+  echo          "Executar como administrador" pra tentar o instalador.
+  echo.
+  pause
+  exit /b 1
+)
+
+echo (Rodando como Administrador — beleza.)
 echo Na 1a vez pode DEMORAR bastante (baixa ferramentas de build).
 echo.
 
