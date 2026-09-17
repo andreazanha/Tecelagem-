@@ -150,6 +150,7 @@ const GRUPOS: MenuGrupo[] = [
   {
     id: "crm", icon: "🤝", label: "CRM", itens: [
       { to: "/atendimento", icon: "🎯", label: "CRM (Funil + WhatsApp)", page: "atendimento" },
+      { to: "/navegador-crm", icon: "🌐", label: "Navegador CRM", page: "atendimento" },
       { to: "/painel-atendimento", icon: "📊", label: "Painel do Gestor", page: "atendimento-gestor" },
       { to: "/clientes", icon: "👥", label: "Clientes", page: "comercial" },
       { to: "/lojas-parceiras", icon: "🏬", label: "Lojas Parceiras", page: "comercial" },
@@ -430,7 +431,7 @@ export function Layout() {
   const nav = useNavigate();
   const loc = useLocation();
   // A barra LATERAL escura aparece SÓ no CRM/Atendimento. Nas demais telas fica o menu de cima.
-  const ehCRM = loc.pathname === "/atendimento" || loc.pathname.startsWith("/atendimento/");
+  const ehCRM = loc.pathname === "/atendimento" || loc.pathname.startsWith("/atendimento/") || loc.pathname === "/navegador-crm";
   const [sideOpen, setSideOpen] = useState(false); // barra lateral: aberta como gaveta no celular
   const [ssMin, setSsMin] = useState(() => Number(localStorage.getItem("ssMin") || "0"));
   const [ssOpen, setSsOpen] = useState(false);
