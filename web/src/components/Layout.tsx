@@ -375,41 +375,23 @@ function SideNav({ u, onNav }: { u: NonNullable<ReturnType<typeof getUser>>; onN
     { to: "/cadastros?aba=materiais&mat=__compras", icon: "🛒", label: "Compras", page: "cadastros" },
   ];
   const comDyn = (it: MenuItem): MenuItem => (it.dyn === "materiais" ? { ...it, children: matChildren() } : it);
-  const grupos = GRUPOS.map((g) => ({ ...g, itens: g.itens.map(comDyn).filter((it) => itemVisivel(u, it)) })).filter((g) => g.itens.length);
-  const comLink = GRUPOS.flatMap((g) => g.itens.map(comDyn)).flatMap((it) => [it, ...(it.children || [])]).filter((it) => it.to);
+  // Na tela do Atendimento a barra lateral mostra SÓ o que é do CRM (não o sistema todo).
+  const crmItens = (GRUPOS.find((g) => g.id === "crm")?.itens || []).map(comDyn).filter((it) => itemVisivel(u, it));
   let ativoTo = "", melhor = 0;
-  for (const it of comLink) { const s = itemAtivo(it.to!, loc); if (s > melhor) { melhor = s; ativoTo = it.to!; } }
-  const grupoAtivo = grupos.find((g) => g.itens.some((it) => it.to === ativoTo || (it.children || []).some((ch) => ch.to === ativoTo)))?.id;
-  const [aberto, setAberto] = useState<string | null>(grupoAtivo || (grupos[0]?.id ?? null));
-  useEffect(() => { if (grupoAtivo) setAberto(grupoAtivo); }, [grupoAtivo]);
+  for (const it of crmItens) { const s = itemAtivo(it.to!, loc); if (s > melhor) { melhor = s; ativoTo = it.to!; } }
 
-  const Item = (it: MenuItem, sub = false): JSX.Element => {
-    if (it.children && it.children.length) {
-      return (
-        <div key={it.label}>
-          <div className="sn-item sn-item-h" title={it.label}><span className="sn-i-ic"><Icon emoji={it.icon} /></span><span className="sn-i-lbl">{it.label}</span></div>
-          <div className="sn-subitems">{it.children.map((ch) => Item(ch, true))}</div>
-        </div>
-      );
-    }
+  const Item = (it: MenuItem): JSX.Element => {
     if (it.soon || !it.to) return <span className="sn-item disabled" key={it.label} title={it.label + " — em breve"}><span className="sn-i-ic"><Icon emoji={it.icon} /></span><span className="sn-i-lbl">{it.label}</span><span className="sn-soon">em breve</span></span>;
     const ativo = it.to === ativoTo;
-    return <NavLink to={it.to} key={it.label} onClick={onNav} className={() => "sn-item" + (sub ? " sub" : "") + (ativo ? " active" : "")} title={it.label}><span className="sn-i-ic"><Icon emoji={it.icon} /></span><span className="sn-i-lbl">{it.label}</span></NavLink>;
+    return <NavLink to={it.to} key={it.label} onClick={onNav} className={() => "sn-item" + (ativo ? " active" : "")} title={it.label}><span className="sn-i-ic"><Icon emoji={it.icon} /></span><span className="sn-i-lbl">{it.label}</span></NavLink>;
   };
 
   return (
     <nav className="sidenav">
       <div className="sn-scroll">
-        {grupos.map((g) => (
-          <div className={"sn-grp" + (aberto === g.id ? " open" : "")} key={g.id}>
-            <button className={"sn-grp-btn" + (grupoAtivo === g.id ? " on" : "")} onClick={() => setAberto((a) => (a === g.id ? null : g.id))} title={g.label}>
-              <span className="sn-ic"><Icon emoji={g.icon} /></span>
-              <span className="sn-lbl">{g.label}</span>
-              <Chev />
-            </button>
-            {aberto === g.id && <div className="sn-items">{g.itens.map((it) => Item(it))}</div>}
-          </div>
-        ))}
+        <div className="sn-sectionlabel">CRM · Atendimento</div>
+        <div className="sn-items">{crmItens.map((it) => Item(it))}</div>
+        <NavLink to="/" className="sn-item sn-voltar" onClick={onNav} title="Voltar ao sistema"><span className="sn-i-ic"><Icon emoji="🏭" /></span><span className="sn-i-lbl">Voltar ao sistema</span></NavLink>
       </div>
     </nav>
   );
