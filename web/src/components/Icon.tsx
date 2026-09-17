@@ -47,6 +47,13 @@ const PATHS: Record<string, string> = {
   "🔌": '<path d="M12 22v-5M9 8V2M15 8V2M6 8h12v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4Z"/>',
   "🕑": '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
   "🔔": '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  "🎯": '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  "🏬": '<path d="M3 9v10a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V9"/><path d="M2 9 4.5 4h15L22 9a3 3 0 0 1-5 0 3 3 0 0 1-5 0 3 3 0 0 1-5 0 3 3 0 0 1-5 0Z"/><path d="M9.5 20v-5h5v5"/>',
+  "🎓": '<path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 2 6 2s6-1 6-2v-5"/><path d="M22 10v6"/>',
+  "🏢": '<rect x="4" y="2" width="16" height="20" rx="1.5"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/>',
+  "🔹": '<path d="M12 2 22 12 12 22 2 12Z"/>',
+  "🏆": '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.7V17c0 .6-.5 1-1 1.2C7.9 18.8 7 20.2 7 22"/><path d="M14 14.7V17c0 .6.5 1 1 1.2 1.1.6 2 2 2 3.8"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
+  "⚠": '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/>',
 };
 
 export function Icon({ emoji, size = 18 }: { emoji: string; size?: number }) {

@@ -358,6 +358,63 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
   );
 }
 
+// Chevron (ícone de linha) pro acordeão da barra lateral.
+function Chev() {
+  return <svg className="sn-chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>;
+}
+
+// Barra LATERAL (visual premium): mesma navegação real do app (GRUPOS/permissões/links),
+// só que vertical, escura e com ícones de linha. Grupos em acordeão; o grupo ativo abre sozinho.
+function SideNav({ u, onNav }: { u: NonNullable<ReturnType<typeof getUser>>; onNav?: () => void }) {
+  const loc = useLocation();
+  const [insumos, setInsumos] = useState<MaterialCategoriaDef[]>([]);
+  useEffect(() => { api.listarCategoriasMaterial().then(setInsumos).catch(() => {}); }, []);
+  const matChildren = (): MenuItem[] => [
+    { to: "/cadastros?aba=tipos-fio", icon: "🎨", label: "Fios", page: "cadastros" },
+    ...insumos.map((c) => ({ to: `/cadastros?aba=materiais&mat=${c.slug}`, icon: c.icone || "🔹", label: c.nome, page: "cadastros" })),
+    { to: "/cadastros?aba=materiais&mat=__compras", icon: "🛒", label: "Compras", page: "cadastros" },
+  ];
+  const comDyn = (it: MenuItem): MenuItem => (it.dyn === "materiais" ? { ...it, children: matChildren() } : it);
+  const grupos = GRUPOS.map((g) => ({ ...g, itens: g.itens.map(comDyn).filter((it) => itemVisivel(u, it)) })).filter((g) => g.itens.length);
+  const comLink = GRUPOS.flatMap((g) => g.itens.map(comDyn)).flatMap((it) => [it, ...(it.children || [])]).filter((it) => it.to);
+  let ativoTo = "", melhor = 0;
+  for (const it of comLink) { const s = itemAtivo(it.to!, loc); if (s > melhor) { melhor = s; ativoTo = it.to!; } }
+  const grupoAtivo = grupos.find((g) => g.itens.some((it) => it.to === ativoTo || (it.children || []).some((ch) => ch.to === ativoTo)))?.id;
+  const [aberto, setAberto] = useState<string | null>(grupoAtivo || (grupos[0]?.id ?? null));
+  useEffect(() => { if (grupoAtivo) setAberto(grupoAtivo); }, [grupoAtivo]);
+
+  const Item = (it: MenuItem, sub = false): JSX.Element => {
+    if (it.children && it.children.length) {
+      return (
+        <div key={it.label}>
+          <div className="sn-item sn-item-h" title={it.label}><span className="sn-i-ic"><Icon emoji={it.icon} /></span><span className="sn-i-lbl">{it.label}</span></div>
+          <div className="sn-subitems">{it.children.map((ch) => Item(ch, true))}</div>
+        </div>
+      );
+    }
+    if (it.soon || !it.to) return <span className="sn-item disabled" key={it.label} title={it.label + " — em breve"}><span className="sn-i-ic"><Icon emoji={it.icon} /></span><span className="sn-i-lbl">{it.label}</span><span className="sn-soon">em breve</span></span>;
+    const ativo = it.to === ativoTo;
+    return <NavLink to={it.to} key={it.label} onClick={onNav} className={() => "sn-item" + (sub ? " sub" : "") + (ativo ? " active" : "")} title={it.label}><span className="sn-i-ic"><Icon emoji={it.icon} /></span><span className="sn-i-lbl">{it.label}</span></NavLink>;
+  };
+
+  return (
+    <nav className="sidenav">
+      <div className="sn-scroll">
+        {grupos.map((g) => (
+          <div className={"sn-grp" + (aberto === g.id ? " open" : "")} key={g.id}>
+            <button className={"sn-grp-btn" + (grupoAtivo === g.id ? " on" : "")} onClick={() => setAberto((a) => (a === g.id ? null : g.id))} title={g.label}>
+              <span className="sn-ic"><Icon emoji={g.icon} /></span>
+              <span className="sn-lbl">{g.label}</span>
+              <Chev />
+            </button>
+            {aberto === g.id && <div className="sn-items">{g.itens.map((it) => Item(it))}</div>}
+          </div>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
 // Menu "Painel TV" no topo: um botão que abre a lista de telas de TV.
 function TvMenu({ tvs }: { tvs: typeof TVS }) {
   const [aberto, setAberto] = useState(false);
@@ -389,6 +446,7 @@ function TvMenu({ tvs }: { tvs: typeof TVS }) {
 export function Layout() {
   const u = getUser();
   const nav = useNavigate();
+  const [sideOpen, setSideOpen] = useState(false); // barra lateral: aberta como gaveta no celular
   const [ssMin, setSsMin] = useState(() => Number(localStorage.getItem("ssMin") || "0"));
   const [ssOpen, setSsOpen] = useState(false);
   function mudarSs(v: number) {
@@ -413,12 +471,12 @@ export function Layout() {
   const tvsVisiveis = TVS.filter((t) => pode(u, t.page));
   const iniciais = u.nome.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
   return (
-    <div className="app topnav-app">
+    <div className={"app sidenav-app" + (sideOpen ? " side-open" : "")}>
       <header className="topbar">
+        <button className="side-burger" onClick={() => setSideOpen((o) => !o)} title="Menu" aria-label="Abrir menu">☰</button>
         <Link to="/" className="brand" title="Início">
           <img className="brand-logo" src="/logo-bigtricot.png" alt="Big Tricot Home Decor" />
         </Link>
-        <TopNav u={u} />
         <div className="topbar-right">
           <UndoRedo />
           <DemoMode />
@@ -465,6 +523,8 @@ export function Layout() {
         </div>
       </header>
 
+      <SideNav u={u} onNav={() => setSideOpen(false)} />
+      <div className="side-backdrop" onClick={() => setSideOpen(false)} />
       <main className="content">
         <Outlet />
       </main>

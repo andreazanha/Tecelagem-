@@ -1848,3 +1848,47 @@ body.dark .at-central .at-inbox-empty { color: #64748b; }
    escuro, devolve o tema escuro pra eles (senão o texto claro ficaria forçado no
    claro e sumiria). O chat inline (.at-inline-wrap) NÃO é .modal-bg, então segue claro. */
 body.dark .at-central .modal-bg { --ink: #eef1f8; --muted: #aab6d2; --line: #ffffff1a; --bg-soft: #131c30; --card: #0f1629; color: #eef1f8; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BARRA LATERAL (SideNav) — visual premium: chrome escuro (topo + lateral navy),
+   conteúdo claro. Reaproveita a navegação real do app, só muda o visual.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.app.sidenav-app { grid-template-columns: 222px 1fr; }
+.sidenav { grid-area: side; background: #0f1728; border-right: 1px solid #ffffff12; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.sn-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 10px 10px 16px; scrollbar-width: thin; scrollbar-color: #2a3a56 transparent; }
+.sn-scroll::-webkit-scrollbar { width: 8px; }
+.sn-scroll::-webkit-scrollbar-thumb { background: #26344d; border-radius: 8px; }
+.sn-grp { margin-bottom: 1px; }
+.sn-grp-btn { display: flex; align-items: center; gap: 11px; width: 100%; padding: 10px 11px; border: 0; background: transparent; color: #c3d0e4; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; border-radius: 10px; text-align: left; }
+.sn-grp-btn:hover { background: #17263e; color: #fff; }
+.sn-grp-btn.on, .sn-grp.open > .sn-grp-btn { color: #fff; }
+.sn-ic { display: inline-flex; color: #8ea0bd; flex: 0 0 auto; }
+.sn-ic svg { width: 19px; height: 19px; }
+.sn-grp-btn.on .sn-ic, .sn-grp.open > .sn-grp-btn .sn-ic { color: #7cb0ff; }
+.sn-lbl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sn-chev { flex: 0 0 auto; opacity: .55; transition: transform .18s; }
+.sn-grp.open > .sn-grp-btn .sn-chev { transform: rotate(180deg); }
+.sn-items { padding: 1px 0 6px 4px; }
+.sn-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px; color: #9fb0c9; text-decoration: none; font-size: 13px; font-weight: 500; cursor: pointer; }
+.sn-item:hover { background: #17263e; color: #fff; }
+.sn-item.active { background: #1c3454; color: #fff; font-weight: 700; }
+.sn-i-ic { display: inline-flex; color: #6f83a3; flex: 0 0 auto; }
+.sn-i-ic svg { width: 17px; height: 17px; }
+.sn-item:hover .sn-i-ic, .sn-item.active .sn-i-ic { color: #7cb0ff; }
+.sn-i-lbl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sn-item.disabled { color: #566581; cursor: default; }
+.sn-item.disabled:hover { background: transparent; color: #566581; }
+.sn-soon { margin-left: auto; font-size: 9.5px; font-weight: 800; color: #6f83a3; background: #1a2942; padding: 2px 6px; border-radius: 6px; }
+.sn-item-h { color: #9fb0c9; }
+.sn-subitems { padding-left: 14px; }
+.sn-subitems .sn-item { font-size: 12.5px; }
+/* burger (celular) + fundo escuro da gaveta */
+.side-burger { display: none; background: #ffffff1f; color: #fff; border: 0; border-radius: 8px; width: 38px; height: 34px; font-size: 18px; cursor: pointer; margin-right: 6px; align-items: center; justify-content: center; }
+.side-backdrop { display: none; }
+@media (max-width: 900px) {
+  .app.sidenav-app { grid-template-columns: 1fr; grid-template-areas: "top" "main"; }
+  .sidenav { position: fixed; top: 0; left: 0; bottom: 0; width: 264px; z-index: 120; transform: translateX(-100%); transition: transform .22s ease; }
+  .app.side-open .sidenav { transform: translateX(0); box-shadow: 0 0 40px #0009; }
+  .side-burger { display: inline-flex; }
+  .app.side-open .side-backdrop { display: block; position: fixed; inset: 0; background: #0008; z-index: 110; }
+}
