@@ -55,6 +55,11 @@ function criarJanela() {
     },
   });
   win.loadURL(START_URL);
+  // Marcador de versão no título da janela — assim dá pra confirmar num relance
+  // se o programa NOVO está rodando (deve aparecer "Big Tricot • v0.2").
+  const TITULO = "Big Tricot • v0.2";
+  win.setTitle(TITULO);
+  win.on("page-title-updated", (e) => { e.preventDefault(); if (win && !win.isDestroyed()) win.setTitle(TITULO); });
   win.once("ready-to-show", () => win.show());
   // Reposiciona o navegador embutido quando a janela muda de tamanho.
   win.on("resize", () => { if (win && !win.isDestroyed()) win.webContents.send("navcrm:pediu-bounds"); });
@@ -64,7 +69,11 @@ function criarJanela() {
 // Cria (uma vez) o navegador embutido real, com sessão persistente e seguro.
 function garantirView() {
   if (view) return view;
-  const part = session.fromPartition("persist:navcrm"); // cookies/login persistem
+  // Sessão NOVA ("navcrm2"): a antiga ("navcrm") pode ter guardado, via service
+  // worker/cache, a página "navegador desatualizado" de quando o UA ainda era
+  // Electron — e continuaria mostrando mesmo com o UA corrigido. Partição limpa
+  // carrega o WhatsApp do zero, já com o UA de Chrome. O login continua persistindo.
+  const part = session.fromPartition("persist:navcrm2"); // cookies/login persistem
   // Aplica o UA de Chrome na sessão inteira (afeta também os sub-recursos que o
   // WhatsApp Web usa pra decidir se o navegador é "moderno").
   try { part.setUserAgent(UA_CHROME); } catch { /* ignore */ }
