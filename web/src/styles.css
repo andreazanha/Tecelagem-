@@ -1898,7 +1898,7 @@ body.dark .at-central .modal-bg { --ink: #eef1f8; --muted: #aab6d2; --line: #fff
 /* ═══ Módulo experimental "Navegador CRM" (navegador embutido + painel CRM) ═══ */
 .navcrm { --ink:#0f172a; --muted:#64748b; --line:#e7ebf1; --line2:#eef1f6; --bg-soft:#f5f7fb; --card:#ffffff; color:#0f172a; }
 body.dark .navcrm { background:#f4f6f9; border-radius:14px; }
-.navcrm-split { display:grid; grid-template-columns:minmax(0,72%) minmax(280px,28%); gap:14px; height:calc(100dvh - 150px); min-height:480px; }
+.navcrm-split { display:grid; grid-template-columns:minmax(0,72%) minmax(280px,28%); gap:14px; flex:1 1 auto; min-height:0; }
 .navcrm-web { display:flex; flex-direction:column; min-width:0; border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; }
 .navcrm-bar { display:flex; align-items:center; gap:6px; padding:8px 10px; border-bottom:1px solid var(--line); background:var(--bg-soft); flex:0 0 auto; }
 .navcrm-ic { width:34px; height:34px; border-radius:8px; border:1px solid var(--line); background:#fff; color:#0f172a; font-size:17px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex:0 0 auto; text-decoration:none; }
@@ -1917,8 +1917,8 @@ body.dark .navcrm { background:#f4f6f9; border-radius:14px; }
 .navcrm-aviso { font-size:11.5px; color:#92600a; background:#fff8e6; border-bottom:1px solid #f6e2b0; padding:6px 12px; flex:0 0 auto; }
 .navcrm-frame iframe { flex:1 1 auto; width:100%; border:0; background:#fff; }
 .navcrm-holder { flex:1 1 auto; min-height:0; width:100%; background:#0f1728; }
-.navcrm-crm { border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; display:flex; flex-direction:column; min-width:0; }
-.navcrm-crm-scroll { overflow-y:auto; padding:14px; }
+.navcrm-crm { border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; display:flex; flex-direction:column; min-width:0; min-height:0; }
+.navcrm-crm-scroll { flex:1 1 auto; min-height:0; overflow-y:auto; padding:14px; }
 .navcrm-cli { display:flex; gap:11px; align-items:center; }
 .navcrm-cli-av { width:46px; height:46px; border-radius:50%; background:#e6eaf1; color:#475569; display:grid; place-items:center; font-weight:800; flex:0 0 auto; }
 .navcrm-cli-nm { font-weight:800; font-size:15px; color:#0f172a; }
@@ -1938,4 +1938,4 @@ body.dark .navcrm { background:#f4f6f9; border-radius:14px; }
 .navcrm-hist.obs { color:var(--muted); }
 .navcrm-pill { font-size:10px; font-weight:700; color:#15803d; background:#e7f7ee; border-radius:999px; padding:1px 7px; }
 .navcrm-nota { margin-top:16px; font-size:11.5px; color:var(--muted); background:var(--bg-soft); border:1px dashed var(--line); border-radius:10px; padding:10px; }
-@media (max-width:1000px) { .navcrm-split { grid-template-columns:1fr; height:auto; } .navcrm-web { height:70vh; } }
+@media (max-width:1000px) { .navcrm-split { grid-template-columns:1fr; flex:0 0 auto; height:auto; } .navcrm-web { height:70vh; } .navcrm-crm-scroll { overflow:visible; } }

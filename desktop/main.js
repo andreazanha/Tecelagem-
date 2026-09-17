@@ -21,6 +21,9 @@ const APP_URL = (process.env.NAVCRM_APP_URL || "https://rolagem-de-fase.andre-se
 const START_URL = APP_URL + "/navegador-crm";
 // Página inicial do navegador embutido.
 const HOME_URL = "https://web.whatsapp.com";
+// User-agent de Chrome moderno: sem o token "Electron", o WhatsApp Web deixa de
+// mostrar a página "navegador desatualizado / use o Chrome 100+".
+const UA_CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
 let win = null;
 let view = null;
@@ -62,6 +65,9 @@ function criarJanela() {
 function garantirView() {
   if (view) return view;
   const part = session.fromPartition("persist:navcrm"); // cookies/login persistem
+  // Aplica o UA de Chrome na sessão inteira (afeta também os sub-recursos que o
+  // WhatsApp Web usa pra decidir se o navegador é "moderno").
+  try { part.setUserAgent(UA_CHROME); } catch { /* ignore */ }
   view = new WebContentsView({
     webPreferences: {
       session: part,
@@ -71,6 +77,8 @@ function garantirView() {
       // sem preload de propósito: o conteúdo externo (WhatsApp) não acessa Node.
     },
   });
+  // Remove o token "Electron" do user-agent do navegador embutido.
+  try { view.webContents.setUserAgent(UA_CHROME); } catch { /* ignore */ }
   // Popups/downloads abrem no navegador do sistema (não numa janela solta).
   view.webContents.setWindowOpenHandler(({ url }) => {
     if (urlValida(url)) shell.openExternal(url);
