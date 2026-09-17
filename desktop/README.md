@@ -51,13 +51,16 @@ node node_modules\electron\install.js
 ```
 e depois dê dois cliques no `.bat` de novo.
 
-## Gerar um instalador (.exe) — opcional
+## Gerar um instalador (.exe) — vira um programa normal
 
-```
-npm run dist:win
-```
-Gera um instalador em `desktop/dist/`. (Requer Windows; o electron-builder baixa
-o necessário na 1ª vez.)
+Dê **dois cliques** em **`GERAR-INSTALADOR.bat`** (na pasta `desktop`). Ele cria o
+instalador em `desktop\dist\` — um arquivo tipo **`Big Tricot Setup 0.1.0.exe`**.
+Dê dois cliques nesse `.exe` pra instalar; ele cria **atalho na área de trabalho**
+e no **menu Iniciar**, e daí você abre o "Big Tricot" como qualquer programa
+(sem precisar mais do `.bat`).
+
+> A 1ª geração pode demorar bastante (o electron-builder baixa ferramentas). Precisa
+> ser feito **no Windows**.
 
 ## Segurança (já configurado)
 
