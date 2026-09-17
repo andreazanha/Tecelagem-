@@ -446,6 +446,9 @@ function TvMenu({ tvs }: { tvs: typeof TVS }) {
 export function Layout() {
   const u = getUser();
   const nav = useNavigate();
+  const loc = useLocation();
+  // A barra LATERAL escura aparece SÓ no CRM/Atendimento. Nas demais telas fica o menu de cima.
+  const ehCRM = loc.pathname === "/atendimento" || loc.pathname.startsWith("/atendimento/");
   const [sideOpen, setSideOpen] = useState(false); // barra lateral: aberta como gaveta no celular
   const [ssMin, setSsMin] = useState(() => Number(localStorage.getItem("ssMin") || "0"));
   const [ssOpen, setSsOpen] = useState(false);
@@ -471,12 +474,13 @@ export function Layout() {
   const tvsVisiveis = TVS.filter((t) => pode(u, t.page));
   const iniciais = u.nome.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
   return (
-    <div className={"app sidenav-app" + (sideOpen ? " side-open" : "")}>
+    <div className={"app " + (ehCRM ? "sidenav-app" + (sideOpen ? " side-open" : "") : "topnav-app")}>
       <header className="topbar">
-        <button className="side-burger" onClick={() => setSideOpen((o) => !o)} title="Menu" aria-label="Abrir menu">☰</button>
+        {ehCRM && <button className="side-burger" onClick={() => setSideOpen((o) => !o)} title="Menu" aria-label="Abrir menu">☰</button>}
         <Link to="/" className="brand" title="Início">
           <img className="brand-logo" src="/logo-bigtricot.png" alt="Big Tricot Home Decor" />
         </Link>
+        {!ehCRM && <TopNav u={u} />}
         <div className="topbar-right">
           <UndoRedo />
           <DemoMode />
@@ -523,8 +527,8 @@ export function Layout() {
         </div>
       </header>
 
-      <SideNav u={u} onNav={() => setSideOpen(false)} />
-      <div className="side-backdrop" onClick={() => setSideOpen(false)} />
+      {ehCRM && <SideNav u={u} onNav={() => setSideOpen(false)} />}
+      {ehCRM && <div className="side-backdrop" onClick={() => setSideOpen(false)} />}
       <main className="content">
         <Outlet />
       </main>
