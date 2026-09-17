@@ -22,8 +22,17 @@ const START_URL = APP_URL + "/navegador-crm";
 // Página inicial do navegador embutido.
 const HOME_URL = "https://web.whatsapp.com";
 // User-agent de Chrome moderno: sem o token "Electron", o WhatsApp Web deixa de
-// mostrar a página "navegador desatualizado / use o Chrome 100+".
-const UA_CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+// mostrar a página "navegador desatualizado / use o Chrome 100+". Deriva a versão
+// do próprio Chromium do Electron (ex.: 130.0.6723.x) — assim nunca fica "velho".
+const CHROME_VER = (process.versions && process.versions.chrome) ? process.versions.chrome : "130.0.0.0";
+const UA_CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + CHROME_VER + " Safari/537.36";
+
+// CORREÇÃO PRINCIPAL do "WhatsApp exige Chrome 100": o WhatsApp lê navigator.userAgent
+// NO JAVASCRIPT DA PÁGINA. Em WebContentsView, setUserAgent/loadURL{userAgent} muitas
+// vezes NÃO chegam ao navigator.userAgent do renderer (bug Electron #47979). O único
+// jeito global e confiável é o userAgentFallback, e ele PRECISA ser definido ANTES de
+// qualquer janela/view ser criada (por isso está aqui no topo do módulo).
+app.userAgentFallback = UA_CHROME;
 
 let win = null;
 let view = null;
@@ -56,8 +65,8 @@ function criarJanela() {
   });
   win.loadURL(START_URL);
   // Marcador de versão no título da janela — assim dá pra confirmar num relance
-  // se o programa NOVO está rodando (deve aparecer "Big Tricot • v0.2").
-  const TITULO = "Big Tricot • v0.2";
+  // se o programa NOVO está rodando (deve aparecer "Big Tricot • v0.3").
+  const TITULO = "Big Tricot • v0.3";
   win.setTitle(TITULO);
   win.on("page-title-updated", (e) => { e.preventDefault(); if (win && !win.isDestroyed()) win.setTitle(TITULO); });
   win.once("ready-to-show", () => win.show());
@@ -74,6 +83,11 @@ function garantirView() {
   // Electron — e continuaria mostrando mesmo com o UA corrigido. Partição limpa
   // carrega o WhatsApp do zero, já com o UA de Chrome. O login continua persistindo.
   const part = session.fromPartition("persist:navcrm2"); // cookies/login persistem
+  // Limpa SÓ o service worker + cache de assets (que podiam ter guardado a página
+  // "navegador desatualizado"). NÃO limpa cookies/indexeddb/localstorage — é onde
+  // fica o login/keys do WhatsApp — então o QR NÃO precisa ser escaneado de novo.
+  try { part.clearStorageData({ storages: ["serviceworkers", "cachestorage"] }); } catch { /* ignore */ }
+  try { part.clearCache(); } catch { /* ignore */ }
   // Aplica o UA de Chrome na sessão inteira (afeta também os sub-recursos que o
   // WhatsApp Web usa pra decidir se o navegador é "moderno").
   try { part.setUserAgent(UA_CHROME); } catch { /* ignore */ }
