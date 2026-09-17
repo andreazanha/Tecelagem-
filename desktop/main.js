@@ -46,12 +46,22 @@ let ultimoTitulo = null;   // último contato enviado (evita reenviar igual)
 const JS_LER_CONTATO = `(function(){try{
   var m=document.querySelector('#main'); if(!m) return null;
   var h=m.querySelector('header'); if(!h) return null;
-  var s=h.querySelector('span[title]');
-  var nome = s ? (s.getAttribute('title')||s.textContent||'') : '';
-  if(!nome){ var d=h.querySelector('span[dir="auto"]'); nome = d ? (d.textContent||'') : ''; }
-  nome=(nome||'').replace(/\\s+/g,' ').trim();
-  return nome || null;
+  // O NOME real é um span cujo title == o texto visível. Dicas/tooltips do WhatsApp
+  // (ex.: "clique para mostrar os dados do contato") têm title != texto, e são ignoradas.
+  var spans=h.querySelectorAll('span[title]'); var nome='';
+  for(var i=0;i<spans.length;i++){
+    var t=(spans[i].getAttribute('title')||'').replace(/\\s+/g,' ').trim();
+    var txt=(spans[i].textContent||'').replace(/\\s+/g,' ').trim();
+    if(t && t===txt){ nome=t; break; }
+  }
+  if(!nome){ var d=h.querySelector('span[dir="auto"]'); nome=d?(d.textContent||'').replace(/\\s+/g,' ').trim():''; }
+  if(!nome) return null;
+  if(/clique|clic|toque|dados do contato|click here/i.test(nome)) return null;
+  return nome;
 }catch(e){ return null; }})()`;
+
+// A web pode sobrescrever o extrator (afinar seletores sem reinstalar o programa).
+let extratorJS = JS_LER_CONTATO;
 
 function enviarContato(titulo) {
   if (titulo === ultimoTitulo) return;
@@ -63,7 +73,7 @@ function lerContato() {
   let u = "";
   try { u = view.webContents.getURL() || ""; } catch { u = ""; }
   if (!/whatsapp\.com/i.test(u)) { enviarContato(null); return; } // fora do WhatsApp: limpa
-  view.webContents.executeJavaScript(JS_LER_CONTATO)
+  view.webContents.executeJavaScript(extratorJS)
     .then((titulo) => { const t = titulo && String(titulo).trim(); enviarContato(t ? t : null); })
     .catch(() => { /* ignore */ });
 }
@@ -97,8 +107,8 @@ function criarJanela() {
   });
   win.loadURL(START_URL);
   // Marcador de versão no título da janela — assim dá pra confirmar num relance
-  // se o programa NOVO está rodando (deve aparecer "Big Tricot • v0.4").
-  const TITULO = "Big Tricot • v0.4";
+  // se o programa NOVO está rodando (deve aparecer "Big Tricot • v0.5").
+  const TITULO = "Big Tricot • v0.5";
   win.setTitle(TITULO);
   win.on("page-title-updated", (e) => { e.preventDefault(); if (win && !win.isDestroyed()) win.setTitle(TITULO); });
   win.once("ready-to-show", () => win.show());
@@ -185,6 +195,9 @@ ipcMain.handle("navcrm:voltar", () => { if (view) irVoltar(view.webContents); re
 ipcMain.handle("navcrm:avancar", () => { if (view) irAvancar(view.webContents); return true; });
 ipcMain.handle("navcrm:recarregar", () => { if (view) view.webContents.reload(); return true; });
 ipcMain.handle("navcrm:inicio", () => { garantirView().webContents.loadURL(HOME_URL, { userAgent: UA_CHROME }); return true; });
+// A web (nosso app, confiável) pode afinar o seletor de leitura do contato sem
+// precisar reinstalar o desktop. Só aceita string curta; nunca vem de fora.
+ipcMain.handle("navcrm:extrator", (_e, code) => { if (typeof code === "string" && code.length > 8 && code.length < 8000) { extratorJS = code; lerContato(); } return true; });
 
 app.whenReady().then(criarJanela);
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });

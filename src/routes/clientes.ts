@@ -8,6 +8,11 @@ export const clientes = new Hono<{ Bindings: Env }>();
 
 const str = (v: unknown) => String(v ?? "").trim() || null;
 
+// Normaliza nome para casar de forma tolerante: minúsculas, sem acento, sem
+// pontuação (colapsa tudo em espaços). Ex.: "Cris - Objetos (G M C)" → "cris objetos g m c".
+const norm = (s: unknown) =>
+  String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+
 type ClienteRow = {
   id: string; nome: string; contato: string | null; whatsapp: string | null; email: string | null;
   cidade: string | null; uf: string | null; cnpj: string | null; representante: string | null;
@@ -118,13 +123,22 @@ clientes.get("/resolver", async (c) => {
     });
     if (achado) modo = "telefone";
   }
-  // 2) Senão, casa pelo nome: exato → começa com → contém.
+  // 2) Senão, casa pelo nome de forma tolerante: acentos/pontuação ignorados;
+  //    parênteses removidos (o WhatsApp costuma salvar "Cris - Objetos (G M C…)").
+  //    Escolhe o MELHOR: exato > um contém o outro (maior trecho vence). Só o "melhor"
+  //    evita mostrar cliente errado.
   if (!achado) {
-    const nq = q.toLowerCase();
-    achado =
-      cli.find((x) => x.nome.toLowerCase() === nq) ||
-      cli.find((x) => x.nome.toLowerCase().startsWith(nq)) ||
-      (nq.length >= 3 ? cli.find((x) => x.nome.toLowerCase().includes(nq)) : undefined);
+    const nq = norm(q);
+    let melhor = 0;
+    for (const x of cli) {
+      const nn = norm(x.nome);
+      if (!nn) continue;
+      let score = 0;
+      if (nn === nq) score = 1000 + nn.length;
+      else if (nq.length >= 4 && nn.includes(nq)) score = 500 + nq.length;
+      else if (nn.length >= 4 && nq.includes(nn)) score = 400 + nn.length;
+      if (score > melhor) { melhor = score; achado = x; }
+    }
     if (achado) modo = "nome";
   }
   if (!achado) return c.json({ cliente: null, consulta: q });

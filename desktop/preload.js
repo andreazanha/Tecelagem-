@@ -5,7 +5,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("navcrmDesktop", {
-  versao: 2,
+  versao: 3,
   montar: (bounds) => ipcRenderer.invoke("navcrm:montar", bounds),
   bounds: (bounds) => ipcRenderer.invoke("navcrm:bounds", bounds),
   desmontar: () => ipcRenderer.invoke("navcrm:desmontar"),
@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld("navcrmDesktop", {
   avancar: () => ipcRenderer.invoke("navcrm:avancar"),
   recarregar: () => ipcRenderer.invoke("navcrm:recarregar"),
   inicio: () => ipcRenderer.invoke("navcrm:inicio"),
+  // afina o leitor de contato a partir da web (sem reinstalar o desktop)
+  definirExtrator: (code) => ipcRenderer.invoke("navcrm:extrator", code),
   // eventos: estado do navegador (url, botões, carregando) e pedido de reenviar bounds
   onEstado: (cb) => { const h = (_e, s) => cb(s); ipcRenderer.on("navcrm:estado", h); return () => ipcRenderer.removeListener("navcrm:estado", h); },
   onPedirBounds: (cb) => { const h = () => cb(); ipcRenderer.on("navcrm:pediu-bounds", h); return () => ipcRenderer.removeListener("navcrm:pediu-bounds", h); },

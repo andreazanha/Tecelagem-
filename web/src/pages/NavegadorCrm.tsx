@@ -30,6 +30,7 @@ declare global {
       onEstado: (cb: (s: EstadoNav) => void) => () => void;
       onPedirBounds: (cb: () => void) => () => void;
       onContato?: (cb: (p: { titulo: string | null }) => void) => () => void;
+      definirExtrator?: (code: string) => Promise<boolean>;
     };
   }
 }
@@ -42,6 +43,24 @@ const ATALHOS: { label: string; url: string }[] = [
   { label: "Consulta CNPJ", url: "https://casadosdados.com.br" },
 ];
 const INICIO_WEB = "https://catalogo.bigtricot.com.br";
+
+// Leitor do nome do contato da conversa aberta no WhatsApp Web. Fica AQUI (na web)
+// de propósito: assim dá pra afinar os seletores e o app desktop recebe a versão
+// nova sozinho, sem reinstalar. Lê SÓ o nome/número do cabeçalho — nunca mensagens.
+const EXTRATOR_CONTATO = `(function(){try{
+  var m=document.querySelector('#main'); if(!m) return null;
+  var h=m.querySelector('header'); if(!h) return null;
+  var spans=h.querySelectorAll('span[title]'); var nome='';
+  for(var i=0;i<spans.length;i++){
+    var t=(spans[i].getAttribute('title')||'').replace(/\\s+/g,' ').trim();
+    var txt=(spans[i].textContent||'').replace(/\\s+/g,' ').trim();
+    if(t && t===txt){ nome=t; break; }
+  }
+  if(!nome){ var d=h.querySelector('span[dir="auto"]'); nome=d?(d.textContent||'').replace(/\\s+/g,' ').trim():''; }
+  if(!nome) return null;
+  if(/clique|clic|toque|dados do contato|click here/i.test(nome)) return null;
+  return nome;
+}catch(e){ return null; }})()`;
 
 function normaliza(u: string): string {
   let x = (u || "").trim();
@@ -99,6 +118,7 @@ export function NavegadorCrm() {
     if (!d || !el) return;
     const rect = (): Bounds => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; };
     d.montar(rect());
+    if (d.definirExtrator) d.definirExtrator(EXTRATOR_CONTATO); // afina o leitor sem reinstalar
     const reenviar = () => d.bounds(rect());
     const ro = new ResizeObserver(reenviar); ro.observe(el);
     window.addEventListener("resize", reenviar);
