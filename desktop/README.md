@@ -32,8 +32,24 @@ o programa **já no Navegador CRM**. Nas próximas vezes, abre na hora.
 
 ### Jeito manual (alternativa)
 
-Na pasta `desktop`, no Prompt de Comando: `npm install` (1ª vez) e depois `npm start`.
+Na pasta `desktop`, no Prompt de Comando:
+```
+npm install
+node node_modules\electron\install.js
+npm start
+```
 Trocar a URL do app: variável `NAVCRM_APP_URL`.
+
+### Se a janela abrir e fechar na hora (postinstall bloqueado)
+
+Se aparecer `allow-scripts` / `electron@... (postinstall: node install.js)` e o
+programa fechar sozinho, é porque o npm **bloqueou o download do binário do
+Electron**. O `.bat` já corrige isso sozinho (roda `node node_modules\electron\install.js`).
+Se ainda assim falhar, rode esse comando na mão, na pasta `desktop`:
+```
+node node_modules\electron\install.js
+```
+e depois dê dois cliques no `.bat` de novo.
 
 ## Gerar um instalador (.exe) — opcional
 
