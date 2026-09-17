@@ -68,6 +68,20 @@ function garantirView() {
   // Aplica o UA de Chrome na sessão inteira (afeta também os sub-recursos que o
   // WhatsApp Web usa pra decidir se o navegador é "moderno").
   try { part.setUserAgent(UA_CHROME); } catch { /* ignore */ }
+  // À prova de falha: reescreve o User-Agent e as "client hints" (sec-ch-ua) em
+  // TODAS as requisições dessa sessão — remove qualquer vestígio de "Electron"
+  // que faça o WhatsApp mostrar a página "navegador desatualizado".
+  try {
+    part.webRequest.onBeforeSendHeaders((details, cb) => {
+      const h = details.requestHeaders || {};
+      h["User-Agent"] = UA_CHROME;
+      h["sec-ch-ua"] = '"Google Chrome";v="130", "Chromium";v="130", "Not?A_Brand";v="99"';
+      h["sec-ch-ua-full-version"] = '"130.0.0.0"';
+      h["sec-ch-ua-full-version-list"] = '"Google Chrome";v="130.0.0.0", "Chromium";v="130.0.0.0", "Not?A_Brand";v="99.0.0.0"';
+      h["sec-ch-ua-platform"] = '"Windows"';
+      cb({ requestHeaders: h });
+    });
+  } catch { /* ignore */ }
   view = new WebContentsView({
     webPreferences: {
       session: part,
@@ -105,16 +119,16 @@ ipcMain.handle("navcrm:montar", (_e, bounds) => {
   if (!montado) { win.contentView.addChildView(v); montado = true; }
   v.setVisible(true);
   v.setBounds(arred(bounds));
-  if (!v.webContents.getURL()) v.webContents.loadURL(HOME_URL);
+  if (!v.webContents.getURL()) v.webContents.loadURL(HOME_URL, { userAgent: UA_CHROME });
   return true;
 });
 ipcMain.handle("navcrm:bounds", (_e, bounds) => { if (view && montado) view.setBounds(arred(bounds)); return true; });
 ipcMain.handle("navcrm:desmontar", () => { if (view && montado) { try { view.setVisible(false); win && win.contentView.removeChildView(view); } catch { /* ignore */ } montado = false; } return true; });
-ipcMain.handle("navcrm:navegar", (_e, url) => { if (!urlValida(url)) return false; garantirView().webContents.loadURL(url); return true; });
+ipcMain.handle("navcrm:navegar", (_e, url) => { if (!urlValida(url)) return false; garantirView().webContents.loadURL(url, { userAgent: UA_CHROME }); return true; });
 ipcMain.handle("navcrm:voltar", () => { if (view) irVoltar(view.webContents); return true; });
 ipcMain.handle("navcrm:avancar", () => { if (view) irAvancar(view.webContents); return true; });
 ipcMain.handle("navcrm:recarregar", () => { if (view) view.webContents.reload(); return true; });
-ipcMain.handle("navcrm:inicio", () => { garantirView().webContents.loadURL(HOME_URL); return true; });
+ipcMain.handle("navcrm:inicio", () => { garantirView().webContents.loadURL(HOME_URL, { userAgent: UA_CHROME }); return true; });
 
 app.whenReady().then(criarJanela);
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
