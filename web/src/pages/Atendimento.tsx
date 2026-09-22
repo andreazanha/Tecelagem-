@@ -72,20 +72,6 @@ function hora(iso?: string | null) {
   const mm = iso.match(/(\d{2}):(\d{2})/);
   return mm ? `${mm[1]}:${mm[2]}` : "";
 }
-// Tempo desde a última interação, curtinho: "agora", "12 min", "3 h", "2 d". (iso em UTC)
-function tempoRel(iso?: string | null): string {
-  if (!iso) return "";
-  const m = iso.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-  const t = m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : new Date(iso).getTime();
-  if (!t || isNaN(t)) return "";
-  const min = Math.floor((Date.now() - t) / 60000);
-  if (min < 1) return "agora";
-  if (min < 60) return min + " min";
-  const h = Math.floor(min / 60);
-  if (h < 24) return h + " h";
-  const d = Math.floor(h / 24);
-  return d + " d";
-}
 // Emojis mais usados no atendimento (estilo WhatsApp) — pro seletor do campo de mensagem.
 const EMOJIS = "😀 😁 😂 🤣 😊 😇 🙂 😉 😍 🥰 😘 😗 😋 😎 🤩 🥳 🤗 🤔 🤝 👍 👎 👌 ✌️ 🙏 👏 🙌 💪 👋 🫶 ❤️ 🧡 💛 💚 💙 💜 🖤 💔 💯 🔥 ✨ ⭐ 🎉 🎊 🎁 💐 🌹 😅 😌 😏 😴 😅 😢 😭 😔 😟 😕 🙃 😬 😳 🥺 😱 😤 😡 🤦 🤷 💰 🛒 📦 🚚 ✅ ❌ ⚠️ 📌 📎 📷 🎤 ⏰ 📢 🤑 🥂".split(" ");
 // Data + hora pro card (fechado): "hoje 09:08", "ontem 17:26" ou "10/08 14:22". Horário de Brasília.
@@ -141,14 +127,6 @@ const STATUS_CLIENTE: Record<string, { label: string; bg: string; cor: string }>
   "inativo": { label: "💤 Inativo (sumiu)", bg: "#f1f5f9", cor: "#475569" },
 };
 const STATUS_CLIENTE_ORDEM = ["lead", "primeira-compra", "recorrente", "fiel", "inativo"];
-// Central de Atendimento: abas de status "principais" (curtas, sempre visíveis). As demais colunas
-// ficam escondidas dentro de "Mais filtros" — nada é removido, só desafoga a barra.
-const ABAS_PRINCIPAIS: { id: string; label: string }[] = [
-  { id: "em-atendimento", label: "Em atendimento" },
-  { id: "aguardando-setor", label: "Orçando" },
-  { id: "efetuou-pedido", label: "Pedido" },
-  { id: "contato-followup", label: "Follow-up" },
-];
 
 // ── Página do robô de atendimento ────────────────────────────────────────────────
 export function Atendimento() {
@@ -163,12 +141,6 @@ export function Atendimento() {
   const [reservasOpen, setReservasOpen] = useState(false);
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [filtroAtend, setFiltroAtend] = useState<string>("todos"); // gestor: filtra por vendedor
-  // Central de Atendimento: "lista" (inbox de 3 áreas) é o PADRÃO; "kanban" continua como visão alternativa.
-  const [vista, setVista] = useState<"lista" | "kanban">(() => (localStorage.getItem("atend-vista") === "kanban" ? "kanban" : "lista"));
-  const trocarVista = (v: "lista" | "kanban") => { setVista(v); try { localStorage.setItem("atend-vista", v); } catch { /* ok */ } };
-  const [statusFiltro, setStatusFiltro] = useState<string>("todos"); // aba de status (id da coluna) na visão lista
-  const [maisFiltros, setMaisFiltros] = useState(false); // popover "Mais filtros"
-  const [menuMais, setMenuMais] = useState(false); // menu "⋯" com as ações secundárias (topo limpo)
   const [busca, setBusca] = useState<string>(""); // busca de conversa no quadro (nome/loja/telefone/cidade)
   const [buscaServ, setBuscaServ] = useState<{ id: string; telefone: string; nome: string | null; contato_nome: string | null; cidade: string | null; uf: string | null; coluna: string; ultima_msg: string | null }[] | null>(null);
   const [buscandoServ, setBuscandoServ] = useState(false);
@@ -297,47 +269,6 @@ export function Atendimento() {
     };
     for (const arr of m.values()) arr.sort((a, b) => ultimaAtividade(b).localeCompare(ultimaAtividade(a)));
     return m;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board, busca, filtroAtend]);
-
-  // Cor do "pontinho" de prioridade: 🔴 precisa de resposta · 🟡 aguardando ação · 🔵 follow-up · 🟢 concluído.
-  const precisaResposta = (c: AtendConversa) => c.coluna === "aguardando-humano" || (aguardando(c) && c.estado === "atendimento-humano");
-  const prioridade = (c: AtendConversa): { cor: string; t: string } => {
-    if (precisaResposta(c)) return { cor: "#ef4444", t: "Precisa de resposta" };
-    if (pulsaVerde(c)) return { cor: "#f59e0b", t: "Aguardando ação" };
-    if (c.coluna === "contato-followup") return { cor: "#3b82f6", t: "Follow-up" };
-    if (c.coluna === "efetuou-pedido" || c.coluna === "finalizado") return { cor: "#22c55e", t: "Concluído" };
-    return { cor: "#cbd5e1", t: "" };
-  };
-  const meuNome = getUser()?.nome || "";
-  // Passa no filtro de responsável + busca (base comum da lista e do resumo).
-  const passaBase = (c: AtendConversa) => casaBusca(c) && (filtroAtend === "todos" ? true : filtroAtend === "__robo" ? !c.responsavel : c.responsavel === filtroAtend);
-
-  // Lista da Central (Inbox): conversas filtradas (responsável/busca) + aba de status, ordenadas pela
-  // atividade mais recente (como o WhatsApp). "todos", "__minhafila", "__atencao" ou o id de uma coluna.
-  const listaInbox = useMemo(() => {
-    if (!board) return [] as AtendConversa[];
-    let arr = board.conversas.filter(passaBase);
-    if (statusFiltro === "__minhafila") arr = arr.filter((c) => c.responsavel === meuNome);
-    else if (statusFiltro === "__atencao") arr = arr.filter((c) => precisaResposta(c));
-    else if (statusFiltro !== "todos") arr = arr.filter((c) => c.coluna === statusFiltro);
-    const ua = (c: AtendConversa) => { const inn = c.ultima_in_em || "", out = c.ultima_out_em || ""; return (inn > out ? inn : out) || c.atualizado_em || ""; };
-    arr.sort((a, b) => ua(b).localeCompare(ua(a)));
-    return arr;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board, busca, filtroAtend, statusFiltro]);
-
-  // Resumo (tela sem conversa aberta): contagens REAIS do que precisa de acompanhamento.
-  const resumo = useMemo(() => {
-    if (!board) return { vermelho: 0, amarelo: 0, azul: 0, total: 0 };
-    let v = 0, a = 0, az = 0;
-    for (const c of board.conversas) {
-      if (!passaBase(c)) continue;
-      const cor = prioridade(c).cor;
-      if (cor === "#ef4444") v++; else if (cor === "#f59e0b") a++;
-      if (c.coluna === "contato-followup") az++;
-    }
-    return { vermelho: v, amarelo: a, azul: az, total: v + a + az };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, busca, filtroAtend]);
 
@@ -608,7 +539,7 @@ export function Atendimento() {
   }, [board]);
 
   return (
-    <div className="quadro-page at-central" style={{ maxWidth: "none" }}>
+    <div className="quadro-page" style={{ maxWidth: "none" }}>
       {alerta && (
         <div onClick={() => { setAbrir(alerta.id); setAlerta(null); }} style={{ position: "fixed", top: 16, right: 16, zIndex: 200, background: "#dc2626", color: "#fff", borderRadius: 12, padding: "12px 16px", boxShadow: "0 10px 30px #0006", cursor: "pointer", maxWidth: 320, animation: "atpulse 1s ease-in-out infinite" }}>
           <div style={{ fontWeight: 800, fontSize: 14 }}>🔔 Atendimento humano!</div>
@@ -636,38 +567,41 @@ export function Atendimento() {
           <span onClick={(e) => { e.stopPropagation(); setToastMsg(null); }} style={{ marginLeft: 6, fontSize: 18, opacity: .85, padding: "0 4px" }}>✕</span>
         </div>
       )}
-      <div className="at-topbar">
-        <div className="at-topbar-left">
-          <span className={"at-conn" + (conectado ? " ok" : conectado === false ? " off" : "")}>
-            <span className="at-conn-dot" />{conectado == null ? "verificando…" : conectado ? "WhatsApp conectado" : "WhatsApp desligado"}
-          </span>
-        </div>
-        <div className="at-topbar-right">
+      <div className="page-head">
+        <div><h1>Atendimento</h1><div className="breadcrumb">Comercial › Atendimento (robô do WhatsApp)</div></div>
+        <div className="row-gap at-actions" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
+          <button className="btn btn-soft" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); if (!n) { try { if (!audioRef.current) audioRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)(); } catch { /* ok */ } audioRef.current?.resume?.(); setTimeout(() => tocarDing(), 60); } return n; })} title={mudo ? "Som desligado — clique para ligar (toca um teste)" : "Toca um som quando chega mensagem nova. Clique para desligar."}>{mudo ? "🔕 Som off" : "🔔 Som on"}</button>
           <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>
-          <div style={{ position: "relative" }}>
-            <button className="btn btn-soft at-kebab" onClick={() => setMenuMais((v) => !v)} title="Mais ações">⋯</button>
-            {menuMais && (<>
-              <div onClick={() => setMenuMais(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-              <div className="at-menu-pop">
-                <button className="at-menu-item" onClick={() => { setMenuMais(false); setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); if (!n) { try { if (!audioRef.current) audioRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)(); } catch { /* ok */ } audioRef.current?.resume?.(); setTimeout(() => tocarDing(), 60); } return n; }); }}>{mudo ? "🔕 Som desligado" : "🔔 Som ligado"}</button>
-                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); setCampanhaOpen(true); }}>📣 Campanha</button>}
-                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); setReservasOpen(true); }}>📋 Reservas</button>}
-                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); setGruposOpen(true); }}>👥 Postar em grupo</button>}
-                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); setEquipeOpen(true); }}>👥 Equipe</button>}
-                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); setSim(true); }}>💬 Simular cliente</button>}
-                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); juntarDuplicados(); }}>🧹 Juntar duplicados</button>}
-                {ehGestorAtend() && <button className="at-menu-item" disabled={cruzando} onClick={() => { setMenuMais(false); cruzarBase(); }}>{cruzando ? "Cruzando…" : "🔗 Cruzar com a base"}</button>}
-                {ehGestorAtend() && <button className="at-menu-item" onClick={() => { setMenuMais(false); setCfgOpen(true); }}>⚙️ Conexão (Z-API)</button>}
-              </div>
-            </>)}
-          </div>
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setGruposOpen(true)}>👥 Postar em grupo</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setReservasOpen(true)}>📋 Reservas</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setSim(true)}>💬 Simular cliente</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" onClick={juntarDuplicados} title="Junta cards repetidos do mesmo contato (número com/sem o 9º dígito) num só, preservando o histórico">🧹 Juntar duplicados</button>}
+          {ehGestorAtend() && <button className="btn btn-soft" disabled={cruzando} onClick={cruzarBase} title="Liga os contatos à base de clientes E puxa os nomes salvos na sua agenda do WhatsApp (preenche nome/CNPJ/cidade/UF sozinho). O sistema também faz isso automático 3x/dia.">{cruzando ? "Cruzando…" : "🔗 Cruzar com a base"}</button>}
         </div>
       </div>
 
-      {/* (A antiga barra horizontal de "Acompanhar" virou o dropdown 👤 Responsável na barra da Central.) */}
+      {/* Gestor: acompanha cada vendedor — filtra o quadro por quem está atendendo. */}
+      {board && ehGestorAtend() && (() => {
+        const atendentes = [...new Set(board.conversas.map((c) => c.responsavel).filter(Boolean) as string[])].sort();
+        if (atendentes.length === 0) return null;
+        return (
+          <div className="fx-filtros" style={{ marginBottom: 10 }}>
+            <span style={{ fontSize: 12, color: "var(--muted)", alignSelf: "center" }}>👀 Acompanhar:</span>
+            <span className={"fx-pill" + (filtroAtend === "todos" ? " on" : "")} onClick={() => setFiltroAtend("todos")}>Todos</span>
+            {atendentes.map((a) => (
+              <span key={a} className={"fx-pill" + (filtroAtend === a ? " on" : "")} onClick={() => setFiltroAtend(a)}>{a}</span>
+            ))}
+            <span className={"fx-pill" + (filtroAtend === "__robo" ? " on" : "")} onClick={() => setFiltroAtend("__robo")}>🤖 Só robô</span>
+          </div>
+        );
+      })()}
 
-      {/* Busca (Kanban): na visão Lista, a busca fica dentro da própria coluna de conversas. */}
-      {board && vista === "kanban" && (() => {
+      {/* Busca de conversa no quadro: filtra os cards por nome, loja, telefone ou cidade. */}
+      {board && (() => {
         const q = busca.trim().toLowerCase();
         const dig = q.replace(/\D/g, "");
         const total = q ? board.conversas.filter((c) => casaBusca(c)).length : 0;
@@ -700,126 +634,8 @@ export function Atendimento() {
         );
       })()}
 
-      {/* Barra da Central: abas de status curadas + "Mais filtros" · Responsável · Lista/Kanban. */}
-      {board && (
-        <div className="at-toolbar2">
-          <div className="at-tabs">
-            {(() => {
-              const base = board.conversas.filter(passaBase);
-              const nMinha = base.filter((c) => c.responsavel === meuNome).length;
-              const tab = (id: string, label: string, n: number, dot?: string) => (
-                <button key={id} className={"at-tab" + (statusFiltro === id ? " on" : "")} onClick={() => setStatusFiltro(id)}>
-                  {dot && <span className="fx-dot" style={{ background: dot }} />}{label} <span className="n">{n}</span>
-                </button>
-              );
-              return (<>
-                {tab("todos", "Todos", base.length)}
-                {meuNome ? tab("__minhafila", "Minha fila", nMinha) : null}
-                {tab("__atencao", "Atenção", resumo.vermelho, "#ef4444")}
-                {ABAS_PRINCIPAIS.map((a) => tab(a.id, a.label, (gruposPorColuna.get(a.id) || []).length, board.colunas.find((c) => c.id === a.id)?.cor))}
-              </>);
-            })()}
-            <div style={{ position: "relative" }}>
-              <button className={"at-tab at-tab-mais" + (maisFiltros ? " on" : "")} onClick={() => setMaisFiltros((v) => !v)}>+ Mais filtros ▾</button>
-              {maisFiltros && (<>
-                <div onClick={() => setMaisFiltros(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-                <div className="at-mais-pop">
-                  {board.colunas.filter((c) => !ABAS_PRINCIPAIS.some((a) => a.id === c.id)).map((col) => (
-                    <button key={col.id} className={"at-mais-item" + (statusFiltro === col.id ? " on" : "")} onClick={() => { setStatusFiltro(col.id); setMaisFiltros(false); }}>
-                      <span className="fx-dot" style={{ background: col.cor }} />{col.label}<span className="n">{(gruposPorColuna.get(col.id) || []).length}</span>
-                    </button>
-                  ))}
-                </div>
-              </>)}
-            </div>
-          </div>
-          <div className="at-toolbar2-right">
-            {ehGestorAtend() && (() => {
-              const atendentes = [...new Set(board.conversas.map((c) => c.responsavel).filter(Boolean) as string[])].sort().filter((a) => a !== meuNome);
-              return (
-                <div className="at-resp">
-                  <select value={filtroAtend === meuNome && meuNome ? "__minha" : filtroAtend} onChange={(e) => { const v = e.target.value; setFiltroAtend(v === "__minha" ? meuNome : v); }}>
-                    <option value="todos">👤 Responsável: Todos</option>
-                    {meuNome ? <option value="__minha">Minha fila</option> : null}
-                    {atendentes.map((a) => <option key={a} value={a}>{a}</option>)}
-                    <option value="__robo">Só robô</option>
-                  </select>
-                </div>
-              );
-            })()}
-            <div className="at-viewtoggle">
-              <button className={vista === "lista" ? "on" : ""} onClick={() => trocarVista("lista")} title="Central de atendimento (lista)">☰ Lista</button>
-              <button className={vista === "kanban" ? "on" : ""} onClick={() => trocarVista("kanban")} title="Quadro por colunas (Kanban)">▦ Kanban</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {!board ? (
         <div className="card pad muted">Carregando…</div>
-      ) : vista === "lista" ? (
-        <div className={"at-inbox" + (abrir ? " sel" : "")}>
-          <div className="at-inbox-list">
-            <div className="at-list-hd">
-              <div className="at-search2">
-                <span className="ic">🔎</span>
-                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar nesta lista…" />
-                {busca && <button className="x" onClick={() => setBusca("")} title="Limpar">✕</button>}
-              </div>
-            </div>
-            <div className="at-list-body">
-              {buscaServ ? (
-                <div className="at-serv">
-                  <div className="at-serv-hd"><b>{buscaServ.length} no servidor</b><button onClick={() => setBuscaServ(null)} title="Voltar">✕</button></div>
-                  {buscaServ.length === 0 && <div className="muted2" style={{ padding: 12, fontSize: 12.5 }}>Nada encontrado. Confere o nome ou o número.</div>}
-                  {buscaServ.map((r) => (
-                    <button key={r.id} className="at-serv-item" onClick={() => { setAbrir(r.id); setBuscaServ(null); }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{r.contato_nome || r.nome || telBonito(r.telefone)} <span className="muted" style={{ fontWeight: 400 }}>· {telBonito(r.telefone)}</span></div>
-                      <div className="muted2" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>📍 {board.colunas.find((x) => x.id === r.coluna)?.label || r.coluna}{r.ultima_msg ? " · " + r.ultima_msg : ""}</div>
-                    </button>
-                  ))}
-                </div>
-              ) : listaInbox.length === 0
-                ? <div className="muted2" style={{ padding: "22px 16px", fontSize: 13 }}>Nenhuma conversa {statusFiltro === "todos" ? "" : "nesse status "}por aqui.</div>
-                : listaInbox.map((c) => {
-                    const col = board.colunas.find((x) => x.id === c.coluna);
-                    return <ConvRow key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colLabel={col?.label || c.coluna} colCor={col?.cor || "#94a3b8"} prio={prioridade(c)} pulsando={pulsaVerde(c)} sel={abrir === c.id} onClick={() => setAbrir(c.id)} />;
-                  })}
-            </div>
-            <div className="at-list-foot">
-              <span>{listaInbox.length} {listaInbox.length === 1 ? "conversa" : "conversas"}</span>
-              {busca.trim().length >= 2 && !buscaServ && <button className="at-foot-link" onClick={buscarNoServidor} disabled={buscandoServ}>{buscandoServ ? "procurando…" : "buscar em todas →"}</button>}
-            </div>
-          </div>
-          <div className="at-inbox-main">
-            {abrir
-              ? <ConversaModal key={abrir} id={abrir} inline onFechar={() => setAbrir(null)} onMudou={recarregar} />
-              : <div className="at-inbox-empty">
-                  <div className="at-resumo">
-                    <div className="at-resumo-emoji">👋</div>
-                    <div className="at-resumo-t">Bom trabalho!</div>
-                    <div className="at-resumo-s">Você tem <b>{resumo.total}</b> {resumo.total === 1 ? "conversa" : "conversas"} para acompanhar.</div>
-                    <div className="at-resumo-cards">
-                      <button className="at-resumo-card" onClick={() => setStatusFiltro("__atencao")} title="Ver quem precisa de resposta">
-                        <span className="d" style={{ background: "#ef4444" }} /><b>{resumo.vermelho}</b><span>precisam de resposta</span>
-                      </button>
-                      <button className="at-resumo-card" onClick={() => setStatusFiltro("todos")} title="Aguardando sua ação">
-                        <span className="d" style={{ background: "#f59e0b" }} /><b>{resumo.amarelo}</b><span>aguardando sua ação</span>
-                      </button>
-                      <button className="at-resumo-card" onClick={() => setStatusFiltro("contato-followup")} title="Ver follow-ups">
-                        <span className="d" style={{ background: "#3b82f6" }} /><b>{resumo.azul}</b><span>follow-ups</span>
-                      </button>
-                    </div>
-                    <button className="btn btn-primary at-resumo-btn" disabled={resumo.vermelho === 0} onClick={() => {
-                      setStatusFiltro("__atencao");
-                      const ua = (c: AtendConversa) => { const inn = c.ultima_in_em || "", out = c.ultima_out_em || ""; return (inn > out ? inn : out) || c.atualizado_em || ""; };
-                      const pri = board.conversas.filter((c) => passaBase(c) && precisaResposta(c)).sort((a, b) => ua(b).localeCompare(ua(a)));
-                      if (pri[0]) setAbrir(pri[0].id);
-                    }}>Ver conversas prioritárias →</button>
-                  </div>
-                </div>}
-          </div>
-        </div>
       ) : (
         <>
         {/* Atalho de colunas (só no celular): toque num chip pra pular direto pra coluna. */}
@@ -863,7 +679,7 @@ export function Atendimento() {
         </div>
         </>
       )}
-      {ehGestorAtend() && board && vista === "kanban" && <div style={{ marginTop: 10 }}><button className="btn btn-soft" onClick={() => setGerColunas(true)}>➕ Criar / organizar colunas</button></div>}
+      {ehGestorAtend() && board && <div style={{ marginTop: 10 }}><button className="btn btn-soft" onClick={() => setGerColunas(true)}>➕ Criar / organizar colunas</button></div>}
       {gerColunas && <ColunasModal onFechar={() => setGerColunas(false)} onSalvo={() => { setGerColunas(false); recarregar(); }} />}
 
       {sim && <Simulador onFechar={() => setSim(false)} onMudou={recarregar} />}
@@ -872,8 +688,7 @@ export function Atendimento() {
       {campanhaOpen && <CampanhaModal onFechar={() => setCampanhaOpen(false)} onMudou={recarregar} />}
       {gruposOpen && <GruposModal onFechar={() => setGruposOpen(false)} />}
       {reservasOpen && <ReservasModal onFechar={() => setReservasOpen(false)} />}
-      {/* Na Lista o chat abre INLINE (na área central). No Kanban abre como modal. */}
-      {abrir && vista === "kanban" && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
+      {abrir && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
       {cfgOpen && <ConfigZapi onFechar={() => setCfgOpen(false)} onMudou={checarConexao} />}
     </div>
   );
@@ -1328,32 +1143,6 @@ function baixarArquivo(url: string) {
 }
 // Horários "de bater o olho e clicar" (horário comercial).
 const HORAS_AG = ["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
-
-// Linha da Central de Atendimento (Inbox): limpa, com o essencial pra bater o olho —
-// foto, nome, cidade, última mensagem, status, vendedor, tempo e o pontinho de prioridade.
-function ConvRow({ c, foto, colLabel, colCor, prio, pulsando, sel, onClick }: { c: AtendConversa; foto?: string; colLabel: string; colCor: string; prio: { cor: string; t: string }; pulsando?: boolean; sel?: boolean; onClick: () => void }) {
-  const nome = c.nome || c.contato_nome || telBonito(c.telefone);
-  const sub = c.cidade ? `${c.cidade}${c.uf ? "/" + c.uf : ""}` : telBonito(c.telefone);
-  const prev = extrairIaNota(c.ultima_msg || "").visivel || "";
-  const quando = (c.ultima_in_em || "") > (c.ultima_out_em || "") ? c.ultima_in_em : c.ultima_out_em;
-  return (
-    <div className={"at-crow" + (sel ? " on" : "")} onClick={onClick}>
-      <span className="at-crow-dot" style={{ background: prio.cor }} title={prio.t} />
-      <div className="at-crow-av" style={foto ? { backgroundImage: `url(${foto})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{foto ? "" : iniciais(nome)}</div>
-      <div className="at-crow-mid">
-        <div className="at-crow-l1"><span className="at-crow-nm">{nome}</span>{pulsando && <span className="at-crow-new" title="Aguardando resposta" />}</div>
-        <div className="at-crow-sub">{sub}</div>
-        {prev && <div className="at-crow-prev">{prev}</div>}
-        <div className="at-crow-l3">
-          <span className="at-crow-status" style={{ background: colCor + "22", color: colCor }}>{colLabel}</span>
-          {c.responsavel && <span className="at-crow-vend">👤 {c.responsavel}</span>}
-          {c.lojista === 1 && <span className="at-crow-vend">🏪 Lojista</span>}
-        </div>
-      </div>
-      <div className="at-crow-time">{tempoRel(quando)}</div>
-    </div>
-  );
-}
 function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, onReativarIa, onFim, onSilenciar, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; onAgendar?: (quando: number | null, mensagem?: string) => void; onReativarIa?: () => void; onFim?: () => void; onSilenciar?: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.estado === "atendimento-humano";
   const [agOpen, setAgOpen] = useState(false);
@@ -1495,7 +1284,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
 
 
 // ── Conversa (thread estilo WhatsApp + contexto + ações do atendente) ──────────────
-export function ConversaModal({ id, onFechar, onMudou, inline }: { id: string; onFechar: () => void; onMudou: () => void; inline?: boolean }) {
+export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar: () => void; onMudou: () => void }) {
   const [d, setD] = useState<AtendConversaDetalhe | null>(null);
   const [texto, setTexto] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1970,8 +1759,8 @@ export function ConversaModal({ id, onFechar, onMudou, inline }: { id: string; o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [humano, bloqueado]);
   return (
-    <div className={inline ? "at-inline-wrap" : "modal-bg"} onClick={inline ? undefined : onFechar}>
-      <div className={"modal-card at-modal" + (inline ? " at-inline" : "")} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card at-modal" onClick={(e) => e.stopPropagation()}>
         <div className="at-thd">
           <div className="at-av" style={fotoPerfil ? { backgroundImage: `url(${fotoPerfil})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{fotoPerfil ? "" : iniciais(d?.nome || d?.contato_nome || d?.telefone)}</div>
           <div className="info">
