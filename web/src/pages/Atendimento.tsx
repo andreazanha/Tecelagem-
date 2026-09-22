@@ -1590,6 +1590,12 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     setBusy(true);
     try { await api.atendAssumir(id, nome, pendente); carregar(); onMudou(); } finally { setBusy(false); }
   }
+  // Puxar uma conversa que está com OUTRO vendedor para você (assume no seu nome e
+  // vai direto pra "Em atendimento"). Escolher a si mesmo já não é "pendente".
+  async function puxarParaMim() {
+    const meu = getUser()?.nome; if (!meu || busy) return;
+    await transferir(meu);
+  }
   // Devolve a conversa pra Big (IA) — inverso do "assumir". A Big assume e, se houver uma
   // pergunta do cliente esperando, já responde agora; senão responde na próxima mensagem.
   async function devolverIa() {
@@ -1959,6 +1965,14 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 ))}
                 {usuarios.filter((u) => u.nome !== d?.responsavel).length === 0 && <div className="muted" style={{ fontSize: 12, padding: "4px 6px" }}>Nenhum outro vendedor cadastrado.</div>}
               </div>
+            )}
+            {/* PUXAR PARA MIM: aparece quando a conversa está com OUTRO vendedor. Assume no
+                seu nome e vai direto pra "Em atendimento". */}
+            {d?.responsavel && d.responsavel !== (getUser()?.nome || "") && (
+              <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: "#bbf7d0", background: "#f0fdf4", color: "#15803d", fontWeight: 700 }} disabled={busy} onClick={puxarParaMim}
+                title={`Puxar esta conversa de ${d.responsavel} para você (assume no seu nome e vai direto para "Em atendimento").`}>
+                ⤵️ Puxar a conversa para mim
+              </button>
             )}
             {/* Mover pra outra coluna do quadro (lendo a conversa, você decide pra onde vai).
                Lista de botões (um embaixo do outro) — vê todas as colunas de uma vez e clica direto. */}

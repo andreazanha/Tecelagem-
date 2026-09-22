@@ -6,7 +6,7 @@ import type { Context } from "hono";
 import type { Env } from "../index";
 import { processar, colunaDe, ATEND_COLUNAS, BOAS_VINDAS, montarCatalogo, type Conversa, type Deps, type LojaParceira, type Saida, type EstadoAtend } from "../atendimento_bot";
 import { ehClienteInterno } from "./funil";
-import { enviarPush } from "../push-send";
+import { enviarPush, enviarPushPara } from "../push-send";
 
 export const atendimento = new Hono<{ Bindings: Env }>();
 
@@ -3982,6 +3982,13 @@ atendimento.post("/:id/assumir", async (c) => {
   } catch { /* não bloqueia o assumir */ }
   // Registro INTERNO (só a equipe vê) de quem assumiu/recebeu. NÃO manda nada pro cliente.
   await addMsg(c.env, id, "out", "sistema", "sistema", `${b.pendente ? "Atendimento transferido para " + resp : resp + " assumiu o atendimento"}.`);
+  // Transferência para OUTRA pessoa: avisa ela (notificação perto do relógio + toque do
+  // sistema) nos aparelhos onde ela ativou as notificações.
+  if (b.pendente && resp && resp !== "Atendente") {
+    const cv = await c.env.DB.prepare("SELECT nome, contato_nome FROM atend_conversas WHERE id=?").bind(id).first<{ nome: string | null; contato_nome: string | null }>().catch(() => null);
+    const quem = (cv?.nome || cv?.contato_nome || "Um cliente");
+    await enviarPushPara(c.env, [resp], { titulo: "📥 Conversa transferida pra você", corpo: `${quem} está te esperando no atendimento.`, url: "/atendimento", tag: "transf-" + id }).catch(() => {});
+  }
   return c.json({ ok: true });
 });
 
