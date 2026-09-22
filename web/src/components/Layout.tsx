@@ -429,9 +429,8 @@ function TvMenu({ tvs }: { tvs: typeof TVS }) {
 export function Layout() {
   const u = getUser();
   const nav = useNavigate();
-  const loc = useLocation();
-  // A barra LATERAL escura aparece SÓ no CRM/Atendimento. Nas demais telas fica o menu de cima.
-  const ehCRM = loc.pathname === "/atendimento" || loc.pathname.startsWith("/atendimento/") || loc.pathname === "/navegador-crm";
+  // Menu SEMPRE no topo em todas as telas (barra lateral do CRM desativada a pedido).
+  const ehCRM = false;
   const [sideOpen, setSideOpen] = useState(false); // barra lateral: aberta como gaveta no celular
   const [ssMin, setSsMin] = useState(() => Number(localStorage.getItem("ssMin") || "0"));
   const [ssOpen, setSsOpen] = useState(false);
