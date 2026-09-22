@@ -724,6 +724,8 @@ export const api = {
   atendSetores: () => fetch("/api/atendimento/setores").then((r) => j<AtendSetor[]>(r)),
   atendSalvarSetor: (b: { id?: string; nome: string; membros: string[]; ativo?: boolean }) => jsonPost("/api/atendimento/setores", b).then((r) => j<{ ok: boolean; id: string }>(r)),
   atendExcluirSetor: (id: string) => fetch(`/api/atendimento/setores/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  // Enviar uma conversa para um SETOR inteiro (cai na fila e avisa os membros do setor).
+  atendEnviarSetor: (id: string, setor: string) => jsonPost(`/api/atendimento/${encodeURIComponent(id)}/setor`, { setor }).then((r) => j<{ ok: boolean; setor: string }>(r)),
   // Painel do gestor
   atendPainel: () => fetch("/api/atendimento/painel").then((r) => j<AtendPainel>(r)),
   abrirConversaDoCard: (b: { telefone?: string | null; nome?: string | null; card_id?: string; cliente_id?: string; criar_card?: boolean; destino?: "prospeccao" | "atendimento" }) =>

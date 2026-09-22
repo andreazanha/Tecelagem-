@@ -3992,6 +3992,37 @@ atendimento.post("/:id/assumir", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── Enviar a conversa para um SETOR inteiro (ex.: Fiscal) ──────────────────────
+// Fica SEM dono (cai na fila "Aguardando atendimento humano"), marcada com o setor,
+// e avisa (notificação + toque) os MEMBROS daquele setor. Qualquer um do setor pega.
+atendimento.post("/:id/setor", async (c) => {
+  const id = c.req.param("id");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
+  const b = await c.req.json<{ setor?: string }>().catch(() => ({}) as { setor?: string });
+  const chave = String(b.setor ?? "").trim();
+  if (!chave) return c.json({ error: "setor é obrigatório" }, 400);
+  const setor = await c.env.DB.prepare("SELECT id, nome, membros FROM atend_setores WHERE id=? OR nome=?").bind(chave, chave).first<{ id: string; nome: string; membros: string | null }>().catch(() => null);
+  if (!setor) return c.json({ error: "setor não encontrado" }, 404);
+  await c.env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', responsavel=NULL, setor=?, atualizado_em=datetime('now') WHERE id=?").bind(setor.nome, id).run();
+  // Marca como "transferido" pra aparecer na fila "Aguardando atendimento humano".
+  try {
+    const cfg = await lerConfig(c.env);
+    const tr = (() => { try { const a = JSON.parse(cfg.atend_transferidos || "[]"); return Array.isArray(a) ? a.map(String) : []; } catch { return [] as string[]; } })().filter((x) => x !== id);
+    tr.push(id);
+    await salvarConfigJson(c.env, "atend_transferidos", tr.slice(-500));
+  } catch { /* não bloqueia */ }
+  await addMsg(c.env, id, "out", "sistema", "sistema", `Conversa enviada para o setor *${setor.nome}*.`);
+  // Avisa os membros do setor (nos aparelhos onde ativaram as notificações).
+  const membros = (setor.membros || "").split(",").map((m) => m.trim()).filter(Boolean);
+  if (membros.length) {
+    const cv = await c.env.DB.prepare("SELECT nome, contato_nome FROM atend_conversas WHERE id=?").bind(id).first<{ nome: string | null; contato_nome: string | null }>().catch(() => null);
+    const quem = cv?.nome || cv?.contato_nome || "Um cliente";
+    await enviarPushPara(c.env, membros, { titulo: `📥 Nova conversa — ${setor.nome}`, corpo: `${quem} foi enviada para o setor ${setor.nome}.`, url: "/atendimento", tag: "setor-" + id }).catch(() => {});
+  }
+  return c.json({ ok: true, setor: setor.nome });
+});
+
 // ── Devolver a conversa pra IA (a Big volta a responder automaticamente) ──────────────
 // Inverso do "assumir": tira o responsável humano, volta o estado pra 'ia-triagem' e solta
 // a coluna manual — assim a Big responde a PRÓXIMA mensagem do cliente por conta própria.

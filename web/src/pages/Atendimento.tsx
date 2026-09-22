@@ -1291,6 +1291,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [reps, setReps] = useState<Representante[]>([]);
   const [repSel, setRepSel] = useState("");
   const [usuarios, setUsuarios] = useState<{ nome: string; usuario: string }[]>([]);
+  const [setores, setSetores] = useState<{ id: string; nome: string; ativo?: number | boolean }[]>([]);
+  const [setorOpen, setSetorOpen] = useState(false); // picker do botão "Enviar para um setor"
   const [respostas, setRespostas] = useState<RespostaPronta[]>([]);
   const [respEmpresa, setRespEmpresa] = useState<RespostaPronta[]>([]);
   const [mostrarResp, setMostrarResp] = useState(false);
@@ -1566,6 +1568,13 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   useEffect(() => { carregar(); const t = setInterval(carregar, 5000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => { api.listarRepresentantes().then((r) => setReps(r.filter((x) => x.ativo))).catch(() => {}); }, []);
   useEffect(() => { api.listarUsuarios().then((u) => setUsuarios(Array.isArray(u) ? u : [])).catch(() => {}); }, []);
+  useEffect(() => { api.atendSetores().then((s) => setSetores(Array.isArray(s) ? s : [])).catch(() => {}); }, []);
+  async function enviarSetor(setorId: string, nome: string) {
+    if (busy) return;
+    setBusy(true);
+    try { await api.atendEnviarSetor(id, setorId); setSetorOpen(false); carregar(); onMudou(); alert(`✓ Conversa enviada para o setor ${nome}. Ela cai em "Aguardando atendimento humano" e o pessoal do setor é avisado.`); }
+    finally { setBusy(false); }
+  }
   useEffect(() => { fim.current?.scrollIntoView(); }, [d?.mensagens.length]);
 
   // Funil (venda) trazido pra dentro da conversa.
@@ -1973,6 +1982,22 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 title={`Puxar esta conversa de ${d.responsavel} para você (assume no seu nome e vai direto para "Em atendimento").`}>
                 ⤵️ Puxar a conversa para mim
               </button>
+            )}
+            {/* ENVIAR PARA UM SETOR (Fiscal, Financeiro, PCP…): cai na fila e avisa o setor. */}
+            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: "#fde68a", background: "#fffbeb", color: "#b45309", fontWeight: 700 }} disabled={busy} onClick={() => setSetorOpen((v) => !v)}
+              title="Enviar esta conversa para um setor inteiro (ex.: Fiscal). Cai na fila 'Aguardando atendimento humano' e avisa o pessoal do setor.">
+              🏢 Enviar para um setor
+            </button>
+            {setorOpen && (
+              <div style={{ marginTop: 6, border: "1px solid var(--line)", borderRadius: 10, padding: 6, display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto" }}>
+                {setores.filter((s) => s.ativo !== 0 && s.ativo !== false).map((s) => (
+                  <button key={s.id} className="btn btn-soft" style={{ fontSize: 12.5, textAlign: "left", padding: "7px 10px" }} disabled={busy}
+                    onClick={() => enviarSetor(s.id, s.nome)}>
+                    🏢 {s.nome}
+                  </button>
+                ))}
+                {setores.filter((s) => s.ativo !== 0 && s.ativo !== false).length === 0 && <div className="muted" style={{ fontSize: 12, padding: "4px 6px" }}>Nenhum setor cadastrado. Crie em "Setores do Atendimento".</div>}
+              </div>
             )}
             {/* Mover pra outra coluna do quadro (lendo a conversa, você decide pra onde vai).
                Lista de botões (um embaixo do outro) — vê todas as colunas de uma vez e clica direto. */}
