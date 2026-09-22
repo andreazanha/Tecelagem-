@@ -4014,11 +4014,20 @@ atendimento.post("/:id/setor", async (c) => {
   } catch { /* não bloqueia */ }
   await addMsg(c.env, id, "out", "sistema", "sistema", `Conversa enviada para o setor *${setor.nome}*.`);
   // Avisa os membros do setor (nos aparelhos onde ativaram as notificações).
-  const membros = (setor.membros || "").split(",").map((m) => m.trim()).filter(Boolean);
-  if (membros.length) {
+  // Os membros são guardados pelo LOGIN; as inscrições de push são pelo NOME —
+  // então mando pros dois (login + nome), pra casar de qualquer jeito.
+  const logins = (setor.membros || "").split(",").map((m) => m.trim()).filter(Boolean);
+  if (logins.length) {
+    let nomes: string[] = [];
+    try {
+      const ph = logins.map(() => "?").join(",");
+      const { results } = await c.env.DB.prepare(`SELECT nome FROM usuarios WHERE usuario IN (${ph})`).bind(...logins).all<{ nome: string }>();
+      nomes = results.map((r) => r.nome).filter(Boolean);
+    } catch { /* usa só os logins */ }
+    const alvos = [...new Set([...logins, ...nomes])];
     const cv = await c.env.DB.prepare("SELECT nome, contato_nome FROM atend_conversas WHERE id=?").bind(id).first<{ nome: string | null; contato_nome: string | null }>().catch(() => null);
     const quem = cv?.nome || cv?.contato_nome || "Um cliente";
-    await enviarPushPara(c.env, membros, { titulo: `📥 Nova conversa — ${setor.nome}`, corpo: `${quem} foi enviada para o setor ${setor.nome}.`, url: "/atendimento", tag: "setor-" + id }).catch(() => {});
+    await enviarPushPara(c.env, alvos, { titulo: `📥 Nova conversa — ${setor.nome}`, corpo: `${quem} foi enviada para o setor ${setor.nome}.`, url: "/atendimento", tag: "setor-" + id }).catch(() => {});
   }
   return c.json({ ok: true, setor: setor.nome });
 });
