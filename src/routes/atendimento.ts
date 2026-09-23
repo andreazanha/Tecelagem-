@@ -97,6 +97,19 @@ function vitrineDe(cfgUrl?: string | null): string {
   return VITRINE_PUBLICA;
 }
 
+// Remove QUALQUER link/URL de um texto (a IA às vezes inventa endereços). Quem manda
+// o link real (vitrine) é o sistema — a fala da IA nunca deve conter um link.
+function semLinks(s: string): string {
+  return String(s || "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\bwww\.\S+/gi, "")
+    .replace(/\b[a-z0-9.-]+\.(com|com\.br|net|br|io|app)(\/\S*)?/gi, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([,.!?])/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 // ── Dependências (SINTEGRA + lojas parceiras) ────────────────────────────────────
 function deps(env: Env, cat?: { url?: string | null; senha?: string | null; msg?: string | null }, vitrineUrl?: string | null): Deps {
   return {
@@ -479,6 +492,7 @@ REGRAS IMPORTANTES:
 - 🔒 VOCÊ NUNCA FALA PREÇO/VALOR VOCÊ MESMA (REGRA ABSOLUTA): nunca informe preço, valor, tabela, pedido mínimo ou frete NO CHAT — nem pra lojista, nem pra consumidor. Pro LOJISTA, quem passa preço é o vendedor (depois do CNPJ). Pro CONSUMIDOR FINAL, a Big não vende no varejo — você indica uma *loja parceira* (acao "indicar_parceiro") e é a loja parceira que atende e passa preço. Se a BASE DE CONHECIMENTO tiver um valor específico e a pessoa perguntar, você pode usar aquela informação; fora isso, não invente valores.
 - FOTOS: quando aparecer no histórico algo como "[O cliente enviou uma foto. O que aparece nela: ...]", é porque ele mandou uma imagem e um sistema de visão descreveu o conteúdo. Use essa descrição pra entender o que ele quer (reconheceu um produto, mandou um comprovante, um print de conversa etc.). Comente de forma natural o que você "viu" (ex.: "Que linda essa manta cinza! 😍") e siga as regras normais — inclusive preço só pra lojista. NUNCA leia o texto entre colchetes em voz alta pro cliente nem diga "sistema de visão"; é uma nota interna.
 - ✂️ SEJA CURTA (REGRA FORTE, VALE SEMPRE): responda em NO MÁXIMO 2 frases curtas (2 a 3 linhas no total, como uma mensagem de WhatsApp de verdade). Vá DIRETO ao ponto. NÃO faça introduções longas, NÃO explique demais, NÃO repita a mesma ideia com outras palavras, NÃO escreva parágrafos. Faça só UMA pergunta ou UM pedido por mensagem. No máximo 1 emoji. Mensagem comprida afasta o cliente — se der pra dizer em 1 frase, diga em 1 frase.
+- 🔗 NUNCA escreva link, site ou endereço (URL) na sua resposta — nem de loja parceira, nem "onde comprar", nem catálogo. Quem envia o link é o SISTEMA (acao "indicar_parceiro" manda o link da vitrine). Se VOCÊ escrever um link, ele estará ERRADO/inventado. Só diga que vai indicar uma loja parceira e use a acao "indicar_parceiro" — o sistema coloca o link certo.
 - Tom: caloroso, brasileiro, informal de WhatsApp. Nunca repita a mesma pergunta que já foi respondida.
 - Escreva os emojis COMO EMOJI de verdade (😊 💛 👍), NUNCA como código escapado tipo \\u{1f603}.
 - SETOR: identifique de qual setor o cliente precisa e preencha o campo "setor": "vendas" (comprar, ver produtos, preço, catálogo, revenda), "fiscal" (nota fiscal, boleto, pagamento, cobrança, financeiro), "estoque" (disponibilidade, se tem tal cor/modelo, quando repõe), "pcp" (andamento/status de um pedido em produção). Se ainda não der pra saber, deixe vazio.
@@ -706,6 +720,9 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, vitrineBase: 
   const dec = await chamarIa(env, conv, sistema);
   // IA indisponível (binding ausente/erro) → degrada pro menu determinístico, que é à prova de falhas.
   if (!dec) return { saidas: [{ tipo: "texto", texto: BOAS_VINDAS }], novoEstado: "aguardando-setor", notificarHumano: false, tipo: null };
+  // 🔒 Segurança: a IA às vezes INVENTA um link (ex.: "lojaparceira.com.br/sp"). Remove QUALQUER
+  // link/URL da fala dela — quem envia o link (vitrine das lojas parceiras) é o sistema, no lugar certo.
+  if (dec.resposta) dec.resposta = semLinks(dec.resposta);
   const setor = setorDe(dec.setor); // setor que a Big identificou (vendas/fiscal/estoque/pcp)
 
   const uf = ufDe(dec.uf) || ufDe(conv.uf);
