@@ -84,10 +84,18 @@ type ConvRow = Conversa & {
   coluna_manual: string | null; encerrado_em: string | null;
 };
 
-// Site PÚBLICO de "Onde Comprar" (lojas parceiras) que a Big manda pro consumidor final.
-// É o domínio oficial — NÃO o endereço interno (workers.dev). Pode ser trocado na config
-// (chave "vitrine_url"); se vazio, usa este padrão.
-const VITRINE_PUBLICA = "https://ondecomprar.bigtricot.com.br";
+// Vitrine PÚBLICA de "Onde Comprar" (lojas parceiras) que a Big manda pro consumidor final.
+// Usa a vitrine do PRÓPRIO sistema (rota /vitrine, sem login) — sempre existe e lista as
+// lojas do cadastro por estado/cidade. Pode ser trocada na config (chave "vitrine_url").
+const VITRINE_PUBLICA = "https://rolagem-de-fase.andre-sellmac.workers.dev/vitrine";
+
+// Resolve a URL da vitrine: usa a configurada SE existir e não for um domínio antigo
+// quebrado (ondecomprar.bigtricot.com.br / lojaparceira.com.br); senão, a vitrine do sistema.
+function vitrineDe(cfgUrl?: string | null): string {
+  const v = (cfgUrl || "").trim();
+  if (v && /^https?:\/\//i.test(v) && !/ondecomprar\.bigtricot|lojaparceira/i.test(v)) return v;
+  return VITRINE_PUBLICA;
+}
 
 // ── Dependências (SINTEGRA + lojas parceiras) ────────────────────────────────────
 function deps(env: Env, cat?: { url?: string | null; senha?: string | null; msg?: string | null }, vitrineUrl?: string | null): Deps {
@@ -883,7 +891,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   try {
     const cnpjMsg = (texto.match(/\d[\d.\-/ ]{11,}\d/g) || []).map((x) => x.replace(/\D/g, "")).find((x) => x.length === 14);
     if (cnpjMsg && digitos(conv.cnpj).length !== 14) {
-      const info = await deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, cfgAt.vitrine_url || VITRINE_PUBLICA).consultarCnpj(cnpjMsg);
+      const info = await deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, vitrineDe(cfgAt.vitrine_url)).consultarCnpj(cnpjMsg);
       await env.DB.prepare(
         "UPDATE atend_conversas SET cnpj=?, nome=COALESCE(NULLIF(nome,''), ?), cidade=COALESCE(NULLIF(cidade,''), ?), uf=COALESCE(NULLIF(uf,''), ?), atualizado_em=datetime('now') WHERE id=?"
       ).bind(cnpjMsg, info?.nome ?? null, info?.cidade ?? null, info?.uf ?? null, conv.id).run();
@@ -1035,7 +1043,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
         await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
         return { conversa_id: conv.id, estado: "aguardando-cidade-parceiro", coluna: "cliente-final", respostas: [{ tipo: "texto", texto: msg }], notificarHumano: false };
       }
-      const baseV = (cfgAt.vitrine_url || VITRINE_PUBLICA).replace(/\/+$/, "");
+      const baseV = (vitrineDe(cfgAt.vitrine_url)).replace(/\/+$/, "");
       const q = new URLSearchParams(); if (ufc) q.set("uf", ufc); else q.set("cidade", String(conv.cidade));
       const msg = `Prontinho! 💛 Abre esse link, escolha a *cidade mais perto de você* e veja os contatos das lojas parceiras 👇\n${baseV}?${q.toString()}`;
       await env.DB.prepare("UPDATE atend_conversas SET estado='indicado-parceiro', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
@@ -1144,7 +1152,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     } else if (conv.lojista === 1 || conv.cnpj) {
       sistema += `\n\nCONTEXTO: este lojista JÁ FOI QUALIFICADO (CNPJ confirmado${conv.nome ? ", loja: " + conv.nome : ""}). NÃO peça CNPJ de novo. Para qualquer assunto comercial (comprar, catálogo, preço), use acao "humano" pra chamar o vendedor.`;
     }
-    const ia = await iaTriagem(env, conv, sistema, cfgAt.vitrine_url || VITRINE_PUBLICA);
+    const ia = await iaTriagem(env, conv, sistema, vitrineDe(cfgAt.vitrine_url));
     // 🔒 A IA FAZ SÓ A TRIAGEM — NUNCA manda o catálogo (ele tem preço de atacado; quem manda é o
     // VENDEDOR humano). Regra:
     //   • Consumidor final (uso pessoal)      → indica a loja parceira da região (link).
@@ -1195,7 +1203,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     // Se a IA achou um CNPJ válido, puxa Loja/Cidade/UF da Receita pra completar o painel.
     if (ia.dados?.cnpj && digitos(conv.cnpj).length !== 14) {
       try {
-        const info = await deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, cfgAt.vitrine_url || VITRINE_PUBLICA).consultarCnpj(ia.dados.cnpj);
+        const info = await deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, vitrineDe(cfgAt.vitrine_url)).consultarCnpj(ia.dados.cnpj);
         if (info?.nome || info?.cidade || info?.uf) await env.DB.prepare("UPDATE atend_conversas SET nome=COALESCE(NULLIF(nome,''), ?), cidade=COALESCE(NULLIF(cidade,''), ?), uf=COALESCE(NULLIF(uf,''), ?) WHERE id=?").bind(info?.nome ?? null, info?.cidade ?? null, info?.uf ?? null, conv.id).run();
       } catch { /* ok */ }
     }
@@ -1214,7 +1222,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
 
   // Passa o contexto de identificação pro robô (saudação personalizada de cliente conhecido).
   conv.clienteConhecido = !!conv.cliente_id;
-  const r = await processar(conv as Conversa, texto, deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, cfgAt.vitrine_url || VITRINE_PUBLICA));
+  const r = await processar(conv as Conversa, texto, deps(env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, vitrineDe(cfgAt.vitrine_url)));
 
   // Representante responsável: 1º o que já veio (cliente/base), senão pela região da UF.
   let representanteFinal = conv.representante ?? null;
@@ -1735,7 +1743,7 @@ atendimento.post("/config", async (c) => {
 // pelo gestor. Guardadas na chave global "respostas_empresa".
 const RESPOSTAS_EMPRESA_PADRAO: { titulo: string; texto: string }[] = [
   { titulo: "Convite pra cadastrar no site (lojista)", texto: "📢 *Sua loja pode ser encontrada por novos clientes!*\n\nTodos os dias recebemos mensagens de consumidores perguntando onde encontrar produtos Big Tricot em suas cidades.\n\nPensando nisso, estamos criando em nosso site a página *“Onde Encontrar”*, onde o consumidor poderá pesquisar por estado e cidade e encontrar as lojas parceiras que revendem Big Tricot.\n\nAlém disso, vamos divulgar essa página em nossas redes sociais para facilitar ainda mais essa conexão entre consumidores e nossos parceiros.\n\nSe você deseja que sua loja apareça nessa busca, basta preencher o cadastro no link abaixo:\n\n👉 https://cadastro.bigtricot.com.br\n\nO cadastro é rápido e gratuito.\n\nEsperamos contar com você para fortalecer ainda mais a rede de lojas Big Tricot! 🖤" },
-  { titulo: "Indicar loja parceira (consumidor)", texto: "Oi! 😊 A Big Tricot é uma *fábrica* e trabalha no *atacado, só com lojistas* — por isso não fazemos venda direta pro consumidor final.\n\nMas a gente te ajuda a encontrar uma *loja parceira* que revende nossos produtos pertinho de você! 🖤\n\nÉ só acessar e buscar pela sua cidade:\n👉 https://ondecomprar.bigtricot.com.br\n\nQualquer dúvida, estou por aqui! 💛" },
+  { titulo: "Indicar loja parceira (consumidor)", texto: "Oi! 😊 A Big Tricot é uma *fábrica* e trabalha no *atacado, só com lojistas* — por isso não fazemos venda direta pro consumidor final.\n\nMas a gente te ajuda a encontrar uma *loja parceira* que revende nossos produtos pertinho de você! 🖤\n\nÉ só acessar e buscar pela sua cidade:\n👉 https://rolagem-de-fase.andre-sellmac.workers.dev/vitrine\n\nQualquer dúvida, estou por aqui! 💛" },
   { titulo: "Horário de atendimento", texto: "Nosso atendimento é de *segunda a sexta, das 8h às 18h*. Assim que abrir já te respondo por aqui! 🙌" },
   { titulo: "Pedir dados da loja", texto: "Pra eu já adiantar seu cadastro, me manda por favor: *nome da loja*, *cidade/UF* e *CNPJ*. 📋" },
 ];
@@ -3411,7 +3419,7 @@ atendimento.post("/consultar-cnpj", async (c) => {
     `SELECT nome, cidade, uf, representante FROM clientes WHERE ${stripNome} LIKE ? OR ${stripNome} LIKE ? LIMIT 1`
   ).bind("%" + cnpj + "%", "%" + root8 + "%").first<Row>().catch(() => null);
   const cfgAt = await lerConfig(c.env);
-  const consultarReceita = () => deps(c.env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, cfgAt.vitrine_url || VITRINE_PUBLICA).consultarCnpj(cnpj);
+  const consultarReceita = () => deps(c.env, { url: cfgAt.catalogo_url, senha: cfgAt.catalogo_senha, msg: cfgAt.catalogo_msg }, vitrineDe(cfgAt.vitrine_url)).consultarCnpj(cnpj);
   if (cliBase) {
     let nome = limparNomeDoc(cliBase.nome || "");     // tira o número grudado no nome
     let cidade = cliBase.cidade, uf = cliBase.uf;
