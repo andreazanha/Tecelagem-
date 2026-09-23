@@ -378,19 +378,12 @@ export function Atendimento() {
     if (!confirm(`Ligar a Big (IA) na conversa com ${nome || "este contato"}?\n\nA Big vai mandar uma saudação e voltar a responder essa pessoa automaticamente (triagem + catálogo de varejo).`)) return;
     try { await api.atendReativarIa([id]); recarregar(); } catch { alert("Não consegui ligar a IA agora. Tente de novo."); }
   }
-  // Botão "Fim" do card: se a IA está atendendo (coluna IA atende / varejo), só SILENCIA (para de
-  // piscar; a IA continua e o card volta quando o cliente escrever). Se for lojista/fila humana,
-  // ENCERRA de vez (vai pra "Atendimento finalizado") — não pode ficar junto do varejo.
+  // Botão "Fim" do card: ENCERRA o atendimento (move pra "Atendimento finalizado") em
+  // QUALQUER coluna, inclusive "IA atende". Atualiza NA HORA e confirma por trás.
+  // (Pra só parar de piscar sem encerrar, use a lâmpada 💡.)
   async function fimCard(c: AtendConversa) {
-    if (c.coluna === "ia-atende") {
-      // Varejo/IA: só para de piscar (silenciar) — atualiza NA HORA, chamada por trás.
-      setBoard((b) => (b ? { ...b, conversas: b.conversas.map((x) => (x.id === c.id ? { ...x, silenciado: 1 } : x)) } : b));
-      api.atendSilenciar(c.id, true).catch(() => recarregar());
-    } else {
-      // Lojista/fila humana: encerra — move o card pra "finalizado" NA HORA.
-      setBoard((b) => (b ? { ...b, conversas: b.conversas.map((x) => (x.id === c.id ? { ...x, coluna: "finalizado", encerrado_em: new Date().toISOString().slice(0, 19).replace("T", " ") } : x)) } : b));
-      api.atendEncerrar(c.id).catch(() => recarregar());
-    }
+    setBoard((b) => (b ? { ...b, conversas: b.conversas.map((x) => (x.id === c.id ? { ...x, coluna: "finalizado", encerrado_em: new Date().toISOString().slice(0, 19).replace("T", " ") } : x)) } : b));
+    api.atendEncerrar(c.id).catch(() => recarregar());
   }
   // Lâmpada 💡: liga/desliga o piscar do card (silenciar) — atualiza NA HORA, chamada por trás.
   async function silenciarCard(id: string) {
@@ -1265,7 +1258,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
         {/* Botão FIM: se a IA estiver atendendo (varejo) só para de piscar (IA continua); se for
             lojista/fila humana, encerra a conversa (vai pra "Atendimento finalizado"). */}
         {onFim && (
-          <button className="card-fx-btn" title={c.coluna === "ia-atende" ? "Para de piscar. A Big (IA) continua atendendo; quando o cliente escrever de novo o card volta pra cá." : "Encerrar: manda a conversa para 'Atendimento finalizado'."} onClick={(e) => { e.stopPropagation(); onFim(); }} onPointerDown={(e) => e.stopPropagation()}
+          <button className="card-fx-btn" title="Encerrar: manda a conversa para 'Atendimento finalizado'." onClick={(e) => { e.stopPropagation(); onFim(); }} onPointerDown={(e) => e.stopPropagation()}
             style={{ background: "#fee2e2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700, padding: "1px 7px", lineHeight: 1.4, letterSpacing: 0.3 }}>Fim</button>
         )}
         {/* Mover pra outra coluna sem arrastar: clica e escolhe o nome da coluna */}
