@@ -340,7 +340,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     : cards;
 
   return (
-    <div className="quadro-page">
+    <div className={"quadro-page" + (cfg.painel && cfg.setor === "tecelagem" ? " tec-nova" : "")}>
       <div className="page-head">
         <div>
           <h1>{cfg.titulo}</h1>
@@ -398,7 +398,9 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
       {carregando ? (
         <div className="card pad">Carregando…</div>
       ) : cfg.painel ? (
-        <PainelTec cfg={cfg} cards={filtrados} onAbrir={setAberto} onAbrirFila={setFila} onAcao={acaoCard} />
+        cfg.setor === "tecelagem"
+          ? <PainelTecelagem cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
+          : <PainelTec cfg={cfg} cards={filtrados} onAbrir={setAberto} onAbrirFila={setFila} onAcao={acaoCard} />
       ) : (
         <>
           <div className="kanban">
@@ -931,6 +933,140 @@ function PainelCol({
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Painel NOVO da Tecelagem: 3 colunas compactas (Parte 1 / Parte 2 / Reposição). Cada
+//    coluna tem "Produzindo" (status fazendo) no topo e "A produzir" (aguardando) abaixo.
+//    Finalizados (status pronto) ficam numa lista à parte (atalho no topo). Reaproveita as
+//    ações REAIS: onAcao([c],"fazer")=iniciar, "finalizar"=tecido, "enviar"=passadoria;
+//    onAbrir=detalhe (CardModal). Nada de mock/dados fictícios.
+function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
+  cfg: QuadroCfg;
+  cards: CardProducao[];
+  onAbrir: (c: CardProducao) => void;
+  onAcao: (cards: CardProducao[], acao: Acao) => void;
+}) {
+  const [verFinal, setVerFinal] = useState(false);
+  const prazoDe = (c: CardProducao) => c.data_tecelagem || c.data_entrega || null;      // prazo do tear
+  const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  const colDe = (c: CardProducao): "p1" | "p2" | "rep" =>
+    ehRep(c) ? "rep" : (["parte-2", "pronta-entrega"].includes(basePart(c.parte)) ? "p2" : "p1");
+  function dias(d: string | null): { txt: string; cls: string } {
+    if (!d) return { txt: "—", cls: "ok" };
+    const h = new Date(); h.setHours(0, 0, 0, 0);
+    const e = new Date(d.slice(0, 10) + "T00:00:00");
+    const n = Math.round((e.getTime() - h.getTime()) / 86400000);
+    if (isNaN(n)) return { txt: "—", cls: "ok" };
+    if (n < 0) return { txt: `Atrasado ${-n}d`, cls: "atr" };
+    if (n === 0) return { txt: "Hoje", cls: "hoje" };
+    if (n <= 2) return { txt: `${n} dias`, cls: "urg" };
+    if (n <= 5) return { txt: `${n} dias`, cls: "prox" };
+    return { txt: `${n} dias`, cls: "ok" };
+  }
+  const porDataDesc = (a: CardProducao, b: CardProducao) => {
+    const da = prazoDe(a) || "", db = prazoDe(b) || "";
+    return da < db ? 1 : da > db ? -1 : 0;
+  };
+
+  const naTela = cards.filter((c) => c.status === "aguardando" || c.status === "fazendo");
+  const finalizados = cards.filter((c) => c.status === "pronto");
+  const grupos = {
+    p1: naTela.filter((c) => colDe(c) === "p1"),
+    p2: naTela.filter((c) => colDe(c) === "p2"),
+    rep: naTela.filter((c) => colDe(c) === "rep"),
+  };
+  const COLS: { key: "p1" | "p2" | "rep"; nome: string; ic: string }[] = [
+    { key: "p1", nome: "PEDIDOS PARTE 1", ic: "🧶" },
+    { key: "p2", nome: "PEDIDOS PARTE 2", ic: "🧶" },
+    { key: "rep", nome: "REPOSIÇÃO DE ESTOQUE", ic: "📦" },
+  ];
+
+  const linha = (c: CardProducao) => {
+    const prod = c.status === "fazendo";
+    const dd = dias(prazoDe(c));
+    return (
+      <div key={c.pedido_id + c.parte} className={"tec-row" + (prod ? " prod" : "")} onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
+        <div className="tec-idcli">
+          <span className="tec-num">{numDe(c)}</span><span className="tec-dot">•</span>
+          <span className="tec-cli">{c.cliente_nome || "—"}</span>
+        </div>
+        <span className="tec-pcs">{c.pecas} pçs</span>
+        <span className="tec-dt">{br(prazoDe(c))}</span>
+        <span className={"tec-dias " + dd.cls}>{dd.txt}</span>
+        {prod ? (
+          <span className="tec-acts">
+            <span className="tec-badge prod">Produzindo</span>
+            <button className="tec-fim" title="Finalizar (tecido)" onClick={(e) => { e.stopPropagation(); onAcao([c], "finalizar"); }}>✓</button>
+          </span>
+        ) : (
+          <button className="tec-ini" onClick={(e) => { e.stopPropagation(); onAcao([c], "fazer"); }}>▶ Iniciar</button>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="tec-wrap">
+      <div className="tec-atalhos">
+        <button className="tec-tile p1" onClick={() => setVerFinal(false)}>
+          <span className="tec-tileic">🧶</span><span className="tec-tilet">Pedidos Parte 1</span><span className="tec-tilen">{grupos.p1.length}</span>
+        </button>
+        <button className="tec-tile p2" onClick={() => setVerFinal(false)}>
+          <span className="tec-tileic">🧶</span><span className="tec-tilet">Pedidos Parte 2</span><span className="tec-tilen">{grupos.p2.length}</span>
+        </button>
+        <button className="tec-tile rep" onClick={() => setVerFinal(false)}>
+          <span className="tec-tileic">📦</span><span className="tec-tilet">Reposição de estoque</span><span className="tec-tilen">{grupos.rep.length}</span>
+        </button>
+        <button className={"tec-tile fin" + (verFinal ? " on" : "")} onClick={() => setVerFinal((v) => !v)}>
+          <span className="tec-tileic">✓</span><span className="tec-tilet">Finalizados</span><span className="tec-tilen">{finalizados.length}</span>
+        </button>
+      </div>
+
+      {verFinal ? (
+        <div className="tec-final">
+          <div className="tec-finh">
+            <b>Pedidos finalizados (tecidos)</b>
+            <span className="tec-finc">{finalizados.length} pedidos</span>
+            <button className="tec-voltar" onClick={() => setVerFinal(false)}>← voltar</button>
+          </div>
+          <div className="tec-finbody">
+            {finalizados.length ? finalizados.slice().sort(porDataDesc).map((c) => (
+              <div key={c.pedido_id + c.parte} className="tec-row fin" onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
+                <div className="tec-idcli"><span className="tec-num">{numDe(c)}</span><span className="tec-dot">•</span><span className="tec-cli">{c.cliente_nome || "—"}</span></div>
+                <span className="tec-pcs">{c.pecas} pçs</span>
+                <span className="tec-dt">{br(prazoDe(c))}</span>
+                <span className="tec-badge fin2">Tecido</span>
+                <button className="tec-ini env" onClick={(e) => { e.stopPropagation(); onAcao([c], "enviar"); }}>Enviar ▶</button>
+              </div>
+            )) : <div className="tec-vaz">nenhum pedido finalizado</div>}
+          </div>
+        </div>
+      ) : (
+        <div className="tec-cols">
+          {COLS.map((col) => {
+            const lista = grupos[col.key];
+            const prod = lista.filter((c) => c.status === "fazendo").sort(porDataDesc);
+            const aprod = lista.filter((c) => c.status === "aguardando").sort(ordenarFila);
+            return (
+              <section key={col.key} className={"tec-col " + col.key}>
+                <header className="tec-colh">
+                  <span className="tec-colic">{col.ic}</span>
+                  <span className="tec-colt">{col.nome}</span>
+                  <span className="tec-colc">{lista.length} pedidos</span>
+                </header>
+                <div className="tec-colbody">
+                  <div className="tec-grh prod"><span className="tec-gd vd" />Produzindo <b>({prod.length})</b></div>
+                  {prod.length ? prod.map(linha) : <div className="tec-vaz">nenhum produzindo</div>}
+                  <div className="tec-grh"><span className="tec-gd az" />A produzir <b>({aprod.length})</b></div>
+                  {aprod.length ? aprod.map(linha) : <div className="tec-vaz">fila vazia</div>}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
