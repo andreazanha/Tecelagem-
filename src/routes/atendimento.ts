@@ -87,13 +87,13 @@ type ConvRow = Conversa & {
 // Vitrine PÚBLICA de "Onde Comprar" (lojas parceiras) que a Big manda pro consumidor final.
 // Usa a vitrine do PRÓPRIO sistema (rota /vitrine, sem login) — sempre existe e lista as
 // lojas do cadastro por estado/cidade. Pode ser trocada na config (chave "vitrine_url").
-const VITRINE_PUBLICA = "https://rolagem-de-fase.andre-sellmac.workers.dev/vitrine";
+const VITRINE_PUBLICA = "https://ondecomprar.bigtricot.com.br";
 
-// Resolve a URL da vitrine: usa a configurada SE existir e não for um domínio antigo
-// quebrado (ondecomprar.bigtricot.com.br / lojaparceira.com.br); senão, a vitrine do sistema.
+// Resolve a URL da vitrine: usa a configurada SE existir e não for o domínio inventado
+// pela IA (lojaparceira.com.br); senão, a vitrine oficial "Onde comprar".
 function vitrineDe(cfgUrl?: string | null): string {
   const v = (cfgUrl || "").trim();
-  if (v && /^https?:\/\//i.test(v) && !/ondecomprar\.bigtricot|lojaparceira/i.test(v)) return v;
+  if (v && /^https?:\/\//i.test(v) && !/lojaparceira/i.test(v)) return v;
   return VITRINE_PUBLICA;
 }
 
@@ -1760,7 +1760,7 @@ atendimento.post("/config", async (c) => {
 // pelo gestor. Guardadas na chave global "respostas_empresa".
 const RESPOSTAS_EMPRESA_PADRAO: { titulo: string; texto: string }[] = [
   { titulo: "Convite pra cadastrar no site (lojista)", texto: "📢 *Sua loja pode ser encontrada por novos clientes!*\n\nTodos os dias recebemos mensagens de consumidores perguntando onde encontrar produtos Big Tricot em suas cidades.\n\nPensando nisso, estamos criando em nosso site a página *“Onde Encontrar”*, onde o consumidor poderá pesquisar por estado e cidade e encontrar as lojas parceiras que revendem Big Tricot.\n\nAlém disso, vamos divulgar essa página em nossas redes sociais para facilitar ainda mais essa conexão entre consumidores e nossos parceiros.\n\nSe você deseja que sua loja apareça nessa busca, basta preencher o cadastro no link abaixo:\n\n👉 https://cadastro.bigtricot.com.br\n\nO cadastro é rápido e gratuito.\n\nEsperamos contar com você para fortalecer ainda mais a rede de lojas Big Tricot! 🖤" },
-  { titulo: "Indicar loja parceira (consumidor)", texto: "Oi! 😊 A Big Tricot é uma *fábrica* e trabalha no *atacado, só com lojistas* — por isso não fazemos venda direta pro consumidor final.\n\nMas a gente te ajuda a encontrar uma *loja parceira* que revende nossos produtos pertinho de você! 🖤\n\nÉ só acessar e buscar pela sua cidade:\n👉 https://rolagem-de-fase.andre-sellmac.workers.dev/vitrine\n\nQualquer dúvida, estou por aqui! 💛" },
+  { titulo: "Indicar loja parceira (consumidor)", texto: "Oi! 😊 A Big Tricot é uma *fábrica* e trabalha no *atacado, só com lojistas* — por isso não fazemos venda direta pro consumidor final.\n\nMas a gente te ajuda a encontrar uma *loja parceira* que revende nossos produtos pertinho de você! 🖤\n\nÉ só acessar e buscar pela sua cidade:\n👉 https://ondecomprar.bigtricot.com.br\n\nQualquer dúvida, estou por aqui! 💛" },
   { titulo: "Horário de atendimento", texto: "Nosso atendimento é de *segunda a sexta, das 8h às 18h*. Assim que abrir já te respondo por aqui! 🙌" },
   { titulo: "Pedir dados da loja", texto: "Pra eu já adiantar seu cadastro, me manda por favor: *nome da loja*, *cidade/UF* e *CNPJ*. 📋" },
 ];
