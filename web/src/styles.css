@@ -2268,6 +2268,21 @@ body.dark .tecn-costchip { background: #1b2740; border-color: var(--tc-line); co
 /* ── Tela ACESSOS (Gestão) ─────────────────────────────────────────────────── */
 .acs-wrap { display: grid; grid-template-columns: 210px minmax(0,1fr) 380px; gap: 16px; align-items: start; }
 .acs-wrap:has(.acs-main:last-child) { grid-template-columns: 210px minmax(0,1fr); } /* sem painel aberto */
+.acs-wrap.full { grid-template-columns: minmax(0,1fr); } /* edição em tela cheia (nav escondida) */
+/* Editor em TELA CHEIA (configurar um usuário) */
+.acs-editor { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 1px 3px #0000000f; overflow: hidden; display: flex; flex-direction: column; }
+.acs-eh { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--body); }
+.acs-back { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; font-weight: 800; font-size: 13.5px; cursor: pointer; color: var(--ink); }
+.acs-back:hover { border-color: #c4b5fd; color: #5b21b6; }
+.acs-eh-tit { display: flex; flex-direction: column; }
+.acs-eh-nome { font-size: 17px; font-weight: 800; }
+.acs-eh-meta { font-size: 12.5px; color: var(--muted); }
+.acs-eb { max-height: none; }
+.acs-eb .acs-fld { max-width: 900px; }
+/* funções em 2 colunas na tela cheia (aproveita a largura) */
+.acs-fngrid { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.acs-editor .acs-fngrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; max-width: 1100px; }
+@media (max-width: 900px) { .acs-editor .acs-fngrid { grid-template-columns: 1fr; } }
 .acs-side { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px; box-shadow: 0 1px 3px #0000000f; position: sticky; top: 10px; }
 .acs-si { width: 100%; display: flex; align-items: center; gap: 11px; padding: 12px 13px; border-radius: 10px; font-size: 14.5px; font-weight: 700; color: var(--ink); background: transparent; border: 0; cursor: pointer; text-align: left; }
 .acs-si:hover { background: #f1f5f9; }

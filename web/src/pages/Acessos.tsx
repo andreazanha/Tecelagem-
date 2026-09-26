@@ -30,6 +30,7 @@ function fmtAcesso(s?: string | null): string {
 
 export function Acessos() {
   const [sec, setSec] = useState<Sec>(() => (localStorage.getItem("acessos-sec") as Sec) || "usuarios");
+  const [full, setFull] = useState(false); // edição em tela cheia (esconde nav + lista)
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [prestadores, setPrestadores] = useState<Prestador[]>([]);
   const [setores, setSetores] = useState<SetorRow[]>([]);
@@ -55,18 +56,20 @@ export function Acessos() {
         </div>
       </div>
 
-      <div className="acs-wrap">
-        <aside className="acs-side">
-          {NAV.map((n) => (
-            <button key={n.id} className={"acs-si" + (sec === n.id ? " on" : "")} onClick={() => setSec(n.id)}>
-              <span className="acs-si-ic">{n.icon}</span>
-              <span className="acs-si-lb">{n.label}</span>
-              <span className="acs-si-cnt">{n.count}</span>
-            </button>
-          ))}
-        </aside>
+      <div className={"acs-wrap" + (full ? " full" : "")}>
+        {!full && (
+          <aside className="acs-side">
+            {NAV.map((n) => (
+              <button key={n.id} className={"acs-si" + (sec === n.id ? " on" : "")} onClick={() => setSec(n.id)}>
+                <span className="acs-si-ic">{n.icon}</span>
+                <span className="acs-si-lb">{n.label}</span>
+                <span className="acs-si-cnt">{n.count}</span>
+              </button>
+            ))}
+          </aside>
+        )}
 
-        {sec === "usuarios" && <SecUsuarios usuarios={usuarios} setores={setores} onReload={carregarUsuarios} />}
+        {sec === "usuarios" && <SecUsuarios usuarios={usuarios} setores={setores} onReload={carregarUsuarios} onFull={setFull} />}
         {sec === "prestadores" && <SecPrestadores prestadores={prestadores} setores={setores} onReload={carregarPrestadores} />}
         {sec === "setores" && <SecSetores setores={setores} onReload={() => { carregarSetores(); carregarPrestadores(); }} />}
       </div>
@@ -77,10 +80,10 @@ export function Acessos() {
 // ── USUÁRIOS ───────────────────────────────────────────────────────────────────
 type AcessoMap = Record<string, { ver: boolean; editar: boolean }>;
 
-function SecUsuarios({ usuarios, setores, onReload }: { usuarios: Usuario[]; setores: SetorRow[]; onReload: () => void }) {
+function SecUsuarios({ usuarios, setores, onReload, onFull }: { usuarios: Usuario[]; setores: SetorRow[]; onReload: () => void; onFull: (v: boolean) => void }) {
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<"todos" | "ativos" | "inativos">("todos");
-  const [sel, setSel] = useState<Usuario | null>(null);   // usuário aberto no painel (null = fechado)
+  const [sel, setSel] = useState<Usuario | null>(null);   // usuário aberto em tela cheia (null = lista)
   const [novo, setNovo] = useState(false);
 
   const setoresAtivos = useMemo(() => setores.filter((s) => s.ativo), [setores]);
@@ -93,54 +96,55 @@ function SecUsuarios({ usuarios, setores, onReload }: { usuarios: Usuario[]; set
       return !q || u.nome.toLowerCase().includes(q) || u.usuario.toLowerCase().includes(q) || (u.email || "").toLowerCase().includes(q);
     });
 
-  function abrir(u: Usuario) { setNovo(false); setSel(u); }
-  function abrirNovo() { setNovo(true); setSel({ id: "", nome: "", usuario: "", admin: false, paginas: [] } as Usuario); }
-  function fechar() { setSel(null); setNovo(false); }
+  function abrir(u: Usuario) { setNovo(false); setSel(u); onFull(true); }
+  function abrirNovo() { setNovo(true); setSel({ id: "", nome: "", usuario: "", admin: false, paginas: [] } as Usuario); onFull(true); }
+  function fechar() { setSel(null); setNovo(false); onFull(false); }
+
+  // Tela cheia: só o editor do usuário escolhido (lista e menu escondidos).
+  if (sel) {
+    return (
+      <PainelUsuario
+        key={sel.id || "novo"}
+        usuario={sel}
+        novo={novo}
+        setoresAtivos={setoresAtivos}
+        onFechar={fechar}
+        onSalvo={() => { fechar(); onReload(); }}
+      />
+    );
+  }
 
   return (
-    <>
-      <main className="acs-main">
-        <div className="acs-bar">
-          <h2 className="acs-h2">Usuários</h2>
-          <div className="acs-search"><span>🔎</span><input placeholder="Buscar por nome, login ou e-mail…" value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
-          <div className="acs-seg">
-            {(["todos", "ativos", "inativos"] as const).map((f) => (
-              <button key={f} className={filtro === f ? "on" : ""} onClick={() => setFiltro(f)}>{f === "todos" ? "Todos" : f === "ativos" ? "Ativos" : "Inativos"}</button>
+    <main className="acs-main">
+      <div className="acs-bar">
+        <h2 className="acs-h2">Usuários</h2>
+        <div className="acs-search"><span>🔎</span><input placeholder="Buscar por nome, login ou e-mail…" value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
+        <div className="acs-seg">
+          {(["todos", "ativos", "inativos"] as const).map((f) => (
+            <button key={f} className={filtro === f ? "on" : ""} onClick={() => setFiltro(f)}>{f === "todos" ? "Todos" : f === "ativos" ? "Ativos" : "Inativos"}</button>
+          ))}
+        </div>
+        <button className="acs-new" onClick={abrirNovo}>＋ Novo usuário</button>
+      </div>
+      <div className="card">
+        <table className="table">
+          <thead><tr><th>Nome</th><th>Login</th><th>Setor principal</th><th>Status</th><th>Último acesso</th><th></th></tr></thead>
+          <tbody>
+            {lista.length === 0 && <tr><td colSpan={6} className="empty pad">Nenhum usuário.</td></tr>}
+            {lista.map((u) => (
+              <tr key={u.id} style={{ cursor: "pointer" }} onClick={() => abrir(u)}>
+                <td data-label="Nome"><div className="acs-nm">{u.nome}</div>{u.email && <div className="acs-sub">{u.email}</div>}</td>
+                <td data-label="Login">{u.usuario}</td>
+                <td data-label="Setor principal">{u.admin ? <span className="acs-sub">👑 Admin (tudo)</span> : u.setor_principal ? <span className="perm-tag">{nomeSetor(u.setor_principal)}</span> : <span className="acs-sub">—</span>}</td>
+                <td data-label="Status">{u.bloqueado ? <span className="st-off">🔒 inativo</span> : <span className="st-ok">● ativo</span>}</td>
+                <td data-label="Último acesso">{fmtAcesso(u.ultimo_acesso)}</td>
+                <td><button className="acs-rowbtn" onClick={(e) => { e.stopPropagation(); abrir(u); }}>✎ Configurar</button></td>
+              </tr>
             ))}
-          </div>
-          <button className="acs-new" onClick={abrirNovo}>＋ Novo usuário</button>
-        </div>
-        <div className="card">
-          <table className="table">
-            <thead><tr><th>Nome</th><th>Login</th><th>Setor principal</th><th>Status</th><th>Último acesso</th><th></th></tr></thead>
-            <tbody>
-              {lista.length === 0 && <tr><td colSpan={6} className="empty pad">Nenhum usuário.</td></tr>}
-              {lista.map((u) => (
-                <tr key={u.id} className={sel?.id === u.id ? "acs-selrow" : ""} style={{ cursor: "pointer" }} onClick={() => abrir(u)}>
-                  <td data-label="Nome"><div className="acs-nm">{u.nome}</div>{u.email && <div className="acs-sub">{u.email}</div>}</td>
-                  <td data-label="Login">{u.usuario}</td>
-                  <td data-label="Setor principal">{u.admin ? <span className="acs-sub">👑 Admin (tudo)</span> : u.setor_principal ? <span className="perm-tag">{nomeSetor(u.setor_principal)}</span> : <span className="acs-sub">—</span>}</td>
-                  <td data-label="Status">{u.bloqueado ? <span className="st-off">🔒 inativo</span> : <span className="st-ok">● ativo</span>}</td>
-                  <td data-label="Último acesso">{fmtAcesso(u.ultimo_acesso)}</td>
-                  <td><button className="acs-rowbtn" onClick={(e) => { e.stopPropagation(); abrir(u); }}>✎ Editar</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </main>
-
-      {sel && (
-        <PainelUsuario
-          key={sel.id || "novo"}
-          usuario={sel}
-          novo={novo}
-          setoresAtivos={setoresAtivos}
-          onFechar={fechar}
-          onSalvo={() => { fechar(); onReload(); }}
-        />
-      )}
-    </>
+          </tbody>
+        </table>
+      </div>
+    </main>
   );
 }
 
@@ -230,14 +234,12 @@ function PainelUsuario({ usuario, novo, setoresAtivos, onFechar, onSalvo }: {
   }
 
   return (
-    <aside className="acs-panel">
-      <div className="acs-ph">
-        <div className="acs-ph-top">
-          <div><div className="acs-ph-nome">{novo ? "Novo usuário" : nome || "—"}</div><div className="acs-ph-meta">{login || "login"}{!novo && (usuario.bloqueado ? " · Inativo" : " · Ativo")}</div></div>
-          <button className="acs-x" onClick={onFechar}>✕</button>
-        </div>
+    <section className="acs-editor">
+      <div className="acs-eh">
+        <button className="acs-back" onClick={onFechar}>← Voltar</button>
+        <div className="acs-eh-tit"><span className="acs-eh-nome">{novo ? "Novo usuário" : nome || "—"}</span><span className="acs-eh-meta">{login || "login"}{!novo && (usuario.bloqueado ? " · Inativo" : " · Ativo")}</span></div>
       </div>
-      <div className="acs-pb">
+      <div className="acs-pb acs-eb">
         <div className="acs-fld"><div className="acs-lb">Dados</div>
           <div className="acs-two">
             <input className="acs-inp" placeholder="Nome" value={nome} onChange={(e) => setNome(e.target.value)} />
@@ -297,7 +299,7 @@ function PainelUsuario({ usuario, novo, setoresAtivos, onFechar, onSalvo }: {
                   <button type="button" className="btn btn-soft" style={{ padding: "3px 9px", fontSize: 11 }} onClick={() => setFuncoes(new Set())}>Limpar</button>
                 </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+              <div className="acs-fngrid">
                 {CATEGORIAS_FUNCAO.map((cat) => {
                   const keys = cat.funcoes.map((f) => f.key);
                   const marc = keys.filter((k) => funcoes.has(k)).length;
@@ -343,7 +345,7 @@ function PainelUsuario({ usuario, novo, setoresAtivos, onFechar, onSalvo }: {
         <button className="btn" onClick={onFechar} disabled={salvando}>Cancelar</button>
         <button className="btn btn-primary" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar alterações"}</button>
       </div>
-    </aside>
+    </section>
   );
 }
 
