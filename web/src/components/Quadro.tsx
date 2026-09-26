@@ -546,9 +546,9 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
     uni: naTela.filter((c) => colDe(c) === "uni"),
     rep: naTela.filter((c) => colDe(c) === "rep"),
   };
-  const COLS: { key: "p1" | "p2" | "uni" | "rep"; nome: string; ic: string }[] = [
-    { key: "p1", nome: "PEDIDOS PARTE 1", ic: "🧶" },
-    { key: "p2", nome: "PEDIDOS PARTE 2", ic: "🧶" },
+  const COLS: { key: "p1" | "p2" | "uni" | "rep"; nome: string; ic: string; maq?: string }[] = [
+    { key: "p1", nome: "PEDIDOS PARTE 1", ic: "🧶", maq: "Máquina 3" },
+    { key: "p2", nome: "PEDIDOS PARTE 2", ic: "🧶", maq: "Máquina 7" },
     { key: "uni", nome: "ÚNICOS", ic: "◈" },
     { key: "rep", nome: "REPOSIÇÃO DE ESTOQUE", ic: "📦" },
   ];
@@ -580,8 +580,8 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
         <button className={"tecn-tile urg" + (urgentes.length ? " pulsa" : "")} disabled={!urgentes.length} onClick={() => setLista((v) => v === "urgentes" ? null : "urgentes")}>
           <span className="tecn-tt">★ Urgentes{urgentes.length ? " · abrir ›" : ""}</span><span className="tecn-tn">{urgentes.length}</span>
         </button>
-        <div className="tecn-tile p1"><span className="tecn-tt">Pedidos Parte 1</span><span className="tecn-tn">{grupos.p1.length}</span></div>
-        <div className="tecn-tile p2"><span className="tecn-tt">Pedidos Parte 2</span><span className="tecn-tn">{grupos.p2.length}</span></div>
+        <div className="tecn-tile p1"><span className="tecn-tt">Pedidos Parte 1 <span className="tecn-tmaq">· Máq. 3</span></span><span className="tecn-tn">{grupos.p1.length}</span></div>
+        <div className="tecn-tile p2"><span className="tecn-tt">Pedidos Parte 2 <span className="tecn-tmaq">· Máq. 7</span></span><span className="tecn-tn">{grupos.p2.length}</span></div>
         <div className="tecn-tile uni"><span className="tecn-tt">Únicos</span><span className="tecn-tn">{grupos.uni.length}</span></div>
         <div className="tecn-tile rep"><span className="tecn-tt">Reposição de estoque</span><span className="tecn-tn">{grupos.rep.length}</span></div>
         <button className={"tecn-tile fin" + (finalizados.length ? " pulsa" : "")} disabled={!finalizados.length} onClick={() => setLista((v) => v === "finalizados" ? null : "finalizados")}>
@@ -607,7 +607,7 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
             const aprod = l.filter((c) => c.status === "aguardando").sort(ordenarFila);
             return (
               <section key={col.key} className={"tecn-col " + col.key}>
-                <header className="tecn-colh"><span className="tecn-colic">{col.ic}</span><span className="tecn-colt">{col.nome}</span><span className="tecn-colc">{l.length} pedidos</span></header>
+                <header className="tecn-colh"><span className="tecn-colic">{col.ic}</span><span className="tecn-colt">{col.nome}{col.maq && <span className="tecn-maq">{col.maq}</span>}</span><span className="tecn-colc">{l.length} pedidos</span></header>
                 <div className="tecn-colbody">
                   <div className="tecn-grh"><span className="tecn-gd vd" />Produzindo <b>({prod.length})</b></div>
                   {prod.length ? prod.map((c) => linha(c)) : <div className="tecn-vaz">nenhum produzindo</div>}

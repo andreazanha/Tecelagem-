@@ -1989,6 +1989,8 @@ button.tecn-tile { cursor: pointer; } button.tecn-tile:disabled { cursor: defaul
 .tecn-col { min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--tc-card); border: 1px solid var(--tc-line); border-radius: 12px; box-shadow: 0 1px 3px #0000000f; }
 .tecn-colh { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12.5px; font-weight: 800; color: #fff; }
 .tecn-colt { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tecn-maq { margin-left: 8px; font-size: 11px; font-weight: 800; background: #ffffff33; border: 1px solid #ffffff4d; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+.tecn-tmaq { font-size: 11.5px; font-weight: 700; opacity: .9; }
 .tecn-colc { font-size: 11.5px; font-weight: 700; background: #ffffff33; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
 .tecn-col.p1  .tecn-colh { background: linear-gradient(90deg,#2563eb,#1d4ed8); }
 .tecn-col.p2  .tecn-colh { background: linear-gradient(90deg,#7c3aed,#6d28d9); }
