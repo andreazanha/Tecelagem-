@@ -2100,3 +2100,25 @@ body.dark .perm-acc-body { border-color: #25304a; }
   .perm-srow { grid-template-columns: minmax(0,1fr) 74px 74px; gap: 6px; }
   .perm-fgrid { grid-template-columns: 1fr; }
 }
+
+/* Botões de AÇÃO em tabelas de cadastro (Setores/Usuários) — profissionais e responsivos. */
+.acts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; align-items: center; }
+.act { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 9px; font: inherit; font-size: 12.5px; font-weight: 700; border: 1px solid #cbd5e1; background: #fff; color: #334155; cursor: pointer; white-space: nowrap; line-height: 1; transition: filter .1s, background .1s, border-color .1s; }
+.act:hover { background: #f8fafc; }
+.act:disabled { opacity: .45; cursor: default; }
+.act .act-ic { font-size: 13px; }
+.act.edit { border-color: #c7d2fe; background: #eef2ff; color: #4338ca; }
+.act.edit:hover { background: #e0e7ff; }
+.act.warn { border-color: #fde68a; background: #fffbeb; color: #b45309; }
+.act.warn:hover { background: #fef3c7; }
+.act.ok   { border-color: #a7f3d0; background: #ecfdf5; color: #047857; }
+.act.ok:hover { background: #d1fae5; }
+.act.danger { border-color: #fecaca; background: #fef2f2; color: #dc2626; }
+.act.danger:hover { background: #fee2e2; }
+body.dark .act { background: #131c2e; border-color: #25304a; color: #cdd6e6; }
+body.dark .act.edit { background: #1e2748; border-color: #3b4a78; color: #c7d2fe; }
+body.dark .act.warn { background: #2a2410; border-color: #5b4a1e; color: #fcd34d; }
+body.dark .act.ok { background: #10251d; border-color: #1c5c46; color: #6ee7b7; }
+body.dark .act.danger { background: #2a1416; border-color: #6b2530; color: #fca5a5; }
+/* Em telas estreitas, esconde o texto e deixa só o ícone (continua clicável e alinhado). */
+@media (max-width: 640px) { .act .act-tx { display: none; } .act { padding: 8px 10px; } }

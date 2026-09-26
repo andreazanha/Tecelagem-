@@ -2917,20 +2917,21 @@ function SetoresCadastro() {
                     : <span className="chip" style={{ background: "#fee2e2", color: "#b91c1c" }}>○ inativo</span>}
                 </td>
                 <td data-label="Usuários">
-                  <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{s.usuarios} usuário{s.usuarios === 1 ? "" : "s"}</span>
-                  {s.usuarios > 0 && (
-                    <button className="icon-btn" style={{ marginLeft: 6 }} title="Ver quem" onClick={() => setVerUsuarios((v) => ({ ...v, [s.id]: !v[s.id] }))}>
-                      {verUsuarios[s.id] ? "▲" : "▼"}
-                    </button>
-                  )}
+                  <span className="chip" style={{ background: "#eef2ff", color: "#4338ca", cursor: s.usuarios > 0 ? "pointer" : "default" }} onClick={() => s.usuarios > 0 && setVerUsuarios((v) => ({ ...v, [s.id]: !v[s.id] }))}>
+                    {s.usuarios} usuário{s.usuarios === 1 ? "" : "s"}{s.usuarios > 0 ? (verUsuarios[s.id] ? " ▲" : " ▼") : ""}
+                  </span>
                   {verUsuarios[s.id] && s.usuarios_nomes.length > 0 && (
                     <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>{s.usuarios_nomes.join(", ")}</div>
                   )}
                 </td>
                 <td>
-                  <button className="icon-btn" title="Renomear" onClick={() => { setEditId(s.id); setNome(s.nome); }}>✎</button>
-                  <button className="icon-btn" title={s.ativo ? "Desativar" : "Ativar"} onClick={() => ativar(s)}>{s.ativo ? "⏸" : "▶"}</button>
-                  <button className="icon-btn" title="Apagar (só sem usuários)" onClick={() => remover(s)}>✕</button>
+                  <div className="acts">
+                    <button className="act edit" title="Renomear setor" onClick={() => { setEditId(s.id); setNome(s.nome); }}><span className="act-ic">✎</span><span className="act-tx">Editar</span></button>
+                    {s.ativo
+                      ? <button className="act warn" title="Desativar setor" onClick={() => ativar(s)}><span className="act-ic">⏸</span><span className="act-tx">Desativar</span></button>
+                      : <button className="act ok" title="Ativar setor" onClick={() => ativar(s)}><span className="act-ic">▶</span><span className="act-tx">Ativar</span></button>}
+                    <button className="act danger" title="Apagar (só sem usuários)" onClick={() => remover(s)}><span className="act-ic">✕</span><span className="act-tx">Excluir</span></button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -3204,9 +3205,13 @@ function UsuariosCadastro() {
                     : <span className="chip" style={{ background: "#ecfdf5", color: "#047857" }}>● ativo</span>}
                 </td>
                 <td>
-                  <button className="icon-btn" title="Editar / permissões" onClick={() => editar(u)}>✎</button>
-                  {u.usuario !== "admin" && <button className="icon-btn" title={u.bloqueado ? "Desbloquear" : "Bloquear (desloga na hora)"} onClick={() => bloquear(u)}>{u.bloqueado ? "🔓" : "🔒"}</button>}
-                  {u.usuario !== "admin" && <button className="icon-btn" title="Remover" onClick={() => remover(u)}>✕</button>}
+                  <div className="acts">
+                    <button className="act edit" title="Editar / permissões" onClick={() => editar(u)}><span className="act-ic">✎</span><span className="act-tx">Editar</span></button>
+                    {u.usuario !== "admin" && (u.bloqueado
+                      ? <button className="act ok" title="Desbloquear acesso" onClick={() => bloquear(u)}><span className="act-ic">🔓</span><span className="act-tx">Desbloquear</span></button>
+                      : <button className="act warn" title="Bloquear (desloga na hora)" onClick={() => bloquear(u)}><span className="act-ic">🔒</span><span className="act-tx">Bloquear</span></button>)}
+                    {u.usuario !== "admin" && <button className="act danger" title="Remover usuário" onClick={() => remover(u)}><span className="act-ic">✕</span><span className="act-tx">Remover</span></button>}
+                  </div>
                 </td>
               </tr>
             ))}
