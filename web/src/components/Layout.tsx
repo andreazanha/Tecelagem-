@@ -199,10 +199,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/pedidos/novo", icon: "➕", label: "Criar pedido", page: "pedidos" },
       { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
       { to: "/impressao-etiquetas", icon: "🏷️", label: "Impressão de etiquetas", page: "expedicao" },
-    ],
-  },
-  {
-    id: "cadastros", icon: "🗂️", label: "Cadastros", itens: [
+      // Cadastros agora vivem dentro do PCP.
       { to: "/cadastros?aba=produtos", icon: "📦", label: "Produtos", page: "cadastros" },
       { to: "/cadastros?aba=tamanhos", icon: "📏", label: "Tamanhos", page: "cadastros" },
       // Materiais: submenu dinâmico (Fios + insumos cadastrados + Compras), montado em TopNav.
@@ -231,7 +228,6 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "config", icon: "⚙️", label: "Configurações", itens: [
-      { to: "/cadastros?aba=setores", icon: "🏢", label: "Setores", page: "cadastros" },
       { icon: "🎛️", label: "Parâmetros", soon: true },
       { icon: "💤", label: "Proteção de Tela", soon: true },
       { icon: "🔌", label: "Integrações", soon: true },
