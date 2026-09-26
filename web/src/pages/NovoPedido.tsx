@@ -498,14 +498,14 @@ export function NovoPedido() {
       </div>
 
       {/* Itens */}
-      <div className="card">
-        <div className="card-head">
-          <h2>Itens do pedido{form.itens.length ? ` (${form.itens.length})` : ""}</h2>
-          <div className="row-gap">
+      <div className="card" style={!verItens ? { paddingBottom: 14 } : undefined}>
+        <div className="card-head" style={{ flexWrap: "wrap", gap: 10 }}>
+          <h2 style={{ margin: 0 }}>Itens do pedido{form.itens.length ? ` (${form.itens.length})` : ""}</h2>
+          <div className="row-gap" style={{ alignItems: "center" }}>
             <button type="button" className="btn btn-soft" onClick={() => setVerItens((v) => !v)}>
               {verItens ? "esconder ▲" : "mostrar ▼"}
             </button>
-            <button type="button" className="btn btn-soft" onClick={() => { setVerItens(true); addItem(); }}>
+            <button type="button" className="btn btn-primary" onClick={() => { setVerItens(true); addItem(); }}>
               ＋ Adicionar item
             </button>
           </div>
