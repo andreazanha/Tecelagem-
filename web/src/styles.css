@@ -984,11 +984,34 @@ body.dark .fila-espera { color: #5b6478; }
 
 /* ═══ Menu no TOPO (top-nav) — substitui a barra lateral ═══════════════════════ */
 .app.topnav-app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "main"; }
-/* O topo não empurra a página (a coluna de conteúdo usa minmax(0,1fr)). Só deixamos o topo poder
-   encolher (min-width:0) — SEM overflow, senão os menus suspensos (que abrem pra baixo) ficariam
-   escondidos atrás do conteúdo. */
-.topnav-app .topbar { min-width: 0; }
-.topnav-app .topnav { min-width: 0; }
+/* O topo não empurra a página (a coluna de conteúdo usa minmax(0,1fr)). O topbar pode encolher,
+   mas a NAV não (min-width:auto) — se a nav encolhesse, os botões dela vazavam por cima dos botões
+   da direita (ex.: "Testar (demo)" sobre "Configurações"). Nada de overflow aqui, senão os menus
+   suspensos ficariam escondidos atrás do conteúdo. */
+.topnav-app .topbar { min-width: 0; padding: 0 8px; gap: 2px; }
+/* A NAV do topo NÃO encolhe (min-width:auto + não-shrink): se encolhesse, os botões dela vazavam
+   por cima dos botões da direita (ex.: "Testar (demo)" sobre "Configurações"). */
+.topnav-app .topnav { min-width: auto; flex: 0 0 auto; }
+.topnav-app .topnav-groups { flex-wrap: nowrap; }
+.topnav-app .topbar-right { flex: 0 0 auto; }
+/* Topo um pouco mais compacto para caber sem sobrepor nem cortar itens. */
+.topnav-app .topnav-btn { padding: 8px 7px; font-size: 12.5px; gap: 5px; }
+.topnav-app .topbar-right { gap: 5px; }
+/* Quando o topo aperta, esconde o que é secundário (nome e versão — o avatar mantém o nome no
+   tooltip), e depois os rótulos dos botões do menu (ficam só os ícones), pra nunca cortar nem
+   sobrepor. */
+@media (max-width: 1600px) {
+  .topnav-app .topnav-username { display: none; }        /* nome (o avatar mantém no tooltip) */
+  .topnav-app .topbar-right { gap: 4px; }
+  .topnav-app .topbar-right .ur-btn { padding: 7px 8px; }  /* botões da direita um pouco menores */
+}
+/* Em telas menores esconde também a versão pra caber (ainda aparece no tooltip do avatar). */
+@media (max-width: 1330px) { .topnav-app .app-ver { display: none; } }
+@media (max-width: 1400px) {
+  .topnav-app .topnav-btn .tn-lbl,
+  .topnav-app .topnav-btn .tn-car { display: none; }
+  .topnav-app .topnav-btn { padding: 8px 9px; }
+}
 .topnav-app .topbar { justify-content: flex-start; gap: 3px; padding: 0 12px; }
 .topnav-app .brand { padding-right: 6px; }
 .topnav-app .brand-logo { height: 34px; }
