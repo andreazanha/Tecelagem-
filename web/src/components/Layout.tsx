@@ -179,6 +179,10 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/corte", icon: "✂️", label: "Corte", page: "corte" },
       { to: "/costura", icon: "🪡", label: "Costura", page: "costura" },
       { to: "/revisao", icon: "🔍", label: "Revisão", page: "revisao" },
+      { icon: "⚡", label: "Separação Pronta Entrega", soon: true },
+      { to: "/expedicao", icon: "📮", label: "Expedição", page: "expedicao" },
+      { to: "/fiscal", icon: "🧾", label: "Fiscal", page: "fiscal" },
+      { to: "/transporte", icon: "🚚", label: "Transporte", page: "transporte" },
     ],
   },
   {
