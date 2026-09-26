@@ -207,14 +207,6 @@ const GRUPOS: MenuGrupo[] = [
     ],
   },
   {
-    id: "fiscal", icon: "🧾", label: "Fiscal", itens: [
-      { to: "/fiscal", icon: "🧾", label: "Fiscal", page: "fiscal" },
-      { icon: "📄", label: "Notas Fiscais", soon: true },
-      { icon: "💰", label: "Contas a Receber", soon: true },
-      { icon: "📊", label: "Relatórios Fiscais", soon: true },
-    ],
-  },
-  {
     id: "cadastros", icon: "🗂️", label: "Cadastros", itens: [
       { to: "/cadastros?aba=produtos", icon: "📦", label: "Produtos", page: "cadastros" },
       { to: "/cadastros?aba=tamanhos", icon: "📏", label: "Tamanhos", page: "cadastros" },
