@@ -2399,3 +2399,29 @@ body.dark .fis-med-h { background: #1e2748; color: #c7d2fe; }
 .fis-tab .fis-tot { font-weight: 800; background: var(--body); }
 .fis-frete-v { margin-top: 8px; font-size: 13px; font-weight: 700; color: #047857; }
 .fis-acoes { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 10px; }
+
+/* Transporte — tiles fechados + painel + aguardando */
+.tr2-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.tr2-tile { display: flex; align-items: center; gap: 10px; background: var(--card); border: 2px solid var(--line); border-radius: 12px; padding: 14px 14px; cursor: pointer; box-shadow: 0 1px 3px #0000000f; }
+.tr2-tile:hover { border-color: #cbd5e1; }
+.tr2-tile.on { box-shadow: 0 2px 10px #0000001a; }
+.tr2-ini { width: 34px; height: 34px; border-radius: 9px; color: #fff; font-weight: 800; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.tr2-nome { font-weight: 800; font-size: 14px; flex: 1; min-width: 0; }
+.tr2-n { min-width: 26px; height: 24px; padding: 0 8px; border-radius: 999px; background: #94a3b8; color: #fff; font-weight: 800; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; }
+.tr2-car { color: var(--muted); font-size: 11px; }
+.tr2-painel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px #0000000f; }
+.tr2-painel-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px; font-weight: 800; font-size: 14px; border-bottom: 1px solid var(--line); background: var(--body); }
+.tr2-painel-n { font-size: 12px; color: var(--muted); font-weight: 700; }
+.tr2-painel-b { padding: 10px; background: var(--body); }
+.tr2-row, .tr2-wrow { display: grid; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; margin-bottom: 8px; }
+.tr2-row { grid-template-columns: 90px minmax(0,1fr) 230px 220px auto; }
+.tr2-wrow { grid-template-columns: 90px minmax(0,1fr) 200px 170px auto; }
+.tr2-idcli { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.tr2-num { font-size: 15px; font-weight: 800; } .tr2-cli { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr2-meta { font-size: 12px; color: var(--muted); }
+.tr2-enviar { position: relative; }
+.tr2-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 40px #0f172a22; padding: 8px; display: grid; gap: 6px; min-width: 220px; }
+.tr2-mi { display: flex; align-items: center; gap: 9px; background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; font-weight: 800; font-size: 13px; cursor: pointer; text-align: left; }
+.tr2-mi:hover { background: var(--body); }
+.tr2-mi-ini { width: 26px; height: 26px; border-radius: 7px; color: #fff; font-weight: 800; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+@media (max-width: 900px) { .tr2-row, .tr2-wrow { grid-template-columns: 70px minmax(0,1fr) auto; } .tr2-meta { display: none; } }

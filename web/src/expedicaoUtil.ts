@@ -72,11 +72,12 @@ export const dur = (min: number) => {
 // Transportadoras fixas (abas do Transporte).
 export const TRANSPORTADORAS: { slug: string; nome: string; ini: string; cor: string }[] = [
   { slug: "braspress", nome: "Braspress", ini: "BP", cor: "#dc2626" },
-  { slug: "translovato", nome: "Trans Lovato", ini: "TL", cor: "#2563eb" },
+  { slug: "translovato", nome: "Translovato", ini: "TL", cor: "#2563eb" },
+  { slug: "total-express", nome: "Total Express", ini: "TE", cor: "#0891b2" },
   { slug: "jadlog", nome: "Jadlog", ini: "JL", cor: "#7c3aed" },
+  { slug: "bb-turismo", nome: "BB Turismo", ini: "BB", cor: "#ca8a04" },
+  { slug: "cliente-retirou", nome: "Retirado pelo cliente", ini: "CR", cor: "#475569" },
   { slug: "correios", nome: "Correios", ini: "CO", cor: "#ea580c" },
-  { slug: "envio-proprio", nome: "Envio próprio", ini: "EP", cor: "#0d9488" },
-  { slug: "cliente-retirou", nome: "Cliente retirou", ini: "CR", cor: "#475569" },
 ];
 export const transpNome = (slug?: string | null) =>
   TRANSPORTADORAS.find((t) => t.slug === slug)?.nome || slug || "—";

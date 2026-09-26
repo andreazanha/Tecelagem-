@@ -2,15 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type CardExpedicao } from "../api";
 import { br, opCodigo, tipoDe, resumoVolumes, parseVolumes, TRANSPORTADORAS, transpNome } from "../expedicaoUtil";
 
-// Transporte: pedidos com NF emitida entram em "Aguardando". Atribua a transportadora
-// (cada uma é uma aba). Cards numa transportadora somem após 15 dias (regra do backend).
-const ABAS = [{ slug: "aguardando", nome: "Aguardando", ini: "⏳", cor: "#f59e0b" }, ...TRANSPORTADORAS];
-
+// Transporte: pedidos com NF emitida entram em "Aguardando". As transportadoras ficam FECHADAS
+// (tiles com a contagem); clicar abre e mostra os pedidos dela. Cada pedido aguardando tem um botão
+// "Enviar" com a LISTA de transportadoras. Cards numa transportadora somem após 15 dias (backend).
 export function Transporte() {
   const [cards, setCards] = useState<CardExpedicao[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
-  const [aba, setAba] = useState("aguardando");
+  const [aberta, setAberta] = useState<string | null>(null);   // transportadora expandida
+  const [enviar, setEnviar] = useState<string | null>(null);    // pedido com o menu "Enviar" aberto
 
   function recarregar() {
     api
@@ -19,52 +19,33 @@ export function Transporte() {
       .catch(() => {})
       .finally(() => setCarregando(false));
   }
-  useEffect(() => {
-    setCarregando(true);
-    recarregar();
-  }, []);
+  useEffect(() => { setCarregando(true); recarregar(); }, []);
 
   async function atribuir(c: CardExpedicao, slug: string) {
-    try {
-      await api.atualizarExpedicao(c.pedido_id, { status: "enviado", transportadora: slug });
-    } catch {
-      alert("Não foi possível atribuir. Tente novamente.");
-    } finally {
-      recarregar();
-    }
+    setEnviar(null);
+    try { await api.atualizarExpedicao(c.pedido_id, { status: "enviado", transportadora: slug }); }
+    catch { alert("Não foi possível atribuir. Tente novamente."); }
+    finally { recarregar(); }
   }
   async function voltarAguardando(c: CardExpedicao) {
-    try {
-      await api.atualizarExpedicao(c.pedido_id, { status: "aguardando", transportadora: null });
-    } catch {
-      alert("Não foi possível voltar. Tente novamente.");
-    } finally {
-      recarregar();
-    }
+    try { await api.atualizarExpedicao(c.pedido_id, { status: "aguardando", transportadora: null }); }
+    catch { alert("Não foi possível voltar. Tente novamente."); }
+    finally { recarregar(); }
   }
 
   const q = busca.trim().toLowerCase();
   const filtrados = useMemo(
-    () =>
-      q
-        ? cards.filter(
-            (c) =>
-              (c.numero_erp || "").toLowerCase().includes(q) ||
-              (c.codigo_pai || "").toLowerCase().includes(q) ||
-              (c.cliente_nome || "").toLowerCase().includes(q) ||
-              (c.nf_numero || "").toLowerCase().includes(q)
-          )
-        : cards,
+    () => q
+      ? cards.filter((c) =>
+          (c.numero_erp || "").toLowerCase().includes(q) ||
+          (c.codigo_pai || "").toLowerCase().includes(q) ||
+          (c.cliente_nome || "").toLowerCase().includes(q) ||
+          (c.nf_numero || "").toLowerCase().includes(q))
+      : cards,
     [cards, q]
   );
-
-  const contar = (slug: string) =>
-    slug === "aguardando"
-      ? filtrados.filter((c) => !c.transportadora).length
-      : filtrados.filter((c) => c.transportadora === slug).length;
-
-  const lista =
-    aba === "aguardando" ? filtrados.filter((c) => !c.transportadora) : filtrados.filter((c) => c.transportadora === aba);
+  const aguardando = filtrados.filter((c) => !c.transportadora);
+  const daTransp = (slug: string) => filtrados.filter((c) => c.transportadora === slug);
 
   return (
     <div className="quadro-page">
@@ -79,77 +60,86 @@ export function Transporte() {
         </div>
       </div>
 
-      <div className="tr-abas">
-        {ABAS.map((a) => (
-          <button
-            key={a.slug}
-            className={"tr-aba" + (aba === a.slug ? " ativa" : "")}
-            style={aba === a.slug ? { borderColor: a.cor, color: a.cor } : undefined}
-            onClick={() => setAba(a.slug)}
-          >
-            <span className="tr-aba-ic" style={{ background: a.cor }}>{a.ini}</span>
-            {a.nome}
-            <span className="tr-aba-n">{contar(a.slug)}</span>
-          </button>
-        ))}
-      </div>
-
       {carregando ? (
         <div className="card pad">Carregando…</div>
       ) : (
-        <div className="tr-grade">
-          {lista.map((c) => {
-            const t = tipoDe(c.partes);
-            const vols = parseVolumes(c.volumes);
-            return (
-              <div className="kcard tr-card" key={c.pedido_id}>
-                <div className={"kcard-hd " + t.cls}>
-                  <span className="kcard-op">{opCodigo(c)}</span>
-                  <span className="kcard-badge">{t.label}</span>
-                </div>
-                <div className="kcard-bd">
-                  <div className="kcard-row1">
-                    <span className="kcard-cli">{c.cliente_nome}</span>
-                    {c.transportadora ? (
-                      <span className="kstatus pronto">{transpNome(c.transportadora)}</span>
-                    ) : (
-                      <span className="kstatus aguardando">Aguardando</span>
-                    )}
-                  </div>
-                  <div className="kcard-prod">
-                    {c.pecas || 0} pç · {resumoVolumes(vols)}
-                    {c.nf_numero ? ` · NF ${c.nf_numero}` : ""}
-                  </div>
-                  {c.frete && <div className="tr-frete">💰 {c.frete}</div>}
-                  <div className="kcard-boxes">
-                    <div className="kbox ent"><div className="kbox-l">ENTREGA</div><div className="kbox-v">{br(c.data_entrega)}</div></div>
-                  </div>
-                  {!c.transportadora ? (
-                    <div className="tr-atribuir">
-                      <div className="tr-atribuir-l">🚚 Atribuir transportadora</div>
-                      <div className="tr-chips">
-                        {TRANSPORTADORAS.map((tr) => (
-                          <button key={tr.slug} className="tr-chip" style={{ borderColor: tr.cor, color: tr.cor }} onClick={() => atribuir(c, tr.slug)}>
-                            {tr.nome}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="kcard-acoes" style={{ marginTop: 10, justifyContent: "space-between" }}>
-                      <span className="kcard-hint">despachado {br(c.entrou_em)} · some em 15 dias</span>
+        <>
+          {/* Transportadoras FECHADAS — clicar abre o conteúdo */}
+          <div className="tr2-tiles">
+            {TRANSPORTADORAS.map((tr) => {
+              const n = daTransp(tr.slug).length;
+              const on = aberta === tr.slug;
+              return (
+                <button key={tr.slug} className={"tr2-tile" + (on ? " on" : "")} style={on ? { borderColor: tr.cor } : undefined} onClick={() => setAberta(on ? null : tr.slug)}>
+                  <span className="tr2-ini" style={{ background: tr.cor }}>{tr.ini}</span>
+                  <span className="tr2-nome">{tr.nome}</span>
+                  <span className="tr2-n" style={n ? { background: tr.cor } : undefined}>{n}</span>
+                  <span className="tr2-car">{on ? "▲" : "▼"}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Conteúdo da transportadora aberta */}
+          {aberta && (
+            <div className="tr2-painel">
+              <div className="tr2-painel-h">🚚 {transpNome(aberta)} <span className="tr2-painel-n">{daTransp(aberta).length} pedido(s)</span>
+                <button className="btn" style={{ marginLeft: "auto" }} onClick={() => setAberta(null)}>Fechar ✕</button>
+              </div>
+              <div className="tr2-painel-b">
+                {daTransp(aberta).length === 0 && <div className="kcol-vazio">Nenhum pedido nesta transportadora.</div>}
+                {daTransp(aberta).map((c) => {
+                  const t = tipoDe(c.partes);
+                  const vols = parseVolumes(c.volumes);
+                  return (
+                    <div className="tr2-row" key={c.pedido_id}>
+                      <span className={"exp-tp " + t.cls}>{t.label}</span>
+                      <div className="tr2-idcli"><span className="tr2-num">{opCodigo(c)}</span><span className="tr2-cli">{c.cliente_nome}</span></div>
+                      <span className="tr2-meta">{c.pecas || 0} pç · {resumoVolumes(vols)}{c.nf_numero ? ` · NF ${c.nf_numero}` : ""}</span>
+                      <span className="tr2-meta">despachado {br(c.entrou_em)} · some em 15 dias</span>
                       <button className="kbtn" style={{ background: "#e2e8f0", color: "#475569" }} onClick={() => voltarAguardando(c)}>↩ Voltar</button>
                     </div>
-                  )}
-                </div>
+                  );
+                })}
               </div>
-            );
-          })}
-          {lista.length === 0 && <div className="kcol-vazio" style={{ gridColumn: "1 / -1" }}>nenhum pedido nesta aba</div>}
-        </div>
+            </div>
+          )}
+
+          {/* Aguardando — full width + botão Enviar (lista de transportadoras) */}
+          <div className="card" style={{ marginTop: 14 }}>
+            <div className="exp-colh" style={{ background: "linear-gradient(90deg,#f59e0b,#d97706)" }}><span>⏳ Aguardando transportadora</span><span className="exp-c">{aguardando.length}</span></div>
+            <div className="exp-list">
+              {aguardando.length === 0 && <div className="kcol-vazio">Nenhum pedido aguardando.</div>}
+              {aguardando.map((c) => {
+                const t = tipoDe(c.partes);
+                const vols = parseVolumes(c.volumes);
+                return (
+                  <div className="tr2-wrow" key={c.pedido_id}>
+                    <span className={"exp-tp " + t.cls}>{t.label}</span>
+                    <div className="tr2-idcli"><span className="tr2-num">{opCodigo(c)}</span><span className="tr2-cli">{c.cliente_nome}</span></div>
+                    <span className="tr2-meta">{c.pecas || 0} pç · {resumoVolumes(vols)}</span>
+                    <span className="tr2-meta">{c.nf_numero ? `NF ${c.nf_numero}` : "—"}{c.frete ? ` · 💰 ${c.frete}` : ""}</span>
+                    <div className="tr2-enviar">
+                      <button className="kbtn tecer" onClick={() => setEnviar(enviar === c.pedido_id ? null : c.pedido_id)}>Enviar ▾</button>
+                      {enviar === c.pedido_id && (
+                        <div className="tr2-menu">
+                          {TRANSPORTADORAS.map((tr) => (
+                            <button key={tr.slug} className="tr2-mi" style={{ borderColor: tr.cor, color: tr.cor }} onClick={() => atribuir(c, tr.slug)}>
+                              <span className="tr2-mi-ini" style={{ background: tr.cor }}>{tr.ini}</span>{tr.nome}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
       )}
       <p className="muted" style={{ marginTop: 14, fontSize: 12 }}>
-        Atribua a transportadora → o card vai para a aba dela. Pedidos numa transportadora somem automaticamente após 15 dias.
+        As transportadoras ficam fechadas — clique numa para ver os pedidos dela. Em "Aguardando", use <b>Enviar ▾</b> e escolha a transportadora. Pedidos despachados somem automaticamente após 15 dias (ficam no histórico).
       </p>
     </div>
   );
