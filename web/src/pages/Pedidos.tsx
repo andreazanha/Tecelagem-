@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, tipoLabel, type Pedido } from "../api";
+import { getUser, podeFuncao } from "../auth";
 
 export function Pedidos() {
+  const u = getUser();
+  const podeCriar = podeFuncao(u, "pedido.criar");
+  const podeExcluir = podeFuncao(u, "pedido.excluir");
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -52,9 +56,11 @@ export function Pedidos() {
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
           />
-          <Link to="/pedidos/novo" className="btn btn-primary">
-            ＋ Novo Pedido
-          </Link>
+          {podeCriar && (
+            <Link to="/pedidos/novo" className="btn btn-primary">
+              ＋ Novo Pedido
+            </Link>
+          )}
         </div>
       </div>
 
@@ -118,13 +124,15 @@ export function Pedidos() {
                       <span className={"status status-" + p.status}>{p.status}</span>
                     </td>
                     <td data-label="">
-                      <button
-                        className="icon-btn danger"
-                        title="Excluir pedido"
-                        onClick={() => excluir(p)}
-                      >
-                        🗑
-                      </button>
+                      {podeExcluir && (
+                        <button
+                          className="icon-btn danger"
+                          title="Excluir pedido"
+                          onClick={() => excluir(p)}
+                        >
+                          🗑
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

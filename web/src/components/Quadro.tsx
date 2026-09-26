@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type CardProducao, type ItemPedidoEstoque } from "../api";
 import { historico } from "../historico";
-import { getUser } from "../auth";
+import { getUser, podeFuncao } from "../auth";
 
 const SETOR_LABEL: Record<string, string> = {
   tecelagem: "Tecelagem", passadoria: "Passadoria", corte: "Corte",
@@ -72,6 +72,17 @@ const brDT = (s?: string | null) => {
 };
 
 export type Acao = "fazer" | "finalizar" | "enviar" | "defeito" | "voltar" | "devolverDefeito";
+// Ação de produção → permissão de função. Usado para ESCONDER botões sem permissão (o backend
+// também recusa a ação). Admin / usuário legado (não configurado) passam por tudo.
+const ACAO_PERM: Record<Acao, string> = {
+  fazer: "producao.iniciar",
+  finalizar: "producao.finalizar",
+  enviar: "producao.enviar",
+  voltar: "producao.voltar",
+  defeito: "producao.defeito",
+  devolverDefeito: "producao.devolver",
+};
+export const podeAcao = (acao: Acao) => podeFuncao(getUser(), ACAO_PERM[acao]);
 export interface ColCfg {
   cor: "aguardando" | "fazendo" | "pronto" | "prioridade" | "defeito";
   titulo: string;
@@ -238,6 +249,9 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 
   // Toda ação passa pelo modal (senha do operador interno + destino quando aplicável).
   function acaoCard(cards: CardProducao[], acao: Acao) {
+    // Rede de segurança: mesmo que algum botão apareça, sem permissão a ação não segue (o backend
+    // também recusa). Admin / usuário não configurado (legado) passam normalmente.
+    if (!podeAcao(acao)) { alert("Você não tem permissão para esta ação."); return; }
     setAcaoModal({ cards, acao });
   }
 
@@ -565,10 +579,10 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
         <span className="tecn-st">{modo === "final" ? <span className="tecn-badge fin">Tecido</span> : prod ? <span className="tecn-badge">Produzindo</span> : null}</span>
         <span className="tecn-act">
           {modo === "final"
-            ? <button className="tecn-btn env" onClick={(e) => { e.stopPropagation(); onAcao([c], "enviar"); }}>Enviar ▶</button>
+            ? (podeAcao("enviar") && <button className="tecn-btn env" onClick={(e) => { e.stopPropagation(); onAcao([c], "enviar"); }}>Enviar ▶</button>)
             : prod
-              ? <button className="tecn-btn fim" onClick={(e) => { e.stopPropagation(); onAcao([c], "finalizar"); }}>✓ Finalizar</button>
-              : <button className="tecn-btn ini" onClick={(e) => { e.stopPropagation(); onAcao([c], "fazer"); }}>▶ Iniciar</button>}
+              ? (podeAcao("finalizar") && <button className="tecn-btn fim" onClick={(e) => { e.stopPropagation(); onAcao([c], "finalizar"); }}>✓ Finalizar</button>)
+              : (podeAcao("fazer") && <button className="tecn-btn ini" onClick={(e) => { e.stopPropagation(); onAcao([c], "fazer"); }}>▶ Iniciar</button>)}
         </span>
       </div>
     );
@@ -1505,7 +1519,7 @@ function Coluna({
             <div key={c.pedido_id + (combinado ? "-misto" : c.parte)} className={"kcard" + (c.prioridade ? " prio" : "")} onClick={() => onAbrir(c)} style={{ cursor: "pointer" }}>
               <div className={"kcard-hd " + hdCls}>
                 <span className="kcard-op">{opCodigo(c)}</span>
-                {!cfg.semPrioridade && (
+                {!cfg.semPrioridade && podeFuncao(getUser(), "producao.prioridade") && (
                   <button
                     className={"kcard-prio" + (c.prioridade ? " on" : "")}
                     title={c.prioridade ? "Tirar da frente" : "Passar na frente"}
@@ -1564,7 +1578,7 @@ function Coluna({
                       : "toque p/ detalhes"}
                   </span>
                   <div className="kcard-acoes">
-                    {onDesmembrar && ehConsolidada(c) && (
+                    {onDesmembrar && ehConsolidada(c) && podeFuncao(getUser(), "producao.desmembrar") && (
                       <button
                         className="kbtn tecer"
                         title="Separar esta OP consolidada em um card por pedido (segue a produção independente)"
@@ -1582,7 +1596,7 @@ function Coluna({
                         📥 Entrada no estoque
                       </button>
                     )}
-                    {col.acaoExtra && (
+                    {col.acaoExtra && podeAcao(col.acaoExtra) && (
                       <button
                         className={"kbtn " + btnDe(col.acaoExtra, cfg).cls}
                         onClick={(e) => { e.stopPropagation(); onAcao(g, col.acaoExtra!); }}
@@ -1590,15 +1604,17 @@ function Coluna({
                         {rotulo(col.acaoExtra, c, cfg)}
                       </button>
                     )}
-                    <button
-                      className={"kbtn " + btn.cls}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAcao(g, col.acao);
-                      }}
-                    >
-                      {col.botaoLabel || rotulo(col.acao, c, cfg)}
-                    </button>
+                    {podeAcao(col.acao) && (
+                      <button
+                        className={"kbtn " + btn.cls}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAcao(g, col.acao);
+                        }}
+                      >
+                        {col.botaoLabel || rotulo(col.acao, c, cfg)}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

@@ -90,6 +90,19 @@ export async function exigirFuncao(c: Context, chave: string): Promise<{ u: Usua
   return { erro: c.json({ error: "sem_permissao", chave }, 403) };
 }
 
+// Guard que libera se o usuário tiver PELO MENOS UMA das funções (ações com mais de um botão que
+// batem no mesmo endpoint — ex.: enviar/voltar/devolver na produção).
+export async function exigirAlgumaFuncao(c: Context, chaves: string[]): Promise<{ u: UsuarioAuth } | { erro: Response }> {
+  const env = c.env as Env;
+  const u = await usuarioLogado(env, c);
+  if (!u) return { erro: c.json({ error: "sessao_invalida", relogar: true }, 401) };
+  if (u.admin) return { u };
+  const p = await permissoesDoUsuario(env, u.id);
+  if (!p.configurado) return { u };
+  if (chaves.some((k) => p.funcoes.has(k))) return { u };
+  return { erro: c.json({ error: "sem_permissao", chaves }, 403) };
+}
+
 // Guard de rota por EDIÇÃO de um setor (ver vs. editar). Ex.: alterar algo dentro de Revisão exige
 // editar do setor 'revisao'.
 export async function exigirEditarSetor(c: Context, setorId: string): Promise<{ u: UsuarioAuth } | { erro: Response }> {

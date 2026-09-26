@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type Material, type MaterialCategoriaDef } from "../api";
 import { EstoqueScanner } from "../components/EstoqueScanner";
 import { imprimirEtiquetasQR } from "../qrPrint";
+import { getUser, podeFuncao } from "../auth";
 
 const nf = (n: number | undefined) => (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 type Mov = { tipo: string; quantidade: number; motivo: string | null; pedido_id: string | null; fonte: string | null; criado_em: string };
@@ -124,8 +125,8 @@ export function EstoqueMateriais() {
                     <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{nf(m.caixas)}</td>
                     <td className="num">
                       <div style={{ display: "inline-flex", gap: 6 }}>
-                        <button className="btn btn-primary" style={{ padding: "5px 9px" }} onClick={() => abrirMov(m, "entrada", "saldo")}>+ Entrada</button>
-                        <button className="btn btn-soft" style={{ padding: "5px 9px" }} onClick={() => abrirMov(m, "ajuste", "saldo")}>Ajustar</button>
+                        {podeFuncao(getUser(), "estoque.entrada") && <button className="btn btn-primary" style={{ padding: "5px 9px" }} onClick={() => abrirMov(m, "entrada", "saldo")}>+ Entrada</button>}
+                        {podeFuncao(getUser(), "estoque.ajuste") && <button className="btn btn-soft" style={{ padding: "5px 9px" }} onClick={() => abrirMov(m, "ajuste", "saldo")}>Ajustar</button>}
                         <button className="btn btn-soft" style={{ padding: "5px 9px" }} onClick={() => abrirExtrato(m)}>Extrato</button>
                       </div>
                     </td>

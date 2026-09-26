@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../index";
 import { classificar, criarCatalogo, resolverModelo, ehKit, type ItemBase } from "../classificar";
 import { casarProduto } from "./produtos";
+import { exigirFuncao, exigirAlgumaFuncao } from "../permissoes";
 
 export const producao = new Hono<{ Bindings: Env }>();
 
@@ -328,6 +329,11 @@ producao.post("/:pedido_id/:parte", async (c) => {
   const b = await c.req
     .json<{ status?: string; setor?: string; maquina?: string; operador?: string }>()
     .catch(() => ({}) as { status?: string; setor?: string; maquina?: string; operador?: string });
+  // Permissão conforme a ação pretendida (o mesmo endpoint atende vários botões).
+  if (b.status === "fazendo") { const g = await exigirFuncao(c, "producao.iniciar"); if ("erro" in g) return g.erro; }
+  else if (b.status === "pronto") { const g = await exigirFuncao(c, "producao.finalizar"); if ("erro" in g) return g.erro; }
+  else if (b.status === "defeito") { const g = await exigirFuncao(c, "producao.defeito"); if ("erro" in g) return g.erro; }
+  else if (b.setor) { const g = await exigirAlgumaFuncao(c, ["producao.enviar", "producao.voltar", "producao.devolver"]); if ("erro" in g) return g.erro; }
   const status = STATUS.includes(b.status || "") ? (b.status as string) : "aguardando";
 
   const sets: string[] = ["status = ?"];
@@ -381,6 +387,7 @@ producao.post("/:pedido_id/:parte", async (c) => {
 
 // DESMEMBRAR manual (botão no Corte): separa a OP consolidada em um card por OP.
 producao.post("/:pedido_id/:parte/desmembrar", async (c) => {
+  const g = await exigirFuncao(c, "producao.desmembrar"); if ("erro" in g) return g.erro;
   const pedido_id = c.req.param("pedido_id");
   const parte = decodeURIComponent(c.req.param("parte"));
   const r = await desmembrarCard(c.env, pedido_id, parte);
@@ -414,6 +421,7 @@ producao.post("/:pedido_id/:parte/concluir", async (c) => {
 
 // "Passar na frente": liga/desliga a prioridade de uma parte.
 producao.post("/:pedido_id/:parte/prioridade", async (c) => {
+  const g = await exigirFuncao(c, "producao.prioridade"); if ("erro" in g) return g.erro;
   const pedido_id = c.req.param("pedido_id");
   const parte = decodeURIComponent(c.req.param("parte"));
   const b = await c.req.json<{ prioridade?: number | boolean }>().catch(() => ({}) as { prioridade?: number | boolean });

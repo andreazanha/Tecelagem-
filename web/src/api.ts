@@ -9,6 +9,19 @@ function authHeaders(): Record<string, string> {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
+// Wrapper de fetch: injeta o token automaticamente em TODA chamada a /api (mesma origem). Assim
+// nenhuma rota fica sem crachá por esquecimento — o backend consegue validar permissão em qualquer
+// endpoint sem quebrar quem chamava com fetch "cru". Só adiciona o Authorization em URLs locais
+// (relativas ou da própria origem), nunca em endpoints externos (não vaza o token).
+const _nativeFetch: typeof globalThis.fetch = globalThis.fetch.bind(globalThis);
+function fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+  const local = url.startsWith("/") || (typeof location !== "undefined" && url.startsWith(location.origin));
+  if (!local) return _nativeFetch(input, init);
+  const headers = { ...(init?.headers as Record<string, string> | undefined), ...authHeaders() };
+  return _nativeFetch(input, { ...init, headers });
+}
+
 // Atalho para POST com corpo JSON (usado nas rotas de produtos/insumos).
 const jsonPost = (url: string, body: unknown) =>
   fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) });

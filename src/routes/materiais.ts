@@ -4,6 +4,10 @@
 // Cada material tem saldo/mínimo/preço → base pras COMPRAS (saldo < mínimo).
 import { Hono } from "hono";
 import type { Env } from "../index";
+import { exigirFuncao } from "../permissoes";
+
+// tipo do movimento → chave de permissão de estoque.
+const permEstoque = (tipo: string) => tipo === "entrada" ? "estoque.entrada" : tipo === "baixa" ? "estoque.saida" : "estoque.ajuste";
 
 export const materiais = new Hono<{ Bindings: Env }>();
 
@@ -286,6 +290,7 @@ materiais.post("/:id/mov", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const tipo = String(b.tipo ?? "entrada").trim();
   if (!["entrada", "baixa", "ajuste"].includes(tipo)) return c.json({ error: "tipo inválido" }, 400);
+  const g = await exigirFuncao(c, permEstoque(tipo)); if ("erro" in g) return g.erro;
   // alvo: "saldo" (unidade base) ou "caixas" (contagem independente).
   const alvo = String(b.alvo ?? "saldo").trim() === "caixas" ? "caixas" : "saldo";
   const qtd = Number(b.quantidade);

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../index";
 import { DEFAULT_PARTE1, norm } from "../classificar";
 import { colsBulk } from "./materiais";
-import { permissoesDoUsuario } from "../permissoes";
+import { permissoesDoUsuario, exigirFuncao } from "../permissoes";
 
 const BASE_P1 = new Set(DEFAULT_PARTE1.map((n) => norm(n)));
 
@@ -444,6 +444,7 @@ cores.post("/:nome/mov", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const tipo = String(b.tipo ?? "entrada").trim();
   if (!["entrada", "baixa", "ajuste"].includes(tipo)) return c.json({ error: "tipo inválido" }, 400);
+  const gEst = await exigirFuncao(c, tipo === "entrada" ? "estoque.entrada" : tipo === "baixa" ? "estoque.saida" : "estoque.ajuste"); if ("erro" in gEst) return gEst.erro;
   const qtd = Number(b.quantidade);
   if (isNaN(qtd) || (tipo !== "ajuste" && !qtd)) return c.json({ error: "quantidade inválida" }, 400);
   const cor = await c.env.DB.prepare("SELECT saldo FROM cores WHERE nome = ?").bind(nome).first<{ saldo: number }>();

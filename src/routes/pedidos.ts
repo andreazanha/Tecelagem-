@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { extractText, getDocumentProxy } from "unpdf";
 import type { Env } from "../index";
 import { parsePedido } from "../parser";
+import { exigirFuncao } from "../permissoes";
 import {
   classificar,
   criarCatalogo,
@@ -159,6 +160,7 @@ function buildPEJobs(
 // IMPORTAR PDF → extrai texto (PDF digital) ou OCR (Workers AI) → devolve sugestão
 // NÃO cria o pedido: o usuário confere/corrige no formulário e salva.
 pedidos.post("/importar", async (c) => {
+  const g = await exigirFuncao(c, "pedido.importar"); if ("erro" in g) return g.erro;
   const body = await c.req.parseBody();
   const file = body["file"];
   if (!(file instanceof File)) return c.json({ error: "arquivo ausente" }, 400);
@@ -381,6 +383,7 @@ pedidos.get("/:id", async (c) => {
 
 // CRIA
 pedidos.post("/", async (c) => {
+  const g = await exigirFuncao(c, "pedido.criar"); if ("erro" in g) return g.erro;
   const b = await c.req.json<PedidoIn>();
   const cliente_nome = (b.cliente_nome || "").trim();
   // A classificação (Parte 1/2/Única + Pronta Entrega) é automática na geração dos PDFs,
@@ -475,6 +478,7 @@ pedidos.post("/", async (c) => {
 
 // EDITA um pedido (datas, cliente, observação, itens) e atualiza os cards.
 pedidos.put("/:id", async (c) => {
+  const g = await exigirFuncao(c, "pedido.editar"); if ("erro" in g) return g.erro;
   const id = c.req.param("id");
   const exists = await c.env.DB.prepare("SELECT id FROM pedidos WHERE id = ?").bind(id).first();
   if (!exists) return c.json({ error: "pedido não encontrado" }, 404);
@@ -547,6 +551,7 @@ pedidos.put("/:id", async (c) => {
 
 // EXCLUI um pedido lançado errado (e tudo que depende dele).
 pedidos.delete("/:id", async (c) => {
+  const g = await exigirFuncao(c, "pedido.excluir"); if ("erro" in g) return g.erro;
   const id = c.req.param("id");
   const exists = await c.env.DB.prepare("SELECT id FROM pedidos WHERE id = ?").bind(id).first();
   if (!exists) return c.json({ error: "pedido não encontrado" }, 404);

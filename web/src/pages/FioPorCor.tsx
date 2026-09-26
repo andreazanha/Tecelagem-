@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type Cor } from "../api";
 import { EstoqueScanner } from "../components/EstoqueScanner";
 import { imprimirEtiquetasQR } from "../qrPrint";
+import { getUser, podeFuncao } from "../auth";
 
 // Formata kg com até 3 casas (ex.: 12,5 kg · 0,75 kg).
 const kg = (n: number | undefined) => (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
@@ -96,8 +97,8 @@ export function FioPorCor() {
                       <td className="num" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums", color: (Number(c.saldo) || 0) <= 0 ? "#b91c1c" : undefined }}>{kg(c.saldo)}</td>
                       <td className="num">
                         <div style={{ display: "inline-flex", gap: 6 }}>
-                          <button className="btn btn-primary" style={{ padding: "5px 10px" }} onClick={() => abrirMov(c, "entrada")}>+ Entrada</button>
-                          <button className="btn btn-soft" style={{ padding: "5px 10px" }} onClick={() => abrirMov(c, "ajuste")}>Ajustar</button>
+                          {podeFuncao(getUser(), "estoque.entrada") && <button className="btn btn-primary" style={{ padding: "5px 10px" }} onClick={() => abrirMov(c, "entrada")}>+ Entrada</button>}
+                          {podeFuncao(getUser(), "estoque.ajuste") && <button className="btn btn-soft" style={{ padding: "5px 10px" }} onClick={() => abrirMov(c, "ajuste")}>Ajustar</button>}
                           <button className="btn btn-soft" style={{ padding: "5px 10px" }} onClick={() => abrirExtrato(c.nome)}>Extrato</button>
                         </div>
                       </td>

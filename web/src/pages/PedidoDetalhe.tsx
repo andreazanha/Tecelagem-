@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, tipoLabel, PARTES, type Pedido, type PedidoItem } from "../api";
+import { getUser, podeFuncao } from "../auth";
 
 function parteLabel(v: string) {
   return PARTES.find((p) => p.value === v)?.label ?? v;
@@ -42,7 +43,7 @@ export function PedidoDetalhe() {
           <a href={`/api/pedidos/${pedido.id}/pdf-cliente`} target="_blank" rel="noreferrer" className="btn btn-soft">
             💰 PDF do cliente
           </a>
-          <Link to={`/pedidos/${pedido.id}/editar`} className="btn btn-soft">✏️ Editar pedido</Link>
+          {podeFuncao(getUser(), "pedido.editar") && <Link to={`/pedidos/${pedido.id}/editar`} className="btn btn-soft">✏️ Editar pedido</Link>}
           <span className={"status status-" + pedido.status}>{pedido.status}</span>
         </div>
       </div>
