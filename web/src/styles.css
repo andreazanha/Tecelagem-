@@ -984,9 +984,10 @@ body.dark .fila-espera { color: #5b6478; }
 
 /* ═══ Menu no TOPO (top-nav) — substitui a barra lateral ═══════════════════════ */
 .app.topnav-app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "main"; }
-/* O topo não pode empurrar a página: ele fica contido na largura da tela e, se tiver itens demais,
-   rola só ele por dentro (nada some do conteúdo). */
-.topnav-app .topbar { min-width: 0; overflow-x: auto; overflow-y: hidden; }
+/* O topo não empurra a página (a coluna de conteúdo usa minmax(0,1fr)). Só deixamos o topo poder
+   encolher (min-width:0) — SEM overflow, senão os menus suspensos (que abrem pra baixo) ficariam
+   escondidos atrás do conteúdo. */
+.topnav-app .topbar { min-width: 0; }
 .topnav-app .topnav { min-width: 0; }
 .topnav-app .topbar { justify-content: flex-start; gap: 3px; padding: 0 12px; }
 .topnav-app .brand { padding-right: 6px; }
