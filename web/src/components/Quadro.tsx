@@ -355,7 +355,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     : cards;
 
   return (
-    <div className={"quadro-page" + (cfg.painel && (cfg.setor === "tecelagem" || cfg.setor === "corte" || cfg.setor === "costura") ? " tec-nova" : "")}>
+    <div className={"quadro-page" + (cfg.painel && (cfg.setor === "tecelagem" || cfg.setor === "corte" || cfg.setor === "costura" || cfg.setor === "revisao") ? " tec-nova" : "")}>
       <div className="page-head">
         <div>
           <h1>{cfg.titulo}</h1>
@@ -419,7 +419,9 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
             ? <PainelCorte cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
             : cfg.setor === "costura"
               ? <PainelCostura cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
-              : <PainelTec cfg={cfg} cards={filtrados} onAbrir={setAberto} onAbrirFila={setFila} onAcao={acaoCard} />
+              : cfg.setor === "revisao"
+                ? <PainelRevisao cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
+                : <PainelTec cfg={cfg} cards={filtrados} onAbrir={setAberto} onAbrirFila={setFila} onAcao={acaoCard} />
       ) : (
         <>
           <div className="kanban">
@@ -927,13 +929,19 @@ function PainelRevisao({ cfg, cards, onAbrir, onAcao }: {
   const revisadoras: [string, number][] = [...nomesSet].sort((a, b) => a.localeCompare(b)).map((n) => [n, contagem.get(n) || 0]);
 
   const filtro = (arr: CardProducao[]) => sel ? arr.filter((c) => (c.operador || "").trim() === sel) : arr;
+  const colDe = (c: CardProducao): "ped" | "pe" | "rep" =>
+    (c.pe_tipo === "separado" || c.parte === "pronta-entrega") ? "pe" : ehRep(c) ? "rep" : "ped";
   const grupos = {
-    ped: filtro(naTela.filter((c) => !ehPE(c))).sort(ordenarFila),
-    rep: filtro(naTela.filter(ehPE)).sort(ordenarFila),
+    ped: filtro(naTela.filter((c) => colDe(c) === "ped")).sort(ordenarFila),
+    pe: filtro(naTela.filter((c) => colDe(c) === "pe")).sort(ordenarFila),
+    rep: filtro(naTela.filter((c) => colDe(c) === "rep")).sort(ordenarFila),
   };
-  const COLS: { key: "ped" | "rep"; nome: string; ic: string; cls: string }[] = [
+  // Grade 2×2: cima Pedidos a revisar | Pronta entrega ; baixo Aguardando produção | Reposição.
+  const COLS: { key: "ped" | "pe" | "agu" | "rep"; nome: string; ic: string; cls: string; uniao?: boolean }[] = [
     { key: "ped", nome: "PEDIDOS A REVISAR", ic: "🔍", cls: "r-ped" },
-    { key: "rep", nome: "REPOSIÇÃO DE ESTOQUE (pronta entrega)", ic: "📦", cls: "r-rep" },
+    { key: "pe", nome: "PEDIDOS DE PRONTA ENTREGA", ic: "⚡", cls: "r-pe" },
+    { key: "agu", nome: "PEDIDOS PRONTA ENTREGA AGUARDANDO PEDIDO DE PRODUÇÃO", ic: "⏳", cls: "r-agu", uniao: true },
+    { key: "rep", nome: "REPOSIÇÃO DE ESTOQUE", ic: "📦", cls: "r-rep" },
   ];
 
   const linha = (c: CardProducao, modo?: "urg" | "def" | "uniao") => {
@@ -991,7 +999,19 @@ function PainelRevisao({ cfg, cards, onAbrir, onAcao }: {
 
       <div className="tecn-cols tecn-cols-2">
         {COLS.map((col) => {
-          const l = grupos[col.key];
+          if (col.uniao) {
+            const l = [...aguardandoUniao].sort(ordenarFila);
+            return (
+              <section key={col.key} className={"tecn-col " + col.cls}>
+                <header className="tecn-colh"><span className="tecn-colic">{col.ic}</span><span className="tecn-colt">{col.nome}</span><span className="tecn-colc">{l.length}</span></header>
+                <div className="tecn-colbody">
+                  {l.length ? l.map((c) => linha(c, "uniao")) : <div className="tecn-vaz">nada aguardando</div>}
+                  {l.length > 0 && <div className="tecn-agunota">⏳ Quando a Parte 1 e a Parte 2 chegarem da produção, elas se unem e o pedido sobe para “Pedidos a revisar”.</div>}
+                </div>
+              </section>
+            );
+          }
+          const l = grupos[col.key as "ped" | "pe" | "rep"];
           const rev = l.filter((c) => c.status === "fazendo");
           const aguard = l.filter((c) => c.status === "aguardando");
           return (
@@ -1007,14 +1027,6 @@ function PainelRevisao({ cfg, cards, onAbrir, onAcao }: {
           );
         })}
       </div>
-
-      {aguardandoUniao.length > 0 && (
-        <div className="tecn-agubox">
-          <div className="tecn-aguh"><span>⏳</span><span className="t">ESTOQUE AGUARDANDO PEDIDOS DE PRODUÇÃO</span><span className="n">{aguardandoUniao.length}</span></div>
-          <div className="tecn-agubody">{aguardandoUniao.map((c) => linha(c, "uniao"))}</div>
-          <div className="tecn-agunota">⏳ Quando a Parte 1 e a Parte 2 chegarem da produção, elas se unem com o item e o pedido sobe para “Pedidos a revisar”.</div>
-        </div>
-      )}
     </div>
   );
 }

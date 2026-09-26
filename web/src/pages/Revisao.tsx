@@ -54,7 +54,7 @@ export function Revisao() {
     })),
   ];
 
-  return <Quadro cfg={{ ...BASE, nota: revisadoras.length ? BASE.nota : SEM, colunas }} />;
+  return <Quadro cfg={{ ...BASE, nota: revisadoras.length ? BASE.nota : SEM, colunas, pessoas: revisadoras }} />;
 }
 
 const SEM =
