@@ -100,6 +100,16 @@ function SecUsuarios({ usuarios, setores, onReload, onFull }: { usuarios: Usuari
   function abrirNovo() { setNovo(true); setSel({ id: "", nome: "", usuario: "", admin: false, paginas: [] } as Usuario); onFull(true); }
   function fechar() { setSel(null); setNovo(false); onFull(false); }
 
+  async function inativar(u: Usuario) {
+    const vai = !u.bloqueado;
+    if (vai && !confirm(`Inativar ${u.nome}? A pessoa é deslogada na hora e não entra mais (o cadastro e o histórico ficam salvos).`)) return;
+    try { await api.bloquearUsuario(u.id, vai); onReload(); } catch (e) { alert((e as Error).message); }
+  }
+  async function remover(u: Usuario) {
+    if (!confirm(`Remover ${u.nome} de vez? (o histórico de ações permanece)`)) return;
+    try { await api.removerUsuario(u.id); onReload(); } catch (e) { alert((e as Error).message); }
+  }
+
   // Tela cheia: só o editor do usuário escolhido (lista e menu escondidos).
   if (sel) {
     return (
@@ -138,7 +148,17 @@ function SecUsuarios({ usuarios, setores, onReload, onFull }: { usuarios: Usuari
                 <td data-label="Setor principal">{u.admin ? <span className="acs-sub">👑 Admin (tudo)</span> : u.setor_principal ? <span className="perm-tag">{nomeSetor(u.setor_principal)}</span> : <span className="acs-sub">—</span>}</td>
                 <td data-label="Status">{u.bloqueado ? <span className="st-off">🔒 inativo</span> : <span className="st-ok">● ativo</span>}</td>
                 <td data-label="Último acesso">{fmtAcesso(u.ultimo_acesso)}</td>
-                <td><button className="acs-rowbtn" onClick={(e) => { e.stopPropagation(); abrir(u); }}>✎ Configurar</button></td>
+                <td>
+                  <div className="acs-rowacts">
+                    <button className="acs-rowbtn" onClick={(e) => { e.stopPropagation(); abrir(u); }}>✎ Configurar</button>
+                    {u.usuario !== "admin" && (
+                      <>
+                        <button className="acs-rowbtn warn" title={u.bloqueado ? "Reativar acesso" : "Inativar acesso"} onClick={(e) => { e.stopPropagation(); inativar(u); }}>{u.bloqueado ? "🔓 Reativar" : "🔒 Inativar"}</button>
+                        <button className="acs-rowbtn danger" title="Remover usuário" onClick={(e) => { e.stopPropagation(); remover(u); }}>✕</button>
+                      </>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>

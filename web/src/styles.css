@@ -2309,8 +2309,15 @@ body.dark .acs-seg button.on { background: #241b3d; color: #c4b5fd; }
 .acs-sub { color: var(--muted); font-size: 12px; }
 .acs-selrow td { background: #faf7ff; }
 body.dark .acs-selrow td { background: #1c1633; }
-.acs-rowbtn { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: #5b21b6; background: #f3f0ff; border: 1px solid #e5deff; border-radius: 8px; padding: 6px 11px; cursor: pointer; }
+.acs-rowbtn { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: #5b21b6; background: #f3f0ff; border: 1px solid #e5deff; border-radius: 8px; padding: 6px 11px; cursor: pointer; white-space: nowrap; }
 body.dark .acs-rowbtn { color: #c4b5fd; background: #241b3d; border-color: #3b2d63; }
+.acs-rowacts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.acs-rowbtn.warn { color: #b45309; background: #fffbeb; border-color: #fcd34d; }
+.acs-rowbtn.warn:hover { background: #fef3c7; }
+.acs-rowbtn.danger { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+.acs-rowbtn.danger:hover { background: #fee2e2; }
+body.dark .acs-rowbtn.warn { color: #fcd34d; background: #2a2410; border-color: #6b5510; }
+body.dark .acs-rowbtn.danger { color: #fca5a5; background: #2a1416; border-color: #6b2530; }
 .st-ok { display: inline-block; font-size: 11.5px; font-weight: 800; background: #ecfdf5; color: #047857; border-radius: 999px; padding: 3px 10px; }
 .st-off { display: inline-block; font-size: 11.5px; font-weight: 800; background: #fee2e2; color: #b91c1c; border-radius: 999px; padding: 3px 10px; }
 body.dark .st-ok { background: #10251d; color: #6ee7b7; } body.dark .st-off { background: #2a1416; color: #fca5a5; }
