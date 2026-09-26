@@ -209,7 +209,6 @@ const GRUPOS: MenuGrupo[] = [
       { icon: "🧷", label: "Materiais", page: "cadastros", dyn: "materiais", children: [] },
       { to: "/cadastros?aba=fornecedores", icon: "🚛", label: "Fornecedores", page: "cadastros" },
       { to: "/cadastros?aba=setores", icon: "🏢", label: "Setores", page: "cadastros" },
-      { to: "/cadastros?aba=usuarios", icon: "👥", label: "Usuários", page: "cadastros" },
     ],
   },
   {
@@ -217,6 +216,7 @@ const GRUPOS: MenuGrupo[] = [
     id: "gestao", icon: "🗝️", label: "Gestão", itens: [
       { to: "/dashboard", icon: "📺", label: "Painel Geral", admin: true },
       { to: "/relatorio-vendas", icon: "🏆", label: "Vendas (o que vende mais)", admin: true },
+      { to: "/cadastros?aba=usuarios", icon: "🔐", label: "Usuários e Permissões", admin: true },
     ],
   },
   {
@@ -232,7 +232,6 @@ const GRUPOS: MenuGrupo[] = [
   {
     id: "config", icon: "⚙️", label: "Configurações", itens: [
       { to: "/cadastros?aba=setores", icon: "🏢", label: "Setores", page: "cadastros" },
-      { to: "/cadastros?aba=usuarios", icon: "🔐", label: "Usuários e Permissões", page: "cadastros" },
       { icon: "🎛️", label: "Parâmetros", soon: true },
       { icon: "💤", label: "Proteção de Tela", soon: true },
       { icon: "🔌", label: "Integrações", soon: true },
