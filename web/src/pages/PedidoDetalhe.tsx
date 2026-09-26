@@ -12,6 +12,7 @@ export function PedidoDetalhe() {
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [originais, setOriginais] = useState<{ nome: string; url: string }[]>([]);
+  const [verItens, setVerItens] = useState(false); // lista de itens começa recolhida (botão "Visualizar")
 
   useEffect(() => {
     if (!id) return;
@@ -31,7 +32,10 @@ export function PedidoDetalhe() {
     <>
       <div className="page-head">
         <div>
-          <h1>Pedido {pedido.numero_erp || pedido.id.slice(0, 8)}</h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {pedido.codigo_pai && <span className="op-pill">OP {pedido.codigo_pai}</span>}
+            Pedido {pedido.numero_erp || pedido.id.slice(0, 8)}
+          </h1>
           <div className="breadcrumb">
             <Link to="/pedidos" className="link">
               Pedidos
@@ -87,47 +91,54 @@ export function PedidoDetalhe() {
       <div className="card">
         <div className="card-head">
           <h2>Itens ({itens.length})</h2>
-          <span className="muted">{totalPecas} peças no total</span>
+          <div className="row-gap" style={{ alignItems: "center" }}>
+            <span className="muted">{totalPecas} peças no total</span>
+            <button className="btn btn-soft" onClick={() => setVerItens((v) => !v)}>
+              {verItens ? "▲ Recolher" : "👁 Visualizar pedido"}
+            </button>
+          </div>
         </div>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Modelo / Produto</th>
-              <th>Ref (grade)</th>
-              <th>Cor</th>
-              <th>Tamanho</th>
-              <th className="num">Qtd</th>
-              <th className="num">Valor unit.</th>
-              <th className="num">Total</th>
-              <th>Parte</th>
-            </tr>
-          </thead>
-          <tbody>
-            {itens.map((it) => (
-              <tr key={it.id}>
-                <td className="strong">{it.produto}</td>
-                <td>{it.ref || "—"}</td>
-                <td>{it.cor_grade || "—"}</td>
-                <td>{it.tamanho || "—"}</td>
-                <td className="num">{it.qtd}</td>
-                <td className="num">{it.valor_unit ? brl(it.valor_unit) : "—"}</td>
-                <td className="num strong">{it.valor_unit ? brl((it.qtd || 0) * (it.valor_unit || 0)) : "—"}</td>
-                <td>
-                  <span className="chip">{parteLabel(it.parte)}</span>
-                </td>
+        {verItens && (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Modelo / Produto</th>
+                <th>Ref (grade)</th>
+                <th>Cor</th>
+                <th>Tamanho</th>
+                <th className="num">Qtd</th>
+                <th className="num">Valor unit.</th>
+                <th className="num">Total</th>
+                <th>Parte</th>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={4} className="strong">Total</td>
-              <td className="num strong">{totalPecas} pç</td>
-              <td></td>
-              <td className="num strong">{brl(totalValor)}</td>
-              <td></td>
-            </tr>
-          </tfoot>
-        </table>
+            </thead>
+            <tbody>
+              {itens.map((it) => (
+                <tr key={it.id}>
+                  <td className="strong">{it.produto}</td>
+                  <td>{it.ref || "—"}</td>
+                  <td>{it.cor_grade || "—"}</td>
+                  <td>{it.tamanho || "—"}</td>
+                  <td className="num">{it.qtd}</td>
+                  <td className="num">{it.valor_unit ? brl(it.valor_unit) : "—"}</td>
+                  <td className="num strong">{it.valor_unit ? brl((it.qtd || 0) * (it.valor_unit || 0)) : "—"}</td>
+                  <td>
+                    <span className="chip">{parteLabel(it.parte)}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={4} className="strong">Total</td>
+                <td className="num strong">{totalPecas} pç</td>
+                <td></td>
+                <td className="num strong">{brl(totalValor)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
       </div>
 
       <GerarPdfs id={pedido.id} entregaPe={pedido.entrega_pe || "junto"} />
@@ -142,13 +153,21 @@ function RomaneioTassel({ id }: { id: string }) {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [res, setRes] = useState<{ url: string; totalTasseis: number; totalValor: number } | null>(null);
+  const [temTassel, setTemTassel] = useState<boolean | null>(null); // null = ainda verificando
 
   useEffect(() => {
+    // Só mostra o romaneio de tassel se o pedido REALMENTE tiver tassel em algum produto.
+    api
+      .obterRomaneio(id)
+      .then((d) => setTemTassel(!!(d.tassel && (d.tassel.linhas?.length || 0) > 0)))
+      .catch(() => setTemTassel(false));
     api
       .listarPrestadores()
       .then((ps) => setPrestadores(ps.map((p) => p.nome)))
       .catch(() => {});
-  }, []);
+  }, [id]);
+
+  if (!temTassel) return null; // sem tassel (ou ainda carregando) → esconde o card inteiro
 
   async function gerar() {
     setErro(null);
@@ -212,47 +231,37 @@ function RomaneioTassel({ id }: { id: string }) {
 
 function GerarPdfs({ id, entregaPe }: { id: string; entregaPe: string }) {
   const sep = entregaPe === "separado";
-  const [perguntaKit, setPerguntaKit] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [arquivos, setArquivos] = useState<{ tipo: string; label: string; url: string }[]>([]);
+  const [temKit, setTemKit] = useState<boolean>(false);
   const [kitsPeds, setKitsPeds] = useState<{ numero: string; pecas: number }[]>([]);
   const [entregas, setEntregas] = useState<Record<string, string>>({});
+  const [kitGeral, setKitGeral] = useState<"junto" | "separado">(sep ? "separado" : "junto");
 
-  // carrega os PDFs já gerados (persistente, mesmo após recarregar a página)
+  // Carrega PDFs já gerados + detecta a Pronta Entrega JÁ na abertura (para escolher ANTES de concluir).
   useEffect(() => {
+    api.listarPdfsGerados(id).then((r) => setArquivos(r.arquivos)).catch(() => {});
     api
-      .listarPdfsGerados(id)
-      .then((r) => setArquivos(r.arquivos))
+      .classificarPedido(id)
+      .then(async (cl) => {
+        setTemKit(cl.temKit);
+        if (cl.temKit) {
+          const r = await api.kitsPedidos(id);
+          setKitsPeds(r.pedidos);
+          setEntregas(Object.fromEntries(r.pedidos.map((p) => [p.numero, sep ? "separado" : "junto"])));
+        }
+      })
       .catch(() => {});
-  }, [id]);
+  }, [id, sep]);
 
-  async function iniciar() {
-    setErro(null);
-    setCarregando(true);
-    try {
-      const cl = await api.classificarPedido(id);
-      if (cl.temKit) {
-        const r = await api.kitsPedidos(id);
-        setKitsPeds(r.pedidos);
-        // padrão: o que foi escolhido na criação do pedido (junto/separado)
-        setEntregas(Object.fromEntries(r.pedidos.map((p) => [p.numero, sep ? "separado" : "junto"])));
-        setPerguntaKit(true);
-        setCarregando(false);
-      } else {
-        await gerar();
-      }
-    } catch (e) {
-      setErro((e as Error).message);
-      setCarregando(false);
-    }
-  }
+  const umKit = kitsPeds.length <= 1;
 
-  async function gerar(opts?: { kit?: "junto" | "separado"; entregas?: Record<string, string> }) {
-    setPerguntaKit(false);
+  async function concluir() {
     setCarregando(true);
     setErro(null);
     try {
+      const opts = temKit ? (umKit ? { kit: kitGeral } : { entregas }) : undefined;
       const res = await api.gerarPdfs(id, opts);
       setArquivos(res.arquivos);
     } catch (e) {
@@ -262,86 +271,86 @@ function GerarPdfs({ id, entregaPe }: { id: string; entregaPe: string }) {
     }
   }
 
-  const umKit = kitsPeds.length <= 1;
-
   return (
     <div className="card pad">
       <div className="card-head" style={{ padding: 0, marginBottom: 12 }}>
-        <h2>Gerar PDFs de produção</h2>
-        {arquivos.length === 0 && (
-          <button className="btn btn-primary" onClick={iniciar} disabled={carregando}>
-            {carregando ? "Gerando…" : "🧾 Gerar PDFs"}
-          </button>
-        )}
+        <h2>Concluir pedido (produção)</h2>
       </div>
       <p className="muted" style={{ marginTop: 0 }}>
-        O sistema identifica <strong>kit</strong>, <strong>Parte 1</strong> e <strong>Parte 2</strong>{" "}
-        automaticamente (sem modelos da Parte 1 → Parte Única) e gera os PDFs no padrão Big Tricot.
+        Primeiro <strong>configure a Pronta Entrega</strong> (se houver) e depois clique em{" "}
+        <strong>Concluir</strong> — o sistema identifica kit, Parte 1 e Parte 2 e gera os PDFs no padrão
+        Big Tricot.
       </p>
 
       {erro && <div className="aviso aviso-warn">⚠️ {erro}</div>}
 
-      {perguntaKit && umKit && (
-        <div className="pe-box">
-          <div className="pe-title">Este pedido tem KIT (Pronta Entrega). Como entregar?</div>
-          <div className="segmented">
-            <button className={"seg" + (!sep ? " seg-on" : "")} onClick={() => gerar({ kit: "junto" })}>
-              📦 Entregar JUNTO com o pedido
-            </button>
-            <button className={"seg" + (sep ? " seg-on" : "")} onClick={() => gerar({ kit: "separado" })}>
-              ⏩ Entregar SEPARADO (antecipado)
-            </button>
+      {/* PRONTA ENTREGA — sempre configurada ANTES de concluir */}
+      {temKit ? (
+        umKit ? (
+          <div className="pe-box">
+            <div className="pe-title">Este pedido tem KIT (Pronta Entrega). Como entregar?</div>
+            <div className="segmented">
+              <button className={"seg" + (kitGeral !== "separado" ? " seg-on" : "")} onClick={() => setKitGeral("junto")}>
+                📦 Entregar JUNTO com o pedido
+              </button>
+              <button className={"seg" + (kitGeral === "separado" ? " seg-on" : "")} onClick={() => setKitGeral("separado")}>
+                ⏩ Entregar SEPARADO (antecipado)
+              </button>
+            </div>
           </div>
-        </div>
-      )}
-
-      {perguntaKit && !umKit && (
-        <div className="pe-box">
-          <div className="pe-title">
-            Esta OP junta vários pedidos com KIT. Escolha por pedido como entregar a Pronta Entrega:
-          </div>
-          <table className="table" style={{ marginTop: 6 }}>
-            <thead>
-              <tr>
-                <th>Pedido</th>
-                <th className="num">Peças (kit)</th>
-                <th>Entrega</th>
-              </tr>
-            </thead>
-            <tbody>
-              {kitsPeds.map((p) => (
-                <tr key={p.numero}>
-                  <td className="strong">{p.numero}</td>
-                  <td className="num">{p.pecas}</td>
-                  <td>
-                    <div className="segmented">
-                      <button
-                        className={"seg" + (entregas[p.numero] !== "separado" ? " seg-on" : "")}
-                        onClick={() => setEntregas((e) => ({ ...e, [p.numero]: "junto" }))}
-                      >
-                        📦 Junto
-                      </button>
-                      <button
-                        className={"seg" + (entregas[p.numero] === "separado" ? " seg-on" : "")}
-                        onClick={() => setEntregas((e) => ({ ...e, [p.numero]: "separado" }))}
-                      >
-                        ⏩ Separado
-                      </button>
-                    </div>
-                  </td>
+        ) : (
+          <div className="pe-box">
+            <div className="pe-title">
+              Pronta Entrega nesta explosão — <strong>{kitsPeds.length} pedido(s)</strong> têm kit. Escolha
+              por pedido como entregar:
+            </div>
+            <table className="table" style={{ marginTop: 6 }}>
+              <thead>
+                <tr>
+                  <th>Pedido</th>
+                  <th className="num">Peças (kit)</th>
+                  <th>Entrega</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 10 }}>
-            <button className="btn btn-primary" onClick={() => gerar({ entregas })} disabled={carregando}>
-              {carregando ? "Gerando…" : "🧾 Gerar PDFs"}
-            </button>
+              </thead>
+              <tbody>
+                {kitsPeds.map((p) => (
+                  <tr key={p.numero}>
+                    <td className="strong">{p.numero}</td>
+                    <td className="num">{p.pecas}</td>
+                    <td>
+                      <div className="segmented">
+                        <button
+                          className={"seg" + (entregas[p.numero] !== "separado" ? " seg-on" : "")}
+                          onClick={() => setEntregas((e) => ({ ...e, [p.numero]: "junto" }))}
+                        >
+                          📦 Junto
+                        </button>
+                        <button
+                          className={"seg" + (entregas[p.numero] === "separado" ? " seg-on" : "")}
+                          onClick={() => setEntregas((e) => ({ ...e, [p.numero]: "separado" }))}
+                        >
+                          ⏩ Separado
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        )
+      ) : (
+        <div className="muted" style={{ marginBottom: 12 }}>
+          Este pedido <strong>não tem Pronta Entrega</strong> (kit) — nada a configurar.
         </div>
       )}
 
-      {arquivos.length > 0 && (
+      {/* CONCLUIR / resultado */}
+      {arquivos.length === 0 ? (
+        <button className="btn btn-primary" onClick={concluir} disabled={carregando}>
+          {carregando ? "Concluindo…" : "✓ Concluir e gerar PDFs"}
+        </button>
+      ) : (
         <div className="pdf-list">
           {arquivos.map((a) => (
             <a key={a.tipo} className="pdf-link" href={a.url} target="_blank" rel="noreferrer">
@@ -349,7 +358,7 @@ function GerarPdfs({ id, entregaPe }: { id: string; entregaPe: string }) {
             </a>
           ))}
           <button className="btn btn-soft" onClick={() => setArquivos([])}>
-            ↻ Gerar novamente
+            ↻ Refazer
           </button>
         </div>
       )}

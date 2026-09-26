@@ -2469,3 +2469,7 @@ body.dark .fis-med-h { background: #1e2748; color: #c7d2fe; }
 .op-badge-hint { color: #6366f1; font-weight: 600; }
 body.dark .op-badge { background: #1e213a; border-color: #3b3f6b; color: #c7d2fe; }
 body.dark .op-badge-hint { color: #a5b4fc; }
+
+/* Pílula do Nº da OP (código pai) no cabeçalho do detalhe do pedido. */
+.op-pill { display: inline-block; padding: 3px 12px; border-radius: 999px; background: #4338ca; color: #fff; font-size: 15px; font-weight: 800; letter-spacing: .3px; }
+body.dark .op-pill { background: #6366f1; }

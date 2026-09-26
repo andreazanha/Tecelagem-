@@ -582,18 +582,21 @@ function GalgaChip({ c }: { c: CardProducao }) {
 
 // ── PAINEL da produção ────────────────────────────────────────────────────────
 // Tecelagem: 3 botões (fila galga 3, fila galga 7, enviar) + 2 colunas por galga.
-// Número curto do card p/ as listas de produção: para cards de explosão/consolidados
-// (numero_erp com vários números separados por vírgula) mostra "primeiro +N" em vez da
-// lista inteira, que estourava a coluna e sobrepunha os outros campos. Cards
-// desmembrados usam o número original (op); os demais usam o numero_erp normal.
+// Número curto do card p/ as listas de produção:
+//  • Card desmembrado (op) → número ORIGINAL do pedido.
+//  • Explosão consolidada (numero_erp com vírgulas) → o CÓDIGO PAI ("OP 001"); se ainda
+//    não tiver pai, cai no "primeiro +N" (compacto, não estoura a coluna).
+//  • Pedido normal → o próprio número.
 function numCompacto(c: CardProducao): string {
   if (c.op && String(c.op).trim()) return String(c.op).trim();
+  const cp = (c.codigo_pai || "").trim();
   const ne = (c.numero_erp || "").trim();
   if (ne.includes(",")) {
+    if (cp) return `OP ${cp}`;
     const parts = ne.split(",").map((x) => x.trim()).filter(Boolean);
     return parts.length > 1 ? `${parts[0]} +${parts.length - 1}` : (parts[0] || ne);
   }
-  return ne || c.codigo_pai || c.pedido_id.slice(0, 6);
+  return ne || (cp ? `OP ${cp}` : "") || c.pedido_id.slice(0, 6);
 }
 
 // ── Painel NOVO da Tecelagem (aprovado): 4 colunas 2×2 (Parte 1 / Parte 2 / Únicos /
@@ -2455,6 +2458,7 @@ function CardModal({
             <Campo l="QUANTIDADE" v={`${card.pecas} peças`} />
             <Campo l="RESPONSÁVEL" v={card.operador || "—"} />
             <Campo l="VENDEDOR" v={limparVendedor(det?.vendedor)} />
+            {card.codigo_pai && <Campo l="Nº DA OP (PAI)" v={`OP ${card.codigo_pai}`} />}
             {card.codigo_pai && <Campo l="PEDIDOS" v={card.numero_erp || "—"} />}
             <Campo l="CÓDIGO DE TERCEIRO" v={det?.codigo_terceiro || "—"} />
             <Campo l="ORIGEM" v={origem} />
