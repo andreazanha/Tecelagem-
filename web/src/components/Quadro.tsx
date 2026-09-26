@@ -2324,7 +2324,9 @@ function CardModal({
     api.historicoProducao(card.pedido_id, card.parte).then(setHist).catch(() => {});
   }, [card.pedido_id, card.parte]);
 
-  const t = TIPO[basePart(card.parte)] || { label: card.parte, cls: "" };
+  // Normaliza variações de pronta-entrega (pronta-entrega-sep, #op) para o tipo "kit".
+  const baseTipo = /^pronta-entrega/.test(basePart(card.parte)) ? "pronta-entrega" : basePart(card.parte);
+  const t = TIPO[baseTipo] || { label: card.parte, cls: "kit" };
   // Na Tecelagem o "tipo" vira a galga (máquina) definida pelo produto.
   const tipoLabel = cfg.setor === "tecelagem" ? "GALGA " + galgaDe(card) : t.label;
   const origem =

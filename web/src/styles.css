@@ -549,7 +549,7 @@ body.dark .kcard-estoque.urg-ok      { background: #10281a; border-color: #14532
 /* Popup do card de produção */
 .modal-bg { position: fixed; inset: 0; background: #0f172acc; display: grid; place-items: center; z-index: 60; padding: 16px; }
 .modal-card { background: #fff; border-radius: 16px; width: min(680px, 96vw); max-height: 92vh; overflow: auto; box-shadow: 0 20px 60px #0008; }
-.modal-hd { color: #fff; padding: 16px 18px; }
+.modal-hd { color: #fff; padding: 16px 18px; background: linear-gradient(120deg, #475569, #334155); }
 .modal-hd.p1 { background: linear-gradient(120deg, #4338ca, #6366f1); }
 .modal-hd.p2 { background: linear-gradient(120deg, #7e22ce, #c026d3); }
 .modal-hd.unica { background: linear-gradient(120deg, #0284c7, #0ea5e9); }
