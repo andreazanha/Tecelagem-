@@ -247,7 +247,7 @@ function PainelUsuario({ usuario, novo, setoresAtivos, onFechar, onSalvo }: {
           </div>
           <div className="acs-two" style={{ marginTop: 10 }}>
             <input className="acs-inp" placeholder="E-mail (opcional)" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <input className="acs-inp" placeholder={novo ? "Senha" : "Senha (manter)"} value={senha} onChange={(e) => setSenha(e.target.value)} />
+            <input className="acs-inp" placeholder={novo ? "Senha (em branco = a pessoa cria no 1º acesso)" : "Nova senha (em branco = manter)"} value={senha} onChange={(e) => setSenha(e.target.value)} />
           </div>
           <label className="acs-adm"><input type="checkbox" checked={admin} onChange={(e) => setAdmin(e.target.checked)} /> 👑 Administrador (acesso total)</label>
         </div>

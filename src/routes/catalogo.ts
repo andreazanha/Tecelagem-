@@ -729,11 +729,18 @@ usuarios.post("/", async (c) => {
   const paginas = JSON.stringify(Array.isArray(b.paginas) ? b.paginas : []);
   const admin = b.admin ? 1 : 0;
   const email = (b.email || "").trim() || null;
+  // Se o admin digitou uma senha aqui, ela já vale (senha_definida=1). Se deixou em branco num
+  // usuário novo, senha_definida=0 → a própria pessoa cria a senha no 1º acesso. Em usuário que já
+  // existe, deixar em branco NÃO reseta o que já estava.
+  const definiuSenha = !!(b.senha && b.senha.trim());
+  const senhaDef = definiuSenha ? 1 : 0;
   await c.env.DB.prepare(
-    `INSERT INTO usuarios (id, nome, usuario, senha, admin, paginas, email) VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(usuario) DO UPDATE SET nome = excluded.nome, senha = excluded.senha, admin = excluded.admin, paginas = excluded.paginas, email = excluded.email`
+    `INSERT INTO usuarios (id, nome, usuario, senha, admin, paginas, email, senha_definida) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(usuario) DO UPDATE SET nome = excluded.nome, senha = excluded.senha, admin = excluded.admin,
+       paginas = excluded.paginas, email = excluded.email,
+       senha_definida = CASE WHEN excluded.senha_definida = 1 THEN 1 ELSE senha_definida END`
   )
-    .bind(id, nome, usuario, senha, admin, paginas, email)
+    .bind(id, nome, usuario, senha, admin, paginas, email, senhaDef)
     .run();
   return c.json({ id, nome, usuario, admin: !!admin, paginas: JSON.parse(paginas), email }, 201);
 });

@@ -22,6 +22,7 @@ export const SETOR_PAGINAS: Record<string, string[]> = {
   revisao: ["revisao"],
   estoque: ["estoque"],
   expedicao: ["expedicao"],
+  transporte: ["transporte"],
   fiscal: ["fiscal"],
   crm: ["atendimento", "comercial"],
   pcp: [], // ainda não tem tela dedicada
