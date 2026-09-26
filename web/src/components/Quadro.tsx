@@ -811,7 +811,16 @@ function PainelSepPE({ cfg, cards, onAbrir, onAcao, onEntrada }: {
   onAcao: (cards: CardProducao[], acao: Acao) => void;
   onEntrada: (c: CardProducao) => void;
 }) {
-  const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  // Número compacto: pedido de explosão (vários números) mostra o código pai ou "1º +N", nunca a
+  // lista inteira (que estourava por cima do botão).
+  const numDe = (c: CardProducao) => {
+    const ne = (c.numero_erp || "").trim();
+    if (ne.includes(",")) {
+      const parts = ne.split(",").map((x) => x.trim()).filter(Boolean);
+      return c.codigo_pai || `${parts[0]} +${parts.length - 1}`;
+    }
+    return ne || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  };
   const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
   const prazoDe = (c: CardProducao) => c.data_entrega || null;
   const naTela = cards.filter((c) => c.status !== "enviado");
