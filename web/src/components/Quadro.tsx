@@ -818,9 +818,16 @@ function PainelCostura({ cfg, cards, onAbrir, onAcao }: {
   if (contagem.has("—")) costureiras.push(["—", contagem.get("—") || 0]);
 
   const filtrados = sel ? naTela.filter((c) => ((c.operador || "").trim() || "—") === sel) : naTela;
+  // Ordena por COSTUREIRA (alfabética) para os pedidos de cada uma ficarem juntos, um abaixo do
+  // outro; dentro da mesma costureira, mantém a ordem da fila (prioridade/prazo).
+  const porCostureira = (a: CardProducao, b: CardProducao) => {
+    const na = (a.operador || "").trim().toLowerCase(), nb = (b.operador || "").trim().toLowerCase();
+    if (na !== nb) return na < nb ? -1 : 1;
+    return ordenarFila(a, b);
+  };
   const grupos = {
-    ped: filtrados.filter((c) => !ehRepOuKit(c)).sort(ordenarFila),
-    rep: filtrados.filter(ehRepOuKit).sort(ordenarFila),
+    ped: filtrados.filter((c) => !ehRepOuKit(c)).sort(porCostureira),
+    rep: filtrados.filter(ehRepOuKit).sort(porCostureira),
   };
   const COLS: { key: "ped" | "rep"; nome: string; ic: string; cls: string }[] = [
     { key: "ped", nome: "PEDIDOS", ic: "🪡", cls: "k-ped" },
@@ -834,10 +841,8 @@ function PainelCostura({ cfg, cards, onAbrir, onAcao }: {
     return (
       <div key={c.pedido_id + c.parte} className={"tecn-crow" + (c.status === "fazendo" ? " prod" : "")} onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
         <span className={"tecn-ptag " + tg.cls}>{tg.txt}</span>
-        <div className="tecn-idcli2">
-          <div className="top"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
-          <div className="tecn-cost">👩 {c.operador || "sem costureira"}{kit ? " · vai p/ estoque" : ""}</div>
-        </div>
+        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
+        <span className="tecn-costchip">👩 {c.operador || "sem costureira"}{kit ? " · estoque" : ""}</span>
         <span className="tecn-pcs">{pad2(c.pecas)} pçs</span>
         <span className={"tecn-dias " + dd.cls}>{dd.txt}</span>
         <span className="tecn-act">
@@ -961,7 +966,7 @@ function PainelRevisao({ cfg, cards, onAbrir, onAcao }: {
         <span className={"tecn-dias " + dd.cls}>{dd.txt}</span>
         <span className="tecn-act">
           {modo === "uniao"
-            ? <span className="tecn-agtxt">aguardando…</span>
+            ? (podeAcao("fazer") && <button className="tecn-btn rev" title="Revisar mesmo sem as partes da produção" onClick={(e) => { e.stopPropagation(); onAcao([c], "fazer"); }}>👁 Revisar ▶</button>)
             : c.status === "fazendo"
               ? (<>
                   {podeAcao("enviar") && <button className="tecn-btn env" onClick={(e) => { e.stopPropagation(); onAcao([c], "enviar"); }}>Enviar ▶</button>}
