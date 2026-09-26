@@ -214,6 +214,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [acaoModal, setAcaoModal] = useState<{ cards: CardProducao[]; acao: Acao } | null>(null);
   const [entradaPed, setEntradaPed] = useState<CardProducao | null>(null);
   const [liberarCard, setLiberarCard] = useState<CardProducao | null>(null); // PCP: pedido a liberar
+  const [wppCfg, setWppCfg] = useState(false); // Separação: cadastrar número do WhatsApp de estoque
   const [romaneioCorte, setRomaneioCorte] = useState<CardProducao | null>(null); // Corte: gerar romaneio
   const [enviarCostura, setEnviarCostura] = useState<{ card: CardProducao; costureira: string } | null>(null);
   const [busca, setBusca] = useState("");
@@ -414,6 +415,9 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
               </button>
             )}
           </div>
+          {cfg.setor === "estoque" && (
+            <button className="btn" title="Número que recebe o aviso de entrada no estoque" onClick={() => setWppCfg(true)}>📱 WhatsApp de estoque</button>
+          )}
           <button className="btn" onClick={recarregar}>↻ Atualizar</button>
         </div>
       </div>
@@ -496,6 +500,8 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
       {liberarCard && (
         <LiberarModal card={liberarCard} onFechar={() => setLiberarCard(null)} onFeito={() => { setLiberarCard(null); recarregar(); }} />
       )}
+
+      {wppCfg && <WppEstoqueModal onFechar={() => setWppCfg(false)} />}
 
       {romaneioCorte && (
         <RomaneioModal
@@ -2754,6 +2760,43 @@ function EnviarCosturaModal({ card, costureira, onFechar, onEnviar }: {
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button className="btn" onClick={onFechar}>Agora não</button>
             <button className="btn btn-primary" disabled={!sel} onClick={() => onEnviar(sel)}>🪡 Enviar p/ Costura</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Cadastro do número de WhatsApp que recebe o aviso automático de entrada no estoque.
+function WppEstoqueModal({ onFechar }: { onFechar: () => void }) {
+  const [numero, setNumero] = useState("");
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => { api.obterEstoqueWpp().then((r) => setNumero(r.numero || "")).catch(() => {}).finally(() => setCarregando(false)); }, []);
+  async function salvar() {
+    setSalvando(true);
+    try { await api.salvarEstoqueWpp(numero.trim()); onFechar(); }
+    catch (e) { alert((e as Error).message); setSalvando(false); }
+  }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd kit">
+          <div className="modal-hd-top">
+            <span className="modal-pills"><span className="modal-pill">📱 WhatsApp de estoque</span></span>
+            <button className="modal-x" onClick={onFechar}>✕</button>
+          </div>
+        </div>
+        <div className="pad">
+          <p className="muted" style={{ marginTop: 0 }}>
+            Toda vez que alguém <strong>dar entrada no estoque</strong> aqui, o sistema manda uma mensagem
+            automática no WhatsApp deste número com <strong>modelo · cor · tamanho · quantidade</strong>.
+          </p>
+          <input className="input" placeholder="Ex.: 41999998888 (com DDD)" value={carregando ? "" : numero} onChange={(e) => setNumero(e.target.value)} style={{ width: "100%", marginBottom: 12 }} />
+          <p className="muted" style={{ fontSize: 12 }}>Deixe em branco pra desativar o aviso. Use o WhatsApp já conectado (Z-API) do sistema.</p>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button className="btn" onClick={onFechar} disabled={salvando}>Cancelar</button>
+            <button className="btn btn-primary" onClick={salvar} disabled={salvando || carregando}>{salvando ? "Salvando…" : "Salvar"}</button>
           </div>
         </div>
       </div>

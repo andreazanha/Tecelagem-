@@ -5,6 +5,7 @@ import type { Env } from "../index";
 import { gerarRelatorioEstoque, type LinhaEstoque } from "../pdf";
 import { enviarPush } from "../push-send";
 import { colsBulk } from "./materiais";
+import { enviarWhatsapp } from "./atendimento";
 
 // Lembrete recorrente (chamado pelo cron): enquanto houver reposição PENDENTE,
 // reenvia o push. A mesma tag substitui o aviso anterior (não empilha).
@@ -576,7 +577,43 @@ produtos.post("/entrada-pedido", async (c) => {
     criadas.push({ produto_id: it.produto_id!, mov_id: movId, qtd });
   }
   await log(c.env, "estoque", `Entrada por pedido ${b.pedido_numero || ""}: ${criadas.length} produto(s)`, b.usuario, b.pedido_id);
+
+  // Aviso automático no WhatsApp (número cadastrado em config 'estoque_whatsapp'):
+  // modelo · cor · tamanho · quantidade de cada peça que entrou. Best-effort (não trava a entrada).
+  try {
+    const cfgRow = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_whatsapp'").first<{ valor: string | null }>();
+    const numero = (cfgRow?.valor || "").trim();
+    if (numero && criadas.length) {
+      const ids = criadas.map((x) => x.produto_id);
+      const ph = ids.map(() => "?").join(",");
+      const { results: prods } = await c.env.DB.prepare(`SELECT id, nome, cor, tamanho FROM produtos WHERE id IN (${ph})`)
+        .bind(...ids).all<{ id: string; nome: string; cor: string | null; tamanho: string | null }>();
+      const byId = new Map(prods.map((p) => [p.id, p]));
+      const linhas = criadas.map((x) => {
+        const p = byId.get(x.produto_id);
+        const partes = [p?.nome || "produto", p?.cor, p?.tamanho].filter(Boolean).join(" · ");
+        return `• ${partes}: ${x.qtd} pç`;
+      });
+      const texto = `📦 *Entrada no estoque*${b.pedido_numero ? ` — Pedido ${b.pedido_numero}` : ""}\n\n${linhas.join("\n")}`;
+      c.executionCtx.waitUntil(enviarWhatsapp(c.env, numero, { tipo: "texto", texto }).then(() => {}).catch(() => {}));
+    }
+  } catch { /* aviso é best-effort */ }
+
   return c.json({ ok: true, criadas });
+});
+
+// Número de WhatsApp que recebe o aviso automático de ENTRADA no estoque.
+produtos.get("/estoque-wpp", async (c) => {
+  const row = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_whatsapp'").first<{ valor: string | null }>().catch(() => null);
+  return c.json({ numero: (row?.valor || "") });
+});
+produtos.post("/estoque-wpp", async (c) => {
+  const b = await c.req.json<{ numero?: string }>().catch(() => ({}) as { numero?: string });
+  const numero = (b.numero || "").trim();
+  await c.env.DB.prepare(
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('estoque_whatsapp', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(numero).run();
+  return c.json({ ok: true, numero });
 });
 
 // Cria os produtos (avulsos) dos itens de um pedido que AINDA não existem no
