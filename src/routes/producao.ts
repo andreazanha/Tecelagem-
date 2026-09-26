@@ -76,7 +76,7 @@ async function enriquecerGalga(env: Env, cards: CardStock[]): Promise<void> {
   const galgaDeItens = (arr: ItemBase[], kit: boolean): 3 | 7 => {
     let p1 = 0,
       p2 = 0;
-    for (const it of arr.filter((x) => ehKit(x) === kit)) {
+    for (const it of arr.filter((x) => ehKit(x, cat) === kit)) {
       const parte = resolverModelo(it, cat)?.parte;
       const q = Number(it.qtd) || 1;
       if (parte === 1) p1 += q;
@@ -130,7 +130,7 @@ async function enriquecerRevisaoPE(env: Env, cards: CardStock[]): Promise<void> 
 
 async function catalogoDe(env: Env) {
   const m = await env.DB.prepare(
-    "SELECT nome, parte, composicao, ref, tassel_peseira, tassel_almofada FROM modelos"
+    "SELECT nome, parte, composicao, ref, tassel_peseira, tassel_almofada, pronta_entrega FROM modelos"
   ).all();
   return criarCatalogo(m.results as never[]);
 }

@@ -450,6 +450,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   const [nome, setNome] = useState("");
   const [ref, setRef] = useState("");
   const [parte, setParte] = useState(2);
+  const [prontaEntrega, setProntaEntrega] = useState(false); // modelo é pronta entrega (ex.: Manta Lumi)
   const [composicao, setComposicao] = useState("");
   const [cores, setCores] = useState<Cor[]>([]);
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -491,6 +492,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
         setNome(m.nome);
         setRef(m.ref || "");
         setParte(m.parte);
+        setProntaEntrega(Number(m.pronta_entrega) === 1);
         setComposicao(m.composicao || "");
         setSel(new Set(m.cores));
         const st: Record<string, boolean> = {}, sp: Record<string, string> = {}, stp: Record<string, string> = {};
@@ -676,7 +678,8 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
           combinacoes: combinacoes
             .map((c) => ({ nome: c.nome.trim(), guias: c.guias.map((g) => ({ guia: g.guia.trim(), cor: g.cor.trim() })).filter((g) => g.guia && g.cor) }))
             .filter((c) => c.nome && c.guias.length),
-          tassel_peseira: tasselSel.peseira ? 4 : 0, tassel_almofada: tasselSel.almofada ? 4 : 0 },
+          tassel_peseira: tasselSel.peseira ? 4 : 0, tassel_almofada: tasselSel.almofada ? 4 : 0,
+          pronta_entrega: prontaEntrega ? 1 : 0 },
         refNome || undefined
       );
       onSalvo();               // recarrega a lista no fundo (sem fechar)
@@ -1024,6 +1027,15 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
               </select>
             </Campo>
             <Campo label="Composição"><input value={composicao} onChange={(e) => { setSalvo(false); setComposicao(e.target.value); }} spellCheck lang="pt-BR" placeholder="ex.: 100% POLIÉSTER" /></Campo>
+            <Campo label="Pronta entrega">
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
+                <input type="checkbox" checked={prontaEntrega} onChange={(e) => { setSalvo(false); setProntaEntrega(e.target.checked); }} style={{ width: 18, height: 18 }} />
+                <span>📦 É pronta entrega (sai do estoque)</span>
+              </label>
+              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                Marque só a exceção (ex.: Manta Lumi). Produtos com "KIT" no nome já são pronta entrega automaticamente.
+              </div>
+            </Campo>
           </div>
 
           {/* Sub-menu do produto: um botão para cada item que o produto usa.

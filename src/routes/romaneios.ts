@@ -8,7 +8,7 @@ export const romaneios = new Hono<{ Bindings: Env }>();
 
 async function catalogoDe(env: Env) {
   const m = await env.DB.prepare(
-    "SELECT nome, parte, composicao, ref, tassel_peseira, tassel_almofada FROM modelos"
+    "SELECT nome, parte, composicao, ref, tassel_peseira, tassel_almofada, pronta_entrega FROM modelos"
   ).all();
   return criarCatalogo(m.results as never[]);
 }

@@ -87,6 +87,7 @@ export interface Modelo {
   tassel_peseira?: number; // qtd de tassel (peseira) por peça
   tassel_almofada?: number; // qtd de tassel (almofada) por peça
   etiqueta_colar?: number; // 1 = usa etiqueta de colar (nome·tamanho·cor)
+  pronta_entrega?: number; // 1 = modelo é PRONTA ENTREGA (ex.: Manta Lumi), além dos "KIT"
 }
 
 export const COMPOSICOES = ["", "100% POLIÉSTER", "100% ACRÍLICO", "100% ALGODÃO"];

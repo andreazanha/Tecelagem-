@@ -31,7 +31,7 @@ async function catalogos(env: Env): Promise<Catalogo> {
   // Os 12 modelos base da Parte 1 entram sempre; o catálogo do banco (tela de Cadastros)
   // sobrescreve parte/composição/código. O código (ref) permite casar o modelo pela grade.
   const m = await env.DB.prepare(
-    "SELECT nome, parte, composicao, ref, tassel_peseira, tassel_almofada FROM modelos"
+    "SELECT nome, parte, composicao, ref, tassel_peseira, tassel_almofada, pronta_entrega FROM modelos"
   ).all<{
     nome: string;
     parte: number;
@@ -237,7 +237,7 @@ pedidos.post("/previa", async (c) => {
   const cores = await coresParaPdf(c.env, coresUsadas(itens));
   const jobs = [
     ...montarJobs(cl),
-    ...buildPEJobs(itens.filter(ehKit), b.entregas || {}, kitOpt, modelos, baseNum),
+    ...buildPEJobs(itens.filter((it) => ehKit(it, modelos)), b.entregas || {}, kitOpt, modelos, baseNum),
   ];
   for (const job of jobs) await anexarCombinacoes(c.env, job.blocos);
   const partes: Uint8Array[] = [];
@@ -704,14 +704,15 @@ pedidos.get("/:id/kits-pedidos", async (c) => {
     .first<{ numero_erp: string | null; codigo_pai: string | null }>();
   if (!ped) return c.json({ error: "pedido não encontrado" }, 404);
   const baseNum = ped.codigo_pai || ped.numero_erp || id.slice(0, 8);
+  const modelos = await catalogos(c.env); // catálogo p/ reconhecer pronta entrega por modelo (ex.: Lumi)
   const { results } = await c.env.DB.prepare(
-    "SELECT produto, origem, qtd FROM pedido_itens WHERE pedido_id = ?"
+    "SELECT produto, ref, origem, qtd FROM pedido_itens WHERE pedido_id = ?"
   )
     .bind(id)
-    .all<{ produto: string; origem: string | null; qtd: number }>();
+    .all<{ produto: string; ref: string | null; origem: string | null; qtd: number }>();
   const map = new Map<string, number>();
   for (const it of results) {
-    if (!ehKit({ produto: it.produto, qtd: it.qtd })) continue;
+    if (!ehKit({ produto: it.produto, ref: it.ref, qtd: it.qtd }, modelos)) continue;
     const o = (it.origem || "").trim() || baseNum;
     map.set(o, (map.get(o) || 0) + Number(it.qtd || 0));
   }
@@ -798,7 +799,7 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   };
 
   const cores = await coresParaPdf(c.env, coresUsadas(itens));
-  const peJobs = buildPEJobs(itens.filter(ehKit), entregas, kitOpt, modelos, baseNum);
+  const peJobs = buildPEJobs(itens.filter((it) => ehKit(it, modelos)), entregas, kitOpt, modelos, baseNum);
   const jobs = [...montarJobs(cl), ...peJobs];
 
   // limpa PDFs de PE antigos (pode ter mudado a divisão junto/separado)
@@ -851,7 +852,7 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   if (cl.temKit && reposicao) {
     await inserirTecelagem("pronta-entrega", cl.kits);
   } else if (cl.temKit) {
-    const kitItens = itens.filter(ehKit);
+    const kitItens = itens.filter((it) => ehKit(it, modelos));
     const ehSep = (it: ItemBase) => (entregas[origemDe(it, baseNum)] ?? kitOpt) === "separado";
     const grupos: { parte: string; blocos: ReturnType<typeof classificar>["kits"]; status: string }[] = [
       { parte: "pronta-entrega", blocos: agrupar(kitItens.filter((it) => !ehSep(it)), modelos), status: "pronto" },
@@ -885,7 +886,7 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   // vinculado são listados com a localização na produção (setor/status).
   let baixaEstoque: Awaited<ReturnType<typeof baixaProntaEntrega>> & { producao?: unknown } | null = null;
   if (!reposicao) {
-    const kitItens = itens.filter(ehKit);
+    const kitItens = itens.filter((it) => ehKit(it, modelos));
     if (kitItens.length) {
       baixaEstoque = await baixaProntaEntrega(c.env, { id, numero: baseNum }, kitItens);
       if (baixaEstoque.semVinculo.length) baixaEstoque.producao = await localizacaoProducao(c.env, id);

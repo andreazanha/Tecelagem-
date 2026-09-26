@@ -107,9 +107,15 @@ export function tipoDe(produto: string, tamanho?: string | null): string {
 // Atenção: um CÓDIGO/grade como "KT1092" NÃO faz o item virar kit — peseira/almofada/manta com
 // código "KT..." são componentes que compõem os kits e são produzidos individualmente. Por isso só
 // olhamos o nome (it.produto), nunca o código (it.ref), e "KT" não é a palavra "KIT".
-export function ehKit(it: ItemBase): boolean {
-  // Marcado manualmente como kit (pedido de estoque) OU nome contém "KIT".
-  return !!it.kit || /\bkit\b/i.test(it.produto || "");
+export function ehKit(it: ItemBase, cat?: Catalogo): boolean {
+  // Pronta entrega = marcado como kit (pedido de estoque) OU nome contém "KIT" OU, quando
+  // temos o catálogo, o MODELO está marcado como "pronta entrega" no cadastro (ex.: Manta Lumi).
+  if (!!it.kit || /\bkit\b/i.test(it.produto || "")) return true;
+  if (cat) {
+    const m = resolverModelo(it, cat);
+    if (m?.prontaEntrega) return true;
+  }
+  return false;
 }
 
 // Tipo da PEÇA PRINCIPAL do kit pelo tamanho (largura): ~70 → Peseira; 90+ → Manta; pequeno → Almofada.
@@ -151,6 +157,7 @@ export interface ModeloInfo {
   codigo?: string; // código do modelo (como cadastrado, para exibir)
   tasselPeseira: number; // tasseis por peseira (tamanho G)
   tasselAlmofada: number; // tasseis por almofada (tamanho P)
+  prontaEntrega: boolean; // modelo marcado como PRONTA ENTREGA no cadastro (ex.: Manta Lumi)
 }
 
 export interface Catalogo {
@@ -166,6 +173,7 @@ export interface CatalogoRow {
   ref?: string | null; // código/grade
   tassel_peseira?: number | null;
   tassel_almofada?: number | null;
+  pronta_entrega?: number | null; // 1 = modelo é pronta entrega mesmo sem "KIT" no nome
 }
 
 // Monta o catálogo: começa com os 12 modelos base da Parte 1 e deixa as linhas do banco
@@ -175,7 +183,7 @@ export function criarCatalogo(rows: CatalogoRow[]): Catalogo {
   const set = (info: ModeloInfo) => porNome.set(norm(info.nome), info);
 
   for (const n of DEFAULT_PARTE1)
-    set({ nome: n, parte: 1, composicao: "", tasselPeseira: 0, tasselAlmofada: 0 });
+    set({ nome: n, parte: 1, composicao: "", tasselPeseira: 0, tasselAlmofada: 0, prontaEntrega: false });
   for (const r of rows) {
     const nome = (r.nome || "").trim();
     if (!nome) continue;
@@ -186,6 +194,7 @@ export function criarCatalogo(rows: CatalogoRow[]): Catalogo {
       codigo: (r.ref || "").trim() || undefined,
       tasselPeseira: Math.max(0, Math.trunc(Number(r.tassel_peseira) || 0)),
       tasselAlmofada: Math.max(0, Math.trunc(Number(r.tassel_almofada) || 0)),
+      prontaEntrega: Number(r.pronta_entrega) === 1,
     });
   }
 
@@ -224,7 +233,7 @@ export function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
     const info = resolverModelo(it, cat);
     const modelo = info?.nome || modeloDe(it.produto);
     // Para KIT a linha mostra a COMPOSIÇÃO (peseira/manta + almofada/capa); para os demais, o tipo.
-    const kit = ehKit(it);
+    const kit = ehKit(it, cat);
     const tipo = kit ? "" : tipoDe(it.produto, it.tamanho);
     // código do MODELO (cadastro) — ignora a grade do ERP quando o modelo é conhecido;
     // assim os produtos do mesmo modelo/cor ficam num bloco só (ex.: Aspen Almofada + Manta).
@@ -268,8 +277,8 @@ export function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
 }
 
 export function classificar(itens: ItemBase[], cat: Catalogo): Classificacao {
-  const kits = agrupar(itens.filter(ehKit), cat);
-  const prod = itens.filter((i) => !ehKit(i));
+  const kits = agrupar(itens.filter((i) => ehKit(i, cat)), cat);
+  const prod = itens.filter((i) => !ehKit(i, cat));
   const temKit = kits.length > 0;
 
   const ehP1 = (i: ItemBase) => resolverModelo(i, cat)?.parte === 1;
@@ -319,7 +328,7 @@ export function romaneioCostura(itens: ItemBase[], reposicao: boolean, cat: Cata
     outros = 0;
   for (const it of itens) {
     const qtd = Number(it.qtd) || 0;
-    if (ehKit(it)) {
+    if (ehKit(it, cat)) {
       if (!reposicao) continue; // kit de cliente = venda (já no estoque), não produz
       const d = pecasDoKit(it.produto, (it.tamanho || "").trim());
       pm += d.pm * qtd;
@@ -360,7 +369,7 @@ export function romaneioTassel(itens: ItemBase[], cat: Catalogo, valores: Tabela
   const map = new Map<string, TasselLinha>();
   const ordem: string[] = [];
   for (const it of itens) {
-    if (ehKit(it)) continue;
+    if (ehKit(it, cat)) continue;
     const tipo = tipoDe(it.produto, it.tamanho);
     if (tipo !== "Peseira" && tipo !== "Almofada") continue;
     const info = resolverModelo(it, cat);
