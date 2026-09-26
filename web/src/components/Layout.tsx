@@ -198,12 +198,10 @@ const GRUPOS: MenuGrupo[] = [
     ],
   },
   {
-    id: "expedicao", icon: "🚚", label: "Expedição", itens: [
-      { to: "/expedicao", icon: "📮", label: "Expedição", page: "expedicao" },
-      { to: "/transporte", icon: "🚚", label: "Transporte", page: "transporte" },
+    id: "pcp", icon: "📋", label: "PCP", itens: [
+      { to: "/pedidos/novo", icon: "➕", label: "Criar pedido", page: "pedidos" },
       { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
       { to: "/impressao-etiquetas", icon: "🏷️", label: "Impressão de etiquetas", page: "expedicao" },
-      { icon: "✅", label: "Conferência Final", soon: true },
     ],
   },
   {
