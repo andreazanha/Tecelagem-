@@ -382,6 +382,13 @@ pedidos.get("/etiquetas", async (c) => {
   return c.json(results);
 });
 
+// Prévia do número da OP (explosão): o menor número livre que a próxima explosão receberá.
+// Só uma prévia — o número é reservado de fato quando o pedido é salvo.
+pedidos.get("/proximo-codigo-pai", async (c) => {
+  const codigo_pai = await proximoCodigoPai(c.env);
+  return c.json({ codigo_pai });
+});
+
 pedidos.get("/:id", async (c) => {
   const id = c.req.param("id");
   const pedido = await c.env.DB.prepare("SELECT * FROM pedidos WHERE id = ?")

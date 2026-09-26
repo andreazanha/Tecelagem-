@@ -24,6 +24,7 @@ export function NovoPedido() {
   const [vendedores, setVendedores] = useState<string[]>([]);
   const [lendo, setLendo] = useState(false);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "warn"; msg: string } | null>(null);
+  const [opPreview, setOpPreview] = useState<string>(""); // nº da OP que a explosão vai receber (prévia)
 
   const [form, setForm] = useState<NovoPedidoBody>({
     numero_erp: "",
@@ -51,6 +52,14 @@ export function NovoPedido() {
       .catch(() => {});
     api.listarModelos().then(setModelos).catch(() => {});
   }, []);
+
+  // Explosão = 2+ números no campo "Nº do pedido". Nesse caso mostramos qual OP ela vai receber.
+  const qtdNums = (form.numero_erp || "").split(",").map((s) => s.trim()).filter(Boolean).length;
+  const ehExplosao = !editId && qtdNums >= 2;
+  useEffect(() => {
+    if (!ehExplosao) { setOpPreview(""); return; }
+    api.proximoCodigoPai().then((r) => setOpPreview(r.codigo_pai)).catch(() => setOpPreview(""));
+  }, [ehExplosao]);
 
   // Modo edição: carrega o pedido e preenche o formulário.
   useEffect(() => {
@@ -396,6 +405,13 @@ export function NovoPedido() {
                 onChange={(e) => set("numero_erp", e.target.value)}
                 placeholder="ex.: 8842"
               />
+              {ehExplosao && (
+                <div className="op-badge">
+                  🧩 Explosão de <b>{qtdNums} pedidos</b> · Nº da OP:{" "}
+                  <b>OP {opPreview || "…"}</b>
+                  <span className="op-badge-hint"> (definido ao salvar)</span>
+                </div>
+              )}
             </div>
             <div className="field">
               <label>Vendedor</label>

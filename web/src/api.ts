@@ -695,6 +695,7 @@ export const api = {
     jsonPost("/api/tecelagem/registro", b).then((r) => j<{ id: string }>(r)),
   resumoTec: (mes: string) => fetch(`/api/tecelagem/resumo?mes=${mes}`).then((r) => j<ResumoTec>(r)),
   listarPedidos: () => fetch("/api/pedidos").then((r) => j<Pedido[]>(r)),
+  proximoCodigoPai: () => fetch("/api/pedidos/proximo-codigo-pai").then((r) => j<{ codigo_pai: string }>(r)),
   obterPedido: (id: string) => fetch(`/api/pedidos/${id}`).then((r) => j<Pedido>(r)),
   excluirPedido: (id: string) =>
     fetch(`/api/pedidos/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
