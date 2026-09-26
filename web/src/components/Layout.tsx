@@ -153,12 +153,6 @@ interface MenuGrupo { id: string; icon: string; label: string; itens: MenuItem[]
 // para abas via ?aba=). Itens sem página ainda ficam como "em breve".
 const GRUPOS: MenuGrupo[] = [
   {
-    id: "comercial", icon: "🛒", label: "Comercial", itens: [
-      { to: "/pedidos", icon: "📦", label: "Pedidos", page: "pedidos" },
-      { to: "/pedidos/novo", icon: "➕", label: "Novo Pedido", page: "pedidos" },
-    ],
-  },
-  {
     id: "crm", icon: "🤝", label: "CRM", itens: [
       { to: "/atendimento", icon: "🎯", label: "CRM (Funil + WhatsApp)", page: "atendimento" },
       { to: "/navegador-crm", icon: "🌐", label: "Navegador CRM", page: "atendimento" },
@@ -199,6 +193,7 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "pcp", icon: "📋", label: "PCP", itens: [
+      { to: "/pedidos", icon: "📦", label: "Pedidos", page: "pedidos" },
       { to: "/pedidos/novo", icon: "➕", label: "Criar pedido", page: "pedidos" },
       { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
       { to: "/impressao-etiquetas", icon: "🏷️", label: "Impressão de etiquetas", page: "expedicao" },
