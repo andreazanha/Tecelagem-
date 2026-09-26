@@ -1966,8 +1966,8 @@ body.dark .tecn { --tc-card:#131c2e; --tc-body:#0f1728; --tc-line:#25304a; --tc-
 /* Atalhos (blocos com gradiente vivo — cores do sistema) */
 .tecn-atalhos { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; flex: 0 0 auto; }
 .tecn-tile { height: 64px; border: 0; border-radius: 12px; color: #fff; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 8px 14px; position: relative; text-align: left; box-shadow: 0 1px 3px #0000001f; }
-.tecn-tile .tecn-tt { font-size: 12px; font-weight: 800; }
-.tecn-tile .tecn-tn { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 22px; font-weight: 800; }
+.tecn-tile .tecn-tt { font-size: 14.5px; font-weight: 800; }
+.tecn-tile .tecn-tn { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 24px; font-weight: 800; }
 button.tecn-tile { cursor: pointer; } button.tecn-tile:disabled { cursor: default; opacity: .78; }
 .tecn-tile.urg { background: linear-gradient(90deg,#f59e0b,#d97706); }
 .tecn-tile.p1  { background: linear-gradient(90deg,#2563eb,#1d4ed8); }
