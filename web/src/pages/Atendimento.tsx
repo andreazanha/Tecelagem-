@@ -1835,8 +1835,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                           <button onClick={() => editarMsg(m.id, m.texto || "")}>✏️ Editar (corrigir erro)</button>
                         )}
                         <button onClick={() => { setEncMsg(m.id); setMenuMsg(null); }}>↪️ Encaminhar</button>
-                        <button onClick={() => excluirMsg(m.id, false)}>🙈 Excluir para mim</button>
-                        {m.direcao === "out" && m.autor !== "sistema" && (
+                        {podeFuncao(getUser(), "crm.excluir_msg") && <button onClick={() => excluirMsg(m.id, false)}>🙈 Excluir para mim</button>}
+                        {podeFuncao(getUser(), "crm.excluir_msg") && m.direcao === "out" && m.autor !== "sistema" && (
                           <button className="danger" onClick={() => excluirMsg(m.id, true)}>🗑 Excluir para todos</button>
                         )}
                         <button className="cancel" onClick={() => setMenuMsg(null)}>Cancelar</button>
@@ -2145,7 +2145,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
           {/* Alternar: falar com o CLIENTE (WhatsApp) ou deixar NOTA INTERNA (só a equipe vê) */}
           <div style={{ flexBasis: "100%", display: "flex", gap: 6, marginBottom: 4 }}>
             <button className="at-modo-pill" style={modo === "cliente" ? { background: "#25d366", color: "#fff", borderColor: "#25d366" } : {}} onClick={() => setModo("cliente")}>💬 Cliente</button>
-            <button className="at-modo-pill" style={modo === "interno" ? { background: "#f59e0b", color: "#fff", borderColor: "#f59e0b" } : {}} onClick={() => setModo("interno")}>📝 Nota interna</button>
+            {podeFuncao(getUser(), "crm.nota") && <button className="at-modo-pill" style={modo === "interno" ? { background: "#f59e0b", color: "#fff", borderColor: "#f59e0b" } : {}} onClick={() => setModo("interno")}>📝 Nota interna</button>}
           </div>
           {modo === "cliente" && bloqueado
             ? <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", flexWrap: "wrap", background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: 8, padding: "8px 12px", fontSize: 12.5 }}>
