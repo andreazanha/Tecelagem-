@@ -214,16 +214,13 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/dashboard", icon: "📺", label: "Painel Geral", admin: true },
       { to: "/relatorio-vendas", icon: "🏆", label: "Vendas (o que vende mais)", admin: true },
       { to: "/cadastros?aba=usuarios", icon: "🔐", label: "Usuários e Permissões", admin: true },
-    ],
-  },
-  {
-    id: "relatorios", icon: "📈", label: "Relatórios", itens: [
-      { icon: "🏭", label: "Produção", soon: true },
-      { icon: "⏰", label: "Atrasos", soon: true },
-      { icon: "🔍", label: "Revisão", soon: true },
-      { icon: "🪡", label: "Costureiras", soon: true },
-      { icon: "📦", label: "Estoque", soon: true },
-      { icon: "💵", label: "Vendas", soon: true },
+      // Relatórios (ainda em breve) agora vivem dentro da Gestão.
+      { icon: "🏭", label: "Relatório de Produção", soon: true },
+      { icon: "⏰", label: "Relatório de Atrasos", soon: true },
+      { icon: "🔍", label: "Relatório de Revisão", soon: true },
+      { icon: "🪡", label: "Relatório de Costureiras", soon: true },
+      { icon: "📦", label: "Relatório de Estoque", soon: true },
+      { icon: "💵", label: "Relatório de Vendas", soon: true },
     ],
   },
   {
