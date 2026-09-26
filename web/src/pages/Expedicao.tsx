@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type CardExpedicao, type Volume } from "../api";
 import { MedidasModal } from "../components/MedidasModal";
 import { br, opCodigo, tipoDe, partesList, parseVolumes, resumoVolumes } from "../expedicaoUtil";
+import { getUser, podeFuncao } from "../auth";
 
 // Expedição: pedidos aprovados na Revisão chegam aqui. Separe/embale (Expedir),
 // preencha o Formulário de Medidas e Pesos (📐) e envie ao Fiscal.
@@ -123,7 +124,7 @@ export function Expedicao() {
                           <div className="kbox ent"><div className="kbox-l">ENTREGA</div><div className="kbox-v">{br(c.data_entrega)}</div></div>
                         </div>
                         <div className="kcard-acoes" style={{ marginTop: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                          {!expedindoCol ? (
+                          {!podeFuncao(getUser(), "expedicao.fase") ? null : !expedindoCol ? (
                             <button className="kbtn tecer" onClick={() => mudar(c, { status: "expedindo" })}>▶ Expedir</button>
                           ) : (
                             <>

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
+import { exigirAlgumaFuncao } from "../permissoes";
 
 export const expedicao = new Hono<{ Bindings: Env }>();
 
@@ -54,6 +55,9 @@ expedicao.get("/", async (c) => {
 
 // Atualiza a expedição de um pedido: muda fase/status, salva volumes/NF/frete/transportadora.
 expedicao.post("/:pedido_id", async (c) => {
+  // Mover na expedição / marcar NF / cotar frete exige alguma dessas funções (o front esconde o
+  // botão específico; aqui garante que quem não tem nenhuma delas não executa).
+  const g = await exigirAlgumaFuncao(c, ["expedicao.fase", "fiscal.frete", "fiscal.nf"]); if ("erro" in g) return g.erro;
   const pedido_id = c.req.param("pedido_id");
   const b = await c.req
     .json<{

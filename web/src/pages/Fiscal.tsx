@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type CardExpedicao } from "../api";
 import { br, opCodigo, tipoDe, parseVolumes, resumoVolumes, totalPeso } from "../expedicaoUtil";
+import { getUser, podeFuncao } from "../auth";
 
 // Fiscal: pedidos com Expedição finalizada chegam aqui. O Fiscal vê as medidas/volumes
 // (somente leitura), cota o frete e marca "NF emitida" → o pedido vai p/ Transporte.
@@ -116,11 +117,9 @@ export function Fiscal() {
                           <div className="kbox ent"><div className="kbox-l">ENTREGA</div><div className="kbox-v">{br(c.data_entrega)}</div></div>
                         </div>
                         <div className="kcard-acoes" style={{ marginTop: 10, justifyContent: "flex-end" }}>
-                          {!col.cotandoCol ? (
-                            <button className="kbtn tecer" onClick={() => mudar(c, { status: "cotando" })}>Cotar frete ▶</button>
-                          ) : (
-                            <button className="kbtn final" onClick={() => setNfModal(c)}>✓ NF emitida</button>
-                          )}
+                          {!col.cotandoCol
+                            ? (podeFuncao(getUser(), "fiscal.frete") && <button className="kbtn tecer" onClick={() => mudar(c, { status: "cotando" })}>Cotar frete ▶</button>)
+                            : (podeFuncao(getUser(), "fiscal.nf") && <button className="kbtn final" onClick={() => setNfModal(c)}>✓ NF emitida</button>)}
                         </div>
                       </div>
                     </div>

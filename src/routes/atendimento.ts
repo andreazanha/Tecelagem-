@@ -24,6 +24,7 @@ const pareceIdDeGrupo = (tel: unknown) => { const d = digitos(tel); return d.sta
 // já importa daqui.
 import { usuarioLogado, type UsuarioAuth } from "../sessao";
 export { usuarioLogado, type UsuarioAuth };
+import { exigirFuncao } from "../permissoes";
 // Gestor de atendimento = admin OU tem a permissão "atendimento-gestor" (vê tudo). Os demais
 // atendentes só veem as conversas DELES + a fila de novos sem dono.
 export function ehGestorAtend(u: UsuarioAuth | null): boolean {
@@ -1885,6 +1886,7 @@ async function enviarMsgEncerramento(env: Env, id: string, autor: string) {
   return r;
 }
 atendimento.post("/:id/encerrar", async (c) => {
+  const gP = await exigirFuncao(c, "crm.encerrar"); if ("erro" in gP) return gP.erro;
   const gA = await guardConversa(c, c.req.param("id"));
   if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ autor?: string; reabrir?: boolean }>().catch(() => ({}) as Record<string, string>);
@@ -1979,6 +1981,7 @@ atendimento.get("/:id/foto-perfil", async (c) => {
 
 // Mover um card pra outra coluna (arrastar) — grava a coluna manual.
 atendimento.post("/:id/coluna", async (c) => {
+  const gP = await exigirFuncao(c, "crm.mover"); if ("erro" in gP) return gP.erro;
   const id = c.req.param("id");
   const gA = await guardConversa(c, id);
   if ("erro" in gA) return gA.erro;
@@ -2159,6 +2162,7 @@ atendimento.post("/campanhas/upload", async (c) => {
   return c.json({ ok: true, url: `${new URL(c.req.url).origin}/api/atendimento/arquivo/${nome}`, tipo, nome: nomeArq, ext });
 });
 atendimento.post("/campanhas", async (c) => {
+  const gP = await exigirFuncao(c, "crm.campanha"); if ("erro" in gP) return gP.erro;
   const b = await c.req.json<{ nome?: string; mensagem?: string; intervalo_seg?: number; alvos?: { telefone: string; nome?: string }[]; rascunho?: boolean; iniciar_em?: number; arquivo_url?: string; arquivo_tipo?: string; arquivo_nome?: string; arquivo_ext?: string }>().catch(() => ({}) as Record<string, never>);
   const mensagem = String(b.mensagem ?? "").trim();
   const arqUrl = String(b.arquivo_url ?? "").trim();
@@ -3563,6 +3567,7 @@ atendimento.get("/contatos-whatsapp", async (c) => {
 
 // ── INICIAR uma conversa (o atendente manda a 1ª mensagem) ─────────────────────────
 atendimento.post("/nova-conversa", async (c) => {
+  const gP = await exigirFuncao(c, "crm.nova"); if ("erro" in gP) return gP.erro;
   const b = await c.req.json<{ telefone?: string; texto?: string; nome?: string; responsavel?: string }>().catch(() => ({}) as Record<string, string>);
   const tel = digitos(b.telefone);
   const texto = String(b.texto ?? "").trim();
@@ -3980,6 +3985,7 @@ atendimento.get("/:id", async (c) => {
 
 // ── Atendente humano assume ─────────────────────────────────────────────────────────
 atendimento.post("/:id/assumir", async (c) => {
+  const gP = await exigirFuncao(c, "crm.assumir"); if ("erro" in gP) return gP.erro;
   const gA = await guardConversa(c, c.req.param("id"));
   if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ responsavel?: string; pendente?: boolean }>().catch(() => ({}) as { responsavel?: string; pendente?: boolean });
@@ -4010,6 +4016,7 @@ atendimento.post("/:id/assumir", async (c) => {
 // Fica SEM dono (cai na fila "Aguardando atendimento humano"), marcada com o setor,
 // e avisa (notificação + toque) os MEMBROS daquele setor. Qualquer um do setor pega.
 atendimento.post("/:id/setor", async (c) => {
+  const gP = await exigirFuncao(c, "crm.transferir"); if ("erro" in gP) return gP.erro;
   const id = c.req.param("id");
   const gA = await guardConversa(c, id);
   if ("erro" in gA) return gA.erro;
@@ -4143,6 +4150,7 @@ atendimento.post("/:id/dados", async (c) => {
 // ── Nota interna (chat da equipe DENTRO da conversa) — NÃO vai pro cliente ─────────
 // ── Excluir mensagem: "para mim" (só some do CRM) ou "para todos" (apaga no WhatsApp) ──
 atendimento.post("/:id/mensagem/:msgId/excluir", async (c) => {
+  const gP = await exigirFuncao(c, "crm.excluir_msg"); if ("erro" in gP) return gP.erro;
   const id = c.req.param("id"), msgId = c.req.param("msgId");
   const gA = await guardConversa(c, id);
   if ("erro" in gA) return gA.erro;
@@ -4223,6 +4231,7 @@ atendimento.post("/:id/mensagem/:msgId/encaminhar", async (c) => {
 });
 
 atendimento.post("/:id/nota", async (c) => {
+  const gP = await exigirFuncao(c, "crm.nota"); if ("erro" in gP) return gP.erro;
   const gA = await guardConversa(c, c.req.param("id"));
   if ("erro" in gA) return gA.erro;
   const b = await c.req.json<{ texto?: string; autor?: string }>().catch(() => ({}) as Record<string, string>);

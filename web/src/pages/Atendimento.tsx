@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent as RP
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type AtendColuna, type RespostaPronta } from "../api";
-import { getUser, pode } from "../auth";
+import { getUser, pode, podeFuncao } from "../auth";
 
 // Etapas do funil (venda) mostradas dentro da conversa.
 const ETAPAS_FUNIL: { id: string; label: string }[] = [
@@ -565,9 +565,9 @@ export function Atendimento() {
         <div className="row-gap at-actions" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
           <button className="btn btn-soft" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); if (!n) { try { if (!audioRef.current) audioRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)(); } catch { /* ok */ } audioRef.current?.resume?.(); setTimeout(() => tocarDing(), 60); } return n; })} title={mudo ? "Som desligado — clique para ligar (toca um teste)" : "Toca um som quando chega mensagem nova. Clique para desligar."}>{mudo ? "🔕 Som off" : "🔔 Som on"}</button>
-          <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>
+          {podeFuncao(getUser(), "crm.nova") && <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
+          {ehGestorAtend() && podeFuncao(getUser(), "crm.campanha") && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setGruposOpen(true)}>👥 Postar em grupo</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setReservasOpen(true)}>📋 Reservas</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
@@ -1954,9 +1954,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             </div>
             {/* Botão dedicado de TRANSFERIR: manda a conversa pra outro vendedor (cai na fila
                 "Aguardando atendimento humano" dele, piscando, pra ele pegar). */}
-            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: "#bfdbfe", background: "#eff6ff", color: "#1d4ed8", fontWeight: 700 }} disabled={busy} onClick={() => setTransfOpen((v) => !v)} title="Transferir esta conversa para outro vendedor — cai na fila 'Aguardando atendimento humano' dele.">
+            {podeFuncao(getUser(), "crm.transferir") && <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: "#bfdbfe", background: "#eff6ff", color: "#1d4ed8", fontWeight: 700 }} disabled={busy} onClick={() => setTransfOpen((v) => !v)} title="Transferir esta conversa para outro vendedor — cai na fila 'Aguardando atendimento humano' dele.">
               🔄 Transferir para outro vendedor
-            </button>
+            </button>}
             {transfOpen && (
               <div style={{ marginTop: 6, border: "1px solid var(--line)", borderRadius: 10, padding: 6, display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto" }}>
                 {usuarios.filter((u) => u.nome !== d?.responsavel).map((u) => (
@@ -1970,7 +1970,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             )}
             {/* PUXAR PARA MIM: aparece quando a conversa está com OUTRO vendedor. Assume no
                 seu nome e vai direto pra "Em atendimento". */}
-            {d?.responsavel && d.responsavel !== (getUser()?.nome || "") && (
+            {d?.responsavel && d.responsavel !== (getUser()?.nome || "") && podeFuncao(getUser(), "crm.assumir") && (
               <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: "#bbf7d0", background: "#f0fdf4", color: "#15803d", fontWeight: 700 }} disabled={busy} onClick={puxarParaMim}
                 title={`Puxar esta conversa de ${d.responsavel} para você (assume no seu nome e vai direto para "Em atendimento").`}>
                 ⤵️ Puxar a conversa para mim
@@ -2030,9 +2030,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 </div>
               )}
             </div>
-            <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, fontWeight: 700, borderColor: encerrado ? "#a7f3d0" : "#1f7a53", background: encerrado ? "#ecfdf5" : "#1f7a53", color: encerrado ? "#065f46" : "#fff" }} disabled={busy} onClick={encerrar} title="Marca o atendimento como resolvido (para de piscar). NÃO envia nada ao cliente.">
+            {podeFuncao(getUser(), "crm.encerrar") && <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, fontWeight: 700, borderColor: encerrado ? "#a7f3d0" : "#1f7a53", background: encerrado ? "#ecfdf5" : "#1f7a53", color: encerrado ? "#065f46" : "#fff" }} disabled={busy} onClick={encerrar} title="Marca o atendimento como resolvido (para de piscar). NÃO envia nada ao cliente.">
               {encerrado ? "✅ Encerrado — reabrir" : "✅ Encerrar atendimento"}
-            </button>
+            </button>}
             {(humano || d?.responsavel) && (
               <button className="btn btn-soft" style={{ marginTop: 8, width: "100%", fontSize: 12.5, borderColor: "#ddd6fe", background: "#f5f3ff", color: "#6d28d9", fontWeight: 700 }} disabled={busy} onClick={devolverIa} title="A Big (IA) assume a conversa: se houver uma pergunta do cliente esperando, ela já responde agora; senão, responde a próxima mensagem.">
                 🤖 Big (IA) assume e responde
@@ -2213,7 +2213,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             : <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", flexWrap: "wrap" }}>
                 <span className="muted2" style={{ flex: 1, minWidth: 120 }}>🤖 O robô está conduzindo.</span>
                 <button className="btn btn-soft" disabled={busy} onClick={() => arqRef.current?.click()} title="Enviar foto ou arquivo pro cliente agora (sem precisar assumir)">📎 Anexar</button>
-                <button className="kbtn go" disabled={busy} onClick={assumir}>🙋 Assumir e responder</button>
+                {podeFuncao(getUser(), "crm.assumir") && <button className="kbtn go" disabled={busy} onClick={assumir}>🙋 Assumir e responder</button>}
               </div>}
         </div>
       </div>
