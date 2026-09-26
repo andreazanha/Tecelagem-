@@ -309,17 +309,32 @@ function upsertClienteDoPedido(env: Env, nome: string, b: PedidoIn): D1PreparedS
   ).bind(crypto.randomUUID(), nome, cnpj, cidade, uf, whatsapp, representante);
 }
 
+// Próximo código pai da EXPLOSÃO: o MENOR número livre entre as explosões que existem.
+// Regra do cliente: excluir uma explosão antes de iniciar a produção "devolve" o número
+// (a próxima explosão reaproveita o menor livre — 001, 002, ...). Explosões que continuam
+// existindo (inclusive as que já iniciaram) mantêm o número reservado, então nunca colidem.
+async function proximoCodigoPai(env: Env): Promise<string> {
+  const { results } = await env.DB.prepare(
+    "SELECT codigo_pai FROM pedidos WHERE codigo_pai IS NOT NULL AND TRIM(codigo_pai) <> ''"
+  ).all<{ codigo_pai: string }>();
+  const usados = new Set<number>();
+  for (const r of results) {
+    const n = parseInt(String(r.codigo_pai).replace(/\D/g, ""), 10); // aceita "OP-1018" (legado) e "001"
+    if (Number.isFinite(n) && n > 0) usados.add(n);
+  }
+  let n = 1;
+  while (usados.has(n)) n++;
+  return String(n).padStart(3, "0");
+}
+
 // Backfill: pedidos consolidados (vários números) sem código pai ganham um agora.
 async function garantirCodigoPai(env: Env) {
   const { results } = await env.DB.prepare(
     "SELECT id FROM pedidos WHERE codigo_pai IS NULL AND numero_erp LIKE '%,%' ORDER BY created_at, rowid"
   ).all<{ id: string }>();
   for (const r of results) {
-    await env.DB.prepare("UPDATE contadores SET valor = valor + 1 WHERE nome = 'codigo_pai'").run();
-    const seq = await env.DB.prepare("SELECT valor FROM contadores WHERE nome = 'codigo_pai'").first<{ valor: number }>();
-    await env.DB.prepare("UPDATE pedidos SET codigo_pai = ? WHERE id = ?")
-      .bind("OP-" + (seq?.valor ?? Date.now()), r.id)
-      .run();
+    const cod = await proximoCodigoPai(env); // recalcula a cada um (o anterior já entra na conta)
+    await env.DB.prepare("UPDATE pedidos SET codigo_pai = ? WHERE id = ?").bind(cod, r.id).run();
   }
 }
 
@@ -406,9 +421,7 @@ pedidos.post("/", async (c) => {
   const nums = (b.numero_erp || "").split(",").map((x) => x.trim()).filter(Boolean);
   let codigo_pai: string | null = null;
   if (nums.length >= 2) {
-    await c.env.DB.prepare("UPDATE contadores SET valor = valor + 1 WHERE nome = 'codigo_pai'").run();
-    const seq = await c.env.DB.prepare("SELECT valor FROM contadores WHERE nome = 'codigo_pai'").first<{ valor: number }>();
-    codigo_pai = "OP-" + (seq?.valor ?? Date.now());
+    codigo_pai = await proximoCodigoPai(c.env); // menor número livre (recicla ao excluir antes de iniciar)
   }
 
   stmts.push(
