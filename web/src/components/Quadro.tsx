@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type CardProducao, type ItemPedidoEstoque } from "../api";
+import { api, type CardProducao, type ItemPedidoEstoque, type RomaneioPedido } from "../api";
 import { historico } from "../historico";
 import { getUser, podeFuncao } from "../auth";
+import { RomaneioModal } from "../pages/Romaneios";
 
 const SETOR_LABEL: Record<string, string> = {
   tecelagem: "Tecelagem", passadoria: "Passadoria", corte: "Corte",
@@ -18,6 +19,22 @@ const TIPO: Record<string, { label: string; cls: string }> = {
 };
 // Parte "real" ignorando o sufixo "#op" de cards desmembrados (parte-unica#3768).
 const basePart = (p: string) => (p || "").split("#")[0];
+
+// Card de produção → objeto que o RomaneioModal espera (ele completa o resto via api.obterRomaneio).
+function cardParaRomaneio(c: CardProducao): RomaneioPedido {
+  return {
+    pedido_id: c.pedido_id,
+    numero: c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6),
+    cliente_nome: c.cliente_nome || "",
+    data_pedido: c.data_pedido ?? null,
+    data_entrega: c.data_entrega ?? null,
+    reposicao: !!c.reposicao,
+    peseirasMantas: 0,
+    almofadasCapas: 0,
+    outros: 0,
+    totalPecas: c.pecas || 0,
+  };
+}
 // Verbo do setor para o selo de prioridade de estoque ("TECER 1º", "CORTAR 1º"…).
 const verboSetor = (setor?: string) =>
   setor === "tecelagem" ? "TECER" : setor === "corte" ? "CORTAR" : setor === "costura" ? "COSTURAR"
@@ -196,6 +213,8 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [acaoModal, setAcaoModal] = useState<{ cards: CardProducao[]; acao: Acao } | null>(null);
   const [entradaPed, setEntradaPed] = useState<CardProducao | null>(null);
   const [liberarCard, setLiberarCard] = useState<CardProducao | null>(null); // PCP: pedido a liberar
+  const [romaneioCorte, setRomaneioCorte] = useState<CardProducao | null>(null); // Corte: gerar romaneio
+  const [enviarCostura, setEnviarCostura] = useState<{ card: CardProducao; costureira: string } | null>(null);
   const [busca, setBusca] = useState("");
   // Fila aberta pelo botão grande: por galga, todas, reposição, prioridade, envio, pessoa ou defeito.
   const [fila, setFila] = useState<{ galga?: 3 | 7; envio?: boolean; todas?: boolean; reposicao?: boolean; prioridade?: boolean; operador?: string; defeito?: boolean; entrada?: boolean; pe?: "separado" | "junto"; darEntrada?: boolean } | null>(null);
@@ -422,7 +441,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
           : cfg.setor === "tecelagem"
           ? <PainelTecelagem cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
           : cfg.setor === "corte"
-            ? <PainelCorte cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
+            ? <PainelCorte cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} onRomaneio={setRomaneioCorte} />
             : cfg.setor === "costura"
               ? <PainelCostura cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
               : cfg.setor === "revisao"
@@ -471,6 +490,28 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 
       {liberarCard && (
         <LiberarModal card={liberarCard} onFechar={() => setLiberarCard(null)} onFeito={() => { setLiberarCard(null); recarregar(); }} />
+      )}
+
+      {romaneioCorte && (
+        <RomaneioModal
+          tipo="costura"
+          pedido={cardParaRomaneio(romaneioCorte)}
+          onFechar={() => setRomaneioCorte(null)}
+          onGerado={(costureira) => { const c = romaneioCorte; setRomaneioCorte(null); if (c) setEnviarCostura({ card: c, costureira: costureira || "" }); }}
+        />
+      )}
+
+      {enviarCostura && (
+        <EnviarCosturaModal
+          card={enviarCostura.card}
+          costureira={enviarCostura.costureira}
+          onFechar={() => setEnviarCostura(null)}
+          onEnviar={(costureira) => {
+            const destino = destinoDe(enviarCostura.card) || "costura";
+            mudarGrupo([enviarCostura.card], { setor: destino, status: "fazendo", operador: costureira });
+            setEnviarCostura(null);
+          }}
+        />
       )}
 
       {fila && (
@@ -758,11 +799,12 @@ function PainelPCP({ cfg, cards, onAbrir, onLiberar }: {
 //    esquerda = A cortar, direita = Cortados; cima = Parte 1 e 2 (juntas, mesmo pedido lado a lado),
 //    baixo = Reposição (inclui kits). Etiqueta P1/P2/UN/REP/KIT por linha. Ações reais: fazer
 //    (Cortar), finalizar, enviar (p/ costura), onAbrir (detalhe).
-function PainelCorte({ cfg, cards, onAbrir, onAcao }: {
+function PainelCorte({ cfg, cards, onAbrir, onAcao, onRomaneio }: {
   cfg: QuadroCfg;
   cards: CardProducao[];
   onAbrir: (c: CardProducao) => void;
   onAcao: (cards: CardProducao[], acao: Acao) => void;
+  onRomaneio: (c: CardProducao) => void;
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const prazoDe = (c: CardProducao) => c.data_entrega || null;
@@ -826,7 +868,7 @@ function PainelCorte({ cfg, cards, onAbrir, onAcao }: {
         <span className={"tecn-dias " + dd.cls}>{dd.txt}</span>
         <span className="tecn-act">
           {modo === "cortados"
-            ? (podeAcao("enviar") && <button className="tecn-btn env" onClick={(e) => { e.stopPropagation(); onAcao([c], "enviar"); }}>Enviar ▶</button>)
+            ? (podeAcao("enviar") && <button className="tecn-btn rom" title="Gerar o romaneio de costura e enviar p/ a costureira" onClick={(e) => { e.stopPropagation(); onRomaneio(c); }}>🧾 Gerar romaneio</button>)
             : prod
               ? (podeAcao("finalizar") && <button className="tecn-btn fim" onClick={(e) => { e.stopPropagation(); onAcao([c], "finalizar"); }}>✓ Finalizar</button>)
               : (podeAcao("fazer") && <button className="tecn-btn ini" onClick={(e) => { e.stopPropagation(); onAcao([c], "fazer"); }}>▶ Cortar</button>)}
@@ -2522,7 +2564,51 @@ function LiberarModal({ card, onFechar, onFeito }: { card: CardProducao; onFecha
           />
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button className="btn" onClick={onFechar} disabled={salvando}>Cancelar</button>
-            <button className="btn primary" onClick={confirmar} disabled={salvando}>{salvando ? "Liberando…" : "🔓 Liberar"}</button>
+            <button className="btn btn-primary" onClick={confirmar} disabled={salvando}>{salvando ? "Liberando…" : "🔓 Liberar"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Depois de gerar o romaneio no Corte: pergunta se envia p/ a Costura e para QUAL costureira
+// (já vem pré-selecionada a que recebeu o romaneio). "Agora não" mantém no Corte (o romaneio já foi
+// gerado e linkado ao pedido de qualquer jeito).
+function EnviarCosturaModal({ card, costureira, onFechar, onEnviar }: {
+  card: CardProducao; costureira: string; onFechar: () => void; onEnviar: (costureira: string) => void;
+}) {
+  const [pessoas, setPessoas] = useState<string[]>([]);
+  const [sel, setSel] = useState(costureira || "");
+  const num = card.numero_erp || card.op || card.codigo_pai || card.pedido_id.slice(0, 6);
+  useEffect(() => {
+    api.listarPrestadores()
+      .then((l) => setPessoas(l.filter((x) => (x.servico || "") === "costura").map((x) => x.nome)))
+      .catch(() => {});
+  }, []);
+  // Garante que a costureira do romaneio apareça na lista mesmo se o cadastro não retornar.
+  const lista = sel && !pessoas.includes(sel) ? [sel, ...pessoas] : pessoas;
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd kit">
+          <div className="modal-hd-top">
+            <span className="modal-pills"><span className="modal-pill">🪡 Enviar p/ Costura — {num}</span></span>
+            <button className="modal-x" onClick={onFechar}>✕</button>
+          </div>
+        </div>
+        <div className="pad">
+          <p className="muted" style={{ marginTop: 0 }}>
+            ✓ Romaneio gerado. Enviar <strong>{num} · {card.cliente_nome || "—"}</strong> para a Costura?
+            Escolha a costureira:
+          </p>
+          <select className="input" value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "100%", marginBottom: 12 }}>
+            <option value="">— escolher costureira —</option>
+            {lista.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button className="btn" onClick={onFechar}>Agora não</button>
+            <button className="btn btn-primary" disabled={!sel} onClick={() => onEnviar(sel)}>🪡 Enviar p/ Costura</button>
           </div>
         </div>
       </div>

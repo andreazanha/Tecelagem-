@@ -2190,7 +2190,9 @@ body.dark .act.danger { background: #2a1416; border-color: #6b2530; color: #fca5
 body.dark .tecn-urglista { background: #2a1c07; border-color: #5b3d12; }
 
 /* Linha compacta do corte: etiqueta + pedido/cliente + peças + dias + botão */
-.tecn-crow { display: grid; grid-template-columns: 38px minmax(0,1fr) 60px 66px 104px; align-items: center; column-gap: 8px; min-height: 46px; padding: 6px 8px; margin-bottom: 4px; background: var(--tc-row); border: 1px solid var(--tc-rowline); border-radius: 9px; cursor: pointer; }
+.tecn-crow { display: grid; grid-template-columns: 38px minmax(0,1fr) 60px 66px 128px; align-items: center; column-gap: 8px; min-height: 46px; padding: 6px 8px; margin-bottom: 4px; background: var(--tc-row); border: 1px solid var(--tc-rowline); border-radius: 9px; cursor: pointer; }
+.tecn-btn.rom { color: #fff; background: #7c3aed; border: 1px solid #7c3aed; }
+.tecn-btn.rom:hover { background: #6d28d9; }
 .tecn-crow:hover { border-color: #93a5c0; }
 .tecn-crow.prod { background: #ecfdf5; border-color: #a7f3d0; }
 body.dark .tecn-crow.prod { background: #10251d; border-color: #1c5c46; }

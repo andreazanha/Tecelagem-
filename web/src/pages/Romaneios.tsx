@@ -147,7 +147,7 @@ function RomaneiosPedidos({ tipo }: { tipo: "costura" | "tassel" }) {
 // Modal de UM romaneio (costura OU tassel) — itens editáveis + gerar PDF.
 type ServEdit = { nome: string; agrupamento: string; qtd: number; valorUnit: number };
 type TasEdit = { cor: string; tamanho: string; tasseis: number; valorUnit: number };
-function RomaneioModal({ pedido, tipo, onFechar }: { pedido: RomaneioPedido; tipo: "costura" | "tassel"; onFechar: () => void }) {
+export function RomaneioModal({ pedido, tipo, onFechar, onGerado }: { pedido: RomaneioPedido; tipo: "costura" | "tassel"; onFechar: () => void; onGerado?: (prestador: string) => void }) {
   const ehTassel = tipo === "tassel";
   const [data, setData] = useState<RomaneioData | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -188,7 +188,10 @@ function RomaneioModal({ pedido, tipo, onFechar }: { pedido: RomaneioPedido; tip
         : base;
       const r = ehTassel ? await api.gerarRomaneioTassel(pedido.pedido_id, opts) : await api.gerarRomaneioCostura(pedido.pedido_id, opts);
       window.open(r.url, "_blank");
-      if (registrar) setOk("✓ Romaneio gerado e salvo na base (pendente até retornar).");
+      if (registrar) {
+        setOk("✓ Romaneio gerado e salvo na base (pendente até retornar).");
+        onGerado?.(pessoa); // fluxo do Corte: depois de gerar, oferece enviar p/ a Costura
+      }
     } catch (e) { setErro((e as Error).message); } finally { setGerando(""); }
   }
 
