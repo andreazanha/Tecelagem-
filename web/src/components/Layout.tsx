@@ -179,7 +179,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/corte", icon: "✂️", label: "Corte", page: "corte" },
       { to: "/costura", icon: "🪡", label: "Costura", page: "costura" },
       { to: "/revisao", icon: "🔍", label: "Revisão", page: "revisao" },
-      { icon: "⚡", label: "Separação Pronta Entrega", soon: true },
+      { to: "/estoque", icon: "⚡", label: "Separação Pronta Entrega", page: "estoque" },
       { to: "/expedicao", icon: "📮", label: "Expedição", page: "expedicao" },
       { to: "/fiscal", icon: "🧾", label: "Fiscal", page: "fiscal" },
       { to: "/transporte", icon: "🚚", label: "Transporte", page: "transporte" },
@@ -187,7 +187,6 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "estoque", icon: "📊", label: "Estoque", itens: [
-      { to: "/estoque", icon: "📦", label: "Entradas", page: "estoque" },
       { to: "/fio-por-cor", icon: "🧵", label: "Estoque de fios", page: "estoque" },
       { to: "/estoque-materiais", icon: "🧷", label: "Estoque de materiais", page: "estoque" },
       { to: "/produtos?aba=estoque", icon: "📊", label: "Estoque de Produtos", page: "produtos" },
