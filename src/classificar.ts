@@ -104,8 +104,9 @@ export function tipoDe(produto: string, tamanho?: string | null): string {
 }
 
 // Siglas de PRONTA ENTREGA que aparecem no CÓDIGO (ref) do produto (ex.: "OP1093", "OM-200").
+// Lista confirmada pelo gestor: OP, OM, OC, OT.
 // Atenção: "KT..." (componente de kit) continua NÃO valendo — só estas siglas específicas.
-const PE_SIGLAS_REF = /^(?:OP|OM|OC)(?![A-Za-z])/i;
+const PE_SIGLAS_REF = /^(?:OP|OM|OC|OT)(?![A-Za-z])/i;
 
 // Kit / Pronta Entrega. Regras (nesta ordem):
 //  1) it.kit marcado (pedido de estoque) OU o NOME contém a palavra "KIT" (ex.: "KIT ASPEN 90x200").
