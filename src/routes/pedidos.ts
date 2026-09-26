@@ -575,19 +575,29 @@ pedidos.post("/:id/liberar", async (c) => {
   const g = await exigirFuncao(c, "pcp.liberar"); if ("erro" in g) return g.erro;
   const u = g.u; // usuário já autenticado pelo guard (não precisa reconsultar a sessão)
   const id = c.req.param("id");
+  const b = await c.req.json<{ senha?: string; parte?: string }>().catch(() => ({}) as { senha?: string; parte?: string });
+  const parte = (b.parte || "").trim(); // vazio = libera o pedido inteiro (todas as partes)
   const ex = await c.env.DB.prepare("SELECT id FROM pedidos WHERE id = ?").bind(id).first();
   if (!ex) return c.json({ error: "pedido_nao_encontrado" }, 404);
   // Admin (dono) libera direto. Usuário DELEGADO confirma a identidade com a própria senha —
   // mas só quando ele realmente tem senha cadastrada (senha em branco = 1º acesso, não trava).
   if (!u.admin) {
-    const b = await c.req.json<{ senha?: string }>().catch(() => ({}) as { senha?: string });
     const row = await c.env.DB.prepare("SELECT senha FROM usuarios WHERE id = ?")
       .bind(u.id).first<{ senha: string }>();
     const stored = (row?.senha || "").trim();
     if (stored && stored !== (b.senha || "").trim()) return c.json({ ok: false, error: "senha_incorreta" }, 401);
   }
-  await c.env.DB.prepare("UPDATE pedidos SET bloqueado = 0 WHERE id = ?").bind(id).run();
-  return c.json({ ok: true });
+  // Cadeado é POR PARTE: libera só a parte pedida. Sem parte → libera todas (compatibilidade).
+  if (parte) {
+    await c.env.DB.prepare("UPDATE producao SET bloqueado = 0 WHERE pedido_id = ? AND parte = ?").bind(id, parte).run();
+  } else {
+    await c.env.DB.prepare("UPDATE producao SET bloqueado = 0 WHERE pedido_id = ?").bind(id).run();
+  }
+  // Mantém o flag do pedido coerente: só fica bloqueado enquanto SOBRAR alguma parte trancada.
+  const rest = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM producao WHERE pedido_id = ? AND bloqueado = 1")
+    .bind(id).first<{ n: number }>();
+  await c.env.DB.prepare("UPDATE pedidos SET bloqueado = ? WHERE id = ?").bind((rest?.n || 0) > 0 ? 1 : 0, id).run();
+  return c.json({ ok: true, parte: parte || null, restam: rest?.n || 0 });
 });
 
 // UPLOAD dos PDFs originais (um ou vários — preserva todos no R2 sob orig/)
@@ -798,7 +808,9 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     if (!blocos.length) return;
     const pecas = blocos.reduce((s, b) => s + b.total, 0);
     await c.env.DB.prepare(
-      `INSERT INTO producao (pedido_id, parte, pecas, resumo) VALUES (?, ?, ?, ?)
+      // Nasce bloqueado (cadeado do PCP) — POR PARTE. O ON CONFLICT NÃO mexe em bloqueado,
+      // então re-salvar o pedido não re-tranca uma parte que o PCP já liberou.
+      `INSERT INTO producao (pedido_id, parte, pecas, resumo, bloqueado) VALUES (?, ?, ?, ?, 1)
        ON CONFLICT(pedido_id, parte) DO UPDATE SET pecas = excluded.pecas, resumo = excluded.resumo`
     )
       .bind(id, parte, pecas, `${blocos.length} modelo(s)`)
@@ -838,7 +850,7 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
       }
       const pecas = g.blocos.reduce((s, b) => s + b.total, 0);
       await c.env.DB.prepare(
-        `INSERT INTO producao (pedido_id, parte, setor, status, pecas, resumo) VALUES (?, ?, 'estoque', ?, ?, ?)
+        `INSERT INTO producao (pedido_id, parte, setor, status, pecas, resumo, bloqueado) VALUES (?, ?, 'estoque', ?, ?, ?, 1)
          ON CONFLICT(pedido_id, parte) DO UPDATE SET pecas = excluded.pecas, resumo = excluded.resumo,
            setor = excluded.setor, status = excluded.status
          WHERE producao.operador IS NULL AND producao.iniciado_em IS NULL AND producao.finalizado_em IS NULL`

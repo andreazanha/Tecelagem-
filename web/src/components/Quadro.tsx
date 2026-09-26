@@ -446,7 +446,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
         cfg.pcp
           ? <PainelPCP cfg={cfg} cards={filtrados} onAbrir={setAberto} onLiberar={setLiberarCard} />
           : cfg.setor === "tecelagem"
-          ? <PainelTecelagem cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
+          ? <PainelTecelagem cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} onLiberar={setLiberarCard} />
           : cfg.setor === "corte"
             ? <PainelCorte cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} onRomaneio={setRomaneioCorte} />
             : cfg.setor === "costura"
@@ -602,14 +602,15 @@ function numCompacto(c: CardProducao): string {
 //    atrasado) e Finalizados (pronto) saem das colunas e ficam nos ATALHOS que pulsam e
 //    abrem a lista. Reaproveita as ações reais: onAcao "fazer"/"finalizar"/"enviar",
 //    onAbrir (detalhe), onPrioridade (marcar urgente pelo card).
-function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
+function PainelTecelagem({ cfg, cards, onAbrir, onAcao, onLiberar }: {
   cfg: QuadroCfg;
   cards: CardProducao[];
   onAbrir: (c: CardProducao) => void;
   onAcao: (cards: CardProducao[], acao: Acao) => void;
+  onLiberar?: (c: CardProducao) => void;
 }) {
   const [lista, setLista] = useState<null | "urgentes" | "finalizados">(null);
-  const [bloqPop, setBloqPop] = useState(false); // popup "entre em contato com o PCP"
+  const [bloqPop, setBloqPop] = useState<CardProducao | null>(null); // popup do cadeado (guarda o card p/ liberar direto)
   const hoje = new Date().toISOString().slice(0, 10);
   const ehBloq = (c: CardProducao) => !!c.bloqueado; // pedido preso no PCP (cadeado)
   const prazoDe = (c: CardProducao) => c.data_tecelagem || c.data_entrega || null; // prazo do tear
@@ -658,7 +659,7 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
     // Pedido bloqueado pelo PCP: o tecelão vê o cadeado, sem botões; clicar avisa p/ falar com o PCP.
     if (ehBloq(c)) {
       return (
-        <div key={c.pedido_id + c.parte} className="tecn-row bloq" onClick={() => setBloqPop(true)} title="pedido bloqueado — falar com o PCP">
+        <div key={c.pedido_id + c.parte} className="tecn-row bloq" onClick={() => setBloqPop(c)} title="pedido bloqueado — falar com o PCP">
           <div className="tecn-idcli"><span className="tecn-lk">🔒</span><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
           <span className="tecn-pcs">{pad2(c.pecas)} pçs</span>
           <span className="tecn-dt">{br(prazoDe(c))}</span>
@@ -733,12 +734,19 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
       )}
 
       {bloqPop && (
-        <div className="tecn-popbg" onClick={() => setBloqPop(false)}>
+        <div className="tecn-popbg" onClick={() => setBloqPop(null)}>
           <div className="tecn-pop" onClick={(e) => e.stopPropagation()}>
             <div className="tecn-popic">🔒</div>
             <h3>Pedido bloqueado</h3>
-            <p>Este pedido ainda não foi liberado.<br /><b>Entre em contato com o PCP</b> para liberar a produção.</p>
-            <button onClick={() => setBloqPop(false)}>Entendi</button>
+            <p>Esta parte ainda não foi liberada.<br /><b>Entre em contato com o PCP</b> para liberar a produção.</p>
+            {podeLiberar() && onLiberar ? (
+              <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+                <button onClick={() => setBloqPop(null)}>Fechar</button>
+                <button className="lib" onClick={() => { const c = bloqPop; setBloqPop(null); onLiberar(c); }}>🔓 Liberar agora</button>
+              </div>
+            ) : (
+              <button onClick={() => setBloqPop(null)}>Entendi</button>
+            )}
           </div>
         </div>
       )}
@@ -2703,7 +2711,7 @@ function LiberarModal({ card, onFechar, onFeito }: { card: CardProducao; onFecha
     try {
       // api.liberarPedido usa j(): em erro (401/403/404) ele LANÇA com a mensagem do backend,
       // então o tratamento fica todo no catch (o if !r.ok não era alcançado antes).
-      const r = await api.liberarPedido(card.pedido_id, senha);
+      const r = await api.liberarPedido(card.pedido_id, senha, card.parte);
       if (!r.ok) throw new Error(traduzErro(r.error || ""));
       onFeito();
     } catch (e) {

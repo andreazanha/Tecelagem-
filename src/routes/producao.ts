@@ -141,6 +141,7 @@ async function catalogoDe(env: Env) {
 type CardRow = {
   pedido_id: string; parte: string; op: string | null; setor: string; status: string;
   pecas: number; operador: string | null; prioridade: number; iniciado_em: string | null; finalizado_em: string | null;
+  bloqueado?: number | null;
 };
 async function desmembrarCard(env: Env, pedidoId: string, parteFull: string): Promise<{ ok: boolean; criados?: number; motivo?: string }> {
   if (parteFull.includes("#")) return { ok: false, motivo: "já desmembrado" };
@@ -177,9 +178,9 @@ async function desmembrarCard(env: Env, pedidoId: string, parteFull: string): Pr
     if (pecas <= 0) continue; // essa OP não tem peça nesta parte
     stmts.push(
       env.DB.prepare(
-        `INSERT INTO producao (pedido_id, parte, op, setor, status, pecas, resumo, cliente, operador, prioridade, iniciado_em, finalizado_em)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(pedidoId, `${parteFull}#${origem}`, origem, card.setor, card.status, pecas, `OP ${origem}`, clienteDe(origem), card.operador, card.prioridade, card.iniciado_em, card.finalizado_em)
+        `INSERT INTO producao (pedido_id, parte, op, setor, status, pecas, resumo, cliente, operador, prioridade, iniciado_em, finalizado_em, bloqueado)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(pedidoId, `${parteFull}#${origem}`, origem, card.setor, card.status, pecas, `OP ${origem}`, clienteDe(origem), card.operador, card.prioridade, card.iniciado_em, card.finalizado_em, card.bloqueado ? 1 : 0)
     );
     criados++;
   }
@@ -202,10 +203,10 @@ async function desmembrarPEestoque(env: Env) {
 // Backfill: todo pedido vira card de Tecelagem (mesmo sem ter gerado PDF).
 async function garantirCards(env: Env) {
   const { results: faltantes } = await env.DB.prepare(
-    `SELECT p.id, p.reposicao, p.entrega_pe FROM pedidos p
+    `SELECT p.id, p.reposicao, p.entrega_pe, COALESCE(p.bloqueado,0) AS bloqueado FROM pedidos p
       WHERE NOT EXISTS (SELECT 1 FROM producao pr WHERE pr.pedido_id = p.id)
         AND COALESCE(p.status, '') <> 'aguardando_aprovacao'`
-  ).all<{ id: string; reposicao: number; entrega_pe: string | null }>();
+  ).all<{ id: string; reposicao: number; entrega_pe: string | null; bloqueado: number }>();
   if (!faltantes.length) return;
   const cat = await catalogoDe(env);
   for (const f of faltantes) {
@@ -238,9 +239,9 @@ async function garantirCards(env: Env) {
       }
       stmts.push(
         env.DB.prepare(
-          `INSERT INTO producao (pedido_id, parte, setor, status, pecas, resumo) VALUES (?, ?, ?, ?, ?, ?)
+          `INSERT INTO producao (pedido_id, parte, setor, status, pecas, resumo, bloqueado) VALUES (?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(pedido_id, parte) DO NOTHING`
-        ).bind(f.id, parte, setor, status, pecas, `${blocos.length} modelo(s)`)
+        ).bind(f.id, parte, setor, status, pecas, `${blocos.length} modelo(s)`, f.bloqueado ? 1 : 0)
       );
     }
     if (stmts.length) await env.DB.batch(stmts);
@@ -290,7 +291,7 @@ producao.get("/", async (c) => {
             pr.prioridade, pr.iniciado_em, pr.finalizado_em,
             p.numero_erp, COALESCE(NULLIF(pr.cliente, ''), p.cliente_nome) AS cliente_nome,
             p.data_pedido, p.data_entrega, p.data_tecelagem, p.codigo_terceiro, p.codigo_pai, p.observacao, p.reposicao,
-            COALESCE(p.bloqueado, 0) AS bloqueado
+            COALESCE(pr.bloqueado, 0) AS bloqueado
        FROM producao pr
        JOIN pedidos p ON p.id = pr.pedido_id
       WHERE pr.setor = ?
@@ -343,10 +344,11 @@ producao.post("/:pedido_id/:parte", async (c) => {
   const b = await c.req
     .json<{ status?: string; setor?: string; maquina?: string; operador?: string }>()
     .catch(() => ({}) as { status?: string; setor?: string; maquina?: string; operador?: string });
-  // Trava do PCP: pedido bloqueado (cadeado) não anda na produção — só depois que o PCP liberar.
-  const trava = await c.env.DB.prepare("SELECT COALESCE(bloqueado,0) AS b FROM pedidos WHERE id = ?")
-    .bind(pedido_id).first<{ b: number }>();
-  if (trava?.b) return c.json({ error: "pedido_bloqueado", msg: "Pedido bloqueado — entre em contato com o PCP." }, 423);
+  // Trava do PCP: cadeado é POR PARTE (card). A parte bloqueada não anda na produção
+  // até o PCP liberar ESSA parte — liberar a Parte 1 não solta a Parte 2.
+  const trava = await c.env.DB.prepare("SELECT COALESCE(bloqueado,0) AS b FROM producao WHERE pedido_id = ? AND parte = ?")
+    .bind(pedido_id, parte).first<{ b: number }>();
+  if (trava?.b) return c.json({ error: "pedido_bloqueado", msg: "Parte bloqueada — entre em contato com o PCP." }, 423);
   // Permissão conforme a ação pretendida (o mesmo endpoint atende vários botões).
   if (b.status === "fazendo") { const g = await exigirFuncao(c, "producao.iniciar"); if ("erro" in g) return g.erro; }
   else if (b.status === "pronto") { const g = await exigirFuncao(c, "producao.finalizar"); if ("erro" in g) return g.erro; }

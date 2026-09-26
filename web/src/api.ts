@@ -1093,12 +1093,12 @@ export const api = {
   salvarEstoqueWpp: (numeros: string[]) =>
     fetch("/api/produtos/estoque-wpp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ numeros }) }).then((r) => j<{ ok: boolean; numeros: string[] }>(r)),
   // PCP: tira o cadeado do pedido (exige a função pcp.liberar + senha do usuário logado).
-  liberarPedido: (pedido_id: string, senha: string) =>
+  liberarPedido: (pedido_id: string, senha: string, parte?: string) =>
     fetch(`/api/pedidos/${pedido_id}/liberar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ senha }),
-    }).then((r) => j<{ ok: boolean; error?: string }>(r)),
+      body: JSON.stringify({ senha, parte }),
+    }).then((r) => j<{ ok: boolean; error?: string; parte?: string | null; restam?: number }>(r)),
   dashboard: () => fetch("/api/dashboard").then((r) => j<DashboardData>(r)),
   tvTecelagem: () => fetch("/api/dashboard/tecelagem").then((r) => j<TvTecelagemData>(r)),
   tvCostura: () => fetch("/api/dashboard/costura").then((r) => j<TvCosturaData>(r)),
