@@ -2178,3 +2178,23 @@ body.dark .tecn-crow.prod { background: #10251d; border-color: #1c5c46; }
 .tecn-col.c-rc .tecn-colh { background: linear-gradient(90deg,#0d9488,#0f766e); }
 
 @media (max-width: 900px) { .tecn-urglista { grid-template-columns: 1fr; } }
+
+/* ══ Painel da COSTURA (quadradinhos de costureira + 2 colunas) ═════════════════ */
+.tecn-costtiles { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px; }
+.tecn-ctile { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--tc-line); background: var(--tc-card); color: var(--tc-ink); border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.tecn-ctile .qt { font-size: 12px; font-weight: 800; color: #fff; background: #7c3aed; border-radius: 999px; padding: 1px 9px; }
+.tecn-ctile.todas .qt { background: #4338ca; }
+.tecn-ctile.on { border-color: #7c3aed; background: #f5f3ff; color: #6d28d9; box-shadow: 0 0 0 2px #7c3aed33; }
+body.dark .tecn-ctile { background: #131c2e; border-color: #25304a; }
+body.dark .tecn-ctile.on { background: #1e2748; border-color: #7c3aed; color: #ddd6fe; }
+
+/* Cabeçalhos das 2 colunas da costura */
+.tecn-col.k-ped .tecn-colh { background: linear-gradient(90deg,#4f46e5,#4338ca); }
+.tecn-col.k-rep .tecn-colh { background: linear-gradient(90deg,#dc2626,#9f1239); }
+.tecn-cols-2 { grid-template-columns: repeat(2, minmax(0,1fr)); grid-auto-rows: minmax(0,1fr); }
+
+/* Card de 2 linhas (cliente + costureira em destaque) */
+.tecn-idcli2 { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tecn-idcli2 .top { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.tecn-cost { font-size: 12px; font-weight: 800; color: #6d28d9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.dark .tecn-cost { color: #c4b5fd; }

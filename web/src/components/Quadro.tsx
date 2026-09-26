@@ -354,7 +354,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     : cards;
 
   return (
-    <div className={"quadro-page" + (cfg.painel && (cfg.setor === "tecelagem" || cfg.setor === "corte") ? " tec-nova" : "")}>
+    <div className={"quadro-page" + (cfg.painel && (cfg.setor === "tecelagem" || cfg.setor === "corte" || cfg.setor === "costura") ? " tec-nova" : "")}>
       <div className="page-head">
         <div>
           <h1>{cfg.titulo}</h1>
@@ -416,7 +416,9 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
           ? <PainelTecelagem cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
           : cfg.setor === "corte"
             ? <PainelCorte cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
-            : <PainelTec cfg={cfg} cards={filtrados} onAbrir={setAberto} onAbrirFila={setFila} onAcao={acaoCard} />
+            : cfg.setor === "costura"
+              ? <PainelCostura cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
+              : <PainelTec cfg={cfg} cards={filtrados} onAbrir={setAberto} onAbrirFila={setFila} onAcao={acaoCard} />
       ) : (
         <>
           <div className="kanban">
@@ -755,6 +757,109 @@ function PainelCorte({ cfg, cards, onAbrir, onAcao }: {
                 {prod.length ? prod.map((c) => linha(c)) : <div className="tecn-vaz">nenhum cortando</div>}
                 <div className="tecn-grh"><span className="tecn-gd" />A cortar <b>({aprod.length})</b></div>
                 {aprod.length ? aprod.map((c) => linha(c)) : <div className="tecn-vaz">fila vazia</div>}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Painel NOVO da Costura (aprovado): 2 colunas — PEDIDOS e REPOSIÇÃO DE ESTOQUE — com a lista
+//    e o botão ✓ Finalizar. Cada card mostra a COSTUREIRA (operador) que está costurando. Finalizar
+//    envia adiante (normal → Revisão; kit → Estoque, comportamento atual). Defeito devolvido pela
+//    Revisão aparece com ↩ Refazer.
+function PainelCostura({ cfg, cards, onAbrir, onAcao }: {
+  cfg: QuadroCfg;
+  cards: CardProducao[];
+  onAbrir: (c: CardProducao) => void;
+  onAcao: (cards: CardProducao[], acao: Acao) => void;
+}) {
+  const [sel, setSel] = useState<string | null>(null); // costureira filtrada (quadradinho clicado)
+  const prazoDe = (c: CardProducao) => c.data_entrega || null;
+  const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
+  const ehRepOuKit = (c: CardProducao) => ehRep(c) || c.parte === "pronta-entrega";
+  const tagDe = (c: CardProducao): { txt: string; cls: string } => {
+    if (ehRep(c)) return { txt: "REP", cls: "rep" };
+    if (c.parte === "pronta-entrega") return { txt: "KIT", cls: "kit" };
+    const bp = basePart(c.parte);
+    if (bp === "parte-1") return { txt: "P1", cls: "p1" };
+    if (bp === "parte-2") return { txt: "P2", cls: "p2" };
+    return { txt: "UN", cls: "un" };
+  };
+  function dias(d: string | null): { txt: string; cls: string } {
+    if (!d) return { txt: "—", cls: "ok" };
+    const h = new Date(); h.setHours(0, 0, 0, 0);
+    const e = new Date(d.slice(0, 10) + "T00:00:00");
+    const n = Math.round((e.getTime() - h.getTime()) / 86400000);
+    if (isNaN(n)) return { txt: "—", cls: "ok" };
+    if (n < 0) return { txt: `Atr. ${-n}d`, cls: "atr" };
+    if (n === 0) return { txt: "Hoje", cls: "urg" };
+    if (n <= 2) return { txt: `${n}d`, cls: "urg" };
+    if (n <= 5) return { txt: `${n}d`, cls: "prox" };
+    return { txt: `${n}d`, cls: "ok" };
+  }
+
+  // Só o que está EM COSTURA (aguardando/fazendo). Defeito NÃO aparece aqui — fica na Revisão.
+  const naTela = cards.filter((c) => c.status === "aguardando" || c.status === "fazendo");
+  // Contagem de pedidos por costureira (quadradinhos no topo).
+  const contagem = new Map<string, number>();
+  for (const c of naTela) { const k = (c.operador || "").trim() || "—"; contagem.set(k, (contagem.get(k) || 0) + 1); }
+  const costureiras = [...contagem.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
+  const filtrados = sel ? naTela.filter((c) => ((c.operador || "").trim() || "—") === sel) : naTela;
+  const grupos = {
+    ped: filtrados.filter((c) => !ehRepOuKit(c)).sort(ordenarFila),
+    rep: filtrados.filter(ehRepOuKit).sort(ordenarFila),
+  };
+  const COLS: { key: "ped" | "rep"; nome: string; ic: string; cls: string }[] = [
+    { key: "ped", nome: "PEDIDOS", ic: "🪡", cls: "k-ped" },
+    { key: "rep", nome: "REPOSIÇÃO DE ESTOQUE", ic: "📦", cls: "k-rep" },
+  ];
+
+  const linha = (c: CardProducao) => {
+    const dd = dias(prazoDe(c));
+    const tg = tagDe(c);
+    const kit = c.parte === "pronta-entrega";
+    return (
+      <div key={c.pedido_id + c.parte} className={"tecn-crow" + (c.status === "fazendo" ? " prod" : "")} onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
+        <span className={"tecn-ptag " + tg.cls}>{tg.txt}</span>
+        <div className="tecn-idcli2">
+          <div className="top"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
+          <div className="tecn-cost">👩 {c.operador || "sem costureira"}{kit ? " · vai p/ estoque" : ""}</div>
+        </div>
+        <span className="tecn-pcs">{pad2(c.pecas)} pçs</span>
+        <span className={"tecn-dias " + dd.cls}>{dd.txt}</span>
+        <span className="tecn-act">
+          {podeAcao("enviar") && <button className="tecn-btn fim" onClick={(e) => { e.stopPropagation(); onAcao([c], "enviar"); }}>✓ Finalizar</button>}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="tecn">
+      {/* Quadradinhos das costureiras: mostram quantos pedidos cada uma tem; clicar filtra a lista. */}
+      <div className="tecn-costtiles">
+        <button className={"tecn-ctile todas" + (sel === null ? " on" : "")} onClick={() => setSel(null)}>
+          <span className="nm">Todas</span><span className="qt">{naTela.length}</span>
+        </button>
+        {costureiras.map(([nome, qt]) => (
+          <button key={nome} className={"tecn-ctile" + (sel === nome ? " on" : "")} onClick={() => setSel((s) => s === nome ? null : nome)}>
+            <span className="nm">👩 {nome === "—" ? "Sem costureira" : nome}</span><span className="qt">{qt}</span>
+          </button>
+        ))}
+      </div>
+      <div className="tecn-cols tecn-cols-2">
+        {COLS.map((col) => {
+          const l = grupos[col.key];
+          return (
+            <section key={col.key} className={"tecn-col " + col.cls}>
+              <header className="tecn-colh"><span className="tecn-colic">{col.ic}</span><span className="tecn-colt">{col.nome}</span><span className="tecn-colc">{l.length}</span></header>
+              <div className="tecn-colbody">
+                {l.length ? l.map((c) => linha(c)) : <div className="tecn-vaz">fila vazia</div>}
               </div>
             </section>
           );
