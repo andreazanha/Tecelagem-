@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { api, tipoLabel, PARTES, type Pedido, type PedidoItem } from "../api";
 import { getUser, podeFuncao } from "../auth";
 
@@ -9,6 +9,7 @@ function parteLabel(v: string) {
 
 export function PedidoDetalhe() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [originais, setOriginais] = useState<{ nome: string; url: string }[]>([]);
@@ -48,6 +49,23 @@ export function PedidoDetalhe() {
             💰 PDF do cliente
           </a>
           {podeFuncao(getUser(), "pedido.editar") && <Link to={`/pedidos/${pedido.id}/editar`} className="btn btn-soft">✏️ Editar pedido</Link>}
+          {podeFuncao(getUser(), "pedido.excluir") && (
+            <button
+              className="btn btn-danger"
+              onClick={async () => {
+                const cod = pedido.codigo_pai ? `OP ${pedido.codigo_pai}` : pedido.numero_erp || pedido.id.slice(0, 8);
+                if (!confirm(`Excluir o pedido ${cod} de ${pedido.cliente_nome}?\n\nIsso remove o pedido e seus cards da produção. Não dá para desfazer.`)) return;
+                try {
+                  await api.excluirPedido(pedido.id);
+                  navigate("/pedidos");
+                } catch (e) {
+                  alert("Não foi possível excluir: " + (e as Error).message);
+                }
+              }}
+            >
+              🗑 Excluir pedido
+            </button>
+          )}
           <span className={"status status-" + pedido.status}>{pedido.status}</span>
         </div>
       </div>

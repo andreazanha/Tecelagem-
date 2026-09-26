@@ -2473,3 +2473,9 @@ body.dark .op-badge-hint { color: #a5b4fc; }
 /* Pílula do Nº da OP (código pai) no cabeçalho do detalhe do pedido. */
 .op-pill { display: inline-block; padding: 3px 12px; border-radius: 999px; background: #4338ca; color: #fff; font-size: 15px; font-weight: 800; letter-spacing: .3px; }
 body.dark .op-pill { background: #6366f1; }
+
+/* Botão de excluir (perigo) — usado no detalhe do pedido e no card da produção. */
+.btn-danger { background: #dc2626; border: 1px solid #dc2626; color: #fff; font-weight: 700; }
+.btn-danger:hover { background: #b91c1c; border-color: #b91c1c; }
+body.dark .btn-danger { background: #ef4444; border-color: #ef4444; }
+body.dark .btn-danger:hover { background: #dc2626; border-color: #dc2626; }

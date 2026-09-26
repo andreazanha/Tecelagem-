@@ -2524,6 +2524,28 @@ function CardModal({
           <button className="btn" onClick={onFechar}>
             Fechar
           </button>
+          {podeFuncao(getUser(), "pedido.excluir") && (
+            <button
+              className="btn btn-danger"
+              title="Excluir o pedido inteiro e seus cards da produção (só master e quem ele autorizar)"
+              onClick={async () => {
+                const cod = card.codigo_pai ? `OP ${card.codigo_pai}` : card.numero_erp || card.pedido_id.slice(0, 6);
+                const av = ehConsolidada(card) || card.op
+                  ? "\n\n⚠️ É uma explosão: isso apaga o PEDIDO INTEIRO (todas as partes e todos os pedidos juntados)."
+                  : "\n\nIsso remove o pedido e seus cards da produção.";
+                if (!confirm(`Excluir ${cod} — ${card.cliente_nome || ""}?${av}\n\nNão dá para desfazer.`)) return;
+                try {
+                  await api.excluirPedido(card.pedido_id);
+                  onFechar();
+                  onRecarregar?.();
+                } catch (e) {
+                  alert("Não foi possível excluir: " + (e as Error).message);
+                }
+              }}
+            >
+              🗑 Excluir
+            </button>
+          )}
           {onDesmembrar && ehConsolidada(card) && (
             <button className="btn btn-soft" onClick={() => { onDesmembrar(card); onFechar(); }} title="Separa os pedidos de explosão em um card por pedido de origem">
               🔀 Desmembrar OP
