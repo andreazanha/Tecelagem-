@@ -2688,17 +2688,26 @@ function LiberarModal({ card, onFechar, onFeito }: { card: CardProducao; onFecha
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const ehAdmin = !!getUser()?.admin; // dono libera direto; usuário delegado confirma com a senha
   const num = card.numero_erp || card.op || card.codigo_pai || card.pedido_id.slice(0, 6);
+  const traduzErro = (m: string) =>
+    m === "senha_incorreta" ? "Senha incorreta."
+    : m === "sem_permissao" ? "Você não tem permissão para liberar (fale com o administrador)."
+    : m === "pedido_nao_encontrado" ? "Pedido não encontrado (atualize a tela)."
+    : m === "sessao_invalida" ? "Sua sessão expirou. Entre de novo."
+    : m || "Não foi possível liberar.";
   async function confirmar() {
-    if (!senha) return setErro("Digite sua senha para liberar.");
+    if (!ehAdmin && !senha) return setErro("Digite sua senha para liberar.");
     setSalvando(true);
     setErro("");
     try {
+      // api.liberarPedido usa j(): em erro (401/403/404) ele LANÇA com a mensagem do backend,
+      // então o tratamento fica todo no catch (o if !r.ok não era alcançado antes).
       const r = await api.liberarPedido(card.pedido_id, senha);
-      if (!r.ok) throw new Error(r.error === "senha_incorreta" ? "Senha incorreta." : "Sem permissão para liberar.");
+      if (!r.ok) throw new Error(traduzErro(r.error || ""));
       onFeito();
     } catch (e) {
-      setErro((e as Error).message || "Não foi possível liberar.");
+      setErro(traduzErro((e as Error).message));
       setSalvando(false);
     }
   }
@@ -2715,18 +2724,20 @@ function LiberarModal({ card, onFechar, onFeito }: { card: CardProducao; onFecha
           {erro && <p className="erro">{erro}</p>}
           <p className="muted" style={{ marginTop: 0 }}>
             <strong>{card.cliente_nome || "—"}</strong> · {card.pecas} peças.<br />
-            Liberar tira o cadeado 🔒 e a Tecelagem poderá iniciar. Confirme com a <strong>sua senha</strong>.
+            Liberar tira o cadeado 🔒 e a Tecelagem poderá iniciar.{ehAdmin ? " Confirme para liberar." : <> Confirme com a <strong>sua senha</strong>.</>}
           </p>
-          <input
-            type="password"
-            className="input"
-            placeholder="Sua senha"
-            value={senha}
-            autoFocus
-            onChange={(e) => setSenha(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") confirmar(); }}
-            style={{ width: "100%", marginBottom: 12 }}
-          />
+          {!ehAdmin && (
+            <input
+              type="password"
+              className="input"
+              placeholder="Sua senha"
+              value={senha}
+              autoFocus
+              onChange={(e) => setSenha(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") confirmar(); }}
+              style={{ width: "100%", marginBottom: 12 }}
+            />
+          )}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button className="btn" onClick={onFechar} disabled={salvando}>Cancelar</button>
             <button className="btn btn-primary" onClick={confirmar} disabled={salvando}>{salvando ? "Liberando…" : "🔓 Liberar"}</button>

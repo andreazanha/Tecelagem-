@@ -3,7 +3,6 @@ import { extractText, getDocumentProxy } from "unpdf";
 import type { Env } from "../index";
 import { parsePedido } from "../parser";
 import { exigirFuncao } from "../permissoes";
-import { usuarioLogado } from "../sessao";
 import {
   classificar,
   criarCatalogo,
@@ -574,16 +573,19 @@ pedidos.delete("/:id", async (c) => {
 // pcp.liberar (o admin decide quem pode) E confirmação com a senha do próprio usuário logado.
 pedidos.post("/:id/liberar", async (c) => {
   const g = await exigirFuncao(c, "pcp.liberar"); if ("erro" in g) return g.erro;
+  const u = g.u; // usuário já autenticado pelo guard (não precisa reconsultar a sessão)
   const id = c.req.param("id");
-  const b = await c.req.json<{ senha?: string }>().catch(() => ({}) as { senha?: string });
-  // Confirma a identidade: a senha digitada tem que bater com a do usuário logado.
-  const u = await usuarioLogado(c.env, c);
-  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
-  const row = await c.env.DB.prepare("SELECT senha FROM usuarios WHERE id = ?")
-    .bind(u.id).first<{ senha: string }>();
-  if (!row || row.senha !== (b.senha || "")) return c.json({ ok: false, error: "senha_incorreta" }, 401);
   const ex = await c.env.DB.prepare("SELECT id FROM pedidos WHERE id = ?").bind(id).first();
-  if (!ex) return c.json({ error: "pedido não encontrado" }, 404);
+  if (!ex) return c.json({ error: "pedido_nao_encontrado" }, 404);
+  // Admin (dono) libera direto. Usuário DELEGADO confirma a identidade com a própria senha —
+  // mas só quando ele realmente tem senha cadastrada (senha em branco = 1º acesso, não trava).
+  if (!u.admin) {
+    const b = await c.req.json<{ senha?: string }>().catch(() => ({}) as { senha?: string });
+    const row = await c.env.DB.prepare("SELECT senha FROM usuarios WHERE id = ?")
+      .bind(u.id).first<{ senha: string }>();
+    const stored = (row?.senha || "").trim();
+    if (stored && stored !== (b.senha || "").trim()) return c.json({ ok: false, error: "senha_incorreta" }, 401);
+  }
   await c.env.DB.prepare("UPDATE pedidos SET bloqueado = 0 WHERE id = ?").bind(id).run();
   return c.json({ ok: true });
 });
