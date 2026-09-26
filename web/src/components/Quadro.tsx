@@ -2290,6 +2290,7 @@ function CardModal({
   const [det, setDet] = useState<Awaited<ReturnType<typeof api.detalheProducao>> | null>(null);
   const [hist, setHist] = useState<Awaited<ReturnType<typeof api.historicoProducao>> | null>(null);
   const [verHist, setVerHist] = useState(false);
+  const [verPedido, setVerPedido] = useState(false); // prévia (igual ao PDF) — só da parte do card
   // Edição do cliente do card (cards desmembrados de OP consolidada — 1 cliente por OP).
   const [editCli, setEditCli] = useState<string | null>(null);
   const [salvandoCli, setSalvandoCli] = useState(false);
@@ -2406,6 +2407,8 @@ function CardModal({
             </div>
           </div>
 
+          <button className="btn btn-primary" style={{ width: "100%", margin: "2px 0 12px" }} onClick={() => setVerPedido(true)}>📄 Visualizar pedido</button>
+
           <div className="modal-grid">
             <Campo l="TIPO" v={tipoLabel} />
             <Campo l="QUANTIDADE" v={`${card.pecas} peças`} />
@@ -2509,6 +2512,74 @@ function CardModal({
       {verHist && hist && (
         <HistoricoModal hist={hist} titulo={opCodigo(card)} cliente={card.cliente_nome} onFechar={() => setVerHist(false)} />
       )}
+      {verPedido && (
+        <VisualizarPedidoModal card={card} cfg={cfg} det={det} onFechar={() => setVerPedido(false)} />
+      )}
+    </div>
+  );
+}
+
+// Prévia do pedido igual ao PDF (Ordem de Produção), montada na tela a partir dos dados já
+// carregados (det). NÃO gera nem salva PDF. Mostra só os itens da PARTE do card (P1, P2, única ou
+// reposição — o det já vem filtrado pela parte).
+function VisualizarPedidoModal({ card, cfg, det, onFechar }: {
+  card: CardProducao;
+  cfg: QuadroCfg;
+  det: Awaited<ReturnType<typeof api.detalheProducao>> | null;
+  onFechar: () => void;
+}) {
+  const parteLabel =
+    basePart(card.parte) === "parte-1" ? "PARTE 1"
+      : basePart(card.parte) === "parte-2" ? "PARTE 2"
+        : card.parte === "pronta-entrega" ? "PRONTA ENTREGA"
+          : "PARTE ÚNICA";
+  const banda = card.parte === "pronta-entrega" ? "green" : ehRep(card) ? "rep" : "gold";
+  const num = card.numero_erp || card.op || card.codigo_pai || card.pedido_id.slice(0, 6);
+  const blocos = det?.blocos || [];
+  const total = blocos.reduce((a, b) => a + (b.total || 0), 0);
+  const titulo = card.parte === "pronta-entrega" ? "ITENS — PRONTA ENTREGA" : ehRep(card) ? "ITENS — REPOSIÇÃO DE ESTOQUE" : "ITENS A PRODUZIR";
+  const sub = cfg.titulo + " · " + parteLabel + (ehRep(card) ? " · Reposição" : "");
+  return (
+    <div className="modal-bg" onClick={onFechar} style={{ zIndex: 80 }}>
+      <div className="op-doc" onClick={(e) => e.stopPropagation()}>
+        <button className="op-x" onClick={onFechar}>✕</button>
+        <div className="op-hd">
+          <div className="op-big">BIG TRICOT</div>
+          <div className="op-home">HOME DECOR</div>
+          <div className="op-op">Ordem de Produção</div>
+          <div className="op-sub">{sub}</div>
+          <div className={"op-parte " + banda}>{parteLabel}{ehRep(card) ? " · REP" : ""}</div>
+        </div>
+        <div className="op-body">
+          <div className="op-info">
+            <span className="k">CLIENTE</span><span className="v">{det?.cliente_nome || card.cliente_nome || "—"}</span>
+            <span className="k">REPRESENTANTE</span><span className="v">{det?.vendedor || "—"}</span>
+            <span className="k">{num.includes(",") ? "PEDIDOS" : "PEDIDO"}</span><span className="v">{num}</span>
+          </div>
+          <div className="op-datas"><span className="k">DATAS</span><span><b>Emissão:</b> {br(card.data_pedido)} &nbsp;&nbsp; <b>Entrega:</b> {br(card.data_entrega)}</span></div>
+          {(det?.observacao || card.observacao) && (
+            <div className="op-obs"><span className="k">OBSERVAÇÃO</span><span className="v">{(det?.observacao || card.observacao || "").toUpperCase()}</span></div>
+          )}
+          <div className="op-titulo">{titulo}</div>
+          <div className="op-titulo-l" />
+          {blocos.length === 0 && <div className="muted" style={{ padding: "14px 2px" }}>Carregando itens…</div>}
+          {blocos.map((b, i) => (
+            <div className="op-bloco" key={i}>
+              <div className="op-barra">
+                <span className="lbl">Modelo:</span><span className="val">{b.modelo}</span>
+                <span className="lbl">Ref:</span><span className="val">{b.ref || "—"}</span>{b.comp && <span className="comp">· {b.comp}</span>}
+                <span className="op-cor"><span className="op-dot" /><b>{b.cor || "—"}</b></span>
+                <span className="op-total">Total: {b.total} {b.total === 1 ? "peça" : "peças"}</span>
+              </div>
+              <div className="op-thead"><span>PRODUTO / TAMANHO</span><span className="q">QUANTIDADE PEDIDA</span></div>
+              {b.sizes.map((s, j) => (
+                <div className="op-trow" key={j}><span className="tam">{s.tipo ? s.tipo + " " : ""}{s.tamanho}</span><span className="q"><span className="op-chk" /><span className="qb">{s.qtd} {s.qtd === 1 ? "peça" : "peças"}</span></span></div>
+              ))}
+            </div>
+          ))}
+          <div className={"op-tband " + banda}>QTD {parteLabel}: {total}</div>
+        </div>
+      </div>
     </div>
   );
 }
