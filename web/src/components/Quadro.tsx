@@ -354,7 +354,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     : cards;
 
   return (
-    <div className={"quadro-page" + (cfg.painel && cfg.setor === "tecelagem" ? " tec-nova" : "")}>
+    <div className={"quadro-page" + (cfg.painel && (cfg.setor === "tecelagem" || cfg.setor === "corte") ? " tec-nova" : "")}>
       <div className="page-head">
         <div>
           <h1>{cfg.titulo}</h1>
@@ -414,7 +414,9 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
       ) : cfg.painel ? (
         cfg.setor === "tecelagem"
           ? <PainelTecelagem cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
-          : <PainelTec cfg={cfg} cards={filtrados} onAbrir={setAberto} onAbrirFila={setFila} onAcao={acaoCard} />
+          : cfg.setor === "corte"
+            ? <PainelCorte cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
+            : <PainelTec cfg={cfg} cards={filtrados} onAbrir={setAberto} onAbrirFila={setFila} onAcao={acaoCard} />
       ) : (
         <>
           <div className="kanban">
@@ -633,6 +635,131 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Painel NOVO do Corte (aprovado): faixa de URGENTES no topo (destaque + lista) e grade 2×2:
+//    esquerda = A cortar, direita = Cortados; cima = Parte 1 e 2 (juntas, mesmo pedido lado a lado),
+//    baixo = Reposição (inclui kits). Etiqueta P1/P2/UN/REP/KIT por linha. Ações reais: fazer
+//    (Cortar), finalizar, enviar (p/ costura), onAbrir (detalhe).
+function PainelCorte({ cfg, cards, onAbrir, onAcao }: {
+  cfg: QuadroCfg;
+  cards: CardProducao[];
+  onAbrir: (c: CardProducao) => void;
+  onAcao: (cards: CardProducao[], acao: Acao) => void;
+}) {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const prazoDe = (c: CardProducao) => c.data_entrega || null;
+  const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
+  const ehRepOuKit = (c: CardProducao) => ehRep(c) || c.parte === "pronta-entrega";
+  const ehUrgente = (c: CardProducao) => c.status === "aguardando" && (!!c.prioridade || (!!prazoDe(c) && (prazoDe(c) as string) < hoje));
+  const tagDe = (c: CardProducao): { txt: string; cls: string } => {
+    if (ehRep(c)) return { txt: "REP", cls: "rep" };
+    if (c.parte === "pronta-entrega") return { txt: "KIT", cls: "kit" };
+    const bp = basePart(c.parte);
+    if (bp === "parte-1") return { txt: "P1", cls: "p1" };
+    if (bp === "parte-2") return { txt: "P2", cls: "p2" };
+    return { txt: "UN", cls: "un" };
+  };
+  const ordParte = (c: CardProducao) => { const bp = basePart(c.parte); return bp === "parte-1" ? 0 : bp === "parte-2" ? 1 : 2; };
+  // Mantém Parte 1 e 2 do MESMO pedido lado a lado (ordena por pedido, depois por parte).
+  const porPedidoParte = (a: CardProducao, b: CardProducao) => {
+    const na = numDe(a), nb = numDe(b);
+    if (na !== nb) return na < nb ? -1 : 1;
+    return ordParte(a) - ordParte(b);
+  };
+  function dias(d: string | null): { txt: string; cls: string } {
+    if (!d) return { txt: "—", cls: "ok" };
+    const h = new Date(); h.setHours(0, 0, 0, 0);
+    const e = new Date(d.slice(0, 10) + "T00:00:00");
+    const n = Math.round((e.getTime() - h.getTime()) / 86400000);
+    if (isNaN(n)) return { txt: "—", cls: "ok" };
+    if (n < 0) return { txt: `Atr. ${-n}d`, cls: "atr" };
+    if (n === 0) return { txt: "Hoje", cls: "urg" };
+    if (n <= 2) return { txt: `${n}d`, cls: "urg" };
+    if (n <= 5) return { txt: `${n}d`, cls: "prox" };
+    return { txt: `${n}d`, cls: "ok" };
+  }
+
+  const urgentes = cards.filter(ehUrgente).sort(ordenarFila);
+  const naTela = cards.filter((c) => (c.status === "aguardando" || c.status === "fazendo") && !ehUrgente(c));
+  const prontos = cards.filter((c) => c.status === "pronto");
+  const grupos = {
+    pa: naTela.filter((c) => !ehRepOuKit(c)),   // Parte 1 e 2 (+ únicos) — a cortar
+    pc: prontos.filter((c) => !ehRepOuKit(c)),  // Parte 1 e 2 (+ únicos) — cortados
+    ra: naTela.filter(ehRepOuKit),              // Reposição (+ kits) — a cortar
+    rc: prontos.filter(ehRepOuKit),             // Reposição (+ kits) — cortados
+  };
+  const COLS: { key: "pa" | "pc" | "ra" | "rc"; nome: string; ic: string; cls: string; cortados?: boolean }[] = [
+    { key: "pa", nome: "PARTE 1 e 2 · A cortar", ic: "✂️", cls: "c-pa" },
+    { key: "pc", nome: "PARTE 1 e 2 · Cortados", ic: "✓", cls: "c-pc", cortados: true },
+    { key: "ra", nome: "REPOSIÇÃO DE ESTOQUE · A cortar", ic: "📦", cls: "c-ra" },
+    { key: "rc", nome: "REPOSIÇÃO DE ESTOQUE · Cortados", ic: "✓", cls: "c-rc", cortados: true },
+  ];
+
+  const linha = (c: CardProducao, modo?: "cortados") => {
+    const prod = c.status === "fazendo";
+    const dd = dias(prazoDe(c));
+    const tg = tagDe(c);
+    return (
+      <div key={c.pedido_id + c.parte} className={"tecn-crow" + (prod ? " prod" : "")} onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
+        <span className={"tecn-ptag " + tg.cls}>{tg.txt}</span>
+        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
+        <span className="tecn-pcs">{pad2(c.pecas)} pçs</span>
+        <span className={"tecn-dias " + dd.cls}>{dd.txt}</span>
+        <span className="tecn-act">
+          {modo === "cortados"
+            ? (podeAcao("enviar") && <button className="tecn-btn env" onClick={(e) => { e.stopPropagation(); onAcao([c], "enviar"); }}>Enviar ▶</button>)
+            : prod
+              ? (podeAcao("finalizar") && <button className="tecn-btn fim" onClick={(e) => { e.stopPropagation(); onAcao([c], "finalizar"); }}>✓ Finalizar</button>)
+              : (podeAcao("fazer") && <button className="tecn-btn ini" onClick={(e) => { e.stopPropagation(); onAcao([c], "fazer"); }}>▶ Cortar</button>)}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="tecn">
+      <div className={"tecn-urgfaixa" + (urgentes.length ? " pulsa" : "")}>
+        <span style={{ fontSize: 18 }}>★</span>
+        <span className="t">URGENTES — prioridade / atrasados</span>
+        <span className="n">{urgentes.length}</span>
+      </div>
+      {urgentes.length > 0 && (
+        <div className="tecn-urglista">{urgentes.map((c) => linha(c))}</div>
+      )}
+      <div className="tecn-cols">
+        {COLS.map((col) => {
+          const l = grupos[col.key];
+          if (col.cortados) {
+            const lista = l.sort(porPedidoParte);
+            return (
+              <section key={col.key} className={"tecn-col " + col.cls}>
+                <header className="tecn-colh"><span className="tecn-colic">{col.ic}</span><span className="tecn-colt">{col.nome}</span><span className="tecn-colc">{lista.length}</span></header>
+                <div className="tecn-colbody">
+                  <div className="tecn-grh"><span className="tecn-gd vd" />Prontos p/ costura <b>({lista.length})</b></div>
+                  {lista.length ? lista.map((c) => linha(c, "cortados")) : <div className="tecn-vaz">nenhum cortado</div>}
+                </div>
+              </section>
+            );
+          }
+          const prod = l.filter((c) => c.status === "fazendo").sort(porPedidoParte);
+          const aprod = l.filter((c) => c.status === "aguardando").sort(porPedidoParte);
+          return (
+            <section key={col.key} className={"tecn-col " + col.cls}>
+              <header className="tecn-colh"><span className="tecn-colic">{col.ic}</span><span className="tecn-colt">{col.nome}</span><span className="tecn-colc">{l.length}</span></header>
+              <div className="tecn-colbody">
+                <div className="tecn-grh"><span className="tecn-gd vd" />Cortando <b>({prod.length})</b></div>
+                {prod.length ? prod.map((c) => linha(c)) : <div className="tecn-vaz">nenhum cortando</div>}
+                <div className="tecn-grh"><span className="tecn-gd" />A cortar <b>({aprod.length})</b></div>
+                {aprod.length ? aprod.map((c) => linha(c)) : <div className="tecn-vaz">fila vazia</div>}
+              </div>
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 }

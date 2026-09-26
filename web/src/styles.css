@@ -2153,3 +2153,28 @@ body.dark .act.ok { background: #10251d; border-color: #1c5c46; color: #6ee7b7; 
 body.dark .act.danger { background: #2a1416; border-color: #6b2530; color: #fca5a5; }
 /* Em telas estreitas, esconde o texto e deixa só o ícone (continua clicável e alinhado). */
 @media (max-width: 640px) { .act .act-tx { display: none; } .act { padding: 8px 10px; } }
+
+/* ══ Painel do CORTE (faixa Urgentes + grade 2×2) — reaproveita .tecn-* ═════════ */
+.tecn-urgfaixa { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 12px; color: #fff; background: linear-gradient(90deg,#f59e0b,#d97706); box-shadow: 0 1px 3px #0000001f; }
+.tecn-urgfaixa.pulsa { animation: tecnPulseUrg 1.7s ease-in-out infinite; }
+.tecn-urgfaixa .t { font-size: 15px; font-weight: 800; letter-spacing: .02em; }
+.tecn-urgfaixa .n { margin-left: auto; font-size: 20px; font-weight: 800; background: #ffffff2e; border-radius: 999px; padding: 2px 14px; }
+.tecn-urglista { flex: 0 0 auto; max-height: 26vh; overflow-y: auto; background: #fff7ed; border: 1px solid #fed7aa; border-top: 0; border-radius: 0 0 12px 12px; padding: 6px 8px; margin-top: -8px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
+body.dark .tecn-urglista { background: #2a1c07; border-color: #5b3d12; }
+
+/* Linha compacta do corte: etiqueta + pedido/cliente + peças + dias + botão */
+.tecn-crow { display: grid; grid-template-columns: 38px minmax(0,1fr) 60px 66px 104px; align-items: center; column-gap: 8px; min-height: 46px; padding: 6px 8px; margin-bottom: 4px; background: var(--tc-row); border: 1px solid var(--tc-rowline); border-radius: 9px; cursor: pointer; }
+.tecn-crow:hover { border-color: #93a5c0; }
+.tecn-crow.prod { background: #ecfdf5; border-color: #a7f3d0; }
+body.dark .tecn-crow.prod { background: #10251d; border-color: #1c5c46; }
+.tecn-ptag { font-size: 10px; font-weight: 800; border-radius: 6px; padding: 3px 0; text-align: center; color: #fff; letter-spacing: .02em; }
+.tecn-ptag.p1 { background: #2563eb; } .tecn-ptag.p2 { background: #7c3aed; } .tecn-ptag.un { background: #64748b; }
+.tecn-ptag.rep { background: #dc2626; } .tecn-ptag.kit { background: #0d9488; }
+
+/* Cores dos cabeçalhos das 4 colunas do corte */
+.tecn-col.c-pa .tecn-colh { background: linear-gradient(90deg,#2563eb,#1d4ed8); }
+.tecn-col.c-pc .tecn-colh { background: linear-gradient(90deg,#059669,#047857); }
+.tecn-col.c-ra .tecn-colh { background: linear-gradient(90deg,#dc2626,#9f1239); }
+.tecn-col.c-rc .tecn-colh { background: linear-gradient(90deg,#0d9488,#0f766e); }
+
+@media (max-width: 900px) { .tecn-urglista { grid-template-columns: 1fr; } }
