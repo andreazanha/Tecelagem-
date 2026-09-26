@@ -340,7 +340,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     : cards;
 
   return (
-    <div className="quadro-page">
+    <div className={"quadro-page" + (cfg.painel && cfg.setor === "tecelagem" ? " tec-nova" : "")}>
       <div className="page-head">
         <div>
           <h1>{cfg.titulo}</h1>
@@ -398,7 +398,9 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
       {carregando ? (
         <div className="card pad">Carregando…</div>
       ) : cfg.painel ? (
-        <PainelTec cfg={cfg} cards={filtrados} onAbrir={setAberto} onAbrirFila={setFila} onAcao={acaoCard} />
+        cfg.setor === "tecelagem"
+          ? <PainelTecelagem cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
+          : <PainelTec cfg={cfg} cards={filtrados} onAbrir={setAberto} onAbrirFila={setFila} onAcao={acaoCard} />
       ) : (
         <>
           <div className="kanban">
@@ -497,6 +499,130 @@ function GalgaChip({ c }: { c: CardProducao }) {
 
 // ── PAINEL da produção ────────────────────────────────────────────────────────
 // Tecelagem: 3 botões (fila galga 3, fila galga 7, enviar) + 2 colunas por galga.
+// ── Painel NOVO da Tecelagem (aprovado): 4 colunas 2×2 (Parte 1 / Parte 2 / Únicos /
+//    Reposição), tema/ cores do sistema. Cada coluna: "Produzindo" (fazendo) em cima e
+//    "A produzir" (aguardando) embaixo, com scroll próprio. Urgentes (prioridade OU
+//    atrasado) e Finalizados (pronto) saem das colunas e ficam nos ATALHOS que pulsam e
+//    abrem a lista. Reaproveita as ações reais: onAcao "fazer"/"finalizar"/"enviar",
+//    onAbrir (detalhe), onPrioridade (marcar urgente pelo card).
+function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
+  cfg: QuadroCfg;
+  cards: CardProducao[];
+  onAbrir: (c: CardProducao) => void;
+  onAcao: (cards: CardProducao[], acao: Acao) => void;
+}) {
+  const [lista, setLista] = useState<null | "urgentes" | "finalizados">(null);
+  const hoje = new Date().toISOString().slice(0, 10);
+  const prazoDe = (c: CardProducao) => c.data_tecelagem || c.data_entrega || null; // prazo do tear
+  const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
+  const colDe = (c: CardProducao): "p1" | "p2" | "uni" | "rep" =>
+    ehRep(c) ? "rep" : basePart(c.parte) === "parte-2" ? "p2" : basePart(c.parte) === "parte-1" ? "p1" : "uni";
+  // Urgente = na fila (aguardando) e marcado como prioridade OU com o prazo do tear estourado.
+  const ehUrgente = (c: CardProducao) => c.status === "aguardando" && (!!c.prioridade || (!!prazoDe(c) && (prazoDe(c) as string) < hoje));
+  function dias(d: string | null): { txt: string; cls: string } {
+    if (!d) return { txt: "—", cls: "ok" };
+    const h = new Date(); h.setHours(0, 0, 0, 0);
+    const e = new Date(d.slice(0, 10) + "T00:00:00");
+    const n = Math.round((e.getTime() - h.getTime()) / 86400000);
+    if (isNaN(n)) return { txt: "—", cls: "ok" };
+    if (n < 0) return { txt: `Atr. ${-n}d`, cls: "atr" };
+    if (n === 0) return { txt: "Hoje", cls: "urg" };
+    if (n <= 2) return { txt: `${n} dias`, cls: "urg" };
+    if (n <= 5) return { txt: `${n} dias`, cls: "prox" };
+    return { txt: `${n} dias`, cls: "ok" };
+  }
+  const porDataDesc = (a: CardProducao, b: CardProducao) => {
+    const da = prazoDe(a) || "", db = prazoDe(b) || "";
+    return da < db ? 1 : da > db ? -1 : 0;
+  };
+
+  const naTela = cards.filter((c) => (c.status === "aguardando" || c.status === "fazendo") && !ehUrgente(c));
+  const urgentes = cards.filter(ehUrgente).sort(ordenarFila);
+  const finalizados = cards.filter((c) => c.status === "pronto").sort(porDataDesc);
+  const grupos = {
+    p1: naTela.filter((c) => colDe(c) === "p1"),
+    p2: naTela.filter((c) => colDe(c) === "p2"),
+    uni: naTela.filter((c) => colDe(c) === "uni"),
+    rep: naTela.filter((c) => colDe(c) === "rep"),
+  };
+  const COLS: { key: "p1" | "p2" | "uni" | "rep"; nome: string; ic: string }[] = [
+    { key: "p1", nome: "PEDIDOS PARTE 1", ic: "🧶" },
+    { key: "p2", nome: "PEDIDOS PARTE 2", ic: "🧶" },
+    { key: "uni", nome: "ÚNICOS", ic: "◈" },
+    { key: "rep", nome: "REPOSIÇÃO DE ESTOQUE", ic: "📦" },
+  ];
+
+  const linha = (c: CardProducao, modo?: "final") => {
+    const prod = c.status === "fazendo";
+    const dd = dias(prazoDe(c));
+    return (
+      <div key={c.pedido_id + c.parte} className={"tecn-row" + (prod ? " prod" : "")} onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
+        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
+        <span className="tecn-pcs">{pad2(c.pecas)} pçs</span>
+        <span className="tecn-dt">{br(prazoDe(c))}</span>
+        <span className={"tecn-dias " + dd.cls}>{dd.txt}</span>
+        <span className="tecn-st">{modo === "final" ? <span className="tecn-badge fin">Tecido</span> : prod ? <span className="tecn-badge">Produzindo</span> : null}</span>
+        <span className="tecn-act">
+          {modo === "final"
+            ? <button className="tecn-btn env" onClick={(e) => { e.stopPropagation(); onAcao([c], "enviar"); }}>Enviar ▶</button>
+            : prod
+              ? <button className="tecn-btn fim" onClick={(e) => { e.stopPropagation(); onAcao([c], "finalizar"); }}>✓ Finalizar</button>
+              : <button className="tecn-btn ini" onClick={(e) => { e.stopPropagation(); onAcao([c], "fazer"); }}>▶ Iniciar</button>}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="tecn">
+      <div className="tecn-atalhos">
+        <button className={"tecn-tile urg" + (urgentes.length ? " pulsa" : "")} disabled={!urgentes.length} onClick={() => setLista((v) => v === "urgentes" ? null : "urgentes")}>
+          <span className="tecn-tt">★ Urgentes{urgentes.length ? " · abrir ›" : ""}</span><span className="tecn-tn">{urgentes.length}</span>
+        </button>
+        <div className="tecn-tile p1"><span className="tecn-tt">Pedidos Parte 1</span><span className="tecn-tn">{grupos.p1.length}</span></div>
+        <div className="tecn-tile p2"><span className="tecn-tt">Pedidos Parte 2</span><span className="tecn-tn">{grupos.p2.length}</span></div>
+        <div className="tecn-tile uni"><span className="tecn-tt">Únicos</span><span className="tecn-tn">{grupos.uni.length}</span></div>
+        <div className="tecn-tile rep"><span className="tecn-tt">Reposição de estoque</span><span className="tecn-tn">{grupos.rep.length}</span></div>
+        <button className={"tecn-tile fin" + (finalizados.length ? " pulsa" : "")} disabled={!finalizados.length} onClick={() => setLista((v) => v === "finalizados" ? null : "finalizados")}>
+          <span className="tecn-tt">✓ Finalizados{finalizados.length ? " · abrir ›" : ""}</span><span className="tecn-tn">{finalizados.length}</span>
+        </button>
+      </div>
+
+      {lista === "urgentes" ? (
+        <div className="tecn-painel urg">
+          <div className="tecn-ph"><b>★ Pedidos urgentes</b><span className="tecn-pc">{urgentes.length} pedidos</span><button className="tecn-voltar" onClick={() => setLista(null)}>← voltar</button></div>
+          <div className="tecn-pbody">{urgentes.length ? urgentes.map((c) => linha(c)) : <div className="tecn-vaz">nenhum pedido urgente</div>}</div>
+        </div>
+      ) : lista === "finalizados" ? (
+        <div className="tecn-painel fin">
+          <div className="tecn-ph"><b>✓ Pedidos finalizados (tecidos)</b><span className="tecn-pc">{finalizados.length} pedidos</span><button className="tecn-voltar" onClick={() => setLista(null)}>← voltar</button></div>
+          <div className="tecn-pbody">{finalizados.length ? finalizados.map((c) => linha(c, "final")) : <div className="tecn-vaz">nenhum pedido finalizado</div>}</div>
+        </div>
+      ) : (
+        <div className="tecn-cols">
+          {COLS.map((col) => {
+            const l = grupos[col.key];
+            const prod = l.filter((c) => c.status === "fazendo").sort(porDataDesc);
+            const aprod = l.filter((c) => c.status === "aguardando").sort(ordenarFila);
+            return (
+              <section key={col.key} className={"tecn-col " + col.key}>
+                <header className="tecn-colh"><span className="tecn-colic">{col.ic}</span><span className="tecn-colt">{col.nome}</span><span className="tecn-colc">{l.length} pedidos</span></header>
+                <div className="tecn-colbody">
+                  <div className="tecn-grh"><span className="tecn-gd vd" />Produzindo <b>({prod.length})</b></div>
+                  {prod.length ? prod.map((c) => linha(c)) : <div className="tecn-vaz">nenhum produzindo</div>}
+                  <div className="tecn-grh"><span className="tecn-gd" />A produzir <b>({aprod.length})</b></div>
+                  {aprod.length ? aprod.map((c) => linha(c)) : <div className="tecn-vaz">fila vazia</div>}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Passadoria (painelUnico): 1 botão "A passar" (galga 3+7) + lista única com
 //   "Finalizar", que envia direto para o próximo setor (Corte).
 function PainelTec({

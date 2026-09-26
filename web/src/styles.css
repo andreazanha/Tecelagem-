@@ -1947,3 +1947,90 @@ body.dark .navcrm { background:#f4f6f9; border-radius:14px; }
 .navcrm-vazio-sub { font-size:12.5px; line-height:1.5; margin-top:8px; max-width:260px; }
 .navcrm-nota { margin-top:16px; font-size:11.5px; color:var(--muted); background:var(--bg-soft); border:1px dashed var(--line); border-radius:10px; padding:10px; }
 @media (max-width:1000px) { .navcrm-split { grid-template-columns:1fr; flex:0 0 auto; height:auto; } .navcrm-web { height:70vh; } .navcrm-crm-scroll { overflow:visible; } }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   TECELAGEM — painel novo (aprovado): 4 colunas 2×2, cores do sistema, linhas
+   alinhadas em grid, botões uniformes, scroll por coluna, Urgentes/Finalizados
+   pulsando. Adapta ao tema claro/escuro do sistema.
+   ───────────────────────────────────────────────────────────────────────────── */
+.tec-nova .stats { display: none; }
+.tec-nova .maqstrip { display: none; }
+.tec-nova .page-head { margin-bottom: 10px; }
+.tec-nova .page-head h1 { font-size: 20px; margin: 0; }
+.tec-nova .breadcrumb { display: none; }
+
+.tecn { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px;
+  --tc-card:#ffffff; --tc-body:#f8fafc; --tc-line:#e5e7eb; --tc-ink:#0f172a; --tc-mut:#64748b; --tc-row:#ffffff; --tc-rowline:#e5e7eb; }
+body.dark .tecn { --tc-card:#131c2e; --tc-body:#0f1728; --tc-line:#25304a; --tc-ink:#e6eaf2; --tc-mut:#93a0b5; --tc-row:#172136; --tc-rowline:#25304a; }
+
+/* Atalhos (blocos com gradiente vivo — cores do sistema) */
+.tecn-atalhos { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; flex: 0 0 auto; }
+.tecn-tile { height: 64px; border: 0; border-radius: 12px; color: #fff; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 8px 14px; position: relative; text-align: left; box-shadow: 0 1px 3px #0000001f; }
+.tecn-tile .tecn-tt { font-size: 12px; font-weight: 800; }
+.tecn-tile .tecn-tn { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 22px; font-weight: 800; }
+button.tecn-tile { cursor: pointer; } button.tecn-tile:disabled { cursor: default; opacity: .78; }
+.tecn-tile.urg { background: linear-gradient(90deg,#f59e0b,#d97706); }
+.tecn-tile.p1  { background: linear-gradient(90deg,#2563eb,#1d4ed8); }
+.tecn-tile.p2  { background: linear-gradient(90deg,#7c3aed,#6d28d9); }
+.tecn-tile.uni { background: linear-gradient(90deg,#64748b,#475569); }
+.tecn-tile.rep { background: linear-gradient(90deg,#dc2626,#9f1239); }
+.tecn-tile.fin { background: linear-gradient(90deg,#059669,#047857); }
+.tecn-tile.urg.pulsa { animation: tecnPulseUrg 1.6s ease-in-out infinite; }
+.tecn-tile.fin.pulsa { animation: tecnPulseFin 1.6s ease-in-out infinite; }
+@keyframes tecnPulseUrg { 0%{box-shadow:0 0 0 0 #f59e0baa} 70%{box-shadow:0 0 0 12px #f59e0b00} 100%{box-shadow:0 0 0 0 #f59e0b00} }
+@keyframes tecnPulseFin { 0%{box-shadow:0 0 0 0 #10b981aa} 70%{box-shadow:0 0 0 12px #10b98100} 100%{box-shadow:0 0 0 0 #10b98100} }
+
+/* 4 colunas 2×2 */
+.tecn-cols { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 8px; }
+.tecn-col { min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--tc-card); border: 1px solid var(--tc-line); border-radius: 12px; box-shadow: 0 1px 3px #0000000f; }
+.tecn-colh { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12.5px; font-weight: 800; color: #fff; }
+.tecn-colt { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tecn-colc { font-size: 11.5px; font-weight: 700; background: #ffffff33; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.tecn-col.p1  .tecn-colh { background: linear-gradient(90deg,#2563eb,#1d4ed8); }
+.tecn-col.p2  .tecn-colh { background: linear-gradient(90deg,#7c3aed,#6d28d9); }
+.tecn-col.uni .tecn-colh { background: linear-gradient(90deg,#64748b,#475569); }
+.tecn-col.rep .tecn-colh { background: linear-gradient(90deg,#dc2626,#9f1239); }
+.tecn-colbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 6px; background: var(--tc-body); }
+
+.tecn-grh { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--tc-mut); padding: 8px 4px 4px; position: sticky; top: 0; background: var(--tc-body); z-index: 1; }
+.tecn-grh b { color: var(--tc-ink); }
+.tecn-gd { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; }
+.tecn-gd.vd { background: #10b981; box-shadow: 0 0 0 3px #10b98126; }
+
+/* Linha = grid com colunas fixas (tudo alinhado) */
+.tecn-row { display: grid; grid-template-columns: minmax(0,1fr) 66px 46px 82px 96px 108px; align-items: center; column-gap: 10px; min-height: 50px; padding: 6px 10px; margin-bottom: 4px; background: var(--tc-row); border: 1px solid var(--tc-rowline); border-radius: 9px; cursor: pointer; }
+.tecn-row:hover { border-color: #93a5c0; }
+.tecn-row.prod { background: #ecfdf5; border-color: #a7f3d0; }
+body.dark .tecn-row.prod { background: #10251d; border-color: #1c5c46; }
+.tecn-idcli { min-width: 0; display: flex; align-items: baseline; gap: 5px; }
+.tecn-num { font-size: 13.5px; font-weight: 800; color: var(--tc-ink); white-space: nowrap; }
+.tecn-dot { color: var(--tc-mut); }
+.tecn-cli { font-size: 12.5px; color: var(--tc-mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tecn-pcs { font-size: 11.5px; font-weight: 700; color: var(--tc-ink); text-align: right; white-space: nowrap; }
+.tecn-dt { font-size: 11.5px; color: var(--tc-mut); text-align: center; white-space: nowrap; }
+.tecn-dias { font-size: 11px; font-weight: 700; text-align: right; white-space: nowrap; }
+.tecn-dias.ok { color: #64748b; } .tecn-dias.prox { color: #b45309; } .tecn-dias.urg { color: #ea580c; } .tecn-dias.atr { color: #dc2626; }
+body.dark .tecn-dias.ok { color: #93a5c0; } body.dark .tecn-dias.prox { color: #facc15; } body.dark .tecn-dias.urg { color: #fb923c; } body.dark .tecn-dias.atr { color: #f87171; }
+.tecn-st { text-align: center; }
+.tecn-badge { font-size: 10px; font-weight: 800; padding: 3px 6px; border-radius: 999px; white-space: nowrap; color: #047857; background: #d1fae5; border: 1px solid #6ee7b7; }
+.tecn-badge.fin { color: #1d4ed8; background: #dbeafe; border-color: #93c5fd; }
+.tecn-act { display: flex; justify-content: flex-end; }
+.tecn-btn { width: 100%; justify-content: center; display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 800; border-radius: 7px; padding: 6px 8px; white-space: nowrap; cursor: pointer; }
+.tecn-btn.ini { color: #fff; background: #2563eb; border: 1px solid #2563eb; }
+.tecn-btn.ini:hover { background: #1d4ed8; }
+.tecn-btn.fim { color: #fff; background: #059669; border: 1px solid #059669; }
+.tecn-btn.fim:hover { background: #047857; }
+.tecn-btn.env { color: #fff; background: #16a34a; border: 1px solid #16a34a; }
+.tecn-vaz { font-size: 11.5px; color: #94a3b8; padding: 8px 6px; font-style: italic; }
+
+/* Painéis Urgentes / Finalizados (abertos pelos atalhos) */
+.tecn-painel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--tc-card); border: 1px solid var(--tc-line); border-radius: 12px; }
+.tecn-ph { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 10px 12px; color: #fff; font-size: 13px; }
+.tecn-painel.urg .tecn-ph { background: linear-gradient(90deg,#f59e0b,#d97706); }
+.tecn-painel.fin .tecn-ph { background: linear-gradient(90deg,#059669,#047857); }
+.tecn-pc { font-size: 11.5px; background: #ffffff33; padding: 2px 8px; border-radius: 999px; }
+.tecn-voltar { margin-left: auto; font-size: 12px; font-weight: 700; color: #fff; background: #ffffff2e; border: 1px solid #ffffff55; border-radius: 7px; padding: 5px 10px; cursor: pointer; }
+.tecn-pbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px; background: var(--tc-body); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; align-content: start; }
+
+@media (max-width: 1400px) { .tecn-row { grid-template-columns: minmax(0,1fr) 60px 44px 74px 84px 98px; column-gap: 8px; } }
+@media (max-width: 1080px) { .tecn-atalhos { grid-template-columns: repeat(3,1fr); } .tecn-cols { grid-template-columns: 1fr; } .tecn-pbody { grid-template-columns: 1fr; } }
