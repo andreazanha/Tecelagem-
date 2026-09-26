@@ -137,6 +137,7 @@ export interface QuadroCfg {
   defeito?: boolean; // mostra botão "Defeito" no modal
   semPrioridade?: boolean; // esconde o "passar na frente" (ex.: Costura)
   proxSetorKit?: string | null; // destino dos kits (pronta-entrega) ao enviar, se diferente
+  proxSetorReposicao?: string; // destino da reposição ao enviar (ex.: Revisão → Estoque p/ dar entrada)
   setorDefeito?: string; // setor para onde "Voltou com defeito" devolve a peça (ex.: Revisão → Costura)
   enviarSemPessoa?: boolean; // enviar para a FILA do próximo setor (aguardando), sem escolher pessoa
   pessoas?: string[]; // lista de pessoas do setor (ex.: costureiras) — mostra 1 quadradinho por pessoa
@@ -316,6 +317,8 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 
   // Próximo setor de um card (kits podem ter destino diferente, ex.: Costura → Estoque).
   function destinoDe(c: CardProducao) {
+    // Reposição pode ter destino próprio (ex.: da Revisão vai p/ o Estoque dar entrada).
+    if (ehRep(c) && cfg.proxSetorReposicao) return cfg.proxSetorReposicao;
     return c.parte === "pronta-entrega" && cfg.proxSetorKit !== undefined ? cfg.proxSetorKit : cfg.proxSetor;
   }
 
@@ -446,6 +449,8 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
               ? <PainelCostura cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
               : cfg.setor === "revisao"
                 ? <PainelRevisao cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
+                : cfg.setor === "estoque"
+                ? <PainelSepPE cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} onEntrada={setEntradaPed} />
                 : <PainelTec cfg={cfg} cards={filtrados} onAbrir={setAberto} onAbrirFila={setFila} onAcao={acaoCard} />
       ) : (
         <>
@@ -786,6 +791,62 @@ function PainelPCP({ cfg, cards, onAbrir, onLiberar }: {
               <header className="tecn-colh"><span className="tecn-colic">{col.ic}</span><span className="tecn-colt">{col.nome}{col.maq && <span className="tecn-maq">{col.maq}</span>}</span><span className="tecn-colc">{nb ? nb + " 🔒" : l.length + " pedidos"}</span></header>
               <div className="tecn-colbody">
                 {l.length ? l.map((c) => linha(c)) : <div className="tecn-vaz">fila vazia</div>}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Painel da SEPARAÇÃO PRONTA ENTREGA (setor "estoque") — 3 colunas:
+//    1) Dar entrada no estoque (reposição que voltou da Revisão)
+//    2) Pedidos pronta entrega (separado) → "Separado ▶ Revisão"
+//    3) Pronta entrega + produção (misto/junto) → "Separado ▶ Revisão"
+function PainelSepPE({ cfg, cards, onAbrir, onAcao, onEntrada }: {
+  cfg: QuadroCfg;
+  cards: CardProducao[];
+  onAbrir: (c: CardProducao) => void;
+  onAcao: (cards: CardProducao[], acao: Acao) => void;
+  onEntrada: (c: CardProducao) => void;
+}) {
+  const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
+  const prazoDe = (c: CardProducao) => c.data_entrega || null;
+  const naTela = cards.filter((c) => c.status !== "enviado");
+  const grupos = {
+    ent: naTela.filter((c) => ehRep(c)),                                 // reposição → dar entrada
+    pe: naTela.filter((c) => !ehRep(c) && c.status !== "pronto"),        // pronta entrega separado
+    mix: naTela.filter((c) => !ehRep(c) && c.status === "pronto"),       // pronta entrega + produção
+  };
+  const COLS: { key: "ent" | "pe" | "mix"; nome: string; sub: string; ic: string; cls: string }[] = [
+    { key: "ent", nome: "DAR ENTRADA NO ESTOQUE", sub: "reposição que voltou da Revisão", ic: "📥", cls: "sp-ent" },
+    { key: "pe", nome: "PEDIDOS PRONTA ENTREGA", sub: "pronta entrega / produção que vai na frente", ic: "📦", cls: "sp-pe" },
+    { key: "mix", nome: "PRONTA ENTREGA + PRODUÇÃO", sub: "vão se juntar à produção na Revisão", ic: "🔗", cls: "sp-mix" },
+  ];
+  const linha = (c: CardProducao, col: "ent" | "pe" | "mix") => (
+    <div key={c.pedido_id + c.parte} className="tecn-crow" onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
+      <span className={"tecn-ptag " + (col === "ent" ? "rep" : col === "mix" ? "p2" : "kit")}>{col === "ent" ? "REP" : col === "mix" ? "MISTO" : "PE"}</span>
+      <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
+      <span className="tecn-pcs">{pad2(c.pecas)} pçs</span>
+      <span className="tecn-act">
+        {col === "ent"
+          ? <button className="tecn-btn ent" onClick={(e) => { e.stopPropagation(); onEntrada(c); }}>📥 Dar entrada</button>
+          : (podeAcao("enviar") && <button className="tecn-btn env" onClick={(e) => { e.stopPropagation(); onAcao([c], "enviar"); }}>Separado ▶ Revisão</button>)}
+      </span>
+    </div>
+  );
+  return (
+    <div className="tecn">
+      <div className="tecn-cols sp-cols">
+        {COLS.map((col) => {
+          const l = grupos[col.key];
+          return (
+            <section key={col.key} className={"tecn-col " + col.cls}>
+              <header className="tecn-colh"><span className="tecn-colic">{col.ic}</span><span className="tecn-colt">{col.nome}<span className="tecn-maq">{col.sub}</span></span><span className="tecn-colc">{l.length}</span></header>
+              <div className="tecn-colbody">
+                {l.length ? l.map((c) => linha(c, col.key)) : <div className="tecn-vaz">fila vazia</div>}
               </div>
             </section>
           );

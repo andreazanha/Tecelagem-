@@ -15,6 +15,7 @@ const BASE: Omit<QuadroCfg, "colunas"> = {
   fazerLabel: "Revisar",
   fazendoLabel: "Revisando",
   proxSetor: "expedicao",
+  proxSetorReposicao: "estoque", // reposição, ao sair da Revisão, volta p/ o Estoque dar entrada
   pedeMaquina: false,
   recursoLabel: "Revisadora",
   recursoTotal: 6,

@@ -4,7 +4,7 @@ import { Quadro, type QuadroCfg } from "../components/Quadro";
 // "Entrada", são separados e ficam disponíveis. (Outras colunas a definir.)
 const ESTOQUE: QuadroCfg = {
   setor: "estoque",
-  titulo: "Estoque",
+  titulo: "Separação Pronta Entrega",
   painel: true,
   painelEstoque: true,
   painelIcone: "📦",

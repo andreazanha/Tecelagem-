@@ -2246,6 +2246,17 @@ body.dark .tecn-crow.def { background: #2a1416; border-color: #6b2530; }
 .tecn-col.r-pe  .tecn-colh { background: linear-gradient(90deg,#0d9488,#0f766e); }
 .tecn-col.r-agu .tecn-colh { background: linear-gradient(90deg,#d97706,#b45309); }
 .tecn-col.r-rep .tecn-colh { background: linear-gradient(90deg,#dc2626,#9f1239); }
+
+/* Separação Pronta Entrega — 3 colunas */
+.tecn-cols.sp-cols { grid-template-columns: repeat(3, minmax(0,1fr)); grid-auto-rows: 1fr; }
+.tecn-col.sp-ent .tecn-colh { background: linear-gradient(90deg,#475569,#334155); }
+.tecn-col.sp-pe  .tecn-colh { background: linear-gradient(90deg,#059669,#047857); }
+.tecn-col.sp-mix .tecn-colh { background: linear-gradient(90deg,#7c3aed,#6d28d9); }
+.sp-cols .tecn-crow { grid-template-columns: 52px minmax(0,1fr) 52px 150px; }
+.tecn-btn.ent { color: #fff; background: #475569; border: 1px solid #475569; }
+.tecn-btn.ent:hover { background: #334155; }
+.tecn-ptag.kit { background: #0d9488; }
+@media (max-width: 1080px) { .tecn-cols.sp-cols { grid-template-columns: 1fr; } }
 /* Faixa "Voltou com defeito" */
 .tecn-deffaixa { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-radius: 12px; color: #fff; background: linear-gradient(90deg,#dc2626,#9f1239); box-shadow: 0 1px 3px #0000001f; }
 .tecn-deffaixa .t { font-size: 14px; font-weight: 800; } .tecn-deffaixa .n { margin-left: auto; font-size: 18px; font-weight: 800; background: #ffffff2e; border-radius: 999px; padding: 2px 12px; }
