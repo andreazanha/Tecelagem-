@@ -723,8 +723,9 @@ usuarios.post("/", async (c) => {
   const ex = await c.env.DB.prepare("SELECT id, senha FROM usuarios WHERE usuario = ?")
     .bind(usuario)
     .first<{ id: string; senha: string }>();
+  // Senha vazia é PERMITIDA: o usuário cria a própria senha no 1º acesso (senha_definida=0).
+  // Editar sem digitar senha mantém a atual (não pede senha à toa).
   const senha = b.senha && b.senha.trim() ? b.senha.trim() : ex?.senha || "";
-  if (!senha) return c.json({ error: "senha é obrigatória" }, 400);
   const id = ex?.id || b.id || crypto.randomUUID();
   const paginas = JSON.stringify(Array.isArray(b.paginas) ? b.paginas : []);
   const admin = b.admin ? 1 : 0;

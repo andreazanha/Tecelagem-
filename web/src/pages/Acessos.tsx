@@ -229,7 +229,7 @@ function PainelUsuario({ usuario, novo, setoresAtivos, onFechar, onSalvo }: {
 
   async function salvar() {
     if (!nome.trim() || !login.trim()) return alert("Informe nome e login.");
-    if (novo && !senha.trim()) return alert("Informe uma senha.");
+    // Senha em branco é ok: a pessoa cria no 1º acesso.
     setSalvando(true);
     try {
       const saved = await api.salvarUsuario({ id: usuario.id || undefined, nome: nome.trim(), usuario: login.trim(), senha: senha.trim() || undefined, admin, paginas: [], email: email.trim() || null });
