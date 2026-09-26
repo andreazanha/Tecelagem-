@@ -3,6 +3,7 @@ import { extractText, getDocumentProxy } from "unpdf";
 import type { Env } from "../index";
 import { parsePedido } from "../parser";
 import { exigirFuncao } from "../permissoes";
+import { usuarioLogado } from "../sessao";
 import {
   classificar,
   criarCatalogo,
@@ -414,8 +415,8 @@ pedidos.post("/", async (c) => {
   stmts.push(
     c.env.DB.prepare(
       `INSERT INTO pedidos
-        (id, numero_erp, cliente_nome, vendedor, codigo_terceiro, codigo_pai, tipo, entrega_pe, reposicao, data_pedido, data_entrega, data_tecelagem, observacao, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'novo')`
+        (id, numero_erp, cliente_nome, vendedor, codigo_terceiro, codigo_pai, tipo, entrega_pe, reposicao, data_pedido, data_entrega, data_tecelagem, observacao, status, bloqueado)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'novo', 1)`
     ).bind(
       id,
       b.numero_erp || null,
@@ -566,6 +567,24 @@ pedidos.delete("/:id", async (c) => {
     c.env.DB.prepare("DELETE FROM romaneios_tassel WHERE pedido_id = ?").bind(id),
     c.env.DB.prepare("DELETE FROM pedidos WHERE id = ?").bind(id),
   ]);
+  return c.json({ ok: true });
+});
+
+// LIBERAR (PCP) — tira o cadeado do pedido para a Tecelagem poder começar. Exige a função
+// pcp.liberar (o admin decide quem pode) E confirmação com a senha do próprio usuário logado.
+pedidos.post("/:id/liberar", async (c) => {
+  const g = await exigirFuncao(c, "pcp.liberar"); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const b = await c.req.json<{ senha?: string }>().catch(() => ({}) as { senha?: string });
+  // Confirma a identidade: a senha digitada tem que bater com a do usuário logado.
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  const row = await c.env.DB.prepare("SELECT senha FROM usuarios WHERE id = ?")
+    .bind(u.id).first<{ senha: string }>();
+  if (!row || row.senha !== (b.senha || "")) return c.json({ ok: false, error: "senha_incorreta" }, 401);
+  const ex = await c.env.DB.prepare("SELECT id FROM pedidos WHERE id = ?").bind(id).first();
+  if (!ex) return c.json({ error: "pedido não encontrado" }, 404);
+  await c.env.DB.prepare("UPDATE pedidos SET bloqueado = 0 WHERE id = ?").bind(id).run();
   return c.json({ ok: true });
 });
 

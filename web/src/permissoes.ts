@@ -78,6 +78,11 @@ export const CATEGORIAS_FUNCAO: CategoriaFuncao[] = [
     ],
   },
   {
+    id: "pcp", titulo: "PCP", icon: "📋", funcoes: [
+      { key: "pcp.liberar", label: "Liberar pedido bloqueado", desc: "tirar o cadeado p/ a Tecelagem" },
+    ],
+  },
+  {
     id: "admin", titulo: "Administração", icon: "🔐", funcoes: [
       { key: "admin.usuarios", label: "Cadastrar / editar usuários" },
       { key: "admin.setores", label: "Cadastrar / editar setores" },

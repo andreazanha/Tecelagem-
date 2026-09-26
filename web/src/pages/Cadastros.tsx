@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type Material, type MaterialCategoriaDef, type CompraSugestao, type Colecao, type ColecaoProduto, type BulkResult } from "../api";
 import { getUser, PAGINAS, type Usuario } from "../auth";
-import { CATEGORIAS_FUNCAO, TODAS_FUNCOES, TELAS_GERAIS } from "../permissoes";
+import { CATEGORIAS_FUNCAO, TODAS_FUNCOES, TELAS_GERAIS, SETOR_PAGINAS } from "../permissoes";
 
 type AbaCad = "produtos" | "tipos-fio" | "tamanhos" | "materiais" | "fornecedores" | "operadores" | "setores" | "usuarios";
 const ABAS_CAD: AbaCad[] = ["produtos", "tipos-fio", "tamanhos", "materiais", "fornecedores", "operadores", "setores", "usuarios"];

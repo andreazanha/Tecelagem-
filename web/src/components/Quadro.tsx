@@ -83,6 +83,8 @@ const ACAO_PERM: Record<Acao, string> = {
   devolverDefeito: "producao.devolver",
 };
 export const podeAcao = (acao: Acao) => podeFuncao(getUser(), ACAO_PERM[acao]);
+// PCP: pode tirar o cadeado do pedido? (o admin decide quem tem a função pcp.liberar)
+export const podeLiberar = () => podeFuncao(getUser(), "pcp.liberar");
 export interface ColCfg {
   cor: "aguardando" | "fazendo" | "pronto" | "prioridade" | "defeito";
   titulo: string;
@@ -131,6 +133,7 @@ export interface QuadroCfg {
   painelPE?: boolean; // mostra os menus de pronta-entrega (Revisão): "Pronta entrega" + "Vão unir"
   painelEstoque?: boolean; // Painel do Estoque: Entrada (separar) + Reposição (dar entrada) + Pronta entrega
   painelIcone?: string; // emoji do menu/colunas do painel (default 🧵)
+  pcp?: boolean; // tela do PCP: mesma grade da Tecelagem, mas com "🔓 Liberar" (tira o cadeado)
 }
 
 // Galga (máquina) de um card: usa o valor calculado pelo backend (por produto);
@@ -192,6 +195,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [aberto, setAberto] = useState<CardProducao | null>(null);
   const [acaoModal, setAcaoModal] = useState<{ cards: CardProducao[]; acao: Acao } | null>(null);
   const [entradaPed, setEntradaPed] = useState<CardProducao | null>(null);
+  const [liberarCard, setLiberarCard] = useState<CardProducao | null>(null); // PCP: pedido a liberar
   const [busca, setBusca] = useState("");
   // Fila aberta pelo botão grande: por galga, todas, reposição, prioridade, envio, pessoa ou defeito.
   const [fila, setFila] = useState<{ galga?: 3 | 7; envio?: boolean; todas?: boolean; reposicao?: boolean; prioridade?: boolean; operador?: string; defeito?: boolean; entrada?: boolean; pe?: "separado" | "junto"; darEntrada?: boolean } | null>(null);
@@ -413,7 +417,9 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
       {carregando ? (
         <div className="card pad">Carregando…</div>
       ) : cfg.painel ? (
-        cfg.setor === "tecelagem"
+        cfg.pcp
+          ? <PainelPCP cfg={cfg} cards={filtrados} onAbrir={setAberto} onLiberar={setLiberarCard} />
+          : cfg.setor === "tecelagem"
           ? <PainelTecelagem cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
           : cfg.setor === "corte"
             ? <PainelCorte cfg={cfg} cards={filtrados} onAbrir={setAberto} onAcao={acaoCard} />
@@ -461,6 +467,10 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 
       {entradaPed && (
         <EntradaEstoqueModal card={entradaPed} onFechar={() => setEntradaPed(null)} onFeito={() => { setEntradaPed(null); recarregar(); }} />
+      )}
+
+      {liberarCard && (
+        <LiberarModal card={liberarCard} onFechar={() => setLiberarCard(null)} onFeito={() => { setLiberarCard(null); recarregar(); }} />
       )}
 
       {fila && (
@@ -533,7 +543,9 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
   onAcao: (cards: CardProducao[], acao: Acao) => void;
 }) {
   const [lista, setLista] = useState<null | "urgentes" | "finalizados">(null);
+  const [bloqPop, setBloqPop] = useState(false); // popup "entre em contato com o PCP"
   const hoje = new Date().toISOString().slice(0, 10);
+  const ehBloq = (c: CardProducao) => !!c.bloqueado; // pedido preso no PCP (cadeado)
   const prazoDe = (c: CardProducao) => c.data_tecelagem || c.data_entrega || null; // prazo do tear
   const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
   const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
@@ -577,6 +589,19 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
   const linha = (c: CardProducao, modo?: "final") => {
     const prod = c.status === "fazendo";
     const dd = dias(prazoDe(c));
+    // Pedido bloqueado pelo PCP: o tecelão vê o cadeado, sem botões; clicar avisa p/ falar com o PCP.
+    if (ehBloq(c)) {
+      return (
+        <div key={c.pedido_id + c.parte} className="tecn-row bloq" onClick={() => setBloqPop(true)} title="pedido bloqueado — falar com o PCP">
+          <div className="tecn-idcli"><span className="tecn-lk">🔒</span><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
+          <span className="tecn-pcs">{pad2(c.pecas)} pçs</span>
+          <span className="tecn-dt">{br(prazoDe(c))}</span>
+          <span className={"tecn-dias " + dd.cls}>{dd.txt}</span>
+          <span className="tecn-st" />
+          <span className="tecn-act"><span className="tecn-bloqtag">🔒 bloqueado</span></span>
+        </div>
+      );
+    }
     return (
       <div key={c.pedido_id + c.parte} className={"tecn-row" + (prod ? " prod" : "")} onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
         <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
@@ -640,6 +665,91 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
           })}
         </div>
       )}
+
+      {bloqPop && (
+        <div className="tecn-popbg" onClick={() => setBloqPop(false)}>
+          <div className="tecn-pop" onClick={(e) => e.stopPropagation()}>
+            <div className="tecn-popic">🔒</div>
+            <h3>Pedido bloqueado</h3>
+            <p>Este pedido ainda não foi liberado.<br /><b>Entre em contato com o PCP</b> para liberar a produção.</p>
+            <button onClick={() => setBloqPop(false)}>Entendi</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Painel do PCP (aprovado): mesma cara da Tecelagem (4 colunas). Cada pedido nasce BLOQUEADO 🔒;
+//    o PCP clica em "🔓 Liberar" (pede senha + função pcp.liberar) e o pedido some do cadeado e
+//    libera a Tecelagem. Pedidos já liberados aparecem com o selo "liberado ✓".
+function PainelPCP({ cfg, cards, onAbrir, onLiberar }: {
+  cfg: QuadroCfg;
+  cards: CardProducao[];
+  onAbrir: (c: CardProducao) => void;
+  onLiberar: (c: CardProducao) => void;
+}) {
+  const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
+  const colDe = (c: CardProducao): "p1" | "p2" | "uni" | "rep" =>
+    ehRep(c) ? "rep" : basePart(c.parte) === "parte-2" ? "p2" : basePart(c.parte) === "parte-1" ? "p1" : "uni";
+  const prazoDe = (c: CardProducao) => c.data_tecelagem || c.data_entrega || null;
+  // No PCP interessa o que ainda está na tecelagem (fila/produzindo); os já finalizados saem da lista.
+  const naTela = cards.filter((c) => c.status === "aguardando" || c.status === "fazendo");
+  const bloqN = naTela.filter((c) => c.bloqueado).length;
+  const grupos = {
+    p1: naTela.filter((c) => colDe(c) === "p1"),
+    p2: naTela.filter((c) => colDe(c) === "p2"),
+    uni: naTela.filter((c) => colDe(c) === "uni"),
+    rep: naTela.filter((c) => colDe(c) === "rep"),
+  };
+  const COLS: { key: "p1" | "p2" | "uni" | "rep"; nome: string; ic: string; maq?: string }[] = [
+    { key: "p1", nome: "PEDIDOS PARTE 1", ic: "🧶", maq: "Máquina 3" },
+    { key: "p2", nome: "PEDIDOS PARTE 2", ic: "🧶", maq: "Máquina 7" },
+    { key: "uni", nome: "ÚNICOS", ic: "◈" },
+    { key: "rep", nome: "REPOSIÇÃO DE ESTOQUE", ic: "📦" },
+  ];
+  // Bloqueados primeiro (é o que o PCP precisa liberar).
+  const ordena = (a: CardProducao, b: CardProducao) => (b.bloqueado ? 1 : 0) - (a.bloqueado ? 1 : 0);
+  const linha = (c: CardProducao) => {
+    const bloq = !!c.bloqueado;
+    return (
+      <div key={c.pedido_id + c.parte} className={"tecn-row tecn-prow" + (bloq ? " lock" : "")} onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
+        <span className={"tecn-lk" + (bloq ? "" : " ok")}>{bloq ? "🔒" : "✓"}</span>
+        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
+        <span className="tecn-pcs">{pad2(c.pecas)} pçs</span>
+        <span className="tecn-dt">{br(prazoDe(c))}</span>
+        <span className="tecn-act">
+          {bloq
+            ? (podeLiberar() && <button className="tecn-btn lib" onClick={(e) => { e.stopPropagation(); onLiberar(c); }}>🔓 Liberar</button>)
+            : <span className="tecn-libok">liberado ✓</span>}
+        </span>
+      </div>
+    );
+  };
+  return (
+    <div className="tecn">
+      <div className="tecn-atalhos">
+        <div className={"tecn-tile urg" + (bloqN ? " pulsa" : "")}><span className="tecn-tt">🔒 Bloqueados</span><span className="tecn-tn">{bloqN}</span></div>
+        <div className="tecn-tile p1"><span className="tecn-tt">Pedidos Parte 1 <span className="tecn-tmaq">· Máq. 3</span></span><span className="tecn-tn">{grupos.p1.length}</span></div>
+        <div className="tecn-tile p2"><span className="tecn-tt">Pedidos Parte 2 <span className="tecn-tmaq">· Máq. 7</span></span><span className="tecn-tn">{grupos.p2.length}</span></div>
+        <div className="tecn-tile uni"><span className="tecn-tt">Únicos</span><span className="tecn-tn">{grupos.uni.length}</span></div>
+        <div className="tecn-tile rep"><span className="tecn-tt">Reposição de estoque</span><span className="tecn-tn">{grupos.rep.length}</span></div>
+      </div>
+      <div className="tecn-cols">
+        {COLS.map((col) => {
+          const l = [...grupos[col.key]].sort(ordena);
+          const nb = l.filter((c) => c.bloqueado).length;
+          return (
+            <section key={col.key} className={"tecn-col " + col.key}>
+              <header className="tecn-colh"><span className="tecn-colic">{col.ic}</span><span className="tecn-colt">{col.nome}{col.maq && <span className="tecn-maq">{col.maq}</span>}</span><span className="tecn-colc">{nb ? nb + " 🔒" : l.length + " pedidos"}</span></header>
+              <div className="tecn-colbody">
+                {l.length ? l.map((c) => linha(c)) : <div className="tecn-vaz">fila vazia</div>}
+              </div>
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -2365,6 +2475,61 @@ function HistoricoModal({
 // Modal "Dar entrada no estoque" (pedido de reposição, no setor Estoque).
 // Casa os itens do pedido aos produtos e permite EDITAR a quantidade (defeitos etc.).
 // Itens sem produto vinculado são listados com a localização na produção.
+// PCP → Liberar pedido bloqueado: confirma com a SENHA do usuário logado (o backend exige, além
+// disso, a função pcp.liberar). Tira o cadeado e o pedido cai na fila da Tecelagem.
+function LiberarModal({ card, onFechar, onFeito }: { card: CardProducao; onFechar: () => void; onFeito: () => void }) {
+  const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const num = card.numero_erp || card.op || card.codigo_pai || card.pedido_id.slice(0, 6);
+  async function confirmar() {
+    if (!senha) return setErro("Digite sua senha para liberar.");
+    setSalvando(true);
+    setErro("");
+    try {
+      const r = await api.liberarPedido(card.pedido_id, senha);
+      if (!r.ok) throw new Error(r.error === "senha_incorreta" ? "Senha incorreta." : "Sem permissão para liberar.");
+      onFeito();
+    } catch (e) {
+      setErro((e as Error).message || "Não foi possível liberar.");
+      setSalvando(false);
+    }
+  }
+  return (
+    <div className="modal-bg" onClick={onFechar}>
+      <div className="modal-card" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd unica">
+          <div className="modal-hd-top">
+            <span className="modal-pills"><span className="modal-pill">🔓 Liberar pedido — {num}</span></span>
+            <button className="modal-x" onClick={onFechar}>✕</button>
+          </div>
+        </div>
+        <div className="pad">
+          {erro && <p className="erro">{erro}</p>}
+          <p className="muted" style={{ marginTop: 0 }}>
+            <strong>{card.cliente_nome || "—"}</strong> · {card.pecas} peças.<br />
+            Liberar tira o cadeado 🔒 e a Tecelagem poderá iniciar. Confirme com a <strong>sua senha</strong>.
+          </p>
+          <input
+            type="password"
+            className="input"
+            placeholder="Sua senha"
+            value={senha}
+            autoFocus
+            onChange={(e) => setSenha(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") confirmar(); }}
+            style={{ width: "100%", marginBottom: 12 }}
+          />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button className="btn" onClick={onFechar} disabled={salvando}>Cancelar</button>
+            <button className="btn primary" onClick={confirmar} disabled={salvando}>{salvando ? "Liberando…" : "🔓 Liberar"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EntradaEstoqueModal({ card, onFechar, onFeito }: { card: CardProducao; onFechar: () => void; onFeito: () => void }) {
   const [itens, setItens] = useState<(ItemPedidoEstoque & { usar: boolean; qtdEdit: number })[]>([]);
   const [numero, setNumero] = useState("");

@@ -2074,6 +2074,33 @@ body.dark .tecn-dias.ok { color: #93a5c0; } body.dark .tecn-dias.prox { color: #
 @media (max-width: 1080px) { .tecn-cols { grid-template-columns: 1fr; } .tecn-pbody { grid-template-columns: 1fr; } }
 @media (max-width: 680px) { .tecn-atalhos { grid-template-columns: repeat(2, minmax(0,1fr)); } }
 
+/* ── PCP / trava (cadeado) ─────────────────────────────────────────────────── */
+.tecn-lk { font-size: 14px; line-height: 1; }
+.tecn-lk.ok { color: #16a34a; font-weight: 900; }
+/* Tecelagem: pedido bloqueado (visão do tecelão) — cinza, sem ação, clique abre o aviso. */
+.tecn-row.bloq { background: #f1f5f9; border-color: #cbd5e1; opacity: .85; }
+.tecn-row.bloq:hover { border-color: #94a3b8; opacity: 1; }
+body.dark .tecn-row.bloq { background: #1a2230; border-color: #37455c; }
+.tecn-bloqtag { font-size: 10px; font-weight: 800; white-space: nowrap; color: #b45309; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 999px; padding: 4px 8px; }
+body.dark .tecn-bloqtag { color: #fcd34d; background: #2a2410; border-color: #6b5510; }
+/* PCP: linha com Liberar (lk · id/cliente · peças · data · ação) */
+.tecn-prow { grid-template-columns: 22px minmax(0,1fr) 66px 82px 132px; }
+.tecn-row.lock { background: #fff7ed; border-color: #fed7aa; }
+body.dark .tecn-row.lock { background: #2a1c0e; border-color: #7c4a12; }
+.tecn-btn.lib { color: #fff; background: #16a34a; border: 1px solid #16a34a; }
+.tecn-btn.lib:hover { background: #15803d; }
+.tecn-libok { font-size: 11px; font-weight: 800; white-space: nowrap; color: #047857; background: #d1fae5; border: 1px solid #6ee7b7; border-radius: 999px; padding: 4px 10px; }
+body.dark .tecn-libok { color: #6ee7b7; background: #10251d; border-color: #1c5c46; }
+@media (max-width: 1400px) { .tecn-prow { grid-template-columns: 20px minmax(0,1fr) 58px 72px 118px; } }
+/* Popup "entre em contato com o PCP" */
+.tecn-popbg { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 16px; }
+.tecn-pop { background: var(--tc-card); color: var(--tc-ink); border-radius: 16px; box-shadow: 0 24px 60px #0007; padding: 26px 24px; max-width: 360px; text-align: center; }
+.tecn-popic { font-size: 42px; }
+.tecn-pop h3 { margin: 8px 0 6px; font-size: 18px; }
+.tecn-pop p { margin: 0 0 18px; color: var(--tc-mut); font-size: 13.5px; line-height: 1.5; }
+.tecn-pop button { background: #4f46e5; color: #fff; border: 0; border-radius: 10px; padding: 11px 20px; font-weight: 800; font-size: 14px; cursor: pointer; width: 100%; }
+.tecn-pop button:hover { background: #4338ca; }
+
 /* ══ Permissões / Setores (Cadastros) ═════════════════════════════════════════ */
 /* Interruptor (toggle) */
 .sw { width: 40px; height: 23px; border-radius: 999px; border: 0; position: relative; cursor: pointer; flex: 0 0 auto; padding: 0; transition: background .15s; }

@@ -167,6 +167,7 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "producao", icon: "🏭", label: "Produção", itens: [
+      { to: "/todos-pedidos", icon: "📋", label: "Pedidos", page: "todos-pedidos" },
       { to: "/producao", icon: "🧶", label: "Tecelagem", page: "producao" },
       { to: "/controle-tecelagem", icon: "📈", label: "Controle da Tecelagem", page: "producao" },
       { to: "/passadoria", icon: "🔥", label: "Passadoria", page: "passadoria" },
@@ -193,7 +194,7 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "pcp", icon: "📋", label: "PCP", itens: [
-      { to: "/pedidos", icon: "📦", label: "Pedidos", page: "pedidos" },
+      { to: "/pcp", icon: "📦", label: "Pedidos", page: "pedidos" },
       { to: "/pedidos/novo", icon: "➕", label: "Criar pedido", page: "pedidos" },
       { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
       { to: "/impressao-etiquetas", icon: "🏷️", label: "Impressão de etiquetas", page: "expedicao" },
@@ -212,7 +213,6 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "relatorios", icon: "📈", label: "Relatórios", itens: [
-      { to: "/todos-pedidos", icon: "📋", label: "Todos os Pedidos", page: "todos-pedidos" },
       { to: "/relatorio-vendas", icon: "🏆", label: "Vendas (o que vende mais)", page: "todos-pedidos" },
       { to: "/dashboard", icon: "📺", label: "Painel Geral", page: "tv-dashboard" },
       { icon: "🏭", label: "Produção", soon: true },

@@ -276,7 +276,8 @@ producao.get("/", async (c) => {
     `SELECT pr.pedido_id, pr.parte, pr.op, pr.setor, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
             pr.prioridade, pr.iniciado_em, pr.finalizado_em,
             p.numero_erp, COALESCE(NULLIF(pr.cliente, ''), p.cliente_nome) AS cliente_nome,
-            p.data_pedido, p.data_entrega, p.data_tecelagem, p.codigo_terceiro, p.codigo_pai, p.observacao, p.reposicao
+            p.data_pedido, p.data_entrega, p.data_tecelagem, p.codigo_terceiro, p.codigo_pai, p.observacao, p.reposicao,
+            COALESCE(p.bloqueado, 0) AS bloqueado
        FROM producao pr
        JOIN pedidos p ON p.id = pr.pedido_id
       WHERE pr.setor = ?
@@ -329,6 +330,10 @@ producao.post("/:pedido_id/:parte", async (c) => {
   const b = await c.req
     .json<{ status?: string; setor?: string; maquina?: string; operador?: string }>()
     .catch(() => ({}) as { status?: string; setor?: string; maquina?: string; operador?: string });
+  // Trava do PCP: pedido bloqueado (cadeado) não anda na produção — só depois que o PCP liberar.
+  const trava = await c.env.DB.prepare("SELECT COALESCE(bloqueado,0) AS b FROM pedidos WHERE id = ?")
+    .bind(pedido_id).first<{ b: number }>();
+  if (trava?.b) return c.json({ error: "pedido_bloqueado", msg: "Pedido bloqueado — entre em contato com o PCP." }, 423);
   // Permissão conforme a ação pretendida (o mesmo endpoint atende vários botões).
   if (b.status === "fazendo") { const g = await exigirFuncao(c, "producao.iniciar"); if ("erro" in g) return g.erro; }
   else if (b.status === "pronto") { const g = await exigirFuncao(c, "producao.finalizar"); if ("erro" in g) return g.erro; }

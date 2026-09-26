@@ -359,6 +359,7 @@ export interface CardProducao {
   galga?: 3 | 7; // máquina (galga) sugerida pelo produto — só na Tecelagem
   une_pe?: number; // 1 = pedido misto que se une ao kit de pronta-entrega (junto) na Revisão
   pe_tipo?: string; // "separado" = kit de pronta-entrega vindo do estoque (menu Pronta entrega)
+  bloqueado?: boolean | number; // 1 = pedido preso no PCP (cadeado); a Tecelagem não pode mexer
 }
 
 // Expedição → Fiscal → Transporte
@@ -1068,6 +1069,13 @@ export const api = {
     }).then((r) => j<{ ok: boolean }>(r)),
   listarProducao: (setor = "tecelagem") =>
     fetch(`/api/producao?setor=${encodeURIComponent(setor)}`).then((r) => j<CardProducao[]>(r)),
+  // PCP: tira o cadeado do pedido (exige a função pcp.liberar + senha do usuário logado).
+  liberarPedido: (pedido_id: string, senha: string) =>
+    fetch(`/api/pedidos/${pedido_id}/liberar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ senha }),
+    }).then((r) => j<{ ok: boolean; error?: string }>(r)),
   dashboard: () => fetch("/api/dashboard").then((r) => j<DashboardData>(r)),
   tvTecelagem: () => fetch("/api/dashboard/tecelagem").then((r) => j<TvTecelagemData>(r)),
   tvCostura: () => fetch("/api/dashboard/costura").then((r) => j<TvCosturaData>(r)),
