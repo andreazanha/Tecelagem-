@@ -2253,8 +2253,9 @@ body.dark .tecn-crow.def { background: #2a1416; border-color: #6b2530; }
 .tecn-col.sp-pe  .tecn-colh { background: linear-gradient(90deg,#059669,#047857); }
 .tecn-col.sp-mix .tecn-colh { background: linear-gradient(90deg,#7c3aed,#6d28d9); }
 .sp-cols .tecn-crow { grid-template-columns: 52px minmax(0,1fr) 52px 152px; }
-.sp-cols .tecn-crow .tecn-idcli { overflow: hidden; }
-.sp-cols .tecn-crow .tecn-num { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sp-cols .tecn-crow .tecn-idcli { overflow: hidden; min-width: 0; }
+.sp-cols .tecn-crow .tecn-num { flex: 0 0 auto; white-space: nowrap; }
+.sp-cols .tecn-crow .tecn-cli { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tecn-btn.ent { color: #fff; background: #475569; border: 1px solid #475569; }
 .tecn-btn.ent:hover { background: #334155; }
 .tecn-ptag.kit { background: #0d9488; }
