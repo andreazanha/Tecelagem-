@@ -146,7 +146,8 @@ function UndoRedo() {
 
 // Item do menu. `page` = permissão da tela (se ausente e sem `soon`, é livre).
 // `soon` = página ainda não existe → aparece só para admin, desabilitada (sem 404).
-interface MenuItem { to?: string; icon: string; label: string; page?: string; soon?: boolean; children?: MenuItem[]; dyn?: string }
+// `admin` = link REAL visível só para o dono (admin). Diferente de `soon` (que aparece desabilitado).
+interface MenuItem { to?: string; icon: string; label: string; page?: string; soon?: boolean; admin?: boolean; children?: MenuItem[]; dyn?: string }
 interface MenuGrupo { id: string; icon: string; label: string; itens: MenuItem[] }
 
 // Menu em grupos sanfonados. Itens existentes apontam para rotas reais (alguns
@@ -212,9 +213,14 @@ const GRUPOS: MenuGrupo[] = [
     ],
   },
   {
+    // GESTÃO — visível SÓ para o dono (admin). Lugar das coisas que só você vê.
+    id: "gestao", icon: "🗝️", label: "Gestão", itens: [
+      { to: "/dashboard", icon: "📺", label: "Painel Geral", admin: true },
+      { to: "/relatorio-vendas", icon: "🏆", label: "Vendas (o que vende mais)", admin: true },
+    ],
+  },
+  {
     id: "relatorios", icon: "📈", label: "Relatórios", itens: [
-      { to: "/relatorio-vendas", icon: "🏆", label: "Vendas (o que vende mais)", page: "todos-pedidos" },
-      { to: "/dashboard", icon: "📺", label: "Painel Geral", page: "tv-dashboard" },
       { icon: "🏭", label: "Produção", soon: true },
       { icon: "⏰", label: "Atrasos", soon: true },
       { icon: "🔍", label: "Revisão", soon: true },
@@ -246,6 +252,7 @@ const TVS = [
 // apenas para admin — desabilitado, sem 404.
 function itemVisivel(u: ReturnType<typeof getUser>, it: MenuItem): boolean {
   if (it.soon) return !!u?.admin;
+  if (it.admin) return !!u?.admin;          // só o dono vê (menu Gestão)
   if (it.page) return pode(u, it.page);
   return true;
 }
