@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type CardExpedicao, type Volume } from "../api";
 import { MedidasModal } from "../components/MedidasModal";
-import { br, opCodigo, tipoDe, partesList, parseVolumes, resumoVolumes } from "../expedicaoUtil";
+import { br, opCodigo, tipoDe } from "../expedicaoUtil";
 import { getUser, podeFuncao } from "../auth";
 
 // Expedição: pedidos aprovados na Revisão chegam aqui. Separe/embale (Expedir),
@@ -24,17 +24,10 @@ export function Expedicao() {
     recarregar();
   }, []);
 
-  async function mudar(c: CardExpedicao, body: Parameters<typeof api.atualizarExpedicao>[1]) {
-    try {
-      await api.atualizarExpedicao(c.pedido_id, body);
-    } catch {
-      alert("Não foi possível atualizar. Tente novamente.");
-    } finally {
-      recarregar();
-    }
-  }
+  // "Expedir" = salvar as medidas e já enviar ao Fiscal (a pessoa do Fiscal recebe com as medidas prontas).
   async function salvarMedidas(c: CardExpedicao, vols: Volume[]) {
-    await api.atualizarExpedicao(c.pedido_id, { volumes: vols });
+    await api.atualizarExpedicao(c.pedido_id, { volumes: vols, fase: "fiscal", status: "aguardando" });
+    setMedidas(null);
     recarregar();
   }
 
@@ -51,13 +44,7 @@ export function Expedicao() {
         : cards,
     [cards, q]
   );
-  const aguardando = filtrados.filter((c) => c.status !== "expedindo");
-  const expedindo = filtrados.filter((c) => c.status === "expedindo");
-
-  const colunas = [
-    { titulo: "Aguardando expedição", sub: "Chegou da Revisão", cor: "aguardando", lista: aguardando },
-    { titulo: "Expedindo", sub: "Separando / embalando", cor: "fazendo", lista: expedindo },
-  ];
+  const lista = filtrados;
 
   return (
     <div className="quadro-page">
@@ -72,100 +59,37 @@ export function Expedicao() {
         </div>
       </div>
 
-      <div className="stats">
-        <Stat n={aguardando.length} l="Aguardando" />
-        <Stat n={expedindo.length} l="Expedindo" />
-        <Stat n={expedindo.filter((c) => parseVolumes(c.volumes).length === 0).length} l="Medidas pendentes" />
-      </div>
-
       {carregando ? (
         <div className="card pad">Carregando…</div>
       ) : (
-        <div className="kanban">
-          {colunas.map((col) => (
-            <div className="kcol" key={col.titulo} style={{ flexBasis: 330, maxWidth: 330 }}>
-              <div className={"kcol-head " + col.cor}>
-                <div>
-                  <div className="kcol-title"><span className={"kdot " + col.cor} /> {col.titulo}</div>
-                  <div className="kcol-sub">{col.sub}</div>
+        <div className="card">
+          <div className="exp-colh"><span>🚚 Pedidos para expedir</span><span className="exp-c">{lista.length}</span></div>
+          <div className="exp-list">
+            {lista.length === 0 && <div className="kcol-vazio">Nenhum pedido para expedir.</div>}
+            {lista.map((c) => {
+              const t = tipoDe(c.partes);
+              return (
+                <div className="exp-row" key={c.pedido_id}>
+                  <span className={"exp-tp " + t.cls}>{t.label}</span>
+                  <div className="exp-idcli"><span className="exp-num">{opCodigo(c)}</span><span className="exp-cli">{c.cliente_nome}</span></div>
+                  <span className="exp-pcs">{c.pecas || 0} pç</span>
+                  <span className="exp-dt">entrega {br(c.data_entrega)}</span>
+                  {podeFuncao(getUser(), "expedicao.fase") && (
+                    <button className="kbtn tecer" onClick={() => setMedidas(c)}>▶ Expedir</button>
+                  )}
                 </div>
-                <span className={"kcol-count " + col.cor}>{col.lista.length}</span>
-              </div>
-              <div className="kcol-body">
-                {col.lista.map((c) => {
-                  const t = tipoDe(c.partes);
-                  const vols = parseVolumes(c.volumes);
-                  const expedindoCol = c.status === "expedindo";
-                  return (
-                    <div className="kcard" key={c.pedido_id}>
-                      <div className={"kcard-hd " + t.cls}>
-                        <span className="kcard-op">{opCodigo(c)}</span>
-                        <span className="kcard-badge">{t.label}</span>
-                      </div>
-                      <div className="kcard-bd">
-                        <div className="kcard-row1">
-                          <span className="kcard-cli">{c.cliente_nome}</span>
-                          <span className={"kstatus " + (expedindoCol ? "fazendo" : "aguardando")}>{expedindoCol ? "Expedindo" : "Aguardando"}</span>
-                        </div>
-                        <div className="kcard-partes">
-                          {partesList(c.partes).map((p) => (
-                            <span key={p.label} className={"kparte " + p.cls}>{p.label}</span>
-                          ))}
-                        </div>
-                        <div className="kcard-prod">{c.pecas || 0} pç</div>
-                        {c.observacao && <div className="kcard-obs">📝 {c.observacao}</div>}
-                        {expedindoCol && (
-                          <div className={"med-flag " + (vols.length ? "ok" : "pend")}>
-                            {vols.length ? `✓ Medidas: ${resumoVolumes(vols)}` : "📐 Medidas pendentes — preencha p/ enviar"}
-                          </div>
-                        )}
-                        <div className="kcard-boxes">
-                          <div className="kbox ped"><div className="kbox-l">PEDIDO</div><div className="kbox-v">{br(c.data_pedido)}</div></div>
-                          <div className="kbox ent"><div className="kbox-l">ENTREGA</div><div className="kbox-v">{br(c.data_entrega)}</div></div>
-                        </div>
-                        <div className="kcard-acoes" style={{ marginTop: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                          {!podeFuncao(getUser(), "expedicao.fase") ? null : !expedindoCol ? (
-                            <button className="kbtn tecer" onClick={() => mudar(c, { status: "expedindo" })}>▶ Expedir</button>
-                          ) : (
-                            <>
-                              <button className="kbtn final" onClick={() => setMedidas(c)}>📐 Medidas/Volumes</button>
-                              <button
-                                className="kbtn enviar"
-                                disabled={vols.length === 0}
-                                title={vols.length === 0 ? "Preencha as medidas primeiro" : ""}
-                                onClick={() => mudar(c, { fase: "fiscal", status: "aguardando" })}
-                              >
-                                Enviar p/ Fiscal ▶
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {col.lista.length === 0 && <div className="kcol-vazio">vazio</div>}
-              </div>
-            </div>
-          ))}
+              );
+            })}
+          </div>
         </div>
       )}
       <p className="muted" style={{ marginTop: 14, fontSize: 12 }}>
-        O botão 📐 Medidas/Volumes abre o Formulário de Medidas e Pesos (caixa/fardo, várias linhas). Só envia ao Fiscal com as medidas preenchidas.
+        Clique em <b>▶ Expedir</b> para abrir a tela de <b>medidas e pesos</b> (caixa/fardo). Ao salvar, o pedido segue para o <b>Fiscal</b> com as medidas prontas para cotar o frete.
       </p>
 
       {medidas && (
         <MedidasModal card={medidas} onFechar={() => setMedidas(null)} onSalvar={(vols) => salvarMedidas(medidas, vols)} />
       )}
-    </div>
-  );
-}
-
-function Stat({ n, l }: { n: number | string; l: string }) {
-  return (
-    <div className="stat">
-      <div className="n">{n}</div>
-      <div className="l">{l}</div>
     </div>
   );
 }

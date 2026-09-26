@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type CardExpedicao } from "../api";
+import { api, type CardExpedicao, type Volume } from "../api";
 import { br, opCodigo, tipoDe, parseVolumes, resumoVolumes, totalPeso } from "../expedicaoUtil";
 import { getUser, podeFuncao } from "../auth";
+import { MedidasModal } from "../components/MedidasModal";
 
 // Fiscal: pedidos com Expedição finalizada chegam aqui. O Fiscal vê as medidas/volumes
 // (somente leitura), cota o frete e marca "NF emitida" → o pedido vai p/ Transporte.
@@ -10,6 +11,12 @@ export function Fiscal() {
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [nfModal, setNfModal] = useState<CardExpedicao | null>(null);
+  const [medidas, setMedidas] = useState<CardExpedicao | null>(null);
+  async function salvarMedidas(c: CardExpedicao, vols: Volume[]) {
+    await api.atualizarExpedicao(c.pedido_id, { volumes: vols });
+    setMedidas(null);
+    recarregar();
+  }
 
   function recarregar() {
     api
@@ -116,7 +123,8 @@ export function Fiscal() {
                         <div className="kcard-boxes">
                           <div className="kbox ent"><div className="kbox-l">ENTREGA</div><div className="kbox-v">{br(c.data_entrega)}</div></div>
                         </div>
-                        <div className="kcard-acoes" style={{ marginTop: 10, justifyContent: "flex-end" }}>
+                        <div className="kcard-acoes" style={{ marginTop: 10, justifyContent: "flex-end", flexWrap: "wrap", gap: 6 }}>
+                          {podeFuncao(getUser(), "fiscal.frete") && <button className="kbtn" onClick={() => setMedidas(c)}>📐 Ajustar medidas</button>}
                           {!col.cotandoCol
                             ? (podeFuncao(getUser(), "fiscal.frete") && <button className="kbtn tecer" onClick={() => mudar(c, { status: "cotando" })}>Cotar frete ▶</button>)
                             : (podeFuncao(getUser(), "fiscal.nf") && <button className="kbtn final" onClick={() => setNfModal(c)}>✓ NF emitida</button>)}
@@ -136,6 +144,7 @@ export function Fiscal() {
       </p>
 
       {nfModal && <NfModal card={nfModal} onFechar={() => setNfModal(null)} onConfirmar={(nf, frete) => { setNfModal(null); mudar(nfModal, { fase: "transporte", status: "aguardando", nf_numero: nf, frete }); }} />}
+      {medidas && <MedidasModal card={medidas} onFechar={() => setMedidas(null)} onSalvar={(vols) => salvarMedidas(medidas, vols)} />}
     </div>
   );
 }
