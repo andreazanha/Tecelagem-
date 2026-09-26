@@ -56,7 +56,7 @@ export function Costura() {
     { cor: "defeito", titulo: "⚠ Voltou com defeito", sub: "Refazer ou enviar direto", status: "defeito", acao: "voltar", acaoExtra: "enviar" },
   ];
 
-  return <Quadro cfg={{ ...BASE, nota: costureiras.length ? BASE.nota : SEM, colunas }} />;
+  return <Quadro cfg={{ ...BASE, nota: costureiras.length ? BASE.nota : SEM, colunas, pessoas: costureiras }} />;
 }
 
 const SEM =

@@ -120,6 +120,7 @@ export interface QuadroCfg {
   proxSetorKit?: string | null; // destino dos kits (pronta-entrega) ao enviar, se diferente
   setorDefeito?: string; // setor para onde "Voltou com defeito" devolve a peça (ex.: Revisão → Costura)
   enviarSemPessoa?: boolean; // enviar para a FILA do próximo setor (aguardando), sem escolher pessoa
+  pessoas?: string[]; // lista de pessoas do setor (ex.: costureiras) — mostra 1 quadradinho por pessoa
   agruparPorPedido?: boolean; // junta as partes do mesmo pedido num card só (ex.: Revisão, pedido misto)
   entradaEstoque?: boolean; // mostra "📥 Dar entrada no estoque" em cards de reposição (setor Estoque)
   desmembrar?: boolean; // mostra "🔀 Desmembrar OP" em cards de OP consolidada (setor Corte)
@@ -804,10 +805,15 @@ function PainelCostura({ cfg, cards, onAbrir, onAcao }: {
 
   // Só o que está EM COSTURA (aguardando/fazendo). Defeito NÃO aparece aqui — fica na Revisão.
   const naTela = cards.filter((c) => c.status === "aguardando" || c.status === "fazendo");
-  // Contagem de pedidos por costureira (quadradinhos no topo).
+  // Contagem de pedidos por costureira.
   const contagem = new Map<string, number>();
   for (const c of naTela) { const k = (c.operador || "").trim() || "—"; contagem.set(k, (contagem.get(k) || 0) + 1); }
-  const costureiras = [...contagem.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  // Quadradinhos: SEMPRE todas as costureiras cadastradas (cfg.pessoas), mesmo com 0 pedidos, +
+  // qualquer nome que apareça nos cards, + "Sem costureira" se houver card sem dono.
+  const nomesSet = new Set<string>((cfg.pessoas || []).map((p) => p.trim()).filter(Boolean));
+  for (const k of contagem.keys()) if (k !== "—") nomesSet.add(k);
+  const costureiras: [string, number][] = [...nomesSet].sort((a, b) => a.localeCompare(b)).map((n) => [n, contagem.get(n) || 0]);
+  if (contagem.has("—")) costureiras.push(["—", contagem.get("—") || 0]);
 
   const filtrados = sel ? naTela.filter((c) => ((c.operador || "").trim() || "—") === sel) : naTela;
   const grupos = {
