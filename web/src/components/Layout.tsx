@@ -199,16 +199,16 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/pedidos/novo", icon: "➕", label: "Criar pedido", page: "pedidos" },
       { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
       { to: "/impressao-etiquetas", icon: "🏷️", label: "Impressão de etiquetas", page: "expedicao" },
-    ],
-  },
-  {
-    // CADASTROS — cada tipo é um "Cadastro de ...". Materiais é um submenu (Fios + insumos + Compras).
-    id: "cadastros", icon: "🗂️", label: "Cadastros", itens: [
-      { to: "/cadastros?aba=produtos", icon: "📦", label: "Cadastro de Produtos", page: "cadastros" },
-      { to: "/cadastros?aba=tamanhos", icon: "📏", label: "Cadastro de Tamanhos", page: "cadastros" },
-      // Materiais: submenu dinâmico (Fios + insumos cadastrados + Compras), montado em TopNav.
-      { icon: "🧷", label: "Cadastro de Materiais", page: "cadastros", dyn: "materiais", children: [] },
-      { to: "/cadastros?aba=fornecedores", icon: "🚛", label: "Cadastro de Fornecedores", page: "cadastros" },
+      // CADASTROS dentro do PCP — submenu com um "Cadastro de ..." por tipo.
+      {
+        icon: "🗂️", label: "Cadastros", page: "cadastros", children: [
+          { to: "/cadastros?aba=produtos", icon: "📦", label: "Cadastro de Produtos", page: "cadastros" },
+          { to: "/cadastros?aba=tamanhos", icon: "📏", label: "Cadastro de Tamanhos", page: "cadastros" },
+          // Materiais: submenu dinâmico (Fios + insumos cadastrados + Compras).
+          { icon: "🧷", label: "Cadastro de Materiais", page: "cadastros", dyn: "materiais", children: [] },
+          { to: "/cadastros?aba=fornecedores", icon: "🚛", label: "Cadastro de Fornecedores", page: "cadastros" },
+        ],
+      },
     ],
   },
   {
@@ -253,6 +253,12 @@ function itemVisivel(u: ReturnType<typeof getUser>, it: MenuItem): boolean {
   return true;
 }
 
+// Item + todos os descendentes (submenus em qualquer profundidade) — usado para achar o link ativo
+// mesmo com Cadastros aninhado dentro do PCP.
+function comDescendentes(it: MenuItem): MenuItem[] {
+  return [it, ...(it.children || []).flatMap(comDescendentes)];
+}
+
 // Escolhe UM item ativo (match exato de aba, senão prefixo mais longo do caminho).
 function itemAtivo(to: string, loc: ReturnType<typeof useLocation>): number {
   const [p, q] = to.split("?");
@@ -284,7 +290,12 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
     ...insumos.map((c) => ({ to: `/cadastros?aba=materiais&mat=${c.slug}`, icon: c.icone || "🔹", label: c.nome, page: "cadastros" })),
     { to: "/cadastros?aba=materiais&mat=__compras", icon: "🛒", label: "Compras", page: "cadastros" },
   ];
-  const comDyn = (it: MenuItem): MenuItem => (it.dyn === "materiais" ? { ...it, children: matChildren() } : it);
+  // Recursivo: injeta os filhos dinâmicos de Materiais mesmo aninhado (ex.: dentro do submenu
+  // Cadastros, que fica dentro do PCP).
+  const comDyn = (it: MenuItem): MenuItem =>
+    it.dyn === "materiais" ? { ...it, children: matChildren() }
+      : it.children && it.children.length ? { ...it, children: it.children.map(comDyn) }
+        : it;
 
   // Fecha ao navegar (troca de rota/aba).
   useEffect(() => { setAberto(null); setMobileOpen(false); }, [loc.pathname, loc.search]);
@@ -298,8 +309,8 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
   }, []);
 
   const grupos = GRUPOS.map((g) => ({ ...g, itens: g.itens.map(comDyn).filter((it) => itemVisivel(u, it)) })).filter((g) => g.itens.length);
-  // inclui os filhos (submenus) na detecção de item ativo
-  const comLink = GRUPOS.flatMap((g) => g.itens.map(comDyn)).flatMap((it) => [it, ...(it.children || [])]).filter((it) => it.to);
+  // inclui os filhos (submenus em qualquer nível) na detecção de item ativo
+  const comLink = GRUPOS.flatMap((g) => g.itens.map(comDyn)).flatMap(comDescendentes).filter((it) => it.to);
 
   // qual item está ativo agora (um só) e a que grupo ele pertence
   let ativoTo = "";
@@ -308,7 +319,7 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
     const s = itemAtivo(it.to!, loc);
     if (s > melhor) { melhor = s; ativoTo = it.to!; }
   }
-  const grupoAtivo = grupos.find((g) => g.itens.some((it) => it.to === ativoTo || (it.children || []).some((ch) => ch.to === ativoTo)))?.id;
+  const grupoAtivo = grupos.find((g) => g.itens.flatMap(comDescendentes).some((it) => it.to === ativoTo))?.id;
 
   const DDItem = (it: MenuItem, ctx: string) => {
     const inner = (
@@ -379,7 +390,10 @@ function SideNav({ u, onNav }: { u: NonNullable<ReturnType<typeof getUser>>; onN
     ...insumos.map((c) => ({ to: `/cadastros?aba=materiais&mat=${c.slug}`, icon: c.icone || "🔹", label: c.nome, page: "cadastros" })),
     { to: "/cadastros?aba=materiais&mat=__compras", icon: "🛒", label: "Compras", page: "cadastros" },
   ];
-  const comDyn = (it: MenuItem): MenuItem => (it.dyn === "materiais" ? { ...it, children: matChildren() } : it);
+  const comDyn = (it: MenuItem): MenuItem =>
+    it.dyn === "materiais" ? { ...it, children: matChildren() }
+      : it.children && it.children.length ? { ...it, children: it.children.map(comDyn) }
+        : it;
   // Na tela do Atendimento a barra lateral mostra SÓ o que é do CRM (não o sistema todo).
   const crmItens = (GRUPOS.find((g) => g.id === "crm")?.itens || []).map(comDyn).filter((it) => itemVisivel(u, it));
   let ativoTo = "", melhor = 0;
