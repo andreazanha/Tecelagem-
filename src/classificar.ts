@@ -103,14 +103,18 @@ export function tipoDe(produto: string, tamanho?: string | null): string {
   return "";
 }
 
-// Kit (Pronta Entrega) SÓ quando o NOME do produto contém a palavra "KIT" (ex.: "KIT ASPEN 90x200").
-// Atenção: um CÓDIGO/grade como "KT1092" NÃO faz o item virar kit — peseira/almofada/manta com
-// código "KT..." são componentes que compõem os kits e são produzidos individualmente. Por isso só
-// olhamos o nome (it.produto), nunca o código (it.ref), e "KT" não é a palavra "KIT".
+// Siglas de PRONTA ENTREGA que aparecem no CÓDIGO (ref) do produto (ex.: "OP1093", "OM-200").
+// Atenção: "KT..." (componente de kit) continua NÃO valendo — só estas siglas específicas.
+const PE_SIGLAS_REF = /^(?:OP|OM|OC)(?![A-Za-z])/i;
+
+// Kit / Pronta Entrega. Regras (nesta ordem):
+//  1) it.kit marcado (pedido de estoque) OU o NOME contém a palavra "KIT" (ex.: "KIT ASPEN 90x200").
+//  2) o CÓDIGO (ref) começa com uma sigla de pronta entrega: OP / OM / OC (ex.: "OP1093").
+//  3) o MODELO está marcado como "pronta entrega" no cadastro (ex.: Manta Lumi) — precisa do catálogo.
+// Obs.: um código "KT1092" (peseira/almofada componente de kit) NÃO vira kit sozinho.
 export function ehKit(it: ItemBase, cat?: Catalogo): boolean {
-  // Pronta entrega = marcado como kit (pedido de estoque) OU nome contém "KIT" OU, quando
-  // temos o catálogo, o MODELO está marcado como "pronta entrega" no cadastro (ex.: Manta Lumi).
   if (!!it.kit || /\bkit\b/i.test(it.produto || "")) return true;
+  if (PE_SIGLAS_REF.test((it.ref || "").trim())) return true;
   if (cat) {
     const m = resolverModelo(it, cat);
     if (m?.prontaEntrega) return true;
