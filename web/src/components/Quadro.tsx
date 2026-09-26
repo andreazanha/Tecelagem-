@@ -2345,7 +2345,7 @@ function CardModal({
 
   return (
     <div className="modal-bg" onClick={onFechar}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card cardmodal" onClick={(e) => e.stopPropagation()}>
         <div className={"modal-hd " + t.cls}>
           <div className="modal-hd-top">
             <span className="modal-pills">
