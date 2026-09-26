@@ -2378,3 +2378,24 @@ body.dark .acs-person { background: #24314d; color: #c7d2fe; } body.dark .acs-pe
 .exp-pcs { font-size: 12.5px; font-weight: 700; text-align: right; }
 .exp-dt { font-size: 12px; color: var(--muted); text-align: right; }
 @media (max-width: 860px) { .exp-row { grid-template-columns: 70px minmax(0,1fr) 100px; } .exp-dt { display: none; } .exp-pcs { display: none; } }
+
+/* Fiscal — coluna única + tabela de medidas */
+.fis-colh { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-size: 13px; font-weight: 800; color: #fff; background: linear-gradient(90deg,#334155,#1e293b); border-radius: 12px 12px 0 0; }
+.fis-colh .fis-c { margin-left: auto; background: #ffffff33; border-radius: 999px; padding: 2px 10px; font-size: 12px; }
+.fis-list { padding: 12px; background: var(--body); border-radius: 0 0 12px 12px; }
+.fis-row { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px; margin-bottom: 12px; }
+.fis-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fis-num { font-size: 15px; font-weight: 800; } .fis-cli { font-size: 13.5px; color: var(--muted); }
+.fis-pcs { font-size: 12px; color: var(--muted); margin-left: auto; }
+.fis-nf { font-size: 11px; font-weight: 800; color: #3730a3; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 6px; padding: 2px 8px; }
+.fis-med { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.fis-med-h { background: #eef2ff; color: #3730a3; font-weight: 800; font-size: 12px; padding: 7px 12px; }
+body.dark .fis-med-h { background: #1e2748; color: #c7d2fe; }
+.fis-med-vaz { padding: 10px 12px; font-size: 12.5px; color: var(--muted); font-style: italic; }
+.fis-tab { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.fis-tab th { background: var(--body); color: var(--muted); font-size: 10.5px; font-weight: 800; text-transform: uppercase; padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--line); }
+.fis-tab td { padding: 7px 10px; border-bottom: 1px solid var(--line); }
+.fis-tab tr:last-child td { border-bottom: 0; }
+.fis-tab .fis-tot { font-weight: 800; background: var(--body); }
+.fis-frete-v { margin-top: 8px; font-size: 13px; font-weight: 700; color: #047857; }
+.fis-acoes { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 10px; }

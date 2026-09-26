@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type CardExpedicao, type Volume } from "../api";
-import { br, opCodigo, tipoDe, parseVolumes, resumoVolumes, totalPeso } from "../expedicaoUtil";
+import { br, opCodigo, tipoDe, parseVolumes, totalPeso } from "../expedicaoUtil";
 import { getUser, podeFuncao } from "../auth";
 import { MedidasModal } from "../components/MedidasModal";
 
@@ -54,13 +54,7 @@ export function Fiscal() {
         : cards,
     [cards, q]
   );
-  const aguardando = filtrados.filter((c) => c.status !== "cotando");
-  const cotando = filtrados.filter((c) => c.status === "cotando");
-
-  const colunas = [
-    { titulo: "Aguardando", sub: "Para emitir NF", cor: "aguardando", lista: aguardando, cotandoCol: false },
-    { titulo: "Cotando frete", sub: "Em cotação", cor: "fazendo", lista: cotando, cotandoCol: true },
-  ];
+  const lista = filtrados;
 
   return (
     <div className="quadro-page">
@@ -75,72 +69,55 @@ export function Fiscal() {
         </div>
       </div>
 
-      <div className="stats">
-        <Stat n={aguardando.length} l="Para emitir" />
-        <Stat n={cotando.length} l="Cotando frete" />
-      </div>
-
       {carregando ? (
         <div className="card pad">Carregando…</div>
       ) : (
-        <div className="kanban">
-          {colunas.map((col) => (
-            <div className="kcol" key={col.titulo} style={{ flexBasis: 350, maxWidth: 350 }}>
-              <div className={"kcol-head " + col.cor}>
-                <div>
-                  <div className="kcol-title"><span className={"kdot " + col.cor} /> {col.titulo}</div>
-                  <div className="kcol-sub">{col.sub}</div>
+        <div className="card">
+          <div className="fis-colh"><span>🧾 Pedidos para cotar frete / emitir NF</span><span className="fis-c">{lista.length}</span></div>
+          <div className="fis-list">
+            {lista.length === 0 && <div className="kcol-vazio">Nenhum pedido no Fiscal.</div>}
+            {lista.map((c) => {
+              const t = tipoDe(c.partes);
+              const vols = parseVolumes(c.volumes);
+              const peso = totalPeso(vols);
+              const cub = vols.reduce((s, v) => s + ((Number(v.altura) * Number(v.largura) * Number(v.comprimento)) || 0), 0) / 1_000_000;
+              return (
+                <div className="fis-row" key={c.pedido_id}>
+                  <div className="fis-top">
+                    <span className={"exp-tp " + t.cls}>{t.label}</span>
+                    <span className="fis-num">{opCodigo(c)}</span>
+                    <span className="fis-cli">{c.cliente_nome}</span>
+                    <span className="fis-pcs">{c.pecas || 0} pç · entrega {br(c.data_entrega)}</span>
+                    {c.nf_numero && <span className="fis-nf">NF {c.nf_numero}</span>}
+                  </div>
+                  <div className="fis-med">
+                    <div className="fis-med-h">📐 Medidas e pesos (para cotar frete)</div>
+                    {vols.length ? (
+                      <table className="fis-tab">
+                        <thead><tr><th>Volume</th><th>Alt (cm)</th><th>Larg (cm)</th><th>Comp (cm)</th><th>Peso</th></tr></thead>
+                        <tbody>
+                          {vols.map((v, i) => (
+                            <tr key={i}><td>{v.tipo || "Volume"}</td><td>{v.altura || "—"}</td><td>{v.largura || "—"}</td><td>{v.comprimento || "—"}</td><td>{v.peso ? v.peso + " kg" : "—"}</td></tr>
+                          ))}
+                          <tr className="fis-tot"><td>Total</td><td colSpan={3}>{vols.length} volume(s){cub > 0 ? ` · ${cub.toFixed(3).replace(".", ",")} m³` : ""}</td><td>{peso ? String(peso).replace(".", ",") + " kg" : "—"}</td></tr>
+                        </tbody>
+                      </table>
+                    ) : <div className="fis-med-vaz">Sem medidas ainda — clique em "📐 Ajustar medidas".</div>}
+                  </div>
+                  {c.frete && <div className="fis-frete-v">💰 Frete: {c.frete}</div>}
+                  {c.observacao && <div className="kcard-obs">📝 {c.observacao}</div>}
+                  <div className="fis-acoes">
+                    {podeFuncao(getUser(), "fiscal.frete") && <button className="kbtn" onClick={() => setMedidas(c)}>📐 Ajustar medidas</button>}
+                    {podeFuncao(getUser(), "fiscal.nf") && <button className="kbtn final" onClick={() => setNfModal(c)}>✓ NF emitida → Transporte</button>}
+                  </div>
                 </div>
-                <span className={"kcol-count " + col.cor}>{col.lista.length}</span>
-              </div>
-              <div className="kcol-body">
-                {col.lista.map((c) => {
-                  const t = tipoDe(c.partes);
-                  const vols = parseVolumes(c.volumes);
-                  const peso = totalPeso(vols);
-                  return (
-                    <div className="kcard" key={c.pedido_id}>
-                      <div className={"kcard-hd " + t.cls}>
-                        <span className="kcard-op">{opCodigo(c)}</span>
-                        <span className="kcard-badge">{t.label}</span>
-                      </div>
-                      <div className="kcard-bd">
-                        <div className="kcard-row1">
-                          <span className="kcard-cli">{c.cliente_nome}</span>
-                          <span className={"kstatus " + (col.cotandoCol ? "fazendo" : "aguardando")}>{col.cotandoCol ? "Cotando" : "Aguardando"}</span>
-                        </div>
-                        <div className="kcard-prod">{c.pecas || 0} pç</div>
-                        <div className="fis-frete">
-                          <div className="fis-frete-t">FORMULÁRIO DE FRETE (Expedição)</div>
-                          <div className="fis-frete-r">
-                            <span>📦 {resumoVolumes(vols)}</span>
-                            {peso > 0 && <span>⚖ {peso.toString().replace(".", ",")} kg</span>}
-                          </div>
-                          {c.frete && <div className="fis-frete-v">💰 {c.frete}</div>}
-                          {c.nf_numero && <div className="fis-frete-nf">NF {c.nf_numero}</div>}
-                        </div>
-                        {c.observacao && <div className="kcard-obs">📝 {c.observacao}</div>}
-                        <div className="kcard-boxes">
-                          <div className="kbox ent"><div className="kbox-l">ENTREGA</div><div className="kbox-v">{br(c.data_entrega)}</div></div>
-                        </div>
-                        <div className="kcard-acoes" style={{ marginTop: 10, justifyContent: "flex-end", flexWrap: "wrap", gap: 6 }}>
-                          {podeFuncao(getUser(), "fiscal.frete") && <button className="kbtn" onClick={() => setMedidas(c)}>📐 Ajustar medidas</button>}
-                          {!col.cotandoCol
-                            ? (podeFuncao(getUser(), "fiscal.frete") && <button className="kbtn tecer" onClick={() => mudar(c, { status: "cotando" })}>Cotar frete ▶</button>)
-                            : (podeFuncao(getUser(), "fiscal.nf") && <button className="kbtn final" onClick={() => setNfModal(c)}>✓ NF emitida</button>)}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {col.lista.length === 0 && <div className="kcol-vazio">vazio</div>}
-              </div>
-            </div>
-          ))}
+              );
+            })}
+          </div>
         </div>
       )}
       <p className="muted" style={{ marginTop: 14, fontSize: 12 }}>
-        A NF é emitida no ERP. Aqui o Fiscal cota o frete e marca "NF emitida" → o pedido segue para o Transporte.
+        A NF é emitida no ERP. Aqui o Fiscal confere as medidas, cota o frete e marca "✓ NF emitida" → o pedido segue para o Transporte.
       </p>
 
       {nfModal && <NfModal card={nfModal} onFechar={() => setNfModal(null)} onConfirmar={(nf, frete) => { setNfModal(null); mudar(nfModal, { fase: "transporte", status: "aguardando", nf_numero: nf, frete }); }} />}
@@ -174,15 +151,6 @@ function NfModal({ card, onFechar, onConfirmar }: { card: CardExpedicao; onFecha
           <button className="kbtn final" onClick={() => onConfirmar(nf.trim(), frete.trim())}>✓ Confirmar → Transporte</button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Stat({ n, l }: { n: number | string; l: string }) {
-  return (
-    <div className="stat">
-      <div className="n">{n}</div>
-      <div className="l">{l}</div>
     </div>
   );
 }
