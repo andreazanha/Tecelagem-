@@ -2040,7 +2040,7 @@ button.tecn-tile { cursor: pointer; } button.tecn-tile:disabled { cursor: defaul
 .tecn-row.prod { background: #ecfdf5; border-color: #a7f3d0; }
 body.dark .tecn-row.prod { background: #10251d; border-color: #1c5c46; }
 .tecn-idcli { min-width: 0; display: flex; align-items: baseline; gap: 5px; }
-.tecn-num { font-size: 13.5px; font-weight: 800; color: var(--tc-ink); white-space: nowrap; }
+.tecn-num { font-size: 13.5px; font-weight: 800; color: var(--tc-ink); white-space: nowrap; flex: 0 0 auto; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
 .tecn-dot { color: var(--tc-mut); }
 .tecn-cli { font-size: 12.5px; color: var(--tc-mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tecn-pcs { font-size: 11.5px; font-weight: 700; color: var(--tc-ink); text-align: right; white-space: nowrap; }
