@@ -15,6 +15,9 @@ const BASE: Omit<QuadroCfg, "colunas"> = {
   fazendoLabel: "Costurando",
   proxSetor: "revisao",
   proxSetorKit: "estoque",
+  // Ao enviar para a Revisão, o card cai na FILA (aguardando) — a revisadeira é escolhida
+  // depois, dentro da Revisão. Não pede para escolher ninguém na hora de enviar.
+  enviarSemPessoa: true,
   pedeMaquina: false,
   recursoLabel: "Costureira",
   recursoTotal: 8,
