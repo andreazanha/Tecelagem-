@@ -199,13 +199,16 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/pedidos/novo", icon: "➕", label: "Criar pedido", page: "pedidos" },
       { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
       { to: "/impressao-etiquetas", icon: "🏷️", label: "Impressão de etiquetas", page: "expedicao" },
-      // Cadastros agora vivem dentro do PCP.
-      { to: "/cadastros?aba=produtos", icon: "📦", label: "Produtos", page: "cadastros" },
-      { to: "/cadastros?aba=tamanhos", icon: "📏", label: "Tamanhos", page: "cadastros" },
+    ],
+  },
+  {
+    // CADASTROS — cada tipo é um "Cadastro de ...". Materiais é um submenu (Fios + insumos + Compras).
+    id: "cadastros", icon: "🗂️", label: "Cadastros", itens: [
+      { to: "/cadastros?aba=produtos", icon: "📦", label: "Cadastro de Produtos", page: "cadastros" },
+      { to: "/cadastros?aba=tamanhos", icon: "📏", label: "Cadastro de Tamanhos", page: "cadastros" },
       // Materiais: submenu dinâmico (Fios + insumos cadastrados + Compras), montado em TopNav.
-      { icon: "🧷", label: "Materiais", page: "cadastros", dyn: "materiais", children: [] },
-      { to: "/cadastros?aba=fornecedores", icon: "🚛", label: "Fornecedores", page: "cadastros" },
-      { to: "/cadastros?aba=setores", icon: "🏢", label: "Setores", page: "cadastros" },
+      { icon: "🧷", label: "Cadastro de Materiais", page: "cadastros", dyn: "materiais", children: [] },
+      { to: "/cadastros?aba=fornecedores", icon: "🚛", label: "Cadastro de Fornecedores", page: "cadastros" },
     ],
   },
   {
@@ -214,6 +217,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/dashboard", icon: "📺", label: "Painel Geral", admin: true },
       { to: "/relatorio-vendas", icon: "🏆", label: "Vendas (o que vende mais)", admin: true },
       { to: "/cadastros?aba=usuarios", icon: "🔐", label: "Usuários e Permissões", admin: true },
+      { to: "/cadastros?aba=setores", icon: "🏢", label: "Setores", admin: true },
       // Relatórios (ainda em breve) agora vivem dentro da Gestão.
       { icon: "🏭", label: "Relatório de Produção", soon: true },
       { icon: "⏰", label: "Relatório de Atrasos", soon: true },
