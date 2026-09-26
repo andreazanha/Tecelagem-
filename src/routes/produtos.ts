@@ -25,6 +25,34 @@ const uid = () => crypto.randomUUID();
 const num = (v: unknown) => Math.max(0, Number(v) || 0);
 const str = (v: unknown) => String(v ?? "").trim() || null;
 
+// Normaliza uma lista de números de WhatsApp: tira espaços, remove vazios e duplicados,
+// preservando a ordem. Usada ao salvar e ao ler os avisos de entrada no estoque.
+function normalizarNumerosEstoque(brutos: unknown[]): string[] {
+  const vistos = new Set<string>();
+  const out: string[] = [];
+  for (const b of brutos) {
+    const n = String(b ?? "").trim();
+    if (!n || vistos.has(n)) continue;
+    vistos.add(n);
+    out.push(n);
+  }
+  return out;
+}
+
+// Lê o config 'estoque_whatsapp' aceitando: JSON array (novo), ou texto único /
+// separado por vírgula ou quebra de linha (formatos antigos).
+function parseNumerosEstoque(valor: string | null | undefined): string[] {
+  const raw = (valor || "").trim();
+  if (!raw) return [];
+  if (raw.startsWith("[")) {
+    try {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return normalizarNumerosEstoque(arr);
+    } catch { /* cai no split abaixo */ }
+  }
+  return normalizarNumerosEstoque(raw.split(/[,\n;]+/));
+}
+
 // Grava uma linha no histórico da área de produtos (data/usuário/descrição).
 async function log(env: Env, tipo: string, descricao: string, usuario?: string | null, refId?: string | null) {
   await env.DB.prepare(
@@ -578,12 +606,12 @@ produtos.post("/entrada-pedido", async (c) => {
   }
   await log(c.env, "estoque", `Entrada por pedido ${b.pedido_numero || ""}: ${criadas.length} produto(s)`, b.usuario, b.pedido_id);
 
-  // Aviso automático no WhatsApp (número cadastrado em config 'estoque_whatsapp'):
+  // Aviso automático no WhatsApp (um ou mais números cadastrados em config 'estoque_whatsapp'):
   // modelo · cor · tamanho · quantidade de cada peça que entrou. Best-effort (não trava a entrada).
   try {
     const cfgRow = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_whatsapp'").first<{ valor: string | null }>();
-    const numero = (cfgRow?.valor || "").trim();
-    if (numero && criadas.length) {
+    const numeros = parseNumerosEstoque(cfgRow?.valor);
+    if (numeros.length && criadas.length) {
       const ids = criadas.map((x) => x.produto_id);
       const ph = ids.map(() => "?").join(",");
       const { results: prods } = await c.env.DB.prepare(`SELECT id, nome, cor, tamanho FROM produtos WHERE id IN (${ph})`)
@@ -595,25 +623,31 @@ produtos.post("/entrada-pedido", async (c) => {
         return `• ${partes}: ${x.qtd} pç`;
       });
       const texto = `📦 *Entrada no estoque*${b.pedido_numero ? ` — Pedido ${b.pedido_numero}` : ""}\n\n${linhas.join("\n")}`;
-      c.executionCtx.waitUntil(enviarWhatsapp(c.env, numero, { tipo: "texto", texto }).then(() => {}).catch(() => {}));
+      for (const numero of numeros) {
+        c.executionCtx.waitUntil(enviarWhatsapp(c.env, numero, { tipo: "texto", texto }).then(() => {}).catch(() => {}));
+      }
     }
   } catch { /* aviso é best-effort */ }
 
   return c.json({ ok: true, criadas });
 });
 
-// Número de WhatsApp que recebe o aviso automático de ENTRADA no estoque.
+// Números de WhatsApp que recebem o aviso automático de ENTRADA no estoque.
+// Armazenados como JSON array em config 'estoque_whatsapp'; aceita formatos antigos
+// (texto único ou separado por vírgula/quebra de linha) por compatibilidade.
 produtos.get("/estoque-wpp", async (c) => {
   const row = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_whatsapp'").first<{ valor: string | null }>().catch(() => null);
-  return c.json({ numero: (row?.valor || "") });
+  const numeros = parseNumerosEstoque(row?.valor);
+  return c.json({ numeros, numero: numeros[0] || "" });
 });
 produtos.post("/estoque-wpp", async (c) => {
-  const b = await c.req.json<{ numero?: string }>().catch(() => ({}) as { numero?: string });
-  const numero = (b.numero || "").trim();
+  const b = await c.req.json<{ numeros?: string[]; numero?: string }>().catch(() => ({}) as { numeros?: string[]; numero?: string });
+  const brutos = Array.isArray(b.numeros) ? b.numeros : (b.numero != null ? [b.numero] : []);
+  const numeros = normalizarNumerosEstoque(brutos);
   await c.env.DB.prepare(
     "INSERT INTO config (chave, valor, atualizado_em) VALUES ('estoque_whatsapp', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
-  ).bind(numero).run();
-  return c.json({ ok: true, numero });
+  ).bind(JSON.stringify(numeros)).run();
+  return c.json({ ok: true, numeros });
 });
 
 // Cria os produtos (avulsos) dos itens de um pedido que AINDA não existem no

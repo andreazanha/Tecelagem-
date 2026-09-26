@@ -2769,18 +2769,26 @@ function EnviarCosturaModal({ card, costureira, onFechar, onEnviar }: {
 
 // Cadastro do número de WhatsApp que recebe o aviso automático de entrada no estoque.
 function WppEstoqueModal({ onFechar }: { onFechar: () => void }) {
-  const [numero, setNumero] = useState("");
+  const [numeros, setNumeros] = useState<string[]>([""]);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
-  useEffect(() => { api.obterEstoqueWpp().then((r) => setNumero(r.numero || "")).catch(() => {}).finally(() => setCarregando(false)); }, []);
+  useEffect(() => {
+    api.obterEstoqueWpp()
+      .then((r) => setNumeros(r.numeros && r.numeros.length ? r.numeros : [""]))
+      .catch(() => {})
+      .finally(() => setCarregando(false));
+  }, []);
+  function alterar(i: number, v: string) { setNumeros((ns) => ns.map((n, k) => (k === i ? v : n))); }
+  function remover(i: number) { setNumeros((ns) => { const r = ns.filter((_, k) => k !== i); return r.length ? r : [""]; }); }
+  function adicionar() { setNumeros((ns) => [...ns, ""]); }
   async function salvar() {
     setSalvando(true);
-    try { await api.salvarEstoqueWpp(numero.trim()); onFechar(); }
+    try { await api.salvarEstoqueWpp(numeros.map((n) => n.trim()).filter(Boolean)); onFechar(); }
     catch (e) { alert((e as Error).message); setSalvando(false); }
   }
   return (
     <div className="modal-bg" onClick={onFechar}>
-      <div className="modal-card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd kit">
           <div className="modal-hd-top">
             <span className="modal-pills"><span className="modal-pill">📱 WhatsApp de estoque</span></span>
@@ -2790,10 +2798,22 @@ function WppEstoqueModal({ onFechar }: { onFechar: () => void }) {
         <div className="pad">
           <p className="muted" style={{ marginTop: 0 }}>
             Toda vez que alguém <strong>dar entrada no estoque</strong> aqui, o sistema manda uma mensagem
-            automática no WhatsApp deste número com <strong>modelo · cor · tamanho · quantidade</strong>.
+            automática no WhatsApp de <strong>cada número</strong> abaixo com <strong>modelo · cor · tamanho · quantidade</strong>.
           </p>
-          <input className="input" placeholder="Ex.: 41999998888 (com DDD)" value={carregando ? "" : numero} onChange={(e) => setNumero(e.target.value)} style={{ width: "100%", marginBottom: 12 }} />
-          <p className="muted" style={{ fontSize: 12 }}>Deixe em branco pra desativar o aviso. Use o WhatsApp já conectado (Z-API) do sistema.</p>
+          {carregando ? (
+            <p className="muted">Carregando…</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+              {numeros.map((n, i) => (
+                <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input className="input" placeholder="Ex.: 41999998888 (com DDD)" value={n} onChange={(e) => alterar(i, e.target.value)} style={{ flex: 1 }} />
+                  <button className="btn" title="Remover" onClick={() => remover(i)} style={{ padding: "6px 10px" }}>✕</button>
+                </div>
+              ))}
+              <button className="btn" onClick={adicionar} style={{ alignSelf: "flex-start" }}>+ Adicionar número</button>
+            </div>
+          )}
+          <p className="muted" style={{ fontSize: 12 }}>Deixe tudo em branco pra desativar o aviso. Usa o WhatsApp já conectado (Z-API) do sistema.</p>
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button className="btn" onClick={onFechar} disabled={salvando}>Cancelar</button>
             <button className="btn btn-primary" onClick={salvar} disabled={salvando || carregando}>{salvando ? "Salvando…" : "Salvar"}</button>

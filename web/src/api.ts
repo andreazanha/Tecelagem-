@@ -1089,9 +1089,9 @@ export const api = {
   listarProducao: (setor = "tecelagem") =>
     fetch(`/api/producao?setor=${encodeURIComponent(setor)}`).then((r) => j<CardProducao[]>(r)),
   // WhatsApp que recebe o aviso automático de entrada no estoque.
-  obterEstoqueWpp: () => fetch("/api/produtos/estoque-wpp").then((r) => j<{ numero: string }>(r)),
-  salvarEstoqueWpp: (numero: string) =>
-    fetch("/api/produtos/estoque-wpp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ numero }) }).then((r) => j<{ ok: boolean; numero: string }>(r)),
+  obterEstoqueWpp: () => fetch("/api/produtos/estoque-wpp").then((r) => j<{ numeros: string[]; numero: string }>(r)),
+  salvarEstoqueWpp: (numeros: string[]) =>
+    fetch("/api/produtos/estoque-wpp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ numeros }) }).then((r) => j<{ ok: boolean; numeros: string[] }>(r)),
   // PCP: tira o cadeado do pedido (exige a função pcp.liberar + senha do usuário logado).
   liberarPedido: (pedido_id: string, senha: string) =>
     fetch(`/api/pedidos/${pedido_id}/liberar`, {
