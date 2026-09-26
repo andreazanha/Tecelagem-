@@ -1234,8 +1234,19 @@ export const api = {
       body: JSON.stringify({ usuario, senha }),
     });
     if (r.status === 401) return { ok: false as const };
-    const data = await j<{ ok: boolean; token?: string; user: import("./auth").Usuario }>(r);
+    const data = await j<{ ok: boolean; token?: string; user?: import("./auth").Usuario; primeiro_acesso?: boolean; bloqueado?: boolean; erro?: string; nome?: string; usuario?: string }>(r);
     if (data.token) setToken(data.token);   // guarda o crachá pra mandar nas próximas chamadas
+    return data;
+  },
+  // PRIMEIRO ACESSO: a pessoa cria a própria senha e já entra.
+  definirSenha: async (usuario: string, senha: string) => {
+    const r = await fetch("/api/usuarios/definir-senha", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usuario, senha }),
+    });
+    const data = await j<{ ok: boolean; token?: string; user?: import("./auth").Usuario; erro?: string }>(r);
+    if (data.token) setToken(data.token);
     return data;
   },
   listarUsuarios: () =>

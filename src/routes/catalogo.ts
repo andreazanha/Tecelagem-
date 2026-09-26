@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { Env } from "../index";
 import { DEFAULT_PARTE1, norm } from "../classificar";
 import { colsBulk } from "./materiais";
@@ -753,22 +754,11 @@ usuarios.post("/:id/bloquear", async (c) => {
   return c.json({ ok: true, bloqueado: !!bloq });
 });
 
-usuarios.post("/login", async (c) => {
-  const b = await c.req.json<{ usuario?: string; senha?: string }>().catch(() => ({}) as { usuario?: string; senha?: string });
-  const usuario = (b.usuario || "").trim().toLowerCase();
-  const row = await c.env.DB.prepare("SELECT id, nome, usuario, senha, admin, paginas, COALESCE(bloqueado,0) AS bloqueado FROM usuarios WHERE usuario = ?")
-    .bind(usuario)
-    .first<{ id: string; nome: string; usuario: string; senha: string; admin: number; paginas: string; bloqueado: number }>();
-  if (!row || row.senha !== (b.senha || "")) return c.json({ ok: false }, 401);
-  if (row.bloqueado) return c.json({ ok: false, bloqueado: true, erro: "Acesso bloqueado. Fale com o administrador." }, 403);
-  // Cria a SESSÃO (crachá): token aleatório guardado no servidor, válido por 30 dias. É esse token
-  // que o servidor confere depois pra saber, com segurança, quem é a pessoa (sem confiar no navegador).
+// Monta a resposta de login: cria a SESSÃO (crachá) e devolve o usuário + permissões finas.
+async function respostaLogin(c: Context<{ Bindings: Env }>, row: { id: string; nome: string; usuario: string; admin: number; paginas: string }) {
   const token = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, "");
   await c.env.DB.prepare("INSERT INTO sessoes (token, usuario_id, expira_em) VALUES (?, ?, datetime('now','+30 days'))").bind(token, row.id).run();
-  // Aproveita pra limpar sessões vencidas (higiene, não trava o login se falhar).
   await c.env.DB.prepare("DELETE FROM sessoes WHERE expira_em < datetime('now')").run().catch(() => {});
-  // Carrega as permissões finas (funções + setores ver/editar) para o front esconder botões sem
-  // permissão. Se ainda não foi configurado (legado), vai vazio e o front trata como "pode tudo".
   const p = await permissoesDoUsuario(c.env, row.id).catch(() => null);
   return c.json({
     ok: true,
@@ -782,6 +772,37 @@ usuarios.post("/login", async (c) => {
       setores: p ? [...p.setores.entries()].map(([setor_id, v]) => ({ setor_id, ver: v.ver, editar: v.editar })) : [],
     },
   });
+}
+
+usuarios.post("/login", async (c) => {
+  const b = await c.req.json<{ usuario?: string; senha?: string }>().catch(() => ({}) as { usuario?: string; senha?: string });
+  const usuario = (b.usuario || "").trim().toLowerCase();
+  const row = await c.env.DB.prepare("SELECT id, nome, usuario, senha, admin, paginas, COALESCE(bloqueado,0) AS bloqueado, COALESCE(senha_definida,1) AS senha_definida FROM usuarios WHERE usuario = ?")
+    .bind(usuario)
+    .first<{ id: string; nome: string; usuario: string; senha: string; admin: number; paginas: string; bloqueado: number; senha_definida: number }>();
+  if (!row) return c.json({ ok: false }, 401);
+  if (row.bloqueado) return c.json({ ok: false, bloqueado: true, erro: "Acesso bloqueado. Fale com o administrador." }, 403);
+  // PRIMEIRO ACESSO: usuário criado sem senha definida → a própria pessoa cria a senha agora.
+  if (!row.senha_definida) return c.json({ ok: false, primeiro_acesso: true, nome: row.nome, usuario: row.usuario });
+  if (row.senha !== (b.senha || "")) return c.json({ ok: false }, 401);
+  return respostaLogin(c, row);
+});
+
+// PRIMEIRO ACESSO: a pessoa define a própria senha. Só funciona enquanto senha_definida=0 (o admin
+// criou o usuário e ainda ninguém entrou). Depois disso, só troca de senha pelo admin.
+usuarios.post("/definir-senha", async (c) => {
+  const b = await c.req.json<{ usuario?: string; senha?: string }>().catch(() => ({}) as { usuario?: string; senha?: string });
+  const usuario = (b.usuario || "").trim().toLowerCase();
+  const senha = (b.senha || "").trim();
+  if (senha.length < 4) return c.json({ ok: false, erro: "A senha precisa ter pelo menos 4 caracteres." }, 400);
+  const row = await c.env.DB.prepare("SELECT id, nome, usuario, admin, paginas, COALESCE(bloqueado,0) AS bloqueado, COALESCE(senha_definida,1) AS senha_definida FROM usuarios WHERE usuario = ?")
+    .bind(usuario)
+    .first<{ id: string; nome: string; usuario: string; admin: number; paginas: string; bloqueado: number; senha_definida: number }>();
+  if (!row) return c.json({ ok: false }, 401);
+  if (row.bloqueado) return c.json({ ok: false, bloqueado: true, erro: "Acesso bloqueado. Fale com o administrador." }, 403);
+  if (row.senha_definida) return c.json({ ok: false, ja_definida: true, erro: "Este usuário já tem senha. Faça login normalmente." }, 400);
+  await c.env.DB.prepare("UPDATE usuarios SET senha = ?, senha_definida = 1 WHERE id = ?").bind(senha, row.id).run();
+  return respostaLogin(c, row);
 });
 
 // Valida a senha do operador selecionado (usado ao iniciar produção).
