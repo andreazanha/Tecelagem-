@@ -219,16 +219,35 @@ export interface Prestador {
   id?: string;
   nome: string;
   telefone?: string | null;
-  servico?: string | null; // tassel | costura | outro
+  servico?: string | null; // tassel | costura | outro (motor de romaneio/pagamento)
   obs?: string | null;
   pix?: string | null; // chave Pix (recibo de pagamento)
   cidade?: string | null; // cidade do recebedor (BR Code Pix)
+  tipo?: string | null; // Costureira | Tassel | Terceirizado | Prestador | Outro (gestão)
+  setor?: string | null; // setor relacionado (id do setor)
+  email?: string | null;
+  ativo?: boolean;
 }
 
 export interface Costura {
   nome: string;
   valor: number;
   agrupamento?: string; // peseira_manta | almofada_capa | todas
+}
+
+// Setor + contagens/nomes (tela de Acessos). `usuarios` = do setor (setor principal).
+export interface SetorRow {
+  id: string;
+  nome: string;
+  ativo: boolean;
+  ordem: number;
+  temTela: boolean;
+  usuarios: number;
+  usuarios_nomes: string[];
+  usuarios_principal_nomes?: string[];
+  usuarios_acesso_nomes?: string[];
+  prestadores?: number;
+  prestadores_nomes?: string[];
 }
 
 // CRM — cadastro de cliente enriquecido + estatísticas.
@@ -1183,6 +1202,8 @@ export const api = {
     fetch(`/api/prestadores/${encodeURIComponent(nome)}`, { method: "DELETE" }).then((r) =>
       j<{ ok: boolean }>(r)
     ),
+  ativarPrestador: (id: string, ativo: boolean) =>
+    jsonPost(`/api/prestadores/${encodeURIComponent(id)}/ativar`, { ativo }).then((r) => j<{ ok: boolean; ativo: boolean }>(r)),
   listarCostura: () => fetch("/api/costura").then((r) => j<Costura[]>(r)),
   salvarCostura: (cst: Costura) =>
     fetch("/api/costura", {
@@ -1219,7 +1240,7 @@ export const api = {
   },
   listarUsuarios: () =>
     fetch("/api/usuarios").then((r) => j<import("./auth").Usuario[]>(r)),
-  salvarUsuario: (b: { id?: string; nome: string; usuario: string; senha?: string; admin: boolean; paginas: string[] }) =>
+  salvarUsuario: (b: { id?: string; nome: string; usuario: string; senha?: string; admin: boolean; paginas: string[]; email?: string | null }) =>
     fetch("/api/usuarios", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1233,7 +1254,7 @@ export const api = {
   // ── SETORES + ACESSO do usuário (permissões) ──────────────────────────────
   listarSetores: () =>
     fetch("/api/setores", { headers: authHeaders() }).then((r) =>
-      j<{ id: string; nome: string; ativo: boolean; ordem: number; temTela: boolean; usuarios: number; usuarios_nomes: string[] }[]>(r)),
+      j<SetorRow[]>(r)),
   salvarSetor: (b: { id?: string; nome: string; ordem?: number }) =>
     jsonPost("/api/setores", b).then((r) => j<{ id: string; nome: string; ativo: boolean }>(r)),
   ativarSetor: (id: string, ativo: boolean) =>

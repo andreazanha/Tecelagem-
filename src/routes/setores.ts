@@ -15,28 +15,44 @@ setores.get("/", async (c) => {
     "SELECT id, nome, ativo, ordem FROM setores ORDER BY ordem, nome"
   ).all<{ id: string; nome: string; ativo: number; ordem: number }>().catch(() => ({ results: [] as { id: string; nome: string; ativo: number; ordem: number }[] }));
 
-  // Usuários por setor: principal (usuarios.setor_principal) OU acesso de ver (usuario_setores.ver=1).
-  const { results: vinc } = await c.env.DB.prepare(
-    `SELECT s.setor_id AS setor_id, u.nome AS nome, u.id AS uid FROM usuario_setores s
-        JOIN usuarios u ON u.id = s.usuario_id WHERE s.ver = 1
-     UNION
-     SELECT u.setor_principal AS setor_id, u.nome AS nome, u.id AS uid FROM usuarios u
-        WHERE u.setor_principal IS NOT NULL AND u.setor_principal <> ''`
-  ).all<{ setor_id: string; nome: string; uid: string }>().catch(() => ({ results: [] as { setor_id: string; nome: string; uid: string }[] }));
+  // Usuários do setor (setor_principal) e usuários COM ACESSO (usuario_setores.ver=1) — separados.
+  const [princ, acc, prest] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT setor_principal AS setor_id, nome, id AS uid FROM usuarios WHERE setor_principal IS NOT NULL AND setor_principal <> ''"
+    ).all<{ setor_id: string; nome: string; uid: string }>().catch(() => ({ results: [] as { setor_id: string; nome: string; uid: string }[] })),
+    c.env.DB.prepare(
+      `SELECT us.setor_id AS setor_id, u.nome AS nome, u.id AS uid, COALESCE(u.setor_principal,'') AS princ
+         FROM usuario_setores us JOIN usuarios u ON u.id = us.usuario_id WHERE us.ver = 1`
+    ).all<{ setor_id: string; nome: string; uid: string; princ: string }>().catch(() => ({ results: [] as { setor_id: string; nome: string; uid: string; princ: string }[] })),
+    c.env.DB.prepare(
+      "SELECT setor AS setor_id, nome FROM prestadores WHERE setor IS NOT NULL AND setor <> '' AND COALESCE(ativo,1) = 1"
+    ).all<{ setor_id: string; nome: string }>().catch(() => ({ results: [] as { setor_id: string; nome: string }[] })),
+  ]);
 
-  const porSetor = new Map<string, Set<string>>();
-  const nomes = new Map<string, string[]>();
-  for (const v of vinc) {
-    if (!porSetor.has(v.setor_id)) { porSetor.set(v.setor_id, new Set()); nomes.set(v.setor_id, []); }
-    const set = porSetor.get(v.setor_id)!;
-    if (!set.has(v.uid)) { set.add(v.uid); nomes.get(v.setor_id)!.push(v.nome); }
-  }
-  return c.json(sts.map((s) => ({
-    id: s.id, nome: s.nome, ativo: !!s.ativo, ordem: s.ordem,
-    temTela: (SETOR_PAGINAS[s.id]?.length ?? 0) > 0,
-    usuarios: porSetor.get(s.id)?.size ?? 0,
-    usuarios_nomes: (nomes.get(s.id) || []).sort((a, b) => a.localeCompare(b)),
-  })));
+  const nomesPrinc = new Map<string, string[]>();
+  for (const v of princ.results || []) { if (!nomesPrinc.has(v.setor_id)) nomesPrinc.set(v.setor_id, []); nomesPrinc.get(v.setor_id)!.push(v.nome); }
+  // "Com acesso" = tem ver=1 e o setor NÃO é o principal dele (senão duplicaria com "do setor").
+  const nomesAcesso = new Map<string, string[]>();
+  for (const v of acc.results || []) { if (v.princ === v.setor_id) continue; if (!nomesAcesso.has(v.setor_id)) nomesAcesso.set(v.setor_id, []); nomesAcesso.get(v.setor_id)!.push(v.nome); }
+  const nomesPrest = new Map<string, string[]>();
+  for (const v of prest.results || []) { if (!nomesPrest.has(v.setor_id)) nomesPrest.set(v.setor_id, []); nomesPrest.get(v.setor_id)!.push(v.nome); }
+  const ord = (a: string, b: string) => a.localeCompare(b);
+
+  return c.json(sts.map((s) => {
+    const pr = (nomesPrinc.get(s.id) || []).sort(ord);
+    const ac = (nomesAcesso.get(s.id) || []).sort(ord);
+    const pe = (nomesPrest.get(s.id) || []).sort(ord);
+    return {
+      id: s.id, nome: s.nome, ativo: !!s.ativo, ordem: s.ordem,
+      temTela: (SETOR_PAGINAS[s.id]?.length ?? 0) > 0,
+      usuarios: pr.length,                      // do setor (principal) — usado na contagem principal
+      usuarios_nomes: pr,                        // compat: nomes dos usuários do setor
+      usuarios_principal_nomes: pr,
+      usuarios_acesso_nomes: ac,
+      prestadores: pe.length,
+      prestadores_nomes: pe,
+    };
+  }));
 });
 
 // CRIA / RENOMEIA setor (admin ou quem tem admin.setores).

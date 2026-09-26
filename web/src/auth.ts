@@ -14,6 +14,8 @@ export interface Usuario {
   perm_configurado?: boolean;
   funcoes?: string[];
   setores?: AcessoSetor[];
+  email?: string | null;
+  ultimo_acesso?: string | null; // MAX(sessoes.criado_em) — derivado, não é login novo
 }
 
 // Telas controláveis por usuário (chaves usadas nas permissões).

@@ -22,6 +22,7 @@ import { PainelGestor } from "./pages/PainelGestor";
 import { Romaneios } from "./pages/Romaneios";
 import { Producao } from "./pages/Producao";
 import { Pcp } from "./pages/Pcp";
+import { Acessos } from "./pages/Acessos";
 import { ControleTecelagem } from "./pages/ControleTecelagem";
 import { Passadoria } from "./pages/Passadoria";
 import { Corte } from "./pages/Corte";
@@ -48,9 +49,10 @@ import "./styles.css";
 
 // Protege uma página: exige login e a permissão da tela. Sem permissão, manda
 // para a primeira página liberada do usuário.
-function Protegido({ page, children }: { page?: string | string[]; children: React.ReactNode }) {
+function Protegido({ page, admin, children }: { page?: string | string[]; admin?: boolean; children: React.ReactNode }) {
   const u = getUser();
   if (!u) return <Navigate to="/login" replace />;
+  if (admin && !u.admin) return <Navigate to={primeiraPagina(u)} replace />;   // área só do dono (Gestão)
   const ok = !page || (Array.isArray(page) ? podeAlgum(u, page) : pode(u, page));
   if (!ok) return <Navigate to={primeiraPagina(u)} replace />;
   return <>{children}</>;
@@ -126,6 +128,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 
           <Route path="/romaneios" element={<Protegido page="romaneios"><Romaneios /></Protegido>} />
           <Route path="/pcp" element={<Protegido page="pedidos"><Pcp /></Protegido>} />
+          <Route path="/acessos" element={<Protegido admin><Acessos /></Protegido>} />
           <Route path="/producao" element={<Protegido page="producao"><Producao /></Protegido>} />
           <Route path="/controle-tecelagem" element={<Protegido page="producao"><ControleTecelagem /></Protegido>} />
           <Route path="/passadoria" element={<Protegido page="passadoria"><Passadoria /></Protegido>} />

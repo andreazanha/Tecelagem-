@@ -546,24 +546,46 @@ export const prestadores = new Hono<{ Bindings: Env }>();
 
 prestadores.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT id, nome, telefone, servico, obs, pix, cidade FROM prestadores ORDER BY nome"
-  ).all();
-  return c.json(results);
+    "SELECT id, nome, telefone, servico, obs, pix, cidade, tipo, setor, email, COALESCE(ativo,1) AS ativo FROM prestadores ORDER BY nome"
+  ).all<Record<string, unknown>>();
+  return c.json(results.map((r) => ({ ...r, ativo: !!(r.ativo as number) })));
 });
 
+// TIPO (gestão) → serviço (motor de romaneio/pagamento): mantém costura/tassel funcionando.
+function servicoDoTipo(tipo?: string, servicoAtual?: string | null): string | null {
+  const t = (tipo || "").toLowerCase();
+  if (t === "costureira") return "costura";
+  if (t === "tassel") return "tassel";
+  if (t) return "outro";
+  return servicoAtual ?? null; // sem tipo: preserva o serviço que já estava
+}
+
 prestadores.post("/", async (c) => {
-  const b = await c.req.json<{ id?: string; nome?: string; telefone?: string; servico?: string; obs?: string; pix?: string; cidade?: string }>();
+  const b = await c.req.json<{ id?: string; nome?: string; telefone?: string; servico?: string; obs?: string; pix?: string; cidade?: string; tipo?: string; setor?: string; email?: string; ativo?: boolean }>();
   const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
   const id = b.id || crypto.randomUUID();
+  const servico = servicoDoTipo(b.tipo, b.servico ?? null);
+  const ativo = b.ativo === false ? 0 : 1;
   await c.env.DB.prepare(
-    `INSERT INTO prestadores (id, nome, telefone, servico, obs, pix, cidade) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO prestadores (id, nome, telefone, servico, obs, pix, cidade, tipo, setor, email, ativo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(nome) DO UPDATE SET telefone = excluded.telefone, servico = excluded.servico, obs = excluded.obs,
-       pix = excluded.pix, cidade = excluded.cidade`
+       pix = excluded.pix, cidade = excluded.cidade, tipo = excluded.tipo, setor = excluded.setor,
+       email = excluded.email, ativo = excluded.ativo`
   )
-    .bind(id, nome, b.telefone || null, b.servico || null, b.obs || null, (b.pix || "").trim() || null, (b.cidade || "").trim() || null)
+    .bind(id, nome, b.telefone || null, servico, b.obs || null, (b.pix || "").trim() || null, (b.cidade || "").trim() || null,
+      (b.tipo || "").trim() || null, (b.setor || "").trim() || null, (b.email || "").trim() || null, ativo)
     .run();
-  return c.json({ id, nome, telefone: b.telefone || null, servico: b.servico || null, obs: b.obs || null, pix: b.pix || null, cidade: b.cidade || null }, 201);
+  return c.json({ id, nome, telefone: b.telefone || null, servico, obs: b.obs || null, pix: b.pix || null, cidade: b.cidade || null, tipo: b.tipo || null, setor: b.setor || null, email: b.email || null, ativo: !!ativo }, 201);
+});
+
+// ATIVAR / DESATIVAR (preserva histórico — nunca apaga quem já trabalhou).
+prestadores.post("/:id/ativar", async (c) => {
+  const b = await c.req.json<{ ativo?: boolean }>().catch(() => ({} as { ativo?: boolean }));
+  const ativo = b.ativo === false ? 0 : 1;
+  await c.env.DB.prepare("UPDATE prestadores SET ativo = ? WHERE id = ?").bind(ativo, c.req.param("id")).run();
+  return c.json({ ok: true, ativo: !!ativo });
 });
 
 prestadores.delete("/:nome", async (c) => {
@@ -682,15 +704,18 @@ usuarios.get("/", async (c) => {
   // Inclui a senha: o cadastro é só do admin e as senhas ficam em texto, então o
   // gestor consegue conferir a senha que definiu para cada usuário.
   const { results } = await c.env.DB.prepare(
-    "SELECT id, nome, usuario, senha, admin, paginas, COALESCE(bloqueado,0) AS bloqueado, setor_principal, COALESCE(perm_configurado,0) AS perm_configurado FROM usuarios ORDER BY nome"
-  ).all<{ id: string; nome: string; usuario: string; senha: string; admin: number; paginas: string; bloqueado: number; setor_principal: string | null; perm_configurado: number }>();
+    `SELECT u.id, u.nome, u.usuario, u.senha, u.admin, u.paginas, COALESCE(u.bloqueado,0) AS bloqueado,
+            u.setor_principal, COALESCE(u.perm_configurado,0) AS perm_configurado, u.email,
+            (SELECT MAX(s.criado_em) FROM sessoes s WHERE s.usuario_id = u.id) AS ultimo_acesso
+       FROM usuarios u ORDER BY u.nome`
+  ).all<{ id: string; nome: string; usuario: string; senha: string; admin: number; paginas: string; bloqueado: number; setor_principal: string | null; perm_configurado: number; email: string | null; ultimo_acesso: string | null }>();
   return c.json(
-    results.map((u) => ({ id: u.id, nome: u.nome, usuario: u.usuario, senha: u.senha, admin: !!u.admin, paginas: JSON.parse(u.paginas || "[]"), bloqueado: !!u.bloqueado, setor_principal: u.setor_principal || null, perm_configurado: !!u.perm_configurado }))
+    results.map((u) => ({ id: u.id, nome: u.nome, usuario: u.usuario, senha: u.senha, admin: !!u.admin, paginas: JSON.parse(u.paginas || "[]"), bloqueado: !!u.bloqueado, setor_principal: u.setor_principal || null, perm_configurado: !!u.perm_configurado, email: u.email || null, ultimo_acesso: u.ultimo_acesso || null }))
   );
 });
 
 usuarios.post("/", async (c) => {
-  const b = await c.req.json<{ id?: string; nome?: string; usuario?: string; senha?: string; admin?: boolean; paginas?: string[] }>();
+  const b = await c.req.json<{ id?: string; nome?: string; usuario?: string; senha?: string; admin?: boolean; paginas?: string[]; email?: string }>();
   const nome = (b.nome || "").trim();
   const usuario = (b.usuario || "").trim().toLowerCase();
   if (!nome || !usuario) return c.json({ error: "nome e usuário são obrigatórios" }, 400);
@@ -702,13 +727,14 @@ usuarios.post("/", async (c) => {
   const id = ex?.id || b.id || crypto.randomUUID();
   const paginas = JSON.stringify(Array.isArray(b.paginas) ? b.paginas : []);
   const admin = b.admin ? 1 : 0;
+  const email = (b.email || "").trim() || null;
   await c.env.DB.prepare(
-    `INSERT INTO usuarios (id, nome, usuario, senha, admin, paginas) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(usuario) DO UPDATE SET nome = excluded.nome, senha = excluded.senha, admin = excluded.admin, paginas = excluded.paginas`
+    `INSERT INTO usuarios (id, nome, usuario, senha, admin, paginas, email) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(usuario) DO UPDATE SET nome = excluded.nome, senha = excluded.senha, admin = excluded.admin, paginas = excluded.paginas, email = excluded.email`
   )
-    .bind(id, nome, usuario, senha, admin, paginas)
+    .bind(id, nome, usuario, senha, admin, paginas, email)
     .run();
-  return c.json({ id, nome, usuario, admin: !!admin, paginas: JSON.parse(paginas) }, 201);
+  return c.json({ id, nome, usuario, admin: !!admin, paginas: JSON.parse(paginas), email }, 201);
 });
 
 usuarios.delete("/:id", async (c) => {

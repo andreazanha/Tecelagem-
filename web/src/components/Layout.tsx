@@ -216,8 +216,7 @@ const GRUPOS: MenuGrupo[] = [
     id: "gestao", icon: "🗝️", label: "Gestão", itens: [
       { to: "/dashboard", icon: "📺", label: "Painel Geral", admin: true },
       { to: "/relatorio-vendas", icon: "🏆", label: "Vendas (o que vende mais)", admin: true },
-      { to: "/cadastros?aba=usuarios", icon: "🔐", label: "Usuários e Permissões", admin: true },
-      { to: "/cadastros?aba=setores", icon: "🏢", label: "Setores", admin: true },
+      { to: "/acessos", icon: "🔐", label: "Usuários e acessos", admin: true },
       // Relatórios (ainda em breve) agora vivem dentro da Gestão.
       { icon: "🏭", label: "Relatório de Produção", soon: true },
       { icon: "⏰", label: "Relatório de Atrasos", soon: true },
