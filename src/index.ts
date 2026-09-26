@@ -19,6 +19,7 @@ import { atendimento, followupAtendimento, sincronizarPedidos, posVendaRecompra,
 import { assistente } from "./routes/assistente";
 import { relatorios } from "./routes/relatorios";
 import { tecelagem } from "./routes/tecelagem";
+import { setores } from "./routes/setores";
 
 export interface Env {
   DB: D1Database;
@@ -59,6 +60,7 @@ app.route("/api/prestadores", prestadores);
 app.route("/api/costura", costura);
 app.route("/api/operadores", operadores);
 app.route("/api/usuarios", usuarios);
+app.route("/api/setores", setores);
 app.route("/api/producao", producao);
 app.route("/api/expedicao", expedicao);
 app.route("/api/romaneios", romaneios);

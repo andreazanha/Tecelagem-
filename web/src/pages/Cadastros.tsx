@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type Material, type MaterialCategoriaDef, type CompraSugestao, type Colecao, type ColecaoProduto, type BulkResult } from "../api";
 import { getUser, PAGINAS, type Usuario } from "../auth";
+import { CATEGORIAS_FUNCAO, TODAS_FUNCOES, TELAS_GERAIS } from "../permissoes";
 
-type AbaCad = "produtos" | "tipos-fio" | "tamanhos" | "materiais" | "fornecedores" | "operadores" | "usuarios";
-const ABAS_CAD: AbaCad[] = ["produtos", "tipos-fio", "tamanhos", "materiais", "fornecedores", "operadores", "usuarios"];
+type AbaCad = "produtos" | "tipos-fio" | "tamanhos" | "materiais" | "fornecedores" | "operadores" | "setores" | "usuarios";
+const ABAS_CAD: AbaCad[] = ["produtos", "tipos-fio", "tamanhos", "materiais", "fornecedores", "operadores", "setores", "usuarios"];
 const ABA_LABEL: Record<AbaCad, string> = {
   produtos: "Produtos",
   "tipos-fio": "Fios",
@@ -12,6 +13,7 @@ const ABA_LABEL: Record<AbaCad, string> = {
   materiais: "Materiais",
   fornecedores: "Fornecedores",
   operadores: "Operadores",
+  setores: "Setores",
   usuarios: "Usuários",
 };
 
@@ -154,6 +156,7 @@ export function Cadastros() {
       {aba === "materiais" && <AbaMateriais />}
       {aba === "fornecedores" && <AbaFornecedores />}
       {aba === "operadores" && <OperadoresCadastro />}
+      {aba === "setores" && ehAdmin && <SetoresCadastro />}
       {aba === "usuarios" && ehAdmin && <UsuariosCadastro />}
     </>
   );
@@ -2846,154 +2849,370 @@ function OperadoresCadastro() {
   );
 }
 
-// Telas agrupadas como no menu lateral — facilita escolher o que cada usuário acessa.
-const GRUPOS_PERM: { titulo: string; keys: string[] }[] = [
-  { titulo: "Comercial", keys: ["pedidos", "todos-pedidos"] },
-  { titulo: "CRM / Atendimento", keys: ["atendimento", "atendimento-gestor", "comercial", "representantes", "vendas-dashboard", "treinar-ia"] },
-  { titulo: "Produção", keys: ["producao", "passadoria", "corte", "costura", "revisao"] },
-  { titulo: "Estoque e Materiais", keys: ["estoque", "produtos"] },
-  { titulo: "Expedição", keys: ["expedicao", "transporte", "romaneios"] },
-  { titulo: "Fiscal e Financeiro", keys: ["fiscal"] },
-  { titulo: "Cadastros", keys: ["cadastros"] },
-  { titulo: "Painéis (TV)", keys: ["tv-dashboard", "tv-tecelagem", "tv-costura", "tv-revisao", "tv-novo-pedido"] },
-];
-const labelDaPagina = (k: string) => PAGINAS.find((p) => p.key === k)?.label || k;
+// ── Interruptor (toggle) no padrão do sistema ─────────────────────────────────
+function Sw({ on, onClick, titulo }: { on: boolean; onClick: () => void; titulo?: string }) {
+  return (
+    <button type="button" className={"sw" + (on ? " on" : " off")} onClick={onClick} title={titulo} aria-pressed={on} />
+  );
+}
 
-// ── Usuários (login + permissões de telas) — somente admin ────────────────────
-function UsuariosCadastro() {
-  const [itens, setItens] = useState<Usuario[]>([]);
-  const vazio = { nome: "", usuario: "", senha: "", admin: false, paginas: [] as string[] };
-  const [novo, setNovo] = useState<{ nome: string; usuario: string; senha: string; admin: boolean; paginas: string[] }>(vazio);
+type SetorRow = { id: string; nome: string; ativo: boolean; ordem: number; temTela: boolean; usuarios: number; usuarios_nomes: string[] };
+
+// ── SETORES ───────────────────────────────────────────────────────────────────
+function SetoresCadastro() {
+  const [itens, setItens] = useState<SetorRow[]>([]);
+  const [nome, setNome] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
-  const [verSenha, setVerSenha] = useState<Record<string, boolean>>({});
+  const [verUsuarios, setVerUsuarios] = useState<Record<string, boolean>>({});
 
-  function recarregar() {
-    api.listarUsuarios().then(setItens).catch(() => {});
-  }
+  function recarregar() { api.listarSetores().then(setItens).catch(() => {}); }
   useEffect(recarregar, []);
 
-  function toggle(key: string) {
-    setNovo((f) => ({ ...f, paginas: f.paginas.includes(key) ? f.paginas.filter((k) => k !== key) : [...f.paginas, key] }));
-  }
-  // marca/desmarca todas as telas de um grupo de uma vez
-  function marcarGrupo(keys: string[], on: boolean) {
-    setNovo((f) => {
-      const set = new Set(f.paginas);
-      keys.forEach((k) => (on ? set.add(k) : set.delete(k)));
-      return { ...f, paginas: [...set] };
-    });
-  }
   async function salvar() {
-    if (!novo.nome.trim() || !novo.usuario.trim()) return alert("Informe nome e usuário.");
-    if (!editId && !novo.senha.trim()) return alert("Informe uma senha.");
+    const n = nome.trim();
+    if (!n) return alert("Informe o nome do setor.");
     try {
-      await api.salvarUsuario({ id: editId || undefined, nome: novo.nome.trim(), usuario: novo.usuario.trim(), senha: novo.senha.trim() || undefined, admin: novo.admin, paginas: novo.paginas });
-      setNovo(vazio);
-      setEditId(null);
+      await api.salvarSetor({ id: editId || undefined, nome: n });
+      setNome(""); setEditId(null); recarregar();
+    } catch (e) { alert((e as Error).message); }
+  }
+  async function ativar(s: SetorRow) {
+    try { await api.ativarSetor(s.id, !s.ativo); recarregar(); } catch (e) { alert((e as Error).message); }
+  }
+  async function remover(s: SetorRow) {
+    if (s.usuarios > 0) return alert(`"${s.nome}" tem ${s.usuarios} usuário(s) vinculado(s). Setor com usuários/histórico não pode ser apagado — apenas desativado.`);
+    if (!confirm(`Apagar o setor "${s.nome}"? (sem usuários vinculados)`)) return;
+    try {
+      const r = await api.excluirSetor(s.id);
+      if (r.error) return alert(r.desativar ? `Setor em uso por ${r.usuarios} usuário(s). Desative em vez de apagar.` : r.error);
       recarregar();
-    } catch (e) {
-      alert((e as Error).message);
-    }
-  }
-  function editar(u: Usuario) {
-    setEditId(u.id);
-    // já traz a senha atual preenchida, pra o gestor ver/ajustar
-    setNovo({ nome: u.nome, usuario: u.usuario, senha: u.senha || "", admin: u.admin, paginas: u.paginas });
-  }
-  async function remover(u: Usuario) {
-    if (u.usuario === "admin") return alert("O usuário admin não pode ser removido.");
-    if (!confirm(`Remover ${u.nome}?`)) return;
-    await api.removerUsuario(u.id);
-    recarregar();
-  }
-  async function bloquear(u: Usuario) {
-    if (u.usuario === "admin") return alert("O usuário admin não pode ser bloqueado.");
-    const vaiBloquear = !u.bloqueado;
-    if (vaiBloquear && !confirm(`Bloquear o acesso de ${u.nome}?\n\nEle é deslogado na hora e não consegue mais entrar (o cadastro continua salvo).`)) return;
-    try { await api.bloquearUsuario(u.id, vaiBloquear); recarregar(); } catch (e) { alert((e as Error).message); }
+    } catch (e) { alert((e as Error).message); }
   }
 
   return (
     <>
       <div className="card pad" style={{ marginBottom: 16 }}>
-        <h2>{editId ? "Editar usuário" : "Novo usuário"}</h2>
+        <h2>{editId ? "Renomear setor" : "Novo setor"}</h2>
         <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-          Defina o login e marque as telas que essa pessoa pode usar. Admin enxerga tudo.
-          {editId && " A senha atual já aparece no campo — é só editar se quiser trocar."}
+          Cadastre os setores da empresa. Setor com usuários ou histórico não pode ser apagado — apenas <strong>desativado</strong>.
         </p>
         <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap" }}>
-          <input placeholder="Nome" value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} style={{ minWidth: 180 }} />
-          <input placeholder="Usuário (login)" value={novo.usuario} onChange={(e) => setNovo({ ...novo, usuario: e.target.value })} style={{ minWidth: 160 }} />
-          <input placeholder={editId ? "Senha (manter)" : "Senha"} type="text" value={novo.senha} onChange={(e) => setNovo({ ...novo, senha: e.target.value })} style={{ minWidth: 140 }} />
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}>
-            <input type="checkbox" checked={novo.admin} onChange={(e) => setNovo({ ...novo, admin: e.target.checked })} /> Admin (tudo)
-          </label>
-        </div>
-        {!novo.admin && (
-          <div style={{ marginTop: 14 }}>
-            <div className="campo-l">TELAS LIBERADAS PARA ESTE USUÁRIO</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 8 }}>
-              {GRUPOS_PERM.map((g) => {
-                const marcados = g.keys.filter((k) => novo.paginas.includes(k)).length;
-                const todos = marcados === g.keys.length;
-                return (
-                  <div key={g.titulo} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: "8px 10px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <strong style={{ fontSize: 12.5 }}>{g.titulo}</strong>
-                      <span className="muted" style={{ fontSize: 11 }}>{marcados}/{g.keys.length}</span>
-                      <button type="button" className="btn btn-soft" style={{ marginLeft: "auto", padding: "3px 9px", fontSize: 11 }} onClick={() => marcarGrupo(g.keys, !todos)}>
-                        {todos ? "Desmarcar todos" : "Marcar todos"}
-                      </button>
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {g.keys.map((k) => (
-                        <label key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 600, background: novo.paginas.includes(k) ? "#eef2ff" : "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px" }}>
-                          <input type="checkbox" checked={novo.paginas.includes(k)} onChange={() => toggle(k)} />
-                          {k.startsWith("tv-") ? "📺 " : ""}{labelDaPagina(k)}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-        <div className="row-gap" style={{ marginTop: 14 }}>
+          <input placeholder="Nome do setor" value={nome} onChange={(e) => setNome(e.target.value)} style={{ minWidth: 240 }} onKeyDown={(e) => e.key === "Enter" && salvar()} />
           <button className="btn btn-primary" onClick={salvar}>{editId ? "Salvar" : "＋ Adicionar"}</button>
-          {editId && <button className="btn" onClick={() => { setEditId(null); setNovo(vazio); }}>Cancelar</button>}
+          {editId && <button className="btn" onClick={() => { setEditId(null); setNome(""); }}>Cancelar</button>}
         </div>
       </div>
 
-      <table className="table">
-        <thead><tr><th>Nome</th><th>Usuário</th><th>Senha</th><th>Acesso</th><th></th></tr></thead>
-        <tbody>
-          {itens.length === 0 && <tr><td colSpan={5} className="muted">Nenhum usuário ainda.</td></tr>}
-          {itens.map((u) => (
-            <tr key={u.id}>
-              <td data-label="Nome"><strong>{u.nome}</strong>{u.bloqueado && <span className="chip" style={{ background: "#fee2e2", color: "#b91c1c", marginLeft: 6, fontSize: 11, fontWeight: 700 }}>🔒 bloqueado</span>}</td>
-              <td data-label="Usuário">{u.usuario}</td>
-              <td data-label="Senha">
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontFamily: "monospace", fontSize: 13.5, letterSpacing: verSenha[u.id] ? "normal" : "2px" }}>
-                    {verSenha[u.id] ? (u.senha || "—") : "••••••"}
-                  </span>
-                  <button className="icon-btn" title={verSenha[u.id] ? "Ocultar senha" : "Mostrar senha"}
-                    onClick={() => setVerSenha((s) => ({ ...s, [u.id]: !s[u.id] }))}>
-                    {verSenha[u.id] ? "🙈" : "👁"}
-                  </button>
-                </span>
-              </td>
-              <td data-label="Acesso">{u.admin ? "Admin (tudo)" : u.paginas.length ? u.paginas.length + " tela(s)" : "nenhuma"}</td>
-              <td>
-                <button className="icon-btn" title="Editar" onClick={() => editar(u)}>✎</button>
-                {u.usuario !== "admin" && <button className="icon-btn" title={u.bloqueado ? "Desbloquear acesso" : "Bloquear acesso (desloga na hora)"} onClick={() => bloquear(u)}>{u.bloqueado ? "🔓" : "🔒"}</button>}
-                <button className="icon-btn" title="Remover" onClick={() => remover(u)}>✕</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="card">
+        <table className="table">
+          <thead><tr><th>Setor</th><th>Status</th><th>Usuários</th><th></th></tr></thead>
+          <tbody>
+            {itens.length === 0 && <tr><td colSpan={4} className="muted">Nenhum setor ainda.</td></tr>}
+            {itens.map((s) => (
+              <tr key={s.id} style={{ opacity: s.ativo ? 1 : 0.6 }}>
+                <td data-label="Setor"><strong>{s.nome}</strong>{!s.temTela && <span className="chip" style={{ marginLeft: 6, fontSize: 10 }}>sem tela</span>}</td>
+                <td data-label="Status">
+                  {s.ativo
+                    ? <span className="chip" style={{ background: "#ecfdf5", color: "#047857" }}>● ativo</span>
+                    : <span className="chip" style={{ background: "#fee2e2", color: "#b91c1c" }}>○ inativo</span>}
+                </td>
+                <td data-label="Usuários">
+                  <span className="chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{s.usuarios} usuário{s.usuarios === 1 ? "" : "s"}</span>
+                  {s.usuarios > 0 && (
+                    <button className="icon-btn" style={{ marginLeft: 6 }} title="Ver quem" onClick={() => setVerUsuarios((v) => ({ ...v, [s.id]: !v[s.id] }))}>
+                      {verUsuarios[s.id] ? "▲" : "▼"}
+                    </button>
+                  )}
+                  {verUsuarios[s.id] && s.usuarios_nomes.length > 0 && (
+                    <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>{s.usuarios_nomes.join(", ")}</div>
+                  )}
+                </td>
+                <td>
+                  <button className="icon-btn" title="Renomear" onClick={() => { setEditId(s.id); setNome(s.nome); }}>✎</button>
+                  <button className="icon-btn" title={s.ativo ? "Desativar" : "Ativar"} onClick={() => ativar(s)}>{s.ativo ? "⏸" : "▶"}</button>
+                  <button className="icon-btn" title="Apagar (só sem usuários)" onClick={() => remover(s)}>✕</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// ── USUÁRIOS + PERMISSÕES (somente admin) ─────────────────────────────────────
+type AcessoMap = Record<string, { ver: boolean; editar: boolean }>;
+const labelGeral = (k: string) => TELAS_GERAIS.find((t) => t.key === k)?.label || PAGINAS.find((p) => p.key === k)?.label || k;
+
+function UsuariosCadastro() {
+  const [itens, setItens] = useState<Usuario[]>([]);
+  const [setores, setSetores] = useState<SetorRow[]>([]);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [aberto, setAberto] = useState(false);           // formulário aberto?
+
+  // identidade
+  const [nome, setNome] = useState("");
+  const [usuario, setUsuario] = useState("");
+  const [senha, setSenha] = useState("");
+  const [admin, setAdmin] = useState(false);
+  // acesso
+  const [principal, setPrincipal] = useState("");
+  const [acesso, setAcesso] = useState<AcessoMap>({});
+  const [gerais, setGerais] = useState<Set<string>>(new Set());
+  const [funcoes, setFuncoes] = useState<Set<string>>(new Set());
+  const [catAberta, setCatAberta] = useState<Record<string, boolean>>({ pedidos: true });
+
+  function recarregar() {
+    api.listarUsuarios().then(setItens).catch(() => {});
+    api.listarSetores().then(setSetores).catch(() => {});
+  }
+  useEffect(recarregar, []);
+
+  const setoresAtivos = () => setores.filter((s) => s.ativo);
+  const nomeSetor = (id: string | null | undefined) => setores.find((s) => s.id === id)?.nome || (id || "—");
+
+  function limpar() {
+    setEditId(null); setAberto(false);
+    setNome(""); setUsuario(""); setSenha(""); setAdmin(false);
+    setPrincipal(""); setAcesso({}); setGerais(new Set()); setFuncoes(new Set()); setCatAberta({ pedidos: true });
+  }
+  function novo() {
+    limpar(); setAberto(true);
+    // novo usuário começa sem nada marcado (o gestor escolhe).
+  }
+
+  async function editar(u: Usuario) {
+    setEditId(u.id); setAberto(true);
+    setNome(u.nome); setUsuario(u.usuario); setSenha(u.senha || ""); setAdmin(u.admin);
+    // carrega o acesso salvo
+    let a: { configurado: boolean; setor_principal: string | null; setores: { setor_id: string; ver: boolean; editar: boolean }[]; funcoes: string[] } | null = null;
+    try { a = await api.obterAcessoUsuario(u.id); } catch { a = null; }
+    const mapa: AcessoMap = {};
+    const ger = new Set<string>();
+    let fns = new Set<string>();
+    if (a && a.configurado) {
+      for (const s of a.setores) mapa[s.setor_id] = { ver: s.ver, editar: s.editar };
+      fns = new Set(a.funcoes);
+      for (const k of u.paginas || []) if (TELAS_GERAIS.some((t) => t.key === k)) ger.add(k);
+      setPrincipal(a.setor_principal || "");
+    } else {
+      // LEGADO: pré-preenche pelo que ele já enxerga, para salvar NÃO tirar acesso.
+      const pgs = new Set(u.paginas || []);
+      for (const s of setores) {
+        const telas = SETOR_PAGINAS[s.id] || [];
+        const ver = telas.length > 0 && telas.every((t) => pgs.has(t));
+        if (ver) mapa[s.id] = { ver: true, editar: true };
+      }
+      for (const k of pgs) if (TELAS_GERAIS.some((t) => t.key === k)) ger.add(k);
+      fns = new Set(TODAS_FUNCOES);           // legado podia tudo
+      setPrincipal(u.setor_principal || "");
+    }
+    setAcesso(mapa); setGerais(ger); setFuncoes(fns);
+  }
+
+  // toggles de setor
+  function setSetor(id: string, campo: "ver" | "editar", val: boolean) {
+    setAcesso((m) => {
+      const cur = m[id] || { ver: false, editar: false };
+      const next = { ...cur, [campo]: val };
+      if (campo === "ver" && !val) next.editar = false;   // sem ver → sem editar
+      if (campo === "editar" && val) next.ver = true;     // editar implica ver
+      return { ...m, [id]: next };
+    });
+  }
+  function toggleGeral(k: string) {
+    setGerais((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  }
+  // toggles de função
+  function toggleFuncao(k: string) {
+    setFuncoes((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  }
+  function marcarCategoria(keys: string[], on: boolean) {
+    setFuncoes((s) => { const n = new Set(s); keys.forEach((k) => (on ? n.add(k) : n.delete(k))); return n; });
+  }
+  function marcarTudo(on: boolean) { setFuncoes(on ? new Set(TODAS_FUNCOES) : new Set()); }
+
+  async function salvar() {
+    if (!nome.trim() || !usuario.trim()) return alert("Informe nome e usuário.");
+    if (!editId && !senha.trim()) return alert("Informe uma senha.");
+    try {
+      const saved = await api.salvarUsuario({ id: editId || undefined, nome: nome.trim(), usuario: usuario.trim(), senha: senha.trim() || undefined, admin, paginas: [] });
+      const uid = saved.id || editId;
+      if (uid) {
+        const setoresArr = Object.entries(acesso)
+          .filter(([, v]) => v.ver || v.editar)
+          .map(([setor_id, v]) => ({ setor_id, ver: v.ver, editar: v.editar }));
+        await api.salvarAcessoUsuario(uid, {
+          setor_principal: principal || null,
+          setores: setoresArr,
+          funcoes: [...funcoes],
+          telas_gerais: [...gerais],
+        });
+      }
+      limpar(); recarregar();
+    } catch (e) { alert((e as Error).message); }
+  }
+  async function remover(u: Usuario) {
+    if (u.usuario === "admin") return alert("O usuário admin não pode ser removido.");
+    if (!confirm(`Remover ${u.nome}?`)) return;
+    await api.removerUsuario(u.id); recarregar();
+  }
+  async function bloquear(u: Usuario) {
+    if (u.usuario === "admin") return alert("O usuário admin não pode ser bloqueado.");
+    const vai = !u.bloqueado;
+    if (vai && !confirm(`Bloquear o acesso de ${u.nome}?\n\nEle é deslogado na hora e não consegue mais entrar (o cadastro continua salvo).`)) return;
+    try { await api.bloquearUsuario(u.id, vai); recarregar(); } catch (e) { alert((e as Error).message); }
+  }
+
+  return (
+    <>
+      {!aberto && (
+        <div className="row-gap" style={{ marginBottom: 14 }}>
+          <button className="btn btn-primary" onClick={novo}>＋ Novo usuário</button>
+        </div>
+      )}
+
+      {aberto && (
+        <div className="card pad" style={{ marginBottom: 16 }}>
+          <h2>{editId ? `Editar usuário — ${nome || ""}` : "Novo usuário"}</h2>
+          <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+            Defina o login, o setor principal, os setores que a pessoa acessa (ver/editar) e as funções liberadas.
+            {editId && " A senha atual já aparece — edite só se quiser trocar."}
+          </p>
+
+          <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap" }}>
+            <input placeholder="Nome" value={nome} onChange={(e) => setNome(e.target.value)} style={{ minWidth: 180 }} />
+            <input placeholder="Usuário (login)" value={usuario} onChange={(e) => setUsuario(e.target.value)} style={{ minWidth: 160 }} />
+            <input placeholder={editId ? "Senha (manter)" : "Senha"} type="text" value={senha} onChange={(e) => setSenha(e.target.value)} style={{ minWidth: 140 }} />
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}>
+              <input type="checkbox" checked={admin} onChange={(e) => setAdmin(e.target.checked)} /> 👑 Admin (tudo)
+            </label>
+          </div>
+
+          {admin ? (
+            <p className="muted" style={{ marginTop: 14, fontSize: 13 }}>👑 Admin enxerga e executa <strong>tudo</strong> — setores, telas e funções. As permissões abaixo não se aplicam.</p>
+          ) : (
+            <>
+              {/* SETOR PRINCIPAL */}
+              <div className="campo-l" style={{ marginTop: 18 }}>SETOR PRINCIPAL <span className="muted" style={{ fontWeight: 600, letterSpacing: 0 }}>— onde a pessoa trabalha normalmente</span></div>
+              <select value={principal} onChange={(e) => setPrincipal(e.target.value)} style={{ minWidth: 220, marginTop: 6 }}>
+                <option value="">—</option>
+                {setoresAtivos().map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
+              </select>
+
+              {/* SETORES: VER / EDITAR */}
+              <div className="campo-l" style={{ marginTop: 18 }}>SETORES QUE ESTE USUÁRIO PODE ACESSAR</div>
+              <div className="perm-box">
+                <div className="perm-srow perm-srow-head">
+                  <span>Setor</span><span>Visualizar</span><span>Editar</span>
+                </div>
+                {setoresAtivos().map((s) => {
+                  const a = acesso[s.id] || { ver: false, editar: false };
+                  const ehPrinc = principal === s.id;
+                  return (
+                    <div key={s.id} className={"perm-srow" + (ehPrinc ? " princ" : "")}>
+                      <span className="perm-sname">{s.nome}{ehPrinc && <span className="perm-badge">PRINCIPAL</span>}</span>
+                      <span className="perm-tog"><Sw on={a.ver} onClick={() => setSetor(s.id, "ver", !a.ver)} titulo="Visualizar" /></span>
+                      <span className="perm-tog"><Sw on={a.editar} onClick={() => setSetor(s.id, "editar", !a.editar)} titulo="Editar" /></span>
+                    </div>
+                  );
+                })}
+                <p className="muted" style={{ fontSize: 12, margin: "8px 2px 0" }}>💡 "Visualizar" deixa abrir a tela do setor. "Editar" libera alterar lá dentro. Sem visualizar, a tela nem aparece no menu.</p>
+              </div>
+
+              {/* TELAS GERAIS */}
+              <div className="campo-l" style={{ marginTop: 18 }}>OUTRAS TELAS (não ligadas a um setor)</div>
+              <div className="perm-chips">
+                {TELAS_GERAIS.map((t) => (
+                  <label key={t.key} className={"perm-chip" + (gerais.has(t.key) ? " on" : "")}>
+                    <input type="checkbox" checked={gerais.has(t.key)} onChange={() => toggleGeral(t.key)} />
+                    {t.tv ? "📺 " : ""}{t.label}
+                  </label>
+                ))}
+              </div>
+
+              {/* PERMISSÕES DE FUNÇÃO */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 20, flexWrap: "wrap" }}>
+                <div className="campo-l" style={{ margin: 0 }}>PERMISSÕES DE FUNÇÕES (botões e ações)</div>
+                <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                  <button type="button" className="btn btn-soft" style={{ padding: "4px 11px", fontSize: 11 }} onClick={() => marcarTudo(true)}>Marcar TUDO</button>
+                  <button type="button" className="btn btn-soft" style={{ padding: "4px 11px", fontSize: 11 }} onClick={() => marcarTudo(false)}>Desmarcar TUDO</button>
+                </div>
+              </div>
+              <p className="muted" style={{ fontSize: 12, margin: "6px 2px 10px" }}>Onde a função estiver desligada, o botão <strong>nem aparece</strong> — e o servidor recusa a ação mesmo se tentarem por fora.</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {CATEGORIAS_FUNCAO.map((cat) => {
+                  const keys = cat.funcoes.map((f) => f.key);
+                  const marc = keys.filter((k) => funcoes.has(k)).length;
+                  const todos = marc === keys.length;
+                  const open = !!catAberta[cat.id];
+                  return (
+                    <div key={cat.id} className="perm-acc">
+                      <button type="button" className="perm-acc-head" onClick={() => setCatAberta((c) => ({ ...c, [cat.id]: !c[cat.id] }))}>
+                        <span className="perm-acc-ic">{cat.icon}</span>
+                        <span className="perm-acc-tt">{cat.titulo}</span>
+                        <span className={"perm-acc-count" + (marc ? " has" : "")}>{marc} / {keys.length}</span>
+                        <span className="perm-acc-arrow">{open ? "▲" : "▼"}</span>
+                      </button>
+                      {open && (
+                        <div className="perm-acc-body">
+                          <label className="perm-marcar">
+                            <input type="checkbox" checked={todos} onChange={() => marcarCategoria(keys, !todos)} />
+                            <strong>Marcar todos de {cat.titulo}</strong>
+                          </label>
+                          <div className="perm-fgrid">
+                            {cat.funcoes.map((f) => (
+                              <div key={f.key} className="perm-fn">
+                                <Sw on={funcoes.has(f.key)} onClick={() => toggleFuncao(f.key)} titulo={f.label} />
+                                <span><span className="perm-fn-nome">{f.label}</span>{f.desc && <span className="perm-fn-desc"> — {f.desc}</span>}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          <div className="row-gap" style={{ marginTop: 18 }}>
+            <button className="btn btn-primary" onClick={salvar}>{editId ? "Salvar" : "＋ Adicionar"}</button>
+            <button className="btn" onClick={limpar}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <table className="table">
+          <thead><tr><th>Nome</th><th>Login</th><th>Setor principal</th><th>Acesso</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {itens.length === 0 && <tr><td colSpan={6} className="muted">Nenhum usuário ainda.</td></tr>}
+            {itens.map((u) => (
+              <tr key={u.id}>
+                <td data-label="Nome"><strong>{u.nome}</strong></td>
+                <td data-label="Login">{u.usuario}</td>
+                <td data-label="Setor principal">{u.admin ? <span className="chip">—</span> : u.setor_principal ? <span className="perm-tag">{nomeSetor(u.setor_principal)}</span> : <span className="muted" style={{ fontSize: 12 }}>—</span>}</td>
+                <td data-label="Acesso">
+                  {u.admin ? "Admin (tudo)" : !u.perm_configurado ? <span className="chip" style={{ background: "#fef9c3", color: "#854d0e" }}>legado (tudo)</span> : (u.setores?.filter((s) => s.ver).length || 0) + " setor(es)"}
+                </td>
+                <td data-label="Status">
+                  {u.bloqueado
+                    ? <span className="chip" style={{ background: "#fee2e2", color: "#b91c1c" }}>🔒 bloqueado</span>
+                    : <span className="chip" style={{ background: "#ecfdf5", color: "#047857" }}>● ativo</span>}
+                </td>
+                <td>
+                  <button className="icon-btn" title="Editar / permissões" onClick={() => editar(u)}>✎</button>
+                  {u.usuario !== "admin" && <button className="icon-btn" title={u.bloqueado ? "Desbloquear" : "Bloquear (desloga na hora)"} onClick={() => bloquear(u)}>{u.bloqueado ? "🔓" : "🔒"}</button>}
+                  {u.usuario !== "admin" && <button className="icon-btn" title="Remover" onClick={() => remover(u)}>✕</button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }

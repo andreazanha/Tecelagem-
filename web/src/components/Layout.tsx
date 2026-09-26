@@ -207,7 +207,8 @@ const GRUPOS: MenuGrupo[] = [
       // Materiais: submenu dinâmico (Fios + insumos cadastrados + Compras), montado em TopNav.
       { icon: "🧷", label: "Materiais", page: "cadastros", dyn: "materiais", children: [] },
       { to: "/cadastros?aba=fornecedores", icon: "🚛", label: "Fornecedores", page: "cadastros" },
-      { to: "/cadastros?aba=usuarios", icon: "🔐", label: "Usuários", page: "cadastros" },
+      { to: "/cadastros?aba=setores", icon: "🏢", label: "Setores", page: "cadastros" },
+      { to: "/cadastros?aba=usuarios", icon: "👥", label: "Usuários", page: "cadastros" },
     ],
   },
   {
@@ -225,7 +226,8 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "config", icon: "⚙️", label: "Configurações", itens: [
-      { to: "/cadastros?aba=usuarios", icon: "🔐", label: "Permissões", page: "cadastros" },
+      { to: "/cadastros?aba=setores", icon: "🏢", label: "Setores", page: "cadastros" },
+      { to: "/cadastros?aba=usuarios", icon: "🔐", label: "Usuários e Permissões", page: "cadastros" },
       { icon: "🎛️", label: "Parâmetros", soon: true },
       { icon: "💤", label: "Proteção de Tela", soon: true },
       { icon: "🔌", label: "Integrações", soon: true },

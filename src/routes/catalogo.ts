@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../index";
 import { DEFAULT_PARTE1, norm } from "../classificar";
 import { colsBulk } from "./materiais";
+import { permissoesDoUsuario } from "../permissoes";
 
 const BASE_P1 = new Set(DEFAULT_PARTE1.map((n) => norm(n)));
 
@@ -680,10 +681,10 @@ usuarios.get("/", async (c) => {
   // Inclui a senha: o cadastro é só do admin e as senhas ficam em texto, então o
   // gestor consegue conferir a senha que definiu para cada usuário.
   const { results } = await c.env.DB.prepare(
-    "SELECT id, nome, usuario, senha, admin, paginas, COALESCE(bloqueado,0) AS bloqueado FROM usuarios ORDER BY nome"
-  ).all<{ id: string; nome: string; usuario: string; senha: string; admin: number; paginas: string; bloqueado: number }>();
+    "SELECT id, nome, usuario, senha, admin, paginas, COALESCE(bloqueado,0) AS bloqueado, setor_principal, COALESCE(perm_configurado,0) AS perm_configurado FROM usuarios ORDER BY nome"
+  ).all<{ id: string; nome: string; usuario: string; senha: string; admin: number; paginas: string; bloqueado: number; setor_principal: string | null; perm_configurado: number }>();
   return c.json(
-    results.map((u) => ({ id: u.id, nome: u.nome, usuario: u.usuario, senha: u.senha, admin: !!u.admin, paginas: JSON.parse(u.paginas || "[]"), bloqueado: !!u.bloqueado }))
+    results.map((u) => ({ id: u.id, nome: u.nome, usuario: u.usuario, senha: u.senha, admin: !!u.admin, paginas: JSON.parse(u.paginas || "[]"), bloqueado: !!u.bloqueado, setor_principal: u.setor_principal || null, perm_configurado: !!u.perm_configurado }))
   );
 });
 
@@ -739,10 +740,20 @@ usuarios.post("/login", async (c) => {
   await c.env.DB.prepare("INSERT INTO sessoes (token, usuario_id, expira_em) VALUES (?, ?, datetime('now','+30 days'))").bind(token, row.id).run();
   // Aproveita pra limpar sessões vencidas (higiene, não trava o login se falhar).
   await c.env.DB.prepare("DELETE FROM sessoes WHERE expira_em < datetime('now')").run().catch(() => {});
+  // Carrega as permissões finas (funções + setores ver/editar) para o front esconder botões sem
+  // permissão. Se ainda não foi configurado (legado), vai vazio e o front trata como "pode tudo".
+  const p = await permissoesDoUsuario(c.env, row.id).catch(() => null);
   return c.json({
     ok: true,
     token,
-    user: { id: row.id, nome: row.nome, usuario: row.usuario, admin: !!row.admin, paginas: JSON.parse(row.paginas || "[]") },
+    user: {
+      id: row.id, nome: row.nome, usuario: row.usuario, admin: !!row.admin,
+      paginas: JSON.parse(row.paginas || "[]"),
+      setor_principal: p?.setorPrincipal ?? null,
+      perm_configurado: p?.configurado ?? false,
+      funcoes: p ? [...p.funcoes] : [],
+      setores: p ? [...p.setores.entries()].map(([setor_id, v]) => ({ setor_id, ver: v.ver, editar: v.editar })) : [],
+    },
   });
 });
 

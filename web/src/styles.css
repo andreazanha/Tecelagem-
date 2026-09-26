@@ -1959,14 +1959,18 @@ body.dark .navcrm { background:#f4f6f9; border-radius:14px; }
 .tec-nova .page-head h1 { font-size: 20px; margin: 0; }
 .tec-nova .breadcrumb { display: none; }
 
-.tecn { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px;
+.tecn { flex: 1 1 auto; min-height: 0; min-width: 0; max-width: 100%; display: flex; flex-direction: column; gap: 10px;
   --tc-card:#ffffff; --tc-body:#f8fafc; --tc-line:#e5e7eb; --tc-ink:#0f172a; --tc-mut:#64748b; --tc-row:#ffffff; --tc-rowline:#e5e7eb; }
+/* Nada da Tecelagem pode empurrar a página pra fora da tela (evita "tela comida" no notebook). */
+.tec-nova { min-width: 0; max-width: 100%; overflow-x: hidden; }
+.tec-nova .page-head { flex-wrap: wrap; gap: 8px 10px; }
+.tec-nova .busca-ped { min-width: 0; width: min(320px, 46vw); }
 body.dark .tecn { --tc-card:#131c2e; --tc-body:#0f1728; --tc-line:#25304a; --tc-ink:#e6eaf2; --tc-mut:#93a0b5; --tc-row:#172136; --tc-rowline:#25304a; }
 
 /* Atalhos (blocos com gradiente vivo — cores do sistema) */
-.tecn-atalhos { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; flex: 0 0 auto; }
-.tecn-tile { height: 64px; border: 0; border-radius: 12px; color: #fff; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 8px 14px; position: relative; text-align: left; box-shadow: 0 1px 3px #0000001f; }
-.tecn-tile .tecn-tt { font-size: 14.5px; font-weight: 800; }
+.tecn-atalhos { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 8px; flex: 0 0 auto; }
+.tecn-tile { height: 64px; min-width: 0; overflow: hidden; border: 0; border-radius: 12px; color: #fff; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 8px 14px; position: relative; text-align: left; box-shadow: 0 1px 3px #0000001f; }
+.tecn-tile .tecn-tt { font-size: 14.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 30px; }
 .tecn-tile .tecn-tn { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 24px; font-weight: 800; }
 button.tecn-tile { cursor: pointer; } button.tecn-tile:disabled { cursor: default; opacity: .78; }
 .tecn-tile.urg { background: linear-gradient(90deg,#f59e0b,#d97706); }
@@ -1981,7 +1985,7 @@ button.tecn-tile { cursor: pointer; } button.tecn-tile:disabled { cursor: defaul
 @keyframes tecnPulseFin { 0%{box-shadow:0 0 0 0 #10b981aa} 70%{box-shadow:0 0 0 12px #10b98100} 100%{box-shadow:0 0 0 0 #10b98100} }
 
 /* 4 colunas 2×2 */
-.tecn-cols { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 8px; }
+.tecn-cols { flex: 1 1 auto; min-height: 0; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); grid-auto-rows: 1fr; gap: 8px; }
 .tecn-col { min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--tc-card); border: 1px solid var(--tc-line); border-radius: 12px; box-shadow: 0 1px 3px #0000000f; }
 .tecn-colh { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12.5px; font-weight: 800; color: #fff; }
 .tecn-colt { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2033,4 +2037,64 @@ body.dark .tecn-dias.ok { color: #93a5c0; } body.dark .tecn-dias.prox { color: #
 .tecn-pbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px; background: var(--tc-body); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; align-content: start; }
 
 @media (max-width: 1400px) { .tecn-row { grid-template-columns: minmax(0,1fr) 60px 44px 74px 84px 98px; column-gap: 8px; } }
-@media (max-width: 1080px) { .tecn-atalhos { grid-template-columns: repeat(3,1fr); } .tecn-cols { grid-template-columns: 1fr; } .tecn-pbody { grid-template-columns: 1fr; } }
+@media (max-width: 1300px) { .tecn-atalhos { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media (max-width: 1080px) { .tecn-cols { grid-template-columns: 1fr; } .tecn-pbody { grid-template-columns: 1fr; } }
+@media (max-width: 680px) { .tecn-atalhos { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+
+/* ══ Permissões / Setores (Cadastros) ═════════════════════════════════════════ */
+/* Interruptor (toggle) */
+.sw { width: 40px; height: 23px; border-radius: 999px; border: 0; position: relative; cursor: pointer; flex: 0 0 auto; padding: 0; transition: background .15s; }
+.sw::after { content: ""; position: absolute; top: 2px; width: 19px; height: 19px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px #0003; transition: left .15s, right .15s; }
+.sw.on { background: var(--brand1, #4f46e5); } .sw.on::after { right: 2px; }
+.sw.off { background: #cbd5e1; } .sw.off::after { left: 2px; }
+body.dark .sw.off { background: #3a465e; }
+
+/* Etiqueta de setor (setor principal na lista) */
+.perm-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; background: #eef2ff; color: #4338ca; border-radius: 999px; padding: 4px 11px; }
+body.dark .perm-tag { background: #1e2748; color: #c7d2fe; }
+
+/* Caixa dos setores (ver/editar) */
+.perm-box { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 8px; background: var(--bg-soft, #f8fafc); }
+body.dark .perm-box { background: #131c2e; border-color: #25304a; }
+.perm-srow { display: grid; grid-template-columns: minmax(0,1fr) 108px 108px; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: #fff; }
+body.dark .perm-srow { background: #172136; border-color: #25304a; }
+.perm-srow.princ { background: #eef2ff; border-color: #c7d2fe; }
+body.dark .perm-srow.princ { background: #1e2748; border-color: #3b4a78; }
+.perm-srow-head { background: transparent; border: 0; padding: 0 10px 2px; margin-bottom: 4px; }
+.perm-srow-head span { font-size: 10px; font-weight: 800; letter-spacing: .4px; color: var(--muted); text-transform: uppercase; }
+.perm-srow-head span:not(:first-child), .perm-srow .perm-tog { text-align: center; justify-self: center; }
+.perm-sname { font-weight: 700; font-size: 13.5px; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.perm-badge { background: var(--brand1, #4f46e5); color: #fff; font-size: 9.5px; font-weight: 800; padding: 2px 7px; border-radius: 6px; letter-spacing: .3px; }
+.perm-tog { display: flex; justify-content: center; }
+
+/* Chips de telas gerais */
+.perm-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.perm-chip { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; background: #fff; border: 1px solid var(--line); border-radius: 9px; padding: 7px 11px; cursor: pointer; }
+.perm-chip.on { background: #eef2ff; border-color: #c7d2fe; color: #4338ca; }
+body.dark .perm-chip { background: #172136; border-color: #25304a; }
+body.dark .perm-chip.on { background: #1e2748; border-color: #3b4a78; color: #c7d2fe; }
+
+/* Acordeão de funções */
+.perm-acc { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+body.dark .perm-acc { background: #131c2e; border-color: #25304a; }
+.perm-acc-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 15px; background: var(--bg-soft, #f8fafc); border: 0; cursor: pointer; font: inherit; color: inherit; text-align: left; }
+body.dark .perm-acc-head { background: #172136; }
+.perm-acc-ic { font-size: 15px; }
+.perm-acc-tt { font-weight: 800; font-size: 13.5px; }
+.perm-acc-count { font-size: 11px; font-weight: 800; color: var(--muted); background: #eef0f4; border-radius: 999px; padding: 2px 9px; }
+.perm-acc-count.has { color: #4338ca; background: #eef2ff; }
+body.dark .perm-acc-count { background: #25304a; }
+body.dark .perm-acc-count.has { color: #c7d2fe; background: #1e2748; }
+.perm-acc-arrow { margin-left: auto; color: var(--muted); font-size: 12px; }
+.perm-acc-body { padding: 6px 15px 14px; border-top: 1px solid var(--line); }
+body.dark .perm-acc-body { border-color: #25304a; }
+.perm-marcar { display: flex; align-items: center; gap: 10px; padding: 10px 0 11px; border-bottom: 1px dashed var(--line); margin-bottom: 10px; font-size: 12.5px; cursor: pointer; }
+.perm-fgrid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px 26px; }
+.perm-fn { display: flex; align-items: center; gap: 10px; font-size: 13px; min-width: 0; }
+.perm-fn-nome { font-weight: 600; }
+.perm-fn-desc { color: var(--muted); font-size: 11.5px; }
+
+@media (max-width: 720px) {
+  .perm-srow { grid-template-columns: minmax(0,1fr) 74px 74px; gap: 6px; }
+  .perm-fgrid { grid-template-columns: 1fr; }
+}

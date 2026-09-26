@@ -1208,6 +1208,22 @@ export const api = {
     fetch(`/api/usuarios/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   bloquearUsuario: (id: string, bloqueado: boolean) =>
     jsonPost(`/api/usuarios/${id}/bloquear`, { bloqueado }).then((r) => j<{ ok: boolean; bloqueado: boolean }>(r)),
+
+  // ── SETORES + ACESSO do usuário (permissões) ──────────────────────────────
+  listarSetores: () =>
+    fetch("/api/setores", { headers: authHeaders() }).then((r) =>
+      j<{ id: string; nome: string; ativo: boolean; ordem: number; temTela: boolean; usuarios: number; usuarios_nomes: string[] }[]>(r)),
+  salvarSetor: (b: { id?: string; nome: string; ordem?: number }) =>
+    jsonPost("/api/setores", b).then((r) => j<{ id: string; nome: string; ativo: boolean }>(r)),
+  ativarSetor: (id: string, ativo: boolean) =>
+    jsonPost(`/api/setores/${encodeURIComponent(id)}/ativar`, { ativo }).then((r) => j<{ ok: boolean; ativo: boolean }>(r)),
+  excluirSetor: (id: string) =>
+    fetch(`/api/setores/${encodeURIComponent(id)}`, { method: "DELETE", headers: authHeaders() }).then((r) => j<{ ok?: boolean; error?: string; desativar?: boolean; usuarios?: number }>(r)),
+  obterAcessoUsuario: (usuarioId: string) =>
+    fetch(`/api/setores/acesso/${encodeURIComponent(usuarioId)}`, { headers: authHeaders() }).then((r) =>
+      j<{ configurado: boolean; setor_principal: string | null; setores: { setor_id: string; ver: boolean; editar: boolean }[]; funcoes: string[] }>(r)),
+  salvarAcessoUsuario: (usuarioId: string, b: { setor_principal?: string | null; setores: { setor_id: string; ver: boolean; editar: boolean }[]; funcoes: string[]; telas_gerais: string[] }) =>
+    jsonPost(`/api/setores/acesso/${encodeURIComponent(usuarioId)}`, b).then((r) => j<{ ok: boolean; paginas: string[]; setor_principal: string | null; configurado: boolean }>(r)),
   validarOperador: async (id: string, senha: string) => {
     const r = await fetch("/api/operadores/validar", {
       method: "POST",

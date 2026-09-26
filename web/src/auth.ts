@@ -1,5 +1,6 @@
 // Autenticação simples por usuário + senha (ferramenta interna).
 // O usuário logado fica no localStorage; as permissões definem o que ele vê.
+export interface AcessoSetor { setor_id: string; ver: boolean; editar: boolean }
 export interface Usuario {
   id: string;
   nome: string;
@@ -8,6 +9,11 @@ export interface Usuario {
   bloqueado?: boolean;
   paginas: string[];
   senha?: string; // só vem na listagem do cadastro (admin), pra o gestor conferir
+  // Controle fino (permissões). Vêm do login e da listagem de usuários.
+  setor_principal?: string | null;
+  perm_configurado?: boolean;
+  funcoes?: string[];
+  setores?: AcessoSetor[];
 }
 
 // Telas controláveis por usuário (chaves usadas nas permissões).
@@ -68,6 +74,28 @@ export function podeAlgum(u: Usuario | null, keys: string[]): boolean {
   if (!u) return false;
   if (u.admin) return true;
   return keys.some((k) => u.paginas.includes(k));
+}
+// ── Controle fino de FUNÇÕES (esconde botões) ────────────────────────────────────────
+// Regra: admin pode tudo; usuário LEGADO (perm_configurado=false) mantém tudo que já fazia (nada
+// some no deploy); usuário configurado só vê o botão se a função estiver liberada.
+export function podeFuncao(u: Usuario | null, chave: string): boolean {
+  if (!u) return false;
+  if (u.admin) return true;
+  if (!u.perm_configurado) return true;      // legado: não esconde nada até o gestor configurar
+  return (u.funcoes || []).includes(chave);
+}
+// Pode EDITAR dentro de um setor? (ver vs editar). Mesma regra de legado.
+export function podeEditarSetor(u: Usuario | null, setorId: string): boolean {
+  if (!u) return false;
+  if (u.admin) return true;
+  if (!u.perm_configurado) return true;
+  return !!(u.setores || []).find((s) => s.setor_id === setorId)?.editar;
+}
+export function podeVerSetor(u: Usuario | null, setorId: string): boolean {
+  if (!u) return false;
+  if (u.admin) return true;
+  if (!u.perm_configurado) return true;
+  return !!(u.setores || []).find((s) => s.setor_id === setorId)?.ver;
 }
 // Primeira página do sistema (não-TV) que o usuário pode abrir.
 export function primeiraPagina(u: Usuario | null): string {

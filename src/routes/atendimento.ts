@@ -19,34 +19,11 @@ const digitos = (s: unknown) => String(s ?? "").replace(/\D/g, "");
 const pareceIdDeGrupo = (tel: unknown) => { const d = digitos(tel); return d.startsWith("120363") || d.length >= 19; };
 
 // ── SESSÃO / IDENTIDADE (barreira de acesso) ─────────────────────────────────────────
-// Lê o token de sessão (crachá) do cabeçalho, confere no servidor e devolve o usuário REAL —
-// sem confiar em nada que o navegador mande (usuario/gestor por query eram burláveis). As
-// permissões vêm frescas do cadastro (join usuarios), então revogar cargo vale já no próximo request.
-export interface UsuarioAuth { id: string; nome: string; usuario: string; admin: boolean; paginas: string[] }
-export async function usuarioLogado(env: Env, c: Context): Promise<UsuarioAuth | null> {
-  const auth = c.req.header("authorization") || "";
-  const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : (c.req.header("x-auth-token") || "").trim();
-  if (!token) return null;
-  // Consulta o "crachá" no banco. Se o banco der um soluço (erro transitório), tentamos de novo
-  // antes de dizer "sessão inválida" — assim um piscar do D1 não desloga a pessoa no meio do uso
-  // (era isso que fazia "o app desconectar" ao enviar imagem / a conversa sumir no poll do quadro).
-  const q = () => env.DB.prepare(
-    `SELECT u.id, u.nome, u.usuario, u.admin, u.paginas
-       FROM sessoes s JOIN usuarios u ON u.id = s.usuario_id
-      WHERE s.token = ? AND s.expira_em > datetime('now') AND COALESCE(u.bloqueado,0)=0`
-  ).bind(token).first<{ id: string; nome: string; usuario: string; admin: number; paginas: string }>();
-  let row: { id: string; nome: string; usuario: string; admin: number; paginas: string } | null = null;
-  try {
-    row = await q();
-  } catch {
-    // erro no banco: espera um pouquinho e tenta uma segunda vez
-    try { await new Promise((r) => setTimeout(r, 150)); row = await q(); } catch { row = null; }
-  }
-  if (!row) return null;
-  let paginas: string[] = [];
-  try { paginas = JSON.parse(row.paginas || "[]"); } catch { paginas = []; }
-  return { id: row.id, nome: row.nome, usuario: row.usuario, admin: !!row.admin, paginas };
-}
+// O carregador de sessão vive em ../sessao (reaproveitado por outras rotas e pelo módulo de
+// permissões, sem import circular). Importa para uso local e reexporta para não quebrar quem
+// já importa daqui.
+import { usuarioLogado, type UsuarioAuth } from "../sessao";
+export { usuarioLogado, type UsuarioAuth };
 // Gestor de atendimento = admin OU tem a permissão "atendimento-gestor" (vê tudo). Os demais
 // atendentes só veem as conversas DELES + a fila de novos sem dono.
 export function ehGestorAtend(u: UsuarioAuth | null): boolean {
