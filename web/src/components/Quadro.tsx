@@ -2458,8 +2458,8 @@ function CardModal({
             <Campo l="QUANTIDADE" v={`${card.pecas} peças`} />
             <Campo l="RESPONSÁVEL" v={card.operador || "—"} />
             <Campo l="VENDEDOR" v={limparVendedor(det?.vendedor)} />
-            {card.codigo_pai && <Campo l="Nº DA OP (PAI)" v={`OP ${card.codigo_pai}`} />}
-            {card.codigo_pai && <Campo l="PEDIDOS" v={card.numero_erp || "—"} />}
+            {ehConsolidada(card) && <Campo l="Nº DA OP (PAI)" v={`OP ${card.codigo_pai}`} />}
+            {card.codigo_pai && !card.op && <Campo l="PEDIDOS" v={card.numero_erp || "—"} />}
             <Campo l="CÓDIGO DE TERCEIRO" v={det?.codigo_terceiro || "—"} />
             <Campo l="ORIGEM" v={origem} />
           </div>
