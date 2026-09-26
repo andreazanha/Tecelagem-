@@ -875,6 +875,150 @@ function PainelCostura({ cfg, cards, onAbrir, onAcao }: {
   );
 }
 
+// ── Painel NOVO da Revisão (aprovado): faixa Urgentes + faixa "Voltou com defeito" + quadradinhos
+//    das revisadoras. 2 colunas: PEDIDOS A REVISAR e REPOSIÇÃO DE ESTOQUE (pronta entrega). Faixa
+//    embaixo: ESTOQUE AGUARDANDO PEDIDOS DE PRODUÇÃO (une_pe) — quando as partes chegam, unem.
+//    Nome da revisadora à direita, ao lado das peças. Ações: fazer (Revisar, escolhe revisadeira),
+//    enviar (Expedição), defeito (fica em "Voltou com defeito").
+function PainelRevisao({ cfg, cards, onAbrir, onAcao }: {
+  cfg: QuadroCfg;
+  cards: CardProducao[];
+  onAbrir: (c: CardProducao) => void;
+  onAcao: (cards: CardProducao[], acao: Acao) => void;
+}) {
+  const [sel, setSel] = useState<string | null>(null);
+  const hoje = new Date().toISOString().slice(0, 10);
+  const prazoDe = (c: CardProducao) => c.data_entrega || null;
+  const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
+  const ehPE = (c: CardProducao) => ehRep(c) || c.pe_tipo === "separado" || c.parte === "pronta-entrega";
+  const ehUniao = (c: CardProducao) => !!c.une_pe;
+  const ehUrgente = (c: CardProducao) => c.status === "aguardando" && (!!c.prioridade || (!!prazoDe(c) && (prazoDe(c) as string) < hoje));
+  const tagDe = (c: CardProducao): { txt: string; cls: string } => {
+    if (ehRep(c) || c.pe_tipo === "separado" || c.parte === "pronta-entrega") return { txt: "KIT", cls: "kit" };
+    const bp = basePart(c.parte);
+    if (bp === "parte-1") return { txt: "P1", cls: "p1" };
+    if (bp === "parte-2") return { txt: "P2", cls: "p2" };
+    return { txt: "UN", cls: "un" };
+  };
+  function dias(d: string | null): { txt: string; cls: string } {
+    if (!d) return { txt: "—", cls: "ok" };
+    const h = new Date(); h.setHours(0, 0, 0, 0);
+    const e = new Date(d.slice(0, 10) + "T00:00:00");
+    const n = Math.round((e.getTime() - h.getTime()) / 86400000);
+    if (isNaN(n)) return { txt: "—", cls: "ok" };
+    if (n < 0) return { txt: `Atr. ${-n}d`, cls: "atr" };
+    if (n === 0) return { txt: "Hoje", cls: "urg" };
+    if (n <= 2) return { txt: `${n}d`, cls: "urg" };
+    if (n <= 5) return { txt: `${n}d`, cls: "prox" };
+    return { txt: `${n}d`, cls: "ok" };
+  }
+
+  const urgentes = cards.filter((c) => ehUrgente(c) && !ehUniao(c)).sort(ordenarFila);
+  const defeitos = cards.filter((c) => c.status === "defeito");
+  const aguardandoUniao = cards.filter((c) => ehUniao(c) && c.status !== "defeito");
+  const naTela = cards.filter((c) => (c.status === "aguardando" || c.status === "fazendo") && !ehUrgente(c) && !ehUniao(c));
+
+  // Quadradinhos das revisadoras: sempre todas as cadastradas (cfg.pessoas) + contagem (fazendo).
+  const contagem = new Map<string, number>();
+  for (const c of naTela) if (c.status === "fazendo") { const k = (c.operador || "").trim(); if (k) contagem.set(k, (contagem.get(k) || 0) + 1); }
+  const nomesSet = new Set<string>((cfg.pessoas || []).map((p) => p.trim()).filter(Boolean));
+  for (const k of contagem.keys()) nomesSet.add(k);
+  const revisadoras: [string, number][] = [...nomesSet].sort((a, b) => a.localeCompare(b)).map((n) => [n, contagem.get(n) || 0]);
+
+  const filtro = (arr: CardProducao[]) => sel ? arr.filter((c) => (c.operador || "").trim() === sel) : arr;
+  const grupos = {
+    ped: filtro(naTela.filter((c) => !ehPE(c))).sort(ordenarFila),
+    rep: filtro(naTela.filter(ehPE)).sort(ordenarFila),
+  };
+  const COLS: { key: "ped" | "rep"; nome: string; ic: string; cls: string }[] = [
+    { key: "ped", nome: "PEDIDOS A REVISAR", ic: "🔍", cls: "r-ped" },
+    { key: "rep", nome: "REPOSIÇÃO DE ESTOQUE (pronta entrega)", ic: "📦", cls: "r-rep" },
+  ];
+
+  const linha = (c: CardProducao, modo?: "urg" | "def" | "uniao") => {
+    const dd = dias(prazoDe(c));
+    const tg = tagDe(c);
+    const rev = (c.operador || "").trim();
+    return (
+      <div key={c.pedido_id + c.parte} className={"tecn-crow" + (c.status === "fazendo" ? " prod" : modo === "def" ? " def" : "")} onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
+        <span className={"tecn-ptag " + tg.cls}>{tg.txt}</span>
+        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
+        {modo === "uniao"
+          ? <span className="tecn-revwait">aguardando P1+P2</span>
+          : rev
+            ? <span className="tecn-revchip">🔍 {rev}</span>
+            : <span className="tecn-revwait">a distribuir</span>}
+        <span className="tecn-pcs">{pad2(c.pecas)} pçs</span>
+        <span className={"tecn-dias " + dd.cls}>{dd.txt}</span>
+        <span className="tecn-act">
+          {modo === "uniao"
+            ? <span className="tecn-agtxt">aguardando…</span>
+            : c.status === "fazendo"
+              ? (<>
+                  {podeAcao("enviar") && <button className="tecn-btn env" onClick={(e) => { e.stopPropagation(); onAcao([c], "enviar"); }}>Enviar ▶</button>}
+                  {podeAcao("defeito") && <button className="tecn-btn def" title="Marcar defeito (fica em Voltou com defeito)" onClick={(e) => { e.stopPropagation(); onAcao([c], "defeito"); }}>⚠</button>}
+                </>)
+              : (podeAcao("fazer") && <button className="tecn-btn rev" onClick={(e) => { e.stopPropagation(); onAcao([c], "fazer"); }}>👁 Revisar ▶</button>)}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="tecn">
+      <div className={"tecn-urgfaixa" + (urgentes.length ? " pulsa" : "")}>
+        <span style={{ fontSize: 18 }}>★</span><span className="t">URGENTES — prioridade / atrasados</span><span className="n">{urgentes.length}</span>
+      </div>
+      {urgentes.length > 0 && <div className="tecn-urglista">{urgentes.map((c) => linha(c, "urg"))}</div>}
+
+      {defeitos.length > 0 && (
+        <>
+          <div className="tecn-deffaixa"><span style={{ fontSize: 16 }}>⚠</span><span className="t">VOLTOU COM DEFEITO</span><span className="n">{defeitos.length}</span></div>
+          <div className="tecn-deflista">{defeitos.map((c) => linha(c, "def"))}</div>
+        </>
+      )}
+
+      {/* Quadradinhos das revisadoras */}
+      <div className="tecn-costtiles">
+        <button className={"tecn-ctile todas" + (sel === null ? " on" : "")} onClick={() => setSel(null)}><span className="nm">Todas</span><span className="qt">{naTela.length}</span></button>
+        {revisadoras.map(([nome, qt]) => (
+          <button key={nome} className={"tecn-ctile rev" + (sel === nome ? " on" : "")} onClick={() => setSel((s) => s === nome ? null : nome)}>
+            <span className="nm">🔍 {nome}</span><span className="qt">{qt}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="tecn-cols tecn-cols-2">
+        {COLS.map((col) => {
+          const l = grupos[col.key];
+          const rev = l.filter((c) => c.status === "fazendo");
+          const aguard = l.filter((c) => c.status === "aguardando");
+          return (
+            <section key={col.key} className={"tecn-col " + col.cls}>
+              <header className="tecn-colh"><span className="tecn-colic">{col.ic}</span><span className="tecn-colt">{col.nome}</span><span className="tecn-colc">{l.length}</span></header>
+              <div className="tecn-colbody">
+                <div className="tecn-grh"><span className="tecn-gd vd" />Revisando <b>({rev.length})</b></div>
+                {rev.length ? rev.map((c) => linha(c)) : <div className="tecn-vaz">nenhum revisando</div>}
+                <div className="tecn-grh"><span className="tecn-gd" />A revisar <b>({aguard.length})</b></div>
+                {aguard.length ? aguard.map((c) => linha(c)) : <div className="tecn-vaz">fila vazia</div>}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+
+      {aguardandoUniao.length > 0 && (
+        <div className="tecn-agubox">
+          <div className="tecn-aguh"><span>⏳</span><span className="t">ESTOQUE AGUARDANDO PEDIDOS DE PRODUÇÃO</span><span className="n">{aguardandoUniao.length}</span></div>
+          <div className="tecn-agubody">{aguardandoUniao.map((c) => linha(c, "uniao"))}</div>
+          <div className="tecn-agunota">⏳ Quando a Parte 1 e a Parte 2 chegarem da produção, elas se unem com o item e o pedido sobe para “Pedidos a revisar”.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Passadoria (painelUnico): 1 botão "A passar" (galga 3+7) + lista única com
 //   "Finalizar", que envia direto para o próximo setor (Corte).
 function PainelTec({
