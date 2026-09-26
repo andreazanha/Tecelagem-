@@ -188,6 +188,17 @@ async function desmembrarCard(env: Env, pedidoId: string, parteFull: string): Pr
   return { ok: true, criados };
 }
 
+// Pronta entrega de PEDIDO DE EXPLOSÃO (vários números) cai DESMEMBRADA na Separação: um card por
+// pedido de origem, para separar cada um individualmente. Idempotente (não redivide o que tem "#").
+async function desmembrarPEestoque(env: Env) {
+  const { results } = await env.DB.prepare(
+    `SELECT pr.pedido_id FROM producao pr
+       WHERE pr.parte = 'pronta-entrega' AND pr.setor = 'estoque'
+         AND pr.pedido_id IN (SELECT id FROM pedidos WHERE numero_erp LIKE '%,%')`
+  ).all<{ pedido_id: string }>().catch(() => ({ results: [] as { pedido_id: string }[] }));
+  for (const r of results) await desmembrarCard(env, r.pedido_id, "pronta-entrega").catch(() => {});
+}
+
 // Backfill: todo pedido vira card de Tecelagem (mesmo sem ter gerado PDF).
 async function garantirCards(env: Env) {
   const { results: faltantes } = await env.DB.prepare(
@@ -272,6 +283,8 @@ producao.get("/", async (c) => {
   await garantirCards(c.env);
   await corrigirKitsEstoque(c.env);
   const setor = c.req.query("setor") || "tecelagem";
+  // Separação: pronta entrega de explosão cai desmembrada (um card por pedido — junto ou separado).
+  if (setor === "estoque") await desmembrarPEestoque(c.env).catch(() => {});
   const { results } = await c.env.DB.prepare(
     `SELECT pr.pedido_id, pr.parte, pr.op, pr.setor, pr.status, pr.pecas, pr.resumo, pr.maquina, pr.operador,
             pr.prioridade, pr.iniciado_em, pr.finalizado_em,
