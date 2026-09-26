@@ -593,7 +593,7 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao }: {
   const hoje = new Date().toISOString().slice(0, 10);
   const ehBloq = (c: CardProducao) => !!c.bloqueado; // pedido preso no PCP (cadeado)
   const prazoDe = (c: CardProducao) => c.data_tecelagem || c.data_entrega || null; // prazo do tear
-  const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  const numDe = (c: CardProducao) => (c.op && String(c.op).trim()) || c.numero_erp || c.codigo_pai || c.pedido_id.slice(0, 6);
   const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
   const colDe = (c: CardProducao): "p1" | "p2" | "uni" | "rep" =>
     ehRep(c) ? "rep" : basePart(c.parte) === "parte-2" ? "p2" : basePart(c.parte) === "parte-1" ? "p1" : "uni";
@@ -735,7 +735,7 @@ function PainelPCP({ cfg, cards, onAbrir, onLiberar }: {
   onAbrir: (c: CardProducao) => void;
   onLiberar: (c: CardProducao) => void;
 }) {
-  const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  const numDe = (c: CardProducao) => (c.op && String(c.op).trim()) || c.numero_erp || c.codigo_pai || c.pedido_id.slice(0, 6);
   const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
   const colDe = (c: CardProducao): "p1" | "p2" | "uni" | "rep" =>
     ehRep(c) ? "rep" : basePart(c.parte) === "parte-2" ? "p2" : basePart(c.parte) === "parte-1" ? "p1" : "uni";
@@ -811,15 +811,17 @@ function PainelSepPE({ cfg, cards, onAbrir, onAcao, onEntrada }: {
   onAcao: (cards: CardProducao[], acao: Acao) => void;
   onEntrada: (c: CardProducao) => void;
 }) {
-  // Número compacto: pedido de explosão (vários números) mostra o código pai ou "1º +N", nunca a
-  // lista inteira (que estourava por cima do botão).
+  // Número do card:
+  //  • desmembrado (tem op) → mostra o NÚMERO ORIGINAL do pedido (op), não o código pai.
+  //  • explosão ainda inteira (vários números) → código pai ou "1º +N" (não a lista toda).
   const numDe = (c: CardProducao) => {
+    if (c.op && String(c.op).trim()) return String(c.op).trim();
     const ne = (c.numero_erp || "").trim();
     if (ne.includes(",")) {
       const parts = ne.split(",").map((x) => x.trim()).filter(Boolean);
       return c.codigo_pai || `${parts[0]} +${parts.length - 1}`;
     }
-    return ne || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+    return ne || c.codigo_pai || c.pedido_id.slice(0, 6);
   };
   const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
   const prazoDe = (c: CardProducao) => c.data_entrega || null;
@@ -878,7 +880,7 @@ function PainelCorte({ cfg, cards, onAbrir, onAcao, onRomaneio }: {
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const prazoDe = (c: CardProducao) => c.data_entrega || null;
-  const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  const numDe = (c: CardProducao) => (c.op && String(c.op).trim()) || c.numero_erp || c.codigo_pai || c.pedido_id.slice(0, 6);
   const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
   const ehRepOuKit = (c: CardProducao) => ehRep(c) || c.parte === "pronta-entrega";
   const ehUrgente = (c: CardProducao) => c.status === "aguardando" && (!!c.prioridade || (!!prazoDe(c) && (prazoDe(c) as string) < hoje));
@@ -1003,7 +1005,7 @@ function PainelCostura({ cfg, cards, onAbrir, onAcao }: {
 }) {
   const [sel, setSel] = useState<string | null>(null); // costureira filtrada (quadradinho clicado)
   const prazoDe = (c: CardProducao) => c.data_entrega || null;
-  const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  const numDe = (c: CardProducao) => (c.op && String(c.op).trim()) || c.numero_erp || c.codigo_pai || c.pedido_id.slice(0, 6);
   const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
   const ehRepOuKit = (c: CardProducao) => ehRep(c) || c.parte === "pronta-entrega";
   const tagDe = (c: CardProducao): { txt: string; cls: string } => {
@@ -1118,7 +1120,7 @@ function PainelRevisao({ cfg, cards, onAbrir, onAcao }: {
   const [sel, setSel] = useState<string | null>(null);
   const hoje = new Date().toISOString().slice(0, 10);
   const prazoDe = (c: CardProducao) => c.data_entrega || null;
-  const numDe = (c: CardProducao) => c.numero_erp || c.op || c.codigo_pai || c.pedido_id.slice(0, 6);
+  const numDe = (c: CardProducao) => (c.op && String(c.op).trim()) || c.numero_erp || c.codigo_pai || c.pedido_id.slice(0, 6);
   const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
   const ehPE = (c: CardProducao) => ehRep(c) || c.pe_tipo === "separado" || c.parte === "pronta-entrega";
   const ehUniao = (c: CardProducao) => !!c.une_pe;
