@@ -324,14 +324,30 @@ producao.get("/:pedido_id/:parte", async (c) => {
     .bind(pedido_id, parte)
     .first();
   if (!card) return c.json({ error: "não encontrado" }, 404);
-  const { results: itens } = await c.env.DB.prepare(
+  // Card desmembrado: a parte vem como "<base>#<origem>" (ex.: "parte-1#3966"). Precisamos
+  // (a) usar a parte BASE p/ escolher os blocos e (b) filtrar SÓ os itens daquele pedido de
+  // origem — senão o popup mostra os itens/quantidades da OP inteira (bug de "confundir kit").
+  const hashIdx = parte.indexOf("#");
+  const baseParte = hashIdx >= 0 ? parte.slice(0, hashIdx) : parte;
+  const origem = hashIdx >= 0 ? parte.slice(hashIdx + 1).trim() : "";
+  const { results: todos } = await c.env.DB.prepare(
     "SELECT produto, ref, cor_grade, tamanho, qtd, parte, origem FROM pedido_itens WHERE pedido_id = ?"
   )
     .bind(pedido_id)
-    .all<ItemBase>();
+    .all<ItemBase & { origem?: string | null }>();
+  // Mesma regra do desmembrarCard: item sem origem cai no PRIMEIRO número da OP.
+  const cardInfo = card as { numero_erp?: string | null; codigo_pai?: string | null };
+  const primeiro = String(cardInfo.numero_erp || "").split(",")[0].trim();
+  const origemDe = (it: ItemBase & { origem?: string | null }) =>
+    (it.origem || "").trim() || primeiro || String(cardInfo.codigo_pai || "");
+  const itens = origem ? todos.filter((it) => origemDe(it) === origem) : todos;
   const cl = classificar(itens, await catalogoDe(c.env));
   const blocos =
-    parte === "parte-1" ? cl.parte1 : parte === "parte-2" ? cl.parte2 : parte === "parte-unica" ? cl.parteUnica : cl.kits;
+    baseParte === "parte-1" ? cl.parte1
+    : baseParte === "parte-2" ? cl.parte2
+    : baseParte === "parte-unica" ? cl.parteUnica
+    : baseParte.startsWith("pronta-entrega") ? cl.kits
+    : cl.kits;
   return c.json({ ...card, blocos: blocos || [] });
 });
 
