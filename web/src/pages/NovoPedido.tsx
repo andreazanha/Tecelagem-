@@ -20,6 +20,7 @@ export function NovoPedido() {
   const [previaUrl, setPreviaUrl] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [arquivos, setArquivos] = useState<{ file: File; url: string }[]>([]);
+  const [verItens, setVerItens] = useState(false); // lista de itens começa dentro do botão
   const [vendedores, setVendedores] = useState<string[]>([]);
   const [lendo, setLendo] = useState(false);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "warn"; msg: string } | null>(null);
@@ -242,7 +243,7 @@ export function NovoPedido() {
     // Vários pedidos numa OP só → inventa um nome no lugar do cliente (editável).
     setForm((f) => {
       const nums = (f.numero_erp || "").split(",").map((x) => x.trim()).filter(Boolean);
-      if (nums.length >= 2) return { ...f, cliente_nome: `OP CONSOLIDADA — ${nums.length} PEDIDOS` };
+      if (nums.length >= 2) return { ...f, cliente_nome: `PEDIDOS DE EXPLOSÃO — ${nums.length} PEDIDOS` };
       return f;
     });
     if (lidos > 0) {
@@ -301,7 +302,7 @@ export function NovoPedido() {
           <h2>Importar do ERP (PDF)</h2>
           <p className="muted">
             Anexe <strong>um ou vários</strong> PDFs — eles são <strong>preservados</strong>. Vários
-            pedidos pequenos são <strong>juntados numa OP só</strong> (itens consolidados; os números
+            pedidos pequenos viram <strong>pedidos de explosão</strong> (juntados numa OP só; os números
             entram no cabeçalho do PDF gerado).
           </p>
           <label className="dropzone">
@@ -499,11 +500,17 @@ export function NovoPedido() {
       {/* Itens */}
       <div className="card">
         <div className="card-head">
-          <h2>Itens do pedido</h2>
-          <button type="button" className="btn btn-soft" onClick={addItem}>
-            ＋ Adicionar item
-          </button>
+          <h2>Itens do pedido{form.itens.length ? ` (${form.itens.length})` : ""}</h2>
+          <div className="row-gap">
+            <button type="button" className="btn btn-soft" onClick={() => setVerItens((v) => !v)}>
+              {verItens ? "esconder ▲" : "mostrar ▼"}
+            </button>
+            <button type="button" className="btn btn-soft" onClick={() => { setVerItens(true); addItem(); }}>
+              ＋ Adicionar item
+            </button>
+          </div>
         </div>
+        {verItens && (
         <table className="table">
           <thead>
             <tr>
@@ -608,6 +615,7 @@ export function NovoPedido() {
             </tr>
           </tfoot>
         </table>
+        )}
       </div>
 
       {erro && <div className="card pad erro">{erro}</div>}

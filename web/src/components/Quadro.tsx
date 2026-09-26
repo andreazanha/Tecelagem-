@@ -262,7 +262,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 
   // Desmembra uma OP consolidada em um card por pedido de origem.
   async function desmembrar(c: CardProducao) {
-    if (!confirm(`Desmembrar a OP consolidada ${c.codigo_pai || ""} em um card separado por pedido (${c.numero_erp || ""})?`)) return;
+    if (!confirm(`Desmembrar os pedidos de explosão ${c.codigo_pai || ""} em um card separado por pedido (${c.numero_erp || ""})?`)) return;
     try {
       const r = await api.desmembrarProducao(c.pedido_id, c.parte);
       recarregar();
@@ -565,7 +565,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 function TagCard({ c }: { c: CardProducao }) {
   if (ehRep(c)) return <span className="tp-tag rep">reposição</span>;
   if (basePart(c.parte) === "pronta-entrega") return <span className="tp-tag kit">kit</span>;
-  if (ehConsolidada(c)) return <span className="tp-tag cons">consolidada</span>;
+  if (ehConsolidada(c)) return <span className="tp-tag cons">explosão</span>;
   return null;
 }
 // Etiqueta da galga (usada quando galga 3 e 7 aparecem juntas — Passadoria).
@@ -2148,8 +2148,8 @@ function Coluna({
                   <span className={"kstatus " + c.status}>{stLabel(c.status)}</span>
                 </div>
                 {c.op && (
-                  <div className="kcard-consol" title={`Card gerado do desmembramento da OP consolidada ${c.codigo_pai || ""}`}>
-                    ⚠ Desmembrada de OP consolidada{c.codigo_pai ? ` ${c.codigo_pai}` : ""}
+                  <div className="kcard-consol" title={`Card gerado do desmembramento dos pedidos de explosão ${c.codigo_pai || ""}`}>
+                    ⚠ Separada de pedidos de explosão{c.codigo_pai ? ` ${c.codigo_pai}` : ""}
                   </div>
                 )}
                 {combinado && (
@@ -2193,7 +2193,7 @@ function Coluna({
                     {onDesmembrar && ehConsolidada(c) && podeFuncao(getUser(), "producao.desmembrar") && (
                       <button
                         className="kbtn tecer"
-                        title="Separar esta OP consolidada em um card por pedido (segue a produção independente)"
+                        title="Separar estes pedidos de explosão em um card por pedido (segue a produção independente)"
                         onClick={(e) => { e.stopPropagation(); onDesmembrar(c); }}
                       >
                         🔀 Desmembrar OP
@@ -2378,7 +2378,7 @@ function CardModal({
                   <button
                     className="modal-cli-edit"
                     title="Corrigir o cliente desta OP (cards desmembrados são de clientes diferentes)"
-                    onClick={() => setEditCli(card.cliente_nome === `OP CONSOLIDADA` || /CONSOLIDADA/i.test(card.cliente_nome) ? "" : card.cliente_nome)}
+                    onClick={() => setEditCli(/CONSOLIDADA|EXPLOS/i.test(card.cliente_nome) ? "" : card.cliente_nome)}
                     style={{ marginLeft: 8, background: "transparent", border: "none", cursor: "pointer", fontSize: 14, opacity: 0.85 }}
                   >
                     ✏️
@@ -2480,7 +2480,7 @@ function CardModal({
             Fechar
           </button>
           {onDesmembrar && ehConsolidada(card) && (
-            <button className="btn btn-soft" onClick={() => { onDesmembrar(card); onFechar(); }} title="Separa a OP consolidada em um card por pedido de origem">
+            <button className="btn btn-soft" onClick={() => { onDesmembrar(card); onFechar(); }} title="Separa os pedidos de explosão em um card por pedido de origem">
               🔀 Desmembrar OP
             </button>
           )}

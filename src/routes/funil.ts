@@ -29,7 +29,7 @@ const MOTIVOS = ["preco", "concorrencia", "sem-interesse", "fechou-loja", "inadi
 export function ehClienteInterno(nome?: string | null): boolean {
   const n = (nome || "").trim().toUpperCase();
   if (!n) return true;
-  return n === "ESTOQUE" || /CONSOLIDAD/.test(n) || /BIG\s*TRICOT/.test(n) || /REPOSI[ÇC]/.test(n);
+  return n === "ESTOQUE" || /CONSOLIDAD/.test(n) || /EXPLOS/.test(n) || /BIG\s*TRICOT/.test(n) || /REPOSI[ÇC]/.test(n);
 }
 
 async function apagarCard(env: Env, id: string) {
