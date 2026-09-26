@@ -21,19 +21,30 @@ function AvisoNovaVersao() {
     })();
     if (!hashCarregado) return;      // dev/sem bundle hasheado → não faz nada
     let vivo = true;
-    const checar = async () => {
+    // Limpa SW/caches (PWA) e recarrega buscando o índice NOVO (sem cache), pra nunca ficar com
+    // tela antiga.
+    const forcarAtualizar = async () => {
+      try { if ("serviceWorker" in navigator) { const rs = await navigator.serviceWorker.getRegistrations(); for (const r of rs) await r.update().catch(() => {}); } } catch { /* ok */ }
+      try { if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); } } catch { /* ok */ }
+      location.reload();
+    };
+    const checar = async (autoSeVoltouAba = false) => {
       try {
         const r = await fetch(`/?_=${Date.now()}`, { cache: "no-store" });
         if (!r.ok) return;
         const html = await r.text();
         const novo = html.match(/\/assets\/index-([^."]+)\.js/)?.[1] || "";
-        if (vivo && novo && novo !== hashCarregado) setNova(true);
+        if (vivo && novo && novo !== hashCarregado) {
+          // Ao VOLTAR pra aba (entre tarefas) atualiza sozinho — não interrompe quem está digitando.
+          // Na checagem periódica, só mostra o aviso pra a pessoa decidir a hora.
+          if (autoSeVoltouAba) forcarAtualizar(); else setNova(true);
+        }
       } catch { /* offline / rede — ignora, tenta de novo depois */ }
     };
-    const t = setInterval(checar, 60000);
-    const onFoco = () => checar();
+    const t = setInterval(() => checar(false), 60000);
+    const onFoco = () => checar(true);
     window.addEventListener("focus", onFoco);
-    checar();
+    checar(false);
     return () => { vivo = false; clearInterval(t); window.removeEventListener("focus", onFoco); };
   }, []);
   async function atualizar() {
