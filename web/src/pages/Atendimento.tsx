@@ -129,7 +129,7 @@ const STATUS_CLIENTE: Record<string, { label: string; bg: string; cor: string }>
 const STATUS_CLIENTE_ORDEM = ["lead", "primeira-compra", "recorrente", "fiel", "inativo"];
 
 // ── Página do robô de atendimento ────────────────────────────────────────────────
-export function Atendimento() {
+export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; onCrmTab?: (t: "inbox" | "funil") => void } = {}) {
   const [board, setBoard] = useState<AtendBoard | null>(null);
   const [abrir, setAbrir] = useState<string | null>(null);
   const [sim, setSim] = useState(false);
@@ -286,6 +286,18 @@ export function Atendimento() {
   // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
   const fotoCache = useRef<Record<string, string | null>>({});
   const colRefs = useRef<Record<string, HTMLDivElement | null>>({}); // p/ pular pra coluna no mobile
+  const boardRef = useRef<HTMLDivElement | null>(null); // quadro: ajusta a altura p/ caber na tela (barra de rolagem sempre visível)
+  useEffect(() => {
+    const ajustar = () => {
+      const el = boardRef.current; if (!el) return;
+      const top = el.getBoundingClientRect().top;
+      el.style.height = Math.max(280, window.innerHeight - top - 14) + "px";
+    };
+    ajustar();
+    const t = setTimeout(ajustar, 120); // reajusta após render/imagens
+    window.addEventListener("resize", ajustar);
+    return () => { clearTimeout(t); window.removeEventListener("resize", ajustar); };
+  }, [board]);
   const [, setFotosV] = useState(0);
   // Busca as fotos de perfil de TODOS os contatos — numa fila persistente (uma por vez, com uma
   // folga pra não sobrecarregar a Z-API). Cada foto é buscada só UMA vez e fica em cache; a fila
@@ -571,9 +583,33 @@ export function Atendimento() {
           <span onClick={(e) => { e.stopPropagation(); setToastMsg(null); }} style={{ marginLeft: 6, fontSize: 18, opacity: .85, padding: "0 4px" }}>✕</span>
         </div>
       )}
+      {/* Linha do topo: alternar Conversas/Funil + acompanhar por atendente (gestor), lado a lado. */}
+      <div className="at-toptabs">
+        {onCrmTab && (
+          <div className="crm-tabs crm-tabs-seg">
+            <button className={"crm-tab" + (crmTab !== "funil" ? " on" : "")} onClick={() => onCrmTab("inbox")}>💬 Conversas</button>
+            <button className={"crm-tab" + (crmTab === "funil" ? " on" : "")} onClick={() => onCrmTab("funil")}>🎯 Funil de Vendas</button>
+          </div>
+        )}
+        {board && ehGestorAtend() && (() => {
+          const atendentes = [...new Set(board.conversas.map((c) => c.responsavel).filter(Boolean) as string[])].sort();
+          if (atendentes.length === 0) return null;
+          return (
+            <div className="fx-filtros">
+              <span style={{ fontSize: 12, color: "var(--muted)", alignSelf: "center" }}>👀 Acompanhar:</span>
+              <span className={"fx-pill" + (filtroAtend === "todos" ? " on" : "")} onClick={() => setFiltroAtend("todos")}>Todos</span>
+              {atendentes.map((a) => (
+                <span key={a} className={"fx-pill" + (filtroAtend === a ? " on" : "")} onClick={() => setFiltroAtend(a)}>{a}</span>
+              ))}
+              <span className={"fx-pill" + (filtroAtend === "__robo" ? " on" : "")} onClick={() => setFiltroAtend("__robo")}>🤖 Só robô</span>
+            </div>
+          );
+        })()}
+      </div>
+
       <div className="page-head at-head">
         <div><h1>Atendimento</h1><div className="breadcrumb">Comercial › Atendimento (robô do WhatsApp)</div></div>
-        <div className="row-gap at-actions" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="row-gap at-actions" style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
           <button className="btn btn-soft" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); if (!n) { try { if (!audioRef.current) audioRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)(); } catch { /* ok */ } audioRef.current?.resume?.(); setTimeout(() => tocarDing(), 60); } return n; })} title={mudo ? "Som desligado — clique para ligar (toca um teste)" : "Toca um som quando chega mensagem nova. Clique para desligar."}>{mudo ? "🔕 Som off" : "🔔 Som on"}</button>
           {podeFuncao(getUser(), "crm.nova") && <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>}
@@ -587,22 +623,6 @@ export function Atendimento() {
           {ehGestorAtend() && <button className="btn btn-soft" disabled={cruzando} onClick={cruzarBase} title="Liga os contatos à base de clientes E puxa os nomes salvos na sua agenda do WhatsApp (preenche nome/CNPJ/cidade/UF sozinho). O sistema também faz isso automático 3x/dia.">{cruzando ? "Cruzando…" : "🔗 Cruzar com a base"}</button>}
         </div>
       </div>
-
-      {/* Gestor: acompanha cada vendedor — filtra o quadro por quem está atendendo. */}
-      {board && ehGestorAtend() && (() => {
-        const atendentes = [...new Set(board.conversas.map((c) => c.responsavel).filter(Boolean) as string[])].sort();
-        if (atendentes.length === 0) return null;
-        return (
-          <div className="fx-filtros" style={{ marginBottom: 10 }}>
-            <span style={{ fontSize: 12, color: "var(--muted)", alignSelf: "center" }}>👀 Acompanhar:</span>
-            <span className={"fx-pill" + (filtroAtend === "todos" ? " on" : "")} onClick={() => setFiltroAtend("todos")}>Todos</span>
-            {atendentes.map((a) => (
-              <span key={a} className={"fx-pill" + (filtroAtend === a ? " on" : "")} onClick={() => setFiltroAtend(a)}>{a}</span>
-            ))}
-            <span className={"fx-pill" + (filtroAtend === "__robo" ? " on" : "")} onClick={() => setFiltroAtend("__robo")}>🤖 Só robô</span>
-          </div>
-        );
-      })()}
 
       {/* Busca de conversa no quadro: filtra os cards por nome, loja, telefone ou cidade. */}
       {board && (() => {
@@ -653,7 +673,7 @@ export function Atendimento() {
             );
           })}
         </div>
-        <div className="fx-board at-board">
+        <div className="fx-board at-board" ref={boardRef}>
           {board.colunas.map((col) => {
             const cs = gruposPorColuna.get(col.id) || [];
             return (

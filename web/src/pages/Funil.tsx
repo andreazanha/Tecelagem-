@@ -48,7 +48,7 @@ const SIT: Record<string, { l: string; c: string }> = {
 };
 
 // ── QUADRO do funil ────────────────────────────────────────────────────────────
-export function Funil() {
+export function Funil({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; onCrmTab?: (t: "inbox" | "funil") => void } = {}) {
   const [board, setBoard] = useState<FunilBoard | null>(null);
   const [filtro, setFiltro] = useState<string>("todos"); // todos | alerta | <responsavel>
   const [abrir, setAbrir] = useState<string | null>(null); // card id detalhe
@@ -173,6 +173,14 @@ export function Funil() {
   const r = board?.resumo;
   return (
     <div className="quadro-page" style={{ maxWidth: "none" }}>
+      {onCrmTab && (
+        <div className="at-toptabs">
+          <div className="crm-tabs crm-tabs-seg">
+            <button className={"crm-tab" + (crmTab !== "funil" ? " on" : "")} onClick={() => onCrmTab("inbox")}>💬 Conversas</button>
+            <button className={"crm-tab" + (crmTab === "funil" ? " on" : "")} onClick={() => onCrmTab("funil")}>🎯 Funil de Vendas</button>
+          </div>
+        </div>
+      )}
       <div className="page-head">
         <div><h1>Funil de Vendas</h1><div className="breadcrumb">Comercial › Funil</div></div>
         <div className="fx-filtros">

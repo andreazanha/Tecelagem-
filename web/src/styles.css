@@ -2514,3 +2514,8 @@ body.dark .crm-tabs.crm-tabs-seg { background: #18202f; }
 .page-head.at-head > .at-actions::-webkit-scrollbar { height: 6px; }
 .page-head.at-head > .at-actions::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
 body.dark .page-head.at-head > .at-actions::-webkit-scrollbar-thumb { background: #33415a; }
+
+/* Linha do topo do CRM: toggle Conversas/Funil + "Acompanhar" lado a lado. */
+.at-toptabs { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin: 8px 0 10px; }
+.at-toptabs .crm-tabs.crm-tabs-seg { margin: 0; }
+.at-toptabs .fx-filtros { margin: 0; }

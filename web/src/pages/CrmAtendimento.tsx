@@ -7,13 +7,11 @@ import { Funil } from "./Funil";
 export function CrmAtendimento() {
   const [tab, setTab] = useState<"funil" | "inbox">("inbox");
 
+  // O toggle Conversas/Funil é renderizado DENTRO de cada tela (ao lado do "Acompanhar"),
+  // por isso passamos o estado da aba pra elas.
   return (
     <div>
-      <div className="crm-tabs crm-tabs-seg">
-        <button className={"crm-tab" + (tab === "inbox" ? " on" : "")} onClick={() => setTab("inbox")}>💬 Conversas</button>
-        <button className={"crm-tab" + (tab === "funil" ? " on" : "")} onClick={() => setTab("funil")}>🎯 Funil de Vendas</button>
-      </div>
-      {tab === "funil" ? <Funil /> : <Atendimento />}
+      {tab === "funil" ? <Funil crmTab={tab} onCrmTab={setTab} /> : <Atendimento crmTab={tab} onCrmTab={setTab} />}
     </div>
   );
 }
