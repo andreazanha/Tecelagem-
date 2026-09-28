@@ -588,6 +588,23 @@ export function Atendimento() {
         </div>
       </div>
 
+      {/* Atalhos por fase (mesmo padrão das telas de produção): contagem por coluna + pula pra ela. */}
+      {board && (
+        <div className="at-atalhos">
+          {board.colunas.map((col) => {
+            const n = (gruposPorColuna.get(col.id) || []).length;
+            return (
+              <button key={col.id} className="at-atalho" style={{ background: col.cor }}
+                title={`Ir para ${col.label}`}
+                onClick={() => colRefs.current[col.id]?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })}>
+                <span className="lb">{col.label}</span>
+                <span className="n">{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Gestor: acompanha cada vendedor — filtra o quadro por quem está atendendo. */}
       {board && ehGestorAtend() && (() => {
         const atendentes = [...new Set(board.conversas.map((c) => c.responsavel).filter(Boolean) as string[])].sort();
@@ -658,11 +675,11 @@ export function Atendimento() {
             const cs = gruposPorColuna.get(col.id) || [];
             return (
               <div className={"fx-col" + (sobre === col.id ? " drag-over" : "")} key={col.id} data-coluna={col.id} ref={(el) => { colRefs.current[col.id] = el; }}>
-                <div className="fx-hd"><span className="fx-dot" style={{ background: col.cor }} />{col.label}<span className="ct">{cs.length}</span>
+                <div className="fx-hd fx-hd-cor" style={{ background: col.cor }}>{col.label}<span className="ct">{cs.length}</span>
                   {ehGestorAtend() && cs.length > 0 && (
                     <button title="🤖 Reativar a IA nesses leads: manda uma saudação e a Big recomeça o atendimento (triagem + catálogo de varejo). Use com leads parados."
                       onClick={(e) => { e.stopPropagation(); reativarIaColuna(col.label, cs.map((x) => x.id)); }}
-                      style={{ marginLeft: "auto", background: "transparent", border: 0, cursor: "pointer", fontSize: 13.5, opacity: 0.75, padding: "0 2px", lineHeight: 1 }}>🤖</button>
+                      style={{ marginLeft: "auto", background: "transparent", border: 0, cursor: "pointer", fontSize: 13.5, opacity: 0.9, padding: "0 2px", lineHeight: 1 }}>🤖</button>
                   )}
                 </div>
                 <div className="fx-col-body">

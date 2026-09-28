@@ -2479,3 +2479,25 @@ body.dark .op-pill { background: #6366f1; }
 .btn-danger:hover { background: #b91c1c; border-color: #b91c1c; }
 body.dark .btn-danger { background: #ef4444; border-color: #ef4444; }
 body.dark .btn-danger:hover { background: #dc2626; border-color: #dc2626; }
+
+/* ── CRM / Atendimento no padrão do sistema ─────────────────────────────────── */
+/* Atalhos por fase (contagem + pula pra coluna), igual às telas de produção. */
+.at-atalhos { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.at-atalho { border: 0; border-radius: 14px; padding: 12px 14px; color: #fff; text-align: left; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; min-height: 74px; box-shadow: 0 6px 16px #00000012; text-shadow: 0 1px 2px #0000002e; }
+.at-atalho .lb { font-size: 12.5px; font-weight: 800; opacity: .97; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.at-atalho .n { font-size: 26px; font-weight: 900; align-self: flex-end; line-height: 1; }
+.at-atalho:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.at-atalho { transition: filter .15s ease, transform .15s ease; }
+
+/* Cabeçalho da coluna colorido (cor da própria coluna) com o número numa pílula clara. */
+.fx-hd.fx-hd-cor { color: #fff; text-shadow: 0 1px 2px #00000033; box-shadow: 0 5px 8px -4px rgba(15,23,42,.45); }
+.fx-hd.fx-hd-cor .ct { background: #ffffff30; border-color: #ffffff5c; color: #fff; }
+body.dark .fx-hd.fx-hd-cor .ct { background: #ffffff26; border-color: #ffffff44; }
+
+/* Última mensagem numa caixinha, mais legível (padrão do mockup). */
+.at-prev { background: #f4f6fa; border-radius: 8px; padding: 7px 9px; color: #475569; }
+body.dark .at-prev { background: #131c2c; color: #9fb0c8; }
+
+/* Avatar no tom navy do sistema. */
+.conv-av { background: linear-gradient(135deg, #2f4f7d, #22416b); }
+body.dark .conv-av { background: linear-gradient(135deg, #2f4f7d, #22416b); }
