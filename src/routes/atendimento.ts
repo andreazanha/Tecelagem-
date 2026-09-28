@@ -1420,6 +1420,10 @@ atendimento.post("/webhook", async (c) => {
   let texto = (t?.message ?? img?.caption ?? "").toString();
   const nomeContato = String(b.senderName ?? b.chatName ?? b.pushName ?? "").trim();
   if (!phone) return c.json({ ignorado: "sem-telefone" });
+  // AUTO-MENSAGEM: mensagem cujo remetente é o PRÓPRIO número conectado (mandar pra si mesmo).
+  // Isso vira um laço confuso no CRM ("conversa com você mesmo"). Ignora — nunca é um cliente.
+  const conectado = digitos(b.connectedPhone);
+  if (conectado && phone === conectado) return c.json({ ignorado: "auto-mensagem (numero conectado)" });
   // ANTES: se o número fosse de um MEMBRO da equipe (cadastrado na antiga "Comunicação interna"),
   // a mensagem era DESVIADA pro chat interno (canal ext:<id>) e NÃO chegava no quadro. Como a
   // Comunicação interna foi REMOVIDA, esse desvio fazia a mensagem SUMIR (era o caso da Beatriz:
