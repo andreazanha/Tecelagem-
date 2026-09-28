@@ -12,6 +12,21 @@ export const atendimento = new Hono<{ Bindings: Env }>();
 
 const uid = () => crypto.randomUUID();
 const digitos = (s: unknown) => String(s ?? "").replace(/\D/g, "");
+// Normaliza um número de WhatsApp brasileiro para o formato canônico (DDI 55 + DDD + 9 + 8):
+//  • completa o 9º dígito do CELULAR quando veio sem (número antigo de 8 dígitos)
+//    ex.: "35 9928-1038" (DDD+8) → "35 99928-1038" (DDD+9+8);
+//  • garante o DDI 55 em número nacional (10 ou 11 dígitos).
+// NÃO mexe em: id de grupo/@lid (muito longo), número que já está completo, nem em fixo
+// (só insere o 9 quando o número começa com dígito de celular 6-9).
+function completarNoveDigitoBR(raw: unknown): string {
+  const d = digitos(raw);
+  if (!d || d.length > 13) return d; // vazio ou id de grupo/@lid — não normaliza
+  let ddi = (d.startsWith("55") && (d.length === 12 || d.length === 13)) ? "55" : "";
+  let core = ddi ? d.slice(2) : d; // DDD + número (esperado 10 ou 11)
+  if (core.length === 10 && /^[6-9]/.test(core.slice(2))) core = core.slice(0, 2) + "9" + core.slice(2); // insere o 9
+  if (!ddi && (core.length === 10 || core.length === 11)) ddi = "55"; // garante DDI nacional
+  return ddi + core;
+}
 // Um ID de GRUPO de verdade do WhatsApp começa com "120363" (grupos novos) ou é um id bem longo
 // (grupos antigos: número do criador + timestamp). Já um contato @lid (privacidade nova do WhatsApp)
 // também vem como número longo, mas NÃO começa com 120363 e tem ~15-16 dígitos — por isso NÃO é grupo.
@@ -2809,7 +2824,7 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
   const inst = cfg.zapi_instance || "";
   const token = cfg.zapi_token || "";
   if (!inst || !token) return { enviado: false, motivo: "sem-credenciais" };
-  const phone = digitos(tel);
+  const phone = completarNoveDigitoBR(tel); // completa o 9 do celular se veio sem
   let texto = linksClicaveis(String(saida.texto ?? "").trim());
   if (!phone || !texto) return { enviado: false, motivo: "vazio" };
   // GRUPO: envia DIRETO pelo id do grupo. NÃO passa por "cliente bloqueado" (grupo não é cliente)
@@ -2861,7 +2876,7 @@ export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string
   const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
   const inst = cfg.zapi_instance || "", token = cfg.zapi_token || "";
   if (!inst || !token) return { enviado: false, motivo: "sem-credenciais" };
-  const phone = digitos(tel);
+  const phone = completarNoveDigitoBR(tel); // completa o 9 do celular se veio sem
   if (!phone) return { enviado: false, motivo: "vazio" };
   // GRUPO: envia direto pelo id (sem checar bloqueio nem desviar por @lid).
   const ehGrupoDest = pareceIdDeGrupo(phone);
