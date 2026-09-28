@@ -588,23 +588,6 @@ export function Atendimento() {
         </div>
       </div>
 
-      {/* Atalhos por fase (mesmo padrão das telas de produção): contagem por coluna + pula pra ela. */}
-      {board && (
-        <div className="at-atalhos">
-          {board.colunas.map((col) => {
-            const n = (gruposPorColuna.get(col.id) || []).length;
-            return (
-              <button key={col.id} className="at-atalho" style={{ background: col.cor }}
-                title={`Ir para ${col.label}`}
-                onClick={() => colRefs.current[col.id]?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })}>
-                <span className="lb">{col.label}</span>
-                <span className="n">{n}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       {/* Gestor: acompanha cada vendedor — filtra o quadro por quem está atendendo. */}
       {board && ehGestorAtend() && (() => {
         const atendentes = [...new Set(board.conversas.map((c) => c.responsavel).filter(Boolean) as string[])].sort();

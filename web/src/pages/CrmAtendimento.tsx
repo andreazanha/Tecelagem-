@@ -9,8 +9,8 @@ export function CrmAtendimento() {
 
   return (
     <div>
-      <div className="crm-tabs">
-        <button className={"crm-tab" + (tab === "inbox" ? " on" : "")} onClick={() => setTab("inbox")}>💬 WhatsApp</button>
+      <div className="crm-tabs crm-tabs-seg">
+        <button className={"crm-tab" + (tab === "inbox" ? " on" : "")} onClick={() => setTab("inbox")}>💬 Conversas</button>
         <button className={"crm-tab" + (tab === "funil" ? " on" : "")} onClick={() => setTab("funil")}>🎯 Funil de Vendas</button>
       </div>
       {tab === "funil" ? <Funil /> : <Atendimento />}

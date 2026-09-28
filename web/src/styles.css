@@ -2481,16 +2481,6 @@ body.dark .btn-danger { background: #ef4444; border-color: #ef4444; }
 body.dark .btn-danger:hover { background: #dc2626; border-color: #dc2626; }
 
 /* ── CRM / Atendimento no padrão do sistema ─────────────────────────────────── */
-/* Atalhos por fase: pílulas COMPACTAS numa única linha (rola de lado se não couber). */
-.at-atalhos { display: flex; flex-wrap: nowrap; gap: 7px; margin-bottom: 12px; overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; scrollbar-width: thin; }
-.at-atalhos::-webkit-scrollbar { height: 6px; }
-.at-atalhos::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
-body.dark .at-atalhos::-webkit-scrollbar-thumb { background: #33415a; }
-.at-atalho { flex: 0 0 auto; border: 0; border-radius: 999px; padding: 6px 11px; color: #fff; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; font-size: 12px; line-height: 1; box-shadow: 0 2px 6px #00000012; text-shadow: 0 1px 1px #0000002e; transition: filter .15s ease, transform .15s ease; }
-.at-atalho .lb { font-weight: 800; white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
-.at-atalho .n { background: #ffffff33; border: 1px solid #ffffff5c; border-radius: 999px; min-width: 20px; height: 19px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; font-weight: 900; font-size: 11.5px; }
-.at-atalho:hover { filter: brightness(1.06); transform: translateY(-1px); }
-
 /* Cabeçalho da coluna colorido (cor da própria coluna) com o número numa pílula clara. */
 .fx-hd.fx-hd-cor { color: #fff; text-shadow: 0 1px 2px #00000033; box-shadow: 0 5px 8px -4px rgba(15,23,42,.45); }
 .fx-hd.fx-hd-cor .ct { background: #ffffff30; border-color: #ffffff5c; color: #fff; }
@@ -2511,3 +2501,16 @@ body.dark .conv-av { background: linear-gradient(135deg, #2f4f7d, #22416b); }
 .page-head.at-head > .at-actions { flex: 1 1 100%; justify-content: flex-start; row-gap: 8px; }
 .page-head.at-head > .at-actions .btn { padding: 8px 12px; font-size: 12.5px; }
 .page-head.at-head > .at-actions .at-status { padding: 6px 11px; font-size: 12px; }
+
+/* Abas Conversas/Funil: toggle segmentado COMPACTO (menos redundância no topo). */
+.crm-tabs.crm-tabs-seg { display: inline-flex; gap: 3px; padding: 4px; margin: 10px 0 0 14px; background: #fff; border: 1px solid var(--line); border-radius: 999px; flex-wrap: nowrap; }
+body.dark .crm-tabs.crm-tabs-seg { background: #18202f; }
+.crm-tabs.crm-tabs-seg .crm-tab { font-size: 12.5px; font-weight: 800; padding: 6px 14px; border-radius: 999px; border: 0; background: transparent; color: var(--muted); }
+.crm-tabs.crm-tabs-seg .crm-tab.on { background: #22416b; color: #fff; border-color: transparent; }
+
+/* Barra de ações do Atendimento numa ÚNICA linha (rola de lado se não couber). */
+.page-head.at-head > .at-actions { flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; justify-content: flex-start; padding-bottom: 4px; scrollbar-width: thin; }
+.page-head.at-head > .at-actions > * { flex: 0 0 auto; white-space: nowrap; }
+.page-head.at-head > .at-actions::-webkit-scrollbar { height: 6px; }
+.page-head.at-head > .at-actions::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+body.dark .page-head.at-head > .at-actions::-webkit-scrollbar-thumb { background: #33415a; }
