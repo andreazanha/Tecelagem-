@@ -571,7 +571,7 @@ export function Atendimento() {
           <span onClick={(e) => { e.stopPropagation(); setToastMsg(null); }} style={{ marginLeft: 6, fontSize: 18, opacity: .85, padding: "0 4px" }}>✕</span>
         </div>
       )}
-      <div className="page-head">
+      <div className="page-head at-head">
         <div><h1>Atendimento</h1><div className="breadcrumb">Comercial › Atendimento (robô do WhatsApp)</div></div>
         <div className="row-gap at-actions" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>

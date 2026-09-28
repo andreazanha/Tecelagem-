@@ -2503,3 +2503,11 @@ body.dark .at-prev { background: #131c2c; color: #9fb0c8; }
 /* Avatar no tom navy do sistema. */
 .conv-av { background: linear-gradient(135deg, #2f4f7d, #22416b); }
 body.dark .conv-av { background: linear-gradient(135deg, #2f4f7d, #22416b); }
+
+/* Atendimento: barra de ações ocupa a linha inteira (própria linha, abaixo do título),
+   assim TODOS os botões — inclusive "Juntar duplicados" e "Cruzar com a base" — cabem
+   numa única linha, sem cair pra segunda. Botões um pouco mais compactos p/ caber. */
+.page-head.at-head { flex-wrap: wrap; align-items: flex-start; }
+.page-head.at-head > .at-actions { flex: 1 1 100%; justify-content: flex-start; row-gap: 8px; }
+.page-head.at-head > .at-actions .btn { padding: 8px 12px; font-size: 12.5px; }
+.page-head.at-head > .at-actions .at-status { padding: 6px 11px; font-size: 12px; }
