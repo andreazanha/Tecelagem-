@@ -2481,13 +2481,15 @@ body.dark .btn-danger { background: #ef4444; border-color: #ef4444; }
 body.dark .btn-danger:hover { background: #dc2626; border-color: #dc2626; }
 
 /* ── CRM / Atendimento no padrão do sistema ─────────────────────────────────── */
-/* Atalhos por fase (contagem + pula pra coluna), igual às telas de produção. */
-.at-atalhos { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 10px; margin-bottom: 14px; }
-.at-atalho { border: 0; border-radius: 14px; padding: 12px 14px; color: #fff; text-align: left; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; min-height: 74px; box-shadow: 0 6px 16px #00000012; text-shadow: 0 1px 2px #0000002e; }
-.at-atalho .lb { font-size: 12.5px; font-weight: 800; opacity: .97; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.at-atalho .n { font-size: 26px; font-weight: 900; align-self: flex-end; line-height: 1; }
+/* Atalhos por fase: pílulas COMPACTAS numa única linha (rola de lado se não couber). */
+.at-atalhos { display: flex; flex-wrap: nowrap; gap: 7px; margin-bottom: 12px; overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; scrollbar-width: thin; }
+.at-atalhos::-webkit-scrollbar { height: 6px; }
+.at-atalhos::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+body.dark .at-atalhos::-webkit-scrollbar-thumb { background: #33415a; }
+.at-atalho { flex: 0 0 auto; border: 0; border-radius: 999px; padding: 6px 11px; color: #fff; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; font-size: 12px; line-height: 1; box-shadow: 0 2px 6px #00000012; text-shadow: 0 1px 1px #0000002e; transition: filter .15s ease, transform .15s ease; }
+.at-atalho .lb { font-weight: 800; white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.at-atalho .n { background: #ffffff33; border: 1px solid #ffffff5c; border-radius: 999px; min-width: 20px; height: 19px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; font-weight: 900; font-size: 11.5px; }
 .at-atalho:hover { filter: brightness(1.06); transform: translateY(-1px); }
-.at-atalho { transition: filter .15s ease, transform .15s ease; }
 
 /* Cabeçalho da coluna colorido (cor da própria coluna) com o número numa pílula clara. */
 .fx-hd.fx-hd-cor { color: #fff; text-shadow: 0 1px 2px #00000033; box-shadow: 0 5px 8px -4px rgba(15,23,42,.45); }
