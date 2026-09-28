@@ -4241,7 +4241,9 @@ atendimento.post("/:id/mensagem/:msgId/encaminhar", async (c) => {
     r = await enviarWhatsapp(c.env, tel, { tipo: "texto", texto });
   }
   if (!r.enviado) return c.json({ error: "Não consegui enviar (confira a conexão do WhatsApp)." }, 502);
-  await registrarEnvioNaConversa(c.env, tel, m.arquivo_url ? (texto || "📎 arquivo encaminhado") : texto, r.messageId ?? null, "Encaminhado");
+  // Passa o arquivo_url p/ a conversa de destino registrar como ANEXO de verdade (abre/baixa),
+  // não como um cartão de texto com o nome do arquivo.
+  await registrarEnvioNaConversa(c.env, tel, m.arquivo_url ? (texto || "📎 arquivo encaminhado") : texto, r.messageId ?? null, "Encaminhado", m.arquivo_url || "");
   return c.json({ ok: true });
 });
 
