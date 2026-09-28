@@ -155,7 +155,7 @@ export function Atendimento() {
   // ── Arrastar card entre colunas (pointer + listeners no window = confiável) ──
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
-  const dragRef = useRef<{ id: string; startX: number; startY: number; active: boolean; touch: boolean; timer: number | null; move?: (e: PointerEvent) => void; up?: (e: PointerEvent) => void } | null>(null);
+  const dragRef = useRef<{ id: string; startX: number; startY: number; active: boolean; moved: boolean; touch: boolean; timer: number | null; move?: (e: PointerEvent) => void; up?: (e: PointerEvent) => void } | null>(null);
   const arrastou = useRef(false);
   const [gerColunas, setGerColunas] = useState(false);
   function colunaEmPonto(x: number, y: number): string | null {
@@ -176,28 +176,32 @@ export function Atendimento() {
     if (e.button && e.button !== 0) return;
     const move = (ev: PointerEvent) => {
       const d = dragRef.current; if (!d) return;
+      const dx = Math.abs(ev.clientX - d.startX), dy = Math.abs(ev.clientY - d.startY);
       if (!d.active) {
-        const dx = Math.abs(ev.clientX - d.startX), dy = Math.abs(ev.clientY - d.startY);
         if (d.touch) { if (dx > 10 || dy > 10) finalizarDrag(); }              // moveu antes de segurar = rolagem
         else if (dx > 4 || dy > 4) { d.active = true; setArrastando(d.id); }    // mouse: arrasta assim que sai do lugar
         return;
       }
+      if (dx > 8 || dy > 8) d.moved = true;   // só conta como ARRASTE se o card saiu do lugar
       ev.preventDefault();
       setSobre(colunaEmPonto(ev.clientX, ev.clientY));
     };
     const up = (ev: PointerEvent) => {
       const d = dragRef.current; if (!d) return;
-      const active = d.active;
-      const alvo = active ? colunaEmPonto(ev.clientX, ev.clientY) : null;
+      // Só cancela o clique/abre se REALMENTE arrastou (segurou E moveu). Toque demorado
+      // parado (long-press sem mover) continua valendo como toque → abre a conversa.
+      const arrastouDeVerdade = d.active && d.moved;
+      const alvo = arrastouDeVerdade ? colunaEmPonto(ev.clientX, ev.clientY) : null;
       finalizarDrag();
-      if (active) { arrastou.current = true; if (alvo) soltarConversa(alvo, id); }
+      if (arrastouDeVerdade) { arrastou.current = true; if (alvo) soltarConversa(alvo, id); }
     };
-    const d = { id, startX: e.clientX, startY: e.clientY, active: false, touch: e.pointerType === "touch", timer: null as number | null, move, up };
+    const d = { id, startX: e.clientX, startY: e.clientY, active: false, moved: false, touch: e.pointerType === "touch", timer: null as number | null, move, up };
     dragRef.current = d;
     window.addEventListener("pointermove", move, { passive: false });
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
-    if (d.touch) d.timer = window.setTimeout(() => { if (dragRef.current === d) { d.active = true; setArrastando(d.id); } }, 240);
+    // Long-press p/ iniciar arraste no toque: 450ms (um toque normal é mais curto, então abre).
+    if (d.touch) d.timer = window.setTimeout(() => { if (dragRef.current === d) { d.active = true; setArrastando(d.id); } }, 450);
   }
   async function soltarConversa(coluna: string, id: string) {
     const c = board?.conversas.find((x) => x.id === id);
