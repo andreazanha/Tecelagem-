@@ -191,9 +191,13 @@ export function Atendimento() {
       // Só cancela o clique/abre se REALMENTE arrastou (segurou E moveu). Toque demorado
       // parado (long-press sem mover) continua valendo como toque → abre a conversa.
       const arrastouDeVerdade = d.active && d.moved;
+      const foiToque = d.touch;
       const alvo = arrastouDeVerdade ? colunaEmPonto(ev.clientX, ev.clientY) : null;
       finalizarDrag();
       if (arrastouDeVerdade) { arrastou.current = true; if (alvo) soltarConversa(alvo, id); }
+      // TOQUE (tablet/celular): abre a conversa AQUI mesmo, sem depender do onClick sintético,
+      // que muitas vezes não dispara depois dos eventos de ponteiro no toque.
+      else if (foiToque) { arrastou.current = false; setAbrir(id); }
     };
     const d = { id, startX: e.clientX, startY: e.clientY, active: false, moved: false, touch: e.pointerType === "touch", timer: null as number | null, move, up };
     dragRef.current = d;
