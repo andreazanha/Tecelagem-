@@ -155,7 +155,7 @@ export function Atendimento() {
   // ── Arrastar card entre colunas (pointer + listeners no window = confiável) ──
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
-  const dragRef = useRef<{ id: string; startX: number; startY: number; active: boolean; moved: boolean; touch: boolean; timer: number | null; move?: (e: PointerEvent) => void; up?: (e: PointerEvent) => void } | null>(null);
+  const dragRef = useRef<{ id: string; startX: number; startY: number; active: boolean; moved: boolean; movedAny: boolean; touch: boolean; timer: number | null; move?: (e: PointerEvent) => void; up?: (e: PointerEvent) => void; cancel?: (e: PointerEvent) => void } | null>(null);
   const arrastou = useRef(false);
   const [gerColunas, setGerColunas] = useState(false);
   function colunaEmPonto(x: number, y: number): string | null {
@@ -167,7 +167,8 @@ export function Atendimento() {
     if (d) {
       if (d.timer) clearTimeout(d.timer);
       if (d.move) window.removeEventListener("pointermove", d.move);
-      if (d.up) { window.removeEventListener("pointerup", d.up); window.removeEventListener("pointercancel", d.up); }
+      if (d.up) window.removeEventListener("pointerup", d.up);
+      if (d.cancel) window.removeEventListener("pointercancel", d.cancel);
     }
     dragRef.current = null;
     setArrastando(null); setSobre(null);
@@ -177,6 +178,7 @@ export function Atendimento() {
     const move = (ev: PointerEvent) => {
       const d = dragRef.current; if (!d) return;
       const dx = Math.abs(ev.clientX - d.startX), dy = Math.abs(ev.clientY - d.startY);
+      if (dx > 8 || dy > 8) d.movedAny = true;   // deslizou o dedo — NÃO é um toque parado (é rolagem/arraste)
       if (!d.active) {
         if (d.touch) { if (dx > 10 || dy > 10) finalizarDrag(); }              // moveu antes de segurar = rolagem
         else if (dx > 4 || dy > 4) { d.active = true; setArrastando(d.id); }    // mouse: arrasta assim que sai do lugar
@@ -188,22 +190,23 @@ export function Atendimento() {
     };
     const up = (ev: PointerEvent) => {
       const d = dragRef.current; if (!d) return;
-      // Só cancela o clique/abre se REALMENTE arrastou (segurou E moveu). Toque demorado
-      // parado (long-press sem mover) continua valendo como toque → abre a conversa.
       const arrastouDeVerdade = d.active && d.moved;
-      const foiToque = d.touch;
+      // Toque abre a conversa SÓ se o dedo ficou PARADO (não deslizou). Assim, rolar o quadro
+      // pro lado não abre conversa. E não depende do onClick sintético (que falha no toque).
+      const foiToqueParado = d.touch && !arrastouDeVerdade && !d.movedAny;
       const alvo = arrastouDeVerdade ? colunaEmPonto(ev.clientX, ev.clientY) : null;
       finalizarDrag();
       if (arrastouDeVerdade) { arrastou.current = true; if (alvo) soltarConversa(alvo, id); }
-      // TOQUE (tablet/celular): abre a conversa AQUI mesmo, sem depender do onClick sintético,
-      // que muitas vezes não dispara depois dos eventos de ponteiro no toque.
-      else if (foiToque) { arrastou.current = false; setAbrir(id); }
+      else if (foiToqueParado) { arrastou.current = false; setAbrir(id); }
     };
-    const d = { id, startX: e.clientX, startY: e.clientY, active: false, moved: false, touch: e.pointerType === "touch", timer: null as number | null, move, up };
+    // ROLAGEM: quando o navegador assume a rolagem, dispara pointercancel — aqui só encerra,
+    // NUNCA abre a conversa (era isso que abria conversa ao tentar rolar o quadro no tablet).
+    const cancel = () => { finalizarDrag(); };
+    const d = { id, startX: e.clientX, startY: e.clientY, active: false, moved: false, movedAny: false, touch: e.pointerType === "touch", timer: null as number | null, move, up, cancel };
     dragRef.current = d;
     window.addEventListener("pointermove", move, { passive: false });
     window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
+    window.addEventListener("pointercancel", cancel);
     // Long-press p/ iniciar arraste no toque: 450ms (um toque normal é mais curto, então abre).
     if (d.touch) d.timer = window.setTimeout(() => { if (dragRef.current === d) { d.active = true; setArrastando(d.id); } }, 450);
   }
