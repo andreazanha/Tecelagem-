@@ -78,7 +78,7 @@ export function EstoqueMateriais() {
 
   return (
     <>
-      <div className="page-head"><div><h1>Estoque de materiais</h1><div className="breadcrumb">Estoque › Materiais (por categoria)</div></div></div>
+      <div className="page-head"><div><h1>Estoque de materiais</h1><div className="breadcrumb">PCP › Estoque de matéria prima › Materiais</div></div></div>
 
       {/* Seletor de categoria */}
       <div className="row-gap" style={{ gap: 8, flexWrap: "wrap", marginBottom: 14 }}>

@@ -183,11 +183,9 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "estoque", icon: "📊", label: "Estoque", itens: [
-      { to: "/fio-por-cor", icon: "🧵", label: "Estoque de fios", page: "estoque" },
-      { to: "/estoque-materiais", icon: "🧷", label: "Estoque de materiais", page: "estoque" },
+      // Fios + insumos (matéria prima) foram movidos para o PCP › Estoque de matéria prima.
       { to: "/produtos?aba=estoque", icon: "📊", label: "Estoque de Produtos", page: "produtos" },
       { to: "/produtos?aba=reposicao", icon: "⚠️", label: "Reposição", page: "produtos" },
-      { to: "/cadastros?aba=materiais", icon: "🧷", label: "Materiais", page: "cadastros" },
       { to: "/produtos?aba=entradas", icon: "⬇️", label: "Entrada de Estoque", page: "produtos" },
       { to: "/produtos?aba=ficha", icon: "🧵", label: "Ficha Técnica", page: "produtos" },
       { to: "/produtos?aba=historico", icon: "🕑", label: "Histórico", page: "produtos" },
@@ -199,6 +197,15 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/pedidos/novo", icon: "➕", label: "Criar pedido", page: "pedidos" },
       { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
       { to: "/impressao-etiquetas", icon: "🏷️", label: "Impressão de etiquetas", page: "expedicao" },
+      // ESTOQUE DE MATÉRIA PRIMA dentro do PCP: fios + insumos (materiais) + atalho de cadastro.
+      {
+        icon: "🧱", label: "Estoque de matéria prima", page: "estoque", children: [
+          { to: "/fio-por-cor", icon: "🧵", label: "Estoque de fios", page: "estoque" },
+          { to: "/estoque-materiais", icon: "🧷", label: "Estoque de materiais", page: "estoque" },
+          // Atalho para CADASTRAR os insumos (submenu dinâmico: Fios + insumos + Compras).
+          { icon: "🗂️", label: "Cadastro de materiais", page: "cadastros", dyn: "materiais", children: [] },
+        ],
+      },
       // CADASTROS dentro do PCP — submenu com um "Cadastro de ..." por tipo.
       {
         icon: "🗂️", label: "Cadastros", page: "cadastros", children: [
