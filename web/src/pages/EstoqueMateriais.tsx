@@ -14,7 +14,7 @@ export function EstoqueMateriais() {
   const [busca, setBusca] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [mov, setMov] = useState<Material | null>(null);
-  const [movTipo, setMovTipo] = useState<"entrada" | "ajuste">("entrada");
+  const [movTipo, setMovTipo] = useState<"entrada" | "saida" | "ajuste">("entrada");
   const [movAlvo, setMovAlvo] = useState<"saldo" | "caixas">("saldo");
   const [movQtd, setMovQtd] = useState("");
   const [movMotivo, setMovMotivo] = useState("");
@@ -49,7 +49,7 @@ export function EstoqueMateriais() {
   const totalUn = useMemo(() => itens.reduce((s, m) => s + (Number(m.saldo) || 0), 0), [itens]);
   const totalCx = useMemo(() => itens.reduce((s, m) => s + (Number(m.caixas) || 0), 0), [itens]);
 
-  function abrirMov(m: Material, tipo: "entrada" | "ajuste", alvo: "saldo" | "caixas") {
+  function abrirMov(m: Material, tipo: "entrada" | "saida" | "ajuste", alvo: "saldo" | "caixas") {
     setMov(m); setMovTipo(tipo); setMovAlvo(alvo);
     setMovQtd(tipo === "ajuste" ? String((alvo === "caixas" ? m.caixas : m.saldo) ?? 0) : "");
     setMovMotivo("");
@@ -57,10 +57,12 @@ export function EstoqueMateriais() {
   async function salvarMov() {
     if (!mov) return;
     const q = Number((movQtd || "").replace(",", "."));
-    if (isNaN(q) || (movTipo === "entrada" && q <= 0)) { alert("Informe a quantidade."); return; }
+    if (isNaN(q) || ((movTipo === "entrada" || movTipo === "saida") && q <= 0)) { alert("Informe a quantidade."); return; }
+    // "saida" na tela = "baixa" no servidor (tira do saldo).
+    const tipoApi = movTipo === "saida" ? "baixa" : movTipo;
     setSalvando(true);
     try {
-      const r = await api.movMaterial(mov.id, { tipo: movTipo, quantidade: q, alvo: movAlvo, motivo: movMotivo.trim() || undefined });
+      const r = await api.movMaterial(mov.id, { tipo: tipoApi, quantidade: q, alvo: movAlvo, motivo: movMotivo.trim() || undefined });
       setItens((xs) => xs.map((x) => (x.id === mov.id ? { ...x, saldo: r.saldo, caixas: r.caixas } : x)));
       setMov(null);
     } catch { alert("Não consegui salvar o movimento."); }
@@ -125,7 +127,8 @@ export function EstoqueMateriais() {
                     <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{nf(m.caixas)}</td>
                     <td className="num">
                       <div style={{ display: "inline-flex", gap: 6 }}>
-                        {podeFuncao(getUser(), "estoque.entrada") && <button className="btn btn-primary" style={{ padding: "5px 9px" }} onClick={() => abrirMov(m, "entrada", "saldo")}>+ Entrada</button>}
+                        {podeFuncao(getUser(), "estoque.entrada") && <button className="btn btn-ok" style={{ padding: "5px 9px" }} onClick={() => abrirMov(m, "entrada", "saldo")}>⬆ Entrada</button>}
+                        {podeFuncao(getUser(), "estoque.saida") && <button className="btn btn-danger" style={{ padding: "5px 9px" }} onClick={() => abrirMov(m, "saida", "saldo")}>⬇ Saída</button>}
                         {podeFuncao(getUser(), "estoque.ajuste") && <button className="btn btn-soft" style={{ padding: "5px 9px" }} onClick={() => abrirMov(m, "ajuste", "saldo")}>Ajustar</button>}
                         <button className="btn btn-soft" style={{ padding: "5px 9px" }} onClick={() => abrirExtrato(m)}>Extrato</button>
                       </div>
@@ -144,7 +147,7 @@ export function EstoqueMateriais() {
       {mov && (
         <div className="modal-bg" onClick={() => setMov(null)}>
           <div className="modal-card" style={{ maxWidth: 440, width: "min(440px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ marginTop: 0 }}>{movTipo === "entrada" ? "Entrada" : "Ajustar saldo"} · {idDe(mov)}</h2>
+            <h2 style={{ marginTop: 0 }}>{movTipo === "entrada" ? "⬆ Entrada" : movTipo === "saida" ? "⬇ Saída" : "Ajustar saldo"} · {idDe(mov)}</h2>
             <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>{catNome} · saldo: <strong>{nf(mov.saldo)} un</strong> · <strong>{nf(mov.caixas)} cx</strong></p>
             <label className="campo">
               <span className="campo-label">Contar em</span>
@@ -154,7 +157,7 @@ export function EstoqueMateriais() {
               </select>
             </label>
             <label className="campo">
-              <span className="campo-label">{movTipo === "entrada" ? `Quantidade que chegou (${movAlvo === "caixas" ? "caixas" : "un"})` : `Novo saldo (${movAlvo === "caixas" ? "caixas" : "un"})`}</span>
+              <span className="campo-label">{movTipo === "entrada" ? `Quantidade que chegou (${movAlvo === "caixas" ? "caixas" : "un"})` : movTipo === "saida" ? `Quantidade que saiu (${movAlvo === "caixas" ? "caixas" : "un"})` : `Novo saldo (${movAlvo === "caixas" ? "caixas" : "un"})`}</span>
               <input type="number" min={0} step="any" autoFocus value={movQtd} placeholder="ex.: 200" onChange={(e) => setMovQtd(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") salvarMov(); }} />
             </label>
             <label className="campo">
@@ -163,7 +166,7 @@ export function EstoqueMateriais() {
             </label>
             <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 12, gap: 8 }}>
               <button className="btn btn-soft" onClick={() => setMov(null)}>Cancelar</button>
-              <button className="btn btn-primary" disabled={salvando} onClick={salvarMov}>{salvando ? "Salvando…" : "Salvar"}</button>
+              <button className={"btn " + (movTipo === "entrada" ? "btn-ok" : movTipo === "saida" ? "btn-danger" : "btn-primary")} disabled={salvando} onClick={salvarMov}>{salvando ? "Salvando…" : movTipo === "entrada" ? "Confirmar entrada" : movTipo === "saida" ? "Confirmar saída" : "Salvar"}</button>
             </div>
           </div>
         </div>

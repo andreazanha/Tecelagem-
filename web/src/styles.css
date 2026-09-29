@@ -2479,6 +2479,11 @@ body.dark .op-pill { background: #6366f1; }
 .btn-danger:hover { background: #b91c1c; border-color: #b91c1c; }
 body.dark .btn-danger { background: #ef4444; border-color: #ef4444; }
 body.dark .btn-danger:hover { background: #dc2626; border-color: #dc2626; }
+/* Botão verde de ENTRADA (par do vermelho .btn-danger de saída). */
+.btn-ok { background: #16a34a; border: 1px solid #16a34a; color: #fff; font-weight: 700; }
+.btn-ok:hover { background: #15803d; border-color: #15803d; }
+body.dark .btn-ok { background: #22c55e; border-color: #22c55e; }
+body.dark .btn-ok:hover { background: #16a34a; border-color: #16a34a; }
 
 /* ── CRM / Atendimento no padrão do sistema ─────────────────────────────────── */
 /* Cabeçalho da coluna colorido (cor da própria coluna) com o número numa pílula clara. */
