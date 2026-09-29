@@ -1714,6 +1714,14 @@ const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; coluna
     { key: "minimo", label: "Estoque mínimo", width: 120 },
     { key: "fornecedor", label: "Fabricante", width: 160 },
   ] },
+  enchimento: { colunas: [
+    { key: "nome", label: "Tipo de enchimento", ph: "ex.: Fibra siliconada", width: 220 },
+    { key: "unidade", label: "Unidade", width: 90, default: "kg" },
+    { key: "preco", label: "Preço (R$/kg)", ph: "R$ 0,00", width: 130 },
+    { key: "minimo", label: "Estoque mín. (kg)", width: 140 },
+    { key: "fornecedor", label: "Fornecedor", width: 160 },
+    { key: "status", label: "Status", width: 100 },
+  ] },
   tag:       { campos: [{ key: "extra:modelo", label: "Modelo", ph: "ex.: Kraft redonda", width: 160 }] },
   tabuleiro: { campos: [{ key: "extra:medida", label: "Medida", ph: "ex.: 45x45", width: 110 }] },
   linha:     { cor: true },
@@ -1884,7 +1892,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const [fornId, setFornId] = useState("");
   const [cor, setCor] = useState("");
   const [codigo, setCodigo] = useState("");
-  const [unidade, setUnidade] = useState("un");
+  const [unidade, setUnidade] = useState(colDefaults["unidade"] || "un");
   const [preco, setPreco] = useState("");
   const [minimo, setMinimo] = useState("");
   const [codInterno, setCodInterno] = useState("");
@@ -1928,7 +1936,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
 
   function limpar() {
     setEditId(null); setNome(""); setTamanho(""); setFornId(""); setCor(""); setCodigo("");
-    setUnidade("un"); setPreco(""); setMinimo(""); setCodInterno(""); setStatus("ativo"); setObs(""); setExtra(extraDefaults);
+    setUnidade(colDefaults["unidade"] || "un"); setPreco(""); setMinimo(""); setCodInterno(""); setStatus("ativo"); setObs(""); setExtra(extraDefaults);
   }
   function editar(m: Material) {
     setEditId(m.id); setNome(m.nome); setTamanho(m.tamanho || ""); setFornId(m.fornecedor_id || "");
