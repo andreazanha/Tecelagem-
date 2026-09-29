@@ -3100,10 +3100,15 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
   // Reclamação (defeito/troca/atraso) → coluna própria "Reclamação", separada e visível. Vem ANTES
   // de tudo (até de consumidor): uma reclamação não pode se perder no "finalizado" nem no cliente final.
   if (estado === "reclamacao") return "reclamacao";
-  // CLIENTE FINAL (consumidor): vai SEMPRE pra coluna própria "🏠 Cliente final" — mesmo reaberto ou
-  // já finalizado antes. Não some no "finalizado" nem entope a fila de lojista, e fica guardado
-  // ("não sabemos o dia de amanhã"). Só não vem pra cá reclamação (tratada acima, precisa de humano).
-  if (String(c.tipo || "") === "consumidor" || c.lojista === 0 || estado === "indicado-parceiro" || estado === "aguardando-cidade-parceiro") return "cliente-final";
+  // CLIENTE FINAL (consumidor): vai pra coluna própria "🏠 Cliente final" — não some no "finalizado"
+  // nem entope a fila de lojista, e fica guardado ("não sabemos o dia de amanhã").
+  // TRAVA ANTI-SUMIÇO: se um HUMANO ASSUMIU (estado 'atendimento-humano' e ainda não encerrado), NÃO
+  // segura o card aqui — ele vai pro fluxo humano ("Em atendimento"). Assim, se a IA classificar
+  // errado um LOJISTA como consumidor, no instante em que alguém responde o card volta a aparecer na
+  // fila (não "some" pra Cliente final). Consumidor que só a IA atende continua nesta coluna; ao
+  // finalizar, também fica guardado aqui (mantém o comportamento antigo).
+  const humanoAtivo = estado === "atendimento-humano" && !enc;
+  if (!humanoAtivo && (String(c.tipo || "") === "consumidor" || c.lojista === 0 || estado === "indicado-parceiro" || estado === "aguardando-cidade-parceiro")) return "cliente-final";
   // FINALIZADO é PEGAJOSO: uma vez encerrado, o card SÓ sai quando o CLIENTE mandar mensagem nova
   // (inn > enc) — e aí vai DIRETO pra fila humana (Em atendimento se já tem responsável, senão
   // Aguardando humano), NUNCA pra triagem. Sem mensagem nova, fica em Finalizado (não volta sozinho).
