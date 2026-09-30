@@ -352,6 +352,9 @@ producao.get("/:pedido_id/:parte", async (c) => {
 });
 
 const STATUS = ["aguardando", "fazendo", "pronto", "defeito"];
+// "Conclusão instantânea" (burla humana): finalizar SEM ter iniciado, ou em menos que este tempo.
+// Só REGISTRA (não bloqueia) — vira alerta no relatório "quem está burlando". Ajustável.
+const LIMIAR_CONCLUSAO_SUSPEITA_SEG = 60;
 
 // MUDA status/setor de uma parte: Fazer → fazendo, Finalizar → pronto, Enviar → próximo setor.
 producao.post("/:pedido_id/:parte", async (c) => {
@@ -399,15 +402,24 @@ producao.post("/:pedido_id/:parte", async (c) => {
 
   // Registra o evento (linha do tempo): estado resultante após a mudança.
   const after = await c.env.DB.prepare(
-    "SELECT setor, status, operador FROM producao WHERE pedido_id = ? AND parte = ?"
+    "SELECT setor, status, operador, iniciado_em, finalizado_em, CAST((julianday(finalizado_em) - julianday(iniciado_em)) * 86400 AS INTEGER) AS dur FROM producao WHERE pedido_id = ? AND parte = ?"
   )
     .bind(pedido_id, parte)
-    .first<{ setor: string; status: string; operador: string | null }>();
+    .first<{ setor: string; status: string; operador: string | null; iniciado_em: string | null; finalizado_em: string | null; dur: number | null }>();
+  let suspeito = 0;
   if (after) {
+    // Só na CONCLUSÃO: se finalizou sem ter iniciado (iniciado_em nulo) ou com duração menor que o
+    // mínimo, marca a ação como suspeita (iniciou e finalizou "na mesma hora"). NÃO bloqueia —
+    // apenas registra pra aparecer no relatório de irregularidades e devolve o alerta pro app.
+    let duracaoSeg: number | null = null;
+    if (after.status === "pronto") {
+      duracaoSeg = after.iniciado_em ? Math.max(0, Number(after.dur) || 0) : null;
+      suspeito = (duracaoSeg === null || duracaoSeg < LIMIAR_CONCLUSAO_SUSPEITA_SEG) ? 1 : 0;
+    }
     await c.env.DB.prepare(
-      "INSERT INTO producao_eventos (pedido_id, parte, setor, status, operador) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO producao_eventos (pedido_id, parte, setor, status, operador, duracao_seg, suspeito) VALUES (?, ?, ?, ?, ?, ?, ?)"
     )
-      .bind(pedido_id, parte, after.setor, after.status, after.operador)
+      .bind(pedido_id, parte, after.setor, after.status, after.operador, duracaoSeg, suspeito)
       .run();
   }
 
@@ -418,7 +430,7 @@ producao.post("/:pedido_id/:parte", async (c) => {
     const r = await desmembrarCard(c.env, pedido_id, parte).catch(() => ({ ok: false }));
     desmembrou = !!r.ok;
   }
-  return c.json({ ok: true, desmembrou });
+  return c.json({ ok: true, desmembrou, conclusaoSuspeita: !!suspeito });
 });
 
 // DESMEMBRAR manual (botão no Corte): separa a OP consolidada em um card por OP.
