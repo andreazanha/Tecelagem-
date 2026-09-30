@@ -225,7 +225,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/relatorio-vendas", icon: "🏆", label: "Vendas (o que vende mais)", admin: true },
       { to: "/acessos", icon: "🔐", label: "Usuários e acessos", admin: true },
       // Relatórios (ainda em breve) agora vivem dentro da Gestão.
-      { icon: "🏭", label: "Relatório de Produção", soon: true },
+      { to: "/relatorio-producao", icon: "🏭", label: "Relatório de Produção", admin: true },
       { icon: "⏰", label: "Relatório de Atrasos", soon: true },
       { icon: "🔍", label: "Relatório de Revisão", soon: true },
       { icon: "🪡", label: "Relatório de Costureiras", soon: true },

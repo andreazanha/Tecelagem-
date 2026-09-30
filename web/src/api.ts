@@ -661,6 +661,17 @@ export interface RelatorioVendas {
   porModeloTam: { produto: string; tamanho: string; pecas: number }[];
 }
 
+export interface RelProdEvento {
+  id: number; em: string; pedido_id: string; parte: string; setor: string; status: string;
+  operador: string | null; agente: string | null; agente_setor: string | null;
+  duracao_seg: number | null; suspeito: number; fora_setor: number;
+  numero_erp: string | null; codigo_pai: string | null; cliente_nome: string | null;
+}
+export interface RelProducaoDetalhado {
+  resumo: { total: number; suspeitos: number; fora: number; pessoas: number } | null;
+  eventos: RelProdEvento[];
+}
+
 export interface MaquinaTec { id: string; nome: string; ordem: number; ativo: number }
 export interface MotivoTec { id: string; codigo: string; nome: string | null; tipo: string; ordem: number; ativo: number }
 export interface ResumoTec {
@@ -1133,17 +1144,23 @@ export const api = {
   atualizarProducao: (
     pedido_id: string,
     parte: string,
-    body: { status: string; setor?: string; maquina?: string; operador?: string }
+    body: { status: string; setor?: string; maquina?: string; operador?: string; agente?: string }
   ) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }).then((r) => j<{ ok: boolean; desmembrou?: boolean }>(r)),
+    }).then((r) => j<{ ok: boolean; desmembrou?: boolean; conclusaoSuspeita?: boolean; foraSetor?: boolean }>(r)),
   desmembrarProducao: (pedido_id: string, parte: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/desmembrar`, { method: "POST" }).then((r) => j<{ ok: boolean; criados: number }>(r)),
   concluirProducao: (pedido_id: string, parte: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/concluir`, { method: "POST" }).then((r) => j<{ ok: boolean }>(r)),
+  relatorioProducaoDetalhado: (q: { de?: string; ate?: string; setor?: string; operador?: string; flag?: string } = {}) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(q)) if (v) p.set(k, v);
+    const qs = p.toString();
+    return fetch(`/api/producao/relatorio/detalhado${qs ? "?" + qs : ""}`).then((r) => j<RelProducaoDetalhado>(r));
+  },
   definirClienteCard: (pedido_id: string, parte: string, cliente: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/cliente`, {
       method: "POST",

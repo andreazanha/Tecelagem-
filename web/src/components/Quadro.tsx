@@ -243,7 +243,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   }, [cfg.setor]);
 
   // Aplica a MESMA mudança a 1+ cards (pedido misto agrupado = várias partes).
-  async function mudarGrupo(cards: CardProducao[], body: { status: string; setor?: string; maquina?: string; operador?: string }) {
+  async function mudarGrupo(cards: CardProducao[], body: { status: string; setor?: string; maquina?: string; operador?: string; agente?: string }) {
     const antes = cards.map((c) => ({ pedido_id: c.pedido_id, parte: c.parte, status: c.status, setor: c.setor, operador: c.operador ?? "" }));
     try {
       await Promise.all(cards.map((c) => api.atualizarProducao(c.pedido_id, c.parte, body)));
@@ -259,7 +259,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
       recarregar();
     }
   }
-  const mudar = (c: CardProducao, body: { status: string; setor?: string; maquina?: string; operador?: string }) => mudarGrupo([c], body);
+  const mudar = (c: CardProducao, body: { status: string; setor?: string; maquina?: string; operador?: string; agente?: string }) => mudarGrupo([c], body);
 
   // Desmembra uma OP consolidada em um card por pedido de origem.
   async function desmembrar(c: CardProducao) {
@@ -284,20 +284,23 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   // Executa de fato, já com o operador validado e (se houver) a pessoa de destino.
   function executarAcao(cards: CardProducao[], acao: Acao, opInterno: string, pessoaDestino?: string) {
     const rep = cards[0];
+    // "agente" = quem AUTENTICOU a ação (PIN do operador). Vai em TODA ação pro servidor registrar
+    // quem mexeu — e marcar quando alguém age fora do próprio setor.
+    const ag = opInterno || undefined;
     if (acao === "fazer") {
       // Em setor por pessoa (Costura/Revisão) o "dono" é a costureira/revisadora; senão, o operador.
       const op = pessoasDeSetor(cfg.setor) ? pessoaDestino || "" : opInterno;
-      mudarGrupo(cards, { status: "fazendo", operador: op });
-    } else if (acao === "finalizar") mudarGrupo(cards, { status: "pronto" });
-    else if (acao === "defeito") mudarGrupo(cards, { status: "defeito" });
+      mudarGrupo(cards, { status: "fazendo", operador: op, agente: ag });
+    } else if (acao === "finalizar") mudarGrupo(cards, { status: "pronto", agente: ag });
+    else if (acao === "defeito") mudarGrupo(cards, { status: "defeito", agente: ag });
     else if (acao === "voltar")
-      mudarGrupo(cards, { status: rep.operador ? "fazendo" : "aguardando", operador: rep.operador || "" });
+      mudarGrupo(cards, { status: rep.operador ? "fazendo" : "aguardando", operador: rep.operador || "", agente: ag });
     else if (acao === "devolverDefeito") cards.forEach(devolverComDefeito);
     else {
       const destino = destinoDe(rep);
       if (!destino) return;
-      if (pessoasDeSetor(destino) && !cfg.enviarSemPessoa) mudarGrupo(cards, { setor: destino, status: "fazendo", operador: pessoaDestino || "" });
-      else mudarGrupo(cards, { setor: destino, status: "aguardando" }); // vai para a fila (sem dono)
+      if (pessoasDeSetor(destino) && !cfg.enviarSemPessoa) mudarGrupo(cards, { setor: destino, status: "fazendo", operador: pessoaDestino || "", agente: ag });
+      else mudarGrupo(cards, { setor: destino, status: "aguardando", agente: ag }); // vai para a fila (sem dono)
     }
   }
 

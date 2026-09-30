@@ -6,6 +6,44 @@ import { exigirFuncao, exigirAlgumaFuncao } from "../permissoes";
 
 export const producao = new Hono<{ Bindings: Env }>();
 
+// ── RELATÓRIO DETALHADO de produção (livro-razão) ──────────────────────────────────
+// Cada ação registrada em producao_eventos, com quem fez (agente), tempo da fase e as
+// irregularidades: conclusão instantânea (suspeito) e ação fora do setor (fora_setor).
+// Registrado ANTES das rotas /:pedido_id/:parte pra "relatorio" não cair no parâmetro.
+// Filtros: de/ate (data), setor, operador (agente ou dono), flag (suspeito|fora|irregular).
+producao.get("/relatorio/detalhado", async (c) => {
+  const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;   // admin sempre passa
+  const de = (c.req.query("de") || "").slice(0, 10);
+  const ate = (c.req.query("ate") || "").slice(0, 10);
+  const setor = (c.req.query("setor") || "").trim();
+  const operador = (c.req.query("operador") || "").trim();
+  const flag = (c.req.query("flag") || "").trim();
+  const cond: string[] = ["1=1"];
+  const binds: unknown[] = [];
+  if (de) { cond.push("date(pe.em) >= date(?)"); binds.push(de); }
+  if (ate) { cond.push("date(pe.em) <= date(?)"); binds.push(ate); }
+  if (setor) { cond.push("pe.setor = ?"); binds.push(setor); }
+  if (operador) { cond.push("(lower(COALESCE(pe.agente,'')) LIKE '%'||lower(?)||'%' OR lower(COALESCE(pe.operador,'')) LIKE '%'||lower(?)||'%')"); binds.push(operador, operador); }
+  if (flag === "suspeito") cond.push("pe.suspeito = 1");
+  else if (flag === "fora") cond.push("pe.fora_setor = 1");
+  else if (flag === "irregular") cond.push("(pe.suspeito = 1 OR pe.fora_setor = 1)");
+  const where = cond.join(" AND ");
+  const { results } = await c.env.DB.prepare(
+    `SELECT pe.id, pe.em, pe.pedido_id, pe.parte, pe.setor, pe.status, pe.operador, pe.agente, pe.agente_setor,
+            pe.duracao_seg, pe.suspeito, pe.fora_setor,
+            p.numero_erp, p.codigo_pai, p.cliente_nome
+       FROM producao_eventos pe LEFT JOIN pedidos p ON p.id = pe.pedido_id
+      WHERE ${where}
+      ORDER BY pe.em DESC, pe.id DESC LIMIT 1000`
+  ).bind(...binds).all();
+  const resumo = await c.env.DB.prepare(
+    `SELECT COUNT(*) total, COALESCE(SUM(pe.suspeito),0) suspeitos, COALESCE(SUM(pe.fora_setor),0) fora,
+            COUNT(DISTINCT COALESCE(NULLIF(pe.agente,''), pe.operador)) pessoas
+       FROM producao_eventos pe LEFT JOIN pedidos p ON p.id = pe.pedido_id WHERE ${where}`
+  ).bind(...binds).first();
+  return c.json({ resumo, eventos: results });
+});
+
 // INTELIGÊNCIA DE ESTOQUE: para os cards de REPOSIÇÃO (produção p/ estocar),
 // compara o estoque atual × mínimo do produto e sugere a ORDEM de produção
 // (o mais em falta primeiro) — evita fazer tudo misturado.
@@ -361,8 +399,8 @@ producao.post("/:pedido_id/:parte", async (c) => {
   const pedido_id = c.req.param("pedido_id");
   const parte = decodeURIComponent(c.req.param("parte"));
   const b = await c.req
-    .json<{ status?: string; setor?: string; maquina?: string; operador?: string }>()
-    .catch(() => ({}) as { status?: string; setor?: string; maquina?: string; operador?: string });
+    .json<{ status?: string; setor?: string; maquina?: string; operador?: string; agente?: string }>()
+    .catch(() => ({}) as { status?: string; setor?: string; maquina?: string; operador?: string; agente?: string });
   // Trava do PCP: cadeado é POR PARTE (card). A parte bloqueada não anda na produção
   // até o PCP liberar ESSA parte — liberar a Parte 1 não solta a Parte 2.
   const trava = await c.env.DB.prepare("SELECT COALESCE(bloqueado,0) AS b FROM producao WHERE pedido_id = ? AND parte = ?")
@@ -406,7 +444,7 @@ producao.post("/:pedido_id/:parte", async (c) => {
   )
     .bind(pedido_id, parte)
     .first<{ setor: string; status: string; operador: string | null; iniciado_em: string | null; finalizado_em: string | null; dur: number | null }>();
-  let suspeito = 0;
+  let suspeito = 0, foraSetor = 0;
   if (after) {
     // Só na CONCLUSÃO: se finalizou sem ter iniciado (iniciado_em nulo) ou com duração menor que o
     // mínimo, marca a ação como suspeita (iniciou e finalizou "na mesma hora"). NÃO bloqueia —
@@ -416,10 +454,21 @@ producao.post("/:pedido_id/:parte", async (c) => {
       duracaoSeg = after.iniciado_em ? Math.max(0, Number(after.dur) || 0) : null;
       suspeito = (duracaoSeg === null || duracaoSeg < LIMIAR_CONCLUSAO_SUSPEITA_SEG) ? 1 : 0;
     }
+    // FORA DO SETOR: "agente" é quem autenticou a ação (PIN). Se ele é cadastrado num setor
+    // específico e mexeu em OUTRO, registra (não bloqueia). Operador sem setor (ou "todos") pode
+    // trabalhar em qualquer fase. Compara pelo nome (as ações usam o nome do operador).
+    let agente = (b.agente || "").trim() || null;
+    let agenteSetor: string | null = null;
+    if (agente) {
+      const op = await c.env.DB.prepare("SELECT setor FROM operadores WHERE lower(nome) = lower(?) LIMIT 1")
+        .bind(agente).first<{ setor: string | null }>().catch(() => null);
+      agenteSetor = (op?.setor || "").trim() || null;
+      if (agenteSetor && after.setor && agenteSetor !== after.setor) foraSetor = 1;
+    }
     await c.env.DB.prepare(
-      "INSERT INTO producao_eventos (pedido_id, parte, setor, status, operador, duracao_seg, suspeito) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO producao_eventos (pedido_id, parte, setor, status, operador, duracao_seg, suspeito, agente, agente_setor, fora_setor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
-      .bind(pedido_id, parte, after.setor, after.status, after.operador, duracaoSeg, suspeito)
+      .bind(pedido_id, parte, after.setor, after.status, after.operador, duracaoSeg, suspeito, agente, agenteSetor, foraSetor)
       .run();
   }
 
@@ -430,7 +479,7 @@ producao.post("/:pedido_id/:parte", async (c) => {
     const r = await desmembrarCard(c.env, pedido_id, parte).catch(() => ({ ok: false }));
     desmembrou = !!r.ok;
   }
-  return c.json({ ok: true, desmembrou, conclusaoSuspeita: !!suspeito });
+  return c.json({ ok: true, desmembrou, conclusaoSuspeita: !!suspeito, foraSetor: !!foraSetor });
 });
 
 // DESMEMBRAR manual (botão no Corte): separa a OP consolidada em um card por OP.
