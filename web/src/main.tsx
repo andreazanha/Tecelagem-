@@ -35,6 +35,7 @@ import { EstoqueScan } from "./pages/EstoqueScan";
 import { RelatorioVendas } from "./pages/RelatorioVendas";
 import { RelatorioProducao } from "./pages/RelatorioProducao";
 import { PedidosErp } from "./pages/PedidosErp";
+import { Catalogo } from "./pages/Catalogo";
 import { Expedicao } from "./pages/Expedicao";
 import { Fiscal } from "./pages/Fiscal";
 import { Transporte } from "./pages/Transporte";
@@ -131,6 +132,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/romaneios" element={<Protegido page="romaneios"><Romaneios /></Protegido>} />
           <Route path="/pcp" element={<Protegido page="pedidos"><Pcp /></Protegido>} />
           <Route path="/pedidos-erp" element={<Protegido page="pedidos"><PedidosErp /></Protegido>} />
+          <Route path="/catalogo" element={<Protegido page={["produtos", "comercial", "pedidos", "atendimento"]}><Catalogo /></Protegido>} />
           <Route path="/acessos" element={<Protegido admin><Acessos /></Protegido>} />
           <Route path="/producao" element={<Protegido page="producao"><Producao /></Protegido>} />
           <Route path="/controle-tecelagem" element={<Protegido page="producao"><ControleTecelagem /></Protegido>} />

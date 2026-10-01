@@ -228,6 +228,70 @@ integracao.get("/estoque", async (c) => {
   return c.json(results);
 });
 
+// ── CATÁLOGO DE PRODUTOS (espelho do ERP) ────────────────────────────────────────
+// A ponte manda os produtos (nome, preços, grupo, classe, cores, tamanhos). Read-only.
+// body: { itens: [{ ref, nome, unidade, classe, grupo, preco_atacado, preco_varejo,
+//   preco_atacado_promo, preco_varejo_promo, estoque_geral, inativo, cores:[...], tamanhos:[...] }] }
+integracao.post("/produtos", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+
+  type ProdIn = {
+    ref?: string; nome?: string; unidade?: string; classe?: string; grupo?: string;
+    preco_atacado?: number | string; preco_varejo?: number | string;
+    preco_atacado_promo?: number | string; preco_varejo_promo?: number | string;
+    estoque_geral?: number | string; inativo?: number | string | boolean;
+    cores?: unknown; tamanhos?: unknown; data_alt_reg?: string;
+  };
+  const b = await c.req.json<{ itens?: ProdIn[] }>().catch(() => ({} as { itens?: ProdIn[] }));
+  const itens: ProdIn[] = Array.isArray(b.itens) ? b.itens : [];
+  if (!itens.length) return c.json({ error: "sem_itens" }, 400);
+
+  const numOrNull = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+  const stmts = itens.filter((it) => str(it.ref)).map((it) =>
+    c.env.DB.prepare(
+      `INSERT INTO erp_produtos (ref, nome, unidade, classe, grupo, preco_atacado, preco_varejo, preco_atacado_promo, preco_varejo_promo, estoque_geral, inativo, cores, tamanhos, data_alt_reg, atualizado_em)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(ref) DO UPDATE SET nome=excluded.nome, unidade=excluded.unidade, classe=excluded.classe, grupo=excluded.grupo,
+         preco_atacado=excluded.preco_atacado, preco_varejo=excluded.preco_varejo,
+         preco_atacado_promo=excluded.preco_atacado_promo, preco_varejo_promo=excluded.preco_varejo_promo,
+         estoque_geral=excluded.estoque_geral, inativo=excluded.inativo, cores=excluded.cores,
+         tamanhos=excluded.tamanhos, data_alt_reg=excluded.data_alt_reg, atualizado_em=datetime('now')`
+    ).bind(
+      str(it.ref), str(it.nome), str(it.unidade), str(it.classe), str(it.grupo),
+      numOrNull(it.preco_atacado), numOrNull(it.preco_varejo), numOrNull(it.preco_atacado_promo), numOrNull(it.preco_varejo_promo),
+      numOrNull(it.estoque_geral), (it.inativo === 1 || it.inativo === "1" || it.inativo === true || it.inativo === "S") ? 1 : 0,
+      JSON.stringify(Array.isArray(it.cores) ? it.cores : []), JSON.stringify(Array.isArray(it.tamanhos) ? it.tamanhos : []),
+      str(it.data_alt_reg)
+    )
+  );
+  await c.env.DB.batch(stmts);
+  return c.json({ ok: true, n: stmts.length });
+});
+
+// LÊ o catálogo (pra exibir). Junta o saldo total (erp_estoque) e a base das fotos.
+integracao.get("/produtos", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const busca = (c.req.query("busca") || "").trim().toLowerCase();
+  const grupo = (c.req.query("grupo") || "").trim();
+  let sql =
+    `SELECT p.ref, p.nome, p.unidade, p.classe, p.grupo, p.preco_atacado, p.preco_varejo,
+            p.preco_atacado_promo, p.preco_varejo_promo, p.estoque_geral, p.inativo, p.cores, p.tamanhos, p.atualizado_em,
+            (SELECT COALESCE(SUM(e.saldo),0) FROM erp_estoque e WHERE e.ref = p.ref) AS saldo
+       FROM erp_produtos p`;
+  const cond: string[] = [], binds: unknown[] = [];
+  if (busca) { cond.push("(lower(p.nome) LIKE ? OR lower(p.ref) LIKE ?)"); binds.push(`%${busca}%`, `%${busca}%`); }
+  if (grupo) { cond.push("p.grupo = ?"); binds.push(grupo); }
+  if (cond.length) sql += " WHERE " + cond.join(" AND ");
+  sql += " ORDER BY p.inativo, p.nome LIMIT 2000";
+  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
+  const fotos_base = (await c.env.DB.prepare("SELECT valor FROM config WHERE chave='erp_fotos_base'").first<{ valor: string | null }>().catch(() => null))?.valor || "";
+  // grupos distintos (pro filtro)
+  const { results: grupos } = await c.env.DB.prepare("SELECT DISTINCT grupo FROM erp_produtos WHERE grupo IS NOT NULL AND grupo <> '' ORDER BY grupo").all<{ grupo: string }>().catch(() => ({ results: [] as { grupo: string }[] }));
+  return c.json({ fotos_base, grupos: (grupos || []).map((x) => x.grupo), itens: results || [] });
+});
+
 // ── RECUSAR: apaga o pedido do ERP (ex.: cancelado) ─────────────────────────────
 integracao.post("/pendentes/:id/recusar", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;

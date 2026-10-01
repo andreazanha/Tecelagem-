@@ -177,6 +177,89 @@ async function rodadaEstoque(db) {
   log(`estoque: ${enviados}/${itens.length} saldo(s) espelhado(s)`);
 }
 
+// ── CATÁLOGO: produtos (nome, preços, grupo, classe, cores, tamanhos) ─────────
+// Incremental por PRODUTOS.DATA_ALT_REG (muda em qualquer alteração, incl. estoque).
+async function enviarProdutos(itens) {
+  const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/produtos";
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+    body: JSON.stringify({ itens }),
+  });
+  return r.ok;
+}
+function hexCor(v) {
+  const s = String(v || "").trim();
+  if (!s) return "";
+  return /^#/.test(s) ? s : (/^[0-9a-fA-F]{6}$/.test(s) ? "#" + s : s);
+}
+async function rodadaProdutos(db, estado) {
+  if (CONFIG.produtos && CONFIG.produtos.ativo === false) return;
+  const desde = estado.ultimaAltProd || (CONFIG.produtos && CONFIG.produtos.desde ? `${CONFIG.produtos.desde} 00:00:00` : "1900-01-01 00:00:00");
+  const SQL_PROD =
+    (CONFIG.produtos && CONFIG.produtos.sql) ||
+    `SELECT A.CODIGO, A.NOME, A.UNIDADE, A.PRECO_VENDA, A.PRECO_VENDA_LJ, A.INATIVO,
+            A.PROMOCAO, A.DESCONTO_AUTO, B.DESCRICAO AS CLASSE, C.DESCRICAO AS GRUPO,
+            A.DATA_ALT_REG, A.ESTOQUE_ATUAL
+       FROM PRODUTOS A
+       INNER JOIN CLASS_PROD B ON (B.CODIGO = A.CLASSIFICACAO AND A.TIPO_PRECO = '1')
+       INNER JOIN GRUPO_PROD C ON (C.CODIGO = A.GRUPO)
+      WHERE A.DATA_ALT_REG > ?
+      ORDER BY A.DATA_ALT_REG`;
+  let prods = [];
+  try { prods = await query(db, SQL_PROD, [desde]); }
+  catch (e) { log("! produtos: consulta falhou —", e.message); return; }
+  if (!prods.length) { log(`produtos: sem novidades (desde ${desde})`); return; }
+
+  log(`produtos: ${prods.length} novo(s)/alterado(s)`);
+  const lote = [];
+  let maiorAlt = estado.ultimaAltProd || null;
+  for (const p of prods) {
+    const ref = String(p.CODIGO || "").trim();
+    if (!ref) continue;
+    // cores do produto (com nome e hex)
+    let cores = [];
+    try {
+      const cr = await query(db, "SELECT C.NUMERO, C.NOME, C.COR_HTML FROM CORES_PROD CP INNER JOIN CORES C ON C.NUMERO = CP.COD_COR WHERE CP.COD_PROD = ?", [ref]);
+      cores = cr.map((r) => ({ numero: r.NUMERO, nome: String(r.NOME || "").trim(), hex: hexCor(r.COR_HTML) }));
+    } catch { /* sem cores */ }
+    // tamanhos do produto
+    let tamanhos = [];
+    try {
+      const tm = await query(db, "SELECT TAMANHO FROM TAMANHO_PROD WHERE COD_PROD = ?", [ref]);
+      tamanhos = tm.map((r) => String(r.TAMANHO || "").trim()).filter(Boolean);
+    } catch { /* sem tamanhos */ }
+    const promo = String(p.PROMOCAO || "") === "S" && p.DESCONTO_AUTO != null;
+    const desc = promo ? Number(p.DESCONTO_AUTO) || 0 : 0;
+    const pa = Number(p.PRECO_VENDA) || 0, pv = Number(p.PRECO_VENDA_LJ) || 0;
+    lote.push({
+      ref,
+      nome: String(p.NOME || "").trim(),
+      unidade: String(p.UNIDADE || "").trim(),
+      classe: String(p.CLASSE || "").trim(),
+      grupo: String(p.GRUPO || "").trim(),
+      preco_atacado: pa,
+      preco_varejo: pv,
+      preco_atacado_promo: promo ? Math.round(pa * (1 - desc / 100) * 100) / 100 : null,
+      preco_varejo_promo: promo ? Math.round(pv * (1 - desc / 100) * 100) / 100 : null,
+      estoque_geral: Number(p.ESTOQUE_ATUAL) || 0,
+      inativo: String(p.INATIVO || "") === "S" ? 1 : 0,
+      cores, tamanhos,
+      data_alt_reg: p.DATA_ALT_REG instanceof Date ? p.DATA_ALT_REG.toISOString() : String(p.DATA_ALT_REG || ""),
+    });
+    const alt = formatarParaFirebird(p.DATA_ALT_REG);
+    if (!maiorAlt || alt > maiorAlt) maiorAlt = alt;
+  }
+  // envia em lotes de 200
+  let enviados = 0;
+  for (let i = 0; i < lote.length; i += 200) {
+    const ok = await enviarProdutos(lote.slice(i, i + 200));
+    if (ok) enviados += Math.min(200, lote.length - i);
+  }
+  if (maiorAlt) salvarEstado({ ...lerEstado(), ultimaAltProd: maiorAlt });
+  log(`produtos: ${enviados}/${lote.length} enviado(s). última alteração: ${maiorAlt}`);
+}
+
 // ── uma rodada: busca aprovados que mudaram desde a última data e envia ───────
 async function rodada() {
   const estado = lerEstado();
@@ -196,7 +279,7 @@ async function rodada() {
         WHERE STATUS = ? AND COALESCE(CANC, 'N') <> 'S' AND DATA_ALT_REG > ?
         ORDER BY DATA_ALT_REG`;
     const pedidos = await query(db, SQL_PEDIDOS, [STATUS_APROVADO, desde]);
-    if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaEstoque(db); return; }
+    if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaProdutos(db, estado); await rodadaEstoque(db); return; }
 
     log(`${pedidos.length} pedido(s) aprovado(s) novo(s)/alterado(s)`);
     let maiorAlt = estado.ultimaAlt || null;
@@ -213,6 +296,7 @@ async function rodada() {
       salvarEstado({ ...estado, ultimaAlt: formatarParaFirebird(ped.DATA_ALT_REG) });
     }
     log("rodada ok. última data:", formatarParaFirebird(maiorAlt));
+    await rodadaProdutos(db, estado);
     await rodadaEstoque(db);
   } catch (e) {
     log("! erro na rodada:", e.message);

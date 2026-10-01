@@ -73,3 +73,15 @@ SELECT PR.NOME AS PRODUTO, E.COD_PROD AS REF, CR.NOME AS COR,
 ```
 A cada rodada a ponte envia o saldo e ele aparece no sistema. (Se alguma coluna tiver
 nome diferente nessa base, ajuste o SELECT no `config.json`.)
+
+## Catálogo de produtos
+A ponte também traz os **produtos** (nome, preços, grupo, classe p/ foto, cores com hex e
+tamanhos) pra aba **Catálogo** do sistema. Vem **ligado por padrão**, incremental por
+`PRODUTOS.DATA_ALT_REG`. Pra desligar ou customizar, em `config.json`:
+```json
+"produtos": { "ativo": true, "desde": "2025-01-01" }
+```
+Se a consulta padrão de produtos não casar com os nomes das colunas dessa base, dá pra
+passar um SELECT próprio em `produtos.sql` (colunas: CODIGO, NOME, UNIDADE, PRECO_VENDA,
+PRECO_VENDA_LJ, INATIVO, PROMOCAO, DESCONTO_AUTO, CLASSE, GRUPO, DATA_ALT_REG, ESTOQUE_ATUAL).
+As fotos são montadas no sistema a partir da **classe** + **código** (base HTTPS do Syntech).

@@ -210,6 +210,17 @@ export interface CompraSugestao extends Material {
   faltam: number;
 }
 
+// Catálogo de produtos espelhado do ERP
+export interface CatalogoCor { numero?: number | string; nome?: string; hex?: string }
+export interface CatalogoProduto {
+  ref: string; nome: string | null; unidade: string | null; classe: string | null; grupo: string | null;
+  preco_atacado: number | null; preco_varejo: number | null;
+  preco_atacado_promo: number | null; preco_varejo_promo: number | null;
+  estoque_geral: number | null; inativo: number; cores: string | null; tamanhos: string | null;
+  saldo: number; atualizado_em: string;
+}
+export interface CatalogoResposta { fotos_base: string; grupos: string[]; itens: CatalogoProduto[] }
+
 export interface Tassel {
   cor: string;
   tamanho: string; // G | P | ...
@@ -1211,6 +1222,14 @@ export const api = {
     const qs = p.toString();
     return fetch("/api/integracao/estoque" + (qs ? `?${qs}` : "")).then((r) =>
       j<{ produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; saldo: number; unidade: string | null; atualizado_em: string }[]>(r));
+  },
+  // Catálogo de produtos espelhado do ERP (só leitura)
+  catalogoProdutos: (q?: { busca?: string; grupo?: string }) => {
+    const p = new URLSearchParams();
+    if (q?.busca) p.set("busca", q.busca);
+    if (q?.grupo) p.set("grupo", q.grupo);
+    const qs = p.toString();
+    return fetch("/api/integracao/produtos" + (qs ? `?${qs}` : "")).then((r) => j<CatalogoResposta>(r));
   },
   definirClienteCard: (pedido_id: string, parte: string, cliente: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/cliente`, {
