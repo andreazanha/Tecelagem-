@@ -1176,6 +1176,7 @@ export const api = {
   erpPendenteDetalhe: (id: string) => fetch(`/api/integracao/pendentes/${encodeURIComponent(id)}`).then((r) => j<ErpPendenteDetalhe>(r)),
   erpAprovar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aprovar`, {}).then((r) => j<{ ok: boolean }>(r)),
   erpRecusar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/recusar`, {}).then((r) => j<{ ok: boolean }>(r)),
+  erpAprovarLote: (ids: string[]) => jsonPost("/api/integracao/aprovar-lote", { ids }).then((r) => j<{ ok: boolean; pedido_id: string; codigo_pai: string; pedidos: number }>(r)),
   definirClienteCard: (pedido_id: string, parte: string, cliente: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/cliente`, {
       method: "POST",

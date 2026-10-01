@@ -313,7 +313,7 @@ function upsertClienteDoPedido(env: Env, nome: string, b: PedidoIn): D1PreparedS
 // Regra do cliente: excluir uma explosão antes de iniciar a produção "devolve" o número
 // (a próxima explosão reaproveita o menor livre — 001, 002, ...). Explosões que continuam
 // existindo (inclusive as que já iniciaram) mantêm o número reservado, então nunca colidem.
-async function proximoCodigoPai(env: Env): Promise<string> {
+export async function proximoCodigoPai(env: Env): Promise<string> {
   const { results } = await env.DB.prepare(
     "SELECT codigo_pai FROM pedidos WHERE codigo_pai IS NOT NULL AND TRIM(codigo_pai) <> ''"
   ).all<{ codigo_pai: string }>();

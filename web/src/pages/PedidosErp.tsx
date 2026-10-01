@@ -10,9 +10,27 @@ export function PedidosErp() {
   const [detalhe, setDetalhe] = useState<ErpPendenteDetalhe | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [explodindo, setExplodindo] = useState(false);
 
-  function carregar() { setCarregando(true); api.erpPendentes().then(setLista).catch(() => setLista([])).finally(() => setCarregando(false)); }
+  function carregar() { setCarregando(true); api.erpPendentes().then(setLista).catch(() => setLista([])).finally(() => { setCarregando(false); setSel(new Set()); }); }
   useEffect(carregar, []);
+
+  const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const removeSel = (id: string) => setSel((s) => { if (!s.has(id)) return s; const n = new Set(s); n.delete(id); return n; });
+
+  async function explodirJuntos() {
+    const ids = [...sel];
+    if (ids.length < 2) return;
+    if (!confirm(`Explodir ${ids.length} pedidos JUNTOS numa OP consolidada? Eles viram uma produção só (código pai) e se desmembram depois por pedido/loja.`)) return;
+    setExplodindo(true);
+    try {
+      const r = await api.erpAprovarLote(ids);
+      setLista((xs) => xs.filter((x) => !sel.has(x.id))); setSel(new Set());
+      setMsg(`✓ ${r.pedidos} pedidos explodidos juntos na OP ${r.codigo_pai}.`); setTimeout(() => setMsg(""), 5000);
+    } catch { alert("Não consegui explodir juntos."); }
+    finally { setExplodindo(false); }
+  }
 
   async function abrir(id: string) {
     if (aberto === id) { setAberto(null); setDetalhe(null); return; }
@@ -22,14 +40,14 @@ export function PedidosErp() {
   async function aprovar(p: ErpPendente) {
     if (!confirm(`Aprovar o pedido ${p.numero_erp} (${p.cliente_nome})? Ele vai pra produção e será explodido.`)) return;
     setOcupado(p.id);
-    try { await api.erpAprovar(p.id); setLista((xs) => xs.filter((x) => x.id !== p.id)); setMsg(`✓ Pedido ${p.numero_erp} aprovado — foi pra produção.`); setTimeout(() => setMsg(""), 4000); }
+    try { await api.erpAprovar(p.id); setLista((xs) => xs.filter((x) => x.id !== p.id)); removeSel(p.id); setMsg(`✓ Pedido ${p.numero_erp} aprovado — foi pra produção.`); setTimeout(() => setMsg(""), 4000); }
     catch { alert("Não consegui aprovar."); }
     finally { setOcupado(null); }
   }
   async function recusar(p: ErpPendente) {
     if (!confirm(`Recusar/descartar o pedido ${p.numero_erp} (${p.cliente_nome})? Ele NÃO entra na produção e será removido da fila.`)) return;
     setOcupado(p.id);
-    try { await api.erpRecusar(p.id); setLista((xs) => xs.filter((x) => x.id !== p.id)); setMsg(`Pedido ${p.numero_erp} recusado.`); setTimeout(() => setMsg(""), 4000); }
+    try { await api.erpRecusar(p.id); setLista((xs) => xs.filter((x) => x.id !== p.id)); removeSel(p.id); setMsg(`Pedido ${p.numero_erp} recusado.`); setTimeout(() => setMsg(""), 4000); }
     catch { alert("Não consegui recusar."); }
     finally { setOcupado(null); }
   }
@@ -49,6 +67,15 @@ export function PedidosErp() {
 
       {msg && <div className="card pad" style={{ marginBottom: 14, background: "#f0fdf4", color: "#15803d", fontWeight: 600 }}>{msg}</div>}
 
+      {sel.size >= 2 && (
+        <div className="card pad" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "#eef2ff", borderColor: "#c7d2fe", position: "sticky", top: 8, zIndex: 5 }}>
+          <b style={{ color: "#3730a3" }}>{sel.size} pedidos selecionados</b>
+          <span className="muted" style={{ fontSize: 12.5, flex: 1, minWidth: 160 }}>Juntar numa OP só (código pai) pra render mais na tecelagem. Desmembra depois por pedido/loja.</span>
+          <button className="btn btn-soft" onClick={() => setSel(new Set())}>Limpar</button>
+          <button className="btn btn-primary" disabled={explodindo} onClick={explodirJuntos}>{explodindo ? "Explodindo…" : `💥 Explodir juntos (${sel.size})`}</button>
+        </div>
+      )}
+
       {carregando ? <p className="muted pad">Carregando…</p> : lista.length === 0 ? (
         <div className="card pad"><p className="muted" style={{ margin: 0 }}>Nenhum pedido do ERP aguardando conferência. 👍</p></div>
       ) : (
@@ -56,6 +83,7 @@ export function PedidosErp() {
           {lista.map((p) => (
             <div key={p.id} className="card pad">
               <div className="row-gap" style={{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <input type="checkbox" checked={sel.has(p.id)} onChange={() => toggleSel(p.id)} title="Selecionar pra explodir junto" style={{ width: 18, height: 18, cursor: "pointer" }} />
                 <div style={{ flex: 1, minWidth: 220 }}>
                   <div style={{ fontWeight: 800, fontSize: 16 }}>{p.numero_erp} <span className="muted" style={{ fontWeight: 400 }}>· {p.cliente_nome}</span></div>
                   <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>

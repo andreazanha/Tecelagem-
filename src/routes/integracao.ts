@@ -9,12 +9,22 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { exigirFuncao } from "../permissoes";
+import { proximoCodigoPai } from "./pedidos";
+import { cadastrarProdutosDoPedido } from "./produtos";
+import { consumoDoPedido, baixarPorPedido } from "../estoque-baixa";
 
 export const integracao = new Hono<{ Bindings: Env }>();
 
 const uid = () => crypto.randomUUID();
 const str = (v: unknown) => { const s = String(v ?? "").trim(); return s || null; };
 const inteiro = (v: unknown) => Math.max(0, Math.trunc(Number(v) || 0));
+
+// Depois que um pedido importado "vira produção" (aprovado), roda o MESMO pós-processo
+// do PDF: cadastra os produtos que faltam e dá baixa de estoque dos insumos. Não trava.
+async function posProcessar(env: Env, pedidoId: string) {
+  await cadastrarProdutosDoPedido(env, pedidoId).catch(() => {});
+  await baixarPorPedido(env, pedidoId, await consumoDoPedido(env, pedidoId)).catch(() => {});
+}
 
 type ItemIn = { produto?: string; ref?: string; cor?: string; tamanho?: string; qtd?: number | string; preco?: number | string };
 type PedidoIn = {
@@ -98,10 +108,67 @@ integracao.post("/pendentes/:id/aprovar", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const id = c.req.param("id");
   const r = await c.env.DB.prepare(
-    "UPDATE pedidos SET status = 'novo' WHERE id = ? AND COALESCE(erp_integracao,0) = 1 AND status = 'aguardando_aprovacao'"
+    "UPDATE pedidos SET status = 'novo', bloqueado = 1 WHERE id = ? AND COALESCE(erp_integracao,0) = 1 AND status = 'aguardando_aprovacao'"
   ).bind(id).run();
+  const ok = (r.meta?.changes ?? 0) > 0;
+  // Igual ao PDF: nasce bloqueado (PCP libera), cadastra produtos e baixa estoque.
   // A explosão/cards são gerados pelo garantirCards quando o quadro da produção carrega.
-  return c.json({ ok: (r.meta?.changes ?? 0) > 0 });
+  if (ok) await posProcessar(c.env, id);
+  return c.json({ ok });
+});
+
+// ── APROVAR VÁRIOS JUNTOS (explosão consolidada / OP pai) ────────────────────────
+// Junta vários pedidos do ERP numa OP só (código pai), pra render mais na tecelagem.
+// Cada item guarda a ORIGEM (pedido + loja/cliente), então depois o sistema desmembra
+// por pedido/loja (inclusive mesma empresa com CNPJs diferentes). Igual aos PDFs.
+integracao.post("/aprovar-lote", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ ids?: string[] }>().catch(() => ({} as { ids?: string[] }));
+  const ids = Array.isArray(b.ids) ? b.ids.filter((x): x is string => typeof x === "string") : [];
+  if (ids.length < 2) return c.json({ error: "selecione_dois_ou_mais" }, 400);
+
+  const ph = ids.map(() => "?").join(",");
+  const { results: peds } = await c.env.DB.prepare(
+    `SELECT id, numero_erp, cliente_nome, data_pedido, data_entrega FROM pedidos
+      WHERE id IN (${ph}) AND COALESCE(erp_integracao,0) = 1 AND status = 'aguardando_aprovacao'`
+  ).bind(...ids).all<{ id: string; numero_erp: string; cliente_nome: string; data_pedido: string | null; data_entrega: string | null }>();
+  if (peds.length < 2) return c.json({ error: "pedidos_nao_encontrados" }, 400);
+
+  const { results: itens } = await c.env.DB.prepare(
+    `SELECT pedido_id, produto, ref, cor_grade, tamanho, qtd FROM pedido_itens WHERE pedido_id IN (${ph}) ORDER BY produto, tamanho`
+  ).bind(...ids).all<{ pedido_id: string; produto: string; ref: string | null; cor_grade: string | null; tamanho: string | null; qtd: number }>();
+
+  const porId = new Map(peds.map((p) => [p.id, p]));
+  const numeros = peds.map((p) => p.numero_erp).join(", ");
+  const clientesDistintos = [...new Set(peds.map((p) => p.cliente_nome))];
+  const clienteOP = clientesDistintos.length === 1 ? clientesDistintos[0] : "VÁRIOS CLIENTES";
+  const dataPedido = peds.map((p) => p.data_pedido).filter(Boolean).sort()[0] || null;
+  const dataEntrega = peds.map((p) => p.data_entrega).filter(Boolean).sort()[0] || null;
+  const codigoPai = await proximoCodigoPai(c.env);
+
+  const novoId = uid();
+  const stmts = [
+    c.env.DB.prepare(
+      `INSERT INTO pedidos (id, numero_erp, cliente_nome, codigo_pai, tipo, data_pedido, data_entrega, status, erp_integracao, bloqueado, created_at)
+       VALUES (?, ?, ?, ?, 'pedido', ?, ?, 'novo', 1, 1, datetime('now'))`
+    ).bind(novoId, numeros, clienteOP, codigoPai, dataPedido, dataEntrega),
+  ];
+  for (const it of itens) {
+    const org = porId.get(it.pedido_id);
+    stmts.push(
+      c.env.DB.prepare(
+        "INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, origem, origem_cliente) VALUES (?, ?, ?, ?, ?, ?, ?, 'unico', ?, ?)"
+      ).bind(uid(), novoId, it.produto, it.ref, it.cor_grade, it.tamanho, it.qtd, org?.numero_erp || null, org?.cliente_nome || null)
+    );
+  }
+  // Remove os pedidos individuais (viraram a OP consolidada).
+  for (const id of ids) {
+    stmts.push(c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id = ?").bind(id));
+    stmts.push(c.env.DB.prepare("DELETE FROM pedidos WHERE id = ? AND COALESCE(erp_integracao,0) = 1 AND status = 'aguardando_aprovacao'").bind(id));
+  }
+  await c.env.DB.batch(stmts);
+  await posProcessar(c.env, novoId);
+  return c.json({ ok: true, pedido_id: novoId, codigo_pai: codigoPai, pedidos: peds.length });
 });
 
 // ── RECUSAR: apaga o pedido do ERP (ex.: cancelado) ─────────────────────────────
