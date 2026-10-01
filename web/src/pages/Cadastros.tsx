@@ -2066,7 +2066,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
                       <button className="icon-btn" title="Extrato (histórico)" onClick={() => setExtrato(m)}>🕑</button>
                       <button className="icon-btn" title="Editar" onClick={() => editar(m)}>✎</button>
                       <button className="icon-btn" title="Duplicar" onClick={() => duplicar(m)}>⧉</button>
-                      <button className="icon-btn" title="Excluir" onClick={() => remover(m)}>✕</button>
+                      <button className="icon-btn" title="Excluir" onClick={() => remover(m)}>🗑</button>
                     </div>
                   </td>
                 </tr>
