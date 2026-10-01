@@ -5,7 +5,8 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { exigirFuncao } from "../permissoes";
-import { enviarWhatsapp } from "./atendimento";
+import { enviarWhatsapp, enviarMidiaZapi, abParaBase64 } from "./atendimento";
+import { gerarOrdemCompra, type OrdemCompraItem } from "../pdf";
 
 // Monta o texto do aviso de estoque mínimo (WhatsApp), SEPARADO POR FORNECEDOR.
 // Retorna null quando não há nada abaixo do mínimo.
@@ -159,6 +160,58 @@ materiais.post("/testar-aviso", async (c) => {
     : "✅ Teste de aviso de estoque — o WhatsApp está funcionando. Nenhum material abaixo do mínimo agora.";
   const r = await enviarWhatsapp(c.env, num, { tipo: "texto", texto }).catch(() => ({ enviado: false }));
   return c.json({ ok: !!r.enviado, numero: num, materiais: msg?.n || 0, motivo: r.enviado ? undefined : ((r as { motivo?: string }).motivo || "falha") });
+});
+
+// Envia uma ORDEM DE COMPRA (em PDF) pro WhatsApp do gestor (número em config 'estoque_min_wpp').
+// Gera o PDF no servidor (sem depender do navegador) e manda como documento pela Z-API,
+// com uma legenda curta de resumo.
+materiais.post("/ordem-compra/enviar", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const num = ((await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_min_wpp'").first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
+  if (!num) return c.json({ error: "numero_nao_configurado" }, 400);
+  type OrdemBody = {
+    fornecedor?: string;
+    empresa?: { nome?: string; cnpj?: string; endereco?: string; telefone?: string; email?: string };
+    fornecedorDados?: { nome?: string; contato?: string; telefone?: string; email?: string; cnpj?: string };
+    numero?: string; data?: string;
+    itens?: OrdemCompraItem[];
+  };
+  const b = await c.req.json<OrdemBody>().catch(() => ({} as OrdemBody));
+  const itens = Array.isArray(b.itens) ? b.itens.filter((it) => it && (Number(it.qtd) || 0) > 0) : [];
+  if (!itens.length) return c.json({ error: "sem_itens" }, 400);
+
+  const rBR = (n: number) => { try { return "R$ " + (Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch { return "R$ " + (Number(n) || 0).toFixed(2); } };
+  const hoje = new Date(Date.now() - 3 * 3600 * 1000); // horário de Brasília
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const dataBR = b.data || `${p2(hoje.getUTCDate())}/${p2(hoje.getUTCMonth() + 1)}/${hoje.getUTCFullYear()}`;
+  const numeroOC = b.numero || `OC-${hoje.getUTCFullYear()}${p2(hoje.getUTCMonth() + 1)}${p2(hoje.getUTCDate())}-${p2(hoje.getUTCHours())}${p2(hoje.getUTCMinutes())}`;
+  const fornNome = b.fornecedorDados?.nome || b.fornecedor || "—";
+  const total = itens.reduce((s, it) => s + (Number(it.preco) || 0) * (Number(it.qtd) || 0), 0);
+
+  let base64 = "";
+  try {
+    const bytes = await gerarOrdemCompra({
+      empresa: b.empresa || { nome: "Big Tricot" },
+      fornecedor: b.fornecedorDados || { nome: fornNome },
+      numero: numeroOC, data: dataBR, itens,
+    });
+    base64 = abParaBase64(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+  } catch (e) {
+    return c.json({ ok: false, numero: num, motivo: "pdf_falhou", detalhe: String(e) }, 500);
+  }
+
+  const caption =
+    `🧾 *ORDEM DE COMPRA* ${numeroOC}\n` +
+    `📅 ${dataBR}\n` +
+    `🚛 ${fornNome}\n` +
+    `${itens.length} item(ns) · Total estimado ${rBR(total)}`;
+  const fileName = `${numeroOC}.pdf`.replace(/[^\w.\-]+/g, "_");
+
+  const r = await enviarMidiaZapi(c.env, num, {
+    url: "", docData: `data:application/pdf;base64,${base64}`,
+    ehImagem: false, ext: "pdf", fileName, caption,
+  }).catch(() => ({ enviado: false }));
+  return c.json({ ok: !!r.enviado, numero: num, motivo: r.enviado ? undefined : ((r as { motivo?: string }).motivo || "falha") });
 });
 
 // ── Materiais ─────────────────────────────────────────────────────────────────

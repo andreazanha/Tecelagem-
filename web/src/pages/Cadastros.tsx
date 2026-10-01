@@ -2604,6 +2604,8 @@ function ComprasMateriais() {
   const [empresaModal, setEmpresaModal] = useState(false);
   const [qtd, setQtd] = useState<Record<string, string>>({}); // "comprar" editável por item
   const [fora, setFora] = useState<Set<string>>(new Set());   // itens desmarcados (não comprar)
+  const [enviar, setEnviar] = useState<{ forn: string; itens: CompraSugestao[] } | null>(null); // popup "enviar p/ gestor?"
+  const [enviando, setEnviando] = useState(false);
   useEffect(() => {
     api.comprasMateriais().then((r) => { setItens(r); setCarregou(true); }).catch(() => setCarregou(true));
     api.listarFornecedores().then(setFornecedores).catch(() => {});
@@ -2637,6 +2639,31 @@ function ComprasMateriais() {
     imprimirOrdemCompra(getEmpresa(), f, g.forn, escolhidos, autoPrint);
   }
 
+  // Envia a ordem de compra (PDF) pro WhatsApp do gestor, e também gera/imprime localmente.
+  async function enviarOrdem(g: { forn: string; itens: CompraSugestao[] }) {
+    const escolhidos = g.itens.filter(incluido).map((m) => ({ ...m, faltam: qtdDe(m) })).filter((m) => m.faltam > 0);
+    if (!escolhidos.length) { alert("Marque ao menos um item (com quantidade maior que zero)."); return; }
+    setEnviando(true);
+    try {
+      const emp = getEmpresa();
+      const fid = g.itens[0]?.fornecedor_id;
+      const f = fid ? fornecedores.find((x) => x.id === fid) || null : null;
+      const r = await api.enviarOrdemCompra({
+        fornecedor: g.forn,
+        empresa: { nome: emp.nome, cnpj: emp.cnpj, endereco: emp.endereco, telefone: emp.telefone, email: emp.email },
+        fornecedorDados: { nome: g.forn, contato: f?.contato || "", telefone: f?.telefone || "", email: f?.email || "", cnpj: f?.cnpj || "" },
+        itens: escolhidos.map((m) => ({ nome: m.nome, tamanho: m.tamanho, cor: m.cor, codigo: m.codigo, unidade: m.unidade, qtd: m.faltam, preco: m.preco })),
+      });
+      gerar(g, true); // também gera/imprime a ordem localmente
+      setEnviar(null);
+      alert(r.ok ? `✅ Ordem de compra enviada (PDF) pro WhatsApp ${r.numero}.` : `⚠️ Não enviou (${r.motivo || "falha"}). Confira o número do gestor e a conexão do WhatsApp.`);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
   if (carregou && itens.length === 0)
     return <div className="card pad empty">Nenhum material abaixo do estoque mínimo. Tudo em dia. ✅</div>;
 
@@ -2661,7 +2688,7 @@ function ComprasMateriais() {
               <span className="chip chip-kit">🚛 {g.forn}</span>
               <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>{nSel}/{g.itens.length} item(ns) · {rBR(total)}</span>
               <button className="btn btn-soft" title="Abrir sem imprimir (visualizar/editar)" onClick={() => gerar(g, false)}>👁 Visualizar</button>
-              <button className="btn btn-primary" title="Gerar e imprimir a ordem de compra" onClick={() => gerar(g, true)}>🧾 Ordem de compra</button>
+              <button className="btn btn-primary" title="Gerar a ordem de compra (e enviar ao gestor)" onClick={() => setEnviar(g)}>🧾 Ordem de compra</button>
             </div>
             <table className="table">
               <thead><tr>
@@ -2694,6 +2721,22 @@ function ComprasMateriais() {
         );
       })}
       {empresaModal && <EmpresaModal onFechar={() => setEmpresaModal(false)} />}
+      {enviar && (
+        <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget && !enviando) setEnviar(null); }}>
+          <div className="aviso-pop" style={{ borderTopColor: "#4338ca", maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+            <div className="aviso-pop-ic">🧾</div>
+            <h2 className="aviso-pop-tit" style={{ color: "#3730a3" }}>Ordem de compra</h2>
+            <div className="aviso-pop-sub">
+              Enviar esta ordem <strong>em PDF</strong> para o gestor no WhatsApp?<br />
+              🚛 {enviar.forn} · {enviar.itens.filter(incluido).filter((m) => qtdDe(m) > 0).length} item(ns)
+            </div>
+            <div className="aviso-pop-acts">
+              <button className="btn btn-soft" disabled={enviando} onClick={() => { const g = enviar; setEnviar(null); gerar(g, true); }}>Não, só gerar</button>
+              <button className="btn btn-primary" disabled={enviando} onClick={() => enviarOrdem(enviar)}>{enviando ? "Enviando…" : "📲 Sim, enviar p/ gestor"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -1138,3 +1138,127 @@ export async function gerarRelatorioEstoque(linhas: LinhaEstoque[]): Promise<Uin
   }
   return await doc.save();
 }
+
+// ── Ordem de Compra (materiais) — PDF p/ enviar ao gestor/fornecedor ──────────
+// Cabeçalho navy com os dados da empresa, bloco do fornecedor e tabela de itens
+// (#, Material, Un, Qtde, Vl Unit., Vl Total) com total estimado e assinaturas.
+export interface OrdemCompraItem {
+  nome: string;
+  tamanho?: string | null;
+  cor?: string | null;
+  codigo?: string | null;
+  unidade?: string | null;
+  qtd: number;
+  preco?: number | null;
+}
+export interface OrdemCompraDados {
+  empresa: { nome?: string | null; cnpj?: string | null; endereco?: string | null; telefone?: string | null; email?: string | null };
+  fornecedor: { nome?: string | null; contato?: string | null; telefone?: string | null; email?: string | null; cnpj?: string | null };
+  numero: string;
+  data: string;
+  itens: OrdemCompraItem[];
+}
+
+export async function gerarOrdemCompra(d: OrdemCompraDados): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const reg = await doc.embedFont(StandardFonts.Helvetica);
+  const bld = await doc.embedFont(StandardFonts.HelveticaBold);
+  const M = 34, ix = M, iw = A4W - 2 * M;
+  let page = doc.addPage([A4W, A4H]);
+  let y = 0;
+  const SLATE = hx("#334155"), LINEC2 = hx("#cbd5e1"), GREY2 = hx("#eef1f5");
+
+  const T = (s: string, x: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x, y: A4H - yTop, size, font: f, color: c });
+  const TR = (s: string, xr: number, yTop: number, size: number, f: PDFFont, c = INK) =>
+    page.drawText(s, { x: xr - f.widthOfTextAtSize(s, size), y: A4H - yTop, size, font: f, color: c });
+  const R = (x: number, yTop: number, w: number, h: number, c = INK) =>
+    page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, color: c });
+  const RB = (x: number, yTop: number, w: number, h: number, c: ReturnType<typeof rgb>, bw = 0.8) =>
+    page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, borderColor: c, borderWidth: bw });
+  const seg = (x1: number, y1: number, x2: number, c: ReturnType<typeof rgb>, th = 0.7) =>
+    page.drawLine({ start: { x: x1, y: A4H - y1 }, end: { x: x2, y: A4H - y1 }, thickness: th, color: c });
+
+  const e = d.empresa || {}, f = d.fornecedor || {};
+  // Cabeçalho (faixa navy)
+  R(0, 0, A4W, 72, NAVY);
+  T(fit(e.nome || "BIG TRICOT", bld, 20, iw * 0.58), ix, 34, 20, bld, WHITE);
+  const subEmp = [e.cnpj ? "CNPJ: " + e.cnpj : "", e.telefone || "", e.email || ""].filter(Boolean).join("   ·   ");
+  if (subEmp) T(fit(subEmp, reg, 8.5, iw * 0.58), ix + 2, 50, 8.5, reg, hx("#c7d2e0"));
+  if (e.endereco) T(fit(e.endereco, reg, 8, iw * 0.58), ix + 2, 62, 8, reg, hx("#aab8cc"));
+  TR("ORDEM DE COMPRA", ix + iw, 30, 15, bld, WHITE);
+  TR("Nº " + d.numero, ix + iw, 48, 9.5, reg, hx("#c7d2e0"));
+  TR("Data: " + d.data, ix + iw, 62, 9.5, reg, hx("#c7d2e0"));
+
+  // Bloco do fornecedor
+  y = 92;
+  const fh = 54;
+  R(ix, y, iw, fh, hx("#f8fafc"));
+  RB(ix, y, iw, fh, LINEC2, 0.8);
+  T("FORNECEDOR", ix + 12, y + 16, 8.5, bld, MUTE);
+  T(fit(f.nome || "—", bld, 13, iw - 24), ix + 12, y + 34, 13, bld, INK);
+  const fl: string[] = [];
+  if (f.contato) fl.push("Contato: " + f.contato);
+  if (f.telefone) fl.push("Tel: " + f.telefone);
+  if (f.cnpj) fl.push("CNPJ: " + f.cnpj);
+  if (f.email) fl.push(f.email);
+  if (fl.length) T(fit(fl.join("   ·   "), reg, 9, iw - 24), ix + 12, y + 48, 9, reg, SLATE);
+  y += fh + 20;
+
+  // Colunas da tabela
+  const cNum = ix, cMat = ix + 24;
+  const cUn = ix + iw * 0.50;   // UN (alinhado à esquerda)
+  const cQtd = ix + iw * 0.66;  // QTDE (borda direita)
+  const cVlr = ix + iw * 0.82;  // VL UNIT (borda direita)
+  const cTot = ix + iw;         // VL TOTAL (borda direita)
+
+  const cabTabela = () => {
+    R(ix, y, iw, 20, GREY2);
+    T("#", cNum + 5, y + 14, 8, bld, SLATE);
+    T("MATERIAL", cMat, y + 14, 8, bld, SLATE);
+    T("UN", cUn, y + 14, 8, bld, SLATE);
+    TR("QTDE", cQtd, y + 14, 8, bld, SLATE);
+    TR("VL UNIT.", cVlr, y + 14, 8, bld, SLATE);
+    TR("VL TOTAL", cTot, y + 14, 8, bld, SLATE);
+    y += 20;
+    seg(ix, y, ix + iw, LINEC2);
+  };
+  cabTabela();
+
+  let total = 0;
+  d.itens.forEach((it, i) => {
+    if (y + 18 > A4H - 80) { page = doc.addPage([A4W, A4H]); y = 40; cabTabela(); }
+    const qtd = Number(it.qtd) || 0, unit = Number(it.preco) || 0, tot = qtd * unit;
+    total += tot;
+    const desc = (it.nome || "") +
+      (it.tamanho ? " · " + it.tamanho : "") +
+      (it.cor ? " · " + it.cor : "") +
+      (it.codigo ? "  [" + it.codigo + "]" : "");
+    T(String(i + 1), cNum + 3, y + 14, 9, reg, SLATE);
+    T(fit(desc, reg, 9.5, cUn - cMat - 8), cMat, y + 14, 9.5, reg, INK);
+    T(fit(it.unidade || "", reg, 9, cQtd - cUn - 34), cUn, y + 14, 9, reg, SLATE);
+    TR(qt(qtd), cQtd, y + 14, 9.5, bld, QBLUE);
+    TR(unit ? money(unit) : "—", cVlr, y + 14, 9, reg);
+    TR(unit ? money(tot) : "—", cTot, y + 14, 9, bld);
+    y += 18;
+    seg(ix, y, ix + iw, hx("#eef0f4"), 0.5);
+  });
+
+  // Total geral
+  y += 8;
+  if (y + 28 > A4H - 60) { page = doc.addPage([A4W, A4H]); y = 40; }
+  R(ix, y, iw, 28, NAVY);
+  T(`${d.itens.length} ${d.itens.length === 1 ? "item" : "itens"}`, ix + 12, y + 18, 10, bld, WHITE);
+  TR("TOTAL ESTIMADO: " + money(total), ix + iw - 12, y + 18, 13, bld, WHITE);
+  y += 28 + 46;
+
+  // Assinaturas
+  if (y + 40 > A4H - 24) { page = doc.addPage([A4W, A4H]); y = A4H - 90; }
+  const half = (iw - 40) / 2;
+  seg(ix, y, ix + half, LINEC2, 0.8);
+  seg(ix + iw - half, y, ix + iw, LINEC2, 0.8);
+  T("Comprador", ix, y + 13, 9, reg, MUTE);
+  T("Fornecedor", ix + iw - half, y + 13, 9, reg, MUTE);
+
+  return await doc.save();
+}

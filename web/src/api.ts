@@ -1071,6 +1071,14 @@ export const api = {
     fetch("/api/materiais/compras").then((r) => j<CompraSugestao[]>(r)),
   testarAvisoEstoque: () =>
     jsonPost("/api/materiais/testar-aviso", {}).then((r) => j<{ ok: boolean; numero: string; materiais: number; motivo?: string }>(r)),
+  // Envia a ORDEM DE COMPRA (gerada em PDF no servidor) pro WhatsApp do gestor.
+  enviarOrdemCompra: (b: {
+    fornecedor: string;
+    empresa: { nome?: string; cnpj?: string; endereco?: string; telefone?: string; email?: string };
+    fornecedorDados: { nome?: string; contato?: string; telefone?: string; email?: string; cnpj?: string };
+    itens: { nome: string; tamanho?: string | null; cor?: string | null; codigo?: string | null; unidade?: string | null; qtd: number; preco?: number | null }[];
+  }) =>
+    jsonPost("/api/materiais/ordem-compra/enviar", b).then((r) => j<{ ok: boolean; numero: string; motivo?: string }>(r)),
   // Mapa de refil (medida do produto → medida do refil)
   listarRefilMapa: () =>
     fetch("/api/materiais/refil-mapa").then((r) => j<RefilMapa[]>(r)),
