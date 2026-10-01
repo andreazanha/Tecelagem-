@@ -390,6 +390,39 @@ producao.get("/:pedido_id/:parte", async (c) => {
   return c.json({ ...card, blocos: blocos || [] });
 });
 
+// Peças já TECIDAS (marcadas item a item no modal "Visualizar pedido").
+// GET: lista os itens marcados daquela parte + total de peças tecidas.
+producao.get("/:pedido_id/:parte/tecidas", async (c) => {
+  const pedido_id = c.req.param("pedido_id");
+  const parte = decodeURIComponent(c.req.param("parte"));
+  const { results } = await c.env.DB.prepare(
+    "SELECT chave, qtd FROM producao_tecidas WHERE pedido_id = ? AND parte = ?"
+  ).bind(pedido_id, parte).all<{ chave: string; qtd: number }>().catch(() => ({ results: [] as { chave: string; qtd: number }[] }));
+  const total = (results || []).reduce((s, r) => s + (Number(r.qtd) || 0), 0);
+  return c.json({ itens: results || [], total });
+});
+
+// POST: marca/desmarca um item como tecido. body { chave, qtd, marcado }.
+producao.post("/:pedido_id/:parte/tecidas", async (c) => {
+  const g = await exigirAlgumaFuncao(c, ["producao.iniciar", "producao.finalizar"]); if ("erro" in g) return g.erro;
+  const pedido_id = c.req.param("pedido_id");
+  const parte = decodeURIComponent(c.req.param("parte"));
+  const b = await c.req.json<{ chave?: string; qtd?: number; marcado?: boolean }>().catch(() => ({} as { chave?: string; qtd?: number; marcado?: boolean }));
+  const chave = String(b.chave ?? "").trim();
+  if (!chave) return c.json({ error: "chave_obrigatoria" }, 400);
+  if (b.marcado === false) {
+    await c.env.DB.prepare("DELETE FROM producao_tecidas WHERE pedido_id = ? AND parte = ? AND chave = ?").bind(pedido_id, parte, chave).run();
+  } else {
+    const qtd = Math.max(0, Math.trunc(Number(b.qtd) || 0));
+    await c.env.DB.prepare(
+      `INSERT INTO producao_tecidas (pedido_id, parte, chave, qtd, operador, em) VALUES (?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(pedido_id, parte, chave) DO UPDATE SET qtd=excluded.qtd, operador=excluded.operador, em=datetime('now')`
+    ).bind(pedido_id, parte, chave, qtd, (g.u.nome || "").trim() || null).run();
+  }
+  const tot = await c.env.DB.prepare("SELECT COALESCE(SUM(qtd),0) AS t FROM producao_tecidas WHERE pedido_id = ? AND parte = ?").bind(pedido_id, parte).first<{ t: number }>();
+  return c.json({ ok: true, total: Number(tot?.t) || 0 });
+});
+
 const STATUS = ["aguardando", "fazendo", "pronto", "defeito"];
 // "Conclusão instantânea" (burla humana): finalizar SEM ter iniciado, ou em menos que este tempo.
 // Só REGISTRA (não bloqueia) — vira alerta no relatório "quem está burlando". Ajustável.

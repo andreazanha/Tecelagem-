@@ -2636,6 +2636,34 @@ function VisualizarPedidoModal({ card, cfg, det, onFechar }: {
   const total = blocos.reduce((a, b) => a + (b.total || 0), 0);
   const titulo = card.parte === "pronta-entrega" ? "ITENS — PRONTA ENTREGA" : ehRep(card) ? "ITENS — REPOSIÇÃO DE ESTOQUE" : "ITENS A PRODUZIR";
   const sub = cfg.titulo + " · " + parteLabel + (ehRep(card) ? " · Reposição" : "");
+
+  // Peças já TECIDAS: marca item a item (quadradinho) e soma. Fica salvo no pedido.
+  type BlocoDet = { modelo: string; ref: string; comp: string; cor: string; total: number; sizes: { tipo: string; tamanho: string; qtd: number }[] };
+  const chaveDe = (b: BlocoDet, s: { tipo: string; tamanho: string }) =>
+    [b.modelo, b.ref, b.cor, b.comp, s.tipo, s.tamanho].map((x) => String(x ?? "")).join("|");
+  const [marcadas, setMarcadas] = useState<Set<string>>(new Set());
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => {
+    api.tecidasProducao(card.pedido_id, card.parte)
+      .then((r) => setMarcadas(new Set(r.itens.map((i) => i.chave))))
+      .catch(() => {});
+  }, [card.pedido_id, card.parte]);
+  const tecidasBloco = (b: BlocoDet) => b.sizes.reduce((acc, s) => acc + (marcadas.has(chaveDe(b, s)) ? s.qtd : 0), 0);
+  const tecidasTotal = blocos.reduce((acc, b) => acc + tecidasBloco(b as BlocoDet), 0);
+  async function toggleTecida(b: BlocoDet, s: { tipo: string; tamanho: string; qtd: number }) {
+    const chave = chaveDe(b, s);
+    const marcado = !marcadas.has(chave);
+    setMarcadas((prev) => { const n = new Set(prev); if (marcado) n.add(chave); else n.delete(chave); return n; });
+    setSalvando(true);
+    try {
+      await api.marcarTecida(card.pedido_id, card.parte, { chave, qtd: s.qtd, marcado });
+    } catch (e) {
+      setMarcadas((prev) => { const n = new Set(prev); if (marcado) n.delete(chave); else n.add(chave); return n; });
+      alert("Não foi possível salvar a marcação. " + (e as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  }
   return (
     <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }} style={{ zIndex: 80 }}>
       <div className="op-doc" onClick={(e) => e.stopPropagation()}>
@@ -2659,6 +2687,13 @@ function VisualizarPedidoModal({ card, cfg, det, onFechar }: {
           )}
           <div className="op-titulo">{titulo}</div>
           <div className="op-titulo-l" />
+          {total > 0 && (
+            <div className="op-tecidas">
+              <span className="op-tecidas-ic">🧶</span>
+              <span>Marque o quadradinho conforme vai tecendo</span>
+              <span className="op-tecidas-badge">{tecidasTotal} de {total} peças tecidas</span>
+            </div>
+          )}
           {blocos.length === 0 && <div className="muted" style={{ padding: "14px 2px" }}>Carregando itens…</div>}
           {blocos.map((b, i) => (
             <div className="op-bloco" key={i}>
@@ -2666,15 +2701,26 @@ function VisualizarPedidoModal({ card, cfg, det, onFechar }: {
                 <span className="lbl">Modelo:</span><span className="val">{b.modelo}</span>
                 <span className="lbl">Ref:</span><span className="val">{b.ref || "—"}</span>{b.comp && <span className="comp">· {b.comp}</span>}
                 <span className="op-cor"><span className="op-dot" /><b>{b.cor || "—"}</b></span>
-                <span className="op-total">Total: {b.total} {b.total === 1 ? "peça" : "peças"}</span>
+                <span className="op-total">Total: {b.total} {b.total === 1 ? "peça" : "peças"}{tecidasBloco(b as BlocoDet) > 0 && <span className="op-total-tec"> · {tecidasBloco(b as BlocoDet)} tecidas</span>}</span>
               </div>
               <div className="op-thead"><span>PRODUTO / TAMANHO</span><span className="q">QUANTIDADE PEDIDA</span></div>
-              {b.sizes.map((s, j) => (
-                <div className="op-trow" key={j}><span className="tam">{s.tipo ? s.tipo + " " : ""}{s.tamanho}</span><span className="q"><span className="op-chk" /><span className="qb">{s.qtd} {s.qtd === 1 ? "peça" : "peças"}</span></span></div>
-              ))}
+              {b.sizes.map((s, j) => {
+                const marcada = marcadas.has(chaveDe(b as BlocoDet, s));
+                return (
+                  <div className={"op-trow" + (marcada ? " tecida" : "")} key={j}>
+                    <span className="tam">{s.tipo ? s.tipo + " " : ""}{s.tamanho}</span>
+                    <span className="q">
+                      <button type="button" className={"op-chk" + (marcada ? " on" : "")} disabled={salvando}
+                        title={marcada ? "Tecida — clique pra desmarcar" : "Marcar como tecida"}
+                        onClick={() => toggleTecida(b as BlocoDet, s)}>{marcada ? "✓" : ""}</button>
+                      <span className="qb">{s.qtd} {s.qtd === 1 ? "peça" : "peças"}</span>
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ))}
-          <div className={"op-tband " + banda}>QTD {parteLabel}: {total}</div>
+          <div className={"op-tband " + banda}>QTD {parteLabel}: {total}{total > 0 ? ` · ${tecidasTotal} tecidas` : ""}</div>
         </div>
       </div>
     </div>

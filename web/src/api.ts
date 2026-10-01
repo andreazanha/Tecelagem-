@@ -1158,6 +1158,14 @@ export const api = {
         }
       >(r)
     ),
+  // Peças já tecidas (marcadas item a item no modal "Visualizar pedido").
+  tecidasProducao: (pedido_id: string, parte: string) =>
+    fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/tecidas`).then((r) =>
+      j<{ itens: { chave: string; qtd: number }[]; total: number }>(r)),
+  marcarTecida: (pedido_id: string, parte: string, b: { chave: string; qtd: number; marcado: boolean }) =>
+    fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/tecidas`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b),
+    }).then((r) => j<{ ok: boolean; total: number }>(r)),
   salvarCodigoTerceiro: (pedido_id: string, codigo: string) =>
     fetch(`/api/pedidos/${pedido_id}/codigo-terceiro`, {
       method: "POST",
