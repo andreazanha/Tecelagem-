@@ -194,6 +194,7 @@ const GRUPOS: MenuGrupo[] = [
   {
     id: "pcp", icon: "📋", label: "PCP", itens: [
       { to: "/pcp", icon: "📦", label: "Pedidos", page: "pedidos" },
+      { to: "/pedidos-erp", icon: "🔗", label: "Pedidos do ERP", page: "pedidos" },
       { to: "/pedidos/novo", icon: "➕", label: "Criar pedido", page: "pedidos" },
       { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
       { to: "/impressao-etiquetas", icon: "🏷️", label: "Impressão de etiquetas", page: "expedicao" },

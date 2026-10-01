@@ -20,6 +20,7 @@ import { assistente } from "./routes/assistente";
 import { relatorios } from "./routes/relatorios";
 import { tecelagem } from "./routes/tecelagem";
 import { setores } from "./routes/setores";
+import { integracao } from "./routes/integracao";
 
 export interface Env {
   DB: D1Database;
@@ -36,6 +37,10 @@ export interface Env {
   // Digital Asset Links do app Android (TWA/PWABuilder) — preenchido quando o
   // instalador é gerado (fingerprint SHA-256). Ver wrangler.jsonc › vars.
   ASSETLINKS?: string;
+  // Chave da INTEGRAÇÃO com o ERP (ponte Syntech/Firebird → porta de entrada).
+  // Definida como SEGREDO do ambiente (não vai no código). A ponte envia no header
+  // X-Integracao-Token; se não bater (ou não estiver definida), a entrada é recusada.
+  INTEGRACAO_TOKEN?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -77,6 +82,7 @@ app.route("/api/atendimento", atendimento);
 app.route("/api/assistente", assistente);
 app.route("/api/relatorios", relatorios);
 app.route("/api/tecelagem", tecelagem);
+app.route("/api/integracao", integracao);
 
 // Fallback: serve o SPA (assets estáticos do build do Vite).
 // IMPORTANTE: como o worker intercepta todas as rotas e busca o asset por código,

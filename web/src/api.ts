@@ -672,6 +672,16 @@ export interface RelProducaoDetalhado {
   eventos: RelProdEvento[];
 }
 
+export interface ErpPendente {
+  id: string; numero_erp: string; cliente_nome: string;
+  data_pedido: string | null; data_entrega: string | null; created_at: string;
+  linhas: number; pecas: number;
+}
+export interface ErpPendenteDetalhe {
+  pedido: { id: string; numero_erp: string; cliente_nome: string; data_pedido: string | null; data_entrega: string | null };
+  itens: { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number }[];
+}
+
 export interface MaquinaTec { id: string; nome: string; ordem: number; ativo: number }
 export interface MotivoTec { id: string; codigo: string; nome: string | null; tipo: string; ordem: number; ativo: number }
 export interface ResumoTec {
@@ -1161,6 +1171,11 @@ export const api = {
     const qs = p.toString();
     return fetch(`/api/producao/relatorio/detalhado${qs ? "?" + qs : ""}`).then((r) => j<RelProducaoDetalhado>(r));
   },
+  // Integração ERP — pedidos aguardando conferência (porta de entrada).
+  erpPendentes: () => fetch("/api/integracao/pendentes").then((r) => j<ErpPendente[]>(r)),
+  erpPendenteDetalhe: (id: string) => fetch(`/api/integracao/pendentes/${encodeURIComponent(id)}`).then((r) => j<ErpPendenteDetalhe>(r)),
+  erpAprovar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aprovar`, {}).then((r) => j<{ ok: boolean }>(r)),
+  erpRecusar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/recusar`, {}).then((r) => j<{ ok: boolean }>(r)),
   definirClienteCard: (pedido_id: string, parte: string, cliente: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/cliente`, {
       method: "POST",
