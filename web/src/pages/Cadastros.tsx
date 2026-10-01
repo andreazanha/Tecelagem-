@@ -1901,8 +1901,11 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const [extra, setExtra] = useState<Record<string, string>>(extraDefaults);
   const [novoForn, setNovoForn] = useState(false);
   const [entrada, setEntrada] = useState<Material | null>(null);
+  const [movTipo, setMovTipo] = useState<"entrada" | "baixa" | "ajuste">("entrada");
   const [extrato, setExtrato] = useState<Material | null>(null);
+  const [formOpen, setFormOpen] = useState(false); // modal de cadastro (novo/editar)
   const [colar, setColar] = useState(false);
+  const movAbrir = (m: Material, t: "entrada" | "baixa" | "ajuste") => { setMovTipo(t); setEntrada(m); };
   const [sel, setSel] = useState<Set<string>>(new Set()); // seleção p/ alterar em massa
   const [alterar, setAlterar] = useState(false);
   const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -1943,7 +1946,9 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
     setCor(m.cor || ""); setCodigo(m.codigo || "");
     setUnidade(m.unidade || "un"); setPreco(m.preco != null ? String(m.preco) : ""); setMinimo(m.minimo != null ? String(m.minimo) : "");
     setCodInterno(m.codigo_interno || ""); setStatus(m.status === "inativo" ? "inativo" : "ativo"); setObs(m.obs || ""); setExtra({ ...extraDefaults, ...parseExtra(m) });
+    setFormOpen(true);
   }
+  function novo() { limpar(); setFormOpen(true); }
 
   // Lê/escreve o valor de uma coluna sobre os estados individuais.
   function getV(key: string): string {
@@ -1975,26 +1980,27 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
         codigo_interno: codInterno.trim() || null, status, obs: obs.trim() || null,
         extra: JSON.stringify(extraLimpo),
       });
-      limpar(); recarregar(); onMudou?.();
+      limpar(); setFormOpen(false); recarregar(); onMudou?.();
     } catch (e) { alert((e as Error).message); }
   }
   async function remover(m: Material) {
     if (!confirm(`Excluir "${m.nome}${m.tamanho ? " " + m.tamanho : ""}"?`)) return;
     try { await api.excluirMaterial(m.id); if (editId === m.id) limpar(); recarregar(); onMudou?.(); } catch (e) { alert((e as Error).message); }
   }
-  // Duplicar: carrega os dados no formulário como um NOVO cadastro (editId nulo).
+  // Duplicar: carrega os dados no modal como um NOVO cadastro (editId nulo).
   function duplicar(m: Material) {
-    editar(m);
-    setEditId(null);
-    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+    editar(m);       // preenche os campos e abre o modal
+    setEditId(null); // mas salva como novo
   }
 
   return (
     <>
       <div className="card pad" style={{ marginBottom: 16 }}>
-        <div className="row-gap" style={{ alignItems: "center" }}>
-          <h2 style={{ margin: 0 }}>{editId ? `Editar ${label.toLowerCase()}` : `Novo ${label.toLowerCase()}`}</h2>
+        <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <span className="chip" style={{ background: catCor, color: "#fff" }}>{label}</span>
+          <span className="muted" style={{ fontSize: 12 }}>{itens.length} item(ns)</span>
           <span style={{ marginLeft: "auto" }} />
+          <button className="btn btn-primary" onClick={novo}>＋ Novo {label.toLowerCase()}</button>
           {undoIds.length > 0 && (
             <button className="btn btn-soft" title="Desfazer a última importação (apaga só o que ela criou)" onClick={desfazerImport}
               style={{ color: "#b91c1c", borderColor: "#fca5a5" }}>↩️ Desfazer importação ({undoIds.length})</button>
@@ -2002,56 +2008,12 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
           <button className="btn btn-soft" title="Colar vários de uma vez" onClick={() => setColar(true)}>📋 Colar em massa</button>
           {sel.size > 0 && <button className="btn btn-soft" title="Alterar um campo dos selecionados" onClick={() => setAlterar(true)} style={{ color: "#4338ca", borderColor: "#c7d2fe" }}>✏️ Alterar em massa ({sel.size})</button>}
           {itens.length > 0 && <button className="btn btn-soft" title="Excluir todos deste tipo" onClick={excluirTodos} style={{ color: "#b91c1c" }}>🗑 Excluir todos</button>}
-          <button className="btn btn-soft" title="Renomear material" onClick={onEditarCat}>✎ Material</button>
+          <button className="btn btn-soft" title="Renomear insumo" onClick={onEditarCat}>✎ Renomear</button>
           <button className="btn" title="Excluir insumo" onClick={onExcluirCat}>🗑</button>
-        </div>
-        <div className="row-gap" style={{ marginTop: 12, flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
-          {colunas.map((c) => {
-            if (c.key === "fornecedor") return (
-              <label className="fld" key={c.key}>{c.label}
-                <div className="row-gap" style={{ gap: 4 }}>
-                  <select value={fornId} onChange={(e) => setFornId(e.target.value)} style={{ minWidth: 150 }}>
-                    <option value="">Sem fornecedor</option>
-                    {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
-                  </select>
-                  <button type="button" className="btn btn-soft" title="Novo fornecedor" onClick={() => setNovoForn(true)} style={{ padding: "8px 11px" }}>＋</button>
-                </div>
-              </label>
-            );
-            if (c.key === "unidade") return (
-              <label className="fld" key={c.key}>{c.label}
-                <select value={unidade} onChange={(e) => setUnidade(e.target.value)} style={{ width: c.width || 90 }}>
-                  {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
-              </label>
-            );
-            if (c.key === "status") return (
-              <label className="fld" key={c.key}>{c.label}
-                <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: c.width || 100 }}>
-                  <option value="ativo">Ativo</option>
-                  <option value="inativo">Inativo</option>
-                </select>
-              </label>
-            );
-            const decimal = c.key === "preco" || c.key === "minimo";
-            const corrige = c.key === "nome" || c.key === "cor" || c.key === "obs"; // corretor ortográfico só em texto
-            return (
-              <label className="fld" key={c.key} style={c.key === "obs" ? { flex: 1, minWidth: 180 } : undefined}>{c.label}
-                <input value={getV(c.key)} onChange={(e) => setV(c.key, e.target.value)} placeholder={c.ph || (c.key === "nome" ? `ex.: ${label}` : "")}
-                  inputMode={decimal ? "decimal" : undefined} spellCheck={corrige} lang={corrige ? "pt-BR" : undefined} style={{ width: c.width || 130 }} />
-              </label>
-            );
-          })}
-          <button className="btn btn-primary" onClick={salvar}>{editId ? "Salvar" : "＋ Adicionar"}</button>
-          {editId && <button className="btn" onClick={limpar}>Cancelar</button>}
         </div>
       </div>
 
       <div className="card">
-        <div className="row-gap" style={{ alignItems: "center", gap: 10, padding: "10px 12px" }}>
-          <span className="chip" style={{ background: catCor, color: "#fff" }}>{label}</span>
-          <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>{itens.length} item(ns)</span>
-        </div>
         <table className="table">
           <thead><tr>
             <th style={{ width: 30 }}><input type="checkbox" title="Selecionar todos" checked={itens.length > 0 && sel.size === itens.length}
@@ -2091,11 +2053,15 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
                     {min > 0 && <div className="muted" style={{ fontSize: 10.5 }}>mín {nBR(min)}{baixo ? " · repor" : ""}</div>}
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    <button className="icon-btn" title="Movimentar estoque (saldo / caixas)" onClick={() => setEntrada(m)}>📥</button>
-                    <button className="icon-btn" title="Movimentos (histórico)" onClick={() => setExtrato(m)}>🕑</button>
-                    <button className="icon-btn" title="Duplicar" onClick={() => duplicar(m)}>⧉</button>
-                    <button className="icon-btn" title="Editar" onClick={() => editar(m)}>✎</button>
-                    <button className="icon-btn" title="Excluir" onClick={() => remover(m)}>✕</button>
+                    <div style={{ display: "inline-flex", gap: 4, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <button className="btn btn-ok" style={{ padding: "4px 9px", fontSize: 12 }} title="Dar entrada no estoque" onClick={() => movAbrir(m, "entrada")}>⬆ Entrada</button>
+                      <button className="btn btn-danger" style={{ padding: "4px 9px", fontSize: 12 }} title="Dar saída do estoque" onClick={() => movAbrir(m, "baixa")}>⬇ Saída</button>
+                      <button className="btn btn-soft" style={{ padding: "4px 9px", fontSize: 12 }} title="Ajustar o saldo" onClick={() => movAbrir(m, "ajuste")}>Ajustar</button>
+                      <button className="icon-btn" title="Extrato (histórico)" onClick={() => setExtrato(m)}>🕑</button>
+                      <button className="icon-btn" title="Editar" onClick={() => editar(m)}>✎</button>
+                      <button className="icon-btn" title="Duplicar" onClick={() => duplicar(m)}>⧉</button>
+                      <button className="icon-btn" title="Excluir" onClick={() => remover(m)}>✕</button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -2105,7 +2071,57 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
       </div>
 
       {novoForn && <FornecedorRapido onFechar={() => setNovoForn(false)} onSalvo={async (id) => { setNovoForn(false); await recarregarForn(); setFornId(id); }} />}
-      {entrada && <MovEstoqueModal material={entrada} onFechar={() => setEntrada(null)} onSalvo={() => { setEntrada(null); recarregar(); onMudou?.(); }} />}
+      {entrada && <MovEstoqueModal material={entrada} inicial={movTipo} onFechar={() => setEntrada(null)} onSalvo={() => { setEntrada(null); recarregar(); onMudou?.(); }} />}
+
+      {formOpen && (
+        <div className="modal-bg" onClick={() => { limpar(); setFormOpen(false); }}>
+          <div className="modal-card" style={{ maxWidth: 660, width: "min(660px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0 }}>{editId ? `Editar ${label.toLowerCase()}` : `Novo ${label.toLowerCase()}`}</h2>
+            <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
+              {colunas.map((c) => {
+                if (c.key === "fornecedor") return (
+                  <label className="fld" key={c.key}>{c.label}
+                    <div className="row-gap" style={{ gap: 4 }}>
+                      <select value={fornId} onChange={(e) => setFornId(e.target.value)} style={{ minWidth: 150 }}>
+                        <option value="">Sem fornecedor</option>
+                        {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                      </select>
+                      <button type="button" className="btn btn-soft" title="Novo fornecedor" onClick={() => setNovoForn(true)} style={{ padding: "8px 11px" }}>＋</button>
+                    </div>
+                  </label>
+                );
+                if (c.key === "unidade") return (
+                  <label className="fld" key={c.key}>{c.label}
+                    <select value={unidade} onChange={(e) => setUnidade(e.target.value)} style={{ width: c.width || 90 }}>
+                      {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </label>
+                );
+                if (c.key === "status") return (
+                  <label className="fld" key={c.key}>{c.label}
+                    <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: c.width || 100 }}>
+                      <option value="ativo">Ativo</option>
+                      <option value="inativo">Inativo</option>
+                    </select>
+                  </label>
+                );
+                const decimal = c.key === "preco" || c.key === "minimo";
+                const corrige = c.key === "nome" || c.key === "cor" || c.key === "obs";
+                return (
+                  <label className="fld" key={c.key} style={c.key === "obs" ? { flex: 1, minWidth: 180 } : undefined}>{c.label}
+                    <input value={getV(c.key)} onChange={(e) => setV(c.key, e.target.value)} placeholder={c.ph || (c.key === "nome" ? `ex.: ${label}` : "")}
+                      inputMode={decimal ? "decimal" : undefined} spellCheck={corrige} lang={corrige ? "pt-BR" : undefined} style={{ width: c.width || 130 }} />
+                  </label>
+                );
+              })}
+            </div>
+            <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16, gap: 8 }}>
+              <button className="btn btn-soft" onClick={() => { limpar(); setFormOpen(false); }}>Cancelar</button>
+              <button className="btn btn-primary" onClick={salvar}>{editId ? "Salvar" : "＋ Adicionar"}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {extrato && <MovimentosMaterialModal material={extrato} onFechar={() => setExtrato(null)} />}
       {alterar && <AlterarMassaModal
         colunas={colunas} ids={[...sel]} fornecedores={fornecedores}
@@ -2152,8 +2168,8 @@ function FornecedorRapido({ onFechar, onSalvo }: { onFechar: () => void; onSalvo
 }
 
 // Modal de movimentação de estoque (entrada de compra / baixa / ajuste).
-function MovEstoqueModal({ material, onFechar, onSalvo }: { material: Material; onFechar: () => void; onSalvo: () => void }) {
-  const [tipo, setTipo] = useState<"entrada" | "baixa" | "ajuste">("entrada");
+function MovEstoqueModal({ material, inicial, onFechar, onSalvo }: { material: Material; inicial?: "entrada" | "baixa" | "ajuste"; onFechar: () => void; onSalvo: () => void }) {
+  const [tipo, setTipo] = useState<"entrada" | "baixa" | "ajuste">(inicial || "entrada");
   const [alvo, setAlvo] = useState<"saldo" | "caixas">("saldo");
   const [qtd, setQtd] = useState("");
   const [motivo, setMotivo] = useState("");

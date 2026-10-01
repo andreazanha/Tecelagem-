@@ -202,9 +202,8 @@ const GRUPOS: MenuGrupo[] = [
       {
         icon: "🧱", label: "Estoque de matéria prima", page: "estoque", children: [
           { to: "/fio-por-cor", icon: "🧵", label: "Estoque de fios", page: "estoque" },
-          { to: "/estoque-materiais", icon: "🧷", label: "Estoque de materiais", page: "estoque" },
-          // Atalho para CADASTRAR os insumos (submenu dinâmico: Fios + insumos + Compras).
-          { icon: "🗂️", label: "Cadastro de materiais", page: "cadastros", dyn: "materiais", children: [] },
+          // Materiais = tela única (estoque + cadastro). Submenu dinâmico: Fios + insumos + Compras.
+          { to: "/cadastros?aba=materiais", icon: "🧷", label: "Materiais (estoque + cadastro)", page: "cadastros", dyn: "materiais", children: [] },
         ],
       },
       // CADASTROS dentro do PCP — submenu com um "Cadastro de ..." por tipo.
