@@ -202,8 +202,8 @@ async function rodadaProdutos(db, estado) {
             A.PROMOCAO, A.DESCONTO_AUTO, B.DESCRICAO AS CLASSE, C.DESCRICAO AS GRUPO,
             A.DATA_ALT_REG, A.ESTOQUE_ATUAL
        FROM PRODUTOS A
-       INNER JOIN CLASS_PROD B ON (B.CODIGO = A.CLASSIFICACAO AND A.TIPO_PRECO = '1')
-       INNER JOIN GRUPO_PROD C ON (C.CODIGO = A.GRUPO)
+       LEFT JOIN CLASS_PROD B ON B.CODIGO = A.CLASSIFICACAO
+       LEFT JOIN GRUPO_PROD C ON C.CODIGO = A.GRUPO
       WHERE A.DATA_ALT_REG > ?
       ORDER BY A.DATA_ALT_REG`;
   let prods = [];
@@ -306,11 +306,13 @@ async function rodada() {
 }
 
 // Firebird compara TIMESTAMP como texto 'YYYY-MM-DD HH:MM:SS'.
+// Usamos UTC pra bater com o valor que o node-firebird devolve (senão a marca
+// d'água fica deslocada no fuso e o produto é reenviado toda rodada).
 function formatarParaFirebird(v) {
   const d = v instanceof Date ? v : new Date(v);
   if (isNaN(d.getTime())) return "1900-01-01 00:00:00";
   const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
 
 async function main() {

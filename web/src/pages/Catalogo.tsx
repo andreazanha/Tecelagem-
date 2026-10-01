@@ -40,7 +40,9 @@ export function Catalogo() {
   const itens = resp?.itens || [];
   const base = resp?.fotos_base || "";
   const grupos = resp?.grupos || [];
-  const totalSaldo = useMemo(() => itens.reduce((s, p) => s + (Number(p.saldo) || 0), 0), [itens]);
+  // saldo "efetivo": usa o detalhado (por cor/tamanho) e, se não houver, o estoque geral do produto
+  const saldoEfetivo = (p: CatalogoProduto) => { const s = Number(p.saldo) || 0; return s > 0 ? s : (Number(p.estoque_geral) || 0); };
+  const totalSaldo = useMemo(() => itens.reduce((s, p) => s + saldoEfetivo(p), 0), [itens]);
 
   return (
     <div className="page">
@@ -83,6 +85,7 @@ function CardProduto({ p, base }: { p: CatalogoProduto; base: string }) {
   const tamanhos = parseJson<string[]>(p.tamanhos, []);
   const url = fotoUrl(base, p);
   const temPromo = p.preco_varejo_promo != null && p.preco_varejo != null && p.preco_varejo_promo < p.preco_varejo;
+  const saldo = (Number(p.saldo) || 0) > 0 ? Number(p.saldo) : (Number(p.estoque_geral) || 0);
 
   return (
     <div className={"cat-card" + (p.inativo ? " cat-inativo" : "")}>
@@ -124,8 +127,8 @@ function CardProduto({ p, base }: { p: CatalogoProduto; base: string }) {
           </div>
         )}
 
-        <div className={"cat-saldo" + ((Number(p.saldo) || 0) > 0 ? " ok" : " zero")}>
-          {(Number(p.saldo) || 0) > 0 ? `✅ ${Number(p.saldo).toLocaleString("pt-BR")} em estoque` : "sem saldo"}
+        <div className={"cat-saldo" + (saldo > 0 ? " ok" : " zero")}>
+          {saldo > 0 ? `✅ ${saldo.toLocaleString("pt-BR")} em estoque` : "sem saldo"}
         </div>
       </div>
     </div>
