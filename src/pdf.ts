@@ -251,15 +251,18 @@ export async function gerarPdfParte(
       T(gt === guiaTxt ? gt : gt + "…", lx, ry + 13, 9, bld, hx("#14532d"));
       ry += 18;
     }
-    // cabeçalho tabela
+    // cabeçalho tabela — quadradinho dos dois lados em QUANTIDADE PEDIDA:
+    // esquerda (produção, já existia) + direita alinhada (PASSADORIA).
     T("PRODUTO / TAMANHO", ix + 10, ry + 13, 8, bld, MUTE);
     T("QUANTIDADE PEDIDA", qx + 14, ry + 13, 8, bld, MUTE);
+    TR("PASSADORIA", ix + iw - 10, ry + 13, 8, bld, hx("#8a6d2f"));
     L(ix, ry + 18, ix + iw, LINEC, 1);
     ry += 18;
     for (const s of b.sizes) {
       T(`${s.tipo ? s.tipo + " " : ""}${s.tamanho}`, ix + 10, ry + 14, 10, bld);
-      RB(qx + 14, ry + 5, 11, 11, hx("#9aa3b2"), 1.2);
+      RB(qx + 14, ry + 5, 11, 11, hx("#9aa3b2"), 1.2); // quadradinho da esquerda (produção)
       T(`${s.qtd} ${s.qtd === 1 ? "peça" : "peças"}`, qx + 32, ry + 14, 10, bld, QBLUE);
+      RB(ix + iw - 23, ry + 5, 11, 11, hx("#9aa3b2"), 1.2); // quadradinho da direita (passadoria), alinhado
       L(ix, ry + 19, ix + iw, hx("#eef0f4"), 0.8);
       ry += 18;
     }
