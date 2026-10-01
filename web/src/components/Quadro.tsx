@@ -1126,7 +1126,7 @@ function PainelCostura({ cfg, cards, onAbrir, onAcao }: {
     return (
       <div key={c.pedido_id + c.parte} className={"tecn-crow" + (c.status === "fazendo" ? " prod" : "")} onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
         <span className={"tecn-ptag " + tg.cls}>{tg.txt}</span>
-        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
+        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span>{c.status === "fazendo" && <span className="tecn-badge" style={{ marginLeft: 8 }}>🪡 {cfg.fazendoLabel}</span>}</div>
         <span className="tecn-costchip">👩 {c.operador || "sem costureira"}{kit ? " · estoque" : ""}</span>
         <span className="tecn-pcs">{pad2(c.pecas)} pçs</span>
         <span className={"tecn-dias " + dd.cls}>{dd.txt}</span>
@@ -1241,7 +1241,7 @@ function PainelRevisao({ cfg, cards, onAbrir, onAcao }: {
     return (
       <div key={c.pedido_id + c.parte} className={"tecn-crow" + (c.status === "fazendo" ? " prod" : modo === "def" ? " def" : "")} onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
         <span className={"tecn-ptag " + tg.cls}>{tg.txt}</span>
-        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
+        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span>{c.status === "fazendo" && <span className="tecn-badge" style={{ marginLeft: 8 }}>🔍 {cfg.fazendoLabel}</span>}</div>
         {modo === "uniao"
           ? <span className="tecn-revwait">aguardando P1+P2</span>
           : rev
