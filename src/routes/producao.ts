@@ -243,7 +243,7 @@ async function garantirCards(env: Env) {
   const { results: faltantes } = await env.DB.prepare(
     `SELECT p.id, p.reposicao, p.entrega_pe, COALESCE(p.bloqueado,0) AS bloqueado FROM pedidos p
       WHERE NOT EXISTS (SELECT 1 FROM producao pr WHERE pr.pedido_id = p.id)
-        AND COALESCE(p.status, '') <> 'aguardando_aprovacao'`
+        AND COALESCE(p.status, '') NOT IN ('aguardando_aprovacao', 'aguardando_explosao')`
   ).all<{ id: string; reposicao: number; entrega_pe: string | null; bloqueado: number }>();
   if (!faltantes.length) return;
   const cat = await catalogoDe(env);

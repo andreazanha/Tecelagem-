@@ -79,11 +79,11 @@ integracao.post("/pedido", async (c) => {
 integracao.get("/pendentes", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const { results } = await c.env.DB.prepare(
-    `SELECT p.id, p.numero_erp, p.cliente_nome, p.data_pedido, p.data_entrega, p.created_at,
+    `SELECT p.id, p.numero_erp, p.cliente_nome, p.status, p.data_pedido, p.data_entrega, p.created_at,
             (SELECT COUNT(*) FROM pedido_itens i WHERE i.pedido_id = p.id) AS linhas,
             (SELECT COALESCE(SUM(i.qtd),0) FROM pedido_itens i WHERE i.pedido_id = p.id) AS pecas
        FROM pedidos p
-      WHERE COALESCE(p.erp_integracao,0) = 1 AND p.status = 'aguardando_aprovacao'
+      WHERE COALESCE(p.erp_integracao,0) = 1 AND p.status IN ('aguardando_aprovacao','aguardando_explosao')
       ORDER BY p.created_at DESC, p.numero_erp DESC`
   ).all();
   return c.json(results);
@@ -103,12 +103,24 @@ integracao.get("/pendentes/:id", async (c) => {
   return c.json({ pedido: ped, itens });
 });
 
-// ── APROVAR: tira de 'aguardando_aprovacao' → entra na produção (explode) ────────
+// ── ACEITAR (segurar): pedido válido, FORA da produção, pra explodir depois ──────
+// Fica numa fila de "aguardando explosão" — serve pra acumular pedidos pequenos e
+// depois explodir vários juntos (render mais na tecelagem). Não gera cards ainda.
+integracao.post("/pendentes/:id/aceitar", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const r = await c.env.DB.prepare(
+    "UPDATE pedidos SET status = 'aguardando_explosao' WHERE id = ? AND COALESCE(erp_integracao,0) = 1 AND status = 'aguardando_aprovacao'"
+  ).bind(id).run();
+  return c.json({ ok: (r.meta?.changes ?? 0) > 0 });
+});
+
+// ── APROVAR/EXPLODIR: entra na produção. Vale pra pendente OU aceito (segurado). ──
 integracao.post("/pendentes/:id/aprovar", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const id = c.req.param("id");
   const r = await c.env.DB.prepare(
-    "UPDATE pedidos SET status = 'novo', bloqueado = 1 WHERE id = ? AND COALESCE(erp_integracao,0) = 1 AND status = 'aguardando_aprovacao'"
+    "UPDATE pedidos SET status = 'novo', bloqueado = 1 WHERE id = ? AND COALESCE(erp_integracao,0) = 1 AND status IN ('aguardando_aprovacao','aguardando_explosao')"
   ).bind(id).run();
   const ok = (r.meta?.changes ?? 0) > 0;
   // Igual ao PDF: nasce bloqueado (PCP libera), cadastra produtos e baixa estoque.
@@ -130,7 +142,7 @@ integracao.post("/aprovar-lote", async (c) => {
   const ph = ids.map(() => "?").join(",");
   const { results: peds } = await c.env.DB.prepare(
     `SELECT id, numero_erp, cliente_nome, data_pedido, data_entrega FROM pedidos
-      WHERE id IN (${ph}) AND COALESCE(erp_integracao,0) = 1 AND status = 'aguardando_aprovacao'`
+      WHERE id IN (${ph}) AND COALESCE(erp_integracao,0) = 1 AND status IN ('aguardando_aprovacao','aguardando_explosao')`
   ).bind(...ids).all<{ id: string; numero_erp: string; cliente_nome: string; data_pedido: string | null; data_entrega: string | null }>();
   if (peds.length < 2) return c.json({ error: "pedidos_nao_encontrados" }, 400);
 
@@ -164,7 +176,7 @@ integracao.post("/aprovar-lote", async (c) => {
   // Remove os pedidos individuais (viraram a OP consolidada).
   for (const id of ids) {
     stmts.push(c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id = ?").bind(id));
-    stmts.push(c.env.DB.prepare("DELETE FROM pedidos WHERE id = ? AND COALESCE(erp_integracao,0) = 1 AND status = 'aguardando_aprovacao'").bind(id));
+    stmts.push(c.env.DB.prepare("DELETE FROM pedidos WHERE id = ? AND COALESCE(erp_integracao,0) = 1 AND status IN ('aguardando_aprovacao','aguardando_explosao')").bind(id));
   }
   await c.env.DB.batch(stmts);
   await posProcessar(c.env, novoId);
@@ -177,7 +189,7 @@ integracao.post("/pendentes/:id/recusar", async (c) => {
   const id = c.req.param("id");
   await c.env.DB.batch([
     c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id = ? AND (SELECT COALESCE(erp_integracao,0) FROM pedidos WHERE id = ?) = 1").bind(id, id),
-    c.env.DB.prepare("DELETE FROM pedidos WHERE id = ? AND COALESCE(erp_integracao,0) = 1 AND status = 'aguardando_aprovacao'").bind(id),
+    c.env.DB.prepare("DELETE FROM pedidos WHERE id = ? AND COALESCE(erp_integracao,0) = 1 AND status IN ('aguardando_aprovacao','aguardando_explosao')").bind(id),
   ]);
   return c.json({ ok: true });
 });

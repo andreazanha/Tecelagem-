@@ -673,7 +673,7 @@ export interface RelProducaoDetalhado {
 }
 
 export interface ErpPendente {
-  id: string; numero_erp: string; cliente_nome: string;
+  id: string; numero_erp: string; cliente_nome: string; status: string;
   data_pedido: string | null; data_entrega: string | null; created_at: string;
   linhas: number; pecas: number;
 }
@@ -1175,6 +1175,7 @@ export const api = {
   erpPendentes: () => fetch("/api/integracao/pendentes").then((r) => j<ErpPendente[]>(r)),
   erpPendenteDetalhe: (id: string) => fetch(`/api/integracao/pendentes/${encodeURIComponent(id)}`).then((r) => j<ErpPendenteDetalhe>(r)),
   erpAprovar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aprovar`, {}).then((r) => j<{ ok: boolean }>(r)),
+  erpAceitar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aceitar`, {}).then((r) => j<{ ok: boolean }>(r)),
   erpRecusar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/recusar`, {}).then((r) => j<{ ok: boolean }>(r)),
   erpAprovarLote: (ids: string[]) => jsonPost("/api/integracao/aprovar-lote", { ids }).then((r) => j<{ ok: boolean; pedido_id: string; codigo_pai: string; pedidos: number }>(r)),
   definirClienteCard: (pedido_id: string, parte: string, cliente: string) =>

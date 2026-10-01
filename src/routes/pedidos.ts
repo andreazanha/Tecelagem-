@@ -346,7 +346,7 @@ pedidos.get("/", async (c) => {
             (SELECT COUNT(*)             FROM pedido_itens i WHERE i.pedido_id = p.id) AS itens,
             (SELECT COALESCE(SUM(qtd),0) FROM pedido_itens i WHERE i.pedido_id = p.id) AS pecas
        FROM pedidos p
-      WHERE COALESCE(p.status, '') <> 'aguardando_aprovacao'
+      WHERE COALESCE(p.status, '') NOT IN ('aguardando_aprovacao', 'aguardando_explosao')
    ORDER BY p.created_at DESC`
   ).all();
   return c.json(results);
