@@ -1069,6 +1069,8 @@ export const api = {
   // Sugestão de compras (saldo abaixo do mínimo)
   comprasMateriais: () =>
     fetch("/api/materiais/compras").then((r) => j<CompraSugestao[]>(r)),
+  testarAvisoEstoque: () =>
+    jsonPost("/api/materiais/testar-aviso", {}).then((r) => j<{ ok: boolean; numero: string; materiais: number; motivo?: string }>(r)),
   // Mapa de refil (medida do produto → medida do refil)
   listarRefilMapa: () =>
     fetch("/api/materiais/refil-mapa").then((r) => j<RefilMapa[]>(r)),

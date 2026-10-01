@@ -130,6 +130,29 @@ materiais.get("/compras", async (c) => {
   return c.json(results);
 });
 
+// TESTE manual: manda AGORA o aviso de estoque no WhatsApp (ignora a guarda diária).
+materiais.post("/testar-aviso", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const num = ((await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_min_wpp'").first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
+  if (!num) return c.json({ error: "numero_nao_configurado" }, 400);
+  const { results } = await c.env.DB.prepare(
+    `SELECT m.nome, m.tamanho, m.cor, m.saldo, m.minimo, m.unidade, f.nome AS fornecedor
+       FROM materiais m LEFT JOIN fornecedores f ON f.id = m.fornecedor_id
+      WHERE m.minimo > 0 AND m.saldo < m.minimo AND COALESCE(m.status,'ativo') <> 'inativo'
+      ORDER BY (f.nome IS NULL), f.nome, m.nome`
+  ).all<{ nome: string; tamanho: string | null; cor: string | null; saldo: number; minimo: number; unidade: string | null; fornecedor: string | null }>();
+  const un = (u: string | null) => (u ? ` ${u}` : "");
+  let texto: string;
+  if (results.length) {
+    const linhas = results.map((r) => `• ${r.nome}${r.tamanho ? ` ${r.tamanho}` : ""}${r.cor ? ` (${r.cor})` : ""} — saldo ${r.saldo}${un(r.unidade)} / mín ${r.minimo}${r.fornecedor ? ` · ${r.fornecedor}` : ""}`);
+    texto = `⚠️ *Materiais abaixo do mínimo* (${results.length})\n\n${linhas.join("\n")}\n\n(mensagem de TESTE)`;
+  } else {
+    texto = "✅ Teste de aviso de estoque — o WhatsApp está funcionando. Nenhum material abaixo do mínimo agora.";
+  }
+  const r = await enviarWhatsapp(c.env, num, { tipo: "texto", texto }).catch(() => ({ enviado: false }));
+  return c.json({ ok: !!r.enviado, numero: num, materiais: results.length, motivo: r.enviado ? undefined : ((r as { motivo?: string }).motivo || "falha") });
+});
+
 // ── Materiais ─────────────────────────────────────────────────────────────────
 materiais.get("/", async (c) => {
   const cat = (c.req.query("categoria") || "").toLowerCase();

@@ -2645,7 +2645,11 @@ function ComprasMateriais() {
       <div className="row-gap" style={{ alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0 }}>Compras sugeridas</h2>
         <span className="muted" style={{ fontSize: 12 }}>Edite as quantidades e marque o que comprar.</span>
-        <button className="btn btn-soft" style={{ marginLeft: "auto" }} title="Editar os dados que aparecem no cabeçalho da ordem" onClick={() => setEmpresaModal(true)}>✎ Nossos dados</button>
+        <button className="btn btn-soft" style={{ marginLeft: "auto" }} title="Enviar agora o aviso de estoque no WhatsApp (teste)" onClick={async () => {
+          try { const r = await api.testarAvisoEstoque(); alert(r.ok ? `✅ Enviado pro WhatsApp ${r.numero} (${r.materiais} material(is) abaixo do mínimo).` : `⚠️ Não enviou (${r.motivo || "falha"}). Confira o número e a conexão do WhatsApp.`); }
+          catch (e) { alert((e as Error).message); }
+        }}>📲 Testar WhatsApp</button>
+        <button className="btn btn-soft" title="Editar os dados que aparecem no cabeçalho da ordem" onClick={() => setEmpresaModal(true)}>✎ Nossos dados</button>
         <span className="muted">Estimativa total: <strong>{rBR(totalGeral)}</strong></span>
       </div>
       {grupos.map((g) => {
