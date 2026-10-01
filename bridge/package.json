@@ -1,0 +1,14 @@
+{
+  "name": "tecelagem-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ponte Syntech (Firebird) -> Tecelagem. Lê os pedidos APROVADOS no ERP e envia pro sistema.",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node sync.js",
+    "once": "node sync.js --once"
+  },
+  "dependencies": {
+    "node-firebird": "^1.1.8"
+  }
+}

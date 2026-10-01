@@ -1,0 +1,16 @@
+{
+  "firebird": {
+    "host": "127.0.0.1",
+    "port": 3050,
+    "database": "C:\\Textil\\Empresas\\FABRICA.MDB",
+    "user": "SYSDBA",
+    "password": "COLOQUE_A_SENHA_DO_FIREBIRD_AQUI"
+  },
+  "api": {
+    "base": "https://rolagem-de-fase.andre-sellmac.workers.dev",
+    "token": "COLOQUE_O_INTEGRACAO_TOKEN_AQUI"
+  },
+  "statusAprovado": 10,
+  "intervaloSegundos": 120,
+  "desde": "2025-01-01"
+}

@@ -1,0 +1,4 @@
+# Nunca versionar: credenciais e estado local ficam SÓ no PC da fábrica.
+config.json
+state.json
+node_modules/
