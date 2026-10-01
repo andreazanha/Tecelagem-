@@ -85,7 +85,7 @@ export function ScannerBaixa({ onFechar, onBaixa }: { onFechar: () => void; onBa
   }, [onBaixa]);
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica">
           <div className="modal-hd-top">

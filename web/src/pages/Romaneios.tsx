@@ -205,7 +205,7 @@ export function RomaneioModal({ pedido, tipo, onFechar, onGerado }: { pedido: Ro
   const tasTot = tas.reduce((s, l) => s + l.tasseis, 0);
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card rom-grande" onClick={(e) => e.stopPropagation()}>
         <div className={"modal-hd " + (ehTassel ? "unica" : "kit")}>
           <div className="modal-hd-top">
@@ -621,7 +621,7 @@ function EditarEmitidoModal({ emitido, onFechar, onSalvo }: { emitido: EmitidoRo
   }
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
         <div className={"modal-hd " + (ehTassel ? "unica" : "kit")}>
           <div className="modal-hd-top">

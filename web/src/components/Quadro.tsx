@@ -1881,7 +1881,7 @@ function FilaModal({
   const envLabel = (c: CardProducao) =>
     basePart(c.parte) === "pronta-entrega" ? cfg.enviarLabelKit || cfg.enviarLabel || "Enviar ▸" : cfg.enviarLabel || "Enviar ▸";
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card fila-modal" onClick={(e) => e.stopPropagation()}>
         <div className={"fila-hd " + cls}>
           <div className="fila-hd-l">
@@ -2046,7 +2046,7 @@ function AcaoModal({
 
   const semOperadores = !carregando && ops.length === 0;
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd">
           <div className="modal-hd-top">
@@ -2418,7 +2418,7 @@ function CardModal({
   const mostrarDevolver = !!cfg.setorDefeito && emTrabalho;
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card cardmodal" onClick={(e) => e.stopPropagation()}>
         <div className={"modal-hd " + t.cls}>
           <div className="modal-hd-top">
@@ -2637,7 +2637,7 @@ function VisualizarPedidoModal({ card, cfg, det, onFechar }: {
   const titulo = card.parte === "pronta-entrega" ? "ITENS — PRONTA ENTREGA" : ehRep(card) ? "ITENS — REPOSIÇÃO DE ESTOQUE" : "ITENS A PRODUZIR";
   const sub = cfg.titulo + " · " + parteLabel + (ehRep(card) ? " · Reposição" : "");
   return (
-    <div className="modal-bg" onClick={onFechar} style={{ zIndex: 80 }}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }} style={{ zIndex: 80 }}>
       <div className="op-doc" onClick={(e) => e.stopPropagation()}>
         <button className="op-x" onClick={onFechar}>✕</button>
         <div className="op-hd">
@@ -2693,7 +2693,7 @@ function HistoricoModal({
   onFechar: () => void;
 }) {
   return (
-    <div className="modal-bg" onClick={(e) => { e.stopPropagation(); onFechar(); }}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd">
           <div className="modal-hd-top">
@@ -2776,7 +2776,7 @@ function LiberarModal({ card, onFechar, onFeito }: { card: CardProducao; onFecha
     }
   }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica">
           <div className="modal-hd-top">
@@ -2829,7 +2829,7 @@ function EnviarCosturaModal({ card, costureira, onFechar, onEnviar }: {
   // Garante que a costureira do romaneio apareça na lista mesmo se o cadastro não retornar.
   const lista = sel && !pessoas.includes(sel) ? [sel, ...pessoas] : pessoas;
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd kit">
           <div className="modal-hd-top">
@@ -2876,7 +2876,7 @@ function WppEstoqueModal({ onFechar }: { onFechar: () => void }) {
     catch (e) { alert((e as Error).message); setSalvando(false); }
   }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd kit">
           <div className="modal-hd-top">
@@ -2967,7 +2967,7 @@ function EntradaEstoqueModal({ card, onFechar, onFeito }: { card: CardProducao; 
   }
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 680 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica">
           <div className="modal-hd-top">

@@ -295,7 +295,7 @@ export function Clientes() {
       {conversaAberta && <ConversaModal id={conversaAberta} onFechar={() => setConversaAberta(null)} onMudou={recarregar} />}
 
       {escolha && (
-        <div className="modal-bg" onClick={() => setEscolha(null)}>
+        <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setEscolha(null); }}>
           <div className="modal-card" style={{ maxWidth: 460, width: "min(460px,96vw)" }} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>Falar com {escolha.nome}</h3>
             <p className="muted" style={{ fontSize: 13.5 }}>Abre a conversa aqui mesmo (numa janela). Escolha em qual coluna do funil o card entra:</p>
@@ -362,7 +362,7 @@ function CampanhaReativacaoModal({ clientes, onFechar, onCriada }: { clientes: C
     } catch (e) { alert((e as Error).message || "Não consegui criar a campanha."); } finally { setBusy(false); }
   }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 520, width: "min(520px,96vw)" }} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ marginTop: 0 }}>📣 Campanha de reativação</h3>
         <p className="muted" style={{ fontSize: 13 }}>A Big envia a mensagem <b>aos poucos</b> (1 a cada X segundos) pros <b>{alvos.length}</b> cliente(s) selecionado(s) que têm WhatsApp. Cada envio aparece na conversa do cliente (com ✓✓).</p>
@@ -507,7 +507,7 @@ export function ClienteFicha() {
       </div>
 
       {escolha && (
-        <div className="modal-bg" onClick={() => setEscolha(false)}>
+        <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setEscolha(false); }}>
           <div className="modal-card" style={{ maxWidth: 460, width: "min(460px,96vw)" }} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>Falar com {f.nome}</h3>
             <p className="muted" style={{ fontSize: 13.5 }}>Abre a conversa aqui mesmo (numa janela). Escolha em qual coluna do funil o card entra:</p>
@@ -543,7 +543,7 @@ function ClienteModal({ cliente, onFechar, onSalvo }: { cliente: Partial<Cliente
   }
   const novo = !cliente.id;
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: "linear-gradient(130deg,#4f46e5,#7c3aed)" }}>
           <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">{novo ? "Novo cliente" : "Editar cliente"}</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
@@ -663,7 +663,7 @@ function ImportarClientesModal({ onFechar, onImportou }: { onFechar: () => void;
   }
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 560, width: "min(560px,96vw)", color: "#1e293b" }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>📥 Importar clientes por planilha</h2>
         <p className="muted" style={{ fontSize: 13 }}>Aceita Excel (.xlsx) ou CSV. Entende: <b>Razão Social, Fantasia, UF, Cidade, DDD, Fones, Celular, email, CNPJ_CPF, Representante, Última Compra</b>. Casa com quem já existe pelo <b>CNPJ</b> (ou nome) e <b>preenche só o que está faltando</b>, sem apagar o que já é bom.</p>

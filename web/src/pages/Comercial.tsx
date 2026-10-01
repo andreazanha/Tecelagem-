@@ -347,7 +347,7 @@ function AbaRepresentantes() {
       )}
 
       {edit && (
-        <div className="modal-bg" onClick={() => setEdit(null)}>
+        <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>{edit.id ? "Editar representante" : "Novo representante"}</h3>

@@ -131,7 +131,7 @@ function NfModal({ card, onFechar, onConfirmar }: { card: CardExpedicao; onFecha
   const [frete, setFrete] = useState(card.frete || "");
   const inputCss: React.CSSProperties = { width: "100%", padding: "12px 14px", fontSize: 16, borderRadius: 10, border: "1px solid #e2e8f0", marginTop: 4 };
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd">
           <div className="modal-hd-top">

@@ -330,7 +330,7 @@ function CardDetalhe({ id, onFechar, onMudou, onAbrirConversa }: { id: string; o
   const wa = d ? waHref(d.whatsapp) : null;
   const cor = ETAPAS_META.find((e) => e.id === (d?.etapa || "novo-lead"))?.cor || "#4f46e5";
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card fx-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: `linear-gradient(130deg,${cor},#4f46e5)` }}>
           <div className="modal-hd-top">
@@ -460,7 +460,7 @@ function NovoLead({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => 
     catch (e) { alert((e as Error).message); } finally { setBusy(false); }
   }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: "linear-gradient(130deg,#3b82f6,#4f46e5)" }}>
           <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">Novo lead</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>

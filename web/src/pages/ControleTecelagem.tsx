@@ -271,7 +271,7 @@ function GerenciarMaquinas({ maquinas, onFechar, onMudou }: { maquinas: MaquinaT
     try { await api.excluirMaquinaTec(m.id); onMudou(); } catch { alert("Não consegui remover."); }
   }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 460, width: "min(460px,96vw)" }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>Máquinas (teares)</h2>
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
@@ -308,7 +308,7 @@ function GerenciarMotivos({ motivos, onFechar, onMudou }: { motivos: MotivoTec[]
   }
   const nome = (m: MotivoTec) => m.tipo === "limpeza" ? "🧹 " + (m.nome || m.codigo) : m.tipo === "manutencao" ? "🔧 " + (m.nome || m.codigo) : (m.nome || m.codigo);
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 460, width: "min(460px,96vw)" }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>Motivos de parada</h2>
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>

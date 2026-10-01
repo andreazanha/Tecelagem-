@@ -51,7 +51,7 @@ export function EstoqueScanner({ onFechar }: { onFechar: () => void }) {
   }, [nav, onFechar]);
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
         <div className="pad">
           <div className="row-gap" style={{ alignItems: "center", marginBottom: 8 }}>

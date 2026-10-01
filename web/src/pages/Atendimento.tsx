@@ -770,7 +770,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   const copiar = (t: string) => navigator.clipboard?.writeText(t).then(() => { setMsg("Copiado!"); setTimeout(() => setMsg(""), 2000); });
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 560, width: "min(560px,96vw)" }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>⚙️ Conexão do WhatsApp (Z-API)</h2>
         {!cfg ? <p className="muted">Carregando…</p> : (
@@ -1798,7 +1798,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [humano, bloqueado]);
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card at-modal" onClick={(e) => e.stopPropagation()}>
         <div className="at-thd">
           <div className="at-av" style={fotoPerfil ? { backgroundImage: `url(${fotoPerfil})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{fotoPerfil ? "" : iniciais(d?.nome || d?.contato_nome || d?.telefone)}</div>
@@ -2457,7 +2457,7 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
   const filtrados = contatos.filter((c) => c.estado !== "grupo" && casa(c)).sort(porRecente).slice(0, 60);
   const grupos = contatos.filter((c) => c.estado === "grupo" && casa(c)).sort(porRecente).slice(0, 30);
   return (
-    <div className="modal-bg" onClick={onFechar} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--card,#fff)", color: "var(--ink,#0f172a)", borderRadius: 14, width: "100%", maxWidth: 420, maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "hidden", border: "1px solid var(--line)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: "1px solid var(--line)" }}>
           <b>↪️ Encaminhar mensagem</b>
@@ -2538,7 +2538,7 @@ function ArquivosRapidosModal({ convId, autor, onFechar, onEnviado }: { convId: 
   }
   const icone = (ct: string) => ct.startsWith("image/") ? "🖼️" : ct.startsWith("audio/") ? "🎵" : "📄";
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 520, width: "min(520px,96vw)" }} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ marginTop: 0 }}>📚 Arquivos rápidos</h3>
         <p className="muted" style={{ fontSize: 13 }}>Salve aqui os catálogos/PDFs que você mais manda. Depois é só clicar em <b>Enviar</b> pra mandar pro cliente desta conversa — sem procurar na pasta toda vez.</p>
@@ -2611,7 +2611,7 @@ function RespostasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: 
     <button className={"crm-tab" + (aba === id ? " on" : "")} style={{ fontSize: 12.5 }} onClick={() => setAba(id)}>{label}</button>
   );
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 560, width: "min(560px,96vw)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: "linear-gradient(130deg,#7c3aed,#4f46e5)" }}>
           <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📋 Respostas prontas</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
@@ -2669,7 +2669,7 @@ function EquipeModal({ onFechar }: { onFechar: () => void }) {
     catch { alert("Não consegui salvar."); } finally { setBusy(false); }
   }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 480, width: "96vw" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
           <h2 style={{ margin: 0 }}>👥 Equipe</h2>
@@ -2711,7 +2711,7 @@ function ColunasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: ()
     } catch { alert("Não consegui salvar as colunas."); } finally { setBusy(false); }
   }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 520, width: "min(520px,96vw)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: "linear-gradient(130deg,#0ea5e9,#4f46e5)" }}>
           <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">🗂️ Colunas do quadro</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
@@ -2822,7 +2822,7 @@ function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; on
   }
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 520, width: "96vw" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <h2 style={{ margin: 0 }}>➕ Nova conversa</h2>
@@ -2933,7 +2933,7 @@ function ReservasModal({ onFechar }: { onFechar: () => void }) {
   async function delReserva(pecaId: string, rid: string) { if (!confirm("Remover esta reserva da fila?")) return; await api.atendReservaDel(rid).catch(() => {}); recFila(pecaId); }
   const dtBr = (s: string) => { try { return new Date(s.replace(" ", "T") + "Z").toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch { return s; } };
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 720, width: "min(720px,95vw)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: "linear-gradient(130deg,#0d9488,#4f46e5)" }}>
           <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📋 Reservas</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
@@ -3126,7 +3126,7 @@ function GruposModal({ onFechar }: { onFechar: () => void }) {
     : p.recorrencia === "diaria" ? `🔁 todo dia às ${p.hora}`
     : p.quando ? `📅 ${new Date(p.quando.replace(" ", "T") + "Z").toLocaleString("pt-BR")}` : "—";
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 620, width: "min(620px,96vw)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: "linear-gradient(130deg,#0891b2,#4f46e5)" }}>
           <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">👥 Postar em grupo</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
@@ -3504,7 +3504,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
   const publicoResumo = colFiltro.size ? (colFiltro.size === 1 ? (colsQuadro.find((k) => k.id === [...colFiltro][0])?.label || "Coluna do quadro") : `${colFiltro.size} colunas do quadro`) : modo === "tipo" ? FONTE_NOMES[fonte] : modo === "buscar" ? "Busca manual" : modo === "colar" ? "Números colados" : modo === "catalogo" ? "Viram o catálogo" : "Por coluna do quadro";
   const cardBox = { border: "1px solid var(--line)", borderRadius: 14, background: "rgba(148,163,184,0.08)", padding: 18 } as const;
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 1080, width: "min(1080px,93vw)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: "linear-gradient(130deg,#4f46e5,#7c3aed)" }}>
           <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">📣 Campanhas</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
@@ -3864,7 +3864,7 @@ function Simulador({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =>
   })();
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card at-sim" onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: "linear-gradient(130deg,#25d366,#075e54)" }}>
           <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">💬 Simulador — cliente</span></span><span style={{ display: "flex", gap: 8 }}><button className="modal-x" title="Apaga esta conversa de teste e começa do zero" disabled={busy} onClick={reiniciar} style={{ width: "auto", padding: "0 10px", fontSize: 13 }}>🔄 Reiniciar</button><button className="modal-x" onClick={onFechar}>✕</button></span></div>

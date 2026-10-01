@@ -115,7 +115,7 @@ export function FioPorCor() {
 
       {/* Modal entrada/ajuste */}
       {movCor && (
-        <div className="modal-bg" onClick={() => setMovCor(null)}>
+        <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setMovCor(null); }}>
           <div className="modal-card" style={{ maxWidth: 420, width: "min(420px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
             <h2 style={{ marginTop: 0 }}>{movTipo === "entrada" ? "Entrada de fio" : "Ajustar saldo"} · {movCor.nome}</h2>
             <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>{movCor.fio_nome} · saldo atual <strong>{kg(movCor.saldo)} kg</strong></p>
@@ -137,7 +137,7 @@ export function FioPorCor() {
 
       {/* Modal extrato */}
       {extratoCor && (
-        <div className="modal-bg" onClick={() => setExtratoCor(null)}>
+        <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setExtratoCor(null); }}>
           <div className="modal-card" style={{ maxWidth: 520, width: "min(520px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
             <h2 style={{ marginTop: 0 }}>Extrato · {extratoCor}</h2>
             {extrato.length === 0 ? <p className="muted">Sem movimentos ainda.</p> : (

@@ -69,7 +69,7 @@ function ColarEmMassa({ titulo, colunas, exemplo, onColar, onUndo, onFechar, onS
   }
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>📋 {titulo}</h2>
 
@@ -356,7 +356,7 @@ function GerenciarProdutosModal({ colecao, produtos, tipos, atuais, onFechar, on
   const lista = produtos.filter((m) => `${m.nome} ${m.ref || ""}`.toLowerCase().includes(filtro));
   const n = Object.keys(sel).length;
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 560, width: "min(560px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>Produtos da coleção · {colecao.nome}</h2>
         <p className="muted" style={{ marginTop: -6 }}>Marque os produtos e, se quiser, o tipo de fio de cada um nesta coleção.</p>
@@ -1005,7 +1005,7 @@ function ProdutoFormModal({ nomeEdit, onFechar, onSalvo }: { nomeEdit: string | 
   }
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 980, width: "min(980px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica">
           <div className="modal-hd-top">
@@ -1451,7 +1451,7 @@ function AgruparFioModal({ cores, onFechar, onSalvo }: { cores: Cor[]; onFechar:
   }
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica">
           <div className="modal-hd-top">
@@ -1534,7 +1534,7 @@ function CorModal({ cor, fioInicial, onFechar, onSalvo }: { cor: Cor | null; fio
   }
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica">
           <div className="modal-hd-top">
@@ -1847,7 +1847,7 @@ function InsumoModal({ cat, onFechar, onSalvo }: { cat: MaterialCategoriaDef | n
     catch (e) { alert((e as Error).message); }
   }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>{cat ? "Editar material" : "Novo material"}</h2>
         <p className="muted" style={{ marginTop: -4 }}>Ele aparece sozinho no menu Materiais e como sub-aba.</p>
@@ -1876,7 +1876,14 @@ function InsumoModal({ cat, onFechar, onSalvo }: { cat: MaterialCategoriaDef | n
 function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: MaterialCategoriaDef; onEditarCat: () => void; onExcluirCat: () => void; onMudou?: () => void }) {
   const categoria = cat.slug, label = cat.nome, catCor = cat.cor || "#64748b";
   const cfg = CAMPOS_POR_TIPO[categoria] || {};
-  const colunas: ColDef[] = cfg.colunas || colunasPadrao(cfg);
+  const colunas: ColDef[] = (() => {
+    const base = cfg.colunas || colunasPadrao(cfg);
+    // "Pedido mínimo" (quantidade mínima de compra do fornecedor) em TODO tipo de material.
+    if (base.some((c) => c.key === "extra:pedido_minimo")) return base;
+    const ped: ColDef = { key: "extra:pedido_minimo", label: "Pedido mínimo", ph: "ex.: 100", width: 120 };
+    const i = base.findIndex((c) => c.key === "minimo"); // logo após o Estoque mínimo
+    return i >= 0 ? [...base.slice(0, i + 1), ped, ...base.slice(i + 1)] : [...base, ped];
+  })();
   const temCor = colunas.some((c) => c.key === "cor");
   const extraKeys = colunas.filter((c) => c.key.startsWith("extra:")).map((c) => c.key.slice(6));
   const semNome = !colunas.some((c) => c.key === "nome"); // tipos com nome automático (refil)
@@ -2080,48 +2087,46 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
       {entrada && <MovEstoqueModal material={entrada} inicial={movTipo} onFechar={() => setEntrada(null)} onSalvo={() => { setEntrada(null); recarregar(); onMudou?.(); }} />}
 
       {formOpen && (
-        <div className="modal-bg" onClick={() => { limpar(); setFormOpen(false); }}>
-          <div className="modal-card" style={{ maxWidth: 660, width: "min(660px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ marginTop: 0 }}>{editId ? `Editar ${label.toLowerCase()}` : `Novo ${label.toLowerCase()}`}</h2>
-            <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
+        <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) { limpar(); setFormOpen(false); } }}>
+          <div className="modal-card" style={{ maxWidth: 680, width: "min(680px, 96vw)", maxHeight: "90vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0, marginBottom: 16 }}>{editId ? `Editar ${label.toLowerCase()}` : `Novo ${label.toLowerCase()}`}</h2>
+            <div style={{ overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14, paddingRight: 2 }}>
               {colunas.map((c) => {
-                if (c.key === "fornecedor") return (
-                  <label className="fld" key={c.key}>{c.label}
-                    <div className="row-gap" style={{ gap: 4 }}>
-                      <select value={fornId} onChange={(e) => setFornId(e.target.value)} style={{ minWidth: 150 }}>
-                        <option value="">Sem fornecedor</option>
-                        {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
-                      </select>
-                      <button type="button" className="btn btn-soft" title="Novo fornecedor" onClick={() => setNovoForn(true)} style={{ padding: "8px 11px" }}>＋</button>
-                    </div>
+                const full = c.key === "nome" || c.key === "obs";
+                const cel = (inner: React.ReactNode) => (
+                  <label className="campo" key={c.key} style={{ margin: 0, gridColumn: full ? "1 / -1" : undefined }}>
+                    <span className="campo-label">{c.label}</span>{inner}
                   </label>
                 );
-                if (c.key === "unidade") return (
-                  <label className="fld" key={c.key}>{c.label}
-                    <select value={unidade} onChange={(e) => setUnidade(e.target.value)} style={{ width: c.width || 90 }}>
-                      {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
+                if (c.key === "fornecedor") return cel(
+                  <div className="row-gap" style={{ gap: 6 }}>
+                    <select value={fornId} onChange={(e) => setFornId(e.target.value)} style={{ flex: 1, minWidth: 0 }}>
+                      <option value="">Sem fornecedor</option>
+                      {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
                     </select>
-                  </label>
+                    <button type="button" className="btn btn-soft" title="Novo fornecedor" onClick={() => setNovoForn(true)} style={{ padding: "8px 12px" }}>＋</button>
+                  </div>
                 );
-                if (c.key === "status") return (
-                  <label className="fld" key={c.key}>{c.label}
-                    <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: c.width || 100 }}>
-                      <option value="ativo">Ativo</option>
-                      <option value="inativo">Inativo</option>
-                    </select>
-                  </label>
+                if (c.key === "unidade") return cel(
+                  <select value={unidade} onChange={(e) => setUnidade(e.target.value)} style={{ width: "100%" }}>
+                    {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
                 );
-                const decimal = c.key === "preco" || c.key === "minimo";
+                if (c.key === "status") return cel(
+                  <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: "100%" }}>
+                    <option value="ativo">Ativo</option>
+                    <option value="inativo">Inativo</option>
+                  </select>
+                );
+                const decimal = c.key === "preco" || c.key === "minimo" || c.key === "extra:pedido_minimo";
                 const corrige = c.key === "nome" || c.key === "cor" || c.key === "obs";
-                return (
-                  <label className="fld" key={c.key} style={c.key === "obs" ? { flex: 1, minWidth: 180 } : undefined}>{c.label}
-                    <input value={getV(c.key)} onChange={(e) => setV(c.key, e.target.value)} placeholder={c.ph || (c.key === "nome" ? `ex.: ${label}` : "")}
-                      inputMode={decimal ? "decimal" : undefined} spellCheck={corrige} lang={corrige ? "pt-BR" : undefined} style={{ width: c.width || 130 }} />
-                  </label>
+                return cel(
+                  <input value={getV(c.key)} onChange={(e) => setV(c.key, e.target.value)} placeholder={c.ph || (c.key === "nome" ? `ex.: ${label}` : "")}
+                    inputMode={decimal ? "decimal" : undefined} spellCheck={corrige} lang={corrige ? "pt-BR" : undefined} style={{ width: "100%" }} />
                 );
               })}
             </div>
-            <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16, gap: 8 }}>
+            <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 18, gap: 8 }}>
               <button className="btn btn-soft" onClick={() => { limpar(); setFormOpen(false); }}>Cancelar</button>
               <button className="btn btn-primary" onClick={salvar}>{editId ? "Salvar" : "＋ Adicionar"}</button>
             </div>
@@ -2157,7 +2162,7 @@ function FornecedorRapido({ onFechar, onSalvo }: { onFechar: () => void; onSalvo
     catch (e) { alert((e as Error).message); }
   }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>Novo fornecedor</h2>
         <label className="campo"><span className="campo-label">Nome</span>
@@ -2188,7 +2193,7 @@ function MovEstoqueModal({ material, inicial, onFechar, onSalvo }: { material: M
     catch (e) { alert((e as Error).message); }
   }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 430 }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>Estoque · {material.nome}</h2>
         <p className="muted" style={{ marginTop: -4 }}>Saldo: <strong>{nBR(material.saldo || 0)} {un}</strong> · Caixas: <strong>{nBR(material.caixas || 0)}</strong></p>
@@ -2225,7 +2230,7 @@ function MovimentosMaterialModal({ material, onFechar }: { material: Material; o
   const [movs, setMovs] = useState<{ tipo: string; quantidade: number; motivo: string | null; pedido_id: string | null; fonte: string | null; criado_em: string }[] | null>(null);
   useEffect(() => { api.movimentosMaterial(material.id).then(setMovs).catch(() => setMovs([])); }, [material.id]);
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>Movimentos · {material.nome}</h2>
         {movs == null ? <p className="muted">Carregando…</p> : movs.length === 0 ? <p className="muted">Nenhum movimento ainda.</p> : (
@@ -2272,7 +2277,7 @@ function AlterarMassaModal({ colunas, ids, fornecedores, onFechar, onSalvo }: {
     catch (e) { alert((e as Error).message); setSalvando(false); }
   }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>✏️ Alterar em massa</h2>
         <p className="muted" style={{ marginTop: -4 }}>Muda <strong>um campo</strong> nos <strong>{ids.length}</strong> itens selecionados.</p>
@@ -2391,7 +2396,7 @@ function EmpresaModal({ onFechar }: { onFechar: () => void }) {
   const set = (p: Partial<Empresa>) => setE((o) => ({ ...o, ...p }));
   function salvar() { localStorage.setItem(EMPRESA_KEY, JSON.stringify({ ...e, nome: (e.nome || "Big Tricot").trim() })); onFechar(); }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 460 }} onClick={(ev) => ev.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>Nossos dados (cabeçalho da ordem)</h2>
         <p className="muted" style={{ marginTop: -4 }}>Aparecem no topo de toda ordem de compra. Ficam salvos neste navegador.</p>
@@ -2651,7 +2656,13 @@ function ComprasMateriais() {
               <button className="btn btn-primary" title="Gerar e imprimir a ordem de compra" onClick={() => gerar(g, true)}>🧾 Ordem de compra</button>
             </div>
             <table className="table">
-              <thead><tr><th style={{ width: 30 }}></th><th>Material</th><th className="num">Saldo</th><th className="num">Mínimo</th><th className="num">Comprar</th><th className="num">Custo est.</th></tr></thead>
+              <thead><tr>
+                <th style={{ width: 30 }}>
+                  <input type="checkbox" title="Marcar / desmarcar todos" checked={g.itens.every(incluido)}
+                    onChange={(e) => setFora((s) => { const n = new Set(s); g.itens.forEach((m) => e.target.checked ? n.delete(m.id) : n.add(m.id)); return n; })} />
+                </th>
+                <th>Material</th><th className="num">Saldo</th><th className="num">Mínimo</th><th className="num">Comprar</th><th className="num">Custo est.</th>
+              </tr></thead>
               <tbody>
                 {g.itens.map((m) => {
                   const on = incluido(m);
@@ -2762,7 +2773,7 @@ function FornecedorModal({ fornecedor, onFechar, onSalvo }: { fornecedor: Partia
   }
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica">
           <div className="modal-hd-top">

@@ -145,7 +145,7 @@ export function EstoqueMateriais() {
 
       {/* Modal entrada/ajuste */}
       {mov && (
-        <div className="modal-bg" onClick={() => setMov(null)}>
+        <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setMov(null); }}>
           <div className="modal-card" style={{ maxWidth: 440, width: "min(440px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
             <h2 style={{ marginTop: 0 }}>{movTipo === "entrada" ? "⬆ Entrada" : movTipo === "saida" ? "⬇ Saída" : "Ajustar saldo"} · {idDe(mov)}</h2>
             <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>{catNome} · saldo: <strong>{nf(mov.saldo)} un</strong> · <strong>{nf(mov.caixas)} cx</strong></p>
@@ -174,7 +174,7 @@ export function EstoqueMateriais() {
 
       {/* Modal extrato */}
       {extratoId && (
-        <div className="modal-bg" onClick={() => setExtratoId(null)}>
+        <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setExtratoId(null); }}>
           <div className="modal-card" style={{ maxWidth: 540, width: "min(540px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
             <h2 style={{ marginTop: 0 }}>Extrato · {extratoNome}</h2>
             {extrato.length === 0 ? <p className="muted">Sem movimentos ainda.</p> : (

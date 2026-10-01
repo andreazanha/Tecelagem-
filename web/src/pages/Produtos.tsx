@@ -201,7 +201,7 @@ function ProdutoVariacoesModal({ onFechar, onSalvo }: { onFechar: () => void; on
 
   if (res) {
     return (
-      <div className="modal-bg" onClick={onSalvo}>
+      <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onSalvo(); }}>
         <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
           <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">🎨 Variações de {nome}</span></span><button className="modal-x" onClick={onSalvo}>✕</button></div></div>
           <div className="pad">
@@ -215,7 +215,7 @@ function ProdutoVariacoesModal({ onFechar, onSalvo }: { onFechar: () => void; on
   }
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">🎨 Cadastro por variações</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
         <div className="pad">
@@ -311,7 +311,7 @@ function ProdutoModal({ produto, onFechar, onSalvo }: { produto: Partial<Produto
   }
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica">
           <div className="modal-hd-top">
@@ -497,7 +497,7 @@ function SelecionarEstoque({ onFechar, onFeito }: { onFechar: () => void; onFeit
   }
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd" style={{ background: "linear-gradient(130deg,#0ea5e9,#2563eb)" }}>
           <div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">Produtos no estoque de pronta-entrega</span></span><button className="modal-x" onClick={onFechar}>✕</button></div>
@@ -625,7 +625,7 @@ function MovModal({ alvo, id, nome, unidade, onFechar, onFeito }: { alvo: "produ
     }
   }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica">
           <div className="modal-hd-top">
@@ -665,7 +665,7 @@ function ExtratoModal({ alvo, id, nome, onFechar }: { alvo: "produto" | "insumo"
     (alvo === "produto" ? api.movsProduto(id) : api.movsInsumo(id)).then(setMovs).catch(() => {});
   }, [alvo, id]);
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica">
           <div className="modal-hd-top">
@@ -757,7 +757,7 @@ function EscolherProdutoModal({ produtos, onFechar, onEscolher }: { produtos: Pr
   const [q, setQ] = useState("");
   const lista = q ? produtos.filter((p) => `${p.nome} ${p.ref || ""}`.toLowerCase().includes(q.toLowerCase())) : produtos;
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">Escolher produto</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
         <div className="pad">
@@ -830,7 +830,7 @@ function EntradaPedidoModal({ onFechar, onFeito }: { onFechar: () => void; onFei
   }
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 680 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">Entrada por pedido</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
         <div className="pad">
@@ -897,7 +897,7 @@ function BaixaInsumosModal({ mov, onFechar, onFeito }: { mov: ProdutoMov; onFech
   }
   const temVinculo = (prev?.linhas || []).some((l) => l.vinculado);
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">Baixar materiais desta entrada</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
         <div className="pad">
@@ -1142,7 +1142,7 @@ function ListasInsumoModal({ onFechar }: { onFechar: () => void }) {
   const lista = aba === "categorias" ? cats : aba === "cores" ? cores : forns.map((f) => f.nome);
 
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">Listas do material</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
         <div className="pad">
@@ -1212,7 +1212,7 @@ function InsumoModal({ insumo, onFechar, onSalvo }: { insumo: Partial<Insumo>; o
     } catch (e) { setErro((e as Error).message); setSalvando(false); }
   }
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 600 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">{i.id ? "Editar material" : "Novo material"}</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
         <div className="pad">
@@ -1294,7 +1294,7 @@ function InsumoCoresModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo
 
   if (res) {
     return (
-      <div className="modal-bg" onClick={onSalvo}>
+      <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onSalvo(); }}>
         <div className="modal-card" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
           <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">🎨 Cadastro por cores</span></span><button className="modal-x" onClick={onSalvo}>✕</button></div></div>
           <div className="pad">
@@ -1309,7 +1309,7 @@ function InsumoCoresModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo
 
   const preview = sel.slice(0, 8).map((c) => `${base.trim()} · ${c}`);
   return (
-    <div className="modal-bg" onClick={onFechar}>
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd unica"><div className="modal-hd-top"><span className="modal-pills"><span className="modal-pill">🎨 Cadastro rápido por cores</span></span><button className="modal-x" onClick={onFechar}>✕</button></div></div>
         <div className="pad">

@@ -522,7 +522,7 @@ export function ImpressaoEtiquetas() {
 
       {/* Diálogo: salvar modelo (novo ou por cima de um existente) */}
       {modalSalvar && (
-        <div className="modal-bg" onClick={() => setModalSalvar(false)}>
+        <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setModalSalvar(false); }}>
           <div className="modal-card" style={{ maxWidth: 460, width: "min(460px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
             <h2 style={{ marginTop: 0 }}>Salvar modelo de etiqueta</h2>
             <label className="campo" style={{ margin: 0 }}>
