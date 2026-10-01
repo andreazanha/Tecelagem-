@@ -62,14 +62,14 @@ mesmo repete a cada `intervaloSegundos`.
 A ponte também pode **espelhar o saldo** dos produtos pro sistema (só leitura — o ERP
 continua sendo a fonte da verdade). Fica **desligado** até você preencher a consulta.
 
-No `config.json`, em `estoque.sql`, coloque um SELECT que devolva estas colunas:
-`PRODUTO, REF, COR, TAMANHO, SALDO, UNIDADE`. Peça pro Syntech te dizer qual tabela
-guarda o saldo (por produto, ou por produto+cor+tamanho). Exemplo genérico:
+O `config.json` já vem com a consulta certa (doc Syntech, tabela `ESTOQUE_DETALHADO`),
+que devolve `PRODUTO, REF, COR, TAMANHO, SALDO, UNIDADE`:
 ```sql
 SELECT PR.NOME AS PRODUTO, E.COD_PROD AS REF, CR.NOME AS COR,
-       E.TAMANHO AS TAMANHO, E.SALDO AS SALDO, 'un' AS UNIDADE
-  FROM ESTOQUE E
+       E.TAMANHO AS TAMANHO, E.QUANT AS SALDO, PR.UNIDADE AS UNIDADE
+  FROM ESTOQUE_DETALHADO E
   INNER JOIN PRODUTOS PR ON PR.CODIGO = E.COD_PROD
-  LEFT JOIN CORES CR ON CR.NUMERO = E.COD_COR
+  LEFT JOIN CORES CR ON CR.NUMERO = E.COR
 ```
-Com isso preenchido, a cada rodada a ponte envia o saldo e ele aparece no sistema.
+A cada rodada a ponte envia o saldo e ele aparece no sistema. (Se alguma coluna tiver
+nome diferente nessa base, ajuste o SELECT no `config.json`.)

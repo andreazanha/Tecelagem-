@@ -14,7 +14,7 @@
   "intervaloSegundos": 120,
   "desde": "2025-01-01",
   "estoque": {
-    "_ajuda": "Consulta de SALDO de produtos. Deixe 'sql' vazio ate o Syntech informar a tabela. Deve devolver as colunas: PRODUTO, REF, COR, TAMANHO, SALDO, UNIDADE.",
-    "sql": ""
+    "_ajuda": "Consulta de SALDO por produto/cor/tamanho (doc Syntech: ESTOQUE_DETALHADO). Deve devolver: PRODUTO, REF, COR, TAMANHO, SALDO, UNIDADE.",
+    "sql": "SELECT PR.NOME AS PRODUTO, E.COD_PROD AS REF, CR.NOME AS COR, E.TAMANHO AS TAMANHO, E.QUANT AS SALDO, PR.UNIDADE AS UNIDADE FROM ESTOQUE_DETALHADO E INNER JOIN PRODUTOS PR ON PR.CODIGO = E.COD_PROD LEFT JOIN CORES CR ON CR.NUMERO = E.COR"
   }
 }
