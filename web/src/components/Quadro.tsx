@@ -43,7 +43,9 @@ const opCodigo = (c: CardProducao) => {
   const kit = basePart(c.parte) === "pronta-entrega";
   // Card desmembrado mostra a OP de origem (número do pedido original).
   if (c.op) return (kit ? "KIT " : "OP ") + c.op;
-  return (kit ? "KIT " : "OP ") + (c.codigo_pai || c.numero_erp || c.pedido_id.slice(0, 6));
+  // Consolidada (código pai) = "Explosão"; pedido sozinho mantém o número.
+  if (c.codigo_pai) return (kit ? "KIT " : "Explosão ") + c.codigo_pai;
+  return (kit ? "KIT " : "OP ") + (c.numero_erp || c.pedido_id.slice(0, 6));
 };
 // Card que ainda é uma OP consolidada inteira (pode ser desmembrado).
 const ehConsolidada = (c: CardProducao) => !!c.codigo_pai && (c.numero_erp || "").includes(",") && !c.op;
@@ -267,7 +269,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     try {
       const r = await api.desmembrarProducao(c.pedido_id, c.parte);
       recarregar();
-      if (r.criados) alert(`OP desmembrada em ${r.criados} cards.`);
+      if (r.criados) alert(`Explosão desmembrada em ${r.criados} cards.`);
     } catch (e) {
       alert((e as Error).message);
     }
@@ -595,11 +597,11 @@ function numCompacto(c: CardProducao): string {
   const cp = (c.codigo_pai || "").trim();
   const ne = (c.numero_erp || "").trim();
   if (ne.includes(",")) {
-    if (cp) return `OP ${cp}`;
+    if (cp) return `Explosão ${cp}`;
     const parts = ne.split(",").map((x) => x.trim()).filter(Boolean);
     return parts.length > 1 ? `${parts[0]} +${parts.length - 1}` : (parts[0] || ne);
   }
-  return ne || (cp ? `OP ${cp}` : "") || c.pedido_id.slice(0, 6);
+  return ne || (cp ? `Explosão ${cp}` : "") || c.pedido_id.slice(0, 6);
 }
 
 // ── Painel NOVO da Tecelagem (aprovado): 4 colunas 2×2 (Parte 1 / Parte 2 / Únicos /
@@ -2461,7 +2463,7 @@ function CardModal({
             <Campo l="QUANTIDADE" v={`${card.pecas} peças`} />
             <Campo l="RESPONSÁVEL" v={card.operador || "—"} />
             <Campo l="VENDEDOR" v={limparVendedor(det?.vendedor)} />
-            {ehConsolidada(card) && <Campo l="Nº DA OP (PAI)" v={`OP ${card.codigo_pai}`} />}
+            {ehConsolidada(card) && <Campo l="Nº DA EXPLOSÃO" v={`Explosão ${card.codigo_pai}`} />}
             {card.codigo_pai && !card.op && <Campo l="PEDIDOS" v={card.numero_erp || "—"} />}
             <Campo l="CÓDIGO DE TERCEIRO" v={det?.codigo_terceiro || "—"} />
             <Campo l="ORIGEM" v={origem} />

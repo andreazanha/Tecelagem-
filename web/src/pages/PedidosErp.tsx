@@ -47,12 +47,12 @@ export function PedidosErp() {
   async function explodirJuntos() {
     const ids = [...sel];
     if (ids.length < 2) return;
-    if (!confirm(`Explodir ${ids.length} pedidos JUNTOS numa OP consolidada? Viram uma produção só (código pai) e se desmembram depois por pedido/loja.`)) return;
+    if (!confirm(`Explodir ${ids.length} pedidos JUNTOS numa explosão? Viram uma produção só (código pai) e se desmembram depois por pedido/loja.`)) return;
     setExplodindo(true);
     try {
       const r = await api.erpAprovarLote(ids);
       setLista((xs) => xs.filter((x) => !sel.has(x.id))); setSel(new Set());
-      setMsg(`✓ ${r.pedidos} pedidos explodidos juntos na OP ${r.codigo_pai}.`); setTimeout(() => setMsg(""), 5000);
+      setMsg(`✓ ${r.pedidos} pedidos explodidos juntos na Explosão ${r.codigo_pai}.`); setTimeout(() => setMsg(""), 5000);
     } catch { alert("Não consegui explodir juntos."); }
     finally { setExplodindo(false); }
   }
@@ -121,7 +121,7 @@ export function PedidosErp() {
       {sel.size >= 2 && (
         <div className="card pad" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "#eef2ff", borderColor: "#c7d2fe", position: "sticky", top: 8, zIndex: 5 }}>
           <b style={{ color: "#3730a3" }}>{sel.size} pedidos selecionados</b>
-          <span className="muted" style={{ fontSize: 12.5, flex: 1, minWidth: 160 }}>Juntar numa OP só (código pai) pra render mais na tecelagem. Desmembra depois por pedido/loja.</span>
+          <span className="muted" style={{ fontSize: 12.5, flex: 1, minWidth: 160 }}>Juntar numa explosão (código pai) pra render mais na tecelagem. Desmembra depois por pedido/loja.</span>
           <button className="btn btn-soft" onClick={() => setSel(new Set())}>Limpar</button>
           <button className="btn btn-primary" disabled={explodindo} onClick={explodirJuntos}>{explodindo ? "Explodindo…" : `💥 Explodir juntos (${sel.size})`}</button>
         </div>

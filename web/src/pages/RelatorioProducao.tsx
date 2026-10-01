@@ -28,7 +28,7 @@ function dur(ev: RelProdEvento): string {
   return `${(s / 3600).toFixed(1)} h`;
 }
 const dataHora = (em: string) => (em || "").replace("T", " ").slice(0, 16);
-const pedidoLabel = (ev: RelProdEvento) => ev.codigo_pai ? `OP ${ev.codigo_pai}` : (ev.numero_erp || ev.pedido_id.slice(0, 6));
+const pedidoLabel = (ev: RelProdEvento) => ev.codigo_pai ? `Explosão ${ev.codigo_pai}` : (ev.numero_erp || ev.pedido_id.slice(0, 6));
 
 export function RelatorioProducao() {
   const [de, setDe] = useState("");

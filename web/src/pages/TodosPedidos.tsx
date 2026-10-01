@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { api, type PedidoTimeline } from "../api";
 import { br, brLong, dur, FASE_INFO, FASES_ORDEM } from "../expedicaoUtil";
 
-const opCod = (o: PedidoTimeline) => "OP " + (o.codigo_pai || o.numero_erp || o.pedido_id.slice(0, 6));
+const opCod = (o: PedidoTimeline) => o.codigo_pai ? "Explosão " + o.codigo_pai : "OP " + (o.numero_erp || o.pedido_id.slice(0, 6));
 
 // Colunas (situações) de cada setor — alimentam o filtro extra quando um setor é escolhido.
 const SITUACOES: Record<string, { value: string; label: string }[]> = {

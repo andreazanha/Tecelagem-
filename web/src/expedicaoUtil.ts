@@ -12,7 +12,7 @@ export const brLong = (d?: string | null) => {
 };
 
 export const opCodigo = (c: { codigo_pai?: string | null; numero_erp?: string | null; pedido_id: string }) =>
-  "OP " + (c.codigo_pai || c.numero_erp || c.pedido_id.slice(0, 6));
+  c.codigo_pai ? "Explosão " + c.codigo_pai : "OP " + (c.numero_erp || c.pedido_id.slice(0, 6));
 
 const TIPO_PARTE: Record<string, { label: string; cls: string }> = {
   "parte-1": { label: "PARTE 1", cls: "p1" },

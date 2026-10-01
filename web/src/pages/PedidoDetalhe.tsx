@@ -34,7 +34,7 @@ export function PedidoDetalhe() {
       <div className="page-head">
         <div>
           <h1 style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            {pedido.codigo_pai && <span className="op-pill">OP {pedido.codigo_pai}</span>}
+            {pedido.codigo_pai && <span className="op-pill">Explosão {pedido.codigo_pai}</span>}
             Pedido {pedido.numero_erp || pedido.id.slice(0, 8)}
           </h1>
           <div className="breadcrumb">
@@ -53,7 +53,7 @@ export function PedidoDetalhe() {
             <button
               className="btn btn-danger"
               onClick={async () => {
-                const cod = pedido.codigo_pai ? `OP ${pedido.codigo_pai}` : pedido.numero_erp || pedido.id.slice(0, 8);
+                const cod = pedido.codigo_pai ? `Explosão ${pedido.codigo_pai}` : pedido.numero_erp || pedido.id.slice(0, 8);
                 if (!confirm(`Excluir o pedido ${cod} de ${pedido.cliente_nome}?\n\nIsso remove o pedido e seus cards da produção. Não dá para desfazer.`)) return;
                 try {
                   await api.excluirPedido(pedido.id);

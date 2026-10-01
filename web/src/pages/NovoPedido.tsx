@@ -311,7 +311,7 @@ export function NovoPedido() {
           <h2>Importar do ERP (PDF)</h2>
           <p className="muted">
             Anexe <strong>um ou vários</strong> PDFs — eles são <strong>preservados</strong>. Vários
-            pedidos pequenos viram <strong>pedidos de explosão</strong> (juntados numa OP só; os números
+            pedidos pequenos viram uma <strong>explosão</strong> (juntados numa produção só; os números
             entram no cabeçalho do PDF gerado).
           </p>
           <label className="dropzone">
@@ -407,8 +407,8 @@ export function NovoPedido() {
               />
               {ehExplosao && (
                 <div className="op-badge">
-                  🧩 Explosão de <b>{qtdNums} pedidos</b> · Nº da OP:{" "}
-                  <b>OP {opPreview || "…"}</b>
+                  🧩 Explosão de <b>{qtdNums} pedidos</b> · Nº:{" "}
+                  <b>Explosão {opPreview || "…"}</b>
                   <span className="op-badge-hint"> (definido ao salvar)</span>
                 </div>
               )}
