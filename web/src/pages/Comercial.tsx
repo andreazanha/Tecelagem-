@@ -299,6 +299,8 @@ function AbaRepresentantes() {
   }
 
   return (
+    <>
+    <RelatorioSemanalCard />
     <div className="card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <p className="muted" style={{ margin: 0 }}>
@@ -400,6 +402,48 @@ function AbaRepresentantes() {
           </div>
         </div>
       )}
+    </div>
+    </>
+  );
+}
+
+// Configuração do relatório de vendas semanal no WhatsApp (liga/desliga + nº do gestor + teste).
+function RelatorioSemanalCard() {
+  const [cfg, setCfg] = useState<{ ativo: boolean; numero: string } | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [testando, setTestando] = useState(false);
+  useEffect(() => { api.relatorioVendasConfig().then(setCfg).catch(() => {}); }, []);
+  if (!cfg) return null;
+  async function salvar(p: { ativo?: boolean; numero?: string }) {
+    setSalvando(true);
+    const atual = cfg as { ativo: boolean; numero: string };
+    setCfg({ ...atual, ...p });
+    try { await api.salvarRelatorioVendasConfig(p); } catch (e) { alert((e as Error).message); } finally { setSalvando(false); }
+  }
+  async function testar() {
+    setTestando(true);
+    try {
+      const r = await api.testarRelatorioVendas();
+      alert(r.ok ? `✅ Resumo da semana (${r.de} a ${r.ate}) enviado pro WhatsApp ${r.numero}.` : `⚠️ Não enviou. Confira o número do gestor e a conexão do WhatsApp.`);
+    } catch (e) { alert((e as Error).message); } finally { setTestando(false); }
+  }
+  return (
+    <div className="card" style={{ marginBottom: 14, padding: "12px 14px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <strong>📊 Relatório de vendas no WhatsApp</strong>
+        <span className="muted" style={{ fontSize: 12 }}>Toda segunda de manhã: cada representante recebe o dele e você recebe o resumo geral.</span>
+      </div>
+      <div className="row-gap" style={{ alignItems: "center", gap: 14, marginTop: 10, flexWrap: "wrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          <input type="checkbox" checked={cfg.ativo} disabled={salvando} onChange={(e) => salvar({ ativo: e.target.checked })} />
+          Enviar automático toda segunda
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          WhatsApp do gestor:
+          <input value={cfg.numero} onChange={(e) => setCfg({ ...cfg, numero: e.target.value })} onBlur={(e) => salvar({ numero: e.target.value })} placeholder="só números com DDD" style={{ width: 170 }} />
+        </label>
+        <button className="btn btn-soft" disabled={testando} onClick={testar}>{testando ? "Enviando…" : "📲 Testar (manda o resumo pra você)"}</button>
+      </div>
     </div>
   );
 }

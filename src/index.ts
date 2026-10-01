@@ -9,7 +9,7 @@ import { romaneios } from "./routes/romaneios";
 import { dashboard } from "./routes/dashboard";
 import { push } from "./routes/push";
 import { produtos, insumos, fornecedores, lembreteReposicao } from "./routes/produtos";
-import { representantes, comercial } from "./routes/comercial";
+import { representantes, comercial, enviarRelatoriosSemanais } from "./routes/comercial";
 import { funil } from "./routes/funil";
 import { parceiros, vitrineHtml, cadastroHtml } from "./routes/parceiros";
 import { materiais, avisarEstoqueMinimo } from "./routes/materiais";
@@ -154,6 +154,7 @@ export default {
     ctx.waitUntil(processarGruposPosts(env).then(() => {})); // posts agendados/recorrentes nos grupos
     ctx.waitUntil(parabensAniversario(env)); // parabéns de aniversário (1x/dia, se ligado)
     ctx.waitUntil(avisarEstoqueMinimo(env)); // resumo diário no WhatsApp: materiais abaixo do mínimo
+    ctx.waitUntil(enviarRelatoriosSemanais(env).then(() => {})); // relatório de vendas (segunda de manhã, se ligado)
     ctx.waitUntil(fecharInativos24h(env).then(() => {})); // encerra sozinho quem ficou 24h sem conversa
     // (desativado a pedido) lerAtividadeCatalogo — quem só VÊ o catálogo NÃO vira lead aqui.
   },

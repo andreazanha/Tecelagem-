@@ -1,6 +1,8 @@
 // Comercial / CRM: cadastro de representantes e vendas por representante.
 import { Hono } from "hono";
 import type { Env } from "../index";
+import { enviarWhatsapp } from "./atendimento";
+import { exigirAlgumaFuncao } from "../permissoes";
 
 const uid = () => crypto.randomUUID();
 
@@ -242,4 +244,112 @@ comercial.get("/relatorio", async (c) => {
     const w = semanaPassada(); de = w.de; ate = w.ate;
   }
   return c.json(await montarRelatorio(c.env, rep, de, ate));
+});
+
+// ── ENVIO AUTOMÁTICO do relatório semanal no WhatsApp ────────────────────────────
+// Cada representante recebe o DELE; o gestor recebe um resumo GERAL. Dispara toda
+// segunda de manhã (guardas no cron). Começa DESLIGADO (config relatorio_vendas_ativo).
+const moneyBR = (v: number) => "R$ " + (Number(v) || 0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+const diaBR = (iso: string) => (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.slice(8, 10) + "/" + iso.slice(5, 7) : iso || "—");
+const cfgLer = async (env: Env, k: string) => ((await env.DB.prepare("SELECT valor FROM config WHERE chave=?").bind(k).first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
+const cfgSet = async (env: Env, k: string, v: string) => { await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES (?, ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(k, v).run(); };
+
+type RelRep = Extract<Awaited<ReturnType<typeof montarRelatorio>>, { tipo: "rep" }>;
+type RelGeral = Extract<Awaited<ReturnType<typeof montarRelatorio>>, { tipo: "geral" }>;
+
+function textoRelatorioRep(rel: RelRep): string {
+  const { periodo, semana, mes, mesPeriodo, comissaoPct } = rel;
+  const linhas = [
+    `📊 *Vendas da semana* — ${rel.rep}`,
+    `${diaBR(periodo.de)} a ${diaBR(periodo.ate)}`,
+    ``,
+    `🗓️ Semana: *${moneyBR(semana.valor)}* · ${semana.pedidos} pedido(s) · ${semana.pecas} peça(s)`,
+    `📅 Mês (até ${diaBR(mesPeriodo.ate)}): ${moneyBR(mes.valor)} · ${mes.pedidos} pedido(s)`,
+  ];
+  if (comissaoPct != null) linhas.push(`💰 Comissão (semana): ${moneyBR(semana.valor * comissaoPct / 100)} (${comissaoPct}%)`);
+  if (rel.topProdutos && rel.topProdutos.length) {
+    linhas.push(``, `🏆 Top produtos:`);
+    for (const t of rel.topProdutos) linhas.push(`• ${t.produto} — ${moneyBR(t.valor)}`);
+  }
+  linhas.push(``, `💛 Bom trabalho!`);
+  return linhas.join("\n");
+}
+
+function textoRelatorioGeral(rel: RelGeral): string {
+  const { periodo, semana, mes, mesPeriodo } = rel;
+  const linhas = [
+    `📊 *Vendas da semana — GERAL*`,
+    `${diaBR(periodo.de)} a ${diaBR(periodo.ate)}`,
+    ``,
+    `Total: *${moneyBR(semana.totais.valor)}* · ${semana.totais.pedidos} pedido(s) · ${semana.totais.pecas} peça(s)`,
+    `Mês (até ${diaBR(mesPeriodo.ate)}): ${moneyBR(mes.totais.valor)}`,
+  ];
+  if (semana.lista.length) {
+    linhas.push(``, `🏅 Ranking da semana:`);
+    semana.lista.slice(0, 15).forEach((r, i) => linhas.push(`${i + 1}. ${r.vendedor} — ${moneyBR(r.valor)} (${r.pedidos} ped.)`));
+  }
+  return linhas.join("\n");
+}
+
+// Executa o envio. opts.force ignora as guardas (usado pelo botão de teste).
+export async function enviarRelatoriosSemanais(env: Env, opts: { force?: boolean; soGestor?: boolean } = {}): Promise<{ enviados: number; reps: number; de: string; ate: string; gestor: boolean }> {
+  const agoraBR = new Date(Date.now() - 3 * 3600 * 1000);
+  if (!opts.force) {
+    if (agoraBR.getUTCDay() !== 1) return { enviados: 0, reps: 0, de: "", ate: "", gestor: false };   // só segunda
+    if (agoraBR.getUTCHours() < 7) return { enviados: 0, reps: 0, de: "", ate: "", gestor: false };    // só de manhã
+    if (await cfgLer(env, "relatorio_vendas_ativo") !== "1") return { enviados: 0, reps: 0, de: "", ate: "", gestor: false };
+    const hoje = agoraBR.toISOString().slice(0, 10);
+    if (await cfgLer(env, "relatorio_vendas_ultimo") === hoje) return { enviados: 0, reps: 0, de: "", ate: "", gestor: false };
+    await cfgSet(env, "relatorio_vendas_ultimo", hoje);
+  }
+  const { de, ate } = semanaPassada(agoraBR);
+  let enviados = 0, totalReps = 0;
+  if (!opts.soGestor) {
+    const { results: reps } = await env.DB.prepare(
+      "SELECT nome, whatsapp FROM representantes WHERE ativo = 1 AND whatsapp IS NOT NULL AND TRIM(whatsapp) <> ''"
+    ).all<{ nome: string; whatsapp: string }>();
+    totalReps = reps.length;
+    for (const r of reps) {
+      const rel = await montarRelatorio(env, r.nome, de, ate);
+      if (rel.tipo !== "rep") continue;
+      const res = await enviarWhatsapp(env, r.whatsapp, { tipo: "texto", texto: textoRelatorioRep(rel) }).catch(() => ({ enviado: false }));
+      if (res.enviado) enviados++;
+    }
+  }
+  // Resumo geral pro gestor.
+  const num = (await cfgLer(env, "relatorio_vendas_wpp")) || (await cfgLer(env, "estoque_min_wpp"));
+  let gestor = false;
+  if (num) {
+    const geral = await montarRelatorio(env, "geral", de, ate);
+    if (geral.tipo === "geral") {
+      const res = await enviarWhatsapp(env, num, { tipo: "texto", texto: textoRelatorioGeral(geral) }).catch(() => ({ enviado: false }));
+      gestor = !!res.enviado;
+    }
+  }
+  return { enviados, reps: totalReps, de, ate, gestor };
+}
+
+// Liga/desliga + número do gestor pro relatório semanal.
+comercial.get("/relatorio/config", async (c) => {
+  const g = await exigirAlgumaFuncao(c, ["comercial", "pedidos"]); if ("erro" in g) return g.erro;
+  return c.json({
+    ativo: (await cfgLer(c.env, "relatorio_vendas_ativo")) === "1",
+    numero: (await cfgLer(c.env, "relatorio_vendas_wpp")) || (await cfgLer(c.env, "estoque_min_wpp")) || "",
+  });
+});
+comercial.post("/relatorio/config", async (c) => {
+  const g = await exigirAlgumaFuncao(c, ["comercial", "pedidos"]); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ ativo?: boolean; numero?: string }>().catch(() => ({} as { ativo?: boolean; numero?: string }));
+  if (b.ativo !== undefined) await cfgSet(c.env, "relatorio_vendas_ativo", b.ativo ? "1" : "0");
+  if (b.numero !== undefined) await cfgSet(c.env, "relatorio_vendas_wpp", (b.numero || "").trim());
+  return c.json({ ok: true });
+});
+
+// Teste: envia AGORA o resumo geral pro gestor (não manda pros representantes).
+comercial.post("/relatorio/testar", async (c) => {
+  const g = await exigirAlgumaFuncao(c, ["comercial", "pedidos"]); if ("erro" in g) return g.erro;
+  const num = (await cfgLer(c.env, "relatorio_vendas_wpp")) || (await cfgLer(c.env, "estoque_min_wpp"));
+  if (!num) return c.json({ error: "numero_nao_configurado" }, 400);
+  const r = await enviarRelatoriosSemanais(c.env, { force: true, soGestor: true });
+  return c.json({ ok: r.gestor, numero: num, de: r.de, ate: r.ate });
 });

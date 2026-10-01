@@ -1572,6 +1572,13 @@ export const api = {
     if (params?.ate) q.set("ate", params.ate);
     return fetch(`/api/comercial/vendas/detalhe?${q}`).then((r) => j<ComercialDetalhe>(r));
   },
+  // Relatório de vendas semanal no WhatsApp (envio automático segunda de manhã)
+  relatorioVendasConfig: () =>
+    fetch("/api/comercial/relatorio/config").then((r) => j<{ ativo: boolean; numero: string }>(r)),
+  salvarRelatorioVendasConfig: (b: { ativo?: boolean; numero?: string }) =>
+    jsonPost("/api/comercial/relatorio/config", b).then((r) => j<{ ok: boolean }>(r)),
+  testarRelatorioVendas: () =>
+    jsonPost("/api/comercial/relatorio/testar", {}).then((r) => j<{ ok: boolean; numero: string; de: string; ate: string }>(r)),
 
   // ── Insumos ─────────────────────────────────────────────────────────────
   listarInsumos: (p?: { ativo?: string; busca?: string }) => {
