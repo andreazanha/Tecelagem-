@@ -12,7 +12,7 @@ import { produtos, insumos, fornecedores, lembreteReposicao } from "./routes/pro
 import { representantes, comercial } from "./routes/comercial";
 import { funil } from "./routes/funil";
 import { parceiros, vitrineHtml, cadastroHtml } from "./routes/parceiros";
-import { materiais } from "./routes/materiais";
+import { materiais, avisarEstoqueMinimo } from "./routes/materiais";
 import { colecoes } from "./routes/colecoes";
 import { etiquetas } from "./routes/etiquetas";
 import { atendimento, followupAtendimento, sincronizarPedidos, posVendaRecompra, prospeccaoCatalogo, processarCampanhas, processarAgendamentos, processarGruposPosts, parabensAniversario, juntarDuplicadosAtend, cruzarContatosBase, sincronizarNomesWhatsapp, enriquecerClientesCnpj, fecharInativos24h } from "./routes/atendimento";
@@ -153,6 +153,7 @@ export default {
     ctx.waitUntil(processarCampanhas(env));  // também nos crons diários (garantia)
     ctx.waitUntil(processarGruposPosts(env).then(() => {})); // posts agendados/recorrentes nos grupos
     ctx.waitUntil(parabensAniversario(env)); // parabéns de aniversário (1x/dia, se ligado)
+    ctx.waitUntil(avisarEstoqueMinimo(env)); // resumo diário no WhatsApp: materiais abaixo do mínimo
     ctx.waitUntil(fecharInativos24h(env).then(() => {})); // encerra sozinho quem ficou 24h sem conversa
     // (desativado a pedido) lerAtividadeCatalogo — quem só VÊ o catálogo NÃO vira lead aqui.
   },

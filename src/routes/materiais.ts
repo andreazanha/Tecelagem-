@@ -5,6 +5,37 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { exigirFuncao } from "../permissoes";
+import { enviarWhatsapp } from "./atendimento";
+
+// ── Aviso diário no WhatsApp: materiais abaixo do mínimo ───────────────────────
+// Chamado pelo cron diário. Manda UMA vez por dia (guarda por data), só de manhã,
+// pro número em config 'estoque_min_wpp'. Lista o que está baixo (por fornecedor).
+export async function avisarEstoqueMinimo(env: Env): Promise<void> {
+  try {
+    const agoraBR = new Date(Date.now() - 3 * 3600 * 1000); // Brasil (UTC-3)
+    const hoje = agoraBR.toISOString().slice(0, 10);
+    if (agoraBR.getUTCHours() < 7) return;                  // não manda de madrugada
+    const lerCfg = async (k: string) => ((await env.DB.prepare("SELECT valor FROM config WHERE chave=?").bind(k).first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
+    if (await lerCfg("estoque_min_wpp_ultimo") === hoje) return; // já mandou hoje
+    const num = await lerCfg("estoque_min_wpp");
+    // Marca que já rodou hoje (mesmo sem nada baixo) pra não ficar reprocessando.
+    await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('estoque_min_wpp_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(hoje).run();
+    if (!num) return;
+    const { results } = await env.DB.prepare(
+      `SELECT m.nome, m.tamanho, m.cor, m.saldo, m.minimo, m.unidade, f.nome AS fornecedor
+         FROM materiais m LEFT JOIN fornecedores f ON f.id = m.fornecedor_id
+        WHERE m.minimo > 0 AND m.saldo < m.minimo AND COALESCE(m.status,'ativo') <> 'inativo'
+        ORDER BY (f.nome IS NULL), f.nome, m.nome`
+    ).all<{ nome: string; tamanho: string | null; cor: string | null; saldo: number; minimo: number; unidade: string | null; fornecedor: string | null }>();
+    if (!results.length) return;
+    const un = (u: string | null) => (u ? ` ${u}` : "");
+    const linhas = results.map((r) =>
+      `• ${r.nome}${r.tamanho ? ` ${r.tamanho}` : ""}${r.cor ? ` (${r.cor})` : ""} — saldo ${r.saldo}${un(r.unidade)} / mín ${r.minimo}${r.fornecedor ? ` · ${r.fornecedor}` : ""}`
+    );
+    const texto = `⚠️ *Materiais abaixo do mínimo* (${results.length})\n\n${linhas.join("\n")}\n\nGere a ordem de compra em: PCP › Materiais › 🛒 Compras.`;
+    await enviarWhatsapp(env, num, { tipo: "texto", texto }).catch(() => {});
+  } catch { /* não trava o cron */ }
+}
 
 // tipo do movimento → chave de permissão de estoque.
 const permEstoque = (tipo: string) => tipo === "entrada" ? "estoque.entrada" : tipo === "baixa" ? "estoque.saida" : "estoque.ajuste";
