@@ -2574,3 +2574,16 @@ body.dark .page-head.at-head > .at-actions::-webkit-scrollbar-thumb { background
   .cat-foto { background: #1e293b; }
   .cat-tam { background: #312e81; color: #e0e7ff; }
 }
+
+/* Catálogo agrupado por modelo */
+.cat-modelos { display: flex; flex-direction: column; gap: 22px; }
+.cat-modelo { }
+.cat-modelo-hd { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 4px 2px 10px; border-bottom: 2px solid var(--line, #e5e7eb); margin-bottom: 12px; }
+.cat-modelo-nome { font-size: 17px; font-weight: 800; color: var(--ink, #111827); }
+.cat-modelo-cod { font-size: 12px; color: #94a3b8; font-weight: 700; }
+.cat-modelo-tipos { font-size: 12px; color: #4338ca; margin-left: auto; }
+.cat-badge-tipo { position: absolute; top: 8px; right: 8px; background: #4338ca; color: #fff; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 6px; }
+.seg-group { display: inline-flex; border: 1px solid var(--line, #e5e7eb); border-radius: 8px; overflow: hidden; }
+.seg-group .seg { border: none; background: transparent; padding: 6px 12px; font-size: 13px; cursor: pointer; font: inherit; }
+.seg-group .seg.seg-on { background: #4338ca; color: #fff; font-weight: 700; }
+@media (prefers-color-scheme: dark) { .cat-modelo-nome { color: #e5e7eb; } }

@@ -15,6 +15,19 @@ function fotoUrl(base: string, p: CatalogoProduto): string | null {
   return `${base.replace(/\/+$/, "")}/${encodeURIComponent(p.classe)}/${encodeURIComponent(p.ref)}.jpg`;
 }
 
+// O código do ERP diz o TIPO pela letra final: 8019A=Almofada, 8019C=Capa, 8019P=Peseira/Manta.
+// O número base (8019) é o MODELO — agrupa almofada/capa/peseira do mesmo modelo.
+const TIPOS: Record<string, string> = { A: "Almofada", C: "Capa", P: "Peseira / Manta", K: "Kit", M: "Manta" };
+const baseCode = (ref: string) => (ref || "").replace(/[A-Za-z]+$/, "") || ref || "";
+function tipoRef(ref: string): string {
+  const m = (ref || "").match(/([A-Za-z])$/);
+  return m ? (TIPOS[m[1].toUpperCase()] || m[1].toUpperCase()) : "";
+}
+// Nome do modelo: tira a palavra do tipo do começo ("ALMOFADA BALI" → "BALI").
+function modeloNome(nome: string): string {
+  return (nome || "").replace(/^\s*(ALMOFADAS?|CAPAS?|PESEIRAS?|MANTAS?|KITS?|PESEIRA E MANTA)\s+/i, "").trim() || nome || "";
+}
+
 // Catálogo de produtos espelhado do ERP (Syntech). Só leitura: foto, cores, tamanhos,
 // preços e saldo disponível. Serve o atendimento/CRM/PCP sem abrir outra página.
 export function Catalogo() {
@@ -43,6 +56,21 @@ export function Catalogo() {
   // saldo "efetivo": usa o detalhado (por cor/tamanho) e, se não houver, o estoque geral do produto
   const saldoEfetivo = (p: CatalogoProduto) => { const s = Number(p.saldo) || 0; return s > 0 ? s : (Number(p.estoque_geral) || 0); };
   const totalSaldo = useMemo(() => itens.reduce((s, p) => s + saldoEfetivo(p), 0), [itens]);
+  const [vista, setVista] = useState<"modelo" | "grade">("modelo");
+  // agrupa por MODELO (código base: 8019 de 8019A/8019C/8019P), com as variações (A/C/P) dentro
+  const modelos = useMemo(() => {
+    const map = new Map<string, { base: string; nome: string; variacoes: CatalogoProduto[] }>();
+    for (const p of itens) {
+      const b = baseCode(p.ref);
+      let g = map.get(b);
+      if (!g) { g = { base: b, nome: modeloNome(p.nome || p.ref), variacoes: [] }; map.set(b, g); }
+      g.variacoes.push(p);
+      const mn = modeloNome(p.nome || "");
+      if (mn && (!g.nome || mn.length < g.nome.length)) g.nome = mn;
+    }
+    for (const g of map.values()) g.variacoes.sort((a, b) => (a.ref || "").localeCompare(b.ref || ""));
+    return [...map.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt"));
+  }, [itens]);
 
   return (
     <div className="page">
@@ -68,8 +96,12 @@ export function Catalogo() {
             alert(`Prévia gerada: ${r._resumo.produtos} produto(s), ${r._resumo.cores} cor(es), ${r._resumo.tamanhos} tamanho(s). Arquivo baixado — me envie pra eu validar.`);
           } catch (e) { alert((e as Error).message); }
         }}>⬇️ Prévia p/ site</button>
-        <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>
-          {itens.length} produto(s) · saldo total {totalSaldo.toLocaleString("pt-BR")}
+        <span className="seg-group" style={{ marginLeft: "auto" }}>
+          <button type="button" className={"seg" + (vista === "modelo" ? " seg-on" : "")} onClick={() => setVista("modelo")}>Por modelo</button>
+          <button type="button" className={"seg" + (vista === "grade" ? " seg-on" : "")} onClick={() => setVista("grade")}>Grade</button>
+        </span>
+        <span className="muted" style={{ fontSize: 12 }}>
+          {vista === "modelo" ? `${modelos.length} modelo(s)` : `${itens.length} produto(s)`} · saldo {totalSaldo.toLocaleString("pt-BR")}
         </span>
       </div>
 
@@ -79,16 +111,31 @@ export function Catalogo() {
         <div className="card pad empty">
           Nenhum produto no catálogo ainda. {busca || grupo ? "Tente outro filtro." : "Assim que o ERP sincronizar (pela ponte), os produtos aparecem aqui."}
         </div>
-      ) : (
+      ) : vista === "grade" ? (
         <div className="cat-grid">
           {itens.map((p) => <CardProduto key={p.ref} p={p} base={base} />)}
+        </div>
+      ) : (
+        <div className="cat-modelos">
+          {modelos.map((m) => (
+            <div className="cat-modelo" key={m.base}>
+              <div className="cat-modelo-hd">
+                <span className="cat-modelo-nome">{m.nome}</span>
+                <span className="cat-modelo-cod">#{m.base}</span>
+                <span className="cat-modelo-tipos">{m.variacoes.map((v) => tipoRef(v.ref)).filter(Boolean).join(" · ")}</span>
+              </div>
+              <div className="cat-grid">
+                {m.variacoes.map((p) => <CardProduto key={p.ref} p={p} base={base} tipo={tipoRef(p.ref)} />)}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function CardProduto({ p, base }: { p: CatalogoProduto; base: string }) {
+function CardProduto({ p, base, tipo }: { p: CatalogoProduto; base: string; tipo?: string }) {
   const [semFoto, setSemFoto] = useState(false);
   const cores = parseJson<CatalogoCor[]>(p.cores, []);
   const tamanhos = parseJson<string[]>(p.tamanhos, []);
@@ -103,9 +150,10 @@ function CardProduto({ p, base }: { p: CatalogoProduto; base: string }) {
           ? <img src={url} alt={p.nome || p.ref} loading="lazy" onError={() => setSemFoto(true)} />
           : <div className="cat-foto-vazia">sem foto</div>}
         {p.inativo ? <span className="cat-badge-inativo">inativo</span> : null}
+        {tipo ? <span className="cat-badge-tipo">{tipo}</span> : null}
       </div>
       <div className="cat-body">
-        <div className="cat-nome" title={p.nome || ""}>{p.nome || "—"}</div>
+        <div className="cat-nome" title={p.nome || ""}>{tipo || p.nome || "—"}</div>
         <div className="cat-ref">{p.ref}{p.grupo ? ` · ${p.grupo}` : ""}</div>
 
         <div className="cat-precos">
