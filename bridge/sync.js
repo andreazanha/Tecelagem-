@@ -223,11 +223,13 @@ async function rodadaProdutos(db, estado) {
       const cr = await query(db, "SELECT C.NUMERO, C.NOME, C.COR_HTML FROM CORES_PROD CP INNER JOIN CORES C ON C.NUMERO = CP.COD_COR WHERE CP.COD_PROD = ?", [ref]);
       cores = cr.map((r) => ({ numero: r.NUMERO, nome: String(r.NOME || "").trim(), hex: hexCor(r.COR_HTML) }));
     } catch { /* sem cores */ }
-    // tamanhos do produto
+    // tamanhos do produto — prefere a MEDIDA real (DETALHE, ex.: 45X45); cai no código se não houver
     let tamanhos = [];
     try {
-      const tm = await query(db, "SELECT TAMANHO FROM TAMANHO_PROD WHERE COD_PROD = ?", [ref]);
-      tamanhos = tm.map((r) => String(r.TAMANHO || "").trim()).filter(Boolean);
+      let tm;
+      try { tm = await query(db, "SELECT TAMANHO, DETALHE FROM TAMANHO_PROD WHERE COD_PROD = ?", [ref]); }
+      catch { tm = await query(db, "SELECT TAMANHO FROM TAMANHO_PROD WHERE COD_PROD = ?", [ref]); }
+      tamanhos = tm.map((r) => String((r.DETALHE != null && String(r.DETALHE).trim()) || r.TAMANHO || "").trim()).filter(Boolean);
     } catch { /* sem tamanhos */ }
     const promo = String(p.PROMOCAO || "") === "S" && p.DESCONTO_AUTO != null;
     const desc = promo ? Number(p.DESCONTO_AUTO) || 0 : 0;
@@ -250,14 +252,15 @@ async function rodadaProdutos(db, estado) {
     const alt = formatarParaFirebird(p.DATA_ALT_REG);
     if (!maiorAlt || alt > maiorAlt) maiorAlt = alt;
   }
-  // envia em lotes de 200
-  let enviados = 0;
+  // envia em lotes de 200. Só avança a "marca d'água" se TUDO foi enviado —
+  // assim, se um envio falhar, ele tenta de novo na próxima rodada (não pula).
+  let enviados = 0, todasOk = true;
   for (let i = 0; i < lote.length; i += 200) {
     const ok = await enviarProdutos(lote.slice(i, i + 200));
-    if (ok) enviados += Math.min(200, lote.length - i);
+    if (ok) enviados += Math.min(200, lote.length - i); else todasOk = false;
   }
-  if (maiorAlt) salvarEstado({ ...lerEstado(), ultimaAltProd: maiorAlt });
-  log(`produtos: ${enviados}/${lote.length} enviado(s). última alteração: ${maiorAlt}`);
+  if (todasOk && maiorAlt) salvarEstado({ ...lerEstado(), ultimaAltProd: maiorAlt });
+  log(`produtos: ${enviados}/${lote.length} enviado(s).` + (todasOk ? ` última alteração: ${maiorAlt}` : " (envio incompleto — tentarei de novo na próxima rodada)"));
 }
 
 // ── uma rodada: busca aprovados que mudaram desde a última data e envia ───────
