@@ -60,12 +60,45 @@ EXECUTE PROCEDURE app_cores_pedido_insert(1,'190007','1000056','P','2','1');
 ```
 
 ## CLIENTES (necessário antes do pedido)
-- Procurar por CNPJ/CPF (pontuado): `SELECT * FROM app_clientes_search('xx.xxx.xxx/xxxx-xx')`
-- Incluir (retorna CODIGO): `SELECT codigo FROM app_clientes_insert_v2(NOME, FANTASIA, CNPJ_CPF, RG_IE, ENDERECO, NUMERO, COMPLEMENTO, BAIRRO, CEP, CIDADE, UF, EMAIL, DATA_NASC(dd.mm.aaaa), TELEFONE, ?, ?, PRAZO, SIMPLES_NACIONAL, FUNC_CADASTRO?, GUIA, IMEI)`
-  - Obrigatórios: NOME, FANTASIA, CIDADE, UF, FUNC_CADASTRO, MALA_DIRETA.
-  - FUNC_CADASTRO = código fixo do funcionário "do site" (pedir ao Syntech).
-  - IMEI = nulo obrigatoriamente. PRAZO 1 = à vista. SIMPLES_NACIONAL: S/M/''.
-- Alterar: `EXECUTE PROCEDURE APP_CLIENTES_UPDATE(codigo, ...mesmos campos...)` (cuidado: insere se não existir).
+
+### Procurar por CNPJ/CPF — `APP_CLIENTES_SEARCH`
+Entrada: `CNPJ_CPF_PESQUISA VARCHAR(18)` (pontuado: `xxx.xxx.xxx-xx` ou `xx.xxx.xxx/xxxx-xx`).
+```sql
+SELECT * FROM app_clientes_search('123.123.123-87');
+```
+Saídas (principais): CODIGO(int), NOME, FANTASIA, CNPJ_CPF, INSC_RG, ENDERECO, NUMERO(int),
+COMPL, BAIRRO, CEP, CIDADE, UF, EMAIL, DATA_NASC, TELEFONE, **CELULAR**, SIMPLES_NACIONAL,
+FUNC_CADASTRO(int), MALA_DIRETA, COD_PRAZO, COD_TRANSP, GUIA, FORMA, OPCAO_PRECO,
+DATA_ALT_REG, DATA_CAD. (Vazio = cliente não existe → inserir.)
+
+### Incluir — `APP_CLIENTES_INSERT_V2` (retorna CODIGO int)
+Parâmetros (ordem exata, 21):
+`NOME, FANTASIA, CNPJ_CPF, INSC_RG, ENDERECO, NUMERO, COMPL, BAIRRO, CEP, CIDADE, UF, EMAIL, DATA_NASC, TELEFONE, CELULAR, SIMPLES_NACIONAL, FUNC_CADASTRO, MALA_DIRETA, COD_PRAZO, GUIA, IMEI`
+```sql
+SELECT codigo FROM app_clientes_insert_v2('SIRLENE CRISTINA','TESTE','123.123.123-87','321321321',
+  'RUA TREZE DE MAIO','128','','CENTRO','37590-000','JACUTINGA','MG','sirlene@...','11.02.1980',
+  '(35) 3443-325','','','1','S','1','','');
+```
+- Obrigatórios: NOME, FANTASIA, CIDADE, UF, FUNC_CADASTRO, MALA_DIRETA.
+- CNPJ_CPF pontuado. NUMERO inteiro (sem número = 0, resto no COMPL). CEP `xxxxx-xxx`.
+  DATA_NASC `dd.mm.aaaa`. SIMPLES_NACIONAL: `S`/`M`/`''`. MALA_DIRETA: `S`/`N`.
+  COD_PRAZO `1` = à vista. GUIA `''`. **IMEI nulo obrigatoriamente**.
+- FUNC_CADASTRO = código fixo do funcionário "do site" (**pedir ao Syntech**).
+
+### Alterar — `APP_CLIENTES_UPDATE` (cuidado: insere se não existir)
+Parâmetros (21): `CODIGO, NOME, FANTASIA, CNPJ_CPF, INSC_RG, ENDERECO, NUMERO, COMPL, BAIRRO, CEP, CIDADE, UF, EMAIL, DATA_NASC, TELEFONE, CELULAR, SIMPLES_NACIONAL, FUNC_CADASTRO, MALA_DIRETA, COD_PRAZO, GUIA`
+```sql
+EXECUTE PROCEDURE APP_CLIENTES_UPDATE(91000791,'SIRLENE CRISTINA','TESTE',...);
+```
+
+### Endereço de entrega/cobrança (direto na tabela CLIENTES)
+As SPs não mexem nesses campos; se precisar, pedir privilégio de UPDATE e filtrar por CODIGO ou CNPJ_CPF:
+- Cobrança: ENDERECO_COB, BAIRRO_COB, CEP_COB, UF_COB, CIDADE_COB, COMPLEMENTO_COB
+- Entrega: ENDERECO_ENTR, BAIRRO_ENTR, CEP_ENTR, UF_ENTR, CIDADE_ENTR, COMPLEMENTO_ENTR
+
+### Comunicação
+Firebird Client nativo (PHP `ibase_*`) é o recomendado — é o que a ponte (node-firebird) usa.
+Há também um módulo REST (2ª opção) com `server_config.php` e funções `faz_select`/`faz_execute`.
 
 ## LER do ERP (ERP → nós)
 - **Pedidos aprovados**: `PEDIDO` onde `STATUS=10` e `CANC<>'S'`, incremental por `DATA_ALT_REG`. Itens por cor/tamanho em `CORES_PEDIDO.QUANT` (pular `ITENS_PEDIDO.BAIXADO='B'`).
