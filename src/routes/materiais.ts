@@ -10,13 +10,16 @@ import { gerarOrdemCompra, type OrdemCompraItem } from "../pdf";
 
 // Monta o texto do aviso de estoque mínimo (WhatsApp), SEPARADO POR FORNECEDOR.
 // Retorna null quando não há nada abaixo do mínimo.
-export async function textoEstoqueMinimo(env: Env): Promise<{ texto: string; n: number } | null> {
+export async function textoEstoqueMinimo(env: Env, ids?: string[]): Promise<{ texto: string; n: number } | null> {
+  // ids (opcional): quando passado, limita a mensagem APENAS a esses materiais
+  // (usado no teste, pra escolher o que enviar e não mandar a lista inteira).
+  const filtroIds = ids && ids.length ? ` AND m.id IN (${ids.map(() => "?").join(",")})` : "";
   const { results } = await env.DB.prepare(
     `SELECT m.nome, m.tamanho, m.cor, m.saldo, m.minimo, m.unidade, f.nome AS fornecedor
        FROM materiais m LEFT JOIN fornecedores f ON f.id = m.fornecedor_id
-      WHERE m.minimo > 0 AND m.saldo < m.minimo AND COALESCE(m.status,'ativo') <> 'inativo'
+      WHERE m.minimo > 0 AND m.saldo < m.minimo AND COALESCE(m.status,'ativo') <> 'inativo'${filtroIds}
       ORDER BY (f.nome IS NULL), f.nome, m.nome`
-  ).all<{ nome: string; tamanho: string | null; cor: string | null; saldo: number; minimo: number; unidade: string | null; fornecedor: string | null }>();
+  ).bind(...(ids && ids.length ? ids : [])).all<{ nome: string; tamanho: string | null; cor: string | null; saldo: number; minimo: number; unidade: string | null; fornecedor: string | null }>();
   if (!results.length) return null;
   const fmt = (n: number) => { try { return (Number(n) || 0).toLocaleString("pt-BR"); } catch { return String(n ?? 0); } };
   const un = (u: string | null) => (u ? ` ${u}` : "");
@@ -155,7 +158,10 @@ materiais.post("/testar-aviso", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const num = ((await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_min_wpp'").first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
   if (!num) return c.json({ error: "numero_nao_configurado" }, 400);
-  const msg = await textoEstoqueMinimo(c.env);
+  // Opcional: só envia os materiais escolhidos (ids). Sem ids = tudo (comportamento antigo).
+  const body = await c.req.json<{ ids?: string[] }>().catch(() => ({} as { ids?: string[] }));
+  const ids = Array.isArray(body.ids) ? body.ids.filter((x) => typeof x === "string" && x) : undefined;
+  const msg = await textoEstoqueMinimo(c.env, ids);
   const texto = msg ? `${msg.texto}\n\n_(mensagem de teste)_`
     : "✅ Teste de aviso de estoque — o WhatsApp está funcionando. Nenhum material abaixo do mínimo agora.";
   const r = await enviarWhatsapp(c.env, num, { tipo: "texto", texto }).catch(() => ({ enviado: false }));

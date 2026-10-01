@@ -2606,6 +2606,8 @@ function ComprasMateriais() {
   const [fora, setFora] = useState<Set<string>>(new Set());   // itens desmarcados (não comprar)
   const [enviar, setEnviar] = useState<{ forn: string; itens: CompraSugestao[] } | null>(null); // popup "enviar p/ gestor?"
   const [enviando, setEnviando] = useState(false);
+  const [testarPop, setTestarPop] = useState(false); // popup "testar WhatsApp" (escolher o que enviar)
+  const [testando, setTestando] = useState(false);
   useEffect(() => {
     api.comprasMateriais().then((r) => { setItens(r); setCarregou(true); }).catch(() => setCarregou(true));
     api.listarFornecedores().then(setFornecedores).catch(() => {});
@@ -2672,10 +2674,7 @@ function ComprasMateriais() {
       <div className="row-gap" style={{ alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0 }}>Compras sugeridas</h2>
         <span className="muted" style={{ fontSize: 12 }}>Edite as quantidades e marque o que comprar.</span>
-        <button className="btn btn-soft" style={{ marginLeft: "auto" }} title="Enviar agora o aviso de estoque no WhatsApp (teste)" onClick={async () => {
-          try { const r = await api.testarAvisoEstoque(); alert(r.ok ? `✅ Enviado pro WhatsApp ${r.numero} (${r.materiais} material(is) abaixo do mínimo).` : `⚠️ Não enviou (${r.motivo || "falha"}). Confira o número e a conexão do WhatsApp.`); }
-          catch (e) { alert((e as Error).message); }
-        }}>📲 Testar WhatsApp</button>
+        <button className="btn btn-soft" style={{ marginLeft: "auto" }} title="Enviar teste no WhatsApp só com os itens marcados" onClick={() => setTestarPop(true)}>📲 Testar WhatsApp</button>
         <button className="btn btn-soft" title="Editar os dados que aparecem no cabeçalho da ordem" onClick={() => setEmpresaModal(true)}>✎ Nossos dados</button>
         <span className="muted">Estimativa total: <strong>{rBR(totalGeral)}</strong></span>
       </div>
@@ -2737,6 +2736,46 @@ function ComprasMateriais() {
           </div>
         </div>
       )}
+      {testarPop && (() => {
+        const marcados = itens.filter(incluido);
+        const ids = marcados.map((m) => m.id);
+        const porForn = grupos.map((g) => ({ forn: g.forn, n: g.itens.filter(incluido).length })).filter((x) => x.n > 0);
+        async function enviarTeste() {
+          setTestando(true);
+          try {
+            const r = await api.testarAvisoEstoque(ids);
+            setTestarPop(false);
+            alert(r.ok ? `✅ Enviado pro WhatsApp ${r.numero} (${r.materiais} item(ns)).` : `⚠️ Não enviou (${r.motivo || "falha"}). Confira o número e a conexão do WhatsApp.`);
+          } catch (e) { alert((e as Error).message); }
+          finally { setTestando(false); }
+        }
+        return (
+          <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget && !testando) setTestarPop(false); }}>
+            <div className="modal-card" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+              <h2 style={{ marginTop: 0 }}>📲 Testar WhatsApp</h2>
+              <p className="muted" style={{ marginTop: -4 }}>Vai enviar só os itens <strong>marcados</strong> (as caixinhas ✓). Desmarque na lista o que não quer no teste.</p>
+              {ids.length === 0 ? (
+                <div className="card pad" style={{ background: "#fef2f2", borderColor: "#fecaca", color: "#b91c1c", fontSize: 13 }}>
+                  Nenhum item marcado. Marque ao menos um na lista para testar.
+                </div>
+              ) : (
+                <div className="card" style={{ padding: "10px 12px", background: "#f8fafc" }}>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>{ids.length} item(ns) marcado(s):</div>
+                  {porForn.map((x) => (
+                    <div key={x.forn} style={{ fontSize: 13, display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
+                      <span>🚛 {x.forn}</span><span className="muted">{x.n} item(ns)</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 16, gap: 10 }}>
+                <button className="btn btn-soft" disabled={testando} onClick={() => setTestarPop(false)}>Cancelar</button>
+                <button className="btn btn-primary" disabled={testando || ids.length === 0} onClick={enviarTeste}>{testando ? "Enviando…" : "📲 Enviar teste"}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }

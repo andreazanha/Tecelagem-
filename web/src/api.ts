@@ -1069,8 +1069,8 @@ export const api = {
   // Sugestão de compras (saldo abaixo do mínimo)
   comprasMateriais: () =>
     fetch("/api/materiais/compras").then((r) => j<CompraSugestao[]>(r)),
-  testarAvisoEstoque: () =>
-    jsonPost("/api/materiais/testar-aviso", {}).then((r) => j<{ ok: boolean; numero: string; materiais: number; motivo?: string }>(r)),
+  testarAvisoEstoque: (ids?: string[]) =>
+    jsonPost("/api/materiais/testar-aviso", ids && ids.length ? { ids } : {}).then((r) => j<{ ok: boolean; numero: string; materiais: number; motivo?: string }>(r)),
   // Envia a ORDEM DE COMPRA (gerada em PDF no servidor) pro WhatsApp do gestor.
   enviarOrdemCompra: (b: {
     fornecedor: string;
