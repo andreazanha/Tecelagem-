@@ -228,6 +228,100 @@ integracao.get("/estoque", async (c) => {
   return c.json(results);
 });
 
+// ── GERADOR do catálogo no FORMATO DO SITE (prévia) ──────────────────────────────
+// Transforma os produtos do ERP (erp_produtos + erp_estoque) no formato que o site
+// (Firebase catalogo/main) espera: banco_cores, banco_tamanhos, produtos, estoque.
+// É só PRÉVIA — não grava no site. Serve pra validar o formato antes de ligar.
+function slugId(s: string, usados: Set<string>): string {
+  let base = String(s || "").toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "x";
+  let id = base, i = 2;
+  while (usados.has(id)) { id = `${base}-${i++}`; }
+  usados.add(id);
+  return id;
+}
+export async function gerarCatalogoSite(env: Env): Promise<{
+  banco_cores: { id: string; nome: string; hex: string; categoria: string; foto: string }[];
+  banco_tamanhos: { id: string; nome: string; medida: string }[];
+  produtos: unknown[];
+  estoque: { atualizadoMs: number; itens: Record<string, Record<string, Record<string, number>>> };
+  _resumo: { produtos: number; cores: number; tamanhos: number };
+}> {
+  const cfg = async (k: string) => ((await env.DB.prepare("SELECT valor FROM config WHERE chave=?").bind(k).first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
+  const fotosBase = ((await cfg("erp_fotos_base")) || "https://bigtricot.syntechsistemas.com").replace(/\/+$/, "");
+  const markupNorte = Number(await cfg("catalogo_markup_norte_pct")) || 10;
+
+  const { results: prods } = await env.DB.prepare(
+    "SELECT ref, nome, classe, grupo, preco_varejo, preco_atacado, estoque_geral, cores, tamanhos FROM erp_produtos WHERE COALESCE(inativo,0)=0 ORDER BY nome"
+  ).all<{ ref: string; nome: string | null; classe: string | null; grupo: string | null; preco_varejo: number | null; preco_atacado: number | null; estoque_geral: number | null; cores: string | null; tamanhos: string | null }>();
+
+  const idsCor = new Set<string>(), idsTam = new Set<string>();
+  const corPorChave = new Map<string, { id: string; nome: string; hex: string; categoria: string; foto: string }>();
+  const corIdPorNome = new Map<string, string>();
+  const tamPorMedida = new Map<string, { id: string; nome: string; medida: string }>();
+  const idCor = (nome: string, hex: string, categoria: string) => {
+    const chave = (nome || "").toLowerCase() + "|" + (hex || "").toLowerCase();
+    let c = corPorChave.get(chave);
+    if (!c) { c = { id: slugId(nome || hex || "cor", idsCor), nome: nome || "", hex: hex || "", categoria: categoria || "", foto: "" }; corPorChave.set(chave, c); if (nome) corIdPorNome.set(nome.toLowerCase(), c.id); }
+    return c.id;
+  };
+  const idTam = (medida: string) => {
+    const m = String(medida || "").trim();
+    let t = tamPorMedida.get(m.toLowerCase());
+    if (!t) { t = { id: slugId(m || "tam", idsTam), nome: m, medida: m }; tamPorMedida.set(m.toLowerCase(), t); }
+    return t.id;
+  };
+
+  const produtos = prods.map((p) => {
+    const cores = ((): { nome?: string; hex?: string }[] => { try { return JSON.parse(p.cores || "[]"); } catch { return []; } })();
+    const tamanhos = ((): string[] => { try { return JSON.parse(p.tamanhos || "[]"); } catch { return []; } })();
+    const base = Number(p.preco_varejo) || 0;
+    const sul = Math.round(base * 100) / 100;
+    const norte = Math.round(base * (1 + markupNorte / 100) * 100) / 100;
+    const prodCores = cores.map((co) => ({ id_cor: idCor(co.nome || "", co.hex || "", p.grupo || ""), oculta: false }));
+    const linhas = (tamanhos.length ? tamanhos : [""]).map((t) => ({ id: `${p.ref}-${idTam(t)}`, cod: p.ref, id_tamanho: idTam(t), sul, norte }));
+    return {
+      id: p.ref,
+      nome: p.nome || p.ref,
+      tipo: "avulso",
+      linha: "padrao",
+      composicao: "",
+      pronta_entrega: false,
+      lancamento: false,
+      foto: p.classe && p.ref ? `${fotosBase}/${encodeURIComponent(p.classe)}/${encodeURIComponent(p.ref)}.jpg` : "",
+      cores: prodCores,
+      grupos: [{ id: `${p.ref}-g`, titulo: "", linhas }],
+    };
+  });
+
+  // estoque: itens[ref][medida][id_cor] = saldo (casa a cor pelo nome)
+  const { results: est } = await env.DB.prepare("SELECT ref, cor, tamanho, saldo FROM erp_estoque").all<{ ref: string | null; cor: string | null; tamanho: string | null; saldo: number }>().catch(() => ({ results: [] as { ref: string | null; cor: string | null; tamanho: string | null; saldo: number }[] }));
+  const itens: Record<string, Record<string, Record<string, number>>> = {};
+  for (const e of est) {
+    const ref = (e.ref || "").trim(); if (!ref) continue;
+    const med = (e.tamanho || "").trim() || "-";
+    const cid = corIdPorNome.get((e.cor || "").toLowerCase()) || slugId(e.cor || "cor", idsCor);
+    itens[ref] = itens[ref] || {};
+    itens[ref][med] = itens[ref][med] || {};
+    itens[ref][med][cid] = Number(e.saldo) || 0;
+  }
+
+  return {
+    banco_cores: [...corPorChave.values()],
+    banco_tamanhos: [...tamPorMedida.values()],
+    produtos,
+    estoque: { atualizadoMs: Date.now(), itens },
+    _resumo: { produtos: produtos.length, cores: corPorChave.size, tamanhos: tamPorMedida.size },
+  };
+}
+
+// Prévia (JSON) do catálogo gerado do ERP no formato do site. Não grava no site.
+integracao.get("/catalogo-site", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  return c.json(await gerarCatalogoSite(c.env));
+});
+
 // ── CATÁLOGO DE PRODUTOS (espelho do ERP) ────────────────────────────────────────
 // A ponte manda os produtos (nome, preços, grupo, classe, cores, tamanhos). Read-only.
 // body: { itens: [{ ref, nome, unidade, classe, grupo, preco_atacado, preco_varejo,

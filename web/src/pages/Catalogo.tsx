@@ -59,6 +59,15 @@ export function Catalogo() {
           <option value="">Todos os grupos</option>
           {grupos.map((gp) => <option key={gp} value={gp}>{gp}</option>)}
         </select>
+        <button className="btn btn-soft" title="Baixar o catálogo gerado do ERP no formato do site (prévia, não grava no site)" onClick={async () => {
+          try {
+            const r = await api.catalogoSitePreview();
+            const blob = new Blob([JSON.stringify(r, null, 1)], { type: "application/json" });
+            const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "catalogo-site-previa.json"; a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+            alert(`Prévia gerada: ${r._resumo.produtos} produto(s), ${r._resumo.cores} cor(es), ${r._resumo.tamanhos} tamanho(s). Arquivo baixado — me envie pra eu validar.`);
+          } catch (e) { alert((e as Error).message); }
+        }}>⬇️ Prévia p/ site</button>
         <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>
           {itens.length} produto(s) · saldo total {totalSaldo.toLocaleString("pt-BR")}
         </span>

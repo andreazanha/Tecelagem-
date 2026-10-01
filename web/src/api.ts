@@ -1231,6 +1231,9 @@ export const api = {
     const qs = p.toString();
     return fetch("/api/integracao/produtos" + (qs ? `?${qs}` : "")).then((r) => j<CatalogoResposta>(r));
   },
+  // Prévia do catálogo no formato do site (gerado do ERP) — não grava no site
+  catalogoSitePreview: () =>
+    fetch("/api/integracao/catalogo-site").then((r) => j<{ banco_cores: unknown[]; banco_tamanhos: unknown[]; produtos: unknown[]; estoque: unknown; _resumo: { produtos: number; cores: number; tamanhos: number } }>(r)),
   definirClienteCard: (pedido_id: string, parte: string, cliente: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/cliente`, {
       method: "POST",
