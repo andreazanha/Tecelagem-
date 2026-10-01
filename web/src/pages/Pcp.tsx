@@ -1,4 +1,5 @@
 import { Quadro, type QuadroCfg } from "../components/Quadro";
+import { AvisoEstoqueBaixo } from "../components/AvisoEstoqueBaixo";
 
 // PCP › Pedidos — mesma grade da Tecelagem (Parte 1 · Parte 2 · Únicos · Reposição), mas é aqui que
 // o PCP LIBERA os pedidos. Todo pedido nasce bloqueado 🔒; enquanto preso ele aparece com cadeado na
@@ -26,5 +27,5 @@ const PCP: QuadroCfg = {
 };
 
 export function Pcp() {
-  return <Quadro cfg={PCP} />;
+  return <><AvisoEstoqueBaixo /><Quadro cfg={PCP} /></>;
 }
