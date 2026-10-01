@@ -380,7 +380,10 @@ export interface CardProducao {
   une_pe?: number; // 1 = pedido misto que se une ao kit de pronta-entrega (junto) na Revisão
   pe_tipo?: string; // "separado" = kit de pronta-entrega vindo do estoque (menu Pronta entrega)
   bloqueado?: boolean | number; // 1 = pedido preso no PCP (cadeado); a Tecelagem não pode mexer
+  aviso?: string | null; // aviso do PCP p/ ESTE setor (popup ao iniciar); várias linhas separadas por \n
 }
+
+export interface AvisoPedido { id: string; setor: string; texto: string; criado_em?: string }
 
 // Expedição → Fiscal → Transporte
 export interface Volume {
@@ -1165,6 +1168,10 @@ export const api = {
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/desmembrar`, { method: "POST" }).then((r) => j<{ ok: boolean; criados: number }>(r)),
   concluirProducao: (pedido_id: string, parte: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/concluir`, { method: "POST" }).then((r) => j<{ ok: boolean }>(r)),
+  avisosPedido: (id: string) => fetch(`/api/pedidos/${encodeURIComponent(id)}/avisos`).then((r) => j<AvisoPedido[]>(r)),
+  addAvisoPedido: (id: string, setor: string, texto: string) => jsonPost(`/api/pedidos/${encodeURIComponent(id)}/avisos`, { setor, texto }).then((r) => j<AvisoPedido>(r)),
+  removerAvisoPedido: (id: string, avisoId: string) =>
+    fetch(`/api/pedidos/${encodeURIComponent(id)}/avisos/${encodeURIComponent(avisoId)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   relatorioProducaoDetalhado: (q: { de?: string; ate?: string; setor?: string; operador?: string; flag?: string } = {}) => {
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries(q)) if (v) p.set(k, v);

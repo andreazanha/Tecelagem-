@@ -352,6 +352,32 @@ pedidos.get("/", async (c) => {
   return c.json(results);
 });
 
+// ── AVISOS do PCP por setor (popup ao INICIAR um card do pedido naquele setor) ────
+pedidos.get("/:id/avisos", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, setor, texto, criado_em FROM pedido_avisos WHERE pedido_id = ? ORDER BY setor, criado_em"
+  ).bind(c.req.param("id")).all();
+  return c.json(results);
+});
+pedidos.post("/:id/avisos", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const b = await c.req.json<{ setor?: string; texto?: string }>().catch(() => ({}) as { setor?: string; texto?: string });
+  const setor = (b.setor || "").trim().toLowerCase();
+  const texto = (b.texto || "").trim();
+  if (!setor || !texto) return c.json({ error: "setor_e_texto_obrigatorios" }, 400);
+  const aid = crypto.randomUUID();
+  await c.env.DB.prepare("INSERT INTO pedido_avisos (id, pedido_id, setor, texto, criado_por) VALUES (?, ?, ?, ?, ?)")
+    .bind(aid, id, setor, texto, g.u?.nome || null).run();
+  return c.json({ id: aid, setor, texto }, 201);
+});
+pedidos.delete("/:id/avisos/:avisoId", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  await c.env.DB.prepare("DELETE FROM pedido_avisos WHERE id = ? AND pedido_id = ?")
+    .bind(c.req.param("avisoId"), c.req.param("id")).run();
+  return c.json({ ok: true });
+});
+
 // DETALHE
 // Atualiza o código de terceiro (código interno do cliente) do pedido.
 pedidos.post("/:id/codigo-terceiro", async (c) => {

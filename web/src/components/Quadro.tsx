@@ -214,6 +214,8 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
   const [carregando, setCarregando] = useState(true);
   const [aberto, setAberto] = useState<CardProducao | null>(null);
   const [acaoModal, setAcaoModal] = useState<{ cards: CardProducao[]; acao: Acao } | null>(null);
+  // Popup de AVISO do PCP (aparece no meio da tela ao INICIAR um card com aviso neste setor).
+  const [avisoModal, setAvisoModal] = useState<{ cards: CardProducao[]; acao: Acao; avisos: string[] } | null>(null);
   const [entradaPed, setEntradaPed] = useState<CardProducao | null>(null);
   const [liberarCard, setLiberarCard] = useState<CardProducao | null>(null); // PCP: pedido a liberar
   const [wppCfg, setWppCfg] = useState(false); // Separação: cadastrar número do WhatsApp de estoque
@@ -280,6 +282,11 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
     // Rede de segurança: mesmo que algum botão apareça, sem permissão a ação não segue (o backend
     // também recusa). Admin / usuário não configurado (legado) passam normalmente.
     if (!podeAcao(acao)) { alert("Você não tem permissão para esta ação."); return; }
+    // Ao INICIAR: se o PCP deixou aviso(s) pra este setor, mostra o popup no meio da tela ANTES.
+    if (acao === "fazer") {
+      const avisos = [...new Set(cards.flatMap((c) => String(c.aviso || "").split("\n")).map((s) => s.trim()).filter(Boolean))];
+      if (avisos.length) { setAvisoModal({ cards, acao, avisos }); return; }
+    }
     setAcaoModal({ cards, acao });
   }
 
@@ -567,6 +574,24 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
             executarAcao(cards, acao, opInterno, pessoaDestino);
           }}
         />
+      )}
+
+      {/* AVISO DO PCP: popup grande no meio da tela ao iniciar (só neste setor). */}
+      {avisoModal && (
+        <div className="modal-bg" style={{ zIndex: 60 }} onClick={() => setAvisoModal(null)}>
+          <div className="aviso-pop" onClick={(e) => e.stopPropagation()}>
+            <div className="aviso-pop-ic">⚠️</div>
+            <h2 className="aviso-pop-tit">Aviso do PCP</h2>
+            <div className="aviso-pop-sub">{tituloSetor(cfg.setor)} · leia antes de iniciar</div>
+            <div className="aviso-pop-body">
+              {avisoModal.avisos.map((t, i) => <div key={i} className="aviso-pop-item">• {t}</div>)}
+            </div>
+            <div className="aviso-pop-acts">
+              <button className="btn btn-soft" onClick={() => setAvisoModal(null)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={() => { const { cards, acao } = avisoModal; setAvisoModal(null); setAcaoModal({ cards, acao }); }}>✓ Entendi, continuar</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

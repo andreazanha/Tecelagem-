@@ -2485,6 +2485,19 @@ body.dark .btn-danger:hover { background: #dc2626; border-color: #dc2626; }
 body.dark .btn-ok { background: #22c55e; border-color: #22c55e; }
 body.dark .btn-ok:hover { background: #16a34a; border-color: #16a34a; }
 
+/* AVISO DO PCP: popup central, grande e chamativo, ao iniciar um card no setor. */
+.aviso-pop { background: #fff; border-radius: 18px; max-width: 520px; width: min(520px, 94vw); padding: 28px 26px; text-align: center; box-shadow: 0 20px 60px #0f172a55; border-top: 6px solid #f59e0b; }
+.aviso-pop-ic { font-size: 48px; line-height: 1; }
+.aviso-pop-tit { margin: 8px 0 2px; font-size: 22px; font-weight: 800; color: #b45309; }
+.aviso-pop-sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+.aviso-pop-body { text-align: left; background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; }
+.aviso-pop-item { font-size: 16px; font-weight: 600; color: #0f172a; padding: 4px 0; }
+.aviso-pop-acts { display: flex; gap: 10px; justify-content: center; }
+body.dark .aviso-pop { background: #1e293b; }
+body.dark .aviso-pop-tit { color: #fbbf24; }
+body.dark .aviso-pop-body { background: #422006; border-color: #854d0e; }
+body.dark .aviso-pop-item { color: #fff; }
+
 /* ── CRM / Atendimento no padrão do sistema ─────────────────────────────────── */
 /* Cabeçalho da coluna colorido (cor da própria coluna) com o número numa pílula clara. */
 .fx-hd.fx-hd-cor { color: #fff; text-shadow: 0 1px 2px #00000033; box-shadow: 0 5px 8px -4px rgba(15,23,42,.45); }

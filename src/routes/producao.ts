@@ -329,7 +329,8 @@ producao.get("/", async (c) => {
             pr.prioridade, pr.iniciado_em, pr.finalizado_em,
             p.numero_erp, COALESCE(NULLIF(pr.cliente, ''), p.cliente_nome) AS cliente_nome,
             p.data_pedido, p.data_entrega, p.data_tecelagem, p.codigo_terceiro, p.codigo_pai, p.observacao, p.reposicao,
-            COALESCE(pr.bloqueado, 0) AS bloqueado
+            COALESCE(pr.bloqueado, 0) AS bloqueado,
+            (SELECT GROUP_CONCAT(a.texto, char(10)) FROM pedido_avisos a WHERE a.pedido_id = pr.pedido_id AND a.setor = pr.setor) AS aviso
        FROM producao pr
        JOIN pedidos p ON p.id = pr.pedido_id
       WHERE pr.setor = ?

@@ -1,10 +1,73 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { api, tipoLabel, PARTES, type Pedido, type PedidoItem } from "../api";
+import { api, tipoLabel, PARTES, type Pedido, type PedidoItem, type AvisoPedido } from "../api";
 import { getUser, podeFuncao } from "../auth";
 
 function parteLabel(v: string) {
   return PARTES.find((p) => p.value === v)?.label ?? v;
+}
+
+const SETORES_AVISO = [
+  { id: "tecelagem", label: "Tecelagem" }, { id: "corte", label: "Corte" },
+  { id: "costura", label: "Costura" }, { id: "revisao", label: "Revisão" },
+  { id: "passadoria", label: "Passadoria" }, { id: "expedicao", label: "Expedição" },
+  { id: "estoque", label: "Estoque" }, { id: "transporte", label: "Transporte" },
+];
+
+// Avisos do PCP por setor: popup no meio da tela ao INICIAR um card deste pedido no setor.
+function AvisosPedido({ id }: { id: string }) {
+  const [lista, setLista] = useState<AvisoPedido[]>([]);
+  const [setor, setSetor] = useState("tecelagem");
+  const [texto, setTexto] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const pode = podeFuncao(getUser(), "pedidos");
+  function carregar() { api.avisosPedido(id).then(setLista).catch(() => setLista([])); }
+  useEffect(carregar, [id]);
+  async function add() {
+    if (!texto.trim()) return;
+    setSalvando(true);
+    try { await api.addAvisoPedido(id, setor, texto.trim()); setTexto(""); carregar(); }
+    catch { alert("Não consegui salvar o aviso."); }
+    finally { setSalvando(false); }
+  }
+  async function remover(a: AvisoPedido) {
+    if (!confirm("Remover este aviso?")) return;
+    try { await api.removerAvisoPedido(id, a.id); carregar(); } catch { alert("Não consegui remover."); }
+  }
+  const rot = (s: string) => SETORES_AVISO.find((x) => x.id === s)?.label || s;
+  if (!pode && lista.length === 0) return null;
+  return (
+    <div className="card pad" style={{ marginBottom: 16 }}>
+      <div className="info-label" style={{ marginBottom: 6 }}>⚠️ Avisos do PCP para a produção</div>
+      <div className="muted" style={{ fontSize: 12.5, marginBottom: 12 }}>Aparece num popup no meio da tela quando a pessoa clicar em <b>Iniciar</b> um card deste pedido no setor escolhido.</div>
+      {lista.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: pode ? 14 : 0 }}>
+          {lista.map((a) => (
+            <div key={a.id} className="row-gap" style={{ alignItems: "center", gap: 10, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "8px 12px" }}>
+              <span className="chip" style={{ background: "#f59e0b", color: "#fff", fontWeight: 700 }}>{rot(a.setor)}</span>
+              <span style={{ flex: 1, fontWeight: 600 }}>{a.texto}</span>
+              {pode && <button className="btn btn-soft" style={{ padding: "4px 9px" }} onClick={() => remover(a)}>✕</button>}
+            </div>
+          ))}
+        </div>
+      )}
+      {pode && (
+        <div className="row-gap" style={{ gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <label className="campo" style={{ margin: 0 }}>
+            <span className="campo-label">Setor</span>
+            <select value={setor} onChange={(e) => setSetor(e.target.value)}>
+              {SETORES_AVISO.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+          </label>
+          <label className="campo" style={{ margin: 0, flex: 1, minWidth: 220 }}>
+            <span className="campo-label">Aviso</span>
+            <input value={texto} placeholder="ex.: Não esquecer de trocar a cor" onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
+          </label>
+          <button className="btn btn-primary" disabled={salvando || !texto.trim()} onClick={add}>+ Adicionar aviso</button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function PedidoDetalhe() {
@@ -69,6 +132,8 @@ export function PedidoDetalhe() {
           <span className={"status status-" + pedido.status}>{pedido.status}</span>
         </div>
       </div>
+
+      <AvisosPedido id={pedido.id} />
 
       <div className="card pad">
         <div className="info-grid">
