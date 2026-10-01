@@ -251,18 +251,24 @@ export async function gerarPdfParte(
       T(gt === guiaTxt ? gt : gt + "…", lx, ry + 13, 9, bld, hx("#14532d"));
       ry += 18;
     }
-    // cabeçalho tabela — quadradinho dos dois lados em QUANTIDADE PEDIDA:
-    // esquerda (produção, já existia) + direita alinhada (PASSADORIA).
+    // cabeçalho tabela — 3 colunas, cada uma com seu quadradinho:
+    // QUANTIDADE PEDIDA (☐ + qtd, bem à esquerda, perto do tamanho) · ENVIADO (☐) · PASSADORIA (☐).
+    const qpx = ix + iw * 0.33;    // quadradinho + quantidade (puxado p/ esquerda)
+    const cEnv = ix + iw * 0.795;  // centro do quadradinho "Enviado"
+    const cPass = ix + iw * 0.925; // centro do quadradinho "Passadoria"
+    const GOLDLBL = hx("#8a6d2f");
     T("PRODUTO / TAMANHO", ix + 10, ry + 13, 8, bld, MUTE);
-    T("QUANTIDADE PEDIDA", qx + 14, ry + 13, 8, bld, MUTE);
-    TR("PASSADORIA", ix + iw - 10, ry + 13, 8, bld, hx("#8a6d2f"));
+    T("QUANTIDADE PEDIDA", qpx, ry + 13, 8, bld, MUTE);
+    T("ENVIADO", cEnv - bld.widthOfTextAtSize("ENVIADO", 7.5) / 2, ry + 13, 7.5, bld, GOLDLBL);
+    T("PASSADORIA", cPass - bld.widthOfTextAtSize("PASSADORIA", 7.5) / 2, ry + 13, 7.5, bld, GOLDLBL);
     L(ix, ry + 18, ix + iw, LINEC, 1);
     ry += 18;
     for (const s of b.sizes) {
       T(`${s.tipo ? s.tipo + " " : ""}${s.tamanho}`, ix + 10, ry + 14, 10, bld);
-      RB(qx + 14, ry + 5, 11, 11, hx("#9aa3b2"), 1.2); // quadradinho da esquerda (produção)
-      T(`${s.qtd} ${s.qtd === 1 ? "peça" : "peças"}`, qx + 32, ry + 14, 10, bld, QBLUE);
-      RB(ix + iw - 23, ry + 5, 11, 11, hx("#9aa3b2"), 1.2); // quadradinho da direita (passadoria), alinhado
+      RB(qpx, ry + 5, 11, 11, hx("#9aa3b2"), 1.2); // ☐ Quantidade pedida
+      T(`${s.qtd} ${s.qtd === 1 ? "peça" : "peças"}`, qpx + 18, ry + 14, 10, bld, QBLUE);
+      RB(cEnv - 5.5, ry + 5, 11, 11, hx("#9aa3b2"), 1.2);  // ☐ Enviado
+      RB(cPass - 5.5, ry + 5, 11, 11, hx("#9aa3b2"), 1.2); // ☐ Passadoria
       L(ix, ry + 19, ix + iw, hx("#eef0f4"), 0.8);
       ry += 18;
     }
