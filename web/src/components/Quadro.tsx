@@ -996,7 +996,7 @@ function PainelCorte({ cfg, cards, onAbrir, onAcao, onRomaneio }: {
     return (
       <div key={c.pedido_id + c.parte} className={"tecn-crow" + (prod ? " prod" : "")} onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
         <span className={"tecn-ptag " + tg.cls}>{tg.txt}</span>
-        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
+        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span>{prod && <span className="tecn-badge" style={{ marginLeft: 8 }}>✂️ Cortando</span>}</div>
         <span className="tecn-pcs">{pad2(c.pecas)} pçs</span>
         <span className={"tecn-dias " + dd.cls}>{dd.txt}</span>
         <span className="tecn-act">
