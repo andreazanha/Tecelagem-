@@ -254,8 +254,8 @@ export async function gerarPdfParte(
     // cabeçalho tabela — 3 colunas, cada uma com seu quadradinho:
     // QUANTIDADE PEDIDA (☐ + qtd, bem à esquerda, perto do tamanho) · ENVIADO (☐) · PASSADORIA (☐).
     const qpx = ix + iw * 0.33;    // quadradinho + quantidade (puxado p/ esquerda)
-    const cEnv = ix + iw * 0.795;  // centro do quadradinho "Enviado"
-    const cPass = ix + iw * 0.925; // centro do quadradinho "Passadoria"
+    const cEnv = ix + iw * 0.58;   // centro do quadradinho "Enviado"
+    const cPass = ix + iw * 0.73;  // centro do quadradinho "Passadoria"
     const GOLDLBL = hx("#8a6d2f");
     T("PRODUTO / TAMANHO", ix + 10, ry + 13, 8, bld, MUTE);
     T("QUANTIDADE PEDIDA", qpx, ry + 13, 8, bld, MUTE);
