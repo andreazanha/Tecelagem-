@@ -1785,10 +1785,16 @@ function AbaMateriais() {
   const meta = cats.find((c) => c.slug === cat) || null;
   return (
     <>
-      <div className="prod-kpis" style={{ marginBottom: 16 }}>
-        <div className="kpi"><div className="kpi-v">{nAtivos}</div><div className="kpi-l">Materiais ativos</div></div>
-        <div className="kpi"><div className="kpi-v" style={{ color: nBaixo ? "#dc2626" : undefined }}>{nBaixo}</div><div className="kpi-l">Abaixo do mínimo</div></div>
-        <div className="kpi"><div className="kpi-v">{rBR(valorEstoque)}</div><div className="kpi-l">Valor em estoque</div></div>
+      <div className="row-gap" style={{ gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+        <div className="card" style={{ padding: "8px 14px", marginBottom: 0, display: "flex", alignItems: "baseline", gap: 7 }}>
+          <span style={{ fontSize: 18, fontWeight: 800 }}>{nAtivos}</span><span className="muted" style={{ fontSize: 12 }}>materiais ativos</span>
+        </div>
+        <div className="card" style={{ padding: "8px 14px", marginBottom: 0, display: "flex", alignItems: "baseline", gap: 7 }}>
+          <span style={{ fontSize: 18, fontWeight: 800, color: nBaixo ? "#dc2626" : undefined }}>{nBaixo}</span><span className="muted" style={{ fontSize: 12 }}>abaixo do mínimo</span>
+        </div>
+        <div className="card" style={{ padding: "8px 14px", marginBottom: 0, display: "flex", alignItems: "baseline", gap: 7 }}>
+          <span style={{ fontSize: 18, fontWeight: 800 }}>{rBR(valorEstoque)}</span><span className="muted" style={{ fontSize: 12 }}>em estoque</span>
+        </div>
       </div>
       <div className="segmented" style={{ marginBottom: 16, flexWrap: "wrap" }}>
         {cats.map((c) => (
@@ -1798,7 +1804,7 @@ function AbaMateriais() {
         ))}
         <button type="button" className={"seg" + (cat === "__compras" ? " seg-on" : "")} onClick={() => setCat("__compras")}>🛒 Compras</button>
         <button type="button" className={"seg" + (cat === "__etiquetas" ? " seg-on" : "")} onClick={() => setCat("__etiquetas")}>🏷️ Etiquetas de colar</button>
-        <button type="button" className="seg" style={{ fontWeight: 700, color: "#4338ca" }} onClick={() => setModal("novo")}>＋ Novo material</button>
+        <button type="button" className="seg" style={{ fontWeight: 700, color: "#4338ca" }} onClick={() => setModal("novo")}>＋ Novo tipo de material</button>
       </div>
 
       {cat === "__compras" ? (
