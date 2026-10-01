@@ -57,3 +57,19 @@ mesmo repete a cada `intervaloSegundos`.
   loja no corte), dá pra incluir — é só dizer os nomes desses campos na tabela `CLIENTES`.
 - **Status:** o gatilho é `STATUS = 10 (Aprovado)`. Pra mudar, altere `statusAprovado`
   no `config.json`.
+
+## Estoque de produtos (opcional)
+A ponte também pode **espelhar o saldo** dos produtos pro sistema (só leitura — o ERP
+continua sendo a fonte da verdade). Fica **desligado** até você preencher a consulta.
+
+No `config.json`, em `estoque.sql`, coloque um SELECT que devolva estas colunas:
+`PRODUTO, REF, COR, TAMANHO, SALDO, UNIDADE`. Peça pro Syntech te dizer qual tabela
+guarda o saldo (por produto, ou por produto+cor+tamanho). Exemplo genérico:
+```sql
+SELECT PR.NOME AS PRODUTO, E.COD_PROD AS REF, CR.NOME AS COR,
+       E.TAMANHO AS TAMANHO, E.SALDO AS SALDO, 'un' AS UNIDADE
+  FROM ESTOQUE E
+  INNER JOIN PRODUTOS PR ON PR.CODIGO = E.COD_PROD
+  LEFT JOIN CORES CR ON CR.NUMERO = E.COD_COR
+```
+Com isso preenchido, a cada rodada a ponte envia o saldo e ele aparece no sistema.

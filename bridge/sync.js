@@ -140,6 +140,43 @@ async function processarPedido(db, ped) {
   return res.ok;
 }
 
+// ── ESTOQUE: lê o saldo do ERP e espelha no sistema (só leitura lá no site/CRM) ──
+// A consulta fica no config.estoque.sql porque o nome da tabela/colunas de saldo
+// varia por base — o pessoal do Syntech informa. Ela deve devolver as colunas:
+//   PRODUTO, REF, COR, TAMANHO, SALDO, UNIDADE
+async function enviarEstoque(itens) {
+  const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/estoque";
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+    body: JSON.stringify({ itens, full: true }),
+  });
+  return r.ok;
+}
+async function rodadaEstoque(db) {
+  const sql = CONFIG.estoque && CONFIG.estoque.sql;
+  if (!sql) return; // estoque desligado até o Syntech informar a tabela de saldo
+  let linhas = [];
+  try { linhas = await query(db, sql); }
+  catch (e) { log("! estoque: consulta falhou —", e.message); return; }
+  const itens = linhas.map((r) => ({
+    produto: String(r.PRODUTO || "").trim(),
+    ref: String(r.REF || "").trim(),
+    cor: String(r.COR || "").trim(),
+    tamanho: String(r.TAMANHO || "").trim(),
+    saldo: Number(r.SALDO) || 0,
+    unidade: String(r.UNIDADE || "").trim(),
+  })).filter((x) => x.ref || x.produto);
+  if (!itens.length) { log("estoque: nada a enviar"); return; }
+  // envia em lotes de 500 pra não estourar o tamanho da requisição
+  let enviados = 0;
+  for (let i = 0; i < itens.length; i += 500) {
+    const ok = await enviarEstoque(itens.slice(i, i + 500));
+    if (ok) enviados += Math.min(500, itens.length - i);
+  }
+  log(`estoque: ${enviados}/${itens.length} saldo(s) espelhado(s)`);
+}
+
 // ── uma rodada: busca aprovados que mudaram desde a última data e envia ───────
 async function rodada() {
   const estado = lerEstado();
@@ -159,7 +196,7 @@ async function rodada() {
         WHERE STATUS = ? AND COALESCE(CANC, 'N') <> 'S' AND DATA_ALT_REG > ?
         ORDER BY DATA_ALT_REG`;
     const pedidos = await query(db, SQL_PEDIDOS, [STATUS_APROVADO, desde]);
-    if (!pedidos.length) { log(`sem novidades (desde ${desde})`); return; }
+    if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaEstoque(db); return; }
 
     log(`${pedidos.length} pedido(s) aprovado(s) novo(s)/alterado(s)`);
     let maiorAlt = estado.ultimaAlt || null;
@@ -176,6 +213,7 @@ async function rodada() {
       salvarEstado({ ...estado, ultimaAlt: formatarParaFirebird(ped.DATA_ALT_REG) });
     }
     log("rodada ok. última data:", formatarParaFirebird(maiorAlt));
+    await rodadaEstoque(db);
   } catch (e) {
     log("! erro na rodada:", e.message);
   } finally {

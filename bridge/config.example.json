@@ -12,5 +12,9 @@
   },
   "statusAprovado": 10,
   "intervaloSegundos": 120,
-  "desde": "2025-01-01"
+  "desde": "2025-01-01",
+  "estoque": {
+    "_ajuda": "Consulta de SALDO de produtos. Deixe 'sql' vazio ate o Syntech informar a tabela. Deve devolver as colunas: PRODUTO, REF, COR, TAMANHO, SALDO, UNIDADE.",
+    "sql": ""
+  }
 }

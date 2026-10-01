@@ -183,6 +183,51 @@ integracao.post("/aprovar-lote", async (c) => {
   return c.json({ ok: true, pedido_id: novoId, codigo_pai: codigoPai, pedidos: peds.length });
 });
 
+// ── ESTOQUE DE PRODUTOS (espelho do ERP) ────────────────────────────────────────
+// A ponte manda o saldo (lido do Firebird). Guardamos e só EXIBIMOS. Read-only aqui.
+// body: { itens: [{ produto, ref, cor, tamanho, saldo, unidade }], full?: boolean }
+integracao.post("/estoque", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+
+  type EstoqueIn = { produto?: string; ref?: string; cor?: string; tamanho?: string; saldo?: number | string; unidade?: string };
+  const b = await c.req.json<{ itens?: EstoqueIn[]; full?: boolean }>().catch(() => ({} as { itens?: EstoqueIn[]; full?: boolean }));
+  const itens: EstoqueIn[] = Array.isArray(b.itens) ? b.itens : [];
+  if (!itens.length) return c.json({ error: "sem_itens" }, 400);
+
+  const norm = (s: unknown) => String(s ?? "").trim();
+  const chaveDe = (ref: string, cor: string, tam: string) => `${ref}|${cor}|${tam}`.toLowerCase();
+  const stmts = itens.map((it) => {
+    const ref = norm(it.ref), cor = norm(it.cor), tam = norm(it.tamanho);
+    const chave = chaveDe(ref, cor, tam);
+    const saldo = Number(it.saldo) || 0;
+    return c.env.DB.prepare(
+      `INSERT INTO erp_estoque (chave, produto, ref, cor, tamanho, saldo, unidade, atualizado_em)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(chave) DO UPDATE SET produto=excluded.produto, ref=excluded.ref, cor=excluded.cor,
+         tamanho=excluded.tamanho, saldo=excluded.saldo, unidade=excluded.unidade, atualizado_em=datetime('now')`
+    ).bind(chave, norm(it.produto) || null, ref || null, cor || null, tam || null, saldo, norm(it.unidade) || null);
+  });
+  await c.env.DB.batch(stmts);
+  return c.json({ ok: true, n: stmts.length });
+});
+
+// LÊ o estoque espelhado (pra exibir). Filtro opcional ?ref= / ?busca=.
+integracao.get("/estoque", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const ref = (c.req.query("ref") || "").trim();
+  const busca = (c.req.query("busca") || "").trim().toLowerCase();
+  let sql = "SELECT produto, ref, cor, tamanho, saldo, unidade, atualizado_em FROM erp_estoque";
+  const cond: string[] = [], binds: unknown[] = [];
+  if (ref) { cond.push("ref = ?"); binds.push(ref); }
+  if (busca) { cond.push("(lower(produto) LIKE ? OR lower(ref) LIKE ?)"); binds.push(`%${busca}%`, `%${busca}%`); }
+  if (cond.length) sql += " WHERE " + cond.join(" AND ");
+  sql += " ORDER BY produto, cor, tamanho LIMIT 1000";
+  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
+  return c.json(results);
+});
+
 // ── RECUSAR: apaga o pedido do ERP (ex.: cancelado) ─────────────────────────────
 integracao.post("/pendentes/:id/recusar", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;

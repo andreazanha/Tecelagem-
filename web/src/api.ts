@@ -1203,6 +1203,15 @@ export const api = {
   erpAceitar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aceitar`, {}).then((r) => j<{ ok: boolean }>(r)),
   erpRecusar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/recusar`, {}).then((r) => j<{ ok: boolean }>(r)),
   erpAprovarLote: (ids: string[]) => jsonPost("/api/integracao/aprovar-lote", { ids }).then((r) => j<{ ok: boolean; pedido_id: string; codigo_pai: string; pedidos: number }>(r)),
+  // Estoque de produtos espelhado do ERP (só leitura).
+  erpEstoque: (q?: { ref?: string; busca?: string }) => {
+    const p = new URLSearchParams();
+    if (q?.ref) p.set("ref", q.ref);
+    if (q?.busca) p.set("busca", q.busca);
+    const qs = p.toString();
+    return fetch("/api/integracao/estoque" + (qs ? `?${qs}` : "")).then((r) =>
+      j<{ produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; saldo: number; unidade: string | null; atualizado_em: string }[]>(r));
+  },
   definirClienteCard: (pedido_id: string, parte: string, cliente: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/cliente`, {
       method: "POST",
