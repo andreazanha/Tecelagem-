@@ -14,6 +14,7 @@ import { cadastrarProdutosDoPedido } from "./produtos";
 import { consumoDoPedido, baixarPorPedido } from "../estoque-baixa";
 import { SYNC_JS, SYNC_VERSAO } from "../bridgeScript";
 import { SITE_ONLINE_HTML } from "../siteTemplate";
+import { lerDocumento, gravarDocumento } from "../firestore";
 
 export const integracao = new Hono<{ Bindings: Env }>();
 
@@ -370,6 +371,46 @@ export async function gerarCatalogoSite(env: Env): Promise<{
 integracao.get("/catalogo-site", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   return c.json(await gerarCatalogoSite(c.env));
+});
+
+// TESTE DE CONEXÃO com o Firebase do site. Lê catalogo/main e devolve os campos
+// do topo (sem expor conteúdo sensível) — serve pra validar a chave FIREBASE_SA.
+integracao.get("/site/firebase-check", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  try {
+    const main = await lerDocumento(c.env, "catalogo/main");
+    if (!main) return c.json({ ok: true, existe_main: false });
+    const prods = Array.isArray((main as { produtos?: unknown[] }).produtos) ? (main as { produtos: unknown[] }).produtos.length : 0;
+    return c.json({ ok: true, existe_main: true, campos: Object.keys(main), produtos_no_main: prods });
+  } catch (e) {
+    return c.json({ ok: false, erro: (e as Error).message }, 200);
+  }
+});
+
+// PUBLICA o catálogo do ERP no Firebase do site. alvo=teste (padrão, cliente não
+// vê) ou alvo=main (vai pro ar). Lê o catalogo/main atual pra preservar os campos
+// editoriais (capa, representantes, textos…) e só troca produtos/cores/tamanhos.
+integracao.post("/site/publicar", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const alvo = c.req.query("alvo") === "main" ? "main" : "teste";
+  try {
+    const cat = await gerarCatalogoSite(c.env);
+    let base: Record<string, unknown> = {};
+    try { base = (await lerDocumento(c.env, "catalogo/main")) || {}; } catch { base = {}; }
+    const doc: Record<string, unknown> = {
+      ...base,
+      produtos: cat.produtos,
+      banco_cores: cat.banco_cores,
+      banco_tamanhos: cat.banco_tamanhos,
+      estoque: cat.estoque,
+      atualizado_em: Date.now(),
+      _origem_erp: true,
+    };
+    await gravarDocumento(c.env, "catalogo/" + alvo, doc);
+    return c.json({ ok: true, alvo, resumo: cat._resumo });
+  } catch (e) {
+    return c.json({ ok: false, alvo, erro: (e as Error).message }, 200);
+  }
 });
 
 // PRÉVIA VISUAL: serve o HTML do site REAL (catalogo-online) com os produtos do

@@ -41,6 +41,10 @@ export interface Env {
   // Definida como SEGREDO do ambiente (não vai no código). A ponte envia no header
   // X-Integracao-Token; se não bater (ou não estiver definida), a entrada é recusada.
   INTEGRACAO_TOKEN?: string;
+  // Conta de serviço do Firebase (projeto bigtricot-catalogo) para escrever o
+  // catálogo no site. É o JSON inteiro da chave, guardado como SEGREDO no
+  // Cloudflare. Nunca vai no código/repositório.
+  FIREBASE_SA?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
