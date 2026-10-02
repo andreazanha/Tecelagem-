@@ -298,8 +298,9 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   // UM produto por modelo (ex.: "GENEBRA") e, DENTRO dele, um grupo por tipo
   // (Almofada/Capa/Peseira-Manta), cada grupo com seus tamanhos. As cores ficam
   // no nível do produto (união das variações).
-  const TIPO_NOME: Record<string, string> = { A: "Almofada", C: "Capa", P: "Peseira / Manta", K: "Kit", M: "Manta" };
-  const TIPO_ORDEM: Record<string, number> = { A: 0, C: 1, P: 2, M: 3, K: 4 };
+  // Títulos e ordem das seções iguais ao site: Mantas e Peseiras, Capas, Almofadas.
+  const TIPO_NOME: Record<string, string> = { P: "Mantas e Peseiras", C: "Capas", A: "Almofadas", M: "Mantas", K: "Kits" };
+  const TIPO_ORDEM: Record<string, number> = { P: 0, C: 1, A: 2, M: 3, K: 4 };
   const baseCod = (ref: string) => (ref || "").replace(/[A-Za-z]+$/, "") || ref || "";
   const tipoLetra = (ref: string) => { const m = (ref || "").match(/([A-Za-z])$/); return m ? m[1].toUpperCase() : ""; };
   const nomeModelo = (nome: string) => (nome || "").replace(/^\s*(ALMOFADAS?|CAPAS?|PESEIRAS?|MANTAS?|KITS?|PESEIRA E MANTA)\s+/i, "").trim() || nome || "";
