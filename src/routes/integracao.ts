@@ -13,6 +13,7 @@ import { proximoCodigoPai } from "./pedidos";
 import { cadastrarProdutosDoPedido } from "./produtos";
 import { consumoDoPedido, baixarPorPedido } from "../estoque-baixa";
 import { SYNC_JS, SYNC_VERSAO } from "../bridgeScript";
+import { SITE_ONLINE_HTML } from "../siteTemplate";
 
 export const integracao = new Hono<{ Bindings: Env }>();
 
@@ -339,6 +340,36 @@ export async function gerarCatalogoSite(env: Env): Promise<{
 integracao.get("/catalogo-site", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   return c.json(await gerarCatalogoSite(c.env));
+});
+
+// PRÉVIA VISUAL: serve o HTML do site REAL (catalogo-online) com os produtos do
+// ERP injetados. NÃO toca no site que está no ar (catalogo/main no Firebase) —
+// os dados são embutidos na página (window.__PREVIEW_DATA__), sem ler/gravar o
+// Firebase. Serve só pra ver o visual com os dados reais.
+integracao.get("/catalogo-preview", async (c) => {
+  const cat = await gerarCatalogoSite(c.env);
+  const data = {
+    produtos: cat.produtos,
+    banco_cores: cat.banco_cores,
+    banco_tamanhos: cat.banco_tamanhos,
+    estoque: cat.estoque,
+    capa: null,
+    representantes: [],
+    popup_promo: null,
+    edicao_limitada: {},
+    linhas_ocultas: {},
+    atualizado_em: Date.now(),
+  };
+  const json = JSON.stringify(data)
+    .replace(/</g, "\\u003c").replace(/ /g, "\\u2028").replace(/ /g, "\\u2029");
+  const inject = `<script>window.__PREVIEW_DATA__=${json};</script>`;
+  const html = SITE_ONLINE_HTML.includes("</head>")
+    ? SITE_ONLINE_HTML.replace("</head>", inject + "</head>")
+    : inject + SITE_ONLINE_HTML;
+  return new Response(html, {
+    status: 200,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+  });
 });
 
 // ── CATÁLOGO DE PRODUTOS (espelho do ERP) ────────────────────────────────────────
