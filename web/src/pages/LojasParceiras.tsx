@@ -47,6 +47,26 @@ export function LojasParceiras() {
   }
   async function alternar(l: LojaParceira) { await api.salvarParceiro({ ...l, ativo: l.ativo ? 0 : 1 }); carregar(); }
   async function excluir(l: LojaParceira) { if (confirm(`Excluir "${l.nome}"?`)) { await api.excluirParceiro(l.id); carregar(); } }
+  // Esconde da vitrine as lojas sem compra desde 2024 (inclui sem data). Reversível.
+  // Mostra uma prévia (quantas e quais) antes de aplicar.
+  async function limparSemCompra() {
+    try {
+      const r = await api.esconderLojasSemCompra({ ano: 2024, semData: true });
+      const n = r.a_esconder || 0;
+      if (!n) { setMsg("Nenhuma loja sem compra desde 2024 na vitrine. 👍"); setTimeout(() => setMsg(""), 3500); return; }
+      const amostra = (r.exemplos || []).slice(0, 12)
+        .map((e) => `• ${e.nome}${e.cidade ? ` (${e.cidade}/${e.uf || ""})` : ""} — ${e.ultima ? "última: " + e.ultima : "sem data"}`).join("\n");
+      const ok = confirm(
+        `Esconder ${n} de ${r.total_vitrine} loja(s) da vitrine?\n` +
+        `(clientes sem compra desde 2024, incluindo os sem data)\n\n` +
+        `É REVERSÍVEL — elas ficam como "despublicadas" e dá pra reativar.\n\n` +
+        `Exemplos:\n${amostra}${n > 12 ? `\n… e mais ${n - 12}` : ""}`
+      );
+      if (!ok) return;
+      const ap = await api.esconderLojasSemCompra({ ano: 2024, semData: true, aplicar: true });
+      setMsg(`✓ ${ap.escondidas} loja(s) escondidas da vitrine.`); carregar(); setTimeout(() => setMsg(""), 4000);
+    } catch { setMsg("Não consegui fazer a limpeza."); setTimeout(() => setMsg(""), 3000); }
+  }
   function copiar(t: string) { navigator.clipboard?.writeText(t).then(() => { setMsg("Link copiado!"); setTimeout(() => setMsg(""), 2000); }); }
 
   // Filtro por cidade/estado (vale pras duas listas).
@@ -72,6 +92,7 @@ export function LojasParceiras() {
         {!form && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="btn btn-soft" onClick={importar} title="Traz todos os clientes da base como lojas parceiras pendentes, pra você aprovar">👥 Importar clientes da base</button>
+            <button className="btn btn-soft" onClick={limparSemCompra} title="Esconde da vitrine as lojas cujo cliente não compra desde 2024 (reversível). Mostra a lista antes.">🧹 Limpar sem compra 2024</button>
             <button className="btn btn-primary" onClick={() => setForm({ ...VAZIA })}>+ Nova loja</button>
           </div>
         )}

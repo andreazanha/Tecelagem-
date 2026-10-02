@@ -153,6 +153,55 @@ parceiros.post("/:id/recusar", async (c) => {
   return c.json({ ok: true });
 });
 
+// LIMPEZA DA VITRINE: esconde (ativo=0) as lojas cujo cliente não compra desde
+// um ano-corte (padrão 2024). "Sem data de compra conhecida" também é escondida
+// (parâmetro semData=true). Reversível (é só despublicar). Com aplicar=false faz
+// um DRY-RUN: devolve quantas e quais sairiam, sem mexer em nada.
+function parseDataBR(s: unknown): number | null {
+  const t = String(s ?? "").trim(); if (!t) return null;
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1]);
+  const d = Date.parse(t); return Number.isNaN(d) ? null : d;
+}
+parceiros.post("/esconder-sem-compra", async (c) => {
+  const b = await c.req.json<{ ano?: number | string; aplicar?: boolean; semData?: boolean }>().catch(() => ({} as { ano?: number }));
+  const ano = Math.max(2000, Math.min(2100, parseInt(String(b.ano ?? 2024), 10) || 2024));
+  const corte = Date.UTC(ano, 0, 1); // 1º de janeiro do ano-corte
+  const incluirSemData = b.semData !== false; // padrão: true (tira as sem data também)
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT lp.id, lp.nome, lp.uf, lp.cidade, c.ultima_compra AS uc, c.ultimo_faturamento AS uf2
+       FROM lojas_parceiras lp
+       LEFT JOIN clientes c ON c.id = lp.cliente_id
+      WHERE COALESCE(lp.ativo,1)=1 AND COALESCE(lp.pendente,0)=0
+      ORDER BY lp.uf, lp.cidade, lp.nome`
+  ).all<{ id: string; nome: string; uf: string | null; cidade: string | null; uc: string | null; uf2: string | null }>()
+    .catch(() => ({ results: [] as { id: string; nome: string; uf: string | null; cidade: string | null; uc: string | null; uf2: string | null }[] }));
+
+  const candidatos = results.filter((r) => {
+    const d1 = parseDataBR(r.uc), d2 = parseDataBR(r.uf2);
+    const ultima = Math.max(d1 ?? -Infinity, d2 ?? -Infinity);
+    if (ultima === -Infinity) return incluirSemData; // sem data nenhuma
+    return ultima < corte; // última compra antes do ano-corte
+  });
+
+  if (!b.aplicar) {
+    return c.json({
+      dry_run: true, ano, total_vitrine: results.length, a_esconder: candidatos.length,
+      exemplos: candidatos.slice(0, 60).map((r) => ({ nome: r.nome, uf: r.uf, cidade: r.cidade, ultima: r.uc || r.uf2 || null })),
+    });
+  }
+
+  let escondidas = 0;
+  for (let i = 0; i < candidatos.length; i += 50) {
+    const lote = candidatos.slice(i, i + 50);
+    const ph = lote.map(() => "?").join(",");
+    const r = await c.env.DB.prepare(`UPDATE lojas_parceiras SET ativo=0 WHERE id IN (${ph})`).bind(...lote.map((x) => x.id)).run().catch(() => null);
+    escondidas += r?.meta?.changes ?? lote.length;
+  }
+  return c.json({ ok: true, ano, escondidas, total_vitrine: results.length });
+});
+
 // Cria uma loja parceira PENDENTE a partir de um cliente da base, se ele ainda não tiver uma.
 // Idempotente (não duplica). Usado no gancho de "cliente novo entrou na base".
 export async function garantirParceiroPendente(env: Env, clienteId: string): Promise<boolean> {

@@ -786,6 +786,8 @@ export const api = {
   aprovarTodosParceiros: (filtro?: { uf?: string; cidade?: string }) => jsonPost("/api/parceiros/aprovar-todos", filtro ?? {}).then((r) => j<{ ok: boolean; aprovadas: number }>(r)),
   recusarParceiro: (id: string) => jsonPost(`/api/parceiros/${encodeURIComponent(id)}/recusar`, {}).then((r) => j<{ ok: boolean }>(r)),
   importarClientesParceiros: () => jsonPost("/api/parceiros/importar-clientes", {}).then((r) => j<{ ok: boolean; criados: number }>(r)),
+  esconderLojasSemCompra: (b: { ano?: number; aplicar?: boolean; semData?: boolean }) =>
+    jsonPost("/api/parceiros/esconder-sem-compra", b).then((r) => j<{ dry_run?: boolean; ok?: boolean; ano: number; total_vitrine: number; a_esconder?: number; escondidas?: number; exemplos?: { nome: string; uf: string | null; cidade: string | null; ultima: string | null }[] }>(r)),
   // Treino da Big (base de conhecimento)
   conhecimento: () => fetch("/api/atendimento/conhecimento").then((r) => j<IaConhecimento[]>(r)),
   salvarConhecimento: (b: Partial<IaConhecimento>) => jsonPost("/api/atendimento/conhecimento", b).then((r) => j<{ ok: boolean; id: string }>(r)),
