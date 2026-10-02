@@ -12,8 +12,27 @@ import { exigirFuncao } from "../permissoes";
 import { proximoCodigoPai } from "./pedidos";
 import { cadastrarProdutosDoPedido } from "./produtos";
 import { consumoDoPedido, baixarPorPedido } from "../estoque-baixa";
+import { SYNC_JS, SYNC_VERSAO } from "../bridgeScript";
 
 export const integracao = new Hono<{ Bindings: Env }>();
+
+// ── AUTO-ATUALIZAÇÃO DA PONTE ────────────────────────────────────────────────
+// A ponte (bridge/sync.js) baixa daqui a versão mais nova de si mesma e se
+// atualiza sozinha. Protegido pelo mesmo token. O conteúdo é gerado no build a
+// partir de bridge/sync.js (scripts/gen-bridge-script.mjs).
+integracao.get("/bridge-sync", (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+  return new Response(SYNC_JS, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/javascript; charset=utf-8",
+      "X-Ponte-Versao": SYNC_VERSAO,
+      "Cache-Control": "no-store",
+    },
+  });
+});
 
 const uid = () => crypto.randomUUID();
 const str = (v: unknown) => { const s = String(v ?? "").trim(); return s || null; };

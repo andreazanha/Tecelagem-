@@ -59,6 +59,11 @@ try {
 }
 function log0(...a) { console.log(new Date().toISOString(), ...a); }
 
+// Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
+// nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
+// sync.js, suba este número — é isso que dispara a atualização nos PCs.
+const PONTE_VERSAO = "2026-10-02.1";
+
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
 const STATE_FILE = path.join(DIR, "state.json");
@@ -115,6 +120,31 @@ async function enviarPedido(payload) {
   let js = {};
   try { js = JSON.parse(txt); } catch { /* resposta não-JSON */ }
   return { ok: r.ok, status: r.status, js, txt };
+}
+
+// ── auto-atualização ──────────────────────────────────────────────────────────
+// Pergunta ao servidor se existe uma versão mais nova da ponte. Se existir, baixa
+// e sobrescreve este próprio arquivo — a versão nova passa a valer na PRÓXIMA
+// rodada (o start.bat roda "node sync.js --once" de novo a cada 2 min). Assim o
+// usuário nunca mais precisa copiar arquivo. Qualquer falha aqui é ignorada: a
+// ponte continua funcionando com a versão atual.
+async function autoAtualizar() {
+  try {
+    if (!CONFIG.api || !CONFIG.api.base) return;
+    const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/bridge-sync";
+    const r = await fetch(url, { headers: { "X-Integracao-Token": CONFIG.api.token || "" } });
+    if (!r.ok) return; // 401/404/sem versão no servidor → segue com a atual
+    const novo = await r.text();
+    // validações de segurança: conteúdo precisa parecer o sync.js de verdade
+    if (!novo || novo.length < 1000 || novo.indexOf("PONTE Syntech") === -1 || novo.indexOf("PONTE_VERSAO") === -1) return;
+    const m = novo.match(/PONTE_VERSAO\s*=\s*["']([^"']+)["']/);
+    const versaoNova = m && m[1];
+    if (!versaoNova || versaoNova === PONTE_VERSAO) return; // já estou na última
+    fs.writeFileSync(__filename, novo);
+    log(`ponte ATUALIZADA sozinha: ${PONTE_VERSAO} → ${versaoNova}. Vale na próxima rodada (~${INTERVALO / 1000}s).`);
+  } catch (e) {
+    log("! auto-atualização falhou (seguindo na versão atual):", e.message);
+  }
 }
 
 // ── monta e envia UM pedido (cabeçalho + itens) ──────────────────────────────
@@ -376,7 +406,8 @@ function formatarParaFirebird(v) {
 }
 
 async function main() {
-  log("Ponte Tecelagem iniciada.", UMA_VEZ ? "(modo --once)" : `(a cada ${INTERVALO / 1000}s)`);
+  log(`Ponte Tecelagem iniciada (v${PONTE_VERSAO}).`, UMA_VEZ ? "(modo --once)" : `(a cada ${INTERVALO / 1000}s)`);
+  await autoAtualizar();
   await rodada();
   if (UMA_VEZ) { log("fim (--once)"); return; }
   setInterval(rodada, INTERVALO);
