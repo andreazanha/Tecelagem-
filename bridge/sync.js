@@ -11,6 +11,27 @@ const fs = require("fs");
 const path = require("path");
 const Firebird = require("node-firebird");
 
+// ── Correção de acentos (ç, ã, é, ô…) ────────────────────────────────────────
+// A lib node-firebird decodifica TODO texto como UTF-8 (valor fixo no código dela;
+// a opção "encoding" é ignorada na leitura). Mas o banco da Big Tricot guarda em
+// WIN1252/latin1 — lido como UTF-8 vira "AC�CIA", "BEG�NIA". Aqui trocamos a
+// decodificação para latin1 (igual ao WIN1252 nos acentos do português), sem
+// precisar instalar nada nem mexer no config.json.
+try {
+  const serialize = require("node-firebird/lib/serialize");
+  const XR = serialize && serialize.XdrReader;
+  if (XR && XR.prototype && typeof XR.prototype.readText === "function") {
+    const _readText = XR.prototype.readText;
+    XR.prototype.readText = function (len, _enc) { return _readText.call(this, len, "latin1"); };
+    log0("correção de acentos aplicada (latin1)");
+  } else {
+    log0("! não achei XdrReader p/ corrigir acentos — nomes podem vir quebrados");
+  }
+} catch (e) {
+  log0("! não consegui aplicar correção de acentos:", e.message);
+}
+function log0(...a) { console.log(new Date().toISOString(), ...a); }
+
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
 const STATE_FILE = path.join(DIR, "state.json");
@@ -28,10 +49,9 @@ const fbOpts = {
   lowercase_keys: false,
   role: null,
   pageSize: 4096,
-  // Codificação dos textos do banco. Precisa ser um charset do Firebird (WIN1252,
-  // ISO8859_1, UTF8, NONE) — NÃO "latin1". A Big Tricot usa WIN1252 (acentos ç/ã/é).
-  // Se os acentos ainda vierem quebrados, tente "ISO8859_1" no config.
-  encoding: CONFIG.firebird.encoding || "WIN1252",
+  // OBS: a opção "encoding" do node-firebird é IGNORADA na leitura (a lib sempre
+  // decodifica como UTF-8). A correção de acentos é feita acima, no patch do
+  // XdrReader (latin1). Não precisa colocar nada de encoding no config.json.
 };
 
 function log(...a) { console.log(new Date().toISOString(), ...a); }
@@ -199,7 +219,13 @@ function hexCor(v) {
 }
 async function rodadaProdutos(db, estado) {
   if (CONFIG.produtos && CONFIG.produtos.ativo === false) return;
-  const desde = estado.ultimaAltProd || (CONFIG.produtos && CONFIG.produtos.desde ? `${CONFIG.produtos.desde} 00:00:00` : "1900-01-01 00:00:00");
+  // Correção de acentos (v2): força UMA re-leitura completa dos produtos pra
+  // regravar com os acentos certos. Depois o incremental normal volta sozinho —
+  // o usuário não precisa apagar o state.json.
+  const inicio = (CONFIG.produtos && CONFIG.produtos.desde ? `${CONFIG.produtos.desde} 00:00:00` : "1900-01-01 00:00:00");
+  const repuxarTudo = !estado.acentosV2;
+  const desde = (!repuxarTudo && estado.ultimaAltProd) ? estado.ultimaAltProd : inicio;
+  if (repuxarTudo) log("produtos: re-puxando TUDO uma vez p/ corrigir acentos…");
   const SQL_PROD =
     (CONFIG.produtos && CONFIG.produtos.sql) ||
     `SELECT A.CODIGO, A.NOME, A.UNIDADE, A.PRECO_VENDA, A.PRECO_VENDA_LJ, A.INATIVO,
@@ -263,7 +289,7 @@ async function rodadaProdutos(db, estado) {
     const ok = await enviarProdutos(lote.slice(i, i + 200));
     if (ok) enviados += Math.min(200, lote.length - i); else todasOk = false;
   }
-  if (todasOk && maiorAlt) salvarEstado({ ...lerEstado(), ultimaAltProd: maiorAlt });
+  if (todasOk && maiorAlt) salvarEstado({ ...lerEstado(), ultimaAltProd: maiorAlt, acentosV2: true });
   log(`produtos: ${enviados}/${lote.length} enviado(s).` + (todasOk ? ` última alteração: ${maiorAlt}` : " (envio incompleto — tentarei de novo na próxima rodada)"));
 }
 
