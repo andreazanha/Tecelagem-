@@ -293,25 +293,54 @@ export async function gerarCatalogoSite(env: Env): Promise<{
     return t.id;
   };
 
-  const produtos = prods.map((p) => {
+  // O código do ERP diz o TIPO pela letra final: 8019A=Almofada, 8019C=Capa,
+  // 8019P=Peseira/Manta. O número base (8019) é o MODELO. No site a gente mostra
+  // UM produto por modelo (ex.: "GENEBRA") e, DENTRO dele, um grupo por tipo
+  // (Almofada/Capa/Peseira-Manta), cada grupo com seus tamanhos. As cores ficam
+  // no nível do produto (união das variações).
+  const TIPO_NOME: Record<string, string> = { A: "Almofada", C: "Capa", P: "Peseira / Manta", K: "Kit", M: "Manta" };
+  const TIPO_ORDEM: Record<string, number> = { A: 0, C: 1, P: 2, M: 3, K: 4 };
+  const baseCod = (ref: string) => (ref || "").replace(/[A-Za-z]+$/, "") || ref || "";
+  const tipoLetra = (ref: string) => { const m = (ref || "").match(/([A-Za-z])$/); return m ? m[1].toUpperCase() : ""; };
+  const nomeModelo = (nome: string) => (nome || "").replace(/^\s*(ALMOFADAS?|CAPAS?|PESEIRAS?|MANTAS?|KITS?|PESEIRA E MANTA)\s+/i, "").trim() || nome || "";
+
+  type Linha = { id: string; cod: string; id_tamanho: string; sul: number; norte: number };
+  type Variacao = { ref: string; base: string; letra: string; nomeModelo: string; foto: string; cores: { id_cor: string; oculta: boolean }[]; linhas: Linha[] };
+  const variacoes: Variacao[] = prods.map((p) => {
     const cores = ((): { nome?: string; hex?: string }[] => { try { return JSON.parse(p.cores || "[]"); } catch { return []; } })();
     const tamanhos = ((): string[] => { try { return JSON.parse(p.tamanhos || "[]"); } catch { return []; } })();
-    const base = Number(p.preco_varejo) || 0;
-    const sul = Math.round(base * 100) / 100;
-    const norte = Math.round(base * (1 + markupNorte / 100) * 100) / 100;
+    const pbase = Number(p.preco_varejo) || 0;
+    const sul = Math.round(pbase * 100) / 100;
+    const norte = Math.round(pbase * (1 + markupNorte / 100) * 100) / 100;
     const prodCores = cores.map((co) => ({ id_cor: idCor(co.nome || "", co.hex || "", p.grupo || ""), oculta: false }));
     const linhas = (tamanhos.length ? tamanhos : [""]).map((t) => ({ id: `${p.ref}-${idTam(t)}`, cod: p.ref, id_tamanho: idTam(t), sul, norte }));
+    return { ref: p.ref, base: baseCod(p.ref), letra: tipoLetra(p.ref), nomeModelo: nomeModelo(p.nome || p.ref), foto: p.classe && p.ref ? `${fotosBase}/${encodeURIComponent(p.classe)}/${encodeURIComponent(p.ref)}.jpg` : "", cores: prodCores, linhas };
+  });
+
+  // agrupa as variações (A/C/P) por modelo (código base)
+  const porModelo = new Map<string, { base: string; nome: string; foto: string; cores: Map<string, { id_cor: string; oculta: boolean }>; vars: Variacao[] }>();
+  for (const v of variacoes) {
+    let g = porModelo.get(v.base);
+    if (!g) { g = { base: v.base, nome: v.nomeModelo, foto: "", cores: new Map(), vars: [] }; porModelo.set(v.base, g); }
+    g.vars.push(v);
+    if (v.nomeModelo && (!g.nome || v.nomeModelo.length < g.nome.length)) g.nome = v.nomeModelo;
+    if (!g.foto && v.foto) g.foto = v.foto;
+    for (const c of v.cores) if (!g.cores.has(c.id_cor)) g.cores.set(c.id_cor, c);
+  }
+
+  const produtos = [...porModelo.values()].map((g) => {
+    const vars = g.vars.slice().sort((a, b) => (TIPO_ORDEM[a.letra] ?? 9) - (TIPO_ORDEM[b.letra] ?? 9) || a.ref.localeCompare(b.ref));
     return {
-      id: p.ref,
-      nome: p.nome || p.ref,
+      id: g.base,
+      nome: g.nome,
       tipo: "avulso",
       linha: "padrao",
       composicao: "",
       pronta_entrega: false,
       lancamento: false,
-      foto: p.classe && p.ref ? `${fotosBase}/${encodeURIComponent(p.classe)}/${encodeURIComponent(p.ref)}.jpg` : "",
-      cores: prodCores,
-      grupos: [{ id: `${p.ref}-g`, titulo: "", linhas }],
+      foto: g.foto,
+      cores: [...g.cores.values()],
+      grupos: vars.map((v) => ({ id: `${g.base}-${v.letra || "x"}`, titulo: TIPO_NOME[v.letra] || "", linhas: v.linhas })),
     };
   });
 
