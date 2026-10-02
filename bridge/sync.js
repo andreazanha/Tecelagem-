@@ -17,8 +17,21 @@ const Firebird = require("node-firebird");
 // WIN1252/latin1 — lido como UTF-8 vira "AC�CIA", "BEG�NIA". Aqui trocamos a
 // decodificação para latin1 (igual ao WIN1252 nos acentos do português), sem
 // precisar instalar nada nem mexer no config.json.
+function carregarSerialize() {
+  // Acha o módulo "serialize" do node-firebird onde quer que o npm tenha posto.
+  // Tenta os caminhos conhecidos e, se falhar, procura ao lado do index.js.
+  const tentativas = ["node-firebird/lib/serialize", "node-firebird/serialize"];
+  for (const t of tentativas) { try { return require(t); } catch { /* tenta o próximo */ } }
+  try {
+    const dir = path.dirname(require.resolve("node-firebird")); // .../node-firebird/lib
+    for (const f of ["serialize.js", "lib/serialize.js", path.join("..", "serialize.js")]) {
+      try { return require(path.join(dir, f)); } catch { /* tenta o próximo */ }
+    }
+  } catch { /* ignora */ }
+  return null;
+}
 try {
-  const serialize = require("node-firebird/lib/serialize");
+  const serialize = carregarSerialize();
   const XR = serialize && serialize.XdrReader;
   if (XR && XR.prototype && typeof XR.prototype.readText === "function") {
     const _readText = XR.prototype.readText;
