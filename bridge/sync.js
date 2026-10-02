@@ -18,14 +18,27 @@ const Firebird = require("node-firebird");
 // decodificação para latin1 (igual ao WIN1252 nos acentos do português), sem
 // precisar instalar nada nem mexer no config.json.
 function carregarSerialize() {
-  // Acha o módulo "serialize" do node-firebird onde quer que o npm tenha posto.
-  // Tenta os caminhos conhecidos e, se falhar, procura ao lado do index.js.
-  const tentativas = ["node-firebird/lib/serialize", "node-firebird/serialize"];
-  for (const t of tentativas) { try { return require(t); } catch { /* tenta o próximo */ } }
+  // 1) caminhos conhecidos (funciona na maioria das instalações)
+  for (const t of ["node-firebird/lib/serialize", "node-firebird/serialize"]) {
+    try { const m = require(t); if (m && m.XdrReader) return m; } catch { /* tenta o próximo */ }
+  }
+  // 2) à prova de bala: varre a pasta do pacote node-firebird atrás do arquivo
+  //    que exporta o XdrReader, não importa o nome/subpasta/versão.
   try {
-    const dir = path.dirname(require.resolve("node-firebird")); // .../node-firebird/lib
-    for (const f of ["serialize.js", "lib/serialize.js", path.join("..", "serialize.js")]) {
-      try { return require(path.join(dir, f)); } catch { /* tenta o próximo */ }
+    let raiz = path.dirname(require.resolve("node-firebird")); // .../node-firebird/lib
+    for (let i = 0; i < 4 && !fs.existsSync(path.join(raiz, "package.json")); i++) raiz = path.dirname(raiz);
+    const pilha = [raiz]; const vistos = new Set();
+    while (pilha.length) {
+      const d = pilha.pop(); if (vistos.has(d)) continue; vistos.add(d);
+      let itens = []; try { itens = fs.readdirSync(d, { withFileTypes: true }); } catch { continue; }
+      for (const it of itens) {
+        const full = path.join(d, it.name);
+        if (it.isDirectory()) { if (it.name !== "node_modules") pilha.push(full); continue; }
+        if (!it.isFile() || !it.name.endsWith(".js")) continue;
+        let src = ""; try { src = fs.readFileSync(full, "utf8"); } catch { continue; }
+        if (src.indexOf("XdrReader") === -1 || src.indexOf("readText") === -1) continue;
+        try { const m = require(full); if (m && m.XdrReader && m.XdrReader.prototype && m.XdrReader.prototype.readText) return m; } catch { /* tenta o próximo */ }
+      }
     }
   } catch { /* ignora */ }
   return null;
@@ -38,7 +51,8 @@ try {
     XR.prototype.readText = function (len, _enc) { return _readText.call(this, len, "latin1"); };
     log0("correção de acentos aplicada (latin1)");
   } else {
-    log0("! não achei XdrReader p/ corrigir acentos — nomes podem vir quebrados");
+    let onde = "?"; try { onde = require.resolve("node-firebird"); } catch (e) { onde = "node-firebird não encontrado: " + e.message; }
+    log0("! não achei XdrReader p/ corrigir acentos — nomes podem vir quebrados. node-firebird em:", onde);
   }
 } catch (e) {
   log0("! não consegui aplicar correção de acentos:", e.message);
