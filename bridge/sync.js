@@ -28,9 +28,10 @@ const fbOpts = {
   lowercase_keys: false,
   role: null,
   pageSize: 4096,
-  // Codificação dos textos do banco. O Firebird da Big Tricot é Latin-1 (não UTF-8),
-  // então sem isso os acentos vêm quebrados (ç, ã, é viram "�"). Ajustável no config.
-  encoding: CONFIG.firebird.encoding || "latin1",
+  // Codificação dos textos do banco. Precisa ser um charset do Firebird (WIN1252,
+  // ISO8859_1, UTF8, NONE) — NÃO "latin1". A Big Tricot usa WIN1252 (acentos ç/ã/é).
+  // Se os acentos ainda vierem quebrados, tente "ISO8859_1" no config.
+  encoding: CONFIG.firebird.encoding || "WIN1252",
 };
 
 function log(...a) { console.log(new Date().toISOString(), ...a); }

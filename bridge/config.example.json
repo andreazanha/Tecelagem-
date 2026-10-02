@@ -4,7 +4,9 @@
     "port": 3050,
     "database": "C:\\Textil\\Empresas\\FABRICA.MDB",
     "user": "SYSDBA",
-    "password": "COLOQUE_A_SENHA_DO_FIREBIRD_AQUI"
+    "password": "COLOQUE_A_SENHA_DO_FIREBIRD_AQUI",
+    "_ajuda_encoding": "Charset do Firebird para os acentos (ç, ã, é). A Big Tricot usa WIN1252. Se os acentos vierem quebrados (ALMOFADA AC�CIA), troque por ISO8859_1. NÃO use 'latin1' — não é um nome que o Firebird reconhece.",
+    "encoding": "WIN1252"
   },
   "api": {
     "base": "https://rolagem-de-fase.andre-sellmac.workers.dev",
