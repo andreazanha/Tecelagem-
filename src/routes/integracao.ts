@@ -360,8 +360,13 @@ integracao.get("/catalogo-preview", async (c) => {
     linhas_ocultas: {},
     atualizado_em: Date.now(),
   };
+  // Escapa "<" (evita fechar o <script> sem querer) e os separadores de linha
+  // U+2028/U+2029 (válidos em JSON, inválidos em string JS). Sem regex literal
+  // pra não confundir o empacotador.
   const json = JSON.stringify(data)
-    .replace(/</g, "\\u003c").replace(/ /g, "\\u2028").replace(/ /g, "\\u2029");
+    .split("<").join("\\u003c")
+    .split(" ").join("\\u2028")
+    .split(" ").join("\\u2029");
   const inject = `<script>window.__PREVIEW_DATA__=${json};</script>`;
   const html = SITE_ONLINE_HTML.includes("</head>")
     ? SITE_ONLINE_HTML.replace("</head>", inject + "</head>")
