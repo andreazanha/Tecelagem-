@@ -1236,6 +1236,11 @@ export const api = {
   // Prévia do catálogo no formato do site (gerado do ERP) — não grava no site
   catalogoSitePreview: () =>
     fetch("/api/integracao/catalogo-site").then((r) => j<{ banco_cores: unknown[]; banco_tamanhos: unknown[]; produtos: unknown[]; estoque: unknown; _resumo: { produtos: number; cores: number; tamanhos: number } }>(r)),
+  // Firebase do site: testar conexão e publicar (teste/main)
+  firebaseCheck: () =>
+    fetch("/api/integracao/site/firebase-check").then((r) => j<{ ok: boolean; existe_main?: boolean; campos?: string[]; produtos_no_main?: number; erro?: string }>(r)),
+  publicarSite: (alvo: "teste" | "main") =>
+    jsonPost(`/api/integracao/site/publicar?alvo=${alvo}`, {}).then((r) => j<{ ok?: boolean; alvo: string; resumo?: { produtos: number; cores: number; tamanhos: number }; erro?: string }>(r)),
   definirClienteCard: (pedido_id: string, parte: string, cliente: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/cliente`, {
       method: "POST",

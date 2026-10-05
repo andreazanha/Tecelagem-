@@ -96,6 +96,21 @@ export function Catalogo() {
             alert(`Prévia gerada: ${r._resumo.produtos} produto(s), ${r._resumo.cores} cor(es), ${r._resumo.tamanhos} tamanho(s). Arquivo baixado — me envie pra eu validar.`);
           } catch (e) { alert((e as Error).message); }
         }}>⬇️ Prévia p/ site</button>
+        <button className="btn btn-soft" title="Testa se a chave do Firebase (FIREBASE_SA) está configurada e consegue ler o site" onClick={async () => {
+          try {
+            const r = await api.firebaseCheck();
+            if (!r.ok) { alert("❌ Firebase não conectou:\n\n" + (r.erro || "erro desconhecido") + "\n\nConfira se o segredo FIREBASE_SA está salvo no Cloudflare."); return; }
+            alert("✅ Firebase conectado!\n\n" + (r.existe_main ? `O catálogo do site (catalogo/main) existe — ${r.produtos_no_main || 0} produto(s) hoje.` : "O catálogo do site ainda não existe (catalogo/main vazio)."));
+          } catch (e) { alert((e as Error).message); }
+        }}>🔌 Testar Firebase</button>
+        <button className="btn btn-soft" title="Escreve os produtos do ERP na ÁREA DE TESTE do site (catalogo/teste). O cliente NÃO vê." onClick={async () => {
+          if (!confirm("Enviar os produtos do ERP pra ÁREA DE TESTE do site?\n\nIsso grava em catalogo/teste — o que o cliente vê (catalogo/main) NÃO muda.")) return;
+          try {
+            const r = await api.publicarSite("teste");
+            if (!r.ok) { alert("❌ Não enviou:\n\n" + (r.erro || "erro") + "\n\n(Se falar de FIREBASE_SA, confira o segredo no Cloudflare.)"); return; }
+            alert(`✅ Enviado pra área de teste!\n\n${r.resumo?.produtos || 0} produto(s), ${r.resumo?.cores || 0} cor(es), ${r.resumo?.tamanhos || 0} tamanho(s).\n\nAgora me avisa aqui que eu ligo o modo prévia no site pra você ver.`);
+          } catch (e) { alert((e as Error).message); }
+        }}>📤 Enviar p/ teste do site</button>
         <span className="seg-group" style={{ marginLeft: "auto" }}>
           <button type="button" className={"seg" + (vista === "modelo" ? " seg-on" : "")} onClick={() => setVista("modelo")}>Por modelo</button>
           <button type="button" className={"seg" + (vista === "grade" ? " seg-on" : "")} onClick={() => setVista("grade")}>Grade</button>
