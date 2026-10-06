@@ -314,6 +314,9 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   const cfg = async (k: string) => ((await env.DB.prepare("SELECT valor FROM config WHERE chave=?").bind(k).first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
   const fotosBase = ((await cfg("erp_fotos_base")) || "https://bigtricot.syntechsistemas.com").replace(/\/+$/, "");
   const markupNorte = Number(await cfg("catalogo_markup_norte_pct")) || 10;
+  // Qual preço o catálogo mostra: "atacado" (lojista, padrão) ou "varejo" (consumidor).
+  // Os dois vêm por tamanho do ERP (TAMANHO_PROD.PRECO_VENDA / PRECO_VENDA_LJ).
+  const campoPreco = (await cfg("catalogo_preco")) === "varejo" ? "varejo" : "atacado";
 
   const { results: prods } = await env.DB.prepare(
     "SELECT ref, nome, classe, grupo, preco_varejo, preco_atacado, estoque_geral, cores, tamanhos FROM erp_produtos WHERE COALESCE(inativo,0)=0 ORDER BY nome"
@@ -363,14 +366,24 @@ export async function gerarCatalogoSite(env: Env): Promise<{
 
   type Linha = { id: string; cod: string; id_tamanho: string; sul: number; norte: number };
   type Variacao = { ref: string; base: string; letra: string; nomeModelo: string; grupo: string; foto: string; cores: { id_cor: string; oculta: boolean }[]; linhas: Linha[] };
+  // tamanho pode vir como texto antigo ("45X45") ou objeto novo com preço por tamanho.
+  type TamIn = { medida: string; tamanho?: string; atacado?: number; varejo?: number };
+  const normTam = (t: unknown): TamIn => (typeof t === "string"
+    ? { medida: t }
+    : { medida: String((t as TamIn)?.medida || (t as TamIn)?.tamanho || "").trim(), tamanho: (t as TamIn)?.tamanho, atacado: Number((t as TamIn)?.atacado) || 0, varejo: Number((t as TamIn)?.varejo) || 0 });
   const variacoes: Variacao[] = prods.map((p) => {
     const cores = ((): { nome?: string; hex?: string }[] => { try { return JSON.parse(p.cores || "[]"); } catch { return []; } })();
-    const tamanhos = ((): string[] => { try { return JSON.parse(p.tamanhos || "[]"); } catch { return []; } })();
-    const pbase = Number(p.preco_varejo) || 0;
-    const sul = Math.round(pbase * 100) / 100;
-    const norte = Math.round(pbase * (1 + markupNorte / 100) * 100) / 100;
+    const tamanhos = ((): TamIn[] => { try { const a = JSON.parse(p.tamanhos || "[]"); return (Array.isArray(a) ? a : []).map(normTam).filter((x) => x.medida); } catch { return []; } })();
+    // preço de fallback (nível do produto) — usado só se o tamanho não trouxer preço.
+    const fb = Number(campoPreco === "varejo" ? p.preco_varejo : p.preco_atacado) || 0;
     const prodCores = cores.map((co) => ({ id_cor: idCor(co.nome || "", co.hex || "", p.grupo || ""), oculta: false }));
-    const linhas = (tamanhos.length ? tamanhos : [""]).map((t) => ({ id: `${p.ref}-${idTam(t)}`, cod: p.ref, id_tamanho: idTam(t), sul, norte }));
+    const linhas = (tamanhos.length ? tamanhos : [{ medida: "" } as TamIn]).map((t) => {
+      const porTam = Number(campoPreco === "varejo" ? t.varejo : t.atacado) || 0;
+      const base = porTam || fb; // preço por tamanho; cai no do produto se faltar
+      const sul = Math.round(base * 100) / 100;
+      const norte = Math.round(base * (1 + markupNorte / 100) * 100) / 100;
+      return { id: `${p.ref}-${idTam(t.medida)}`, cod: p.ref, id_tamanho: idTam(t.medida), sul, norte };
+    });
     return { ref: p.ref, base: baseCod(p.ref), letra: tipoLetra(p.ref), nomeModelo: nomeModelo(p.nome || p.ref), grupo: p.grupo || "", foto: p.classe && p.ref ? `${fotosBase}/${encodeURIComponent(p.classe)}/${encodeURIComponent(p.ref)}.jpg` : "", cores: prodCores, linhas };
   });
 

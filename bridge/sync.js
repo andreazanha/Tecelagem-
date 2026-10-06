@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-06.1";
+const PONTE_VERSAO = "2026-10-06.2";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -280,9 +280,9 @@ async function rodadaProdutos(db, estado) {
   // regravar com os acentos certos. Depois o incremental normal volta sozinho —
   // o usuário não precisa apagar o state.json.
   const inicio = (CONFIG.produtos && CONFIG.produtos.desde ? `${CONFIG.produtos.desde} 00:00:00` : "1900-01-01 00:00:00");
-  const repuxarTudo = !estado.acentosV2;
+  const repuxarTudo = !estado.acentosV2 || !estado.precosV1;
   const desde = (!repuxarTudo && estado.ultimaAltProd) ? estado.ultimaAltProd : inicio;
-  if (repuxarTudo) log("produtos: re-puxando TUDO uma vez p/ corrigir acentos…");
+  if (repuxarTudo) log("produtos: re-puxando TUDO uma vez (acentos + preços por tamanho)…");
   const SQL_PROD =
     (CONFIG.produtos && CONFIG.produtos.sql) ||
     `SELECT A.CODIGO, A.NOME, A.UNIDADE, A.PRECO_VENDA, A.PRECO_VENDA_LJ, A.INATIVO,
@@ -310,13 +310,27 @@ async function rodadaProdutos(db, estado) {
       const cr = await query(db, "SELECT C.NUMERO, C.NOME, C.COR_HTML FROM CORES_PROD CP INNER JOIN CORES C ON C.NUMERO = CP.COD_COR WHERE CP.COD_PROD = ?", [ref]);
       cores = cr.map((r) => ({ numero: r.NUMERO, nome: String(r.NOME || "").trim(), hex: hexCor(r.COR_HTML) }));
     } catch { /* sem cores */ }
-    // tamanhos do produto — prefere a MEDIDA real (DETALHE, ex.: 45X45); cai no código se não houver
+    // tamanhos do produto — COM preço por tamanho (a Big Tricot usa "Preços
+    // Diferenciados": cada tamanho tem seu preço). Em TAMANHO_PROD:
+    //   PRECO_VENDA = atacado ; PRECO_VENDA_LJ = varejo (loja).
+    // Prefere a MEDIDA real (DETALHE, ex.: 45X45); cai no código do tamanho se não houver.
     let tamanhos = [];
     try {
       let tm;
-      try { tm = await query(db, "SELECT TAMANHO, DETALHE FROM TAMANHO_PROD WHERE COD_PROD = ?", [ref]); }
-      catch { tm = await query(db, "SELECT TAMANHO FROM TAMANHO_PROD WHERE COD_PROD = ?", [ref]); }
-      tamanhos = tm.map((r) => String((r.DETALHE != null && String(r.DETALHE).trim()) || r.TAMANHO || "").trim()).filter(Boolean);
+      try { tm = await query(db, "SELECT TAMANHO, DETALHE, PRECO_VENDA, PRECO_VENDA_LJ FROM TAMANHO_PROD WHERE COD_PROD = ? ORDER BY AUTOINC", [ref]); }
+      catch {
+        try { tm = await query(db, "SELECT TAMANHO, DETALHE FROM TAMANHO_PROD WHERE COD_PROD = ?", [ref]); }
+        catch { tm = await query(db, "SELECT TAMANHO FROM TAMANHO_PROD WHERE COD_PROD = ?", [ref]); }
+      }
+      tamanhos = tm.map((r) => {
+        const medida = String((r.DETALHE != null && String(r.DETALHE).trim()) || r.TAMANHO || "").trim();
+        return {
+          medida,
+          tamanho: String(r.TAMANHO || "").trim(),
+          atacado: Number(r.PRECO_VENDA) || 0,
+          varejo: Number(r.PRECO_VENDA_LJ) || 0,
+        };
+      }).filter((x) => x.medida);
     } catch { /* sem tamanhos */ }
     const promo = String(p.PROMOCAO || "") === "S" && p.DESCONTO_AUTO != null;
     const desc = promo ? Number(p.DESCONTO_AUTO) || 0 : 0;
@@ -346,7 +360,7 @@ async function rodadaProdutos(db, estado) {
     const ok = await enviarProdutos(lote.slice(i, i + 200));
     if (ok) enviados += Math.min(200, lote.length - i); else todasOk = false;
   }
-  if (todasOk && maiorAlt) salvarEstado({ ...lerEstado(), ultimaAltProd: maiorAlt, acentosV2: true });
+  if (todasOk && maiorAlt) salvarEstado({ ...lerEstado(), ultimaAltProd: maiorAlt, acentosV2: true, precosV1: true });
   log(`produtos: ${enviados}/${lote.length} enviado(s).` + (todasOk ? ` última alteração: ${maiorAlt}` : " (envio incompleto — tentarei de novo na próxima rodada)"));
 }
 
