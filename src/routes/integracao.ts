@@ -307,8 +307,21 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   const tipoLetra = (ref: string) => { const m = (ref || "").match(/([A-Za-z])$/); return m ? m[1].toUpperCase() : ""; };
   const nomeModelo = (nome: string) => (nome || "").replace(/^\s*(ALMOFADAS?|CAPAS?|PESEIRAS?|MANTAS?|KITS?|PESEIRA E MANTA)\s+/i, "").trim() || nome || "";
 
+  // Mapeia o GRUPO do Syntech para a SEÇÃO do site. O site usa o campo "linha"
+  // (polisoft/soft/natal/padrao) + a flag "pronta_entrega". Edição Limitada é
+  // uma seção separada (edicao_limitada) — por ora cai em padrao, marcada.
+  const secaoDoGrupo = (grupo: string): { linha: string; pronta_entrega: boolean; edicao_limitada: boolean } => {
+    const g = (grupo || "").toLowerCase();
+    if (g.includes("polisoft")) return { linha: "polisoft", pronta_entrega: false, edicao_limitada: false };
+    if (g.includes("soft")) return { linha: "soft", pronta_entrega: false, edicao_limitada: false };
+    if (g.includes("natal")) return { linha: "natal", pronta_entrega: false, edicao_limitada: false };
+    if (g.includes("pronta")) return { linha: "padrao", pronta_entrega: true, edicao_limitada: false };
+    if (g.includes("limitad") || g.includes("edic")) return { linha: "padrao", pronta_entrega: false, edicao_limitada: true };
+    return { linha: "padrao", pronta_entrega: false, edicao_limitada: false };
+  };
+
   type Linha = { id: string; cod: string; id_tamanho: string; sul: number; norte: number };
-  type Variacao = { ref: string; base: string; letra: string; nomeModelo: string; foto: string; cores: { id_cor: string; oculta: boolean }[]; linhas: Linha[] };
+  type Variacao = { ref: string; base: string; letra: string; nomeModelo: string; grupo: string; foto: string; cores: { id_cor: string; oculta: boolean }[]; linhas: Linha[] };
   const variacoes: Variacao[] = prods.map((p) => {
     const cores = ((): { nome?: string; hex?: string }[] => { try { return JSON.parse(p.cores || "[]"); } catch { return []; } })();
     const tamanhos = ((): string[] => { try { return JSON.parse(p.tamanhos || "[]"); } catch { return []; } })();
@@ -317,15 +330,16 @@ export async function gerarCatalogoSite(env: Env): Promise<{
     const norte = Math.round(pbase * (1 + markupNorte / 100) * 100) / 100;
     const prodCores = cores.map((co) => ({ id_cor: idCor(co.nome || "", co.hex || "", p.grupo || ""), oculta: false }));
     const linhas = (tamanhos.length ? tamanhos : [""]).map((t) => ({ id: `${p.ref}-${idTam(t)}`, cod: p.ref, id_tamanho: idTam(t), sul, norte }));
-    return { ref: p.ref, base: baseCod(p.ref), letra: tipoLetra(p.ref), nomeModelo: nomeModelo(p.nome || p.ref), foto: p.classe && p.ref ? `${fotosBase}/${encodeURIComponent(p.classe)}/${encodeURIComponent(p.ref)}.jpg` : "", cores: prodCores, linhas };
+    return { ref: p.ref, base: baseCod(p.ref), letra: tipoLetra(p.ref), nomeModelo: nomeModelo(p.nome || p.ref), grupo: p.grupo || "", foto: p.classe && p.ref ? `${fotosBase}/${encodeURIComponent(p.classe)}/${encodeURIComponent(p.ref)}.jpg` : "", cores: prodCores, linhas };
   });
 
   // agrupa as variações (A/C/P) por modelo (código base)
-  const porModelo = new Map<string, { base: string; nome: string; foto: string; cores: Map<string, { id_cor: string; oculta: boolean }>; vars: Variacao[] }>();
+  const porModelo = new Map<string, { base: string; nome: string; grupo: string; foto: string; cores: Map<string, { id_cor: string; oculta: boolean }>; vars: Variacao[] }>();
   for (const v of variacoes) {
     let g = porModelo.get(v.base);
-    if (!g) { g = { base: v.base, nome: v.nomeModelo, foto: "", cores: new Map(), vars: [] }; porModelo.set(v.base, g); }
+    if (!g) { g = { base: v.base, nome: v.nomeModelo, grupo: v.grupo, foto: "", cores: new Map(), vars: [] }; porModelo.set(v.base, g); }
     g.vars.push(v);
+    if (!g.grupo && v.grupo) g.grupo = v.grupo;
     if (v.nomeModelo && (!g.nome || v.nomeModelo.length < g.nome.length)) g.nome = v.nomeModelo;
     if (!g.foto && v.foto) g.foto = v.foto;
     for (const c of v.cores) if (!g.cores.has(c.id_cor)) g.cores.set(c.id_cor, c);
@@ -333,13 +347,15 @@ export async function gerarCatalogoSite(env: Env): Promise<{
 
   const produtos = [...porModelo.values()].map((g) => {
     const vars = g.vars.slice().sort((a, b) => (TIPO_ORDEM[a.letra] ?? 9) - (TIPO_ORDEM[b.letra] ?? 9) || a.ref.localeCompare(b.ref));
+    const sec = secaoDoGrupo(g.grupo);
     return {
       id: g.base,
       nome: g.nome,
+      linha: sec.linha,
+      pronta_entrega: sec.pronta_entrega,
+      _edicao_limitada: sec.edicao_limitada,
+      composicao: "100% Poliéster",
       tipo: "avulso",
-      linha: "padrao",
-      composicao: "",
-      pronta_entrega: false,
       lancamento: false,
       foto: g.foto,
       video: "",
