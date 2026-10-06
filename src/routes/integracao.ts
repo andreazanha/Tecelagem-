@@ -447,7 +447,10 @@ integracao.get("/site-teste", async (c) => {
     }
   }
   const json = JSON.stringify(data).split("<").join("\\u003c").split("\u2028").join("\\u2028").split("\u2029").join("\\u2029");
-  const inject = `<script>window.__PREVIEW_DATA__=${json};</script>`;
+  // Diagnóstico no TÍTULO da aba: se a injeção funcionar, o título começa com
+  // "PREVIEW_OK:<n> prods". Se der erro de execução, "PREVIEW_ERRO: ...". Se o
+  // título continuar o normal do site, o <script> injetado teve erro de sintaxe.
+  const inject = `<script>try{window.__PREVIEW_DATA__=${json};try{document.title="PREVIEW_OK:"+((window.__PREVIEW_DATA__&&window.__PREVIEW_DATA__.produtos||[]).length)+" prods";}catch(_e){}}catch(e){try{document.title="PREVIEW_ERRO: "+(e&&e.message||e);}catch(_e){}}</script>`;
   const html = SITE_FULL_HTML.includes("</head>") ? SITE_FULL_HTML.replace("</head>", inject + "</head>") : inject + SITE_FULL_HTML;
   return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 });
