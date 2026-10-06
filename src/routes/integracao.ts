@@ -15,6 +15,7 @@ import { consumoDoPedido, baixarPorPedido } from "../estoque-baixa";
 import { SYNC_JS, SYNC_VERSAO } from "../bridgeScript";
 import { SITE_ONLINE_HTML } from "../siteTemplate";
 import { SITE_FULL_HTML } from "../siteTemplateFull";
+import { SITE_LOJA_HTML } from "../siteLoja";
 import { lerDocumento, gravarDocumento } from "../firestore";
 
 export const integracao = new Hono<{ Bindings: Env }>();
@@ -387,7 +388,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   };
 
   type Linha = { id: string; cod: string; id_tamanho: string; sul: number; norte: number };
-  type Variacao = { ref: string; base: string; letra: string; nomeModelo: string; grupo: string; foto: string; cores: { id_cor: string; oculta: boolean }[]; linhas: Linha[] };
+  type Variacao = { ref: string; base: string; letra: string; nomeModelo: string; grupo: string; foto: string; estoque: number; cores: { id_cor: string; oculta: boolean }[]; linhas: Linha[] };
   // tamanho pode vir como texto antigo ("45X45") ou objeto novo com preço por tamanho.
   type TamIn = { medida: string; tamanho?: string; atacado?: number; varejo?: number };
   const normTam = (t: unknown): TamIn => (typeof t === "string"
@@ -406,7 +407,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       const norte = Math.round(base * (1 + markupNorte / 100) * 100) / 100;
       return { id: `${p.ref}-${idTam(t.medida)}`, cod: p.ref, id_tamanho: idTam(t.medida), sul, norte };
     });
-    return { ref: p.ref, base: baseCod(p.ref), letra: tipoLetra(p.ref), nomeModelo: nomeModelo(p.nome || p.ref), grupo: p.grupo || "", foto: p.classe && p.ref ? `${fotosBase}/${encodeURIComponent(p.classe)}/${encodeURIComponent(p.ref)}.jpg` : "", cores: prodCores, linhas };
+    return { ref: p.ref, base: baseCod(p.ref), letra: tipoLetra(p.ref), nomeModelo: nomeModelo(p.nome || p.ref), grupo: p.grupo || "", foto: p.classe && p.ref ? `${fotosBase}/${encodeURIComponent(p.classe)}/${encodeURIComponent(p.ref)}.jpg` : "", estoque: Number(p.estoque_geral) || 0, cores: prodCores, linhas };
   });
 
   // agrupa as variações (A/C/P) por modelo (código base)
@@ -438,8 +439,9 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       // blocos: textos descritivos por produto (o site faz Object.keys(blocos)).
       // Vazio aqui — pode vir a ser preenchido depois.
       blocos: {},
+      estoque_geral: vars.reduce((s, v) => s + (Number(v.estoque) || 0), 0),
       cores: [...g.cores.values()],
-      grupos: vars.map((v) => ({ id: `${g.base}-${v.letra || "x"}`, titulo: TIPO_NOME[v.letra] || "", linhas: v.linhas })),
+      grupos: vars.map((v) => ({ id: `${g.base}-${v.letra || "x"}`, titulo: TIPO_NOME[v.letra] || "", ref: v.ref, estoque: v.estoque, linhas: v.linhas })),
     };
   });
 
@@ -536,6 +538,28 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
 integracao.get("/catalogo-site", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   return c.json(await gerarCatalogoSite(c.env));
+});
+
+// ── LOJA B2B (catálogo NOVO, feito do zero) ──────────────────────────────────
+// Página própria (site/loja.html), 100% dos dados do Syntech: produtos, preços
+// por tamanho, estoque, cores, seções. As fotos vêm casadas do Cloudinary (o
+// Syntech guarda foto no servidor interno, que o cliente não acessa pela net).
+// Aberta por enquanto (prévia). Login/carrinho/pedido vêm nas próximas fases.
+integracao.get("/loja", async (c) => {
+  let dados: { produtos: unknown[]; banco_cores: unknown; banco_tamanhos: unknown; estoque: unknown };
+  try {
+    const doc = await gerarDocSite(c.env);
+    const normais = Array.isArray(doc.produtos) ? (doc.produtos as unknown[]) : [];
+    const elDoc = doc.edicao_limitada as { produtos?: unknown[] } | undefined;
+    const limitada = elDoc && Array.isArray(elDoc.produtos) ? elDoc.produtos : [];
+    dados = { produtos: [...normais, ...limitada], banco_cores: doc.banco_cores, banco_tamanhos: doc.banco_tamanhos, estoque: doc.estoque };
+  } catch (e) {
+    return new Response("Não consegui montar a loja:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
+  const json = JSON.stringify(dados).split("<").join("\\u003c").split("\u2028").join("\\u2028").split("\u2029").join("\\u2029");
+  const inject = `<script>window.__DADOS__=${json};</script>`;
+  const html = SITE_LOJA_HTML.includes("</head>") ? SITE_LOJA_HTML.replace("</head>", inject + "</head>") : inject + SITE_LOJA_HTML;
+  return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 });
 
 // TESTE DE CONEXÃO com o Firebase do site. Lê catalogo/main e devolve os campos

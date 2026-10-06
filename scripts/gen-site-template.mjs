@@ -20,3 +20,4 @@ function gerar(arquivoHtml, arquivoTs, nomeConst) {
 
 gerar("catalogo-online.html", "siteTemplate.ts", "SITE_ONLINE_HTML");
 gerar("catalogo-full.html", "siteTemplateFull.ts", "SITE_FULL_HTML");
+gerar("loja.html", "siteLoja.ts", "SITE_LOJA_HTML");

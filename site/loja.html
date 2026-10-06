@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Big Tricot · Catálogo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f3ede3; --card:#fffdf9; --ink:#2c2721; --muted:#8a8073; --line:#e4dccf;
+    --accent:#9c4a2f; --accent-soft:#b5623f; --ok:#5d7a4a; --chip:#efe7d8;
+    --shadow:0 1px 2px rgba(60,48,32,.05),0 8px 24px rgba(60,48,32,.06);
+    --radius:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased; line-height:1.45;
+  }
+  .serif{font-family:"Playfair Display",Georgia,serif}
+  /* ---- topo ---- */
+  header.hero{
+    background:linear-gradient(180deg,#efe6d6,#e7dcc9);
+    text-align:center; padding:34px 16px 22px; border-bottom:1px solid var(--line);
+  }
+  .brand{font-family:"Playfair Display",serif; font-weight:700; letter-spacing:.14em; font-size:26px}
+  .brand small{display:block; letter-spacing:.34em; font-size:10px; font-weight:600; color:var(--muted); margin-top:4px; font-family:Inter,sans-serif}
+  .tagline{color:var(--muted); font-size:13px; margin-top:10px}
+  /* ---- barra região ---- */
+  .barra{
+    position:sticky; top:0; z-index:30; background:rgba(243,237,227,.92);
+    backdrop-filter:blur(8px); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:10px; padding:10px 16px; flex-wrap:wrap;
+  }
+  .busca{flex:1 1 180px; min-width:140px; display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:8px 14px}
+  .busca input{border:0; outline:0; background:transparent; width:100%; font-size:14px; color:var(--ink)}
+  .regiao{display:flex; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:3px}
+  .regiao button{border:0; background:transparent; color:var(--muted); font-weight:600; font-size:12px; padding:6px 12px; border-radius:999px; cursor:pointer}
+  .regiao button.on{background:var(--accent); color:#fff}
+  /* ---- abas de seção ---- */
+  .abas{display:flex; gap:8px; overflow-x:auto; padding:12px 16px 4px; scrollbar-width:none}
+  .abas::-webkit-scrollbar{display:none}
+  .abas a{white-space:nowrap; text-decoration:none; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:999px; padding:8px 16px; font-size:13px; font-weight:600}
+  .abas a.promo{background:var(--accent); color:#fff; border-color:var(--accent)}
+  /* ---- seções ---- */
+  main{max-width:1180px; margin:0 auto; padding:8px 16px 60px}
+  .sec{margin-top:30px; scroll-margin-top:120px}
+  .sec h2{font-size:26px; margin:0; text-align:center; font-weight:700}
+  .sec .sub{text-align:center; color:var(--muted); font-size:12px; letter-spacing:.14em; text-transform:uppercase; margin-top:4px}
+  .grade{display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:18px; margin-top:20px}
+  .prod{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); cursor:pointer; transition:transform .12s ease, box-shadow .12s ease}
+  .prod:hover{transform:translateY(-2px); box-shadow:0 2px 4px rgba(60,48,32,.06),0 14px 30px rgba(60,48,32,.1)}
+  .foto{position:relative; aspect-ratio:1/1; background:#efe7d8; overflow:hidden}
+  .foto img{width:100%; height:100%; object-fit:cover; display:block}
+  .foto .ph{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:"Playfair Display",serif; font-size:30px; color:#c3b49a; letter-spacing:.06em}
+  .badge{position:absolute; left:10px; top:10px; font-size:11px; font-weight:600; padding:4px 9px; border-radius:999px; background:rgba(255,253,249,.92); color:var(--ok); display:flex; align-items:center; gap:5px}
+  .badge.off{color:var(--muted)}
+  .badge .dot{width:7px; height:7px; border-radius:50%; background:currentColor}
+  .prod .info{padding:12px 14px 15px}
+  .prod .nome{font-weight:600; font-size:15px}
+  .prod .linhaTag{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-top:1px}
+  .preco{margin-top:9px; font-size:13px; color:var(--muted)}
+  .preco b{color:var(--accent); font-size:17px; font-family:"Playfair Display",serif}
+  .vazio{text-align:center; color:var(--muted); padding:60px 16px}
+  /* ---- modal ---- */
+  .modal{position:fixed; inset:0; z-index:60; background:rgba(44,39,33,.5); display:none; align-items:flex-end; justify-content:center}
+  .modal.show{display:flex}
+  .sheet{background:var(--card); width:100%; max-width:640px; max-height:92vh; overflow:auto; border-radius:20px 20px 0 0; box-shadow:0 -10px 40px rgba(0,0,0,.2)}
+  @media(min-width:640px){ .modal{align-items:center} .sheet{border-radius:20px} }
+  .sheet .topo{position:sticky; top:0; background:var(--card); display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line)}
+  .sheet .topo h3{margin:0; font-size:20px}
+  .sheet .fechar{border:0; background:var(--chip); width:34px; height:34px; border-radius:50%; font-size:18px; cursor:pointer; color:var(--ink)}
+  .sheet .capa{aspect-ratio:16/10; background:#efe7d8; position:relative; overflow:hidden}
+  .sheet .capa img{width:100%; height:100%; object-fit:cover}
+  .sheet .corpo{padding:16px 18px 26px}
+  .comp{color:var(--muted); font-size:13px}
+  .cores{display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 6px}
+  .cor{display:flex; align-items:center; gap:6px; background:var(--chip); border-radius:999px; padding:4px 10px 4px 5px; font-size:12px}
+  .cor .sw{width:16px; height:16px; border-radius:50%; border:1px solid rgba(0,0,0,.12)}
+  .grupo{margin-top:18px}
+  .grupo h4{margin:0 0 8px; font-size:15px; display:flex; justify-content:space-between; align-items:baseline}
+  .grupo h4 .est{font-size:12px; font-weight:500; color:var(--muted)}
+  table.tam{width:100%; border-collapse:collapse; font-size:14px}
+  table.tam th{ text-align:left; color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.06em; padding:6px 8px; border-bottom:1px solid var(--line)}
+  table.tam td{padding:9px 8px; border-bottom:1px solid var(--line)}
+  table.tam td.p{color:var(--accent); font-weight:600; font-family:"Playfair Display",serif}
+  footer{text-align:center; color:var(--muted); font-size:12px; padding:30px 16px 50px; border-top:1px solid var(--line)}
+  footer .nm{font-family:"Playfair Display",serif; font-size:16px; color:var(--ink)}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="brand">BIG TRICOT<small>HOME DECOR</small></div>
+  <div class="tagline" id="tagline">Catálogo de atacado</div>
+</header>
+
+<div class="barra">
+  <label class="busca">🔎<input id="q" placeholder="Buscar produto…" autocomplete="off"></label>
+  <div class="regiao" id="regiao">
+    <button data-r="sul" class="on">Sul</button>
+    <button data-r="norte">Norte</button>
+  </div>
+</div>
+<nav class="abas" id="abas"></nav>
+
+<main id="app"><div class="vazio">Carregando catálogo…</div></main>
+
+<footer>
+  <div class="nm">Big Tricot</div>
+  Monte Sião · MG<br>
+  <span id="rodape"></span>
+</footer>
+
+<div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+
+<script>
+(function(){
+  "use strict";
+  var D = (window.__DADOS__ && typeof window.__DADOS__==="object") ? window.__DADOS__ : {produtos:[],banco_cores:[],banco_tamanhos:[],estoque:{itens:{}}};
+  var PRODUTOS = Array.isArray(D.produtos)?D.produtos:[];
+  var CORES = {}; (D.banco_cores||[]).forEach(function(c){CORES[c.id]=c;});
+  var TAM = {}; (D.banco_tamanhos||[]).forEach(function(t){TAM[t.id]=t;});
+  var EST = (D.estoque&&D.estoque.itens)?D.estoque.itens:{};
+  var regiao = "sul";
+
+  // ----- seções (ordem e título) -----
+  var SECOES = [
+    {key:"pe",     titulo:"Pronta Entrega", sub:"Disponível para envio imediato", test:function(p){return p.pronta_entrega===true;}},
+    {key:"polisoft",titulo:"Linha Polisoft", sub:"", test:function(p){return !p.pronta_entrega&&!p._edicao_limitada&&p.linha==="polisoft";}},
+    {key:"soft",   titulo:"Linha Soft",     sub:"", test:function(p){return !p.pronta_entrega&&!p._edicao_limitada&&p.linha==="soft";}},
+    {key:"natal",  titulo:"Natal",          sub:"Coleção de Natal", test:function(p){return !p.pronta_entrega&&!p._edicao_limitada&&p.linha==="natal";}},
+    {key:"el",     titulo:"Edição Limitada",sub:"Peças exclusivas, em quantidade reduzida", promo:true, test:function(p){return p._edicao_limitada===true;}},
+    {key:"outros", titulo:"Outros",         sub:"", test:function(p){return !p.pronta_entrega&&!p._edicao_limitada&&["polisoft","soft","natal"].indexOf(p.linha)<0;}}
+  ];
+
+  function brl(v){ v=Number(v)||0; return "R$ "+v.toFixed(2).replace(".",","); }
+  function precoLinha(l){ return Number(regiao==="norte"? l.norte : l.sul)||0; }
+  function menorPreco(p){
+    var m=Infinity;
+    (p.grupos||[]).forEach(function(g){(g.linhas||[]).forEach(function(l){var v=precoLinha(l); if(v>0&&v<m)m=v;});});
+    return m===Infinity?0:m;
+  }
+  function estoqueProduto(p){
+    var tot=Number(p.estoque_geral)||0;
+    if(tot) return tot;
+    // soma pelo mapa de estoque por ref (se tiver)
+    (p.grupos||[]).forEach(function(g){ var byMed=EST[g.ref]||{}; Object.keys(byMed).forEach(function(md){ var byCor=byMed[md]||{}; Object.keys(byCor).forEach(function(cd){ tot+=Number(byCor[cd])||0; }); }); });
+    return tot;
+  }
+  function inicial(nome){ return (String(nome||"?").trim()[0]||"?").toUpperCase(); }
+
+  // ----- render -----
+  function badgeHTML(p){ var est=estoqueProduto(p); return est>0?'<span class="badge"><span class="dot"></span>Em estoque</span>':'<span class="badge off"><span class="dot"></span>Sob encomenda</span>'; }
+  function cardProdutoOK(p){
+    var mp=menorPreco(p);
+    return '<article class="prod" data-id="'+esc(p.id)+'">'+
+      '<div class="foto">'+ (p.foto? '<div class="ph">'+inicial(p.nome)+'</div><img loading="lazy" src="'+esc(p.foto)+'" onload="this.style.opacity=1" onerror="this.remove()" style="opacity:0;transition:opacity .3s">' : '<div class="ph">'+inicial(p.nome)+'</div>') +
+        badgeHTML(p) +
+      '</div>'+
+      '<div class="info"><div class="nome">'+esc(p.nome)+'</div>'+
+      (mp? '<div class="preco">a partir de <b>'+brl(mp)+'</b></div>' : '<div class="preco">—</div>')+
+      '</div></article>';
+  }
+
+  var filtroTxt="";
+  function render(){
+    var app=document.getElementById("app");
+    var abas=document.getElementById("abas");
+    var q=filtroTxt.toLowerCase();
+    var lista = PRODUTOS.filter(function(p){ return !q || String(p.nome||"").toLowerCase().indexOf(q)>=0; });
+    var html="", tabs="";
+    SECOES.forEach(function(s){
+      var ps=lista.filter(s.test);
+      if(!ps.length) return;
+      tabs += '<a href="#sec-'+s.key+'"'+(s.promo?' class="promo"':'')+'>'+esc(s.titulo)+'</a>';
+      html += '<section class="sec" id="sec-'+s.key+'"><h2 class="serif">'+esc(s.titulo)+'</h2>'+
+        (s.sub?'<div class="sub">'+esc(s.sub)+'</div>':'')+
+        '<div class="grade">'+ ps.map(cardProdutoOK).join("") +'</div></section>';
+    });
+    abas.innerHTML=tabs;
+    app.innerHTML = html || '<div class="vazio">Nenhum produto encontrado.</div>';
+  }
+
+  // ----- modal detalhe -----
+  function abrir(id){
+    var p=PRODUTOS.filter(function(x){return String(x.id)===String(id);})[0];
+    if(!p) return;
+    var capa = p.foto? '<div class="capa"><img src="'+esc(p.foto)+'" onerror="this.remove()"></div>' : '';
+    var cores = (p.cores||[]).map(function(c){ var cc=CORES[c.id_cor]||{}; if(c.oculta) return ""; return '<span class="cor"><span class="sw" style="background:'+esc(cc.hex||"#ddd")+'"></span>'+esc(cc.nome||"")+'</span>'; }).join("");
+    var grupos = (p.grupos||[]).map(function(g){
+      var linhasTxt = (g.linhas||[]).map(function(l){
+        var md = (TAM[l.id_tamanho]&&(TAM[l.id_tamanho].medida||TAM[l.id_tamanho].nome))||l.id_tamanho||"-";
+        return '<tr><td>'+esc(md)+'</td><td class="p">'+brl(precoLinha(l))+'</td></tr>';
+      }).join("");
+      var est = Number(g.estoque)||0;
+      return '<div class="grupo"><h4>'+esc(g.titulo||"Itens")+'<span class="est">'+(est>0?est+" em estoque":"sob encomenda")+'</span></h4>'+
+        '<table class="tam"><thead><tr><th>Tamanho</th><th>Preço atacado</th></tr></thead><tbody>'+linhasTxt+'</tbody></table></div>';
+    }).join("");
+    var sheet=document.getElementById("sheet");
+    sheet.innerHTML =
+      '<div class="topo"><h3 class="serif">'+esc(p.nome)+'</h3><button class="fechar" onclick="__fechar()">✕</button></div>'+
+      capa+
+      '<div class="corpo">'+
+        (p.composicao?'<div class="comp">'+esc(p.composicao)+'</div>':'')+
+        (cores?'<div class="cores">'+cores+'</div>':'')+
+        grupos+
+      '</div>';
+    document.getElementById("modal").classList.add("show");
+    document.body.style.overflow="hidden";
+  }
+  window.__fechar=function(){ document.getElementById("modal").classList.remove("show"); document.body.style.overflow=""; };
+
+  function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+  // ----- eventos -----
+  document.getElementById("app").addEventListener("click",function(e){ var el=e.target.closest(".prod"); if(el) abrir(el.getAttribute("data-id")); });
+  document.getElementById("modal").addEventListener("click",function(e){ if(e.target.id==="modal") window.__fechar(); });
+  document.getElementById("regiao").addEventListener("click",function(e){ var b=e.target.closest("button"); if(!b)return; regiao=b.getAttribute("data-r"); Array.prototype.forEach.call(this.querySelectorAll("button"),function(x){x.classList.toggle("on",x===b);}); render(); });
+  document.getElementById("q").addEventListener("input",function(){ filtroTxt=this.value; render(); });
+  document.getElementById("abas").addEventListener("click",function(e){ var a=e.target.closest("a"); if(!a)return; e.preventDefault(); var t=document.querySelector(a.getAttribute("href")); if(t)t.scrollIntoView({behavior:"smooth"}); });
+
+  // rodapé
+  try{ var r=document.getElementById("rodape"); var n=PRODUTOS.length; var d=D.estoque&&D.estoque.atualizadoMs? new Date(D.estoque.atualizadoMs):new Date(); r.textContent = n+" produtos · atualizado em "+d.toLocaleDateString("pt-BR"); }catch(e){}
+
+  render();
+})();
+</script>
+</body>
+</html>
