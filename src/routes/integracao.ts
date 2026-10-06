@@ -464,6 +464,59 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   };
 }
 
+// Monta o DOCUMENTO COMPLETO do catálogo no formato do site, 100% do ERP.
+// Usa só o LAYOUT/CONFIG do catálogo atual (aberturas, linhas_ocultas, reajustes,
+// varejo, _bancoTamV3, region, cor_categorias, capa, representantes, pedido_config,
+// contato…) e troca TODO o conteúdo de produto pelo ERP. Separa a Edição Limitada
+// na seção própria. IMPORTANTE: o site NÃO mostra produto SEM FOTO — por isso
+// casamos cada produto do ERP com a FOTO do catálogo atual pelo NOME do modelo
+// (as fotos continuam no Cloudinary; só o preço/estrutura vem do Syntech).
+const normNome = (s: string) => String(s || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Z0-9]/g, "");
+export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
+  const cat = await gerarCatalogoSite(env);
+  type Prod = { nome?: string; foto?: string; fotoDescricao?: string; blocos?: Record<string, unknown>; _edicao_limitada?: boolean;[k: string]: unknown };
+  const prods = (cat.produtos as Prod[]) || [];
+  let base: Record<string, unknown> = {};
+  try { base = (await lerDocumento(env, "catalogo/main")) || {}; } catch { base = {}; }
+  const baseEL = (base.edicao_limitada && typeof base.edicao_limitada === "object") ? (base.edicao_limitada as Record<string, unknown>) : {};
+
+  // Mapa NOME-do-modelo → foto/descrição/blocos, do catálogo atual (produtos + EL).
+  type FotoInfo = { foto: string; fotoDescricao: string; blocos: Record<string, unknown> };
+  const fotoMap = new Map<string, FotoInfo>();
+  const baseProdAll = [
+    ...(Array.isArray(base.produtos) ? (base.produtos as Prod[]) : []),
+    ...(Array.isArray(baseEL.produtos) ? (baseEL.produtos as Prod[]) : []),
+  ];
+  for (const p of baseProdAll) {
+    if (p && p.foto) {
+      const k = normNome(p.nome || "");
+      if (k && !fotoMap.has(k)) fotoMap.set(k, { foto: p.foto, fotoDescricao: p.fotoDescricao || "", blocos: (p.blocos && typeof p.blocos === "object") ? p.blocos : {} });
+    }
+  }
+  const aber = (base.aberturas && typeof base.aberturas === "object") ? (base.aberturas as Record<string, { foto?: string }>) : {};
+  const placeholder = aber.padrao?.foto || ((base.capa as { foto?: string } | undefined)?.foto) || "";
+  for (const p of prods) {
+    const m = fotoMap.get(normNome(p.nome || ""));
+    p.foto = m?.foto || p.foto || placeholder;
+    p.fotoDescricao = m?.fotoDescricao || "";
+    if (m?.blocos && Object.keys(m.blocos).length) p.blocos = m.blocos;
+  }
+
+  const normais: Prod[] = [], limitada: Prod[] = [];
+  for (const p of prods) { (p._edicao_limitada ? limitada : normais).push(p); }
+  return {
+    ...base, // mantém TODO o layout/config do site
+    produtos: normais,
+    edicao_limitada: { ...baseEL, produtos: limitada },
+    banco_cores: cat.banco_cores,
+    banco_tamanhos: cat.banco_tamanhos,
+    estoque: cat.estoque,
+    atualizado_em: Date.now(),
+    _origem_erp: true,
+    _resumo: { ...cat._resumo, produtos_com_foto: prods.filter((p) => p.foto && !p.foto.includes(placeholder || "\u0000")).length },
+  };
+}
+
 // Prévia (JSON) do catálogo gerado do ERP no formato do site. Não grava no site.
 integracao.get("/catalogo-site", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
@@ -528,20 +581,9 @@ integracao.post("/site/publicar", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const alvo = c.req.query("alvo") === "main" ? "main" : "teste";
   try {
-    const cat = await gerarCatalogoSite(c.env);
-    let base: Record<string, unknown> = {};
-    try { base = (await lerDocumento(c.env, "catalogo/main")) || {}; } catch { base = {}; }
-    const doc: Record<string, unknown> = {
-      ...base,
-      produtos: cat.produtos,
-      banco_cores: cat.banco_cores,
-      banco_tamanhos: cat.banco_tamanhos,
-      estoque: cat.estoque,
-      atualizado_em: Date.now(),
-      _origem_erp: true,
-    };
+    const doc = await gerarDocSite(c.env);
     await gravarDocumento(c.env, "catalogo/" + alvo, doc);
-    return c.json({ ok: true, alvo, resumo: cat._resumo });
+    return c.json({ ok: true, alvo, resumo: doc._resumo });
   } catch (e) {
     return c.json({ ok: false, alvo, erro: (e as Error).message }, 200);
   }
@@ -552,29 +594,31 @@ integracao.post("/site/publicar", async (c) => {
 // (window.__PREVIEW_DATA__) — não depende das regras do Firebase nem toca no site
 // no ar. Entra em modo visualização, sem login. Abra sem precisar de senha.
 integracao.get("/site-teste", async (c) => {
+  // Catálogo montado AO VIVO 100% do ERP (não lê o catálogo antigo de produtos).
+  // Usa só o layout do site. Sempre fresco — reflete o Syntech na hora.
   let data: Record<string, unknown> = {};
-  try { data = (await lerDocumento(c.env, "catalogo/teste")) || {}; }
-  catch (e) { return new Response("Não consegui ler a área de teste do Firebase:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } }); }
-  if (!data || !Object.keys(data).length) {
-    return new Response("A área de teste está vazia. Vá no Catálogo e clique em '📤 Enviar p/ teste do site' primeiro.", { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
-  }
-  // Diagnóstico: ?debug=1 mostra o que tem na área de teste (origem, nº de produtos, amostra).
+  try { data = await gerarDocSite(c.env); }
+  catch (e) { return new Response("Não consegui montar o catálogo do ERP:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } }); }
+  // Diagnóstico: ?debug=1 mostra o que foi gerado (origem, nº de produtos, amostra).
   if (c.req.query("debug") === "1") {
     const ps = Array.isArray((data as { produtos?: unknown[] }).produtos) ? (data as { produtos: { nome?: string; id?: string; grupos?: { linhas?: { sul?: number }[] }[] }[] }).produtos : [];
     const amostra = ps.slice(0, 5).map((p) => ({ id: p.id, nome: p.nome, primeiro_preco: p.grupos?.[0]?.linhas?.[0]?.sul }));
     return c.json({ origem_erp: (data as { _origem_erp?: boolean })._origem_erp === true, total_produtos: ps.length, amostra });
   }
   // Blindagem: o site faz Object.keys(produto.blocos); garante que todo produto
-  // tenha os campos que ele espera, mesmo em dados antigos.
-  const prods = Array.isArray((data as { produtos?: unknown[] }).produtos) ? (data as { produtos: Record<string, unknown>[] }).produtos : [];
-  for (const p of prods) {
+  // (inclusive os de Edição Limitada) tenha os campos que ele espera.
+  const blindar = (p: Record<string, unknown>) => {
     if (p && typeof p === "object") {
       if (p.blocos == null || typeof p.blocos !== "object") p.blocos = {};
       if (p.video == null) p.video = "";
       if (!Array.isArray(p.cores)) p.cores = [];
       if (!Array.isArray(p.grupos)) p.grupos = [];
     }
-  }
+  };
+  const prods = Array.isArray((data as { produtos?: unknown[] }).produtos) ? (data as { produtos: Record<string, unknown>[] }).produtos : [];
+  for (const p of prods) blindar(p);
+  const elp = ((data as { edicao_limitada?: { produtos?: unknown[] } }).edicao_limitada || {}).produtos;
+  if (Array.isArray(elp)) for (const p of elp as Record<string, unknown>[]) blindar(p);
   const json = JSON.stringify(data).split("<").join("\\u003c").split("\u2028").join("\\u2028").split("\u2029").join("\\u2029");
   // Diagnóstico no TÍTULO da aba: se a injeção funcionar, o título começa com
   // "PREVIEW_OK:<n> prods". Se der erro de execução, "PREVIEW_ERRO: ...". Se o
