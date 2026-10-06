@@ -291,6 +291,28 @@ integracao.get("/diag", async (c) => {
   });
 });
 
+// ── CONFERE os preços por tamanho que vieram do ERP ────────────────────────────
+// Mostra uma amostra legível (ref, nome, cada tamanho com atacado/varejo) pra
+// confirmar que o preço por tamanho chegou. Token OU sessão.
+integracao.get("/catalogo-precos", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
+  if (!(esperado && recebido === esperado)) { const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro; }
+  const { results } = await c.env.DB.prepare(
+    "SELECT ref, nome, tamanhos FROM erp_produtos WHERE COALESCE(inativo,0)=0 ORDER BY nome LIMIT 25"
+  ).all<{ ref: string; nome: string | null; tamanhos: string | null }>();
+  type T = { medida?: string; tamanho?: string; atacado?: number; varejo?: number };
+  const amostra = (results || []).map((p) => {
+    let ts: unknown[] = []; try { const a = JSON.parse(p.tamanhos || "[]"); ts = Array.isArray(a) ? a : []; } catch { /* vazio */ }
+    const tamanhos = ts.map((t) => typeof t === "string"
+      ? { medida: t, atacado: null, varejo: null }
+      : { medida: (t as T).medida || (t as T).tamanho || "", atacado: (t as T).atacado ?? null, varejo: (t as T).varejo ?? null });
+    return { ref: p.ref, nome: p.nome, tamanhos };
+  });
+  const com_preco = amostra.filter((p) => p.tamanhos.some((t) => Number(t.atacado) > 0)).length;
+  return c.json({ total_produtos: results?.length || 0, com_preco, aviso: com_preco ? "Preços por tamanho OK ✓" : "Ainda sem preço por tamanho — espere a ponte re-puxar (~4 min).", amostra });
+});
+
 // ── GERADOR do catálogo no FORMATO DO SITE (prévia) ──────────────────────────────
 // Transforma os produtos do ERP (erp_produtos + erp_estoque) no formato que o site
 // (Firebase catalogo/main) espera: banco_cores, banco_tamanhos, produtos, estoque.
