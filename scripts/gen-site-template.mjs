@@ -1,18 +1,22 @@
-// Gera src/siteTemplate.ts a partir de site/catalogo-online.html (cópia do site
-// real da Big Tricot, com a injeção de window.__PREVIEW_DATA__). O Worker usa
-// esse HTML pra servir uma PRÉVIA do catálogo com os produtos do ERP, sem tocar
-// no site que está no ar. Rode sempre que atualizar o site vendorizado (o deploy
-// também roda isto).
+// Gera src/siteTemplate.ts (catálogo online simples) e src/siteTemplateFull.ts
+// (index.html completo, layout "Montar pedido") a partir das cópias em site/.
+// O Worker usa esses HTMLs pra servir as PRÉVIAS do catálogo com os dados do ERP,
+// sem tocar no site que está no ar. Roda sempre que atualizar os arquivos em site/
+// (o deploy também roda isto).
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const html = fs.readFileSync(path.join(raiz, "site", "catalogo-online.html"), "utf8");
 
-const out =
-  "// GERADO por scripts/gen-site-template.mjs a partir de site/catalogo-online.html — NÃO edite à mão.\n" +
-  `export const SITE_ONLINE_HTML = ${JSON.stringify(html)};\n`;
+function gerar(arquivoHtml, arquivoTs, nomeConst) {
+  const html = fs.readFileSync(path.join(raiz, "site", arquivoHtml), "utf8");
+  const out =
+    `// GERADO por scripts/gen-site-template.mjs a partir de site/${arquivoHtml} — NÃO edite à mão.\n` +
+    `export const ${nomeConst} = ${JSON.stringify(html)};\n`;
+  fs.writeFileSync(path.join(raiz, "src", arquivoTs), out);
+  console.log(`${arquivoTs} gerado — ${html.length} bytes`);
+}
 
-fs.writeFileSync(path.join(raiz, "src", "siteTemplate.ts"), out);
-console.log(`siteTemplate.ts gerado — ${html.length} bytes`);
+gerar("catalogo-online.html", "siteTemplate.ts", "SITE_ONLINE_HTML");
+gerar("catalogo-full.html", "siteTemplateFull.ts", "SITE_FULL_HTML");

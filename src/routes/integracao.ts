@@ -14,6 +14,7 @@ import { cadastrarProdutosDoPedido } from "./produtos";
 import { consumoDoPedido, baixarPorPedido } from "../estoque-baixa";
 import { SYNC_JS, SYNC_VERSAO } from "../bridgeScript";
 import { SITE_ONLINE_HTML } from "../siteTemplate";
+import { SITE_FULL_HTML } from "../siteTemplateFull";
 import { lerDocumento, gravarDocumento } from "../firestore";
 
 export const integracao = new Hono<{ Bindings: Env }>();
@@ -411,6 +412,23 @@ integracao.post("/site/publicar", async (c) => {
   } catch (e) {
     return c.json({ ok: false, alvo, erro: (e as Error).message }, 200);
   }
+});
+
+// PRÉVIA no LAYOUT COMPLETO do site (index.html, com "Montar pedido"). O servidor
+// lê a ÁREA DE TESTE (catalogo/teste) pela chave de serviço e injeta na página
+// (window.__PREVIEW_DATA__) — não depende das regras do Firebase nem toca no site
+// no ar. Entra em modo visualização, sem login. Abra sem precisar de senha.
+integracao.get("/site-teste", async (c) => {
+  let data: Record<string, unknown> = {};
+  try { data = (await lerDocumento(c.env, "catalogo/teste")) || {}; }
+  catch (e) { return new Response("Não consegui ler a área de teste do Firebase:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } }); }
+  if (!data || !Object.keys(data).length) {
+    return new Response("A área de teste está vazia. Vá no Catálogo e clique em '📤 Enviar p/ teste do site' primeiro.", { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
+  const json = JSON.stringify(data).split("<").join("\\u003c").split("\u2028").join("\\u2028").split("\u2029").join("\\u2029");
+  const inject = `<script>window.__PREVIEW_DATA__=${json};</script>`;
+  const html = SITE_FULL_HTML.includes("</head>") ? SITE_FULL_HTML.replace("</head>", inject + "</head>") : inject + SITE_FULL_HTML;
+  return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 });
 
 // PRÉVIA VISUAL: serve o HTML do site REAL (catalogo-online) com os produtos do
