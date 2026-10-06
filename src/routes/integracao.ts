@@ -429,6 +429,12 @@ integracao.get("/site-teste", async (c) => {
   if (!data || !Object.keys(data).length) {
     return new Response("A área de teste está vazia. Vá no Catálogo e clique em '📤 Enviar p/ teste do site' primeiro.", { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   }
+  // Diagnóstico: ?debug=1 mostra o que tem na área de teste (origem, nº de produtos, amostra).
+  if (c.req.query("debug") === "1") {
+    const ps = Array.isArray((data as { produtos?: unknown[] }).produtos) ? (data as { produtos: { nome?: string; id?: string; grupos?: { linhas?: { sul?: number }[] }[] }[] }).produtos : [];
+    const amostra = ps.slice(0, 5).map((p) => ({ id: p.id, nome: p.nome, primeiro_preco: p.grupos?.[0]?.linhas?.[0]?.sul }));
+    return c.json({ origem_erp: (data as { _origem_erp?: boolean })._origem_erp === true, total_produtos: ps.length, amostra });
+  }
   // Blindagem: o site faz Object.keys(produto.blocos); garante que todo produto
   // tenha os campos que ele espera, mesmo em dados antigos.
   const prods = Array.isArray((data as { produtos?: unknown[] }).produtos) ? (data as { produtos: Record<string, unknown>[] }).produtos : [];
