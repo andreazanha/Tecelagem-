@@ -264,7 +264,11 @@ integracao.post("/diag", async (c) => {
   return c.json({ ok: true, bytes: txt.length });
 });
 integracao.get("/diag", async (c) => {
-  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  // Aceita sessão (UI) OU o token de integração (pra eu, dev, inspecionar sem login).
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
+  const temToken = !!esperado && recebido === esperado;
+  if (!temToken) { const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro; }
   const row = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='erp_diag'").first<{ valor: string | null; atualizado_em: string | null }>();
   if (!row || !row.valor) return c.json({ pronto: false, aviso: "A ponte ainda não mandou o diagnóstico. Espere a ponte rodar (~2 min)." });
   // ?raw=1 devolve o JSON completo; senão um resumo focado em preços/tamanhos.
