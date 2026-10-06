@@ -342,6 +342,10 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       pronta_entrega: false,
       lancamento: false,
       foto: g.foto,
+      video: "",
+      // blocos: textos descritivos por produto (o site faz Object.keys(blocos)).
+      // Vazio aqui — pode vir a ser preenchido depois.
+      blocos: {},
       cores: [...g.cores.values()],
       grupos: vars.map((v) => ({ id: `${g.base}-${v.letra || "x"}`, titulo: TIPO_NOME[v.letra] || "", linhas: v.linhas })),
     };
@@ -424,6 +428,17 @@ integracao.get("/site-teste", async (c) => {
   catch (e) { return new Response("Não consegui ler a área de teste do Firebase:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } }); }
   if (!data || !Object.keys(data).length) {
     return new Response("A área de teste está vazia. Vá no Catálogo e clique em '📤 Enviar p/ teste do site' primeiro.", { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
+  // Blindagem: o site faz Object.keys(produto.blocos); garante que todo produto
+  // tenha os campos que ele espera, mesmo em dados antigos.
+  const prods = Array.isArray((data as { produtos?: unknown[] }).produtos) ? (data as { produtos: Record<string, unknown>[] }).produtos : [];
+  for (const p of prods) {
+    if (p && typeof p === "object") {
+      if (p.blocos == null || typeof p.blocos !== "object") p.blocos = {};
+      if (p.video == null) p.video = "";
+      if (!Array.isArray(p.cores)) p.cores = [];
+      if (!Array.isArray(p.grupos)) p.grupos = [];
+    }
   }
   const json = JSON.stringify(data).split("<").join("\\u003c").split("\u2028").join("\\u2028").split("\u2029").join("\\u2029");
   const inject = `<script>window.__PREVIEW_DATA__=${json};</script>`;
