@@ -250,6 +250,43 @@ integracao.get("/estoque", async (c) => {
   return c.json(results);
 });
 
+// ── DIAGNÓSTICO: a ponte manda a estrutura do banco do Syntech (uma vez) ───────
+// Guardo cru na config (chave erp_diag) pra inspecionar os nomes das colunas de
+// preço por tamanho. POST protegido por token (vem da ponte); GET pede sessão.
+integracao.post("/diag", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+  const txt = await c.req.text();
+  await c.env.DB.prepare(
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('erp_diag', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(txt.slice(0, 900000)).run();
+  return c.json({ ok: true, bytes: txt.length });
+});
+integracao.get("/diag", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const row = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='erp_diag'").first<{ valor: string | null; atualizado_em: string | null }>();
+  if (!row || !row.valor) return c.json({ pronto: false, aviso: "A ponte ainda não mandou o diagnóstico. Espere a ponte rodar (~2 min)." });
+  // ?raw=1 devolve o JSON completo; senão um resumo focado em preços/tamanhos.
+  if (c.req.query("raw") === "1") return new Response(row.valor, { headers: { "Content-Type": "application/json; charset=utf-8" } });
+  let d: { tabelas?: { nome: string; colunas: string[] }[]; amostras?: Record<string, unknown[]>; erros?: string[]; quando?: string } = {};
+  try { d = JSON.parse(row.valor); } catch { return c.json({ pronto: true, erro: "json_invalido", quando: row.atualizado_em }); }
+  const tabelas = Array.isArray(d.tabelas) ? d.tabelas : [];
+  const tamProd = tabelas.find((t) => t.nome === "TAMANHO_PROD");
+  const produtos = tabelas.find((t) => t.nome === "PRODUTOS");
+  return c.json({
+    pronto: true,
+    quando: d.quando || row.atualizado_em,
+    total_tabelas: tabelas.length,
+    TAMANHO_PROD_colunas: tamProd?.colunas || null,
+    PRODUTOS_colunas: produtos?.colunas || null,
+    amostra_TAMANHO_PROD: d.amostras?.["TAMANHO_PROD"] || null,
+    amostra_PRODUTOS: d.amostras?.["PRODUTOS"] || null,
+    outras_amostras: Object.keys(d.amostras || {}).filter((k) => k !== "TAMANHO_PROD" && k !== "PRODUTOS"),
+    erros: d.erros || [],
+  });
+});
+
 // ── GERADOR do catálogo no FORMATO DO SITE (prévia) ──────────────────────────────
 // Transforma os produtos do ERP (erp_produtos + erp_estoque) no formato que o site
 // (Firebase catalogo/main) espera: banco_cores, banco_tamanhos, produtos, estoque.

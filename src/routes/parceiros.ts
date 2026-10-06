@@ -164,7 +164,8 @@ function parseDataBR(s: unknown): number | null {
   const d = Date.parse(t); return Number.isNaN(d) ? null : d;
 }
 parceiros.post("/esconder-sem-compra", async (c) => {
-  const b = await c.req.json<{ ano?: number | string; aplicar?: boolean; semData?: boolean }>().catch(() => ({} as { ano?: number }));
+  type EsconderIn = { ano?: number | string; aplicar?: boolean; semData?: boolean };
+  const b = await c.req.json<EsconderIn>().catch(() => ({} as EsconderIn));
   const ano = Math.max(2000, Math.min(2100, parseInt(String(b.ano ?? 2024), 10) || 2024));
   const corte = Date.UTC(ano, 0, 1); // 1º de janeiro do ano-corte
   const incluirSemData = b.semData !== false; // padrão: true (tira as sem data também)

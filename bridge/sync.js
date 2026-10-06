@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-02.2";
+const PONTE_VERSAO = "2026-10-06.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -350,6 +350,76 @@ async function rodadaProdutos(db, estado) {
   log(`produtos: ${enviados}/${lote.length} enviado(s).` + (todasOk ? ` última alteração: ${maiorAlt}` : " (envio incompleto — tentarei de novo na próxima rodada)"));
 }
 
+// ── DIAGNÓSTICO (uma vez): descobre a estrutura do banco do Syntech ───────────
+// Lista as tabelas/colunas e tira uma amostra das tabelas de produto/tamanho/preço
+// e manda pro servidor (POST /api/integracao/diag). Serve pra eu (dev) descobrir
+// o nome EXATO das colunas de preço por tamanho sem o usuário fazer nada. Roda só
+// UMA vez (controlado pela flag no state.json); pra pedir de novo, troca o nome
+// da flag aqui embaixo (DIAG_FLAG) numa versão nova da ponte.
+const DIAG_FLAG = "diagV2_tam_precos";
+function limparValor(v) {
+  if (v == null) return v;
+  if (v instanceof Date) return v.toISOString();
+  if (Buffer.isBuffer(v)) return `[blob ${v.length}b]`;
+  if (typeof v === "string") return v.length > 300 ? v.slice(0, 300) + "…" : v;
+  if (typeof v === "object") { try { return JSON.parse(JSON.stringify(v)); } catch { return String(v); } }
+  return v;
+}
+function limparLinha(r) {
+  const o = {};
+  for (const k of Object.keys(r || {})) o[k] = limparValor(r[k]);
+  return o;
+}
+async function enviarDiag(diag) {
+  try {
+    const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/diag";
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+      body: JSON.stringify(diag),
+    });
+    return r.ok;
+  } catch (e) { log("! diagnóstico: falhou ao enviar —", e.message); return false; }
+}
+async function rodadaDiagnostico(db, estado) {
+  if (estado[DIAG_FLAG]) return; // já mandei
+  log("diagnóstico: explorando a estrutura do banco (uma vez só)…");
+  const diag = { versao: PONTE_VERSAO, quando: new Date().toISOString(), tabelas: [], amostras: {}, erros: [] };
+  try {
+    const tbs = await query(db,
+      "SELECT TRIM(RDB$RELATION_NAME) AS NOME FROM RDB$RELATIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 AND RDB$VIEW_BLR IS NULL ORDER BY RDB$RELATION_NAME");
+    const nomes = tbs.map((r) => String(r.NOME || "").trim()).filter(Boolean);
+    // sempre amostra essas (centrais p/ preço por tamanho)
+    const candidatas = new Set(["PRODUTOS", "TAMANHO_PROD"]);
+    for (const nome of nomes) {
+      let cols = [];
+      try {
+        const cs = await query(db,
+          "SELECT TRIM(RF.RDB$FIELD_NAME) AS CAMPO FROM RDB$RELATION_FIELDS RF WHERE RF.RDB$RELATION_NAME = ? ORDER BY RF.RDB$FIELD_POSITION",
+          [nome]);
+        cols = cs.map((r) => String(r.CAMPO || "").trim()).filter(Boolean);
+      } catch (e) { diag.erros.push(`cols ${nome}: ${e.message}`); }
+      diag.tabelas.push({ nome, colunas: cols });
+      const un = nome.toUpperCase();
+      if (/PRECO|PRECOS|VALOR|TABPR|TAB_PR|PRCO/.test(un)) candidatas.add(nome);
+      if (cols.some((cc) => { const u = cc.toUpperCase(); return /PRECO|VALOR|ATACAD|VAREJO|^C[0-9]$|CUSTO/.test(u); })) candidatas.add(nome);
+    }
+    for (const nome of candidatas) {
+      try {
+        const rows = await query(db, `SELECT FIRST 3 * FROM ${nome}`);
+        diag.amostras[nome] = rows.map(limparLinha);
+      } catch (e) { diag.erros.push(`amostra ${nome}: ${e.message}`); }
+    }
+  } catch (e) { diag.erros.push("geral: " + e.message); }
+  const ok = await enviarDiag(diag);
+  if (ok) {
+    salvarEstado({ ...lerEstado(), [DIAG_FLAG]: true });
+    log(`diagnóstico: enviado (${diag.tabelas.length} tabelas, ${Object.keys(diag.amostras).length} amostras). Não roda de novo.`);
+  } else {
+    log("diagnóstico: não enviou — tenta na próxima rodada.");
+  }
+}
+
 // ── uma rodada: busca aprovados que mudaram desde a última data e envia ───────
 async function rodada() {
   const estado = lerEstado();
@@ -362,6 +432,8 @@ async function rodada() {
     return;
   }
   try {
+    // Diagnóstico da estrutura do banco (roda só uma vez; não trava a rodada).
+    try { await rodadaDiagnostico(db, estado); } catch (e) { log("! diagnóstico:", e.message); }
     // Pedidos APROVADOS, não cancelados, alterados depois da última vez.
     const SQL_PEDIDOS =
       `SELECT NUMERO, DATA, COD_CLI, STATUS, CANC, DATA_ALT_REG
