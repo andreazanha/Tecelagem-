@@ -484,6 +484,43 @@ integracao.get("/site/firebase-check", async (c) => {
   }
 });
 
+// INSPECIONA a estrutura do catálogo real do site (catalogo/main) — só leitura.
+// Mostra os campos do topo, nº de produtos (inclusive edição limitada) e uma
+// amostra com os códigos/preços por tamanho (cod, id_tamanho, sul, norte). Serve
+// pra eu entender como casar os preços do ERP sem mudar o layout. Token ou sessão.
+integracao.get("/site/inspecionar", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
+  if (!(esperado && recebido === esperado)) { const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro; }
+  const alvo = c.req.query("alvo") === "teste" ? "teste" : "main";
+  try {
+    const doc = (await lerDocumento(c.env, "catalogo/" + alvo)) as Record<string, unknown> | null;
+    if (!doc) return c.json({ existe: false, alvo });
+    type Linha = { cod?: unknown; id_tamanho?: unknown; sul?: unknown; norte?: unknown };
+    type Grupo = { titulo?: unknown; linhas?: Linha[] };
+    type Prod = { id?: unknown; nome?: unknown; linha?: unknown; pronta_entrega?: unknown; grupos?: Grupo[] };
+    const prods = Array.isArray(doc.produtos) ? (doc.produtos as Prod[]) : [];
+    const elRaw = doc.edicao_limitada as { produtos?: unknown } | undefined;
+    const el = elRaw && Array.isArray(elRaw.produtos) ? (elRaw.produtos as Prod[]) : [];
+    const amostraProd = (p: Prod) => ({
+      id: p?.id, nome: p?.nome, linha: p?.linha, pronta_entrega: p?.pronta_entrega,
+      grupos: Array.isArray(p?.grupos) ? p.grupos.map((g) => ({
+        titulo: g?.titulo,
+        linhas: Array.isArray(g?.linhas) ? g.linhas.slice(0, 3).map((l) => ({ cod: l?.cod, id_tamanho: l?.id_tamanho, sul: l?.sul, norte: l?.norte })) : [],
+      })) : [],
+    });
+    return c.json({
+      existe: true, alvo, _origem_erp: doc._origem_erp === true,
+      campos_topo: Object.keys(doc),
+      total_produtos: prods.length,
+      total_edicao_limitada: el.length,
+      amostra_produtos: prods.slice(0, 3).map(amostraProd),
+      amostra_edicao_limitada: el.slice(0, 2).map(amostraProd),
+      banco_tamanhos: Array.isArray(doc.banco_tamanhos) ? (doc.banco_tamanhos as unknown[]).slice(0, 12) : null,
+    });
+  } catch (e) { return c.json({ erro: (e as Error).message }, 200); }
+});
+
 // PUBLICA o catálogo do ERP no Firebase do site. alvo=teste (padrão, cliente não
 // vê) ou alvo=main (vai pro ar). Lê o catalogo/main atual pra preservar os campos
 // editoriais (capa, representantes, textos…) e só troca produtos/cores/tamanhos.
