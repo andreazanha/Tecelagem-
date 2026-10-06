@@ -504,16 +504,31 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
 
   const normais: Prod[] = [], limitada: Prod[] = [];
   for (const p of prods) { (p._edicao_limitada ? limitada : normais).push(p); }
+  // Edição Limitada: SÓ o que vier do Syntech (grupo "edição limitada"). Não
+  // herda os produtos do catálogo antigo — monta explícito e esconde se vazio.
+  const edicaoLimitada = {
+    produtos: limitada,
+    oculta: limitada.length === 0,
+    abertura: (baseEL as { abertura?: unknown }).abertura ?? null,
+    ordenar_por: (baseEL as { ordenar_por?: unknown }).ordenar_por ?? null,
+    categorias: [],
+  };
   return {
     ...base, // mantém TODO o layout/config do site
     produtos: normais,
-    edicao_limitada: { ...baseEL, produtos: limitada },
+    edicao_limitada: edicaoLimitada,
+    estoque_el: {}, // estoque da EL antiga não se aplica
     banco_cores: cat.banco_cores,
     banco_tamanhos: cat.banco_tamanhos,
     estoque: cat.estoque,
     atualizado_em: Date.now(),
     _origem_erp: true,
-    _resumo: { ...cat._resumo, produtos_com_foto: prods.filter((p) => p.foto && !p.foto.includes(placeholder || "\u0000")).length },
+    _resumo: {
+      ...cat._resumo,
+      normais: normais.length,
+      edicao_limitada: limitada.length,
+      produtos_com_foto: prods.filter((p) => p.foto && (!placeholder || p.foto !== placeholder)).length,
+    },
   };
 }
 
@@ -599,11 +614,21 @@ integracao.get("/site-teste", async (c) => {
   let data: Record<string, unknown> = {};
   try { data = await gerarDocSite(c.env); }
   catch (e) { return new Response("Não consegui montar o catálogo do ERP:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } }); }
-  // Diagnóstico: ?debug=1 mostra o que foi gerado (origem, nº de produtos, amostra).
+  // Diagnóstico: ?debug=1 mostra o que foi gerado (origem, contagens, amostras por seção).
   if (c.req.query("debug") === "1") {
-    const ps = Array.isArray((data as { produtos?: unknown[] }).produtos) ? (data as { produtos: { nome?: string; id?: string; grupos?: { linhas?: { sul?: number }[] }[] }[] }).produtos : [];
-    const amostra = ps.slice(0, 5).map((p) => ({ id: p.id, nome: p.nome, primeiro_preco: p.grupos?.[0]?.linhas?.[0]?.sul }));
-    return c.json({ origem_erp: (data as { _origem_erp?: boolean })._origem_erp === true, total_produtos: ps.length, amostra });
+    type P = { nome?: string; linha?: string; pronta_entrega?: boolean; grupos?: { linhas?: { sul?: number }[] }[] };
+    const resumo = (p: P) => ({ nome: p.nome, linha: p.linha, pe: p.pronta_entrega === true, menor_preco: p.grupos?.[0]?.linhas?.[0]?.sul });
+    const ps = Array.isArray((data as { produtos?: unknown[] }).produtos) ? (data as { produtos: P[] }).produtos : [];
+    const el = (((data as { edicao_limitada?: { produtos?: unknown[] } }).edicao_limitada) || {}).produtos;
+    const elArr = Array.isArray(el) ? (el as P[]) : [];
+    return c.json({
+      origem_erp: (data as { _origem_erp?: boolean })._origem_erp === true,
+      resumo: (data as { _resumo?: unknown })._resumo,
+      total_produtos: ps.length,
+      total_edicao_limitada: elArr.length,
+      amostra_produtos: ps.slice(0, 8).map(resumo),
+      amostra_edicao_limitada: elArr.slice(0, 8).map(resumo),
+    });
   }
   // Blindagem: o site faz Object.keys(produto.blocos); garante que todo produto
   // (inclusive os de Edição Limitada) tenha os campos que ele espera.
