@@ -42,8 +42,8 @@
   .prod{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); cursor:pointer; transition:transform .12s ease, box-shadow .12s ease}
   .prod:hover{transform:translateY(-2px); box-shadow:0 2px 4px rgba(60,48,32,.06),0 14px 30px rgba(60,48,32,.1)}
   .foto{position:relative; aspect-ratio:1/1; background:#efe7d8; overflow:hidden}
-  .foto img{width:100%; height:100%; object-fit:cover; display:block}
-  .foto .ph{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:"Playfair Display",serif; font-size:30px; color:#c3b49a; letter-spacing:.06em}
+  .foto img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; z-index:1}
+  .foto .ph{position:absolute; inset:0; z-index:0; display:flex; align-items:center; justify-content:center; font-family:"Playfair Display",serif; font-size:30px; color:#c3b49a; letter-spacing:.06em}
   .badge{position:absolute; left:10px; top:10px; font-size:11px; font-weight:600; padding:4px 9px; border-radius:999px; background:rgba(255,253,249,.92); color:var(--ok); display:flex; align-items:center; gap:5px; z-index:2}
   .badge.off{color:var(--muted)}
   .badge .dot{width:7px; height:7px; border-radius:50%; background:currentColor}
@@ -61,10 +61,11 @@
   .sheet .fechar{border:0; background:var(--chip); width:34px; height:34px; border-radius:50%; font-size:16px; cursor:pointer; color:var(--ink)}
   .det{flex:1 1 auto; display:flex; min-height:0}
   .det .lado-foto{flex:1 1 52%; background:#efe7d8; position:relative; overflow:hidden}
-  .det .lado-foto img{width:100%; height:100%; object-fit:cover; display:block}
-  .det .lado-foto .ph{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:"Playfair Display",serif; font-size:64px; color:#c3b49a}
+  .det .lado-foto img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; z-index:1}
+  .det .lado-foto .ph{position:absolute; inset:0; z-index:0; display:flex; align-items:center; justify-content:center; font-family:"Playfair Display",serif; font-size:64px; color:#c3b49a}
   .det .lado-info{flex:1 1 48%; overflow:auto; padding:22px 26px 26px}
-  .det .nome{font-size:30px; margin:0 0 14px; font-weight:700}
+  .det .linhalb{text-align:center; font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); font-weight:600; margin-bottom:3px}
+  .det .nome{font-size:30px; margin:0 0 14px; font-weight:700; text-align:center}
   .vid{width:100%; border-radius:12px; background:#000; margin-bottom:12px; max-height:300px}
   .comp{text-align:center; color:var(--muted); font-size:13px; letter-spacing:.04em}
   .prazo{display:flex; gap:8px; align-items:center; background:#f6efe3; border:1px solid var(--line); border-radius:12px; padding:10px 14px; font-size:13px; color:var(--ink); margin:14px 0}
@@ -263,6 +264,7 @@
       '<div class="det">'+
         '<div class="lado-foto">'+foto+'</div>'+
         '<div class="lado-info">'+
+          '<div class="linhalb">'+esc(linhaLb)+'</div>'+
           '<h3 class="nome serif">'+esc(p.nome)+'</h3>'+
           video+
           (p.composicao?'<div class="comp">'+esc(p.composicao)+'</div>':'')+
