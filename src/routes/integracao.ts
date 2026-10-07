@@ -482,8 +482,8 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
   try { base = (await lerDocumento(env, "catalogo/main")) || {}; } catch { base = {}; }
   const baseEL = (base.edicao_limitada && typeof base.edicao_limitada === "object") ? (base.edicao_limitada as Record<string, unknown>) : {};
 
-  // Mapa NOME-do-modelo → foto/descrição/blocos, do catálogo atual (produtos + EL).
-  type FotoInfo = { foto: string; fotoDescricao: string; blocos: Record<string, unknown> };
+  // Mapa NOME-do-modelo → foto/vídeo/descrição/blocos, do catálogo atual (produtos + EL).
+  type FotoInfo = { foto: string; video: string; fotoDescricao: string; blocos: Record<string, unknown> };
   const fotoMap = new Map<string, FotoInfo>();
   const baseProdAll = [
     ...(Array.isArray(base.produtos) ? (base.produtos as Prod[]) : []),
@@ -492,7 +492,7 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
   for (const p of baseProdAll) {
     if (p && p.foto) {
       const k = normNome(p.nome || "");
-      if (k && !fotoMap.has(k)) fotoMap.set(k, { foto: p.foto, fotoDescricao: p.fotoDescricao || "", blocos: (p.blocos && typeof p.blocos === "object") ? p.blocos : {} });
+      if (k && !fotoMap.has(k)) fotoMap.set(k, { foto: p.foto, video: String((p as { video?: unknown }).video || ""), fotoDescricao: p.fotoDescricao || "", blocos: (p.blocos && typeof p.blocos === "object") ? p.blocos : {} });
     }
   }
   const aber = (base.aberturas && typeof base.aberturas === "object") ? (base.aberturas as Record<string, { foto?: string }>) : {};
@@ -500,8 +500,21 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
   for (const p of prods) {
     const m = fotoMap.get(normNome(p.nome || ""));
     p.foto = m?.foto || p.foto || placeholder;
+    p.video = m?.video || "";
     p.fotoDescricao = m?.fotoDescricao || "";
     if (m?.blocos && Object.keys(m.blocos).length) p.blocos = m.blocos;
+  }
+
+  // Foto do TECIDO por cor: casa pelo NOME da cor com o banco_cores do catálogo atual.
+  type CorBase = { nome?: string; foto?: string };
+  const corFotoMap = new Map<string, string>();
+  for (const c of (Array.isArray(base.banco_cores) ? (base.banco_cores as CorBase[]) : [])) {
+    const k = normNome(c.nome || "");
+    if (k && c.foto && !corFotoMap.has(k)) corFotoMap.set(k, c.foto);
+  }
+  for (const c of (Array.isArray(cat.banco_cores) ? (cat.banco_cores as { nome?: string; foto?: string }[]) : [])) {
+    const f = corFotoMap.get(normNome(c.nome || ""));
+    if (f) c.foto = f;
   }
 
   const normais: Prod[] = [], limitada: Prod[] = [];
