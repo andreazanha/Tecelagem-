@@ -516,7 +516,7 @@ pedidos.post("/", async (c) => {
   await cadastrarProdutosDoPedido(c.env, id).catch(() => {});
   // Baixa automática de estoque dos insumos consumidos (idempotente). Não trava o
   // pedido se algo falhar — o estoque pode ser conferido/ajustado depois.
-  await baixarPorPedido(c.env, id, await consumoDoPedido(c.env, id)).catch(() => {});
+  await baixarPorPedido(c.env, id, await consumoDoPedido(c.env, id), { id: g.u.id, nome: g.u.nome }).catch(() => {});
   // Avisa os aparelhos inscritos que entrou pedido novo (push, sem travar a resposta).
   c.executionCtx.waitUntil(enviarPushNovoPedido(c.env));
   return c.json({ id, codigo_pai }, 201);
@@ -569,7 +569,7 @@ pedidos.put("/:id", async (c) => {
 
   // Estoque: os itens foram substituídos → estorna a baixa anterior e refaz a baixa
   // com o consumo novo (ambos idempotentes/atômicos). Não trava a edição se falhar.
-  try { await estornarPedido(c.env, id); await baixarPorPedido(c.env, id, await consumoDoPedido(c.env, id)); } catch { /* ajusta depois */ }
+  try { await estornarPedido(c.env, id, { id: g.u.id, nome: g.u.nome }); await baixarPorPedido(c.env, id, await consumoDoPedido(c.env, id), { id: g.u.id, nome: g.u.nome }); } catch { /* ajusta depois */ }
 
   // Atualiza as PEÇAS dos cards já existentes (sem mover de setor). Se mudou itens
   // que alteram o split do kit, o ideal é Gerar PDFs de novo (refaz tudo).
@@ -602,7 +602,7 @@ pedidos.delete("/:id", async (c) => {
   const exists = await c.env.DB.prepare("SELECT id FROM pedidos WHERE id = ?").bind(id).first();
   if (!exists) return c.json({ error: "pedido não encontrado" }, 404);
   // Estoque: devolve exatamente o que o pedido consumiu, antes de apagar (idempotente).
-  await estornarPedido(c.env, id).catch(() => {});
+  await estornarPedido(c.env, id, { id: g.u.id, nome: g.u.nome }).catch(() => {});
   await c.env.DB.batch([
     c.env.DB.prepare("DELETE FROM producao_eventos WHERE pedido_id = ?").bind(id),
     c.env.DB.prepare("DELETE FROM producao WHERE pedido_id = ?").bind(id),

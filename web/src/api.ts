@@ -686,6 +686,16 @@ export interface RelProducaoDetalhado {
   eventos: RelProdEvento[];
 }
 
+export interface EstoqueMov {
+  data: string; classe: "produto" | "insumo"; item: string; unidade: string;
+  tipo: "entrada" | "saida"; qtd: number; usuario: string; origem: string; pedido: string;
+}
+export interface RelEstoqueMov {
+  resumo: { total: number; entradas: number; saidas: number } | null;
+  movimentos: EstoqueMov[];
+  usuarios: string[];
+}
+
 export interface ErpPendente {
   id: string; numero_erp: string; cliente_nome: string; status: string;
   data_pedido: string | null; data_entrega: string | null; created_at: string;
@@ -1209,6 +1219,14 @@ export const api = {
     const qs = p.toString();
     return fetch(`/api/producao/relatorio/detalhado${qs ? "?" + qs : ""}`).then((r) => j<RelProducaoDetalhado>(r));
   },
+  // Relatório de estoque (histórico entrada/saída) — só gestor/admin.
+  relatorioEstoqueMov: (q: { de?: string; ate?: string; tipo?: string; classe?: string; busca?: string; usuario?: string } = {}) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(q)) if (v) p.set(k, v);
+    const qs = p.toString();
+    return fetch(`/api/produtos/relatorio/estoque${qs ? "?" + qs : ""}`).then((r) => j<RelEstoqueMov>(r));
+  },
+
   // Integração ERP — pedidos aguardando conferência (porta de entrada).
   erpPendentes: () => fetch("/api/integracao/pendentes").then((r) => j<ErpPendente[]>(r)),
   erpPendenteDetalhe: (id: string) => fetch(`/api/integracao/pendentes/${encodeURIComponent(id)}`).then((r) => j<ErpPendenteDetalhe>(r)),

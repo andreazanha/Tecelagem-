@@ -230,7 +230,7 @@ const GRUPOS: MenuGrupo[] = [
       { icon: "⏰", label: "Relatório de Atrasos", soon: true },
       { icon: "🔍", label: "Relatório de Revisão", soon: true },
       { icon: "🪡", label: "Relatório de Costureiras", soon: true },
-      { icon: "📦", label: "Relatório de Estoque", soon: true },
+      { to: "/relatorio-estoque", icon: "📦", label: "Relatório de Estoque", admin: true },
       { icon: "💵", label: "Relatório de Vendas", soon: true },
     ],
   },

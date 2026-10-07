@@ -424,8 +424,8 @@ materiais.post("/:id/mov", async (c) => {
   const novo = Math.max(0, atual + delta);
   await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE materiais SET ${alvo === "caixas" ? "caixas" : "saldo"} = ? WHERE id = ?`).bind(novo, id),
-    c.env.DB.prepare("INSERT INTO material_mov (id, material_id, tipo, quantidade, motivo, fonte) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(uid(), id, tipo, delta, str(b.motivo), alvo === "caixas" ? "caixas" : "material"),
+    c.env.DB.prepare("INSERT INTO material_mov (id, material_id, tipo, quantidade, motivo, fonte, usuario_id, usuario_nome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(uid(), id, tipo, delta, str(b.motivo), alvo === "caixas" ? "caixas" : "material", g.u.id, g.u.nome),
   ]);
   return c.json({ id, saldo: alvo === "caixas" ? mat.saldo : novo, caixas: alvo === "caixas" ? novo : mat.caixas });
 });

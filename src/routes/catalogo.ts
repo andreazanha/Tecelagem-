@@ -459,8 +459,8 @@ cores.post("/:nome/mov", async (c) => {
   const motivo = String(b.motivo ?? "").trim() || null;
   await c.env.DB.batch([
     c.env.DB.prepare("UPDATE cores SET saldo = ? WHERE nome = ?").bind(novo, nome),
-    c.env.DB.prepare("INSERT INTO material_mov (id, material_id, tipo, quantidade, motivo, fonte) VALUES (?, ?, ?, ?, ?, 'fio')")
-      .bind(crypto.randomUUID(), nome, tipo, delta, motivo),
+    c.env.DB.prepare("INSERT INTO material_mov (id, material_id, tipo, quantidade, motivo, fonte, usuario_id, usuario_nome) VALUES (?, ?, ?, ?, ?, 'fio', ?, ?)")
+      .bind(crypto.randomUUID(), nome, tipo, delta, motivo, gEst.u.id, gEst.u.nome),
   ]);
   return c.json({ nome, saldo: novo });
 });

@@ -11,7 +11,7 @@ import type { Env } from "../index";
 import { exigirFuncao } from "../permissoes";
 import { proximoCodigoPai } from "./pedidos";
 import { cadastrarProdutosDoPedido } from "./produtos";
-import { consumoDoPedido, baixarPorPedido } from "../estoque-baixa";
+import { consumoDoPedido, baixarPorPedido, type Autor } from "../estoque-baixa";
 import { SYNC_JS, SYNC_VERSAO } from "../bridgeScript";
 import { SITE_ONLINE_HTML } from "../siteTemplate";
 import { SITE_FULL_HTML } from "../siteTemplateFull";
@@ -44,9 +44,9 @@ const inteiro = (v: unknown) => Math.max(0, Math.trunc(Number(v) || 0));
 
 // Depois que um pedido importado "vira produção" (aprovado), roda o MESMO pós-processo
 // do PDF: cadastra os produtos que faltam e dá baixa de estoque dos insumos. Não trava.
-async function posProcessar(env: Env, pedidoId: string) {
+async function posProcessar(env: Env, pedidoId: string, autor?: Autor) {
   await cadastrarProdutosDoPedido(env, pedidoId).catch(() => {});
-  await baixarPorPedido(env, pedidoId, await consumoDoPedido(env, pedidoId)).catch(() => {});
+  await baixarPorPedido(env, pedidoId, await consumoDoPedido(env, pedidoId), autor).catch(() => {});
 }
 
 type ItemIn = { produto?: string; ref?: string; cor?: string; tamanho?: string; qtd?: number | string; preco?: number | string };
@@ -148,7 +148,7 @@ integracao.post("/pendentes/:id/aprovar", async (c) => {
   const ok = (r.meta?.changes ?? 0) > 0;
   // Igual ao PDF: nasce bloqueado (PCP libera), cadastra produtos e baixa estoque.
   // A explosão/cards são gerados pelo garantirCards quando o quadro da produção carrega.
-  if (ok) await posProcessar(c.env, id);
+  if (ok) await posProcessar(c.env, id, { id: g.u.id, nome: g.u.nome });
   return c.json({ ok });
 });
 
@@ -202,7 +202,7 @@ integracao.post("/aprovar-lote", async (c) => {
     stmts.push(c.env.DB.prepare("DELETE FROM pedidos WHERE id = ? AND COALESCE(erp_integracao,0) = 1 AND status IN ('aguardando_aprovacao','aguardando_explosao')").bind(id));
   }
   await c.env.DB.batch(stmts);
-  await posProcessar(c.env, novoId);
+  await posProcessar(c.env, novoId, { id: g.u.id, nome: g.u.nome });
   return c.json({ ok: true, pedido_id: novoId, codigo_pai: codigoPai, pedidos: peds.length });
 });
 

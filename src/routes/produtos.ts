@@ -6,6 +6,7 @@ import { gerarRelatorioEstoque, type LinhaEstoque } from "../pdf";
 import { enviarPush } from "../push-send";
 import { colsBulk } from "./materiais";
 import { enviarWhatsapp } from "./atendimento";
+import { exigirFuncao } from "../permissoes";
 
 // Lembrete recorrente (chamado pelo cron): enquanto houver reposição PENDENTE,
 // reenvia o push. A mesma tag substitui o aviso anterior (não empilha).
@@ -232,6 +233,62 @@ produtos.get("/movimentacoes", async (c) => {
        ${where} ORDER BY m.criado_em DESC, m.rowid DESC LIMIT 300`
   ).all();
   return c.json(results);
+});
+
+// ── RELATÓRIO DE ESTOQUE (histórico entrada/saída) — SÓ GESTOR (admin) ──────────
+// Junta movimentos de PRODUTOS (produto_mov) e INSUMOS/fio/etiqueta (material_mov)
+// num feed único, com quem fez. Filtros: de, ate (YYYY-MM-DD), tipo (entrada|saida),
+// classe (produto|insumo), busca (item), usuario. Guard "relatorios" = só admin.
+produtos.get("/relatorio/estoque", async (c) => {
+  const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
+  const de = (c.req.query("de") || "").slice(0, 10);
+  const ate = (c.req.query("ate") || "").slice(0, 10);
+  const tipo = (c.req.query("tipo") || "").trim();           // entrada | saida
+  const classe = (c.req.query("classe") || "").trim();       // produto | insumo
+  const busca = (c.req.query("busca") || "").trim().toLowerCase();
+  const usuario = (c.req.query("usuario") || "").trim().toLowerCase();
+
+  // Feed unificado. tipo normalizado: produto usa pm.tipo; insumo = entrada se
+  // quantidade>=0 senão saída (baixa é negativa). qtd sempre positivo pra exibir.
+  const uniao =
+    `SELECT pm.criado_em AS data, 'produto' AS classe,
+            COALESCE(p.nome, pm.produto_id) AS item, COALESCE(p.unidade,'un') AS unidade,
+            CASE WHEN pm.tipo='saida' THEN 'saida' ELSE 'entrada' END AS tipo,
+            ABS(COALESCE(pm.qtd,0)) AS qtd, COALESCE(pm.usuario,'') AS usuario,
+            COALESCE(pm.origem,'') AS origem, COALESCE(pm.pedido_numero, pm.pedido_id, '') AS pedido
+       FROM produto_mov pm LEFT JOIN produtos p ON p.id = pm.produto_id
+     UNION ALL
+     SELECT mm.criado_em AS data, 'insumo' AS classe,
+            COALESCE(mt.nome, mm.material_id) AS item,
+            COALESCE(mt.unidade, CASE mm.fonte WHEN 'fio' THEN 'kg' WHEN 'caixas' THEN 'cx' ELSE 'un' END) AS unidade,
+            CASE WHEN COALESCE(mm.quantidade,0) >= 0 THEN 'entrada' ELSE 'saida' END AS tipo,
+            ABS(COALESCE(mm.quantidade,0)) AS qtd, COALESCE(mm.usuario_nome,'') AS usuario,
+            COALESCE(mm.motivo, mm.fonte, '') AS origem, COALESCE(mm.pedido_id,'') AS pedido
+       FROM material_mov mm LEFT JOIN materiais mt ON mt.id = mm.material_id`;
+
+  const cond: string[] = [], binds: unknown[] = [];
+  if (de) { cond.push("date(t.data) >= ?"); binds.push(de); }
+  if (ate) { cond.push("date(t.data) <= ?"); binds.push(ate); }
+  if (tipo === "entrada" || tipo === "saida") { cond.push("t.tipo = ?"); binds.push(tipo); }
+  if (classe === "produto" || classe === "insumo") { cond.push("t.classe = ?"); binds.push(classe); }
+  if (busca) { cond.push("lower(t.item) LIKE ?"); binds.push(`%${busca}%`); }
+  if (usuario) { cond.push("lower(t.usuario) LIKE ?"); binds.push(`%${usuario}%`); }
+  const where = cond.length ? "WHERE " + cond.join(" AND ") : "";
+
+  const { results: movimentos } = await c.env.DB.prepare(
+    `SELECT * FROM (${uniao}) t ${where} ORDER BY t.data DESC LIMIT 1000`
+  ).bind(...binds).all();
+  const resumo = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS total,
+            SUM(CASE WHEN t.tipo='entrada' THEN 1 ELSE 0 END) AS entradas,
+            SUM(CASE WHEN t.tipo='saida' THEN 1 ELSE 0 END) AS saidas
+       FROM (${uniao}) t ${where}`
+  ).bind(...binds).first<{ total: number; entradas: number; saidas: number }>();
+  const { results: usuarios } = await c.env.DB.prepare(
+    `SELECT DISTINCT t.usuario FROM (${uniao}) t WHERE t.usuario <> '' ORDER BY t.usuario`
+  ).all<{ usuario: string }>().catch(() => ({ results: [] as { usuario: string }[] }));
+
+  return c.json({ resumo, movimentos, usuarios: (usuarios || []).map((u) => u.usuario) });
 });
 
 // RELATÓRIO DE ESTOQUE em PDF (faltas e sobras, organizado por categoria). ?so=falta
