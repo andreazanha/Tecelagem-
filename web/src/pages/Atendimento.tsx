@@ -225,10 +225,10 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
   // recente que a nossa saída) e a conversa não foi encerrada depois. Se a última mensagem for
   // NOSSA (já respondemos), para de piscar.
   const aguardando = (c: AtendConversa) => !!c.ultima_in_em && (c.ultima_in_em || "") > (c.ultima_out_em || "") && (c.ultima_in_em || "") > (c.encerrado_em || "");
-  // Card em TRIAGEM com cliente ativo (a IA está atendendo): TAMBÉM pisca — pra o time VER toda
-  // conversa em triagem e poder entrar (o lead não fica "preso" com a IA sem vocês saberem).
-  // Não pisca autorresposta de campanha (é robô de loja, não gente). Silenciar tira o piscar.
-  const emTriagemAtiva = (c: AtendConversa) => c.coluna === "triagem" && c.origem !== "campanha" && !!c.ultima_in_em && (c.ultima_in_em || "") > (c.encerrado_em || "");
+  // Card em "IA atende" com cliente ativo (a IA está atendendo o lead novo): TAMBÉM pisca — pra o
+  // time VER toda conversa que a IA atende e poder entrar (o lead não fica "preso" com a IA sem
+  // vocês saberem). Não pisca autorresposta de campanha (é robô de loja). Silenciar tira o piscar.
+  const emIaAtiva = (c: AtendConversa) => c.coluna === "ia-atende" && c.origem !== "campanha" && !!c.ultima_in_em && (c.ultima_in_em || "") > (c.encerrado_em || "");
   // GRUPO nunca pisca (mensagem o tempo todo): detecta pelo estado/origem — não só pela coluna, porque
   // um grupo com msg nova o sistema joga pra "Aguardando humano" e aí voltava a piscar. Assim o grupo
   // importante continua RECEBENDO (não é silenciar), só não fica piscando.
@@ -240,7 +240,7 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
   // sem ninguém ter atendido. Só para quando um humano RESPONDE (o card sai pra "Em atendimento"),
   // quando você silencia (🔕) ou encerra. Assim nenhum lead transferido fica esquecido sem piscar.
   const emEsperaHumano = (c: AtendConversa) => c.coluna === "aguardando-humano";
-  const pulsaVerde = (c: AtendConversa) => !c.silenciado && !ehGrupoCard(c) && c.coluna !== "campanha" && (aguardando(c) || emTriagemAtiva(c) || emEsperaHumano(c));
+  const pulsaVerde = (c: AtendConversa) => !c.silenciado && !ehGrupoCard(c) && c.coluna !== "campanha" && (aguardando(c) || emIaAtiva(c) || emEsperaHumano(c));
 
   // Busca do quadro: um card "bate" com a busca por nome/loja/cidade/UF/representante ou pelo telefone
   // (a partir de 3 dígitos). Vazio = mostra todos.

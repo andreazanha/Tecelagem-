@@ -991,7 +991,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   // qualifica e, quando for o caso, manda pra "Aguardando atendimento humano").
   const emTriagem = ["novo", "ia-triagem", "triagem-vendas", "triagem-nome", "aguardando-cnpj", "aguardando-cidade-parceiro"].includes(String(conv.estado));
   if (emTriagem && !arquivoUrl && RESPOSTA_AUTOMATICA_RE.test(texto || "")) {
-    return { conversa_id: conv.id, estado: conv.estado, coluna: "triagem", respostas: [], notificarHumano: false };
+    return { conversa_id: conv.id, estado: conv.estado, coluna: "ia-atende", respostas: [], notificarHumano: false };
   }
 
   // Cliente CONHECIDO (já é cliente ou lojista confirmado) mandou FOTO/ÁUDIO (lista de
@@ -3126,8 +3126,8 @@ function colunaAtendimento(c: { estado?: string | null; responsavel?: string | n
   // pra esses leads não se misturarem com a fila humana. Pisca só quando o cliente está esperando
   // (o botão "Fim" silencia; nova mensagem do cliente tira do silêncio e o card volta pra cá).
   if (estado === "ia-triagem") return "ia-atende";
-  if (["menu", "triagem-vendas", "triagem-nome", "aguardando-cnpj", "aguardando-cidade-parceiro"].includes(estado)) return "triagem";
-  if (estado === "novo") return "triagem";                            // contato novo → cai na triagem automática
+  if (["menu", "triagem-vendas", "triagem-nome", "aguardando-cnpj", "aguardando-cidade-parceiro"].includes(estado)) return "ia-atende";
+  if (estado === "novo") return "ia-atende";                          // contato novo → a IA atende (triagem foi unificada em "IA atende")
   // Estados de funil/venda: no ATENDIMENTO só importam se o cliente está esperando resposta.
   if (inn && inn > out) return "aguardando-humano";
   return "finalizado";
@@ -3210,8 +3210,9 @@ atendimento.get("/", async (c) => {
       const clienteEsperando = !!innR && innR > outR && innR > encR;   // cliente escreveu por último, ninguém respondeu
       // SÓ ressuscita quem estava MORTO (finalizado). Card em coluna de trabalho — montando pedido,
       // em atendimento, orçando, aguardando humano, reclamação, follow-up... — NÃO se mexe: quem está
-      // sendo atendido não pode saltar pra Triagem só porque o cliente mandou mais uma mensagem.
-      if (clienteEsperando && !agAtivo && !ehGrupo && coluna === "finalizado") coluna = "triagem";
+      // sendo atendido não pode saltar de coluna só porque o cliente mandou mais uma mensagem.
+      // (A IA reengata o lead ressuscitado — coluna "IA atende".)
+      if (clienteEsperando && !agAtivo && !ehGrupo && coluna === "finalizado") coluna = "ia-atende";
     }
     // GRUPO (não silenciado): mensagem NOVA (depois do último "encerrar") sobe pra "Aguardando
     // atendimento humano" (piscando). Se VOCÊ já respondeu (sua saída depois da última entrada), vai

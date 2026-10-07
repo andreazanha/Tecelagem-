@@ -92,7 +92,6 @@ export interface Resultado { conv: Conversa; saidas: Saida[]; notificarHumano: b
 // (Etapas de venda ficam no Funil.) A coluna de cada conversa é derivada do estado
 // + responsável + últimas mensagens (ver colunaAtendimento em routes/atendimento.ts).
 export const ATEND_COLUNAS = [
-  { id: "triagem", label: "🟣 Triagem (chegando agora)", cor: "#8b5cf6" },
   { id: "ia-atende", label: "🤖 IA atende", cor: "#06b6d4" },
   { id: "aguardando-humano", label: "Aguardando atendimento humano", cor: "#f59e0b" },
   { id: "em-atendimento", label: "Em atendimento", cor: "#6366f1" },
@@ -111,8 +110,8 @@ export const ATEND_COLUNAS = [
 // Mapa simples estado → coluna (aproximação; o quadro usa colunaAtendimento, mais rico).
 export function colunaDe(estado: string): string {
   switch (estado) {
-    case "novo": case "menu": return "triagem";
-    case "ia-triagem": case "triagem-vendas": case "triagem-nome": case "aguardando-cnpj": case "aguardando-cidade-parceiro": return "triagem";
+    case "novo": case "menu": return "ia-atende";
+    case "ia-triagem": case "triagem-vendas": case "triagem-nome": case "aguardando-cnpj": case "aguardando-cidade-parceiro": return "ia-atende";
     case "aguardando-setor": return "aguardando-setor";
     case "atendimento-humano": return "em-atendimento";
     case "reclamacao": return "reclamacao";                               // reclamação → coluna própria
