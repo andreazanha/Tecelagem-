@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-08.8";
+const PONTE_VERSAO = "2026-10-08.9";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -748,23 +748,25 @@ async function gravarUmPedido(db, p) {
     // FRETE (9º) vai com código válido (0/1) — vazio dava "Conversion error from string ''".
     const cab = await trQuery(tr,
       "SELECT NUMERO FROM app_pedido_insert_v2(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      // Campos OPCIONAIS vão como NULL (e não ""): no Firebird, "" num campo que a
+      // procedure converte em número/data dá "Conversion error from string ''"; NULL não.
       [
         hoje,                          // 1  DATA (MM/DD/YYYY)
         String(valorTotal.toFixed(2)), // 2  VALOR
         hoje,                          // 3  DATA_ENTR
         String(codCli),                // 4  COD_CLI
         "Pedido Loja B2B (site)",      // 5  OBS_PED
-        codPrazo,                      // 6  COD_PRAZO
+        codPrazo || null,              // 6  COD_PRAZO (NULL se o cliente não tem prazo)
         "A",                           // 7  OPCAO_PRECO (atacado)
-        "",                            // 8  GUIA
+        null,                          // 8  GUIA
         frete,                         // 9  FRETE (0 CIF / 1 FOB)
-        "",                            // 10 COD_DIG
-        "",                            // 11 COD_VEND
-        "",                            // 12 COD_TRANSP
-        "",                            // 13 FORMA_PAGTO
-        hoje,                          // 14 DATA_ALT_REG — NÃO pode ir vazio (é data): usa hoje
+        null,                          // 10 COD_DIG
+        null,                          // 11 COD_VEND
+        null,                          // 12 COD_TRANSP
+        null,                          // 13 FORMA_PAGTO
+        hoje,                          // 14 DATA_ALT_REG (data)
         null,                          // 15 IMEI (nulo obrigatório)
-        "",                            // 16 CLASSIF_PED
+        null,                          // 16 CLASSIF_PED
         "0",                           // 17 DESCONTO
         "0",                           // 18 VALOR_FRETE
         "Loja B2B",                    // 19 NOME_APP
