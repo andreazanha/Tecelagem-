@@ -2597,7 +2597,7 @@ function EtiquetasColar() {
 }
 
 // Lista de COMPRAS: materiais abaixo do mínimo, agrupados por fornecedor.
-function ComprasMateriais() {
+export function ComprasMateriais() {
   const [itens, setItens] = useState<CompraSugestao[]>([]);
   const [carregou, setCarregou] = useState(false);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);

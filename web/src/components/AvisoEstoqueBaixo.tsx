@@ -12,7 +12,7 @@ export function AvisoEstoqueBaixo() {
   const [fechado, setFechado] = useState(false);
 
   useEffect(() => {
-    if (!podeFuncao(getUser(), "pedidos")) return; // só pro PCP
+    if (!podeFuncao(getUser(), "compras.ordem")) return; // só quem pode fazer ordem de compra (PCP)
     try { if (sessionStorage.getItem("avisoEstoqueBaixo") === "1") { setFechado(true); return; } } catch { /* ok */ }
     api.comprasMateriais().then(setItens).catch(() => {});
   }, []);
@@ -37,7 +37,7 @@ export function AvisoEstoqueBaixo() {
         </div>
         <div className="aviso-pop-acts">
           <button className="btn btn-soft" onClick={fechar}>Fechar</button>
-          <button className="btn btn-primary" onClick={() => { fechar(); nav("/cadastros?aba=materiais&mat=__compras"); }}>🛒 Ver compras</button>
+          <button className="btn btn-primary" onClick={() => { fechar(); nav("/compras"); }}>🛒 Ver compras</button>
         </div>
       </div>
     </div>

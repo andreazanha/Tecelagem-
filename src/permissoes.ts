@@ -51,7 +51,7 @@ export const CHAVES_FUNCAO = new Set<string>([
   "cadastro.produtos", "cadastro.fios", "cadastro.tamanhos", "cadastro.materiais",
   "cadastro.fornecedores", "cadastro.operadores",
   // PCP
-  "pcp.liberar",
+  "pcp.liberar", "compras.ordem",
   // Administração
   "admin.usuarios", "admin.setores", "admin.permissoes",
 ]);

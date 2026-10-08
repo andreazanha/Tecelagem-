@@ -2,7 +2,7 @@ import { useEffect, useReducer, useState } from "react";
 import { NavLink, Outlet, Link, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { VERSION } from "../version";
 import { historico } from "../historico";
-import { getUser, setUser, pode } from "../auth";
+import { getUser, setUser, pode, podeFuncao } from "../auth";
 import { api, type MaterialCategoriaDef } from "../api";
 import { pushSuportado, pushAtivo, ativarPush, desativarPush } from "../push";
 import { Icon } from "./Icon";
@@ -147,7 +147,7 @@ function UndoRedo() {
 // Item do menu. `page` = permissão da tela (se ausente e sem `soon`, é livre).
 // `soon` = página ainda não existe → aparece só para admin, desabilitada (sem 404).
 // `admin` = link REAL visível só para o dono (admin). Diferente de `soon` (que aparece desabilitado).
-interface MenuItem { to?: string; icon: string; label: string; page?: string; soon?: boolean; admin?: boolean; children?: MenuItem[]; dyn?: string }
+interface MenuItem { to?: string; icon: string; label: string; page?: string; func?: string; soon?: boolean; admin?: boolean; children?: MenuItem[]; dyn?: string }
 interface MenuGrupo { id: string; icon: string; label: string; itens: MenuItem[] }
 
 // Menu em grupos sanfonados. Itens existentes apontam para rotas reais (alguns
@@ -199,6 +199,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/pedidos/novo", icon: "➕", label: "Criar pedido", page: "pedidos" },
       { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
       { to: "/impressao-etiquetas", icon: "🏷️", label: "Impressão de etiquetas", page: "expedicao" },
+      { to: "/compras", icon: "🛒", label: "Ordem de compra (insumos)", func: "compras.ordem" },
       // ESTOQUE DE MATÉRIA PRIMA dentro do PCP: fios + insumos (materiais) + atalho de cadastro.
       {
         icon: "🧱", label: "Estoque de matéria prima", page: "estoque", children: [
@@ -257,6 +258,7 @@ const TVS = [
 function itemVisivel(u: ReturnType<typeof getUser>, it: MenuItem): boolean {
   if (it.soon) return !!u?.admin;
   if (it.admin) return !!u?.admin;          // só o dono vê (menu Gestão)
+  if (it.func) return podeFuncao(u, it.func); // tela liberada por FUNÇÃO (ex.: ordem de compra)
   if (it.page) return pode(u, it.page);
   return true;
 }

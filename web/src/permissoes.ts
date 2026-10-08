@@ -80,6 +80,7 @@ export const CATEGORIAS_FUNCAO: CategoriaFuncao[] = [
   {
     id: "pcp", titulo: "PCP", icon: "📋", funcoes: [
       { key: "pcp.liberar", label: "Liberar pedido bloqueado", desc: "tirar o cadeado p/ a Tecelagem" },
+      { key: "compras.ordem", label: "Fazer ordem de compra de insumos", desc: "ver as compras sugeridas e gerar/enviar a ordem de compra pro WhatsApp" },
     ],
   },
   {

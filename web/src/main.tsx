@@ -49,15 +49,17 @@ import { TvRevisao } from "./pages/TvRevisao";
 import { NovoPedidoTV } from "./pages/NovoPedidoTV";
 import { Login } from "./pages/Login";
 import { TVFrame } from "./components/TVFrame";
-import { getUser, pode, podeAlgum, primeiraPagina } from "./auth";
+import { getUser, pode, podeAlgum, podeFuncao, primeiraPagina } from "./auth";
+import { ComprasMateriais } from "./pages/Cadastros";
 import "./styles.css";
 
 // Protege uma página: exige login e a permissão da tela. Sem permissão, manda
 // para a primeira página liberada do usuário.
-function Protegido({ page, admin, children }: { page?: string | string[]; admin?: boolean; children: React.ReactNode }) {
+function Protegido({ page, admin, func, children }: { page?: string | string[]; admin?: boolean; func?: string; children: React.ReactNode }) {
   const u = getUser();
   if (!u) return <Navigate to="/login" replace />;
   if (admin && !u.admin) return <Navigate to={primeiraPagina(u)} replace />;   // área só do dono (Gestão)
+  if (func && !podeFuncao(u, func)) return <Navigate to={primeiraPagina(u)} replace />; // tela liberada por FUNÇÃO
   const ok = !page || (Array.isArray(page) ? podeAlgum(u, page) : pode(u, page));
   if (!ok) return <Navigate to={primeiraPagina(u)} replace />;
   return <>{children}</>;
@@ -119,6 +121,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/pedidos/:id/editar" element={<Protegido page="pedidos"><NovoPedido /></Protegido>} />
           <Route path="/pedidos/:id" element={<Protegido page="pedidos"><PedidoDetalhe /></Protegido>} />
           <Route path="/cadastros" element={<Protegido page="cadastros"><Cadastros /></Protegido>} />
+          <Route path="/compras" element={<Protegido func="compras.ordem"><ComprasMateriais /></Protegido>} />
           <Route path="/produtos" element={<Protegido page="produtos"><Produtos /></Protegido>} />
           <Route path="/comercial" element={<Protegido page={["representantes", "vendas-dashboard"]}><Comercial /></Protegido>} />
           <Route path="/clientes" element={<Protegido page="comercial"><Clientes /></Protegido>} />

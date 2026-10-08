@@ -155,7 +155,7 @@ materiais.get("/compras", async (c) => {
 
 // TESTE manual: manda AGORA o aviso de estoque no WhatsApp (ignora a guarda diária).
 materiais.post("/testar-aviso", async (c) => {
-  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const g = await exigirFuncao(c, "compras.ordem"); if ("erro" in g) return g.erro;
   const num = ((await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_min_wpp'").first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
   if (!num) return c.json({ error: "numero_nao_configurado" }, 400);
   // Opcional: só envia os materiais escolhidos (ids). Sem ids = tudo (comportamento antigo).
@@ -172,7 +172,7 @@ materiais.post("/testar-aviso", async (c) => {
 // Gera o PDF no servidor (sem depender do navegador) e manda como documento pela Z-API,
 // com uma legenda curta de resumo.
 materiais.post("/ordem-compra/enviar", async (c) => {
-  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const g = await exigirFuncao(c, "compras.ordem"); if ("erro" in g) return g.erro;
   const num = ((await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_min_wpp'").first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
   if (!num) return c.json({ error: "numero_nao_configurado" }, 400);
   type OrdemBody = {
