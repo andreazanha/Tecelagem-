@@ -200,6 +200,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
       { to: "/impressao-etiquetas", icon: "🏷️", label: "Impressão de etiquetas", page: "expedicao" },
       { to: "/compras", icon: "🛒", label: "Ordem de compra (insumos)", func: "compras.ordem" },
+      { to: "/ordens-compra", icon: "📝", label: "Ordens de compra", func: "compras.ordem" },
       // ESTOQUE DE MATÉRIA PRIMA dentro do PCP: fios + insumos (materiais) + atalho de cadastro.
       {
         icon: "🧱", label: "Estoque de matéria prima", page: "estoque", children: [

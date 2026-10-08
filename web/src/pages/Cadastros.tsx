@@ -2641,8 +2641,9 @@ export function ComprasMateriais() {
     imprimirOrdemCompra(getEmpresa(), f, g.forn, escolhidos, autoPrint);
   }
 
-  // Envia a ordem de compra (PDF) pro WhatsApp do gestor, e também gera/imprime localmente.
-  async function enviarOrdem(g: { forn: string; itens: CompraSugestao[] }) {
+  // Cria a ordem de compra no sistema (status "aguardando aprovação"). NÃO envia no
+  // WhatsApp agora: quem envia é o gestor, na tela "Ordens de compra", depois de aprovar.
+  async function criarOrdem(g: { forn: string; itens: CompraSugestao[] }) {
     const escolhidos = g.itens.filter(incluido).map((m) => ({ ...m, faltam: qtdDe(m) })).filter((m) => m.faltam > 0);
     if (!escolhidos.length) { alert("Marque ao menos um item (com quantidade maior que zero)."); return; }
     setEnviando(true);
@@ -2650,15 +2651,16 @@ export function ComprasMateriais() {
       const emp = getEmpresa();
       const fid = g.itens[0]?.fornecedor_id;
       const f = fid ? fornecedores.find((x) => x.id === fid) || null : null;
-      const r = await api.enviarOrdemCompra({
-        fornecedor: g.forn,
+      const r = await api.criarOrdemCompra({
+        fornecedor: g.forn, fornecedor_id: fid || null,
         empresa: { nome: emp.nome, cnpj: emp.cnpj, endereco: emp.endereco, telefone: emp.telefone, email: emp.email },
         fornecedorDados: { nome: g.forn, contato: f?.contato || "", telefone: f?.telefone || "", email: f?.email || "", cnpj: f?.cnpj || "" },
         itens: escolhidos.map((m) => ({ nome: m.nome, tamanho: m.tamanho, cor: m.cor, codigo: m.codigo || m.codigo_interno, unidade: m.unidade, qtd: m.faltam, preco: m.preco })),
       });
-      gerar(g, true); // também gera/imprime a ordem localmente
       setEnviar(null);
-      alert(r.ok ? `✅ Ordem de compra enviada (PDF) pro WhatsApp ${r.numero}.` : `⚠️ Não enviou (${r.motivo || "falha"}). Confira o número do gestor e a conexão do WhatsApp.`);
+      alert(r.ok
+        ? `✅ Ordem ${r.numero} criada e enviada para APROVAÇÃO do gestor.\nEla aparece em "Ordens de compra". O gestor revisa, aprova e aí ela vai pro WhatsApp.`
+        : `⚠️ Não consegui criar a ordem.`);
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -2686,8 +2688,8 @@ export function ComprasMateriais() {
             <div className="row-gap" style={{ alignItems: "center", gap: 10, padding: "10px 12px", flexWrap: "wrap" }}>
               <span className="chip chip-kit">🚛 {g.forn}</span>
               <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>{nSel}/{g.itens.length} item(ns) · {rBR(total)}</span>
-              <button className="btn btn-soft" title="Abrir sem imprimir (visualizar/editar)" onClick={() => gerar(g, false)}>👁 Visualizar</button>
-              <button className="btn btn-primary" title="Gerar a ordem de compra (e enviar ao gestor)" onClick={() => setEnviar(g)}>🧾 Ordem de compra</button>
+              <button className="btn btn-soft" title="Abrir sem imprimir (pré-visualizar)" onClick={() => gerar(g, false)}>👁 Visualizar</button>
+              <button className="btn btn-primary" title="Criar a ordem e enviar para o gestor aprovar" onClick={() => setEnviar(g)}>🧾 Criar ordem (p/ aprovação)</button>
             </div>
             <table className="table">
               <thead><tr>
@@ -2724,14 +2726,15 @@ export function ComprasMateriais() {
         <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget && !enviando) setEnviar(null); }}>
           <div className="aviso-pop" style={{ borderTopColor: "#4338ca", maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
             <div className="aviso-pop-ic">🧾</div>
-            <h2 className="aviso-pop-tit" style={{ color: "#3730a3" }}>Ordem de compra</h2>
+            <h2 className="aviso-pop-tit" style={{ color: "#3730a3" }}>Criar ordem de compra</h2>
             <div className="aviso-pop-sub">
-              Enviar esta ordem <strong>em PDF</strong> para o gestor no WhatsApp?<br />
+              A ordem entra como <strong>“aguardando aprovação”</strong> na tela <strong>Ordens de compra</strong>.
+              O gestor revisa, pode ajustar e, ao <strong>aprovar</strong>, o sistema envia o PDF no WhatsApp.<br />
               🚛 {enviar.forn} · {enviar.itens.filter(incluido).filter((m) => qtdDe(m) > 0).length} item(ns)
             </div>
             <div className="aviso-pop-acts">
-              <button className="btn btn-soft" disabled={enviando} onClick={() => { const g = enviar; setEnviar(null); gerar(g, true); }}>Não, só gerar</button>
-              <button className="btn btn-primary" disabled={enviando} onClick={() => enviarOrdem(enviar)}>{enviando ? "Enviando…" : "📲 Sim, enviar p/ gestor"}</button>
+              <button className="btn btn-soft" disabled={enviando} onClick={() => { const g = enviar; setEnviar(null); gerar(g, false); }}>Só visualizar</button>
+              <button className="btn btn-primary" disabled={enviando} onClick={() => criarOrdem(enviar)}>{enviando ? "Criando…" : "✅ Criar p/ aprovação"}</button>
             </div>
           </div>
         </div>
