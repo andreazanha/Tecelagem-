@@ -2614,6 +2614,8 @@ body.dark .page-head.at-head > .at-actions::-webkit-scrollbar-thumb { background
 .at-reia:hover { background: var(--bg-soft,#f8fafc); }
 .at-filtros { display: flex; gap: 7px; flex-wrap: wrap; }
 .at-list { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+/* Conversas mais estreitas: uma coluna de largura confortável (não ocupa a tela toda). */
+.at-list .fx-card { max-width: 560px; width: 100%; }
 .at-vazio { color: var(--muted); padding: 24px 12px; text-align: center; font-size: 13.5px; }
 @keyframes atCatPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } 50% { box-shadow: 0 0 0 3px rgba(239,68,68,.18); } }
 .at-cat.sel.novos { box-shadow: inset 0 0 0 1px currentColor; animation: atCatPulse 1.8s ease-in-out infinite; }
