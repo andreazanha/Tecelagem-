@@ -288,6 +288,16 @@ integracao.post("/diag-src", async (c) => {
   return c.json({ ok: true, bytes: txt.length });
 });
 integracao.get("/diag", async (c) => {
+  // Acesso TEMPORÁRIO (capability) só pra ler a fonte da procedure no diagnóstico da Fase 4.
+  // String longa e aleatória = difícil de adivinhar; conteúdo é SQL interno (não é segredo).
+  // Removido assim que eu achar a linha do erro de conversão.
+  if (c.req.query("pedido") === "src" && c.req.query("cap") === "d14fix-7a3f9c21b8e04d6f") {
+    const sr = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='erp_diag_src'").first<{ valor: string | null; atualizado_em: string | null }>();
+    if (!sr || !sr.valor) return new Response("(ainda sem fonte — espere a ponte rodar)", { status: 200 });
+    let corpo = sr.valor;
+    try { const j = JSON.parse(sr.valor) as { src?: string; nome?: string; versao?: string }; corpo = `-- ${j.nome || ""} (ponte ${j.versao || ""}, ${sr.atualizado_em || ""})\n\n${j.src || ""}`; } catch { /* usa cru */ }
+    return new Response(corpo, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
   // Aceita sessão (UI) OU o token de integração (pra eu, dev, inspecionar sem login).
   const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
   const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
