@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-08.1";
+const PONTE_VERSAO = "2026-10-08.2";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -81,10 +81,8 @@ const fbOpts = {
   lowercase_keys: false,
   role: null,
   pageSize: 4096,
-  // BLOBs sub_type text (ex.: RDB$TRIGGER_SOURCE, RDB$DEFAULT_SOURCE, RDB$PROCEDURE_SOURCE)
-  // vêm materializados como STRING. Sem isso a célula volta como uma função (stream) e
-  // String(...) dá lixo. Necessário pro diagnóstico de procedures/triggers (Fase 4).
-  blobAsText: true,
+  // NÃO ligar "blobAsText" aqui: materializar BLOB em TODA leitura trava a amostragem
+  // de tabelas do diagnóstico. A confirmação das procedures (Fase 4) não lê nenhum BLOB.
   // OBS: a opção "encoding" do node-firebird é IGNORADA na leitura (a lib sempre
   // decodifica como UTF-8). A correção de acentos é feita acima, no patch do
   // XdrReader (latin1). Não precisa colocar nada de encoding no config.json.
@@ -374,7 +372,7 @@ async function rodadaProdutos(db, estado) {
 // o nome EXATO das colunas de preço por tamanho sem o usuário fazer nada. Roda só
 // UMA vez (controlado pela flag no state.json); pra pedir de novo, troca o nome
 // da flag aqui embaixo (DIAG_FLAG) numa versão nova da ponte.
-const DIAG_FLAG = "diagV4_procs";
+const DIAG_FLAG = "diagV5_procs";
 function limparValor(v) {
   if (v == null) return v;
   if (v instanceof Date) return v.toISOString();
@@ -495,20 +493,20 @@ async function rodadaDiagnostico(db, estado) {
       }
     } catch (e) { diag.pedido.erros.push("procedures: " + e.message); }
     // ── Plano B: triggers BEFORE INSERT (tipo 1) das 3 tabelas de pedido ───────
-    // Só uso se faltar alguma SP. Mostram o que é auto-preenchido (NUMERO, AUTOINC…).
+    // Só os NOMES (o CÓDIGO/fonte é BLOB e não leio aqui pra não travar). Serve só
+    // pra saber SE existem gatilhos que auto-preenchem algo — plano B caso falte SP.
     diag.pedido.triggers = {};
     try {
       for (const t of ["PEDIDO", "ITENS_PEDIDO", "CORES_PEDIDO"]) {
         const trs = await query(db,
           "SELECT TRIM(RDB$TRIGGER_NAME) AS NOME, RDB$TRIGGER_TYPE AS TIPO, RDB$TRIGGER_SEQUENCE AS SEQ, " +
-          "COALESCE(RDB$TRIGGER_INACTIVE,0) AS INATIVO, RDB$TRIGGER_SOURCE AS FONTE " +
+          "COALESCE(RDB$TRIGGER_INACTIVE,0) AS INATIVO " +
           "FROM RDB$TRIGGERS WHERE RDB$RELATION_NAME = ? AND RDB$TRIGGER_TYPE = 1 " +
           "AND COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$TRIGGER_SEQUENCE",
           [t]);
         diag.pedido.triggers[t] = trs.map((r) => ({
           nome: String(r.NOME || "").trim(), tipo: r.TIPO, seq: r.SEQ,
           inativo: Number(r.INATIVO) === 1,
-          fonte: r.FONTE == null ? null : String(r.FONTE),
         }));
       }
     } catch (e) { diag.pedido.erros.push("triggers: " + e.message); }
