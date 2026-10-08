@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-06.2";
+const PONTE_VERSAO = "2026-10-07.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -370,7 +370,7 @@ async function rodadaProdutos(db, estado) {
 // o nome EXATO das colunas de preço por tamanho sem o usuário fazer nada. Roda só
 // UMA vez (controlado pela flag no state.json); pra pedir de novo, troca o nome
 // da flag aqui embaixo (DIAG_FLAG) numa versão nova da ponte.
-const DIAG_FLAG = "diagV2_tam_precos";
+const DIAG_FLAG = "diagV3_pedidos";
 function limparValor(v) {
   if (v == null) return v;
   if (v instanceof Date) return v.toISOString();
@@ -425,6 +425,49 @@ async function rodadaDiagnostico(db, estado) {
       } catch (e) { diag.erros.push(`amostra ${nome}: ${e.message}`); }
     }
   } catch (e) { diag.erros.push("geral: " + e.message); }
+
+  // ── Estrutura de ESCRITA de PEDIDO (Fase 4: criar pedido no Syntech) ─────────
+  // SÓ LEITURA. Mapeia colunas obrigatórias, o gerador do NUMERO (valor atual sem
+  // incrementar) e um pedido real de exemplo, pra eu montar o INSERT certo depois.
+  diag.pedido = { colunas: {}, geradores: [], amostra: {}, outras: {}, erros: [] };
+  const colsComNull = async (tabela) => {
+    try {
+      const cs = await query(db,
+        "SELECT TRIM(RF.RDB$FIELD_NAME) AS CAMPO, RF.RDB$NULL_FLAG AS NOTNULL, F.RDB$FIELD_TYPE AS TIPO, F.RDB$FIELD_LENGTH AS TAM, RF.RDB$DEFAULT_SOURCE AS DEFSRC " +
+        "FROM RDB$RELATION_FIELDS RF JOIN RDB$FIELDS F ON F.RDB$FIELD_NAME = RF.RDB$FIELD_SOURCE WHERE RF.RDB$RELATION_NAME = ? ORDER BY RF.RDB$FIELD_POSITION",
+        [tabela]);
+      return cs.map((r) => ({ campo: String(r.CAMPO || "").trim(), obrigatorio: Number(r.NOTNULL) === 1, tipo: r.TIPO, tam: r.TAM, def: r.DEFSRC ? String(r.DEFSRC).trim() : null }));
+    } catch (e) { diag.pedido.erros.push(`cols ${tabela}: ${e.message}`); return []; }
+  };
+  try {
+    for (const t of ["PEDIDO", "ITENS_PEDIDO", "CORES_PEDIDO"]) diag.pedido.colunas[t] = await colsComNull(t);
+    // geradores (sequências): valor atual SEM incrementar (GEN_ID passo 0).
+    try {
+      const gs = await query(db, "SELECT TRIM(RDB$GENERATOR_NAME) AS NOME FROM RDB$GENERATORS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$GENERATOR_NAME");
+      for (const g of gs) {
+        const nome = String(g.NOME || "").trim(); if (!nome) continue;
+        const rel = /PEDIDO|ORC|\bPED\b|NUMERO|SEQ/.test(nome.toUpperCase());
+        let valor = null;
+        if (rel && /^[A-Za-z0-9_$]+$/.test(nome)) { try { const v = await query(db, `SELECT GEN_ID(${nome}, 0) AS V FROM RDB$DATABASE`); valor = v[0] ? v[0].V : null; } catch { /* ignora */ } }
+        diag.pedido.geradores.push({ nome, valor });
+      }
+    } catch (e) { diag.pedido.erros.push("geradores: " + e.message); }
+    // amostra de um pedido real recente (cabeçalho + itens + cores) pra copiar o formato.
+    try {
+      const ped = await query(db, "SELECT FIRST 1 * FROM PEDIDO ORDER BY NUMERO DESC");
+      if (ped[0]) {
+        diag.pedido.amostra.pedido = limparLinha(ped[0]);
+        const num = ped[0].NUMERO;
+        try { diag.pedido.amostra.itens = (await query(db, "SELECT FIRST 5 * FROM ITENS_PEDIDO WHERE NUMERO = ?", [num])).map(limparLinha); } catch (e) { diag.pedido.erros.push("itens: " + e.message); }
+        try { diag.pedido.amostra.cores = (await query(db, "SELECT FIRST 5 * FROM CORES_PEDIDO WHERE NUMERO = ?", [num])).map(limparLinha); } catch (e) { diag.pedido.erros.push("cores: " + e.message); }
+      }
+    } catch (e) { diag.pedido.erros.push("amostra pedido: " + e.message); }
+    // caminhos de "pedido de fora" (Bling / Site-API) — se existirem.
+    for (const t of ["BLING_PEDIDOS", "BLING_ITENS", "WEB_VARIACOES", "CATALOGO", "PEDIDO_VENDA_FIO"]) {
+      try { diag.pedido.outras[t] = (await query(db, `SELECT FIRST 2 * FROM ${t}`)).map(limparLinha); } catch (e) { diag.pedido.erros.push(`${t}: ${e.message}`); }
+    }
+  } catch (e) { diag.pedido.erros.push("geral: " + e.message); }
+
   const ok = await enviarDiag(diag);
   if (ok) {
     salvarEstado({ ...lerEstado(), [DIAG_FLAG]: true });

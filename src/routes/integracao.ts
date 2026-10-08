@@ -274,8 +274,10 @@ integracao.get("/diag", async (c) => {
   if (!row || !row.valor) return c.json({ pronto: false, aviso: "A ponte ainda não mandou o diagnóstico. Espere a ponte rodar (~2 min)." });
   // ?raw=1 devolve o JSON completo; senão um resumo focado em preços/tamanhos.
   if (c.req.query("raw") === "1") return new Response(row.valor, { headers: { "Content-Type": "application/json; charset=utf-8" } });
-  let d: { tabelas?: { nome: string; colunas: string[] }[]; amostras?: Record<string, unknown[]>; erros?: string[]; quando?: string } = {};
+  let d: { tabelas?: { nome: string; colunas: string[] }[]; amostras?: Record<string, unknown[]>; erros?: string[]; quando?: string; pedido?: unknown } = {};
   try { d = JSON.parse(row.valor); } catch { return c.json({ pronto: true, erro: "json_invalido", quando: row.atualizado_em }); }
+  // ?pedido=1 → só a estrutura de ESCRITA de pedido (Fase 4).
+  if (c.req.query("pedido") === "1") return c.json({ pronto: true, quando: d.quando || row.atualizado_em, pedido: d.pedido || null });
   const tabelas = Array.isArray(d.tabelas) ? d.tabelas : [];
   const tamProd = tabelas.find((t) => t.nome === "TAMANHO_PROD");
   const produtos = tabelas.find((t) => t.nome === "PRODUTOS");
