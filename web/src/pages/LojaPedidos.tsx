@@ -96,8 +96,8 @@ export function LojaPedidos() {
                       </td>
                     </tr>
                     {aberto === p.id ? (
-                      <tr><td colSpan={7} style={{ background: "#faf8f3" }}>
-                        {!itens[p.id] ? <div style={{ padding: 8, color: "#777" }}>Carregando itens…</div> : (
+                      <tr><td colSpan={7} style={{ background: "var(--bg-soft)", color: "var(--ink)" }}>
+                        {!itens[p.id] ? <div style={{ padding: 8, color: "var(--muted)" }}>Carregando itens…</div> : (
                           <table className="table" style={{ margin: 4 }}>
                             <thead><tr><th>Produto</th><th>Ref</th><th>Cor</th><th>Tamanho</th><th style={{ textAlign: "right" }}>Qtd</th><th style={{ textAlign: "right" }}>Preço</th></tr></thead>
                             <tbody>
