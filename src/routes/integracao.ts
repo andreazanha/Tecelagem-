@@ -276,8 +276,31 @@ integracao.get("/diag", async (c) => {
   if (c.req.query("raw") === "1") return new Response(row.valor, { headers: { "Content-Type": "application/json; charset=utf-8" } });
   let d: { tabelas?: { nome: string; colunas: string[] }[]; amostras?: Record<string, unknown[]>; erros?: string[]; quando?: string; pedido?: unknown } = {};
   try { d = JSON.parse(row.valor); } catch { return c.json({ pronto: true, erro: "json_invalido", quando: row.atualizado_em }); }
-  // ?pedido=1 → só a estrutura de ESCRITA de pedido (Fase 4).
-  if (c.req.query("pedido") === "1") return c.json({ pronto: true, quando: d.quando || row.atualizado_em, pedido: d.pedido || null });
+  // ?pedido=1 → resumo ENXUTO da estrutura de escrita de pedido (Fase 4):
+  // só os campos obrigatórios, geradores com valor, e a amostra de um pedido real.
+  // ?pedido=full → o objeto completo (grande).
+  if (c.req.query("pedido")) {
+    const p = (d.pedido || {}) as {
+      colunas?: Record<string, { campo: string; obrigatorio: boolean; tipo: number; tam: number }[]>;
+      geradores?: { nome: string; valor: number | null }[];
+      amostra?: { pedido?: Record<string, unknown>; itens?: unknown[]; cores?: unknown[] };
+      outras?: Record<string, unknown[]>;
+      erros?: string[];
+    };
+    if (c.req.query("pedido") === "full") return c.json({ pronto: true, quando: d.quando || row.atualizado_em, pedido: d.pedido || null });
+    const obrigatorios: Record<string, string[]> = {};
+    for (const t of Object.keys(p.colunas || {})) obrigatorios[t] = (p.colunas![t] || []).filter((x) => x.obrigatorio).map((x) => x.campo);
+    const outras_qtd: Record<string, number> = {};
+    for (const t of Object.keys(p.outras || {})) outras_qtd[t] = Array.isArray(p.outras![t]) ? p.outras![t].length : 0;
+    return c.json({
+      pronto: true, quando: d.quando || row.atualizado_em,
+      obrigatorios,
+      geradores_com_valor: (p.geradores || []).filter((g) => g.valor != null),
+      amostra: p.amostra || null,
+      outras_qtd,
+      erros: p.erros || [],
+    });
+  }
   const tabelas = Array.isArray(d.tabelas) ? d.tabelas : [];
   const tamProd = tabelas.find((t) => t.nome === "TAMANHO_PROD");
   const produtos = tabelas.find((t) => t.nome === "PRODUTOS");
