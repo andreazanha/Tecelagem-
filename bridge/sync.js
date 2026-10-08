@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-08.6";
+const PONTE_VERSAO = "2026-10-08.7";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -107,6 +107,23 @@ function conectar() {
 function query(db, sql, params = []) {
   return new Promise((resolve, reject) => {
     db.query(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
+  });
+}
+// Lê um campo BLOB de texto (ex.: RDB$PROCEDURE_SOURCE) sem ligar blobAsText global
+// (que trava a amostragem). O node-firebird devolve o blob como função: a gente chama
+// e junta os pedaços. Resolve string vazia se não for função/der problema.
+function lerBlobTexto(campo) {
+  return new Promise((resolve) => {
+    if (typeof campo !== "function") return resolve(campo == null ? "" : String(campo));
+    try {
+      campo((err, nome, e) => {
+        if (err || !e) return resolve("");
+        const pedacos = [];
+        e.on("data", (c) => pedacos.push(c));
+        e.on("end", () => { try { resolve(Buffer.concat(pedacos).toString("latin1")); } catch { resolve(""); } });
+        e.on("error", () => resolve(""));
+      });
+    } catch { resolve(""); }
   });
 }
 // Transação explícita (pra gravar cabeçalho + itens + cores do pedido TUDO OU NADA).
@@ -609,6 +626,30 @@ async function rodadaDiagProcs(db, estado) {
   }
 }
 
+// Diagnóstico: lê o CÓDIGO-FONTE da procedure APP_PEDIDO_INSERT_V2 (uma vez só) pra
+// eu ver exatamente a linha que dá "Conversion error from string ''". Leve e seguro.
+const DIAG_SRC_FLAG = "diagSrcV2_altreg";
+async function rodadaDiagSrc(db, estado) {
+  if (estado[DIAG_SRC_FLAG]) return;
+  let src = "";
+  try {
+    const rows = await query(db,
+      "SELECT RDB$PROCEDURE_SOURCE AS SRC FROM RDB$PROCEDURES WHERE TRIM(RDB$PROCEDURE_NAME)='APP_PEDIDO_INSERT_V2'");
+    if (rows && rows[0]) src = await lerBlobTexto(rows[0].SRC);
+  } catch (e) { src = "ERRO ao ler fonte: " + e.message; }
+  let ok = false;
+  try {
+    const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/diag-src";
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+      body: JSON.stringify({ versao: PONTE_VERSAO, nome: "APP_PEDIDO_INSERT_V2", src: String(src || "").slice(0, 20000) }),
+    });
+    ok = r.ok;
+  } catch (e) { log("! diag-src: falhou ao enviar —", e.message); }
+  if (ok) { salvarEstado({ ...lerEstado(), [DIAG_SRC_FLAG]: true }); log("diag-src: fonte da APP_PEDIDO_INSERT_V2 enviada (uma vez só)."); }
+}
+
 // ── FASE 4: envia pros Syntech os pedidos da loja B2B (via procedures APP_*) ──
 // Busca no worker os pedidos liberados (GET /pedidos-para-erp), e pra cada um grava
 // no Firebird usando as procedures OFICIAIS (APP_PEDIDO_INSERT_V2 devolve o NUMERO;
@@ -699,7 +740,27 @@ async function gravarUmPedido(db, p) {
     // FRETE (9º) vai com código válido (0/1) — vazio dava "Conversion error from string ''".
     const cab = await trQuery(tr,
       "SELECT NUMERO FROM app_pedido_insert_v2(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-      [hoje, String(valorTotal.toFixed(2)), hoje, String(codCli), "Pedido Loja B2B (site)", codPrazo, "A", "", frete, "", "", "", "", "", null, "", "0", "0", "Loja B2B"]);
+      [
+        hoje,                          // 1  DATA (MM/DD/YYYY)
+        String(valorTotal.toFixed(2)), // 2  VALOR
+        hoje,                          // 3  DATA_ENTR
+        String(codCli),                // 4  COD_CLI
+        "Pedido Loja B2B (site)",      // 5  OBS_PED
+        codPrazo,                      // 6  COD_PRAZO
+        "A",                           // 7  OPCAO_PRECO (atacado)
+        "",                            // 8  GUIA
+        frete,                         // 9  FRETE (0 CIF / 1 FOB)
+        "",                            // 10 COD_DIG
+        "",                            // 11 COD_VEND
+        "",                            // 12 COD_TRANSP
+        "",                            // 13 FORMA_PAGTO
+        hoje,                          // 14 DATA_ALT_REG — NÃO pode ir vazio (é data): usa hoje
+        null,                          // 15 IMEI (nulo obrigatório)
+        "",                            // 16 CLASSIF_PED
+        "0",                           // 17 DESCONTO
+        "0",                           // 18 VALOR_FRETE
+        "Loja B2B",                    // 19 NOME_APP
+      ]);
     numero = cab && cab[0] ? (cab[0].NUMERO != null ? cab[0].NUMERO : cab[0].VNUMERO) : null;
     if (!numero) throw new Error("APP_PEDIDO_INSERT_V2 não devolveu o NÚMERO");
     for (const g of grupos.values()) {
@@ -734,6 +795,8 @@ async function rodada() {
     try { await rodadaDiagnostico(db, estado); } catch (e) { log("! diagnóstico:", e.message); }
     // Confirmação leve das procedures APP_* (Fase 4; roda só uma vez).
     try { await rodadaDiagProcs(db, estado); } catch (e) { log("! diag-procs:", e.message); }
+    // Lê a fonte da APP_PEDIDO_INSERT_V2 uma vez (achar a linha do erro de conversão).
+    try { await rodadaDiagSrc(db, estado); } catch (e) { log("! diag-src:", e.message); }
     // Envia pros Syntech os pedidos da loja B2B liberados (Fase 4).
     try { await rodadaGravarPedidos(db); } catch (e) { log("! loja→ERP:", e.message); }
     // Pedidos APROVADOS, não cancelados, alterados depois da última vez.
