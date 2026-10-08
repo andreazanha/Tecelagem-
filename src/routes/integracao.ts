@@ -276,41 +276,12 @@ integracao.post("/diag-procs", async (c) => {
   ).bind(txt.slice(0, 200000)).run();
   return c.json({ ok: true, bytes: txt.length });
 });
-// Fonte (código-fonte) de uma procedure do Syntech — pra achar a linha do erro de conversão.
-integracao.post("/diag-src", async (c) => {
-  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
-  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
-  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
-  const txt = await c.req.text();
-  await c.env.DB.prepare(
-    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('erp_diag_src', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
-  ).bind(txt.slice(0, 60000)).run();
-  return c.json({ ok: true, bytes: txt.length });
-});
 integracao.get("/diag", async (c) => {
-  // Acesso TEMPORÁRIO (capability) só pra ler a fonte da procedure no diagnóstico da Fase 4.
-  // String longa e aleatória = difícil de adivinhar; conteúdo é SQL interno (não é segredo).
-  // Removido assim que eu achar a linha do erro de conversão.
-  if (c.req.query("pedido") === "src" && c.req.query("cap") === "d14fix-7a3f9c21b8e04d6f") {
-    const sr = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='erp_diag_src'").first<{ valor: string | null; atualizado_em: string | null }>();
-    if (!sr || !sr.valor) return new Response("(ainda sem fonte — espere a ponte rodar)", { status: 200 });
-    let corpo = sr.valor;
-    try { const j = JSON.parse(sr.valor) as { src?: string; nome?: string; versao?: string }; corpo = `-- ${j.nome || ""} (ponte ${j.versao || ""}, ${sr.atualizado_em || ""})\n\n${j.src || ""}`; } catch { /* usa cru */ }
-    return new Response(corpo, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
-  }
   // Aceita sessão (UI) OU o token de integração (pra eu, dev, inspecionar sem login).
   const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
   const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
   const temToken = !!esperado && recebido === esperado;
   if (!temToken) { const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro; }
-  // ?pedido=src → código-fonte da APP_PEDIDO_INSERT_V2 (texto puro, pra ler a linha do erro).
-  if (c.req.query("pedido") === "src") {
-    const sr = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='erp_diag_src'").first<{ valor: string | null; atualizado_em: string | null }>();
-    if (!sr || !sr.valor) return c.json({ pronto: false, aviso: "A ponte ainda não mandou a fonte da procedure. Espere a ponte rodar (~2 min)." });
-    let corpo = sr.valor;
-    try { const j = JSON.parse(sr.valor) as { src?: string; nome?: string; versao?: string }; corpo = `-- ${j.nome || ""} (ponte ${j.versao || ""}, ${sr.atualizado_em || ""})\n\n${j.src || ""}`; } catch { /* usa cru */ }
-    return new Response(corpo, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
-  }
   // ?pedido=procs → confirmação LEVE das procedures APP_* (Fase 4). Lê do diagnóstico
   // minúsculo dedicado (erp_diag_procs); se não houver, cai de volta no erp_diag.pedido.
   if (c.req.query("pedido") === "procs") {
