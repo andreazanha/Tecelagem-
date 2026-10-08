@@ -2614,8 +2614,14 @@ body.dark .page-head.at-head > .at-actions::-webkit-scrollbar-thumb { background
 .at-reia:hover { background: var(--bg-soft,#f8fafc); }
 .at-filtros { display: flex; gap: 7px; flex-wrap: wrap; }
 .at-list { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-/* Conversas mais estreitas: uma coluna de largura confortável (não ocupa a tela toda). */
-.at-list .fx-card { max-width: 560px; width: 100%; }
+/* Cards da lista: NÃO encolher (senão o flex corta o conteúdo por causa do overflow:hidden). */
+.at-list .fx-card { flex: 0 0 auto; margin-bottom: 0; }
+/* Conversas mais baixas (compactas) na lista: menos padding, prévia em 1 linha, menos respiros. */
+.at-list .fx-card { padding: 8px 11px; }
+.at-list .fx-card .fx-div { margin: 6px -1px 6px; }
+.at-list .fx-card .at-prev { margin-top: 5px; -webkit-line-clamp: 1; padding: 5px 9px; }
+.at-list .fx-card .fx-foot { margin-top: 6px; }
+.at-list .fx-card .fx-tel { margin-top: 1px; }
 .at-vazio { color: var(--muted); padding: 24px 12px; text-align: center; font-size: 13.5px; }
 @keyframes atCatPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } 50% { box-shadow: 0 0 0 3px rgba(239,68,68,.18); } }
 .at-cat.sel.novos { box-shadow: inset 0 0 0 1px currentColor; animation: atCatPulse 1.8s ease-in-out infinite; }
