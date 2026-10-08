@@ -2598,3 +2598,15 @@ body.dark .page-head.at-head > .at-actions::-webkit-scrollbar-thumb { background
 .fx-board.at-board .fx-card .at-prev { -webkit-line-clamp: 1; margin-top: 6px; }
 .fx-board.at-board .fx-card .fx-div { display: none; }
 .fx-board.at-board .fx-card .fx-foot { margin-top: 6px; }
+
+/* Atendimento (Kanban): nome e loja/cidade em 1 linha (com "…") — cards uniformes,
+   sem quebrar em 2-3 linhas (o que deixava a altura "desproporcional"). */
+.fx-board.at-board .fx-card .fx-nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fx-board.at-board .fx-card .fx-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Atendimento (Kanban): TODOS os cards com a MESMA altura (como o da Virginia).
+   Nome/loja/prévia em 1 linha (acima), botões ⏰🔔 lado a lado, rodapé no rodapé.
+   min-height dá o piso (cards curtos sobem), e os "…" dão o teto (cards longos não
+   crescem) — então ficam todos iguais, sem cortar nada. */
+.fx-board.at-board .fx-card { display: flex; flex-direction: column; min-height: 92px; }
+.fx-board.at-board .fx-card .fx-foot { margin-top: auto; }

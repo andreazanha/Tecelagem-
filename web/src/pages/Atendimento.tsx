@@ -1204,7 +1204,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
           {linhaLoja && <div className="fx-sub">{linhaLoja}</div>}
           <div className="fx-tel">📞 {telBonito(c.telefone)}</div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 5, flex: "0 0 auto" }}>
+        <div style={{ display: "flex", flexDirection: "row", gap: 5, flex: "0 0 auto" }}>
           {onAgendar && (
             <button onClick={(e) => { e.stopPropagation(); const base = c.agendado_ia || (Date.now() + 3600e3); setAgDia(dataLocalStr(base)); setAgHora(c.agendado_ia ? horaLocalStr(base) : "09:00"); setAgMsg(c.agendado_msg || ""); setAgOpen((v) => !v); }} onPointerDown={(e) => e.stopPropagation()}
               title={c.agendado_ia ? (c.agendado_enviado ? "IA já chamou — aguardando o cliente responder" : `IA vai chamar em ${agendadoLabel(c.agendado_ia)}`) : "Chamar IA — agendar uma saudação (bom dia/boa tarde) pra um dia e horário"}
