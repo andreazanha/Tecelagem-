@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type AtendColuna, type RespostaPronta } from "../api";
 import { getUser, pode, podeFuncao } from "../auth";
 
@@ -141,8 +141,6 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
   const [reservasOpen, setReservasOpen] = useState(false);
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [filtroAtend, setFiltroAtend] = useState<string>("todos"); // gestor: filtra por vendedor
-  const [filtroBox, setFiltroBox] = useState<"todos" | "meus" | "sem-resposta" | "atrasados">("todos"); // filtro da lista (área principal)
-  const [params, setParams] = useSearchParams(); // ?etapa= = categoria selecionada (sobrevive ao F5)
   const [busca, setBusca] = useState<string>(""); // busca de conversa no quadro (nome/loja/telefone/cidade)
   const [buscaServ, setBuscaServ] = useState<{ id: string; telefone: string; nome: string | null; contato_nome: string | null; cidade: string | null; uf: string | null; coluna: string; ultima_msg: string | null }[] | null>(null);
   const [buscandoServ, setBuscandoServ] = useState(false);
@@ -284,66 +282,6 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, busca, filtroAtend]);
-
-  // ── NOVO LAYOUT: menu lateral de categorias + lista vertical ────────────────
-  // Reaproveita 100% dos dados acima (gruposPorColuna/pulsaVerde/aguardando). Nada
-  // de backend muda: só troca a forma de mostrar (sem Kanban horizontal).
-  const catRefs = useRef<Record<string, HTMLElement | null>>({}); // item de cada categoria no menu
-  const catsScrollRef = useRef<HTMLDivElement | null>(null);       // área rolável do menu
-  const prevNovosRef = useRef<Map<string, number>>(new Map());     // contagem anterior de "novos" p/ detectar aumento
-  const primeiroNovosRef = useRef(true);                            // não rola no primeiro carregamento
-  const userScrollRef = useRef(0);                                  // momento do último scroll do usuário no menu
-  // Quantas conversas com atividade nova (pulsaVerde) por categoria — respeita busca/filtro atual.
-  const novosPorColuna = useMemo(() => {
-    const m = new Map<string, number>();
-    if (board) for (const col of board.colunas) m.set(col.id, (gruposPorColuna.get(col.id) || []).filter(pulsaVerde).length);
-    return m;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board, gruposPorColuna]);
-  // Categoria selecionada: lê da URL (?etapa=); se inválida/ausente, cai na 1ª coluna.
-  const colSel = (() => {
-    const e = params.get("etapa");
-    if (board) return (e && board.colunas.some((c) => c.id === e)) ? e : (board.colunas[0]?.id || "");
-    return e || "";
-  })();
-  const setColSel = (id: string) => setParams((prev) => { const n = new URLSearchParams(prev); n.set("etapa", id); return n; }, { replace: true });
-  const minutosEspera = (c: AtendConversa) => { const t = Date.parse((c.ultima_in_em || "").replace(" ", "T") + "Z"); return isNaN(t) ? 0 : (Date.now() - t) / 60000; };
-  // Lista da categoria selecionada, aplicando o filtro da área principal + prioridade (novos no topo).
-  const listaSel = useMemo(() => {
-    const base = gruposPorColuna.get(colSel) || [];
-    const meu = getUser()?.nome || "";
-    let arr = base;
-    if (filtroBox === "meus") arr = base.filter((c) => c.responsavel === meu);
-    else if (filtroBox === "sem-resposta") arr = base.filter(aguardando);
-    else if (filtroBox === "atrasados") arr = base.filter((c) => aguardando(c) && minutosEspera(c) >= 30);
-    // prioridade: atividade nova primeiro; mantém a recência dentro de cada grupo (sort estável).
-    return [...arr].sort((a, b) => (pulsaVerde(b) ? 1 : 0) - (pulsaVerde(a) ? 1 : 0));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gruposPorColuna, colSel, filtroBox]);
-  // Define a categoria inicial (1ª com conversas) quando o quadro carrega e não há ?etapa=.
-  useEffect(() => {
-    if (board && !params.get("etapa")) {
-      const def = board.colunas.find((c) => (gruposPorColuna.get(c.id) || []).length > 0)?.id || board.colunas[0]?.id;
-      if (def) setParams((prev) => { const n = new URLSearchParams(prev); n.set("etapa", def); return n; }, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board]);
-  // Menu rola sozinho até a categoria que RECEBEU novidade (só se estiver fora da vista e o
-  // usuário não estiver rolando o menu naquele instante). Nunca troca a categoria aberta.
-  useEffect(() => {
-    if (!board) return;
-    if (primeiroNovosRef.current) { primeiroNovosRef.current = false; prevNovosRef.current = new Map(board.colunas.map((c) => [c.id, novosPorColuna.get(c.id) || 0])); return; }
-    const side = catsScrollRef.current;
-    for (const col of board.colunas) {
-      const now = novosPorColuna.get(col.id) || 0, before = prevNovosRef.current.get(col.id) || 0;
-      if (now > before && col.id !== colSel && side && Date.now() - userScrollRef.current > 1500) {
-        const el = catRefs.current[col.id];
-        if (el) { const er = el.getBoundingClientRect(), sr = side.getBoundingClientRect(); if (er.top < sr.top || er.bottom > sr.bottom) el.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
-      }
-    }
-    prevNovosRef.current = new Map(board.colunas.map((c) => [c.id, novosPorColuna.get(c.id) || 0]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [novosPorColuna]);
 
   // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
   const fotoCache = useRef<Record<string, string | null>>({});
@@ -722,69 +660,50 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
 
       {!board ? (
         <div className="card pad muted">Carregando…</div>
-      ) : (() => {
-        const selCol = board.colunas.find((x) => x.id === colSel) || board.colunas[0];
-        return (
-          <div className="at-layout" ref={boardRef}>
-            {/* MENU LATERAL DE CATEGORIAS */}
-            <aside className="at-sidebar">
-              <div className="at-sidebar-hd">Categorias</div>
-              <div className="at-cats" ref={catsScrollRef} onScroll={() => { userScrollRef.current = Date.now(); }}>
-                {board.colunas.map((col) => {
-                  const total = (gruposPorColuna.get(col.id) || []).length;
-                  const novos = novosPorColuna.get(col.id) || 0;
-                  const sel = col.id === colSel;
-                  return (
-                    <button key={col.id} ref={(el) => { catRefs.current[col.id] = el; }}
-                      className={"at-cat" + (sel ? " sel" : "") + (novos > 0 ? " novos" : "")}
-                      style={sel ? { borderColor: col.cor, color: col.cor } : undefined}
-                      onClick={() => setColSel(col.id)} title={col.label}>
-                      <span className="at-cat-dot" style={{ background: col.cor }} />
-                      <span className="at-cat-lb">{col.label}</span>
-                      {novos > 0 && <span className="at-cat-novos" title={novos + " com novidade"}>{novos}</span>}
-                      <span className="at-cat-ct">{total}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {ehGestorAtend() && <div className="at-sidebar-ft"><button className="btn btn-soft" style={{ width: "100%" }} onClick={() => setGerColunas(true)}>➕ organizar categorias</button></div>}
-            </aside>
-
-            {/* ÁREA PRINCIPAL: cabeçalho + lista vertical de conversas */}
-            <section className="at-main">
-              <div className="at-main-hd">
-                <div className="at-main-title">
-                  <span className="at-main-dot" style={{ background: selCol?.cor }} />
-                  <b>{selCol?.label}</b>
-                  <span className="at-main-ct">{listaSel.length} conversa(s)</span>
-                  {ehGestorAtend() && listaSel.length > 0 && (
-                    <button className="at-reia" title="🤖 Reativar a IA nesses leads: manda uma saudação e a Big recomeça o atendimento. Use com leads parados."
-                      onClick={() => reativarIaColuna(selCol.label, listaSel.map((x) => x.id))}>🤖 Reativar IA</button>
+      ) : (
+        <>
+        {/* Atalho de colunas (só no celular): toque num chip pra pular direto pra coluna. */}
+        <div className="fx-colnav">
+          {board.colunas.map((col) => {
+            const n = (gruposPorColuna.get(col.id) || []).length;
+            return (
+              <button key={col.id} className="fx-colnav-chip" onClick={() => colRefs.current[col.id]?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })}>
+                <span className="fx-dot" style={{ background: col.cor }} />{col.label}{n > 0 && <b>{n}</b>}
+              </button>
+            );
+          })}
+        </div>
+        <div className="fx-board at-board" ref={boardRef}>
+          {board.colunas.map((col) => {
+            const cs = gruposPorColuna.get(col.id) || [];
+            return (
+              <div className={"fx-col" + (sobre === col.id ? " drag-over" : "")} key={col.id} data-coluna={col.id} ref={(el) => { colRefs.current[col.id] = el; }}>
+                <div className="fx-hd fx-hd-cor" style={{ background: col.cor }}>{col.label}<span className="ct">{cs.length}</span>
+                  {ehGestorAtend() && cs.length > 0 && (
+                    <button title="🤖 Reativar a IA nesses leads: manda uma saudação e a Big recomeça o atendimento (triagem + catálogo de varejo). Use com leads parados."
+                      onClick={(e) => { e.stopPropagation(); reativarIaColuna(col.label, cs.map((x) => x.id)); }}
+                      style={{ marginLeft: "auto", background: "transparent", border: 0, cursor: "pointer", fontSize: 13.5, opacity: 0.9, padding: "0 2px", lineHeight: 1 }}>🤖</button>
                   )}
                 </div>
-                <div className="at-filtros">
-                  {([["todos", "Todos"], ["meus", "Meus"], ["sem-resposta", "Sem resposta"], ["atrasados", "Atrasados"]] as const).map(([f, lb]) => (
-                    <span key={f} className={"fx-pill" + (filtroBox === f ? " on" : "")} onClick={() => setFiltroBox(f)}>{lb}</span>
+                <div className="fx-col-body">
+                  {cs.map((c) => (
+                    <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board.colunas} onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)} arrastando={arrastando === c.id}
+                      onAbrir={() => { if (arrastou.current) { arrastou.current = false; return; } setAbrir(c.id); }}
+                      onLembrete={() => toggleLembrete(c.id)}
+                      onAgendar={(quando, mensagem) => agendarIa(c.id, quando, mensagem)}
+                      onReativarIa={ehGestorAtend() ? () => reativarIaCard(c.id, c.contato_nome || c.nome || telBonito(c.telefone)) : undefined}
+                      onSilenciar={() => silenciarCard(c.id)}
+                      onFim={() => fimCard(c)}
+                      onPointerDown={(e) => dragDownC(e, c.id)} />
                   ))}
                 </div>
               </div>
-              <div className="at-list">
-                {listaSel.length === 0 ? (
-                  <div className="at-vazio">Nenhuma conversa nesta categoria{filtroBox !== "todos" ? " com esse filtro" : ""}.</div>
-                ) : listaSel.map((c) => (
-                  <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board.colunas} onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)}
-                    onAbrir={() => setAbrir(c.id)}
-                    onLembrete={() => toggleLembrete(c.id)}
-                    onAgendar={(quando, mensagem) => agendarIa(c.id, quando, mensagem)}
-                    onReativarIa={ehGestorAtend() ? () => reativarIaCard(c.id, c.contato_nome || c.nome || telBonito(c.telefone)) : undefined}
-                    onSilenciar={() => silenciarCard(c.id)}
-                    onFim={() => fimCard(c)} />
-                ))}
-              </div>
-            </section>
-          </div>
-        );
-      })()}
+            );
+          })}
+        </div>
+        </>
+      )}
+      {ehGestorAtend() && board && <div style={{ marginTop: 10 }}><button className="btn btn-soft" onClick={() => setGerColunas(true)}>➕ Criar / organizar colunas</button></div>}
       {gerColunas && <ColunasModal onFechar={() => setGerColunas(false)} onSalvo={() => { setGerColunas(false); recarregar(); }} />}
 
       {sim && <Simulador onFechar={() => setSim(false)} onMudou={recarregar} />}
