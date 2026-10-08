@@ -2587,3 +2587,14 @@ body.dark .page-head.at-head > .at-actions::-webkit-scrollbar-thumb { background
 .seg-group .seg { border: none; background: transparent; padding: 6px 12px; font-size: 13px; cursor: pointer; font: inherit; }
 .seg-group .seg.seg-on { background: #4338ca; color: #fff; font-weight: 700; }
 @media (prefers-color-scheme: dark) { .cat-modelo-nome { color: #e5e7eb; } }
+
+/* Atendimento (Kanban): cards mais baixos (~metade da altura) — opção "Compacto".
+   Só visual: tira o telefone, prévia em 1 linha, sem a divisória, avatar menor e
+   rodapé colado. Mantém loja/cidade, hora e TODOS os botões. Escopo só no quadro
+   de atendimento (.fx-board.at-board), sem afetar o Funil. */
+.fx-board.at-board .fx-card { padding: 8px 11px; }
+.fx-board.at-board .fx-card .conv-av { width: 38px; height: 38px; font-size: 14px; border-radius: 11px; }
+.fx-board.at-board .fx-card .fx-tel { display: none; }
+.fx-board.at-board .fx-card .at-prev { -webkit-line-clamp: 1; margin-top: 6px; }
+.fx-board.at-board .fx-card .fx-div { display: none; }
+.fx-board.at-board .fx-card .fx-foot { margin-top: 6px; }
