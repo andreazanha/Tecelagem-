@@ -318,6 +318,8 @@
   }
 
   // ---------- CARRINHO ----------
+  function cnpjSalvo(){ try{ return localStorage.getItem("bt_cnpj")||""; }catch(e){ return ""; } }
+  function hashStr(s){ var h=5381,i=s.length; while(i){ h=(h*33)^s.charCodeAt(--i); } return (h>>>0).toString(36); }
   function carregarCart(){ try{ return JSON.parse(localStorage.getItem("bt_carrinho")||"[]")||[]; }catch(e){ return []; } }
   function salvarCart(){ try{ localStorage.setItem("bt_carrinho", JSON.stringify(CART)); }catch(e){} }
   function cartQtd(){ return CART.reduce(function(s,i){return s+(Number(i.qtd)||0);},0); }
@@ -337,7 +339,10 @@
       '<div class="ctopo"><h3 class="serif">🛒 Meu pedido</h3><button class="fechar" onclick="__fecharCart()">✕</button></div>'+
       '<div class="itens">'+itens+'</div>'+
       '<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+
-      '<button class="fin" id="finalizar"'+(CART.length?"":" disabled")+'>Finalizar pedido</button></div>';
+      (CART.length?('<label style="display:block;font-size:13px;color:#555;margin:2px 0 8px">CNPJ da sua loja'+
+        '<input id="cnpjInp" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" value="'+esc(cnpjSalvo())+'" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border:1px solid #d6d0c4;border-radius:10px;font-size:15px"></label>'+
+        '<div id="cmsg" style="font-size:13px;margin:0 0 8px;min-height:1px;line-height:1.35"></div>'):'')+
+      '<button class="fin" id="finalizar"'+(CART.length?"":" disabled")+'>'+(CART.length?"Enviar pedido":"Finalizar pedido")+'</button></div>';
     var box=document.getElementById("cartPane");
     box.querySelectorAll(".citem .stepper").forEach(function(st){
       var ix=Number(st.getAttribute("data-ix")); var inp=st.querySelector("input");
@@ -348,9 +353,34 @@
     var fin=document.getElementById("finalizar"); if(fin) fin.onclick=finalizarPedido;
   }
   function finalizarPedido(){
-    // Fase 4 vai enviar pro Syntech. Por enquanto mostra o resumo.
-    var linhas=CART.map(function(it){return "• "+it.nome+" — "+it.medida+" — "+it.corNome+" — "+it.qtd+"x "+brl(it.preco);}).join("\n");
-    alert("Pedido montado ("+cartQtd()+" peças · "+brl(cartTotal())+"):\n\n"+linhas+"\n\n(O envio automático pro Syntech entra na próxima fase.)");
+    if(!CART.length) return;
+    var btn=document.getElementById("finalizar"); var msg=document.getElementById("cmsg");
+    var cnpjEl=document.getElementById("cnpjInp"); var cnpj=(cnpjEl&&cnpjEl.value||"").trim();
+    var dig=cnpj.replace(/\D+/g,"");
+    function erro(m){ if(msg){ msg.textContent=m; msg.style.color="#b91c1c"; } }
+    if(dig.length<11){ erro("Digite o CNPJ (ou CPF) da sua loja para enviar o pedido."); if(cnpjEl) cnpjEl.focus(); return; }
+    try{ localStorage.setItem("bt_cnpj", cnpj); }catch(e){}
+    var itens=CART.map(function(it){ return {cod:it.cod, medida:it.medida, corNome:it.corNome, corId:it.corId, qtd:it.qtd, preco:it.preco, regiao:it.regiao, nome:it.nome, grupo:it.grupo}; });
+    var idem=hashStr(dig+"|"+JSON.stringify(itens));
+    if(msg){ msg.textContent=""; }
+    btn.disabled=true; btn.textContent="Enviando…";
+    fetch("/api/loja/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cnpj:cnpj, itens:itens, idem:idem})})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j||{}}; }); })
+      .then(function(res){
+        if(res.ok && res.j.ok){
+          CART=[]; salvarCart(); atualizarCartN();
+          var nome=res.j.cliente?(", "+esc(res.j.cliente)):"";
+          document.getElementById("cartPane").innerHTML=
+            '<div class="ctopo"><h3 class="serif">🛒 Meu pedido</h3><button class="fechar" onclick="__fecharCart()">✕</button></div>'+
+            '<div class="itens"><div class="cvazio" style="color:#166534;font-weight:600">✓ '+esc(res.j.msg||"Pedido enviado!")+'</div>'+
+            '<div class="cvazio" style="font-weight:400">Obrigado'+nome+'! Qualquer dúvida, fale com a Big Tricot.</div></div>';
+        } else {
+          var m=res.j.msg||"Não consegui enviar o pedido agora. Tente novamente.";
+          if(res.j.detalhe&&res.j.detalhe.length){ m+=" ("+res.j.detalhe.join("; ")+")"; }
+          erro(m); btn.disabled=false; btn.textContent="Enviar pedido";
+        }
+      })
+      .catch(function(){ erro("Sem conexão no momento. Tente novamente."); btn.disabled=false; btn.textContent="Enviar pedido"; });
   }
 
   // ---------- eventos globais ----------

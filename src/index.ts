@@ -21,6 +21,7 @@ import { relatorios } from "./routes/relatorios";
 import { tecelagem } from "./routes/tecelagem";
 import { setores } from "./routes/setores";
 import { integracao } from "./routes/integracao";
+import { loja } from "./routes/loja";
 
 export interface Env {
   DB: D1Database;
@@ -87,6 +88,7 @@ app.route("/api/assistente", assistente);
 app.route("/api/relatorios", relatorios);
 app.route("/api/tecelagem", tecelagem);
 app.route("/api/integracao", integracao);
+app.route("/api/loja", loja);
 
 // Fallback: serve o SPA (assets estáticos do build do Vite).
 // IMPORTANTE: como o worker intercepta todas as rotas e busca o asset por código,
