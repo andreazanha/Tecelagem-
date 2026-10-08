@@ -1147,7 +1147,7 @@ export const api = {
     fornecedorDados: { nome?: string; contato?: string; telefone?: string; email?: string; cnpj?: string };
     obs?: string;
     itens: OrdemCompraItemIn[];
-  }) => jsonPost("/api/compras/ordens", b).then((r) => j<{ ok: boolean; id: string; numero: string }>(r)),
+  }) => jsonPost("/api/compras/ordens", b).then((r) => j<{ ok: boolean; id: string; numero: string; aviso?: boolean }>(r)),
   listarOrdensCompra: (status?: string) =>
     fetch("/api/compras/ordens" + (status ? `?status=${encodeURIComponent(status)}` : "")).then((r) => j<OrdemCompra[]>(r)),
   obterOrdemCompra: (id: string) =>

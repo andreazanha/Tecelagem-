@@ -5,12 +5,21 @@
 // Permissões: compras.ordem = criar/ver; compras.aprovar = editar/aprovar/recusar.
 import { Hono } from "hono";
 import type { Env } from "../index";
-import { exigirFuncao, exigirAlgumaFuncao } from "../permissoes";
-import { enviarMidiaZapi, abParaBase64 } from "./atendimento";
+import { exigirFuncao, exigirAlgumaFuncao, permissoesDoUsuario } from "../permissoes";
+import type { UsuarioAuth } from "../sessao";
+import { enviarMidiaZapi, abParaBase64, enviarWhatsapp } from "./atendimento";
 import { gerarOrdemCompra, type OrdemCompraItem } from "../pdf";
 
 const compras = new Hono<{ Bindings: Env }>();
 const uid = () => crypto.randomUUID();
+
+// Quem aprova (gestor/admin/legado) vê TODAS as ordens; os demais (PCP) só as próprias.
+async function podeAprovarOrdens(env: Env, u: UsuarioAuth): Promise<boolean> {
+  if (u.admin) return true;
+  const p = await permissoesDoUsuario(env, u.id);
+  if (!p.configurado) return true;                 // legado: mantém tudo até configurar
+  return p.funcoes.has("compras.aprovar");
+}
 
 type EmpresaDados = { nome?: string; cnpj?: string; endereco?: string; telefone?: string; email?: string };
 type FornDados = { nome?: string; contato?: string; telefone?: string; email?: string; cnpj?: string };
@@ -85,17 +94,37 @@ compras.post("/ordens", async (c) => {
   ).bind(uid(), id, it.material_id || null, it.nome || "", it.codigo || null, it.tamanho || null, it.cor || null, it.unidade || null, numOrNull(it.saldo), numOrNull(it.minimo), Number(it.qtd) || 0, Number(it.preco) || 0, i));
   if (stmts.length) await c.env.DB.batch(stmts);
 
-  return c.json({ ok: true, id, numero });
+  // Avisa o gestor no WhatsApp (só texto) que há uma nova ordem aguardando aprovação.
+  let aviso = false;
+  const num = ((await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_min_wpp'").first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
+  if (num) {
+    const rBR = (n: number) => { try { return "R$ " + (Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch { return "R$ " + (Number(n) || 0).toFixed(2); } };
+    const texto =
+      `📝 *NOVA ORDEM DE COMPRA* — aguardando sua aprovação\n` +
+      `Nº ${numero}\n` +
+      `🚛 ${fornNome}\n` +
+      `${itens.length} item(ns) · Total estimado ${rBR(total)}\n` +
+      `Criada por ${g.u.nome}\n` +
+      `Abra o sistema em *Ordens de compra* para revisar e aprovar.`;
+    const r = await enviarWhatsapp(c.env, num, { tipo: "texto", texto }).catch(() => ({ enviado: false }));
+    aviso = !!r.enviado;
+  }
+
+  return c.json({ ok: true, id, numero, aviso });
 });
 
 // ── Listar ordens (PCP ou gestor) ─────────────────────────────────────────────
 compras.get("/ordens", async (c) => {
   const g = await exigirAlgumaFuncao(c, ["compras.ordem", "compras.aprovar"]); if ("erro" in g) return g.erro;
+  const todas = await podeAprovarOrdens(c.env, g.u); // gestor vê todas; PCP só as próprias
   const status = (c.req.query("status") || "").trim();
   let sql = `SELECT o.*, (SELECT COUNT(*) FROM ordem_compra_itens i WHERE i.ordem_id=o.id) AS n_itens
                FROM ordens_compra o`;
   const binds: unknown[] = [];
-  if (status) { sql += " WHERE o.status=?"; binds.push(status); }
+  const where: string[] = [];
+  if (status) { where.push("o.status=?"); binds.push(status); }
+  if (!todas) { where.push("o.criado_por_id=?"); binds.push(g.u.id); }
+  if (where.length) sql += " WHERE " + where.join(" AND ");
   sql += " ORDER BY o.criado_em DESC LIMIT 300";
   const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
   return c.json(results || []);
@@ -106,6 +135,8 @@ compras.get("/ordens/:id", async (c) => {
   const g = await exigirAlgumaFuncao(c, ["compras.ordem", "compras.aprovar"]); if ("erro" in g) return g.erro;
   const o = await carregarOrdem(c.env, c.req.param("id"));
   if (!o) return c.json({ error: "nao_encontrada" }, 404);
+  const todas = await podeAprovarOrdens(c.env, g.u);
+  if (!todas && o.criado_por_id !== g.u.id) return c.json({ error: "nao_encontrada" }, 404); // PCP não vê ordem de outro
   return c.json(o);
 });
 

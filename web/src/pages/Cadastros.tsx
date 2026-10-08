@@ -2659,7 +2659,7 @@ export function ComprasMateriais() {
       });
       setEnviar(null);
       alert(r.ok
-        ? `✅ Ordem ${r.numero} criada e enviada para APROVAÇÃO do gestor.\nEla aparece em "Ordens de compra". O gestor revisa, aprova e aí ela vai pro WhatsApp.`
+        ? `✅ Ordem ${r.numero} criada e enviada para APROVAÇÃO do gestor.\n${r.aviso ? "📲 O gestor foi avisado no WhatsApp." : "⚠️ (Não consegui avisar no WhatsApp — confira o número do gestor e a conexão.)"}\nEla aparece em "Ordens de compra". Ao aprovar, o PDF vai pro WhatsApp.`
         : `⚠️ Não consegui criar a ordem.`);
     } catch (e) {
       alert((e as Error).message);
