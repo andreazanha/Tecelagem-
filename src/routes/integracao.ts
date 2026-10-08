@@ -264,12 +264,52 @@ integracao.post("/diag", async (c) => {
   ).bind(txt.slice(0, 900000)).run();
   return c.json({ ok: true, bytes: txt.length });
 });
+// Diagnóstico LEVE das procedures APP_* (Fase 4). Guardado numa chave própria pra não
+// colidir com o diagnóstico grande (erp_diag). Lido via GET /diag?pedido=procs.
+integracao.post("/diag-procs", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+  const txt = await c.req.text();
+  await c.env.DB.prepare(
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('erp_diag_procs', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(txt.slice(0, 200000)).run();
+  return c.json({ ok: true, bytes: txt.length });
+});
 integracao.get("/diag", async (c) => {
   // Aceita sessão (UI) OU o token de integração (pra eu, dev, inspecionar sem login).
   const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
   const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
   const temToken = !!esperado && recebido === esperado;
   if (!temToken) { const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro; }
+  // ?pedido=procs → confirmação LEVE das procedures APP_* (Fase 4). Lê do diagnóstico
+  // minúsculo dedicado (erp_diag_procs); se não houver, cai de volta no erp_diag.pedido.
+  if (c.req.query("pedido") === "procs") {
+    type ProcSrc = {
+      quando?: string;
+      procedures?: Record<string, { campo: string; ordem: number; dir: string; tipo: number; tam: number }[]>;
+      triggers?: Record<string, { nome: string; tipo: number; seq: number; inativo: boolean }[]>;
+      erros?: string[];
+    };
+    let src: ProcSrc | null = null;
+    let quando: string | null = null;
+    const pr = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='erp_diag_procs'").first<{ valor: string | null; atualizado_em: string | null }>();
+    if (pr && pr.valor) { try { src = JSON.parse(pr.valor) as ProcSrc; quando = (src.quando || pr.atualizado_em) ?? null; } catch { /* ignora */ } }
+    if (!src || !src.procedures) {
+      const dr = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='erp_diag'").first<{ valor: string | null; atualizado_em: string | null }>();
+      if (dr && dr.valor) { try { const dd = JSON.parse(dr.valor) as { pedido?: ProcSrc; quando?: string }; if (dd.pedido && dd.pedido.procedures) { src = dd.pedido; quando = (dd.quando || dr.atualizado_em) ?? null; } } catch { /* ignora */ } }
+    }
+    if (!src || !src.procedures) return c.json({ pronto: false, aviso: "A ponte ainda não confirmou as procedures. Espere a ponte rodar (~2 min)." });
+    const procedures: Record<string, string> = {};
+    for (const nome of Object.keys(src.procedures || {})) {
+      const ins = (src.procedures[nome] || []).filter((x) => x.dir === "in").map((x) => x.campo);
+      const outs = (src.procedures[nome] || []).filter((x) => x.dir === "out").map((x) => x.campo);
+      procedures[nome] = `(${ins.join(", ")})` + (outs.length ? ` → ${outs.join(", ")}` : "");
+    }
+    const triggers: Record<string, string[]> = {};
+    for (const t of Object.keys(src.triggers || {})) triggers[t] = (src.triggers![t] || []).map((x) => `${x.nome}${x.inativo ? " (inativo)" : ""}`);
+    return c.json({ pronto: true, quando, procedures, procedures_detalhe: src.procedures || {}, triggers, erros: src.erros || [] });
+  }
   const row = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='erp_diag'").first<{ valor: string | null; atualizado_em: string | null }>();
   if (!row || !row.valor) return c.json({ pronto: false, aviso: "A ponte ainda não mandou o diagnóstico. Espere a ponte rodar (~2 min)." });
   // ?raw=1 devolve o JSON completo; senão um resumo focado em preços/tamanhos.
@@ -290,25 +330,6 @@ integracao.get("/diag", async (c) => {
       erros?: string[];
     };
     if (c.req.query("pedido") === "full") return c.json({ pronto: true, quando: d.quando || row.atualizado_em, pedido: d.pedido || null });
-    // ?pedido=procs → confirma as procedures APP_* (via oficial) e os triggers BEFORE INSERT.
-    if (c.req.query("pedido") === "procs") {
-      const procedures: Record<string, string> = {};
-      for (const nome of Object.keys(p.procedures || {})) {
-        const ins = (p.procedures![nome] || []).filter((x) => x.dir === "in").map((x) => x.campo);
-        const outs = (p.procedures![nome] || []).filter((x) => x.dir === "out").map((x) => x.campo);
-        procedures[nome] = `(${ins.join(", ")})` + (outs.length ? ` → ${outs.join(", ")}` : "");
-      }
-      const triggers: Record<string, string[]> = {};
-      for (const t of Object.keys(p.triggers || {})) triggers[t] = (p.triggers![t] || []).map((x) => `${x.nome}${x.inativo ? " (inativo)" : ""}`);
-      return c.json({
-        pronto: true, quando: d.quando || row.atualizado_em,
-        procedures,
-        procedures_detalhe: p.procedures || {},
-        triggers,
-        triggers_fonte: p.triggers || {},
-        erros: p.erros || [],
-      });
-    }
     const obrigatorios: Record<string, string[]> = {};
     for (const t of Object.keys(p.colunas || {})) obrigatorios[t] = (p.colunas![t] || []).filter((x) => x.obrigatorio).map((x) => x.campo);
     const outras_qtd: Record<string, number> = {};

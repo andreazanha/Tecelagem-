@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-08.2";
+const PONTE_VERSAO = "2026-10-08.3";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -143,7 +143,16 @@ async function autoAtualizar() {
     const versaoNova = m && m[1];
     if (!versaoNova || versaoNova === PONTE_VERSAO) return; // já estou na última
     fs.writeFileSync(__filename, novo);
-    log(`ponte ATUALIZADA sozinha: ${PONTE_VERSAO} → ${versaoNova}. Vale na próxima rodada (~${INTERVALO / 1000}s).`);
+    log(`ponte ATUALIZADA sozinha: ${PONTE_VERSAO} → ${versaoNova}.`);
+    // IMPORTANTE: NÃO continuar rodando o código VELHO que já está na memória.
+    // No modo --once (Agendador de Tarefas re-executa a cada 2 min), saímos agora
+    // e o PRÓXIMO ciclo já carrega a versão nova do disco. Evita o "ciclo chato" de
+    // rodar a versão velha (que pode travar) depois de atualizar.
+    if (UMA_VEZ) {
+      log(`saindo pra o próximo ciclo (~${INTERVALO / 1000}s) rodar a versão nova.`);
+      process.exit(0);
+    }
+    log(`vale na próxima rodada (~${INTERVALO / 1000}s).`);
   } catch (e) {
     log("! auto-atualização falhou (seguindo na versão atual):", e.message);
   }
@@ -372,7 +381,7 @@ async function rodadaProdutos(db, estado) {
 // o nome EXATO das colunas de preço por tamanho sem o usuário fazer nada. Roda só
 // UMA vez (controlado pela flag no state.json); pra pedir de novo, troca o nome
 // da flag aqui embaixo (DIAG_FLAG) numa versão nova da ponte.
-const DIAG_FLAG = "diagV5_procs";
+const DIAG_FLAG = "diagV3_pedidos";
 function limparValor(v) {
   if (v == null) return v;
   if (v instanceof Date) return v.toISOString();
@@ -521,6 +530,63 @@ async function rodadaDiagnostico(db, estado) {
   }
 }
 
+// Diagnóstico MINÚSCULO e à prova de trava (Fase 4): só confirma se as procedures
+// oficiais do Syntech (APP_PEDIDO_INSERT_V2 etc.) existem e com quais parâmetros.
+// NÃO varre as 420 tabelas (isso é o que travava) — só lê metadados de RDB$PROCEDURES
+// e os NOMES dos triggers. Roda uma vez (flag própria) e manda num POST pequeno.
+const DIAG_PROCS_FLAG = "diagProcsV1";
+async function rodadaDiagProcs(db, estado) {
+  if (estado[DIAG_PROCS_FLAG]) return;
+  log("diag-procs: confirmando as procedures APP_* (leve, uma vez só)…");
+  const out = { versao: PONTE_VERSAO, quando: new Date().toISOString(), procedures: {}, triggers: {}, erros: [] };
+  try {
+    const procs = await query(db,
+      "SELECT TRIM(RDB$PROCEDURE_NAME) AS NOME FROM RDB$PROCEDURES " +
+      "WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 AND RDB$PROCEDURE_NAME LIKE 'APP%' ORDER BY RDB$PROCEDURE_NAME");
+    for (const pr of procs) {
+      const nome = String(pr.NOME || "").trim(); if (!nome) continue;
+      let params = [];
+      try {
+        const ps = await query(db,
+          "SELECT TRIM(PP.RDB$PARAMETER_NAME) AS CAMPO, PP.RDB$PARAMETER_NUMBER AS ORDEM, " +
+          "PP.RDB$PARAMETER_TYPE AS TIPO_PARAM, F.RDB$FIELD_TYPE AS TIPO, F.RDB$FIELD_LENGTH AS TAM " +
+          "FROM RDB$PROCEDURE_PARAMETERS PP JOIN RDB$FIELDS F ON F.RDB$FIELD_NAME = PP.RDB$FIELD_SOURCE " +
+          "WHERE PP.RDB$PROCEDURE_NAME = ? ORDER BY PP.RDB$PARAMETER_TYPE, PP.RDB$PARAMETER_NUMBER",
+          [nome]);
+        params = ps.map((r) => ({ campo: String(r.CAMPO || "").trim(), ordem: r.ORDEM, dir: Number(r.TIPO_PARAM) === 1 ? "out" : "in", tipo: r.TIPO, tam: r.TAM }));
+      } catch (e) { out.erros.push(`params ${nome}: ${e.message}`); }
+      out.procedures[nome] = params;
+    }
+  } catch (e) { out.erros.push("procedures: " + e.message); }
+  try {
+    for (const t of ["PEDIDO", "ITENS_PEDIDO", "CORES_PEDIDO"]) {
+      const trs = await query(db,
+        "SELECT TRIM(RDB$TRIGGER_NAME) AS NOME, RDB$TRIGGER_TYPE AS TIPO, RDB$TRIGGER_SEQUENCE AS SEQ, " +
+        "COALESCE(RDB$TRIGGER_INACTIVE,0) AS INATIVO " +
+        "FROM RDB$TRIGGERS WHERE RDB$RELATION_NAME = ? AND RDB$TRIGGER_TYPE = 1 " +
+        "AND COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$TRIGGER_SEQUENCE",
+        [t]);
+      out.triggers[t] = trs.map((r) => ({ nome: String(r.NOME || "").trim(), tipo: r.TIPO, seq: r.SEQ, inativo: Number(r.INATIVO) === 1 }));
+    }
+  } catch (e) { out.erros.push("triggers: " + e.message); }
+  let ok = false;
+  try {
+    const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/diag-procs";
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+      body: JSON.stringify(out),
+    });
+    ok = r.ok;
+  } catch (e) { log("! diag-procs: falhou ao enviar —", e.message); }
+  if (ok) {
+    salvarEstado({ ...lerEstado(), [DIAG_PROCS_FLAG]: true });
+    log(`diag-procs: enviado (${Object.keys(out.procedures).length} procedures APP_*). Não roda de novo.`);
+  } else {
+    log("diag-procs: não enviou — tenta na próxima rodada.");
+  }
+}
+
 // ── uma rodada: busca aprovados que mudaram desde a última data e envia ───────
 async function rodada() {
   const estado = lerEstado();
@@ -535,6 +601,8 @@ async function rodada() {
   try {
     // Diagnóstico da estrutura do banco (roda só uma vez; não trava a rodada).
     try { await rodadaDiagnostico(db, estado); } catch (e) { log("! diagnóstico:", e.message); }
+    // Confirmação leve das procedures APP_* (Fase 4; roda só uma vez).
+    try { await rodadaDiagProcs(db, estado); } catch (e) { log("! diag-procs:", e.message); }
     // Pedidos APROVADOS, não cancelados, alterados depois da última vez.
     const SQL_PEDIDOS =
       `SELECT NUMERO, DATA, COD_CLI, STATUS, CANC, DATA_ALT_REG
