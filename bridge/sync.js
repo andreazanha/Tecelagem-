@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-08.4";
+const PONTE_VERSAO = "2026-10-08.5";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -691,13 +691,12 @@ async function gravarUmPedido(db, p) {
   const tr = await transacao(db);
   let numero;
   try {
-    // APP_PEDIDO_INSERT_V2 (19 params) devolve o NUMERO. OPCAO_PRECO='A' (atacado),
-    // IMEI nulo obrigatório, NOME_APP='Loja B2B'. DESCONTO/VALOR_FRETE = 0.
+    // APP_PEDIDO_INSERT_V2 (19 params) é SELECTABLE e devolve o NUMERO. OPCAO_PRECO='A'
+    // (atacado), IMEI nulo obrigatório, NOME_APP='Loja B2B'. DESCONTO/VALOR_FRETE = 0.
     const cab = await trQuery(tr,
-      "execute block returns (vnumero integer) as begin " +
-      "select numero from app_pedido_insert_v2(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) into :vnumero; suspend; end",
+      "SELECT NUMERO FROM app_pedido_insert_v2(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       [hoje, String(valorTotal.toFixed(2)), hoje, String(codCli), "Pedido Loja B2B (site)", codPrazo, "A", "", "", "", "", "", "", "", null, "", "0", "0", "Loja B2B"]);
-    numero = cab && cab[0] ? (cab[0].VNUMERO != null ? cab[0].VNUMERO : cab[0].NUMERO) : null;
+    numero = cab && cab[0] ? (cab[0].NUMERO != null ? cab[0].NUMERO : cab[0].VNUMERO) : null;
     if (!numero) throw new Error("APP_PEDIDO_INSERT_V2 não devolveu o NÚMERO");
     for (const g of grupos.values()) {
       await trQuery(tr, "execute procedure app_itens_pedido_insert(?,?,?,?,?,?,?)",
