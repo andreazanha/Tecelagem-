@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-08.9";
+const PONTE_VERSAO = "2026-10-08.10";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -107,23 +107,6 @@ function conectar() {
 function query(db, sql, params = []) {
   return new Promise((resolve, reject) => {
     db.query(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
-  });
-}
-// Lê um campo BLOB de texto (ex.: RDB$PROCEDURE_SOURCE) sem ligar blobAsText global
-// (que trava a amostragem). O node-firebird devolve o blob como função: a gente chama
-// e junta os pedaços. Resolve string vazia se não for função/der problema.
-function lerBlobTexto(campo) {
-  return new Promise((resolve) => {
-    if (typeof campo !== "function") return resolve(campo == null ? "" : String(campo));
-    try {
-      campo((err, nome, e) => {
-        if (err || !e) return resolve("");
-        const pedacos = [];
-        e.on("data", (c) => pedacos.push(c));
-        e.on("end", () => { try { resolve(Buffer.concat(pedacos).toString("latin1")); } catch { resolve(""); } });
-        e.on("error", () => resolve(""));
-      });
-    } catch { resolve(""); }
   });
 }
 // Transação explícita (pra gravar cabeçalho + itens + cores do pedido TUDO OU NADA).
@@ -626,38 +609,6 @@ async function rodadaDiagProcs(db, estado) {
   }
 }
 
-// Diagnóstico: lê o CÓDIGO-FONTE da procedure APP_PEDIDO_INSERT_V2 (uma vez só) pra
-// eu ver exatamente a linha que dá "Conversion error from string ''". Leve e seguro.
-const DIAG_SRC_FLAG = "diagSrcV3_blobtext";
-async function rodadaDiagSrc(db, estado) {
-  if (estado[DIAG_SRC_FLAG]) return;
-  let src = "";
-  let db2;
-  try {
-    // Conexão DEDICADA com blobAsText (o BLOB vem como string direto). Isolada: não
-    // afeta a conexão principal da ponte (onde blobAsText ficaria pesado).
-    db2 = await new Promise((res, rej) => Firebird.attach({ ...fbOpts, blobAsText: true }, (e, d) => (e ? rej(e) : res(d))));
-    const rows = await query(db2,
-      "SELECT RDB$PROCEDURE_SOURCE AS SRC FROM RDB$PROCEDURES WHERE TRIM(RDB$PROCEDURE_NAME)='APP_PEDIDO_INSERT_V2'");
-    if (rows && rows[0]) {
-      const v = rows[0].SRC;
-      src = typeof v === "function" ? await lerBlobTexto(v) : (v == null ? "" : String(v));
-    }
-  } catch (e) { src = "ERRO ao ler fonte: " + e.message; }
-  finally { try { if (db2) db2.detach(); } catch { /* ignora */ } }
-  let ok = false;
-  try {
-    const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/diag-src";
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
-      body: JSON.stringify({ versao: PONTE_VERSAO, nome: "APP_PEDIDO_INSERT_V2", src: String(src || "").slice(0, 20000) }),
-    });
-    ok = r.ok;
-  } catch (e) { log("! diag-src: falhou ao enviar —", e.message); }
-  if (ok) { salvarEstado({ ...lerEstado(), [DIAG_SRC_FLAG]: true }); log("diag-src: fonte da APP_PEDIDO_INSERT_V2 enviada (uma vez só)."); }
-}
-
 // ── FASE 4: envia pros Syntech os pedidos da loja B2B (via procedures APP_*) ──
 // Busca no worker os pedidos liberados (GET /pedidos-para-erp), e pra cada um grava
 // no Firebird usando as procedures OFICIAIS (APP_PEDIDO_INSERT_V2 devolve o NUMERO;
@@ -805,8 +756,6 @@ async function rodada() {
     try { await rodadaDiagnostico(db, estado); } catch (e) { log("! diagnóstico:", e.message); }
     // Confirmação leve das procedures APP_* (Fase 4; roda só uma vez).
     try { await rodadaDiagProcs(db, estado); } catch (e) { log("! diag-procs:", e.message); }
-    // Lê a fonte da APP_PEDIDO_INSERT_V2 uma vez (achar a linha do erro de conversão).
-    try { await rodadaDiagSrc(db, estado); } catch (e) { log("! diag-src:", e.message); }
     // Envia pros Syntech os pedidos da loja B2B liberados (Fase 4).
     try { await rodadaGravarPedidos(db); } catch (e) { log("! loja→ERP:", e.message); }
     // Pedidos APROVADOS, não cancelados, alterados depois da última vez.
