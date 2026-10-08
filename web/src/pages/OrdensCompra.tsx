@@ -126,7 +126,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
     try {
       const r = await api.editarOrdemCompra(ord.id, {
         obs,
-        itens: itens.map((it) => ({ material_id: it.material_id, nome: it.nome || "", codigo: it.codigo, tamanho: it.tamanho, cor: it.cor, unidade: it.unidade, qtd: Number(it.qtd) || 0, preco: Number(it.preco) || 0 })),
+        itens: itens.map((it) => ({ material_id: it.material_id, nome: it.nome || "", codigo: it.codigo, tamanho: it.tamanho, cor: it.cor, unidade: it.unidade, saldo: it.saldo, minimo: it.minimo, qtd: Number(it.qtd) || 0, preco: Number(it.preco) || 0 })),
       });
       setOrd(r.ordem); setItens(r.ordem.itens || []);
       return true;
@@ -199,13 +199,17 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
 
             <table className="table" style={{ marginTop: 10 }}>
               <thead><tr>
-                <th>Cód.</th><th>Material</th><th className="num">Qtd</th><th>Un</th><th className="num">Vl unit.</th><th className="num">Total</th>{editavel && <th></th>}
+                <th>Cód.</th><th>Material</th><th className="num">Estoque</th><th className="num">Mín.</th><th className="num">Comprar</th><th>Un</th><th className="num">Vl unit.</th><th className="num">Total</th>{editavel && <th></th>}
               </tr></thead>
               <tbody>
-                {itens.map((it, i) => (
+                {itens.map((it, i) => {
+                  const baixo = it.saldo != null && it.minimo != null && Number(it.saldo) < Number(it.minimo);
+                  return (
                   <tr key={it.id || i}>
                     <td className="strong">{it.codigo || "—"}</td>
                     <td>{it.nome}{it.tamanho ? ` · ${it.tamanho}` : ""}{it.cor ? ` · ${it.cor}` : ""}</td>
+                    <td className="num" style={baixo ? { color: "#b91c1c", fontWeight: 700 } : undefined}>{it.saldo != null ? nBR(Number(it.saldo)) : "—"}</td>
+                    <td className="num muted">{it.minimo != null ? nBR(Number(it.minimo)) : "—"}</td>
                     <td className="num">
                       {editavel
                         ? <input value={String(it.qtd ?? 0)} inputMode="decimal" style={{ width: 70, textAlign: "right" }} onChange={(e) => setItem(i, { qtd: Number(e.target.value.replace(",", ".")) || 0 })} />
@@ -220,7 +224,8 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
                     <td className="num">{it.preco ? rBR((Number(it.qtd) || 0) * (Number(it.preco) || 0)) : "—"}</td>
                     {editavel && <td><button className="btn btn-soft" title="Remover item" style={{ fontSize: 12 }} onClick={() => removerItem(i)}>🗑</button></td>}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             <div style={{ textAlign: "right", fontWeight: 700, margin: "8px 2px" }}>Total estimado: {rBR(total)}</div>

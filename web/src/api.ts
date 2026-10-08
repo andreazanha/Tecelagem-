@@ -215,6 +215,7 @@ export type OrdemCompraStatus = "aguardando_aprovacao" | "aprovada" | "enviada" 
 export interface OrdemCompraItemIn {
   material_id?: string | null; nome: string; codigo?: string | null;
   tamanho?: string | null; cor?: string | null; unidade?: string | null;
+  saldo?: number | null; minimo?: number | null;
   qtd: number; preco?: number | null;
 }
 export interface OrdemCompra {
@@ -227,6 +228,7 @@ export interface OrdemCompra {
 export interface OrdemCompraItemRow {
   id: string; ordem_id: string; material_id: string | null; nome: string | null;
   codigo: string | null; tamanho: string | null; cor: string | null; unidade: string | null;
+  saldo: number | null; minimo: number | null;
   qtd: number; preco: number; ordem: number;
 }
 export interface OrdemCompraDetalhe extends OrdemCompra {

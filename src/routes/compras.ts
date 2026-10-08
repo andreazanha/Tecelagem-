@@ -14,7 +14,9 @@ const uid = () => crypto.randomUUID();
 
 type EmpresaDados = { nome?: string; cnpj?: string; endereco?: string; telefone?: string; email?: string };
 type FornDados = { nome?: string; contato?: string; telefone?: string; email?: string; cnpj?: string };
-type ItemBody = { material_id?: string; nome?: string; codigo?: string; tamanho?: string; cor?: string; unidade?: string; qtd?: number; preco?: number };
+type ItemBody = { material_id?: string; nome?: string; codigo?: string; tamanho?: string; cor?: string; unidade?: string; saldo?: number; minimo?: number; qtd?: number; preco?: number };
+
+function numOrNull(v: unknown): number | null { return v == null || v === "" ? null : (Number(v)); }
 
 const p2 = (n: number) => String(n).padStart(2, "0");
 function agoraBR() { return new Date(Date.now() - 3 * 3600 * 1000); } // horário de Brasília
@@ -78,9 +80,9 @@ compras.post("/ordens", async (c) => {
   ).run();
 
   const stmts = itens.map((it, i) => c.env.DB.prepare(
-    `INSERT INTO ordem_compra_itens (id, ordem_id, material_id, nome, codigo, tamanho, cor, unidade, qtd, preco, ordem)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
-  ).bind(uid(), id, it.material_id || null, it.nome || "", it.codigo || null, it.tamanho || null, it.cor || null, it.unidade || null, Number(it.qtd) || 0, Number(it.preco) || 0, i));
+    `INSERT INTO ordem_compra_itens (id, ordem_id, material_id, nome, codigo, tamanho, cor, unidade, saldo, minimo, qtd, preco, ordem)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(uid(), id, it.material_id || null, it.nome || "", it.codigo || null, it.tamanho || null, it.cor || null, it.unidade || null, numOrNull(it.saldo), numOrNull(it.minimo), Number(it.qtd) || 0, Number(it.preco) || 0, i));
   if (stmts.length) await c.env.DB.batch(stmts);
 
   return c.json({ ok: true, id, numero });
@@ -121,9 +123,9 @@ compras.patch("/ordens/:id", async (c) => {
     const itens = b.itens.filter((it) => it && (Number(it.qtd) || 0) > 0);
     await c.env.DB.prepare("DELETE FROM ordem_compra_itens WHERE ordem_id=?").bind(id).run();
     const stmts = itens.map((it, i) => c.env.DB.prepare(
-      `INSERT INTO ordem_compra_itens (id, ordem_id, material_id, nome, codigo, tamanho, cor, unidade, qtd, preco, ordem)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
-    ).bind(uid(), id, it.material_id || null, it.nome || "", it.codigo || null, it.tamanho || null, it.cor || null, it.unidade || null, Number(it.qtd) || 0, Number(it.preco) || 0, i));
+      `INSERT INTO ordem_compra_itens (id, ordem_id, material_id, nome, codigo, tamanho, cor, unidade, saldo, minimo, qtd, preco, ordem)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(uid(), id, it.material_id || null, it.nome || "", it.codigo || null, it.tamanho || null, it.cor || null, it.unidade || null, numOrNull(it.saldo), numOrNull(it.minimo), Number(it.qtd) || 0, Number(it.preco) || 0, i));
     if (stmts.length) await c.env.DB.batch(stmts);
     const total = totalItens(itens as Array<{ qtd?: unknown; preco?: unknown }>);
     await c.env.DB.prepare("UPDATE ordens_compra SET total=? WHERE id=?").bind(total, id).run();
@@ -150,6 +152,7 @@ compras.post("/ordens/:id/aprovar", async (c) => {
   const itens: OrdemCompraItem[] = (o.itens as Array<Record<string, unknown>>).map((it) => ({
     nome: String(it.nome || ""), tamanho: (it.tamanho as string) || undefined, cor: (it.cor as string) || undefined,
     codigo: (it.codigo as string) || undefined, unidade: (it.unidade as string) || undefined,
+    saldo: it.saldo == null ? undefined : Number(it.saldo), minimo: it.minimo == null ? undefined : Number(it.minimo),
     qtd: Number(it.qtd) || 0, preco: Number(it.preco) || 0,
   }));
   if (!itens.length) return c.json({ error: "sem_itens" }, 400);

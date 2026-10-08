@@ -2655,7 +2655,7 @@ export function ComprasMateriais() {
         fornecedor: g.forn, fornecedor_id: fid || null,
         empresa: { nome: emp.nome, cnpj: emp.cnpj, endereco: emp.endereco, telefone: emp.telefone, email: emp.email },
         fornecedorDados: { nome: g.forn, contato: f?.contato || "", telefone: f?.telefone || "", email: f?.email || "", cnpj: f?.cnpj || "" },
-        itens: escolhidos.map((m) => ({ nome: m.nome, tamanho: m.tamanho, cor: m.cor, codigo: m.codigo || m.codigo_interno, unidade: m.unidade, qtd: m.faltam, preco: m.preco })),
+        itens: escolhidos.map((m) => ({ nome: m.nome, tamanho: m.tamanho, cor: m.cor, codigo: m.codigo || m.codigo_interno, unidade: m.unidade, saldo: m.saldo, minimo: m.minimo, material_id: m.id, qtd: m.faltam, preco: m.preco })),
       });
       setEnviar(null);
       alert(r.ok

@@ -1157,6 +1157,8 @@ export interface OrdemCompraItem {
   cor?: string | null;
   codigo?: string | null;
   unidade?: string | null;
+  saldo?: number | null;   // estoque atual
+  minimo?: number | null;  // estoque mínimo
   qtd: number;
   preco?: number | null;
 }
@@ -1214,23 +1216,30 @@ export async function gerarOrdemCompra(d: OrdemCompraDados): Promise<Uint8Array>
   if (fl.length) T(fit(fl.join("   ·   "), reg, 9, iw - 24), ix + 12, y + 48, 9, reg, SLATE);
   y += fh + 20;
 
-  // Colunas da tabela
-  const cNum = ix, cCod = ix + 22;
-  const cMat = ix + 22 + Math.round(iw * 0.17); // MATERIAL começa depois da coluna CÓD.
-  const cUn = ix + iw * 0.55;   // UN (alinhado à esquerda)
-  const cQtd = ix + iw * 0.68;  // QTDE (borda direita)
-  const cVlr = ix + iw * 0.83;  // VL UNIT (borda direita)
-  const cTot = ix + iw;         // VL TOTAL (borda direita)
+  // Colunas da tabela (todas em frações da largura útil → alinhamento padronizado)
+  const RED = hx("#b91c1c"), ZEBRA = hx("#f8fafc");
+  const cNum = ix;                              // # (esquerda)
+  const cCod = ix + 16;                         // CÓD. (esquerda)
+  const cMat = ix + 16 + Math.round(iw * 0.115); // MATERIAL (esquerda)
+  const cUn = ix + Math.round(iw * 0.46);        // UN (esquerda)
+  const cEst = ix + Math.round(iw * 0.58);       // ESTOQUE (borda direita)
+  const cMin = ix + Math.round(iw * 0.66);       // MÍNIMO (borda direita)
+  const cComp = ix + Math.round(iw * 0.76);      // COMPRAR (borda direita)
+  const cVlr = ix + Math.round(iw * 0.88);       // V. UNIT (borda direita)
+  const cTot = ix + iw;                          // TOTAL (borda direita)
+  const RH = 19; // altura fixa de cada linha (padroniza)
 
   const cabTabela = () => {
     R(ix, y, iw, 20, GREY2);
-    T("#", cNum + 5, y + 14, 8, bld, SLATE);
-    T("CÓD.", cCod, y + 14, 8, bld, SLATE);
-    T("MATERIAL", cMat, y + 14, 8, bld, SLATE);
-    T("UN", cUn, y + 14, 8, bld, SLATE);
-    TR("QTDE", cQtd, y + 14, 8, bld, SLATE);
-    TR("VL UNIT.", cVlr, y + 14, 8, bld, SLATE);
-    TR("VL TOTAL", cTot, y + 14, 8, bld, SLATE);
+    T("#", cNum + 3, y + 13, 7.5, bld, SLATE);
+    T("CÓD.", cCod, y + 13, 7.5, bld, SLATE);
+    T("MATERIAL", cMat, y + 13, 7.5, bld, SLATE);
+    T("UN", cUn, y + 13, 7.5, bld, SLATE);
+    TR("ESTOQUE", cEst, y + 13, 7.5, bld, SLATE);
+    TR("MÍNIMO", cMin, y + 13, 7.5, bld, SLATE);
+    TR("COMPRAR", cComp, y + 13, 7.5, bld, SLATE);
+    TR("V. UNIT.", cVlr, y + 13, 7.5, bld, SLATE);
+    TR("TOTAL", cTot, y + 13, 7.5, bld, SLATE);
     y += 20;
     seg(ix, y, ix + iw, LINEC2);
   };
@@ -1238,21 +1247,28 @@ export async function gerarOrdemCompra(d: OrdemCompraDados): Promise<Uint8Array>
 
   let total = 0;
   d.itens.forEach((it, i) => {
-    if (y + 18 > A4H - 80) { page = doc.addPage([A4W, A4H]); y = 40; cabTabela(); }
+    if (y + RH > A4H - 80) { page = doc.addPage([A4W, A4H]); y = 40; cabTabela(); }
     const qtd = Number(it.qtd) || 0, unit = Number(it.preco) || 0, tot = qtd * unit;
+    const temSaldo = it.saldo != null, temMin = it.minimo != null;
+    const saldo = Number(it.saldo) || 0, minimo = Number(it.minimo) || 0;
+    const baixo = temSaldo && temMin && saldo < minimo;
     total += tot;
+    if (i % 2 === 1) R(ix, y, iw, RH, ZEBRA); // zebra discreta
     const desc = (it.nome || "") +
       (it.tamanho ? " · " + it.tamanho : "") +
       (it.cor ? " · " + it.cor : "");
     const cod = String(it.codigo || "");
-    T(String(i + 1), cNum + 3, y + 14, 9, reg, SLATE);
-    T(fit(cod, bld, 9, cMat - cCod - 6), cCod, y + 14, 9, bld, INK);
-    T(fit(desc, reg, 9.5, cUn - cMat - 8), cMat, y + 14, 9.5, reg, INK);
-    T(fit(it.unidade || "", reg, 9, cQtd - cUn - 34), cUn, y + 14, 9, reg, SLATE);
-    TR(qt(qtd), cQtd, y + 14, 9.5, bld, QBLUE);
-    TR(unit ? money(unit) : "—", cVlr, y + 14, 9, reg);
-    TR(unit ? money(tot) : "—", cTot, y + 14, 9, bld);
-    y += 18;
+    const baseY = y + 13;
+    T(String(i + 1), cNum + 2, baseY, 8.5, reg, SLATE);
+    T(fit(cod, bld, 8.5, cMat - cCod - 6), cCod, baseY, 8.5, bld, INK);
+    T(fit(desc, reg, 9, cUn - cMat - 6), cMat, baseY, 9, reg, INK);
+    T(fit(it.unidade || "", reg, 8.5, cEst - cUn - 6), cUn, baseY, 8.5, reg, SLATE);
+    TR(temSaldo ? qt(saldo) : "—", cEst, baseY, 8.5, baixo ? bld : reg, baixo ? RED : SLATE);
+    TR(temMin ? qt(minimo) : "—", cMin, baseY, 8.5, reg, SLATE);
+    TR(qt(qtd), cComp, baseY, 9, bld, QBLUE);
+    TR(unit ? money(unit) : "—", cVlr, baseY, 8.5, reg);
+    TR(unit ? money(tot) : "—", cTot, baseY, 8.5, bld);
+    y += RH;
     seg(ix, y, ix + iw, hx("#eef0f4"), 0.5);
   });
 
