@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-08.7";
+const PONTE_VERSAO = "2026-10-08.8";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -628,15 +628,23 @@ async function rodadaDiagProcs(db, estado) {
 
 // Diagnóstico: lê o CÓDIGO-FONTE da procedure APP_PEDIDO_INSERT_V2 (uma vez só) pra
 // eu ver exatamente a linha que dá "Conversion error from string ''". Leve e seguro.
-const DIAG_SRC_FLAG = "diagSrcV2_altreg";
+const DIAG_SRC_FLAG = "diagSrcV3_blobtext";
 async function rodadaDiagSrc(db, estado) {
   if (estado[DIAG_SRC_FLAG]) return;
   let src = "";
+  let db2;
   try {
-    const rows = await query(db,
+    // Conexão DEDICADA com blobAsText (o BLOB vem como string direto). Isolada: não
+    // afeta a conexão principal da ponte (onde blobAsText ficaria pesado).
+    db2 = await new Promise((res, rej) => Firebird.attach({ ...fbOpts, blobAsText: true }, (e, d) => (e ? rej(e) : res(d))));
+    const rows = await query(db2,
       "SELECT RDB$PROCEDURE_SOURCE AS SRC FROM RDB$PROCEDURES WHERE TRIM(RDB$PROCEDURE_NAME)='APP_PEDIDO_INSERT_V2'");
-    if (rows && rows[0]) src = await lerBlobTexto(rows[0].SRC);
+    if (rows && rows[0]) {
+      const v = rows[0].SRC;
+      src = typeof v === "function" ? await lerBlobTexto(v) : (v == null ? "" : String(v));
+    }
   } catch (e) { src = "ERRO ao ler fonte: " + e.message; }
+  finally { try { if (db2) db2.detach(); } catch { /* ignora */ } }
   let ok = false;
   try {
     const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/diag-src";
