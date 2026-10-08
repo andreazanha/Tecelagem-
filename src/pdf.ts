@@ -1215,15 +1215,17 @@ export async function gerarOrdemCompra(d: OrdemCompraDados): Promise<Uint8Array>
   y += fh + 20;
 
   // Colunas da tabela
-  const cNum = ix, cMat = ix + 24;
-  const cUn = ix + iw * 0.50;   // UN (alinhado à esquerda)
-  const cQtd = ix + iw * 0.66;  // QTDE (borda direita)
-  const cVlr = ix + iw * 0.82;  // VL UNIT (borda direita)
+  const cNum = ix, cCod = ix + 22;
+  const cMat = ix + 22 + Math.round(iw * 0.17); // MATERIAL começa depois da coluna CÓD.
+  const cUn = ix + iw * 0.55;   // UN (alinhado à esquerda)
+  const cQtd = ix + iw * 0.68;  // QTDE (borda direita)
+  const cVlr = ix + iw * 0.83;  // VL UNIT (borda direita)
   const cTot = ix + iw;         // VL TOTAL (borda direita)
 
   const cabTabela = () => {
     R(ix, y, iw, 20, GREY2);
     T("#", cNum + 5, y + 14, 8, bld, SLATE);
+    T("CÓD.", cCod, y + 14, 8, bld, SLATE);
     T("MATERIAL", cMat, y + 14, 8, bld, SLATE);
     T("UN", cUn, y + 14, 8, bld, SLATE);
     TR("QTDE", cQtd, y + 14, 8, bld, SLATE);
@@ -1241,9 +1243,10 @@ export async function gerarOrdemCompra(d: OrdemCompraDados): Promise<Uint8Array>
     total += tot;
     const desc = (it.nome || "") +
       (it.tamanho ? " · " + it.tamanho : "") +
-      (it.cor ? " · " + it.cor : "") +
-      (it.codigo ? "  [" + it.codigo + "]" : "");
+      (it.cor ? " · " + it.cor : "");
+    const cod = String(it.codigo || "");
     T(String(i + 1), cNum + 3, y + 14, 9, reg, SLATE);
+    T(fit(cod, bld, 9, cMat - cCod - 6), cCod, y + 14, 9, bld, INK);
     T(fit(desc, reg, 9.5, cUn - cMat - 8), cMat, y + 14, 9.5, reg, INK);
     T(fit(it.unidade || "", reg, 9, cQtd - cUn - 34), cUn, y + 14, 9, reg, SLATE);
     TR(qt(qtd), cQtd, y + 14, 9.5, bld, QBLUE);

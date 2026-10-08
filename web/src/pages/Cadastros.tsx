@@ -2352,7 +2352,7 @@ function imprimirOrdemCompra(emp: Empresa, forn: Fornecedor | null, fornNome: st
   const numero = `OC-${hoje.getFullYear()}${p2(hoje.getMonth() + 1)}${p2(hoje.getDate())}-${p2(hoje.getHours())}${p2(hoje.getMinutes())}`;
   const linhas = itens.map((m, i) => {
     const qtd = m.faltam || 0, unit = m.preco || 0, tot = qtd * unit;
-    return `<tr><td class="c">${i + 1}</td><td>${escHtml(m.nome)}${m.tamanho ? " · " + escHtml(m.tamanho) : ""}${m.cor ? " · " + escHtml(m.cor) : ""}${m.codigo ? ` <span class="cod">${escHtml(m.codigo)}</span>` : ""}</td><td class="c">${escHtml(m.unidade || "")}</td><td class="r b">${nBR(qtd)}</td><td class="r">${unit ? rBR(unit) : "—"}</td><td class="r">${unit ? rBR(tot) : "—"}</td></tr>`;
+    return `<tr><td class="c">${i + 1}</td><td>${escHtml(m.nome)}${m.tamanho ? " · " + escHtml(m.tamanho) : ""}${m.cor ? " · " + escHtml(m.cor) : ""}${(m.codigo || m.codigo_interno) ? ` <span class="cod">${escHtml(m.codigo || m.codigo_interno)}</span>` : ""}</td><td class="c">${escHtml(m.unidade || "")}</td><td class="r b">${nBR(qtd)}</td><td class="r">${unit ? rBR(unit) : "—"}</td><td class="r">${unit ? rBR(tot) : "—"}</td></tr>`;
   }).join("");
   const total = itens.reduce((s, m) => s + (m.preco || 0) * (m.faltam || 0), 0);
   const li = (label: string, val: unknown) => val ? `<div><span class="lbl">${label}:</span> ${escHtml(val)}</div>` : "";
@@ -2654,7 +2654,7 @@ export function ComprasMateriais() {
         fornecedor: g.forn,
         empresa: { nome: emp.nome, cnpj: emp.cnpj, endereco: emp.endereco, telefone: emp.telefone, email: emp.email },
         fornecedorDados: { nome: g.forn, contato: f?.contato || "", telefone: f?.telefone || "", email: f?.email || "", cnpj: f?.cnpj || "" },
-        itens: escolhidos.map((m) => ({ nome: m.nome, tamanho: m.tamanho, cor: m.cor, codigo: m.codigo, unidade: m.unidade, qtd: m.faltam, preco: m.preco })),
+        itens: escolhidos.map((m) => ({ nome: m.nome, tamanho: m.tamanho, cor: m.cor, codigo: m.codigo || m.codigo_interno, unidade: m.unidade, qtd: m.faltam, preco: m.preco })),
       });
       gerar(g, true); // também gera/imprime a ordem localmente
       setEnviar(null);
