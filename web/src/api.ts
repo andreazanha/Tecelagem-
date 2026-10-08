@@ -705,6 +705,16 @@ export interface ErpPendenteDetalhe {
   pedido: { id: string; numero_erp: string; cliente_nome: string; data_pedido: string | null; data_entrega: string | null };
   itens: { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number }[];
 }
+export interface LojaPedido {
+  id: string; cliente_nome: string | null; cliente_cnpj: string | null;
+  valor_total: number | null; data_pedido: string | null; created_at: string | null;
+  erp_sync_status: string; erp_liberado: number; erp_numero: number | null; erp_sync_erro: string | null;
+  itens?: number; pecas?: number;
+}
+export interface LojaPedidoItem {
+  produto: string | null; ref: string | null; cor_grade: string | null; cod_cor: number | null;
+  tamanho: string | null; erp_tamanho: string | null; qtd: number; valor_unit: number | null;
+}
 
 export interface MaquinaTec { id: string; nome: string; ordem: number; ativo: number }
 export interface MotivoTec { id: string; codigo: string; nome: string | null; tipo: string; ordem: number; ativo: number }
@@ -1234,6 +1244,12 @@ export const api = {
   erpAceitar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aceitar`, {}).then((r) => j<{ ok: boolean }>(r)),
   erpRecusar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/recusar`, {}).then((r) => j<{ ok: boolean }>(r)),
   erpAprovarLote: (ids: string[]) => jsonPost("/api/integracao/aprovar-lote", { ids }).then((r) => j<{ ok: boolean; pedido_id: string; codigo_pai: string; pedidos: number }>(r)),
+  // Loja B2B — pedidos capturados pela loja (só gestor). modo: off|teste|on.
+  lojaPedidos: () => fetch("/api/integracao/loja-pedidos").then((r) => j<{ modo: string; pedidos: LojaPedido[] }>(r)),
+  lojaPedidoDetalhe: (id: string) => fetch(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}`).then((r) => j<{ pedido: LojaPedido; itens: LojaPedidoItem[] }>(r)),
+  lojaLiberar: (id: string) => jsonPost(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}/liberar`, {}).then((r) => j<{ ok: boolean }>(r)),
+  lojaReenviar: (id: string) => jsonPost(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}/reenviar`, {}).then((r) => j<{ ok: boolean }>(r)),
+  lojaConfig: (modo: string) => jsonPost("/api/integracao/loja-config", { modo }).then((r) => j<{ ok: boolean; modo: string }>(r)),
   // Estoque de produtos espelhado do ERP (só leitura).
   erpEstoque: (q?: { ref?: string; busca?: string }) => {
     const p = new URLSearchParams();

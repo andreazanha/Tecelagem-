@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-08.3";
+const PONTE_VERSAO = "2026-10-08.4";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -109,6 +109,28 @@ function query(db, sql, params = []) {
     db.query(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
   });
 }
+// Transação explícita (pra gravar cabeçalho + itens + cores do pedido TUDO OU NADA).
+function transacao(db) {
+  return new Promise((resolve, reject) => {
+    db.transaction(Firebird.ISOLATION_READ_COMMITTED, (err, tr) => (err ? reject(err) : resolve(tr)));
+  });
+}
+function trQuery(tr, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    tr.query(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
+  });
+}
+function trCommit(tr) { return new Promise((resolve, reject) => tr.commit((err) => (err ? reject(err) : resolve()))); }
+function trRollback(tr) { return new Promise((resolve) => { try { tr.rollback(() => resolve()); } catch { resolve(); } }); }
+// Formata CNPJ/CPF (só dígitos) pontuado, como o APP_CLIENTES_SEARCH espera.
+function formatarDoc(s) {
+  const d = String(s || "").replace(/\D+/g, "");
+  if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+  return d;
+}
+// Data no formato que as procedures do Syntech esperam: MM/DD/YYYY.
+function dataUSA(d) { const p = (n) => String(n).padStart(2, "0"); return `${p(d.getMonth() + 1)}/${p(d.getDate())}/${d.getFullYear()}`; }
 
 // ── chamada na nossa API ─────────────────────────────────────────────────────
 async function enviarPedido(payload) {
@@ -587,6 +609,112 @@ async function rodadaDiagProcs(db, estado) {
   }
 }
 
+// ── FASE 4: envia pros Syntech os pedidos da loja B2B (via procedures APP_*) ──
+// Busca no worker os pedidos liberados (GET /pedidos-para-erp), e pra cada um grava
+// no Firebird usando as procedures OFICIAIS (APP_PEDIDO_INSERT_V2 devolve o NUMERO;
+// depois APP_ITENS_PEDIDO_INSERT e APP_CORES_PEDIDO_INSERT). Tudo numa transação:
+// dá erro no meio → rollback e marca 'erro' no worker (tenta de novo depois). Entra
+// como ORÇAMENTO/PENDENTE no Syntech (as SPs gravam APROV='N').
+async function rodadaGravarPedidos(db) {
+  const base = CONFIG.api.base.replace(/\/+$/, "");
+  let lista = [];
+  try {
+    const r = await fetch(base + "/api/integracao/pedidos-para-erp", { headers: { "X-Integracao-Token": CONFIG.api.token } });
+    if (!r.ok) return;
+    const j = await r.json();
+    lista = Array.isArray(j.pedidos) ? j.pedidos : [];
+  } catch (e) { log("! loja→ERP: não busquei pendentes —", e.message); return; }
+  if (!lista.length) return;
+  log(`loja→ERP: ${lista.length} pedido(s) da loja pra gravar no Syntech`);
+  for (const p of lista) {
+    try {
+      const numero = await gravarUmPedido(db, p);
+      await fetch(base + "/api/integracao/pedido-erp-gravado", {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+        body: JSON.stringify({ id: p.id, numero_erp: numero.numero, cod_cli: numero.codCli }),
+      });
+      log(`  ✓ pedido ${p.id} → Syntech NÚMERO ${numero.numero} (orçamento/pendente)`);
+    } catch (e) {
+      log(`  ! pedido ${p.id}: ${e.message}`);
+      try {
+        await fetch(base + "/api/integracao/pedido-erp-erro", {
+          method: "POST", headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+          body: JSON.stringify({ id: p.id, erro: e.message }),
+        });
+      } catch { /* ignora */ }
+    }
+  }
+}
+async function gravarUmPedido(db, p) {
+  // 1) COD_CLI + COD_PRAZO do cliente: usa o cache; senão procura pelo CNPJ (SP oficial).
+  let codCli = p.cod_cli ? String(p.cod_cli).trim() : "";
+  let codPrazo = "";
+  try {
+    const rs = await query(db, "SELECT CODIGO, COD_PRAZO FROM APP_CLIENTES_SEARCH(?)", [formatarDoc(p.cnpj)]);
+    if (rs && rs[0]) {
+      if (!codCli && rs[0].CODIGO != null) codCli = String(rs[0].CODIGO);
+      if (rs[0].COD_PRAZO != null) codPrazo = String(rs[0].COD_PRAZO);
+    }
+  } catch (e) { /* se falhar e não tiver cache, cai no erro abaixo */ }
+  if (!codCli) throw new Error("cliente não encontrado no Syntech (CNPJ " + p.cnpj + ")");
+
+  // 2) agrupa itens por (produto, tamanho): QUANT_PED = soma das cores; resolve
+  //    o COD_PROD EXATO (como está em PRODUTOS, com o TAB se houver) e o AUTOINC_TAM.
+  const itens = Array.isArray(p.itens) ? p.itens : [];
+  if (!itens.length) throw new Error("pedido sem itens");
+  const grupos = new Map();
+  for (const it of itens) {
+    const ref = String(it.ref || "").trim();
+    const tam = String(it.erp_tamanho || "").trim();
+    const qtd = Math.trunc(Number(it.qtd) || 0);
+    const preco = Number(it.valor_unit) || 0;
+    const codCor = it.cod_cor;
+    if (!ref || qtd <= 0) continue;
+    const key = ref + "|" + tam;
+    let g = grupos.get(key);
+    if (!g) {
+      let codExato = ref;
+      try { const pr = await query(db, "SELECT CODIGO FROM PRODUTOS WHERE TRIM(CODIGO)=?", [ref]); if (pr && pr[0] && pr[0].CODIGO != null) codExato = String(pr[0].CODIGO); } catch { /* usa ref */ }
+      let autoincTam = 0;
+      try { const ta = await query(db, "SELECT AUTOINC FROM TAMANHO_PROD WHERE TRIM(COD_PROD)=? AND TRIM(TAMANHO)=?", [ref, tam]); if (ta && ta[0] && ta[0].AUTOINC != null) autoincTam = Number(ta[0].AUTOINC); } catch { /* 0 */ }
+      g = { codExato, tam, preco, autoincTam, quant: 0, cores: [] };
+      grupos.set(key, g);
+    }
+    g.quant += qtd;
+    if (codCor != null && String(codCor) !== "") g.cores.push({ codCor: String(codCor), qtd });
+  }
+  if (!grupos.size) throw new Error("nenhum item válido");
+  const valorTotal = [...grupos.values()].reduce((s, g) => s + g.quant * g.preco, 0);
+  const hoje = dataUSA(new Date());
+
+  // 3) grava TUDO numa transação (cabeçalho → itens → cores).
+  const tr = await transacao(db);
+  let numero;
+  try {
+    // APP_PEDIDO_INSERT_V2 (19 params) devolve o NUMERO. OPCAO_PRECO='A' (atacado),
+    // IMEI nulo obrigatório, NOME_APP='Loja B2B'. DESCONTO/VALOR_FRETE = 0.
+    const cab = await trQuery(tr,
+      "execute block returns (vnumero integer) as begin " +
+      "select numero from app_pedido_insert_v2(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) into :vnumero; suspend; end",
+      [hoje, String(valorTotal.toFixed(2)), hoje, String(codCli), "Pedido Loja B2B (site)", codPrazo, "A", "", "", "", "", "", "", "", null, "", "0", "0", "Loja B2B"]);
+    numero = cab && cab[0] ? (cab[0].VNUMERO != null ? cab[0].VNUMERO : cab[0].NUMERO) : null;
+    if (!numero) throw new Error("APP_PEDIDO_INSERT_V2 não devolveu o NÚMERO");
+    for (const g of grupos.values()) {
+      await trQuery(tr, "execute procedure app_itens_pedido_insert(?,?,?,?,?,?,?)",
+        [String(numero), g.codExato, g.tam, String(g.autoincTam), String(g.quant), String(g.preco.toFixed(2)), ""]);
+      for (const co of g.cores) {
+        await trQuery(tr, "execute procedure app_cores_pedido_insert(?,?,?,?,?,?)",
+          [String(numero), g.codExato, String(co.codCor), g.tam, String(g.autoincTam), String(co.qtd)]);
+      }
+    }
+    await trCommit(tr);
+  } catch (e) {
+    await trRollback(tr);
+    throw e;
+  }
+  return { numero, codCli };
+}
+
 // ── uma rodada: busca aprovados que mudaram desde a última data e envia ───────
 async function rodada() {
   const estado = lerEstado();
@@ -603,6 +731,8 @@ async function rodada() {
     try { await rodadaDiagnostico(db, estado); } catch (e) { log("! diagnóstico:", e.message); }
     // Confirmação leve das procedures APP_* (Fase 4; roda só uma vez).
     try { await rodadaDiagProcs(db, estado); } catch (e) { log("! diag-procs:", e.message); }
+    // Envia pros Syntech os pedidos da loja B2B liberados (Fase 4).
+    try { await rodadaGravarPedidos(db); } catch (e) { log("! loja→ERP:", e.message); }
     // Pedidos APROVADOS, não cancelados, alterados depois da última vez.
     const SQL_PEDIDOS =
       `SELECT NUMERO, DATA, COD_CLI, STATUS, CANC, DATA_ALT_REG

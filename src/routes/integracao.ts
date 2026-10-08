@@ -642,6 +642,118 @@ integracao.get("/loja", async (c) => {
   return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+// FASE 4 — Pedido da loja B2B → Syntech (via ponte + procedures APP_*)
+// ════════════════════════════════════════════════════════════════════════════
+const tokenOk = (c: { env: Env; req: { header: (k: string) => string | undefined; query: (k: string) => string | undefined } }) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
+  return !!esperado && recebido === esperado;
+};
+const lerCfg = async (env: Env, k: string) => ((await env.DB.prepare("SELECT valor FROM config WHERE chave=?").bind(k).first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
+// Modo de envio da loja → ERP: 'off' (nada), 'teste' (só os liberados), 'on' (todos).
+const modoEnvioLoja = async (env: Env) => { const m = await lerCfg(env, "loja_erp_envio"); return m === "on" || m === "off" ? m : "teste"; };
+
+// A PONTE busca aqui os pedidos de loja prontos pra gravar no Syntech (auth token).
+integracao.get("/pedidos-para-erp", async (c) => {
+  if (!tokenOk(c)) return c.json({ error: "nao_autorizado" }, 401);
+  const modo = await modoEnvioLoja(c.env);
+  if (modo === "off") return c.json({ modo, pedidos: [] });
+  const filtroLiberado = modo === "on" ? "" : " AND COALESCE(p.erp_liberado,0) = 1";
+  const { results: peds } = await c.env.DB.prepare(
+    `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.valor_total, p.data_pedido, cl.codigo_erp AS cod_cli
+       FROM pedidos p LEFT JOIN clientes cl ON cl.id = p.cliente_id
+      WHERE p.canal='loja_b2b' AND COALESCE(p.erp_sync_status,'pendente')='pendente'${filtroLiberado}
+      ORDER BY p.created_at LIMIT 20`
+  ).all<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; valor_total: number | null; data_pedido: string | null; cod_cli: string | null }>();
+  const pedidos = [];
+  for (const p of peds) {
+    const { results: itens } = await c.env.DB.prepare(
+      "SELECT ref, erp_tamanho, cod_cor, qtd, valor_unit, produto, cor_grade FROM pedido_itens WHERE pedido_id = ? ORDER BY rowid"
+    ).bind(p.id).all<{ ref: string; erp_tamanho: string | null; cod_cor: number | null; qtd: number; valor_unit: number | null; produto: string | null; cor_grade: string | null }>();
+    pedidos.push({ id: p.id, cliente_nome: p.cliente_nome, cnpj: p.cliente_cnpj, cod_cli: p.cod_cli, valor_total: p.valor_total, data: p.data_pedido, itens });
+  }
+  return c.json({ modo, pedidos });
+});
+
+// A PONTE confirma que gravou no ERP (auth token): guarda o NUMERO do Syntech e,
+// se descobriu o COD_CLI pelo CNPJ, guarda no cliente (cache pros próximos).
+integracao.post("/pedido-erp-gravado", async (c) => {
+  if (!tokenOk(c)) return c.json({ error: "nao_autorizado" }, 401);
+  const b = await c.req.json().catch(() => ({})) as { id?: string; numero_erp?: number | string; cod_cli?: number | string };
+  const id = String(b.id || "").trim();
+  const numero = Math.trunc(Number(b.numero_erp) || 0);
+  if (!id || !numero) return c.json({ error: "faltam_dados" }, 400);
+  const stmts: D1PreparedStatement[] = [
+    c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='enviado', erp_numero=?, erp_sync_em=datetime('now'), erp_sync_erro=NULL WHERE id=? AND canal='loja_b2b'").bind(numero, id),
+  ];
+  const cod = String(b.cod_cli || "").trim();
+  if (cod) stmts.push(c.env.DB.prepare("UPDATE clientes SET codigo_erp=? WHERE id=(SELECT cliente_id FROM pedidos WHERE id=?) AND COALESCE(codigo_erp,'')=''").bind(cod, id));
+  await c.env.DB.batch(stmts);
+  return c.json({ ok: true });
+});
+
+// A PONTE avisa que deu erro ao gravar (auth token): marca o pedido como 'erro'.
+integracao.post("/pedido-erp-erro", async (c) => {
+  if (!tokenOk(c)) return c.json({ error: "nao_autorizado" }, 401);
+  const b = await c.req.json().catch(() => ({})) as { id?: string; erro?: string };
+  const id = String(b.id || "").trim();
+  if (!id) return c.json({ error: "faltam_dados" }, 400);
+  await c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='erro', erp_sync_erro=?, erp_sync_em=datetime('now') WHERE id=? AND canal='loja_b2b'")
+    .bind(String(b.erro || "erro desconhecido").slice(0, 500), id).run();
+  return c.json({ ok: true });
+});
+
+// ── ADMIN (gestor): tela "Pedidos da Loja" ──────────────────────────────────
+integracao.get("/loja-pedidos", async (c) => {
+  const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
+  const modo = await modoEnvioLoja(c.env);
+  const { results } = await c.env.DB.prepare(
+    `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.valor_total, p.data_pedido, p.created_at,
+            COALESCE(p.erp_sync_status,'pendente') AS erp_sync_status, COALESCE(p.erp_liberado,0) AS erp_liberado,
+            p.erp_numero, p.erp_sync_erro,
+            (SELECT COUNT(*) FROM pedido_itens WHERE pedido_id=p.id) AS itens,
+            (SELECT COALESCE(SUM(qtd),0) FROM pedido_itens WHERE pedido_id=p.id) AS pecas
+       FROM pedidos p WHERE p.canal='loja_b2b' ORDER BY p.created_at DESC LIMIT 200`
+  ).all();
+  return c.json({ modo, pedidos: results });
+});
+integracao.get("/loja-pedidos/:id", async (c) => {
+  const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const ped = await c.env.DB.prepare(
+    `SELECT id, cliente_nome, cliente_cnpj, valor_total, data_pedido, created_at,
+            COALESCE(erp_sync_status,'pendente') AS erp_sync_status, COALESCE(erp_liberado,0) AS erp_liberado, erp_numero, erp_sync_erro
+       FROM pedidos WHERE id=? AND canal='loja_b2b'`
+  ).bind(id).first();
+  if (!ped) return c.json({ error: "nao_encontrado" }, 404);
+  const { results: itens } = await c.env.DB.prepare(
+    "SELECT produto, ref, cor_grade, cod_cor, tamanho, erp_tamanho, qtd, valor_unit FROM pedido_itens WHERE pedido_id=? ORDER BY rowid"
+  ).bind(id).all();
+  return c.json({ pedido: ped, itens });
+});
+integracao.post("/loja-pedidos/:id/liberar", async (c) => {
+  const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  await c.env.DB.prepare("UPDATE pedidos SET erp_liberado=1 WHERE id=? AND canal='loja_b2b' AND COALESCE(erp_sync_status,'pendente')='pendente'").bind(id).run();
+  return c.json({ ok: true });
+});
+integracao.post("/loja-pedidos/:id/reenviar", async (c) => {
+  const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  // volta pra 'pendente' (com liberado) pra ponte tentar de novo — só se deu erro.
+  await c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='pendente', erp_liberado=1, erp_sync_erro=NULL WHERE id=? AND canal='loja_b2b' AND erp_sync_status='erro'").bind(id).run();
+  return c.json({ ok: true });
+});
+integracao.post("/loja-config", async (c) => {
+  const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
+  const b = await c.req.json().catch(() => ({})) as { modo?: string };
+  const modo = b.modo === "on" || b.modo === "off" || b.modo === "teste" ? b.modo : null;
+  if (!modo) return c.json({ error: "modo_invalido" }, 400);
+  await c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('loja_erp_envio', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(modo).run();
+  return c.json({ ok: true, modo });
+});
+
 // TESTE DE CONEXÃO com o Firebase do site. Lê catalogo/main e devolve os campos
 // do topo (sem expor conteúdo sensível) — serve pra validar a chave FIREBASE_SA.
 integracao.get("/site/firebase-check", async (c) => {

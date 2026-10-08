@@ -35,6 +35,7 @@ import { EstoqueScan } from "./pages/EstoqueScan";
 import { RelatorioVendas } from "./pages/RelatorioVendas";
 import { RelatorioProducao } from "./pages/RelatorioProducao";
 import { RelatorioEstoqueMov } from "./pages/RelatorioEstoqueMov";
+import { LojaPedidos } from "./pages/LojaPedidos";
 import { PedidosErp } from "./pages/PedidosErp";
 import { Catalogo } from "./pages/Catalogo";
 import { Expedicao } from "./pages/Expedicao";
@@ -148,6 +149,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/relatorio-vendas" element={<Protegido page="todos-pedidos"><RelatorioVendas /></Protegido>} />
           <Route path="/relatorio-producao" element={<Protegido admin><RelatorioProducao /></Protegido>} />
           <Route path="/relatorio-estoque" element={<Protegido admin><RelatorioEstoqueMov /></Protegido>} />
+          <Route path="/loja-pedidos" element={<Protegido admin><LojaPedidos /></Protegido>} />
           <Route path="/expedicao" element={<Protegido page="expedicao"><Expedicao /></Protegido>} />
           <Route path="/impressao-etiquetas" element={<Protegido page="expedicao"><ImpressaoEtiquetas /></Protegido>} />
           <Route path="/fiscal" element={<Protegido page="fiscal"><Fiscal /></Protegido>} />

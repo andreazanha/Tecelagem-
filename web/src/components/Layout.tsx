@@ -231,6 +231,7 @@ const GRUPOS: MenuGrupo[] = [
       { icon: "🔍", label: "Relatório de Revisão", soon: true },
       { icon: "🪡", label: "Relatório de Costureiras", soon: true },
       { to: "/relatorio-estoque", icon: "📦", label: "Relatório de Estoque", admin: true },
+      { to: "/loja-pedidos", icon: "🛒", label: "Pedidos da Loja (B2B)", admin: true },
       { icon: "💵", label: "Relatório de Vendas", soon: true },
     ],
   },
