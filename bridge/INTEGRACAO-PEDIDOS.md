@@ -112,3 +112,21 @@ Base: `https://bigtricot.syntechsistemas.com`
 - Principal: `<base>/<CLASSE>/<CODIGO>.jpg` (ex.: `.../PESEIRAS%20E%20MANTAS/8019P.jpg`)
 - Por cor/tamanho: `<base>/<CLASSE>/<COD>_<TAM>_<COR>_<NUM>.jpg`
 (CLASSE = `CLASS_PROD.DESCRICAO`). Carregar direto no front.
+
+## ✅ CONFIRMADO neste install (diag 2026-10-08, via RDB$PROCEDURES)
+As procedures do manual EXISTEM com as assinaturas exatas (params quase todos VARCHAR(25)):
+- `APP_PEDIDO_INSERT_V2(DATA, VALOR, DATA_ENTR, COD_CLI, OBS_PED(500), COD_PRAZO, OPCAO_PRECO, GUIA, FRETE, COD_DIG, COD_VEND, COD_TRANSP, FORMA_PAGTO, DATA_ALT_REG, IMEI(100), CLASSIF_PED, DESCONTO, VALOR_FRETE, NOME_APP(50)) → NUMERO(int)`
+- `APP_ITENS_PEDIDO_INSERT(NUMERO, COD_PROD, TAMANHO, AUTOINC_TAM, QUANT_PED, PRECO, OBS(200))` (há `_V2` com +GUID(40))
+- `APP_CORES_PEDIDO_INSERT(NUMERO, COD_PROD, COD_COR, TAMANHO, AUTOINC_TAM, QUANT)` (há `_V2` com +GUID(40))
+- `APP_CLIENTES_SEARCH(CNPJ_CPF_PESQUISA(18)) → CODIGO(int=COD_CLI), NOME, …, COD_PRAZO(int), COD_TRANSP, GUIA, FORMA, OPCAO_PRECO, …` (devolve o COD_PRAZO e OPCAO_PRECO do cliente — usar esses como default)
+- `APP_CLIENTES_INSERT_V2(... 21 params ...) → CODIGO` (criar cliente novo se o SEARCH vier vazio)
+
+**Úteis p/ o mapeamento (resolvem o que faltava):**
+- `APP_TAMANHO_PROD_SELECT(SDATA) → COD_PROD, AUTOINC, TAMANHO, PRECO_VENDA, PRECO_VENDA_LJ, …` — dá o **AUTOINC por tamanho** (= AUTOINC_TAM).
+- `APP_ESTOQUE_DETALHADO(COD_PROD) → AUTOINC_TAM, TAMANHO, TOM, COR, COD_COR, COR_HTML, NOME, QUANT, PEDIDO, PED_COMPRA, PRODUCAO, SALDO` — **estoque EXATO por cor/tamanho + AUTOINC_TAM + COD_COR** (resolve AUTOINC_TAM certo e serve a Fase 5).
+- `APP_PEGA_PRAZO(DESCR) → CODIGO`; `APP_PEGA_CAMINHO_FOTO_COR_TAM(COD_PROD, COR, TAMANHO) → URL_FOTO, COR_HTML`.
+- **Login de cliente (p/ Fase 3, opcional):** `APP_EFETUA_LOGIN(NOME, SENHA, TIPO_USUARIO) → USUARIO_ID, VENDEDOR_ID, VENDEDOR_NOME, LOGIN` e `APP_CLIENTES_SENHA_UPDATE(COD_CLIENTE, SENHA_ATUAL, SENHA_NOVA) → ALTERADA` — o Syntech já tem senha de cliente.
+
+**Triggers BEFORE INSERT das tabelas de pedido** (só p/ saber que existem; as SPs cuidam disso): PEDIDO=`BI_PEDIDO`,`BI_PEDIDO_2`,`BI_PEDIDO_DATA_ALT_REG`; ITENS_PEDIDO=`BI_ITENS_PEDIDO`,`BI_ITENS_PEDIDO_APP_TEMP`; CORES_PEDIDO=`BI_CORES_PEDIDO`. Como gravo via as SPs `APP_*`, NÃO mexo em NUMERO/AUTOINC na mão — a SP resolve.
+
+**Decisão:** Fase 4 = **Opção A (procedures oficiais APP_*)**. Confirmado.
