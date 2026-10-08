@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-07.1";
+const PONTE_VERSAO = "2026-10-08.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -81,6 +81,10 @@ const fbOpts = {
   lowercase_keys: false,
   role: null,
   pageSize: 4096,
+  // BLOBs sub_type text (ex.: RDB$TRIGGER_SOURCE, RDB$DEFAULT_SOURCE, RDB$PROCEDURE_SOURCE)
+  // vêm materializados como STRING. Sem isso a célula volta como uma função (stream) e
+  // String(...) dá lixo. Necessário pro diagnóstico de procedures/triggers (Fase 4).
+  blobAsText: true,
   // OBS: a opção "encoding" do node-firebird é IGNORADA na leitura (a lib sempre
   // decodifica como UTF-8). A correção de acentos é feita acima, no patch do
   // XdrReader (latin1). Não precisa colocar nada de encoding no config.json.
@@ -370,7 +374,7 @@ async function rodadaProdutos(db, estado) {
 // o nome EXATO das colunas de preço por tamanho sem o usuário fazer nada. Roda só
 // UMA vez (controlado pela flag no state.json); pra pedir de novo, troca o nome
 // da flag aqui embaixo (DIAG_FLAG) numa versão nova da ponte.
-const DIAG_FLAG = "diagV3_pedidos";
+const DIAG_FLAG = "diagV4_procs";
 function limparValor(v) {
   if (v == null) return v;
   if (v instanceof Date) return v.toISOString();
@@ -466,6 +470,48 @@ async function rodadaDiagnostico(db, estado) {
     for (const t of ["BLING_PEDIDOS", "BLING_ITENS", "WEB_VARIACOES", "CATALOGO", "PEDIDO_VENDA_FIO"]) {
       try { diag.pedido.outras[t] = (await query(db, `SELECT FIRST 2 * FROM ${t}`)).map(limparLinha); } catch (e) { diag.pedido.erros.push(`${t}: ${e.message}`); }
     }
+    // ── VIA OFICIAL: procedures APP_* do Syntech (site → ERP) ──────────────────
+    // O manual documenta APP_PEDIDO_INSERT_V2 / APP_ITENS_PEDIDO_INSERT /
+    // APP_CORES_PEDIDO_INSERT / APP_CLIENTES_SEARCH / APP_CLIENTES_INSERT_V2.
+    // Confirmo aqui que EXISTEM neste install e com quais parâmetros (ordem/tipo).
+    diag.pedido.procedures = {};
+    try {
+      const procs = await query(db,
+        "SELECT TRIM(RDB$PROCEDURE_NAME) AS NOME FROM RDB$PROCEDURES " +
+        "WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 AND RDB$PROCEDURE_NAME LIKE 'APP%' ORDER BY RDB$PROCEDURE_NAME");
+      for (const pr of procs) {
+        const nome = String(pr.NOME || "").trim(); if (!nome) continue;
+        let params = [];
+        try {
+          const ps = await query(db,
+            "SELECT TRIM(PP.RDB$PARAMETER_NAME) AS CAMPO, PP.RDB$PARAMETER_NUMBER AS ORDEM, " +
+            "PP.RDB$PARAMETER_TYPE AS TIPO_PARAM, F.RDB$FIELD_TYPE AS TIPO, F.RDB$FIELD_LENGTH AS TAM " +
+            "FROM RDB$PROCEDURE_PARAMETERS PP JOIN RDB$FIELDS F ON F.RDB$FIELD_NAME = PP.RDB$FIELD_SOURCE " +
+            "WHERE PP.RDB$PROCEDURE_NAME = ? ORDER BY PP.RDB$PARAMETER_TYPE, PP.RDB$PARAMETER_NUMBER",
+            [nome]);
+          params = ps.map((r) => ({ campo: String(r.CAMPO || "").trim(), ordem: r.ORDEM, dir: Number(r.TIPO_PARAM) === 1 ? "out" : "in", tipo: r.TIPO, tam: r.TAM }));
+        } catch (e) { diag.pedido.erros.push(`params ${nome}: ${e.message}`); }
+        diag.pedido.procedures[nome] = params;
+      }
+    } catch (e) { diag.pedido.erros.push("procedures: " + e.message); }
+    // ── Plano B: triggers BEFORE INSERT (tipo 1) das 3 tabelas de pedido ───────
+    // Só uso se faltar alguma SP. Mostram o que é auto-preenchido (NUMERO, AUTOINC…).
+    diag.pedido.triggers = {};
+    try {
+      for (const t of ["PEDIDO", "ITENS_PEDIDO", "CORES_PEDIDO"]) {
+        const trs = await query(db,
+          "SELECT TRIM(RDB$TRIGGER_NAME) AS NOME, RDB$TRIGGER_TYPE AS TIPO, RDB$TRIGGER_SEQUENCE AS SEQ, " +
+          "COALESCE(RDB$TRIGGER_INACTIVE,0) AS INATIVO, RDB$TRIGGER_SOURCE AS FONTE " +
+          "FROM RDB$TRIGGERS WHERE RDB$RELATION_NAME = ? AND RDB$TRIGGER_TYPE = 1 " +
+          "AND COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$TRIGGER_SEQUENCE",
+          [t]);
+        diag.pedido.triggers[t] = trs.map((r) => ({
+          nome: String(r.NOME || "").trim(), tipo: r.TIPO, seq: r.SEQ,
+          inativo: Number(r.INATIVO) === 1,
+          fonte: r.FONTE == null ? null : String(r.FONTE),
+        }));
+      }
+    } catch (e) { diag.pedido.erros.push("triggers: " + e.message); }
   } catch (e) { diag.pedido.erros.push("geral: " + e.message); }
 
   const ok = await enviarDiag(diag);

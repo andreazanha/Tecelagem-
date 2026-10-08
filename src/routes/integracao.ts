@@ -285,9 +285,30 @@ integracao.get("/diag", async (c) => {
       geradores?: { nome: string; valor: number | null }[];
       amostra?: { pedido?: Record<string, unknown>; itens?: unknown[]; cores?: unknown[] };
       outras?: Record<string, unknown[]>;
+      procedures?: Record<string, { campo: string; ordem: number; dir: string; tipo: number; tam: number }[]>;
+      triggers?: Record<string, { nome: string; tipo: number; seq: number; inativo: boolean; fonte: string | null }[]>;
       erros?: string[];
     };
     if (c.req.query("pedido") === "full") return c.json({ pronto: true, quando: d.quando || row.atualizado_em, pedido: d.pedido || null });
+    // ?pedido=procs → confirma as procedures APP_* (via oficial) e os triggers BEFORE INSERT.
+    if (c.req.query("pedido") === "procs") {
+      const procedures: Record<string, string> = {};
+      for (const nome of Object.keys(p.procedures || {})) {
+        const ins = (p.procedures![nome] || []).filter((x) => x.dir === "in").map((x) => x.campo);
+        const outs = (p.procedures![nome] || []).filter((x) => x.dir === "out").map((x) => x.campo);
+        procedures[nome] = `(${ins.join(", ")})` + (outs.length ? ` → ${outs.join(", ")}` : "");
+      }
+      const triggers: Record<string, string[]> = {};
+      for (const t of Object.keys(p.triggers || {})) triggers[t] = (p.triggers![t] || []).map((x) => `${x.nome}${x.inativo ? " (inativo)" : ""}`);
+      return c.json({
+        pronto: true, quando: d.quando || row.atualizado_em,
+        procedures,
+        procedures_detalhe: p.procedures || {},
+        triggers,
+        triggers_fonte: p.triggers || {},
+        erros: p.erros || [],
+      });
+    }
     const obrigatorios: Record<string, string[]> = {};
     for (const t of Object.keys(p.colunas || {})) obrigatorios[t] = (p.colunas![t] || []).filter((x) => x.obrigatorio).map((x) => x.campo);
     const outras_qtd: Record<string, number> = {};
