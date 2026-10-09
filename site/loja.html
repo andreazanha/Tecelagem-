@@ -117,21 +117,21 @@
   /* ---- carrinho (gaveta) ---- */
   .cart{position:fixed; inset:0; z-index:70; background:rgba(44,39,33,.5); display:none}
   .cart.show{display:block}
-  .cart .pane{position:absolute; top:0; right:0; bottom:0; width:100%; max-width:460px; background:var(--bg); display:flex; flex-direction:column; box-shadow:-10px 0 40px rgba(0,0,0,.2)}
-  .cart .ctopo{display:flex; justify-content:space-between; align-items:center; padding:16px 18px; border-bottom:1px solid var(--line); background:var(--card)}
-  .cart .ctopo h3{margin:0; font-size:20px}
-  .cart .itens{flex:1 1 auto; overflow:auto; padding:10px 16px}
-  .citem{display:flex; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:10px}
+  .cart .pane{position:absolute; top:0; right:0; bottom:0; width:100%; max-width:680px; background:var(--bg); display:flex; flex-direction:column; box-shadow:-10px 0 40px rgba(0,0,0,.2)}
+  .cart .ctopo{display:flex; justify-content:space-between; align-items:center; padding:18px 22px; border-bottom:1px solid var(--line); background:var(--card)}
+  .cart .ctopo h3{margin:0; font-size:22px}
+  .cart .itens{flex:1 1 auto; overflow:auto; padding:12px 20px}
+  .citem{display:flex; gap:12px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:13px 15px; margin-bottom:11px}
   .citem .d{flex:1}
-  .citem .nm{font-weight:600; font-size:14px}
-  .citem .meta{color:var(--muted); font-size:12px; margin-top:1px}
-  .citem .l2{display:flex; align-items:center; justify-content:space-between; margin-top:8px}
-  .citem .sub{color:var(--accent); font-weight:600; font-family:"Playfair Display",serif}
-  .citem .rm{border:0; background:transparent; color:var(--muted); cursor:pointer; font-size:12px; text-decoration:underline}
-  .cfoot{border-top:1px solid var(--line); background:var(--card); padding:16px 18px}
-  .cfoot .tot{display:flex; justify-content:space-between; font-size:16px; margin-bottom:12px}
-  .cfoot .tot b{font-family:"Playfair Display",serif; color:var(--accent); font-size:22px}
-  .cfoot .fin{width:100%; border:0; background:var(--accent); color:#fff; border-radius:12px; padding:15px; font-size:16px; font-weight:600; cursor:pointer}
+  .citem .nm{font-weight:600; font-size:16px}
+  .citem .meta{color:var(--muted); font-size:13.5px; margin-top:2px}
+  .citem .l2{display:flex; align-items:center; justify-content:space-between; margin-top:9px}
+  .citem .sub{color:var(--accent); font-weight:600; font-family:"Playfair Display",serif; font-size:16px}
+  .citem .rm{border:0; background:transparent; color:var(--muted); cursor:pointer; font-size:13px; text-decoration:underline}
+  .cfoot{border-top:1px solid var(--line); background:var(--card); padding:18px 22px}
+  .cfoot .tot{display:flex; justify-content:space-between; font-size:18px; margin-bottom:12px}
+  .cfoot .tot b{font-family:"Playfair Display",serif; color:var(--accent); font-size:26px}
+  .cfoot .fin{width:100%; border:0; background:var(--accent); color:#fff; border-radius:12px; padding:17px; font-size:18px; font-weight:600; cursor:pointer}
   .cvazio{text-align:center; color:var(--muted); padding:50px 16px}
   footer{text-align:center; color:var(--muted); font-size:12px; padding:30px 16px 50px; border-top:1px solid var(--line)}
   footer .nm{font-family:"Playfair Display",serif; font-size:16px; color:var(--ink)}
@@ -383,13 +383,13 @@
         '<button class="rm" data-rm="'+ix+'">remover</button></div></div>';
     }).join("") : '<div class="cvazio">Seu carrinho está vazio.<br>Escolha um produto e monte seu pedido.</div>';
     document.getElementById("cartPane").innerHTML=
-      '<div class="ctopo"><h3 class="serif">🛒 Meu pedido</h3><button class="fechar" onclick="__fecharCart()">✕</button></div>'+
+      '<div class="ctopo"><h3 class="serif">🛒 Meu carrinho</h3><button class="fechar" onclick="__fecharCart()">✕</button></div>'+
       '<div class="itens">'+itens+'</div>'+
       '<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+
-      (CART.length?('<label style="display:block;font-size:13px;color:#555;margin:2px 0 8px">CNPJ da sua loja'+
-        '<input id="cnpjInp" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" value="'+esc(cnpjSalvo())+'" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border:1px solid #d6d0c4;border-radius:10px;font-size:15px"></label>'+
+      (CART.length?('<label style="display:block;font-size:15px;color:#555;margin:2px 0 8px">Informe o CNPJ da sua loja'+
+        '<input id="cnpjInp" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" value="'+esc(cnpjSalvo())+'" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:12px;border:1px solid #d6d0c4;border-radius:10px;font-size:16px"></label>'+
         '<div id="cmsg" style="font-size:13px;margin:0 0 8px;min-height:1px;line-height:1.35"></div>'):'')+
-      '<button class="fin" id="finalizar"'+(CART.length?"":" disabled")+'>'+(CART.length?"Enviar pedido":"Finalizar pedido")+'</button></div>';
+      '<button class="fin" id="finalizar"'+(CART.length?"":" disabled")+'>'+(CART.length?"Finalizar pedido":"Finalizar pedido")+'</button></div>';
     var box=document.getElementById("cartPane");
     box.querySelectorAll(".citem .stepper").forEach(function(st){
       var ix=Number(st.getAttribute("data-ix")); var inp=st.querySelector("input");
@@ -418,16 +418,16 @@
           CART=[]; salvarCart(); atualizarCartN();
           var nome=res.j.cliente?(", "+esc(res.j.cliente)):"";
           document.getElementById("cartPane").innerHTML=
-            '<div class="ctopo"><h3 class="serif">🛒 Meu pedido</h3><button class="fechar" onclick="__fecharCart()">✕</button></div>'+
+            '<div class="ctopo"><h3 class="serif">🛒 Meu carrinho</h3><button class="fechar" onclick="__fecharCart()">✕</button></div>'+
             '<div class="itens"><div class="cvazio" style="color:#166534;font-weight:600">✓ '+esc(res.j.msg||"Pedido enviado!")+'</div>'+
             '<div class="cvazio" style="font-weight:400">Obrigado'+nome+'! Qualquer dúvida, fale com a Big Tricot.</div></div>';
         } else {
           var m=res.j.msg||"Não consegui enviar o pedido agora. Tente novamente.";
           if(res.j.detalhe&&res.j.detalhe.length){ m+=" ("+res.j.detalhe.join("; ")+")"; }
-          erro(m); btn.disabled=false; btn.textContent="Enviar pedido";
+          erro(m); btn.disabled=false; btn.textContent="Finalizar pedido";
         }
       })
-      .catch(function(){ erro("Sem conexão no momento. Tente novamente."); btn.disabled=false; btn.textContent="Enviar pedido"; });
+      .catch(function(){ erro("Sem conexão no momento. Tente novamente."); btn.disabled=false; btn.textContent="Finalizar pedido"; });
   }
 
   // ---------- eventos globais ----------
