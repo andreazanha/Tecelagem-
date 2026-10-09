@@ -1875,6 +1875,7 @@ export interface Fornecedor {
   email?: string | null;
   cnpj?: string | null;
   observacao?: string | null;
+  forma_pagamento?: string | null;
   ativo?: number;
 }
 export interface InsumoMov {

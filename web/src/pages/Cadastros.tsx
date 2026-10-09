@@ -2655,6 +2655,7 @@ export function ComprasMateriais() {
         fornecedor: g.forn, fornecedor_id: fid || null,
         empresa: { nome: emp.nome, cnpj: emp.cnpj, endereco: emp.endereco, telefone: emp.telefone, email: emp.email },
         fornecedorDados: { nome: g.forn, contato: f?.contato || "", telefone: f?.telefone || "", email: f?.email || "", cnpj: f?.cnpj || "" },
+        forma_pagamento: f?.forma_pagamento || "",
         itens: escolhidos.map((m) => ({ nome: m.nome, tamanho: m.tamanho, cor: m.cor, codigo: m.codigo || m.codigo_interno, unidade: m.unidade, saldo: m.saldo, minimo: m.minimo, material_id: m.id, qtd: m.faltam, preco: m.preco })),
       });
       setEnviar(null);
@@ -2882,6 +2883,17 @@ function FornecedorModal({ fornecedor, onFechar, onSalvo }: { fornecedor: Partia
             <Campo label="Telefone"><input value={f.telefone || ""} onChange={(e) => set({ telefone: e.target.value })} placeholder="(00) 00000-0000" /></Campo>
             <Campo label="E-mail"><input value={f.email || ""} onChange={(e) => set({ email: e.target.value })} placeholder="contato@fornecedor.com" /></Campo>
             <Campo label="CNPJ"><input value={f.cnpj || ""} onChange={(e) => set({ cnpj: e.target.value })} placeholder="00.000.000/0000-00" /></Campo>
+            <Campo label="Forma de pagamento">
+              <input list="forn-formas-pag" value={f.forma_pagamento || ""} onChange={(e) => set({ forma_pagamento: e.target.value })} placeholder="ex.: Boleto 30/60 — vem preenchida na ordem" />
+              <datalist id="forn-formas-pag">
+                <option value="PIX à vista" />
+                <option value="Boleto 30 dias" />
+                <option value="Boleto 30/60" />
+                <option value="Boleto 30/60/90" />
+                <option value="Dinheiro" />
+                <option value="Cartão" />
+              </datalist>
+            </Campo>
           </div>
           <Campo label="Observação"><textarea value={f.observacao || ""} onChange={(e) => set({ observacao: e.target.value })} rows={2} /></Campo>
           <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 14 }}>

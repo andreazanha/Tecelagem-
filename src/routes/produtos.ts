@@ -977,24 +977,25 @@ export const fornecedores = new Hono<{ Bindings: Env }>();
 
 fornecedores.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT id, nome, contato, telefone, email, cnpj, observacao, ativo FROM fornecedores ORDER BY nome"
+    "SELECT id, nome, contato, telefone, email, cnpj, observacao, forma_pagamento, ativo FROM fornecedores ORDER BY nome"
   ).all();
   return c.json(results);
 });
 
 fornecedores.post("/", async (c) => {
-  const b = await c.req.json<{ id?: string; nome?: string; contato?: string; telefone?: string; email?: string; cnpj?: string; observacao?: string; ativo?: boolean | number }>().catch(() => ({}) as Record<string, never>);
+  const b = await c.req.json<{ id?: string; nome?: string; contato?: string; telefone?: string; email?: string; cnpj?: string; observacao?: string; forma_pagamento?: string; ativo?: boolean | number }>().catch(() => ({}) as Record<string, never>);
   const nome = String(b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
   const existe = b.id ? await c.env.DB.prepare("SELECT id FROM fornecedores WHERE id = ?").bind(b.id).first() : null;
   const id = b.id || uid();
   await c.env.DB.prepare(
-    `INSERT INTO fornecedores (id, nome, contato, telefone, email, cnpj, observacao, ativo)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO fornecedores (id, nome, contato, telefone, email, cnpj, observacao, forma_pagamento, ativo)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, contato = excluded.contato, telefone = excluded.telefone,
-       email = excluded.email, cnpj = excluded.cnpj, observacao = excluded.observacao, ativo = excluded.ativo`
+       email = excluded.email, cnpj = excluded.cnpj, observacao = excluded.observacao,
+       forma_pagamento = excluded.forma_pagamento, ativo = excluded.ativo`
   )
-    .bind(id, nome, str(b.contato), str(b.telefone), str(b.email), str(b.cnpj), str(b.observacao), b.ativo === false || b.ativo === 0 ? 0 : 1)
+    .bind(id, nome, str(b.contato), str(b.telefone), str(b.email), str(b.cnpj), str(b.observacao), (b.forma_pagamento || "").trim() || null, b.ativo === false || b.ativo === 0 ? 0 : 1)
     .run();
   return c.json({ id, nome }, existe ? 200 : 201);
 });
