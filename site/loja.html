@@ -93,7 +93,14 @@
   .corchip.on{border-color:var(--accent); background:#fbf3ee}
   .corfoto{margin-top:12px; display:flex; flex-direction:column; align-items:flex-start; gap:6px}
   .corfoto .img{width:150px; height:110px; border-radius:12px; background:#efe7d8; object-fit:cover; border:1px solid var(--line)}
+  .corfoto img.img{cursor:zoom-in}
   .corfoto .cap{font-weight:600; font-size:13px}
+  .corfoto .amp{font-size:11px; color:var(--muted)}
+  /* ---- lightbox: foto da cor ampliada ---- */
+  .lightbox{position:fixed; inset:0; z-index:90; background:rgba(20,16,12,.9); display:flex; align-items:center; justify-content:center; padding:24px; cursor:zoom-out}
+  .lightbox img{max-width:min(94vw,1100px); max-height:92vh; border-radius:12px; box-shadow:0 20px 70px rgba(0,0,0,.5)}
+  .lightbox .cap{position:fixed; left:0; right:0; bottom:20px; text-align:center; color:#fff; font-size:15px; font-weight:600; text-shadow:0 1px 4px rgba(0,0,0,.6)}
+  .lb-x{position:fixed; top:16px; right:20px; background:rgba(255,255,255,.16); color:#fff; border:0; border-radius:50%; width:42px; height:42px; font-size:18px; cursor:pointer}
   .grp{margin-top:16px}
   .grp .t{color:var(--accent); font-weight:600; font-size:14px; margin-bottom:4px}
   .tamrow{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid var(--line)}
@@ -245,9 +252,17 @@
   }
   function corFotoHTML(p){
     var cc=CORES[sel.corId]||{}; if(!cc.nome) return "";
-    var img=cc.foto? '<img class="img" src="'+esc(cc.foto)+'" onerror="this.style.display=\'none\'">' : '<div class="img"></div>';
-    return '<div class="lbl">Foto da cor selecionada</div><div class="corfoto">'+img+'<div class="cap">'+esc(cc.nome)+'</div></div>';
+    var img=cc.foto? '<img class="img" src="'+esc(cc.foto)+'" data-nome="'+esc(cc.nome||"")+'" onclick="__zoomCor(this.src,this.getAttribute(\'data-nome\'))" onerror="this.style.display=\'none\'">' : '<div class="img"></div>';
+    return '<div class="lbl">Foto da cor selecionada</div><div class="corfoto">'+img+'<div class="cap">'+esc(cc.nome)+'</div>'+(cc.foto?'<div class="amp">🔍 clique na foto para ampliar</div>':'')+'</div>';
   }
+  // Lightbox da foto do tecido da cor (abre a imagem grande pro cliente ver o detalhe).
+  window.__zoomCor=function(src,nome){
+    if(!src) return;
+    var ov=document.createElement("div"); ov.className="lightbox";
+    ov.innerHTML='<img src="'+src+'" alt="">'+(nome?'<div class="cap">'+esc(nome)+'</div>':'')+'<button class="lb-x" aria-label="fechar">✕</button>';
+    document.body.appendChild(ov);
+    ov.addEventListener("click",function(){ try{document.body.removeChild(ov);}catch(e){} });
+  };
   function tamanhosHTML(p){
     var cc=CORES[sel.corId]||{};
     var grupos=(p.grupos||[]).map(function(g){
