@@ -48,10 +48,21 @@
   .badge.off{color:var(--muted)}
   .badge .dot{width:7px; height:7px; border-radius:50%; background:currentColor}
   .prod .info{padding:12px 14px 15px}
-  .prod .nome{font-weight:600; font-size:15px}
-  .preco{margin-top:9px; font-size:13px; color:var(--muted)}
-  .preco b{color:var(--accent); font-size:17px; font-family:"Playfair Display",serif}
+  .prod .nome{font-weight:500; font-size:13px; color:#3a352f; line-height:1.25}
+  .preco{margin-top:6px; font-size:11px; color:var(--muted)}
+  .preco b{color:var(--accent); font-size:13.5px; font-weight:600}
   .vazio{text-align:center; color:var(--muted); padding:60px 16px}
+  /* ---- popup "continuar / escolher outro" ao adicionar no carrinho ---- */
+  .popconf{position:fixed; inset:0; z-index:80; background:rgba(44,39,33,.55); display:flex; align-items:center; justify-content:center; padding:20px}
+  .popconf-box{background:var(--card); border-radius:16px; max-width:360px; width:100%; padding:24px 22px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .popconf-ic{font-size:34px}
+  .popconf-tit{font-weight:700; font-size:17px; margin-top:6px; color:var(--ink)}
+  .popconf-sub{color:var(--muted); font-size:13px; margin-top:4px}
+  .popconf-acts{display:flex; flex-direction:column; gap:9px; margin-top:16px}
+  .popconf-acts button{border-radius:10px; padding:12px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit}
+  .popconf-b1{background:var(--accent); color:#fff; border:0}
+  .popconf-b2{background:var(--card); color:var(--ink); border:1px solid var(--line)}
+  .popconf-cart{margin-top:12px; background:none; border:0; color:var(--muted); font-size:12.5px; cursor:pointer; text-decoration:underline; font-family:inherit}
   /* ---- modal produto (largo, 2 colunas) ---- */
   .modal{position:fixed; inset:0; z-index:60; background:rgba(44,39,33,.55); display:none}
   .modal.show{display:block}
@@ -312,9 +323,30 @@
     }); });
     if(!add){ alert("Escolha a quantidade de pelo menos um tamanho."); return; }
     salvarCart(); atualizarCartN();
-    // feedback: zera os inputs e mostra o carrinho
+    // feedback: zera os inputs e pergunta se continua no mesmo modelo ou escolhe outro
     atualizarCorArea();
-    abrirCarrinho();
+    perguntarContinuar(add);
+  }
+  // Popup após adicionar: continuar neste modelo (fica no produto) ou escolher outro (volta ao catálogo).
+  function perguntarContinuar(add){
+    var ov=document.createElement("div"); ov.className="popconf";
+    ov.innerHTML=
+      '<div class="popconf-box" role="dialog" aria-modal="true">'+
+        '<div class="popconf-ic">🛒</div>'+
+        '<div class="popconf-tit">'+add+' peça'+(add>1?'s':'')+' no carrinho!</div>'+
+        '<div class="popconf-sub">Quer continuar neste modelo ou escolher outro?</div>'+
+        '<div class="popconf-acts">'+
+          '<button class="popconf-b1">Continuar neste modelo</button>'+
+          '<button class="popconf-b2">Escolher outro modelo</button>'+
+        '</div>'+
+        '<button class="popconf-cart">🛒 Ver meu carrinho</button>'+
+      '</div>';
+    document.body.appendChild(ov);
+    function fechar(){ try{ document.body.removeChild(ov); }catch(e){} }
+    ov.addEventListener("click",function(e){ if(e.target===ov) fechar(); });
+    ov.querySelector(".popconf-b1").onclick=function(){ fechar(); };                         // segue no mesmo produto
+    ov.querySelector(".popconf-b2").onclick=function(){ fechar(); window.__fechar(); };        // fecha o produto → volta ao catálogo
+    ov.querySelector(".popconf-cart").onclick=function(){ fechar(); window.__fechar(); abrirCarrinho(); };
   }
 
   // ---------- CARRINHO ----------
