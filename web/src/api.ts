@@ -305,6 +305,7 @@ export interface ClienteCrm {
   observacao?: string | null;
   bloqueado?: number | boolean | null;
   nascimento?: string | null;
+  loja_regiao?: string | null;     // 'sul' | 'norte' — região de preço na loja B2B
   created_at?: string | null;
   ultimo_faturamento?: string | null;
   razao_social?: string | null;

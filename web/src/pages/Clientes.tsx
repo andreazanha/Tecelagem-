@@ -559,6 +559,11 @@ function ClienteModal({ cliente, onFechar, onSalvo }: { cliente: Partial<Cliente
             <label className="fld">Cidade<input value={f.cidade || ""} onChange={(e) => set("cidade", e.target.value)} /></label>
             <label className="fld uf">UF<input value={f.uf || ""} onChange={(e) => set("uf", e.target.value)} maxLength={2} /></label>
             <label className="fld">CNPJ<input value={f.cnpj || ""} onChange={(e) => set("cnpj", e.target.value)} /></label>
+            <label className="fld">🏷️ Preço na loja (região)<select value={f.loja_regiao || ""} onChange={(e) => set("loja_regiao", e.target.value)}>
+              <option value="">Automático (pela UF)</option>
+              <option value="sul">Sul (tabela base)</option>
+              <option value="norte">Norte/Nordeste (tabela norte)</option>
+            </select></label>
             <label className="fld">🎂 Nascimento<input type="date" value={f.nascimento || ""} onChange={(e) => set("nascimento", e.target.value)} /></label>
             <label className="fld full">Observação<textarea value={f.observacao || ""} onChange={(e) => set("observacao", e.target.value)} rows={2} /></label>
           </div>

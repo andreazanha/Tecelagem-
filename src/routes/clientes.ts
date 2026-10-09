@@ -16,7 +16,7 @@ const norm = (s: unknown) =>
 type ClienteRow = {
   id: string; nome: string; contato: string | null; whatsapp: string | null; email: string | null;
   cidade: string | null; uf: string | null; cnpj: string | null; representante: string | null;
-  instagram: string | null; observacao: string | null; bloqueado?: number | boolean | null; nascimento?: string | null; ultima_compra?: string | null; ultimo_faturamento?: string | null; created_at?: string | null;
+  instagram: string | null; observacao: string | null; bloqueado?: number | boolean | null; nascimento?: string | null; loja_regiao?: string | null; ultima_compra?: string | null; ultimo_faturamento?: string | null; created_at?: string | null;
 };
 
 // Último vendedor conhecido de cada cliente (fallback do representante quando o
@@ -40,7 +40,7 @@ clientes.get("/", async (c) => {
     return c.json(results);
   }
   const { results: cliAll } = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, ultima_compra, ultimo_faturamento, prospectado_em, created_at FROM clientes ORDER BY nome"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, loja_regiao, ultima_compra, ultimo_faturamento, prospectado_em, created_at FROM clientes ORDER BY nome"
   ).all<ClienteRow>();
   // Nomes internos (ESTOQUE, OP CONSOLIDADA, REPOSIÇÃO, BIG TRICOT) não são clientes reais.
   const cli = cliAll.filter((c0) => !ehClienteInterno(c0.nome));
@@ -243,14 +243,16 @@ clientes.post("/", async (c) => {
     id = ex?.id || crypto.randomUUID();
   }
   const bloqueado = b.bloqueado === true || b.bloqueado === 1 ? 1 : 0;
+  const lojaRegiaoIn = String((b as { loja_regiao?: string }).loja_regiao || "").trim().toLowerCase();
+  const lojaRegiao = lojaRegiaoIn === "sul" || lojaRegiaoIn === "norte" ? lojaRegiaoIn : null;
   await c.env.DB.prepare(
-    `INSERT INTO clientes (id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO clientes (id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, loja_regiao)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET nome=excluded.nome, contato=excluded.contato, whatsapp=excluded.whatsapp,
        email=excluded.email, cidade=excluded.cidade, uf=excluded.uf, cnpj=excluded.cnpj,
-       representante=excluded.representante, instagram=excluded.instagram, observacao=excluded.observacao, bloqueado=excluded.bloqueado, nascimento=excluded.nascimento`
+       representante=excluded.representante, instagram=excluded.instagram, observacao=excluded.observacao, bloqueado=excluded.bloqueado, nascimento=excluded.nascimento, loja_regiao=excluded.loja_regiao`
   )
-    .bind(id, nome, str(b.contato), str(b.whatsapp), str(b.email), str(b.cidade), str(b.uf), str(b.cnpj), str(b.representante), str(b.instagram), str(b.observacao), bloqueado, str((b as { nascimento?: string }).nascimento))
+    .bind(id, nome, str(b.contato), str(b.whatsapp), str(b.email), str(b.cidade), str(b.uf), str(b.cnpj), str(b.representante), str(b.instagram), str(b.observacao), bloqueado, str((b as { nascimento?: string }).nascimento), lojaRegiao)
     .run();
   // Cliente novo/atualizado na base → garante uma loja parceira PENDENTE pra aprovação.
   await garantirParceiroPendente(c.env, id).catch(() => {});

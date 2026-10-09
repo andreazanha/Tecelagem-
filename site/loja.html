@@ -146,10 +146,7 @@
 
 <div class="barra">
   <label class="busca">🔎<input id="q" placeholder="Buscar produto…" autocomplete="off"></label>
-  <div class="regiao" id="regiao">
-    <button data-r="sul" class="on">Sul</button>
-    <button data-r="norte">Norte</button>
-  </div>
+  <span id="saudacao" class="saud" style="display:none;align-items:center;gap:8px;font-size:14px;color:#5f584e;white-space:nowrap"></span>
   <button class="btn-cart" id="abrirCart">🛒 Carrinho <span class="n" id="cartN">0</span></button>
 </div>
 <nav class="abas" id="abas"></nav>
@@ -165,6 +162,21 @@
 
 <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
 <div class="cart" id="cart"><div class="pane" id="cartPane"></div></div>
+
+<div id="entrada" style="position:fixed;inset:0;z-index:999;background:rgba(44,39,33,.55);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:18px">
+  <div style="background:#fff;border-radius:18px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden">
+    <div style="padding:26px 24px 8px;text-align:center">
+      <div style="font-family:'Playfair Display',Georgia,serif;font-size:26px;font-weight:700;letter-spacing:.02em;color:#2c2721">BIG TRICOT</div>
+      <div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9c4a2f;margin-top:2px">Catálogo de atacado</div>
+    </div>
+    <div style="padding:14px 24px 24px">
+      <label style="display:block;font-size:14px;color:#5f584e;margin-bottom:6px">Informe o CNPJ da sua loja para entrar</label>
+      <input id="entCnpj" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" style="display:block;width:100%;box-sizing:border-box;padding:13px;border:1px solid #d6d0c4;border-radius:12px;font-size:16px">
+      <div id="entMsg" style="font-size:13px;min-height:1px;margin:8px 0;line-height:1.35"></div>
+      <button id="entBtn" style="width:100%;padding:14px;border:0;border-radius:12px;background:#9c4a2f;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Entrar</button>
+    </div>
+  </div>
+</div>
 
 <script>
 (function(){
@@ -377,7 +389,7 @@
   function renderCarrinho(){
     var itens = CART.length? CART.map(function(it,ix){
       return '<div class="citem"><div class="d"><div class="nm">'+esc(it.nome)+'</div>'+
-        '<div class="meta">'+esc(it.grupo?it.grupo+" · ":"")+esc(it.medida)+' · '+esc(it.corNome)+' · '+esc(it.regiao==="norte"?"Norte":"Sul")+'</div>'+
+        '<div class="meta">'+esc(it.grupo?it.grupo+" · ":"")+esc(it.medida)+' · '+esc(it.corNome)+'</div>'+
         '<div class="l2"><div class="stepper" data-ix="'+ix+'"><button data-d="-1">−</button><input type="number" min="1" value="'+(Number(it.qtd)||0)+'"><button data-d="1">+</button></div>'+
         '<span class="sub">'+brl((Number(it.qtd)||0)*(Number(it.preco)||0))+'</span></div>'+
         '<button class="rm" data-rm="'+ix+'">remover</button></div></div>';
@@ -435,14 +447,65 @@
   document.getElementById("modal").addEventListener("click",function(e){ if(e.target.id==="modal") window.__fechar(); });
   document.getElementById("cart").addEventListener("click",function(e){ if(e.target.id==="cart") window.__fecharCart(); });
   document.getElementById("abrirCart").addEventListener("click",abrirCarrinho);
-  document.getElementById("regiao").addEventListener("click",function(e){ var b=e.target.closest("button"); if(!b)return; regiao=b.getAttribute("data-r"); Array.prototype.forEach.call(this.querySelectorAll("button"),function(x){x.classList.toggle("on",x===b);}); render(); if(document.getElementById("modal").classList.contains("show")) renderDetalhe(); });
   document.getElementById("q").addEventListener("input",function(){ filtroTxt=this.value; render(); });
   document.getElementById("abas").addEventListener("click",function(e){ var a=e.target.closest("a"); if(!a)return; var t=document.getElementById(a.getAttribute("data-sec")); if(t)t.scrollIntoView({behavior:"smooth"}); });
 
   try{ var r=document.getElementById("rodape"); var n=PRODUTOS.length; var d=D.estoque&&D.estoque.atualizadoMs? new Date(D.estoque.atualizadoMs):new Date(); r.textContent=n+" produtos · atualizado em "+d.toLocaleDateString("pt-BR"); }catch(e){}
 
+  // ---------- ENTRADA / SESSÃO DO CLIENTE (CNPJ) ----------
+  // A região de preço (Sul/Norte) vem do cadastro do cliente — o cliente NÃO escolhe.
+  function cliSalvo(){ try{ return JSON.parse(localStorage.getItem("bt_cli")||"null"); }catch(e){ return null; } }
+  function mostrarSaudacao(nome){
+    var el=document.getElementById("saudacao"); if(!el) return;
+    if(nome){ el.style.display="flex"; el.innerHTML='Olá, <b style="color:#2c2721">'+esc(nome)+'</b> · <a href="#" id="sairLoja" style="color:#9c4a2f;text-decoration:none">trocar</a>';
+      var s=document.getElementById("sairLoja"); if(s) s.onclick=function(ev){ ev.preventDefault(); sairLoja(); };
+    } else { el.style.display="none"; el.innerHTML=""; }
+  }
+  function aplicarSessao(nome,reg){
+    regiao = (reg==="norte")?"norte":"sul";
+    try{ localStorage.setItem("bt_cli", JSON.stringify({nome:nome||"", regiao:regiao})); }catch(e){}
+    mostrarSaudacao(nome);
+    document.getElementById("entrada").style.display="none";
+    document.body.style.overflow="";
+    render(); if(document.getElementById("modal").classList.contains("show")) renderDetalhe();
+  }
+  function abrirEntrada(){
+    var ov=document.getElementById("entrada"); ov.style.display="flex"; document.body.style.overflow="hidden";
+    var inp=document.getElementById("entCnpj"); if(inp && !inp.value) inp.value=cnpjSalvo();
+    setTimeout(function(){ try{ inp.focus(); }catch(e){} },50);
+  }
+  function sairLoja(){ try{ localStorage.removeItem("bt_cli"); localStorage.removeItem("bt_cnpj"); }catch(e){} mostrarSaudacao(""); abrirEntrada(); }
+  function entrarLoja(){
+    var inp=document.getElementById("entCnpj"); var msg=document.getElementById("entMsg"); var btn=document.getElementById("entBtn");
+    var cnpj=(inp&&inp.value||"").trim(); var dig=cnpj.replace(/\D+/g,"");
+    if(dig.length<11){ msg.style.color="#b91c1c"; msg.textContent="Digite o CNPJ (ou CPF) da sua loja."; return; }
+    msg.textContent=""; btn.disabled=true; btn.textContent="Entrando…";
+    fetch("/api/loja/entrar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cnpj:cnpj})})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+      .then(function(res){
+        btn.disabled=false; btn.textContent="Entrar";
+        if(res.ok && res.j.ok){ try{ localStorage.setItem("bt_cnpj", cnpj); }catch(e){} aplicarSessao(res.j.nome, res.j.regiao); }
+        else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui validar o CNPJ. Tente novamente."; }
+      })
+      .catch(function(){ btn.disabled=false; btn.textContent="Entrar"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão no momento. Tente novamente."; });
+  }
+  document.getElementById("entBtn").addEventListener("click",entrarLoja);
+  document.getElementById("entCnpj").addEventListener("keydown",function(e){ if(e.key==="Enter") entrarLoja(); });
+
   atualizarCartN();
   render();
+
+  // Inicia sessão: usa o que já está salvo pra mostrar rápido, e revalida no servidor.
+  (function iniciarSessao(){
+    var c=cliSalvo(); if(c && c.regiao){ regiao=(c.regiao==="norte")?"norte":"sul"; mostrarSaudacao(c.nome); }
+    var dig=(cnpjSalvo()||"").replace(/\D+/g,"");
+    if(dig.length>=11){
+      fetch("/api/loja/entrar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cnpj:cnpjSalvo()})})
+        .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+        .then(function(res){ if(res.ok && res.j.ok){ aplicarSessao(res.j.nome,res.j.regiao); } else { sairLoja(); } })
+        .catch(function(){ /* offline: segue com o que estava salvo */ });
+    } else { abrirEntrada(); }
+  })();
 })();
 </script>
 </body>

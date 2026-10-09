@@ -17,12 +17,43 @@ const uid = () => crypto.randomUUID();
 const soDigitos = (s: unknown) => String(s ?? "").replace(/\D+/g, "");
 const norm = (s: unknown) => String(s ?? "").trim().toLowerCase();
 
+// Região de PREÇO da loja: Norte+Nordeste usam a tabela "norte"; o resto, "sul".
+// (mesma lógica do catálogo em atendimento.ts). A região do CADASTRO tem prioridade.
+const UF_NORTE = new Set(["AC", "AP", "AM", "PA", "RO", "RR", "TO", "AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"]);
+function regiaoDeUF(uf?: string | null): "sul" | "norte" {
+  return UF_NORTE.has(String(uf || "").trim().toUpperCase()) ? "norte" : "sul";
+}
+function regiaoDoCliente(lojaRegiao?: string | null, uf?: string | null): "sul" | "norte" {
+  const r = String(lojaRegiao || "").trim().toLowerCase();
+  if (r === "sul" || r === "norte") return r;
+  return regiaoDeUF(uf);
+}
+
 type ItemLoja = {
   cod?: string; medida?: string; corNome?: string; corId?: string;
   qtd?: number | string; preco?: number | string; regiao?: string; nome?: string; grupo?: string;
 };
 type CorErp = { numero?: number; nome?: string };
 type TamErp = { medida?: string; tamanho?: string };
+
+// ENTRADA NA LOJA — identifica o cliente pelo CNPJ e devolve nome + região de preço.
+// Sem senha (B2B provisório): só confirma que o CNPJ existe e não está bloqueado.
+loja.post("/entrar", async (c) => {
+  let body: { cnpj?: string } = {};
+  try { body = await c.req.json(); } catch { return c.json({ erro: "json_invalido" }, 400); }
+  const cnpjDig = soDigitos(body.cnpj);
+  if (cnpjDig.length < 11) return c.json({ erro: "cnpj_invalido", msg: "Informe um CNPJ (ou CPF) válido." }, 400);
+
+  const cli = await c.env.DB.prepare(
+    "SELECT nome, uf, loja_regiao, COALESCE(bloqueado,0) AS bloqueado FROM clientes " +
+    "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
+  ).bind(cnpjDig).first<{ nome: string | null; uf: string | null; loja_regiao: string | null; bloqueado: number }>();
+
+  if (!cli) return c.json({ erro: "cliente_nao_encontrado", msg: "Não encontramos esse CNPJ no nosso cadastro. Fale com a Big Tricot para liberar seu acesso." }, 404);
+  if (Number(cli.bloqueado) === 1) return c.json({ erro: "cliente_bloqueado", msg: "Seu cadastro está bloqueado no momento. Fale com a Big Tricot." }, 403);
+
+  return c.json({ ok: true, nome: cli.nome || "", regiao: regiaoDoCliente(cli.loja_regiao, cli.uf) });
+});
 
 loja.post("/pedido", async (c) => {
   let body: { cnpj?: string; itens?: ItemLoja[]; idem?: string } = {};
