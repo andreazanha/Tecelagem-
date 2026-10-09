@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type Material, type MaterialCategoriaDef, type CompraSugestao, type Colecao, type ColecaoProduto, type BulkResult } from "../api";
+import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type FormaPagamento, type Material, type MaterialCategoriaDef, type CompraSugestao, type Colecao, type ColecaoProduto, type BulkResult } from "../api";
 import { getUser, PAGINAS, type Usuario } from "../auth";
 import { CATEGORIAS_FUNCAO, TODAS_FUNCOES, TELAS_GERAIS, SETOR_PAGINAS } from "../permissoes";
 
@@ -2790,6 +2790,7 @@ function AbaFornecedores() {
   const [busca, setBusca] = useState("");
   const [modal, setModal] = useState<{ f: Partial<Fornecedor> } | null>(null);
   const [colar, setColar] = useState(false);
+  const [formasModal, setFormasModal] = useState(false);
 
   function recarregar() {
     api.listarFornecedores().then(setItens).catch(() => {});
@@ -2808,7 +2809,8 @@ function AbaFornecedores() {
     <>
       <div className="row-gap" style={{ marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         <input className="busca-ped" placeholder="🔎 Buscar fornecedor…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={() => setColar(true)}>📋 Colar em massa</button>
+        <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={() => setFormasModal(true)}>💳 Formas de pagamento</button>
+        <button className="btn btn-soft" onClick={() => setColar(true)}>📋 Colar em massa</button>
         <button className="btn btn-primary" onClick={() => setModal({ f: { nome: "", ativo: 1 } })}>＋ Novo fornecedor</button>
       </div>
 
@@ -2835,6 +2837,7 @@ function AbaFornecedores() {
       </div>
 
       {modal && <FornecedorModal fornecedor={modal.f} onFechar={() => setModal(null)} onSalvo={() => { setModal(null); recarregar(); }} />}
+      {formasModal && <FormasPagamentoModal onFechar={() => setFormasModal(false)} />}
       {colar && <ColarEmMassa
         titulo="Colar fornecedores em massa"
         colunas="nome · contato · telefone · e-mail"
@@ -2852,7 +2855,10 @@ function FornecedorModal({ fornecedor, onFechar, onSalvo }: { fornecedor: Partia
   const [f, setF] = useState<Partial<Fornecedor>>(fornecedor);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [formas, setFormas] = useState<FormaPagamento[]>([]);
   const set = (patch: Partial<Fornecedor>) => setF((o) => ({ ...o, ...patch }));
+
+  useEffect(() => { api.listarFormasPagamento().then((l) => setFormas(l.filter((x) => x.ativo !== 0))).catch(() => {}); }, []);
 
   async function salvar() {
     if (!f.nome?.trim()) return setErro("Informe o nome do fornecedor.");
@@ -2884,21 +2890,88 @@ function FornecedorModal({ fornecedor, onFechar, onSalvo }: { fornecedor: Partia
             <Campo label="E-mail"><input value={f.email || ""} onChange={(e) => set({ email: e.target.value })} placeholder="contato@fornecedor.com" /></Campo>
             <Campo label="CNPJ"><input value={f.cnpj || ""} onChange={(e) => set({ cnpj: e.target.value })} placeholder="00.000.000/0000-00" /></Campo>
             <Campo label="Forma de pagamento">
-              <input list="forn-formas-pag" value={f.forma_pagamento || ""} onChange={(e) => set({ forma_pagamento: e.target.value })} placeholder="ex.: Boleto 30/60 — vem preenchida na ordem" />
-              <datalist id="forn-formas-pag">
-                <option value="PIX à vista" />
-                <option value="Boleto 30 dias" />
-                <option value="Boleto 30/60" />
-                <option value="Boleto 30/60/90" />
-                <option value="Dinheiro" />
-                <option value="Cartão" />
-              </datalist>
+              <select value={f.forma_pagamento || ""} onChange={(e) => set({ forma_pagamento: e.target.value })}>
+                <option value="">— nenhuma —</option>
+                {formas.map((fp) => <option key={fp.id} value={fp.nome}>{fp.nome}</option>)}
+                {f.forma_pagamento && !formas.some((fp) => fp.nome === f.forma_pagamento) && (
+                  <option value={f.forma_pagamento}>{f.forma_pagamento}</option>
+                )}
+              </select>
             </Campo>
           </div>
           <Campo label="Observação"><textarea value={f.observacao || ""} onChange={(e) => set({ observacao: e.target.value })} rows={2} /></Campo>
           <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 14 }}>
             <button className="btn" onClick={onFechar}>Cancelar</button>
             <button className="btn btn-primary" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar fornecedor"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Gerenciar Formas de pagamento (lista usada no fornecedor e na ordem) ──────
+function FormasPagamentoModal({ onFechar }: { onFechar: () => void }) {
+  const [itens, setItens] = useState<FormaPagamento[]>([]);
+  const [nova, setNova] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function recarregar() { api.listarFormasPagamento().then(setItens).catch(() => {}); }
+  useEffect(recarregar, []);
+
+  async function adicionar() {
+    const nome = nova.trim();
+    if (!nome) return;
+    setBusy(true);
+    try { await api.salvarFormaPagamento({ nome, ordem: (itens[itens.length - 1]?.ordem || itens.length) + 1 }); setNova(""); recarregar(); }
+    catch (e) { alert((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function renomear(f: FormaPagamento) {
+    const nome = prompt("Nome da forma de pagamento:", f.nome);
+    if (nome === null) return;
+    const n = nome.trim(); if (!n) return;
+    try { await api.salvarFormaPagamento({ id: f.id, nome: n, ordem: f.ordem, ativo: f.ativo }); recarregar(); }
+    catch (e) { alert((e as Error).message); }
+  }
+  async function remover(f: FormaPagamento) {
+    if (!confirm(`Excluir a forma de pagamento "${f.nome}"?`)) return;
+    try { await api.excluirFormaPagamento(f.id); recarregar(); } catch (e) { alert((e as Error).message); }
+  }
+
+  return (
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
+      <div className="modal-card" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd unica">
+          <div className="modal-hd-top">
+            <span className="modal-pills"><span className="modal-pill">💳 Formas de pagamento</span></span>
+            <button className="modal-x" onClick={onFechar}>✕</button>
+          </div>
+        </div>
+        <div className="pad">
+          <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Essas formas aparecem pra escolher no cadastro do fornecedor e na ordem de compra.</p>
+          <div className="row-gap" style={{ gap: 8, marginBottom: 12 }}>
+            <input value={nova} placeholder="ex.: 28/45, Boleto 30 dias…" style={{ flex: 1 }}
+              onChange={(e) => setNova(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") adicionar(); }} />
+            <button className="btn btn-primary" disabled={busy || !nova.trim()} onClick={adicionar}>＋ Adicionar</button>
+          </div>
+          <table className="table">
+            <tbody>
+              {itens.length === 0 ? (
+                <tr><td className="empty pad">Nenhuma forma cadastrada ainda.</td></tr>
+              ) : itens.map((f) => (
+                <tr key={f.id}>
+                  <td className="strong">{f.nome}</td>
+                  <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
+                    <button className="icon-btn" title="Renomear" onClick={() => renomear(f)}>✏️</button>
+                    <button className="icon-btn" title="Excluir" onClick={() => remover(f)}>✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+            <button className="btn btn-primary" onClick={onFechar}>Pronto</button>
           </div>
         </div>
       </div>

@@ -1723,6 +1723,11 @@ export const api = {
   listarFornecedores: () => fetch("/api/fornecedores").then((r) => j<Fornecedor[]>(r)),
   salvarFornecedor: (f: Partial<Fornecedor>) => jsonPost("/api/fornecedores", f).then((r) => j<{ id: string; nome: string }>(r)),
   excluirFornecedor: (id: string) => fetch(`/api/fornecedores/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+
+  // ── Formas de pagamento (lista gerenciável) ─────────────────────────────
+  listarFormasPagamento: () => fetch("/api/formas-pagamento").then((r) => j<FormaPagamento[]>(r)),
+  salvarFormaPagamento: (f: Partial<FormaPagamento>) => jsonPost("/api/formas-pagamento", f).then((r) => j<{ id: string; nome: string }>(r)),
+  excluirFormaPagamento: (id: string) => fetch(`/api/formas-pagamento/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
 };
 
 export const TIPOS: { value: string; label: string; pe?: boolean }[] = [
@@ -1876,6 +1881,12 @@ export interface Fornecedor {
   cnpj?: string | null;
   observacao?: string | null;
   forma_pagamento?: string | null;
+  ativo?: number;
+}
+export interface FormaPagamento {
+  id: string;
+  nome: string;
+  ordem?: number;
   ativo?: number;
 }
 export interface InsumoMov {

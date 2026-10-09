@@ -1038,3 +1038,33 @@ fornecedores.delete("/:id", async (c) => {
   ]);
   return c.json({ ok: true });
 });
+
+// ── Formas de pagamento (lista gerenciável; usada no fornecedor e na ordem) ─────
+export const formasPagamento = new Hono<{ Bindings: Env }>();
+
+formasPagamento.get("/", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, nome, ordem, ativo FROM formas_pagamento ORDER BY ordem, nome"
+  ).all();
+  return c.json(results);
+});
+
+formasPagamento.post("/", async (c) => {
+  const b = await c.req.json<{ id?: string; nome?: string; ordem?: number; ativo?: boolean | number }>().catch(() => ({}) as Record<string, never>);
+  const nome = String(b.nome || "").trim();
+  if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
+  const existe = b.id ? await c.env.DB.prepare("SELECT id FROM formas_pagamento WHERE id = ?").bind(b.id).first() : null;
+  const id = b.id || uid();
+  const ordem = Number.isFinite(Number(b.ordem)) ? Number(b.ordem) : 0;
+  await c.env.DB.prepare(
+    `INSERT INTO formas_pagamento (id, nome, ordem, ativo)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, ordem = excluded.ordem, ativo = excluded.ativo`
+  ).bind(id, nome, ordem, b.ativo === false || b.ativo === 0 ? 0 : 1).run();
+  return c.json({ id, nome }, existe ? 200 : 201);
+});
+
+formasPagamento.delete("/:id", async (c) => {
+  await c.env.DB.prepare("DELETE FROM formas_pagamento WHERE id = ?").bind(c.req.param("id")).run();
+  return c.json({ ok: true });
+});

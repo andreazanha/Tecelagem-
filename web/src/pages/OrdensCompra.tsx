@@ -104,6 +104,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
   const [itens, setItens] = useState<OrdemCompraItemRow[]>([]);
   const [obs, setObs] = useState("");
   const [formaPag, setFormaPag] = useState("");
+  const [formas, setFormas] = useState<string[]>([]);
   const [erro, setErro] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -111,6 +112,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
     let vivo = true;
     api.obterOrdemCompra(id).then((o) => { if (!vivo) return; setOrd(o); setItens(o.itens || []); setObs(o.obs || ""); setFormaPag(o.forma_pagamento || ""); })
       .catch((e) => { if (vivo) setErro((e as Error).message); });
+    api.listarFormasPagamento().then((l) => { if (vivo) setFormas(l.filter((x) => x.ativo !== 0).map((x) => x.nome)); }).catch(() => {});
     return () => { vivo = false; };
   }, [id]);
 
@@ -228,12 +230,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
               <input list="formas-pag-sugestoes" value={formaPag} disabled={!editavel} style={{ width: "100%", marginTop: 4 }}
                 placeholder={editavel ? "ex.: Boleto 30 dias · PIX à vista · 30/60/90…" : "—"} onChange={(e) => setFormaPag(e.target.value)} />
               <datalist id="formas-pag-sugestoes">
-                <option value="PIX à vista" />
-                <option value="Boleto 30 dias" />
-                <option value="Boleto 30/60" />
-                <option value="Boleto 30/60/90" />
-                <option value="Dinheiro" />
-                <option value="Cartão" />
+                {formas.map((n) => <option key={n} value={n} />)}
               </datalist>
             </div>
 
