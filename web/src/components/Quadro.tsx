@@ -110,6 +110,7 @@ export interface ColCfg {
   sub: string;
   status: "aguardando" | "fazendo" | "pronto" | "defeito";
   tipos?: string[];
+  galgaUnica?: 3 | 7; // na coluna por máquina, só aceita a PARTE ÚNICA dessa galga (3 ou 7)
   acao: Acao;
   corCard?: "p1" | "p2" | "unica" | "kit"; // pinta o cabeçalho com a cor do card (tipo da peça)
   operador?: string; // filtra cards por costureira/operador (coluna por pessoa)
@@ -476,6 +477,8 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
                 if (c.status !== col.status) return false;
                 if (col.operador !== undefined && (c.operador || "") !== col.operador) return false;
                 if (col.tipos && !col.tipos.includes(c.parte)) return false;
+                // Coluna por máquina: a PARTE ÚNICA só entra na coluna da sua galga (só-P1 → Máq 3, só-P2 → Máq 7).
+                if (col.galgaUnica && basePart(c.parte) === "parte-unica" && galgaDe(c) !== col.galgaUnica) return false;
                 if (col.somentePrioridade) return !!c.prioridade;
                 // Numa coluna normal de "aguardando", os prioritários saem para a
                 // coluna "passar na frente" (sem duplicar).
@@ -649,8 +652,14 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao, onLiberar }: {
   const prazoDe = (c: CardProducao) => c.data_tecelagem || c.data_entrega || null; // prazo do tear
   const numDe = numCompacto;
   const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
-  const colDe = (c: CardProducao): "p1" | "p2" | "uni" | "rep" =>
-    ehRep(c) ? "rep" : basePart(c.parte) === "parte-2" ? "p2" : basePart(c.parte) === "parte-1" ? "p1" : "uni";
+  // PARTE ÚNICA (pedido de uma parte só) vai pra coluna da MÁQUINA pela galga:
+  // galga 3 → Parte 1 / Máq 3; galga 7 → Parte 2 / Máq 7. (Não existe mais coluna "Únicos".)
+  const colDe = (c: CardProducao): "p1" | "p2" | "rep" =>
+    ehRep(c) ? "rep"
+      : basePart(c.parte) === "parte-2" ? "p2"
+      : basePart(c.parte) === "parte-1" ? "p1"
+      : galgaDe(c) === 7 ? "p2" : "p1";
+  const ehUnica = (c: CardProducao) => basePart(c.parte) === "parte-unica";
   // Urgente = na fila (aguardando) e marcado como prioridade OU com o prazo do tear estourado.
   const ehUrgente = (c: CardProducao) => c.status === "aguardando" && (!!c.prioridade || (!!prazoDe(c) && (prazoDe(c) as string) < hoje));
   function dias(d: string | null): { txt: string; cls: string } {
@@ -676,13 +685,11 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao, onLiberar }: {
   const grupos = {
     p1: naTela.filter((c) => colDe(c) === "p1"),
     p2: naTela.filter((c) => colDe(c) === "p2"),
-    uni: naTela.filter((c) => colDe(c) === "uni"),
     rep: naTela.filter((c) => colDe(c) === "rep"),
   };
-  const COLS: { key: "p1" | "p2" | "uni" | "rep"; nome: string; ic: string; maq?: string }[] = [
+  const COLS: { key: "p1" | "p2" | "rep"; nome: string; ic: string; maq?: string }[] = [
     { key: "p1", nome: "PEDIDOS PARTE 1", ic: "🧶", maq: "Máquina 3" },
     { key: "p2", nome: "PEDIDOS PARTE 2", ic: "🧶", maq: "Máquina 7" },
-    { key: "uni", nome: "ÚNICOS", ic: "◈" },
     { key: "rep", nome: "REPOSIÇÃO DE ESTOQUE", ic: "📦" },
   ];
 
@@ -704,7 +711,7 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao, onLiberar }: {
     }
     return (
       <div key={c.pedido_id + c.parte} className={"tecn-row" + (prod ? " prod" : "")} onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
-        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
+        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span>{ehUnica(c) && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, letterSpacing: 0.3, color: "#6d28d9", background: "#ede9fe", borderRadius: 4, padding: "1px 5px" }}>ÚNICA</span>}</div>
         <span className="tecn-pcs">{pad2(c.pecas)} pçs</span>
         <span className="tecn-dt">{br(prazoDe(c))}</span>
         <span className={"tecn-dias " + dd.cls}>{dd.txt}</span>
@@ -728,7 +735,6 @@ function PainelTecelagem({ cfg, cards, onAbrir, onAcao, onLiberar }: {
         </button>
         <div className="tecn-tile p1"><span className="tecn-tt">Pedidos Parte 1 <span className="tecn-tmaq">· Máq. 3</span></span><span className="tecn-tn">{grupos.p1.length}</span></div>
         <div className="tecn-tile p2"><span className="tecn-tt">Pedidos Parte 2 <span className="tecn-tmaq">· Máq. 7</span></span><span className="tecn-tn">{grupos.p2.length}</span></div>
-        <div className="tecn-tile uni"><span className="tecn-tt">Únicos</span><span className="tecn-tn">{grupos.uni.length}</span></div>
         <div className="tecn-tile rep"><span className="tecn-tt">Reposição de estoque</span><span className="tecn-tn">{grupos.rep.length}</span></div>
         <button className={"tecn-tile fin" + (finalizados.length ? " pulsa" : "")} disabled={!finalizados.length} onClick={() => setLista((v) => v === "finalizados" ? null : "finalizados")}>
           <span className="tecn-tt">✓ Finalizados{finalizados.length ? " · abrir ›" : ""}</span><span className="tecn-tn">{finalizados.length}</span>
@@ -798,8 +804,13 @@ function PainelPCP({ cfg, cards, onAbrir, onLiberar }: {
 }) {
   const numDe = numCompacto;
   const pad2 = (n: unknown) => { const s = String(Number(n) || 0); return s.length < 2 ? "0" + s : s; };
-  const colDe = (c: CardProducao): "p1" | "p2" | "uni" | "rep" =>
-    ehRep(c) ? "rep" : basePart(c.parte) === "parte-2" ? "p2" : basePart(c.parte) === "parte-1" ? "p1" : "uni";
+  // PARTE ÚNICA vai pra coluna da máquina pela galga (3 → Parte 1 / Máq 3; 7 → Parte 2 / Máq 7).
+  const colDe = (c: CardProducao): "p1" | "p2" | "rep" =>
+    ehRep(c) ? "rep"
+      : basePart(c.parte) === "parte-2" ? "p2"
+      : basePart(c.parte) === "parte-1" ? "p1"
+      : galgaDe(c) === 7 ? "p2" : "p1";
+  const ehUnica = (c: CardProducao) => basePart(c.parte) === "parte-unica";
   const prazoDe = (c: CardProducao) => c.data_tecelagem || c.data_entrega || null;
   // No PCP interessa o que ainda está na tecelagem (fila/produzindo); os já finalizados saem da lista.
   const naTela = cards.filter((c) => c.status === "aguardando" || c.status === "fazendo");
@@ -807,13 +818,11 @@ function PainelPCP({ cfg, cards, onAbrir, onLiberar }: {
   const grupos = {
     p1: naTela.filter((c) => colDe(c) === "p1"),
     p2: naTela.filter((c) => colDe(c) === "p2"),
-    uni: naTela.filter((c) => colDe(c) === "uni"),
     rep: naTela.filter((c) => colDe(c) === "rep"),
   };
-  const COLS: { key: "p1" | "p2" | "uni" | "rep"; nome: string; ic: string; maq?: string }[] = [
+  const COLS: { key: "p1" | "p2" | "rep"; nome: string; ic: string; maq?: string }[] = [
     { key: "p1", nome: "PEDIDOS PARTE 1", ic: "🧶", maq: "Máquina 3" },
     { key: "p2", nome: "PEDIDOS PARTE 2", ic: "🧶", maq: "Máquina 7" },
-    { key: "uni", nome: "ÚNICOS", ic: "◈" },
     { key: "rep", nome: "REPOSIÇÃO DE ESTOQUE", ic: "📦" },
   ];
   // Bloqueados primeiro (é o que o PCP precisa liberar).
@@ -823,7 +832,7 @@ function PainelPCP({ cfg, cards, onAbrir, onLiberar }: {
     return (
       <div key={c.pedido_id + c.parte} className={"tecn-row tecn-prow" + (bloq ? " lock" : "")} onClick={() => onAbrir(c)} title="clique p/ ver o pedido">
         <span className={"tecn-lk" + (bloq ? "" : " ok")}>{bloq ? "🔒" : "✓"}</span>
-        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span></div>
+        <div className="tecn-idcli"><span className="tecn-num">{numDe(c)}</span><span className="tecn-dot">•</span><span className="tecn-cli">{c.cliente_nome || "—"}</span>{ehUnica(c) && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, letterSpacing: 0.3, color: "#6d28d9", background: "#ede9fe", borderRadius: 4, padding: "1px 5px" }}>ÚNICA</span>}</div>
         <span className="tecn-pcs">{pad2(c.pecas)} pçs</span>
         <span className="tecn-dt">{br(prazoDe(c))}</span>
         <span className="tecn-act">
@@ -840,7 +849,6 @@ function PainelPCP({ cfg, cards, onAbrir, onLiberar }: {
         <div className={"tecn-tile urg" + (bloqN ? " pulsa" : "")}><span className="tecn-tt">🔒 Bloqueados</span><span className="tecn-tn">{bloqN}</span></div>
         <div className="tecn-tile p1"><span className="tecn-tt">Pedidos Parte 1 <span className="tecn-tmaq">· Máq. 3</span></span><span className="tecn-tn">{grupos.p1.length}</span></div>
         <div className="tecn-tile p2"><span className="tecn-tt">Pedidos Parte 2 <span className="tecn-tmaq">· Máq. 7</span></span><span className="tecn-tn">{grupos.p2.length}</span></div>
-        <div className="tecn-tile uni"><span className="tecn-tt">Únicos</span><span className="tecn-tn">{grupos.uni.length}</span></div>
         <div className="tecn-tile rep"><span className="tecn-tt">Reposição de estoque</span><span className="tecn-tn">{grupos.rep.length}</span></div>
       </div>
       <div className="tecn-cols">

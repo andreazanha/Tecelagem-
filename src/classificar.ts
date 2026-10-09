@@ -290,10 +290,13 @@ export function classificar(itens: ItemBase[], cat: Catalogo): Classificacao {
   const p1 = prod.filter(ehP1);
   const p2 = prod.filter((i) => !ehP1(i));
 
-  if (p1.length === 0) {
-    return { modo: "unica", parteUnica: agrupar(prod, cat), kits, temKit };
+  // Só separa em PARTE 1 / PARTE 2 quando o pedido TEM as duas. Se tem só uma parte
+  // (só P1 ou só P2), é tratado como PARTE ÚNICA — a galga (máquina 3 ou 7) é resolvida
+  // depois pelos itens, então a única de P1 vai pra Máq 3 e a de P2 pra Máq 7.
+  if (p1.length > 0 && p2.length > 0) {
+    return { modo: "split", parte1: agrupar(p1, cat), parte2: agrupar(p2, cat), kits, temKit };
   }
-  return { modo: "split", parte1: agrupar(p1, cat), parte2: agrupar(p2, cat), kits, temKit };
+  return { modo: "unica", parteUnica: agrupar(prod, cat), kits, temKit };
 }
 
 // ── Romaneio de COSTURA (simplificado) ───────────────────────────────────────
