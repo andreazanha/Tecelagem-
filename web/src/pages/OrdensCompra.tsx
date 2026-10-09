@@ -103,17 +103,20 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
   const [ord, setOrd] = useState<OrdemCompraDetalhe | null>(null);
   const [itens, setItens] = useState<OrdemCompraItemRow[]>([]);
   const [obs, setObs] = useState("");
+  const [formaPag, setFormaPag] = useState("");
   const [erro, setErro] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let vivo = true;
-    api.obterOrdemCompra(id).then((o) => { if (!vivo) return; setOrd(o); setItens(o.itens || []); setObs(o.obs || ""); })
+    api.obterOrdemCompra(id).then((o) => { if (!vivo) return; setOrd(o); setItens(o.itens || []); setObs(o.obs || ""); setFormaPag(o.forma_pagamento || ""); })
       .catch((e) => { if (vivo) setErro((e as Error).message); });
     return () => { vivo = false; };
   }, [id]);
 
-  const editavel = podeAprovar && ord?.status === "aguardando_aprovacao";
+  // Gestor pode editar em qualquer status menos "recusada" (inclui aprovada/enviada → reenvia o PDF atualizado).
+  const editavel = podeAprovar && !!ord && ord.status !== "recusada";
+  const jaAprovada = !!ord && (ord.status === "aprovada" || ord.status === "enviada");
   const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.preco) || 0), 0);
 
   function setItem(i: number, patch: Partial<OrdemCompraItemRow>) {
@@ -125,7 +128,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
     if (!ord) return false;
     try {
       const r = await api.editarOrdemCompra(ord.id, {
-        obs,
+        obs, forma_pagamento: formaPag,
         itens: itens.map((it) => ({ material_id: it.material_id, nome: it.nome || "", codigo: it.codigo, tamanho: it.tamanho, cor: it.cor, unidade: it.unidade, saldo: it.saldo, minimo: it.minimo, qtd: Number(it.qtd) || 0, preco: Number(it.preco) || 0 })),
       });
       setOrd(r.ordem); setItens(r.ordem.itens || []);
@@ -137,28 +140,18 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
     if (!ord) return;
     const itensValidos = itens.filter((it) => (Number(it.qtd) || 0) > 0);
     if (!itensValidos.length) { alert("A ordem precisa de ao menos um item com quantidade."); return; }
-    if (!confirm(`Aprovar a ordem ${ord.numero} e enviar o PDF no WhatsApp?`)) return;
+    const msg = jaAprovada
+      ? `Salvar as alterações e REENVIAR o PDF atualizado da ordem ${ord.numero} no WhatsApp do fornecedor?`
+      : `Aprovar a ordem ${ord.numero} e enviar o PDF no WhatsApp?`;
+    if (!confirm(msg)) return;
     setBusy(true);
     try {
       if (editavel) { if (!(await salvar())) { setBusy(false); return; } }
       const r = await api.aprovarOrdemCompra(ord.id);
       onMudou();
-      if (r.ok) { alert(`✅ Ordem ${ord.numero} aprovada e enviada no WhatsApp.`); onFechar(); }
-      else if (r.status === "aprovada") { alert(`A ordem foi APROVADA, mas o envio no WhatsApp falhou (${r.motivo || "falha"}). Confira o número do gestor e a conexão, e tente reenviar.`); const o = await api.obterOrdemCompra(ord.id); setOrd(o); }
+      if (r.ok) { alert(jaAprovada ? `✅ Ordem ${ord.numero} atualizada e reenviada no WhatsApp.` : `✅ Ordem ${ord.numero} aprovada e enviada no WhatsApp.`); onFechar(); }
+      else if (r.status === "aprovada") { alert(`A ordem foi ${jaAprovada ? "salva" : "APROVADA"}, mas o envio no WhatsApp falhou (${r.motivo || "falha"}). Confira o número do gestor e a conexão, e tente reenviar.`); const o = await api.obterOrdemCompra(ord.id); setOrd(o); }
       else alert(`⚠️ ${r.motivo || "Não foi possível aprovar."}`);
-    } catch (e) { alert((e as Error).message); }
-    finally { setBusy(false); }
-  }
-
-  async function reenviar() {
-    if (!ord) return;
-    if (!confirm(`Reenviar o PDF da ordem ${ord.numero} no WhatsApp?`)) return;
-    setBusy(true);
-    try {
-      const r = await api.aprovarOrdemCompra(ord.id);
-      onMudou();
-      if (r.ok) { alert(`✅ Enviada no WhatsApp.`); onFechar(); }
-      else alert(`⚠️ Ainda não enviou (${r.motivo || "falha"}).`);
     } catch (e) { alert((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -231,21 +224,35 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
             <div style={{ textAlign: "right", fontWeight: 700, margin: "8px 2px" }}>Total estimado: {rBR(total)}</div>
 
             <div style={{ marginTop: 8 }}>
-              <label className="muted" style={{ fontSize: 12 }}>Observação</label>
+              <label className="muted" style={{ fontSize: 12 }}>Forma de pagamento <span style={{ opacity: .7 }}>(sai no PDF)</span></label>
+              <input list="formas-pag-sugestoes" value={formaPag} disabled={!editavel} style={{ width: "100%", marginTop: 4 }}
+                placeholder={editavel ? "ex.: Boleto 30 dias · PIX à vista · 30/60/90…" : "—"} onChange={(e) => setFormaPag(e.target.value)} />
+              <datalist id="formas-pag-sugestoes">
+                <option value="PIX à vista" />
+                <option value="Boleto 30 dias" />
+                <option value="Boleto 30/60" />
+                <option value="Boleto 30/60/90" />
+                <option value="Dinheiro" />
+                <option value="Cartão" />
+              </datalist>
+            </div>
+
+            <div style={{ marginTop: 8 }}>
+              <label className="muted" style={{ fontSize: 12 }}>Observação <span style={{ opacity: .7 }}>(sai no PDF)</span></label>
               <textarea value={obs} disabled={!editavel} rows={2} style={{ width: "100%", marginTop: 4 }}
-                placeholder={editavel ? "ex.: prazo, condição de pagamento…" : ""} onChange={(e) => setObs(e.target.value)} />
+                placeholder={editavel ? "ex.: prazo de entrega, condições…" : ""} onChange={(e) => setObs(e.target.value)} />
             </div>
 
             <div className="row-gap" style={{ marginTop: 14, gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-              {editavel && <button className="btn btn-soft" disabled={busy} onClick={salvar}>💾 Salvar alterações</button>}
+              {editavel && !jaAprovada && <button className="btn btn-soft" disabled={busy} onClick={salvar}>💾 Salvar alterações</button>}
               {podeAprovar && ord.status === "aguardando_aprovacao" && (
                 <>
                   <button className="btn btn-soft" disabled={busy} style={{ color: "#b91c1c" }} onClick={recusar}>✖ Recusar</button>
                   <button className="btn btn-primary" disabled={busy} onClick={aprovar}>{busy ? "Processando…" : "✅ Aprovar e enviar"}</button>
                 </>
               )}
-              {podeAprovar && ord.status === "aprovada" && (
-                <button className="btn btn-primary" disabled={busy} onClick={reenviar}>{busy ? "Enviando…" : "📲 Reenviar no WhatsApp"}</button>
+              {podeAprovar && jaAprovada && (
+                <button className="btn btn-primary" disabled={busy} onClick={aprovar}>{busy ? "Enviando…" : "📲 Salvar e reenviar"}</button>
               )}
             </div>
           </>

@@ -220,7 +220,7 @@ export interface OrdemCompraItemIn {
 }
 export interface OrdemCompra {
   id: string; numero: string; fornecedor_id: string | null; fornecedor_nome: string | null;
-  status: OrdemCompraStatus; total: number; obs: string | null;
+  status: OrdemCompraStatus; total: number; obs: string | null; forma_pagamento: string | null;
   criado_por_id: string | null; criado_por_nome: string | null; criado_em: string;
   aprovado_por_id: string | null; aprovado_por_nome: string | null; aprovado_em: string | null;
   enviado_em: string | null; erro: string | null; n_itens?: number;
@@ -1145,14 +1145,14 @@ export const api = {
     fornecedor: string; fornecedor_id?: string | null;
     empresa: { nome?: string; cnpj?: string; endereco?: string; telefone?: string; email?: string };
     fornecedorDados: { nome?: string; contato?: string; telefone?: string; email?: string; cnpj?: string };
-    obs?: string;
+    obs?: string; forma_pagamento?: string;
     itens: OrdemCompraItemIn[];
   }) => jsonPost("/api/compras/ordens", b).then((r) => j<{ ok: boolean; id: string; numero: string; aviso?: boolean }>(r)),
   listarOrdensCompra: (status?: string) =>
     fetch("/api/compras/ordens" + (status ? `?status=${encodeURIComponent(status)}` : "")).then((r) => j<OrdemCompra[]>(r)),
   obterOrdemCompra: (id: string) =>
     fetch(`/api/compras/ordens/${encodeURIComponent(id)}`).then((r) => j<OrdemCompraDetalhe>(r)),
-  editarOrdemCompra: (id: string, b: { obs?: string; itens?: OrdemCompraItemIn[] }) =>
+  editarOrdemCompra: (id: string, b: { obs?: string; forma_pagamento?: string; itens?: OrdemCompraItemIn[] }) =>
     fetch(`/api/compras/ordens/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then((r) => j<{ ok: boolean; ordem: OrdemCompraDetalhe }>(r)),
   aprovarOrdemCompra: (id: string) =>
     jsonPost(`/api/compras/ordens/${encodeURIComponent(id)}/aprovar`, {}).then((r) => j<{ ok: boolean; status: string; numero?: string; motivo?: string }>(r)),

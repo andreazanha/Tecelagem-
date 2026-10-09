@@ -63,7 +63,7 @@ compras.post("/ordens", async (c) => {
   type Body = {
     fornecedor?: string; fornecedor_id?: string;
     empresa?: EmpresaDados; fornecedorDados?: FornDados;
-    obs?: string; itens?: ItemBody[];
+    obs?: string; forma_pagamento?: string; itens?: ItemBody[];
   };
   const b = await c.req.json<Body>().catch(() => ({} as Body));
   const itens = (Array.isArray(b.itens) ? b.itens : []).filter((it) => it && (Number(it.qtd) || 0) > 0);
@@ -79,13 +79,13 @@ compras.post("/ordens", async (c) => {
   await c.env.DB.prepare(
     `INSERT INTO ordens_compra
        (id, numero, fornecedor_id, fornecedor_nome, fornecedor_json, empresa_json,
-        status, total, obs, criado_por_id, criado_por_nome, criado_em)
-     VALUES (?,?,?,?,?,?, 'aguardando_aprovacao', ?,?,?,?,?)`
+        status, total, obs, forma_pagamento, criado_por_id, criado_por_nome, criado_em)
+     VALUES (?,?,?,?,?,?, 'aguardando_aprovacao', ?,?,?,?,?,?)`
   ).bind(
     id, numero, b.fornecedor_id || null, fornNome,
     JSON.stringify(b.fornecedorDados || { nome: fornNome }),
     JSON.stringify(b.empresa || { nome: "Big Tricot" }),
-    total, (b.obs || "").trim() || null, g.u.id, g.u.nome, criadoEm,
+    total, (b.obs || "").trim() || null, (b.forma_pagamento || "").trim() || null, g.u.id, g.u.nome, criadoEm,
   ).run();
 
   const stmts = itens.map((it, i) => c.env.DB.prepare(
@@ -140,15 +140,16 @@ compras.get("/ordens/:id", async (c) => {
   return c.json(o);
 });
 
-// ── Editar ordem (gestor) — só enquanto aguardando aprovação ──────────────────
+// ── Editar ordem (gestor) — em qualquer status, menos recusada (aprovada/enviada
+//    podem ser editadas e depois reenviadas pelo gestor). ───────────────────────
 compras.patch("/ordens/:id", async (c) => {
   const g = await exigirFuncao(c, "compras.aprovar"); if ("erro" in g) return g.erro;
   const id = c.req.param("id");
   const o = await c.env.DB.prepare("SELECT status FROM ordens_compra WHERE id=?").bind(id).first<{ status: string }>();
   if (!o) return c.json({ error: "nao_encontrada" }, 404);
-  if (o.status !== "aguardando_aprovacao") return c.json({ error: "nao_editavel", status: o.status }, 409);
+  if (o.status === "recusada") return c.json({ error: "nao_editavel", status: o.status }, 409);
 
-  type Body = { obs?: string; itens?: ItemBody[] };
+  type Body = { obs?: string; forma_pagamento?: string; itens?: ItemBody[] };
   const b = await c.req.json<Body>().catch(() => ({} as Body));
   if (Array.isArray(b.itens)) {
     const itens = b.itens.filter((it) => it && (Number(it.qtd) || 0) > 0);
@@ -162,6 +163,7 @@ compras.patch("/ordens/:id", async (c) => {
     await c.env.DB.prepare("UPDATE ordens_compra SET total=? WHERE id=?").bind(total, id).run();
   }
   if (b.obs !== undefined) await c.env.DB.prepare("UPDATE ordens_compra SET obs=? WHERE id=?").bind((b.obs || "").trim() || null, id).run();
+  if (b.forma_pagamento !== undefined) await c.env.DB.prepare("UPDATE ordens_compra SET forma_pagamento=? WHERE id=?").bind((b.forma_pagamento || "").trim() || null, id).run();
   const atual = await carregarOrdem(c.env, id);
   return c.json({ ok: true, ordem: atual });
 });
@@ -172,8 +174,8 @@ compras.post("/ordens/:id/aprovar", async (c) => {
   const id = c.req.param("id");
   const o = await carregarOrdem(c.env, id);
   if (!o) return c.json({ error: "nao_encontrada" }, 404);
-  if (o.status === "enviada") return c.json({ error: "ja_enviada" }, 409);
   if (o.status === "recusada") return c.json({ error: "recusada" }, 409);
+  const reenvio = o.status === "enviada" || o.status === "aprovada"; // já passou por aprovação → é reenvio
 
   const num = ((await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_min_wpp'").first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
   if (!num) return c.json({ error: "numero_nao_configurado" }, 400);
@@ -191,10 +193,17 @@ compras.post("/ordens/:id/aprovar", async (c) => {
   const total = totalItens(itens);
 
   // Marca aprovada ANTES de enviar (quem aprovou / quando).
+  // No REENVIO (ordem já aprovada/enviada) preserva o aprovador original via COALESCE.
   const aprovadoEm = new Date().toISOString();
-  await c.env.DB.prepare(
-    "UPDATE ordens_compra SET status='aprovada', total=?, aprovado_por_id=?, aprovado_por_nome=?, aprovado_em=?, erro=NULL WHERE id=?"
-  ).bind(total, g.u.id, g.u.nome, aprovadoEm, id).run();
+  if (reenvio) {
+    await c.env.DB.prepare(
+      "UPDATE ordens_compra SET status='aprovada', total=?, aprovado_por_id=COALESCE(aprovado_por_id,?), aprovado_por_nome=COALESCE(aprovado_por_nome,?), aprovado_em=COALESCE(aprovado_em,?), erro=NULL WHERE id=?"
+    ).bind(total, g.u.id, g.u.nome, aprovadoEm, id).run();
+  } else {
+    await c.env.DB.prepare(
+      "UPDATE ordens_compra SET status='aprovada', total=?, aprovado_por_id=?, aprovado_por_nome=?, aprovado_em=?, erro=NULL WHERE id=?"
+    ).bind(total, g.u.id, g.u.nome, aprovadoEm, id).run();
+  }
 
   let base64 = "";
   try {
@@ -202,6 +211,8 @@ compras.post("/ordens/:id/aprovar", async (c) => {
       empresa: (o.empresa as EmpresaDados) || { nome: "Big Tricot" },
       fornecedor: (o.fornecedor as FornDados) || { nome: fornNome },
       numero: String(o.numero), data: dataBR, itens,
+      forma_pagamento: (o.forma_pagamento as string) || null,
+      obs: (o.obs as string) || null,
     });
     base64 = abParaBase64(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
   } catch (e) {

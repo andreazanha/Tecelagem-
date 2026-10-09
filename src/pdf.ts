@@ -1167,6 +1167,8 @@ export interface OrdemCompraDados {
   fornecedor: { nome?: string | null; contato?: string | null; telefone?: string | null; email?: string | null; cnpj?: string | null };
   numero: string;
   data: string;
+  forma_pagamento?: string | null;
+  obs?: string | null;
   itens: OrdemCompraItem[];
 }
 
@@ -1278,7 +1280,18 @@ export async function gerarOrdemCompra(d: OrdemCompraDados): Promise<Uint8Array>
   R(ix, y, iw, 28, NAVY);
   T(`${d.itens.length} ${d.itens.length === 1 ? "item" : "itens"}`, ix + 12, y + 18, 10, bld, WHITE);
   TR("TOTAL ESTIMADO: " + money(total), ix + iw - 12, y + 18, 13, bld, WHITE);
-  y += 28 + 46;
+  y += 28 + 18;
+
+  // Forma de pagamento + Observação (quando preenchidos)
+  const fpag = (d.forma_pagamento || "").trim(), obsv = (d.obs || "").trim();
+  if (fpag || obsv) {
+    if (y + 46 > A4H - 70) { page = doc.addPage([A4W, A4H]); y = 40; }
+    if (fpag) { T("Forma de pagamento:", ix, y + 10, 9, bld, SLATE); T(fit(fpag, reg, 9.5, iw - 128), ix + 120, y + 10, 9.5, reg, INK); y += 17; }
+    if (obsv) { T("Observação:", ix, y + 10, 9, bld, SLATE); T(fit(obsv, reg, 9.5, iw - 82), ix + 74, y + 10, 9.5, reg, INK); y += 17; }
+    y += 14;
+  } else {
+    y += 10;
+  }
 
   // Assinaturas
   if (y + 40 > A4H - 24) { page = doc.addPage([A4W, A4H]); y = A4H - 90; }
