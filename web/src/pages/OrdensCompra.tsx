@@ -104,13 +104,14 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
   const [itens, setItens] = useState<OrdemCompraItemRow[]>([]);
   const [obs, setObs] = useState("");
   const [formaPag, setFormaPag] = useState("");
+  const [dataEntrega, setDataEntrega] = useState("");
   const [formas, setFormas] = useState<string[]>([]);
   const [erro, setErro] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let vivo = true;
-    api.obterOrdemCompra(id).then((o) => { if (!vivo) return; setOrd(o); setItens(o.itens || []); setObs(o.obs || ""); setFormaPag(o.forma_pagamento || ""); })
+    api.obterOrdemCompra(id).then((o) => { if (!vivo) return; setOrd(o); setItens(o.itens || []); setObs(o.obs || ""); setFormaPag(o.forma_pagamento || ""); setDataEntrega(o.data_entrega || ""); })
       .catch((e) => { if (vivo) setErro((e as Error).message); });
     api.listarFormasPagamento().then((l) => { if (vivo) setFormas(l.filter((x) => x.ativo !== 0).map((x) => x.nome)); }).catch(() => {});
     return () => { vivo = false; };
@@ -130,7 +131,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
     if (!ord) return false;
     try {
       const r = await api.editarOrdemCompra(ord.id, {
-        obs, forma_pagamento: formaPag,
+        obs, forma_pagamento: formaPag, data_entrega: dataEntrega,
         itens: itens.map((it) => ({ material_id: it.material_id, nome: it.nome || "", codigo: it.codigo, tamanho: it.tamanho, cor: it.cor, unidade: it.unidade, saldo: it.saldo, minimo: it.minimo, qtd: Number(it.qtd) || 0, preco: Number(it.preco) || 0 })),
       });
       setOrd(r.ordem); setItens(r.ordem.itens || []);
@@ -224,6 +225,12 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
               </tbody>
             </table>
             <div style={{ textAlign: "right", fontWeight: 700, margin: "8px 2px" }}>Total estimado: {rBR(total)}</div>
+
+            <div style={{ marginTop: 8 }}>
+              <label className="muted" style={{ fontSize: 12 }}>Data de entrega <span style={{ opacity: .7 }}>(sai no PDF)</span></label>
+              <input type="date" value={dataEntrega} disabled={!editavel} style={{ marginTop: 4 }}
+                onChange={(e) => setDataEntrega(e.target.value)} />
+            </div>
 
             <div style={{ marginTop: 8 }}>
               <label className="muted" style={{ fontSize: 12 }}>Forma de pagamento <span style={{ opacity: .7 }}>(sai no PDF)</span></label>

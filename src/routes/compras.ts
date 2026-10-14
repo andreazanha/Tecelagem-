@@ -33,6 +33,12 @@ function numeroOC(d: Date) {
   return `OC-${d.getUTCFullYear()}${p2(d.getUTCMonth() + 1)}${p2(d.getUTCDate())}-${p2(d.getUTCHours())}${p2(d.getUTCMinutes())}`;
 }
 function parse<T>(s: string | null | undefined, fb: T): T { try { return s ? JSON.parse(s) as T : fb; } catch { return fb; } }
+// ISO (yyyy-mm-dd) → dd/mm/yyyy pro PDF; outros formatos passam como estão.
+function dataEntregaBR(s: string | null): string | null {
+  const v = (s || "").trim(); if (!v) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : v;
+}
 
 // Monta o objeto completo (cabeçalho + itens) de uma ordem.
 async function carregarOrdem(env: Env, id: string) {
@@ -63,7 +69,7 @@ compras.post("/ordens", async (c) => {
   type Body = {
     fornecedor?: string; fornecedor_id?: string;
     empresa?: EmpresaDados; fornecedorDados?: FornDados;
-    obs?: string; forma_pagamento?: string; itens?: ItemBody[];
+    obs?: string; forma_pagamento?: string; data_entrega?: string; itens?: ItemBody[];
   };
   const b = await c.req.json<Body>().catch(() => ({} as Body));
   const itens = (Array.isArray(b.itens) ? b.itens : []).filter((it) => it && (Number(it.qtd) || 0) > 0);
@@ -79,13 +85,13 @@ compras.post("/ordens", async (c) => {
   await c.env.DB.prepare(
     `INSERT INTO ordens_compra
        (id, numero, fornecedor_id, fornecedor_nome, fornecedor_json, empresa_json,
-        status, total, obs, forma_pagamento, criado_por_id, criado_por_nome, criado_em)
-     VALUES (?,?,?,?,?,?, 'aguardando_aprovacao', ?,?,?,?,?,?)`
+        status, total, obs, forma_pagamento, data_entrega, criado_por_id, criado_por_nome, criado_em)
+     VALUES (?,?,?,?,?,?, 'aguardando_aprovacao', ?,?,?,?,?,?,?)`
   ).bind(
     id, numero, b.fornecedor_id || null, fornNome,
     JSON.stringify(b.fornecedorDados || { nome: fornNome }),
     JSON.stringify(b.empresa || { nome: "Big Tricot" }),
-    total, (b.obs || "").trim() || null, (b.forma_pagamento || "").trim() || null, g.u.id, g.u.nome, criadoEm,
+    total, (b.obs || "").trim() || null, (b.forma_pagamento || "").trim() || null, (b.data_entrega || "").trim() || null, g.u.id, g.u.nome, criadoEm,
   ).run();
 
   const stmts = itens.map((it, i) => c.env.DB.prepare(
@@ -149,7 +155,7 @@ compras.patch("/ordens/:id", async (c) => {
   if (!o) return c.json({ error: "nao_encontrada" }, 404);
   if (o.status === "recusada") return c.json({ error: "nao_editavel", status: o.status }, 409);
 
-  type Body = { obs?: string; forma_pagamento?: string; itens?: ItemBody[] };
+  type Body = { obs?: string; forma_pagamento?: string; data_entrega?: string; itens?: ItemBody[] };
   const b = await c.req.json<Body>().catch(() => ({} as Body));
   if (Array.isArray(b.itens)) {
     const itens = b.itens.filter((it) => it && (Number(it.qtd) || 0) > 0);
@@ -164,6 +170,7 @@ compras.patch("/ordens/:id", async (c) => {
   }
   if (b.obs !== undefined) await c.env.DB.prepare("UPDATE ordens_compra SET obs=? WHERE id=?").bind((b.obs || "").trim() || null, id).run();
   if (b.forma_pagamento !== undefined) await c.env.DB.prepare("UPDATE ordens_compra SET forma_pagamento=? WHERE id=?").bind((b.forma_pagamento || "").trim() || null, id).run();
+  if (b.data_entrega !== undefined) await c.env.DB.prepare("UPDATE ordens_compra SET data_entrega=? WHERE id=?").bind((b.data_entrega || "").trim() || null, id).run();
   const atual = await carregarOrdem(c.env, id);
   return c.json({ ok: true, ordem: atual });
 });
@@ -211,6 +218,7 @@ compras.post("/ordens/:id/aprovar", async (c) => {
       empresa: (o.empresa as EmpresaDados) || { nome: "Big Tricot" },
       fornecedor: (o.fornecedor as FornDados) || { nome: fornNome },
       numero: String(o.numero), data: dataBR, itens,
+      data_entrega: dataEntregaBR((o.data_entrega as string) || null),
       forma_pagamento: (o.forma_pagamento as string) || null,
       obs: (o.obs as string) || null,
     });
