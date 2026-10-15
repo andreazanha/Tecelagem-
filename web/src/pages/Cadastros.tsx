@@ -1846,9 +1846,10 @@ function InsumoModal({ cat, onFechar, onSalvo }: { cat: MaterialCategoriaDef | n
   const [nome, setNome] = useState(cat?.nome || "");
   const [cor, setCor] = useState(cat?.cor || CORES_INSUMO[0]);
   const [icone, setIcone] = useState(cat?.icone || "");
+  const [usaCor, setUsaCor] = useState<boolean>(!!cat?.usa_cor);
   async function salvar() {
     if (!nome.trim()) return alert("Informe o nome do material.");
-    try { const r = await api.salvarCategoriaMaterial({ id: cat?.id, nome: nome.trim(), cor, icone: icone.trim() || null }); onSalvo(r.slug); }
+    try { const r = await api.salvarCategoriaMaterial({ id: cat?.id, nome: nome.trim(), cor, icone: icone.trim() || null, usa_cor: usaCor }); onSalvo(r.slug); }
     catch (e) { alert((e as Error).message); }
   }
   return (
@@ -1868,6 +1869,10 @@ function InsumoModal({ cat, onFechar, onSalvo }: { cat: MaterialCategoriaDef | n
             ))}
           </div>
         </div>
+        <label className="campo" style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line)" }}>
+          <input type="checkbox" checked={usaCor} onChange={(e) => setUsaCor(e.target.checked)} style={{ width: 18, height: 18 }} />
+          <span><b>🎨 Tem cor</b> — os itens deste material têm o campo <b>Cor</b> (ex.: etiqueta da gráfica, zíper).</span>
+        </label>
         <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 18 }}>
           <button className="btn btn-soft" onClick={onFechar}>Cancelar</button>
           <button className="btn btn-primary" onClick={salvar}>{cat ? "Salvar" : "Criar material"}</button>
@@ -1882,7 +1887,13 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
   const categoria = cat.slug, label = cat.nome, catCor = cat.cor || "#64748b";
   const cfg = CAMPOS_POR_TIPO[categoria] || {};
   const colunas: ColDef[] = (() => {
-    const base = cfg.colunas || colunasPadrao(cfg);
+    let base = cfg.colunas || colunasPadrao(cfg);
+    // Campo COR por categoria: quando a categoria tem "Tem cor" marcado e ainda não há coluna cor.
+    if (cat.usa_cor && !base.some((c) => c.key === "cor")) {
+      const corCol: ColDef = { key: "cor", label: "Cor", ph: "ex.: Off White", width: 140 };
+      const iN = base.findIndex((c) => c.key === "nome");
+      base = iN >= 0 ? [...base.slice(0, iN + 1), corCol, ...base.slice(iN + 1)] : [corCol, ...base];
+    }
     // "Pedido mínimo" (quantidade mínima de compra do fornecedor) em TODO tipo de material.
     if (base.some((c) => c.key === "extra:pedido_minimo")) return base;
     const ped: ColDef = { key: "extra:pedido_minimo", label: "Pedido mínimo", ph: "ex.: 100", width: 120 };

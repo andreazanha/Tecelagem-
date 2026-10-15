@@ -170,6 +170,7 @@ export interface MaterialCategoriaDef {
   cor?: string | null;
   icone?: string | null;
   ordem: number;
+  usa_cor?: number; // 1 = materiais desta categoria têm campo "Cor" (ex.: gráfica/etiqueta)
   itens?: number; // quantos materiais nessa categoria
 }
 export interface Material {
@@ -1119,7 +1120,7 @@ export const api = {
   // Insumos (categorias dinâmicas de material)
   listarCategoriasMaterial: () =>
     fetch("/api/materiais/categorias").then((r) => j<MaterialCategoriaDef[]>(r)),
-  salvarCategoriaMaterial: (b: { id?: string; nome: string; cor?: string | null; icone?: string | null; ordem?: number }) =>
+  salvarCategoriaMaterial: (b: { id?: string; nome: string; cor?: string | null; icone?: string | null; ordem?: number; usa_cor?: boolean | number }) =>
     jsonPost("/api/materiais/categorias", b).then((r) => j<MaterialCategoriaDef>(r)),
   excluirCategoriaMaterial: (id: string) =>
     fetch(`/api/materiais/categorias/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
@@ -1161,6 +1162,8 @@ export const api = {
     jsonPost(`/api/compras/ordens/${encodeURIComponent(id)}/recusar`, { motivo }).then((r) => j<{ ok: boolean; status: string }>(r)),
   excluirOrdemCompra: (id: string) =>
     fetch(`/api/compras/ordens/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  ordemCompraPdf: (id: string) =>
+    fetch(`/api/compras/ordens/${encodeURIComponent(id)}/pdf`).then(async (r) => { if (!r.ok) throw new Error("Não consegui gerar o PDF desta ordem."); return r.blob(); }),
   // Mapa de refil (medida do produto → medida do refil)
   listarRefilMapa: () =>
     fetch("/api/materiais/refil-mapa").then((r) => j<RefilMapa[]>(r)),

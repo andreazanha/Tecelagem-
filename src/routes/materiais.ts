@@ -101,7 +101,7 @@ async function slugsValidos(env: Env): Promise<Set<string>> {
 // ── Categorias de material (dinâmicas) ────────────────────────────────────────
 materiais.get("/categorias", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT mc.id, mc.slug, mc.nome, mc.cor, mc.icone, mc.ordem,
+    `SELECT mc.id, mc.slug, mc.nome, mc.cor, mc.icone, mc.ordem, COALESCE(mc.usa_cor,0) AS usa_cor,
             (SELECT COUNT(*) FROM materiais m WHERE m.categoria = mc.slug) AS itens
        FROM material_categorias mc ORDER BY mc.ordem, mc.nome`
   ).all();
@@ -118,16 +118,17 @@ materiais.post("/categorias", async (c) => {
   const corRaw = String(b.cor ?? "").trim();
   const cor = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(corRaw) ? corRaw : null;
   const ordem = Math.trunc(Number(b.ordem) || 0);
+  const usaCor = b.usa_cor === true || b.usa_cor === 1 ? 1 : 0;
   // slug é único: se colidir com outra categoria (nome novo), erro amigável.
   if (!b.id) {
     const existe = await c.env.DB.prepare("SELECT id FROM material_categorias WHERE slug = ?").bind(slug).first();
     if (existe) return c.json({ error: `Já existe um insumo "${nome}".` }, 409);
   }
   await c.env.DB.prepare(
-    `INSERT INTO material_categorias (id, slug, nome, cor, icone, ordem) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET nome=excluded.nome, cor=excluded.cor, icone=excluded.icone, ordem=excluded.ordem`
-  ).bind(id, slug, nome, cor, str(b.icone), ordem).run();
-  return c.json({ id, slug, nome, cor, icone: str(b.icone), ordem });
+    `INSERT INTO material_categorias (id, slug, nome, cor, icone, ordem, usa_cor) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET nome=excluded.nome, cor=excluded.cor, icone=excluded.icone, ordem=excluded.ordem, usa_cor=excluded.usa_cor`
+  ).bind(id, slug, nome, cor, str(b.icone), ordem, usaCor).run();
+  return c.json({ id, slug, nome, cor, icone: str(b.icone), ordem, usa_cor: usaCor });
 });
 
 materiais.delete("/categorias/:id", async (c) => {

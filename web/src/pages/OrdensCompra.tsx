@@ -179,9 +179,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
     if (!ord) return;
     setBusy(true);
     try {
-      const r = await fetch(`/api/compras/ordens/${encodeURIComponent(ord.id)}/pdf`);
-      if (!r.ok) { alert("Não consegui gerar o PDF desta ordem."); return; }
-      const blob = await r.blob();
+      const blob = await api.ordemCompraPdf(ord.id);
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
@@ -221,7 +219,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
 
   return (
     <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onFechar(); }}>
-      <div className="card pad" style={{ maxWidth: 760, width: "96%", maxHeight: "92vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+      <div className="card pad" style={{ maxWidth: 1180, width: "97%", maxHeight: "92vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
         {!ord && !erro && <p className="muted">Carregando…</p>}
         {erro && <p style={{ color: "#b91c1c" }}>{erro}</p>}
         {ord && (
