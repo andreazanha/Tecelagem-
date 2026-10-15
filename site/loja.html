@@ -18,12 +18,7 @@
   html,body{margin:0}
   body{background:var(--bg); color:var(--ink); font-family:'Montserrat',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; line-height:1.45}
   .serif{font-family:"Cormorant Garamond",Georgia,serif}
-  /* cabeçalho escuro, fixo, só a logo à esquerda */
-  header.topbar{position:sticky; top:0; z-index:40; background:#181615; height:80px; display:flex; align-items:center}
-  .topbar-in{max-width:1760px; margin:0 auto; width:100%; padding:0 32px}
-  .logo{font-family:"Cormorant Garamond",serif; font-weight:700; letter-spacing:.2em; font-size:26px; color:#fff; line-height:1}
-  .logo small{display:block; letter-spacing:.34em; font-size:10px; font-weight:600; color:#b7b0a6; margin-top:6px; font-family:'Montserrat',sans-serif}
-  /* banner full-width (estrutura pronta pra banners cadastrados) */
+  /* banner full-width, começa no TOPO da página (sem faixa preta em cima) */
   .banner{position:relative; width:100%; min-height:300px; overflow:hidden; background:#181615; display:flex; align-items:center}
   .banner .b-bg{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0}
   .banner .b-shade{position:absolute; inset:0; z-index:1; background:linear-gradient(90deg,rgba(24,22,21,.80) 0%,rgba(24,22,21,.38) 46%,rgba(24,22,21,.08) 100%)}
@@ -32,18 +27,18 @@
   .banner .b-tit{font-size:48px; font-weight:600; line-height:1.04; letter-spacing:.015em; margin:12px 0 0; max-width:640px}
   .banner .b-sub{font-size:12px; letter-spacing:.24em; text-transform:uppercase; color:#d8cfc0; margin-top:14px}
   .banner .b-btn{display:inline-flex; align-items:center; gap:8px; margin-top:22px; background:var(--accent); color:#fff; border:0; border-radius:4px; padding:13px 26px; font-size:12px; letter-spacing:.16em; text-transform:uppercase; font-weight:600; cursor:pointer; text-decoration:none}
-  /* faixa da busca: busca centralizada na página + cliente/carrinho à direita */
-  .buscafaixa{background:var(--bg); padding:26px 24px 4px}
+  /* FAIXA PRETA GRAFITE abaixo do banner: busca centralizada + cliente/carrinho à direita */
+  .buscafaixa{background:#181615; padding:16px 24px; position:sticky; top:0; z-index:40}
   .bf-in{position:relative; max-width:1760px; margin:0 auto; display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap; min-height:46px}
-  .busca{width:100%; max-width:530px; display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #e8e2d7; border-radius:999px; padding:11px 20px; box-shadow:0 1px 2px rgba(60,48,32,.04)}
+  .busca{width:100%; max-width:500px; display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #e8e2d7; border-radius:999px; padding:11px 20px; box-shadow:0 1px 2px rgba(0,0,0,.14)}
   .busca input{border:0; outline:0; background:transparent; width:100%; font-size:14.5px; color:var(--ink)}
   .bf-right{position:absolute; right:0; top:50%; transform:translateY(-50%); display:flex; align-items:center; gap:14px}
-  .saud{display:flex; align-items:center; gap:8px; font-size:14px; color:#5f584e; white-space:nowrap}
+  .saud{display:flex; align-items:center; gap:8px; font-size:14px; color:#e9e2d6; white-space:nowrap}
   .btn-cart{display:flex; align-items:center; gap:7px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:999px; padding:9px 17px; font-weight:600; font-size:13px; cursor:pointer; white-space:nowrap}
   .btn-cart .n{background:#fff; color:var(--accent); border-radius:999px; min-width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; padding:0 5px}
   .abas{display:none}
-  main{max-width:1760px; margin:0 auto; padding:8px 24px 70px}
-  .sec{margin-top:40px; scroll-margin-top:110px}
+  main{max-width:1760px; margin:0 auto; padding:18px 24px 70px}
+  .sec{margin-top:30px; scroll-margin-top:96px}
   .sec h2{font-size:30px; margin:0; text-align:center; font-weight:600; color:var(--ink); display:flex; align-items:center; justify-content:center; gap:20px}
   .sec h2::before,.sec h2::after{content:""; height:1px; width:60px; background:var(--line)}
   .sec .sub{text-align:center; color:var(--muted); font-size:12px; letter-spacing:.18em; text-transform:uppercase; margin-top:6px}
@@ -65,7 +60,7 @@
   .preco b{color:var(--accent); font-size:15px; font-weight:700; margin-left:2px}
   .vazio{text-align:center; color:var(--muted); padding:60px 16px}
   @media(max-width:900px){ .bf-right{position:static; transform:none; width:100%; justify-content:center; order:2} .busca{order:1; max-width:none} }
-  @media(max-width:640px){ header.topbar{height:62px} .topbar-in{padding:0 18px} .logo{font-size:21px; letter-spacing:.16em} .banner{min-height:340px} .banner .b-in{padding:0 20px} .banner .b-tit{font-size:30px} main{padding:4px 16px 60px} .sec h2{font-size:24px; gap:12px} .sec h2::before,.sec h2::after{width:34px} }
+  @media(max-width:640px){ .buscafaixa{padding:12px 16px} .banner{min-height:340px} .banner .b-in{padding:0 20px} .banner .b-tit{font-size:30px} main{padding:14px 16px 60px} .sec{margin-top:24px} .sec h2{font-size:24px; gap:12px} .sec h2::before,.sec h2::after{width:34px} }
   /* ---- popup "continuar / escolher outro" ao adicionar no carrinho ---- */
   .popconf{position:fixed; inset:0; z-index:80; background:rgba(44,39,33,.55); display:flex; align-items:center; justify-content:center; padding:20px}
   .popconf-box{background:var(--card); border-radius:16px; max-width:360px; width:100%; padding:24px 22px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.3)}
@@ -163,12 +158,6 @@
 </style>
 </head>
 <body>
-<header class="topbar">
-  <div class="topbar-in">
-    <div class="logo">BIG TRICOT<small>HOME DECOR</small></div>
-  </div>
-</header>
-
 <section class="banner" id="banner"></section>
 
 <div class="buscafaixa">
@@ -543,7 +532,7 @@
   function cliSalvo(){ try{ return JSON.parse(localStorage.getItem("bt_cli")||"null"); }catch(e){ return null; } }
   function mostrarSaudacao(nome){
     var el=document.getElementById("saudacao"); if(!el) return;
-    if(nome){ el.style.display="flex"; el.innerHTML='Olá, <b style="color:#2c2721">'+esc(nome)+'</b> · <a href="#" id="sairLoja" style="color:#ad5033;text-decoration:none">trocar</a>';
+    if(nome){ el.style.display="flex"; el.innerHTML='Olá, <b style="color:#fff">'+esc(nome)+'</b> · <a href="#" id="sairLoja" style="color:#e7a187;text-decoration:none">trocar</a>';
       var s=document.getElementById("sairLoja"); if(s) s.onclick=function(ev){ ev.preventDefault(); sairLoja(); };
     } else { el.style.display="none"; el.innerHTML=""; }
   }
