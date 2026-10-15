@@ -1083,7 +1083,12 @@ body.dark .tn-soon { background: #ffffff12; color: #8794ad; }
   .topnav-drawer-ttl { font-weight: 800; font-size: 16px; color: var(--ink); }
   .topnav-drawer-x { border: none; background: #f1f5f9; width: 36px; height: 36px; border-radius: 10px; font-size: 15px; cursor: pointer; color: var(--ink); }
   .topnav-grp { position: static; }
-  .topnav-btn { color: var(--ink); justify-content: flex-start; width: 100%; padding: 12px 12px; font-size: 15px; }
+  .topnav-btn { color: var(--ink); justify-content: flex-start; width: 100%; padding: 12px 12px; font-size: 15px; gap: 11px; }
+  /* GAVETA: mostra sempre ÍCONE + NOME + seta (vence a regra antiga que escondia o nome) */
+  .topnav-groups .topnav-btn .tn-ic { flex: 0 0 auto; display: inline-flex; }
+  .topnav-groups .topnav-btn .tn-lbl { display: inline !important; flex: 1 1 auto; text-align: left; font-weight: 700; }
+  .topnav-groups .topnav-btn .tn-car { display: inline !important; margin-left: auto; opacity: .7; }
+  .topnav-grp.open > .topnav-btn .tn-car { transform: rotate(180deg); }
   .topnav-btn:hover, .topnav-btn.on, .topnav-grp.open > .topnav-btn { background: #eef2ff; color: #4338ca; }
   .tn-car { margin-left: auto; }
   .topnav-dd { position: static; box-shadow: none; border: none; padding: 2px 0 6px 30px; min-width: 0; }
