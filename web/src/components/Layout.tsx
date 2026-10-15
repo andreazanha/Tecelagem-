@@ -370,8 +370,13 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
 
   return (
     <nav className={"topnav" + (mobileOpen ? " open" : "")}>
-      <button className="topnav-burger" onClick={() => setMobileOpen((v) => !v)} title="Menu" aria-label="Abrir menu">☰</button>
-      <div className="topnav-groups">
+      <button className="topnav-burger" onClick={() => setMobileOpen(true)} title="Menu" aria-label="Abrir menu">☰</button>
+      {mobileOpen && <div className="topnav-backdrop" onClick={() => setMobileOpen(false)} />}
+      <div className="topnav-groups" onClick={(e) => { const t = e.target as HTMLElement; if (t.closest(".topnav-dd-i") && !t.closest(".disabled")) setMobileOpen(false); }}>
+        <div className="topnav-drawer-head">
+          <span className="topnav-drawer-ttl">Menu</span>
+          <button className="topnav-drawer-x" onClick={() => setMobileOpen(false)} aria-label="Fechar menu">✕</button>
+        </div>
         {grupos.map((g) => (
           <div className={"topnav-grp" + (aberto === g.id ? " open" : "")} key={g.id}>
             <button
@@ -469,6 +474,7 @@ export function Layout() {
   // Menu SEMPRE no topo em todas as telas (barra lateral do CRM desativada a pedido).
   const ehCRM = false;
   const [sideOpen, setSideOpen] = useState(false); // barra lateral: aberta como gaveta no celular
+  const [moreOpen, setMoreOpen] = useState(false);  // no celular: ações secundárias num menu "⋯"
   const [ssMin, setSsMin] = useState(() => Number(localStorage.getItem("ssMin") || "0"));
   const [ssOpen, setSsOpen] = useState(false);
   function mudarSs(v: number) {
@@ -500,7 +506,8 @@ export function Layout() {
           <img className="brand-logo" src="/logo-bigtricot.png" alt="Big Tricot Home Decor" />
         </Link>
         {!ehCRM && <TopNav u={u} />}
-        <div className="topbar-right">
+        <button className="topbar-more" onClick={() => setMoreOpen((v) => !v)} title="Mais ações" aria-label="Mais ações">⋯</button>
+        <div className={"topbar-right" + (moreOpen ? " open" : "")}>
           <UndoRedo />
           <DemoMode />
           {ehApp && (
@@ -545,6 +552,7 @@ export function Layout() {
           <button className="ur-btn" onClick={sair} title="Sair">Sair</button>
         </div>
       </header>
+      {moreOpen && <div className="topbar-more-bg" onClick={() => setMoreOpen(false)} />}
 
       {ehCRM && <SideNav u={u} onNav={() => setSideOpen(false)} />}
       {ehCRM && <div className="side-backdrop" onClick={() => setSideOpen(false)} />}
