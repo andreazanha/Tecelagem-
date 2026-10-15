@@ -348,6 +348,22 @@ integracao.get("/diag", async (c) => {
     ).all<{ ref: string; nome: string | null; estoque_geral: number | null; inativo: number }>().catch(() => ({ results: [] as { ref: string; nome: string | null; estoque_geral: number | null; inativo: number }[] }));
     return c.json({ total_kits: Object.keys(kits).length, kits, produtos_kit: pk });
   }
+  // ?pedido=fichas → nomes das FICHAS do catálogo antigo (foto/vídeo/textos) que tenham
+  // "BALLS" no nome, pra eu ver de onde o kit pode herdar vídeo/textos. Sem login.
+  if (c.req.query("pedido") === "fichas") {
+    type FProd = { nome?: string; foto?: string; video?: string; blocos?: Record<string, unknown> };
+    let base: Record<string, unknown> = {};
+    try { base = (await lerDocumento(c.env, "catalogo/main")) || {}; } catch { base = {}; }
+    const el = (base.edicao_limitada && typeof base.edicao_limitada === "object") ? (base.edicao_limitada as Record<string, unknown>) : {};
+    const todos = [
+      ...(Array.isArray(base.produtos) ? (base.produtos as FProd[]) : []),
+      ...(Array.isArray(el.produtos) ? (el.produtos as FProd[]) : []),
+    ];
+    const lista = todos
+      .filter((p) => /BALL|KIT/i.test(String(p?.nome || "")))
+      .map((p) => ({ nome: p.nome || "", tem_foto: !!p.foto, tem_video: !!p.video, blocos: p.blocos && typeof p.blocos === "object" ? Object.keys(p.blocos) : [] }));
+    return c.json({ total_fichas: todos.length, com_ball_ou_kit: lista });
+  }
   // Aceita sessão (UI) OU o token de integração (pra eu, dev, inspecionar sem login).
   const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
   const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
@@ -735,15 +751,20 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
   const aber = (base.aberturas && typeof base.aberturas === "object") ? (base.aberturas as Record<string, { foto?: string }>) : {};
   const placeholder = aber.padrao?.foto || ((base.capa as { foto?: string } | undefined)?.foto) || "";
   for (const p of prods) {
-    // KIT: casa foto/vídeo/textos pela FAMÍLIA ("Kit Balls") — a ficha do catálogo
-    // antigo está nesse nome curto, não no nome longo do Syntech ("KIT BALLS QUEEN + 55X35").
+    // KIT: casa foto/vídeo/textos tentando vários nomes — a ficha do catálogo antigo
+    // pode estar na FAMÍLIA ("Kit Balls"), no MODELO sem "KIT" ("Balls", a mesma linha
+    // das peças) ou no nome longo do Syntech ("KIT BALLS QUEEN + 55X35").
     const kitTit = (p as { _kitTitulo?: unknown })._kitTitulo;
-    const famKey = (typeof kitTit === "string" && kitTit.trim()) ? normNome(kitTit) : "";
-    const m = (famKey && fotoMap.get(famKey)) || fotoMap.get(normNome(p.nome || ""));
-    p.foto = m?.foto || p.foto || placeholder;
-    p.video = m?.video || "";
-    p.fotoDescricao = m?.fotoDescricao || "";
-    if (m?.blocos && Object.keys(m.blocos).length) p.blocos = m.blocos;
+    const fam = (typeof kitTit === "string" && kitTit.trim()) ? kitTit.trim() : "";
+    const modelo = fam ? fam.replace(/^\s*KITS?\s+/i, "").trim() : "";   // "Kit Balls" → "Balls"
+    const mMain = (fam && fotoMap.get(normNome(fam))) || fotoMap.get(normNome(p.nome || ""));
+    const mAlt = modelo ? fotoMap.get(normNome(modelo)) : undefined;      // herda vídeo/textos do modelo "Balls"
+    p.foto = mMain?.foto || p.foto || placeholder;
+    p.video = mMain?.video || mAlt?.video || "";
+    p.fotoDescricao = mMain?.fotoDescricao || mAlt?.fotoDescricao || "";
+    const bl = (mMain?.blocos && Object.keys(mMain.blocos).length) ? mMain.blocos
+      : (mAlt?.blocos && Object.keys(mAlt.blocos).length) ? mAlt.blocos : null;
+    if (bl) p.blocos = bl;
   }
   // KIT: só AGORA (depois de casar a foto/vídeo/textos) renomeia o anúncio pra só a
   // família ("Kit Balls"), deixando o título limpo.
