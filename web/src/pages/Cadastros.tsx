@@ -2071,10 +2071,8 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
                     {min > 0 && <div className="muted" style={{ fontSize: 10.5 }}>mín {nBR(min)}{baixo ? " · repor" : ""}</div>}
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    <div style={{ display: "inline-flex", gap: 4, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                      <button className="btn btn-ok" style={{ padding: "4px 9px", fontSize: 12 }} title="Dar entrada no estoque" onClick={() => movAbrir(m, "entrada")}>⬆ Entrada</button>
-                      <button className="btn btn-danger" style={{ padding: "4px 9px", fontSize: 12 }} title="Dar saída do estoque" onClick={() => movAbrir(m, "baixa")}>⬇ Saída</button>
-                      <button className="btn btn-soft" style={{ padding: "4px 9px", fontSize: 12 }} title="Ajustar o saldo" onClick={() => movAbrir(m, "ajuste")}>Ajustar</button>
+                    <div style={{ display: "inline-flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
+                      <button className="btn btn-primary" style={{ padding: "5px 12px", fontSize: 12 }} title="Dar entrada, saída ou ajustar o estoque" onClick={() => movAbrir(m, "entrada")}>📦 Estoque</button>
                       <button className="icon-btn" title="Extrato (histórico)" onClick={() => setExtrato(m)}>🕑</button>
                       <button className="icon-btn" title="Editar" onClick={() => editar(m)}>✎</button>
                       <button className="icon-btn" title="Duplicar" onClick={() => duplicar(m)}>⧉</button>
