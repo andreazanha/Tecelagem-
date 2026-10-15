@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { api, type RelEstoqueMov } from "../api";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
-const dataHora = (em: string) => (em || "").replace("T", " ").slice(0, 16);
+// criado_em vem em UTC (datetime('now') do SQLite) → mostra no horário de Brasília.
+const dataHora = (em: string) => {
+  const s = (em || "").trim(); if (!s) return "";
+  const iso = (s.includes("T") ? s : s.replace(" ", "T")) + (/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? "" : "Z");
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return s.replace("T", " ").slice(0, 16);
+  return d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+};
 const qtdFmt = (n: number) => { const v = Number(n) || 0; return Number.isInteger(v) ? String(v) : v.toFixed(2).replace(".", ","); };
 
 export function RelatorioEstoqueMov() {

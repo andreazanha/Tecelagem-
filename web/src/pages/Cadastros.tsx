@@ -2240,6 +2240,15 @@ function MovEstoqueModal({ material, inicial, onFechar, onSalvo }: { material: M
 
 // Extrato de movimentos de um material (livro-razão): entradas, baixas e as
 // saídas/estornos causados por pedidos (com o nº do pedido).
+// criado_em vem em UTC (datetime('now') do SQLite) → mostra no horário de Brasília.
+function dataHoraBR(em: string | null | undefined): string {
+  const s = (em || "").trim(); if (!s) return "";
+  const iso = (s.includes("T") ? s : s.replace(" ", "T")) + (/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? "" : "Z");
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return s.replace("T", " ").slice(0, 16);
+  return d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
 function MovimentosMaterialModal({ material, onFechar }: { material: Material; onFechar: () => void }) {
   const [movs, setMovs] = useState<{ tipo: string; quantidade: number; motivo: string | null; pedido_id: string | null; fonte: string | null; criado_em: string }[] | null>(null);
   useEffect(() => { api.movimentosMaterial(material.id).then(setMovs).catch(() => setMovs([])); }, [material.id]);
@@ -2257,7 +2266,7 @@ function MovimentosMaterialModal({ material, onFechar }: { material: Material; o
                   const origem = mv.pedido_id ? (mv.motivo === "estorno pedido" ? `↩ estorno pedido` : `pedido`) + (mv.fonte === "caixas" ? " · caixas" : "") : (mv.motivo || (mv.fonte === "caixas" ? "caixas" : "—"));
                   return (
                     <tr key={i}>
-                      <td className="muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>{(mv.criado_em || "").replace("T", " ").slice(0, 16)}</td>
+                      <td className="muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>{dataHoraBR(mv.criado_em)}</td>
                       <td>{mv.tipo === "entrada" ? "📥 Entrada" : mv.tipo === "baixa" ? "📤 Baixa" : "⚖️ Ajuste"}</td>
                       <td className="num" style={{ color: pos ? "#16a34a" : "#dc2626", fontWeight: 700 }}>{pos ? "+" : ""}{nBR(mv.quantidade)}</td>
                       <td className="muted" style={{ fontSize: 12.5 }}>{origem}</td>
