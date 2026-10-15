@@ -794,7 +794,10 @@ usuarios.post("/login", async (c) => {
   if (row.bloqueado) return c.json({ ok: false, bloqueado: true, erro: "Acesso bloqueado. Fale com o administrador." }, 403);
   // PRIMEIRO ACESSO: usuário criado sem senha definida → a própria pessoa cria a senha agora.
   if (!row.senha_definida) return c.json({ ok: false, primeiro_acesso: true, nome: row.nome, usuario: row.usuario });
-  if (row.senha !== (b.senha || "")) return c.json({ ok: false }, 401);
+  // Compara sem espaços nas pontas: a senha é SEMPRE salva com .trim(), mas o
+  // teclado do celular costuma acrescentar um espaço no fim — então aqui também
+  // ignoramos espaços nas pontas pra não barrar a senha certa.
+  if (row.senha !== (b.senha || "").trim()) return c.json({ ok: false }, 401);
   return respostaLogin(c, row);
 });
 

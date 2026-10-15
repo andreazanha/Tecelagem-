@@ -92,9 +92,11 @@ export function Login() {
         <h1>Entrar</h1>
         <p className="muted">Acesse com seu usuário e senha.</p>
         <label>Usuário</label>
-        <input autoFocus value={usuario} onChange={(e) => setUsuario(e.target.value)} placeholder="ex.: maria" />
+        <input autoFocus value={usuario} onChange={(e) => setUsuario(e.target.value)} placeholder="ex.: maria"
+          autoCapitalize="none" autoCorrect="off" autoComplete="username" spellCheck={false} />
         <label>Senha</label>
-        <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="••••" />
+        <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="••••"
+          autoCapitalize="none" autoCorrect="off" autoComplete="current-password" spellCheck={false} />
         {erro && <div className="login-erro">{erro}</div>}
         <button className="btn btn-primary" disabled={carregando}>{carregando ? "Entrando…" : "Entrar"}</button>
         <p className="muted" style={{ fontSize: 12, marginTop: 12, textAlign: "center" }}>Primeiro acesso? Digite seu usuário e clique em Entrar — o sistema pede para você criar a senha.</p>
