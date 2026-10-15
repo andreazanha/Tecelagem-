@@ -143,7 +143,7 @@ materiais.delete("/categorias/:id", async (c) => {
 // ── Sugestão de COMPRAS: materiais com saldo abaixo do mínimo, por fornecedor ──
 materiais.get("/compras", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT m.id, m.categoria, m.nome, m.tamanho, m.cor, m.codigo, m.codigo_interno, m.unidade,
+    `SELECT m.id, m.categoria, m.nome, m.tamanho, m.cor, m.codigo, m.codigo_interno, m.unidade, m.extra,
             m.saldo, m.minimo, m.preco, m.fornecedor_id,
             f.nome AS fornecedor_nome,
             (m.minimo - m.saldo) AS faltam

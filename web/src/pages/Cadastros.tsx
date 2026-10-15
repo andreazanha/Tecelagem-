@@ -2607,6 +2607,18 @@ function EtiquetasColar() {
 }
 
 // Lista de COMPRAS: materiais abaixo do mínimo, agrupados por fornecedor.
+// Medida/especificação do material para a descrição da ordem: usa o Tamanho; se não
+// tiver (ex.: embalagem, que guarda a medida nos campos extras), pega do extra.
+function medidaMaterial(m: CompraSugestao): string | null {
+  if (m.tamanho && m.tamanho.trim()) return m.tamanho.trim();
+  try {
+    const ex = m.extra ? (JSON.parse(m.extra) as Record<string, unknown>) : {};
+    const v = ex.medida_interna || ex.medida || ex.medida_fabricante || ex.almofada || ex.comprimento || "";
+    const s = String(v).trim();
+    return s || null;
+  } catch { return null; }
+}
+
 export function ComprasMateriais() {
   const [itens, setItens] = useState<CompraSugestao[]>([]);
   const [carregou, setCarregou] = useState(false);
@@ -2666,7 +2678,7 @@ export function ComprasMateriais() {
         empresa: { nome: emp.nome, cnpj: emp.cnpj, endereco: emp.endereco, telefone: emp.telefone, email: emp.email },
         fornecedorDados: { nome: g.forn, contato: f?.contato || "", telefone: f?.telefone || "", email: f?.email || "", cnpj: f?.cnpj || "" },
         forma_pagamento: f?.forma_pagamento || "",
-        itens: escolhidos.map((m) => ({ nome: m.nome, tamanho: m.tamanho, cor: m.cor, codigo: m.codigo || m.codigo_interno, unidade: m.unidade, saldo: m.saldo, minimo: m.minimo, material_id: m.id, qtd: m.faltam, preco: m.preco })),
+        itens: escolhidos.map((m) => ({ nome: m.nome, tamanho: medidaMaterial(m), cor: m.cor, codigo: m.codigo || m.codigo_interno, unidade: m.unidade, saldo: m.saldo, minimo: m.minimo, material_id: m.id, qtd: m.faltam, preco: m.preco })),
       });
       setEnviar(null);
       alert(r.ok

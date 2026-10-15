@@ -1742,6 +1742,9 @@ body.dark .cad-fio-card { background: #18202f; border-color: #26324a; }
 .topnav-dd-i.has-sub .tn-sub-car { margin-left: auto; font-size: 11px; opacity: .55; }
 .topnav-sub { display: none; position: absolute; left: calc(100% + 4px); top: -7px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 50px #0f172a2e; padding: 7px; min-width: 210px; z-index: 61; }
 .topnav-dd-i.has-sub:hover > .topnav-sub, .topnav-sub:hover { display: block; }
+/* Ponte invisível sobre o vão entre o item e o submenu: evita que o submenu feche
+   quando o mouse passa no espacinho ao ir pro submenu. */
+.topnav-dd-i.has-sub::after { content: ""; position: absolute; top: 0; left: 100%; width: 12px; height: 100%; }
 body.dark .topnav-sub { background: #0f1629; border-color: #ffffff14; }
 /* No mobile (menu empilhado) o submenu vira lista aberta abaixo. */
 @media (max-width: 1280px) {
