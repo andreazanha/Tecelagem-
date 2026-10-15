@@ -2,6 +2,7 @@
 // Fluxo: PCP cria (aguardando aprovação) → gestor abre, ajusta se quiser e
 // APROVA → o sistema gera o PDF e envia no WhatsApp. Também dá pra RECUSAR.
 import { useEffect, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { api, type OrdemCompra, type OrdemCompraDetalhe, type OrdemCompraItemRow, type OrdemCompraStatus } from "../api";
 import { getUser, podeFuncao } from "../auth";
 
@@ -67,7 +68,8 @@ export function OrdensCompra() {
         <span className="muted" style={{ fontSize: 12 }}>
           {podeAprovar ? "Revise, ajuste e aprove para enviar ao fornecedor." : "Suas ordens criadas (o gestor aprova e envia)."}
         </span>
-        <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={recarregar}>↻ Atualizar</button>
+        <Link to="/compras" className="btn btn-soft" style={{ marginLeft: "auto" }} title="Criar ordens a partir das compras sugeridas (estoque baixo)">🛒 Sugestões de compra</Link>
+        <button className="btn btn-soft" onClick={recarregar}>↻ Atualizar</button>
       </div>
 
       <div className="row-gap" style={{ gap: 6, marginBottom: 12, flexWrap: "wrap" }}>

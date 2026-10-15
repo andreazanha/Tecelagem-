@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { api, type Modelo, type Cor, type TipoFio, type Tamanho, type Fornecedor, type FormaPagamento, type Material, type MaterialCategoriaDef, type CompraSugestao, type Colecao, type ColecaoProduto, type BulkResult } from "../api";
 import { getUser, PAGINAS, type Usuario } from "../auth";
 import { CATEGORIAS_FUNCAO, TODAS_FUNCOES, TELAS_GERAIS, SETOR_PAGINAS } from "../permissoes";
@@ -2671,14 +2671,23 @@ export function ComprasMateriais() {
   }
 
   if (carregou && itens.length === 0)
-    return <div className="card pad empty">Nenhum material abaixo do estoque mínimo. Tudo em dia. ✅</div>;
+    return (
+      <>
+        <div className="row-gap" style={{ alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+          <h2 style={{ margin: 0 }}>Compras sugeridas</h2>
+          <Link to="/ordens-compra" className="btn btn-soft" style={{ marginLeft: "auto" }}>📝 Ver ordens de compra</Link>
+        </div>
+        <div className="card pad empty">Nenhum material abaixo do estoque mínimo. Tudo em dia. ✅</div>
+      </>
+    );
 
   return (
     <>
       <div className="row-gap" style={{ alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0 }}>Compras sugeridas</h2>
         <span className="muted" style={{ fontSize: 12 }}>Edite as quantidades e marque o que comprar.</span>
-        <button className="btn btn-soft" style={{ marginLeft: "auto" }} title="Enviar teste no WhatsApp só com os itens marcados" onClick={() => setTestarPop(true)}>📲 Testar WhatsApp</button>
+        <Link to="/ordens-compra" className="btn btn-soft" style={{ marginLeft: "auto" }} title="Abrir a lista de ordens de compra">📝 Ver ordens de compra</Link>
+        <button className="btn btn-soft" title="Enviar teste no WhatsApp só com os itens marcados" onClick={() => setTestarPop(true)}>📲 Testar WhatsApp</button>
         <button className="btn btn-soft" title="Editar os dados que aparecem no cabeçalho da ordem" onClick={() => setEmpresaModal(true)}>✎ Nossos dados</button>
         <span className="muted">Estimativa total: <strong>{rBR(totalGeral)}</strong></span>
       </div>
