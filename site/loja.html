@@ -9,49 +9,63 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#f3ede3; --card:#fffdf9; --ink:#2c2721; --muted:#8a8073; --line:#e4dccf;
-    --accent:#9c4a2f; --accent-soft:#b5623f; --ok:#5d7a4a; --chip:#efe7d8;
-    --shadow:0 1px 2px rgba(60,48,32,.05),0 8px 24px rgba(60,48,32,.06);
-    --radius:16px;
+    --bg:#f7f4ee; --card:#ffffff; --ink:#24201d; --muted:#8a8073; --line:#e8e2d7;
+    --accent:#ad5033; --accent-soft:#bd6245; --ok:#5d7a4a; --chip:#efe7d8;
+    --shadow:0 1px 2px rgba(60,48,32,.05),0 10px 26px rgba(60,48,32,.06);
+    --radius:14px;
   }
   *{box-sizing:border-box}
   html,body{margin:0}
   body{background:var(--bg); color:var(--ink); font-family:'Montserrat',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; line-height:1.45}
   .serif{font-family:"Cormorant Garamond",Georgia,serif}
-  header.hero{background:linear-gradient(180deg,#efe6d6,#e7dcc9); text-align:center; padding:60px 16px 46px; border-bottom:1px solid var(--line)}
-  .brand{font-family:"Cormorant Garamond",serif; font-weight:700; letter-spacing:.14em; font-size:44px}
-  .brand small{display:block; letter-spacing:.34em; font-size:12px; font-weight:600; color:var(--muted); margin-top:7px; font-family:'Montserrat',sans-serif}
-  .tagline{color:var(--muted); font-size:15px; margin-top:14px}
-  .barra{position:sticky; top:0; z-index:30; background:rgba(243,237,227,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; padding:10px 16px; flex-wrap:wrap}
-  .busca{flex:1 1 180px; min-width:140px; display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:8px 14px}
-  .busca input{border:0; outline:0; background:transparent; width:100%; font-size:14px; color:var(--ink)}
-  .regiao{display:flex; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:3px}
-  .regiao button{border:0; background:transparent; color:var(--muted); font-weight:600; font-size:12px; padding:6px 12px; border-radius:999px; cursor:pointer}
-  .regiao button.on{background:var(--accent); color:#fff}
-  .btn-cart{display:flex; align-items:center; gap:7px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:999px; padding:8px 15px; font-weight:600; font-size:13px; cursor:pointer}
+  /* cabeçalho escuro, fixo, só a logo à esquerda */
+  header.topbar{position:sticky; top:0; z-index:40; background:#181615; height:80px; display:flex; align-items:center}
+  .topbar-in{max-width:1760px; margin:0 auto; width:100%; padding:0 32px}
+  .logo{font-family:"Cormorant Garamond",serif; font-weight:700; letter-spacing:.2em; font-size:26px; color:#fff; line-height:1}
+  .logo small{display:block; letter-spacing:.34em; font-size:10px; font-weight:600; color:#b7b0a6; margin-top:6px; font-family:'Montserrat',sans-serif}
+  /* banner full-width (estrutura pronta pra banners cadastrados) */
+  .banner{position:relative; width:100%; min-height:300px; overflow:hidden; background:#181615; display:flex; align-items:center}
+  .banner .b-bg{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0}
+  .banner .b-shade{position:absolute; inset:0; z-index:1; background:linear-gradient(90deg,rgba(24,22,21,.80) 0%,rgba(24,22,21,.38) 46%,rgba(24,22,21,.08) 100%)}
+  .banner .b-in{position:relative; z-index:2; max-width:1760px; margin:0 auto; width:100%; padding:0 40px; color:#fff}
+  .banner .b-kick{font-size:12px; letter-spacing:.3em; text-transform:uppercase; color:#e7decf; font-weight:500}
+  .banner .b-tit{font-size:48px; font-weight:600; line-height:1.04; letter-spacing:.015em; margin:12px 0 0; max-width:640px}
+  .banner .b-sub{font-size:12px; letter-spacing:.24em; text-transform:uppercase; color:#d8cfc0; margin-top:14px}
+  .banner .b-btn{display:inline-flex; align-items:center; gap:8px; margin-top:22px; background:var(--accent); color:#fff; border:0; border-radius:4px; padding:13px 26px; font-size:12px; letter-spacing:.16em; text-transform:uppercase; font-weight:600; cursor:pointer; text-decoration:none}
+  /* faixa da busca: busca centralizada na página + cliente/carrinho à direita */
+  .buscafaixa{background:var(--bg); padding:26px 24px 4px}
+  .bf-in{position:relative; max-width:1760px; margin:0 auto; display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap; min-height:46px}
+  .busca{width:100%; max-width:530px; display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #e8e2d7; border-radius:999px; padding:11px 20px; box-shadow:0 1px 2px rgba(60,48,32,.04)}
+  .busca input{border:0; outline:0; background:transparent; width:100%; font-size:14.5px; color:var(--ink)}
+  .bf-right{position:absolute; right:0; top:50%; transform:translateY(-50%); display:flex; align-items:center; gap:14px}
+  .saud{display:flex; align-items:center; gap:8px; font-size:14px; color:#5f584e; white-space:nowrap}
+  .btn-cart{display:flex; align-items:center; gap:7px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:999px; padding:9px 17px; font-weight:600; font-size:13px; cursor:pointer; white-space:nowrap}
   .btn-cart .n{background:#fff; color:var(--accent); border-radius:999px; min-width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; padding:0 5px}
-  .abas{display:flex; flex-wrap:wrap; justify-content:center; gap:8px; overflow-x:auto; padding:14px 16px 6px; scrollbar-width:none}
-  .abas::-webkit-scrollbar{display:none}
-  .abas a{white-space:nowrap; text-decoration:none; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:999px; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer}
-  .abas a.promo{background:var(--accent); color:#fff; border-color:var(--accent)}
+  .abas{display:none}
   main{max-width:1760px; margin:0 auto; padding:8px 24px 70px}
-  .sec{margin-top:30px; scroll-margin-top:120px}
-  .sec h2{font-size:26px; margin:0; text-align:center; font-weight:700}
-  .sec .sub{text-align:center; color:var(--muted); font-size:12px; letter-spacing:.14em; text-transform:uppercase; margin-top:4px}
-  .grade{display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:22px; margin-top:20px}
-  .prod{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); cursor:pointer; transition:transform .12s ease, box-shadow .12s ease}
-  .prod:hover{transform:translateY(-2px); box-shadow:0 2px 4px rgba(60,48,32,.06),0 14px 30px rgba(60,48,32,.1)}
+  .sec{margin-top:40px; scroll-margin-top:110px}
+  .sec h2{font-size:30px; margin:0; text-align:center; font-weight:600; color:var(--ink); display:flex; align-items:center; justify-content:center; gap:20px}
+  .sec h2::before,.sec h2::after{content:""; height:1px; width:60px; background:var(--line)}
+  .sec .sub{text-align:center; color:var(--muted); font-size:12px; letter-spacing:.18em; text-transform:uppercase; margin-top:6px}
+  .grade{display:grid; grid-template-columns:repeat(2,1fr); gap:22px; margin-top:24px}
+  @media(min-width:700px){ .grade{grid-template-columns:repeat(3,1fr)} }
+  @media(min-width:1040px){ .grade{grid-template-columns:repeat(4,1fr)} }
+  @media(max-width:430px){ .grade{grid-template-columns:1fr} }
+  .prod{background:#fff; border:0; border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); cursor:pointer; transition:transform .14s ease, box-shadow .14s ease}
+  .prod:hover{transform:translateY(-3px); box-shadow:0 2px 6px rgba(60,48,32,.08),0 18px 40px rgba(60,48,32,.12)}
   .foto{position:relative; aspect-ratio:1/1; background:#efe7d8; overflow:hidden}
   .foto img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; z-index:1}
-  .foto .ph{position:absolute; inset:0; z-index:0; display:flex; align-items:center; justify-content:center; font-family:"Cormorant Garamond",serif; font-size:30px; color:#c3b49a; letter-spacing:.06em}
-  .badge{position:absolute; left:10px; top:10px; font-size:11px; font-weight:600; padding:4px 9px; border-radius:999px; background:rgba(255,253,249,.92); color:var(--ok); display:flex; align-items:center; gap:5px; z-index:2}
-  .badge.off{color:var(--muted)}
+  .foto .ph{position:absolute; inset:0; z-index:0; display:flex; align-items:center; justify-content:center; font-family:"Cormorant Garamond",serif; font-size:34px; color:#c3b49a; letter-spacing:.06em}
+  .badge{position:absolute; left:12px; top:12px; font-size:11px; font-weight:600; padding:5px 11px; border-radius:999px; background:rgba(255,255,255,.95); color:#4f7a44; display:flex; align-items:center; gap:6px; z-index:2; box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .badge.off{color:#9c7b4a}
   .badge .dot{width:7px; height:7px; border-radius:50%; background:currentColor}
-  .prod .info{padding:12px 14px 15px}
-  .prod .nome{font-weight:500; font-size:13px; color:#3a352f; line-height:1.25}
-  .preco{margin-top:6px; font-size:11px; color:var(--muted)}
-  .preco b{color:var(--accent); font-size:13.5px; font-weight:600}
+  .prod .info{padding:14px 16px 16px}
+  .prod .nome{font-weight:600; font-size:14px; color:var(--ink); line-height:1.3}
+  .preco{margin-top:7px; font-size:11.5px; color:var(--muted)}
+  .preco b{color:var(--accent); font-size:15px; font-weight:700; margin-left:2px}
   .vazio{text-align:center; color:var(--muted); padding:60px 16px}
+  @media(max-width:900px){ .bf-right{position:static; transform:none; width:100%; justify-content:center; order:2} .busca{order:1; max-width:none} }
+  @media(max-width:640px){ header.topbar{height:62px} .topbar-in{padding:0 18px} .logo{font-size:21px; letter-spacing:.16em} .banner{min-height:210px} .banner .b-in{padding:0 20px} .banner .b-tit{font-size:30px} main{padding:4px 16px 60px} .sec h2{font-size:24px; gap:12px} .sec h2::before,.sec h2::after{width:34px} }
   /* ---- popup "continuar / escolher outro" ao adicionar no carrinho ---- */
   .popconf{position:fixed; inset:0; z-index:80; background:rgba(44,39,33,.55); display:flex; align-items:center; justify-content:center; padding:20px}
   .popconf-box{background:var(--card); border-radius:16px; max-width:360px; width:100%; padding:24px 22px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.3)}
@@ -146,15 +160,22 @@
 </style>
 </head>
 <body>
-<header class="hero">
-  <div class="brand">BIG TRICOT<small>HOME DECOR</small></div>
-  <div class="tagline">Catálogo de atacado</div>
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="logo">BIG TRICOT<small>HOME DECOR</small></div>
+  </div>
 </header>
 
-<div class="barra">
-  <label class="busca">🔎<input id="q" placeholder="Buscar produto…" autocomplete="off"></label>
-  <span id="saudacao" class="saud" style="display:none;align-items:center;gap:8px;font-size:14px;color:#5f584e;white-space:nowrap"></span>
-  <button class="btn-cart" id="abrirCart">🛒 Carrinho <span class="n" id="cartN">0</span></button>
+<section class="banner" id="banner"></section>
+
+<div class="buscafaixa">
+  <div class="bf-in">
+    <label class="busca">🔎<input id="q" placeholder="Buscar produto, cor ou referência…" autocomplete="off"></label>
+    <div class="bf-right">
+      <span id="saudacao" class="saud" style="display:none"></span>
+      <button class="btn-cart" id="abrirCart">🛒 Carrinho <span class="n" id="cartN">0</span></button>
+    </div>
+  </div>
 </div>
 <nav class="abas" id="abas"></nav>
 
@@ -174,13 +195,13 @@
   <div style="background:#fff;border-radius:18px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden">
     <div style="padding:26px 24px 8px;text-align:center">
       <div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:26px;font-weight:700;letter-spacing:.02em;color:#2c2721">BIG TRICOT</div>
-      <div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9c4a2f;margin-top:2px">Catálogo de atacado</div>
+      <div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#ad5033;margin-top:2px">Catálogo de atacado</div>
     </div>
     <div style="padding:14px 24px 24px">
       <label style="display:block;font-size:14px;color:#5f584e;margin-bottom:6px">Informe o CNPJ da sua loja para entrar</label>
       <input id="entCnpj" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" style="display:block;width:100%;box-sizing:border-box;padding:13px;border:1px solid #d6d0c4;border-radius:12px;font-size:16px">
       <div id="entMsg" style="font-size:13px;min-height:1px;margin:8px 0;line-height:1.35"></div>
-      <button id="entBtn" style="width:100%;padding:14px;border:0;border-radius:12px;background:#9c4a2f;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Entrar</button>
+      <button id="entBtn" style="width:100%;padding:14px;border:0;border-radius:12px;background:#ad5033;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Entrar</button>
     </div>
   </div>
 </div>
@@ -238,6 +259,30 @@
       html+='<section class="sec" id="sec-'+s.key+'"><h2 class="serif">'+esc(s.titulo)+'</h2>'+(s.sub?'<div class="sub">'+esc(s.sub)+'</div>':'')+'<div class="grade">'+ps.map(cardProd).join("")+'</div></section>';
     });
     abas.innerHTML=tabs; app.innerHTML=html||'<div class="vazio">Nenhum produto encontrado.</div>';
+  }
+
+  // ---------- BANNER (estrutura pronta pra banners cadastrados no sistema) ----------
+  // Lê D.banners (lista). Sem banner cadastrado, mostra um estado padrão elegante,
+  // sem foto fictícia. Quando o sistema cadastrar banners, aparecem aqui (1º por ora).
+  function renderBanner(){
+    var el=document.getElementById("banner"); if(!el) return;
+    var bs = Array.isArray(D.banners)? D.banners.filter(Boolean) : [];
+    if(!bs.length){
+      el.innerHTML='<div class="b-shade"></div><div class="b-in">'+
+        '<div class="b-kick">Big Tricot · Home Decor</div>'+
+        '<div class="b-tit serif">Tricô que transforma ambientes</div>'+
+        '<div class="b-sub">Qualidade · Design · Pronta entrega</div>'+
+      '</div>';
+      return;
+    }
+    var b=bs[0];
+    el.innerHTML=(b.img?'<img class="b-bg" src="'+esc(b.img)+'" alt="" onerror="this.remove()">':'')+
+      '<div class="b-shade"></div><div class="b-in">'+
+      (b.kicker?'<div class="b-kick">'+esc(b.kicker)+'</div>':'')+
+      (b.titulo?'<div class="b-tit serif">'+esc(b.titulo)+'</div>':'')+
+      (b.sub?'<div class="b-sub">'+esc(b.sub)+'</div>':'')+
+      (b.botao_texto?'<a class="b-btn" href="'+esc(b.botao_link||'#')+'"'+(b.botao_link?' target="_blank" rel="noopener"':'')+'>'+esc(b.botao_texto)+' ›</a>':'')+
+    '</div>';
   }
 
   // ---------- MODAL PRODUTO ----------
@@ -476,7 +521,7 @@
   function cliSalvo(){ try{ return JSON.parse(localStorage.getItem("bt_cli")||"null"); }catch(e){ return null; } }
   function mostrarSaudacao(nome){
     var el=document.getElementById("saudacao"); if(!el) return;
-    if(nome){ el.style.display="flex"; el.innerHTML='Olá, <b style="color:#2c2721">'+esc(nome)+'</b> · <a href="#" id="sairLoja" style="color:#9c4a2f;text-decoration:none">trocar</a>';
+    if(nome){ el.style.display="flex"; el.innerHTML='Olá, <b style="color:#2c2721">'+esc(nome)+'</b> · <a href="#" id="sairLoja" style="color:#ad5033;text-decoration:none">trocar</a>';
       var s=document.getElementById("sairLoja"); if(s) s.onclick=function(ev){ ev.preventDefault(); sairLoja(); };
     } else { el.style.display="none"; el.innerHTML=""; }
   }
@@ -512,6 +557,7 @@
   document.getElementById("entCnpj").addEventListener("keydown",function(e){ if(e.key==="Enter") entrarLoja(); });
 
   atualizarCartN();
+  renderBanner();
   render();
 
   // Inicia sessão: usa o que já está salvo pra mostrar rápido, e revalida no servidor.
