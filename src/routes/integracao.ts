@@ -408,8 +408,10 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   // Os dois vêm por tamanho do ERP (TAMANHO_PROD.PRECO_VENDA / PRECO_VENDA_LJ).
   const campoPreco = (await cfg("catalogo_preco")) === "varejo" ? "varejo" : "atacado";
 
+  // Produtos com código começando em "KT" são PEÇAS/COMPONENTES de kit — não entram
+  // no catálogo (o kit "pai" aparece inteiro, com a composição no próprio nome).
   const { results: prods } = await env.DB.prepare(
-    "SELECT ref, nome, classe, grupo, preco_varejo, preco_atacado, estoque_geral, cores, tamanhos FROM erp_produtos WHERE COALESCE(inativo,0)=0 ORDER BY nome"
+    "SELECT ref, nome, classe, grupo, preco_varejo, preco_atacado, estoque_geral, cores, tamanhos FROM erp_produtos WHERE COALESCE(inativo,0)=0 AND UPPER(COALESCE(ref,'')) NOT LIKE 'KT%' ORDER BY nome"
   ).all<{ ref: string; nome: string | null; classe: string | null; grupo: string | null; preco_varejo: number | null; preco_atacado: number | null; estoque_geral: number | null; cores: string | null; tamanhos: string | null }>();
 
   const idsCor = new Set<string>(), idsTam = new Set<string>();
@@ -439,7 +441,10 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   const TIPO_ORDEM: Record<string, number> = { P: 0, C: 1, A: 2, M: 3, K: 4 };
   const baseCod = (ref: string) => (ref || "").replace(/[A-Za-z]+$/, "") || ref || "";
   const tipoLetra = (ref: string) => { const m = (ref || "").match(/([A-Za-z])$/); return m ? m[1].toUpperCase() : ""; };
-  const nomeModelo = (nome: string) => (nome || "").replace(/^\s*(ALMOFADAS?|CAPAS?|PESEIRAS?|MANTAS?|KITS?|PESEIRA E MANTA)\s+/i, "").trim() || nome || "";
+  // Tira só a palavra do TIPO no começo (ALMOFADA/CAPA/…) pra exibir o modelo limpo.
+  // "KIT" é mantido de propósito: o nome do kit carrega a composição (ex.: "KIT ASPEN
+  // +2- 55X35 C/ ENCHIMENTO"), então o cliente vê o nome E o que compõe o kit.
+  const nomeModelo = (nome: string) => (nome || "").replace(/^\s*(ALMOFADAS?|CAPAS?|PESEIRAS?|MANTAS?|PESEIRA E MANTA)\s+/i, "").trim() || nome || "";
 
   // Mapeia o GRUPO do Syntech para a SEÇÃO do site. O site usa o campo "linha"
   // (polisoft/soft/natal/padrao) + a flag "pronta_entrega". Edição Limitada é
