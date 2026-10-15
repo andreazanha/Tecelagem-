@@ -359,7 +359,7 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
       // Usa window.open no clique pra garantir aba do navegador mesmo quando o sistema
       // está instalado como app (aí o target=_blank abriria como janela de app).
       return <a href={it.to} target="_blank" rel="noopener noreferrer" key={ctx + it.label} className="topnav-dd-i" title={it.label}
-        onClick={(e) => { e.preventDefault(); window.open(it.to!, "_blank", "noopener"); setAberto(null); }}>{inner}</a>;
+        onClick={(e) => { e.preventDefault(); window.open(it.to!, "_blank", "noopener,noreferrer"); setAberto(null); }}>{inner}</a>;
     }
     return desativado ? (
       <span className="topnav-dd-i disabled" key={ctx + it.label} title={it.label + (it.soon ? " — em breve" : "")}>{inner}</span>
