@@ -12,6 +12,12 @@ function dataHora(iso: string | null) {
   try { return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }); }
   catch { return iso; }
 }
+// data de entrega (ISO yyyy-mm-dd) → dd/mm/aaaa
+function dataEnt(s: string | null | undefined) {
+  const v = (s || "").trim(); if (!v) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : v;
+}
 
 const ST: Record<OrdemCompraStatus, { txt: string; bg: string; fg: string }> = {
   aguardando_aprovacao: { txt: "Aguardando aprovação", bg: "#fef3c7", fg: "#92400e" },
@@ -35,6 +41,7 @@ const FILTROS: { id: string; label: string }[] = [
 export function OrdensCompra() {
   const u = getUser();
   const podeAprovar = podeFuncao(u, "compras.aprovar");
+  const ehMaster = !!u?.admin;
   const [filtro, setFiltro] = useState("");
   const [lista, setLista] = useState<OrdemCompra[]>([]);
   const [carregou, setCarregou] = useState(false);
@@ -46,6 +53,12 @@ export function OrdensCompra() {
   }, [filtro]);
 
   useEffect(() => { recarregar(); }, [recarregar]);
+
+  async function excluir(o: OrdemCompra) {
+    if (!confirm(`Excluir a ordem ${o.numero}? Esta ação não pode ser desfeita.`)) return;
+    try { await api.excluirOrdemCompra(o.id); recarregar(); }
+    catch (e) { alert((e as Error).message); }
+  }
 
   return (
     <>
@@ -72,7 +85,7 @@ export function OrdensCompra() {
           <table className="table">
             <thead><tr>
               <th>Nº</th><th>Fornecedor</th><th className="num">Itens</th><th className="num">Total</th>
-              <th>Status</th><th>Criada</th><th>Por</th><th></th>
+              <th>Entrega</th><th>Status</th><th>Criada</th><th>Por</th><th></th>
             </tr></thead>
             <tbody>
               {lista.map((o) => (
@@ -81,10 +94,14 @@ export function OrdensCompra() {
                   <td>{o.fornecedor_nome || "—"}</td>
                   <td className="num">{o.n_itens ?? "—"}</td>
                   <td className="num">{rBR(o.total)}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{dataEnt(o.data_entrega)}</td>
                   <td><Selo s={o.status} /></td>
                   <td style={{ whiteSpace: "nowrap" }}>{dataHora(o.criado_em)}</td>
                   <td className="muted">{o.criado_por_nome || "—"}</td>
-                  <td><button className="btn btn-soft" style={{ fontSize: 12 }} onClick={(e) => { e.stopPropagation(); setAbertaId(o.id); }}>Abrir</button></td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <button className="btn btn-soft" style={{ fontSize: 12 }} onClick={(e) => { e.stopPropagation(); setAbertaId(o.id); }}>Abrir</button>
+                    {ehMaster && <button className="btn btn-soft" title="Excluir ordem" style={{ fontSize: 12, marginLeft: 4, color: "#b91c1c" }} onClick={(e) => { e.stopPropagation(); excluir(o); }}>🗑</button>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -108,6 +125,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
   const [formas, setFormas] = useState<string[]>([]);
   const [erro, setErro] = useState("");
   const [busy, setBusy] = useState(false);
+  const ehMaster = !!getUser()?.admin;
 
   useEffect(() => {
     let vivo = true;
@@ -137,6 +155,22 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
       setOrd(r.ordem); setItens(r.ordem.itens || []);
       return true;
     } catch (e) { alert((e as Error).message); return false; }
+  }
+
+  // Salva as alterações SEM reenviar o PDF (ex.: só ajustar a data de entrega).
+  async function salvarSo() {
+    setBusy(true);
+    try { if (await salvar()) { onMudou(); alert("💾 Alterações salvas (sem reenviar)."); } }
+    finally { setBusy(false); }
+  }
+
+  async function excluirAqui() {
+    if (!ord) return;
+    if (!confirm(`Excluir a ordem ${ord.numero}? Esta ação não pode ser desfeita.`)) return;
+    setBusy(true);
+    try { await api.excluirOrdemCompra(ord.id); onMudou(); onFechar(); }
+    catch (e) { alert((e as Error).message); }
+    finally { setBusy(false); }
   }
 
   async function aprovar() {
@@ -248,7 +282,8 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
             </div>
 
             <div className="row-gap" style={{ marginTop: 14, gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-              {editavel && !jaAprovada && <button className="btn btn-soft" disabled={busy} onClick={salvar}>💾 Salvar alterações</button>}
+              {ehMaster && <button className="btn btn-soft" disabled={busy} style={{ color: "#b91c1c", marginRight: "auto" }} onClick={excluirAqui}>🗑 Excluir</button>}
+              {editavel && <button className="btn btn-soft" disabled={busy} onClick={salvarSo}>💾 Salvar alterações</button>}
               {podeAprovar && ord.status === "aguardando_aprovacao" && (
                 <>
                   <button className="btn btn-soft" disabled={busy} style={{ color: "#b91c1c" }} onClick={recusar}>✖ Recusar</button>

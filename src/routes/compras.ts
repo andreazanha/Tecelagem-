@@ -263,4 +263,18 @@ compras.post("/ordens/:id/recusar", async (c) => {
   return c.json({ ok: true, status: "recusada" });
 });
 
+// ── Excluir ordem (somente MASTER / admin) ────────────────────────────────────
+compras.delete("/ordens/:id", async (c) => {
+  const g = await exigirFuncao(c, "compras.aprovar"); if ("erro" in g) return g.erro;
+  if (!g.u.admin) return c.json({ error: "somente_master" }, 403);
+  const id = c.req.param("id");
+  const o = await c.env.DB.prepare("SELECT id FROM ordens_compra WHERE id=?").bind(id).first();
+  if (!o) return c.json({ error: "nao_encontrada" }, 404);
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM ordem_compra_itens WHERE ordem_id=?").bind(id),
+    c.env.DB.prepare("DELETE FROM ordens_compra WHERE id=?").bind(id),
+  ]);
+  return c.json({ ok: true });
+});
+
 export default compras;

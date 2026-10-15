@@ -1159,6 +1159,8 @@ export const api = {
     jsonPost(`/api/compras/ordens/${encodeURIComponent(id)}/aprovar`, {}).then((r) => j<{ ok: boolean; status: string; numero?: string; motivo?: string }>(r)),
   recusarOrdemCompra: (id: string, motivo?: string) =>
     jsonPost(`/api/compras/ordens/${encodeURIComponent(id)}/recusar`, { motivo }).then((r) => j<{ ok: boolean; status: string }>(r)),
+  excluirOrdemCompra: (id: string) =>
+    fetch(`/api/compras/ordens/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   // Mapa de refil (medida do produto → medida do refil)
   listarRefilMapa: () =>
     fetch("/api/materiais/refil-mapa").then((r) => j<RefilMapa[]>(r)),
