@@ -342,7 +342,11 @@ integracao.get("/diag", async (c) => {
       k.estoque_vivo = Math.min(k.estoque_vivo, Math.floor(est / qtd));
     }
     for (const k of Object.values(kits)) if (!isFinite(k.estoque_vivo)) k.estoque_vivo = 0;
-    return c.json({ total_kits: Object.keys(kits).length, kits });
+    // Também lista TODOS os produtos cujo nome fala "KIT" (pra achar duplicado no catálogo).
+    const { results: pk } = await c.env.DB.prepare(
+      "SELECT ref, nome, estoque_geral, COALESCE(inativo,0) AS inativo FROM erp_produtos WHERE UPPER(COALESCE(nome,'')) LIKE '%KIT%' OR UPPER(COALESCE(ref,'')) LIKE '%1078%' ORDER BY nome"
+    ).all<{ ref: string; nome: string | null; estoque_geral: number | null; inativo: number }>().catch(() => ({ results: [] as { ref: string; nome: string | null; estoque_geral: number | null; inativo: number }[] }));
+    return c.json({ total_kits: Object.keys(kits).length, kits, produtos_kit: pk });
   }
   // Aceita sessão (UI) OU o token de integração (pra eu, dev, inspecionar sem login).
   const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
@@ -731,14 +735,18 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
   const aber = (base.aberturas && typeof base.aberturas === "object") ? (base.aberturas as Record<string, { foto?: string }>) : {};
   const placeholder = aber.padrao?.foto || ((base.capa as { foto?: string } | undefined)?.foto) || "";
   for (const p of prods) {
-    const m = fotoMap.get(normNome(p.nome || ""));
+    // KIT: casa foto/vídeo/textos pela FAMÍLIA ("Kit Balls") — a ficha do catálogo
+    // antigo está nesse nome curto, não no nome longo do Syntech ("KIT BALLS QUEEN + 55X35").
+    const kitTit = (p as { _kitTitulo?: unknown })._kitTitulo;
+    const famKey = (typeof kitTit === "string" && kitTit.trim()) ? normNome(kitTit) : "";
+    const m = (famKey && fotoMap.get(famKey)) || fotoMap.get(normNome(p.nome || ""));
     p.foto = m?.foto || p.foto || placeholder;
     p.video = m?.video || "";
     p.fotoDescricao = m?.fotoDescricao || "";
     if (m?.blocos && Object.keys(m.blocos).length) p.blocos = m.blocos;
   }
-  // KIT: só AGORA (depois de casar a foto pelo nome completo do Syntech) renomeia o
-  // anúncio pra só a família ("Kit Balls"). Assim a foto continua batendo e o título fica limpo.
+  // KIT: só AGORA (depois de casar a foto/vídeo/textos) renomeia o anúncio pra só a
+  // família ("Kit Balls"), deixando o título limpo.
   for (const p of prods) {
     const t = (p as { _kitTitulo?: unknown })._kitTitulo;
     if (typeof t === "string" && t.trim()) p.nome = t.trim();
