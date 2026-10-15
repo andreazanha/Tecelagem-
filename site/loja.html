@@ -97,10 +97,11 @@
   .montar h4{display:flex; align-items:center; gap:8px; font-size:17px; margin:0 0 14px}
   .lbl{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); font-weight:600; margin:16px 0 8px}
   .lbl b{color:var(--ink); text-transform:none; letter-spacing:0; font-weight:600}
-  .cores{display:flex; flex-wrap:wrap; gap:8px}
-  .corchip{display:flex; align-items:center; gap:8px; height:38px; box-sizing:border-box; background:var(--card); border:1.5px solid var(--line); border-radius:10px; padding:0 14px 0 6px; font-size:13px; color:var(--ink); cursor:pointer}
-  .corchip .sw{width:20px; height:20px; border-radius:50%; border:1px solid rgba(0,0,0,.14); flex:0 0 auto}
-  .corchip.on{border-color:#ae5033; background:#fbf3ee}
+  .lbl .cnt{color:#7a7068; font-weight:400; text-transform:none; letter-spacing:0; font-size:12px}
+  .cores{display:flex; flex-wrap:wrap; gap:11px; align-items:center}
+  .sw-dot{width:36px; height:36px; border-radius:50%; padding:0; outline:0; cursor:pointer; background:#efe7d8 center/cover no-repeat; border:2px solid #fff; box-shadow:0 0 0 1px var(--line); transition:transform .1s ease, box-shadow .1s ease}
+  .sw-dot:hover{transform:scale(1.09); box-shadow:0 0 0 1px #cabfa9}
+  .sw-dot.on{border-color:#fff; box-shadow:0 0 0 2px #ae5033}
   .corfoto{margin-top:10px; display:flex; flex-direction:row; align-items:center; gap:12px}
   .corfoto .cf-img{width:75px; height:75px; border-radius:10px; background:#efe7d8; object-fit:cover; border:1px solid var(--line); flex:0 0 auto}
   .corfoto img.cf-img{cursor:zoom-in}
@@ -307,10 +308,13 @@
       return '<div class="bloco"><h5>'+esc(k)+'</h5><ul>'+itens+'</ul></div>';
     }).join("");
   }
+  // Cores como BOLINHAS com a textura real (a mesma foto cc.foto que já existe).
+  // Sem foto → cai na cor sólida (hex). Nome: no tooltip + destacado na área da cor.
   function coresHTML(p){
     return (p.cores||[]).filter(function(c){return !c.oculta;}).map(function(c){
       var cc=CORES[c.id_cor]||{}; var on=c.id_cor===sel.corId?" on":"";
-      return '<div class="corchip'+on+'" data-cor="'+esc(c.id_cor)+'"><span class="sw" style="background:'+esc(cc.hex||"#ddd")+'"></span>'+esc(cc.nome||"")+'</div>';
+      var fundo=cc.foto? "background-image:url('"+esc(cc.foto)+"')" : 'background-color:'+esc(cc.hex||"#ddd");
+      return '<button type="button" class="sw-dot'+on+'" data-cor="'+esc(c.id_cor)+'" title="'+esc(cc.nome||"")+'" aria-label="'+esc(cc.nome||"")+'" style="'+fundo+'"></button>';
     }).join("");
   }
   function corFotoHTML(p){
@@ -370,6 +374,7 @@
     var foto = p.foto? '<div class="ph">'+inicial(p.nome)+'</div><img src="'+esc(p.foto)+'" onerror="this.remove()">' : '<div class="ph">'+inicial(p.nome)+'</div>';
     var video = p.video? '<video class="vid" controls preload="metadata" src="'+esc(p.video)+'"></video>' : '';
     var linhaLb = p.pronta_entrega?"Pronta Entrega":(p._edicao_limitada?"Edição Limitada":("Linha "+(p.linha||"").replace(/^\w/,function(c){return c.toUpperCase();})));
+    var ncores=(p.cores||[]).filter(function(c){return !c.oculta;}).length;
     document.getElementById("sheet").innerHTML =
       '<div class="topo"><span class="lb">'+esc(linhaLb)+'</span><button class="fechar" onclick="__fechar()">✕</button></div>'+
       '<div class="det">'+
@@ -382,7 +387,7 @@
           blocosHTML(p)+
           prazoHTML(p)+
           '<div class="montar"><h4>Montar pedido</h4>'+
-            '<div class="lbl">Escolha a cor</div><div class="cores" id="cores">'+coresHTML(p)+'</div>'+
+            '<div class="lbl">Escolha a cor'+(ncores>1?' <span class="cnt">· '+ncores+' cores disponíveis</span>':'')+'</div><div class="cores" id="cores">'+coresHTML(p)+'</div>'+
             '<div id="corfoto">'+corFotoHTML(p)+'</div>'+
             '<div id="tamanhos">'+tamanhosHTML(p)+'</div>'+
             '<div class="resumo" id="resumo">'+resumoHTML(p)+'</div>'+
@@ -400,7 +405,7 @@
     atualizarResumo();
   }
   function ligarDetalhe(){
-    document.getElementById("cores").onclick=function(e){ var c=e.target.closest(".corchip"); if(!c)return; sel.corId=c.getAttribute("data-cor"); atualizarCorArea(); };
+    document.getElementById("cores").onclick=function(e){ var c=e.target.closest(".sw-dot"); if(!c)return; sel.corId=c.getAttribute("data-cor"); atualizarCorArea(); };
     document.getElementById("addcart").onclick=adicionarAoCarrinho;
     ligarTamanhos();
   }
