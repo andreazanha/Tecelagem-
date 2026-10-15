@@ -570,6 +570,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       linha: sec.linha,
       pronta_entrega: sec.pronta_entrega,
       _edicao_limitada: sec.edicao_limitada,
+      _kit: false,
       composicao: "100% Poliéster",
       tipo: "avulso",
       lancamento: false,
@@ -595,6 +596,69 @@ export async function gerarCatalogoSite(env: Env): Promise<{
     itens[ref][med] = itens[ref][med] || {};
     itens[ref][med][cid] = Number(e.saldo) || 0;
   }
+
+  // ── KITS (pronta entrega): usa a RECEITA do Syntech (erp_kit_receita) pra
+  //   1) marcar o produto como KIT e jogar na Pronta Entrega;
+  //   2) mostrar a COMPOSIÇÃO ("Composto por 2× Capa Balls + 1× Peseira Balls");
+  //   3) calcular o estoque AO VIVO = menor( estoque_da_peça ÷ quantidade ).
+  // As peças (KT…) ficam fora do catálogo, mas existem em erp_produtos (com estoque).
+  try {
+    const { results: rec } = await env.DB.prepare(
+      "SELECT kit_ref, componente_ref, quantidade FROM erp_kit_receita"
+    ).all<{ kit_ref: string; componente_ref: string; quantidade: number }>();
+    if (rec && rec.length) {
+      const compRefs = [...new Set(rec.map((r) => r.componente_ref).filter(Boolean))];
+      const compInfo = new Map<string, { nome: string; estoque: number }>();
+      if (compRefs.length) {
+        const ph = compRefs.map(() => "?").join(",");
+        const { results: cps } = await env.DB.prepare(
+          `SELECT ref, nome, estoque_geral FROM erp_produtos WHERE ref IN (${ph})`
+        ).bind(...compRefs).all<{ ref: string; nome: string | null; estoque_geral: number | null }>();
+        for (const cp of cps) compInfo.set(cp.ref, { nome: String(cp.nome || cp.ref).trim(), estoque: Number(cp.estoque_geral) || 0 });
+      }
+      const recPorKit = new Map<string, { comp: string; qtd: number }[]>();
+      for (const r of rec) {
+        const arr = recPorKit.get(r.kit_ref) || [];
+        arr.push({ comp: r.componente_ref, qtd: Number(r.quantidade) || 1 });
+        recPorKit.set(r.kit_ref, arr);
+      }
+      const tituloCaso = (s: string) => s.toLowerCase().replace(/\b[\p{L}]/gu, (c) => c.toUpperCase());
+      const estVivo = new Map<string, number>();
+      const compTxt = new Map<string, string>();
+      for (const [kit, itensR] of recPorKit) {
+        let vivo = Infinity;
+        const partes: string[] = [];
+        for (const it of itensR) {
+          const info = compInfo.get(it.comp) || { nome: it.comp, estoque: 0 };
+          vivo = Math.min(vivo, Math.floor(info.estoque / (it.qtd || 1)));
+          partes.push(`${it.qtd}× ${tituloCaso(info.nome)}`);
+        }
+        estVivo.set(kit, isFinite(vivo) ? Math.max(0, vivo) : 0);
+        compTxt.set(kit, partes.join(" + "));
+      }
+      const medidaDeId = new Map<string, string>();
+      for (const t of tamPorMedida.values()) medidaDeId.set(t.id, t.medida);
+      for (const prod of produtos) {
+        const vivo = estVivo.get(prod.id);
+        if (vivo == null) continue;
+        prod._kit = true;
+        prod.pronta_entrega = true;
+        prod.estoque_geral = vivo;
+        const comp = compTxt.get(prod.id) || "";
+        if (comp) prod.composicao = "Composto por " + comp;
+        for (const g of prod.grupos) {
+          g.estoque = vivo;
+          for (const l of g.linhas) {
+            const med = medidaDeId.get(l.id_tamanho) || "-";
+            itens[prod.id] = itens[prod.id] || {};
+            itens[prod.id][med] = itens[prod.id][med] || {};
+            if (prod.cores.length) { for (const c of prod.cores) itens[prod.id][med][c.id_cor] = vivo; }
+            else itens[prod.id][med]["-"] = vivo;
+          }
+        }
+      }
+    }
+  } catch { /* kits: silencioso — nunca derruba o catálogo */ }
 
   return {
     banco_cores: [...corPorChave.values()],
