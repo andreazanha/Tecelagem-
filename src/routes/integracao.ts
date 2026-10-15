@@ -288,18 +288,19 @@ integracao.post("/diag-kit", async (c) => {
   return c.json({ ok: true, bytes: txt.length });
 });
 integracao.get("/diag", async (c) => {
-  // Aceita sessão (UI) OU o token de integração (pra eu, dev, inspecionar sem login).
-  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
-  const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
-  const temToken = !!esperado && recebido === esperado;
-  if (!temToken) { const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro; }
-  // ?pedido=kit → receita do kit (tabelas/colunas/amostra). Lê do diagnóstico dedicado.
+  // ?pedido=kit → receita do kit (só a ESTRUTURA das tabelas/colunas/amostra, nada
+  // sensível). Liberado SEM login pra a dona conseguir abrir direto no navegador.
   if (c.req.query("pedido") === "kit") {
     const kr = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='erp_diag_kit'").first<{ valor: string | null; atualizado_em: string | null }>();
     if (!kr || !kr.valor) return c.json({ vazio: true, msg: "Ainda não recebi o diagnóstico de kit da ponte. Rode a ponte e tente de novo." });
     let obj: unknown = null; try { obj = JSON.parse(kr.valor); } catch { obj = kr.valor; }
     return c.json({ atualizado_em: kr.atualizado_em, diag: obj });
   }
+  // Aceita sessão (UI) OU o token de integração (pra eu, dev, inspecionar sem login).
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
+  const temToken = !!esperado && recebido === esperado;
+  if (!temToken) { const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro; }
   // ?pedido=procs → confirmação LEVE das procedures APP_* (Fase 4). Lê do diagnóstico
   // minúsculo dedicado (erp_diag_procs); se não houver, cai de volta no erp_diag.pedido.
   if (c.req.query("pedido") === "procs") {

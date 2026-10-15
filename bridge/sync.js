@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-15.11";
+const PONTE_VERSAO = "2026-10-15.12";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -609,18 +609,26 @@ async function rodadaDiagProcs(db, estado) {
   }
 }
 
-// Descobre a RECEITA DO KIT no Syntech: tabelas cujo nome tem KIT/COMPOS/GRADE,
-// suas colunas e uma amostra pequena (só colunas NÃO-blob, pra não travar). Uma vez só.
-const DIAG_KIT_FLAG = "diagKitV1";
+// Descobre a RECEITA DO KIT no Syntech. O kit (ex.: produto QC1078-1 "KIT BALLS
+// QUEEN + 55X35") é montado em "Industrialização Simplificada → Cadastro de Insumos
+// de Produtos": tem INSUMOS (ex.: KT1078-C qtd 2, KT1078-P qtd 1). Então procuramos
+// tabelas cujo nome fala de INSUMO/ESTRUTURA/FICHA/RECEITA/COMPONENTE/KIT, listamos as
+// colunas e uma amostra pequena (só colunas NÃO-blob, pra não travar). Uma vez só.
+const DIAG_KIT_FLAG = "diagKitV2";
 async function rodadaDiagKit(db, estado) {
   if (estado[DIAG_KIT_FLAG]) return;
-  log("diag-kit: procurando a receita do kit (tabelas com KIT)…");
+  log("diag-kit: procurando a receita do kit (tabelas de INSUMOS/estrutura)…");
   const out = { versao: PONTE_VERSAO, quando: new Date().toISOString(), tabelas: {}, amostras: {}, erros: [] };
   try {
     const rels = await query(db,
       "SELECT TRIM(RDB$RELATION_NAME) AS NOME FROM RDB$RELATIONS " +
       "WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 AND RDB$VIEW_BLR IS NULL AND " +
-      "(RDB$RELATION_NAME LIKE '%KIT%' OR RDB$RELATION_NAME LIKE '%COMPOS%' OR RDB$RELATION_NAME LIKE '%GRADE%') " +
+      "(RDB$RELATION_NAME LIKE '%INSUMO%' OR RDB$RELATION_NAME LIKE '%ESTRUT%' OR " +
+      "RDB$RELATION_NAME LIKE '%FICHA%' OR RDB$RELATION_NAME LIKE '%RECEITA%' OR " +
+      "RDB$RELATION_NAME LIKE '%COMPONENT%' OR RDB$RELATION_NAME LIKE '%COMPOS%' OR " +
+      "RDB$RELATION_NAME LIKE '%MATPRIMA%' OR RDB$RELATION_NAME LIKE '%MAT_PRIMA%' OR " +
+      "RDB$RELATION_NAME LIKE '%INDUSTR%' OR RDB$RELATION_NAME LIKE '%KIT%' OR " +
+      "RDB$RELATION_NAME LIKE '%GRADE%') " +
       "ORDER BY RDB$RELATION_NAME");
     for (const rr of rels) {
       const nome = String(rr.NOME || "").trim(); if (!nome) continue;
@@ -635,11 +643,23 @@ async function rodadaDiagKit(db, estado) {
       out.tabelas[nome] = cols;
       const naoBlob = cols.filter((c) => Number(c.tipo) !== 261 && c.campo).map((c) => c.campo);
       if (naoBlob.length) {
+        const lista = naoBlob.map((c) => '"' + c + '"').join(", ");
         try {
-          const sel = "SELECT FIRST 6 " + naoBlob.map((c) => '"' + c + '"').join(", ") + ' FROM "' + nome + '"';
+          const sel = "SELECT FIRST 6 " + lista + ' FROM "' + nome + '"';
           const rows = await query(db, sel);
           out.amostras[nome] = (rows || []).slice(0, 6);
         } catch (e) { out.erros.push(`amostra ${nome}: ${e.message}`); }
+        // Amostra DIRIGIDA: linhas que citam "1078" (o kit QC1078-1 e seus insumos
+        // KT1078-C/KT1078-P) em qualquer coluna de texto (CHAR=14, VARCHAR=37).
+        const texto = cols.filter((c) => (Number(c.tipo) === 14 || Number(c.tipo) === 37) && c.campo).map((c) => c.campo);
+        if (texto.length) {
+          try {
+            const where = texto.map((c) => '"' + c + "\" LIKE '%1078%'").join(" OR ");
+            const sel2 = "SELECT FIRST 20 " + lista + ' FROM "' + nome + '" WHERE ' + where;
+            const rows2 = await query(db, sel2);
+            if (rows2 && rows2.length) out.amostras[nome + " (1078)"] = rows2.slice(0, 20);
+          } catch (e) { out.erros.push(`amostra1078 ${nome}: ${e.message}`); }
+        }
       }
     }
   } catch (e) { out.erros.push("relations: " + e.message); }
