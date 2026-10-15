@@ -146,6 +146,39 @@ compras.get("/ordens/:id", async (c) => {
   return c.json(o);
 });
 
+// ── Ver PDF da ordem (sem enviar) — abre no navegador ─────────────────────────
+compras.get("/ordens/:id/pdf", async (c) => {
+  const g = await exigirAlgumaFuncao(c, ["compras.ordem", "compras.aprovar"]); if ("erro" in g) return g.erro;
+  const o = await carregarOrdem(c.env, c.req.param("id"));
+  if (!o) return c.json({ error: "nao_encontrada" }, 404);
+  const todas = await podeAprovarOrdens(c.env, g.u);
+  if (!todas && o.criado_por_id !== g.u.id) return c.json({ error: "nao_encontrada" }, 404);
+
+  // Data do cabeçalho = data de criação da ordem (dd/mm/aaaa).
+  const dataBR = dataEntregaBR(String(o.criado_em || "").slice(0, 10)) || "";
+  const itens: OrdemCompraItem[] = (o.itens as Array<Record<string, unknown>>).map((it) => ({
+    nome: String(it.nome || ""), tamanho: (it.tamanho as string) || undefined, cor: (it.cor as string) || undefined,
+    codigo: (it.codigo as string) || undefined, unidade: (it.unidade as string) || undefined,
+    saldo: it.saldo == null ? undefined : Number(it.saldo), minimo: it.minimo == null ? undefined : Number(it.minimo),
+    qtd: Number(it.qtd) || 0, preco: Number(it.preco) || 0,
+  }));
+  if (!itens.length) return c.json({ error: "sem_itens" }, 400);
+  const fornNome = (o.fornecedor as FornDados)?.nome || (o.fornecedor_nome as string) || "—";
+  const bytes = await gerarOrdemCompra({
+    empresa: (o.empresa as EmpresaDados) || { nome: "Big Tricot" },
+    fornecedor: (o.fornecedor as FornDados) || { nome: fornNome },
+    numero: String(o.numero), data: dataBR, itens,
+    data_entrega: dataEntregaBR((o.data_entrega as string) || null),
+    forma_pagamento: (o.forma_pagamento as string) || null,
+    obs: (o.obs as string) || null,
+  });
+  const nomeArq = `${o.numero}.pdf`.replace(/[^\w.\-]+/g, "_");
+  return new Response(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, {
+    status: 200,
+    headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${nomeArq}"`, "Cache-Control": "no-store" },
+  });
+});
+
 // ── Editar ordem (gestor) — em qualquer status, menos recusada (aprovada/enviada
 //    podem ser editadas e depois reenviadas pelo gestor). ───────────────────────
 compras.patch("/ordens/:id", async (c) => {

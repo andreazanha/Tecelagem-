@@ -175,6 +175,20 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
     finally { setBusy(false); }
   }
 
+  async function verPdf() {
+    if (!ord) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/compras/ordens/${encodeURIComponent(ord.id)}/pdf`);
+      if (!r.ok) { alert("Não consegui gerar o PDF desta ordem."); return; }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) { alert((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
   async function aprovar() {
     if (!ord) return;
     const itensValidos = itens.filter((it) => (Number(it.qtd) || 0) > 0);
@@ -285,6 +299,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
 
             <div className="row-gap" style={{ marginTop: 14, gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
               {ehMaster && <button className="btn btn-soft" disabled={busy} style={{ color: "#b91c1c", marginRight: "auto" }} onClick={excluirAqui}>🗑 Excluir</button>}
+              <button className="btn btn-soft" disabled={busy} onClick={verPdf}>👁 Ver PDF</button>
               {editavel && <button className="btn btn-soft" disabled={busy} onClick={salvarSo}>💾 Salvar alterações</button>}
               {podeAprovar && ord.status === "aguardando_aprovacao" && (
                 <>
