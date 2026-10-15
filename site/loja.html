@@ -65,7 +65,7 @@
   .preco b{color:var(--accent); font-size:15px; font-weight:700; margin-left:2px}
   .vazio{text-align:center; color:var(--muted); padding:60px 16px}
   @media(max-width:900px){ .bf-right{position:static; transform:none; width:100%; justify-content:center; order:2} .busca{order:1; max-width:none} }
-  @media(max-width:640px){ header.topbar{height:62px} .topbar-in{padding:0 18px} .logo{font-size:21px; letter-spacing:.16em} .banner{min-height:210px} .banner .b-in{padding:0 20px} .banner .b-tit{font-size:30px} main{padding:4px 16px 60px} .sec h2{font-size:24px; gap:12px} .sec h2::before,.sec h2::after{width:34px} }
+  @media(max-width:640px){ header.topbar{height:62px} .topbar-in{padding:0 18px} .logo{font-size:21px; letter-spacing:.16em} .banner{min-height:340px} .banner .b-in{padding:0 20px} .banner .b-tit{font-size:30px} main{padding:4px 16px 60px} .sec h2{font-size:24px; gap:12px} .sec h2::before,.sec h2::after{width:34px} }
   /* ---- popup "continuar / escolher outro" ao adicionar no carrinho ---- */
   .popconf{position:fixed; inset:0; z-index:80; background:rgba(44,39,33,.55); display:flex; align-items:center; justify-content:center; padding:20px}
   .popconf-box{background:var(--card); border-radius:16px; max-width:360px; width:100%; padding:24px 22px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.3)}
@@ -276,7 +276,14 @@
       return;
     }
     var b=bs[0];
-    el.innerHTML=(b.img?'<img class="b-bg" src="'+esc(b.img)+'" alt="" onerror="this.remove()">':'')+
+    var imgTag="";
+    if(b.img||b.img_mobile){
+      imgTag='<picture>'+
+        (b.img_mobile?'<source media="(max-width:640px)" srcset="'+esc(b.img_mobile)+'">':'')+
+        '<img class="b-bg" src="'+esc(b.img||b.img_mobile)+'" alt="" onerror="this.remove()">'+
+      '</picture>';
+    }
+    el.innerHTML=imgTag+
       '<div class="b-shade"></div><div class="b-in">'+
       (b.kicker?'<div class="b-kick">'+esc(b.kicker)+'</div>':'')+
       (b.titulo?'<div class="b-tit serif">'+esc(b.titulo)+'</div>':'')+

@@ -49,10 +49,10 @@ function Banners() {
   function mover(i: number, d: number) {
     setLista((l) => { const n = [...l]; const j = i + d; if (j < 0 || j >= n.length) return l; [n[i], n[j]] = [n[j], n[i]]; return n.map((b, k) => ({ ...b, ordem: k })); });
   }
-  async function enviarImg(i: number, f: File) {
-    up(i, "img", "…enviando");
-    try { const r = await api.bannerUpload(f); if (r.ok && r.url) up(i, "img", r.url); else { up(i, "img", ""); setMsg(r.error || "Não consegui enviar a imagem."); } }
-    catch { up(i, "img", ""); setMsg("Não consegui enviar a imagem."); }
+  async function enviarImg(i: number, f: File, campo: "img" | "img_mobile") {
+    up(i, campo, "…enviando");
+    try { const r = await api.bannerUpload(f); if (r.ok && r.url) up(i, campo, r.url); else { up(i, campo, ""); setMsg(r.error || "Não consegui enviar a imagem."); } }
+    catch { up(i, campo, ""); setMsg("Não consegui enviar a imagem."); }
   }
   async function salvar() {
     setSalvando(true); setMsg("");
@@ -64,21 +64,23 @@ function Banners() {
   if (carregando) return <div style={{ color: "#8a8073" }}>Carregando…</div>;
   return (
     <div>
-      <div style={{ color: "#8a8073", fontSize: 13.5, marginBottom: 14 }}>
+      <div style={{ color: "#8a8073", fontSize: 13.5, marginBottom: 12 }}>
         O banner aparece no topo da loja (abaixo do cabeçalho). Você pode ter mais de um — eles se alternam.
+      </div>
+      <div style={{ background: "#fbf6ee", border: "1px solid #ecdfc9", borderRadius: 12, padding: "12px 14px", marginBottom: 16, fontSize: 13, color: "#6b5f49", lineHeight: 1.55 }}>
+        <b>📐 Tamanho das imagens</b><br />
+        • <b>Computador</b>: imagem deitada, <b>1920 × 600 px</b> (JPG/PNG/WEBP, até 1 MB).<br />
+        • <b>Celular</b>: imagem mais quadrada, <b>1080 × 1080 px</b>.<br />
+        • O <b>texto e o botão</b> ficam à <b>esquerda</b> — deixe esse lado mais limpo e ponha o assunto (almofadas, ambiente) mais ao centro/direita.
       </div>
       {lista.length === 0 && <div style={{ color: "#8a8073", padding: "20px 0" }}>Nenhum banner ainda. Clique em "➕ Novo banner".</div>}
       {lista.map((b, i) => (
         <div key={b.id || i} style={{ background: "#fff", border: "1px solid #ece5d8", borderRadius: 14, padding: 16, marginBottom: 14, boxShadow: "0 1px 2px rgba(60,48,32,.05)" }}>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
             <div style={{ width: 260, flexShrink: 0 }}>
-              <div style={{ width: "100%", aspectRatio: "16/7", borderRadius: 10, background: b.img && b.img !== "…enviando" ? `#181615 center/cover url(${JSON.stringify(b.img)})` : "#efe7d8", display: "flex", alignItems: "center", justifyContent: "center", color: "#a99", fontSize: 13, overflow: "hidden" }}>
-                {(!b.img || b.img === "…enviando") && (b.img === "…enviando" ? "enviando…" : "sem imagem")}
-              </div>
-              <label style={{ ...btnPri, background: "#4a443c", display: "inline-block", marginTop: 8, fontSize: 13, padding: "8px 14px" }}>
-                {b.img && b.img !== "…enviando" ? "Trocar imagem" : "Escolher imagem"}
-                <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) enviarImg(i, f); e.currentTarget.value = ""; }} />
-              </label>
+              <ImgUpload titulo="Imagem do computador" dica="1920 × 600 px (deitada)" ratio="16/7" valor={b.img} onPick={(f) => enviarImg(i, f, "img")} />
+              <div style={{ height: 12 }} />
+              <ImgUpload titulo="Imagem do celular" dica="1080 × 1080 px (quadrada)" ratio="1/1" valor={b.img_mobile} onPick={(f) => enviarImg(i, f, "img_mobile")} />
             </div>
             <div style={{ flex: 1, minWidth: 240 }}>
               <label style={lbl}>Título (frase grande)</label>
@@ -114,6 +116,22 @@ function Banners() {
 }
 function btnMini(dis: boolean): React.CSSProperties {
   return { padding: "7px 12px", borderRadius: 8, border: "1px solid #ddd5c7", background: "#fff", color: "#4a443c", fontWeight: 600, cursor: dis ? "default" : "pointer", opacity: dis ? 0.4 : 1, fontSize: 13 };
+}
+function ImgUpload({ titulo, dica, ratio, valor, onPick }: { titulo: string; dica: string; ratio: string; valor?: string; onPick: (f: File) => void }) {
+  const tem = !!valor && valor !== "…enviando";
+  const enviando = valor === "…enviando";
+  return (
+    <div>
+      <div style={{ fontSize: 11.5, fontWeight: 600, color: "#6b645a", marginBottom: 4 }}>{titulo} <span style={{ color: "#a99e8c", fontWeight: 400 }}>· {dica}</span></div>
+      <div style={{ width: "100%", aspectRatio: ratio, borderRadius: 10, background: tem ? `#181615 center/cover url(${JSON.stringify(valor)})` : "#efe7d8", display: "flex", alignItems: "center", justifyContent: "center", color: "#a99", fontSize: 12.5, overflow: "hidden", border: "1px solid #e8dfce" }}>
+        {!tem && (enviando ? "enviando…" : "sem imagem")}
+      </div>
+      <label style={{ display: "inline-block", marginTop: 6, fontSize: 12.5, padding: "7px 13px", borderRadius: 8, background: "#4a443c", color: "#fff", fontWeight: 600, cursor: "pointer" }}>
+        {tem ? "Trocar" : "Escolher imagem"}
+        <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(f); e.currentTarget.value = ""; }} />
+      </label>
+    </div>
+  );
 }
 
 // ─────────────────────────── VÍDEOS E TEXTOS ───────────────────────────

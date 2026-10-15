@@ -746,7 +746,7 @@ export interface LojaPedidoItem {
   tamanho: string | null; erp_tamanho: string | null; qtd: number; valor_unit: number | null;
 }
 export interface LojaBanner {
-  id?: string; img?: string; kicker?: string; titulo?: string; sub?: string;
+  id?: string; img?: string; img_mobile?: string; kicker?: string; titulo?: string; sub?: string;
   botao_texto?: string; botao_link?: string; ativo?: boolean; ordem?: number;
 }
 export interface CatalogoProdutoExtra {
