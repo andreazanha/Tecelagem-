@@ -287,6 +287,32 @@ integracao.post("/diag-kit", async (c) => {
   ).bind(txt.slice(0, 300000)).run();
   return c.json({ ok: true, bytes: txt.length });
 });
+// RECEITA DO KIT (tabela INSUMOS_PROD do Syntech). A ponte manda a lista toda e aqui
+// a gente SUBSTITUI a tabela erp_kit_receita inteira (é pequena). Protegido por token.
+integracao.post("/kits", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+  type KitIn = { kit?: string; componente?: string; quantidade?: number | string; tamanho?: string };
+  const b = await c.req.json<{ itens?: KitIn[] }>().catch(() => ({} as { itens?: KitIn[] }));
+  const itens: KitIn[] = Array.isArray(b.itens) ? b.itens : [];
+  const norm = (s: unknown) => String(s ?? "").trim();
+  // Dedup por (kit, componente) — a última linha vence (PK não aceita repetido).
+  const mapa = new Map<string, KitIn>();
+  for (const it of itens) {
+    const kit = norm(it.kit), comp = norm(it.componente);
+    if (!kit || !comp) continue;
+    mapa.set(`${kit}|${comp}`.toLowerCase(), it);
+  }
+  const stmts = [c.env.DB.prepare("DELETE FROM erp_kit_receita")];
+  for (const it of mapa.values()) {
+    stmts.push(c.env.DB.prepare(
+      "INSERT INTO erp_kit_receita (kit_ref, componente_ref, quantidade, tamanho, atualizado_em) VALUES (?, ?, ?, ?, datetime('now'))"
+    ).bind(norm(it.kit), norm(it.componente), Number(it.quantidade) || 1, norm(it.tamanho) || null));
+  }
+  await c.env.DB.batch(stmts);
+  return c.json({ ok: true, n: stmts.length - 1 });
+});
 integracao.get("/diag", async (c) => {
   // ?pedido=kit → receita do kit (só a ESTRUTURA das tabelas/colunas/amostra, nada
   // sensível). Liberado SEM login pra a dona conseguir abrir direto no navegador.
@@ -295,6 +321,28 @@ integracao.get("/diag", async (c) => {
     if (!kr || !kr.valor) return c.json({ vazio: true, msg: "Ainda não recebi o diagnóstico de kit da ponte. Rode a ponte e tente de novo." });
     let obj: unknown = null; try { obj = JSON.parse(kr.valor); } catch { obj = kr.valor; }
     return c.json({ atualizado_em: kr.atualizado_em, diag: obj });
+  }
+  // ?pedido=kits → a RECEITA já espelhada (erp_kit_receita), agrupada por kit. Liberado
+  // sem login (só códigos/quantidades, nada sensível) pra conferir a sincronização.
+  if (c.req.query("pedido") === "kits") {
+    const { results } = await c.env.DB.prepare(
+      "SELECT r.kit_ref, p1.nome AS kit_nome, r.componente_ref, p2.nome AS componente_nome, " +
+      "r.quantidade, r.tamanho, p2.estoque_geral AS componente_estoque " +
+      "FROM erp_kit_receita r " +
+      "LEFT JOIN erp_produtos p1 ON p1.ref = r.kit_ref " +
+      "LEFT JOIN erp_produtos p2 ON p2.ref = r.componente_ref " +
+      "ORDER BY r.kit_ref, r.componente_ref"
+    ).all<{ kit_ref: string; kit_nome: string | null; componente_ref: string; componente_nome: string | null; quantidade: number; tamanho: string | null; componente_estoque: number | null }>();
+    const kits: Record<string, { nome: string | null; estoque_vivo: number; componentes: { ref: string; nome: string | null; quantidade: number; tamanho: string | null; estoque: number }[] }> = {};
+    for (const r of results) {
+      const k = (kits[r.kit_ref] ||= { nome: r.kit_nome, estoque_vivo: Infinity, componentes: [] });
+      const est = Number(r.componente_estoque) || 0;
+      const qtd = Number(r.quantidade) || 1;
+      k.componentes.push({ ref: r.componente_ref, nome: r.componente_nome, quantidade: qtd, tamanho: r.tamanho, estoque: est });
+      k.estoque_vivo = Math.min(k.estoque_vivo, Math.floor(est / qtd));
+    }
+    for (const k of Object.values(kits)) if (!isFinite(k.estoque_vivo)) k.estoque_vivo = 0;
+    return c.json({ total_kits: Object.keys(kits).length, kits });
   }
   // Aceita sessão (UI) OU o token de integração (pra eu, dev, inspecionar sem login).
   const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();

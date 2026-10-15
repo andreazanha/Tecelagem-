@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-15.12";
+const PONTE_VERSAO = "2026-10-15.13";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -289,6 +289,32 @@ async function rodadaEstoque(db) {
     if (ok) enviados += Math.min(500, itens.length - i);
   }
   log(`estoque: ${enviados}/${itens.length} saldo(s) espelhado(s)`);
+}
+
+// ── RECEITA DO KIT: lê INSUMOS_PROD (kit → peças) e espelha no sistema ─────────
+// O kit (ex.: QC1078-1 "KIT BALLS QUEEN + 55X35") é montado por insumos (KT1078-C x2,
+// KT1078-P x1). A tabela é pequena; manda tudo e o servidor substitui. Assim o
+// catálogo sabe quais produtos são kit e calcula o estoque ao vivo pelas peças.
+async function rodadaKits(db) {
+  let rows = [];
+  try { rows = await query(db, "SELECT CODIGO, COD_PROD, QUANTIDADE, TAMANHO FROM INSUMOS_PROD"); }
+  catch (e) { log("! kits: consulta falhou —", e.message); return; }
+  const itens = rows.map((r) => ({
+    kit: String(r.CODIGO || "").trim(),
+    componente: String(r.COD_PROD || "").trim(),
+    quantidade: Number(r.QUANTIDADE) || 1,
+    tamanho: String(r.TAMANHO || "").trim(),
+  })).filter((x) => x.kit && x.componente);
+  if (!itens.length) { log("kits: nada a enviar"); return; }
+  try {
+    const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/kits";
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+      body: JSON.stringify({ itens }),
+    });
+    log(`kits: ${r.ok ? itens.length + " linha(s) de receita espelhada(s)" : "falhou (" + r.status + ")"}`);
+  } catch (e) { log("! kits: falhou ao enviar —", e.message); }
 }
 
 // ── CATÁLOGO: produtos (nome, preços, grupo, classe, cores, tamanhos) ─────────
@@ -831,7 +857,7 @@ async function rodada() {
         WHERE STATUS = ? AND COALESCE(CANC, 'N') <> 'S' AND DATA_ALT_REG > ?
         ORDER BY DATA_ALT_REG`;
     const pedidos = await query(db, SQL_PEDIDOS, [STATUS_APROVADO, desde]);
-    if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaProdutos(db, estado); await rodadaEstoque(db); return; }
+    if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaProdutos(db, estado); await rodadaEstoque(db); await rodadaKits(db); return; }
 
     log(`${pedidos.length} pedido(s) aprovado(s) novo(s)/alterado(s)`);
     let maiorAlt = estado.ultimaAlt || null;
@@ -850,6 +876,7 @@ async function rodada() {
     log("rodada ok. última data:", formatarParaFirebird(maiorAlt));
     await rodadaProdutos(db, estado);
     await rodadaEstoque(db);
+    await rodadaKits(db);
   } catch (e) {
     log("! erro na rodada:", e.message);
   } finally {
