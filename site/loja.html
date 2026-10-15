@@ -6,7 +6,7 @@
 <title>Big Tricot · Catálogo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#f3ede3; --card:#fffdf9; --ink:#2c2721; --muted:#8a8073; --line:#e4dccf;
@@ -16,11 +16,11 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0}
-  body{background:var(--bg); color:var(--ink); font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; -webkit-font-smoothing:antialiased; line-height:1.45}
-  .serif{font-family:"Playfair Display",Georgia,serif}
+  body{background:var(--bg); color:var(--ink); font-family:'Montserrat',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; line-height:1.45}
+  .serif{font-family:"Cormorant Garamond",Georgia,serif}
   header.hero{background:linear-gradient(180deg,#efe6d6,#e7dcc9); text-align:center; padding:34px 16px 22px; border-bottom:1px solid var(--line)}
-  .brand{font-family:"Playfair Display",serif; font-weight:700; letter-spacing:.14em; font-size:26px}
-  .brand small{display:block; letter-spacing:.34em; font-size:10px; font-weight:600; color:var(--muted); margin-top:4px; font-family:Inter,sans-serif}
+  .brand{font-family:"Cormorant Garamond",serif; font-weight:700; letter-spacing:.14em; font-size:26px}
+  .brand small{display:block; letter-spacing:.34em; font-size:10px; font-weight:600; color:var(--muted); margin-top:4px; font-family:'Montserrat',sans-serif}
   .tagline{color:var(--muted); font-size:13px; margin-top:10px}
   .barra{position:sticky; top:0; z-index:30; background:rgba(243,237,227,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; padding:10px 16px; flex-wrap:wrap}
   .busca{flex:1 1 180px; min-width:140px; display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:8px 14px}
@@ -43,7 +43,7 @@
   .prod:hover{transform:translateY(-2px); box-shadow:0 2px 4px rgba(60,48,32,.06),0 14px 30px rgba(60,48,32,.1)}
   .foto{position:relative; aspect-ratio:1/1; background:#efe7d8; overflow:hidden}
   .foto img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; z-index:1}
-  .foto .ph{position:absolute; inset:0; z-index:0; display:flex; align-items:center; justify-content:center; font-family:"Playfair Display",serif; font-size:30px; color:#c3b49a; letter-spacing:.06em}
+  .foto .ph{position:absolute; inset:0; z-index:0; display:flex; align-items:center; justify-content:center; font-family:"Cormorant Garamond",serif; font-size:30px; color:#c3b49a; letter-spacing:.06em}
   .badge{position:absolute; left:10px; top:10px; font-size:11px; font-weight:600; padding:4px 9px; border-radius:999px; background:rgba(255,253,249,.92); color:var(--ok); display:flex; align-items:center; gap:5px; z-index:2}
   .badge.off{color:var(--muted)}
   .badge .dot{width:7px; height:7px; border-radius:50%; background:currentColor}
@@ -73,10 +73,10 @@
   .det{flex:1 1 auto; display:flex; min-height:0}
   .det .lado-foto{flex:1 1 52%; background:#efe7d8; position:relative; overflow:hidden}
   .det .lado-foto img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; z-index:1}
-  .det .lado-foto .ph{position:absolute; inset:0; z-index:0; display:flex; align-items:center; justify-content:center; font-family:"Playfair Display",serif; font-size:64px; color:#c3b49a}
+  .det .lado-foto .ph{position:absolute; inset:0; z-index:0; display:flex; align-items:center; justify-content:center; font-family:"Cormorant Garamond",serif; font-size:64px; color:#c3b49a}
   .det .lado-info{flex:1 1 48%; overflow:auto; padding:22px 26px 26px}
   .det .linhalb{text-align:center; font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); font-weight:600; margin-bottom:3px}
-  .det .nome{font-size:30px; margin:0 0 14px; font-weight:700; text-align:center}
+  .det .nome{font-size:28px; margin:0 0 14px; font-weight:600; text-align:center; letter-spacing:.01em; line-height:1.1}
   .vid{width:100%; border-radius:12px; background:#000; margin-bottom:12px; max-height:300px}
   .comp{text-align:center; color:var(--muted); font-size:13px; letter-spacing:.04em}
   .prazo{display:flex; gap:8px; align-items:center; background:#f6efe3; border:1px solid var(--line); border-radius:12px; padding:10px 14px; font-size:13px; color:var(--ink); margin:14px 0}
@@ -113,7 +113,7 @@
   .tamrow .estx{font-size:12.5px; color:#6f685e; margin-top:3px}
   .tamrow .estx.low{color:var(--accent); font-weight:600}
   .tamrow .estx.off{color:#9aa0ab}
-  .tamrow .pr{color:var(--accent); font-weight:600; font-size:15px; font-family:"Playfair Display",serif; margin-left:auto; margin-right:10px; white-space:nowrap}
+  .tamrow .pr{color:var(--ink); font-weight:600; font-size:14px; font-family:'Montserrat',sans-serif; margin-left:auto; margin-right:10px; white-space:nowrap}
   .stepper{display:flex; align-items:center; gap:0; border:1px solid var(--line); border-radius:999px; overflow:hidden}
   .stepper button{border:0; background:var(--chip); width:30px; height:30px; font-size:17px; cursor:pointer; color:var(--ink)}
   .stepper input{width:40px; border:0; text-align:center; font-size:14px; background:transparent; outline:0; -moz-appearance:textfield}
@@ -133,15 +133,15 @@
   .citem .nm{font-weight:600; font-size:16px}
   .citem .meta{color:var(--muted); font-size:13.5px; margin-top:2px}
   .citem .l2{display:flex; align-items:center; justify-content:space-between; margin-top:9px}
-  .citem .sub{color:var(--accent); font-weight:600; font-family:"Playfair Display",serif; font-size:16px}
+  .citem .sub{color:var(--ink); font-weight:600; font-family:'Montserrat',sans-serif; font-size:15px}
   .citem .rm{border:0; background:transparent; color:var(--muted); cursor:pointer; font-size:13px; text-decoration:underline}
   .cfoot{border-top:1px solid var(--line); background:var(--card); padding:18px 22px}
   .cfoot .tot{display:flex; justify-content:space-between; font-size:18px; margin-bottom:12px}
-  .cfoot .tot b{font-family:"Playfair Display",serif; color:var(--accent); font-size:26px}
+  .cfoot .tot b{font-family:'Montserrat',sans-serif; color:var(--ink); font-size:22px; font-weight:700}
   .cfoot .fin{width:100%; border:0; background:var(--accent); color:#fff; border-radius:12px; padding:17px; font-size:18px; font-weight:600; cursor:pointer}
   .cvazio{text-align:center; color:var(--muted); padding:50px 16px}
   footer{text-align:center; color:var(--muted); font-size:12px; padding:30px 16px 50px; border-top:1px solid var(--line)}
-  footer .nm{font-family:"Playfair Display",serif; font-size:16px; color:var(--ink)}
+  footer .nm{font-family:"Cormorant Garamond",serif; font-size:16px; color:var(--ink)}
   footer .obs{font-size:11px; margin-top:8px; opacity:.85}
 </style>
 </head>
@@ -173,7 +173,7 @@
 <div id="entrada" style="position:fixed;inset:0;z-index:999;background:rgba(44,39,33,.55);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:18px">
   <div style="background:#fff;border-radius:18px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden">
     <div style="padding:26px 24px 8px;text-align:center">
-      <div style="font-family:'Playfair Display',Georgia,serif;font-size:26px;font-weight:700;letter-spacing:.02em;color:#2c2721">BIG TRICOT</div>
+      <div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:26px;font-weight:700;letter-spacing:.02em;color:#2c2721">BIG TRICOT</div>
       <div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9c4a2f;margin-top:2px">Catálogo de atacado</div>
     </div>
     <div style="padding:14px 24px 24px">
