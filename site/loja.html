@@ -80,15 +80,15 @@
   /* ---- modal produto (largo, 2 colunas) ---- */
   .modal{position:fixed; inset:0; z-index:60; background:rgba(44,39,33,.55); display:none}
   .modal.show{display:block}
-  .sheet{position:absolute; inset:14px; max-width:1180px; margin:0 auto; background:var(--card); border-radius:18px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .sheet{position:absolute; inset:3% 2%; max-width:1500px; margin:0 auto; background:var(--card); border-radius:16px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 24px 70px rgba(0,0,0,.34)}
   .sheet .topo{display:flex; justify-content:space-between; align-items:center; padding:12px 18px; border-bottom:1px solid var(--line); flex:0 0 auto}
   .sheet .topo .lb{font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); font-weight:600}
   .sheet .fechar{border:0; background:var(--chip); width:34px; height:34px; border-radius:50%; font-size:16px; cursor:pointer; color:var(--ink)}
   .det{flex:1 1 auto; display:flex; min-height:0}
-  .det .lado-foto{flex:1 1 52%; background:#efe7d8; position:relative; overflow:hidden}
+  .det .lado-foto{flex:1 1 53%; background:#efe7d8; position:relative; overflow:hidden}
   .det .lado-foto img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; z-index:1}
   .det .lado-foto .ph{position:absolute; inset:0; z-index:0; display:flex; align-items:center; justify-content:center; font-family:"Cormorant Garamond",serif; font-size:64px; color:#c3b49a}
-  .det .lado-info{flex:1 1 48%; overflow:auto; padding:22px 26px 26px}
+  .det .lado-info{flex:1 1 47%; overflow:auto; padding:24px 28px 26px}
   .det .linhalb{text-align:center; font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); font-weight:600; margin-bottom:3px}
   .det .nome{font-size:28px; margin:0 0 14px; font-weight:600; text-align:center; letter-spacing:.01em; line-height:1.1}
   .vid{width:100%; border-radius:12px; background:#000; margin-bottom:12px; max-height:300px}
@@ -103,14 +103,14 @@
   .lbl{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); font-weight:600; margin:16px 0 8px}
   .lbl b{color:var(--ink); text-transform:none; letter-spacing:0; font-weight:600}
   .cores{display:flex; flex-wrap:wrap; gap:8px}
-  .corchip{display:flex; align-items:center; gap:7px; background:var(--card); border:1.5px solid var(--line); border-radius:999px; padding:4px 13px 4px 5px; font-size:12.5px; cursor:pointer}
-  .corchip .sw{width:20px; height:20px; border-radius:50%; border:1px solid rgba(0,0,0,.14)}
-  .corchip.on{border-color:var(--accent); background:#fbf3ee}
-  .corfoto{margin-top:12px; display:flex; flex-direction:column; align-items:flex-start; gap:6px}
-  .corfoto .img{width:150px; height:110px; border-radius:12px; background:#efe7d8; object-fit:cover; border:1px solid var(--line)}
-  .corfoto img.img{cursor:zoom-in}
-  .corfoto .cap{font-weight:600; font-size:13px}
-  .corfoto .amp{font-size:11px; color:var(--muted)}
+  .corchip{display:flex; align-items:center; gap:8px; height:38px; box-sizing:border-box; background:var(--card); border:1.5px solid var(--line); border-radius:10px; padding:0 14px 0 6px; font-size:13px; color:var(--ink); cursor:pointer}
+  .corchip .sw{width:20px; height:20px; border-radius:50%; border:1px solid rgba(0,0,0,.14); flex:0 0 auto}
+  .corchip.on{border-color:#ae5033; background:#fbf3ee}
+  .corfoto{margin-top:10px; display:flex; flex-direction:row; align-items:center; gap:12px}
+  .corfoto .cf-img{width:75px; height:75px; border-radius:10px; background:#efe7d8; object-fit:cover; border:1px solid var(--line); flex:0 0 auto}
+  .corfoto img.cf-img{cursor:zoom-in}
+  .corfoto .cf-nm{font-weight:600; font-size:14px; color:var(--ink)}
+  .corfoto .cf-amp{font-size:11.5px; color:var(--muted); margin-top:2px}
   /* ---- lightbox: foto da cor ampliada ---- */
   .lightbox{position:fixed; inset:0; z-index:90; background:rgba(20,16,12,.9); display:flex; align-items:center; justify-content:center; padding:24px; cursor:zoom-out}
   .lightbox img{max-width:min(94vw,1100px); max-height:92vh; border-radius:12px; box-shadow:0 20px 70px rgba(0,0,0,.5)}
@@ -132,7 +132,10 @@
   .stepper button{border:0; background:var(--chip); width:30px; height:30px; font-size:17px; cursor:pointer; color:var(--ink)}
   .stepper input{width:40px; border:0; text-align:center; font-size:14px; background:transparent; outline:0; -moz-appearance:textfield}
   .stepper input::-webkit-outer-spin-button,.stepper input::-webkit-inner-spin-button{-webkit-appearance:none}
-  .addcart{position:sticky; bottom:0; margin-top:18px; width:100%; border:0; background:var(--accent); color:#fff; border-radius:12px; padding:15px; font-size:16px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px}
+  .resumo{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:16px; padding:12px 16px; background:#faf6ef; border:1px solid var(--line); border-radius:10px}
+  .resumo .rz-q{font-size:13.5px; color:var(--muted)}
+  .resumo .rz-v{font-size:19px; font-weight:700; color:var(--ink); font-family:'Montserrat',sans-serif}
+  .addcart{position:sticky; bottom:0; margin-top:10px; width:100%; min-height:46px; border:0; background:#ae5033; color:#fff; border-radius:10px; padding:12px 15px; font-size:15px; font-weight:600; letter-spacing:.01em; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px}
   .addcart:disabled{background:#cdbfa8; cursor:default}
   @media(max-width:860px){ .det{flex-direction:column; overflow:auto} .det .lado-foto{flex:0 0 auto; aspect-ratio:4/3} .det .lado-info{overflow:visible} .sheet{inset:0; border-radius:0; max-width:none} }
   /* ---- carrinho (gaveta) ---- */
@@ -323,8 +326,8 @@
   }
   function corFotoHTML(p){
     var cc=CORES[sel.corId]||{}; if(!cc.nome) return "";
-    var img=cc.foto? '<img class="img" src="'+esc(cc.foto)+'" data-nome="'+esc(cc.nome||"")+'" onclick="__zoomCor(this.src,this.getAttribute(\'data-nome\'))" onerror="this.style.display=\'none\'">' : '<div class="img"></div>';
-    return '<div class="lbl">Foto da cor selecionada</div><div class="corfoto">'+img+'<div class="cap">'+esc(cc.nome)+'</div>'+(cc.foto?'<div class="amp">🔍 clique na foto para ampliar</div>':'')+'</div>';
+    var img=cc.foto? '<img class="cf-img" src="'+esc(cc.foto)+'" data-nome="'+esc(cc.nome||"")+'" onclick="__zoomCor(this.src,this.getAttribute(\'data-nome\'))" onerror="this.style.display=\'none\'">' : '<div class="cf-img ph"></div>';
+    return '<div class="corfoto">'+img+'<div class="cf-d"><div class="cf-nm">'+esc(cc.nome)+'</div>'+(cc.foto?'<div class="cf-amp">🔍 clique para ampliar</div>':'')+'</div></div>';
   }
   // Lightbox da foto do tecido da cor (abre a imagem grande pro cliente ver o detalhe).
   window.__zoomCor=function(src,nome){
@@ -363,6 +366,16 @@
     var est=estoqueProduto(p);
     return '<div class="prazo">'+(est>0? '📦 Em estoque — envio rápido.' : '🧶 Produção sob encomenda.')+'</div>';
   }
+  // Resumo do pedido (peças + valor) — usa os MESMOS preços/regras já existentes.
+  function resumoHTML(p){
+    var pecas=0, total=0;
+    (p.grupos||[]).forEach(function(g){ (g.linhas||[]).forEach(function(l){
+      var q=Number(sel.qtd[qKey(l.cod,l.id_tamanho)])||0; if(q<=0) return;
+      pecas+=q; total+=q*precoLinha(l);
+    }); });
+    return '<span class="rz-q">'+pecas+' '+(pecas===1?'peça selecionada':'peças selecionadas')+'</span><b class="rz-v">'+brl(total)+'</b>';
+  }
+  function atualizarResumo(){ var el=document.getElementById("resumo"); if(el) el.innerHTML=resumoHTML(sel.prod); }
   function renderDetalhe(){
     var p=sel.prod;
     var foto = p.foto? '<div class="ph">'+inicial(p.nome)+'</div><img src="'+esc(p.foto)+'" onerror="this.remove()">' : '<div class="ph">'+inicial(p.nome)+'</div>';
@@ -377,13 +390,14 @@
           '<h3 class="nome serif">'+esc(p.nome)+'</h3>'+
           video+
           (p.composicao?'<div class="comp">'+esc(p.composicao)+'</div>':'')+
-          prazoHTML(p)+
           blocosHTML(p)+
-          '<div class="montar"><h4>🛒 Montar pedido</h4>'+
+          prazoHTML(p)+
+          '<div class="montar"><h4>Montar pedido</h4>'+
             '<div class="lbl">Escolha a cor</div><div class="cores" id="cores">'+coresHTML(p)+'</div>'+
             '<div id="corfoto">'+corFotoHTML(p)+'</div>'+
             '<div id="tamanhos">'+tamanhosHTML(p)+'</div>'+
-            '<button class="addcart" id="addcart">🛒 Adicionar ao carrinho</button>'+
+            '<div class="resumo" id="resumo">'+resumoHTML(p)+'</div>'+
+            '<button class="addcart" id="addcart">Adicionar ao carrinho</button>'+
           '</div>'+
         '</div>'+
       '</div>';
@@ -394,6 +408,7 @@
     document.getElementById("corfoto").innerHTML=corFotoHTML(sel.prod);
     document.getElementById("tamanhos").innerHTML=tamanhosHTML(sel.prod);
     ligarTamanhos();
+    atualizarResumo();
   }
   function ligarDetalhe(){
     document.getElementById("cores").onclick=function(e){ var c=e.target.closest(".corchip"); if(!c)return; sel.corId=c.getAttribute("data-cor"); atualizarCorArea(); };
@@ -404,8 +419,8 @@
     var box=document.getElementById("tamanhos");
     box.querySelectorAll(".stepper").forEach(function(st){
       var k=st.getAttribute("data-k"); var inp=st.querySelector("input");
-      st.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ var d=Number(b.getAttribute("data-d")); var v=Math.max(0,(Number(inp.value)||0)+d); inp.value=v; sel.qtd[k]=v; }; });
-      inp.oninput=function(){ sel.qtd[k]=Math.max(0,Number(inp.value)||0); };
+      st.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ var d=Number(b.getAttribute("data-d")); var v=Math.max(0,(Number(inp.value)||0)+d); inp.value=v; sel.qtd[k]=v; atualizarResumo(); }; });
+      inp.oninput=function(){ sel.qtd[k]=Math.max(0,Number(inp.value)||0); atualizarResumo(); };
     });
   }
   function adicionarAoCarrinho(){
