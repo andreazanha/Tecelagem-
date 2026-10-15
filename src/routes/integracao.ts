@@ -571,6 +571,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       pronta_entrega: sec.pronta_entrega,
       _edicao_limitada: sec.edicao_limitada,
       _kit: false,
+      _kitTitulo: "",
       composicao: "100% Poliéster",
       tipo: "avulso",
       lancamento: false,
@@ -599,8 +600,10 @@ export async function gerarCatalogoSite(env: Env): Promise<{
 
   // ── KITS (pronta entrega): usa a RECEITA do Syntech (erp_kit_receita) pra
   //   1) marcar o produto como KIT e jogar na Pronta Entrega;
-  //   2) mostrar a COMPOSIÇÃO ("Composto por 2× Capa Balls + 1× Peseira Balls");
-  //   3) calcular o estoque AO VIVO = menor( estoque_da_peça ÷ quantidade ).
+  //   2) nome do anúncio = só a FAMÍLIA ("Kit Balls"); o tamanho (Queen 70×2,20)
+  //      vira a opção DENTRO, no lugar do "UN"/"único";
+  //   3) COMPOSIÇÃO com os tamanhos de verdade ("1× Peseira 70×2,20 + 2× Capas 55×35");
+  //   4) estoque AO VIVO = menor( estoque_da_peça ÷ quantidade ).
   // As peças (KT…) ficam fora do catálogo, mas existem em erp_produtos (com estoque).
   try {
     const { results: rec } = await env.DB.prepare(
@@ -622,38 +625,63 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         arr.push({ comp: r.componente_ref, qtd: Number(r.quantidade) || 1 });
         recPorKit.set(r.kit_ref, arr);
       }
-      const tituloCaso = (s: string) => s.toLowerCase().replace(/\b[\p{L}]/gu, (c) => c.toUpperCase());
-      const estVivo = new Map<string, number>();
-      const compTxt = new Map<string, string>();
-      for (const [kit, itensR] of recPorKit) {
+      const tituloCaso = (s: string) => s.toLowerCase().replace(/\b[\p{L}]/gu, (ch) => ch.toUpperCase());
+      // Dimensão da PESEIRA/colcha pela variação (a dona confirmou as medidas).
+      const DIM_VARIACAO: Record<string, string> = { QUEEN: "70×2,20", KING: "70×2,50", MANTA: "90×2,00", MANTAS: "90×2,00" };
+      // Lê do NOME do kit a família ("Kit Balls"), a variação (QUEEN) e a medida da
+      // almofada (o "+ 55X35"). Ex.: "KIT BALLS QUEEN + 55X35".
+      const parseKit = (nome: string) => {
+        const up = (nome || "").toUpperCase();
+        let almofada = "";
+        const mp = up.match(/\+\s*([0-9]{1,3}\s*[X×]\s*[0-9]{1,3}(?:[.,][0-9]+)?)/);
+        if (mp) almofada = mp[1].replace(/\s+/g, "").replace(/X/g, "×");
+        let variacao = "", peseiraDim = "";
+        for (const k of Object.keys(DIM_VARIACAO)) { if (new RegExp("\\b" + k + "\\b").test(up)) { variacao = k; peseiraDim = DIM_VARIACAO[k]; break; } }
+        let fam = nome;
+        if (variacao) { const i = up.indexOf(variacao); if (i >= 0) fam = nome.slice(0, i); }
+        else { const ip = nome.indexOf("+"); if (ip >= 0) fam = nome.slice(0, ip); }
+        fam = fam.replace(/[-–+\s]+$/, "").trim();
+        return { familia: fam || nome, variacao, almofada, peseiraDim };
+      };
+      const tipoPeca = (n: string) => { const u = (n || "").toUpperCase(); if (/PESEIRA|MANTA/.test(u)) return "peseira"; if (/CAPA|ALMOFADA/.test(u)) return "capa"; return "outro"; };
+      const medidaDeId = new Map<string, string>();
+      for (const t of tamPorMedida.values()) medidaDeId.set(t.id, t.medida);
+
+      for (const prod of produtos) {
+        const itensR = recPorKit.get(prod.id);
+        if (!itensR) continue;
+        const pk = parseKit(prod.nome);
         let vivo = Infinity;
-        const partes: string[] = [];
+        const partes: { ordem: number; txt: string }[] = [];
         for (const it of itensR) {
           const info = compInfo.get(it.comp) || { nome: it.comp, estoque: 0 };
           vivo = Math.min(vivo, Math.floor(info.estoque / (it.qtd || 1)));
-          partes.push(`${it.qtd}× ${tituloCaso(info.nome)}`);
+          const tp = tipoPeca(info.nome);
+          const dim = tp === "peseira" ? pk.peseiraDim : tp === "capa" ? pk.almofada : "";
+          const rotulo = tp === "peseira" ? (it.qtd > 1 ? "Peseiras" : "Peseira")
+            : tp === "capa" ? (it.qtd > 1 ? "Capas" : "Capa")
+              : tituloCaso(info.nome);
+          partes.push({ ordem: tp === "peseira" ? 0 : tp === "capa" ? 1 : 2, txt: `${it.qtd}× ${rotulo}${dim ? " " + dim : ""}` });
         }
-        estVivo.set(kit, isFinite(vivo) ? Math.max(0, vivo) : 0);
-        compTxt.set(kit, partes.join(" + "));
-      }
-      const medidaDeId = new Map<string, string>();
-      for (const t of tamPorMedida.values()) medidaDeId.set(t.id, t.medida);
-      for (const prod of produtos) {
-        const vivo = estVivo.get(prod.id);
-        if (vivo == null) continue;
+        vivo = isFinite(vivo) ? Math.max(0, vivo) : 0;
+        partes.sort((a, b) => a.ordem - b.ordem);
         prod._kit = true;
         prod.pronta_entrega = true;
         prod.estoque_geral = vivo;
-        const comp = compTxt.get(prod.id) || "";
-        if (comp) prod.composicao = "Composto por " + comp;
+        prod._kitTitulo = pk.familia ? tituloCaso(pk.familia) : "";   // "Kit Balls" (renomeia só depois de casar a FOTO)
+        if (partes.length) prod.composicao = partes.map((p) => p.txt).join(" + ");
+        // tamanho do kit = a variação (Queen 70×2,20) no lugar do "UN"/"único".
+        const medidaKit = pk.variacao ? (tituloCaso(pk.variacao) + (pk.peseiraDim ? " " + pk.peseiraDim : "")) : "";
         for (const g of prod.grupos) {
           g.estoque = vivo;
           for (const l of g.linhas) {
-            const med = medidaDeId.get(l.id_tamanho) || "-";
+            let medKey: string;
+            if (medidaKit) { const nid = idTam(medidaKit); l.id_tamanho = nid; l.id = `${prod.id}-${nid}`; medKey = medidaKit; }
+            else medKey = medidaDeId.get(l.id_tamanho) || "-";
             itens[prod.id] = itens[prod.id] || {};
-            itens[prod.id][med] = itens[prod.id][med] || {};
-            if (prod.cores.length) { for (const c of prod.cores) itens[prod.id][med][c.id_cor] = vivo; }
-            else itens[prod.id][med]["-"] = vivo;
+            itens[prod.id][medKey] = itens[prod.id][medKey] || {};
+            if (prod.cores.length) { for (const c of prod.cores) itens[prod.id][medKey][c.id_cor] = vivo; }
+            else itens[prod.id][medKey]["-"] = vivo;
           }
         }
       }
@@ -706,6 +734,12 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
     p.video = m?.video || "";
     p.fotoDescricao = m?.fotoDescricao || "";
     if (m?.blocos && Object.keys(m.blocos).length) p.blocos = m.blocos;
+  }
+  // KIT: só AGORA (depois de casar a foto pelo nome completo do Syntech) renomeia o
+  // anúncio pra só a família ("Kit Balls"). Assim a foto continua batendo e o título fica limpo.
+  for (const p of prods) {
+    const t = (p as { _kitTitulo?: unknown })._kitTitulo;
+    if (typeof t === "string" && t.trim()) p.nome = t.trim();
   }
 
   // Foto do TECIDO por cor: casa pelo NOME da cor com o banco_cores do catálogo atual.
