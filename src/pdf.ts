@@ -1177,25 +1177,27 @@ export async function gerarOrdemCompra(d: OrdemCompraDados): Promise<Uint8Array>
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
   const bld = await doc.embedFont(StandardFonts.HelveticaBold);
-  const M = 34, ix = M, iw = A4W - 2 * M;
-  let page = doc.addPage([A4W, A4H]);
+  // PDF em PAISAGEM (horizontal): mais largura pra caber todas as colunas (ex.: embalagem).
+  const PW = A4H, PH = A4W;
+  const M = 34, ix = M, iw = PW - 2 * M;
+  let page = doc.addPage([PW, PH]);
   let y = 0;
   const SLATE = hx("#334155"), LINEC2 = hx("#cbd5e1"), GREY2 = hx("#eef1f5");
 
   const T = (s: string, x: number, yTop: number, size: number, f: PDFFont, c = INK) =>
-    page.drawText(s, { x, y: A4H - yTop, size, font: f, color: c });
+    page.drawText(s, { x, y: PH - yTop, size, font: f, color: c });
   const TR = (s: string, xr: number, yTop: number, size: number, f: PDFFont, c = INK) =>
-    page.drawText(s, { x: xr - f.widthOfTextAtSize(s, size), y: A4H - yTop, size, font: f, color: c });
+    page.drawText(s, { x: xr - f.widthOfTextAtSize(s, size), y: PH - yTop, size, font: f, color: c });
   const R = (x: number, yTop: number, w: number, h: number, c = INK) =>
-    page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, color: c });
+    page.drawRectangle({ x, y: PH - yTop - h, width: w, height: h, color: c });
   const RB = (x: number, yTop: number, w: number, h: number, c: ReturnType<typeof rgb>, bw = 0.8) =>
-    page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, borderColor: c, borderWidth: bw });
+    page.drawRectangle({ x, y: PH - yTop - h, width: w, height: h, borderColor: c, borderWidth: bw });
   const seg = (x1: number, y1: number, x2: number, c: ReturnType<typeof rgb>, th = 0.7) =>
-    page.drawLine({ start: { x: x1, y: A4H - y1 }, end: { x: x2, y: A4H - y1 }, thickness: th, color: c });
+    page.drawLine({ start: { x: x1, y: PH - y1 }, end: { x: x2, y: PH - y1 }, thickness: th, color: c });
 
   const e = d.empresa || {}, f = d.fornecedor || {};
   // Cabeçalho (faixa navy)
-  R(0, 0, A4W, 72, NAVY);
+  R(0, 0, PW, 72, NAVY);
   T(fit(e.nome || "BIG TRICOT", bld, 20, iw * 0.58), ix, 34, 20, bld, WHITE);
   const subEmp = [e.cnpj ? "CNPJ: " + e.cnpj : "", e.telefone || "", e.email || ""].filter(Boolean).join("   ·   ");
   if (subEmp) T(fit(subEmp, reg, 8.5, iw * 0.58), ix + 2, 50, 8.5, reg, hx("#c7d2e0"));
@@ -1250,7 +1252,7 @@ export async function gerarOrdemCompra(d: OrdemCompraDados): Promise<Uint8Array>
 
   let total = 0;
   d.itens.forEach((it, i) => {
-    if (y + RH > A4H - 80) { page = doc.addPage([A4W, A4H]); y = 40; cabTabela(); }
+    if (y + RH > PH - 80) { page = doc.addPage([PW, PH]); y = 40; cabTabela(); }
     const qtd = Number(it.qtd) || 0, unit = Number(it.preco) || 0, tot = qtd * unit;
     const temSaldo = it.saldo != null, temMin = it.minimo != null;
     const saldo = Number(it.saldo) || 0, minimo = Number(it.minimo) || 0;
@@ -1277,7 +1279,7 @@ export async function gerarOrdemCompra(d: OrdemCompraDados): Promise<Uint8Array>
 
   // Total geral
   y += 8;
-  if (y + 28 > A4H - 60) { page = doc.addPage([A4W, A4H]); y = 40; }
+  if (y + 28 > PH - 60) { page = doc.addPage([PW, PH]); y = 40; }
   R(ix, y, iw, 28, NAVY);
   T(`${d.itens.length} ${d.itens.length === 1 ? "item" : "itens"}`, ix + 12, y + 18, 10, bld, WHITE);
   TR("TOTAL ESTIMADO: " + money(total), ix + iw - 12, y + 18, 13, bld, WHITE);
@@ -1286,7 +1288,7 @@ export async function gerarOrdemCompra(d: OrdemCompraDados): Promise<Uint8Array>
   // Data de entrega + Forma de pagamento + Observação (quando preenchidos)
   const dent = (d.data_entrega || "").trim(), fpag = (d.forma_pagamento || "").trim(), obsv = (d.obs || "").trim();
   if (dent || fpag || obsv) {
-    if (y + 63 > A4H - 70) { page = doc.addPage([A4W, A4H]); y = 40; }
+    if (y + 63 > PH - 70) { page = doc.addPage([PW, PH]); y = 40; }
     if (dent) { T("Data de entrega:", ix, y + 10, 9, bld, SLATE); T(fit(dent, reg, 9.5, iw - 110), ix + 100, y + 10, 9.5, reg, INK); y += 17; }
     if (fpag) { T("Forma de pagamento:", ix, y + 10, 9, bld, SLATE); T(fit(fpag, reg, 9.5, iw - 128), ix + 120, y + 10, 9.5, reg, INK); y += 17; }
     if (obsv) { T("Observação:", ix, y + 10, 9, bld, SLATE); T(fit(obsv, reg, 9.5, iw - 82), ix + 74, y + 10, 9.5, reg, INK); y += 17; }
@@ -1296,7 +1298,7 @@ export async function gerarOrdemCompra(d: OrdemCompraDados): Promise<Uint8Array>
   }
 
   // Assinaturas
-  if (y + 40 > A4H - 24) { page = doc.addPage([A4W, A4H]); y = A4H - 90; }
+  if (y + 40 > PH - 24) { page = doc.addPage([PW, PH]); y = PH - 90; }
   const half = (iw - 40) / 2;
   seg(ix, y, ix + half, LINEC2, 0.8);
   seg(ix + iw - half, y, ix + iw, LINEC2, 0.8);

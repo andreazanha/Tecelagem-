@@ -1663,6 +1663,7 @@ const CAMPOS_POR_TIPO: Record<string, { cor?: boolean; campos?: ColDef[]; coluna
   ] },
   etiqueta: { colunas: [
     { key: "nome", label: "Nome", ph: "ex.: Etiqueta 20x75 mm", width: 200 },
+    { key: "cor", label: "Cor", ph: "ex.: Off White", width: 140 },
     { key: "tamanho", label: "Tamanho", ph: "ex.: 20X75 MM", width: 130 },
     { key: "unidade", label: "Un", width: 80 },
     { key: "preco", label: "Preço (R$)", ph: "0,14", width: 100 },
