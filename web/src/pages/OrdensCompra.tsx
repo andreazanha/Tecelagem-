@@ -127,6 +127,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
   const [formas, setFormas] = useState<string[]>([]);
   const [erro, setErro] = useState("");
   const [busy, setBusy] = useState(false);
+  const [receberOpen, setReceberOpen] = useState(false);
   const ehMaster = !!getUser()?.admin;
 
   useEffect(() => {
@@ -243,7 +244,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
 
             <table className="table" style={{ marginTop: 10 }}>
               <thead><tr>
-                <th>Cód.</th><th>Material</th><th className="num">Estoque</th><th className="num">Mín.</th><th className="num">Comprar</th><th>Un</th><th className="num">Vl unit.</th><th className="num">Total</th>{editavel && <th></th>}
+                <th>Cód.</th><th>Material</th><th className="num">Estoque</th><th className="num">Mín.</th><th className="num">Comprar</th><th className="num">Recebido</th><th>Un</th><th className="num">Vl unit.</th><th className="num">Total</th>{editavel && <th></th>}
               </tr></thead>
               <tbody>
                 {itens.map((it, i) => {
@@ -259,6 +260,12 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
                         ? <input value={String(it.qtd ?? 0)} inputMode="decimal" style={{ width: 70, textAlign: "right" }} onChange={(e) => setItem(i, { qtd: Number(e.target.value.replace(",", ".")) || 0 })} />
                         : nBR(it.qtd)}
                     </td>
+                    <td className="num">{(() => {
+                      const rec = Number(it.recebido) || 0, comp = Number(it.qtd) || 0;
+                      if (rec <= 0) return <span className="muted">—</span>;
+                      const ok = rec >= comp;
+                      return <span style={{ color: ok ? "#166534" : "#92400e", fontWeight: 700 }}>{ok ? "✓ " : ""}{nBR(rec)}</span>;
+                    })()}</td>
                     <td className="muted">{it.unidade || ""}</td>
                     <td className="num">
                       {editavel
@@ -297,6 +304,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
 
             <div className="row-gap" style={{ marginTop: 14, gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
               {ehMaster && <button className="btn btn-soft" disabled={busy} style={{ color: "#b91c1c", marginRight: "auto" }} onClick={excluirAqui}>🗑 Excluir</button>}
+              {jaAprovada && <button className="btn btn-soft" disabled={busy} style={{ color: "#166534" }} onClick={() => setReceberOpen(true)}>📥 Receber no estoque</button>}
               <button className="btn btn-soft" disabled={busy} onClick={verPdf}>👁 Ver PDF</button>
               {editavel && <button className="btn btn-soft" disabled={busy} onClick={salvarSo}>💾 Salvar alterações</button>}
               {podeAprovar && ord.status === "aguardando_aprovacao" && (
@@ -311,6 +319,78 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
             </div>
           </>
         )}
+      </div>
+      {receberOpen && ord && (
+        <ReceberModal ordem={ord} itens={itens} onFechar={() => setReceberOpen(false)}
+          onRecebido={(o) => { setReceberOpen(false); setOrd(o); setItens(o.itens || []); onMudou(); }} />
+      )}
+    </div>
+  );
+}
+
+// Recebimento da ordem no estoque (aceita parcial): por item, quanto chegou agora.
+function ReceberModal({ ordem, itens, onFechar, onRecebido }: { ordem: OrdemCompraDetalhe; itens: OrdemCompraItemRow[]; onFechar: () => void; onRecebido: (o: OrdemCompraDetalhe) => void }) {
+  const restante = (it: OrdemCompraItemRow) => Math.max(0, (Number(it.qtd) || 0) - (Number(it.recebido) || 0));
+  const [qtd, setQtd] = useState<Record<string, string>>(() => {
+    const m: Record<string, string> = {};
+    for (const it of itens) m[it.id] = String(restante(it));
+    return m;
+  });
+  const [busy, setBusy] = useState(false);
+  const totalReceber = itens.reduce((s, it) => s + Math.min(restante(it), Number((qtd[it.id] || "0").replace(",", ".")) || 0), 0);
+
+  async function confirmar() {
+    const lista = itens
+      .map((it) => ({ id: it.id, qtd: Math.min(restante(it), Number((qtd[it.id] || "0").replace(",", ".")) || 0) }))
+      .filter((x) => x.qtd > 0);
+    if (!lista.length) { alert("Informe a quantidade recebida de ao menos um item."); return; }
+    setBusy(true);
+    try {
+      const r = await api.receberOrdemCompra(ordem.id, lista);
+      if (r.ok && r.ordem) { alert(`✅ Entrada no estoque feita (${nBR(r.recebidos || 0)} un no total).`); onRecebido(r.ordem); }
+      else alert(`⚠️ ${r.motivo === "nada_a_receber" ? "Nada a receber." : "Não foi possível receber."}`);
+    } catch (e) { alert((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onFechar(); }}>
+      <div className="card pad" style={{ maxWidth: 720, width: "96%", maxHeight: "90vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+        <div className="row-gap" style={{ alignItems: "center", gap: 8 }}>
+          <h2 style={{ margin: 0 }}>📥 Receber no estoque</h2>
+          <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={onFechar}>✕ Fechar</button>
+        </div>
+        <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>
+          Informe quanto chegou de cada item. Pode receber <strong>parcial</strong> — o que faltar continua pendente pra receber depois.
+          A quantidade entra no estoque do material.
+        </p>
+        <table className="table" style={{ marginTop: 8 }}>
+          <thead><tr>
+            <th>Material</th><th className="num">Comprar</th><th className="num">Já recebido</th><th className="num">Falta</th><th className="num">Receber agora</th>
+          </tr></thead>
+          <tbody>
+            {itens.map((it) => {
+              const falta = restante(it);
+              return (
+                <tr key={it.id} style={falta <= 0 ? { opacity: 0.5 } : undefined}>
+                  <td>{it.nome}{it.tamanho ? ` · ${it.tamanho}` : ""}{it.cor ? ` · ${it.cor}` : ""} <span className="muted">{it.unidade || ""}</span></td>
+                  <td className="num">{nBR(Number(it.qtd) || 0)}</td>
+                  <td className="num muted">{nBR(Number(it.recebido) || 0)}</td>
+                  <td className="num" style={{ fontWeight: 700 }}>{nBR(falta)}</td>
+                  <td className="num">
+                    <input value={qtd[it.id] ?? "0"} inputMode="decimal" disabled={falta <= 0} style={{ width: 80, textAlign: "right" }}
+                      onChange={(e) => setQtd((q) => ({ ...q, [it.id]: e.target.value }))} />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div className="row-gap" style={{ marginTop: 14, gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
+          <span className="muted">Total a receber agora: <strong>{nBR(totalReceber)}</strong></span>
+          <button className="btn btn-soft" disabled={busy} onClick={onFechar}>Cancelar</button>
+          <button className="btn btn-primary" disabled={busy} onClick={confirmar}>{busy ? "Recebendo…" : "📥 Confirmar entrada"}</button>
+        </div>
       </div>
     </div>
   );

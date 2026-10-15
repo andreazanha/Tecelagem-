@@ -2037,7 +2037,7 @@ function CadastroMaterial({ cat, onEditarCat, onExcluirCat, onMudou }: { cat: Ma
           <button className="btn btn-soft" title="Colar vários de uma vez" onClick={() => setColar(true)}>📋 Colar em massa</button>
           {sel.size > 0 && <button className="btn btn-soft" title="Alterar um campo dos selecionados" onClick={() => setAlterar(true)} style={{ color: "#4338ca", borderColor: "#c7d2fe" }}>✏️ Alterar em massa ({sel.size})</button>}
           {itens.length > 0 && <button className="btn btn-soft" title="Excluir todos deste tipo" onClick={excluirTodos} style={{ color: "#b91c1c" }}>🗑 Excluir todos</button>}
-          <button className="btn btn-soft" title="Renomear insumo" onClick={onEditarCat}>✎ Renomear</button>
+          <button className="btn btn-soft" title="Editar este tipo de material (nome, ícone, cor, 'tem cor')" onClick={onEditarCat}>✎ Editar tipo</button>
           <button className="btn" title="Excluir insumo" onClick={onExcluirCat}>🗑</button>
         </div>
       </div>

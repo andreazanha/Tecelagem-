@@ -230,7 +230,7 @@ export interface OrdemCompraItemRow {
   id: string; ordem_id: string; material_id: string | null; nome: string | null;
   codigo: string | null; tamanho: string | null; cor: string | null; unidade: string | null;
   saldo: number | null; minimo: number | null;
-  qtd: number; preco: number; ordem: number;
+  qtd: number; preco: number; ordem: number; recebido?: number;
 }
 export interface OrdemCompraDetalhe extends OrdemCompra {
   empresa: { nome?: string; cnpj?: string; endereco?: string; telefone?: string; email?: string };
@@ -1164,6 +1164,8 @@ export const api = {
     fetch(`/api/compras/ordens/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   ordemCompraPdf: (id: string) =>
     fetch(`/api/compras/ordens/${encodeURIComponent(id)}/pdf`).then(async (r) => { if (!r.ok) throw new Error("Não consegui gerar o PDF desta ordem."); return r.blob(); }),
+  receberOrdemCompra: (id: string, itens: { id: string; qtd: number }[]) =>
+    jsonPost(`/api/compras/ordens/${encodeURIComponent(id)}/receber`, { itens }).then((r) => j<{ ok: boolean; recebidos?: number; motivo?: string; ordem?: OrdemCompraDetalhe }>(r)),
   // Mapa de refil (medida do produto → medida do refil)
   listarRefilMapa: () =>
     fetch("/api/materiais/refil-mapa").then((r) => j<RefilMapa[]>(r)),

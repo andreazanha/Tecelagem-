@@ -179,6 +179,55 @@ compras.get("/ordens/:id/pdf", async (c) => {
   });
 });
 
+// ── Receber ordem (dá ENTRADA no estoque; aceita parcial) ─────────────────────
+// Body: { itens: [{ id, qtd }] } — qtd a receber AGORA de cada item (default = o que falta).
+compras.post("/ordens/:id/receber", async (c) => {
+  const g = await exigirAlgumaFuncao(c, ["estoque.entrada", "compras.aprovar"]); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const o = await carregarOrdem(c.env, id);
+  if (!o) return c.json({ error: "nao_encontrada" }, 404);
+  if (o.status === "recusada") return c.json({ error: "recusada" }, 409);
+
+  const body = await c.req.json<{ itens?: { id?: string; qtd?: number }[] }>().catch(() => ({} as { itens?: { id?: string; qtd?: number }[] }));
+  const pedido = new Map<string, number>();
+  for (const it of (Array.isArray(body.itens) ? body.itens : [])) {
+    if (it && it.id) pedido.set(String(it.id), Math.max(0, Number(it.qtd) || 0));
+  }
+
+  const stmts: D1PreparedStatement[] = [];
+  const numeroOrdem = String(o.numero || "");
+  let recebidosAgora = 0;
+  for (const it of (o.itens as Array<Record<string, unknown>>)) {
+    const itemId = String(it.id || "");
+    const comprar = Number(it.qtd) || 0;
+    const jaRec = Number(it.recebido) || 0;
+    const resta = Math.max(0, comprar - jaRec);
+    // quanto receber agora: o que veio no body (limitado ao que falta); default = tudo que falta
+    const pedido1 = pedido.has(itemId) ? pedido.get(itemId)! : resta;
+    const receber = Math.min(resta, Math.max(0, pedido1));
+    if (receber <= 0) continue;
+    recebidosAgora += receber;
+    // atualiza o recebido do item
+    stmts.push(c.env.DB.prepare("UPDATE ordem_compra_itens SET recebido = COALESCE(recebido,0) + ? WHERE id=?").bind(receber, itemId));
+    // dá entrada no estoque do material (quando o item está ligado a um material)
+    const matId = (it.material_id as string) || "";
+    if (matId) {
+      const mat = await c.env.DB.prepare("SELECT saldo FROM materiais WHERE id=?").bind(matId).first<{ saldo: number }>();
+      if (mat) {
+        const novo = (Number(mat.saldo) || 0) + receber;
+        stmts.push(c.env.DB.prepare("UPDATE materiais SET saldo=? WHERE id=?").bind(novo, matId));
+        stmts.push(c.env.DB.prepare(
+          "INSERT INTO material_mov (id, material_id, tipo, quantidade, motivo, fonte, usuario_id, usuario_nome) VALUES (?, ?, 'entrada', ?, ?, 'material', ?, ?)"
+        ).bind(uid(), matId, receber, `Ordem de compra ${numeroOrdem}`, g.u.id, g.u.nome));
+      }
+    }
+  }
+  if (!stmts.length) return c.json({ ok: false, motivo: "nada_a_receber" });
+  await c.env.DB.batch(stmts);
+  const atual = await carregarOrdem(c.env, id);
+  return c.json({ ok: true, recebidos: recebidosAgora, ordem: atual });
+});
+
 // ── Editar ordem (gestor) — em qualquer status, menos recusada (aprovada/enviada
 //    podem ser editadas e depois reenviadas pelo gestor). ───────────────────────
 compras.patch("/ordens/:id", async (c) => {
