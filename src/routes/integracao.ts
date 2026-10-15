@@ -497,9 +497,12 @@ export async function gerarCatalogoSite(env: Env): Promise<{
 
   // Produtos com código começando em "KT" são PEÇAS/COMPONENTES de kit — não entram
   // no catálogo (o kit "pai" aparece inteiro, com a composição no próprio nome).
-  const { results: prods } = await env.DB.prepare(
+  const { results: prodsRaw } = await env.DB.prepare(
     "SELECT ref, nome, classe, grupo, preco_varejo, preco_atacado, estoque_geral, cores, tamanhos FROM erp_produtos WHERE COALESCE(inativo,0)=0 AND UPPER(COALESCE(ref,'')) NOT LIKE 'KT%' ORDER BY nome"
   ).all<{ ref: string; nome: string | null; classe: string | null; grupo: string | null; preco_varejo: number | null; preco_atacado: number | null; estoque_geral: number | null; cores: string | null; tamanhos: string | null }>();
+  // Ignora códigos bichados (com espaço/TAB no ref) — ex.: um duplicado "\tQC107855X35"
+  // que o ERP gerou com um TAB grudado no código e polui o catálogo.
+  const prods = prodsRaw.filter((p) => { const r = String(p.ref || ""); return r !== "" && !/\s/.test(r); });
 
   const idsCor = new Set<string>(), idsTam = new Set<string>();
   const corPorChave = new Map<string, { id: string; nome: string; hex: string; categoria: string; foto: string }>();
@@ -773,6 +776,26 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
     if (typeof t === "string" && t.trim()) p.nome = t.trim();
   }
 
+  // EXTRA da dona (nosso banco): vídeo e textos que ela coloca por produto. Vence o
+  // catálogo antigo — é a forma de pôr vídeo/texto em quem não tem (ex.: kits).
+  try {
+    const { results: extras } = await env.DB.prepare("SELECT ref, video, texto FROM loja_produto_extra").all<{ ref: string; video: string | null; texto: string | null }>();
+    if (extras && extras.length) {
+      const exMap = new Map<string, { video: string | null; texto: string | null }>();
+      for (const e of extras) exMap.set(String(e.ref || "").trim(), { video: e.video, texto: e.texto });
+      for (const p of prods) {
+        const ex = exMap.get(String((p as { id?: unknown }).id || "").trim());
+        if (!ex) continue;
+        if (ex.video && ex.video.trim()) p.video = ex.video.trim();
+        if (ex.texto && ex.texto.trim()) {
+          const bl: Record<string, unknown> = (p.blocos && typeof p.blocos === "object") ? { ...p.blocos } : {};
+          bl["Detalhes"] = ex.texto.trim();
+          p.blocos = bl;
+        }
+      }
+    }
+  } catch { /* extra: silencioso */ }
+
   // Foto do TECIDO por cor: casa pelo NOME da cor com o banco_cores do catálogo atual.
   type CorBase = { nome?: string; foto?: string };
   const corFotoMap = new Map<string, string>();
@@ -819,6 +842,47 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
 integracao.get("/catalogo-site", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   return c.json(await gerarCatalogoSite(c.env));
+});
+
+// Lista os produtos do catálogo (id, nome, se já tem vídeo) + o EXTRA salvo pela dona,
+// pra tela "Vídeos e textos" do admin escolher e editar.
+integracao.get("/catalogo-produtos", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const doc = await gerarDocSite(c.env);
+  const normais = Array.isArray(doc.produtos) ? (doc.produtos as Record<string, unknown>[]) : [];
+  const elDoc = doc.edicao_limitada as { produtos?: unknown[] } | undefined;
+  const limitada = elDoc && Array.isArray(elDoc.produtos) ? (elDoc.produtos as Record<string, unknown>[]) : [];
+  const todos = [...normais, ...limitada];
+  const { results: ex } = await c.env.DB.prepare("SELECT ref, video, texto FROM loja_produto_extra").all<{ ref: string; video: string | null; texto: string | null }>().catch(() => ({ results: [] as { ref: string; video: string | null; texto: string | null }[] }));
+  const exMap = new Map(ex.map((e) => [String(e.ref || "").trim(), e]));
+  const lista = todos.map((p) => {
+    const id = String(p.id || "");
+    const e = exMap.get(id.trim());
+    return {
+      id, nome: String(p.nome || ""), pronta_entrega: !!p.pronta_entrega, kit: !!p._kit,
+      tem_video: !!(p.video && String(p.video).trim()),
+      extra_video: e?.video || "", extra_texto: e?.texto || "",
+    };
+  }).filter((p) => p.id);
+  return c.json(lista);
+});
+
+// Salva (ou apaga) o vídeo/texto EXTRA de um produto do catálogo.
+integracao.post("/produto-extra", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ id?: string; video?: string; texto?: string }>().catch(() => ({} as { id?: string; video?: string; texto?: string }));
+  const id = String(b.id || "").trim();
+  if (!id) return c.json({ error: "sem_id" }, 400);
+  const video = String(b.video || "").trim() || null;
+  const texto = String(b.texto || "").trim() || null;
+  if (!video && !texto) {
+    await c.env.DB.prepare("DELETE FROM loja_produto_extra WHERE ref=?").bind(id).run();
+    return c.json({ ok: true, removido: true });
+  }
+  await c.env.DB.prepare(
+    "INSERT INTO loja_produto_extra (ref, video, texto, atualizado_em) VALUES (?,?,?,datetime('now')) ON CONFLICT(ref) DO UPDATE SET video=excluded.video, texto=excluded.texto, atualizado_em=datetime('now')"
+  ).bind(id, video, texto).run();
+  return c.json({ ok: true });
 });
 
 // ── LOJA B2B (catálogo NOVO, feito do zero) ──────────────────────────────────
