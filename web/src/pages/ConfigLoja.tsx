@@ -1,0 +1,189 @@
+import { useEffect, useState } from "react";
+import { api, type LojaBanner, type CatalogoProdutoExtra } from "../api";
+
+// Tela "Configurar catálogo": banners da loja + vídeos/textos dos produtos.
+// Só aparência/conteúdo do catálogo — não mexe em preço, estoque nem pedidos.
+
+const LOJA_URL = "/api/integracao/loja";
+
+function uid() { return Math.random().toString(36).slice(2, 9); }
+
+export default function ConfigLoja() {
+  const [aba, setAba] = useState<"banner" | "textos">("banner");
+  return (
+    <div style={{ maxWidth: 980, margin: "0 auto", padding: "18px 16px 80px" }}>
+      <h1 style={{ fontSize: 24, margin: "4px 0 2px" }}>Configurar catálogo</h1>
+      <div style={{ color: "#8a8073", fontSize: 14, marginBottom: 16 }}>
+        Aparência e conteúdo da loja. <a href={LOJA_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#ad5033" }}>Abrir a loja ↗</a>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+        <button onClick={() => setAba("banner")} style={tab(aba === "banner")}>🖼️ Banner</button>
+        <button onClick={() => setAba("textos")} style={tab(aba === "textos")}>🎬 Vídeos e textos</button>
+      </div>
+      {aba === "banner" ? <Banners /> : <Textos />}
+    </div>
+  );
+}
+
+function tab(on: boolean): React.CSSProperties {
+  return { padding: "9px 18px", borderRadius: 999, border: "1px solid " + (on ? "#ad5033" : "#e0d8c9"), background: on ? "#ad5033" : "#fff", color: on ? "#fff" : "#4a443c", fontWeight: 600, cursor: "pointer", fontSize: 14 };
+}
+const inp: React.CSSProperties = { width: "100%", boxSizing: "border-box", padding: "10px 12px", border: "1px solid #ddd5c7", borderRadius: 10, fontSize: 14 };
+const lbl: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 600, color: "#6b645a", margin: "10px 0 4px" };
+const btnPri: React.CSSProperties = { padding: "11px 20px", border: 0, borderRadius: 10, background: "#ad5033", color: "#fff", fontWeight: 600, cursor: "pointer", fontSize: 14 };
+
+// ─────────────────────────── BANNERS ───────────────────────────
+function Banners() {
+  const [lista, setLista] = useState<LojaBanner[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => { api.lojaBanners().then((r) => setLista(r.banners || [])).catch(() => setLista([])).finally(() => setCarregando(false)); }, []);
+
+  function up<K extends keyof LojaBanner>(i: number, k: K, v: LojaBanner[K]) {
+    setLista((l) => l.map((b, j) => (j === i ? { ...b, [k]: v } : b)));
+  }
+  function add() { setLista((l) => [...l, { id: uid(), ativo: true, ordem: l.length }]); }
+  function rm(i: number) { setLista((l) => l.filter((_, j) => j !== i)); }
+  function mover(i: number, d: number) {
+    setLista((l) => { const n = [...l]; const j = i + d; if (j < 0 || j >= n.length) return l; [n[i], n[j]] = [n[j], n[i]]; return n.map((b, k) => ({ ...b, ordem: k })); });
+  }
+  async function enviarImg(i: number, f: File) {
+    up(i, "img", "…enviando");
+    try { const r = await api.bannerUpload(f); if (r.ok && r.url) up(i, "img", r.url); else { up(i, "img", ""); setMsg(r.error || "Não consegui enviar a imagem."); } }
+    catch { up(i, "img", ""); setMsg("Não consegui enviar a imagem."); }
+  }
+  async function salvar() {
+    setSalvando(true); setMsg("");
+    try { await api.lojaBannersSalvar(lista.map((b, k) => ({ ...b, ordem: k }))); setMsg("✓ Salvo! Atualize a loja (Ctrl+F5) pra ver."); }
+    catch { setMsg("Não consegui salvar. Tente de novo."); }
+    finally { setSalvando(false); }
+  }
+
+  if (carregando) return <div style={{ color: "#8a8073" }}>Carregando…</div>;
+  return (
+    <div>
+      <div style={{ color: "#8a8073", fontSize: 13.5, marginBottom: 14 }}>
+        O banner aparece no topo da loja (abaixo do cabeçalho). Você pode ter mais de um — eles se alternam.
+      </div>
+      {lista.length === 0 && <div style={{ color: "#8a8073", padding: "20px 0" }}>Nenhum banner ainda. Clique em "➕ Novo banner".</div>}
+      {lista.map((b, i) => (
+        <div key={b.id || i} style={{ background: "#fff", border: "1px solid #ece5d8", borderRadius: 14, padding: 16, marginBottom: 14, boxShadow: "0 1px 2px rgba(60,48,32,.05)" }}>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <div style={{ width: 260, flexShrink: 0 }}>
+              <div style={{ width: "100%", aspectRatio: "16/7", borderRadius: 10, background: b.img && b.img !== "…enviando" ? `#181615 center/cover url(${JSON.stringify(b.img)})` : "#efe7d8", display: "flex", alignItems: "center", justifyContent: "center", color: "#a99", fontSize: 13, overflow: "hidden" }}>
+                {(!b.img || b.img === "…enviando") && (b.img === "…enviando" ? "enviando…" : "sem imagem")}
+              </div>
+              <label style={{ ...btnPri, background: "#4a443c", display: "inline-block", marginTop: 8, fontSize: 13, padding: "8px 14px" }}>
+                {b.img && b.img !== "…enviando" ? "Trocar imagem" : "Escolher imagem"}
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) enviarImg(i, f); e.currentTarget.value = ""; }} />
+              </label>
+            </div>
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <label style={lbl}>Título (frase grande)</label>
+              <input style={inp} value={b.titulo || ""} placeholder="Ex.: Tricô que transforma ambientes" onChange={(e) => up(i, "titulo", e.target.value)} />
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1 }}><label style={lbl}>Texto de cima (pequeno)</label><input style={inp} value={b.kicker || ""} placeholder="Ex.: Pronta entrega" onChange={(e) => up(i, "kicker", e.target.value)} /></div>
+                <div style={{ flex: 1 }}><label style={lbl}>Texto de baixo (pequeno)</label><input style={inp} value={b.sub || ""} placeholder="Ex.: Qualidade · Design" onChange={(e) => up(i, "sub", e.target.value)} /></div>
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1 }}><label style={lbl}>Botão (texto)</label><input style={inp} value={b.botao_texto || ""} placeholder="Ex.: Ver produtos" onChange={(e) => up(i, "botao_texto", e.target.value)} /></div>
+                <div style={{ flex: 1.4 }}><label style={lbl}>Botão (link ao clicar)</label><input style={inp} value={b.botao_link || ""} placeholder="https://..." onChange={(e) => up(i, "botao_link", e.target.value)} /></div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 14, cursor: "pointer" }}>
+                  <input type="checkbox" checked={b.ativo !== false} onChange={(e) => up(i, "ativo", e.target.checked)} /> Mostrar na loja
+                </label>
+                <span style={{ flex: 1 }} />
+                <button onClick={() => mover(i, -1)} disabled={i === 0} style={btnMini(i === 0)}>↑</button>
+                <button onClick={() => mover(i, 1)} disabled={i === lista.length - 1} style={btnMini(i === lista.length - 1)}>↓</button>
+                <button onClick={() => rm(i)} style={{ ...btnMini(false), color: "#b3402a", borderColor: "#e7c3ba" }}>Remover</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
+        <button onClick={add} style={{ ...btnPri, background: "#fff", color: "#ad5033", border: "1px solid #ad5033" }}>➕ Novo banner</button>
+        <button onClick={salvar} disabled={salvando} style={btnPri}>{salvando ? "Salvando…" : "Salvar banners"}</button>
+        {msg && <span style={{ fontSize: 13.5, color: msg.startsWith("✓") ? "#4f7a44" : "#b3402a" }}>{msg}</span>}
+      </div>
+    </div>
+  );
+}
+function btnMini(dis: boolean): React.CSSProperties {
+  return { padding: "7px 12px", borderRadius: 8, border: "1px solid #ddd5c7", background: "#fff", color: "#4a443c", fontWeight: 600, cursor: dis ? "default" : "pointer", opacity: dis ? 0.4 : 1, fontSize: 13 };
+}
+
+// ─────────────────────────── VÍDEOS E TEXTOS ───────────────────────────
+function Textos() {
+  const [prods, setProds] = useState<CatalogoProdutoExtra[]>([]);
+  const [busca, setBusca] = useState("");
+  const [carregando, setCarregando] = useState(true);
+  const [edit, setEdit] = useState<CatalogoProdutoExtra | null>(null);
+
+  useEffect(() => { api.catalogoProdutosExtra().then(setProds).catch(() => setProds([])).finally(() => setCarregando(false)); }, []);
+  const q = busca.trim().toLowerCase();
+  const lista = prods.filter((p) => !q || p.nome.toLowerCase().includes(q) || p.id.toLowerCase().includes(q));
+
+  function salvo(id: string, video: string, texto: string) {
+    setProds((l) => l.map((p) => (p.id === id ? { ...p, extra_video: video, extra_texto: texto, tem_video: p.tem_video || !!video.trim() } : p)));
+    setEdit(null);
+  }
+
+  if (carregando) return <div style={{ color: "#8a8073" }}>Carregando produtos…</div>;
+  return (
+    <div>
+      <div style={{ color: "#8a8073", fontSize: 13.5, marginBottom: 12 }}>
+        Coloque um <b>vídeo</b> e/ou <b>texto</b> em qualquer produto. O que você salvar aqui aparece na loja (vence o catálogo antigo).
+      </div>
+      <input style={{ ...inp, maxWidth: 420, marginBottom: 14 }} placeholder="Buscar produto…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+      <div style={{ border: "1px solid #ece5d8", borderRadius: 12, overflow: "hidden", background: "#fff" }}>
+        {lista.slice(0, 300).map((p) => (
+          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderBottom: "1px solid #f1ebe0" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{p.nome} {p.kit && <span style={{ fontSize: 11, color: "#ad5033" }}>• kit</span>}</div>
+              <div style={{ fontSize: 12, color: "#9a9185" }}>
+                {p.extra_video ? "🎬 vídeo próprio" : p.tem_video ? "vídeo do catálogo" : "sem vídeo"}
+                {p.extra_texto ? " · 📝 texto próprio" : ""}
+              </div>
+            </div>
+            <button onClick={() => setEdit(p)} style={{ ...btnMini(false), borderColor: "#ad5033", color: "#ad5033" }}>Editar</button>
+          </div>
+        ))}
+        {!lista.length && <div style={{ padding: 20, color: "#8a8073" }}>Nenhum produto encontrado.</div>}
+      </div>
+      {edit && <EditarExtra p={edit} onClose={() => setEdit(null)} onSalvo={salvo} />}
+    </div>
+  );
+}
+
+function EditarExtra({ p, onClose, onSalvo }: { p: CatalogoProdutoExtra; onClose: () => void; onSalvo: (id: string, video: string, texto: string) => void }) {
+  const [video, setVideo] = useState(p.extra_video || "");
+  const [texto, setTexto] = useState(p.extra_texto || "");
+  const [salvando, setSalvando] = useState(false);
+  const [msg, setMsg] = useState("");
+  async function salvar() {
+    setSalvando(true); setMsg("");
+    try { await api.produtoExtraSalvar(p.id, video.trim(), texto.trim()); onSalvo(p.id, video.trim(), texto.trim()); }
+    catch { setMsg("Não consegui salvar."); setSalvando(false); }
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(44,39,33,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, maxWidth: 520, width: "100%", padding: 22, boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 2 }}>{p.nome}</div>
+        <div style={{ fontSize: 12, color: "#9a9185", marginBottom: 12 }}>código {p.id}</div>
+        <label style={lbl}>Link do vídeo (mp4)</label>
+        <input style={inp} value={video} placeholder="https://.../video.mp4" onChange={(e) => setVideo(e.target.value)} />
+        <label style={lbl}>Texto / descrição (uma linha por item)</label>
+        <textarea style={{ ...inp, minHeight: 110, resize: "vertical", fontFamily: "inherit" }} value={texto} placeholder={"Ex.:\nComposição 100% poliéster\nCapa com zíper invisível\nEnviamos em até 7 dias"} onChange={(e) => setTexto(e.target.value)} />
+        <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 16 }}>
+          <button onClick={salvar} disabled={salvando} style={btnPri}>{salvando ? "Salvando…" : "Salvar"}</button>
+          <button onClick={onClose} style={{ ...btnMini(false) }}>Cancelar</button>
+          {msg && <span style={{ fontSize: 13, color: "#b3402a" }}>{msg}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}

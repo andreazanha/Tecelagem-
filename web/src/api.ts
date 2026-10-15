@@ -745,6 +745,14 @@ export interface LojaPedidoItem {
   produto: string | null; ref: string | null; cor_grade: string | null; cod_cor: number | null;
   tamanho: string | null; erp_tamanho: string | null; qtd: number; valor_unit: number | null;
 }
+export interface LojaBanner {
+  id?: string; img?: string; kicker?: string; titulo?: string; sub?: string;
+  botao_texto?: string; botao_link?: string; ativo?: boolean; ordem?: number;
+}
+export interface CatalogoProdutoExtra {
+  id: string; nome: string; pronta_entrega: boolean; kit: boolean;
+  tem_video: boolean; extra_video: string; extra_texto: string;
+}
 
 export interface MaquinaTec { id: string; nome: string; ordem: number; ativo: number }
 export interface MotivoTec { id: string; codigo: string; nome: string | null; tipo: string; ordem: number; ativo: number }
@@ -1304,6 +1312,13 @@ export const api = {
   lojaLiberar: (id: string) => jsonPost(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}/liberar`, {}).then((r) => j<{ ok: boolean }>(r)),
   lojaReenviar: (id: string) => jsonPost(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}/reenviar`, {}).then((r) => j<{ ok: boolean }>(r)),
   lojaConfig: (modo: string) => jsonPost("/api/integracao/loja-config", { modo }).then((r) => j<{ ok: boolean; modo: string }>(r)),
+  // Banners da loja (cadastro pela dona) + upload da imagem no nosso R2.
+  lojaBanners: () => fetch("/api/integracao/loja-banners").then((r) => j<{ banners: LojaBanner[] }>(r)),
+  lojaBannersSalvar: (banners: LojaBanner[]) => jsonPost("/api/integracao/loja-banners", { banners }).then((r) => j<{ ok: boolean; n: number }>(r)),
+  bannerUpload: (file: File) => { const fd = new FormData(); fd.append("file", file); return fetch("/api/integracao/banner-upload", { method: "POST", body: fd }).then((r) => j<{ ok: boolean; url: string; error?: string }>(r)); },
+  // Vídeos e textos por produto (catálogo).
+  catalogoProdutosExtra: () => fetch("/api/integracao/catalogo-produtos").then((r) => j<CatalogoProdutoExtra[]>(r)),
+  produtoExtraSalvar: (id: string, video: string, texto: string) => jsonPost("/api/integracao/produto-extra", { id, video, texto }).then((r) => j<{ ok: boolean }>(r)),
   // Estoque de produtos espelhado do ERP (só leitura).
   erpEstoque: (q?: { ref?: string; busca?: string }) => {
     const p = new URLSearchParams();

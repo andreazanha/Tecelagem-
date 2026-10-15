@@ -52,6 +52,7 @@ import { TVFrame } from "./components/TVFrame";
 import { getUser, pode, podeAlgum, podeFuncao, primeiraPagina } from "./auth";
 import { ComprasMateriais } from "./pages/Cadastros";
 import { OrdensCompra } from "./pages/OrdensCompra";
+import ConfigLoja from "./pages/ConfigLoja";
 import "./styles.css";
 
 // Protege uma página: exige login e a permissão da tela. Sem permissão, manda
@@ -140,6 +141,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/pcp" element={<Protegido page="pedidos"><Pcp /></Protegido>} />
           <Route path="/pedidos-erp" element={<Protegido page="pedidos"><PedidosErp /></Protegido>} />
           <Route path="/catalogo" element={<Protegido page={["produtos", "comercial", "pedidos", "atendimento"]}><Catalogo /></Protegido>} />
+          <Route path="/config-loja" element={<Protegido admin><ConfigLoja /></Protegido>} />
           <Route path="/acessos" element={<Protegido admin><Acessos /></Protegido>} />
           <Route path="/producao" element={<Protegido page="producao"><Producao /></Protegido>} />
           <Route path="/controle-tecelagem" element={<Protegido page="producao"><ControleTecelagem /></Protegido>} />

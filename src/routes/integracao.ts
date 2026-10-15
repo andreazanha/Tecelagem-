@@ -885,19 +885,73 @@ integracao.post("/produto-extra", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── BANNERS da loja (cadastrados pela dona) ──────────────────────────────────
+// Lê/grava a lista de banners (config loja_banners). Cada banner:
+//   { id, img, kicker, titulo, sub, botao_texto, botao_link, ativo, ordem }
+integracao.get("/loja-banners", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const raw = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_banners'").first<{ valor: string | null }>();
+  let banners: unknown[] = [];
+  try { const a = raw?.valor ? JSON.parse(raw.valor) : []; if (Array.isArray(a)) banners = a; } catch { banners = []; }
+  return c.json({ banners });
+});
+integracao.post("/loja-banners", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ banners?: unknown[] }>().catch(() => ({} as { banners?: unknown[] }));
+  const lista = Array.isArray(b.banners) ? b.banners.slice(0, 20) : [];
+  await c.env.DB.prepare(
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('loja_banners', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(JSON.stringify(lista)).run();
+  return c.json({ ok: true, n: lista.length });
+});
+// Upload da imagem do banner → R2 → devolve a URL pública nossa.
+integracao.post("/banner-upload", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const form = await c.req.formData().catch(() => null);
+  const entry = form?.get("file");
+  if (!entry || typeof entry === "string") return c.json({ error: "arquivo é obrigatório" }, 400);
+  const file = entry as Blob & { name?: string };
+  if (file.size === 0) return c.json({ error: "arquivo vazio" }, 400);
+  if (file.size > 12 * 1024 * 1024) return c.json({ error: "imagem muito grande (máx. 12MB)" }, 400);
+  const ct = file.type || "image/jpeg";
+  if (!ct.startsWith("image/")) return c.json({ error: "envie uma imagem (jpg/png/webp)" }, 400);
+  const ext = (String(file.name || "").split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "jpg";
+  const nome = `banner-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  try { await c.env.BUCKET.put(`loja/${nome}`, await file.arrayBuffer(), { httpMetadata: { contentType: ct } }); }
+  catch (e) { return c.json({ error: "não consegui salvar (" + String((e as Error)?.message || e).slice(0, 100) + ")" }, 500); }
+  return c.json({ ok: true, url: `${new URL(c.req.url).origin}/api/integracao/loja-arquivo/${nome}` });
+});
+// Serve a imagem do banner (do R2).
+integracao.get("/loja-arquivo/:nome", async (c) => {
+  const nome = c.req.param("nome").replace(/[^a-zA-Z0-9._-]/g, "");
+  const obj = await c.env.BUCKET.get(`loja/${nome}`);
+  if (!obj) return c.text("não encontrado", 404);
+  const h = new Headers();
+  obj.writeHttpMetadata(h);
+  h.set("Cache-Control", "public, max-age=31536000, immutable");
+  return new Response(obj.body, { headers: h });
+});
+
 // ── LOJA B2B (catálogo NOVO, feito do zero) ──────────────────────────────────
 // Página própria (site/loja.html), 100% dos dados do Syntech: produtos, preços
 // por tamanho, estoque, cores, seções. As fotos vêm casadas do Cloudinary (o
 // Syntech guarda foto no servidor interno, que o cliente não acessa pela net).
 // Aberta por enquanto (prévia). Login/carrinho/pedido vêm nas próximas fases.
 integracao.get("/loja", async (c) => {
-  let dados: { produtos: unknown[]; banco_cores: unknown; banco_tamanhos: unknown; estoque: unknown };
+  let dados: { produtos: unknown[]; banco_cores: unknown; banco_tamanhos: unknown; estoque: unknown; banners?: unknown[] };
   try {
     const doc = await gerarDocSite(c.env);
     const normais = Array.isArray(doc.produtos) ? (doc.produtos as unknown[]) : [];
     const elDoc = doc.edicao_limitada as { produtos?: unknown[] } | undefined;
     const limitada = elDoc && Array.isArray(elDoc.produtos) ? elDoc.produtos : [];
-    dados = { produtos: [...normais, ...limitada], banco_cores: doc.banco_cores, banco_tamanhos: doc.banco_tamanhos, estoque: doc.estoque };
+    // Banners cadastrados pela dona (config loja_banners). Só os ATIVOS, por ordem.
+    let banners: unknown[] = [];
+    try {
+      const raw = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_banners'").first<{ valor: string | null }>();
+      const arr = raw?.valor ? JSON.parse(raw.valor) : [];
+      if (Array.isArray(arr)) banners = arr.filter((b) => b && (b as { ativo?: unknown }).ativo !== false).sort((a, b) => (Number((a as { ordem?: number }).ordem) || 0) - (Number((b as { ordem?: number }).ordem) || 0));
+    } catch { banners = []; }
+    dados = { produtos: [...normais, ...limitada], banco_cores: doc.banco_cores, banco_tamanhos: doc.banco_tamanhos, estoque: doc.estoque, banners };
   } catch (e) {
     return new Response("Não consegui montar a loja:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   }

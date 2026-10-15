@@ -233,6 +233,7 @@ const GRUPOS: MenuGrupo[] = [
       { icon: "🪡", label: "Relatório de Costureiras", soon: true },
       { to: "/relatorio-estoque", icon: "📦", label: "Relatório de Estoque", admin: true },
       { to: "/loja-pedidos", icon: "🛒", label: "Pedidos da Loja (B2B)", admin: true },
+      { to: "/config-loja", icon: "🖼️", label: "Configurar catálogo (banner, vídeos)", admin: true },
       { to: "/api/integracao/loja", icon: "🛍️", label: "Abrir a loja (catálogo)", ext: true, admin: true },
       { icon: "💵", label: "Relatório de Vendas", soon: true },
     ],
@@ -354,8 +355,11 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
     const desativado = it.soon || !it.to;
     const ativo = !!it.to && it.to === ativoTo;
     if (!desativado && it.ext) {
-      // Link externo (ex.: abrir a loja/catálogo) — abre em nova aba.
-      return <a href={it.to} target="_blank" rel="noopener noreferrer" key={ctx + it.label} className="topnav-dd-i" title={it.label}>{inner}</a>;
+      // Link externo (ex.: abrir a loja/catálogo) — abre numa ABA do navegador.
+      // Usa window.open no clique pra garantir aba do navegador mesmo quando o sistema
+      // está instalado como app (aí o target=_blank abriria como janela de app).
+      return <a href={it.to} target="_blank" rel="noopener noreferrer" key={ctx + it.label} className="topnav-dd-i" title={it.label}
+        onClick={(e) => { e.preventDefault(); window.open(it.to!, "_blank", "noopener"); setAberto(null); }}>{inner}</a>;
     }
     return desativado ? (
       <span className="topnav-dd-i disabled" key={ctx + it.label} title={it.label + (it.soon ? " — em breve" : "")}>{inner}</span>
