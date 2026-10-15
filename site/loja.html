@@ -104,8 +104,12 @@
   .grp{margin-top:16px}
   .grp .t{color:var(--accent); font-weight:600; font-size:14px; margin-bottom:4px}
   .tamrow{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid var(--line)}
+  .tamrow .medbox{min-width:0}
   .tamrow .med{font-size:14px}
   .tamrow .med small{color:var(--muted); margin-left:6px}
+  .tamrow .estx{font-size:11.5px; color:#64748b; margin-top:2px}
+  .tamrow .estx.low{color:var(--accent); font-weight:600}
+  .tamrow .estx.off{color:#9aa0ab}
   .tamrow .pr{color:var(--accent); font-weight:600; font-family:"Playfair Display",serif; margin-left:auto; margin-right:10px; white-space:nowrap}
   .stepper{display:flex; align-items:center; gap:0; border:1px solid var(--line); border-radius:999px; overflow:hidden}
   .stepper button{border:0; background:var(--chip); width:30px; height:30px; font-size:17px; cursor:pointer; color:var(--ink)}
@@ -275,12 +279,24 @@
     document.body.appendChild(ov);
     ov.addEventListener("click",function(){ try{document.body.removeChild(ov);}catch(e){} });
   };
+  // saldo da variação (produto+tamanho+cor selecionada), se o estoque por variação existir.
+  function estSaldo(cod,idt){
+    var med=medidaDe(idt); var m=EST[cod]&&EST[cod][med]; if(!m) return null;
+    var v=m[sel.corId]; return (v==null)?null:(Number(v)||0);
+  }
+  // texto de estoque por linha, no estilo do catálogo: "7 em estoque" / "últimas 2 unidades".
+  function estTxtLinha(cod,idt){
+    var s=estSaldo(cod,idt); if(s==null) return "";
+    if(s<=0) return '<div class="estx off">sob encomenda</div>';
+    if(s<=3) return '<div class="estx low">'+(s===1?'última unidade':'últimas '+s+' unidades')+'</div>';
+    return '<div class="estx">'+s+' em estoque</div>';
+  }
   function tamanhosHTML(p){
     var cc=CORES[sel.corId]||{};
     var grupos=(p.grupos||[]).map(function(g){
       var rows=(g.linhas||[]).map(function(l){
         var k=qKey(l.cod,l.id_tamanho); var q=sel.qtd[k]||0;
-        return '<div class="tamrow"><div class="med">'+esc(medidaDe(l.id_tamanho).split("×").join(" × "))+'</div>'+
+        return '<div class="tamrow"><div class="medbox"><div class="med">'+esc(medidaDe(l.id_tamanho).split("×").join(" × "))+'</div>'+estTxtLinha(l.cod,l.id_tamanho)+'</div>'+
           '<div class="pr">'+brl(precoLinha(l))+'</div>'+
           '<div class="stepper" data-k="'+esc(k)+'"><button data-d="-1">−</button><input type="number" min="0" value="'+q+'"><button data-d="1">+</button></div></div>';
       }).join("");
