@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-08.10";
+const PONTE_VERSAO = "2026-10-15.11";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -609,6 +609,50 @@ async function rodadaDiagProcs(db, estado) {
   }
 }
 
+// Descobre a RECEITA DO KIT no Syntech: tabelas cujo nome tem KIT/COMPOS/GRADE,
+// suas colunas e uma amostra pequena (só colunas NÃO-blob, pra não travar). Uma vez só.
+const DIAG_KIT_FLAG = "diagKitV1";
+async function rodadaDiagKit(db, estado) {
+  if (estado[DIAG_KIT_FLAG]) return;
+  log("diag-kit: procurando a receita do kit (tabelas com KIT)…");
+  const out = { versao: PONTE_VERSAO, quando: new Date().toISOString(), tabelas: {}, amostras: {}, erros: [] };
+  try {
+    const rels = await query(db,
+      "SELECT TRIM(RDB$RELATION_NAME) AS NOME FROM RDB$RELATIONS " +
+      "WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 AND RDB$VIEW_BLR IS NULL AND " +
+      "(RDB$RELATION_NAME LIKE '%KIT%' OR RDB$RELATION_NAME LIKE '%COMPOS%' OR RDB$RELATION_NAME LIKE '%GRADE%') " +
+      "ORDER BY RDB$RELATION_NAME");
+    for (const rr of rels) {
+      const nome = String(rr.NOME || "").trim(); if (!nome) continue;
+      let cols = [];
+      try {
+        const cs = await query(db,
+          "SELECT TRIM(RF.RDB$FIELD_NAME) AS CAMPO, F.RDB$FIELD_TYPE AS TIPO, F.RDB$FIELD_LENGTH AS TAM " +
+          "FROM RDB$RELATION_FIELDS RF JOIN RDB$FIELDS F ON F.RDB$FIELD_NAME = RF.RDB$FIELD_SOURCE " +
+          "WHERE RF.RDB$RELATION_NAME = ? ORDER BY RF.RDB$FIELD_POSITION", [nome]);
+        cols = cs.map((r) => ({ campo: String(r.CAMPO || "").trim(), tipo: r.TIPO, tam: r.TAM }));
+      } catch (e) { out.erros.push(`cols ${nome}: ${e.message}`); }
+      out.tabelas[nome] = cols;
+      const naoBlob = cols.filter((c) => Number(c.tipo) !== 261 && c.campo).map((c) => c.campo);
+      if (naoBlob.length) {
+        try {
+          const sel = "SELECT FIRST 6 " + naoBlob.map((c) => '"' + c + '"').join(", ") + ' FROM "' + nome + '"';
+          const rows = await query(db, sel);
+          out.amostras[nome] = (rows || []).slice(0, 6);
+        } catch (e) { out.erros.push(`amostra ${nome}: ${e.message}`); }
+      }
+    }
+  } catch (e) { out.erros.push("relations: " + e.message); }
+  let ok = false;
+  try {
+    const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/diag-kit";
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token }, body: JSON.stringify(out) });
+    ok = r.ok;
+  } catch (e) { log("! diag-kit: falhou ao enviar —", e.message); }
+  if (ok) { salvarEstado({ ...lerEstado(), [DIAG_KIT_FLAG]: true }); log(`diag-kit: enviado (${Object.keys(out.tabelas).length} tabela(s)). Não roda de novo.`); }
+  else log("diag-kit: não enviou — tenta na próxima.");
+}
+
 // ── FASE 4: envia pros Syntech os pedidos da loja B2B (via procedures APP_*) ──
 // Busca no worker os pedidos liberados (GET /pedidos-para-erp), e pra cada um grava
 // no Firebird usando as procedures OFICIAIS (APP_PEDIDO_INSERT_V2 devolve o NUMERO;
@@ -756,6 +800,8 @@ async function rodada() {
     try { await rodadaDiagnostico(db, estado); } catch (e) { log("! diagnóstico:", e.message); }
     // Confirmação leve das procedures APP_* (Fase 4; roda só uma vez).
     try { await rodadaDiagProcs(db, estado); } catch (e) { log("! diag-procs:", e.message); }
+    // Descobre a receita do kit (tabelas com KIT; roda só uma vez).
+    try { await rodadaDiagKit(db, estado); } catch (e) { log("! diag-kit:", e.message); }
     // Envia pros Syntech os pedidos da loja B2B liberados (Fase 4).
     try { await rodadaGravarPedidos(db); } catch (e) { log("! loja→ERP:", e.message); }
     // Pedidos APROVADOS, não cancelados, alterados depois da última vez.

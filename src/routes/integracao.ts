@@ -276,12 +276,30 @@ integracao.post("/diag-procs", async (c) => {
   ).bind(txt.slice(0, 200000)).run();
   return c.json({ ok: true, bytes: txt.length });
 });
+// Diagnóstico da RECEITA DO KIT no Syntech (tabelas/colunas com KIT). Lido via GET /diag?pedido=kit.
+integracao.post("/diag-kit", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+  const txt = await c.req.text();
+  await c.env.DB.prepare(
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('erp_diag_kit', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(txt.slice(0, 300000)).run();
+  return c.json({ ok: true, bytes: txt.length });
+});
 integracao.get("/diag", async (c) => {
   // Aceita sessão (UI) OU o token de integração (pra eu, dev, inspecionar sem login).
   const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
   const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
   const temToken = !!esperado && recebido === esperado;
   if (!temToken) { const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro; }
+  // ?pedido=kit → receita do kit (tabelas/colunas/amostra). Lê do diagnóstico dedicado.
+  if (c.req.query("pedido") === "kit") {
+    const kr = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='erp_diag_kit'").first<{ valor: string | null; atualizado_em: string | null }>();
+    if (!kr || !kr.valor) return c.json({ vazio: true, msg: "Ainda não recebi o diagnóstico de kit da ponte. Rode a ponte e tente de novo." });
+    let obj: unknown = null; try { obj = JSON.parse(kr.valor); } catch { obj = kr.valor; }
+    return c.json({ atualizado_em: kr.atualizado_em, diag: obj });
+  }
   // ?pedido=procs → confirmação LEVE das procedures APP_* (Fase 4). Lê do diagnóstico
   // minúsculo dedicado (erp_diag_procs); se não houver, cai de volta no erp_diag.pedido.
   if (c.req.query("pedido") === "procs") {
