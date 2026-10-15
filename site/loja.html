@@ -299,7 +299,7 @@
     var grupos=(p.grupos||[]).map(function(g){
       var rows=(g.linhas||[]).map(function(l){
         var k=qKey(l.cod,l.id_tamanho); var q=sel.qtd[k]||0;
-        return '<div class="tamrow"><div class="medbox"><div class="med">'+esc(medidaDe(l.id_tamanho).split("×").join(" × "))+'</div>'+estTxtLinha(l.cod,l.id_tamanho)+'</div>'+
+        return '<div class="tamrow"><div class="medbox"><div class="med">'+esc(medidaDe(l.id_tamanho).replace(/(\d)\s*[×xX]\s*(\d)/g,"$1 × $2"))+'</div>'+estTxtLinha(l.cod,l.id_tamanho)+'</div>'+
           '<div class="pr">'+brl(precoLinha(l))+'</div>'+
           '<div class="stepper" data-k="'+esc(k)+'"><button data-d="-1">−</button><input type="number" min="0" value="'+q+'"><button data-d="1">+</button></div></div>';
       }).join("");

@@ -669,9 +669,11 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         prod.pronta_entrega = true;
         prod.estoque_geral = vivo;
         prod._kitTitulo = pk.familia ? tituloCaso(pk.familia) : "";   // "Kit Balls" (renomeia só depois de casar a FOTO)
-        if (partes.length) prod.composicao = partes.map((p) => p.txt).join(" + ");
-        // tamanho do kit = a variação (Queen 70×2,20) no lugar do "UN"/"único".
-        const medidaKit = pk.variacao ? (tituloCaso(pk.variacao) + (pk.peseiraDim ? " " + pk.peseiraDim : "")) : "";
+        // Em cima do anúncio fica SÓ o nome ("Kit Balls"). A composição com as medidas
+        // vira o RÓTULO da opção de tamanho (no lugar do "Queen"/"UN"), porque cada
+        // tamanho do kit (Queen/King/Mantas) tem a sua própria composição.
+        prod.composicao = "";
+        const medidaKit = partes.length ? partes.map((p) => p.txt).join(" + ") : "";
         for (const g of prod.grupos) {
           g.estoque = vivo;
           for (const l of g.linhas) {
