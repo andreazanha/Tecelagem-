@@ -19,7 +19,8 @@
   body{background:var(--bg); color:var(--ink); font-family:'Montserrat',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; line-height:1.45}
   .serif{font-family:"Cormorant Garamond",Georgia,serif}
   /* banner full-width, começa no TOPO da página (sem faixa preta em cima) */
-  .banner{position:relative; width:100%; min-height:300px; overflow:hidden; background:#181615}
+  /* Proporção original 1920×600 (3.2:1): a altura acompanha a largura, sem cortar o topo. */
+  .banner{position:relative; width:100%; aspect-ratio:1920/600; max-height:600px; overflow:hidden; background:#181615}
   .b-slide{position:absolute; inset:0; opacity:0; transition:opacity .8s ease; display:flex; align-items:center; pointer-events:none}
   .b-slide.on{opacity:1; pointer-events:auto}
   .b-link{position:absolute; inset:0; display:flex; align-items:center; text-decoration:none; color:inherit}
@@ -31,7 +32,7 @@
   .b-prev{left:14px} .b-next{right:14px}
   @media(max-width:640px){ .b-arrow{display:none} }
   @media(prefers-reduced-motion: reduce){ .b-slide{transition:none} }
-  .banner .b-bg{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0}
+  .banner .b-bg{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center; z-index:0}
   .banner .b-shade{position:absolute; inset:0; z-index:1; background:linear-gradient(90deg,rgba(24,22,21,.80) 0%,rgba(24,22,21,.38) 46%,rgba(24,22,21,.08) 100%)}
   .banner .b-in{position:relative; z-index:2; max-width:1760px; margin:0 auto; width:100%; padding:0 40px; color:#fff}
   .banner .b-kick{font-size:12px; letter-spacing:.3em; text-transform:uppercase; color:#e7decf; font-weight:500}
@@ -71,7 +72,7 @@
   .preco b{color:var(--accent); font-size:15px; font-weight:700; margin-left:2px}
   .vazio{text-align:center; color:var(--muted); padding:60px 16px}
   @media(max-width:900px){ .bf-right{position:static; transform:none; width:100%; justify-content:center; order:2} .busca{order:1; max-width:none} }
-  @media(max-width:640px){ .buscafaixa{padding:12px 16px} .banner{min-height:340px} .banner .b-in{padding:0 20px} .banner .b-tit{font-size:30px} main{padding:14px 16px 60px} .sec{margin-top:24px} .sec h2{font-size:24px; gap:12px} .sec h2::before,.sec h2::after{width:34px} }
+  @media(max-width:640px){ .buscafaixa{padding:12px 16px} .banner{aspect-ratio:1/1; max-height:none} .banner .b-in{padding:0 20px} .banner .b-tit{font-size:30px} main{padding:14px 16px 60px} .sec{margin-top:24px} .sec h2{font-size:24px; gap:12px} .sec h2::before,.sec h2::after{width:34px} }
   /* ---- popup "continuar / escolher outro" ao adicionar no carrinho ---- */
   .popconf{position:fixed; inset:0; z-index:80; background:rgba(44,39,33,.55); display:flex; align-items:center; justify-content:center; padding:20px}
   .popconf-box{background:var(--card); border-radius:16px; max-width:360px; width:100%; padding:24px 22px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.3)}
