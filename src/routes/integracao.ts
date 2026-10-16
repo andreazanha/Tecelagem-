@@ -1041,7 +1041,7 @@ integracao.get("/loja-arquivo/:nome", async (c) => {
 // Syntech guarda foto no servidor interno, que o cliente não acessa pela net).
 // Aberta por enquanto (prévia). Login/carrinho/pedido vêm nas próximas fases.
 integracao.get("/loja", async (c) => {
-  let dados: { produtos: unknown[]; banco_cores: unknown; banco_tamanhos: unknown; estoque: unknown; banners?: unknown[]; banner_intervalo?: number };
+  let dados: { produtos: unknown[]; banco_cores: unknown; banco_tamanhos: unknown; estoque: unknown; banners?: unknown[]; banner_intervalo?: number; whatsapp?: string };
   try {
     const doc = await gerarDocSite(c.env);
     const normais = Array.isArray(doc.produtos) ? (doc.produtos as unknown[]) : [];
@@ -1065,7 +1065,14 @@ integracao.get("/loja", async (c) => {
     } catch { banners = []; }
     let banner_intervalo = 5;
     try { const ir = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_banner_intervalo'").first<{ valor: string | null }>(); banner_intervalo = Math.max(2, Math.min(30, Number(ir?.valor) || 5)); } catch { banner_intervalo = 5; }
-    dados = { produtos: [...normais, ...limitada], banco_cores: doc.banco_cores, banco_tamanhos: doc.banco_tamanhos, estoque: doc.estoque, banners, banner_intervalo };
+    // Número do WhatsApp da Big (pro botão flutuante da loja). Usa loja_whatsapp se
+    // existir, senão o numero_whatsapp do atendimento. Só dígitos.
+    let whatsapp = "";
+    try {
+      const w = await c.env.DB.prepare("SELECT valor FROM config WHERE chave IN ('loja_whatsapp','numero_whatsapp') ORDER BY CASE chave WHEN 'loja_whatsapp' THEN 0 ELSE 1 END LIMIT 1").first<{ valor: string | null }>();
+      whatsapp = String(w?.valor || "").replace(/\D+/g, "");
+    } catch { whatsapp = ""; }
+    dados = { produtos: [...normais, ...limitada], banco_cores: doc.banco_cores, banco_tamanhos: doc.banco_tamanhos, estoque: doc.estoque, banners, banner_intervalo, whatsapp };
   } catch (e) {
     return new Response("Não consegui montar a loja:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   }
