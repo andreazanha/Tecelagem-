@@ -12,6 +12,30 @@ export function PedidosErp() {
   const [msg, setMsg] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [explodindo, setExplodindo] = useState(false);
+  const [prodView, setProdView] = useState(true);  // junta capa+almofada (mesma peça na máquina)
+
+  // Para a PRODUÇÃO, capa e almofada do mesmo modelo+cor+tamanho são a MESMA peça
+  // tricotada (a almofada é a capa com enchimento). Junta as quantidades. Não muda o
+  // pedido — é só a visão de quanto tricotar. Peseira e demais ficam como estão.
+  type ItemProd = { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number; _junta?: boolean };
+  function juntarCapaAlmofada(itens: { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number }[]): ItemProd[] {
+    const map = new Map<string, ItemProd>();
+    const out: ItemProd[] = [];
+    for (const it of itens) {
+      const nome = String(it.produto || "").trim();
+      const tipo = (nome.split(/\s+/)[0] || "").toUpperCase();
+      if (tipo === "CAPA" || tipo === "CAPAS" || tipo === "ALMOFADA" || tipo === "ALMOFADAS") {
+        const modelo = nome.replace(/^\s*(CAPAS?|ALMOFADAS?)\s+/i, "").trim() || nome;
+        const key = `${modelo.toUpperCase()}|${String(it.cor || "").toUpperCase()}|${String(it.tamanho || "").toUpperCase()}`;
+        let g = map.get(key);
+        if (!g) { g = { produto: modelo, ref: "capa+almofada", cor: it.cor, tamanho: it.tamanho, qtd: 0, _junta: true }; map.set(key, g); out.push(g); }
+        g.qtd += Number(it.qtd) || 0;
+      } else {
+        out.push({ produto: it.produto, ref: it.ref, cor: it.cor, tamanho: it.tamanho, qtd: Number(it.qtd) || 0 });
+      }
+    }
+    return out;
+  }
 
   function carregar() { setCarregando(true); api.erpPendentes().then(setLista).catch(() => setLista([])).finally(() => { setCarregando(false); setSel(new Set()); }); }
   useEffect(carregar, []);
@@ -80,20 +104,27 @@ export function PedidosErp() {
         {aberto === p.id && (
           <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
             {!detalhe ? <p className="muted">Carregando itens…</p> : (
-              <div style={{ overflowX: "auto" }}>
-                <table className="table" style={{ minWidth: 520 }}>
-                  <thead><tr><th>Produto</th><th>Código</th><th>Cor</th><th>Tamanho</th><th className="num">Qtd</th></tr></thead>
-                  <tbody>
-                    {detalhe.itens.map((it, i) => (
-                      <tr key={i}>
-                        <td className="strong">{it.produto}</td><td className="muted">{it.ref || "—"}</td>
-                        <td>{it.cor || "—"}</td><td>{it.tamanho || "—"}</td>
-                        <td className="num" style={{ fontWeight: 700 }}>{it.qtd}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 8, cursor: "pointer" }}>
+                  <input type="checkbox" checked={prodView} onChange={(e) => setProdView(e.target.checked)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                  🧶 <b>Juntar capa + almofada</b> <span className="muted">(visão de produção — mesma peça na máquina)</span>
+                </label>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="table" style={{ minWidth: 520 }}>
+                    <thead><tr><th>Produto</th><th>Código</th><th>Cor</th><th>Tamanho</th><th className="num">Qtd</th></tr></thead>
+                    <tbody>
+                      {(prodView ? juntarCapaAlmofada(detalhe.itens) : detalhe.itens).map((it, i) => (
+                        <tr key={i}>
+                          <td className="strong">{it.produto}{(it as ItemProd)._junta ? <span className="muted" style={{ fontWeight: 400, fontSize: 11 }}> · capa+almofada</span> : null}</td>
+                          <td className="muted">{it.ref || "—"}</td>
+                          <td>{it.cor || "—"}</td><td>{it.tamanho || "—"}</td>
+                          <td className="num" style={{ fontWeight: 700 }}>{it.qtd}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         )}
