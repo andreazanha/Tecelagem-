@@ -17,21 +17,23 @@ export function PedidosErp() {
   // Para a PRODUÇÃO, capa e almofada do mesmo modelo+cor+tamanho são a MESMA peça
   // tricotada (a almofada é a capa com enchimento). Junta as quantidades. Não muda o
   // pedido — é só a visão de quanto tricotar. Peseira e demais ficam como estão.
-  type ItemProd = { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number; _junta?: boolean };
-  function juntarCapaAlmofada(itens: { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number }[]): ItemProd[] {
-    const map = new Map<string, ItemProd>();
+  type ItemIn = { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number; valor_unit?: number };
+  type ItemProd = { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number; valor_unit: number; _junta?: boolean };
+  function juntarCapaAlmofada(itens: ItemIn[]): ItemProd[] {
+    const map = new Map<string, ItemProd & { _tot: number }>();
     const out: ItemProd[] = [];
     for (const it of itens) {
       const nome = String(it.produto || "").trim();
       const tipo = (nome.split(/\s+/)[0] || "").toUpperCase();
+      const q = Number(it.qtd) || 0, vu = Number(it.valor_unit) || 0;
       if (tipo === "CAPA" || tipo === "CAPAS" || tipo === "ALMOFADA" || tipo === "ALMOFADAS") {
         const modelo = nome.replace(/^\s*(CAPAS?|ALMOFADAS?)\s+/i, "").trim() || nome;
         const key = `${modelo.toUpperCase()}|${String(it.cor || "").toUpperCase()}|${String(it.tamanho || "").toUpperCase()}`;
         let g = map.get(key);
-        if (!g) { g = { produto: modelo, ref: "capa+almofada", cor: it.cor, tamanho: it.tamanho, qtd: 0, _junta: true }; map.set(key, g); out.push(g); }
-        g.qtd += Number(it.qtd) || 0;
+        if (!g) { g = { produto: modelo, ref: "capa+almofada", cor: it.cor, tamanho: it.tamanho, qtd: 0, valor_unit: 0, _junta: true, _tot: 0 }; map.set(key, g); out.push(g); }
+        g.qtd += q; g._tot += q * vu; g.valor_unit = g.qtd > 0 ? Math.round((g._tot / g.qtd) * 100) / 100 : 0;
       } else {
-        out.push({ produto: it.produto, ref: it.ref, cor: it.cor, tamanho: it.tamanho, qtd: Number(it.qtd) || 0 });
+        out.push({ produto: it.produto, ref: it.ref, cor: it.cor, tamanho: it.tamanho, qtd: q, valor_unit: vu });
       }
     }
     return out;
@@ -73,9 +75,11 @@ export function PedidosErp() {
   async function visualizar(p: ErpPendente) {
     const d = (aberto === p.id && detalhe) ? detalhe : await api.erpPendenteDetalhe(p.id).catch(() => null);
     if (!d) { alert("Não consegui carregar os itens do pedido."); return; }
-    const itens = prodView ? juntarCapaAlmofada(d.itens) : d.itens;
+    const itens: ItemProd[] = prodView ? juntarCapaAlmofada(d.itens) : d.itens.map((it) => ({ produto: it.produto, ref: it.ref, cor: it.cor, tamanho: it.tamanho, qtd: Number(it.qtd) || 0, valor_unit: Number(it.valor_unit) || 0 }));
+    const money = (v: number) => "R$ " + (Number(v) || 0).toFixed(2).replace(".", ",");
     const totPec = itens.reduce((s, it) => s + (Number(it.qtd) || 0), 0);
-    const rows = itens.map((it) => `<tr><td class="b">${escH(it.produto)}${(it as ItemProd)._junta ? '<span class="tag">capa+almofada</span>' : ""}</td><td class="m">${escH(it.ref || "—")}</td><td>${escH(it.cor || "—")}</td><td>${escH(it.tamanho || "—")}</td><td class="n">${Number(it.qtd) || 0}</td></tr>`).join("");
+    const totVal = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.valor_unit) || 0), 0);
+    const rows = itens.map((it) => { const q = Number(it.qtd) || 0, vu = Number(it.valor_unit) || 0; return `<tr><td class="b">${escH(it.produto)}${it._junta ? '<span class="tag">capa+almofada</span>' : ""}</td><td class="m">${escH(it.ref || "—")}</td><td>${escH(it.cor || "—")}</td><td>${escH(it.tamanho || "—")}</td><td class="n">${q}</td><td class="n">${money(vu)}</td><td class="n">${money(q * vu)}</td></tr>`; }).join("");
     const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pedido ${escH(p.numero_erp)} — Big Tricot</title><style>
       *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#2c2721;margin:0;padding:26px;background:#f3f1ec}
       .doc{max-width:820px;margin:0 auto;background:#fff;border-radius:10px;box-shadow:0 2px 16px rgba(0,0,0,.08);padding:28px 30px}
@@ -102,9 +106,9 @@ export function PedidosErp() {
           <div class="meta"><b>Pedido nº ${escH(p.numero_erp)}</b><br>${escH(p.cliente_nome || "")}<br>Pedido: ${escH(dataBR(p.data_pedido))}${p.data_entrega ? `<br>Entrega: ${escH(dataBR(p.data_entrega))}` : ""}</div>
         </div>
         ${prodView ? '<div style="font-size:12px;color:#8a8278;margin-bottom:6px">🧶 Visão de produção — capa e almofada do mesmo modelo/cor/tamanho estão somadas.</div>' : ""}
-        <table><thead><tr><th>Produto</th><th>Código</th><th>Cor</th><th>Tamanho</th><th class="n">Qtd</th></tr></thead>
+        <table><thead><tr><th>Produto</th><th>Código</th><th>Cor</th><th>Tamanho</th><th class="n">Qtd</th><th class="n">Vlr unit</th><th class="n">Total</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="4">Total de peças</td><td class="n">${totPec}</td></tr></tfoot></table>
+        <tfoot><tr><td colspan="4">Total · ${totPec} peça(s)</td><td class="n">${totPec}</td><td></td><td class="n">${money(totVal)}</td></tr></tfoot></table>
       </div>
     </body></html>`;
     const win = window.open("", "_blank");

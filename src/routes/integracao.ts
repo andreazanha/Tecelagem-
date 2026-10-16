@@ -121,7 +121,7 @@ integracao.get("/pendentes/:id", async (c) => {
   ).bind(id).first();
   if (!ped) return c.json({ error: "nao_encontrado" }, 404);
   const { results: itens } = await c.env.DB.prepare(
-    "SELECT produto, ref, cor_grade AS cor, tamanho, qtd FROM pedido_itens WHERE pedido_id = ? ORDER BY produto, tamanho"
+    "SELECT produto, ref, cor_grade AS cor, tamanho, qtd, COALESCE(valor_unit,0) AS valor_unit FROM pedido_itens WHERE pedido_id = ? ORDER BY produto, tamanho"
   ).bind(id).all();
   return c.json({ pedido: ped, itens });
 });

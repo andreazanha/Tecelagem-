@@ -733,7 +733,7 @@ export interface ErpPendente {
 }
 export interface ErpPendenteDetalhe {
   pedido: { id: string; numero_erp: string; cliente_nome: string; data_pedido: string | null; data_entrega: string | null };
-  itens: { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number }[];
+  itens: { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number; valor_unit?: number }[];
 }
 export interface LojaPedido {
   id: string; cliente_nome: string | null; cliente_cnpj: string | null;
