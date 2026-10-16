@@ -716,13 +716,21 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         const vars = grp.vars.slice().sort((a, b) =>
           ((VAR_ORDEM[a.variacao] ?? 9) - (VAR_ORDEM[b.variacao] ?? 9)) || ((a.temEnch ? 1 : 0) - (b.temEnch ? 1 : 0)));
         const coresMap = new Map<string, { id_cor: string; oculta: boolean }>();
-        const linhas: Linha0[] = [];
+        // UMA SEÇÃO por tamanho (Queen/King/Manta), cada uma com a capa e a almofada
+        // dela embaixo — pra separar e não confundir. A variação vira o TÍTULO da seção
+        // (não repete no texto de cada opção).
+        const secoes = new Map<string, { titulo: string; est: number; linhas: Linha0[] }>();
+        const ordemSec: string[] = [];
         let estTotal = 0;
         for (const v of vars) {
           idsRemover.add(v.prod.id);
           for (const c of v.prod.cores) if (!coresMap.has(c.id_cor)) coresMap.set(c.id_cor, c);
           const tid = idTam(v.medida);
-          linhas.push({ id: `${v.prod.id}-${tid}`, cod: v.prod.id, id_tamanho: tid, sul: v.linha ? v.linha.sul : 0, norte: v.linha ? v.linha.norte : 0 });
+          const key = v.variacao || "x";
+          if (!secoes.has(key)) { secoes.set(key, { titulo: v.variacao ? tituloCaso(v.variacao) : "Tamanho", est: 0, linhas: [] }); ordemSec.push(key); }
+          const sec = secoes.get(key)!;
+          sec.linhas.push({ id: `${v.prod.id}-${tid}`, cod: v.prod.id, id_tamanho: tid, sul: v.linha ? v.linha.sul : 0, norte: v.linha ? v.linha.norte : 0 });
+          sec.est += v.vivo;
           estTotal += v.vivo;
           // estoque por variação (cada opção tem o código do kit dela)
           itens[v.prod.id] = itens[v.prod.id] || {};
@@ -731,13 +739,14 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           else itens[v.prod.id][v.medida]["-"] = v.vivo;
         }
         const prim = vars[0].prod;
+        const grupos = ordemSec.map((key) => { const s = secoes.get(key)!; return { id: `${prim.id}-${key}`, titulo: s.titulo, ref: "", estoque: s.est, linhas: s.linhas }; });
         unificados.push({
           id: "kit-" + grp.fam.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, ""),
           nome: grp.fam, linha: prim.linha, pronta_entrega: true, _edicao_limitada: false,
           _kit: true, _kitTitulo: grp.fam, composicao: "", tipo: "avulso", lancamento: false,
           foto: prim.foto, video: "", blocos: {}, estoque_geral: estTotal,
           cores: [...coresMap.values()],
-          grupos: [{ id: `${prim.id}-kit`, titulo: "Escolha o tamanho", ref: "", estoque: estTotal, linhas }],
+          grupos,
         });
       }
       // troca os kits individuais pelos anúncios unificados
