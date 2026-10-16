@@ -1003,14 +1003,32 @@ async function desmembrarKits(env: Env, itensRaw: ItemLoja[]): Promise<ItemLoja[
       const refs = [...new Set(rec.map((r) => r.componente_ref))];
       const ph = refs.map(() => "?").join(",");
       const { results: comps } = await env.DB.prepare(
-        `SELECT ref, nome, preco_atacado, preco_varejo FROM erp_produtos WHERE ref IN (${ph})`
-      ).bind(...refs).all<{ ref: string; nome: string | null; preco_atacado: number | null; preco_varejo: number | null }>().catch(() => ({ results: [] as { ref: string; nome: string | null; preco_atacado: number | null; preco_varejo: number | null }[] }));
+        `SELECT ref, nome, preco_atacado, preco_varejo, tamanhos FROM erp_produtos WHERE ref IN (${ph})`
+      ).bind(...refs).all<{ ref: string; nome: string | null; preco_atacado: number | null; preco_varejo: number | null; tamanhos: string | null }>().catch(() => ({ results: [] as { ref: string; nome: string | null; preco_atacado: number | null; preco_varejo: number | null; tamanhos: string | null }[] }));
       const cmap = new Map(comps.map((cp) => [cp.ref, cp]));
-      const precoReal = (r: string) => Number(cmap.get(r)?.preco_atacado || cmap.get(r)?.preco_varejo || 0);
-      let somaPrecos = 0; for (const r of rec) somaPrecos += precoReal(r.componente_ref) * (Number(r.quantidade) || 1);
+      const nrm = (s: unknown) => String(s ?? "").trim().toLowerCase();
+      // Preço REAL da peça. A Big Tricot usa "Preços Diferenciados": o preço fica POR
+      // TAMANHO (ex.: capa 4K = R$58, peseira 1K = R$146), não no cabeçalho do produto
+      // (que costuma vir 0). Então procura o preço no tamanho da receita (4K/1K); só
+      // se não achar é que cai no preço de cabeçalho.
+      const precoLinha = (ref: string, tam: string | null): number => {
+        const cp = cmap.get(ref);
+        if (!cp) return 0;
+        try {
+          const arr = cp.tamanhos ? JSON.parse(cp.tamanhos) : [];
+          if (Array.isArray(arr) && arr.length) {
+            const alvo = nrm(tam);
+            const t = (alvo && arr.find((x: { tamanho?: string; medida?: string }) => nrm(x.tamanho) === alvo || nrm(x.medida) === alvo)) || arr[0];
+            const pt = Number(t?.atacado || t?.varejo || 0);
+            if (pt > 0) return pt;
+          }
+        } catch { /* usa cabeçalho */ }
+        return Number(cp.preco_atacado || cp.preco_varejo || 0);
+      };
+      let somaPrecos = 0; for (const r of rec) somaPrecos += precoLinha(r.componente_ref, r.tamanho) * (Number(r.quantidade) || 1);
       const usarPreco = somaPrecos > 0;
-      const baseDe = (r: string) => (usarPreco ? precoReal(r) : 1);
-      let somaBase = 0; for (const r of rec) somaBase += baseDe(r.componente_ref) * (Number(r.quantidade) || 1);
+      const baseDe = (r: { componente_ref: string; tamanho: string | null }) => (usarPreco ? precoLinha(r.componente_ref, r.tamanho) : 1);
+      let somaBase = 0; for (const r of rec) somaBase += baseDe(r) * (Number(r.quantidade) || 1);
       const fator = somaBase > 0 ? (Number(it.valor_unit) || 0) / somaBase : 0;
       for (const r of rec) {
         const cp = cmap.get(r.componente_ref);
@@ -1018,7 +1036,7 @@ async function desmembrarKits(env: Env, itensRaw: ItemLoja[]): Promise<ItemLoja[
         out.push({
           ref: r.componente_ref, produto: cp?.nome || r.componente_ref, cor_grade: it.cor_grade, cod_cor: it.cod_cor,
           tamanho: tcod, erp_tamanho: tcod, qtd: (Number(r.quantidade) || 1) * (Number(it.qtd) || 0),
-          valor_unit: Math.round(baseDe(r.componente_ref) * fator * 100) / 100,
+          valor_unit: Math.round(baseDe(r) * fator * 100) / 100,
         });
       }
     } else {
