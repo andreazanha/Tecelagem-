@@ -108,12 +108,20 @@ loja.post("/pedido", async (c) => {
     let erp_tamanho = medida; let cod_cor: number | null = null;
     if (p) {
       const tam = p.tamanhos.find((t) => norm(t.medida) === norm(medida) || norm(t.tamanho) === norm(medida));
-      if (tam && tam.tamanho) erp_tamanho = String(tam.tamanho).trim();
+      if (tam && (tam.tamanho || tam.medida)) erp_tamanho = String(tam.tamanho || tam.medida).trim();
+      // Kit: o "medida" exibido é a composição (texto longo) e NÃO bate com o código do
+      // Syntech. Usa o código real do 1º tamanho do produto (ex.: "UN") — nunca o texto longo
+      // (senão a coluna TAMANHO do Syntech estoura: erro -303 string truncation).
+      else if (p.tamanhos[0] && (p.tamanhos[0].tamanho || p.tamanhos[0].medida)) {
+        erp_tamanho = String(p.tamanhos[0].tamanho || p.tamanhos[0].medida).trim();
+      }
       const cor = p.cores.find((cc) => norm(cc.nome) === norm(corNome));
       if (cor && cor.numero != null) cod_cor = Number(cor.numero);
     } else {
       erros.push(`Produto ${ref} não encontrado no catálogo do ERP.`);
     }
+    // Segurança final: a coluna TAMANHO do Syntech é curta — nunca envia algo longo.
+    if (erp_tamanho.length > 10) erp_tamanho = erp_tamanho.slice(0, 10);
     if (cod_cor == null && p) erros.push(`Cor "${corNome}" do produto ${ref} não encontrada.`);
     resolvidos.push({ ref, nome: String(it.nome || ref), grupo: String(it.grupo || ""), medida, erp_tamanho, corNome, cod_cor, qtd, preco });
   }

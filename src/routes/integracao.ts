@@ -1005,6 +1005,22 @@ integracao.get("/pedidos-para-erp", async (c) => {
     const { results: itens } = await c.env.DB.prepare(
       "SELECT ref, erp_tamanho, cod_cor, qtd, valor_unit, produto, cor_grade FROM pedido_itens WHERE pedido_id = ? ORDER BY rowid"
     ).bind(p.id).all<{ ref: string; erp_tamanho: string | null; cod_cor: number | null; qtd: number; valor_unit: number | null; produto: string | null; cor_grade: string | null }>();
+    // Blindagem contra erro -303 (string truncation) no Syntech: se o erp_tamanho ficou
+    // longo (ex.: pedidos antigos de kit com a composição no lugar do código), troca pelo
+    // CÓDIGO real do 1º tamanho do produto; sem isso, corta num tamanho seguro.
+    for (const it of itens) {
+      const t = String(it.erp_tamanho || "").trim();
+      if (t.length > 6) {
+        let corrigido = "";
+        try {
+          const row = await c.env.DB.prepare("SELECT tamanhos FROM erp_produtos WHERE ref=?").bind(it.ref).first<{ tamanhos: string | null }>();
+          const arr = row?.tamanhos ? JSON.parse(row.tamanhos) : [];
+          const t0 = Array.isArray(arr) && arr[0] ? arr[0] : null;
+          if (t0) corrigido = String(t0.tamanho || t0.medida || "").trim();
+        } catch { corrigido = ""; }
+        it.erp_tamanho = (corrigido || t).slice(0, 10);
+      }
+    }
     pedidos.push({ id: p.id, cliente_nome: p.cliente_nome, cnpj: p.cliente_cnpj, cod_cli: p.cod_cli, valor_total: p.valor_total, data: p.data_pedido, itens });
   }
   return c.json({ modo, pedidos });
