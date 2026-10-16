@@ -147,14 +147,8 @@ compras.get("/ordens/:id", async (c) => {
 });
 
 // ── Ver PDF da ordem (sem enviar) — abre no navegador ─────────────────────────
-compras.get("/ordens/:id/pdf", async (c) => {
-  const g = await exigirAlgumaFuncao(c, ["compras.ordem", "compras.aprovar"]); if ("erro" in g) return g.erro;
-  const o = await carregarOrdem(c.env, c.req.param("id"));
-  if (!o) return c.json({ error: "nao_encontrada" }, 404);
-  const todas = await podeAprovarOrdens(c.env, g.u);
-  if (!todas && o.criado_por_id !== g.u.id) return c.json({ error: "nao_encontrada" }, 404);
-
-  // Data do cabeçalho = data de criação da ordem (dd/mm/aaaa).
+// Monta os bytes do PDF de uma ordem (reutilizado na rota com login e na pública do WhatsApp).
+async function montarPdfOrdem(o: Record<string, unknown>): Promise<Uint8Array | null> {
   const dataBR = dataEntregaBR(String(o.criado_em || "").slice(0, 10)) || "";
   const itens: OrdemCompraItem[] = (o.itens as Array<Record<string, unknown>>).map((it) => ({
     nome: String(it.nome || ""), tamanho: (it.tamanho as string) || undefined, cor: (it.cor as string) || undefined,
@@ -162,9 +156,9 @@ compras.get("/ordens/:id/pdf", async (c) => {
     saldo: it.saldo == null ? undefined : Number(it.saldo), minimo: it.minimo == null ? undefined : Number(it.minimo),
     qtd: Number(it.qtd) || 0, preco: Number(it.preco) || 0,
   }));
-  if (!itens.length) return c.json({ error: "sem_itens" }, 400);
+  if (!itens.length) return null;
   const fornNome = (o.fornecedor as FornDados)?.nome || (o.fornecedor_nome as string) || "—";
-  const bytes = await gerarOrdemCompra({
+  return await gerarOrdemCompra({
     empresa: (o.empresa as EmpresaDados) || { nome: "Big Tricot" },
     fornecedor: (o.fornecedor as FornDados) || { nome: fornNome },
     numero: String(o.numero), data: dataBR, itens,
@@ -172,11 +166,99 @@ compras.get("/ordens/:id/pdf", async (c) => {
     forma_pagamento: (o.forma_pagamento as string) || null,
     obs: (o.obs as string) || null,
   });
-  const nomeArq = `${o.numero}.pdf`.replace(/[^\w.\-]+/g, "_");
+}
+function respostaPdf(numero: unknown, bytes: Uint8Array): Response {
+  const nomeArq = `${numero}.pdf`.replace(/[^\w.\-]+/g, "_");
   return new Response(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, {
     status: 200,
     headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${nomeArq}"`, "Cache-Control": "no-store" },
   });
+}
+// Assinatura do link PÚBLICO do PDF (HMAC do id da ordem). Só quem tem o link assinado abre;
+// não precisa de login (pra o fornecedor abrir pelo WhatsApp).
+async function assinarOrdem(secretRaw: string | undefined, id: string): Promise<string> {
+  const secret = (secretRaw || "").trim() || "big-tricot-oc-v1";
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("ordem-pdf:" + id));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40);
+}
+
+compras.get("/ordens/:id/pdf", async (c) => {
+  const g = await exigirAlgumaFuncao(c, ["compras.ordem", "compras.aprovar"]); if ("erro" in g) return g.erro;
+  const o = await carregarOrdem(c.env, c.req.param("id"));
+  if (!o) return c.json({ error: "nao_encontrada" }, 404);
+  const todas = await podeAprovarOrdens(c.env, g.u);
+  if (!todas && o.criado_por_id !== g.u.id) return c.json({ error: "nao_encontrada" }, 404);
+  const bytes = await montarPdfOrdem(o);
+  if (!bytes) return c.json({ error: "sem_itens" }, 400);
+  return respostaPdf(o.numero, bytes);
+});
+
+// PDF PÚBLICO (sem login) — só abre com a assinatura certa no link. Pro fornecedor abrir pelo WhatsApp.
+compras.get("/ordens/:id/pdf-publico", async (c) => {
+  const id = c.req.param("id");
+  const sig = (c.req.query("sig") || "").trim();
+  const esperada = await assinarOrdem(c.env.INTEGRACAO_TOKEN as string | undefined, id);
+  if (!sig || sig !== esperada) return c.text("Link inválido.", 403);
+  const o = await carregarOrdem(c.env, id);
+  if (!o) return c.text("Ordem não encontrada.", 404);
+  const bytes = await montarPdfOrdem(o);
+  if (!bytes) return c.text("Ordem sem itens.", 400);
+  return respostaPdf(o.numero, bytes);
+});
+
+// Dados pra enviar a ordem no WhatsApp: link PÚBLICO do PDF + telefone do fornecedor.
+compras.get("/ordens/:id/compartilhar", async (c) => {
+  const g = await exigirAlgumaFuncao(c, ["compras.ordem", "compras.aprovar"]); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const o = await carregarOrdem(c.env, id);
+  if (!o) return c.json({ error: "nao_encontrada" }, 404);
+  const todas = await podeAprovarOrdens(c.env, g.u);
+  if (!todas && o.criado_por_id !== g.u.id) return c.json({ error: "nao_encontrada" }, 404);
+  const sig = await assinarOrdem(c.env.INTEGRACAO_TOKEN as string | undefined, id);
+  const origin = new URL(c.req.url).origin;
+  const forn = (o.fornecedor as FornDados) || {};
+  return c.json({
+    pdf_url: `${origin}/api/compras/ordens/${encodeURIComponent(id)}/pdf-publico?sig=${sig}`,
+    numero: String(o.numero),
+    fornecedor_nome: forn.nome || "",
+    fornecedor_telefone: forn.telefone || "",
+  });
+});
+
+// Envia o PDF da ordem pelo WhatsApp (MESMO mecanismo que manda pro gestor hoje),
+// para o número do fornecedor (ou outro informado). Envia o DOCUMENTO de verdade.
+compras.post("/ordens/:id/enviar-fornecedor", async (c) => {
+  const g = await exigirAlgumaFuncao(c, ["compras.ordem", "compras.aprovar"]); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const o = await carregarOrdem(c.env, id);
+  if (!o) return c.json({ error: "nao_encontrada" }, 404);
+  const todas = await podeAprovarOrdens(c.env, g.u);
+  if (!todas && o.criado_por_id !== g.u.id) return c.json({ error: "nao_encontrada" }, 404);
+  const body = await c.req.json<{ telefone?: string }>().catch(() => ({} as { telefone?: string }));
+  let num = String(body.telefone || "").replace(/\D+/g, "");
+  if (num.length === 10 || num.length === 11) num = "55" + num;      // BR: adiciona o 55
+  if (num.length < 12) return c.json({ error: "numero_invalido" }, 400);
+  const bytes = await montarPdfOrdem(o);
+  if (!bytes) return c.json({ error: "sem_itens" }, 400);
+  const base64 = abParaBase64(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+  const fornNome = (o.fornecedor as FornDados)?.nome || (o.fornecedor_nome as string) || "";
+  const dataBR = dataEntregaBR(String(o.criado_em || "").slice(0, 10)) || "";
+  const rBR = (n: number) => { try { return "R$ " + (Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch { return "R$ " + (Number(n) || 0).toFixed(2); } };
+  const nItens = Array.isArray(o.itens) ? (o.itens as unknown[]).length : 0;
+  const caption =
+    `🧾 *ORDEM DE COMPRA* ${o.numero}` +
+    (dataBR ? `\n📅 ${dataBR}` : "") +
+    (fornNome ? `\n🚛 ${fornNome}` : "") +
+    `\n${nItens} item(ns) · Total estimado ${rBR(Number(o.total) || 0)}` +
+    (o.obs ? `\n📝 ${o.obs}` : "");
+  const fileName = `${o.numero}.pdf`.replace(/[^\w.\-]+/g, "_");
+  const r = await enviarMidiaZapi(c.env, num, {
+    url: "", docData: `data:application/pdf;base64,${base64}`,
+    ehImagem: false, ext: "pdf", fileName, caption,
+  }).catch(() => ({ enviado: false }));
+  if (r.enviado) return c.json({ ok: true });
+  return c.json({ ok: false, motivo: (r as { motivo?: string }).motivo || "falha" });
 });
 
 // ── Receber ordem (dá ENTRADA no estoque; aceita parcial) ─────────────────────

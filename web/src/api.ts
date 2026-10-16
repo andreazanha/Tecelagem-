@@ -1172,6 +1172,10 @@ export const api = {
     fetch(`/api/compras/ordens/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   ordemCompraPdf: (id: string) =>
     fetch(`/api/compras/ordens/${encodeURIComponent(id)}/pdf`).then(async (r) => { if (!r.ok) throw new Error("Não consegui gerar o PDF desta ordem."); return r.blob(); }),
+  ordemCompartilhar: (id: string) =>
+    fetch(`/api/compras/ordens/${encodeURIComponent(id)}/compartilhar`).then((r) => j<{ pdf_url: string; numero: string; fornecedor_nome: string; fornecedor_telefone: string }>(r)),
+  ordemEnviarFornecedor: (id: string, telefone: string) =>
+    jsonPost(`/api/compras/ordens/${encodeURIComponent(id)}/enviar-fornecedor`, { telefone }).then((r) => j<{ ok: boolean; motivo?: string; error?: string }>(r)),
   receberOrdemCompra: (id: string, itens: { id: string; qtd: number }[]) =>
     jsonPost(`/api/compras/ordens/${encodeURIComponent(id)}/receber`, { itens }).then((r) => j<{ ok: boolean; recebidos?: number; motivo?: string; ordem?: OrdemCompraDetalhe }>(r)),
   // Mapa de refil (medida do produto → medida do refil)

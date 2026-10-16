@@ -128,6 +128,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
   const [erro, setErro] = useState("");
   const [busy, setBusy] = useState(false);
   const [receberOpen, setReceberOpen] = useState(false);
+  const [waOpen, setWaOpen] = useState(false);
   const ehMaster = !!getUser()?.admin;
 
   useEffect(() => {
@@ -306,6 +307,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
               {ehMaster && <button className="btn btn-soft" disabled={busy} style={{ color: "#b91c1c", marginRight: "auto" }} onClick={excluirAqui}>🗑 Excluir</button>}
               {jaAprovada && <button className="btn btn-soft" disabled={busy} style={{ color: "#166534" }} onClick={() => setReceberOpen(true)}>📥 Receber no estoque</button>}
               <button className="btn btn-soft" disabled={busy} onClick={verPdf}>👁 Ver PDF</button>
+              <button className="btn btn-soft" disabled={busy} style={{ color: "#166534" }} onClick={() => setWaOpen(true)}>📱 Enviar WhatsApp</button>
               {editavel && <button className="btn btn-soft" disabled={busy} onClick={salvarSo}>💾 Salvar alterações</button>}
               {podeAprovar && ord.status === "aguardando_aprovacao" && (
                 <>
@@ -324,6 +326,67 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
         <ReceberModal ordem={ord} itens={itens} onFechar={() => setReceberOpen(false)}
           onRecebido={(o) => { setReceberOpen(false); setOrd(o); setItens(o.itens || []); onMudou(); }} />
       )}
+      {waOpen && ord && <WhatsAppModal ordemId={ord.id} onFechar={() => setWaOpen(false)} />}
+    </div>
+  );
+}
+
+// Enviar a ordem pelo WhatsApp: pega o link PÚBLICO do PDF + telefone do fornecedor,
+// deixa confirmar/trocar o número e abre o WhatsApp com a mensagem pronta.
+function WhatsAppModal({ ordemId, onFechar }: { ordemId: string; onFechar: () => void }) {
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+  const [tel, setTel] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [okMsg, setOkMsg] = useState("");
+  const [dados, setDados] = useState<{ numero: string; fornecedor_nome: string } | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    api.ordemCompartilhar(ordemId)
+      .then((d) => { if (!vivo) return; setDados({ numero: d.numero, fornecedor_nome: d.fornecedor_nome }); setTel(d.fornecedor_telefone || ""); })
+      .catch((e) => { if (vivo) setErro((e as Error).message || "Não consegui preparar o envio."); })
+      .finally(() => { if (vivo) setCarregando(false); });
+    return () => { vivo = false; };
+  }, [ordemId]);
+  async function enviar() {
+    if (!dados || enviando) return;
+    const d = (tel || "").replace(/\D+/g, "");
+    if (d.length < 10) { setErro("Digite um número com DDD (ex.: 35 99999-9999)."); return; }
+    setEnviando(true); setErro("");
+    try {
+      const r = await api.ordemEnviarFornecedor(ordemId, tel);
+      if (r.ok) { setOkMsg("✅ PDF enviado no WhatsApp!"); setTimeout(onFechar, 1400); }
+      else { setErro("Não consegui enviar (" + (r.motivo || r.error || "falha") + "). Confira o número e a conexão do WhatsApp."); setEnviando(false); }
+    } catch (e) { setErro((e as Error).message || "Falha no envio."); setEnviando(false); }
+  }
+  return (
+    <div className="modal-bg" onClick={onFechar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, padding: 16 }}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, maxWidth: 460, width: "100%", padding: 22 }}>
+        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 2 }}>📱 Enviar ordem no WhatsApp</div>
+        {carregando ? (
+          <div style={{ color: "#64748b", padding: "16px 0" }}>Preparando…</div>
+        ) : !dados ? (
+          <div style={{ color: "#b91c1c", padding: "14px 0" }}>{erro || "Não consegui preparar o envio."}
+            <div className="row-gap" style={{ justifyContent: "flex-end", marginTop: 14 }}><button className="btn btn-soft" onClick={onFechar}>Fechar</button></div>
+          </div>
+        ) : (
+          <>
+            <div style={{ color: "#64748b", fontSize: 13.5, margin: "6px 0 14px" }}>
+              O fornecedor recebe o <b>PDF da ordem no WhatsApp</b> — o mesmo documento que você recebe hoje.
+            </div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>Número do WhatsApp (com DDD)</label>
+            <input value={tel} onChange={(e) => { setTel(e.target.value); setErro(""); }} placeholder="35 99999-9999" disabled={enviando}
+              style={{ width: "100%", boxSizing: "border-box", padding: "11px 12px", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 15, marginTop: 4 }} />
+            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>Vem o número do fornecedor; você pode trocar por outro.</div>
+            {erro && <div style={{ color: "#b91c1c", fontSize: 13, marginTop: 10 }}>{erro}</div>}
+            {okMsg && <div style={{ color: "#166534", fontSize: 14, fontWeight: 700, marginTop: 10 }}>{okMsg}</div>}
+            <div className="row-gap" style={{ justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+              <button className="btn btn-soft" onClick={onFechar} disabled={enviando}>Cancelar</button>
+              <button className="btn btn-primary" onClick={enviar} disabled={enviando || !!okMsg} style={{ background: "#16a34a", borderColor: "#16a34a" }}>{enviando ? "Enviando…" : "📱 Enviar PDF no WhatsApp"}</button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
