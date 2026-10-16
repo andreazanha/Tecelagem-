@@ -68,6 +68,49 @@ export function PedidosErp() {
     catch { alert("Não consegui recusar."); }
     finally { setOcupado(null); }
   }
+  // Abre o pedido numa página limpa (documento) pra visualizar/imprimir/salvar em PDF.
+  function escH(s: unknown) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  async function visualizar(p: ErpPendente) {
+    const d = (aberto === p.id && detalhe) ? detalhe : await api.erpPendenteDetalhe(p.id).catch(() => null);
+    if (!d) { alert("Não consegui carregar os itens do pedido."); return; }
+    const itens = prodView ? juntarCapaAlmofada(d.itens) : d.itens;
+    const totPec = itens.reduce((s, it) => s + (Number(it.qtd) || 0), 0);
+    const rows = itens.map((it) => `<tr><td class="b">${escH(it.produto)}${(it as ItemProd)._junta ? '<span class="tag">capa+almofada</span>' : ""}</td><td class="m">${escH(it.ref || "—")}</td><td>${escH(it.cor || "—")}</td><td>${escH(it.tamanho || "—")}</td><td class="n">${Number(it.qtd) || 0}</td></tr>`).join("");
+    const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pedido ${escH(p.numero_erp)} — Big Tricot</title><style>
+      *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#2c2721;margin:0;padding:26px;background:#f3f1ec}
+      .doc{max-width:820px;margin:0 auto;background:#fff;border-radius:10px;box-shadow:0 2px 16px rgba(0,0,0,.08);padding:28px 30px}
+      .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #ae5033;padding-bottom:14px;margin-bottom:16px;gap:16px}
+      .logo{font-family:Georgia,serif;font-weight:700;font-size:24px;letter-spacing:.02em}
+      .logo small{display:block;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#ae5033;font-weight:600;font-family:-apple-system,Arial,sans-serif}
+      .meta{text-align:right;font-size:13px;color:#5f584e;line-height:1.5}
+      .meta b{color:#2c2721;font-size:15px}
+      table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
+      th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8a8278;border-bottom:1px solid #e6e1d8;padding:8px 10px}
+      td{padding:9px 10px;border-bottom:1px solid #f0ece4}
+      td.b{font-weight:600} td.m{color:#8a8278;font-size:12px} td.n{text-align:right;font-weight:700} th.n{text-align:right}
+      .tag{display:inline-block;margin-left:7px;font-size:10px;font-weight:600;color:#8a8278;background:#f1ece3;border-radius:5px;padding:1px 6px}
+      tfoot td{border-top:2px solid #e6e1d8;font-weight:700;padding-top:10px}
+      .acts{max-width:820px;margin:0 auto 14px;display:flex;gap:10px;justify-content:flex-end}
+      .acts button{border:0;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer}
+      .pr{background:#ae5033;color:#fff}
+      @media print{ body{background:#fff;padding:0} .doc{box-shadow:none;border-radius:0;max-width:none} .acts{display:none} }
+    </style></head><body>
+      <div class="acts"><button class="pr" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button></div>
+      <div class="doc">
+        <div class="hd">
+          <div class="logo">BIG TRICOT<small>Pedido para produção</small></div>
+          <div class="meta"><b>Pedido nº ${escH(p.numero_erp)}</b><br>${escH(p.cliente_nome || "")}<br>Pedido: ${escH(dataBR(p.data_pedido))}${p.data_entrega ? `<br>Entrega: ${escH(dataBR(p.data_entrega))}` : ""}</div>
+        </div>
+        ${prodView ? '<div style="font-size:12px;color:#8a8278;margin-bottom:6px">🧶 Visão de produção — capa e almofada do mesmo modelo/cor/tamanho estão somadas.</div>' : ""}
+        <table><thead><tr><th>Produto</th><th>Código</th><th>Cor</th><th>Tamanho</th><th class="n">Qtd</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="4">Total de peças</td><td class="n">${totPec}</td></tr></tfoot></table>
+      </div>
+    </body></html>`;
+    const win = window.open("", "_blank");
+    if (!win) { alert("O navegador bloqueou a janela. Permita pop-ups pra visualizar o pedido."); return; }
+    win.document.open(); win.document.write(html); win.document.close();
+  }
   async function explodirJuntos() {
     const ids = [...sel];
     if (ids.length < 2) return;
@@ -96,6 +139,7 @@ export function PedidosErp() {
             </div>
           </div>
           <button className="btn btn-soft" style={{ padding: "7px 12px" }} onClick={() => abrir(p.id)}>{aberto === p.id ? "Ocultar itens" : "👁 Conferir itens"}</button>
+          <button className="btn btn-soft" style={{ padding: "7px 12px" }} onClick={() => visualizar(p)}>📄 Visualizar pedido</button>
           <button className="btn btn-ok" style={{ padding: "7px 12px" }} disabled={ocupado === p.id} onClick={() => aprovar(p)}>{ocupado === p.id ? "…" : (held ? "💥 Explodir" : "✓ Aprovar e explodir")}</button>
           {!held && <button className="btn btn-soft" style={{ padding: "7px 12px" }} disabled={ocupado === p.id} onClick={() => aceitar(p)}>📥 Aceitar (segurar)</button>}
           <button className="btn btn-danger" style={{ padding: "7px 12px" }} disabled={ocupado === p.id} onClick={() => recusar(p)}>✗ Recusar</button>
