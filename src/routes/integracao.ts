@@ -675,7 +675,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       // 1) Calcula cada KIT (variação) e AGRUPA por família ("Kit Balls"), pra virar
       //    UM anúncio só, com cada variação como uma opção de tamanho.
       type Linha0 = { id: string; cod: string; id_tamanho: string; sul: number; norte: number };
-      type KitVar = { prod: typeof produtos[number]; rotulo: string; medida: string; vivo: number; variacao: string; temEnch: boolean; linha: Linha0 | null };
+      type KitVar = { prod: typeof produtos[number]; medida: string; vivo: number; variacao: string; temEnch: boolean; linha: Linha0 | null };
       const porFamilia = new Map<string, { fam: string; vars: KitVar[] }>();
       for (const prod of produtos) {
         const itensR = recPorKit.get(prod.id);
@@ -698,14 +698,14 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         vivo = isFinite(vivo) ? Math.max(0, vivo) : 0;
         partes.sort((a, b) => a.ordem - b.ordem);
         const comp = partes.map((p) => p.txt).join(" + ");
-        const varNome = pk.variacao ? tituloCaso(pk.variacao) : "";
-        // Rótulo da OPÇÃO de tamanho: "Queen · 1× Peseira … + 2× Capas …" (com "c/ enchimento" na versão de almofada cheia).
-        const rotulo = (varNome || "Único") + (temEnch ? " c/ enchimento" : "");
-        const medida = comp ? (rotulo + " · " + comp) : rotulo;
+        // Rótulo da OPÇÃO = só a COMPOSIÇÃO (ex.: "1× Peseira 70×2,20 + 2× Capas 55×35").
+        // A dona pediu pra NÃO repetir Queen/King/Manta: a medida da peseira já identifica
+        // o tamanho, "Capas" = só a capa e "Almofadas" = cheia (com enchimento).
+        const medida = comp || (pk.variacao ? tituloCaso(pk.variacao) : "Único");
         const fam = pk.familia ? tituloCaso(pk.familia) : (prod.nome || prod.id);
         const l0 = (prod.grupos[0] && prod.grupos[0].linhas[0]) || null;
         const g = porFamilia.get(fam) || { fam, vars: [] };
-        g.vars.push({ prod, rotulo, medida, vivo, variacao: pk.variacao, temEnch, linha: l0 });
+        g.vars.push({ prod, medida, vivo, variacao: pk.variacao, temEnch, linha: l0 });
         porFamilia.set(fam, g);
       }
 
