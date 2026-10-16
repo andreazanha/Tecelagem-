@@ -111,6 +111,8 @@
   .lbl b{color:var(--ink); text-transform:none; letter-spacing:0; font-weight:600}
   .lbl .cnt{color:#7a7068; font-weight:400; text-transform:none; letter-spacing:0; font-size:12px}
   .cores{display:flex; flex-wrap:wrap; gap:11px; align-items:center}
+  /* trava a escolha de cor no topo enquanto os tamanhos rolam */
+  .cor-sticky{position:sticky; top:0; z-index:6; background:var(--card); padding:8px 0 10px; box-shadow:0 10px 10px -10px rgba(0,0,0,.14)}
   .sw-dot{position:relative; width:36px; height:36px; border-radius:50%; padding:0; outline:0; cursor:pointer; background:#efe7d8 center/cover no-repeat; border:2px solid #fff; box-shadow:0 0 0 1px var(--line); transition:transform .1s ease, box-shadow .1s ease}
   .sw-dot:hover{transform:scale(1.09); box-shadow:0 0 0 1px #cabfa9}
   .sw-dot.on{border-color:#fff; box-shadow:0 0 0 2px #ae5033}
@@ -469,8 +471,10 @@
           blocosHTML(p)+
           prazoHTML(p)+
           '<div class="montar"><h4>Montar pedido</h4>'+
-            '<div class="lbl">Escolha a cor'+(ncores>1?' <span class="cnt">· '+ncores+' cores disponíveis</span>':'')+'</div><div class="cores" id="cores">'+coresHTML(p)+'</div>'+
-            '<div id="corfoto">'+corFotoHTML(p)+'</div>'+
+            '<div class="cor-sticky">'+
+              '<div class="lbl">Escolha a cor'+(ncores>1?' <span class="cnt">· '+ncores+' cores disponíveis</span>':'')+'</div><div class="cores" id="cores">'+coresHTML(p)+'</div>'+
+              '<div id="corfoto">'+corFotoHTML(p)+'</div>'+
+            '</div>'+
             '<div id="tamanhos">'+tamanhosHTML(p)+'</div>'+
             '<div class="resumo" id="resumo">'+resumoHTML(p)+'</div>'+
             '<button class="addcart" id="addcart">Adicionar ao carrinho</button>'+
