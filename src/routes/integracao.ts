@@ -632,8 +632,8 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   // As peças (KT…) ficam fora do catálogo, mas existem em erp_produtos (com estoque).
   try {
     const { results: rec } = await env.DB.prepare(
-      "SELECT kit_ref, componente_ref, quantidade FROM erp_kit_receita"
-    ).all<{ kit_ref: string; componente_ref: string; quantidade: number }>();
+      "SELECT kit_ref, componente_ref, quantidade, tamanho FROM erp_kit_receita"
+    ).all<{ kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }>();
     if (rec && rec.length) {
       const compRefs = [...new Set(rec.map((r) => r.componente_ref).filter(Boolean))];
       type CompFull = { nome: string; estoque: number; cores: { nome?: string; hex?: string }[]; tamanhos: TamIn[]; pa: number; pv: number };
@@ -650,10 +650,10 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           compInfo.set(cp.ref, { nome: String(cp.nome || cp.ref).trim(), estoque: Number(cp.estoque_geral) || 0, cores: cc, tamanhos: tt, pa: Number(cp.preco_atacado) || 0, pv: Number(cp.preco_varejo) || 0 });
         }
       }
-      const recPorKit = new Map<string, { comp: string; qtd: number }[]>();
+      const recPorKit = new Map<string, { comp: string; qtd: number; tam: string }[]>();
       for (const r of rec) {
         const arr = recPorKit.get(r.kit_ref) || [];
-        arr.push({ comp: r.componente_ref, qtd: Number(r.quantidade) || 1 });
+        arr.push({ comp: r.componente_ref, qtd: Number(r.quantidade) || 1, tam: String(r.tamanho || "").trim() });
         recPorKit.set(r.kit_ref, arr);
       }
       const tituloCaso = (s: string) => s.toLowerCase().replace(/\b[\p{L}]/gu, (ch) => ch.toUpperCase());
@@ -681,7 +681,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       // 1) Calcula cada KIT (variação) e AGRUPA por família ("Kit Balls"), pra virar
       //    UM anúncio só, com cada variação como uma opção de tamanho.
       type Linha0 = { id: string; cod: string; id_tamanho: string; sul: number; norte: number };
-      type KitVar = { prod: typeof produtos[number]; medida: string; vivo: number; pecas: number; variacao: string; temEnch: boolean; linha: Linha0 | null };
+      type KitVar = { prod: typeof produtos[number]; medida: string; vivo: number; pecas: number; variacao: string; temEnch: boolean; almofada: string; linha: Linha0 | null };
       const porFamilia = new Map<string, { fam: string; vars: KitVar[] }>();
       for (const prod of produtos) {
         const itensR = recPorKit.get(prod.id);
@@ -713,7 +713,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         const fam = pk.familia ? tituloCaso(pk.familia) : (prod.nome || prod.id);
         const l0 = (prod.grupos[0] && prod.grupos[0].linhas[0]) || null;
         const g = porFamilia.get(fam) || { fam, vars: [] };
-        g.vars.push({ prod, medida, vivo, pecas, variacao: pk.variacao, temEnch, linha: l0 });
+        g.vars.push({ prod, medida, vivo, pecas, variacao: pk.variacao, temEnch, almofada: pk.almofada, linha: l0 });
         porFamilia.set(fam, g);
       }
 
@@ -760,11 +760,20 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         const compRefsFam = new Set<string>();
         for (const v of vars) for (const it of (recPorKit.get(v.prod.id) || [])) compRefsFam.add(it.comp);
         const soDig = (m: string) => String(m || "").toLowerCase().replace(/[^0-9]/g, "");
+        // Tamanho 50×50 de CADA peça, tirado da receita da variação 50×50 (Manta): ex.
+        // capa → 5K, almofada → 7K. É a fonte confiável do "qual tamanho é o 50×50".
+        const tam50 = new Map<string, string>();
+        for (const v of vars) {
+          if (soDig(v.almofada) !== "5050") continue;
+          for (const it of (recPorKit.get(v.prod.id) || [])) if (it.tam) tam50.set(it.comp, it.tam.slice(0, 10));
+        }
         const avulsaGrupo = (ref: string, titulo: string) => {
           const cf = compInfo.get(ref); if (!cf) return null;
-          let tams = cf.tamanhos.filter((t) => soDig(t.medida) === "5050");
-          if (!tams.length) tams = cf.tamanhos;                 // fallback: mostra os tamanhos que tiver
-          if (!tams.length) return null;
+          const cod = (tam50.get(ref) || "").toLowerCase();
+          // só o tamanho 50×50: casa pelo CÓDIGO da receita (5K/7K); se não achar, pela MEDIDA 50×50.
+          let tams = cod ? cf.tamanhos.filter((t) => String(t.tamanho || "").trim().toLowerCase() === cod) : [];
+          if (!tams.length) tams = cf.tamanhos.filter((t) => soDig(t.medida) === "5050");
+          if (!tams.length) return null;                        // sem 50×50 → não cria a seção avulsa
           const linhasA: Linha0[] = [];
           for (const t of tams) {
             const porTam = Number(campoPreco === "varejo" ? t.varejo : t.atacado) || 0;
@@ -1141,7 +1150,27 @@ async function desmembrarKits(env: Env, itensRaw: ItemLoja[]): Promise<ItemLoja[
       out.push({ ...it, erp_tamanho: t });
     }
   }
-  return out;
+  // CONSOLIDA peças iguais (mesma ref + tamanho + cor) numa linha só. O Syntech recusa
+  // a MESMA cor repetida na mesma linha do pedido (trigger BI_CORES_PEDIDO → "JA_EXISTE"),
+  // o que acontece quando o pedido tem a mesma peça/cor vinda de kits diferentes (ex.:
+  // capa da mesma cor no kit Queen e no King). Soma a quantidade e faz a média ponderada
+  // do preço (mantém o total do pedido).
+  const mapc = new Map<string, ItemLoja & { _tot: number }>();
+  for (const it of out) {
+    const key = `${it.ref}|${(it.erp_tamanho || "").trim()}|${it.cod_cor ?? ""}`;
+    const q = Number(it.qtd) || 0;
+    const v = Number(it.valor_unit) || 0;
+    const ex = mapc.get(key);
+    if (ex) { ex.qtd += q; ex._tot += q * v; }
+    else mapc.set(key, { ...it, qtd: q, _tot: q * v });
+  }
+  const consol: ItemLoja[] = [];
+  for (const g of mapc.values()) {
+    const tot = g._tot, qt = g.qtd;
+    const item: ItemLoja = { ref: g.ref, produto: g.produto, cor_grade: g.cor_grade, cod_cor: g.cod_cor, tamanho: g.tamanho, erp_tamanho: g.erp_tamanho, qtd: qt, valor_unit: qt > 0 ? Math.round((tot / qt) * 100) / 100 : g.valor_unit };
+    consol.push(item);
+  }
+  return consol;
 }
 // A PONTE busca aqui os pedidos de loja prontos pra gravar no Syntech (auth token).
 integracao.get("/pedidos-para-erp", async (c) => {
