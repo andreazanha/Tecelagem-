@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-15.13";
+const PONTE_VERSAO = "2026-10-16.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -339,7 +339,7 @@ async function rodadaProdutos(db, estado) {
   // regravar com os acentos certos. Depois o incremental normal volta sozinho —
   // o usuário não precisa apagar o state.json.
   const inicio = (CONFIG.produtos && CONFIG.produtos.desde ? `${CONFIG.produtos.desde} 00:00:00` : "1900-01-01 00:00:00");
-  const repuxarTudo = !estado.acentosV2 || !estado.precosV1;
+  const repuxarTudo = !estado.acentosV2 || !estado.precosV1 || !estado.repuxaV3;
   const desde = (!repuxarTudo && estado.ultimaAltProd) ? estado.ultimaAltProd : inicio;
   if (repuxarTudo) log("produtos: re-puxando TUDO uma vez (acentos + preços por tamanho)…");
   const SQL_PROD =
@@ -419,7 +419,7 @@ async function rodadaProdutos(db, estado) {
     const ok = await enviarProdutos(lote.slice(i, i + 200));
     if (ok) enviados += Math.min(200, lote.length - i); else todasOk = false;
   }
-  if (todasOk && maiorAlt) salvarEstado({ ...lerEstado(), ultimaAltProd: maiorAlt, acentosV2: true, precosV1: true });
+  if (todasOk && maiorAlt) salvarEstado({ ...lerEstado(), ultimaAltProd: maiorAlt, acentosV2: true, precosV1: true, repuxaV3: true });
   log(`produtos: ${enviados}/${lote.length} enviado(s).` + (todasOk ? ` última alteração: ${maiorAlt}` : " (envio incompleto — tentarei de novo na próxima rodada)"));
 }
 
