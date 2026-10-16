@@ -134,6 +134,18 @@
   .addcart{position:sticky; bottom:0; margin-top:10px; width:100%; min-height:46px; border:0; background:#ae5033; color:#fff; border-radius:10px; padding:12px 15px; font-size:15px; font-weight:600; letter-spacing:.01em; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px}
   .addcart:disabled{background:#cdbfa8; cursor:default}
   @media(max-width:860px){ .det{flex-direction:column; overflow:auto} .det .lado-foto{flex:0 0 auto; aspect-ratio:4/3} .det .lado-info{overflow:visible} .sheet{inset:0; border-radius:0; max-width:none} }
+  /* CELULAR: cada tamanho em 2 linhas — descrição (quebra) em cima; preço à esquerda e
+     o controle de quantidade à direita embaixo. Botões 44×44, o controle nunca encolhe. */
+  @media(max-width:560px){
+    .det .lado-info{padding:18px 16px 24px}
+    .tamrow{flex-wrap:wrap; align-items:center; column-gap:10px; row-gap:6px}
+    .tamrow .medbox{flex:1 1 100%; min-width:0}
+    .tamrow .med{min-width:0; word-break:break-word}
+    .tamrow .pr{margin-left:0; margin-right:auto; font-size:15px}
+    .tamrow .stepper{flex:0 0 auto}
+    .stepper button{width:44px; height:44px; font-size:20px}
+    .stepper input{width:48px; height:44px; font-size:16px}
+  }
   /* ---- carrinho (gaveta) ---- */
   .cart{position:fixed; inset:0; z-index:70; background:rgba(44,39,33,.5); display:none}
   .cart.show{display:block}
