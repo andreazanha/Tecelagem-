@@ -893,15 +893,19 @@ integracao.get("/loja-banners", async (c) => {
   const raw = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_banners'").first<{ valor: string | null }>();
   let banners: unknown[] = [];
   try { const a = raw?.valor ? JSON.parse(raw.valor) : []; if (Array.isArray(a)) banners = a; } catch { banners = []; }
-  return c.json({ banners });
+  const ir = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_banner_intervalo'").first<{ valor: string | null }>();
+  const intervalo = Math.max(2, Math.min(30, Number(ir?.valor) || 5));
+  return c.json({ banners, intervalo });
 });
 integracao.post("/loja-banners", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
-  const b = await c.req.json<{ banners?: unknown[] }>().catch(() => ({} as { banners?: unknown[] }));
-  const lista = Array.isArray(b.banners) ? b.banners.slice(0, 20) : [];
-  await c.env.DB.prepare(
-    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('loja_banners', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
-  ).bind(JSON.stringify(lista)).run();
+  const b = await c.req.json<{ banners?: unknown[]; intervalo?: number }>().catch(() => ({} as { banners?: unknown[]; intervalo?: number }));
+  const lista = Array.isArray(b.banners) ? b.banners.slice(0, 30) : [];
+  const intervalo = Math.max(2, Math.min(30, Number(b.intervalo) || 5));
+  await c.env.DB.batch([
+    c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('loja_banners', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify(lista)),
+    c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('loja_banner_intervalo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(String(intervalo)),
+  ]);
   return c.json({ ok: true, n: lista.length });
 });
 // Upload da imagem do banner → R2 → devolve a URL pública nossa.
@@ -938,7 +942,7 @@ integracao.get("/loja-arquivo/:nome", async (c) => {
 // Syntech guarda foto no servidor interno, que o cliente não acessa pela net).
 // Aberta por enquanto (prévia). Login/carrinho/pedido vêm nas próximas fases.
 integracao.get("/loja", async (c) => {
-  let dados: { produtos: unknown[]; banco_cores: unknown; banco_tamanhos: unknown; estoque: unknown; banners?: unknown[] };
+  let dados: { produtos: unknown[]; banco_cores: unknown; banco_tamanhos: unknown; estoque: unknown; banners?: unknown[]; banner_intervalo?: number };
   try {
     const doc = await gerarDocSite(c.env);
     const normais = Array.isArray(doc.produtos) ? (doc.produtos as unknown[]) : [];
@@ -951,7 +955,9 @@ integracao.get("/loja", async (c) => {
       const arr = raw?.valor ? JSON.parse(raw.valor) : [];
       if (Array.isArray(arr)) banners = arr.filter((b) => b && (b as { ativo?: unknown }).ativo !== false).sort((a, b) => (Number((a as { ordem?: number }).ordem) || 0) - (Number((b as { ordem?: number }).ordem) || 0));
     } catch { banners = []; }
-    dados = { produtos: [...normais, ...limitada], banco_cores: doc.banco_cores, banco_tamanhos: doc.banco_tamanhos, estoque: doc.estoque, banners };
+    let banner_intervalo = 5;
+    try { const ir = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_banner_intervalo'").first<{ valor: string | null }>(); banner_intervalo = Math.max(2, Math.min(30, Number(ir?.valor) || 5)); } catch { banner_intervalo = 5; }
+    dados = { produtos: [...normais, ...limitada], banco_cores: doc.banco_cores, banco_tamanhos: doc.banco_tamanhos, estoque: doc.estoque, banners, banner_intervalo };
   } catch (e) {
     return new Response("Não consegui montar a loja:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   }

@@ -19,7 +19,18 @@
   body{background:var(--bg); color:var(--ink); font-family:'Montserrat',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; line-height:1.45}
   .serif{font-family:"Cormorant Garamond",Georgia,serif}
   /* banner full-width, começa no TOPO da página (sem faixa preta em cima) */
-  .banner{position:relative; width:100%; min-height:300px; overflow:hidden; background:#181615; display:flex; align-items:center}
+  .banner{position:relative; width:100%; min-height:300px; overflow:hidden; background:#181615}
+  .b-slide{position:absolute; inset:0; opacity:0; transition:opacity .8s ease; display:flex; align-items:center; pointer-events:none}
+  .b-slide.on{opacity:1; pointer-events:auto}
+  .b-link{position:absolute; inset:0; display:flex; align-items:center; text-decoration:none; color:inherit}
+  .b-dots{position:absolute; left:0; right:0; bottom:14px; z-index:5; display:flex; gap:8px; justify-content:center}
+  .b-dot{width:9px; height:9px; padding:0; border:0; border-radius:50%; background:rgba(255,255,255,.45); cursor:pointer; transition:width .2s, background .2s}
+  .b-dot.on{background:#fff; width:22px; border-radius:5px}
+  .b-arrow{position:absolute; top:50%; transform:translateY(-50%); z-index:5; width:40px; height:40px; border-radius:50%; border:0; background:rgba(255,255,255,.18); color:#fff; font-size:24px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center}
+  .b-arrow:hover{background:rgba(255,255,255,.32)}
+  .b-prev{left:14px} .b-next{right:14px}
+  @media(max-width:640px){ .b-arrow{display:none} }
+  @media(prefers-reduced-motion: reduce){ .b-slide{transition:none} }
   .banner .b-bg{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0}
   .banner .b-shade{position:absolute; inset:0; z-index:1; background:linear-gradient(90deg,rgba(24,22,21,.80) 0%,rgba(24,22,21,.38) 46%,rgba(24,22,21,.08) 100%)}
   .banner .b-in{position:relative; z-index:2; max-width:1760px; margin:0 auto; width:100%; padding:0 40px; color:#fff}
@@ -266,35 +277,68 @@
     abas.innerHTML=tabs; app.innerHTML=html||'<div class="vazio">Nenhum produto encontrado.</div>';
   }
 
-  // ---------- BANNER (estrutura pronta pra banners cadastrados no sistema) ----------
-  // Lê D.banners (lista). Sem banner cadastrado, mostra um estado padrão elegante,
-  // sem foto fictícia. Quando o sistema cadastrar banners, aparecem aqui (1º por ora).
-  function renderBanner(){
-    var el=document.getElementById("banner"); if(!el) return;
-    var bs = Array.isArray(D.banners)? D.banners.filter(Boolean) : [];
-    if(!bs.length){
-      el.innerHTML='<div class="b-shade"></div><div class="b-in">'+
-        '<div class="b-kick">Big Tricot · Home Decor</div>'+
-        '<div class="b-tit serif">Tricô que transforma ambientes</div>'+
-        '<div class="b-sub">Qualidade · Design · Pronta entrega</div>'+
-      '</div>';
-      return;
-    }
-    var b=bs[0];
+  // ---------- BANNER / CARROSSEL ----------
+  // Lê D.banners (lista, só os ativos). 0 → estado padrão elegante (sem foto fictícia).
+  // 1 → mostra fixo (sem setas/bolinhas/troca). 2+ → carrossel com fade, bolinhas,
+  // setas (desktop), swipe (celular), autoplay (pausa ao interagir) e respeita movimento reduzido.
+  function bannerSlide(b,i){
     var imgTag="";
     if(b.img||b.img_mobile){
       imgTag='<picture>'+
         (b.img_mobile?'<source media="(max-width:640px)" srcset="'+esc(b.img_mobile)+'">':'')+
-        '<img class="b-bg" src="'+esc(b.img||b.img_mobile)+'" alt="" onerror="this.remove()">'+
+        '<img class="b-bg" '+(i===0?'':'loading="lazy" ')+'src="'+esc(b.img||b.img_mobile)+'" alt="" onerror="this.remove()">'+
       '</picture>';
     }
-    el.innerHTML=imgTag+
-      '<div class="b-shade"></div><div class="b-in">'+
+    var conteudo=imgTag+'<div class="b-shade"></div><div class="b-in">'+
       (b.kicker?'<div class="b-kick">'+esc(b.kicker)+'</div>':'')+
       (b.titulo?'<div class="b-tit serif">'+esc(b.titulo)+'</div>':'')+
       (b.sub?'<div class="b-sub">'+esc(b.sub)+'</div>':'')+
       (b.botao_texto?'<a class="b-btn" href="'+esc(b.botao_link||'#')+'"'+(b.botao_link?' target="_blank" rel="noopener"':'')+'>'+esc(b.botao_texto)+' ›</a>':'')+
     '</div>';
+    // Banner inteiro clicável quando tem link e NÃO tem botão separado (sem criar botões).
+    if(b.botao_link && !b.botao_texto){
+      conteudo='<a class="b-link" href="'+esc(b.botao_link)+'" target="_blank" rel="noopener">'+conteudo+'</a>';
+    }
+    return '<div class="b-slide'+(i===0?' on':'')+'">'+conteudo+'</div>';
+  }
+  function renderBanner(){
+    var el=document.getElementById("banner"); if(!el) return;
+    var bs = Array.isArray(D.banners)? D.banners.filter(function(b){return b && b.ativo!==false;}) : [];
+    if(!bs.length){
+      el.innerHTML='<div class="b-slide on"><div class="b-shade"></div><div class="b-in">'+
+        '<div class="b-kick">Big Tricot · Home Decor</div>'+
+        '<div class="b-tit serif">Tricô que transforma ambientes</div>'+
+        '<div class="b-sub">Qualidade · Design · Pronta entrega</div>'+
+      '</div></div>';
+      return;
+    }
+    var slides=bs.map(bannerSlide).join("");
+    if(bs.length===1){ el.innerHTML=slides; return; } // 1 só: fixo, sem controles
+    var dots='<div class="b-dots">'+bs.map(function(_,i){return '<button class="b-dot'+(i===0?' on':'')+'" data-i="'+i+'" aria-label="Ir para banner '+(i+1)+'"></button>';}).join("")+'</div>';
+    var setas='<button class="b-arrow b-prev" aria-label="Anterior">‹</button><button class="b-arrow b-next" aria-label="Próximo">›</button>';
+    el.innerHTML=slides+setas+dots;
+
+    var reduz = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    var intervalo = Math.max(2000, (Number(D.banner_intervalo)||5)*1000);
+    var slidesEl=el.querySelectorAll(".b-slide"), dotsEl=el.querySelectorAll(".b-dot");
+    var atual=0, timer=null;
+    function mostrar(i){ atual=(i+bs.length)%bs.length; for(var j=0;j<slidesEl.length;j++) slidesEl[j].classList.toggle("on",j===atual); for(var k=0;k<dotsEl.length;k++) dotsEl[k].classList.toggle("on",k===atual); }
+    function proximo(){ mostrar(atual+1); }
+    function parar(){ if(timer){ clearInterval(timer); timer=null; } }
+    function iniciar(){ parar(); if(!reduz) timer=setInterval(proximo,intervalo); }
+    function reagendar(){ parar(); if(!reduz) setTimeout(iniciar, Math.max(intervalo, 6000)); }
+    var prev=el.querySelector(".b-prev"), next=el.querySelector(".b-next");
+    if(prev) prev.onclick=function(){ mostrar(atual-1); reagendar(); };
+    if(next) next.onclick=function(){ proximo(); reagendar(); };
+    for(var d=0; d<dotsEl.length; d++){ (function(btn){ btn.onclick=function(){ mostrar(Number(btn.getAttribute("data-i"))||0); reagendar(); }; })(dotsEl[d]); }
+    // swipe no celular
+    var x0=null;
+    el.addEventListener("touchstart", function(e){ x0=e.touches[0].clientX; parar(); }, {passive:true});
+    el.addEventListener("touchend", function(e){ if(x0==null) return; var dx=e.changedTouches[0].clientX-x0; if(Math.abs(dx)>40){ if(dx<0) proximo(); else mostrar(atual-1); } x0=null; reagendar(); }, {passive:true});
+    // pausa ao interagir com o mouse (desktop)
+    el.addEventListener("mouseenter", parar);
+    el.addEventListener("mouseleave", iniciar);
+    iniciar();
   }
 
   // ---------- MODAL PRODUTO ----------

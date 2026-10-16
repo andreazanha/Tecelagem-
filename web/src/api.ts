@@ -1317,8 +1317,8 @@ export const api = {
   lojaReenviar: (id: string) => jsonPost(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}/reenviar`, {}).then((r) => j<{ ok: boolean }>(r)),
   lojaConfig: (modo: string) => jsonPost("/api/integracao/loja-config", { modo }).then((r) => j<{ ok: boolean; modo: string }>(r)),
   // Banners da loja (cadastro pela dona) + upload da imagem no nosso R2.
-  lojaBanners: () => fetch("/api/integracao/loja-banners").then((r) => j<{ banners: LojaBanner[] }>(r)),
-  lojaBannersSalvar: (banners: LojaBanner[]) => jsonPost("/api/integracao/loja-banners", { banners }).then((r) => j<{ ok: boolean; n: number }>(r)),
+  lojaBanners: () => fetch("/api/integracao/loja-banners").then((r) => j<{ banners: LojaBanner[]; intervalo: number }>(r)),
+  lojaBannersSalvar: (banners: LojaBanner[], intervalo: number) => jsonPost("/api/integracao/loja-banners", { banners, intervalo }).then((r) => j<{ ok: boolean; n: number }>(r)),
   bannerUpload: (file: File) => { const fd = new FormData(); fd.append("file", file); return fetch("/api/integracao/banner-upload", { method: "POST", body: fd }).then((r) => j<{ ok: boolean; url: string; error?: string }>(r)); },
   // Vídeos e textos por produto (catálogo).
   catalogoProdutosExtra: () => fetch("/api/integracao/catalogo-produtos").then((r) => j<CatalogoProdutoExtra[]>(r)),

@@ -35,11 +35,12 @@ const btnPri: React.CSSProperties = { padding: "11px 20px", border: 0, borderRad
 // ─────────────────────────── BANNERS ───────────────────────────
 function Banners() {
   const [lista, setLista] = useState<LojaBanner[]>([]);
+  const [intervalo, setIntervalo] = useState(5);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
 
-  useEffect(() => { api.lojaBanners().then((r) => setLista(r.banners || [])).catch(() => setLista([])).finally(() => setCarregando(false)); }, []);
+  useEffect(() => { api.lojaBanners().then((r) => { setLista(r.banners || []); setIntervalo(r.intervalo || 5); }).catch(() => setLista([])).finally(() => setCarregando(false)); }, []);
 
   function up<K extends keyof LojaBanner>(i: number, k: K, v: LojaBanner[K]) {
     setLista((l) => l.map((b, j) => (j === i ? { ...b, [k]: v } : b)));
@@ -56,7 +57,7 @@ function Banners() {
   }
   async function salvar() {
     setSalvando(true); setMsg("");
-    try { await api.lojaBannersSalvar(lista.map((b, k) => ({ ...b, ordem: k }))); setMsg("✓ Salvo! Atualize a loja (Ctrl+F5) pra ver."); }
+    try { await api.lojaBannersSalvar(lista.map((b, k) => ({ ...b, ordem: k })), intervalo); setMsg("✓ Salvo! Atualize a loja (Ctrl+F5) pra ver."); }
     catch { setMsg("Não consegui salvar. Tente de novo."); }
     finally { setSalvando(false); }
   }
@@ -72,6 +73,12 @@ function Banners() {
         • <b>Computador</b>: imagem deitada, <b>1920 × 600 px</b> (JPG/PNG/WEBP, até 1 MB).<br />
         • <b>Celular</b>: imagem mais quadrada, <b>1080 × 1080 px</b>.<br />
         • O <b>texto e o botão</b> ficam à <b>esquerda</b> — deixe esse lado mais limpo e ponha o assunto (almofadas, ambiente) mais ao centro/direita.
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        <label style={{ fontSize: 13.5, fontWeight: 600, color: "#4a443c" }}>⏱️ Tempo de cada banner:</label>
+        <input type="number" min={2} max={30} value={intervalo} onChange={(e) => setIntervalo(Math.max(2, Math.min(30, Number(e.target.value) || 5)))}
+          style={{ width: 70, padding: "8px 10px", border: "1px solid #ddd5c7", borderRadius: 10, fontSize: 14 }} />
+        <span style={{ fontSize: 13, color: "#8a8073" }}>segundos (padrão 5). Vale quando há 2 ou mais banners ativos.</span>
       </div>
       {lista.length === 0 && <div style={{ color: "#8a8073", padding: "20px 0" }}>Nenhum banner ainda. Clique em "➕ Novo banner".</div>}
       {lista.map((b, i) => (
