@@ -295,8 +295,12 @@
       (b.sub?'<div class="b-sub">'+esc(b.sub)+'</div>':'')+
       (b.botao_texto?'<a class="b-btn" href="'+esc(b.botao_link||'#')+'"'+(b.botao_link?' target="_blank" rel="noopener"':'')+'>'+esc(b.botao_texto)+' ›</a>':'')+
     '</div>';
-    // Banner inteiro clicável quando tem link e NÃO tem botão separado (sem criar botões).
-    if(b.botao_link && !b.botao_texto){
+    // Banner inteiro clicável: produto do catálogo tem PRIORIDADE (abre a janela do produto);
+    // senão, link externo. Nunca cria botão por cima da imagem.
+    var pid=(b.produto_id!=null? String(b.produto_id):"").replace(/[^\w\-.]/g,"");
+    if(pid){
+      conteudo='<div class="b-link" style="cursor:pointer" onclick="__abrirProd(\''+pid+'\')">'+conteudo+'</div>';
+    } else if(b.botao_link && !b.botao_texto){
       conteudo='<a class="b-link" href="'+esc(b.botao_link)+'" target="_blank" rel="noopener">'+conteudo+'</a>';
     }
     return '<div class="b-slide'+(i===0?' on':'')+'">'+conteudo+'</div>';
@@ -628,6 +632,8 @@
   document.getElementById("entBtn").addEventListener("click",entrarLoja);
   document.getElementById("entCnpj").addEventListener("keydown",function(e){ if(e.key==="Enter") entrarLoja(); });
 
+  // Banner pode abrir um produto do catálogo ao clicar (chamado pelo onclick do banner).
+  window.__abrirProd=function(id){ try{ abrir(id); window.scrollTo({top:0,behavior:"smooth"}); }catch(e){} };
   atualizarCartN();
   renderBanner();
   render();

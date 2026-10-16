@@ -36,11 +36,13 @@ const btnPri: React.CSSProperties = { padding: "11px 20px", border: 0, borderRad
 function Banners() {
   const [lista, setLista] = useState<LojaBanner[]>([]);
   const [intervalo, setIntervalo] = useState(5);
+  const [prods, setProds] = useState<{ id: string; nome: string }[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
 
   useEffect(() => { api.lojaBanners().then((r) => { setLista(r.banners || []); setIntervalo(r.intervalo || 5); }).catch(() => setLista([])).finally(() => setCarregando(false)); }, []);
+  useEffect(() => { api.catalogoProdutosExtra().then((l) => setProds(l.map((p) => ({ id: p.id, nome: p.nome })))).catch(() => setProds([])); }, []);
 
   function up<K extends keyof LojaBanner>(i: number, k: K, v: LojaBanner[K]) {
     setLista((l) => l.map((b, j) => (j === i ? { ...b, [k]: v } : b)));
@@ -98,8 +100,14 @@ function Banners() {
               </div>
               <div style={{ display: "flex", gap: 10 }}>
                 <div style={{ flex: 1 }}><label style={lbl}>Botão (texto)</label><input style={inp} value={b.botao_texto || ""} placeholder="Ex.: Ver produtos" onChange={(e) => up(i, "botao_texto", e.target.value)} /></div>
-                <div style={{ flex: 1.4 }}><label style={lbl}>Botão (link ao clicar)</label><input style={inp} value={b.botao_link || ""} placeholder="https://..." onChange={(e) => up(i, "botao_link", e.target.value)} /></div>
+                <div style={{ flex: 1.4 }}><label style={lbl}>Botão (link externo)</label><input style={inp} value={b.botao_link || ""} placeholder="https://..." onChange={(e) => up(i, "botao_link", e.target.value)} /></div>
               </div>
+              <label style={lbl}>Abrir um PRODUTO ao clicar no banner (opcional)</label>
+              <select style={inp} value={b.produto_id || ""} onChange={(e) => up(i, "produto_id", e.target.value)}>
+                <option value="">— nenhum (usa o link externo acima, se houver) —</option>
+                {prods.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+              <div style={{ fontSize: 11.5, color: "#9a8f7a", marginTop: 3 }}>Escolhendo um produto, o banner inteiro abre a janela daquele produto na loja (tem prioridade sobre o link externo).</div>
               <div style={{ marginTop: 10, padding: "10px 12px", background: "#f8f5ef", border: "1px solid #ece3d2", borderRadius: 10 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: "#6b5f49", marginBottom: 6 }}>🗓️ Agendamento (opcional) <span style={{ fontWeight: 400, color: "#9a8f7a" }}>· horário de Brasília</span></div>
                 <label style={lbl}>Nome da campanha (interno)</label>

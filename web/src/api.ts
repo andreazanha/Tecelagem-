@@ -749,6 +749,7 @@ export interface LojaBanner {
   id?: string; img?: string; img_mobile?: string; kicker?: string; titulo?: string; sub?: string;
   botao_texto?: string; botao_link?: string; ativo?: boolean; ordem?: number;
   nome?: string; inicio?: string; fim?: string;  // agendamento (datas em horário de Brasília; vazio = sem limite)
+  produto_id?: string;  // ao clicar, abre esse produto do catálogo (em vez de um link externo)
 }
 export interface CatalogoProdutoExtra {
   id: string; nome: string; pronta_entrega: boolean; kit: boolean;
