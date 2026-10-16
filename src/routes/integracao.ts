@@ -681,7 +681,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       // 1) Calcula cada KIT (variação) e AGRUPA por família ("Kit Balls"), pra virar
       //    UM anúncio só, com cada variação como uma opção de tamanho.
       type Linha0 = { id: string; cod: string; id_tamanho: string; sul: number; norte: number };
-      type KitVar = { prod: typeof produtos[number]; medida: string; vivo: number; pecas: number; variacao: string; temEnch: boolean; almofada: string; linha: Linha0 | null };
+      type KitVar = { prod: typeof produtos[number]; medida: string; vivo: number; pecas: number; variacao: string; temEnch: boolean; almofada: string; linha: Linha0 | null; estCor: Record<string, number>; temCor: boolean };
       const porFamilia = new Map<string, { fam: string; vars: KitVar[] }>();
       for (const prod of produtos) {
         const itensR = recPorKit.get(prod.id);
@@ -704,6 +704,27 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           partes.push({ ordem: tp === "peseira" ? 0 : 1, txt: `${it.qtd}- ${rotulo}${dim ? " " + dim : ""}` });
         }
         vivo = isFinite(vivo) ? Math.max(0, vivo) : 0;
+        // Estoque do kit POR COR: menor( estoque_da_peça_na_cor ÷ qtd ), usando o estoque
+        // por cor dos componentes (erp_estoque). Se faltar o dado por cor de alguma peça,
+        // temCor=false → cai no estoque agregado (vivo) pra todas as cores (seguro).
+        const compCorStock = (comp: string): Record<string, number> | null => {
+          const m = itens[comp]; if (!m) return null;
+          const acc: Record<string, number> = {}; let any = false;
+          for (const med of Object.keys(m)) for (const cid of Object.keys(m[med])) { acc[cid] = (acc[cid] || 0) + (Number(m[med][cid]) || 0); any = true; }
+          return any ? acc : null;
+        };
+        const stocks = itensR.map((it) => ({ qtd: Number(it.qtd) || 1, cs: compCorStock(it.comp) }));
+        const temCor = itensR.length > 0 && stocks.every((x) => x.cs != null);
+        const estCor: Record<string, number> = {};
+        if (temCor) {
+          const cids = new Set<string>();
+          for (const x of stocks) for (const cid of Object.keys(x.cs!)) cids.add(cid);
+          for (const cid of cids) {
+            let v = Infinity;
+            for (const x of stocks) v = Math.min(v, Math.floor((x.cs![cid] || 0) / (x.qtd || 1)));
+            estCor[cid] = isFinite(v) ? Math.max(0, v) : 0;
+          }
+        }
         partes.sort((a, b) => a.ordem - b.ordem);
         const comp = partes.map((p) => p.txt).join(" + ");
         // Rótulo da OPÇÃO = só a COMPOSIÇÃO (ex.: "1× Peseira 70×2,20 + 2× Capas 55×35").
@@ -713,7 +734,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         const fam = pk.familia ? tituloCaso(pk.familia) : (prod.nome || prod.id);
         const l0 = (prod.grupos[0] && prod.grupos[0].linhas[0]) || null;
         const g = porFamilia.get(fam) || { fam, vars: [] };
-        g.vars.push({ prod, medida, vivo, pecas, variacao: pk.variacao, temEnch, almofada: pk.almofada, linha: l0 });
+        g.vars.push({ prod, medida, vivo, pecas, variacao: pk.variacao, temEnch, almofada: pk.almofada, linha: l0, estCor, temCor });
         porFamilia.set(fam, g);
       }
 
@@ -745,10 +766,10 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           sec.linhas.push({ id: `${v.prod.id}-${tid}`, cod: v.prod.id, id_tamanho: tid, sul: v.linha ? v.linha.sul : 0, norte: v.linha ? v.linha.norte : 0 });
           sec.est += v.vivo;
           estTotal += v.vivo;
-          // estoque por variação (cada opção tem o código do kit dela)
+          // estoque por variação E por cor (cada opção tem o código do kit dela)
           itens[v.prod.id] = itens[v.prod.id] || {};
           itens[v.prod.id][v.medida] = itens[v.prod.id][v.medida] || {};
-          if (v.prod.cores.length) { for (const c of v.prod.cores) itens[v.prod.id][v.medida][c.id_cor] = v.vivo; }
+          if (v.prod.cores.length) { for (const c of v.prod.cores) itens[v.prod.id][v.medida][c.id_cor] = v.temCor ? (v.estCor[c.id_cor] || 0) : v.vivo; }
           else itens[v.prod.id][v.medida]["-"] = v.vivo;
         }
         const prim = vars[0].prod;

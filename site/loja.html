@@ -386,7 +386,8 @@
   function abrir(id){
     var p=findProd(id); if(!p) return;
     sel.prod=p; sel.qtd={};
-    var c0=(p.cores||[]).filter(function(x){return !x.oculta;})[0] || (p.cores||[])[0];
+    var vis=coresVisiveis(p);
+    var c0=vis[0] || (p.cores||[]).filter(function(x){return !x.oculta;})[0] || (p.cores||[])[0];
     sel.corId=c0?c0.id_cor:null;
     renderDetalhe();
     document.getElementById("modal").classList.add("show");
@@ -408,7 +409,7 @@
     // quantas peças já foram escolhidas em cada cor (pra marcar as bolinhas)
     var porCor={};
     Object.keys(sel.qtd).forEach(function(k){ var q=Number(sel.qtd[k])||0; if(q<=0) return; var corId=k.slice(0,k.indexOf("|")); porCor[corId]=(porCor[corId]||0)+q; });
-    return (p.cores||[]).filter(function(c){return !c.oculta;}).map(function(c){
+    return coresVisiveis(p).map(function(c){
       var cc=CORES[c.id_cor]||{}; var on=String(c.id_cor)===String(sel.corId)?" on":"";
       var fundo=cc.foto? "background-image:url('"+esc(cc.foto)+"')" : 'background-color:'+esc(cc.hex||"#ddd");
       var n=porCor[c.id_cor]||0; var badge=n>0?'<span class="sw-n">'+n+'</span>':'';
@@ -433,6 +434,14 @@
     var med=medidaDe(idt); var m=EST[cod]&&EST[cod][med]; if(!m) return null;
     var v=m[sel.corId]; return (v==null)?null:(Number(v)||0);
   }
+  // saldo de uma COR específica (pra ocultar opção/cor sem estoque)
+  function estSaldoCor(cod,idt,corId){ var med=medidaDe(idt); var m=EST[cod]&&EST[cod][med]; if(!m) return null; var v=m[corId]; return (v==null)?null:(Number(v)||0); }
+  // só filtra se for pronta entrega/kit E houver dados de estoque (senão não esconde nada)
+  function filtraEstoque(p){ if(!(p.pronta_entrega||p._kit)) return false; var has=false; (p.grupos||[]).forEach(function(g){(g.linhas||[]).forEach(function(l){ if(EST[l.cod]) has=true; });}); return has; }
+  // a cor tem estoque em ALGUM tamanho?
+  function corComEstoque(p,corId){ var ok=false; (p.grupos||[]).forEach(function(g){(g.linhas||[]).forEach(function(l){ var s=estSaldoCor(l.cod,l.id_tamanho,corId); if(s!=null&&s>0) ok=true; });}); return ok; }
+  // cores a mostrar: oculta as sem estoque (pronta entrega/kit); nunca deixa a lista vazia
+  function coresVisiveis(p){ var cs=(p.cores||[]).filter(function(c){return !c.oculta;}); if(!filtraEstoque(p)) return cs; var cE=cs.filter(function(c){return corComEstoque(p,c.id_cor);}); return cE.length?cE:cs; }
   // texto de estoque por linha, no estilo do catálogo: "7 em estoque" / "últimas 2 unidades".
   function estTxtLinha(cod,idt){
     var s=estSaldo(cod,idt); if(s==null) return "";
@@ -443,16 +452,20 @@
     return '<div class="estx">'+s+' em estoque</div>';
   }
   function tamanhosHTML(p){
-    var cc=CORES[sel.corId]||{};
+    var cc=CORES[sel.corId]||{}; var filtra=filtraEstoque(p);
     var grupos=(p.grupos||[]).map(function(g){
       var rows=(g.linhas||[]).map(function(l){
+        // pronta entrega/kit: oculta a opção SEM estoque na cor selecionada
+        if(filtra){ var s=estSaldo(l.cod,l.id_tamanho); if(s!=null&&s<=0) return ""; }
         var k=qKey(l.cod,l.id_tamanho); var q=sel.qtd[k]||0;
         return '<div class="tamrow"><div class="medbox"><div class="med">'+esc(medidaDe(l.id_tamanho).replace(/(\d)\s*[×xX]\s*(\d)/g,"$1 × $2"))+'</div>'+estTxtLinha(l.cod,l.id_tamanho)+'</div>'+
           '<div class="pr">'+brl(precoLinha(l))+'</div>'+
           '<div class="stepper" data-k="'+esc(k)+'"><button data-d="-1">−</button><input type="number" min="0" value="'+q+'"><button data-d="1">+</button></div></div>';
       }).join("");
+      if(!rows) return "";                    // seção sem nenhuma opção visível → some
       return '<div class="grp"><div class="t">'+esc(g.titulo||"Itens")+'</div>'+rows+'</div>';
     }).join("");
+    if(!grupos) grupos='<div class="estx off" style="padding:10px 0">Sem opções em estoque nesta cor.</div>';
     return '<div class="lbl">Escolha os tamanhos — <b>'+esc(cc.nome||"")+'</b></div>'+grupos;
   }
   function prazoHTML(p){
@@ -490,7 +503,7 @@
     var foto = p.foto? '<div class="ph">'+inicial(p.nome)+'</div><img src="'+esc(p.foto)+'" onerror="this.remove()">' : '<div class="ph">'+inicial(p.nome)+'</div>';
     var video = p.video? '<video class="vid" controls preload="metadata" src="'+esc(p.video)+'"></video>' : '';
     var linhaLb = p.pronta_entrega?"Pronta Entrega":(p._edicao_limitada?"Edição Limitada":("Linha "+(p.linha||"").replace(/^\w/,function(c){return c.toUpperCase();})));
-    var ncores=(p.cores||[]).filter(function(c){return !c.oculta;}).length;
+    var ncores=coresVisiveis(p).length;
     document.getElementById("sheet").innerHTML =
       '<div class="topo"><span class="lb">'+esc(linhaLb)+'</span><button class="fechar" onclick="__fechar()">✕</button></div>'+
       '<div class="det">'+
