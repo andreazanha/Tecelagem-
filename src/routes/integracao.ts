@@ -990,6 +990,53 @@ const lerCfg = async (env: Env, k: string) => ((await env.DB.prepare("SELECT val
 // Modo de envio da loja → ERP: 'off' (nada), 'teste' (só os liberados), 'on' (todos).
 const modoEnvioLoja = async (env: Env) => { const m = await lerCfg(env, "loja_erp_envio"); return m === "on" || m === "off" ? m : "teste"; };
 
+// Desmembra KITS em PEÇAS (o Syntech não explode pela integração). Usado no envio pro
+// Syntech E na tela "Ver itens", pra os dois mostrarem/enviarem a mesma coisa.
+type ItemLoja = { ref: string; produto: string | null; cor_grade: string | null; cod_cor: number | null; tamanho?: string | null; erp_tamanho: string | null; qtd: number; valor_unit: number | null };
+async function desmembrarKits(env: Env, itensRaw: ItemLoja[]): Promise<ItemLoja[]> {
+  const out: ItemLoja[] = [];
+  for (const it of itensRaw) {
+    const { results: rec } = await env.DB.prepare(
+      "SELECT componente_ref, quantidade, tamanho FROM erp_kit_receita WHERE kit_ref = ?"
+    ).bind(it.ref).all<{ componente_ref: string; quantidade: number; tamanho: string | null }>().catch(() => ({ results: [] as { componente_ref: string; quantidade: number; tamanho: string | null }[] }));
+    if (rec && rec.length) {
+      const refs = [...new Set(rec.map((r) => r.componente_ref))];
+      const ph = refs.map(() => "?").join(",");
+      const { results: comps } = await env.DB.prepare(
+        `SELECT ref, nome, preco_atacado, preco_varejo FROM erp_produtos WHERE ref IN (${ph})`
+      ).bind(...refs).all<{ ref: string; nome: string | null; preco_atacado: number | null; preco_varejo: number | null }>().catch(() => ({ results: [] as { ref: string; nome: string | null; preco_atacado: number | null; preco_varejo: number | null }[] }));
+      const cmap = new Map(comps.map((cp) => [cp.ref, cp]));
+      const precoReal = (r: string) => Number(cmap.get(r)?.preco_atacado || cmap.get(r)?.preco_varejo || 0);
+      let somaPrecos = 0; for (const r of rec) somaPrecos += precoReal(r.componente_ref) * (Number(r.quantidade) || 1);
+      const usarPreco = somaPrecos > 0;
+      const baseDe = (r: string) => (usarPreco ? precoReal(r) : 1);
+      let somaBase = 0; for (const r of rec) somaBase += baseDe(r.componente_ref) * (Number(r.quantidade) || 1);
+      const fator = somaBase > 0 ? (Number(it.valor_unit) || 0) / somaBase : 0;
+      for (const r of rec) {
+        const cp = cmap.get(r.componente_ref);
+        const tcod = (String(r.tamanho || "").trim() || "UN").slice(0, 10);
+        out.push({
+          ref: r.componente_ref, produto: cp?.nome || r.componente_ref, cor_grade: it.cor_grade, cod_cor: it.cod_cor,
+          tamanho: tcod, erp_tamanho: tcod, qtd: (Number(r.quantidade) || 1) * (Number(it.qtd) || 0),
+          valor_unit: Math.round(baseDe(r.componente_ref) * fator * 100) / 100,
+        });
+      }
+    } else {
+      let t = String(it.erp_tamanho || "").trim();
+      if (t.length > 6) {
+        try {
+          const row = await env.DB.prepare("SELECT tamanhos FROM erp_produtos WHERE ref=?").bind(it.ref).first<{ tamanhos: string | null }>();
+          const arr = row?.tamanhos ? JSON.parse(row.tamanhos) : [];
+          const t0 = Array.isArray(arr) && arr[0] ? arr[0] : null;
+          if (t0) t = String(t0.tamanho || t0.medida || t).trim();
+        } catch { /* mantém */ }
+        t = t.slice(0, 10);
+      }
+      out.push({ ...it, erp_tamanho: t });
+    }
+  }
+  return out;
+}
 // A PONTE busca aqui os pedidos de loja prontos pra gravar no Syntech (auth token).
 integracao.get("/pedidos-para-erp", async (c) => {
   if (!tokenOk(c)) return c.json({ error: "nao_autorizado" }, 401);
@@ -1003,59 +1050,11 @@ integracao.get("/pedidos-para-erp", async (c) => {
       ORDER BY p.created_at LIMIT 20`
   ).all<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; valor_total: number | null; data_pedido: string | null; cod_cli: string | null }>();
   const pedidos = [];
-  type ItemErp = { ref: string; erp_tamanho: string | null; cod_cor: number | null; qtd: number; valor_unit: number | null; produto: string | null; cor_grade: string | null };
   for (const p of peds) {
     const { results: itensRaw } = await c.env.DB.prepare(
       "SELECT ref, erp_tamanho, cod_cor, qtd, valor_unit, produto, cor_grade FROM pedido_itens WHERE pedido_id = ? ORDER BY rowid"
-    ).bind(p.id).all<ItemErp>();
-    const itens: ItemErp[] = [];
-    for (const it of itensRaw) {
-      // KIT? Se o produto tem RECEITA, o Syntech NÃO explode pela integração — então nós
-      // mandamos já as PEÇAS: código, tamanho (código ex.: 4K/1K), cor e qtd (×qtd do kit),
-      // com o preço de cada peça somando o valor do kit.
-      const { results: rec } = await c.env.DB.prepare(
-        "SELECT componente_ref, quantidade, tamanho FROM erp_kit_receita WHERE kit_ref = ?"
-      ).bind(it.ref).all<{ componente_ref: string; quantidade: number; tamanho: string | null }>().catch(() => ({ results: [] as { componente_ref: string; quantidade: number; tamanho: string | null }[] }));
-      if (rec && rec.length) {
-        const refs = [...new Set(rec.map((r) => r.componente_ref))];
-        const ph = refs.map(() => "?").join(",");
-        const { results: comps } = await c.env.DB.prepare(
-          `SELECT ref, nome, preco_atacado, preco_varejo FROM erp_produtos WHERE ref IN (${ph})`
-        ).bind(...refs).all<{ ref: string; nome: string | null; preco_atacado: number | null; preco_varejo: number | null }>().catch(() => ({ results: [] as { ref: string; nome: string | null; preco_atacado: number | null; preco_varejo: number | null }[] }));
-        const cmap = new Map(comps.map((cp) => [cp.ref, cp]));
-        const precoReal = (r: string) => Number(cmap.get(r)?.preco_atacado || cmap.get(r)?.preco_varejo || 0);
-        let somaPrecos = 0; for (const r of rec) somaPrecos += precoReal(r.componente_ref) * (Number(r.quantidade) || 1);
-        const usarPreco = somaPrecos > 0;                    // tem preço das peças? divide por ele; senão por quantidade
-        const baseDe = (r: string) => (usarPreco ? precoReal(r) : 1);
-        let somaBase = 0; for (const r of rec) somaBase += baseDe(r.componente_ref) * (Number(r.quantidade) || 1);
-        const fator = somaBase > 0 ? (Number(it.valor_unit) || 0) / somaBase : 0;   // normaliza: total = preço do kit
-        for (const r of rec) {
-          const cp = cmap.get(r.componente_ref);
-          itens.push({
-            ref: r.componente_ref,
-            erp_tamanho: (String(r.tamanho || "").trim() || "UN").slice(0, 10),
-            cod_cor: it.cod_cor,
-            qtd: (Number(r.quantidade) || 1) * (Number(it.qtd) || 0),
-            valor_unit: Math.round(baseDe(r.componente_ref) * fator * 100) / 100,
-            produto: cp?.nome || r.componente_ref,
-            cor_grade: it.cor_grade,
-          });
-        }
-      } else {
-        // Não é kit: mantém. Só blinda o tamanho longo (segurança contra erro -303).
-        let t = String(it.erp_tamanho || "").trim();
-        if (t.length > 6) {
-          try {
-            const row = await c.env.DB.prepare("SELECT tamanhos FROM erp_produtos WHERE ref=?").bind(it.ref).first<{ tamanhos: string | null }>();
-            const arr = row?.tamanhos ? JSON.parse(row.tamanhos) : [];
-            const t0 = Array.isArray(arr) && arr[0] ? arr[0] : null;
-            if (t0) t = String(t0.tamanho || t0.medida || t).trim();
-          } catch { /* mantém */ }
-          t = t.slice(0, 10);
-        }
-        itens.push({ ...it, erp_tamanho: t });
-      }
-    }
+    ).bind(p.id).all<ItemLoja>();
+    const itens = await desmembrarKits(c.env, itensRaw);   // kit vira as peças aqui
     pedidos.push({ id: p.id, cliente_nome: p.cliente_nome, cnpj: p.cliente_cnpj, cod_cli: p.cod_cli, valor_total: p.valor_total, data: p.data_pedido, itens });
   }
   return c.json({ modo, pedidos });
@@ -1112,9 +1111,11 @@ integracao.get("/loja-pedidos/:id", async (c) => {
        FROM pedidos WHERE id=? AND canal='loja_b2b'`
   ).bind(id).first();
   if (!ped) return c.json({ error: "nao_encontrado" }, 404);
-  const { results: itens } = await c.env.DB.prepare(
+  const { results: itensRaw } = await c.env.DB.prepare(
     "SELECT produto, ref, cor_grade, cod_cor, tamanho, erp_tamanho, qtd, valor_unit FROM pedido_itens WHERE pedido_id=? ORDER BY rowid"
-  ).bind(id).all();
+  ).bind(id).all<ItemLoja>();
+  // Mostra o KIT já desmembrado nas peças — igual ao que vai pro Syntech.
+  const itens = await desmembrarKits(c.env, itensRaw);
   return c.json({ pedido: ped, itens });
 });
 integracao.post("/loja-pedidos/:id/liberar", async (c) => {
