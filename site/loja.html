@@ -441,16 +441,20 @@
   // Resumo do pedido (peças + valor) — soma TODAS as cores selecionadas (não só a
   // cor que está aberta), pra a cliente ver o total real antes de adicionar.
   function resumoHTML(p){
-    var pecas=0, total=0, cores={}, LIN=linhasDoProd(p);
+    var pecas=0, total=0, LIN=linhasDoProd(p);
+    // o que está selecionando AGORA (ainda não adicionado)
     Object.keys(sel.qtd).forEach(function(k){
       var q=Number(sel.qtd[k])||0; if(q<=0) return;
-      var i=k.indexOf("|"); var corId=k.slice(0,i), lk=k.slice(i+1);
+      var i=k.indexOf("|"); var lk=k.slice(i+1);
       var ref=LIN[lk]; if(!ref) return;
-      pecas+=q; total+=q*precoLinha(ref.l); cores[corId]=(cores[corId]||0)+q;
+      pecas+=q; total+=q*precoLinha(ref.l);
     });
-    var ncor=Object.keys(cores).length;
-    var sub=ncor>1?'<span class="rz-c">'+ncor+' cores</span>':'';
-    return '<span class="rz-q">'+pecas+' '+(pecas===1?'peça selecionada':'peças selecionadas')+'</span>'+sub+'<b class="rz-v">'+brl(total)+'</b>';
+    // o que JÁ está no carrinho DESTE modelo (não zera ao adicionar — só some ao fechar a compra)
+    var cp=0, ct=0;
+    (CART||[]).forEach(function(it){ if(it.pid===p.id){ cp+=Number(it.qtd)||0; ct+=(Number(it.qtd)||0)*(Number(it.preco)||0); } });
+    var tp=pecas+cp, tt=total+ct;
+    var nota = cp>0 ? '<span class="rz-c">'+cp+' no carrinho</span>' : '';
+    return '<span class="rz-q">'+tp+' '+(tp===1?'peça':'peças')+'</span>'+nota+'<b class="rz-v">'+brl(tt)+'</b>';
   }
   function atualizarResumo(){ var el=document.getElementById("resumo"); if(el) el.innerHTML=resumoHTML(sel.prod); }
   function renderDetalhe(){
