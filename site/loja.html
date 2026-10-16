@@ -406,7 +406,9 @@
   // texto de estoque por linha, no estilo do catálogo: "7 em estoque" / "últimas 2 unidades".
   function estTxtLinha(cod,idt){
     var s=estSaldo(cod,idt); if(s==null) return "";
-    if(s<=0) return '<div class="estx off">sob encomenda</div>';
+    // Pronta entrega / kit: estoque 0 = ESGOTADO (não é feito sob encomenda).
+    var pe = sel.prod && (sel.prod.pronta_entrega || sel.prod._kit);
+    if(s<=0) return '<div class="estx off">'+(pe?'estoque esgotado':'sob encomenda')+'</div>';
     if(s<=3) return '<div class="estx low">'+(s===1?'última unidade':'últimas '+s+' unidades')+'</div>';
     return '<div class="estx">'+s+' em estoque</div>';
   }

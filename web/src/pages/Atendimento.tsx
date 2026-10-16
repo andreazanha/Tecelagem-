@@ -734,7 +734,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
     if (!cfg) return;
     setSalvando(true); setMsg("");
     try {
-      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, numero_whatsapp: cfg.numero_whatsapp, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, ia_prompt: cfg.ia_prompt, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, catalogo_varejo_url: cfg.catalogo_varejo_url, catalogo_varejo_senha: cfg.catalogo_varejo_senha, catalogo_varejo_msg: cfg.catalogo_varejo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, reativacao_ativo: cfg.reativacao_ativo, reativacao_dias: cfg.reativacao_dias, reativacao_limite: cfg.reativacao_limite, reativacao_intervalo_seg: cfg.reativacao_intervalo_seg, reativacao_msg: cfg.reativacao_msg, aniversario_ativo: cfg.aniversario_ativo, aniversario_msg: cfg.aniversario_msg, encerramento_msg: cfg.encerramento_msg, encerramento_ativo: cfg.encerramento_ativo, fechar_inativos_ativo: cfg.fechar_inativos_ativo, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
+      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, numero_whatsapp: cfg.numero_whatsapp, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, avisos_pedido_ativo: cfg.avisos_pedido_ativo, ia_prompt: cfg.ia_prompt, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, catalogo_varejo_url: cfg.catalogo_varejo_url, catalogo_varejo_senha: cfg.catalogo_varejo_senha, catalogo_varejo_msg: cfg.catalogo_varejo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, reativacao_ativo: cfg.reativacao_ativo, reativacao_dias: cfg.reativacao_dias, reativacao_limite: cfg.reativacao_limite, reativacao_intervalo_seg: cfg.reativacao_intervalo_seg, reativacao_msg: cfg.reativacao_msg, aniversario_ativo: cfg.aniversario_ativo, aniversario_msg: cfg.aniversario_msg, encerramento_msg: cfg.encerramento_msg, encerramento_ativo: cfg.encerramento_ativo, fechar_inativos_ativo: cfg.fechar_inativos_ativo, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
       setMsg("✓ Salvo!"); onMudou(); setTimeout(() => setMsg(""), 2500);
     } catch { setMsg("Erro ao salvar."); } finally { setSalvando(false); }
   }
@@ -783,6 +783,16 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
               </div>
               <button type="button" className={"btn " + (cfg.atendimento_ativo ? "btn-soft" : "btn-primary")} onClick={() => set("atendimento_ativo", !cfg.atendimento_ativo)}>
                 {cfg.atendimento_ativo ? "Desligar" : "Ligar"}
+              </button>
+            </div>
+            {/* Avisos automáticos de STATUS do pedido (recebido/faturado/enviado) ao cliente */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginBottom: 14, borderRadius: 10, border: "2px solid " + (cfg.avisos_pedido_ativo ? "#22c55e" : "#f59e0b"), background: cfg.avisos_pedido_ativo ? "#f0fdf4" : "#fffbeb", color: "#1e293b" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800 }}>{cfg.avisos_pedido_ativo ? "🟢 Avisos de pedido ao cliente LIGADOS" : "🟡 Avisos de pedido ao cliente DESLIGADOS"}</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>{cfg.avisos_pedido_ativo ? "Quando entra/avança um pedido, o cliente recebe no WhatsApp: “pedido recebido”, “faturado”, “saiu para entrega”." : "O cliente NÃO recebe avisos automáticos de status do pedido."}</div>
+              </div>
+              <button type="button" className={"btn " + (cfg.avisos_pedido_ativo ? "btn-soft" : "btn-primary")} onClick={() => set("avisos_pedido_ativo", !cfg.avisos_pedido_ativo)}>
+                {cfg.avisos_pedido_ativo ? "Desligar" : "Ligar"}
               </button>
             </div>
             {/* IA de triagem — atende conversando antes de pedir o CNPJ */}

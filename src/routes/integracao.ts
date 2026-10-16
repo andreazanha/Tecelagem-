@@ -675,7 +675,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       // 1) Calcula cada KIT (variação) e AGRUPA por família ("Kit Balls"), pra virar
       //    UM anúncio só, com cada variação como uma opção de tamanho.
       type Linha0 = { id: string; cod: string; id_tamanho: string; sul: number; norte: number };
-      type KitVar = { prod: typeof produtos[number]; medida: string; vivo: number; variacao: string; temEnch: boolean; linha: Linha0 | null };
+      type KitVar = { prod: typeof produtos[number]; medida: string; vivo: number; pecas: number; variacao: string; temEnch: boolean; linha: Linha0 | null };
       const porFamilia = new Map<string, { fam: string; vars: KitVar[] }>();
       for (const prod of produtos) {
         const itensR = recPorKit.get(prod.id);
@@ -683,9 +683,11 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         const pk = parseKit(prod.nome);
         const temEnch = /ENCHIMENTO/i.test(prod.nome);
         let vivo = Infinity;
+        let pecas = 0;
         const partes: { ordem: number; txt: string }[] = [];
         for (const it of itensR) {
           const info = compInfo.get(it.comp) || { nome: it.comp, estoque: 0 };
+          pecas += Number(it.qtd) || 0;
           vivo = Math.min(vivo, Math.floor(info.estoque / (it.qtd || 1)));
           const tp = tipoPeca(info.nome);
           const dim = tp === "peseira" ? pk.peseiraDim : (tp === "capa" || tp === "almofada") ? pk.almofada : "";
@@ -705,7 +707,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         const fam = pk.familia ? tituloCaso(pk.familia) : (prod.nome || prod.id);
         const l0 = (prod.grupos[0] && prod.grupos[0].linhas[0]) || null;
         const g = porFamilia.get(fam) || { fam, vars: [] };
-        g.vars.push({ prod, medida, vivo, variacao: pk.variacao, temEnch, linha: l0 });
+        g.vars.push({ prod, medida, vivo, pecas, variacao: pk.variacao, temEnch, linha: l0 });
         porFamilia.set(fam, g);
       }
 
@@ -727,7 +729,12 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           for (const c of v.prod.cores) if (!coresMap.has(c.id_cor)) coresMap.set(c.id_cor, c);
           const tid = idTam(v.medida);
           const key = v.variacao || "x";
-          if (!secoes.has(key)) { secoes.set(key, { titulo: v.variacao ? tituloCaso(v.variacao) : "Tamanho", est: 0, linhas: [] }); ordemSec.push(key); }
+          if (!secoes.has(key)) {
+            const tituloSec = v.variacao
+              ? `Kit ${v.pecas} ${v.pecas === 1 ? "peça" : "peças"} ${tituloCaso(v.variacao)}`
+              : (v.pecas ? `Kit ${v.pecas} ${v.pecas === 1 ? "peça" : "peças"}` : "Tamanho");
+            secoes.set(key, { titulo: tituloSec, est: 0, linhas: [] }); ordemSec.push(key);
+          }
           const sec = secoes.get(key)!;
           sec.linhas.push({ id: `${v.prod.id}-${tid}`, cod: v.prod.id, id_tamanho: tid, sul: v.linha ? v.linha.sul : 0, norte: v.linha ? v.linha.norte : 0 });
           sec.est += v.vivo;

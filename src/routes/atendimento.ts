@@ -1667,7 +1667,7 @@ export async function lerAtividadeCatalogo(env: Env): Promise<number> {
 
 // ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
-const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo", "reativacao_ativo", "atend_domingo", "aniversario_ativo", "fechar_inativos_ativo", "encerramento_ativo"]);
+const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo", "reativacao_ativo", "atend_domingo", "aniversario_ativo", "fechar_inativos_ativo", "encerramento_ativo", "avisos_pedido_ativo"]);
 const MSG_ANIVERSARIO_PADRAO = "🎉 Feliz aniversário, {nome}! A equipe da *Big Tricot* deseja um dia cheio de alegria! 💛 Conte com a gente sempre. 🧶";
 // Mensagem enviada ao cliente quando o atendimento é ENCERRADO (na mão ou pelo fecho automático de 24h).
 const MSG_ENCERRAMENTO_PADRAO = "Atendimento finalizado por aqui 💛 Se precisar de mais alguma coisa, é só me mandar uma mensagem que eu te respondo. 😊 — *Big Tricot*";
@@ -1686,6 +1686,9 @@ atendimento.get("/config", async (c) => {
     numero_whatsapp: cfg.numero_whatsapp || "",   // número da Big (link "chamar no privado" nos grupos)
     atendimento_ativo: cfg.atendimento_ativo === "1",
     atendimento_ia: cfg.atendimento_ia === "1",
+    // Avisos automáticos de STATUS do pedido (recebido/faturado/enviado) ao cliente.
+    // Padrão LIGADO (só desliga se a chave estiver explicitamente em "0").
+    avisos_pedido_ativo: cfg.avisos_pedido_ativo !== "0",
     equipe_numeros: cfg.equipe_numeros || "",
     ia_prompt: cfg.ia_prompt || "",
     ia_prompt_padrao: IA_SISTEMA,
@@ -1736,7 +1739,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "numero_whatsapp", "atendimento_ativo", "atendimento_ia", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "catalogo_varejo_url", "catalogo_varejo_senha", "catalogo_varejo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "encerramento_ativo", "fechar_inativos_ativo", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "numero_whatsapp", "atendimento_ativo", "atendimento_ia", "avisos_pedido_ativo", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "catalogo_varejo_url", "catalogo_varejo_senha", "catalogo_varejo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "encerramento_ativo", "fechar_inativos_ativo", "catalogo_evento_token", "catalogo_log_url"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
@@ -4527,6 +4530,7 @@ function textoMarco(marco: string, nome: string | null): { estado: string; texto
 export async function sincronizarPedidos(env: Env): Promise<number> {
   const cfg = await lerConfig(env);
   if (cfg.atendimento_ativo !== "1") return 0; // modo teste não mexe com clientes reais
+  if (cfg.avisos_pedido_ativo === "0") return 0; // avisos de status do pedido DESLIGADOS pelo gestor
 
   const { results: convs } = await env.DB.prepare(
     `SELECT id, telefone, nome, contato_nome, cliente_id, cnpj, pedido_id, pedido_marco
