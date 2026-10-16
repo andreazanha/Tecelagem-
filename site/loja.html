@@ -95,8 +95,8 @@
   .det .lado-foto{flex:1 1 53%; background:#efe7d8; position:relative; overflow:hidden}
   .det .lado-foto img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; z-index:1}
   .det .lado-foto .ph{position:absolute; inset:0; z-index:0; display:flex; align-items:center; justify-content:center; font-family:"Cormorant Garamond",serif; font-size:64px; color:#c3b49a}
-  .det .lado-info{flex:1 1 47%; overflow:auto; padding:24px 28px 26px}
-  .det .linhalb{text-align:center; font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); font-weight:600; margin-bottom:3px}
+  .det .lado-info{flex:1 1 47%; overflow:auto; padding:0 28px 26px}
+  .det .linhalb{text-align:center; font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); font-weight:600; margin-top:24px; margin-bottom:3px}
   .det .nome{font-size:28px; margin:0 0 14px; font-weight:600; text-align:center; letter-spacing:.01em; line-height:1.1}
   .vid{width:100%; border-radius:12px; background:#000; margin-bottom:12px; max-height:300px}
   .comp{text-align:center; color:var(--muted); font-size:13px; letter-spacing:.04em}
@@ -112,7 +112,7 @@
   .lbl .cnt{color:#7a7068; font-weight:400; text-transform:none; letter-spacing:0; font-size:12px}
   .cores{display:flex; flex-wrap:wrap; gap:11px; align-items:center}
   /* trava a escolha de cor no topo enquanto os tamanhos rolam */
-  .cor-sticky{position:sticky; top:0; z-index:6; background:var(--card); padding:8px 0 10px; box-shadow:0 10px 10px -10px rgba(0,0,0,.14)}
+  .cor-sticky{position:sticky; top:0; z-index:8; background:var(--card); padding:14px 0 10px; box-shadow:0 10px 10px -10px rgba(0,0,0,.14)}
   .sw-dot{position:relative; width:36px; height:36px; border-radius:50%; padding:0; outline:0; cursor:pointer; background:#efe7d8 center/cover no-repeat; border:2px solid #fff; box-shadow:0 0 0 1px var(--line); transition:transform .1s ease, box-shadow .1s ease}
   .sw-dot:hover{transform:scale(1.09); box-shadow:0 0 0 1px #cabfa9}
   .sw-dot.on{border-color:#fff; box-shadow:0 0 0 2px #ae5033}
@@ -154,7 +154,7 @@
   /* CELULAR: cada tamanho em 2 linhas — descrição (quebra) em cima; preço à esquerda e
      o controle de quantidade à direita embaixo. Botões 44×44, o controle nunca encolhe. */
   @media(max-width:560px){
-    .det .lado-info{padding:18px 16px 24px}
+    .det .lado-info{padding:0 16px 24px}
     .tamrow{flex-wrap:wrap; align-items:center; column-gap:10px; row-gap:6px}
     .tamrow .medbox{flex:1 1 100%; min-width:0}
     .tamrow .med{min-width:0; word-break:break-word}
