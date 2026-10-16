@@ -111,9 +111,11 @@
   .lbl b{color:var(--ink); text-transform:none; letter-spacing:0; font-weight:600}
   .lbl .cnt{color:#7a7068; font-weight:400; text-transform:none; letter-spacing:0; font-size:12px}
   .cores{display:flex; flex-wrap:wrap; gap:11px; align-items:center}
-  .sw-dot{width:36px; height:36px; border-radius:50%; padding:0; outline:0; cursor:pointer; background:#efe7d8 center/cover no-repeat; border:2px solid #fff; box-shadow:0 0 0 1px var(--line); transition:transform .1s ease, box-shadow .1s ease}
+  .sw-dot{position:relative; width:36px; height:36px; border-radius:50%; padding:0; outline:0; cursor:pointer; background:#efe7d8 center/cover no-repeat; border:2px solid #fff; box-shadow:0 0 0 1px var(--line); transition:transform .1s ease, box-shadow .1s ease}
   .sw-dot:hover{transform:scale(1.09); box-shadow:0 0 0 1px #cabfa9}
   .sw-dot.on{border-color:#fff; box-shadow:0 0 0 2px #ae5033}
+  .sw-dot.has{box-shadow:0 0 0 2px #ae5033}
+  .sw-n{position:absolute; top:-6px; right:-6px; min-width:17px; height:17px; padding:0 4px; border-radius:9px; background:#ae5033; color:#fff; font-size:10px; font-weight:700; line-height:17px; text-align:center; box-shadow:0 0 0 1.5px #fff; pointer-events:none}
   .corfoto{margin-top:10px; display:flex; flex-direction:row; align-items:center; gap:12px}
   .corfoto .cf-img{width:75px; height:75px; border-radius:10px; background:#efe7d8; object-fit:cover; border:1px solid var(--line); flex:0 0 auto}
   .corfoto img.cf-img{cursor:zoom-in}
@@ -372,10 +374,14 @@
   // Cores como BOLINHAS com a textura real (a mesma foto cc.foto que já existe).
   // Sem foto → cai na cor sólida (hex). Nome: no tooltip + destacado na área da cor.
   function coresHTML(p){
+    // quantas peças já foram escolhidas em cada cor (pra marcar as bolinhas)
+    var porCor={};
+    Object.keys(sel.qtd).forEach(function(k){ var q=Number(sel.qtd[k])||0; if(q<=0) return; var corId=k.slice(0,k.indexOf("|")); porCor[corId]=(porCor[corId]||0)+q; });
     return (p.cores||[]).filter(function(c){return !c.oculta;}).map(function(c){
-      var cc=CORES[c.id_cor]||{}; var on=c.id_cor===sel.corId?" on":"";
+      var cc=CORES[c.id_cor]||{}; var on=String(c.id_cor)===String(sel.corId)?" on":"";
       var fundo=cc.foto? "background-image:url('"+esc(cc.foto)+"')" : 'background-color:'+esc(cc.hex||"#ddd");
-      return '<button type="button" class="sw-dot'+on+'" data-cor="'+esc(c.id_cor)+'" title="'+esc(cc.nome||"")+'" aria-label="'+esc(cc.nome||"")+'" style="'+fundo+'"></button>';
+      var n=porCor[c.id_cor]||0; var badge=n>0?'<span class="sw-n">'+n+'</span>':'';
+      return '<button type="button" class="sw-dot'+on+(n>0?' has':'')+'" data-cor="'+esc(c.id_cor)+'" title="'+esc(cc.nome||"")+'" aria-label="'+esc(cc.nome||"")+'" style="'+fundo+'">'+badge+'</button>';
     }).join("");
   }
   function corFotoHTML(p){
@@ -420,14 +426,26 @@
     var est=estoqueProduto(p);
     return '<div class="prazo">'+(est>0? '📦 Em estoque — envio rápido.' : '🧶 Produção sob encomenda.')+'</div>';
   }
-  // Resumo do pedido (peças + valor) — usa os MESMOS preços/regras já existentes.
+  // Mapa de todas as linhas do produto por "cod|idtam" (pra achar preço/medida a
+  // partir da chave de quantidade, que é "corId|cod|idtam").
+  function linhasDoProd(p){
+    var m={};
+    (p.grupos||[]).forEach(function(g){ (g.linhas||[]).forEach(function(l){ m[l.cod+"|"+l.id_tamanho]={l:l,g:g}; }); });
+    return m;
+  }
+  // Resumo do pedido (peças + valor) — soma TODAS as cores selecionadas (não só a
+  // cor que está aberta), pra a cliente ver o total real antes de adicionar.
   function resumoHTML(p){
-    var pecas=0, total=0;
-    (p.grupos||[]).forEach(function(g){ (g.linhas||[]).forEach(function(l){
-      var q=Number(sel.qtd[qKey(l.cod,l.id_tamanho)])||0; if(q<=0) return;
-      pecas+=q; total+=q*precoLinha(l);
-    }); });
-    return '<span class="rz-q">'+pecas+' '+(pecas===1?'peça selecionada':'peças selecionadas')+'</span><b class="rz-v">'+brl(total)+'</b>';
+    var pecas=0, total=0, cores={}, LIN=linhasDoProd(p);
+    Object.keys(sel.qtd).forEach(function(k){
+      var q=Number(sel.qtd[k])||0; if(q<=0) return;
+      var i=k.indexOf("|"); var corId=k.slice(0,i), lk=k.slice(i+1);
+      var ref=LIN[lk]; if(!ref) return;
+      pecas+=q; total+=q*precoLinha(ref.l); cores[corId]=(cores[corId]||0)+q;
+    });
+    var ncor=Object.keys(cores).length;
+    var sub=ncor>1?'<span class="rz-c">'+ncor+' cores</span>':'';
+    return '<span class="rz-q">'+pecas+' '+(pecas===1?'peça selecionada':'peças selecionadas')+'</span>'+sub+'<b class="rz-v">'+brl(total)+'</b>';
   }
   function atualizarResumo(){ var el=document.getElementById("resumo"); if(el) el.innerHTML=resumoHTML(sel.prod); }
   function renderDetalhe(){
@@ -479,17 +497,22 @@
     });
   }
   function adicionarAoCarrinho(){
-    var p=sel.prod, cc=CORES[sel.corId]||{}; var add=0;
-    (p.grupos||[]).forEach(function(g){ (g.linhas||[]).forEach(function(l){
-      var k=qKey(l.cod,l.id_tamanho); var q=Number(sel.qtd[k])||0; if(q<=0) return;
-      var preco=precoLinha(l);
-      var achou=CART.filter(function(it){return it.cod===l.cod&&it.id_tamanho===l.id_tamanho&&it.corId===sel.corId&&it.regiao===regiao;})[0];
+    var p=sel.prod, add=0, LIN=linhasDoProd(p);
+    // Percorre TODAS as cores selecionadas (a chave é "corId|cod|idtam") — não só a
+    // cor que está aberta —, pra todas as cores escolhidas entrarem no carrinho.
+    Object.keys(sel.qtd).forEach(function(k){
+      var q=Number(sel.qtd[k])||0; if(q<=0) return;
+      var i=k.indexOf("|"); var corId=k.slice(0,i), lk=k.slice(i+1);
+      var ref=LIN[lk]; if(!ref) return;
+      var l=ref.l, g=ref.g, cc=CORES[corId]||{}, preco=precoLinha(l);
+      var achou=CART.filter(function(it){return it.cod===l.cod&&it.id_tamanho===l.id_tamanho&&String(it.corId)===String(corId)&&it.regiao===regiao;})[0];
       if(achou){ achou.qtd+=q; } else {
-        CART.push({pid:p.id, nome:p.nome, grupo:g.titulo||"", cod:l.cod, id_tamanho:l.id_tamanho, medida:medidaDe(l.id_tamanho), corId:sel.corId, corNome:cc.nome||"", preco:preco, regiao:regiao, qtd:q});
+        CART.push({pid:p.id, nome:p.nome, grupo:g.titulo||"", cod:l.cod, id_tamanho:l.id_tamanho, medida:medidaDe(l.id_tamanho), corId:corId, corNome:cc.nome||"", preco:preco, regiao:regiao, qtd:q});
       }
-      add+=q; sel.qtd[k]=0;
-    }); });
+      add+=q;
+    });
     if(!add){ alert("Escolha a quantidade de pelo menos um tamanho."); return; }
+    sel.qtd={}; // zera a seleção de todas as cores
     salvarCart(); atualizarCartN();
     // feedback: zera os inputs e pergunta se continua no mesmo modelo ou escolhe outro
     atualizarCorArea();
