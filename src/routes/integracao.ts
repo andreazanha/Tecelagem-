@@ -326,19 +326,21 @@ integracao.get("/diag", async (c) => {
   // sem login (só códigos/quantidades, nada sensível) pra conferir a sincronização.
   if (c.req.query("pedido") === "kits") {
     const { results } = await c.env.DB.prepare(
-      "SELECT r.kit_ref, p1.nome AS kit_nome, r.componente_ref, p2.nome AS componente_nome, " +
-      "r.quantidade, r.tamanho, p2.estoque_geral AS componente_estoque " +
+      "SELECT r.kit_ref, p1.nome AS kit_nome, p1.preco_atacado AS kit_preco, r.componente_ref, p2.nome AS componente_nome, " +
+      "r.quantidade, r.tamanho, p2.estoque_geral AS componente_estoque, p2.preco_atacado AS comp_atacado, p2.preco_varejo AS comp_varejo " +
       "FROM erp_kit_receita r " +
       "LEFT JOIN erp_produtos p1 ON p1.ref = r.kit_ref " +
       "LEFT JOIN erp_produtos p2 ON p2.ref = r.componente_ref " +
       "ORDER BY r.kit_ref, r.componente_ref"
-    ).all<{ kit_ref: string; kit_nome: string | null; componente_ref: string; componente_nome: string | null; quantidade: number; tamanho: string | null; componente_estoque: number | null }>();
-    const kits: Record<string, { nome: string | null; estoque_vivo: number; componentes: { ref: string; nome: string | null; quantidade: number; tamanho: string | null; estoque: number }[] }> = {};
+    ).all<{ kit_ref: string; kit_nome: string | null; kit_preco: number | null; componente_ref: string; componente_nome: string | null; quantidade: number; tamanho: string | null; componente_estoque: number | null; comp_atacado: number | null; comp_varejo: number | null }>();
+    const kits: Record<string, { nome: string | null; preco_kit: number; estoque_vivo: number; soma_pecas: number; componentes: { ref: string; nome: string | null; quantidade: number; tamanho: string | null; estoque: number; preco_atacado: number; preco_varejo: number }[] }> = {};
     for (const r of results) {
-      const k = (kits[r.kit_ref] ||= { nome: r.kit_nome, estoque_vivo: Infinity, componentes: [] });
+      const k = (kits[r.kit_ref] ||= { nome: r.kit_nome, preco_kit: Number(r.kit_preco) || 0, estoque_vivo: Infinity, soma_pecas: 0, componentes: [] });
       const est = Number(r.componente_estoque) || 0;
       const qtd = Number(r.quantidade) || 1;
-      k.componentes.push({ ref: r.componente_ref, nome: r.componente_nome, quantidade: qtd, tamanho: r.tamanho, estoque: est });
+      const pa = Number(r.comp_atacado) || 0, pv = Number(r.comp_varejo) || 0;
+      k.componentes.push({ ref: r.componente_ref, nome: r.componente_nome, quantidade: qtd, tamanho: r.tamanho, estoque: est, preco_atacado: pa, preco_varejo: pv });
+      k.soma_pecas = Math.round((k.soma_pecas + (pa || pv) * qtd) * 100) / 100;
       k.estoque_vivo = Math.min(k.estoque_vivo, Math.floor(est / qtd));
     }
     for (const k of Object.values(kits)) if (!isFinite(k.estoque_vivo)) k.estoque_vivo = 0;
