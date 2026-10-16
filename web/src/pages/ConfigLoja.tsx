@@ -100,10 +100,28 @@ function Banners() {
                 <div style={{ flex: 1 }}><label style={lbl}>Botão (texto)</label><input style={inp} value={b.botao_texto || ""} placeholder="Ex.: Ver produtos" onChange={(e) => up(i, "botao_texto", e.target.value)} /></div>
                 <div style={{ flex: 1.4 }}><label style={lbl}>Botão (link ao clicar)</label><input style={inp} value={b.botao_link || ""} placeholder="https://..." onChange={(e) => up(i, "botao_link", e.target.value)} /></div>
               </div>
+              <div style={{ marginTop: 10, padding: "10px 12px", background: "#f8f5ef", border: "1px solid #ece3d2", borderRadius: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#6b5f49", marginBottom: 6 }}>🗓️ Agendamento (opcional) <span style={{ fontWeight: 400, color: "#9a8f7a" }}>· horário de Brasília</span></div>
+                <label style={lbl}>Nome da campanha (interno)</label>
+                <input style={inp} value={b.nome || ""} placeholder="Ex.: Promoção de Natal" onChange={(e) => up(i, "nome", e.target.value)} />
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <label style={lbl}>Começa em</label>
+                    <input type="datetime-local" style={inp} value={b.inicio || ""} onChange={(e) => up(i, "inicio", e.target.value)} />
+                    <div style={{ fontSize: 11, color: "#9a8f7a", marginTop: 3 }}>Vazio = exibir imediatamente.</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <label style={lbl}>Termina em</label>
+                    <input type="datetime-local" style={inp} value={b.fim || ""} onChange={(e) => up(i, "fim", e.target.value)} />
+                    <div style={{ fontSize: 11, color: "#9a8f7a", marginTop: 3 }}>Vazio = sem data de término.</div>
+                  </div>
+                </div>
+              </div>
               <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12, flexWrap: "wrap" }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 14, cursor: "pointer" }}>
                   <input type="checkbox" checked={b.ativo !== false} onChange={(e) => up(i, "ativo", e.target.checked)} /> Mostrar na loja
                 </label>
+                {(() => { const s = statusBanner(b); return <span style={{ fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: s.bg, color: s.cor }}>{s.txt}</span>; })()}
                 <span style={{ flex: 1 }} />
                 <button onClick={() => mover(i, -1)} disabled={i === 0} style={btnMini(i === 0)}>↑</button>
                 <button onClick={() => mover(i, 1)} disabled={i === lista.length - 1} style={btnMini(i === lista.length - 1)}>↓</button>
@@ -123,6 +141,15 @@ function Banners() {
 }
 function btnMini(dis: boolean): React.CSSProperties {
   return { padding: "7px 12px", borderRadius: 8, border: "1px solid #ddd5c7", background: "#fff", color: "#4a443c", fontWeight: 600, cursor: dis ? "default" : "pointer", opacity: dis ? 0.4 : 1, fontSize: 13 };
+}
+// Status do banner AGORA (hora local do navegador ≈ Brasília) — só uma dica visual.
+function statusBanner(b: LojaBanner): { txt: string; bg: string; cor: string } {
+  if (b.ativo === false) return { txt: "Oculto", bg: "#eee8dd", cor: "#8a8073" };
+  const d = new Date(); const p = (n: number) => String(n).padStart(2, "0");
+  const agora = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  if ((b.inicio || "").trim() && agora < (b.inicio as string)) return { txt: "Agendado", bg: "#fef3c7", cor: "#92600a" };
+  if ((b.fim || "").trim() && agora > (b.fim as string)) return { txt: "Encerrado", bg: "#fde2e1", cor: "#b3402a" };
+  return { txt: "No ar", bg: "#dcfce7", cor: "#166534" };
 }
 function ImgUpload({ titulo, dica, ratio, valor, onPick }: { titulo: string; dica: string; ratio: string; valor?: string; onPick: (f: File) => void }) {
   const tem = !!valor && valor !== "…enviando";

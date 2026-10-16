@@ -953,7 +953,16 @@ integracao.get("/loja", async (c) => {
     try {
       const raw = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_banners'").first<{ valor: string | null }>();
       const arr = raw?.valor ? JSON.parse(raw.valor) : [];
-      if (Array.isArray(arr)) banners = arr.filter((b) => b && (b as { ativo?: unknown }).ativo !== false).sort((a, b) => (Number((a as { ordem?: number }).ordem) || 0) - (Number((b as { ordem?: number }).ordem) || 0));
+      // "agora" em horário de Brasília no formato YYYY-MM-DDTHH:mm (compara com as datas do agendamento).
+      const agora = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()).replace(" ", "T");
+      if (Array.isArray(arr)) banners = arr.filter((b) => {
+        if (!b || (b as { ativo?: unknown }).ativo === false) return false;        // inativo nunca aparece
+        const ini = String((b as { inicio?: unknown }).inicio || "").trim();
+        const fim = String((b as { fim?: unknown }).fim || "").trim();
+        if (ini && agora < ini) return false;   // ainda não começou
+        if (fim && agora > fim) return false;    // já terminou
+        return true;
+      }).sort((a, b) => (Number((a as { ordem?: number }).ordem) || 0) - (Number((b as { ordem?: number }).ordem) || 0));
     } catch { banners = []; }
     let banner_intervalo = 5;
     try { const ir = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_banner_intervalo'").first<{ valor: string | null }>(); banner_intervalo = Math.max(2, Math.min(30, Number(ir?.valor) || 5)); } catch { banner_intervalo = 5; }
