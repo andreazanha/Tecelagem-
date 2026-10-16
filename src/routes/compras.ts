@@ -218,11 +218,17 @@ compras.get("/ordens/:id/compartilhar", async (c) => {
   const sig = await assinarOrdem(c.env.INTEGRACAO_TOKEN as string | undefined, id);
   const origin = new URL(c.req.url).origin;
   const forn = (o.fornecedor as FornDados) || {};
+  // Telefone: usa o da ordem; se vazio (ordens antigas), busca no CADASTRO do fornecedor.
+  let tel = (forn.telefone || "").trim();
+  if (!tel && o.fornecedor_id) {
+    const f = await c.env.DB.prepare("SELECT telefone FROM fornecedores WHERE id=?").bind(o.fornecedor_id).first<{ telefone: string | null }>().catch(() => null);
+    tel = (f?.telefone || "").trim();
+  }
   return c.json({
     pdf_url: `${origin}/api/compras/ordens/${encodeURIComponent(id)}/pdf-publico?sig=${sig}`,
     numero: String(o.numero),
     fornecedor_nome: forn.nome || "",
-    fornecedor_telefone: forn.telefone || "",
+    fornecedor_telefone: tel,
   });
 });
 

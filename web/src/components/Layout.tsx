@@ -292,7 +292,9 @@ const ddClasse = (ativo: boolean) => () => "topnav-dd-i" + (ativo ? " active" : 
 function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
   const loc = useLocation();
   const [aberto, setAberto] = useState<string | null>(null);
+  const [subs, setSubs] = useState<Set<string>>(() => new Set()); // submenus abertos (por clique, não hover)
   const [mobileOpen, setMobileOpen] = useState(false);
+  const fecharTudo = () => { setAberto(null); setSubs(new Set()); };
   // Insumos (categorias de material) cadastrados → viram sub-itens do menu Materiais.
   const [insumos, setInsumos] = useState<MaterialCategoriaDef[]>([]);
   useEffect(() => { api.listarCategoriasMaterial().then(setInsumos).catch(() => {}); }, []);
@@ -309,15 +311,19 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
       : it.children && it.children.length ? { ...it, children: it.children.map(comDyn) }
         : it;
 
-  // Fecha ao navegar (troca de rota/aba).
-  useEffect(() => { setAberto(null); setMobileOpen(false); }, [loc.pathname, loc.search]);
-  // Fecha o dropdown ao clicar fora do menu.
+  // Fecha ao navegar (troca de rota/aba) — inclui os submenus.
+  useEffect(() => { setAberto(null); setSubs(new Set()); setMobileOpen(false); }, [loc.pathname, loc.search]);
+  // Fecha SÓ por clique fora de TODA a árvore do menu, ou ESC. Nunca por hover/mouseleave.
   useEffect(() => {
     function onDoc(e: MouseEvent) {
-      if (!(e.target as HTMLElement).closest?.(".topnav")) setAberto(null);
+      if (!(e.target as HTMLElement).closest?.(".topnav")) { setAberto(null); setSubs(new Set()); }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") { setAberto(null); setSubs(new Set()); }
     }
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
   }, []);
 
   const grupos = GRUPOS.map((g) => ({ ...g, itens: g.itens.map(comDyn).filter((it) => itemVisivel(u, it)) })).filter((g) => g.itens.length);
@@ -341,14 +347,17 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
         {it.soon && <span className="tn-soon">em breve</span>}
       </>
     );
-    // Item com submenu: abre um segundo nível ao passar o mouse.
+    // Item com submenu: abre/fecha o 2º (ou 3º…) nível por CLIQUE (nunca por hover).
     if (it.children && it.children.length) {
+      const key = ctx + it.label;
       const subAtivo = it.children.some((ch) => !!ch.to && ch.to === ativoTo);
+      const aberta = subs.has(key);
       return (
-        <div className={"topnav-dd-i has-sub" + (subAtivo ? " active" : "")} key={ctx + it.label} title={it.label}>
+        <div className={"topnav-dd-i has-sub" + (subAtivo ? " active" : "") + (aberta ? " open" : "")} key={key} title={it.label}
+          onClick={(e) => { e.stopPropagation(); setSubs((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; }); }}>
           {inner}
           <span className="tn-sub-car">▸</span>
-          <div className="topnav-sub">{it.children.map((ch) => DDItem(ch, ctx + it.label))}</div>
+          <div className="topnav-sub" onClick={(e) => e.stopPropagation()}>{it.children.map((ch) => DDItem(ch, key))}</div>
         </div>
       );
     }
@@ -381,7 +390,7 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
           <div className={"topnav-grp" + (aberto === g.id ? " open" : "")} key={g.id}>
             <button
               className={"topnav-btn" + (grupoAtivo === g.id ? " on" : "")}
-              onClick={() => setAberto((a) => (a === g.id ? null : g.id))}
+              onClick={() => { setSubs(new Set()); setAberto((a) => (a === g.id ? null : g.id)); }}
               title={g.label}
             >
               <span className="tn-ic"><Icon emoji={g.icon} /></span>
