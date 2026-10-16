@@ -636,13 +636,19 @@ export async function gerarCatalogoSite(env: Env): Promise<{
     ).all<{ kit_ref: string; componente_ref: string; quantidade: number }>();
     if (rec && rec.length) {
       const compRefs = [...new Set(rec.map((r) => r.componente_ref).filter(Boolean))];
-      const compInfo = new Map<string, { nome: string; estoque: number }>();
+      type CompFull = { nome: string; estoque: number; cores: { nome?: string; hex?: string }[]; tamanhos: TamIn[]; pa: number; pv: number };
+      const compInfo = new Map<string, CompFull>();
       if (compRefs.length) {
         const ph = compRefs.map(() => "?").join(",");
         const { results: cps } = await env.DB.prepare(
-          `SELECT ref, nome, estoque_geral FROM erp_produtos WHERE ref IN (${ph})`
-        ).bind(...compRefs).all<{ ref: string; nome: string | null; estoque_geral: number | null }>();
-        for (const cp of cps) compInfo.set(cp.ref, { nome: String(cp.nome || cp.ref).trim(), estoque: Number(cp.estoque_geral) || 0 });
+          `SELECT ref, nome, estoque_geral, cores, tamanhos, preco_atacado, preco_varejo FROM erp_produtos WHERE ref IN (${ph})`
+        ).bind(...compRefs).all<{ ref: string; nome: string | null; estoque_geral: number | null; cores: string | null; tamanhos: string | null; preco_atacado: number | null; preco_varejo: number | null }>();
+        for (const cp of cps) {
+          let cc: { nome?: string; hex?: string }[] = [], tt: TamIn[] = [];
+          try { const a = JSON.parse(cp.cores || "[]"); if (Array.isArray(a)) cc = a; } catch { /* ignora */ }
+          try { const a = JSON.parse(cp.tamanhos || "[]"); if (Array.isArray(a)) tt = a.map(normTam).filter((x) => x.medida); } catch { /* ignora */ }
+          compInfo.set(cp.ref, { nome: String(cp.nome || cp.ref).trim(), estoque: Number(cp.estoque_geral) || 0, cores: cc, tamanhos: tt, pa: Number(cp.preco_atacado) || 0, pv: Number(cp.preco_varejo) || 0 });
+        }
       }
       const recPorKit = new Map<string, { comp: string; qtd: number }[]>();
       for (const r of rec) {
@@ -747,6 +753,41 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         }
         const prim = vars[0].prod;
         const grupos = ordemSec.map((key) => { const s = secoes.get(key)!; return { id: `${prim.id}-${key}`, titulo: s.titulo, ref: "", estoque: s.est, linhas: s.linhas }; });
+
+        // AVULSAS: além dos kits, vende a CAPA e a ALMOFADA separadas (só 50×50), no
+        // mesmo anúncio. Usa os componentes do kit (ex.: KT1078-C capa, KT1078-A almofada),
+        // que têm estoque, preço (por tamanho) e cores próprios.
+        const compRefsFam = new Set<string>();
+        for (const v of vars) for (const it of (recPorKit.get(v.prod.id) || [])) compRefsFam.add(it.comp);
+        const soDig = (m: string) => String(m || "").toLowerCase().replace(/[^0-9]/g, "");
+        const avulsaGrupo = (ref: string, titulo: string) => {
+          const cf = compInfo.get(ref); if (!cf) return null;
+          let tams = cf.tamanhos.filter((t) => soDig(t.medida) === "5050");
+          if (!tams.length) tams = cf.tamanhos;                 // fallback: mostra os tamanhos que tiver
+          if (!tams.length) return null;
+          const linhasA: Linha0[] = [];
+          for (const t of tams) {
+            const porTam = Number(campoPreco === "varejo" ? t.varejo : t.atacado) || 0;
+            const base = porTam || (campoPreco === "varejo" ? cf.pv : cf.pa) || 0;
+            const sul = Math.round(base * 100) / 100;
+            const norte = Math.round(base * (1 + markupNorte / 100) * 100) / 100;
+            const tid = idTam(t.medida);
+            linhasA.push({ id: `${ref}-${tid}`, cod: ref, id_tamanho: tid, sul, norte });
+            itens[ref] = itens[ref] || {};
+            itens[ref][t.medida] = itens[ref][t.medida] || {};
+            if (cf.cores.length) { for (const c of cf.cores) itens[ref][t.medida][idCor(c.nome || "", c.hex || "", "")] = cf.estoque; }
+            else itens[ref][t.medida]["-"] = cf.estoque;
+          }
+          for (const c of cf.cores) { const cid = idCor(c.nome || "", c.hex || "", ""); if (!coresMap.has(cid)) coresMap.set(cid, { id_cor: cid, oculta: false }); }
+          return { id: `${prim.id}-av-${ref}`, titulo, ref, estoque: cf.estoque, linhas: linhasA };
+        };
+        const capaRef = [...compRefsFam].find((r) => tipoPeca(compInfo.get(r)?.nome || "") === "capa");
+        const almoRef = [...compRefsFam].find((r) => tipoPeca(compInfo.get(r)?.nome || "") === "almofada");
+        const gCapa = capaRef ? avulsaGrupo(capaRef, "Capa avulsa 50×50") : null;
+        const gAlmo = almoRef ? avulsaGrupo(almoRef, "Almofada avulsa 50×50") : null;
+        if (gCapa) { grupos.push(gCapa); estTotal += gCapa.estoque; }
+        if (gAlmo) { grupos.push(gAlmo); estTotal += gAlmo.estoque; }
+
         unificados.push({
           id: "kit-" + grp.fam.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, ""),
           nome: grp.fam, linha: prim.linha, pronta_entrega: true, _edicao_limitada: false,
