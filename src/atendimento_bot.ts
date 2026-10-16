@@ -132,6 +132,26 @@ const SETOR_HUMANO: Record<string, string> = {
   outros: "Certo! Já vou chamar alguém do time pra te ajudar. Um instante. 💬",
 };
 
+// Detecta (de forma CONSERVADORA) quando a 1ª mensagem é PROPAGANDA/oferta de serviço
+// PRA nós (agência, marketing, "apresentar nosso trabalho", "localizei sua empresa"…),
+// e não um cliente querendo comprar. Exige 2+ sinais fortes e NUNCA marca quem fala em
+// comprar/atacado/catálogo/preço (protege cliente de verdade).
+function pareceProspeccao(t: string): boolean {
+  const s = (t || "").toLowerCase();
+  if (s.length < 40) return false; // mensagens curtas não são pitch de venda
+  if (/\b(comprar|atacad|revend|lojist|cat[áa]logo|pre[çc]o|pre[çc]os|tabela|fazer (um )?pedido|or[çc]amento de produto)\b/.test(s)) return false;
+  const sinais = [
+    /ag[êe]ncia/, /social media/, /tr[áa]fego pago/, /gest[ãa]o de (redes|m[íi]dias|instagram|m[íi]dia)/,
+    /nosso (trabalho|portf[óo]lio|servi[çc]os?)/, /portf[óo]lio/, /apresentar (o |a |os |as )?(nosso|nossos|minha|a nossa|meu)/,
+    /parceria comercial/, /proposta comercial/, /podemos ajudar (sua|a sua) empresa/, /aumentar (suas|as suas) vendas/,
+    /divulga[çc][ãa]o/, /identidade visual/, /cria[çc][ãa]o de (sites?|logo|logotipo)/,
+    /(sou|somos|represento|fa[çc]o parte) (d[ao] |de uma |da |a )?(ag[êe]ncia|empresa de|consultoria|assessoria)/,
+    /conhecer (o )?nosso instagram/, /localizei sua empresa/, /encontrei sua empresa/, /vi (a )?sua empresa/,
+    /oportunidades?( de neg[óo]cio| comerciais?)?/, /poss[íi]veis oportunidades/,
+  ];
+  let n = 0; for (const re of sinais) if (re.test(s)) n++;
+  return n >= 2;
+}
 function parseSetor(t: string): string | null {
   const s = t.trim().toLowerCase();
   if (/^1\b/.test(s) || /venda/.test(s)) return "vendas";
@@ -205,6 +225,12 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
         // Já é cliente da base → atendimento comercial. Ainda NÃO promete um vendedor:
         // o encaminhamento ao representante passa por autorização da equipe.
         push(`Olá${conv.nome ? `, *${conv.nome}*` : ""}! 👋 Que bom te ver de novo na *Big Tricot* 💛\nJá já alguém do nosso time te atende. Me conta: como posso ajudar hoje? 😊`);
+        conv.estado = "atendimento-humano";
+        notificarHumano = true;
+      } else if (pareceProspeccao(t)) {
+        // Parece propaganda/oferta de serviço → NÃO manda o menu nem responde nada.
+        // Marca como "Outros" e deixa na fila pra um humano do time avaliar.
+        conv.setor = "outros";
         conv.estado = "atendimento-humano";
         notificarHumano = true;
       } else {
