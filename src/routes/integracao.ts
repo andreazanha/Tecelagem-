@@ -668,50 +668,81 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         fam = fam.replace(/[-–+\s]+$/, "").trim();
         return { familia: fam || nome, variacao, almofada, peseiraDim };
       };
-      const tipoPeca = (n: string) => { const u = (n || "").toUpperCase(); if (/PESEIRA|MANTA/.test(u)) return "peseira"; if (/CAPA|ALMOFADA/.test(u)) return "capa"; return "outro"; };
-      const medidaDeId = new Map<string, string>();
-      for (const t of tamPorMedida.values()) medidaDeId.set(t.id, t.medida);
+      // Tipo da peça pelo NOME: peseira/manta, almofada (cheia, c/ enchimento) ou capa (só a capa).
+      const tipoPeca = (n: string) => { const u = (n || "").toUpperCase(); if (/PESEIRA|MANTA/.test(u)) return "peseira"; if (/ALMOFADA/.test(u)) return "almofada"; if (/CAPA/.test(u)) return "capa"; return "outro"; };
+      const VAR_ORDEM: Record<string, number> = { QUEEN: 0, KING: 1, MANTA: 2, MANTAS: 2 };
 
+      // 1) Calcula cada KIT (variação) e AGRUPA por família ("Kit Balls"), pra virar
+      //    UM anúncio só, com cada variação como uma opção de tamanho.
+      type Linha0 = { id: string; cod: string; id_tamanho: string; sul: number; norte: number };
+      type KitVar = { prod: typeof produtos[number]; rotulo: string; medida: string; vivo: number; variacao: string; temEnch: boolean; linha: Linha0 | null };
+      const porFamilia = new Map<string, { fam: string; vars: KitVar[] }>();
       for (const prod of produtos) {
         const itensR = recPorKit.get(prod.id);
         if (!itensR) continue;
         const pk = parseKit(prod.nome);
+        const temEnch = /ENCHIMENTO/i.test(prod.nome);
         let vivo = Infinity;
         const partes: { ordem: number; txt: string }[] = [];
         for (const it of itensR) {
           const info = compInfo.get(it.comp) || { nome: it.comp, estoque: 0 };
           vivo = Math.min(vivo, Math.floor(info.estoque / (it.qtd || 1)));
           const tp = tipoPeca(info.nome);
-          const dim = tp === "peseira" ? pk.peseiraDim : tp === "capa" ? pk.almofada : "";
+          const dim = tp === "peseira" ? pk.peseiraDim : (tp === "capa" || tp === "almofada") ? pk.almofada : "";
           const rotulo = tp === "peseira" ? (it.qtd > 1 ? "Peseiras" : "Peseira")
-            : tp === "capa" ? (it.qtd > 1 ? "Capas" : "Capa")
-              : tituloCaso(info.nome);
-          partes.push({ ordem: tp === "peseira" ? 0 : tp === "capa" ? 1 : 2, txt: `${it.qtd}× ${rotulo}${dim ? " " + dim : ""}` });
+            : tp === "almofada" ? (it.qtd > 1 ? "Almofadas" : "Almofada")
+              : tp === "capa" ? (it.qtd > 1 ? "Capas" : "Capa")
+                : tituloCaso(info.nome);
+          partes.push({ ordem: tp === "peseira" ? 0 : 1, txt: `${it.qtd}× ${rotulo}${dim ? " " + dim : ""}` });
         }
         vivo = isFinite(vivo) ? Math.max(0, vivo) : 0;
         partes.sort((a, b) => a.ordem - b.ordem);
-        prod._kit = true;
-        prod.pronta_entrega = true;
-        prod.estoque_geral = vivo;
-        prod._kitTitulo = pk.familia ? tituloCaso(pk.familia) : "";   // "Kit Balls" (renomeia só depois de casar a FOTO)
-        // Em cima do anúncio fica SÓ o nome ("Kit Balls"). A composição com as medidas
-        // vira o RÓTULO da opção de tamanho (no lugar do "Queen"/"UN"), porque cada
-        // tamanho do kit (Queen/King/Mantas) tem a sua própria composição.
-        prod.composicao = "";
-        const medidaKit = partes.length ? partes.map((p) => p.txt).join(" + ") : "";
-        for (const g of prod.grupos) {
-          g.estoque = vivo;
-          for (const l of g.linhas) {
-            let medKey: string;
-            if (medidaKit) { const nid = idTam(medidaKit); l.id_tamanho = nid; l.id = `${prod.id}-${nid}`; medKey = medidaKit; }
-            else medKey = medidaDeId.get(l.id_tamanho) || "-";
-            itens[prod.id] = itens[prod.id] || {};
-            itens[prod.id][medKey] = itens[prod.id][medKey] || {};
-            if (prod.cores.length) { for (const c of prod.cores) itens[prod.id][medKey][c.id_cor] = vivo; }
-            else itens[prod.id][medKey]["-"] = vivo;
-          }
-        }
+        const comp = partes.map((p) => p.txt).join(" + ");
+        const varNome = pk.variacao ? tituloCaso(pk.variacao) : "";
+        // Rótulo da OPÇÃO de tamanho: "Queen · 1× Peseira … + 2× Capas …" (com "c/ enchimento" na versão de almofada cheia).
+        const rotulo = (varNome || "Único") + (temEnch ? " c/ enchimento" : "");
+        const medida = comp ? (rotulo + " · " + comp) : rotulo;
+        const fam = pk.familia ? tituloCaso(pk.familia) : (prod.nome || prod.id);
+        const l0 = (prod.grupos[0] && prod.grupos[0].linhas[0]) || null;
+        const g = porFamilia.get(fam) || { fam, vars: [] };
+        g.vars.push({ prod, rotulo, medida, vivo, variacao: pk.variacao, temEnch, linha: l0 });
+        porFamilia.set(fam, g);
       }
+
+      // 2) Monta um PRODUTO unificado por família e remove os individuais.
+      const idsRemover = new Set<string>();
+      const unificados: (typeof produtos[number])[] = [];
+      for (const grp of porFamilia.values()) {
+        const vars = grp.vars.slice().sort((a, b) =>
+          ((VAR_ORDEM[a.variacao] ?? 9) - (VAR_ORDEM[b.variacao] ?? 9)) || ((a.temEnch ? 1 : 0) - (b.temEnch ? 1 : 0)));
+        const coresMap = new Map<string, { id_cor: string; oculta: boolean }>();
+        const linhas: Linha0[] = [];
+        let estTotal = 0;
+        for (const v of vars) {
+          idsRemover.add(v.prod.id);
+          for (const c of v.prod.cores) if (!coresMap.has(c.id_cor)) coresMap.set(c.id_cor, c);
+          const tid = idTam(v.medida);
+          linhas.push({ id: `${v.prod.id}-${tid}`, cod: v.prod.id, id_tamanho: tid, sul: v.linha ? v.linha.sul : 0, norte: v.linha ? v.linha.norte : 0 });
+          estTotal += v.vivo;
+          // estoque por variação (cada opção tem o código do kit dela)
+          itens[v.prod.id] = itens[v.prod.id] || {};
+          itens[v.prod.id][v.medida] = itens[v.prod.id][v.medida] || {};
+          if (v.prod.cores.length) { for (const c of v.prod.cores) itens[v.prod.id][v.medida][c.id_cor] = v.vivo; }
+          else itens[v.prod.id][v.medida]["-"] = v.vivo;
+        }
+        const prim = vars[0].prod;
+        unificados.push({
+          id: "kit-" + grp.fam.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, ""),
+          nome: grp.fam, linha: prim.linha, pronta_entrega: true, _edicao_limitada: false,
+          _kit: true, _kitTitulo: grp.fam, composicao: "", tipo: "avulso", lancamento: false,
+          foto: prim.foto, video: "", blocos: {}, estoque_geral: estTotal,
+          cores: [...coresMap.values()],
+          grupos: [{ id: `${prim.id}-kit`, titulo: "Escolha o tamanho", ref: "", estoque: estTotal, linhas }],
+        });
+      }
+      // troca os kits individuais pelos anúncios unificados
+      for (let i = produtos.length - 1; i >= 0; i--) if (idsRemover.has(produtos[i].id)) produtos.splice(i, 1);
+      for (const u of unificados) produtos.push(u);
     }
   } catch { /* kits: silencioso — nunca derruba o catálogo */ }
 
