@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
-import { classificar, criarCatalogo, resolverModelo, ehKit, type ItemBase } from "../classificar";
+import { classificar, criarCatalogo, resolverModelo, ehKit, juntarCapaAlmofadaBlocos, type ItemBase } from "../classificar";
 import { casarProduto } from "./produtos";
 import { exigirFuncao, exigirAlgumaFuncao } from "../permissoes";
 
@@ -387,7 +387,8 @@ producao.get("/:pedido_id/:parte", async (c) => {
     : baseParte === "parte-unica" ? cl.parteUnica
     : baseParte.startsWith("pronta-entrega") ? cl.kits
     : cl.kits;
-  return c.json({ ...card, blocos: blocos || [] });
+  // Tecelagem: junta capa + almofada (mesma peça na máquina) no documento de produção.
+  return c.json({ ...card, blocos: juntarCapaAlmofadaBlocos(blocos || []) });
 });
 
 // Peças já TECIDAS (marcadas item a item no modal "Visualizar pedido").

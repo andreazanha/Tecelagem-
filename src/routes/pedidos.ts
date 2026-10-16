@@ -8,6 +8,7 @@ import {
   criarCatalogo,
   ehKit,
   agrupar,
+  juntarCapaAlmofadaBlocos,
   romaneioTassel,
   norm,
   type ItemBase,
@@ -243,7 +244,8 @@ pedidos.post("/previa", async (c) => {
   const partes: Uint8Array[] = [];
   for (const job of jobs) {
     const codigo = codigoParte(baseNum, TIPOS_PDF[job.tipo]?.suf ?? "");
-    partes.push(await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, job.blocos, cores));
+    // PDF da TECELAGEM: junta capa + almofada (mesma peça na máquina).
+    partes.push(await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, juntarCapaAlmofadaBlocos(job.blocos), cores));
   }
   const pdf = await mergePdfs(partes);
   return new Response(pdf, {
@@ -837,7 +839,8 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   const arquivos: { tipo: string; label: string; url: string }[] = [];
   for (const job of jobs) {
     const codigo = codigoParte(baseNum, TIPOS_PDF[job.tipo]?.suf ?? "");
-    const bytes = await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, job.blocos, cores);
+    // PDF da TECELAGEM: junta capa + almofada (mesma peça na máquina).
+    const bytes = await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, juntarCapaAlmofadaBlocos(job.blocos), cores);
     const key = `pedidos/${id}/${job.tipo}.pdf`;
     await c.env.BUCKET.put(key, bytes, { httpMetadata: { contentType: "application/pdf" } });
     arquivos.push({ tipo: job.tipo, label: `${codigo} · ${job.label}`, url: `/api/pedidos/${id}/pdf/${job.tipo}` });

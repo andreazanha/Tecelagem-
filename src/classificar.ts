@@ -281,6 +281,32 @@ export function agrupar(itens: ItemBase[], cat: Catalogo): Bloco[] {
     .sort((a, b) => a.modelo.localeCompare(b.modelo, "pt") || a.cor.localeCompare(b.cor, "pt"));
 }
 
+// TECELAGEM: capa e almofada do mesmo modelo/cor/tamanho são a MESMA peça tricotada
+// (a almofada é a capa com enchimento). Junta as linhas numa só, com o nome "Almofada",
+// somando a quantidade (valor = média ponderada). Só pra produção — NÃO altera o
+// documento do cliente (lá capa e almofada ficam separadas).
+export function juntarCapaAlmofadaBlocos(blocos: Bloco[]): Bloco[] {
+  return blocos.map((b) => {
+    const idx = new Map<string, number>();
+    const sizes: Bloco["sizes"] = [];
+    for (const s of b.sizes) {
+      const tipo = s.tipo === "Capa" ? "Almofada" : s.tipo;
+      const sk = `${tipo}|${s.tamanho}`;
+      if (idx.has(sk)) {
+        const z = sizes[idx.get(sk)!];
+        const tot = (z.valorUnit || 0) * z.qtd + (s.valorUnit || 0) * s.qtd;
+        z.qtd += s.qtd;
+        if (tot > 0) z.valorUnit = Math.round((tot / z.qtd) * 100) / 100;
+      } else {
+        idx.set(sk, sizes.length);
+        sizes.push({ tipo, tamanho: s.tamanho, qtd: s.qtd, valorUnit: s.valorUnit });
+      }
+    }
+    sizes.sort((a, c) => a.tipo.localeCompare(c.tipo, "pt") || a.tamanho.localeCompare(c.tamanho, "pt"));
+    return { ...b, sizes };
+  });
+}
+
 export function classificar(itens: ItemBase[], cat: Catalogo): Classificacao {
   const kits = agrupar(itens.filter((i) => ehKit(i, cat)), cat);
   const prod = itens.filter((i) => !ehKit(i, cat));
