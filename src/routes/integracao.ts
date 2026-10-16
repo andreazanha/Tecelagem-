@@ -693,7 +693,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
             : tp === "almofada" ? (it.qtd > 1 ? "Almofadas" : "Almofada")
               : tp === "capa" ? (it.qtd > 1 ? "Capas" : "Capa")
                 : tituloCaso(info.nome);
-          partes.push({ ordem: tp === "peseira" ? 0 : 1, txt: `${it.qtd}× ${rotulo}${dim ? " " + dim : ""}` });
+          partes.push({ ordem: tp === "peseira" ? 0 : 1, txt: `${it.qtd}- ${rotulo}${dim ? " " + dim : ""}` });
         }
         vivo = isFinite(vivo) ? Math.max(0, vivo) : 0;
         partes.sort((a, b) => a.ordem - b.ordem);
