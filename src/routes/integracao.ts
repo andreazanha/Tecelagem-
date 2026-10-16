@@ -1001,24 +1001,57 @@ integracao.get("/pedidos-para-erp", async (c) => {
       ORDER BY p.created_at LIMIT 20`
   ).all<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; valor_total: number | null; data_pedido: string | null; cod_cli: string | null }>();
   const pedidos = [];
+  type ItemErp = { ref: string; erp_tamanho: string | null; cod_cor: number | null; qtd: number; valor_unit: number | null; produto: string | null; cor_grade: string | null };
   for (const p of peds) {
-    const { results: itens } = await c.env.DB.prepare(
+    const { results: itensRaw } = await c.env.DB.prepare(
       "SELECT ref, erp_tamanho, cod_cor, qtd, valor_unit, produto, cor_grade FROM pedido_itens WHERE pedido_id = ? ORDER BY rowid"
-    ).bind(p.id).all<{ ref: string; erp_tamanho: string | null; cod_cor: number | null; qtd: number; valor_unit: number | null; produto: string | null; cor_grade: string | null }>();
-    // Blindagem contra erro -303 (string truncation) no Syntech: se o erp_tamanho ficou
-    // longo (ex.: pedidos antigos de kit com a composição no lugar do código), troca pelo
-    // CÓDIGO real do 1º tamanho do produto; sem isso, corta num tamanho seguro.
-    for (const it of itens) {
-      const t = String(it.erp_tamanho || "").trim();
-      if (t.length > 6) {
-        let corrigido = "";
-        try {
-          const row = await c.env.DB.prepare("SELECT tamanhos FROM erp_produtos WHERE ref=?").bind(it.ref).first<{ tamanhos: string | null }>();
-          const arr = row?.tamanhos ? JSON.parse(row.tamanhos) : [];
-          const t0 = Array.isArray(arr) && arr[0] ? arr[0] : null;
-          if (t0) corrigido = String(t0.tamanho || t0.medida || "").trim();
-        } catch { corrigido = ""; }
-        it.erp_tamanho = (corrigido || t).slice(0, 10);
+    ).bind(p.id).all<ItemErp>();
+    const itens: ItemErp[] = [];
+    for (const it of itensRaw) {
+      // KIT? Se o produto tem RECEITA, o Syntech NÃO explode pela integração — então nós
+      // mandamos já as PEÇAS: código, tamanho (código ex.: 4K/1K), cor e qtd (×qtd do kit),
+      // com o preço de cada peça somando o valor do kit.
+      const { results: rec } = await c.env.DB.prepare(
+        "SELECT componente_ref, quantidade, tamanho FROM erp_kit_receita WHERE kit_ref = ?"
+      ).bind(it.ref).all<{ componente_ref: string; quantidade: number; tamanho: string | null }>().catch(() => ({ results: [] as { componente_ref: string; quantidade: number; tamanho: string | null }[] }));
+      if (rec && rec.length) {
+        const refs = [...new Set(rec.map((r) => r.componente_ref))];
+        const ph = refs.map(() => "?").join(",");
+        const { results: comps } = await c.env.DB.prepare(
+          `SELECT ref, nome, preco_atacado, preco_varejo FROM erp_produtos WHERE ref IN (${ph})`
+        ).bind(...refs).all<{ ref: string; nome: string | null; preco_atacado: number | null; preco_varejo: number | null }>().catch(() => ({ results: [] as { ref: string; nome: string | null; preco_atacado: number | null; preco_varejo: number | null }[] }));
+        const cmap = new Map(comps.map((cp) => [cp.ref, cp]));
+        const precoReal = (r: string) => Number(cmap.get(r)?.preco_atacado || cmap.get(r)?.preco_varejo || 0);
+        let somaPrecos = 0; for (const r of rec) somaPrecos += precoReal(r.componente_ref) * (Number(r.quantidade) || 1);
+        const usarPreco = somaPrecos > 0;                    // tem preço das peças? divide por ele; senão por quantidade
+        const baseDe = (r: string) => (usarPreco ? precoReal(r) : 1);
+        let somaBase = 0; for (const r of rec) somaBase += baseDe(r.componente_ref) * (Number(r.quantidade) || 1);
+        const fator = somaBase > 0 ? (Number(it.valor_unit) || 0) / somaBase : 0;   // normaliza: total = preço do kit
+        for (const r of rec) {
+          const cp = cmap.get(r.componente_ref);
+          itens.push({
+            ref: r.componente_ref,
+            erp_tamanho: (String(r.tamanho || "").trim() || "UN").slice(0, 10),
+            cod_cor: it.cod_cor,
+            qtd: (Number(r.quantidade) || 1) * (Number(it.qtd) || 0),
+            valor_unit: Math.round(baseDe(r.componente_ref) * fator * 100) / 100,
+            produto: cp?.nome || r.componente_ref,
+            cor_grade: it.cor_grade,
+          });
+        }
+      } else {
+        // Não é kit: mantém. Só blinda o tamanho longo (segurança contra erro -303).
+        let t = String(it.erp_tamanho || "").trim();
+        if (t.length > 6) {
+          try {
+            const row = await c.env.DB.prepare("SELECT tamanhos FROM erp_produtos WHERE ref=?").bind(it.ref).first<{ tamanhos: string | null }>();
+            const arr = row?.tamanhos ? JSON.parse(row.tamanhos) : [];
+            const t0 = Array.isArray(arr) && arr[0] ? arr[0] : null;
+            if (t0) t = String(t0.tamanho || t0.medida || t).trim();
+          } catch { /* mantém */ }
+          t = t.slice(0, 10);
+        }
+        itens.push({ ...it, erp_tamanho: t });
       }
     }
     pedidos.push({ id: p.id, cliente_nome: p.cliente_nome, cnpj: p.cliente_cnpj, cod_cli: p.cod_cli, valor_total: p.valor_total, data: p.data_pedido, itens });
