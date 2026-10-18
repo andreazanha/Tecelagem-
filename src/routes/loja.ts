@@ -157,3 +157,36 @@ loja.post("/pedido", async (c) => {
     msg: "Pedido recebido! Ele será enviado para a Big Tricot (Syntech) e confirmado em breve.",
   }, 201);
 });
+
+// ÁREA DO CLIENTE — "Meus pedidos": lista os pedidos da loja daquele CNPJ (público,
+// escopado pelo CNPJ em dígitos). Mostra situação amigável + itens (como o cliente pediu).
+loja.get("/meus-pedidos", async (c) => {
+  const cnpj = soDigitos(c.req.query("cnpj"));
+  if (cnpj.length < 11) return c.json({ erro: "cnpj_invalido", msg: "CNPJ inválido." }, 400);
+  const { results: peds } = await c.env.DB.prepare(
+    "SELECT id, erp_numero, valor_total, data_pedido, created_at, COALESCE(erp_sync_status,'pendente') AS sync " +
+    "FROM pedidos WHERE canal='loja_b2b' AND REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cliente_cnpj,''),'.',''),'/',''),'-',''),' ','') = ? " +
+    "ORDER BY created_at DESC LIMIT 60"
+  ).bind(cnpj).all<{ id: string; erp_numero: number | null; valor_total: number | null; data_pedido: string | null; created_at: string | null; sync: string }>();
+  if (!peds.length) return c.json({ pedidos: [] });
+  const ids = peds.map((p) => p.id);
+  const ph = ids.map(() => "?").join(",");
+  const { results: itens } = await c.env.DB.prepare(
+    `SELECT pedido_id, produto, ref, cor_grade, tamanho, qtd, valor_unit FROM pedido_itens WHERE pedido_id IN (${ph}) ORDER BY rowid`
+  ).bind(...ids).all<{ pedido_id: string; produto: string | null; ref: string | null; cor_grade: string | null; tamanho: string | null; qtd: number; valor_unit: number | null }>();
+  const porPed = new Map<string, { produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; qtd: number; valor_unit: number | null }[]>();
+  for (const it of itens) {
+    const a = porPed.get(it.pedido_id) || [];
+    a.push({ produto: it.produto, ref: it.ref, cor: it.cor_grade, tamanho: it.tamanho, qtd: it.qtd, valor_unit: it.valor_unit });
+    porPed.set(it.pedido_id, a);
+  }
+  const situacao = (sync: string, numero: number | null) =>
+    sync === "enviado" ? ("✅ Em produção" + (numero ? " · nº " + numero : ""))
+      : sync === "erro" ? "⏳ Em processamento"
+        : "📝 Pedido recebido";
+  const pedidos = peds.map((p) => ({
+    id: p.id, numero: p.erp_numero, data: p.created_at || p.data_pedido, total: p.valor_total,
+    situacao: situacao(p.sync, p.erp_numero), itens: porPed.get(p.id) || [],
+  }));
+  return c.json({ pedidos });
+});
