@@ -344,11 +344,57 @@
     <!-- Sub-tela: carteira -->
     <div id="repCartView" style="display:none">
       <button class="rep-voltar" onclick="__repHome()">← Voltar</button>
-      <h2 class="rep-h2">Minha carteira <span class="rep-count" id="repCount"></span></h2>
-      <div class="rep-dica">Toque num cliente para atender.</div>
+      <h2 class="rep-h2" id="repCartTit">Minha carteira <span class="rep-count" id="repCount"></span></h2>
+      <div class="rep-dica" id="repCartDica">Toque num cliente para atender.</div>
       <div id="repCarteira" class="rep-grid"></div>
     </div>
+    <!-- Sub-tela: montar pedido (1º passo) -->
+    <div id="repMontar" style="display:none">
+      <button class="rep-voltar" onclick="__repHome()">← Voltar</button>
+      <h2 class="rep-h2">Montar pedido</h2>
+      <div class="rep-dica">Primeiro, escolha pra quem é o pedido:</div>
+      <div class="rep-menu">
+        <button class="rep-tile" onclick="__repEscolher()">
+          <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
+          <span class="tl">Cliente da carteira</span><span class="tt">escolher um que já é meu</span>
+        </button>
+        <button class="rep-tile" onclick="__repSecao('novo')">
+          <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
+          <span class="tl">Cliente novo</span><span class="tt">cadastrar agora</span>
+        </button>
+      </div>
+    </div>
+    <!-- Sub-tela: cadastrar cliente novo (pelo rep) -->
+    <div id="repNovoCli" style="display:none">
+      <button class="rep-voltar" onclick="__repHome()">← Voltar</button>
+      <h2 class="rep-h2">Cadastrar cliente novo</h2>
+      <div class="rep-dica">Digite o CNPJ e toque em <b>Puxar da Receita</b> pra preencher sozinho. A Big Tricot confere e libera. (* obrigatório)</div>
+      <div id="rncMsg" style="font-size:13px;min-height:1px;margin:6px 0;line-height:1.35"></div>
+      <div style="display:grid;gap:10px;max-width:560px">
+        <div style="display:flex;gap:8px">
+          <input id="rnCnpj" class="cad-inp" inputmode="numeric" placeholder="CNPJ *" style="flex:1">
+          <button type="button" id="rnReceita" style="flex:0 0 auto;padding:0 14px;border:0;border-radius:12px;background:#3b6ea5;color:#fff;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">⬇ Puxar da Receita</button>
+        </div>
+        <input id="rnNome" class="cad-inp" placeholder="Razão social *" autocomplete="organization">
+        <input id="rnFant" class="cad-inp" placeholder="Nome fantasia *">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="rnIe" class="cad-inp" placeholder="Inscrição estadual *" style="flex:1">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13.5px;color:#5f584e;white-space:nowrap;cursor:pointer"><input type="checkbox" id="rnIsento" style="width:18px;height:18px"> Isento</label>
+        </div>
+        <input id="rnEnd" class="cad-inp" placeholder="Endereço (rua) *">
+        <div style="display:flex;gap:8px"><input id="rnNum" class="cad-inp" inputmode="numeric" placeholder="Nº" style="flex:0 0 90px"><input id="rnBai" class="cad-inp" placeholder="Bairro" style="flex:1"></div>
+        <div style="display:flex;gap:8px"><input id="rnCep" class="cad-inp" inputmode="numeric" placeholder="CEP" style="flex:1"><input id="rnCid" class="cad-inp" placeholder="Cidade *" style="flex:2"><input id="rnUf" class="cad-inp" maxlength="2" placeholder="UF *" style="flex:0 0 72px;text-transform:uppercase"></div>
+        <input id="rnTel" class="cad-inp" inputmode="numeric" placeholder="WhatsApp *">
+        <input id="rnEmail" class="cad-inp" type="email" placeholder="E-mail * (confira se é atual!)">
+        <button id="rnBtn" style="padding:14px;border:0;border-radius:12px;background:#2c3e50;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Enviar cadastro</button>
+      </div>
+    </div>
   </div>
+</div>
+<!-- Faixa no topo do catálogo quando o REP está montando pedido pra um cliente -->
+<div id="repPedBar" style="display:none;position:sticky;top:0;z-index:45;background:#2c3e50;color:#fff;padding:10px 16px;display:none;align-items:center;gap:12px;justify-content:center;font-size:13.5px">
+  <span>🧑‍💼 Montando pedido para <b id="repPedNome"></b></span>
+  <button onclick="__repVoltarArea()" style="height:32px;padding:0 12px;border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer">← Voltar</button>
 </div>
 
 <div id="entrada" style="position:fixed;inset:0;z-index:999;background:rgba(44,39,33,.55);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:18px">
@@ -887,7 +933,8 @@
     var idem=hashStr(dig+"|"+JSON.stringify(itens));
     if(msg){ msg.textContent=""; }
     btn.disabled=true; btn.textContent="Enviando…";
-    fetch("/api/loja/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cnpj:cnpj, itens:itens, idem:idem})})
+    var extra = REP_CLIENTE ? {vendedor:(REP&&REP.nome)||""} : {};
+    fetch("/api/loja/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({cnpj:cnpj, itens:itens, idem:idem}, extra))})
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j||{}}; }); })
       .then(function(res){
         if(res.ok && res.j.ok){
@@ -1025,7 +1072,7 @@
       })
       .catch(function(){ btn.disabled=false; btn.textContent="Entrar"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; });
   }
-  var REP=null, REP_CLIENTES=[];
+  var REP=null, REP_CLIENTES=[], REP_CLIENTE=null;
   function aplicarRep(rep, clientes){
     if(!rep) return;
     REP=rep; REP_CLIENTES=clientes||[];
@@ -1038,10 +1085,15 @@
     document.getElementById("repTileCount").textContent=REP_CLIENTES.length+" cliente"+(REP_CLIENTES.length===1?"":"s");
     __repHome();
   }
-  window.__repHome=function(){ document.getElementById("repCartView").style.display="none"; document.getElementById("repHome").style.display="block"; try{ document.getElementById("repArea").scrollTop=0; }catch(e){} };
+  var REP_SUBS=["repHome","repCartView","repMontar","repNovoCli"];
+  function repMostrarSub(id){ REP_SUBS.forEach(function(s){ var e=document.getElementById(s); if(e) e.style.display=(s===id)?"block":"none"; }); try{ document.getElementById("repArea").scrollTop=0; }catch(e){} }
+  window.__repHome=function(){ repMostrarSub("repHome"); };
+  window.__repEscolher=function(){ __repSecao("carteira"); };
   window.__repSecao=function(sec){
-    if(sec==="carteira"){ document.getElementById("repHome").style.display="none"; document.getElementById("repCartView").style.display="block"; renderCarteira(REP_CLIENTES); return; }
-    var nomes={montar:"Montar pedido",pedidos:"Meus pedidos",novo:"Cadastrar cliente novo",avisos:"Avisos"};
+    if(sec==="carteira"){ document.getElementById("repCartTit").innerHTML='Minha carteira <span class="rep-count" id="repCount"></span>'; document.getElementById("repCartDica").textContent="Toque num cliente para montar o pedido dele."; repMostrarSub("repCartView"); renderCarteira(REP_CLIENTES); return; }
+    if(sec==="montar"){ repMostrarSub("repMontar"); return; }
+    if(sec==="novo"){ document.getElementById("rncMsg").textContent=""; repMostrarSub("repNovoCli"); return; }
+    var nomes={pedidos:"Meus pedidos",avisos:"Avisos"};
     alert("“"+(nomes[sec]||sec)+"” está chegando! 🧶\nEstamos liberando a área do representante por etapas.");
   };
   function renderCarteira(clientes){
@@ -1057,13 +1109,94 @@
         '<div class="sub">'+(c.cnpj?esc(c.cnpj):'sem CNPJ')+(cidade?' · '+esc(cidade):'')+'</div>'+chip+'</button>';
     }).join("");
   }
-  window.__repCliente=function(id){ alert("Em breve: montar o pedido para este cliente. 🧶\n(Estamos liberando essa parte por etapas.)"); };
-  function repSair(){ try{ localStorage.removeItem("bt_rep"); }catch(e){} document.getElementById("repArea").style.display="none"; mostrarEnt(); abrirEntrada(); }
+  window.__repCliente=function(id){
+    var cli=null; for(var i=0;i<REP_CLIENTES.length;i++){ if(String(REP_CLIENTES[i].id)===String(id)){ cli=REP_CLIENTES[i]; break; } }
+    if(!cli) return;
+    if(cli.bloqueado){ alert("Este cliente está bloqueado. Fale com a Big Tricot."); return; }
+    if(!cli.liberado){ alert("Este cliente ainda está em análise. Assim que a Big Tricot liberar, você poderá montar o pedido dele. 💛"); return; }
+    iniciarPedidoRep(cli);
+  };
+  function iniciarPedidoRep(cli){
+    REP_CLIENTE=cli;
+    regiao=(cli.regiao==="norte")?"norte":"sul";
+    LIBERADO=!!cli.liberado;
+    try{ localStorage.setItem("bt_cnpj", String(cli.cnpj||"").replace(/\D+/g,"")); }catch(e){}  // pro checkout e "meus pedidos"
+    document.getElementById("repArea").style.display="none";
+    document.body.style.overflow="";
+    mostrarSaudacao("");
+    atualizarAvisoLib();
+    var bar=document.getElementById("repPedBar"); bar.style.display="flex";
+    document.getElementById("repPedNome").textContent=cli.nome||cli.fantasia||"";
+    render(); if(document.getElementById("modal").classList.contains("show")) renderDetalhe();
+    try{ window.scrollTo({top:0}); }catch(e){}
+  }
+  window.__repVoltarArea=function(){
+    REP_CLIENTE=null;
+    document.getElementById("repPedBar").style.display="none";
+    document.getElementById("repArea").style.display="block";
+    document.body.style.overflow="";
+    __repHome();
+  };
+  // Puxar dados da Receita pelo CNPJ (preenche os campos). O rep confere e-mail/WhatsApp.
+  function repPuxarReceita(){
+    var cnpj=(document.getElementById("rnCnpj").value||"").replace(/\D/g,"");
+    var msg=document.getElementById("rncMsg"), btn=document.getElementById("rnReceita");
+    if(cnpj.length!==14){ msg.style.color="#b91c1c"; msg.textContent="Digite o CNPJ completo (14 dígitos) pra puxar da Receita."; return; }
+    msg.textContent=""; btn.disabled=true; btn.textContent="Consultando…";
+    fetch("/api/loja/consulta-cnpj?cnpj="+encodeURIComponent(cnpj))
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+      .then(function(res){
+        btn.disabled=false; btn.textContent="⬇ Puxar da Receita";
+        if(res.ok && res.j.ok){
+          var d=res.j.dados||{};
+          var set=function(id,v){ var e=document.getElementById(id); if(e && v) e.value=v; };
+          set("rnNome",d.razao_social); set("rnFant",d.fantasia||d.razao_social); set("rnEnd",d.endereco); set("rnNum",d.numero); set("rnBai",d.bairro); set("rnCep",d.cep); set("rnCid",d.cidade); set("rnUf",d.uf); set("rnTel",d.telefone); set("rnEmail",d.email);
+          msg.style.color="#166534"; msg.innerHTML="✓ Dados da Receita preenchidos. <b>Confira o e-mail e o WhatsApp</b> — às vezes estão desatualizados.";
+        } else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui puxar da Receita. Preencha à mão."; }
+      })
+      .catch(function(){ btn.disabled=false; btn.textContent="⬇ Puxar da Receita"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão com a Receita. Preencha à mão."; });
+  }
+  // Cadastro de cliente novo pelo REP (vai pra fila de aprovação, atrelado ao rep).
+  function repEnviarNovoCli(){
+    var g=function(id){ return (document.getElementById(id).value||"").trim(); };
+    var msg=document.getElementById("rncMsg"), btn=document.getElementById("rnBtn");
+    var isento=document.getElementById("rnIsento").checked;
+    var ie = isento ? "ISENTO" : g("rnIe");
+    var body={ rep_id:(REP&&REP.id)||"", nome:g("rnNome"), fantasia:g("rnFant"), cnpj:g("rnCnpj"), inscricao:ie, endereco:g("rnEnd"), numero:g("rnNum"), bairro:g("rnBai"), cep:g("rnCep"), uf:g("rnUf"), cidade:g("rnCid"), email:g("rnEmail"), whatsapp:g("rnTel"), telefone:g("rnTel") };
+    function falta(m){ msg.style.color="#b91c1c"; msg.textContent=m; }
+    if(body.cnpj.replace(/\D/g,"").length<11) return falta("Informe o CNPJ.");
+    if(!body.nome) return falta("Informe a razão social.");
+    if(!body.fantasia) return falta("Informe o nome fantasia.");
+    if(!ie) return falta("Informe a inscrição estadual (ou marque Isento).");
+    if(!body.endereco) return falta("Informe o endereço.");
+    if(!body.cidade || !body.uf) return falta("Informe cidade e UF.");
+    if(!body.whatsapp) return falta("Informe o WhatsApp.");
+    if(!body.email || body.email.indexOf("@")<0) return falta("Informe um e-mail válido.");
+    msg.textContent=""; btn.disabled=true; btn.textContent="Enviando…";
+    fetch("/api/loja/rep-cadastrar-cliente",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+      .then(function(res){
+        btn.disabled=false; btn.textContent="Enviar cadastro";
+        if(res.ok && res.j.ok){
+          if(res.j.clientes) REP_CLIENTES=res.j.clientes;
+          document.getElementById("repTileCount").textContent=REP_CLIENTES.length+" cliente"+(REP_CLIENTES.length===1?"":"s");
+          ["rnNome","rnFant","rnCnpj","rnIe","rnEnd","rnNum","rnBai","rnCep","rnUf","rnCid","rnEmail","rnTel"].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=""; });
+          var iso=document.getElementById("rnIsento"); if(iso) iso.checked=false;
+          alert("Cadastro enviado! 🎉 A Big Tricot vai conferir e liberar. Assim que liberar, ele aparece na sua carteira pra montar o pedido.");
+          __repHome();
+        } else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui enviar. Confira os dados."; }
+      })
+      .catch(function(){ btn.disabled=false; btn.textContent="Enviar cadastro"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; });
+  }
+  function repSair(){ try{ localStorage.removeItem("bt_rep"); localStorage.removeItem("bt_cnpj"); }catch(e){} REP=null; REP_CLIENTE=null; document.getElementById("repArea").style.display="none"; mostrarEnt(); abrirEntrada(); }
   document.getElementById("repBtn").addEventListener("click",repEntrar);
   document.getElementById("repSenha").addEventListener("keydown",function(e){ if(e.key==="Enter") repEntrar(); });
   document.getElementById("irRep").addEventListener("click",mostrarRepView);
   document.getElementById("repVoltar").addEventListener("click",function(){ mostrarEnt(); });
   document.getElementById("repSair").addEventListener("click",repSair);
+  document.getElementById("rnBtn").addEventListener("click",repEnviarNovoCli);
+  document.getElementById("rnReceita").addEventListener("click",repPuxarReceita);
+  (function(){ var iso=document.getElementById("rnIsento"); if(iso) iso.addEventListener("change",function(){ var ie=document.getElementById("rnIe"); if(ie){ ie.disabled=iso.checked; ie.value=iso.checked?"":ie.value; ie.style.opacity=iso.checked?.5:1; } }); })();
 
   // Cadastro de loja nova (abre dentro do mesmo modal de entrada)
   function mostrarCad(prefill){ document.getElementById("entView").style.display="none"; document.getElementById("cadView").style.display="block"; var cc=document.getElementById("cCnpj"); if(cc && prefill && !cc.value) cc.value=prefill; document.getElementById("cadMsg").textContent=""; }

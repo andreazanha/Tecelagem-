@@ -250,11 +250,78 @@ loja.post("/rep-definir-senha", async (c) => {
   return c.json({ ok: true, rep: { id: rep.id, nome: rep.nome, email: rep.email || "" }, clientes: await carteiraDoRep(c.env, rep.nome) });
 });
 
+// O REP cadastra um cliente novo da carteira dele → vai pra fila de aprovação (pendente),
+// já atrelado ao representante. Sem senha (o cliente não loga; o rep compra por ele).
+loja.post("/rep-cadastrar-cliente", async (c) => {
+  let b: Record<string, string> = {};
+  try { b = await c.req.json(); } catch { return c.json({ erro: "json_invalido" }, 400); }
+  const s = (k: string) => String(b[k] ?? "").trim();
+  const rep = await c.env.DB.prepare("SELECT id, nome, COALESCE(ativo,1) AS ativo FROM representantes WHERE id=? LIMIT 1")
+    .bind(s("rep_id")).first<{ id: string; nome: string; ativo: number }>();
+  if (!rep || Number(rep.ativo) === 0) return c.json({ erro: "rep_invalido", msg: "Sessão do representante inválida. Entre de novo." }, 401);
+  const cnpjDig = soDigitos(b.cnpj);
+  const nome = s("nome"), cidade = s("cidade"), uf = s("uf").toUpperCase().slice(0, 2);
+  if (cnpjDig.length < 11) return c.json({ erro: "cnpj_invalido", msg: "Informe um CNPJ (ou CPF) válido." }, 400);
+  if (!nome || !cidade || !uf) return c.json({ erro: "faltam_dados", msg: "Preencha razão social, cidade e UF." }, 400);
+  const ex = await c.env.DB.prepare(
+    "SELECT id, COALESCE(codigo_erp,'') AS codigo_erp FROM clientes WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
+  ).bind(cnpjDig).first<{ id: string; codigo_erp: string }>();
+  if (ex && ex.codigo_erp) {
+    // já é cliente: só garante o representante e devolve (fica liberado na hora).
+    await c.env.DB.prepare("UPDATE clientes SET representante=CASE WHEN COALESCE(TRIM(representante),'')='' THEN ? ELSE representante END WHERE id=?").bind(rep.nome, ex.id).run();
+    return c.json({ ok: true, ja_existe: true, msg: "Esse cliente já é nosso — coloquei na sua carteira.", clientes: await carteiraDoRep(c.env, rep.nome) });
+  }
+  const campos = {
+    fantasia: s("fantasia") || nome, inscricao_estadual: s("inscricao"), endereco: s("endereco"), numero: s("numero"),
+    bairro: s("bairro"), cep: soDigitos(b.cep), email: s("email"), telefone: s("telefone") || s("whatsapp"),
+    whatsapp: soDigitos(b.whatsapp) || soDigitos(b.telefone),
+  };
+  if (ex) {
+    await c.env.DB.prepare(
+      "UPDATE clientes SET nome=?, fantasia=?, inscricao_estadual=?, endereco=?, numero=?, bairro=?, cep=?, cidade=?, uf=?, email=?, telefone=?, whatsapp=?, representante=?, origem='rep', loja_status='pendente', loja_cadastro_em=datetime('now') WHERE id=?"
+    ).bind(nome, campos.fantasia, campos.inscricao_estadual, campos.endereco, campos.numero, campos.bairro, campos.cep, cidade, uf, campos.email, campos.telefone, campos.whatsapp, rep.nome, ex.id).run();
+  } else {
+    await c.env.DB.prepare(
+      "INSERT INTO clientes (id, nome, fantasia, cnpj, inscricao_estadual, endereco, numero, bairro, cep, cidade, uf, email, telefone, whatsapp, representante, origem, loja_status, loja_cadastro_em) " +
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'rep', 'pendente', datetime('now'))"
+    ).bind(uid(), nome, campos.fantasia, cnpjDig, campos.inscricao_estadual, campos.endereco, campos.numero, campos.bairro, campos.cep, cidade, uf, campos.email, campos.telefone, campos.whatsapp, rep.nome).run();
+  }
+  return c.json({ ok: true, msg: "Cadastro enviado! A Big Tricot vai conferir e liberar.", clientes: await carteiraDoRep(c.env, rep.nome) });
+});
+
+// Consulta CNPJ na Receita (BrasilAPI) pra preencher o cadastro. ATENÇÃO: o e-mail pode
+// estar desatualizado — devolvemos, mas o rep confere/atualiza antes de salvar.
+loja.get("/consulta-cnpj", async (c) => {
+  const cnpj = soDigitos(c.req.query("cnpj"));
+  if (cnpj.length !== 14) return c.json({ ok: false, msg: "CNPJ precisa ter 14 dígitos." }, 400);
+  try {
+    const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return c.json({ ok: false, msg: "Não encontrei esse CNPJ na Receita." }, 404);
+    const j = await r.json() as Record<string, unknown>;
+    return c.json({
+      ok: true, dados: {
+        razao_social: String(j.razao_social ?? "").trim(),
+        fantasia: String(j.nome_fantasia ?? "").trim(),
+        endereco: String(j.logradouro ?? "").trim(),
+        numero: String(j.numero ?? "").trim(),
+        bairro: String(j.bairro ?? "").trim(),
+        cep: String(j.cep ?? "").replace(/\D/g, ""),
+        cidade: String(j.municipio ?? "").trim(),
+        uf: String(j.uf ?? "").trim().toUpperCase().slice(0, 2),
+        telefone: String(j.ddd_telefone_1 ?? "").replace(/\D/g, ""),
+        email: String(j.email ?? "").trim().toLowerCase(),
+        situacao: String(j.descricao_situacao_cadastral ?? "").trim(),
+      },
+    });
+  } catch { return c.json({ ok: false, msg: "Não consegui consultar a Receita agora. Preencha à mão." }, 502); }
+});
+
 loja.post("/pedido", async (c) => {
-  let body: { cnpj?: string; itens?: ItemLoja[]; idem?: string } = {};
+  let body: { cnpj?: string; itens?: ItemLoja[]; idem?: string; vendedor?: string } = {};
   try { body = await c.req.json(); } catch { return c.json({ erro: "json_invalido", msg: "Não consegui ler o pedido." }, 400); }
 
   const cnpjDig = soDigitos(body.cnpj);
+  const vendedor = String(body.vendedor || "").trim().slice(0, 80) || null; // nome do representante (quando o rep monta)
   const itensIn = Array.isArray(body.itens) ? body.itens : [];
   if (cnpjDig.length < 11) return c.json({ erro: "cnpj_invalido", msg: "Informe um CNPJ (ou CPF) válido para enviar o pedido." }, 400);
   if (!itensIn.length) return c.json({ erro: "carrinho_vazio", msg: "Seu carrinho está vazio." }, 400);
@@ -331,10 +398,10 @@ loja.post("/pedido", async (c) => {
   const pedidoId = uid();
   const stmts: D1PreparedStatement[] = [];
   stmts.push(c.env.DB.prepare(
-    `INSERT INTO pedidos (id, cliente_nome, cliente_id, cliente_cnpj, tipo, status, canal, valor_total,
+    `INSERT INTO pedidos (id, cliente_nome, cliente_id, cliente_cnpj, vendedor, tipo, status, canal, valor_total,
        erp_sync_status, erp_liberado, idem, data_pedido, created_at)
-     VALUES (?, ?, ?, ?, 'pedido', 'aguardando_aprovacao', 'loja_b2b', ?, 'pendente', 0, ?, datetime('now'), datetime('now'))`
-  ).bind(pedidoId, cli.nome || "SEM CLIENTE", cli.id, cnpjDig, total, idem));
+     VALUES (?, ?, ?, ?, ?, 'pedido', 'aguardando_aprovacao', 'loja_b2b', ?, 'pendente', 0, ?, datetime('now'), datetime('now'))`
+  ).bind(pedidoId, cli.nome || "SEM CLIENTE", cli.id, cnpjDig, vendedor, total, idem));
   for (const r of resolvidos) {
     stmts.push(c.env.DB.prepare(
       `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, cod_cor, tamanho, erp_tamanho, qtd, valor_unit, parte)
