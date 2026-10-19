@@ -876,6 +876,7 @@ export const api = {
   atendEncerrar: (id: string, autor?: string, reabrir?: boolean) =>
     jsonPost(`/api/atendimento/${id}/encerrar`, { autor, reabrir }).then((r) => j<{ ok: boolean }>(r)),
   atendFotoPerfil: (id: string) => fetch(`/api/atendimento/${id}/foto-perfil`).then((r) => j<{ link: string | null }>(r)),
+  atendExcluirConversa: (id: string) => fetch(`/api/atendimento/${id}/excluir`, { method: "POST" }).then((r) => j<{ ok: boolean }>(r)),
   atendCampanhas: () => fetch("/api/atendimento/campanhas").then((r) => j<{ id: string; nome: string | null; mensagem: string; intervalo_seg: number; status: string; criado_em: string; total: number; enviados: number; pendentes: number; falhas: number; iniciar_em: string | null; no_quadro: number | null; arquivo_url: string | null; arquivo_tipo: string | null; arquivo_nome: string | null; arquivo_ext: string | null }[]>(r)),
   atendCampanhaQuadro: (id: string, mostrar: boolean) => jsonPost(`/api/atendimento/campanhas/${id}/quadro`, { mostrar }).then((r) => j<{ ok: boolean; no_quadro: number }>(r)),
   atendCampanhaAlvos: (id: string) => fetch(`/api/atendimento/campanhas/${id}/alvos`).then((r) => j<{ alvos: { telefone: string; nome: string | null }[] }>(r)),

@@ -419,6 +419,15 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
     setBoard((b) => (b ? { ...b, conversas: b.conversas.map((x) => (x.id === id ? { ...x, silenciado: x.silenciado ? 0 : 1 } : x)) } : b));
     api.atendSilenciar(id).catch(() => recarregar());
   }
+  // 🗑 Remover um grupo do sistema — pra quando a Big SAIU do grupo no celular.
+  // Tira o card e apaga as mensagens guardadas aqui (não mexe no WhatsApp).
+  async function removerGrupo(c: AtendConversa) {
+    const nome = c.nome || c.contato_nome || telBonito(c.telefone);
+    if (!confirm(`Remover o grupo "${nome}" do sistema?\n\nUse quando você saiu do grupo no WhatsApp. O card some daqui e as mensagens guardadas são apagadas — isso NÃO sai nem mexe no grupo no seu celular.`)) return;
+    setBoard((b) => (b ? { ...b, conversas: b.conversas.filter((x) => x.id !== c.id) } : b));
+    try { await api.atendExcluirConversa(c.id); recarregar(); }
+    catch { alert("Não consegui remover o grupo agora. Tente de novo."); recarregar(); }
+  }
   async function reativarIaColuna(label: string, ids: string[]) {
     if (!ids.length) return;
     if (!confirm(`Reativar a IA em ${ids.length} lead(s) da coluna "${label}"?\n\nA Big vai mandar uma saudação pra cada um e recomeçar o atendimento (triagem + catálogo de varejo). Use com leads PARADOS — não com quem já está sendo atendido por uma pessoa.`)) return;
@@ -622,7 +631,6 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
           {colGrupos && <button className="btn btn-soft" onClick={() => setGruposColOpen(true)} title="Conversas de grupo">👥 Grupos{cardsGrupos.length ? ` (${cardsGrupos.length})` : ""}</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
           {ehGestorAtend() && podeFuncao(getUser(), "crm.campanha") && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setGruposOpen(true)}>👥 Postar em grupo</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setReservasOpen(true)}>📋 Reservas</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setSim(true)}>💬 Simular cliente</button>}
@@ -723,17 +731,24 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
           <div className="modal-card" style={{ maxWidth: 1100, width: "min(1100px,96vw)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <h2 style={{ margin: 0 }}>👥 Grupos <span className="muted" style={{ fontWeight: 400, fontSize: 14 }}>({cardsGrupos.length})</span></h2>
-              <button className="btn btn-soft" onClick={() => setGruposColOpen(false)}>Fechar</button>
+              <div style={{ display: "flex", gap: 8 }}>
+                {ehGestorAtend() && <button className="btn btn-primary" onClick={() => { setGruposColOpen(false); setGruposOpen(true); }}>📢 Postar em grupo</button>}
+                <button className="btn btn-soft" onClick={() => setGruposColOpen(false)}>Fechar</button>
+              </div>
             </div>
             {cardsGrupos.length === 0 ? (
               <p className="muted" style={{ margin: 0 }}>Nenhuma conversa de grupo por aqui.</p>
             ) : (
               <div className="grupos-maxi" style={{ overflowY: "auto", paddingRight: 2 }}>
                 {cardsGrupos.map((c) => (
-                  <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board?.colunas}
-                    onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)}
-                    onAbrir={() => { setGruposColOpen(false); setAbrir(c.id); }}
-                    onSilenciar={() => silenciarCard(c.id)} onFim={() => fimCard(c)} />
+                  <div key={c.id} style={{ position: "relative" }}>
+                    <ConvMini c={c} foto={fotoCache.current[c.id] || undefined} colunas={board?.colunas}
+                      onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)}
+                      onAbrir={() => { setGruposColOpen(false); setAbrir(c.id); }}
+                      onSilenciar={() => silenciarCard(c.id)} onFim={() => fimCard(c)} />
+                    <button onClick={(e) => { e.stopPropagation(); removerGrupo(c); }} title="Remover do sistema (ex.: a Big saiu do grupo)"
+                      style={{ position: "absolute", top: 8, right: 8, width: 30, height: 30, borderRadius: 8, border: "1px solid var(--line)", background: "var(--card,#fff)", cursor: "pointer", fontSize: 14, lineHeight: 1, boxShadow: "0 1px 4px #0002" }}>🗑</button>
+                  </div>
                 ))}
               </div>
             )}

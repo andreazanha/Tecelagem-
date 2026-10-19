@@ -1965,6 +1965,19 @@ atendimento.post("/:id/enviar-representante", async (c) => {
 });
 
 // Foto de perfil do contato (Z-API) — pra mostrar o avatar real na conversa.
+// Remover uma conversa do sistema (ex.: grupo em que a Big não está mais). Apaga a
+// conversa e as mensagens guardadas dela. Só gestor.
+atendimento.post("/:id/excluir", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  if (!ehGestorAtend(u)) return c.json({ error: "sem_acesso" }, 403);
+  const id = c.req.param("id");
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM atend_mensagens WHERE conversa_id=?").bind(id),
+    c.env.DB.prepare("DELETE FROM atend_conversas WHERE id=?").bind(id),
+  ]);
+  return c.json({ ok: true });
+});
 atendimento.get("/:id/foto-perfil", async (c) => {
   const id = c.req.param("id");
   const conv = await c.env.DB.prepare("SELECT telefone, foto_url, foto_em FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string; foto_url: string | null; foto_em: string | null }>();
