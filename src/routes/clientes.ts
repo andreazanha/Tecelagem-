@@ -326,3 +326,28 @@ clientes.post("/loja-config", async (c) => {
   ).bind(v).run();
   return c.json({ ok: true, criar_clientes: v === "1" });
 });
+
+// Gera (ou renova) o LINK de acesso à loja pra um cliente — o gestor envia e o cliente
+// cria a senha dele ao abrir. Aceita {id} (cadastro da fila) ou {cnpj} (cliente existente).
+clientes.post("/gerar-acesso-loja", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ id?: string; cnpj?: string }>().catch(() => ({} as { id?: string; cnpj?: string }));
+  const id = String(b.id || "").trim();
+  const cnpjDig = String(b.cnpj || "").replace(/\D+/g, "");
+  let cli: { id: string; nome: string | null; senha_hash: string | null } | null = null;
+  if (id) {
+    cli = await c.env.DB.prepare("SELECT id, nome, senha_hash FROM clientes WHERE id=?").bind(id).first();
+  } else if (cnpjDig.length >= 11) {
+    cli = await c.env.DB.prepare(
+      "SELECT id, nome, senha_hash FROM clientes WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
+    ).bind(cnpjDig).first();
+  } else {
+    return c.json({ error: "informe_id_ou_cnpj" }, 400);
+  }
+  if (!cli) return c.json({ error: "cliente_nao_encontrado", msg: "Não achei esse cliente. Confira o CNPJ." }, 404);
+  const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  await c.env.DB.prepare("UPDATE clientes SET acesso_token=? WHERE id=?").bind(token, cli.id).run();
+  const origin = new URL(c.req.url).origin;
+  const link = `${origin}/api/integracao/loja?acesso=${token}`;
+  return c.json({ ok: true, nome: cli.nome || "", link, tem_senha: !!cli.senha_hash });
+});

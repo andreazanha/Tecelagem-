@@ -29,6 +29,33 @@ function regiaoDoCliente(lojaRegiao?: string | null, uf?: string | null): "sul" 
   return regiaoDeUF(uf);
 }
 
+// "Liberado" = pode ver preços e comprar. Cliente que já é nosso (tem código no Syntech)
+// ou cadastro da loja já APROVADO pelo gestor. Cadastro novo em análise = não liberado.
+function clienteLiberado(codigoErp?: string | null, lojaStatus?: string | null): boolean {
+  if (String(codigoErp || "").trim() !== "") return true;
+  return String(lojaStatus || "").trim() === "aprovado";
+}
+
+// ── Senha da loja (PBKDF2 via Web Crypto; sem dependência externa) ──────────────
+const b64 = (a: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(a as ArrayBuffer)));
+async function hashSenha(senha: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, key, 256);
+  return "pbkdf2$100000$" + b64(salt) + "$" + b64(bits);
+}
+async function conferirSenha(senha: string, guardado: string | null): Promise<boolean> {
+  try {
+    const parts = String(guardado || "").split("$");
+    if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
+    const iter = Number(parts[1]) || 100000;
+    const salt = Uint8Array.from(atob(parts[2]), (ch) => ch.charCodeAt(0));
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: iter, hash: "SHA-256" }, key, 256);
+    return b64(bits) === parts[3];
+  } catch { return false; }
+}
+
 type ItemLoja = {
   cod?: string; medida?: string; corNome?: string; corId?: string;
   qtd?: number | string; preco?: number | string; regiao?: string; nome?: string; grupo?: string;
@@ -36,23 +63,102 @@ type ItemLoja = {
 type CorErp = { numero?: number; nome?: string };
 type TamErp = { medida?: string; tamanho?: string };
 
-// ENTRADA NA LOJA — identifica o cliente pelo CNPJ e devolve nome + região de preço.
-// Sem senha (B2B provisório): só confirma que o CNPJ existe e não está bloqueado.
+// ENTRADA NA LOJA — CNPJ + SENHA. Devolve nome, região de preço e se está LIBERADO
+// (pode ver preços/comprar). Cliente sem senha ainda é guiado a criar pelo link.
 loja.post("/entrar", async (c) => {
-  let body: { cnpj?: string } = {};
+  let body: { cnpj?: string; senha?: string } = {};
   try { body = await c.req.json(); } catch { return c.json({ erro: "json_invalido" }, 400); }
   const cnpjDig = soDigitos(body.cnpj);
+  const senha = String(body.senha || "");
   if (cnpjDig.length < 11) return c.json({ erro: "cnpj_invalido", msg: "Informe um CNPJ (ou CPF) válido." }, 400);
 
   const cli = await c.env.DB.prepare(
-    "SELECT nome, uf, loja_regiao, COALESCE(bloqueado,0) AS bloqueado FROM clientes " +
+    "SELECT nome, uf, loja_regiao, COALESCE(bloqueado,0) AS bloqueado, senha_hash, " +
+    "COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp FROM clientes " +
     "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
-  ).bind(cnpjDig).first<{ nome: string | null; uf: string | null; loja_regiao: string | null; bloqueado: number }>();
+  ).bind(cnpjDig).first<{ nome: string | null; uf: string | null; loja_regiao: string | null; bloqueado: number; senha_hash: string | null; loja_status: string; codigo_erp: string }>();
 
-  if (!cli) return c.json({ erro: "cliente_nao_encontrado", msg: "Não encontramos esse CNPJ no nosso cadastro. Fale com a Big Tricot para liberar seu acesso." }, 404);
+  if (!cli) return c.json({ erro: "cliente_nao_encontrado", msg: "Não encontramos esse CNPJ. Se é sua primeira vez, cadastre sua loja." }, 404);
   if (Number(cli.bloqueado) === 1) return c.json({ erro: "cliente_bloqueado", msg: "Seu cadastro está bloqueado no momento. Fale com a Big Tricot." }, 403);
 
-  return c.json({ ok: true, nome: cli.nome || "", regiao: regiaoDoCliente(cli.loja_regiao, cli.uf) });
+  // Sem senha criada ainda: precisa abrir o LINK que a Big Tricot enviou pra criar a senha.
+  if (!cli.senha_hash) return c.json({ erro: "sem_senha", msg: "Seu acesso ainda não tem senha. Abra o link que a Big Tricot te enviou para criar a sua senha." }, 401);
+  if (!senha) return c.json({ erro: "senha_requerida", msg: "Digite sua senha." }, 401);
+  if (!(await conferirSenha(senha, cli.senha_hash))) return c.json({ erro: "senha_invalida", msg: "Senha incorreta." }, 401);
+
+  return c.json({
+    ok: true, nome: cli.nome || "", regiao: regiaoDoCliente(cli.loja_regiao, cli.uf),
+    liberado: clienteLiberado(cli.codigo_erp, cli.loja_status),
+    status: cli.loja_status || (cli.codigo_erp ? "aprovado" : ""),
+  });
+});
+
+// SESSÃO — ao recarregar a loja, confirma rapidinho (sem senha) o estado do cliente já logado:
+// nome, região e se está liberado (o gestor pode ter aprovado nesse meio tempo).
+loja.get("/sessao", async (c) => {
+  const cnpjDig = soDigitos(c.req.query("cnpj"));
+  if (cnpjDig.length < 11) return c.json({ ok: false });
+  const cli = await c.env.DB.prepare(
+    "SELECT nome, uf, loja_regiao, COALESCE(bloqueado,0) AS bloqueado, senha_hash, " +
+    "COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp FROM clientes " +
+    "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
+  ).bind(cnpjDig).first<{ nome: string | null; uf: string | null; loja_regiao: string | null; bloqueado: number; senha_hash: string | null; loja_status: string; codigo_erp: string }>();
+  if (!cli || Number(cli.bloqueado) === 1 || !cli.senha_hash) return c.json({ ok: false });
+  return c.json({
+    ok: true, nome: cli.nome || "", regiao: regiaoDoCliente(cli.loja_regiao, cli.uf),
+    liberado: clienteLiberado(cli.codigo_erp, cli.loja_status),
+    status: cli.loja_status || (cli.codigo_erp ? "aprovado" : ""),
+  });
+});
+
+// LINK DE ACESSO — o gestor gera um link com token e envia pro cliente. Ao abrir, o cliente
+// confirma quem é (nome + CNPJ mascarado) e cria a senha dele. GET valida o token.
+loja.get("/acesso", async (c) => {
+  const token = String(c.req.query("token") || "").trim();
+  if (token.length < 10) return c.json({ erro: "token_invalido", msg: "Link inválido." }, 400);
+  const cli = await c.env.DB.prepare(
+    "SELECT nome, cnpj, senha_hash, COALESCE(bloqueado,0) AS bloqueado FROM clientes WHERE acesso_token = ? LIMIT 1"
+  ).bind(token).first<{ nome: string | null; cnpj: string | null; senha_hash: string | null; bloqueado: number }>();
+  if (!cli) return c.json({ erro: "token_invalido", msg: "Link inválido ou expirado. Peça um novo à Big Tricot." }, 404);
+  if (Number(cli.bloqueado) === 1) return c.json({ erro: "cliente_bloqueado", msg: "Cadastro bloqueado." }, 403);
+  const dig = soDigitos(cli.cnpj);
+  const mascara = dig.length >= 6 ? dig.slice(0, 2) + "•••" + dig.slice(-4) : "";
+  return c.json({ ok: true, nome: cli.nome || "", cnpj_mascara: mascara, tem_senha: !!cli.senha_hash });
+});
+
+// DEFINIR / TROCAR A SENHA. Dois caminhos: (1) pelo token do link (primeiro acesso), ou
+// (2) logado: CNPJ + senha_atual. Depois de definir, já devolve a sessão (liberado etc.).
+loja.post("/definir-senha", async (c) => {
+  let b: { token?: string; cnpj?: string; senha_atual?: string; nova?: string } = {};
+  try { b = await c.req.json(); } catch { return c.json({ erro: "json_invalido" }, 400); }
+  const nova = String(b.nova || "");
+  if (nova.length < 4) return c.json({ erro: "senha_curta", msg: "Crie uma senha com pelo menos 4 caracteres." }, 400);
+
+  let cli: { id: string; nome: string | null; uf: string | null; loja_regiao: string | null; senha_hash: string | null; loja_status: string; codigo_erp: string } | null = null;
+  const token = String(b.token || "").trim();
+  if (token.length >= 10) {
+    cli = await c.env.DB.prepare(
+      "SELECT id, nome, uf, loja_regiao, senha_hash, COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(bloqueado,0) AS bloqueado FROM clientes WHERE acesso_token = ? LIMIT 1"
+    ).bind(token).first();
+    if (!cli) return c.json({ erro: "token_invalido", msg: "Link inválido. Peça um novo à Big Tricot." }, 404);
+  } else {
+    const cnpjDig = soDigitos(b.cnpj);
+    if (cnpjDig.length < 11) return c.json({ erro: "cnpj_invalido", msg: "CNPJ inválido." }, 400);
+    cli = await c.env.DB.prepare(
+      "SELECT id, nome, uf, loja_regiao, senha_hash, COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp FROM clientes " +
+      "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
+    ).bind(cnpjDig).first();
+    if (!cli) return c.json({ erro: "cliente_nao_encontrado", msg: "CNPJ não encontrado." }, 404);
+    if (cli.senha_hash && !(await conferirSenha(String(b.senha_atual || ""), cli.senha_hash))) return c.json({ erro: "senha_invalida", msg: "Senha atual incorreta." }, 401);
+  }
+
+  const hash = await hashSenha(nova);
+  await c.env.DB.prepare("UPDATE clientes SET senha_hash=? WHERE id=?").bind(hash, cli.id).run();
+  return c.json({
+    ok: true, nome: cli.nome || "", regiao: regiaoDoCliente(cli.loja_regiao, cli.uf),
+    liberado: clienteLiberado(cli.codigo_erp, cli.loja_status),
+    status: cli.loja_status || (cli.codigo_erp ? "aprovado" : ""),
+  });
 });
 
 loja.post("/pedido", async (c) => {
@@ -64,13 +170,14 @@ loja.post("/pedido", async (c) => {
   if (cnpjDig.length < 11) return c.json({ erro: "cnpj_invalido", msg: "Informe um CNPJ (ou CPF) válido para enviar o pedido." }, 400);
   if (!itensIn.length) return c.json({ erro: "carrinho_vazio", msg: "Seu carrinho está vazio." }, 400);
 
-  // 1) cliente pelo CNPJ (comparando só os dígitos), não bloqueado
+  // 1) cliente pelo CNPJ (comparando só os dígitos), não bloqueado E liberado (aprovado)
   const cli = await c.env.DB.prepare(
-    "SELECT id, nome, cnpj, COALESCE(bloqueado,0) AS bloqueado, codigo_erp FROM clientes " +
+    "SELECT id, nome, cnpj, COALESCE(bloqueado,0) AS bloqueado, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(loja_status,'') AS loja_status FROM clientes " +
     "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
-  ).bind(cnpjDig).first<{ id: string; nome: string | null; cnpj: string | null; bloqueado: number; codigo_erp: string | null }>();
+  ).bind(cnpjDig).first<{ id: string; nome: string | null; cnpj: string | null; bloqueado: number; codigo_erp: string; loja_status: string }>();
   if (!cli) return c.json({ erro: "cliente_nao_encontrado", msg: "Não encontramos esse CNPJ no nosso cadastro. Fale com a Big Tricot para liberar seu acesso." }, 404);
   if (Number(cli.bloqueado) === 1) return c.json({ erro: "cliente_bloqueado", msg: "Seu cadastro está bloqueado no momento. Fale com a Big Tricot." }, 403);
+  if (!clienteLiberado(cli.codigo_erp, cli.loja_status)) return c.json({ erro: "cadastro_em_analise", msg: "Seu cadastro ainda está em análise. Assim que a Big Tricot aprovar, você poderá finalizar pedidos. 💛" }, 403);
 
   // idempotência: se o mesmo checkout já foi gravado, devolve o mesmo pedido.
   const idem = String(body.idem || "").trim().slice(0, 80) || null;
@@ -167,15 +274,19 @@ loja.post("/cadastro", async (c) => {
   const s = (k: string) => String(b[k] ?? "").trim();
   const cnpjDig = soDigitos(b.cnpj);
   const nome = s("nome"), cidade = s("cidade"), uf = s("uf").toUpperCase().slice(0, 2);
+  const senha = String(b.senha || "");
   if (cnpjDig.length < 11) return c.json({ erro: "cnpj_invalido", msg: "Informe um CNPJ (ou CPF) válido." }, 400);
   if (!nome || !cidade || !uf) return c.json({ erro: "faltam_dados", msg: "Preencha ao menos a razão social, cidade e UF." }, 400);
+  if (senha.length < 4) return c.json({ erro: "senha_curta", msg: "Crie uma senha com pelo menos 4 caracteres." }, 400);
 
   const ex = await c.env.DB.prepare(
     "SELECT id, codigo_erp, COALESCE(loja_status,'') AS loja_status FROM clientes " +
     "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
   ).bind(cnpjDig).first<{ id: string; codigo_erp: string | null; loja_status: string }>();
-  if (ex && (ex.codigo_erp || "").trim()) return c.json({ erro: "ja_cadastrado", msg: "Essa loja já está cadastrada! É só entrar com o CNPJ." }, 409);
+  if (ex && (ex.codigo_erp || "").trim()) return c.json({ erro: "ja_cadastrado", msg: "Essa loja já é nossa cliente! Peça o link de acesso à Big Tricot para criar sua senha." }, 409);
   if (ex && ex.loja_status === "pendente") return c.json({ ok: true, pendente: true, msg: "Seu cadastro já está em análise. Assim que for aprovado, você poderá comprar. 💛" });
+
+  const senhaHash = await hashSenha(senha);
 
   const campos = {
     nome, fantasia: s("fantasia") || nome, cnpj: cnpjDig, inscricao_estadual: s("inscricao"),
@@ -185,16 +296,16 @@ loja.post("/cadastro", async (c) => {
   };
   if (ex) {
     await c.env.DB.prepare(
-      "UPDATE clientes SET nome=?, fantasia=?, inscricao_estadual=?, endereco=?, numero=?, complemento=?, bairro=?, cep=?, cidade=?, uf=?, email=?, telefone=?, whatsapp=?, simples_nacional=?, " +
+      "UPDATE clientes SET nome=?, fantasia=?, inscricao_estadual=?, endereco=?, numero=?, complemento=?, bairro=?, cep=?, cidade=?, uf=?, email=?, telefone=?, whatsapp=?, simples_nacional=?, senha_hash=?, " +
       "origem='loja', loja_status='pendente', loja_cadastro_em=datetime('now') WHERE id=?"
-    ).bind(campos.nome, campos.fantasia, campos.inscricao_estadual, campos.endereco, campos.numero, campos.complemento, campos.bairro, campos.cep, campos.cidade, campos.uf, campos.email, campos.telefone, campos.whatsapp, campos.simples_nacional, ex.id).run();
+    ).bind(campos.nome, campos.fantasia, campos.inscricao_estadual, campos.endereco, campos.numero, campos.complemento, campos.bairro, campos.cep, campos.cidade, campos.uf, campos.email, campos.telefone, campos.whatsapp, campos.simples_nacional, senhaHash, ex.id).run();
   } else {
     await c.env.DB.prepare(
-      "INSERT INTO clientes (id, nome, fantasia, cnpj, inscricao_estadual, endereco, numero, complemento, bairro, cep, cidade, uf, email, telefone, whatsapp, simples_nacional, origem, loja_status, loja_cadastro_em) " +
-      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'loja', 'pendente', datetime('now'))"
-    ).bind(uid(), campos.nome, campos.fantasia, campos.cnpj, campos.inscricao_estadual, campos.endereco, campos.numero, campos.complemento, campos.bairro, campos.cep, campos.cidade, campos.uf, campos.email, campos.telefone, campos.whatsapp, campos.simples_nacional).run();
+      "INSERT INTO clientes (id, nome, fantasia, cnpj, inscricao_estadual, endereco, numero, complemento, bairro, cep, cidade, uf, email, telefone, whatsapp, simples_nacional, senha_hash, origem, loja_status, loja_cadastro_em) " +
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'loja', 'pendente', datetime('now'))"
+    ).bind(uid(), campos.nome, campos.fantasia, campos.cnpj, campos.inscricao_estadual, campos.endereco, campos.numero, campos.complemento, campos.bairro, campos.cep, campos.cidade, campos.uf, campos.email, campos.telefone, campos.whatsapp, campos.simples_nacional, senhaHash).run();
   }
-  return c.json({ ok: true, pendente: true, msg: "Recebemos seu cadastro! 🎉 Nossa equipe vai conferir e liberar seu acesso em breve." }, 201);
+  return c.json({ ok: true, pendente: true, criado: true, msg: "Recebemos seu cadastro! 🎉 Você já pode ver o catálogo; os preços e pedidos liberam assim que a Big Tricot aprovar seu acesso." }, 201);
 });
 
 // ÁREA DO CLIENTE — "Meus pedidos": lista os pedidos da loja daquele CNPJ (público,

@@ -233,6 +233,7 @@
 
 <div class="cats-bar" id="catsBar" style="display:none"><div class="cats" id="cats"></div></div>
 
+<div id="avisoLib" style="display:none;background:#fbf0e3;border-bottom:1px solid #eadcc6;color:#8a5a2b;font-size:13px;line-height:1.4;padding:10px 16px;text-align:center"></div>
 <main id="app"><div class="vazio">Carregando catálogo…</div></main>
 
 <a id="waFloat" class="wa-float" href="#" target="_blank" rel="noopener" style="display:none" aria-label="Falar no WhatsApp" title="Falar no WhatsApp">
@@ -258,11 +259,20 @@
     </div>
     <div style="padding:14px 24px 24px">
       <div id="entView">
-        <label style="display:block;font-size:14px;color:#5f584e;margin-bottom:6px">Informe o CNPJ da sua loja para entrar</label>
-        <input id="entCnpj" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" style="display:block;width:100%;box-sizing:border-box;padding:13px;border:1px solid #d6d0c4;border-radius:12px;font-size:16px">
+        <label style="display:block;font-size:14px;color:#5f584e;margin-bottom:6px">Entre com o CNPJ e a senha da sua loja</label>
+        <input id="entCnpj" type="text" inputmode="numeric" autocomplete="username" placeholder="CNPJ" style="display:block;width:100%;box-sizing:border-box;padding:13px;border:1px solid #d6d0c4;border-radius:12px;font-size:16px">
+        <input id="entSenha" type="password" autocomplete="current-password" placeholder="Senha" style="display:block;width:100%;box-sizing:border-box;padding:13px;border:1px solid #d6d0c4;border-radius:12px;font-size:16px;margin-top:8px">
         <div id="entMsg" style="font-size:13px;min-height:1px;margin:8px 0;line-height:1.35"></div>
         <button id="entBtn" style="width:100%;padding:14px;border:0;border-radius:12px;background:#ad5033;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Entrar</button>
         <div style="text-align:center;margin-top:14px;font-size:13.5px;color:#5f584e">Ainda não é cliente?<br><button type="button" id="irCad" style="margin-top:4px;background:none;border:0;color:#ad5033;font-weight:700;font-size:14px;cursor:pointer;text-decoration:underline">Cadastrar minha loja</button></div>
+      </div>
+      <div id="senhaView" style="display:none">
+        <div style="font-weight:700;font-size:17px;color:#2c2721;margin-bottom:2px">Crie sua senha</div>
+        <div id="senhaQuem" style="font-size:13px;color:#8a8073;margin-bottom:12px"></div>
+        <input id="snNova" type="password" autocomplete="new-password" placeholder="Nova senha (mín. 4)" style="display:block;width:100%;box-sizing:border-box;padding:13px;border:1px solid #d6d0c4;border-radius:12px;font-size:16px">
+        <input id="snConf" type="password" autocomplete="new-password" placeholder="Repita a senha" style="display:block;width:100%;box-sizing:border-box;padding:13px;border:1px solid #d6d0c4;border-radius:12px;font-size:16px;margin-top:8px">
+        <div id="snMsg" style="font-size:13px;min-height:1px;margin:8px 0;line-height:1.35"></div>
+        <button id="snBtn" style="width:100%;padding:14px;border:0;border-radius:12px;background:#ad5033;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Salvar e entrar</button>
       </div>
       <div id="cadView" style="display:none">
         <div style="font-weight:700;font-size:17px;color:#2c2721;margin-bottom:2px">Cadastrar minha loja</div>
@@ -279,6 +289,8 @@
           <input id="cCid" class="cad-inp" placeholder="Cidade *">
           <input id="cEmail" class="cad-inp" type="email" placeholder="E-mail">
           <input id="cTel" class="cad-inp" inputmode="numeric" placeholder="WhatsApp / telefone">
+          <input id="cSenha" class="cad-inp" type="password" autocomplete="new-password" placeholder="Crie uma senha * (mín. 4)">
+          <input id="cSenha2" class="cad-inp" type="password" autocomplete="new-password" placeholder="Repita a senha *">
         </div>
         <button id="cadBtn" style="width:100%;margin-top:12px;padding:14px;border:0;border-radius:12px;background:#ad5033;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Enviar cadastro</button>
         <button type="button" id="voltarEnt" style="width:100%;margin-top:8px;background:none;border:0;color:#8a8073;font-size:13px;cursor:pointer">← Voltar para o login</button>
@@ -296,6 +308,7 @@
   var TAM = {}; (D.banco_tamanhos||[]).forEach(function(t){TAM[t.id]=t;});
   var EST = (D.estoque&&D.estoque.itens)?D.estoque.itens:{};
   var regiao = "sul";
+  var LIBERADO = false;   // pode ver preços e comprar? (cliente aprovado / já é nosso)
   var filtroTxt = "";
   var sel = { prod:null, corId:null, qtd:{} }; // qtd["corId|cod|idtam"] = n
   var CART = carregarCart();
@@ -310,6 +323,8 @@
   ];
 
   function brl(v){ v=Number(v)||0; return "R$ "+v.toFixed(2).replace(".",","); }
+  // Preço só aparece pra cliente LIBERADO. Em análise, mostra um cadeado no lugar.
+  function precoVis(v){ return LIBERADO ? brl(v) : '<span style="color:#b08968">🔒</span>'; }
   function precoLinha(l){ return Number(regiao==="norte"? l.norte : l.sul)||0; }
   function menorPreco(p){ var m=Infinity; (p.grupos||[]).forEach(function(g){(g.linhas||[]).forEach(function(l){var v=precoLinha(l); if(v>0&&v<m)m=v;});}); return m===Infinity?0:m; }
   function estoqueProduto(p){ var tot=Number(p.estoque_geral)||0; return tot; }
@@ -326,7 +341,7 @@
       '<div class="foto">'+ (p.foto? '<div class="ph">'+inicial(p.nome)+'</div><img loading="lazy" src="'+esc(p.foto)+'" onload="this.style.opacity=1" onerror="this.remove()" style="opacity:0;transition:opacity .3s">' : '<div class="ph">'+inicial(p.nome)+'</div>') +
         badgeHTML(p) +
       '</div><div class="info"><div class="nome">'+esc(p.nome)+'</div>'+
-      (mp? '<div class="preco">a partir de <b>'+brl(mp)+'</b></div>' : '<div class="preco">—</div>')+
+      (LIBERADO ? (mp? '<div class="preco">a partir de <b>'+brl(mp)+'</b></div>' : '<div class="preco">—</div>') : '<div class="preco" style="color:#b08968">🔒 preços após liberação</div>')+
       '</div></article>';
   }
   // Ícones SVG (traço fino, estilo Lucide) por categoria — minimalistas e elegantes.
@@ -529,8 +544,8 @@
         if(filtra){ var s=estSaldo(l.cod,l.id_tamanho); if(s!=null&&s<=0) return ""; }
         var k=qKey(l.cod,l.id_tamanho); var q=sel.qtd[k]||0;
         return '<div class="tamrow"><div class="medbox"><div class="med">'+esc(medidaDe(l.id_tamanho).replace(/(\d)\s*[×xX]\s*(\d)/g,"$1 × $2"))+'</div>'+estTxtLinha(l.cod,l.id_tamanho)+'</div>'+
-          '<div class="pr">'+brl(precoLinha(l))+'</div>'+
-          '<div class="stepper" data-k="'+esc(k)+'"><button data-d="-1">−</button><input type="number" min="0" value="'+q+'"><button data-d="1">+</button></div></div>';
+          '<div class="pr">'+precoVis(precoLinha(l))+'</div>'+
+          (LIBERADO ? '<div class="stepper" data-k="'+esc(k)+'"><button data-d="-1">−</button><input type="number" min="0" value="'+q+'"><button data-d="1">+</button></div>' : '<div class="pr" style="opacity:.6;font-size:11px">—</div>')+'</div>';
       }).join("");
       if(!rows) return "";                    // seção sem nenhuma opção visível → some
       return '<div class="grp"><div class="t">'+esc(g.titulo||"Itens")+'</div>'+rows+'</div>';
@@ -564,6 +579,7 @@
     var cp=0, ct=0;
     (CART||[]).forEach(function(it){ if(it.pid===p.id){ cp+=Number(it.qtd)||0; ct+=(Number(it.qtd)||0)*(Number(it.preco)||0); } });
     var tp=pecas+cp, tt=total+ct;
+    if(!LIBERADO) return '<span class="rz-q" style="color:#b08968">🔒 Preços e pedidos liberam após a aprovação do seu cadastro</span>';
     var nota = cp>0 ? '<span class="rz-c">'+cp+' no carrinho</span>' : '';
     return '<span class="rz-q">'+tp+' '+(tp===1?'peça':'peças')+'</span>'+nota+'<b class="rz-v">'+brl(tt)+'</b>';
   }
@@ -592,7 +608,7 @@
             '</div>'+
             '<div id="tamanhos">'+tamanhosHTML(p)+'</div>'+
             '<div class="resumo" id="resumo">'+resumoHTML(p)+'</div>'+
-            '<button class="addcart" id="addcart">Adicionar ao carrinho</button>'+
+            (LIBERADO ? '<button class="addcart" id="addcart">Adicionar ao carrinho</button>' : '<div style="text-align:center;padding:12px;border:1px dashed #d6c6b0;border-radius:12px;color:#8a6d4f;font-size:13.5px;background:#fbf6ef">🔒 Seu cadastro está em análise. Assim que a Big Tricot aprovar, os preços e o pedido liberam aqui.</div>')+
           '</div>'+
         '</div>'+
       '</div>';
@@ -607,7 +623,7 @@
   }
   function ligarDetalhe(){
     document.getElementById("cores").onclick=function(e){ var c=e.target.closest(".sw-dot"); if(!c)return; sel.corId=c.getAttribute("data-cor"); atualizarCorArea(); };
-    document.getElementById("addcart").onclick=adicionarAoCarrinho;
+    var ac=document.getElementById("addcart"); if(ac) ac.onclick=adicionarAoCarrinho;
     ligarTamanhos();
   }
   function ligarTamanhos(){
@@ -619,6 +635,7 @@
     });
   }
   function adicionarAoCarrinho(){
+    if(!LIBERADO){ alert("Seu cadastro ainda está em análise. Assim que a Big Tricot aprovar, você poderá montar o pedido. 💛"); return; }
     var p=sel.prod, add=0, LIN=linhasDoProd(p);
     // Percorre TODAS as cores selecionadas (a chave é "corId|cod|idtam") — não só a
     // cor que está aberta —, pra todas as cores escolhidas entrarem no carrinho.
@@ -775,55 +792,100 @@
       var s=document.getElementById("sairLoja"); if(s) s.onclick=function(ev){ ev.preventDefault(); sairLoja(); };
     } else { el.style.display="none"; el.innerHTML=""; }
   }
-  function aplicarSessao(nome,reg){
+  function aplicarSessao(nome,reg,liberado){
     regiao = (reg==="norte")?"norte":"sul";
-    try{ localStorage.setItem("bt_cli", JSON.stringify({nome:nome||"", regiao:regiao})); }catch(e){}
+    LIBERADO = !!liberado;
+    try{ localStorage.setItem("bt_cli", JSON.stringify({nome:nome||"", regiao:regiao, liberado:LIBERADO})); }catch(e){}
     mostrarSaudacao(nome);
     document.getElementById("entrada").style.display="none";
     document.body.style.overflow="";
+    atualizarAvisoLib();
     render(); if(document.getElementById("modal").classList.contains("show")) renderDetalhe();
+  }
+  // Faixa de aviso no topo pra cliente em análise (preços/pedidos ainda bloqueados).
+  function atualizarAvisoLib(){
+    var el=document.getElementById("avisoLib"); if(!el) return;
+    if(cnpjSalvo() && !LIBERADO){ el.style.display="block"; el.innerHTML='🔒 Seu cadastro está <b>em análise</b>. Você já pode navegar o catálogo; os <b>preços e pedidos</b> liberam assim que a Big Tricot aprovar seu acesso.'; }
+    else { el.style.display="none"; }
   }
   function abrirEntrada(){
     var ov=document.getElementById("entrada"); ov.style.display="flex"; document.body.style.overflow="hidden";
     var inp=document.getElementById("entCnpj"); if(inp && !inp.value) inp.value=cnpjSalvo();
     setTimeout(function(){ try{ inp.focus(); }catch(e){} },50);
   }
-  function sairLoja(){ try{ localStorage.removeItem("bt_cli"); localStorage.removeItem("bt_cnpj"); }catch(e){} mostrarSaudacao(""); abrirEntrada(); }
+  function sairLoja(){ try{ localStorage.removeItem("bt_cli"); localStorage.removeItem("bt_cnpj"); }catch(e){} LIBERADO=false; TOKEN_ACESSO=""; mostrarSaudacao(""); atualizarAvisoLib(); render(); mostrarEnt(); abrirEntrada(); }
   function entrarLoja(){
-    var inp=document.getElementById("entCnpj"); var msg=document.getElementById("entMsg"); var btn=document.getElementById("entBtn");
-    var cnpj=(inp&&inp.value||"").trim(); var dig=cnpj.replace(/\D+/g,"");
+    var inp=document.getElementById("entCnpj"); var inps=document.getElementById("entSenha"); var msg=document.getElementById("entMsg"); var btn=document.getElementById("entBtn");
+    var cnpj=(inp&&inp.value||"").trim(); var dig=cnpj.replace(/\D+/g,""); var senha=(inps&&inps.value||"");
     if(dig.length<11){ msg.style.color="#b91c1c"; msg.textContent="Digite o CNPJ (ou CPF) da sua loja."; return; }
+    if(!senha){ msg.style.color="#b91c1c"; msg.textContent="Digite sua senha."; return; }
     msg.textContent=""; btn.disabled=true; btn.textContent="Entrando…";
-    fetch("/api/loja/entrar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cnpj:cnpj})})
+    fetch("/api/loja/entrar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cnpj:cnpj,senha:senha})})
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
       .then(function(res){
         btn.disabled=false; btn.textContent="Entrar";
-        if(res.ok && res.j.ok){ try{ localStorage.setItem("bt_cnpj", cnpj); }catch(e){} aplicarSessao(res.j.nome, res.j.regiao); }
+        if(res.ok && res.j.ok){ try{ localStorage.setItem("bt_cnpj", cnpj); }catch(e){} aplicarSessao(res.j.nome, res.j.regiao, res.j.liberado); }
         else if(res.j.erro==="cliente_nao_encontrado"){ msg.style.color="#b91c1c"; msg.textContent="Não encontramos esse CNPJ. Se é sua primeira vez, cadastre sua loja abaixo 👇"; }
-        else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui validar o CNPJ. Tente novamente."; }
+        else if(res.j.erro==="sem_senha"){ msg.style.color="#b91c1c"; msg.innerHTML="Seu acesso ainda não tem senha. Abra o <b>link que a Big Tricot te enviou</b> para criar sua senha."; }
+        else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui entrar. Confira o CNPJ e a senha."; }
       })
       .catch(function(){ btn.disabled=false; btn.textContent="Entrar"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão no momento. Tente novamente."; });
   }
   document.getElementById("entBtn").addEventListener("click",entrarLoja);
-  document.getElementById("entCnpj").addEventListener("keydown",function(e){ if(e.key==="Enter") entrarLoja(); });
+  document.getElementById("entSenha").addEventListener("keydown",function(e){ if(e.key==="Enter") entrarLoja(); });
+
+  // Criar/definir senha (via link de acesso com token, ou trocar depois de logado)
+  var TOKEN_ACESSO="";
+  function mostrarCriarSenha(nome, cnpjMascara){
+    document.getElementById("entView").style.display="none";
+    document.getElementById("cadView").style.display="none";
+    document.getElementById("senhaView").style.display="block";
+    document.getElementById("senhaQuem").innerHTML = nome ? ('Olá, <b>'+esc(nome)+'</b>'+(cnpjMascara?' · CNPJ '+esc(cnpjMascara):'')+'. Crie uma senha para acessar o catálogo.') : 'Crie uma senha para acessar o catálogo.';
+    document.getElementById("snMsg").textContent="";
+    var ov=document.getElementById("entrada"); ov.style.display="flex"; document.body.style.overflow="hidden";
+  }
+  function salvarNovaSenha(){
+    var nova=(document.getElementById("snNova").value||""); var conf=(document.getElementById("snConf").value||"");
+    var msg=document.getElementById("snMsg"), btn=document.getElementById("snBtn");
+    if(nova.length<4){ msg.style.color="#b91c1c"; msg.textContent="A senha precisa ter pelo menos 4 caracteres."; return; }
+    if(nova!==conf){ msg.style.color="#b91c1c"; msg.textContent="As senhas não são iguais."; return; }
+    msg.textContent=""; btn.disabled=true; btn.textContent="Salvando…";
+    var body = TOKEN_ACESSO ? {token:TOKEN_ACESSO, nova:nova} : {cnpj:cnpjSalvo(), nova:nova};
+    fetch("/api/loja/definir-senha",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+      .then(function(res){
+        btn.disabled=false; btn.textContent="Salvar e entrar";
+        if(res.ok && res.j.ok){ aplicarSessao(res.j.nome, res.j.regiao, res.j.liberado); try{ history.replaceState(null,"",location.pathname); }catch(e){} }
+        else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui salvar a senha."; }
+      })
+      .catch(function(){ btn.disabled=false; btn.textContent="Salvar e entrar"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; });
+  }
+  document.getElementById("snBtn").addEventListener("click",salvarNovaSenha);
 
   // Cadastro de loja nova (abre dentro do mesmo modal de entrada)
   function mostrarCad(prefill){ document.getElementById("entView").style.display="none"; document.getElementById("cadView").style.display="block"; var cc=document.getElementById("cCnpj"); if(cc && prefill && !cc.value) cc.value=prefill; document.getElementById("cadMsg").textContent=""; }
-  function mostrarEnt(){ document.getElementById("cadView").style.display="none"; document.getElementById("entView").style.display="block"; }
+  function mostrarEnt(){ document.getElementById("cadView").style.display="none"; var sv=document.getElementById("senhaView"); if(sv) sv.style.display="none"; document.getElementById("entView").style.display="block"; }
   document.getElementById("irCad").addEventListener("click",function(){ mostrarCad((document.getElementById("entCnpj").value||"").trim()); });
   document.getElementById("voltarEnt").addEventListener("click",mostrarEnt);
   function enviarCadastro(){
     var g=function(id){ return (document.getElementById(id).value||"").trim(); };
     var msg=document.getElementById("cadMsg"), btn=document.getElementById("cadBtn");
-    var body={ nome:g("cNome"), fantasia:g("cFant"), cnpj:g("cCnpj"), inscricao:g("cIe"), endereco:g("cEnd"), numero:g("cNum"), bairro:g("cBai"), cep:g("cCep"), uf:g("cUf"), cidade:g("cCid"), email:g("cEmail"), whatsapp:g("cTel"), telefone:g("cTel") };
+    var senha=g("cSenha"), senha2=g("cSenha2");
+    var body={ nome:g("cNome"), fantasia:g("cFant"), cnpj:g("cCnpj"), inscricao:g("cIe"), endereco:g("cEnd"), numero:g("cNum"), bairro:g("cBai"), cep:g("cCep"), uf:g("cUf"), cidade:g("cCid"), email:g("cEmail"), whatsapp:g("cTel"), telefone:g("cTel"), senha:senha };
     if(!body.nome || !body.cidade || !body.uf || body.cnpj.replace(/\D/g,"").length<11){ msg.style.color="#b91c1c"; msg.textContent="Preencha pelo menos Razão social, CNPJ, Cidade e UF."; return; }
+    if(senha.length<4){ msg.style.color="#b91c1c"; msg.textContent="Crie uma senha com pelo menos 4 caracteres."; return; }
+    if(senha!==senha2){ msg.style.color="#b91c1c"; msg.textContent="As senhas não são iguais."; return; }
     msg.textContent=""; btn.disabled=true; btn.textContent="Enviando…";
     fetch("/api/loja/cadastro",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
       .then(function(res){
         btn.disabled=false; btn.textContent="Enviar cadastro";
-        if(res.j.ok){ msg.style.color="#166534"; msg.textContent=res.j.msg||"Cadastro recebido!"; btn.style.display="none"; var grid=document.querySelector("#cadView [style*='grid']"); if(grid) grid.style.display="none"; }
-        else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui enviar. Confira os dados."; if(res.j.erro==="ja_cadastrado") setTimeout(mostrarEnt,1800); }
+        if(res.j.ok){
+          // Cadastro novo criado: já loga (em análise, sem preços). Senão, mostra a mensagem.
+          if(res.j.criado){ try{ localStorage.setItem("bt_cnpj", body.cnpj); }catch(e){} aplicarSessao(body.nome, "sul", false); }
+          else { msg.style.color="#166534"; msg.textContent=res.j.msg||"Cadastro recebido!"; btn.style.display="none"; var grid=document.querySelector("#cadView [style*='grid']"); if(grid) grid.style.display="none"; }
+        }
+        else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui enviar. Confira os dados."; if(res.j.erro==="ja_cadastrado") setTimeout(mostrarEnt,2200); }
       })
       .catch(function(){ btn.disabled=false; btn.textContent="Enviar cadastro"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; });
   }
@@ -836,14 +898,30 @@
   render();
   ligarWhatsApp();
 
-  // Inicia sessão: usa o que já está salvo pra mostrar rápido, e revalida no servidor.
+  // Inicia sessão: trata link de acesso (?acesso=token), senão usa o que está salvo e revalida.
   (function iniciarSessao(){
-    var c=cliSalvo(); if(c && c.regiao){ regiao=(c.regiao==="norte")?"norte":"sul"; mostrarSaudacao(c.nome); }
+    var c=cliSalvo(); if(c && c.regiao){ regiao=(c.regiao==="norte")?"norte":"sul"; LIBERADO=!!c.liberado; mostrarSaudacao(c.nome); atualizarAvisoLib(); }
+    // 1) Link de acesso enviado pelo gestor: o cliente cria a senha dele.
+    var tok=""; try{ tok=new URLSearchParams(location.search).get("acesso")||""; }catch(e){}
+    if(tok){
+      TOKEN_ACESSO=tok;
+      fetch("/api/loja/acesso?token="+encodeURIComponent(tok))
+        .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+        .then(function(res){
+          if(res.ok && res.j.ok){
+            if(res.j.tem_senha){ TOKEN_ACESSO=""; mostrarEnt(); abrirEntrada(); }   // já tem senha → login normal
+            else { mostrarCriarSenha(res.j.nome, res.j.cnpj_mascara); }               // 1º acesso → cria senha
+          } else { TOKEN_ACESSO=""; mostrarEnt(); abrirEntrada(); }
+        })
+        .catch(function(){ TOKEN_ACESSO=""; abrirEntrada(); });
+      return;
+    }
+    // 2) Sessão já salva: confirma rapidinho (sem senha) o estado atual.
     var dig=(cnpjSalvo()||"").replace(/\D+/g,"");
     if(dig.length>=11){
-      fetch("/api/loja/entrar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cnpj:cnpjSalvo()})})
+      fetch("/api/loja/sessao?cnpj="+encodeURIComponent(cnpjSalvo()))
         .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
-        .then(function(res){ if(res.ok && res.j.ok){ aplicarSessao(res.j.nome,res.j.regiao); } else { sairLoja(); } })
+        .then(function(res){ if(res.ok && res.j.ok){ aplicarSessao(res.j.nome,res.j.regiao,res.j.liberado); } else { sairLoja(); } })
         .catch(function(){ /* offline: segue com o que estava salvo */ });
     } else { abrirEntrada(); }
   })();

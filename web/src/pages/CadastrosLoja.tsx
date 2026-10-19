@@ -48,6 +48,9 @@ export function CadastrosLoja() {
         </label>
       </div>
 
+      {/* Dar acesso à loja a um cliente que JÁ é nosso (gera um link pra ele criar a senha) */}
+      <AcessoExistente />
+
       {erro && <div className="card pad" style={{ color: "#b91c1c" }}>{erro}</div>}
       {!lista ? (
         <div className="card pad muted">Carregando…</div>
@@ -159,6 +162,51 @@ function CardCadastro({ c, prazos, onMudou }: { c: CadastroLoja; prazos: { codig
             {pendente && <button className="btn" disabled={salvando} onClick={recusar} style={{ color: "#b91c1c", borderColor: "#fecaca" }}>Recusar</button>}
             <button className="btn btn-primary" disabled={salvando} onClick={aprovar}>{salvando ? "Salvando…" : pendente ? "✓ Aprovar" : "Salvar / reenviar"}</button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Gera um link de acesso à loja para um cliente que já é nosso (pelo CNPJ). Ele abre o
+// link, cria a senha e já entra vendo os preços.
+function AcessoExistente() {
+  const [cnpj, setCnpj] = useState("");
+  const [link, setLink] = useState("");
+  const [nome, setNome] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+  async function gerar() {
+    const dig = cnpj.replace(/\D/g, "");
+    if (dig.length < 11) { setMsg("Digite um CNPJ válido."); return; }
+    setBusy(true); setMsg(""); setLink("");
+    try {
+      const r = await api.cadastroGerarAcesso({ cnpj: dig });
+      if (r.ok) { setLink(r.link); setNome(r.nome); setMsg(r.tem_senha ? "Esse cliente já tem senha — o link serve para ele redefinir." : ""); }
+      else setMsg(r.msg || "Não achei esse cliente. Confira o CNPJ.");
+    } catch { setMsg("Não consegui gerar o link."); } finally { setBusy(false); }
+  }
+  async function copiar() {
+    try { await navigator.clipboard.writeText(link); setCopiado(true); setTimeout(() => setCopiado(false), 1800); } catch { /* ok */ }
+  }
+  return (
+    <div className="card pad" style={{ display: "grid", gap: 8 }}>
+      <div style={{ fontWeight: 800, fontSize: 14 }}>🔑 Dar acesso a um cliente que já é nosso</div>
+      <div className="muted" style={{ fontSize: 12.5, maxWidth: 620 }}>
+        Gere um link e envie pelo WhatsApp. Ao abrir, o cliente <b>cria a senha dele</b> e já entra vendo os preços (sem precisar aprovar — ele já é cliente).
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="CNPJ do cliente" onKeyDown={(e) => { if (e.key === "Enter") gerar(); }}
+          style={{ padding: "9px 11px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 14, minWidth: 220 }} />
+        <button className="btn btn-primary" disabled={busy} onClick={gerar}>{busy ? "Gerando…" : "Gerar link"}</button>
+      </div>
+      {msg && <div style={{ fontSize: 12.5, color: "#92400e" }}>{msg}</div>}
+      {link && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "9px 11px" }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: "#166534" }}>Link de {nome || "acesso"}:</span>
+          <input readOnly value={link} onFocus={(e) => e.target.select()} style={{ flex: 1, minWidth: 220, padding: "7px 9px", borderRadius: 8, border: "1px solid #bbf7d0", fontSize: 12.5, background: "#fff" }} />
+          <button className="btn" onClick={copiar}>{copiado ? "✓ Copiado" : "Copiar"}</button>
         </div>
       )}
     </div>
