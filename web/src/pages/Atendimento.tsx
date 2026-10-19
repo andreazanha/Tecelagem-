@@ -138,6 +138,7 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
   const [equipeOpen, setEquipeOpen] = useState(false);
   const [campanhaOpen, setCampanhaOpen] = useState(false);
   const [gruposOpen, setGruposOpen] = useState(false);
+  const [gruposColOpen, setGruposColOpen] = useState(false);  // menu "Grupos" (conversas de grupo)
   const [reservasOpen, setReservasOpen] = useState(false);
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [filtroAtend, setFiltroAtend] = useState<string>("todos"); // gestor: filtra por vendedor
@@ -282,6 +283,11 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, busca, filtroAtend]);
+
+  // A coluna "Grupos" sai do quadro e vira um MENU (botão "Grupos" ao lado de "Nova conversa").
+  const ehColGrupos = (col: { id: string; label: string }) => col.id === "grupos" || /grupo/i.test(col.label || "");
+  const colGrupos = (board?.colunas || []).find(ehColGrupos);
+  const cardsGrupos = colGrupos ? (gruposPorColuna.get(colGrupos.id) || []) : [];
 
   // Fotos de perfil dos cards (busca só os primeiros e guarda em cache pra não pesar).
   const fotoCache = useRef<Record<string, string | null>>({});
@@ -613,6 +619,7 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
           <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
           <button className="btn btn-soft" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); if (!n) { try { if (!audioRef.current) audioRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)(); } catch { /* ok */ } audioRef.current?.resume?.(); setTimeout(() => tocarDing(), 60); } return n; })} title={mudo ? "Som desligado — clique para ligar (toca um teste)" : "Toca um som quando chega mensagem nova. Clique para desligar."}>{mudo ? "🔕 Som off" : "🔔 Som on"}</button>
           {podeFuncao(getUser(), "crm.nova") && <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>}
+          {colGrupos && <button className="btn btn-soft" onClick={() => setGruposColOpen(true)} title="Conversas de grupo">👥 Grupos{cardsGrupos.length ? ` (${cardsGrupos.length})` : ""}</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
           {ehGestorAtend() && podeFuncao(getUser(), "crm.campanha") && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
           {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setGruposOpen(true)}>👥 Postar em grupo</button>}
@@ -664,7 +671,7 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
         <>
         {/* Atalho de colunas (só no celular): toque num chip pra pular direto pra coluna. */}
         <div className="fx-colnav">
-          {board.colunas.map((col) => {
+          {board.colunas.filter((col) => !ehColGrupos(col)).map((col) => {
             const n = (gruposPorColuna.get(col.id) || []).length;
             return (
               <button key={col.id} className="fx-colnav-chip" onClick={() => colRefs.current[col.id]?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })}>
@@ -674,7 +681,7 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
           })}
         </div>
         <div className="fx-board at-board" ref={boardRef}>
-          {board.colunas.map((col) => {
+          {board.colunas.filter((col) => !ehColGrupos(col)).map((col) => {
             const cs = gruposPorColuna.get(col.id) || [];
             return (
               <div className={"fx-col" + (sobre === col.id ? " drag-over" : "")} key={col.id} data-coluna={col.id} ref={(el) => { colRefs.current[col.id] = el; }}>
@@ -711,6 +718,28 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
       {equipeOpen && <EquipeModal onFechar={() => setEquipeOpen(false)} />}
       {campanhaOpen && <CampanhaModal onFechar={() => setCampanhaOpen(false)} onMudou={recarregar} />}
       {gruposOpen && <GruposModal onFechar={() => setGruposOpen(false)} />}
+      {gruposColOpen && (
+        <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setGruposColOpen(false); }}>
+          <div className="modal-card" style={{ maxWidth: 1100, width: "min(1100px,96vw)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <h2 style={{ margin: 0 }}>👥 Grupos <span className="muted" style={{ fontWeight: 400, fontSize: 14 }}>({cardsGrupos.length})</span></h2>
+              <button className="btn btn-soft" onClick={() => setGruposColOpen(false)}>Fechar</button>
+            </div>
+            {cardsGrupos.length === 0 ? (
+              <p className="muted" style={{ margin: 0 }}>Nenhuma conversa de grupo por aqui.</p>
+            ) : (
+              <div className="grupos-maxi" style={{ overflowY: "auto", paddingRight: 2 }}>
+                {cardsGrupos.map((c) => (
+                  <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board?.colunas}
+                    onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)}
+                    onAbrir={() => { setGruposColOpen(false); setAbrir(c.id); }}
+                    onSilenciar={() => silenciarCard(c.id)} onFim={() => fimCard(c)} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {reservasOpen && <ReservasModal onFechar={() => setReservasOpen(false)} />}
       {abrir && <ConversaModal id={abrir} onFechar={() => setAbrir(null)} onMudou={recarregar} />}
       {cfgOpen && <ConfigZapi onFechar={() => setCfgOpen(false)} onMudou={checarConexao} />}
