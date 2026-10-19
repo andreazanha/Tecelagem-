@@ -2838,8 +2838,9 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
   // nem por destinoWhatsapp (que é pra @lid de pessoa e desviaria a mensagem do grupo).
   const ehGrupoDest = pareceIdDeGrupo(phone);
   if (!ehGrupoDest && await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
-  // Destino real: para contatos @lid, endereça ao @lid (senão o WhatsApp não entrega).
-  const dest = ehGrupoDest ? phone : await destinoWhatsapp(env, phone);
+  // Destino real: GRUPO precisa do sufixo "-group" no phone (exigência da Z-API — sem ele
+  // a API aceita mas NÃO entrega); contato @lid vai endereçado ao @lid.
+  const dest = ehGrupoDest ? (phone + "-group") : await destinoWhatsapp(env, phone);
   // Responder uma mensagem específica: se temos o id da Z-API, cita de forma NATIVA
   // (messageId). Se não (mensagem antiga sem id), cai num fallback citando o trecho.
   const body: Record<string, unknown> = { phone: dest };
@@ -2888,8 +2889,8 @@ export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string
   // GRUPO: envia direto pelo id (sem checar bloqueio nem desviar por @lid).
   const ehGrupoDest = pareceIdDeGrupo(phone);
   if (!ehGrupoDest && await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
-  // Destino real: para contatos @lid, endereça ao @lid (senão o WhatsApp não entrega a mídia).
-  const dest = ehGrupoDest ? phone : await destinoWhatsapp(env, phone);
+  // Destino real: GRUPO precisa do sufixo "-group" no phone (exigência da Z-API); contato @lid vai pro @lid.
+  const dest = ehGrupoDest ? (phone + "-group") : await destinoWhatsapp(env, phone);
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (cfg.zapi_client_token) headers["Client-Token"] = cfg.zapi_client_token;
   // VÍDEO (mp4/mov/…): endpoint próprio "send-video", que aceita legenda (caption). Antes caía no
