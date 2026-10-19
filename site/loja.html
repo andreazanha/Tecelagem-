@@ -61,6 +61,8 @@
   .mp-it .mp-d{color:var(--muted); font-size:12.5px; flex:1 1 auto}
   .mp-it .mp-q{font-weight:700; color:var(--ink)}
   .abas{display:none}
+  .cad-inp{width:100%; box-sizing:border-box; padding:11px 12px; border:1px solid #d6d0c4; border-radius:10px; font-size:15px; font-family:inherit; color:#2c2721}
+  .cad-inp:focus{outline:0; border-color:#ad5033}
   /* categorias no centro — chips minimalistas (borda fina, fundo neutro, ícone SVG) */
   /* barra que FIXA os ícones no topo (logo abaixo da busca) ao rolar */
   .cats-bar{position:sticky; top:var(--cats-top,62px); z-index:30; background:var(--bg); border-bottom:1px solid #ece6db; box-shadow:0 6px 12px -10px rgba(44,39,33,.14)}
@@ -255,10 +257,32 @@
       <div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#ad5033;margin-top:2px">Catálogo de atacado</div>
     </div>
     <div style="padding:14px 24px 24px">
-      <label style="display:block;font-size:14px;color:#5f584e;margin-bottom:6px">Informe o CNPJ da sua loja para entrar</label>
-      <input id="entCnpj" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" style="display:block;width:100%;box-sizing:border-box;padding:13px;border:1px solid #d6d0c4;border-radius:12px;font-size:16px">
-      <div id="entMsg" style="font-size:13px;min-height:1px;margin:8px 0;line-height:1.35"></div>
-      <button id="entBtn" style="width:100%;padding:14px;border:0;border-radius:12px;background:#ad5033;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Entrar</button>
+      <div id="entView">
+        <label style="display:block;font-size:14px;color:#5f584e;margin-bottom:6px">Informe o CNPJ da sua loja para entrar</label>
+        <input id="entCnpj" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" style="display:block;width:100%;box-sizing:border-box;padding:13px;border:1px solid #d6d0c4;border-radius:12px;font-size:16px">
+        <div id="entMsg" style="font-size:13px;min-height:1px;margin:8px 0;line-height:1.35"></div>
+        <button id="entBtn" style="width:100%;padding:14px;border:0;border-radius:12px;background:#ad5033;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Entrar</button>
+        <div style="text-align:center;margin-top:14px;font-size:13.5px;color:#5f584e">Ainda não é cliente?<br><button type="button" id="irCad" style="margin-top:4px;background:none;border:0;color:#ad5033;font-weight:700;font-size:14px;cursor:pointer;text-decoration:underline">Cadastrar minha loja</button></div>
+      </div>
+      <div id="cadView" style="display:none">
+        <div style="font-weight:700;font-size:17px;color:#2c2721;margin-bottom:2px">Cadastrar minha loja</div>
+        <div style="font-size:12.5px;color:#8a8073;margin-bottom:12px">Preencha os dados. Vamos conferir e liberar seu acesso em breve. (* obrigatório)</div>
+        <div id="cadMsg" style="font-size:13px;min-height:1px;margin-bottom:8px;line-height:1.35"></div>
+        <div style="display:grid;gap:8px;max-height:46vh;overflow:auto;padding:2px">
+          <input id="cNome" class="cad-inp" placeholder="Razão social *" autocomplete="organization">
+          <input id="cFant" class="cad-inp" placeholder="Nome fantasia">
+          <input id="cCnpj" class="cad-inp" inputmode="numeric" placeholder="CNPJ *">
+          <input id="cIe" class="cad-inp" placeholder="Inscrição estadual (se tiver)">
+          <input id="cEnd" class="cad-inp" placeholder="Endereço (rua)">
+          <div style="display:flex;gap:8px"><input id="cNum" class="cad-inp" inputmode="numeric" placeholder="Nº" style="flex:0 0 84px"><input id="cBai" class="cad-inp" placeholder="Bairro" style="flex:1"></div>
+          <div style="display:flex;gap:8px"><input id="cCep" class="cad-inp" inputmode="numeric" placeholder="CEP" style="flex:1"><input id="cUf" class="cad-inp" maxlength="2" placeholder="UF *" style="flex:0 0 76px;text-transform:uppercase"></div>
+          <input id="cCid" class="cad-inp" placeholder="Cidade *">
+          <input id="cEmail" class="cad-inp" type="email" placeholder="E-mail">
+          <input id="cTel" class="cad-inp" inputmode="numeric" placeholder="WhatsApp / telefone">
+        </div>
+        <button id="cadBtn" style="width:100%;margin-top:12px;padding:14px;border:0;border-radius:12px;background:#ad5033;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Enviar cadastro</button>
+        <button type="button" id="voltarEnt" style="width:100%;margin-top:8px;background:none;border:0;color:#8a8073;font-size:13px;cursor:pointer">← Voltar para o login</button>
+      </div>
     </div>
   </div>
 </div>
@@ -775,12 +799,35 @@
       .then(function(res){
         btn.disabled=false; btn.textContent="Entrar";
         if(res.ok && res.j.ok){ try{ localStorage.setItem("bt_cnpj", cnpj); }catch(e){} aplicarSessao(res.j.nome, res.j.regiao); }
+        else if(res.j.erro==="cliente_nao_encontrado"){ msg.style.color="#b91c1c"; msg.textContent="Não encontramos esse CNPJ. Se é sua primeira vez, cadastre sua loja abaixo 👇"; }
         else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui validar o CNPJ. Tente novamente."; }
       })
       .catch(function(){ btn.disabled=false; btn.textContent="Entrar"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão no momento. Tente novamente."; });
   }
   document.getElementById("entBtn").addEventListener("click",entrarLoja);
   document.getElementById("entCnpj").addEventListener("keydown",function(e){ if(e.key==="Enter") entrarLoja(); });
+
+  // Cadastro de loja nova (abre dentro do mesmo modal de entrada)
+  function mostrarCad(prefill){ document.getElementById("entView").style.display="none"; document.getElementById("cadView").style.display="block"; var cc=document.getElementById("cCnpj"); if(cc && prefill && !cc.value) cc.value=prefill; document.getElementById("cadMsg").textContent=""; }
+  function mostrarEnt(){ document.getElementById("cadView").style.display="none"; document.getElementById("entView").style.display="block"; }
+  document.getElementById("irCad").addEventListener("click",function(){ mostrarCad((document.getElementById("entCnpj").value||"").trim()); });
+  document.getElementById("voltarEnt").addEventListener("click",mostrarEnt);
+  function enviarCadastro(){
+    var g=function(id){ return (document.getElementById(id).value||"").trim(); };
+    var msg=document.getElementById("cadMsg"), btn=document.getElementById("cadBtn");
+    var body={ nome:g("cNome"), fantasia:g("cFant"), cnpj:g("cCnpj"), inscricao:g("cIe"), endereco:g("cEnd"), numero:g("cNum"), bairro:g("cBai"), cep:g("cCep"), uf:g("cUf"), cidade:g("cCid"), email:g("cEmail"), whatsapp:g("cTel"), telefone:g("cTel") };
+    if(!body.nome || !body.cidade || !body.uf || body.cnpj.replace(/\D/g,"").length<11){ msg.style.color="#b91c1c"; msg.textContent="Preencha pelo menos Razão social, CNPJ, Cidade e UF."; return; }
+    msg.textContent=""; btn.disabled=true; btn.textContent="Enviando…";
+    fetch("/api/loja/cadastro",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+      .then(function(res){
+        btn.disabled=false; btn.textContent="Enviar cadastro";
+        if(res.j.ok){ msg.style.color="#166534"; msg.textContent=res.j.msg||"Cadastro recebido!"; btn.style.display="none"; var grid=document.querySelector("#cadView [style*='grid']"); if(grid) grid.style.display="none"; }
+        else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui enviar. Confira os dados."; if(res.j.erro==="ja_cadastrado") setTimeout(mostrarEnt,1800); }
+      })
+      .catch(function(){ btn.disabled=false; btn.textContent="Enviar cadastro"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; });
+  }
+  document.getElementById("cadBtn").addEventListener("click",enviarCadastro);
 
   // Banner pode abrir um produto do catálogo ao clicar (chamado pelo onclick do banner).
   window.__abrirProd=function(id){ try{ abrir(id); window.scrollTo({top:0,behavior:"smooth"}); }catch(e){} };

@@ -158,6 +158,45 @@ loja.post("/pedido", async (c) => {
   }, 201);
 });
 
+// CADASTRO DE LOJA NOVA (Fase S): o CNPJ não existe → o visitante preenche e a gente
+// grava como 'pendente'. O gestor aprova depois (define região + prazo) e a ponte cria
+// no Syntech. Aqui NÃO cria no ERP — só guarda pendente.
+loja.post("/cadastro", async (c) => {
+  let b: Record<string, string> = {};
+  try { b = await c.req.json(); } catch { return c.json({ erro: "json_invalido" }, 400); }
+  const s = (k: string) => String(b[k] ?? "").trim();
+  const cnpjDig = soDigitos(b.cnpj);
+  const nome = s("nome"), cidade = s("cidade"), uf = s("uf").toUpperCase().slice(0, 2);
+  if (cnpjDig.length < 11) return c.json({ erro: "cnpj_invalido", msg: "Informe um CNPJ (ou CPF) válido." }, 400);
+  if (!nome || !cidade || !uf) return c.json({ erro: "faltam_dados", msg: "Preencha ao menos a razão social, cidade e UF." }, 400);
+
+  const ex = await c.env.DB.prepare(
+    "SELECT id, codigo_erp, COALESCE(loja_status,'') AS loja_status FROM clientes " +
+    "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
+  ).bind(cnpjDig).first<{ id: string; codigo_erp: string | null; loja_status: string }>();
+  if (ex && (ex.codigo_erp || "").trim()) return c.json({ erro: "ja_cadastrado", msg: "Essa loja já está cadastrada! É só entrar com o CNPJ." }, 409);
+  if (ex && ex.loja_status === "pendente") return c.json({ ok: true, pendente: true, msg: "Seu cadastro já está em análise. Assim que for aprovado, você poderá comprar. 💛" });
+
+  const campos = {
+    nome, fantasia: s("fantasia") || nome, cnpj: cnpjDig, inscricao_estadual: s("inscricao"),
+    endereco: s("endereco"), numero: s("numero"), complemento: s("complemento"), bairro: s("bairro"),
+    cep: soDigitos(b.cep), cidade, uf, email: s("email"), telefone: s("telefone") || s("whatsapp"),
+    whatsapp: soDigitos(b.whatsapp) || soDigitos(b.telefone), simples_nacional: s("simples_nacional"),
+  };
+  if (ex) {
+    await c.env.DB.prepare(
+      "UPDATE clientes SET nome=?, fantasia=?, inscricao_estadual=?, endereco=?, numero=?, complemento=?, bairro=?, cep=?, cidade=?, uf=?, email=?, telefone=?, whatsapp=?, simples_nacional=?, " +
+      "origem='loja', loja_status='pendente', loja_cadastro_em=datetime('now') WHERE id=?"
+    ).bind(campos.nome, campos.fantasia, campos.inscricao_estadual, campos.endereco, campos.numero, campos.complemento, campos.bairro, campos.cep, campos.cidade, campos.uf, campos.email, campos.telefone, campos.whatsapp, campos.simples_nacional, ex.id).run();
+  } else {
+    await c.env.DB.prepare(
+      "INSERT INTO clientes (id, nome, fantasia, cnpj, inscricao_estadual, endereco, numero, complemento, bairro, cep, cidade, uf, email, telefone, whatsapp, simples_nacional, origem, loja_status, loja_cadastro_em) " +
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'loja', 'pendente', datetime('now'))"
+    ).bind(uid(), campos.nome, campos.fantasia, campos.cnpj, campos.inscricao_estadual, campos.endereco, campos.numero, campos.complemento, campos.bairro, campos.cep, campos.cidade, campos.uf, campos.email, campos.telefone, campos.whatsapp, campos.simples_nacional).run();
+  }
+  return c.json({ ok: true, pendente: true, msg: "Recebemos seu cadastro! 🎉 Nossa equipe vai conferir e liberar seu acesso em breve." }, 201);
+});
+
 // ÁREA DO CLIENTE — "Meus pedidos": lista os pedidos da loja daquele CNPJ (público,
 // escopado pelo CNPJ em dígitos). Mostra situação amigável + itens (como o cliente pediu).
 loja.get("/meus-pedidos", async (c) => {
