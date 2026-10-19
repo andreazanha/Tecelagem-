@@ -171,8 +171,9 @@ function CardCadastro({ c, prazos, onMudou }: { c: CadastroLoja; prazos: { codig
 // Dar acesso à loja a um cliente que já é nosso: busca na lista, CONFERE o cadastro,
 // escolhe região + forma de pagamento, e gera o link (que já libera e o cliente cria a senha).
 function AcessoExistente({ prazos }: { prazos: { codigo: string; descricao: string }[] }) {
-  const [lista, setLista] = useState<ClienteCrm[] | null>(null);
   const [busca, setBusca] = useState("");
+  const [matches, setMatches] = useState<ClienteCrm[]>([]);
+  const [buscando, setBuscando] = useState(false);
   const [sel, setSel] = useState<ClienteCrm | null>(null);
   const [regiao, setRegiao] = useState("sul");
   const [prazo, setPrazo] = useState("1");
@@ -182,16 +183,17 @@ function AcessoExistente({ prazos }: { prazos: { codigo: string; descricao: stri
   const [busy, setBusy] = useState(false);
   const [copiado, setCopiado] = useState(false);
 
-  useEffect(() => { api.listarClientesCrm().then((l) => setLista(l)).catch(() => setLista([])); }, []);
-
-  const q = busca.trim().toLowerCase();
-  const qDig = q.replace(/\D/g, "");
-  const matches = q.length < 2 ? [] : (lista || []).filter((c) => {
-    const nome = (c.nome || "").toLowerCase();
-    const cid = (c.cidade || "").toLowerCase();
-    const cnpjDig = String(c.cnpj || "").replace(/\D/g, "");
-    return nome.includes(q) || cid.includes(q) || (qDig.length >= 3 && cnpjDig.includes(qDig));
-  }).slice(0, 8);
+  const q = busca.trim();
+  // Busca no servidor (varre todos os clientes), com um pequeno atraso pra não disparar a cada tecla.
+  useEffect(() => {
+    if (sel) return;
+    if (q.length < 2) { setMatches([]); return; }
+    let vivo = true; setBuscando(true);
+    const t = setTimeout(() => {
+      api.cadastroBuscarCliente(q).then((r) => { if (vivo) setMatches(r); }).catch(() => { if (vivo) setMatches([]); }).finally(() => { if (vivo) setBuscando(false); });
+    }, 250);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [q, sel]);
 
   function escolher(c: ClienteCrm) {
     setSel(c); setLink(""); setMsg("");
@@ -223,11 +225,13 @@ function AcessoExistente({ prazos }: { prazos: { codigo: string; descricao: stri
 
       {!sel && (
         <div style={{ maxWidth: 460 }}>
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={lista ? "Buscar cliente por nome, CNPJ ou cidade…" : "Carregando clientes…"} disabled={!lista}
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar cliente por nome, CNPJ ou cidade…"
             style={{ width: "100%", boxSizing: "border-box", padding: "9px 11px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 14 }} />
           {q.length >= 2 && (
             <div style={{ marginTop: 6, border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", maxHeight: 300, overflowY: "auto" }}>
-              {matches.length === 0
+              {buscando
+                ? <div className="muted" style={{ padding: "10px 12px", fontSize: 12.5 }}>Procurando…</div>
+                : matches.length === 0
                 ? <div className="muted" style={{ padding: "10px 12px", fontSize: 12.5 }}>Nenhum cliente encontrado. Tente outro nome ou o CNPJ.</div>
                 : matches.map((c, i) => (
                   <button key={c.id} onClick={() => escolher(c)}

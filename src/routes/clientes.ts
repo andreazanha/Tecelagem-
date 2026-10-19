@@ -169,6 +169,26 @@ clientes.get("/prazos-erp", async (c) => {
   ).all();
   return c.json(results);
 });
+
+// Busca de cliente pro link de acesso — varre TODOS os clientes (sem esconder nomes
+// internos, ao contrário da lista do CRM) por nome, CNPJ ou cidade.
+clientes.get("/buscar-loja", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const qRaw = String(c.req.query("q") || "").trim();
+  if (qRaw.length < 2) return c.json([]);
+  const like = "%" + qRaw.replace(/[%_]/g, " ") + "%";
+  const dig = qRaw.replace(/\D/g, "");
+  const temDig = dig.length >= 3;
+  const sql =
+    `SELECT id, nome, cnpj, cidade, uf, whatsapp, contato, email, representante, loja_regiao
+       FROM clientes
+      WHERE nome LIKE ? COLLATE NOCASE OR COALESCE(cidade,'') LIKE ? COLLATE NOCASE` +
+    (temDig ? " OR REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') LIKE ?" : "") +
+    " ORDER BY nome LIMIT 15";
+  const binds = temDig ? [like, like, "%" + dig + "%"] : [like, like];
+  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
+  return c.json(results);
+});
 clientes.get("/loja-config", async (c) => {
   const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
   const f = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_criar_clientes'").first<{ valor: string | null }>();
