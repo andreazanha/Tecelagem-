@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-16.1";
+const PONTE_VERSAO = "2026-10-19.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -830,6 +830,102 @@ async function gravarUmPedido(db, p) {
   return { numero, codCli };
 }
 
+// ── Fase S: espelha a tabela PRAZO (formas de pagamento) do Syntech ───────────
+async function rodadaPrazos(db) {
+  const base = CONFIG.api.base.replace(/\/+$/, "");
+  let prazos = [];
+  try {
+    const rs = await query(db, "SELECT CODIGO, DESCRICAO FROM PRAZO ORDER BY CODIGO");
+    prazos = (rs || []).map((r) => ({ codigo: String(r.CODIGO ?? "").trim(), descricao: String(r.DESCRICAO ?? "").trim() })).filter((p) => p.codigo);
+  } catch (e) { log("! prazos: não li a tabela PRAZO —", e.message); return; }
+  if (!prazos.length) return;
+  try {
+    await fetch(base + "/api/integracao/prazos", {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+      body: JSON.stringify({ prazos }),
+    });
+    log(`prazos: ${prazos.length} forma(s) de pagamento sincronizada(s)`);
+  } catch (e) { log("! prazos: não enviei —", e.message); }
+}
+
+// ── Fase S: cria no Syntech os clientes APROVADOS e liberados pelo gestor ──────
+async function rodadaGravarClientes(db) {
+  const base = CONFIG.api.base.replace(/\/+$/, "");
+  let lista = [];
+  try {
+    const r = await fetch(base + "/api/integracao/clientes-para-erp", { headers: { "X-Integracao-Token": CONFIG.api.token } });
+    if (!r.ok) return;
+    const j = await r.json();
+    lista = Array.isArray(j.clientes) ? j.clientes : [];
+  } catch (e) { log("! clientes→ERP: não busquei pendentes —", e.message); return; }
+  if (!lista.length) return;
+  log(`clientes→ERP: ${lista.length} cadastro(s) da loja pra criar no Syntech`);
+  for (const cli of lista) {
+    try {
+      const codigo = await criarUmCliente(db, cli);
+      await fetch(base + "/api/integracao/cliente-erp-gravado", {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+        body: JSON.stringify({ id: cli.id, codigo_erp: codigo }),
+      });
+      log(`  ✓ cliente ${cli.nome} → Syntech CÓDIGO ${codigo}`);
+    } catch (e) {
+      log(`  ! cliente ${cli.id} (${cli.nome}): ${e.message}`);
+      try {
+        await fetch(base + "/api/integracao/cliente-erp-erro", {
+          method: "POST", headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+          body: JSON.stringify({ id: cli.id, erro: e.message }),
+        });
+      } catch { /* ignora */ }
+    }
+  }
+}
+
+async function criarUmCliente(db, cli) {
+  const doc = formatarDoc(cli.cnpj);
+  // 1) se já existe no Syntech (mesmo CNPJ), reaproveita o CÓDIGO (não duplica cliente).
+  try {
+    const rs = await query(db, "SELECT CODIGO FROM APP_CLIENTES_SEARCH(?)", [doc]);
+    if (rs && rs[0] && rs[0].CODIGO != null && String(rs[0].CODIGO).trim() !== "") return String(rs[0].CODIGO).trim();
+  } catch (e) { /* se falhar a busca, tenta inserir */ }
+  // 2) monta os 21 parâmetros do APP_CLIENTES_INSERT_V2 (ordem EXATA do manual).
+  const nome = String(cli.nome || "").trim().slice(0, 60) || "CLIENTE";
+  const fantasia = String(cli.fantasia || cli.nome || "").trim().slice(0, 60) || nome;
+  const numeroInt = (() => { const n = parseInt(String(cli.numero || "").replace(/\D/g, ""), 10); return isNaN(n) ? "0" : String(n); })();
+  const simples = (() => { const s = String(cli.simples_nacional || "").trim().toUpperCase(); return (s === "S" || s === "M") ? s : ""; })();
+  const cep = (() => { const d = String(cli.cep || "").replace(/\D/g, ""); return d.length === 8 ? d.slice(0, 5) + "-" + d.slice(5) : ""; })();
+  const celular = String(cli.whatsapp || "").trim();           // CELULAR = WhatsApp do cadastro
+  const telefone = String(cli.telefone || "").trim();
+  const funcCadastro = String(CONFIG.funcCadastro != null ? CONFIG.funcCadastro : 10); // funcionário "do site"
+  const codPrazo = String(cli.loja_cod_prazo || "").trim() || "1"; // 1 = à vista (padrão)
+  const params = [
+    nome,                                                 // 1  NOME
+    fantasia,                                             // 2  FANTASIA
+    doc,                                                  // 3  CNPJ_CPF (pontuado)
+    String(cli.inscricao_estadual || "").trim(),          // 4  INSC_RG
+    String(cli.endereco || "").trim(),                    // 5  ENDERECO
+    numeroInt,                                            // 6  NUMERO (inteiro; 0 se vazio)
+    String(cli.complemento || "").trim(),                 // 7  COMPL
+    String(cli.bairro || "").trim(),                      // 8  BAIRRO
+    cep,                                                  // 9  CEP (xxxxx-xxx)
+    String(cli.cidade || "").trim(),                      // 10 CIDADE
+    String(cli.uf || "").trim().toUpperCase().slice(0, 2),// 11 UF
+    String(cli.email || "").trim(),                       // 12 EMAIL
+    null,                                                 // 13 DATA_NASC (null: loja não coleta; '' daria erro de conversão)
+    telefone,                                             // 14 TELEFONE
+    celular,                                              // 15 CELULAR
+    simples,                                              // 16 SIMPLES_NACIONAL (S/M/'')
+    funcCadastro,                                         // 17 FUNC_CADASTRO
+    "S",                                                  // 18 MALA_DIRETA
+    codPrazo,                                             // 19 COD_PRAZO
+    "",                                                   // 20 GUIA
+    null,                                                 // 21 IMEI (nulo obrigatório)
+  ];
+  const rs = await query(db, "SELECT CODIGO FROM app_clientes_insert_v2(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", params);
+  const codigo = rs && rs[0] && rs[0].CODIGO != null ? String(rs[0].CODIGO).trim() : "";
+  if (!codigo) throw new Error("APP_CLIENTES_INSERT_V2 não devolveu CODIGO");
+  return codigo;
+}
+
 // ── uma rodada: busca aprovados que mudaram desde a última data e envia ───────
 async function rodada() {
   const estado = lerEstado();
@@ -850,6 +946,9 @@ async function rodada() {
     try { await rodadaDiagKit(db, estado); } catch (e) { log("! diag-kit:", e.message); }
     // Envia pros Syntech os pedidos da loja B2B liberados (Fase 4).
     try { await rodadaGravarPedidos(db); } catch (e) { log("! loja→ERP:", e.message); }
+    // Espelha as formas de pagamento (PRAZO) e cria os clientes aprovados no Syntech (Fase S).
+    try { await rodadaPrazos(db); } catch (e) { log("! prazos:", e.message); }
+    try { await rodadaGravarClientes(db); } catch (e) { log("! clientes→ERP:", e.message); }
     // Pedidos APROVADOS, não cancelados, alterados depois da última vez.
     const SQL_PEDIDOS =
       `SELECT NUMERO, DATA, COD_CLI, STATUS, CANC, DATA_ALT_REG

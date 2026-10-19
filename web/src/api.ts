@@ -745,6 +745,13 @@ export interface LojaPedidoItem {
   produto: string | null; ref: string | null; cor_grade: string | null; cod_cor: number | null;
   tamanho: string | null; erp_tamanho: string | null; qtd: number; valor_unit: number | null;
 }
+export interface CadastroLoja {
+  id: string; nome: string | null; fantasia: string | null; cnpj: string | null; inscricao_estadual: string | null;
+  endereco: string | null; numero: string | null; complemento: string | null; bairro: string | null; cep: string | null;
+  cidade: string | null; uf: string | null; email: string | null; telefone: string | null; whatsapp: string | null;
+  simples_nacional: string | null; loja_regiao: string | null; loja_cod_prazo: string | null; loja_cadastro_em: string | null;
+  loja_erp_erro: string; codigo_erp: string; loja_status: string; loja_criar_erp: number;
+}
 export interface LojaBanner {
   id?: string; img?: string; img_mobile?: string; kicker?: string; titulo?: string; sub?: string;
   botao_texto?: string; botao_link?: string; ativo?: boolean; ordem?: number;
@@ -1319,6 +1326,13 @@ export const api = {
   lojaLiberar: (id: string) => jsonPost(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}/liberar`, {}).then((r) => j<{ ok: boolean }>(r)),
   lojaReenviar: (id: string) => jsonPost(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}/reenviar`, {}).then((r) => j<{ ok: boolean }>(r)),
   lojaConfig: (modo: string) => jsonPost("/api/integracao/loja-config", { modo }).then((r) => j<{ ok: boolean; modo: string }>(r)),
+  // Fase S — fila de aprovação de cadastros de clientes vindos da loja.
+  cadastrosLoja: () => fetch("/api/clientes/pendentes-loja").then((r) => j<CadastroLoja[]>(r)),
+  cadastroPrazos: () => fetch("/api/clientes/prazos-erp").then((r) => j<{ codigo: string; descricao: string }[]>(r)),
+  cadastroAprovar: (id: string, regiao: string, cod_prazo: string) => jsonPost(`/api/clientes/${encodeURIComponent(id)}/aprovar-loja`, { regiao, cod_prazo }).then((r) => j<{ ok: boolean; criar_no_erp: boolean }>(r)),
+  cadastroRecusar: (id: string) => jsonPost(`/api/clientes/${encodeURIComponent(id)}/recusar-loja`, {}).then((r) => j<{ ok: boolean }>(r)),
+  cadastroLojaConfig: () => fetch("/api/clientes/loja-config").then((r) => j<{ criar_clientes: boolean }>(r)),
+  cadastroLojaConfigSalvar: (criar_clientes: boolean) => jsonPost("/api/clientes/loja-config", { criar_clientes }).then((r) => j<{ ok: boolean; criar_clientes: boolean }>(r)),
   // Banners da loja (cadastro pela dona) + upload da imagem no nosso R2.
   lojaBanners: () => fetch("/api/integracao/loja-banners").then((r) => j<{ banners: LojaBanner[]; intervalo: number }>(r)),
   lojaBannersSalvar: (banners: LojaBanner[], intervalo: number) => jsonPost("/api/integracao/loja-banners", { banners, intervalo }).then((r) => j<{ ok: boolean; n: number }>(r)),

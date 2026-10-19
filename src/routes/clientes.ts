@@ -3,6 +3,7 @@ import type { Env } from "../index";
 import { limparVendedor } from "./comercial";
 import { ehClienteInterno } from "./funil";
 import { garantirParceiroPendente } from "./parceiros";
+import { exigirFuncao } from "../permissoes";
 
 export const clientes = new Hono<{ Bindings: Env }>();
 
@@ -257,4 +258,72 @@ clientes.post("/", async (c) => {
   // Cliente novo/atualizado na base → garante uma loja parceira PENDENTE pra aprovação.
   await garantirParceiroPendente(c.env, id).catch(() => {});
   return c.json({ id, nome });
+});
+
+// ── Fase S: fila de aprovação de cadastros que vieram da LOJA (gestor) ──────────
+// Lista os cadastros pendentes (cliente novo que se cadastrou na loja online).
+clientes.get("/pendentes-loja", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, nome, fantasia, cnpj, inscricao_estadual, endereco, numero, complemento, bairro, cep,
+            cidade, uf, email, telefone, whatsapp, simples_nacional, loja_regiao, loja_cod_prazo,
+            loja_cadastro_em, COALESCE(loja_erp_erro,'') AS loja_erp_erro, COALESCE(codigo_erp,'') AS codigo_erp,
+            COALESCE(loja_status,'') AS loja_status, COALESCE(loja_criar_erp,0) AS loja_criar_erp
+       FROM clientes
+      WHERE COALESCE(loja_status,'') IN ('pendente','aprovado')
+        AND COALESCE(origem,'') = 'loja'
+      ORDER BY (loja_status='pendente') DESC, loja_cadastro_em DESC`
+  ).all();
+  return c.json(results);
+});
+
+// Lista os PRAZOS (formas de pagamento) espelhados do Syntech, pro menu de aprovação.
+clientes.get("/prazos-erp", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT codigo, descricao FROM erp_prazos ORDER BY CAST(codigo AS INTEGER), codigo"
+  ).all();
+  return c.json(results);
+});
+
+// Aprova o cadastro: define região de preço + prazo e LIBERA a ponte pra criar no Syntech.
+clientes.post("/:id/aprovar-loja", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const b = await c.req.json<{ regiao?: string; cod_prazo?: string }>().catch(() => ({} as { regiao?: string; cod_prazo?: string }));
+  const regiao = String(b.regiao || "").toLowerCase() === "norte" ? "norte" : "sul";
+  const codPrazo = String(b.cod_prazo || "").trim() || null;
+  const ex = await c.env.DB.prepare("SELECT id, COALESCE(codigo_erp,'') AS codigo_erp FROM clientes WHERE id=?")
+    .bind(id).first<{ id: string; codigo_erp: string }>();
+  if (!ex) return c.json({ error: "nao_encontrado" }, 404);
+  // Se o cliente já tem código no Syntech, não precisa recriar (loja_criar_erp=0).
+  const criar = ex.codigo_erp ? 0 : 1;
+  await c.env.DB.prepare(
+    "UPDATE clientes SET loja_status='aprovado', loja_regiao=?, loja_cod_prazo=?, loja_criar_erp=?, loja_erp_erro=NULL WHERE id=?"
+  ).bind(regiao, codPrazo, criar, id).run();
+  return c.json({ ok: true, criar_no_erp: criar === 1 });
+});
+
+// Recusa o cadastro (não cria no Syntech).
+clientes.post("/:id/recusar-loja", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  await c.env.DB.prepare("UPDATE clientes SET loja_status='recusado', loja_criar_erp=0 WHERE id=?").bind(id).run();
+  return c.json({ ok: true });
+});
+
+// Liga/desliga a criação automática do cliente no Syntech (trava de segurança da ponte).
+clientes.get("/loja-config", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const f = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_criar_clientes'").first<{ valor: string | null }>();
+  return c.json({ criar_clientes: String(f?.valor || "") === "1" });
+});
+clientes.post("/loja-config", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ criar_clientes?: boolean }>().catch(() => ({} as { criar_clientes?: boolean }));
+  const v = b.criar_clientes ? "1" : "0";
+  await c.env.DB.prepare(
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('loja_criar_clientes', ?, datetime('now')) " +
+    "ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(v).run();
+  return c.json({ ok: true, criar_clientes: v === "1" });
 });

@@ -233,6 +233,7 @@ const GRUPOS: MenuGrupo[] = [
       { icon: "🪡", label: "Relatório de Costureiras", soon: true },
       { to: "/relatorio-estoque", icon: "📦", label: "Relatório de Estoque", admin: true },
       { to: "/loja-pedidos", icon: "🛒", label: "Pedidos da Loja (B2B)", admin: true },
+      { to: "/cadastros-loja", icon: "🆕", label: "Cadastros da Loja", admin: true },
       { to: "/config-loja", icon: "🖼️", label: "Configurar catálogo (banner, vídeos)", admin: true },
       { to: "/api/integracao/loja", icon: "🛍️", label: "Abrir a loja (catálogo)", ext: true, admin: true },
       { icon: "💵", label: "Relatório de Vendas", soon: true },

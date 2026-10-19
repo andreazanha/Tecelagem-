@@ -1259,6 +1259,67 @@ integracao.post("/pedido-erp-erro", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── Fase S: CLIENTES da loja pra ponte criar no Syntech ─────────────────────────
+// A ponte busca os cadastros APROVADOS que o gestor liberou (loja_criar_erp=1) e que
+// ainda não têm código no Syntech. Devolve tudo que o APP_CLIENTES_INSERT_V2 pede.
+integracao.get("/clientes-para-erp", async (c) => {
+  if (!tokenOk(c)) return c.json({ error: "nao_autorizado" }, 401);
+  // Trava de segurança: só cria cliente no Syntech quando o gestor ligou o automático.
+  const flag = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_criar_clientes'").first<{ valor: string | null }>();
+  if (String(flag?.valor || "") !== "1") return c.json({ clientes: [] });
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, nome, fantasia, cnpj, inscricao_estadual, endereco, numero, complemento, bairro, cep,
+            cidade, uf, email, nascimento, telefone, whatsapp, simples_nacional, loja_cod_prazo
+       FROM clientes
+      WHERE COALESCE(loja_criar_erp,0)=1 AND COALESCE(loja_status,'')='aprovado' AND COALESCE(codigo_erp,'')=''
+      ORDER BY loja_cadastro_em LIMIT 10`
+  ).all();
+  return c.json({ clientes: results });
+});
+
+// A ponte confirma que criou o cliente no Syntech: guarda o CODIGO e fecha o pedido de criação.
+integracao.post("/cliente-erp-gravado", async (c) => {
+  if (!tokenOk(c)) return c.json({ error: "nao_autorizado" }, 401);
+  const b = await c.req.json().catch(() => ({})) as { id?: string; codigo_erp?: number | string };
+  const id = String(b.id || "").trim();
+  const cod = String(b.codigo_erp || "").trim();
+  if (!id || !cod) return c.json({ error: "faltam_dados" }, 400);
+  await c.env.DB.prepare(
+    "UPDATE clientes SET codigo_erp=?, loja_criar_erp=0, loja_erp_erro=NULL WHERE id=?"
+  ).bind(cod, id).run();
+  return c.json({ ok: true });
+});
+
+// A ponte avisa que deu erro ao criar o cliente (guarda o motivo pra aparecer na fila).
+integracao.post("/cliente-erp-erro", async (c) => {
+  if (!tokenOk(c)) return c.json({ error: "nao_autorizado" }, 401);
+  const b = await c.req.json().catch(() => ({})) as { id?: string; erro?: string };
+  const id = String(b.id || "").trim();
+  if (!id) return c.json({ error: "faltam_dados" }, 400);
+  await c.env.DB.prepare("UPDATE clientes SET loja_erp_erro=? WHERE id=?")
+    .bind(String(b.erro || "erro desconhecido").slice(0, 500), id).run();
+  return c.json({ ok: true });
+});
+
+// A ponte espelha a tabela PRAZO do Syntech (formas de pagamento) pro nosso D1.
+integracao.post("/prazos", async (c) => {
+  if (!tokenOk(c)) return c.json({ error: "nao_autorizado" }, 401);
+  const b = await c.req.json().catch(() => ({})) as { prazos?: { codigo?: unknown; descricao?: unknown }[] };
+  const lista = Array.isArray(b.prazos) ? b.prazos : [];
+  if (!lista.length) return c.json({ ok: true, gravados: 0 });
+  const stmts: D1PreparedStatement[] = [];
+  for (const p of lista) {
+    const cod = String(p.codigo ?? "").trim();
+    if (!cod) continue;
+    stmts.push(c.env.DB.prepare(
+      "INSERT INTO erp_prazos (codigo, descricao, atualizado_em) VALUES (?, ?, datetime('now')) " +
+      "ON CONFLICT(codigo) DO UPDATE SET descricao=excluded.descricao, atualizado_em=datetime('now')"
+    ).bind(cod, String(p.descricao ?? "").trim() || null));
+  }
+  if (stmts.length) await c.env.DB.batch(stmts);
+  return c.json({ ok: true, gravados: stmts.length });
+});
+
 // ── ADMIN (gestor): tela "Pedidos da Loja" ──────────────────────────────────
 integracao.get("/loja-pedidos", async (c) => {
   const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
