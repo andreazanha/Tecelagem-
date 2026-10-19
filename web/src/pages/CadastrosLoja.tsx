@@ -51,6 +51,9 @@ export function CadastrosLoja() {
       {/* Dar acesso à loja a um cliente que JÁ é nosso (gera um link pra ele criar a senha) */}
       <AcessoExistente prazos={prazos} />
 
+      {/* Dar acesso ao REPRESENTANTE (ele entra com e-mail + senha e vê a carteira dele) */}
+      <AcessoRepresentante />
+
       {erro && <div className="card pad" style={{ color: "#b91c1c" }}>{erro}</div>}
       {!lista ? (
         <div className="card pad muted">Carregando…</div>
@@ -296,6 +299,55 @@ function AcessoExistente({ prazos }: { prazos: { codigo: string; descricao: stri
               </div>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Dar acesso ao REPRESENTANTE: escolhe o rep, gera o link (ele cria a senha ao abrir).
+// Login do rep = e-mail, então o rep precisa ter e-mail no cadastro.
+function AcessoRepresentante() {
+  const [reps, setReps] = useState<{ id: string; nome: string; email?: string | null; ativo?: number }[] | null>(null);
+  const [sel, setSel] = useState("");
+  const [link, setLink] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+  useEffect(() => { api.listarRepresentantes().then((r) => setReps(r.filter((x) => x.ativo !== 0))).catch(() => setReps([])); }, []);
+  const repSel = (reps || []).find((r) => r.id === sel);
+  async function gerar() {
+    if (!sel) { setMsg("Escolha um representante."); return; }
+    setBusy(true); setMsg(""); setLink("");
+    try {
+      const r = await api.repGerarAcesso(sel);
+      if (r.ok) { setLink(r.link); setMsg(r.tem_senha ? "Esse representante já tem senha — o link serve pra redefinir." : ""); }
+      else setMsg(r.msg || "Não consegui gerar o link.");
+    } catch { setMsg("Não consegui gerar o link."); } finally { setBusy(false); }
+  }
+  async function copiar() { try { await navigator.clipboard.writeText(link); setCopiado(true); setTimeout(() => setCopiado(false), 1800); } catch { /* ok */ } }
+  return (
+    <div className="card pad" style={{ display: "grid", gap: 8 }}>
+      <div style={{ fontWeight: 800, fontSize: 14 }}>🧑‍💼 Dar acesso a um representante</div>
+      <div className="muted" style={{ fontSize: 12.5, maxWidth: 640 }}>
+        O representante entra com o <b>e-mail + senha</b> e vê só a <b>carteira dele</b>. Gere o link e envie —
+        ao abrir, ele cria a senha. <i>(O rep precisa ter e-mail no cadastro, que é o login.)</i>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <select value={sel} onChange={(e) => { setSel(e.target.value); setLink(""); setMsg(""); }} disabled={!reps}
+          style={{ padding: "9px 11px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 14, minWidth: 260 }}>
+          <option value="">{reps ? "Escolha o representante…" : "Carregando…"}</option>
+          {(reps || []).map((r) => <option key={r.id} value={r.id}>{r.nome}{r.email ? "" : " (sem e-mail!)"}</option>)}
+        </select>
+        <button className="btn btn-primary" disabled={busy || !sel} onClick={gerar}>{busy ? "Gerando…" : "🔗 Gerar link"}</button>
+      </div>
+      {repSel && !repSel.email && <div style={{ fontSize: 12.5, color: "#92400e" }}>⚠️ {repSel.nome} está sem e-mail no cadastro — cadastre o e-mail dele primeiro (é o login).</div>}
+      {msg && <div style={{ fontSize: 12.5, color: "#92400e" }}>{msg}</div>}
+      {link && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "9px 11px" }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: "#166534" }}>Link do rep {repSel?.nome}:</span>
+          <input readOnly value={link} onFocus={(e) => e.target.select()} style={{ flex: 1, minWidth: 220, padding: "7px 9px", borderRadius: 8, border: "1px solid #bbf7d0", fontSize: 12.5, background: "#fff" }} />
+          <button className="btn" onClick={copiar}>{copiado ? "✓ Copiado" : "Copiar"}</button>
         </div>
       )}
     </div>

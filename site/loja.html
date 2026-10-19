@@ -58,6 +58,26 @@
   .btn-ghost:hover{background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.6)}
   .btn-cart svg,.btn-ghost svg{width:18px; height:18px; flex:0 0 auto; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round}
   /* Meus pedidos (área do cliente) */
+  /* Área do Representante (R1) — tela cheia com a carteira; otimizada pra tablet (toque). */
+  #repArea{position:fixed; inset:0; z-index:900; background:#f4f0ea; overflow:auto; display:none}
+  .rep-top{position:sticky; top:0; z-index:2; background:#2c3e50; color:#fff; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 20px}
+  .rep-hello{font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#aebccb}
+  .rep-name{font-size:18px; font-weight:700; margin-top:2px}
+  .rep-sair{height:44px; padding:0 18px; border:1px solid rgba(255,255,255,.35); background:transparent; color:#fff; border-radius:12px; font-size:14px; font-weight:600; cursor:pointer}
+  .rep-wrap{max-width:1100px; margin:0 auto; padding:20px}
+  .rep-h2{font-family:'Cormorant Garamond',Georgia,serif; font-size:26px; color:#2c2721; margin:4px 0 2px}
+  .rep-count{font-size:14px; color:#8a8073; font-weight:400; font-family:system-ui}
+  .rep-dica{font-size:13px; color:#8a8073; margin:2px 0 16px}
+  .rep-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px}
+  .rep-card{display:block; width:100%; text-align:left; background:#fff; border:1px solid #DCE3EC; border-radius:14px; padding:16px; cursor:pointer; box-shadow:0 2px 8px rgba(15,23,42,.05); font:inherit}
+  .rep-card:active{transform:scale(.995)}
+  .rep-card .nm{font-weight:800; font-size:16px; color:#2c2721}
+  .rep-card .sub{font-size:13px; color:#8a8073; margin-top:3px}
+  .rep-chip{display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:999px; margin-top:10px}
+  .rep-chip.ok{background:#dcfce7; color:#166534}
+  .rep-chip.wait{background:#fef9c3; color:#854d0e}
+  .rep-chip.block{background:#fee2e2; color:#991b1b}
+  @media(max-width:560px){ .rep-grid{grid-template-columns:1fr} .rep-wrap{padding:16px} }
   /* Meus pedidos — acordeão de cards fechados (status, nº, data, peças, valor, seta) */
   .mp-card{background:#fff; border:1px solid #DCE3EC; border-radius:12px; margin-bottom:10px; box-shadow:0 1px 3px rgba(15,23,42,.05); overflow:hidden}
   .mp-head{display:block; width:100%; text-align:left; background:transparent; border:0; cursor:pointer; padding:12px 14px; font:inherit; color:inherit}
@@ -279,6 +299,19 @@
 <div class="cart" id="cart"><div class="pane" id="cartPane"></div></div>
 <div class="cart" id="meus"><div class="pane" id="meusPane"></div></div>
 
+<!-- ÁREA DO REPRESENTANTE (R1): carteira dele -->
+<div id="repArea" style="display:none">
+  <div class="rep-top">
+    <div><div class="rep-hello">Área do Representante</div><div class="rep-name" id="repNome"></div></div>
+    <button id="repSair" class="rep-sair">Sair</button>
+  </div>
+  <div class="rep-wrap">
+    <h2 class="rep-h2">Minha carteira <span class="rep-count" id="repCount"></span></h2>
+    <div class="rep-dica">Toque num cliente para atender. <b>Em breve</b> você vai montar o pedido por aqui.</div>
+    <div id="repCarteira" class="rep-grid"></div>
+  </div>
+</div>
+
 <div id="entrada" style="position:fixed;inset:0;z-index:999;background:rgba(44,39,33,.55);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:18px">
   <div style="background:#fff;border-radius:18px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden">
     <div style="padding:26px 24px 8px;text-align:center">
@@ -293,6 +326,16 @@
         <div id="entMsg" style="font-size:13px;min-height:1px;margin:8px 0;line-height:1.35"></div>
         <button id="entBtn" style="width:100%;padding:14px;border:0;border-radius:12px;background:#ad5033;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Entrar</button>
         <div style="text-align:center;margin-top:14px;font-size:13.5px;color:#5f584e">Ainda não é cliente?<br><button type="button" id="irCad" style="margin-top:4px;background:none;border:0;color:#ad5033;font-weight:700;font-size:14px;cursor:pointer;text-decoration:underline">Cadastrar minha loja</button></div>
+        <div style="text-align:center;margin-top:12px;padding-top:12px;border-top:1px solid #efe9de;font-size:13px;color:#8a8073">É representante?<br><button type="button" id="irRep" style="margin-top:4px;background:none;border:0;color:#5f584e;font-weight:700;font-size:13.5px;cursor:pointer;text-decoration:underline">Entrar como representante</button></div>
+      </div>
+      <div id="repView" style="display:none">
+        <div style="font-weight:700;font-size:17px;color:#2c2721;margin-bottom:2px">Área do Representante</div>
+        <div style="font-size:12.5px;color:#8a8073;margin-bottom:12px">Entre com o seu e-mail e senha.</div>
+        <input id="repEmail" type="email" autocomplete="username" placeholder="E-mail" style="display:block;width:100%;box-sizing:border-box;padding:13px;border:1px solid #d6d0c4;border-radius:12px;font-size:16px">
+        <input id="repSenha" type="password" autocomplete="current-password" placeholder="Senha" style="display:block;width:100%;box-sizing:border-box;padding:13px;border:1px solid #d6d0c4;border-radius:12px;font-size:16px;margin-top:8px">
+        <div id="repMsg" style="font-size:13px;min-height:1px;margin:8px 0;line-height:1.35"></div>
+        <button id="repBtn" style="width:100%;padding:14px;border:0;border-radius:12px;background:#2c3e50;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Entrar</button>
+        <button type="button" id="repVoltar" style="width:100%;margin-top:8px;background:none;border:0;color:#8a8073;font-size:13px;cursor:pointer">← Voltar</button>
       </div>
       <div id="senhaView" style="display:none">
         <div style="font-weight:700;font-size:17px;color:#2c2721;margin-bottom:2px">Crie sua senha</div>
@@ -889,12 +932,14 @@
   document.getElementById("entSenha").addEventListener("keydown",function(e){ if(e.key==="Enter") entrarLoja(); });
 
   // Criar/definir senha (via link de acesso com token, ou trocar depois de logado)
-  var TOKEN_ACESSO="";
+  var TOKEN_ACESSO="", TOKEN_REP="";
   function mostrarCriarSenha(nome, cnpjMascara){
     document.getElementById("entView").style.display="none";
     document.getElementById("cadView").style.display="none";
+    document.getElementById("repView").style.display="none";
     document.getElementById("senhaView").style.display="block";
-    document.getElementById("senhaQuem").innerHTML = nome ? ('Olá, <b>'+esc(nome)+'</b>'+(cnpjMascara?' · CNPJ '+esc(cnpjMascara):'')+'. Crie uma senha para acessar o catálogo.') : 'Crie uma senha para acessar o catálogo.';
+    var quem = TOKEN_REP ? 'Crie a sua senha de representante.' : (nome ? ('Olá, <b>'+esc(nome)+'</b>'+(cnpjMascara?' · CNPJ '+esc(cnpjMascara):'')+'. Crie uma senha para acessar o catálogo.') : 'Crie uma senha para acessar o catálogo.');
+    document.getElementById("senhaQuem").innerHTML = TOKEN_REP && nome ? ('Olá, <b>'+esc(nome)+'</b>. '+quem) : quem;
     document.getElementById("snMsg").textContent="";
     var ov=document.getElementById("entrada"); ov.style.display="flex"; document.body.style.overflow="hidden";
   }
@@ -904,21 +949,76 @@
     if(nova.length<4){ msg.style.color="#b91c1c"; msg.textContent="A senha precisa ter pelo menos 4 caracteres."; return; }
     if(nova!==conf){ msg.style.color="#b91c1c"; msg.textContent="As senhas não são iguais."; return; }
     msg.textContent=""; btn.disabled=true; btn.textContent="Salvando…";
-    var body = TOKEN_ACESSO ? {token:TOKEN_ACESSO, nova:nova} : {cnpj:cnpjSalvo(), nova:nova};
-    fetch("/api/loja/definir-senha",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    var ehRep = !!TOKEN_REP;
+    var url = ehRep ? "/api/loja/rep-definir-senha" : "/api/loja/definir-senha";
+    var body = ehRep ? {token:TOKEN_REP, nova:nova} : (TOKEN_ACESSO ? {token:TOKEN_ACESSO, nova:nova} : {cnpj:cnpjSalvo(), nova:nova});
+    fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
       .then(function(res){
         btn.disabled=false; btn.textContent="Salvar e entrar";
-        if(res.ok && res.j.ok){ try{ if(res.j.cnpj) localStorage.setItem("bt_cnpj", res.j.cnpj); }catch(e){} aplicarSessao(res.j.nome, res.j.regiao, res.j.liberado); try{ history.replaceState(null,"",location.pathname); }catch(e){} }
+        if(res.ok && res.j.ok){
+          try{ history.replaceState(null,"",location.pathname); }catch(e){}
+          if(ehRep){ TOKEN_REP=""; aplicarRep(res.j.rep, res.j.clientes); }
+          else { try{ if(res.j.cnpj) localStorage.setItem("bt_cnpj", res.j.cnpj); }catch(e){} aplicarSessao(res.j.nome, res.j.regiao, res.j.liberado); }
+        }
         else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui salvar a senha."; }
       })
       .catch(function(){ btn.disabled=false; btn.textContent="Salvar e entrar"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; });
   }
   document.getElementById("snBtn").addEventListener("click",salvarNovaSenha);
 
+  // ── REPRESENTANTE (R1): login + carteira ──
+  function repSalvo(){ try{ return JSON.parse(localStorage.getItem("bt_rep")||"null"); }catch(e){ return null; } }
+  function mostrarRepView(){ ["entView","cadView","senhaView"].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display="none"; }); document.getElementById("repView").style.display="block"; document.getElementById("repMsg").textContent=""; var ov=document.getElementById("entrada"); ov.style.display="flex"; document.body.style.overflow="hidden"; var i=document.getElementById("repEmail"); setTimeout(function(){ try{ i.focus(); }catch(e){} },50); }
+  function repEntrar(){
+    var email=(document.getElementById("repEmail").value||"").trim(); var senha=(document.getElementById("repSenha").value||"");
+    var msg=document.getElementById("repMsg"), btn=document.getElementById("repBtn");
+    if(!email){ msg.style.color="#b91c1c"; msg.textContent="Digite seu e-mail."; return; }
+    if(!senha){ msg.style.color="#b91c1c"; msg.textContent="Digite sua senha."; return; }
+    msg.textContent=""; btn.disabled=true; btn.textContent="Entrando…";
+    fetch("/api/loja/rep-entrar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email,senha:senha})})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+      .then(function(res){
+        btn.disabled=false; btn.textContent="Entrar";
+        if(res.ok && res.j.ok){ aplicarRep(res.j.rep, res.j.clientes); }
+        else if(res.j.erro==="sem_senha"){ msg.style.color="#b91c1c"; msg.innerHTML="Seu acesso ainda não tem senha. Abra o <b>link que a Big Tricot te enviou</b>."; }
+        else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui entrar. Confira e-mail e senha."; }
+      })
+      .catch(function(){ btn.disabled=false; btn.textContent="Entrar"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; });
+  }
+  function aplicarRep(rep, clientes){
+    if(!rep) return;
+    try{ localStorage.setItem("bt_rep", JSON.stringify(rep)); }catch(e){}
+    document.getElementById("entrada").style.display="none";
+    document.getElementById("repArea").style.display="block";
+    document.body.style.overflow="";
+    document.getElementById("repNome").textContent=rep.nome||"";
+    renderCarteira(clientes||[]);
+  }
+  function renderCarteira(clientes){
+    document.getElementById("repCount").textContent="· "+clientes.length+" cliente"+(clientes.length===1?"":"s");
+    var box=document.getElementById("repCarteira");
+    if(!clientes.length){ box.innerHTML='<div class="rep-dica">Você ainda não tem clientes na carteira. Fale com a Big Tricot.</div>'; return; }
+    box.innerHTML=clientes.map(function(c){
+      var cidade=[c.cidade,c.uf].filter(Boolean).join("/");
+      var chip = c.bloqueado ? '<span class="rep-chip block">● Bloqueado</span>'
+        : c.liberado ? '<span class="rep-chip ok">● Liberado</span>'
+        : '<span class="rep-chip wait">● Em análise</span>';
+      return '<button class="rep-card" onclick="__repCliente(\''+esc(c.id)+'\')"><div class="nm">'+esc(c.nome||c.fantasia||"(sem nome)")+'</div>'+
+        '<div class="sub">'+(c.cnpj?esc(c.cnpj):'sem CNPJ')+(cidade?' · '+esc(cidade):'')+'</div>'+chip+'</button>';
+    }).join("");
+  }
+  window.__repCliente=function(id){ alert("Em breve: montar o pedido para este cliente. 🧶\n(Estamos liberando essa parte por etapas.)"); };
+  function repSair(){ try{ localStorage.removeItem("bt_rep"); }catch(e){} document.getElementById("repArea").style.display="none"; mostrarEnt(); abrirEntrada(); }
+  document.getElementById("repBtn").addEventListener("click",repEntrar);
+  document.getElementById("repSenha").addEventListener("keydown",function(e){ if(e.key==="Enter") repEntrar(); });
+  document.getElementById("irRep").addEventListener("click",mostrarRepView);
+  document.getElementById("repVoltar").addEventListener("click",function(){ mostrarEnt(); });
+  document.getElementById("repSair").addEventListener("click",repSair);
+
   // Cadastro de loja nova (abre dentro do mesmo modal de entrada)
   function mostrarCad(prefill){ document.getElementById("entView").style.display="none"; document.getElementById("cadView").style.display="block"; var cc=document.getElementById("cCnpj"); if(cc && prefill && !cc.value) cc.value=prefill; document.getElementById("cadMsg").textContent=""; }
-  function mostrarEnt(){ document.getElementById("cadView").style.display="none"; var sv=document.getElementById("senhaView"); if(sv) sv.style.display="none"; document.getElementById("entView").style.display="block"; }
+  function mostrarEnt(){ ["cadView","senhaView","repView"].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display="none"; }); document.getElementById("entView").style.display="block"; }
   document.getElementById("irCad").addEventListener("click",function(){ mostrarCad((document.getElementById("entCnpj").value||"").trim()); });
   document.getElementById("voltarEnt").addEventListener("click",mostrarEnt);
   function enviarCadastro(){
@@ -954,9 +1054,33 @@
 
   // Inicia sessão: trata link de acesso (?acesso=token), senão usa o que está salvo e revalida.
   (function iniciarSessao(){
+    var qs; try{ qs=new URLSearchParams(location.search); }catch(e){ qs=null; }
+    // 0) Link de acesso do REPRESENTANTE (?rep_acesso=token): ele cria a senha dele.
+    var rtok = qs ? (qs.get("rep_acesso")||"") : "";
+    if(rtok){
+      fetch("/api/loja/rep-acesso?token="+encodeURIComponent(rtok))
+        .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+        .then(function(res){
+          if(res.ok && res.j.ok){
+            if(res.j.tem_senha){ mostrarRepView(); }
+            else { TOKEN_REP=rtok; mostrarCriarSenha(res.j.nome, ""); }
+          } else { mostrarEnt(); abrirEntrada(); }
+        })
+        .catch(function(){ mostrarEnt(); abrirEntrada(); });
+      return;
+    }
+    // 0b) Representante já logado neste tablet: recarrega a carteira.
+    var rep=repSalvo();
+    if(rep && rep.id){
+      fetch("/api/loja/rep-carteira?rep="+encodeURIComponent(rep.id))
+        .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+        .then(function(res){ if(res.ok && res.j.ok){ aplicarRep(res.j.rep, res.j.clientes); } else { try{ localStorage.removeItem("bt_rep"); }catch(e){} abrirEntrada(); } })
+        .catch(function(){ aplicarRep(rep, []); });
+      return;
+    }
     var c=cliSalvo(); if(c && c.regiao){ regiao=(c.regiao==="norte")?"norte":"sul"; LIBERADO=!!c.liberado; mostrarSaudacao(c.nome); atualizarAvisoLib(); }
     // 1) Link de acesso enviado pelo gestor: o cliente cria a senha dele.
-    var tok=""; try{ tok=new URLSearchParams(location.search).get("acesso")||""; }catch(e){}
+    var tok=""; try{ tok=qs?(qs.get("acesso")||""):""; }catch(e){}
     if(tok){
       TOKEN_ACESSO=tok;
       fetch("/api/loja/acesso?token="+encodeURIComponent(tok))

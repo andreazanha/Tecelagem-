@@ -36,6 +36,22 @@ function clienteLiberado(codigoErp?: string | null, lojaStatus?: string | null):
   return String(lojaStatus || "").trim() === "aprovado";
 }
 
+// Carteira do representante: os clientes cujo campo "representante" bate com o nome do rep.
+async function carteiraDoRep(env: Env, repNome: string) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, nome, fantasia, cnpj, cidade, uf, loja_regiao, COALESCE(codigo_erp,'') AS codigo_erp,
+            COALESCE(loja_status,'') AS loja_status, COALESCE(bloqueado,0) AS bloqueado
+       FROM clientes WHERE TRIM(LOWER(COALESCE(representante,''))) = TRIM(LOWER(?)) ORDER BY nome`
+  ).bind(repNome).all<{ id: string; nome: string | null; fantasia: string | null; cnpj: string | null; cidade: string | null; uf: string | null; loja_regiao: string | null; codigo_erp: string; loja_status: string; bloqueado: number }>();
+  return results.map((r) => ({
+    id: r.id, nome: r.nome, fantasia: r.fantasia, cnpj: r.cnpj, cidade: r.cidade, uf: r.uf,
+    regiao: regiaoDoCliente(r.loja_regiao, r.uf),
+    liberado: clienteLiberado(r.codigo_erp, r.loja_status),
+    status: r.loja_status || (r.codigo_erp ? "aprovado" : ""),
+    bloqueado: Number(r.bloqueado) === 1,
+  }));
+}
+
 // ── Senha da loja (PBKDF2 via Web Crypto; sem dependência externa) ──────────────
 const b64 = (a: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(a as ArrayBuffer)));
 async function hashSenha(senha: string): Promise<string> {
@@ -166,6 +182,72 @@ loja.post("/definir-senha", async (c) => {
     liberado: clienteLiberado(cli.codigo_erp, statusFinal),
     status: statusFinal,
   });
+});
+
+// ── REPRESENTANTE (R1) — login próprio (e-mail + senha) e carteira (só os clientes dele) ──
+loja.post("/rep-entrar", async (c) => {
+  let b: { email?: string; senha?: string } = {};
+  try { b = await c.req.json(); } catch { return c.json({ erro: "json_invalido" }, 400); }
+  const email = String(b.email || "").trim().toLowerCase();
+  const senha = String(b.senha || "");
+  if (!email) return c.json({ erro: "email_invalido", msg: "Informe o seu e-mail." }, 400);
+  const rep = await c.env.DB.prepare(
+    "SELECT id, nome, email, senha_hash, COALESCE(ativo,1) AS ativo FROM representantes WHERE LOWER(TRIM(COALESCE(email,'')))=? LIMIT 1"
+  ).bind(email).first<{ id: string; nome: string; email: string | null; senha_hash: string | null; ativo: number }>();
+  if (!rep) return c.json({ erro: "rep_nao_encontrado", msg: "Não encontramos esse e-mail de representante. Fale com a Big Tricot." }, 404);
+  if (Number(rep.ativo) === 0) return c.json({ erro: "rep_inativo", msg: "Seu acesso está inativo. Fale com a Big Tricot." }, 403);
+  if (!rep.senha_hash) return c.json({ erro: "sem_senha", msg: "Seu acesso ainda não tem senha. Abra o link que a Big Tricot te enviou para criar a sua senha." }, 401);
+  if (!senha) return c.json({ erro: "senha_requerida", msg: "Digite sua senha." }, 401);
+  if (!(await conferirSenha(senha, rep.senha_hash))) return c.json({ erro: "senha_invalida", msg: "Senha incorreta." }, 401);
+  return c.json({ ok: true, rep: { id: rep.id, nome: rep.nome, email: rep.email || "" }, clientes: await carteiraDoRep(c.env, rep.nome) });
+});
+
+// Recarregar a sessão do rep (sem senha): devolve a carteira atualizada.
+loja.get("/rep-carteira", async (c) => {
+  const id = String(c.req.query("rep") || "").trim();
+  if (!id) return c.json({ ok: false });
+  const rep = await c.env.DB.prepare(
+    "SELECT id, nome, email, senha_hash, COALESCE(ativo,1) AS ativo FROM representantes WHERE id=? LIMIT 1"
+  ).bind(id).first<{ id: string; nome: string; email: string | null; senha_hash: string | null; ativo: number }>();
+  if (!rep || !rep.senha_hash || Number(rep.ativo) === 0) return c.json({ ok: false });
+  return c.json({ ok: true, rep: { id: rep.id, nome: rep.nome, email: rep.email || "" }, clientes: await carteiraDoRep(c.env, rep.nome) });
+});
+
+// Link de acesso do rep: valida o token e mostra quem é.
+loja.get("/rep-acesso", async (c) => {
+  const token = String(c.req.query("token") || "").trim();
+  if (token.length < 10) return c.json({ erro: "token_invalido", msg: "Link inválido." }, 400);
+  const rep = await c.env.DB.prepare(
+    "SELECT nome, email, senha_hash, COALESCE(ativo,1) AS ativo FROM representantes WHERE acesso_token=? LIMIT 1"
+  ).bind(token).first<{ nome: string; email: string | null; senha_hash: string | null; ativo: number }>();
+  if (!rep) return c.json({ erro: "token_invalido", msg: "Link inválido ou expirado. Peça um novo à Big Tricot." }, 404);
+  if (Number(rep.ativo) === 0) return c.json({ erro: "rep_inativo", msg: "Acesso inativo." }, 403);
+  const em = String(rep.email || "");
+  const mask = em ? em.replace(/^(.{1,2})[^@]*(@.*)$/, "$1•••$2") : "";
+  return c.json({ ok: true, nome: rep.nome, email_mascara: mask, tem_senha: !!rep.senha_hash });
+});
+
+// Definir/trocar a senha do rep (via token do link, ou e-mail + senha atual).
+loja.post("/rep-definir-senha", async (c) => {
+  let b: { token?: string; email?: string; senha_atual?: string; nova?: string } = {};
+  try { b = await c.req.json(); } catch { return c.json({ erro: "json_invalido" }, 400); }
+  const nova = String(b.nova || "");
+  if (nova.length < 4) return c.json({ erro: "senha_curta", msg: "Crie uma senha com pelo menos 4 caracteres." }, 400);
+  let rep: { id: string; nome: string; email: string | null; senha_hash: string | null } | null = null;
+  const token = String(b.token || "").trim();
+  if (token.length >= 10) {
+    rep = await c.env.DB.prepare("SELECT id, nome, email, senha_hash FROM representantes WHERE acesso_token=? LIMIT 1").bind(token).first();
+    if (!rep) return c.json({ erro: "token_invalido", msg: "Link inválido. Peça um novo à Big Tricot." }, 404);
+  } else {
+    const email = String(b.email || "").trim().toLowerCase();
+    if (!email) return c.json({ erro: "email_invalido", msg: "Informe o e-mail." }, 400);
+    rep = await c.env.DB.prepare("SELECT id, nome, email, senha_hash FROM representantes WHERE LOWER(TRIM(COALESCE(email,'')))=? LIMIT 1").bind(email).first();
+    if (!rep) return c.json({ erro: "rep_nao_encontrado", msg: "E-mail não encontrado." }, 404);
+    if (rep.senha_hash && !(await conferirSenha(String(b.senha_atual || ""), rep.senha_hash))) return c.json({ erro: "senha_invalida", msg: "Senha atual incorreta." }, 401);
+  }
+  const hash = await hashSenha(nova);
+  await c.env.DB.prepare("UPDATE representantes SET senha_hash=? WHERE id=?").bind(hash, rep.id).run();
+  return c.json({ ok: true, rep: { id: rep.id, nome: rep.nome, email: rep.email || "" }, clientes: await carteiraDoRep(c.env, rep.nome) });
 });
 
 loja.post("/pedido", async (c) => {

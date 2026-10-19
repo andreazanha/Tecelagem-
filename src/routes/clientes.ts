@@ -377,3 +377,18 @@ clientes.post("/gerar-acesso-loja", async (c) => {
   const link = `${origin}/api/integracao/loja?acesso=${token}`;
   return c.json({ ok: true, nome: cli.nome || "", link, tem_senha: !!cli.senha_hash });
 });
+
+// Gera o link de acesso de um REPRESENTANTE (ele abre e cria a senha dele). Login do rep = e-mail.
+clientes.post("/gerar-acesso-rep", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ id?: string }>().catch(() => ({} as { id?: string }));
+  const id = String(b.id || "").trim();
+  if (!id) return c.json({ error: "informe_id" }, 400);
+  const rep = await c.env.DB.prepare("SELECT id, nome, email, senha_hash FROM representantes WHERE id=?").bind(id).first<{ id: string; nome: string; email: string | null; senha_hash: string | null }>();
+  if (!rep) return c.json({ error: "rep_nao_encontrado", msg: "Representante não encontrado." }, 404);
+  if (!String(rep.email || "").trim()) return c.json({ error: "sem_email", msg: "Esse representante não tem e-mail no cadastro — e o e-mail é o login dele. Cadastre o e-mail primeiro." }, 400);
+  const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  await c.env.DB.prepare("UPDATE representantes SET acesso_token=? WHERE id=?").bind(token, id).run();
+  const link = `${new URL(c.req.url).origin}/api/integracao/loja?rep_acesso=${token}`;
+  return c.json({ ok: true, nome: rep.nome, email: rep.email || "", link, tem_senha: !!rep.senha_hash });
+});
