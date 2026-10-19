@@ -40,26 +40,48 @@
   .banner .b-sub{font-size:12px; letter-spacing:.24em; text-transform:uppercase; color:#d8cfc0; margin-top:14px}
   .banner .b-btn{display:inline-flex; align-items:center; gap:8px; margin-top:22px; background:var(--accent); color:#fff; border:0; border-radius:4px; padding:13px 26px; font-size:12px; letter-spacing:.16em; text-transform:uppercase; font-weight:600; cursor:pointer; text-decoration:none}
   /* FAIXA PRETA GRAFITE abaixo do banner: busca centralizada + cliente/carrinho à direita */
-  .buscafaixa{background:#181615; padding:16px 24px; position:sticky; top:0; z-index:40}
-  .bf-in{position:relative; max-width:1760px; margin:0 auto; display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap; min-height:46px}
-  .busca{width:100%; max-width:500px; display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #e8e2d7; border-radius:999px; padding:11px 20px; box-shadow:0 1px 2px rgba(0,0,0,.14)}
-  .busca input{border:0; outline:0; background:transparent; width:100%; font-size:14.5px; color:var(--ink)}
-  .bf-right{position:absolute; right:0; top:50%; transform:translateY(-50%); display:flex; align-items:center; gap:14px}
-  .saud{display:flex; align-items:center; gap:8px; font-size:14px; color:#e9e2d6; white-space:nowrap}
-  .btn-cart{display:flex; align-items:center; gap:7px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:999px; padding:9px 17px; font-weight:600; font-size:13px; cursor:pointer; white-space:nowrap}
+  .buscafaixa{background:#181615; padding:0 24px; position:sticky; top:0; z-index:40; min-height:64px; display:flex; align-items:center}
+  .bf-in{width:100%; max-width:1760px; margin:0 auto; display:flex; align-items:center; gap:12px; padding:11px 0}
+  .busca{flex:1 1 auto; max-width:400px; height:42px; box-sizing:border-box; display:flex; align-items:center; gap:9px; background:#fff; border:1px solid #e8e2d7; border-radius:12px; padding:0 14px; box-shadow:0 1px 2px rgba(0,0,0,.14)}
+  .busca .bf-ico{width:18px; height:18px; flex:0 0 auto; stroke:#8a8073; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round}
+  .busca input{border:0; outline:0; background:transparent; width:100%; font-size:14px; color:var(--ink)}
+  .bf-right{display:flex; align-items:center; gap:12px; margin-left:auto; min-width:0}
+  .saud{display:flex; align-items:center; gap:5px; font-size:13px; color:#cfc7ba; white-space:nowrap; min-width:0; max-width:260px}
+  .saud b{color:#fff; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .saud a{flex:0 0 auto}
+  .btn-cart{height:42px; box-sizing:border-box; display:inline-flex; align-items:center; gap:7px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:12px; padding:0 16px; font-weight:600; font-size:13px; cursor:pointer; white-space:nowrap; flex:0 0 auto}
   .btn-cart .n{background:#fff; color:var(--accent); border-radius:999px; min-width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; padding:0 5px}
-  .btn-ghost{display:flex; align-items:center; gap:7px; border:1px solid rgba(255,255,255,.35); background:transparent; color:#e9e2d6; border-radius:999px; padding:9px 15px; font-weight:500; font-size:13px; cursor:pointer; white-space:nowrap; transition:background .15s ease,border-color .15s ease}
+  .btn-ghost{height:42px; box-sizing:border-box; display:inline-flex; align-items:center; gap:7px; border:1px solid rgba(255,255,255,.35); background:transparent; color:#e9e2d6; border-radius:12px; padding:0 15px; font-weight:500; font-size:13px; cursor:pointer; white-space:nowrap; flex:0 0 auto; transition:background .15s ease,border-color .15s ease}
   .btn-ghost:hover{background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.6)}
+  .btn-cart svg,.btn-ghost svg{width:18px; height:18px; flex:0 0 auto; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round}
   /* Meus pedidos (área do cliente) */
-  .mp-card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:12px}
-  .mp-h{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--line)}
-  .mp-sit{font-weight:700; font-size:14px; color:var(--ink)}
-  .mp-dt{font-size:12px; color:var(--muted); margin-top:2px}
-  .mp-tot{font-weight:700; font-size:15px; color:var(--accent); white-space:nowrap}
-  .mp-it{display:flex; align-items:baseline; gap:8px; padding:4px 0; font-size:13.5px}
+  /* Meus pedidos — acordeão de cards fechados (status, nº, data, peças, valor, seta) */
+  .mp-card{background:#fff; border:1px solid #DCE3EC; border-radius:12px; margin-bottom:10px; box-shadow:0 1px 3px rgba(15,23,42,.05); overflow:hidden}
+  .mp-head{display:block; width:100%; text-align:left; background:transparent; border:0; cursor:pointer; padding:12px 14px; font:inherit; color:inherit}
+  .mp-l1{display:flex; align-items:center; gap:8px}
+  .mp-badge{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap}
+  .mp-badge .dot{width:7px; height:7px; border-radius:50%; flex:0 0 auto}
+  .mp-badge.producao{background:#dcfce7; color:#166534} .mp-badge.producao .dot{background:#16a34a}
+  .mp-badge.separacao{background:#ffedd5; color:#9a3412} .mp-badge.separacao .dot{background:#ea580c}
+  .mp-badge.enviado{background:#dbeafe; color:#1e40af} .mp-badge.enviado .dot{background:#2563eb}
+  .mp-badge.entregue{background:#ede9fe; color:#5b21b6} .mp-badge.entregue .dot{background:#7c3aed}
+  .mp-badge.cancelado{background:#fee2e2; color:#991b1b} .mp-badge.cancelado .dot{background:#dc2626}
+  .mp-badge.processando,.mp-badge.recebido{background:#eef2f7; color:#475569} .mp-badge.processando .dot,.mp-badge.recebido .dot{background:#94a3b8}
+  .mp-num{font-weight:800; font-size:14px; color:var(--ink)}
+  .mp-chev{margin-left:auto; color:#94a3b8; display:flex; transition:transform .2s ease}
+  .mp-card.open .mp-chev{transform:rotate(180deg)}
+  .mp-chev svg{width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round}
+  .mp-l2{display:flex; align-items:center; gap:10px; margin-top:7px; font-size:12.5px; color:var(--muted); flex-wrap:wrap}
+  .mp-l2 .mp-dt{color:var(--muted)}
+  .mp-l2 .mp-sep{opacity:.5}
+  .mp-l2 .mp-tot{margin-left:auto; font-weight:800; font-size:15px; color:var(--ink); white-space:nowrap}
+  .mp-body{display:none; padding:0 14px 12px; border-top:1px solid #eef2f7}
+  .mp-card.open .mp-body{display:block}
+  .mp-it{display:flex; align-items:baseline; gap:8px; padding:9px 0; font-size:13.5px; border-bottom:1px solid #f1f5f9}
+  .mp-it:last-child{border-bottom:0}
   .mp-it .mp-nm{font-weight:600; color:var(--ink)}
   .mp-it .mp-d{color:var(--muted); font-size:12.5px; flex:1 1 auto}
-  .mp-it .mp-q{font-weight:700; color:var(--ink)}
+  .mp-it .mp-q{font-weight:800; color:var(--ink); white-space:nowrap}
   .abas{display:none}
   .cad-inp{width:100%; box-sizing:border-box; padding:11px 12px; border:1px solid #d6d0c4; border-radius:10px; font-size:15px; font-family:inherit; color:#2c2721}
   .cad-inp:focus{outline:0; border-color:#ad5033}
@@ -100,8 +122,9 @@
   .preco{margin-top:7px; font-size:11.5px; color:var(--muted)}
   .preco b{color:var(--accent); font-size:15px; font-weight:700; margin-left:2px}
   .vazio{text-align:center; color:var(--muted); padding:60px 16px}
-  @media(max-width:900px){ .bf-right{position:static; transform:none; width:100%; justify-content:center; order:2} .busca{order:1; max-width:none} }
-  @media(max-width:640px){ .buscafaixa{padding:12px 16px} .banner{aspect-ratio:1/1; max-height:none} .banner .b-in{padding:0 20px} .banner .b-tit{font-size:30px} main{padding:14px 16px 60px} .sec{margin-top:24px} .sec h2{font-size:24px; gap:12px} .sec h2::before,.sec h2::after{width:34px} }
+  @media(max-width:760px){ .buscafaixa{min-height:0} .bf-in{flex-wrap:wrap; gap:10px} .busca{flex:1 1 100%; max-width:none; order:1} .bf-right{order:2; width:100%; margin-left:0; justify-content:flex-end; gap:10px} .saud{margin-right:auto; max-width:none} }
+  @media(max-width:640px){ .buscafaixa{padding:10px 16px} .banner{aspect-ratio:1/1; max-height:none} .banner .b-in{padding:0 20px} .banner .b-tit{font-size:30px} main{padding:14px 16px 60px} .sec{margin-top:24px} .sec h2{font-size:24px; gap:12px} .sec h2::before,.sec h2::after{width:34px} }
+  @media(max-width:420px){ .btn-ghost span,.btn-cart span:not(.n){display:none} .btn-ghost,.btn-cart{padding:0 12px} }
   /* ---- popup "continuar / escolher outro" ao adicionar no carrinho ---- */
   .popconf{position:fixed; inset:0; z-index:80; background:rgba(44,39,33,.55); display:flex; align-items:center; justify-content:center; padding:20px}
   .popconf-box{background:var(--card); border-radius:16px; max-width:360px; width:100%; padding:24px 22px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.3)}
@@ -221,11 +244,11 @@
 
 <div class="buscafaixa">
   <div class="bf-in">
-    <label class="busca">🔎<input id="q" placeholder="Buscar produto, cor ou referência…" autocomplete="off"></label>
+    <label class="busca"><svg class="bf-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="q" placeholder="Buscar produto, cor ou referência…" autocomplete="off"></label>
     <div class="bf-right">
       <span id="saudacao" class="saud" style="display:none"></span>
-      <button class="btn-ghost" id="abrirMeus" title="Meus pedidos">👤 Meus pedidos</button>
-      <button class="btn-cart" id="abrirCart">🛒 Carrinho <span class="n" id="cartN">0</span></button>
+      <button class="btn-ghost" id="abrirMeus" title="Meus pedidos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><span>Meus pedidos</span></button>
+      <button class="btn-cart" id="abrirCart"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.5 2.5h2l2.6 12.4a2 2 0 0 0 2 1.6h9.3a2 2 0 0 0 2-1.6L23 6H6"/></svg><span>Carrinho</span> <span class="n" id="cartN">0</span></button>
     </div>
   </div>
 </div>
@@ -702,15 +725,41 @@
     fetch("/api/loja/meus-pedidos?cnpj="+encodeURIComponent(cnpj)).then(function(r){return r.json();}).then(function(d){ renderMeus(d.pedidos||[]); })
       .catch(function(){ pane.innerHTML=cabMeus()+'<div class="itens"><div class="cvazio">Não consegui carregar agora. Tente de novo.</div></div>'; });
   }
+  function fmtDataHora(s){
+    s=String(s||"").replace("T"," ");
+    var m=s.match(/(\d{4})-(\d{2})-(\d{2})[ ]?(\d{2}):(\d{2})/);
+    if(!m) return s.slice(0,16);
+    return m[3]+"/"+m[2]+"/"+m[1]+" às "+m[4]+":"+m[5];
+  }
+  function chevSvg(){ return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'; }
+  // Abre/fecha um pedido; mantém só UM aberto por vez.
+  window.__mpToggle=function(ix){
+    var cur=document.getElementById("mpc-"+ix); if(!cur) return;
+    var abrir=!cur.classList.contains("open");
+    document.querySelectorAll("#meusPane .mp-card").forEach(function(c){ c.classList.remove("open"); });
+    if(abrir) cur.classList.add("open");
+  };
   function renderMeus(peds){
     var pane=document.getElementById("meusPane");
     if(!peds.length){ pane.innerHTML=cabMeus()+'<div class="itens"><div class="cvazio">Você ainda não tem pedidos por aqui. 🧶<br>Monte seu pedido no catálogo.</div></div>'; return; }
-    var html=peds.map(function(p){
-      var data=String(p.data||"").replace("T"," ").slice(0,16);
+    var html=peds.map(function(p,ix){
+      var data=fmtDataHora(p.data);
+      var pecas=Number(p.pecas)||0;
       var itens=(p.itens||[]).map(function(it){
         return '<div class="mp-it"><span class="mp-nm">'+esc(it.produto||it.ref||"—")+'</span><span class="mp-d">'+esc(it.cor||"")+(it.tamanho?' · '+esc(it.tamanho):'')+'</span><span class="mp-q">'+(Number(it.qtd)||0)+'×</span></div>';
       }).join("");
-      return '<div class="mp-card"><div class="mp-h"><div><div class="mp-sit">'+esc(p.situacao||"")+'</div><div class="mp-dt">'+esc(data)+'</div></div><div class="mp-tot">'+brl(p.total)+'</div></div>'+itens+'</div>';
+      var numTxt = p.numero ? ('Pedido nº '+p.numero) : 'Pedido';
+      return '<div class="mp-card" id="mpc-'+ix+'">'+
+        '<button class="mp-head" onclick="__mpToggle('+ix+')">'+
+          '<div class="mp-l1">'+
+            '<span class="mp-badge '+esc(p.status||'recebido')+'"><span class="dot"></span>'+esc(p.status_label||p.situacao||"")+'</span>'+
+            '<span class="mp-num">'+esc(numTxt)+'</span>'+
+            '<span class="mp-chev">'+chevSvg()+'</span>'+
+          '</div>'+
+          '<div class="mp-l2"><span class="mp-dt">'+esc(data)+'</span><span class="mp-sep">·</span><span>'+pecas+' '+(pecas===1?'peça':'peças')+'</span><span class="mp-tot">'+brl(p.total)+'</span></div>'+
+        '</button>'+
+        '<div class="mp-body">'+(itens||'<div class="mp-it"><span class="mp-d">Sem itens.</span></div>')+'</div>'+
+      '</div>';
     }).join("");
     pane.innerHTML=cabMeus()+'<div class="itens">'+html+'</div>';
   }

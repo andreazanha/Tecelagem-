@@ -337,13 +337,20 @@ loja.get("/meus-pedidos", async (c) => {
     a.push({ produto: it.produto, ref: it.ref, cor: it.cor_grade, tamanho: it.tamanho, qtd: it.qtd, valor_unit: it.valor_unit });
     porPed.set(it.pedido_id, a);
   }
-  const situacao = (sync: string, numero: number | null) =>
-    sync === "enviado" ? ("✅ Em produção" + (numero ? " · nº " + numero : ""))
-      : sync === "erro" ? "⏳ Em processamento"
-        : "📝 Pedido recebido";
-  const pedidos = peds.map((p) => ({
-    id: p.id, numero: p.erp_numero, data: p.created_at || p.data_pedido, total: p.valor_total,
-    situacao: situacao(p.sync, p.erp_numero), itens: porPed.get(p.id) || [],
-  }));
+  // Status REAL do nosso fluxo (não inventa etapas): enviado→em produção, erro→em
+  // processamento, resto→recebido. 'status' é a chave pra cor; 'status_label' o texto.
+  const statusKey = (sync: string) => sync === "enviado" ? "producao" : sync === "erro" ? "processando" : "recebido";
+  const statusLabel = (st: string) => st === "producao" ? "Em produção" : st === "processando" ? "Em processamento" : "Pedido recebido";
+  const pedidos = peds.map((p) => {
+    const its = porPed.get(p.id) || [];
+    const st = statusKey(p.sync);
+    return {
+      id: p.id, numero: p.erp_numero, data: p.created_at || p.data_pedido, total: p.valor_total,
+      pecas: its.reduce((s, it) => s + (Number(it.qtd) || 0), 0),
+      status: st, status_label: statusLabel(st),
+      situacao: statusLabel(st) + (p.erp_numero ? " · nº " + p.erp_numero : ""),
+      itens: its,
+    };
+  });
   return c.json({ pedidos });
 });
