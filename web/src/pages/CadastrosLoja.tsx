@@ -168,43 +168,67 @@ function CardCadastro({ c, prazos, onMudou }: { c: CadastroLoja; prazos: { codig
   );
 }
 
-// Gera um link de acesso à loja para um cliente que já é nosso (pelo CNPJ). Ele abre o
-// link, cria a senha e já entra vendo os preços.
+// Gera um link de acesso à loja para um cliente que já é nosso — ESCOLHENDO na lista
+// (busca por nome/CNPJ/cidade). Ele abre o link, cria a senha e já entra vendo os preços.
+type CliItem = { id: string; nome: string; cnpj?: string | null; cidade?: string | null; uf?: string | null };
 function AcessoExistente() {
-  const [cnpj, setCnpj] = useState("");
+  const [lista, setLista] = useState<CliItem[] | null>(null);
+  const [busca, setBusca] = useState("");
+  const [sel, setSel] = useState<CliItem | null>(null);
   const [link, setLink] = useState("");
-  const [nome, setNome] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [copiado, setCopiado] = useState(false);
-  async function gerar() {
-    const dig = cnpj.replace(/\D/g, "");
-    if (dig.length < 11) { setMsg("Digite um CNPJ válido."); return; }
-    setBusy(true); setMsg(""); setLink("");
+
+  useEffect(() => { api.listarClientesCrm().then((l) => setLista(l as CliItem[])).catch(() => setLista([])); }, []);
+
+  const q = busca.trim().toLowerCase();
+  const qDig = q.replace(/\D/g, "");
+  const matches = q.length < 2 ? [] : (lista || []).filter((c) => {
+    const nome = (c.nome || "").toLowerCase();
+    const cid = (c.cidade || "").toLowerCase();
+    const cnpjDig = String(c.cnpj || "").replace(/\D/g, "");
+    return nome.includes(q) || cid.includes(q) || (qDig.length >= 3 && cnpjDig.includes(qDig));
+  }).slice(0, 8);
+
+  async function gerar(c: CliItem) {
+    setSel(c); setBusy(true); setMsg(""); setLink("");
     try {
-      const r = await api.cadastroGerarAcesso({ cnpj: dig });
-      if (r.ok) { setLink(r.link); setNome(r.nome); setMsg(r.tem_senha ? "Esse cliente já tem senha — o link serve para ele redefinir." : ""); }
-      else setMsg(r.msg || "Não achei esse cliente. Confira o CNPJ.");
+      const r = await api.cadastroGerarAcesso({ id: c.id });
+      if (r.ok) { setLink(r.link); setMsg(r.tem_senha ? "Esse cliente já tem senha — o link serve para ele redefinir." : ""); }
+      else setMsg(r.msg || "Não consegui gerar o link.");
     } catch { setMsg("Não consegui gerar o link."); } finally { setBusy(false); }
   }
   async function copiar() {
     try { await navigator.clipboard.writeText(link); setCopiado(true); setTimeout(() => setCopiado(false), 1800); } catch { /* ok */ }
   }
+
   return (
     <div className="card pad" style={{ display: "grid", gap: 8 }}>
       <div style={{ fontWeight: 800, fontSize: 14 }}>🔑 Dar acesso a um cliente que já é nosso</div>
       <div className="muted" style={{ fontSize: 12.5, maxWidth: 620 }}>
-        Gere um link e envie pelo WhatsApp. Ao abrir, o cliente <b>cria a senha dele</b> e já entra vendo os preços (sem precisar aprovar — ele já é cliente).
+        Busque o cliente, gere o link e envie pelo WhatsApp. Ao abrir, ele <b>cria a senha dele</b> e já entra vendo os preços (não precisa aprovar — já é cliente).
       </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <input value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="CNPJ do cliente" onKeyDown={(e) => { if (e.key === "Enter") gerar(); }}
-          style={{ padding: "9px 11px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 14, minWidth: 220 }} />
-        <button className="btn btn-primary" disabled={busy} onClick={gerar}>{busy ? "Gerando…" : "Gerar link"}</button>
+      <div style={{ position: "relative", maxWidth: 460 }}>
+        <input value={busca} onChange={(e) => { setBusca(e.target.value); setLink(""); setSel(null); }} placeholder={lista ? "Buscar cliente por nome, CNPJ ou cidade…" : "Carregando clientes…"} disabled={!lista}
+          style={{ width: "100%", boxSizing: "border-box", padding: "9px 11px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 14 }} />
+        {matches.length > 0 && !sel && (
+          <div style={{ position: "absolute", left: 0, right: 0, top: "100%", marginTop: 4, background: "var(--card,#fff)", border: "1px solid var(--line)", borderRadius: 10, boxShadow: "0 12px 30px #0002", zIndex: 20, overflow: "hidden" }}>
+            {matches.map((c) => (
+              <button key={c.id} onClick={() => gerar(c)} disabled={busy}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: 0, borderTop: "1px solid var(--line)", background: "transparent", cursor: "pointer" }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{c.nome}</div>
+                <div className="muted" style={{ fontSize: 11.5 }}>{c.cnpj ? c.cnpj : "sem CNPJ"}{c.cidade ? ` · ${c.cidade}/${c.uf || ""}` : ""}</div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+      {busy && <div className="muted" style={{ fontSize: 12.5 }}>Gerando link…</div>}
       {msg && <div style={{ fontSize: 12.5, color: "#92400e" }}>{msg}</div>}
-      {link && (
+      {link && sel && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "9px 11px" }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: "#166534" }}>Link de {nome || "acesso"}:</span>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: "#166534" }}>Link de {sel.nome}:</span>
           <input readOnly value={link} onFocus={(e) => e.target.select()} style={{ flex: 1, minWidth: 220, padding: "7px 9px", borderRadius: 8, border: "1px solid #bbf7d0", fontSize: 12.5, background: "#fff" }} />
           <button className="btn" onClick={copiar}>{copiado ? "✓ Copiado" : "Copiar"}</button>
         </div>
