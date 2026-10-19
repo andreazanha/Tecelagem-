@@ -2696,14 +2696,20 @@ body.dark .at-pag-seta:hover:not(:disabled) { background: #1b2536; border-color:
 .grupos-hd h2 svg { color: #4338ca; }
 .grupos-hd-acoes { display: flex; gap: 8px; align-items: center; }
 .grupos-hd-acoes .btn { height: 40px; border-radius: 12px; display: inline-flex; align-items: center; gap: 7px; padding: 0 15px; font-size: 13px; }
-.grupos-maxi { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-content: start; padding-top: 2px; }
-@media (max-width: 900px) { .grupos-maxi { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 560px) { .grupos-maxi { grid-template-columns: 1fr; } }
-/* Card do grupo: mesma identidade do kanban, altura mínima uniforme, hierarquia clara. */
-.grupos-maxi .grupo-wrap { position: relative; }
-.grupos-maxi .fx-card { width: auto; min-height: 128px; padding: 16px; margin-bottom: 0; border-radius: 14px; display: flex; flex-direction: column; }
+/* Modal de Grupos: fundo levemente cinza pra os cards BRANCOS ganharem contraste. */
+.modal-card.grupos-modal { background: #f4f7fb; }
+body.dark .modal-card.grupos-modal { background: #0d1522; }
+.grupos-maxi { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; grid-auto-rows: 1fr; align-content: start; padding-top: 2px; }
+@media (max-width: 900px) { .grupos-maxi { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .grupos-maxi { grid-template-columns: minmax(0, 1fr); } }
+/* Card do grupo: BORDA visível, altura 100% (todos da linha iguais), hierarquia clara. */
+.grupos-maxi .grupo-wrap { position: relative; height: 100%; display: flex; }
+.grupos-maxi .fx-card { width: 100%; height: 100%; min-height: 132px; padding: 16px; margin-bottom: 0; background: #fff; border: 1px solid #d7e0ea; border-left-width: 1px !important; border-left-color: #d7e0ea !important; border-radius: 16px; box-shadow: 0 2px 10px rgba(15,23,42,.06); display: flex; flex-direction: column; }
+.grupos-maxi .fx-card:hover { border-color: #b8c6d8; border-left-color: #b8c6d8 !important; box-shadow: 0 6px 16px rgba(15,23,42,.10); }
+body.dark .grupos-maxi .fx-card { background: #18202f; border-color: #2a3650; }
 .grupos-maxi .fx-card > div:first-of-type { padding-right: 42px; }
 .grupos-maxi .fx-card .fx-foot { margin-top: auto; }
+.grupos-maxi .fx-card .fx-div { background: #e8edf3; }
 .grupos-maxi .fx-card .conv-av { width: 56px; height: 56px; font-size: 18px; border-radius: 16px; }
 .grupos-maxi .fx-card .fx-nm { font-size: 18px; font-weight: 700; line-height: 1.2; }
 .grupos-maxi .fx-card .fx-sub { font-size: 13.5px; }

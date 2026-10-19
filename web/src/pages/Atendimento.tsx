@@ -805,7 +805,7 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
       {gruposOpen && <GruposModal onFechar={() => setGruposOpen(false)} />}
       {gruposColOpen && (
         <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setGruposColOpen(false); }}>
-          <div className="modal-card" style={{ maxWidth: 1100, width: "min(1100px,96vw)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+          <div className="modal-card grupos-modal" style={{ maxWidth: 1100, width: "min(1100px,96vw)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
             <div className="grupos-hd">
               <h2><IcoAt n="grupos" size={22} /> Grupos <span className="muted" style={{ fontWeight: 400, fontSize: 14 }}>({cardsGrupos.length})</span></h2>
               <div className="grupos-hd-acoes">
