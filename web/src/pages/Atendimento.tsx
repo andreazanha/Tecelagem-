@@ -1325,7 +1325,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
   const linhaLoja = [loja ? `🏬 ${loja}` : "", cidadeUf].filter(Boolean).join(" · ");
   return (
     <div className={"fx-card" + (pulsando || lembrete ? " pulsando" : "") + (lembrete ? " lembrete" : "") + (selecionado ? " sel" : "")}
-      style={{ ...(arrastando ? { opacity: 0.5 } : {}), ...(!pulsando && !lembrete && corColuna ? { borderLeftColor: corColuna } : {}), ...(selecionado && corColuna ? { outline: `2px solid ${corColuna}`, outlineOffset: -2 } : {}) }}
+      style={{ ...(arrastando ? { opacity: 0.5 } : {}), ...(corColuna ? { "--cor-etapa": corColuna } as any : {}), ...(selecionado && corColuna ? { outline: `2px solid ${corColuna}`, outlineOffset: 2 } : {}) }}
       onClick={onAbrir} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
         <div className="conv-av" style={foto ? { backgroundImage: `url(${foto})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{foto ? "" : iniciais(pessoa)}</div>

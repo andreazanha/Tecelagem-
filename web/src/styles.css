@@ -1564,8 +1564,8 @@ body.dark .at-modo-pill { background: #fff; border-color: #d5dbe6; color: #33415
    de atenção (o anel é brilho, não fundo — mantém o aviso sem "pintar" o card). */
 .fx-card.pulsando { border-left: 3px solid #16a34a; background: #fff; animation: atCardPulse 1.15s ease-in-out infinite; }
 body.dark .fx-card.pulsando { background: #18202f; }
-/* Lembrete manual: faixa lateral ÂMBAR, fundo branco. */
-.fx-card.lembrete { border-left-color: #eab308 !important; background: #fff !important; }
+/* Lembrete manual: fundo branco (a borda segue a cor da etapa; o aviso é o piscar). */
+.fx-card.lembrete { background: #fff !important; }
 body.dark .fx-card.lembrete { background: #18202f !important; }
 /* Avatar (foto de perfil ou iniciais) no card da conversa */
 .conv-av { width: 46px; height: 46px; border-radius: 13px; flex: 0 0 auto; background: #6366f1; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; overflow: hidden; }
@@ -2645,6 +2645,10 @@ body.dark .page-head.at-head > .at-actions::-webkit-scrollbar-thumb { background
    rodapé colado. Mantém loja/cidade, hora e TODOS os botões. Escopo só no quadro
    de atendimento (.fx-board.at-board), sem afetar o Funil. */
 .fx-board.at-board .fx-card { padding: 8px 11px; }
+/* Card de conversa: BORDA COMPLETA 2px na cor da etapa (a cor vem de --cor-etapa, setada
+   no card com a cor da coluna). Fundo branco; sem faixa lateral — a cor contorna o card todo. */
+.fx-board.at-board .fx-card { border: 2px solid var(--cor-etapa, #dce3ec); border-radius: 14px; box-shadow: 0 2px 8px rgba(15,23,42,.06); }
+.fx-board.at-board .fx-card:hover { border-color: var(--cor-etapa, #cbd5e1); box-shadow: 0 4px 12px rgba(15,23,42,.10); }
 .fx-board.at-board .fx-card .conv-av { width: 38px; height: 38px; font-size: 14px; border-radius: 11px; }
 .fx-board.at-board .fx-card .fx-tel { display: none; }
 .fx-board.at-board .fx-card .at-prev { -webkit-line-clamp: 1; margin-top: 6px; }
