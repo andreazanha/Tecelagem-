@@ -128,6 +128,27 @@ const STATUS_CLIENTE: Record<string, { label: string; bg: string; cor: string }>
 };
 const STATUS_CLIENTE_ORDEM = ["lead", "primeira-compra", "recorrente", "fiel", "inativo"];
 
+// Ícones estilo Lucide (traço fino, tamanho padronizado) pros botões do topo do Atendimento,
+// pra não depender de emoji. Padrão: 18px, traço 2, cantos arredondados.
+function IcoAt({ n, size = 18 }: { n: string; size?: number }) {
+  const P: Record<string, JSX.Element> = {
+    som: (<><path d="M11 5 6 9H2v6h4l5 4V5z" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></>),
+    mudo: (<><path d="M11 5 6 9H2v6h4l5 4V5z" /><path d="m22 9-6 6" /><path d="m16 9 6 6" /></>),
+    nova: (<><path d="M12 5v14" /><path d="M5 12h14" /></>),
+    grupos: (<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>),
+    equipe: (<><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></>),
+    campanha: (<><path d="m3 11 18-5v12L3 14v-3z" /><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" /></>),
+    mais: (<><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none" /><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" /></>),
+    seta_e: (<path d="m15 18-6-6 6-6" />),
+    seta_d: (<path d="m9 18 6-6-6-6" />),
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flex: "0 0 auto", display: "block" }} aria-hidden="true">
+      {P[n]}
+    </svg>
+  );
+}
+
 // ── Página do robô de atendimento ────────────────────────────────────────────────
 export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; onCrmTab?: (t: "inbox" | "funil") => void } = {}) {
   const [board, setBoard] = useState<AtendBoard | null>(null);
@@ -159,6 +180,24 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
   const dragRef = useRef<{ id: string; startX: number; startY: number; active: boolean; moved: boolean; movedAny: boolean; touch: boolean; timer: number | null; move?: (e: PointerEvent) => void; up?: (e: PointerEvent) => void; cancel?: (e: PointerEvent) => void } | null>(null);
   const arrastou = useRef(false);
   const [gerColunas, setGerColunas] = useState(false);
+  // Kanban paginado: 4 colunas por página no notebook/desktop; no celular mantém a rolagem lateral.
+  const [pag, setPag] = useState(0);
+  const [wide, setWide] = useState(() => (typeof window !== "undefined" ? window.matchMedia("(min-width: 760px)").matches : true));
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 760px)");
+    const on = () => setWide(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  // Menu "Mais ações" (ações secundárias): abre ao clicar, fecha ao clicar fora ou escolher uma ação.
+  const [maisOpen, setMaisOpen] = useState(false);
+  const maisRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!maisOpen) return;
+    const fora = (e: MouseEvent) => { if (maisRef.current && !maisRef.current.contains(e.target as Node)) setMaisOpen(false); };
+    document.addEventListener("mousedown", fora);
+    return () => document.removeEventListener("mousedown", fora);
+  }, [maisOpen]);
   function colunaEmPonto(x: number, y: number): string | null {
     for (const el of document.elementsFromPoint(x, y)) { const d = (el as HTMLElement).dataset?.coluna; if (d) return d; }
     return null;
@@ -624,18 +663,27 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
 
       <div className="page-head at-head">
         <div><h1>Atendimento</h1><div className="breadcrumb">Comercial › Atendimento (robô do WhatsApp)</div></div>
-        <div className="row-gap at-actions" style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div className="row-gap at-actions at-actions-v2" style={{ display: "flex", gap: 9, alignItems: "center" }}>
           <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
-          <button className="btn btn-soft" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); if (!n) { try { if (!audioRef.current) audioRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)(); } catch { /* ok */ } audioRef.current?.resume?.(); setTimeout(() => tocarDing(), 60); } return n; })} title={mudo ? "Som desligado — clique para ligar (toca um teste)" : "Toca um som quando chega mensagem nova. Clique para desligar."}>{mudo ? "🔕 Som off" : "🔔 Som on"}</button>
-          {podeFuncao(getUser(), "crm.nova") && <button className="btn btn-primary" onClick={() => setNovaConv(true)}>➕ Nova conversa</button>}
-          {colGrupos && <button className="btn btn-soft" onClick={() => setGruposColOpen(true)} title="Conversas de grupo">👥 Grupos{cardsGrupos.length ? ` (${cardsGrupos.length})` : ""}</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setEquipeOpen(true)}>👥 Equipe</button>}
-          {ehGestorAtend() && podeFuncao(getUser(), "crm.campanha") && <button className="btn btn-soft" onClick={() => setCampanhaOpen(true)}>📣 Campanha</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setReservasOpen(true)}>📋 Reservas</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setCfgOpen(true)}>⚙️ Conexão</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={() => setSim(true)}>💬 Simular cliente</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" onClick={juntarDuplicados} title="Junta cards repetidos do mesmo contato (número com/sem o 9º dígito) num só, preservando o histórico">🧹 Juntar duplicados</button>}
-          {ehGestorAtend() && <button className="btn btn-soft" disabled={cruzando} onClick={cruzarBase} title="Liga os contatos à base de clientes E puxa os nomes salvos na sua agenda do WhatsApp (preenche nome/CNPJ/cidade/UF sozinho). O sistema também faz isso automático 3x/dia.">{cruzando ? "Cruzando…" : "🔗 Cruzar com a base"}</button>}
+          <button className="btn at-btn" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); if (!n) { try { if (!audioRef.current) audioRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)(); } catch { /* ok */ } audioRef.current?.resume?.(); setTimeout(() => tocarDing(), 60); } return n; })} title={mudo ? "Som desligado — clique para ligar (toca um teste)" : "Toca um som quando chega mensagem nova. Clique para desligar."}><IcoAt n={mudo ? "mudo" : "som"} />{mudo ? "Som off" : "Som on"}</button>
+          {podeFuncao(getUser(), "crm.nova") && <button className="btn btn-primary at-btn" onClick={() => setNovaConv(true)}><IcoAt n="nova" />Nova conversa</button>}
+          {colGrupos && <button className="btn at-btn" onClick={() => setGruposColOpen(true)} title="Conversas de grupo"><IcoAt n="grupos" />Grupos{cardsGrupos.length ? ` (${cardsGrupos.length})` : ""}</button>}
+          {ehGestorAtend() && <button className="btn at-btn" onClick={() => setEquipeOpen(true)}><IcoAt n="equipe" />Equipe</button>}
+          {ehGestorAtend() && podeFuncao(getUser(), "crm.campanha") && <button className="btn at-btn" onClick={() => setCampanhaOpen(true)}><IcoAt n="campanha" />Campanha</button>}
+          {ehGestorAtend() && (
+            <div ref={maisRef} style={{ position: "relative" }}>
+              <button className={"btn at-btn" + (maisOpen ? " at-btn-on" : "")} onClick={() => setMaisOpen((v) => !v)} title="Mais ações"><IcoAt n="mais" />Mais ações</button>
+              {maisOpen && (
+                <div className="at-mais-pop" style={{ left: "auto", right: 0, minWidth: 230 }}>
+                  <button className="at-mais-item" onClick={() => { setMaisOpen(false); setReservasOpen(true); }}>📋 Reservas</button>
+                  <button className="at-mais-item" onClick={() => { setMaisOpen(false); setCfgOpen(true); }}>⚙️ Conexão</button>
+                  <button className="at-mais-item" onClick={() => { setMaisOpen(false); setSim(true); }}>💬 Simular cliente</button>
+                  <button className="at-mais-item" onClick={() => { setMaisOpen(false); juntarDuplicados(); }} title="Junta cards repetidos do mesmo contato (número com/sem o 9º dígito) num só, preservando o histórico">🧹 Juntar duplicados</button>
+                  <button className="at-mais-item" disabled={cruzando} onClick={() => { setMaisOpen(false); cruzarBase(); }} title="Liga os contatos à base de clientes E puxa os nomes salvos na sua agenda do WhatsApp (preenche nome/CNPJ/cidade/UF sozinho). O sistema também faz isso automático 3x/dia.">{cruzando ? "🔗 Cruzando…" : "🔗 Cruzar com a base"}</button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -675,11 +723,27 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
 
       {!board ? (
         <div className="card pad muted">Carregando…</div>
-      ) : (
+      ) : (() => {
+        // 4 colunas por página no notebook/desktop; no celular segue rolando de lado (todas).
+        const colsTodas = board.colunas.filter((col) => !ehColGrupos(col));
+        const porPag = 4;
+        const totalPags = Math.max(1, Math.ceil(colsTodas.length / porPag));
+        const pagAtual = Math.min(pag, totalPags - 1);
+        const colsMostra = wide ? colsTodas.slice(pagAtual * porPag, pagAtual * porPag + porPag) : colsTodas;
+        const mostrarPag = wide && totalPags > 1;
+        return (
         <>
+        {mostrarPag && (
+          <div className="at-pagbar">
+            <button className="at-pag-seta" disabled={pagAtual <= 0} onClick={() => setPag(Math.max(0, pagAtual - 1))} title="Etapas anteriores"><IcoAt n="seta_e" /></button>
+            <span className="at-pag-ind">Página {pagAtual + 1} de {totalPags}</span>
+            <button className="at-pag-seta" disabled={pagAtual >= totalPags - 1} onClick={() => setPag(Math.min(totalPags - 1, pagAtual + 1))} title="Próximas etapas"><IcoAt n="seta_d" /></button>
+            <span className="at-pag-dica">4 etapas por página · {colsTodas.length} no total</span>
+          </div>
+        )}
         {/* Atalho de colunas (só no celular): toque num chip pra pular direto pra coluna. */}
         <div className="fx-colnav">
-          {board.colunas.filter((col) => !ehColGrupos(col)).map((col) => {
+          {colsTodas.map((col) => {
             const n = (gruposPorColuna.get(col.id) || []).length;
             return (
               <button key={col.id} className="fx-colnav-chip" onClick={() => colRefs.current[col.id]?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })}>
@@ -688,8 +752,8 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
             );
           })}
         </div>
-        <div className="fx-board at-board" ref={boardRef}>
-          {board.colunas.filter((col) => !ehColGrupos(col)).map((col) => {
+        <div className={"fx-board at-board" + (wide ? " at-pag4" : "")} ref={boardRef}>
+          {colsMostra.map((col) => {
             const cs = gruposPorColuna.get(col.id) || [];
             return (
               <div className={"fx-col" + (sobre === col.id ? " drag-over" : "")} key={col.id} data-coluna={col.id} ref={(el) => { colRefs.current[col.id] = el; }}>
@@ -702,7 +766,7 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
                 </div>
                 <div className="fx-col-body">
                   {cs.map((c) => (
-                    <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board.colunas} onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)} arrastando={arrastando === c.id}
+                    <ConvMini key={c.id} c={c} foto={fotoCache.current[c.id] || undefined} colunas={board.colunas} onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)} arrastando={arrastando === c.id} selecionado={abrir === c.id}
                       onAbrir={() => { if (arrastou.current) { arrastou.current = false; return; } setAbrir(c.id); }}
                       onLembrete={() => toggleLembrete(c.id)}
                       onAgendar={(quando, mensagem) => agendarIa(c.id, quando, mensagem)}
@@ -717,7 +781,8 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
           })}
         </div>
         </>
-      )}
+        );
+      })()}
       {ehGestorAtend() && board && <div style={{ marginTop: 10 }}><button className="btn btn-soft" onClick={() => setGerColunas(true)}>➕ Criar / organizar colunas</button></div>}
       {gerColunas && <ColunasModal onFechar={() => setGerColunas(false)} onSalvo={() => { setGerColunas(false); recarregar(); }} />}
 
@@ -729,11 +794,11 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
       {gruposColOpen && (
         <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setGruposColOpen(false); }}>
           <div className="modal-card" style={{ maxWidth: 1100, width: "min(1100px,96vw)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h2 style={{ margin: 0 }}>👥 Grupos <span className="muted" style={{ fontWeight: 400, fontSize: 14 }}>({cardsGrupos.length})</span></h2>
-              <div style={{ display: "flex", gap: 8 }}>
-                {ehGestorAtend() && <button className="btn btn-primary" onClick={() => { setGruposColOpen(false); setGruposOpen(true); }}>📢 Postar em grupo</button>}
-                <button className="btn btn-soft" onClick={() => setGruposColOpen(false)}>Fechar</button>
+            <div className="grupos-hd">
+              <h2><IcoAt n="grupos" size={22} /> Grupos <span className="muted" style={{ fontWeight: 400, fontSize: 14 }}>({cardsGrupos.length})</span></h2>
+              <div className="grupos-hd-acoes">
+                {ehGestorAtend() && <button className="btn btn-primary" onClick={() => { setGruposColOpen(false); setGruposOpen(true); }}><IcoAt n="campanha" size={18} />Postar em grupo</button>}
+                <button className="btn" onClick={() => setGruposColOpen(false)}>Fechar</button>
               </div>
             </div>
             {cardsGrupos.length === 0 ? (
@@ -741,13 +806,12 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
             ) : (
               <div className="grupos-maxi" style={{ overflowY: "auto", paddingRight: 2 }}>
                 {cardsGrupos.map((c) => (
-                  <div key={c.id} style={{ position: "relative" }}>
+                  <div key={c.id} className="grupo-wrap">
                     <ConvMini c={c} foto={fotoCache.current[c.id] || undefined} colunas={board?.colunas}
                       onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)}
                       onAbrir={() => setAbrir(c.id)}
                       onSilenciar={() => silenciarCard(c.id)} />
-                    <button onClick={(e) => { e.stopPropagation(); removerGrupo(c); }} title="Remover do sistema (ex.: a Big saiu do grupo)"
-                      style={{ position: "absolute", top: 8, right: 8, width: 30, height: 30, borderRadius: 8, border: "1px solid var(--line)", background: "var(--card,#fff)", cursor: "pointer", fontSize: 14, lineHeight: 1, boxShadow: "0 1px 4px #0002" }}>🗑</button>
+                    <button className="grupo-del" onClick={(e) => { e.stopPropagation(); removerGrupo(c); }} title="Remover do sistema (ex.: a Big saiu do grupo)">🗑</button>
                   </div>
                 ))}
               </div>
@@ -1221,7 +1285,7 @@ function baixarArquivo(url: string) {
 }
 // Horários "de bater o olho e clicar" (horário comercial).
 const HORAS_AG = ["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
-function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, onReativarIa, onFim, onSilenciar, pulsando, arrastando, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; onAgendar?: (quando: number | null, mensagem?: string) => void; onReativarIa?: () => void; onFim?: () => void; onSilenciar?: () => void; pulsando?: boolean; arrastando?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
+function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, onReativarIa, onFim, onSilenciar, pulsando, arrastando, selecionado, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { c: AtendConversa; foto?: string; colunas?: AtendColuna[]; onMover?: (colId: string) => void; onAbrir: () => void; onLembrete?: () => void; onAgendar?: (quando: number | null, mensagem?: string) => void; onReativarIa?: () => void; onFim?: () => void; onSilenciar?: () => void; pulsando?: boolean; arrastando?: boolean; selecionado?: boolean; onPointerDown?: (e: RPointerEvent) => void; onPointerMove?: (e: RPointerEvent) => void; onPointerUp?: (e: RPointerEvent) => void; onPointerCancel?: (e: RPointerEvent) => void }) {
   const humano = c.estado === "atendimento-humano";
   const [agOpen, setAgOpen] = useState(false);
   const [agDia, setAgDia] = useState("");   // "YYYY-MM-DD"
@@ -1248,8 +1312,8 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
   const cidadeUf = [c.cidade, c.uf].filter(Boolean).join("/");
   const linhaLoja = [loja ? `🏬 ${loja}` : "", cidadeUf].filter(Boolean).join(" · ");
   return (
-    <div className={"fx-card" + (pulsando || lembrete ? " pulsando" : "") + (lembrete ? " lembrete" : "")}
-      style={{ ...(arrastando ? { opacity: 0.5 } : {}), ...(!pulsando && !lembrete && corColuna ? { borderLeftColor: corColuna } : {}) }}
+    <div className={"fx-card" + (pulsando || lembrete ? " pulsando" : "") + (lembrete ? " lembrete" : "") + (selecionado ? " sel" : "")}
+      style={{ ...(arrastando ? { opacity: 0.5 } : {}), ...(!pulsando && !lembrete && corColuna ? { borderLeftColor: corColuna } : {}), ...(selecionado && corColuna ? { outline: `2px solid ${corColuna}`, outlineOffset: -2 } : {}) }}
       onClick={onAbrir} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
         <div className="conv-av" style={foto ? { backgroundImage: `url(${foto})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{foto ? "" : iniciais(pessoa)}</div>
