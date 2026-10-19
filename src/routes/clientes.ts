@@ -146,6 +146,35 @@ clientes.get("/resolver", async (c) => {
   return c.json({ cliente: await fichaDoCliente(c.env, achado), modo, consulta: q });
 });
 
+// ── Fase S: fila de aprovação de cadastros da LOJA (gestor) ─────────────────────
+// IMPORTANTE: estas rotas ESTÁTICAS têm que vir ANTES de "/:id", senão o "/:id"
+// captura "/pendentes-loja", "/prazos-erp" e "/loja-config" como se fossem um id.
+clientes.get("/pendentes-loja", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, nome, fantasia, cnpj, inscricao_estadual, endereco, numero, complemento, bairro, cep,
+            cidade, uf, email, telefone, whatsapp, simples_nacional, loja_regiao, loja_cod_prazo,
+            loja_cadastro_em, COALESCE(loja_erp_erro,'') AS loja_erp_erro, COALESCE(codigo_erp,'') AS codigo_erp,
+            COALESCE(loja_status,'') AS loja_status, COALESCE(loja_criar_erp,0) AS loja_criar_erp
+       FROM clientes
+      WHERE COALESCE(loja_status,'') IN ('pendente','aprovado')
+        AND COALESCE(origem,'') = 'loja'
+      ORDER BY (loja_status='pendente') DESC, loja_cadastro_em DESC`
+  ).all();
+  return c.json(results);
+});
+clientes.get("/prazos-erp", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT codigo, descricao FROM erp_prazos ORDER BY CAST(codigo AS INTEGER), codigo"
+  ).all();
+  return c.json(results);
+});
+clientes.get("/loja-config", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const f = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_criar_clientes'").first<{ valor: string | null }>();
+  return c.json({ criar_clientes: String(f?.valor || "") === "1" });
+});
+
 // FICHA 360: dados do cliente + histórico de pedidos (não-reposição) + KPIs.
 clientes.get("/:id", async (c) => {
   const id = c.req.param("id");
@@ -260,31 +289,6 @@ clientes.post("/", async (c) => {
   return c.json({ id, nome });
 });
 
-// ── Fase S: fila de aprovação de cadastros que vieram da LOJA (gestor) ──────────
-// Lista os cadastros pendentes (cliente novo que se cadastrou na loja online).
-clientes.get("/pendentes-loja", async (c) => {
-  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
-  const { results } = await c.env.DB.prepare(
-    `SELECT id, nome, fantasia, cnpj, inscricao_estadual, endereco, numero, complemento, bairro, cep,
-            cidade, uf, email, telefone, whatsapp, simples_nacional, loja_regiao, loja_cod_prazo,
-            loja_cadastro_em, COALESCE(loja_erp_erro,'') AS loja_erp_erro, COALESCE(codigo_erp,'') AS codigo_erp,
-            COALESCE(loja_status,'') AS loja_status, COALESCE(loja_criar_erp,0) AS loja_criar_erp
-       FROM clientes
-      WHERE COALESCE(loja_status,'') IN ('pendente','aprovado')
-        AND COALESCE(origem,'') = 'loja'
-      ORDER BY (loja_status='pendente') DESC, loja_cadastro_em DESC`
-  ).all();
-  return c.json(results);
-});
-
-// Lista os PRAZOS (formas de pagamento) espelhados do Syntech, pro menu de aprovação.
-clientes.get("/prazos-erp", async (c) => {
-  const { results } = await c.env.DB.prepare(
-    "SELECT codigo, descricao FROM erp_prazos ORDER BY CAST(codigo AS INTEGER), codigo"
-  ).all();
-  return c.json(results);
-});
-
 // Aprova o cadastro: define região de preço + prazo e LIBERA a ponte pra criar no Syntech.
 clientes.post("/:id/aprovar-loja", async (c) => {
   const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
@@ -312,11 +316,6 @@ clientes.post("/:id/recusar-loja", async (c) => {
 });
 
 // Liga/desliga a criação automática do cliente no Syntech (trava de segurança da ponte).
-clientes.get("/loja-config", async (c) => {
-  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
-  const f = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_criar_clientes'").first<{ valor: string | null }>();
-  return c.json({ criar_clientes: String(f?.valor || "") === "1" });
-});
 clientes.post("/loja-config", async (c) => {
   const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
   const b = await c.req.json<{ criar_clientes?: boolean }>().catch(() => ({} as { criar_clientes?: boolean }));

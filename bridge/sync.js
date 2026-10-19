@@ -62,7 +62,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-19.1";
+const PONTE_VERSAO = "2026-10-19.2";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -172,12 +172,18 @@ async function autoAtualizar() {
     // rodar a versão velha (que pode travar) depois de atualizar.
     if (UMA_VEZ) {
       log(`saindo pra o próximo ciclo (~${INTERVALO / 1000}s) rodar a versão nova.`);
-      process.exit(0);
+      // NÃO sair na marra com process.exit() agora: fazer isso enquanto o socket do
+      // fetch ainda está fechando dá "Assertion failed UV_HANDLE_CLOSING" no Windows.
+      // Em vez disso, sinaliza pro main NÃO rodar o código velho e deixa o processo
+      // encerrar limpo; um timer curto garante a saída caso algo segure o event loop.
+      setTimeout(() => process.exit(0), 1200);
+      return true;
     }
     log(`vale na próxima rodada (~${INTERVALO / 1000}s).`);
   } catch (e) {
     log("! auto-atualização falhou (seguindo na versão atual):", e.message);
   }
+  return false;
 }
 
 // ── monta e envia UM pedido (cabeçalho + itens) ──────────────────────────────
@@ -995,7 +1001,8 @@ function formatarParaFirebird(v) {
 
 async function main() {
   log(`Ponte Tecelagem iniciada (v${PONTE_VERSAO}).`, UMA_VEZ ? "(modo --once)" : `(a cada ${INTERVALO / 1000}s)`);
-  await autoAtualizar();
+  const atualizou = await autoAtualizar();
+  if (atualizou && UMA_VEZ) return; // baixou versão nova: não roda o código velho; sai limpo (timer cuida)
   await rodada();
   if (UMA_VEZ) { log("fim (--once)"); return; }
   setInterval(rodada, INTERVALO);
