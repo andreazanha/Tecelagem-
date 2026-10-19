@@ -349,6 +349,14 @@ async function guardarMidiaExterna(env: Env, origin: string, url: string, extHin
   } catch { return ""; }
 }
 
+// Grupos que a gestora REMOVEU do sistema (ex.: saiu do grupo no celular). Guardados pelo id do
+// grupo (só dígitos) na config "grupos_ocultos". Enquanto estiver aqui, o webhook NÃO recria o card
+// mesmo que ainda chegue mensagem — era o que fazia o grupo "voltar" depois de excluir.
+async function lerGruposOcultos(env: Env): Promise<Set<string>> {
+  const row = await env.DB.prepare("SELECT valor FROM config WHERE chave='grupos_ocultos'").first<{ valor: string | null }>().catch(() => null);
+  if (!row?.valor) return new Set();
+  try { const a = JSON.parse(row.valor); return new Set(Array.isArray(a) ? a.map((x) => String(x)) : []); } catch { return new Set(); }
+}
 // Registra uma mensagem de GRUPO na conversa do grupo. O robô NUNCA responde em grupo — aqui
 // a gente só ARQUIVA (texto + mídia), com o nome de quem falou, pra você ver/responder à mão.
 // A conversa fica na coluna "👥 Grupos". Chave = id do grupo (o telefone da conversa).
@@ -356,6 +364,7 @@ async function registrarGrupo(env: Env, origin: string, b: Record<string, unknow
   if (b.fromMe === true) return false;                       // não registra o que NÓS mandamos no grupo
   const groupId = digitos(b.phone ?? (b as { chatId?: unknown }).chatId ?? "");
   if (groupId.length < 6) return false;
+  if ((await lerGruposOcultos(env)).has(groupId)) return false; // grupo removido do sistema — não recria
   // Nome REAL do grupo (quando a Z-API manda). Fica vazio quando não vem — aí o card usaria só
   // "Grupo" (genérico e confuso: "esse grupo não existe"). Solução: se não veio o nome do grupo,
   // rotula o card com QUEM ESCREVEU (a loja), que é o que dá pra identificar.
@@ -1972,6 +1981,17 @@ atendimento.post("/:id/excluir", async (c) => {
   if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
   if (!ehGestorAtend(u)) return c.json({ error: "sem_acesso" }, 403);
   const id = c.req.param("id");
+  // Se for GRUPO, guarda o id na lista de ocultos pra NÃO recriar o card quando chegar nova
+  // mensagem (senão ele "voltava" logo depois de excluir).
+  const conv = await c.env.DB.prepare("SELECT telefone, estado, origem FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string; estado: string | null; origem: string | null }>();
+  if (conv) {
+    const ehGrupo = String(conv.estado) === "grupo" || String(conv.origem) === "grupo" || pareceIdDeGrupo(conv.telefone);
+    if (ehGrupo) {
+      const gid = digitos(conv.telefone);
+      const ocultos = await lerGruposOcultos(c.env);
+      if (gid && !ocultos.has(gid)) { ocultos.add(gid); await salvarConfigJson(c.env, "grupos_ocultos", [...ocultos]); }
+    }
+  }
   await c.env.DB.batch([
     c.env.DB.prepare("DELETE FROM atend_mensagens WHERE conversa_id=?").bind(id),
     c.env.DB.prepare("DELETE FROM atend_conversas WHERE id=?").bind(id),
