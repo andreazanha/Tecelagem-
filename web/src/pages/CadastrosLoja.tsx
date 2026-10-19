@@ -90,6 +90,8 @@ function CardCadastro({ c, prazos, onMudou }: { c: CadastroLoja; prazos: { codig
   const pendente = c.loja_status === "pendente";
   const criadoErp = !!c.codigo_erp;
   const cidadeUf = [c.cidade, c.uf].filter(Boolean).join("/");
+  // Pendentes abrem (precisa conferir pra aprovar); aprovados ficam em UMA LINHA e abrem ao clicar.
+  const [aberto, setAberto] = useState(pendente);
 
   async function aprovar() {
     setSalvando(true);
@@ -109,24 +111,30 @@ function CardCadastro({ c, prazos, onMudou }: { c: CadastroLoja; prazos: { codig
 
   return (
     <div className="card pad" style={{ display: "grid", gap: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-        <div>
+      <div onClick={() => setAberto((v) => !v)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", cursor: "pointer" }}>
+        <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 800, fontSize: 15 }}>{c.nome || c.fantasia || "(sem nome)"}</div>
-          {c.fantasia && c.fantasia !== c.nome && <div className="muted" style={{ fontSize: 12.5 }}>🏬 {c.fantasia}</div>}
           <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
             {c.cnpj ? `CNPJ ${c.cnpj}` : "sem CNPJ"}{cidadeUf ? ` · ${cidadeUf}` : ""}
           </div>
         </div>
-        <div style={{ textAlign: "right" }}>
-          {criadoErp
-            ? <span className="fx-chip val" style={{ fontSize: 11 }}>✓ No Syntech · código {c.codigo_erp}</span>
-            : c.loja_status === "aprovado"
-              ? <span className="fx-chip" style={{ fontSize: 11, background: "#fef9c3", color: "#854d0e" }}>⏳ Aguardando a ponte criar no Syntech</span>
-              : <span className="fx-chip" style={{ fontSize: 11, background: "#dbeafe", color: "#1e40af" }}>novo</span>}
-          {c.loja_cadastro_em && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{c.loja_cadastro_em.slice(0, 16).replace("T", " ")}</div>}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ textAlign: "right" }}>
+            {criadoErp
+              ? <span className="fx-chip val" style={{ fontSize: 11 }}>✓ No Syntech · código {c.codigo_erp}</span>
+              : c.loja_status === "aprovado"
+                ? <span className="fx-chip" style={{ fontSize: 11, background: "#fef9c3", color: "#854d0e" }}>⏳ Aguardando a ponte criar no Syntech</span>
+                : <span className="fx-chip" style={{ fontSize: 11, background: "#dbeafe", color: "#1e40af" }}>novo</span>}
+            {c.loja_cadastro_em && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{c.loja_cadastro_em.slice(0, 16).replace("T", " ")}</div>}
+          </div>
+          <span style={{ color: "#94a3b8", transform: aberto ? "rotate(180deg)" : "none", transition: "transform .2s", display: "inline-flex" }} aria-hidden>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+          </span>
         </div>
       </div>
 
+      {aberto && <>
+      {c.fantasia && c.fantasia !== c.nome && <div className="muted" style={{ fontSize: 12.5, marginTop: -2 }}>🏬 {c.fantasia}</div>}
       {/* Dados do cadastro */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 6, fontSize: 12.5, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
         <Campo l="Endereço" v={[c.endereco, c.numero].filter(Boolean).join(", ") + (c.complemento ? ` (${c.complemento})` : "")} />
@@ -164,6 +172,7 @@ function CardCadastro({ c, prazos, onMudou }: { c: CadastroLoja; prazos: { codig
           </div>
         </div>
       )}
+      </>}
     </div>
   );
 }

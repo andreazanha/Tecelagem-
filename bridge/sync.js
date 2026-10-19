@@ -49,7 +49,17 @@ try {
   if (XR && XR.prototype && typeof XR.prototype.readText === "function") {
     const _readText = XR.prototype.readText;
     XR.prototype.readText = function (len, _enc) { return _readText.call(this, len, "latin1"); };
-    log0("correção de acentos aplicada (latin1)");
+    // ESCRITA: mesma correção ao GRAVAR (ex.: criar cliente com acento). Sem isto, "ÔMEGA"
+    // ia como UTF-8 e o banco WIN1252 guardava "Â"MEGA". Força latin1 no addString/addText.
+    const XW = serialize && serialize.XdrWriter;
+    if (XW && XW.prototype && typeof XW.prototype.addText === "function") {
+      const _addString = XW.prototype.addString, _addText = XW.prototype.addText;
+      XW.prototype.addString = function (s, _enc) { return _addString.call(this, s, "latin1"); };
+      XW.prototype.addText = function (s, _enc) { return _addText.call(this, s, "latin1"); };
+      log0("correção de acentos aplicada (latin1) — leitura e escrita");
+    } else {
+      log0("correção de acentos aplicada (latin1) — só leitura (XdrWriter não encontrado)");
+    }
   } else {
     let onde = "?"; try { onde = require.resolve("node-firebird"); } catch (e) { onde = "node-firebird não encontrado: " + e.message; }
     log0("! não achei XdrReader p/ corrigir acentos — nomes podem vir quebrados. node-firebird em:", onde);
@@ -62,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-19.2";
+const PONTE_VERSAO = "2026-10-19.3";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
