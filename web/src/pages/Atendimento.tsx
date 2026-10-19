@@ -141,6 +141,13 @@ function IcoAt({ n, size = 18 }: { n: string; size?: number }) {
     mais: (<><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none" /><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" /></>),
     seta_e: (<path d="m15 18-6-6 6-6" />),
     seta_d: (<path d="m9 18 6-6-6-6" />),
+    tel: (<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z" />),
+    lixeira: (<><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" /></>),
+    lampada: (<><path d="M9 18h6" /><path d="M10 22h4" /><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.76.76 1.23 1.52 1.41 2.5" /></>),
+    robo: (<><rect x="3" y="11" width="18" height="10" rx="2" /><circle cx="12" cy="5" r="2" /><path d="M12 7v4" /><path d="M8 16h.01" /><path d="M16 16h.01" /></>),
+    relogio: (<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>),
+    sino: (<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></>),
+    etapa: (<><path d="M12 2 2 7l10 5 10-5-10-5z" /><path d="m2 17 10 5 10-5" /><path d="m2 12 10 5 10-5" /></>),
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flex: "0 0 auto", display: "block" }} aria-hidden="true">
@@ -757,12 +764,17 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
             const cs = gruposPorColuna.get(col.id) || [];
             return (
               <div className={"fx-col" + (sobre === col.id ? " drag-over" : "")} key={col.id} data-coluna={col.id} ref={(el) => { colRefs.current[col.id] = el; }}>
-                <div className="fx-hd fx-hd-cor" style={{ background: col.cor }}>{col.label}<span className="ct">{cs.length}</span>
-                  {ehGestorAtend() && cs.length > 0 && (
-                    <button title="🤖 Reativar a IA nesses leads: manda uma saudação e a Big recomeça o atendimento (triagem + catálogo de varejo). Use com leads parados."
-                      onClick={(e) => { e.stopPropagation(); reativarIaColuna(col.label, cs.map((x) => x.id)); }}
-                      style={{ marginLeft: "auto", background: "transparent", border: 0, cursor: "pointer", fontSize: 13.5, opacity: 0.9, padding: "0 2px", lineHeight: 1 }}>🤖</button>
-                  )}
+                <div className="fx-hd fx-hd-cor" style={{ background: col.cor }}>
+                  <span className="fx-hd-ic"><IcoAt n="etapa" size={18} /></span>
+                  <span className="fx-hd-nm">{col.label}</span>
+                  <span className="ct">{cs.length}</span>
+                  <span className="fx-hd-act">
+                    {ehGestorAtend() && cs.length > 0 && (
+                      <button title="Reativar a IA nesses leads: manda uma saudação e a Big recomeça o atendimento (triagem + catálogo de varejo). Use com leads parados."
+                        onClick={(e) => { e.stopPropagation(); reativarIaColuna(col.label, cs.map((x) => x.id)); }}
+                        className="fx-hd-robo"><IcoAt n="robo" size={18} /></button>
+                    )}
+                  </span>
                 </div>
                 <div className="fx-col-body">
                   {cs.map((c) => (
@@ -811,7 +823,7 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
                       onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)}
                       onAbrir={() => setAbrir(c.id)}
                       onSilenciar={() => silenciarCard(c.id)} />
-                    <button className="grupo-del" onClick={(e) => { e.stopPropagation(); removerGrupo(c); }} title="Remover do sistema (ex.: a Big saiu do grupo)">🗑</button>
+                    <button className="grupo-del" onClick={(e) => { e.stopPropagation(); removerGrupo(c); }} title="Remover do sistema (ex.: a Big saiu do grupo)"><IcoAt n="lixeira" size={18} /></button>
                   </div>
                 ))}
               </div>
@@ -1320,18 +1332,18 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="fx-nm">{pessoa}</div>
           {linhaLoja && <div className="fx-sub">{linhaLoja}</div>}
-          <div className="fx-tel">📞 {telBonito(c.telefone)}</div>
+          <div className="fx-tel"><IcoAt n="tel" size={14} /> {telBonito(c.telefone)}</div>
         </div>
         <div style={{ display: "flex", flexDirection: "row", gap: 5, flex: "0 0 auto" }}>
           {onAgendar && (
             <button onClick={(e) => { e.stopPropagation(); const base = c.agendado_ia || (Date.now() + 3600e3); setAgDia(dataLocalStr(base)); setAgHora(c.agendado_ia ? horaLocalStr(base) : "09:00"); setAgMsg(c.agendado_msg || ""); setAgOpen((v) => !v); }} onPointerDown={(e) => e.stopPropagation()}
               title={c.agendado_ia ? (c.agendado_enviado ? "IA já chamou — aguardando o cliente responder" : `IA vai chamar em ${agendadoLabel(c.agendado_ia)}`) : "Chamar IA — agendar uma saudação (bom dia/boa tarde) pra um dia e horário"}
-              style={{ background: c.agendado_ia ? "#dbeafe" : "transparent", border: "1px solid " + (c.agendado_ia ? "#60a5fa" : "var(--line)"), color: c.agendado_ia ? "#1d4ed8" : "var(--muted)", borderRadius: 8, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "5px 7px" }}>⏰</button>
+              className="card-ic-btn" style={{ background: c.agendado_ia ? "#dbeafe" : "transparent", borderColor: c.agendado_ia ? "#60a5fa" : "#e5eaf2", color: c.agendado_ia ? "#1d4ed8" : "var(--muted)" }}><IcoAt n="relogio" size={18} /></button>
           )}
           {onLembrete && (
             <button onClick={(e) => { e.stopPropagation(); onLembrete(); }} onPointerDown={(e) => e.stopPropagation()}
               title={lembrete ? "Lembrete ativo — clique pra tirar (o card para de pulsar)" : "Lembrar de falar com esse lead (deixa o card pulsando)"}
-              style={{ background: lembrete ? "#facc15" : "transparent", border: "1px solid " + (lembrete ? "#eab308" : "var(--line)"), color: lembrete ? "#713f12" : "var(--muted)", borderRadius: 8, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "5px 7px" }}>🔔</button>
+              className="card-ic-btn" style={{ background: lembrete ? "#fef3c7" : "transparent", borderColor: lembrete ? "#eab308" : "#e5eaf2", color: lembrete ? "#713f12" : "var(--muted)" }}><IcoAt n="sino" size={18} /></button>
           )}
         </div>
       </div>
@@ -1402,7 +1414,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
         {/* Lâmpada 💡: para de piscar (silenciar) — clica de novo pra voltar a piscar. */}
         {onSilenciar && (
           <button className="card-fx-btn" title={c.silenciado ? "Voltar a piscar este card" : "Parar de piscar este card (silenciar)"} onClick={(e) => { e.stopPropagation(); onSilenciar(); }} onPointerDown={(e) => e.stopPropagation()}
-            style={{ background: "transparent", border: 0, cursor: "pointer", fontSize: 13, padding: "0 3px", lineHeight: 1, opacity: c.silenciado ? 0.35 : 1 }}>💡</button>
+            style={{ background: "transparent", border: 0, cursor: "pointer", padding: "0 2px", lineHeight: 0, color: c.silenciado ? "var(--muted)" : "#d97706", opacity: c.silenciado ? 0.5 : 1 }}><IcoAt n="lampada" size={16} /></button>
         )}
         {/* Botão FIM: se a IA estiver atendendo (varejo) só para de piscar (IA continua); se for
             lojista/fila humana, encerra a conversa (vai pra "Atendimento finalizado"). */}

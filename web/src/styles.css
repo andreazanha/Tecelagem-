@@ -1224,7 +1224,7 @@ body.dark .fx-alertbar { background: #2a2410; border-color: #5c4a12; color: #fcd
    Assim os cards nunca "passam por trás" da caixa da coluna e o cabeçalho fica fixo no topo. */
 .fx-board.at-board { height: calc(100dvh - 338px); max-height: none; overflow-x: auto; overflow-y: hidden; align-items: stretch; }
 .fx-board.fx-fix { height: calc(100dvh - 210px); max-height: none; overflow-x: auto; overflow-y: hidden; align-items: stretch; }
-.fx-col { flex: 0 0 366px; max-width: 366px; background: #eaeff5; border: 1px solid #e2e8f0; border-radius: 14px; padding: 10px; min-height: calc(100dvh - 260px); display: flex; flex-direction: column; box-shadow: 0 1px 4px rgba(15,23,42,.05); }
+.fx-col { flex: 0 0 366px; max-width: 366px; background: #eaeff5; border: 1px solid #dce3ec; border-radius: 14px; padding: 10px; min-height: calc(100dvh - 260px); display: flex; flex-direction: column; box-shadow: 0 1px 4px rgba(15,23,42,.05); }
 .fx-board.at-board .fx-col, .fx-board.fx-fix .fx-col { height: 100%; min-height: 0; }
 /* Atendimento: card (conversa fechada) mais ESTREITO que no Funil — cabe mais coluna na tela. */
 .fx-board.at-board .fx-col { flex-basis: 250px; max-width: 250px; padding: 8px; }
@@ -1242,12 +1242,16 @@ body.dark .fx-col { background: #111826; border-color: #243044; }
 .fx-board.at-board .fx-col-body::-webkit-scrollbar-thumb, .fx-board.fx-fix .fx-col-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
 body.dark .fx-board.at-board .fx-col-body::-webkit-scrollbar-thumb, body.dark .fx-board.fx-fix .fx-col-body::-webkit-scrollbar-thumb { background: #33415a; }
 /* Cabeçalho da coluna FIXO no topo ao rolar (sticky), sólido pra cobrir os cards. */
-.fx-hd { display: flex; align-items: center; gap: 7px; padding: 9px 8px 9px; font-weight: 800; font-size: 13px; flex: 0 0 auto; position: sticky; top: -4px; z-index: 6; background: #eaeff5; margin: -8px -8px 8px; border-radius: 13px 13px 0 0; box-shadow: 0 5px 6px -4px rgba(15,23,42,.28); }
+.fx-hd { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 14px; font-weight: 800; font-size: 13px; flex: 0 0 auto; position: sticky; top: -4px; z-index: 6; background: #eaeff5; margin: -8px -8px 8px; border-radius: 13px 13px 0 0; box-shadow: 0 5px 6px -4px rgba(15,23,42,.28); }
+.fx-hd-ic { flex: 0 0 auto; display: inline-flex; align-items: center; opacity: .9; }
+.fx-hd-nm { flex: 1 1 auto; min-width: 0; line-height: 1.12; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.fx-hd-act { flex: 0 0 auto; width: 24px; display: inline-flex; align-items: center; justify-content: center; }
+.fx-hd-robo { background: transparent; border: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: inherit; opacity: .95; }
 body.dark .fx-hd { background: #17202f; box-shadow: 0 5px 6px -4px rgba(0,0,0,.5); }
 .fx-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
-.fx-hd .ct { margin-left: auto; background: #fff; border: 1px solid var(--line); border-radius: 20px; font-size: 11px; font-weight: 800; padding: 1px 8px; color: var(--muted); }
+.fx-hd .ct { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: #fff; border: 1px solid var(--line); font-size: 12px; font-weight: 800; padding: 0; margin: 0; color: var(--muted); }
 body.dark .fx-hd .ct { background: #1b2536; border-color: #26324a; }
-.fx-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; box-shadow: 0 1px 2px #0f172a12; border-left: 4px solid transparent; cursor: pointer; overflow: hidden; min-width: 0; user-select: none; -webkit-user-select: none; }
+.fx-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; box-shadow: 0 1px 2px #0f172a12; border-left: 3px solid transparent; cursor: pointer; overflow: hidden; min-width: 0; user-select: none; -webkit-user-select: none; }
 .fx-nm { overflow-wrap: anywhere; }
 /* Menu "Grupos": cards maiores (largura e altura) numa grade */
 .grupos-maxi { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; align-content: start; }
@@ -1556,15 +1560,17 @@ body.dark .at-nota { background: #fef9c3; border-color: #fde68a; color: #713f12;
 body.dark .at-modo-pill { background: #fff; border-color: #d5dbe6; color: #334155; }
 /* Card aguardando resposta (mensagem nova do cliente): pisca e sobe pro topo */
 @keyframes atCardPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,.75); } 50% { box-shadow: 0 0 0 9px rgba(34,197,94,0); } }
-.fx-card.pulsando { border-left: 5px solid #16a34a; background: #f0fdf4; animation: atCardPulse 1.15s ease-in-out infinite; }
-body.dark .fx-card.pulsando { background: #0f2a1c; }
-/* Lembrete manual: pulsa em AMARELO (distinto do verde de "cliente esperando"). */
-.fx-card.lembrete { border-left-color: #eab308 !important; background: #fffbeb !important; }
-body.dark .fx-card.lembrete { background: #2a2410 !important; }
+/* Cliente esperando: fundo BRANCO (sem verde), só a faixa lateral verde + um anel pulsante
+   de atenção (o anel é brilho, não fundo — mantém o aviso sem "pintar" o card). */
+.fx-card.pulsando { border-left: 3px solid #16a34a; background: #fff; animation: atCardPulse 1.15s ease-in-out infinite; }
+body.dark .fx-card.pulsando { background: #18202f; }
+/* Lembrete manual: faixa lateral ÂMBAR, fundo branco. */
+.fx-card.lembrete { border-left-color: #eab308 !important; background: #fff !important; }
+body.dark .fx-card.lembrete { background: #18202f !important; }
 /* Avatar (foto de perfil ou iniciais) no card da conversa */
 .conv-av { width: 46px; height: 46px; border-radius: 13px; flex: 0 0 auto; background: #6366f1; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; overflow: hidden; }
 /* ── Polimento visual do card (borda nítida, cantos 14px, sombra suave, SEM mover no hover) ── */
-.fx-card { border-color: #e2e8f0; border-radius: 14px; padding: 11px 12px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(15,23,42,.06); transition: box-shadow .15s ease, border-color .15s ease; }
+.fx-card { border-color: #dce3ec; border-radius: 14px; padding: 11px 12px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(15,23,42,.06); transition: box-shadow .15s ease, border-color .15s ease; }
 .fx-card:hover { box-shadow: 0 4px 12px rgba(15,23,42,.10); border-color: #cbd5e1; }
 body.dark .fx-card:hover { border-color: #3b4a6b; }
 .conv-av { width: 46px; height: 46px; font-size: 16px; border-radius: 13px; background: linear-gradient(135deg, #6366f1, #8b5cf6); box-shadow: 0 0 0 2px #fff, 0 0 0 3px #e6e9f4; }
@@ -2560,9 +2566,9 @@ body.dark .aviso-pop-item { color: #fff; }
 .fx-hd.fx-hd-cor .ct { background: #ffffff30; border-color: #ffffff5c; color: #fff; }
 body.dark .fx-hd.fx-hd-cor .ct { background: #ffffff26; border-color: #ffffff44; }
 
-/* Última mensagem numa caixinha, mais legível (padrão do mockup). */
-.at-prev { background: #f4f6fa; border-radius: 8px; padding: 7px 9px; color: #475569; }
-body.dark .at-prev { background: #131c2c; color: #9fb0c8; }
+/* Prévia da última mensagem: direto sobre o fundo branco do card (sem caixinha cinza). */
+.at-prev { background: transparent; border-radius: 0; padding: 0; color: #475569; font-size: 14px; line-height: 1.4; font-weight: 400; }
+body.dark .at-prev { background: transparent; color: #9fb0c8; }
 
 /* Avatar no tom navy do sistema. */
 .conv-av { background: linear-gradient(135deg, #2f4f7d, #22416b); }
@@ -2707,3 +2713,13 @@ body.dark .at-pag-seta:hover:not(:disabled) { background: #1b2536; border-color:
 .grupo-del { position: absolute; top: 10px; right: 10px; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: 1px solid #e5eaf2; border-radius: 10px; background: #fff; color: #64748b; cursor: pointer; font-size: 16px; line-height: 1; box-shadow: 0 1px 4px rgba(15,23,42,.06); transition: border-color .15s ease, color .15s ease, background .15s ease; z-index: 2; }
 .grupo-del:hover { border-color: #fca5a5; color: #dc2626; background: #fef2f2; }
 body.dark .grupo-del { background: #18202f; border-color: #26324a; color: #94a3b8; }
+
+/* ── Ícones padronizados nos cards (⏰🔔 = botões 34x34, traço 2) ── */
+.card-ic-btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid #e5eaf2; border-radius: 9px; cursor: pointer; padding: 0; line-height: 0; transition: border-color .15s ease, background .15s ease; }
+.card-ic-btn:hover { border-color: #cbd5e1; }
+.fx-tel svg { opacity: .8; }
+.fx-foot .card-fx-btn svg { display: block; }
+/* Botão robô no cabeçalho da coluna: ícone branco, centralizado, sem deslocar o contador. */
+.fx-hd-robo svg { color: #fff; }
+/* Contadores iguais em todas as colunas (número centralizado na pílula 30x30). */
+.fx-hd.fx-hd-cor .ct { background: #ffffff33; border-color: #ffffff66; }
