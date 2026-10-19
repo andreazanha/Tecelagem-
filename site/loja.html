@@ -1178,7 +1178,11 @@
     try{ localStorage.setItem("bt_cnpj", String(cli.cnpj||"").replace(/\D+/g,"")); }catch(e){}  // pro checkout e "meus pedidos"
     document.getElementById("repArea").style.display="none";
     document.body.style.overflow="";
-    mostrarSaudacao("");
+    // Modo rep: cara de app de vendas — some o banner/hero e mostra o cliente no cabeçalho.
+    try{ document.body.classList.add("rep-mode"); }catch(e){}
+    var ban=document.getElementById("banner"); if(ban) ban.style.display="none";
+    var sa=document.getElementById("saudacao");
+    if(sa){ sa.style.display="flex"; sa.innerHTML='<b style="color:#fff">'+esc(cli.nome||cli.fantasia||"Cliente")+'</b>'; }
     atualizarAvisoLib();
     var bar=document.getElementById("repPedBar"); bar.style.display="flex";
     document.getElementById("repPedNome").textContent=cli.nome||cli.fantasia||"";
@@ -1188,6 +1192,9 @@
   window.__repVoltarArea=function(){
     REP_CLIENTE=null;
     document.getElementById("repPedBar").style.display="none";
+    try{ document.body.classList.remove("rep-mode"); }catch(e){}
+    var ban=document.getElementById("banner"); if(ban) ban.style.display="";
+    mostrarSaudacao("");
     document.getElementById("repArea").style.display="block";
     document.body.style.overflow="";
     __repHome();
