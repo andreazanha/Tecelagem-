@@ -134,18 +134,18 @@ loja.post("/definir-senha", async (c) => {
   const nova = String(b.nova || "");
   if (nova.length < 4) return c.json({ erro: "senha_curta", msg: "Crie uma senha com pelo menos 4 caracteres." }, 400);
 
-  let cli: { id: string; nome: string | null; uf: string | null; loja_regiao: string | null; senha_hash: string | null; loja_status: string; codigo_erp: string } | null = null;
+  let cli: { id: string; nome: string | null; cnpj: string | null; uf: string | null; loja_regiao: string | null; senha_hash: string | null; loja_status: string; codigo_erp: string } | null = null;
   const token = String(b.token || "").trim();
   if (token.length >= 10) {
     cli = await c.env.DB.prepare(
-      "SELECT id, nome, uf, loja_regiao, senha_hash, COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(bloqueado,0) AS bloqueado FROM clientes WHERE acesso_token = ? LIMIT 1"
+      "SELECT id, nome, cnpj, uf, loja_regiao, senha_hash, COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(bloqueado,0) AS bloqueado FROM clientes WHERE acesso_token = ? LIMIT 1"
     ).bind(token).first();
     if (!cli) return c.json({ erro: "token_invalido", msg: "Link inválido. Peça um novo à Big Tricot." }, 404);
   } else {
     const cnpjDig = soDigitos(b.cnpj);
     if (cnpjDig.length < 11) return c.json({ erro: "cnpj_invalido", msg: "CNPJ inválido." }, 400);
     cli = await c.env.DB.prepare(
-      "SELECT id, nome, uf, loja_regiao, senha_hash, COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp FROM clientes " +
+      "SELECT id, nome, cnpj, uf, loja_regiao, senha_hash, COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp FROM clientes " +
       "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
     ).bind(cnpjDig).first();
     if (!cli) return c.json({ erro: "cliente_nao_encontrado", msg: "CNPJ não encontrado." }, 404);
@@ -162,7 +162,7 @@ loja.post("/definir-senha", async (c) => {
     await c.env.DB.prepare("UPDATE clientes SET senha_hash=? WHERE id=?").bind(hash, cli.id).run();
   }
   return c.json({
-    ok: true, nome: cli.nome || "", regiao: regiaoDoCliente(cli.loja_regiao, cli.uf),
+    ok: true, nome: cli.nome || "", cnpj: soDigitos(cli.cnpj), regiao: regiaoDoCliente(cli.loja_regiao, cli.uf),
     liberado: clienteLiberado(cli.codigo_erp, statusFinal),
     status: statusFinal,
   });

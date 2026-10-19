@@ -904,7 +904,7 @@
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
       .then(function(res){
         btn.disabled=false; btn.textContent="Salvar e entrar";
-        if(res.ok && res.j.ok){ aplicarSessao(res.j.nome, res.j.regiao, res.j.liberado); try{ history.replaceState(null,"",location.pathname); }catch(e){} }
+        if(res.ok && res.j.ok){ try{ if(res.j.cnpj) localStorage.setItem("bt_cnpj", res.j.cnpj); }catch(e){} aplicarSessao(res.j.nome, res.j.regiao, res.j.liberado); try{ history.replaceState(null,"",location.pathname); }catch(e){} }
         else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui salvar a senha."; }
       })
       .catch(function(){ btn.disabled=false; btn.textContent="Salvar e entrar"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; });
