@@ -86,6 +86,22 @@
   .rep-chip.wait{background:#fef9c3; color:#854d0e}
   .rep-chip.block{background:#fee2e2; color:#991b1b}
   @media(max-width:560px){ .rep-grid{grid-template-columns:1fr} .rep-wrap{padding:16px} }
+  /* Minha carteira em LISTA: busca + linhas (nome, cnpj/cidade, último pedido, status) */
+  .rep-busca{display:flex; align-items:center; gap:9px; background:#fff; border:1px solid #DCE3EC; border-radius:12px; padding:0 14px; height:46px; max-width:520px; margin:4px 0 14px; box-shadow:0 1px 3px rgba(15,23,42,.05)}
+  .rep-busca svg{width:18px; height:18px; flex:0 0 auto; stroke:#8a8073; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round}
+  .rep-busca input{border:0; outline:0; background:transparent; width:100%; font:inherit; font-size:15px; color:#2c2721}
+  .rep-list{display:flex; flex-direction:column; gap:8px}
+  .rep-row{display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:#fff; border:1px solid #DCE3EC; border-radius:12px; padding:13px 15px; cursor:pointer; box-shadow:0 1px 3px rgba(15,23,42,.04); font:inherit}
+  .rep-row:active{transform:scale(.997)}
+  .rep-row .ri{flex:1; min-width:0}
+  .rep-row .nm{font-weight:800; font-size:15.5px; color:#2c2721; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .rep-row .sub{font-size:12.5px; color:#8a8073; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .rep-row .ped{font-size:12px; color:#6b7280; margin-top:4px; display:inline-flex; align-items:center; gap:5px}
+  .rep-row .ped svg{width:13px; height:13px; stroke:#9aa3af; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round}
+  .rep-row .rr{flex:0 0 auto; display:flex; align-items:center; gap:10px}
+  .rep-row .chev{width:18px; height:18px; stroke:#c0c7d1; fill:none; stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round}
+  .rep-vazio{font-size:14px; color:#8a8073; padding:18px 2px}
+  @media(max-width:560px){ .rep-busca{max-width:none} .rep-row .sub,.rep-row .nm{white-space:normal} }
   /* Meus pedidos — acordeão de cards fechados (status, nº, data, peças, valor, seta) */
   .mp-card{background:#fff; border:1px solid #DCE3EC; border-radius:12px; margin-bottom:10px; box-shadow:0 1px 3px rgba(15,23,42,.05); overflow:hidden}
   .mp-head{display:block; width:100%; text-align:left; background:transparent; border:0; cursor:pointer; padding:12px 14px; font:inherit; color:inherit}
@@ -346,7 +362,8 @@
       <button class="rep-voltar" onclick="__repHome()">← Voltar</button>
       <h2 class="rep-h2" id="repCartTit">Minha carteira <span class="rep-count" id="repCount"></span></h2>
       <div class="rep-dica" id="repCartDica">Toque num cliente para atender.</div>
-      <div id="repCarteira" class="rep-grid"></div>
+      <label class="rep-busca"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="repBusca" type="text" placeholder="Buscar cliente por nome, CNPJ ou cidade…" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <div id="repCarteira" class="rep-list"></div>
     </div>
     <!-- Sub-tela: montar pedido (1º passo) -->
     <div id="repMontar" style="display:none">
@@ -1104,23 +1121,47 @@
   window.__repHome=function(){ repMostrarSub("repHome"); };
   window.__repEscolher=function(){ __repSecao("carteira"); };
   window.__repSecao=function(sec){
-    if(sec==="carteira"){ document.getElementById("repCartTit").innerHTML='Minha carteira <span class="rep-count" id="repCount"></span>'; document.getElementById("repCartDica").textContent="Toque num cliente para montar o pedido dele."; repMostrarSub("repCartView"); renderCarteira(REP_CLIENTES); return; }
+    if(sec==="carteira"){ document.getElementById("repCartTit").innerHTML='Minha carteira <span class="rep-count" id="repCount"></span>'; document.getElementById("repCartDica").textContent="Toque num cliente para montar o pedido dele."; var rb=document.getElementById("repBusca"); if(rb) rb.value=""; repMostrarSub("repCartView"); renderCarteira(REP_CLIENTES); return; }
     if(sec==="montar"){ repMostrarSub("repMontar"); return; }
     if(sec==="novo"){ document.getElementById("rncMsg").textContent=""; repMostrarSub("repNovoCli"); return; }
     var nomes={pedidos:"Meus pedidos",avisos:"Avisos"};
     alert("“"+(nomes[sec]||sec)+"” está chegando! 🧶\nEstamos liberando a área do representante por etapas.");
   };
+  function fmtDataCurta(s){
+    var m=String(s||"").match(/(\d{4})-(\d{2})-(\d{2})/);
+    return m ? (m[3]+"/"+m[2]+"/"+m[1]) : "";
+  }
   function renderCarteira(clientes){
-    document.getElementById("repCount").textContent="· "+clientes.length+" cliente"+(clientes.length===1?"":"s");
+    REP_CLIENTES=clientes||REP_CLIENTES;
+    document.getElementById("repCount").textContent="· "+REP_CLIENTES.length+" cliente"+(REP_CLIENTES.length===1?"":"s");
+    desenharCarteira();
+  }
+  function desenharCarteira(){
+    var termo=(document.getElementById("repBusca").value||"").trim().toLowerCase();
+    var dig=termo.replace(/\D/g,"");
     var box=document.getElementById("repCarteira");
-    if(!clientes.length){ box.innerHTML='<div class="rep-dica">Você ainda não tem clientes na carteira. Fale com a Big Tricot.</div>'; return; }
-    box.innerHTML=clientes.map(function(c){
+    if(!REP_CLIENTES.length){ box.innerHTML='<div class="rep-vazio">Você ainda não tem clientes na carteira. Fale com a Big Tricot.</div>'; return; }
+    var lista=REP_CLIENTES.filter(function(c){
+      if(!termo) return true;
+      var nome=(c.nome||c.fantasia||"").toLowerCase();
+      var cid=((c.cidade||"")+" "+(c.uf||"")).toLowerCase();
+      var cnpjD=String(c.cnpj||"").replace(/\D/g,"");
+      return nome.indexOf(termo)>=0 || cid.indexOf(termo)>=0 || (dig.length>=2 && cnpjD.indexOf(dig)>=0);
+    });
+    if(!lista.length){ box.innerHTML='<div class="rep-vazio">Nenhum cliente encontrado para “'+esc(termo)+'”.</div>'; return; }
+    var calSvg='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>';
+    box.innerHTML=lista.map(function(c){
       var cidade=[c.cidade,c.uf].filter(Boolean).join("/");
       var chip = c.bloqueado ? '<span class="rep-chip block">● Bloqueado</span>'
         : c.liberado ? '<span class="rep-chip ok">● Liberado</span>'
         : '<span class="rep-chip wait">● Em análise</span>';
-      return '<button class="rep-card" onclick="__repCliente(\''+esc(c.id)+'\')"><div class="nm">'+esc(c.nome||c.fantasia||"(sem nome)")+'</div>'+
-        '<div class="sub">'+(c.cnpj?esc(c.cnpj):'sem CNPJ')+(cidade?' · '+esc(cidade):'')+'</div>'+chip+'</button>';
+      var dt=fmtDataCurta(c.ultimo_pedido);
+      var ped=dt ? ('<div class="ped">'+calSvg+'Último pedido: <b>'+dt+'</b></div>')
+                 : '<div class="ped">'+calSvg+'Sem pedidos ainda</div>';
+      return '<button class="rep-row" onclick="__repCliente(\''+esc(c.id)+'\')">'+
+        '<div class="ri"><div class="nm">'+esc(c.nome||c.fantasia||"(sem nome)")+'</div>'+
+        '<div class="sub">'+(c.cnpj?esc(c.cnpj):'sem CNPJ')+(cidade?' · '+esc(cidade):'')+'</div>'+ped+'</div>'+
+        '<div class="rr">'+chip+'<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div></button>';
     }).join("");
   }
   window.__repCliente=function(id){
@@ -1216,6 +1257,7 @@
   document.getElementById("repSair").addEventListener("click",repSair);
   document.getElementById("rnBtn").addEventListener("click",repEnviarNovoCli);
   document.getElementById("rnReceita").addEventListener("click",repPuxarReceita);
+  document.getElementById("repBusca").addEventListener("input",desenharCarteira);
   // Tela de sucesso do cadastro: seguir pro pedido ou voltar ao menu.
   document.getElementById("repOkPedido").addEventListener("click",function(){
     var cli=null, dig=String(REP_NOVO_CNPJ||"").replace(/\D/g,"");

@@ -38,17 +38,25 @@ function clienteLiberado(codigoErp?: string | null, lojaStatus?: string | null):
 
 // Carteira do representante: os clientes cujo campo "representante" bate com o nome do rep.
 async function carteiraDoRep(env: Env, repNome: string) {
+  // last_pedido = data do pedido mais recente da loja (canal loja_b2b) daquele CNPJ.
+  // Os pedidos guardam o CNPJ só com dígitos; o cadastro guarda formatado — normaliza os dois.
   const { results } = await env.DB.prepare(
-    `SELECT id, nome, fantasia, cnpj, cidade, uf, loja_regiao, COALESCE(codigo_erp,'') AS codigo_erp,
-            COALESCE(loja_status,'') AS loja_status, COALESCE(bloqueado,0) AS bloqueado
-       FROM clientes WHERE TRIM(LOWER(COALESCE(representante,''))) = TRIM(LOWER(?)) ORDER BY nome`
-  ).bind(repNome).all<{ id: string; nome: string | null; fantasia: string | null; cnpj: string | null; cidade: string | null; uf: string | null; loja_regiao: string | null; codigo_erp: string; loja_status: string; bloqueado: number }>();
+    `SELECT c.id, c.nome, c.fantasia, c.cnpj, c.cidade, c.uf, c.loja_regiao, COALESCE(c.codigo_erp,'') AS codigo_erp,
+            COALESCE(c.loja_status,'') AS loja_status, COALESCE(c.bloqueado,0) AS bloqueado,
+            (SELECT MAX(COALESCE(p.created_at, p.data_pedido)) FROM pedidos p
+               WHERE p.canal='loja_b2b'
+                 AND REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.cliente_cnpj,''),'.',''),'/',''),'-',''),' ','')
+                   = REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.cnpj,''),'.',''),'/',''),'-',''),' ','')
+            ) AS ultimo_pedido
+       FROM clientes c WHERE TRIM(LOWER(COALESCE(c.representante,''))) = TRIM(LOWER(?)) ORDER BY c.nome`
+  ).bind(repNome).all<{ id: string; nome: string | null; fantasia: string | null; cnpj: string | null; cidade: string | null; uf: string | null; loja_regiao: string | null; codigo_erp: string; loja_status: string; bloqueado: number; ultimo_pedido: string | null }>();
   return results.map((r) => ({
     id: r.id, nome: r.nome, fantasia: r.fantasia, cnpj: r.cnpj, cidade: r.cidade, uf: r.uf,
     regiao: regiaoDoCliente(r.loja_regiao, r.uf),
     liberado: clienteLiberado(r.codigo_erp, r.loja_status),
     status: r.loja_status || (r.codigo_erp ? "aprovado" : ""),
     bloqueado: Number(r.bloqueado) === 1,
+    ultimo_pedido: r.ultimo_pedido || null,
   }));
 }
 
