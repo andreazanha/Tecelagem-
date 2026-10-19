@@ -1971,9 +1971,9 @@ atendimento.get("/:id/foto-perfil", async (c) => {
   if (!conv) return c.json({ link: null });
   // Já buscamos faz pouco? Devolve o que está em cache (evita bater na Z-API toda vez).
   // Reconsulta só a cada ~7 dias (a foto de perfil quase não muda).
-  if (conv.foto_em) {
+  if (conv.foto_em && (conv.foto_url || "").trim()) {
     const fresco = await c.env.DB.prepare("SELECT (julianday('now') - julianday(?)) < 7 AS ok").bind(conv.foto_em).first<{ ok: number }>().catch(() => null);
-    if (fresco?.ok) return c.json({ link: conv.foto_url || null });
+    if (fresco?.ok) return c.json({ link: conv.foto_url });  // só usa cache quando JÁ tem foto (vazio re-tenta)
   }
   const cfg = await lerConfig(c.env);
   if (cfg.zapi_ativo !== "1") return c.json({ link: conv.foto_url || null });
@@ -1985,7 +1985,10 @@ atendimento.get("/:id/foto-perfil", async (c) => {
   let link: string | null = null;
   let alcancou = false;   // conseguimos resposta da Z-API? (pra não renovar o cache sem falar com ela)
   try {
-    const r = await fetch(`${base}/instances/${inst}/token/${token}/profile-picture?phone=${digitos(conv.telefone)}`, { headers, signal: AbortSignal.timeout(8000) });
+    // GRUPO: a Z-API precisa do id com sufixo "-group" também aqui (igual no envio) —
+    // sem ele, não devolve a foto do grupo.
+    const alvoFoto = pareceIdDeGrupo(conv.telefone) ? (digitos(conv.telefone) + "-group") : digitos(conv.telefone);
+    const r = await fetch(`${base}/instances/${inst}/token/${token}/profile-picture?phone=${alvoFoto}`, { headers, signal: AbortSignal.timeout(8000) });
     if (r.ok) { alcancou = true; const d = await r.json().catch(() => ({})) as { link?: string; imgUrl?: string }; link = d?.link || d?.imgUrl || null; }
   } catch { /* rede: não alcançou — mantém o que tinha */ }
   // Veio um link NOVO? Baixa a imagem pro NOSSO R2 e usa uma URL estável — a URL do WhatsApp
