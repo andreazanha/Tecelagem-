@@ -744,7 +744,7 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
                   <div key={c.id} style={{ position: "relative" }}>
                     <ConvMini c={c} foto={fotoCache.current[c.id] || undefined} colunas={board?.colunas}
                       onMover={(colId) => soltarConversa(colId, c.id)} pulsando={pulsaVerde(c)}
-                      onAbrir={() => { setGruposColOpen(false); setAbrir(c.id); }}
+                      onAbrir={() => setAbrir(c.id)}
                       onSilenciar={() => silenciarCard(c.id)} />
                     <button onClick={(e) => { e.stopPropagation(); removerGrupo(c); }} title="Remover do sistema (ex.: a Big saiu do grupo)"
                       style={{ position: "absolute", top: 8, right: 8, width: 30, height: 30, borderRadius: 8, border: "1px solid var(--line)", background: "var(--card,#fff)", cursor: "pointer", fontSize: 14, lineHeight: 1, boxShadow: "0 1px 4px #0002" }}>🗑</button>
