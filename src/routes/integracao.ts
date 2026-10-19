@@ -314,6 +314,14 @@ integracao.post("/kits", async (c) => {
   return c.json({ ok: true, n: stmts.length - 1 });
 });
 integracao.get("/diag", async (c) => {
+  // ?pedido=envio → resposta CRUA da Z-API do ÚLTIMO envio (pra ver por que uma mensagem
+  // não chegou, inclusive em grupo). Liberado sem login pra abrir direto no navegador.
+  if (c.req.query("pedido") === "envio") {
+    const r = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='webhook_send_ultimo'").first<{ valor: string | null; atualizado_em: string | null }>();
+    if (!r || !r.valor) return c.json({ vazio: true, msg: "Ainda não há registro de envio. Mande uma mensagem pelo sistema e abra este link de novo." });
+    let obj: unknown = null; try { obj = JSON.parse(r.valor); } catch { obj = r.valor; }
+    return c.json({ atualizado_em: r.atualizado_em, ultimo_envio: obj });
+  }
   // ?pedido=kit → receita do kit (só a ESTRUTURA das tabelas/colunas/amostra, nada
   // sensível). Liberado SEM login pra a dona conseguir abrir direto no navegador.
   if (c.req.query("pedido") === "kit") {
