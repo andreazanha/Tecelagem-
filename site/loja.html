@@ -368,12 +368,12 @@
     <div id="repNovoCli" style="display:none">
       <button class="rep-voltar" onclick="__repHome()">← Voltar</button>
       <h2 class="rep-h2">Cadastrar cliente novo</h2>
-      <div class="rep-dica">Digite o CNPJ e toque em <b>Puxar da Receita</b> pra preencher sozinho. A Big Tricot confere e libera. (* obrigatório)</div>
+      <div class="rep-dica">Digite o CNPJ e toque em <b>Buscar</b> pra preencher pela Receita. A Big Tricot confere e libera. (* obrigatório)</div>
       <div id="rncMsg" style="font-size:13px;min-height:1px;margin:6px 0;line-height:1.35"></div>
       <div style="display:grid;gap:10px;max-width:560px">
         <div style="display:flex;gap:8px">
           <input id="rnCnpj" class="cad-inp" inputmode="numeric" placeholder="CNPJ *" style="flex:1">
-          <button type="button" id="rnReceita" style="flex:0 0 auto;padding:0 14px;border:0;border-radius:12px;background:#3b6ea5;color:#fff;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">⬇ Puxar da Receita</button>
+          <button type="button" id="rnReceita" style="flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;padding:0 16px;border:0;border-radius:12px;background:#3b6ea5;color:#fff;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span id="rnRecLbl">Buscar</span></button>
         </div>
         <input id="rnNome" class="cad-inp" placeholder="Razão social *" autocomplete="organization">
         <input id="rnFant" class="cad-inp" placeholder="Nome fantasia *">
@@ -1141,12 +1141,13 @@
   function repPuxarReceita(){
     var cnpj=(document.getElementById("rnCnpj").value||"").replace(/\D/g,"");
     var msg=document.getElementById("rncMsg"), btn=document.getElementById("rnReceita");
-    if(cnpj.length!==14){ msg.style.color="#b91c1c"; msg.textContent="Digite o CNPJ completo (14 dígitos) pra puxar da Receita."; return; }
-    msg.textContent=""; btn.disabled=true; btn.textContent="Consultando…";
+    var lbl=document.getElementById("rnRecLbl");
+    if(cnpj.length!==14){ msg.style.color="#b91c1c"; msg.textContent="Digite o CNPJ completo (14 dígitos) pra buscar na Receita."; return; }
+    msg.textContent=""; btn.disabled=true; lbl.textContent="Buscando…";
     fetch("/api/loja/consulta-cnpj?cnpj="+encodeURIComponent(cnpj))
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
       .then(function(res){
-        btn.disabled=false; btn.textContent="⬇ Puxar da Receita";
+        btn.disabled=false; lbl.textContent="Buscar";
         if(res.ok && res.j.ok){
           var d=res.j.dados||{};
           var set=function(id,v){ var e=document.getElementById(id); if(e && v) e.value=v; };
@@ -1154,7 +1155,7 @@
           msg.style.color="#166534"; msg.innerHTML="✓ Dados da Receita preenchidos. <b>Confira o e-mail e o WhatsApp</b> — às vezes estão desatualizados.";
         } else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui puxar da Receita. Preencha à mão."; }
       })
-      .catch(function(){ btn.disabled=false; btn.textContent="⬇ Puxar da Receita"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão com a Receita. Preencha à mão."; });
+      .catch(function(){ btn.disabled=false; lbl.textContent="Buscar"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão com a Receita. Preencha à mão."; });
   }
   // Cadastro de cliente novo pelo REP (vai pra fila de aprovação, atrelado ao rep).
   function repEnviarNovoCli(){
