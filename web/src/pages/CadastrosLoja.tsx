@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type CadastroLoja } from "../api";
+import { api, type CadastroLoja, type ClienteCrm } from "../api";
 
 // UFs do Norte + Nordeste → região "norte" (preço diferenciado). Demais = "sul".
 const UF_NORTE = new Set(["AC", "AP", "AM", "PA", "RO", "RR", "TO", "AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"]);
@@ -49,7 +49,7 @@ export function CadastrosLoja() {
       </div>
 
       {/* Dar acesso à loja a um cliente que JÁ é nosso (gera um link pra ele criar a senha) */}
-      <AcessoExistente />
+      <AcessoExistente prazos={prazos} />
 
       {erro && <div className="card pad" style={{ color: "#b91c1c" }}>{erro}</div>}
       {!lista ? (
@@ -168,19 +168,21 @@ function CardCadastro({ c, prazos, onMudou }: { c: CadastroLoja; prazos: { codig
   );
 }
 
-// Gera um link de acesso à loja para um cliente que já é nosso — ESCOLHENDO na lista
-// (busca por nome/CNPJ/cidade). Ele abre o link, cria a senha e já entra vendo os preços.
-type CliItem = { id: string; nome: string; cnpj?: string | null; cidade?: string | null; uf?: string | null };
-function AcessoExistente() {
-  const [lista, setLista] = useState<CliItem[] | null>(null);
+// Dar acesso à loja a um cliente que já é nosso: busca na lista, CONFERE o cadastro,
+// escolhe região + forma de pagamento, e gera o link (que já libera e o cliente cria a senha).
+function AcessoExistente({ prazos }: { prazos: { codigo: string; descricao: string }[] }) {
+  const [lista, setLista] = useState<ClienteCrm[] | null>(null);
   const [busca, setBusca] = useState("");
-  const [sel, setSel] = useState<CliItem | null>(null);
+  const [sel, setSel] = useState<ClienteCrm | null>(null);
+  const [regiao, setRegiao] = useState("sul");
+  const [prazo, setPrazo] = useState("1");
   const [link, setLink] = useState("");
+  const [jaTemSenha, setJaTemSenha] = useState(false);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [copiado, setCopiado] = useState(false);
 
-  useEffect(() => { api.listarClientesCrm().then((l) => setLista(l as CliItem[])).catch(() => setLista([])); }, []);
+  useEffect(() => { api.listarClientesCrm().then((l) => setLista(l)).catch(() => setLista([])); }, []);
 
   const q = busca.trim().toLowerCase();
   const qDig = q.replace(/\D/g, "");
@@ -191,11 +193,19 @@ function AcessoExistente() {
     return nome.includes(q) || cid.includes(q) || (qDig.length >= 3 && cnpjDig.includes(qDig));
   }).slice(0, 8);
 
-  async function gerar(c: CliItem) {
-    setSel(c); setBusy(true); setMsg(""); setLink("");
+  function escolher(c: ClienteCrm) {
+    setSel(c); setLink(""); setMsg("");
+    setRegiao(c.loja_regiao === "norte" ? "norte" : regiaoSugerida(c.uf || null));
+    setPrazo("1");
+  }
+  function trocar() { setSel(null); setLink(""); setMsg(""); setBusca(""); }
+
+  async function gerar() {
+    if (!sel) return;
+    setBusy(true); setMsg(""); setLink("");
     try {
-      const r = await api.cadastroGerarAcesso({ id: c.id });
-      if (r.ok) { setLink(r.link); setMsg(r.tem_senha ? "Esse cliente já tem senha — o link serve para ele redefinir." : ""); }
+      const r = await api.cadastroGerarAcesso({ id: sel.id, regiao, cod_prazo: prazo });
+      if (r.ok) { setLink(r.link); setJaTemSenha(r.tem_senha); }
       else setMsg(r.msg || "Não consegui gerar o link.");
     } catch { setMsg("Não consegui gerar o link."); } finally { setBusy(false); }
   }
@@ -204,33 +214,75 @@ function AcessoExistente() {
   }
 
   return (
-    <div className="card pad" style={{ display: "grid", gap: 8 }}>
+    <div className="card pad" style={{ display: "grid", gap: 10 }}>
       <div style={{ fontWeight: 800, fontSize: 14 }}>🔑 Dar acesso a um cliente que já é nosso</div>
-      <div className="muted" style={{ fontSize: 12.5, maxWidth: 620 }}>
-        Busque o cliente, gere o link e envie pelo WhatsApp. Ao abrir, ele <b>cria a senha dele</b> e já entra vendo os preços (não precisa aprovar — já é cliente).
+      <div className="muted" style={{ fontSize: 12.5, maxWidth: 640 }}>
+        Busque o cliente, confira os dados, escolha a <b>região</b> e a <b>forma de pagamento</b>, e gere o link.
+        Ao abrir, ele <b>cria a senha dele</b> e já entra vendo os preços (não precisa aprovar — já é cliente).
       </div>
-      <div style={{ position: "relative", maxWidth: 460 }}>
-        <input value={busca} onChange={(e) => { setBusca(e.target.value); setLink(""); setSel(null); }} placeholder={lista ? "Buscar cliente por nome, CNPJ ou cidade…" : "Carregando clientes…"} disabled={!lista}
-          style={{ width: "100%", boxSizing: "border-box", padding: "9px 11px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 14 }} />
-        {matches.length > 0 && !sel && (
-          <div style={{ position: "absolute", left: 0, right: 0, top: "100%", marginTop: 4, background: "var(--card,#fff)", border: "1px solid var(--line)", borderRadius: 10, boxShadow: "0 12px 30px #0002", zIndex: 20, overflow: "hidden" }}>
-            {matches.map((c) => (
-              <button key={c.id} onClick={() => gerar(c)} disabled={busy}
-                style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: 0, borderTop: "1px solid var(--line)", background: "transparent", cursor: "pointer" }}>
-                <div style={{ fontWeight: 700, fontSize: 13 }}>{c.nome}</div>
-                <div className="muted" style={{ fontSize: 11.5 }}>{c.cnpj ? c.cnpj : "sem CNPJ"}{c.cidade ? ` · ${c.cidade}/${c.uf || ""}` : ""}</div>
-              </button>
-            ))}
+
+      {!sel && (
+        <div style={{ maxWidth: 460 }}>
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={lista ? "Buscar cliente por nome, CNPJ ou cidade…" : "Carregando clientes…"} disabled={!lista}
+            style={{ width: "100%", boxSizing: "border-box", padding: "9px 11px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 14 }} />
+          {q.length >= 2 && (
+            <div style={{ marginTop: 6, border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", maxHeight: 300, overflowY: "auto" }}>
+              {matches.length === 0
+                ? <div className="muted" style={{ padding: "10px 12px", fontSize: 12.5 }}>Nenhum cliente encontrado. Tente outro nome ou o CNPJ.</div>
+                : matches.map((c, i) => (
+                  <button key={c.id} onClick={() => escolher(c)}
+                    style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: 0, borderTop: i ? "1px solid var(--line)" : 0, background: "transparent", cursor: "pointer" }}>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{c.nome}</div>
+                    <div className="muted" style={{ fontSize: 11.5 }}>{c.cnpj ? c.cnpj : "sem CNPJ"}{c.cidade ? ` · ${c.cidade}/${c.uf || ""}` : ""}</div>
+                  </button>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {sel && (
+        <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 14, display: "grid", gap: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>{sel.nome}</div>
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>{sel.cnpj ? `CNPJ ${sel.cnpj}` : "sem CNPJ"}{sel.cidade ? ` · ${sel.cidade}/${sel.uf || ""}` : ""}</div>
+            </div>
+            <button className="btn" onClick={trocar}>↩ Trocar cliente</button>
           </div>
-        )}
-      </div>
-      {busy && <div className="muted" style={{ fontSize: 12.5 }}>Gerando link…</div>}
-      {msg && <div style={{ fontSize: 12.5, color: "#92400e" }}>{msg}</div>}
-      {link && sel && (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "9px 11px" }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: "#166534" }}>Link de {sel.nome}:</span>
-          <input readOnly value={link} onFocus={(e) => e.target.select()} style={{ flex: 1, minWidth: 220, padding: "7px 9px", borderRadius: 8, border: "1px solid #bbf7d0", fontSize: 12.5, background: "#fff" }} />
-          <button className="btn" onClick={copiar}>{copiado ? "✓ Copiado" : "Copiar"}</button>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 6, fontSize: 12.5, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+            <Campo l="WhatsApp" v={sel.whatsapp} />
+            <Campo l="Contato" v={sel.contato} />
+            <Campo l="E-mail" v={sel.email} />
+            <Campo l="Representante" v={sel.representante} />
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", borderTop: "1px solid var(--line)", paddingTop: 10 }}>
+            <label style={{ display: "grid", gap: 3 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>Região de preço</span>
+              <select value={regiao} onChange={(e) => setRegiao(e.target.value)} style={{ padding: "7px 9px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13 }}>
+                <option value="sul">Sul (preço padrão)</option>
+                <option value="norte">Norte/Nordeste</option>
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 3 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>Forma de pagamento (prazo)</span>
+              <select value={prazo} onChange={(e) => setPrazo(e.target.value)} style={{ padding: "7px 9px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, minWidth: 200 }}>
+                {prazos.length === 0 && <option value="1">À vista (padrão)</option>}
+                {prazos.map((p) => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
+              </select>
+            </label>
+            <button className="btn btn-primary" disabled={busy} onClick={gerar} style={{ marginLeft: "auto" }}>{busy ? "Gerando…" : link ? "Gerar de novo" : "🔗 Gerar link"}</button>
+          </div>
+          {msg && <div style={{ fontSize: 12.5, color: "#92400e" }}>{msg}</div>}
+          {link && (
+            <div style={{ display: "grid", gap: 6, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "10px 12px" }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#166534" }}>✓ Link gerado — envie no WhatsApp:{jaTemSenha ? " (esse cliente já tinha senha; o link serve pra redefinir)" : ""}</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <input readOnly value={link} onFocus={(e) => e.target.select()} style={{ flex: 1, minWidth: 220, padding: "7px 9px", borderRadius: 8, border: "1px solid #bbf7d0", fontSize: 12.5, background: "#fff" }} />
+                <button className="btn" onClick={copiar}>{copiado ? "✓ Copiado" : "Copiar"}</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -1333,7 +1333,7 @@ export const api = {
   cadastroRecusar: (id: string) => jsonPost(`/api/clientes/${encodeURIComponent(id)}/recusar-loja`, {}).then((r) => j<{ ok: boolean }>(r)),
   cadastroLojaConfig: () => fetch("/api/clientes/loja-config").then((r) => j<{ criar_clientes: boolean }>(r)),
   cadastroLojaConfigSalvar: (criar_clientes: boolean) => jsonPost("/api/clientes/loja-config", { criar_clientes }).then((r) => j<{ ok: boolean; criar_clientes: boolean }>(r)),
-  cadastroGerarAcesso: (arg: { id?: string; cnpj?: string }) => jsonPost("/api/clientes/gerar-acesso-loja", arg).then((r) => j<{ ok: boolean; nome: string; link: string; tem_senha: boolean; error?: string; msg?: string }>(r)),
+  cadastroGerarAcesso: (arg: { id?: string; cnpj?: string; regiao?: string; cod_prazo?: string }) => jsonPost("/api/clientes/gerar-acesso-loja", arg).then((r) => j<{ ok: boolean; nome: string; link: string; tem_senha: boolean; error?: string; msg?: string }>(r)),
   // Banners da loja (cadastro pela dona) + upload da imagem no nosso R2.
   lojaBanners: () => fetch("/api/integracao/loja-banners").then((r) => j<{ banners: LojaBanner[]; intervalo: number }>(r)),
   lojaBannersSalvar: (banners: LojaBanner[], intervalo: number) => jsonPost("/api/integracao/loja-banners", { banners, intervalo }).then((r) => j<{ ok: boolean; n: number }>(r)),

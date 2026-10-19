@@ -788,7 +788,7 @@
   function cliSalvo(){ try{ return JSON.parse(localStorage.getItem("bt_cli")||"null"); }catch(e){ return null; } }
   function mostrarSaudacao(nome){
     var el=document.getElementById("saudacao"); if(!el) return;
-    if(nome){ el.style.display="flex"; el.innerHTML='Olá, <b style="color:#fff">'+esc(nome)+'</b> · <a href="#" id="sairLoja" style="color:#e7a187;text-decoration:none">trocar</a>';
+    if(nome){ el.style.display="flex"; el.innerHTML='Olá, <b style="color:#fff">'+esc(nome)+'</b> · <a href="#" id="sairLoja" style="color:#e7a187;text-decoration:none">sair</a>';
       var s=document.getElementById("sairLoja"); if(s) s.onclick=function(ev){ ev.preventDefault(); sairLoja(); };
     } else { el.style.display="none"; el.innerHTML=""; }
   }

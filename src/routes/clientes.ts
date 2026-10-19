@@ -331,9 +331,11 @@ clientes.post("/loja-config", async (c) => {
 // cria a senha dele ao abrir. Aceita {id} (cadastro da fila) ou {cnpj} (cliente existente).
 clientes.post("/gerar-acesso-loja", async (c) => {
   const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
-  const b = await c.req.json<{ id?: string; cnpj?: string }>().catch(() => ({} as { id?: string; cnpj?: string }));
+  const b = await c.req.json<{ id?: string; cnpj?: string; regiao?: string; cod_prazo?: string }>().catch(() => ({} as { id?: string; cnpj?: string; regiao?: string; cod_prazo?: string }));
   const id = String(b.id || "").trim();
   const cnpjDig = String(b.cnpj || "").replace(/\D+/g, "");
+  const regiao = String(b.regiao || "").toLowerCase() === "norte" ? "norte" : "sul";
+  const codPrazo = String(b.cod_prazo || "").trim() || null;
   let cli: { id: string; nome: string | null; senha_hash: string | null } | null = null;
   if (id) {
     cli = await c.env.DB.prepare("SELECT id, nome, senha_hash FROM clientes WHERE id=?").bind(id).first();
@@ -346,7 +348,11 @@ clientes.post("/gerar-acesso-loja", async (c) => {
   }
   if (!cli) return c.json({ error: "cliente_nao_encontrado", msg: "Não achei esse cliente. Confira o CNPJ." }, 404);
   const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-  await c.env.DB.prepare("UPDATE clientes SET acesso_token=? WHERE id=?").bind(token, cli.id).run();
+  // Gerar o link = o gestor confirma que é cliente nosso → grava região + prazo e já LIBERA
+  // (vê preços). Não mexe no loja_criar_erp (não cria no Syntech aqui). 'recusado' não reativa.
+  await c.env.DB.prepare(
+    "UPDATE clientes SET acesso_token=?, loja_regiao=?, loja_cod_prazo=?, loja_status=CASE WHEN COALESCE(loja_status,'') <> 'recusado' THEN 'aprovado' ELSE loja_status END WHERE id=?"
+  ).bind(token, regiao, codPrazo, cli.id).run();
   const origin = new URL(c.req.url).origin;
   const link = `${origin}/api/integracao/loja?acesso=${token}`;
   return c.json({ ok: true, nome: cli.nome || "", link, tem_senha: !!cli.senha_hash });

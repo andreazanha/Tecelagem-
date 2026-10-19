@@ -153,11 +153,18 @@ loja.post("/definir-senha", async (c) => {
   }
 
   const hash = await hashSenha(nova);
-  await c.env.DB.prepare("UPDATE clientes SET senha_hash=? WHERE id=?").bind(hash, cli.id).run();
+  // Se veio pelo LINK (token = o gestor confirmou que é cliente nosso), já LIBERA junto.
+  const viaToken = token.length >= 10;
+  const statusFinal = viaToken && String(cli.loja_status) !== "recusado" ? "aprovado" : (cli.loja_status || (cli.codigo_erp ? "aprovado" : ""));
+  if (viaToken && String(cli.loja_status) !== "recusado") {
+    await c.env.DB.prepare("UPDATE clientes SET senha_hash=?, loja_status='aprovado' WHERE id=?").bind(hash, cli.id).run();
+  } else {
+    await c.env.DB.prepare("UPDATE clientes SET senha_hash=? WHERE id=?").bind(hash, cli.id).run();
+  }
   return c.json({
     ok: true, nome: cli.nome || "", regiao: regiaoDoCliente(cli.loja_regiao, cli.uf),
-    liberado: clienteLiberado(cli.codigo_erp, cli.loja_status),
-    status: cli.loja_status || (cli.codigo_erp ? "aprovado" : ""),
+    liberado: clienteLiberado(cli.codigo_erp, statusFinal),
+    status: statusFinal,
   });
 });
 
