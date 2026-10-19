@@ -325,7 +325,7 @@
         </button>
         <button class="rep-tile" onclick="__repSecao('montar')">
           <svg viewBox="0 0 24 24"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.5 2.5h2l2.6 12.4a2 2 0 0 0 2 1.6h9.3a2 2 0 0 0 2-1.6L23 6H6"/></svg>
-          <span class="tl">Montar pedido</span><span class="tt">pra um cliente</span>
+          <span class="tl">Novo pedido</span><span class="tt">começar agora</span>
         </button>
         <button class="rep-tile" onclick="__repSecao('pedidos')">
           <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>
@@ -351,7 +351,7 @@
     <!-- Sub-tela: montar pedido (1º passo) -->
     <div id="repMontar" style="display:none">
       <button class="rep-voltar" onclick="__repHome()">← Voltar</button>
-      <h2 class="rep-h2">Montar pedido</h2>
+      <h2 class="rep-h2">Novo pedido</h2>
       <div class="rep-dica">Primeiro, escolha pra quem é o pedido:</div>
       <div class="rep-menu">
         <button class="rep-tile" onclick="__repEscolher()">
@@ -368,7 +368,7 @@
     <div id="repNovoCli" style="display:none">
       <button class="rep-voltar" onclick="__repHome()">← Voltar</button>
       <h2 class="rep-h2">Cadastrar cliente novo</h2>
-      <div class="rep-dica">Digite o CNPJ e toque em <b>Buscar</b> pra preencher pela Receita. A Big Tricot confere e libera. (* obrigatório)</div>
+      <div class="rep-dica">Digite o CNPJ e toque em <b>Buscar</b> pra preencher pela Receita. Assim que cadastrar, já pode montar o pedido. (* obrigatório)</div>
       <div id="rncMsg" style="font-size:13px;min-height:1px;margin:6px 0;line-height:1.35"></div>
       <div style="display:grid;gap:10px;max-width:560px">
         <div style="display:flex;gap:8px">
@@ -387,6 +387,20 @@
         <input id="rnTel" class="cad-inp" inputmode="numeric" placeholder="WhatsApp *">
         <input id="rnEmail" class="cad-inp" type="email" placeholder="E-mail * (confira se é atual!)">
         <button id="rnBtn" style="padding:14px;border:0;border-radius:12px;background:#2c3e50;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Enviar cadastro</button>
+      </div>
+    </div>
+    <!-- Sub-tela: cadastro concluído (cliente já liberado, pode seguir com o pedido) -->
+    <div id="repNovoOk" style="display:none">
+      <div style="max-width:460px;margin:8px auto;text-align:center;padding:10px">
+        <div style="width:72px;height:72px;margin:0 auto 14px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center">
+          <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        </div>
+        <h2 class="rep-h2" style="justify-content:center">Cliente cadastrado! 🎉</h2>
+        <div class="rep-dica" style="text-align:center"><b id="repOkNome"></b> já está liberado.<br>Pode montar o pedido agora.</div>
+        <div style="display:grid;gap:10px;margin-top:18px">
+          <button id="repOkPedido" style="padding:15px;border:0;border-radius:12px;background:#2c3e50;color:#fff;font-size:16px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:9px"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.5 2.5h2l2.6 12.4a2 2 0 0 0 2 1.6h9.3a2 2 0 0 0 2-1.6L23 6H6"/></svg>Novo pedido</button>
+          <button id="repOkFechar" style="padding:13px;border:1.5px solid #d6cfc2;border-radius:12px;background:#fff;color:#5f584e;font-size:15px;font-weight:600;cursor:pointer">Fechar</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1072,7 +1086,7 @@
       })
       .catch(function(){ btn.disabled=false; btn.textContent="Entrar"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; });
   }
-  var REP=null, REP_CLIENTES=[], REP_CLIENTE=null;
+  var REP=null, REP_CLIENTES=[], REP_CLIENTE=null, REP_NOVO_CNPJ="";
   function aplicarRep(rep, clientes){
     if(!rep) return;
     REP=rep; REP_CLIENTES=clientes||[];
@@ -1085,7 +1099,7 @@
     document.getElementById("repTileCount").textContent=REP_CLIENTES.length+" cliente"+(REP_CLIENTES.length===1?"":"s");
     __repHome();
   }
-  var REP_SUBS=["repHome","repCartView","repMontar","repNovoCli"];
+  var REP_SUBS=["repHome","repCartView","repMontar","repNovoCli","repNovoOk"];
   function repMostrarSub(id){ REP_SUBS.forEach(function(s){ var e=document.getElementById(s); if(e) e.style.display=(s===id)?"block":"none"; }); try{ document.getElementById("repArea").scrollTop=0; }catch(e){} }
   window.__repHome=function(){ repMostrarSub("repHome"); };
   window.__repEscolher=function(){ __repSecao("carteira"); };
@@ -1181,10 +1195,15 @@
         if(res.ok && res.j.ok){
           if(res.j.clientes) REP_CLIENTES=res.j.clientes;
           document.getElementById("repTileCount").textContent=REP_CLIENTES.length+" cliente"+(REP_CLIENTES.length===1?"":"s");
+          var nomeCad=g("rnFant")||g("rnNome")||"Cliente";
+          var cnpjCad=(g("rnCnpj")||res.j.cnpj||"").replace(/\D/g,"");
           ["rnNome","rnFant","rnCnpj","rnIe","rnEnd","rnNum","rnBai","rnCep","rnUf","rnCid","rnEmail","rnTel"].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=""; });
           var iso=document.getElementById("rnIsento"); if(iso) iso.checked=false;
-          alert("Cadastro enviado! 🎉 A Big Tricot vai conferir e liberar. Assim que liberar, ele aparece na sua carteira pra montar o pedido.");
-          __repHome();
+          // Cliente já vem liberado (rep normalmente está na loja). Mostra tela de sucesso
+          // com botão pra seguir direto pro pedido.
+          document.getElementById("repOkNome").textContent=nomeCad;
+          repMostrarSub("repNovoOk");
+          REP_NOVO_CNPJ=cnpjCad;
         } else { msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Não consegui enviar. Confira os dados."; }
       })
       .catch(function(){ btn.disabled=false; btn.textContent="Enviar cadastro"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; });
@@ -1197,6 +1216,13 @@
   document.getElementById("repSair").addEventListener("click",repSair);
   document.getElementById("rnBtn").addEventListener("click",repEnviarNovoCli);
   document.getElementById("rnReceita").addEventListener("click",repPuxarReceita);
+  // Tela de sucesso do cadastro: seguir pro pedido ou voltar ao menu.
+  document.getElementById("repOkPedido").addEventListener("click",function(){
+    var cli=null, dig=String(REP_NOVO_CNPJ||"").replace(/\D/g,"");
+    for(var i=0;i<REP_CLIENTES.length;i++){ if(String(REP_CLIENTES[i].cnpj||"").replace(/\D/g,"")===dig){ cli=REP_CLIENTES[i]; break; } }
+    if(cli){ iniciarPedidoRep(cli); } else { __repSecao("carteira"); }
+  });
+  document.getElementById("repOkFechar").addEventListener("click",function(){ __repHome(); });
   (function(){ var iso=document.getElementById("rnIsento"); if(iso) iso.addEventListener("change",function(){ var ie=document.getElementById("rnIe"); if(ie){ ie.disabled=iso.checked; ie.value=iso.checked?"":ie.value; ie.style.opacity=iso.checked?.5:1; } }); })();
 
   // Cadastro de loja nova (abre dentro do mesmo modal de entrada)

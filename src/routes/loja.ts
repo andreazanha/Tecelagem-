@@ -276,17 +276,20 @@ loja.post("/rep-cadastrar-cliente", async (c) => {
     bairro: s("bairro"), cep: soDigitos(b.cep), email: s("email"), telefone: s("telefone") || s("whatsapp"),
     whatsapp: soDigitos(b.whatsapp) || soDigitos(b.telefone),
   };
+  // Rep é de confiança: o cliente já entra LIBERADO (rep monta o pedido na hora). O gestor
+  // ainda vê na fila e o PEDIDO só vai pro Syntech depois da aprovação dele. Região pela UF.
+  const regiaoRep = regiaoDeUF(uf);
   if (ex) {
     await c.env.DB.prepare(
-      "UPDATE clientes SET nome=?, fantasia=?, inscricao_estadual=?, endereco=?, numero=?, bairro=?, cep=?, cidade=?, uf=?, email=?, telefone=?, whatsapp=?, representante=?, origem='rep', loja_status='pendente', loja_cadastro_em=datetime('now') WHERE id=?"
-    ).bind(nome, campos.fantasia, campos.inscricao_estadual, campos.endereco, campos.numero, campos.bairro, campos.cep, cidade, uf, campos.email, campos.telefone, campos.whatsapp, rep.nome, ex.id).run();
+      "UPDATE clientes SET nome=?, fantasia=?, inscricao_estadual=?, endereco=?, numero=?, bairro=?, cep=?, cidade=?, uf=?, email=?, telefone=?, whatsapp=?, representante=?, origem='rep', loja_status='aprovado', loja_regiao=?, loja_criar_erp=1, loja_cadastro_em=datetime('now') WHERE id=?"
+    ).bind(nome, campos.fantasia, campos.inscricao_estadual, campos.endereco, campos.numero, campos.bairro, campos.cep, cidade, uf, campos.email, campos.telefone, campos.whatsapp, rep.nome, regiaoRep, ex.id).run();
   } else {
     await c.env.DB.prepare(
-      "INSERT INTO clientes (id, nome, fantasia, cnpj, inscricao_estadual, endereco, numero, bairro, cep, cidade, uf, email, telefone, whatsapp, representante, origem, loja_status, loja_cadastro_em) " +
-      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'rep', 'pendente', datetime('now'))"
-    ).bind(uid(), nome, campos.fantasia, cnpjDig, campos.inscricao_estadual, campos.endereco, campos.numero, campos.bairro, campos.cep, cidade, uf, campos.email, campos.telefone, campos.whatsapp, rep.nome).run();
+      "INSERT INTO clientes (id, nome, fantasia, cnpj, inscricao_estadual, endereco, numero, bairro, cep, cidade, uf, email, telefone, whatsapp, representante, origem, loja_status, loja_regiao, loja_criar_erp, loja_cadastro_em) " +
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'rep', 'aprovado', ?, 1, datetime('now'))"
+    ).bind(uid(), nome, campos.fantasia, cnpjDig, campos.inscricao_estadual, campos.endereco, campos.numero, campos.bairro, campos.cep, cidade, uf, campos.email, campos.telefone, campos.whatsapp, rep.nome, regiaoRep).run();
   }
-  return c.json({ ok: true, msg: "Cadastro enviado! A Big Tricot vai conferir e liberar.", clientes: await carteiraDoRep(c.env, rep.nome) });
+  return c.json({ ok: true, cnpj: cnpjDig, msg: "Cliente cadastrado! Já pode montar o pedido.", clientes: await carteiraDoRep(c.env, rep.nome) });
 });
 
 // Consulta CNPJ na Receita (BrasilAPI) pra preencher o cadastro. ATENÇÃO: o e-mail pode

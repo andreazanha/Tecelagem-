@@ -158,7 +158,7 @@ clientes.get("/pendentes-loja", async (c) => {
             COALESCE(loja_status,'') AS loja_status, COALESCE(loja_criar_erp,0) AS loja_criar_erp
        FROM clientes
       WHERE COALESCE(loja_status,'') IN ('pendente','aprovado')
-        AND COALESCE(origem,'') = 'loja'
+        AND COALESCE(origem,'') IN ('loja','rep')
       ORDER BY (loja_status='pendente') DESC, loja_cadastro_em DESC`
   ).all();
   return c.json(results);
