@@ -55,6 +55,8 @@
   body.rep-mode .bf-voltar{display:inline-flex}
   /* Modo "só visualização": esconde carrinho/meus pedidos (rep só vê, não monta pedido) */
   body.rep-sover .bf-right-top{display:none}
+  /* ...e some com os controles de pedido na ficha do produto (stepper, resumo, botão). */
+  body.rep-sover #sheet .stepper, body.rep-sover #sheet .addcart, body.rep-sover #sheet .resumo{display:none !important}
   .saud{display:flex; align-items:center; gap:5px; font-size:12px; color:#cfc7ba; white-space:nowrap; min-width:0; max-width:320px}
   .saud b{color:#f0ebe2; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .saud a{flex:0 0 auto}
