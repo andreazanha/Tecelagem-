@@ -1987,7 +1987,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                                   const pdf = /\.pdf($|[?#])/i.test(m.arquivo_url!) || /\.pdf$/i.test(nome);
                                   return <DocCard url={m.arquivo_url!} nome={nome} pdf={pdf} />;
                                 })()}
-                          {/\.(jpg|jpeg|png|gif|webp|mp4|mov|3gp|m4v|ogg|opus|mp3|m4a|wav|webm|aac|amr)$/i.test(m.arquivo_url) && m.tipo !== "arquivo" && (m.texto || "").trim() && !/^🎬 \(vídeo/.test((m.texto || "").trim()) && <div style={{ marginTop: 4 }}>{corpoMsg(m.texto)}</div>}
+                          {/\.(jpg|jpeg|png|gif|webp|mp4|mov|3gp|m4v|ogg|opus|mp3|m4a|wav|webm|aac|amr)$/i.test(m.arquivo_url) && (m.texto || "").trim() && !/\.(jpg|jpeg|png|gif|webp|mp4|mov|3gp|m4v|ogg|opus|mp3|m4a|wav|webm|aac|amr|pdf|docx?|xlsx?|bin)$/i.test((m.texto || "").trim()) && !/^🎬 \(vídeo/.test((m.texto || "").trim()) && <div style={{ marginTop: 4 }}>{corpoMsg(m.texto)}</div>}
                         </>
                       : m.tipo === "arquivo" ? <span className="at-file">📒 {m.texto}</span> : corpoMsg(m.texto)}
                     <span className="at-tm">{hora(m.criado_em)}{m.direcao === "out" && m.autor !== "sistema" && m.status && (
