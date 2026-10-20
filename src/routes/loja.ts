@@ -61,6 +61,25 @@ async function carteiraDoRep(env: Env, repNome: string) {
   }));
 }
 
+// Cores usadas no pedido → {hex, foto bytes} pro PDF (mesma fonte do PDF de produção).
+async function coresLojaPdf(env: Env, nomes: string[]): Promise<Record<string, { hex?: string; foto?: Uint8Array }>> {
+  const usados = new Set(nomes.map((n) => (n || "").trim().toUpperCase()).filter(Boolean));
+  if (!usados.size) return {};
+  const m: Record<string, { hex?: string; foto?: Uint8Array }> = {};
+  try {
+    const { results } = await env.DB.prepare("SELECT nome, hex, foto_key FROM cores").all<{ nome: string; hex: string | null; foto_key: string | null }>();
+    for (const r of results || []) {
+      const key = (r.nome || "").trim().toUpperCase();
+      if (!usados.has(key)) continue;
+      const e: { hex?: string; foto?: Uint8Array } = {};
+      if (r.hex) e.hex = r.hex;
+      if (r.foto_key && env.BUCKET) { try { const o = await env.BUCKET.get(r.foto_key); if (o) e.foto = new Uint8Array(await o.arrayBuffer()); } catch { /* sem foto */ } }
+      if (e.hex || e.foto) m[key] = e;
+    }
+  } catch { /* sem tabela de cores: segue sem fotos */ }
+  return m;
+}
+
 // ── Senha da loja (PBKDF2 via Web Crypto; sem dependência externa) ──────────────
 const b64 = (a: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(a as ArrayBuffer)));
 async function hashSenha(senha: string): Promise<string> {
@@ -549,9 +568,11 @@ loja.get("/pedido-pdf/:id", async (c) => {
   const cnpjDig = soDigitos(c.req.query("cnpj"));
   const ped = await c.env.DB.prepare(
     `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.vendedor, p.valor_total, p.created_at,
-            COALESCE(p.loja_forma_desc,'') AS forma, COALESCE(p.observacao,'') AS obs
+            COALESCE(p.loja_forma_desc,'') AS forma, COALESCE(p.observacao,'') AS obs,
+            COALESCE(p.loja_fase,'') AS fase, COALESCE(p.erp_sync_status,'') AS sync,
+            COALESCE(p.erp_liberado,0) AS liberado, p.erp_numero
        FROM pedidos p WHERE p.id=? AND p.canal='loja_b2b'`
-  ).bind(id).first<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; vendedor: string | null; valor_total: number | null; created_at: string | null; forma: string; obs: string }>();
+  ).bind(id).first<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; vendedor: string | null; valor_total: number | null; created_at: string | null; forma: string; obs: string; fase: string; sync: string; liberado: number; erp_numero: number | null }>();
   if (!ped) return c.json({ erro: "nao_encontrado" }, 404);
   // segurança leve: se veio CNPJ, tem que bater com o do pedido.
   if (cnpjDig && soDigitos(ped.cliente_cnpj) !== cnpjDig) return c.json({ erro: "nao_autorizado" }, 403);
@@ -564,6 +585,20 @@ loja.get("/pedido-pdf/:id", async (c) => {
   }));
   const emissao = (() => { const m = String(ped.created_at || "").match(/(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ""; })();
   const cnpjFmt = (() => { const d2 = soDigitos(ped.cliente_cnpj); return d2.length === 14 ? d2.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5") : (ped.cliente_cnpj || ""); })();
+  // Fotos reais das cores do pedido + WhatsApp da Big pro rodapé + situação do pedido.
+  const cores = await coresLojaPdf(c.env, (itensRaw || []).map((r) => String(r.cor_grade || "")));
+  let whatsapp = "";
+  try {
+    const w = await c.env.DB.prepare("SELECT valor FROM config WHERE chave IN ('loja_whatsapp','numero_whatsapp') ORDER BY CASE chave WHEN 'loja_whatsapp' THEN 0 ELSE 1 END LIMIT 1").first<{ valor: string | null }>();
+    whatsapp = String(w?.valor || "").replace(/\D/g, "");
+  } catch { whatsapp = ""; }
+  const statusLabel =
+    ped.sync === "rascunho" ? "Em espera"
+      : ped.sync === "enviado" ? (ped.erp_numero ? "Confirmado · nº " + ped.erp_numero : "Confirmado")
+        : ped.sync === "erro" ? "Em processamento"
+          : Number(ped.liberado) === 1 ? "Aprovado pela Big Tricot"
+            : ped.fase === "enviado" ? "Aguardando confirmacao"
+              : "Pedido recebido";
   const bytes = await gerarPdfPedidoLoja({
     numero: String(ped.id).slice(0, 8).toUpperCase(),
     cliente: ped.cliente_nome || "Cliente",
@@ -574,7 +609,9 @@ loja.get("/pedido-pdf/:id", async (c) => {
     observacao: ped.obs || "",
     itens,
     total: Number(ped.valor_total) || itens.reduce((s, i) => s + i.qtd * i.valor, 0),
-  });
+    whatsapp,
+    statusLabel,
+  }, cores);
   const nomeArq = "pedido-" + String(ped.id).slice(0, 8) + ".pdf";
   return new Response(bytes, { headers: {
     "Content-Type": "application/pdf",

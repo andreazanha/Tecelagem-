@@ -1308,7 +1308,7 @@ export async function gerarOrdemCompra(d: OrdemCompraDados): Promise<Uint8Array>
   return await doc.save();
 }
 
-// ── Pedido da LOJA/REPRESENTANTE (B2B) — PDF limpo pro rep enviar ao cliente ──────────
+// ── Pedido da LOJA/REPRESENTANTE (B2B) — PDF bonito pro rep enviar ao cliente ─────────
 export interface PedidoLojaItem { produto: string; cor: string; tamanho: string; qtd: number; valor: number }
 export interface PedidoLojaPdf {
   numero: string;
@@ -1320,73 +1320,146 @@ export interface PedidoLojaPdf {
   observacao?: string;
   itens: PedidoLojaItem[];
   total: number;
+  whatsapp?: string;      // contato da Big no rodapé (só dígitos)
+  statusLabel?: string;   // situação do pedido (ex.: "Aguardando confirmação")
 }
 function brlPdf(n: number): string {
   const neg = n < 0; const v = Math.abs(Math.round(n * 100) / 100).toFixed(2);
   const [ip, dp] = v.split("."); let out = ""; for (let i = 0; i < ip.length; i++) { if (i > 0 && (ip.length - i) % 3 === 0) out += "."; out += ip[i]; }
   return (neg ? "-" : "") + "R$ " + out + "," + dp;
 }
-export async function gerarPdfPedidoLoja(d: PedidoLojaPdf): Promise<Uint8Array> {
+function telBr(d?: string): string {
+  const s = String(d || "").replace(/\D/g, ""); if (s.length < 10) return s;
+  const ddd = s.slice(0, 2), resto = s.slice(2);
+  return resto.length === 9 ? `(${ddd}) ${resto.slice(0, 5)}-${resto.slice(5)}` : `(${ddd}) ${resto.slice(0, 4)}-${resto.slice(4)}`;
+}
+export async function gerarPdfPedidoLoja(
+  d: PedidoLojaPdf,
+  cores: Record<string, { hex?: string; foto?: Uint8Array }> = {}
+): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
   const bld = await doc.embedFont(StandardFonts.HelveticaBold);
   const M = 36, iw = A4W - 2 * M, ix = M;
+
+  // Fotos das cores (textura real que o cliente pediu) → PDFImage, por nome em CAIXA ALTA.
+  const fotos = new Map<string, PDFImage>();
+  for (const [k, v] of Object.entries(cores)) {
+    if (!v.foto || v.foto.length < 4) continue;
+    try { fotos.set(k.trim().toUpperCase(), v.foto[0] === 0x89 && v.foto[1] === 0x50 ? await doc.embedPng(v.foto) : await doc.embedJpg(v.foto)); } catch { /* ignora foto inválida */ }
+  }
+  const corInfo = (nome: string) => cores[(nome || "").trim().toUpperCase()] || {};
+
   let page = doc.addPage([A4W, A4H]);
   const T = (s: string, x: number, yTop: number, size: number, f: PDFFont, c = INK) => page.drawText(s, { x, y: A4H - yTop, size, font: f, color: c });
   const TR = (s: string, xr: number, yTop: number, size: number, f: PDFFont, c = INK) => page.drawText(s, { x: xr - f.widthOfTextAtSize(s, size), y: A4H - yTop, size, font: f, color: c });
+  const TC = (s: string, xc: number, yTop: number, size: number, f: PDFFont, c = INK) => page.drawText(s, { x: xc - f.widthOfTextAtSize(s, size) / 2, y: A4H - yTop, size, font: f, color: c });
   const R = (x: number, yTop: number, w: number, h: number, c = INK) => page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, color: c });
   const L = (x1: number, yTop: number, x2: number, c = LINEC, th = 1) => page.drawLine({ start: { x: x1, y: A4H - yTop }, end: { x: x2, y: A4H - yTop }, thickness: th, color: c });
+  const Circ = (cx: number, cyTop: number, rr: number, c: ReturnType<typeof rgb>) => page.drawCircle({ x: cx, y: A4H - cyTop, size: rr, color: c, borderColor: hx("#cbbfa8"), borderWidth: 0.6 });
 
-  const bh = 86;
+  // Colunas (metade direita = qtd / unit / subtotal)
+  const cSub = ix + iw;                 // subtotal (direita)
+  const cUnit = ix + iw - 92;           // unit (direita)
+  const cQtd = ix + iw - 170;           // qtd (centro)
+  const thumbX = ix, thumbS = 46;       // miniatura
+  const txtX = ix + thumbS + 12;        // texto do produto
+  const txtMax = cQtd - 22 - txtX;      // largura do nome
+
+  // CABEÇALHO navy
+  const bh = 88;
   R(0, 0, A4W, bh, NAVY);
-  T("BIG TRICOT", ix, 40, 23, bld, WHITE);
-  T("HOME DECOR", ix + 2, 56, 8, reg, hx("#c7d2e0"));
-  TR("PEDIDO", ix + iw, 38, 15, bld, WHITE);
-  TR("Nº " + d.numero, ix + iw, 56, 10, reg, hx("#c7d2e0"));
-  TR(d.emissao, ix + iw, 70, 9, reg, hx("#aab8cc"));
+  T("BIG TRICOT", ix, 42, 24, bld, WHITE);
+  T("HOME DECOR · ATACADO", ix + 2, 58, 7.5, reg, hx("#c7d2e0"));
+  TR("PEDIDO", cSub, 40, 15, bld, WHITE);
+  TR("Nº " + d.numero, cSub, 57, 10, reg, hx("#c7d2e0"));
+  TR(d.emissao, cSub, 70, 9, reg, hx("#9fb0c7"));
 
-  let y = bh + 26;
-  const info = (k: string, v: string) => { T(k, ix, y, 8.5, bld, MUTE); T(fit(v, bld, 10.5, iw - 150), ix + 150, y, 10.5, bld, INK); y += 20; };
+  // DADOS do cliente
+  let y = bh + 28;
+  const info = (k: string, v: string) => {
+    T(k, ix, y, 8, bld, MUTE);
+    T(fit(v, bld, 10.5, iw - 132), ix + 132, y, 10.5, bld, INK);
+    L(ix, y + 7, ix + iw, hx("#f1ede5"), 0.8);
+    y += 22;
+  };
   info("CLIENTE", d.cliente || "—");
   if (d.cnpj) info("CNPJ", d.cnpj);
   if (d.representante) info("REPRESENTANTE", d.representante);
   if (d.formaPagamento) info("FORMA DE PAGAMENTO", d.formaPagamento);
-  y += 4; L(ix, y, ix + iw, LINEC, 1); y += 22;
+  y += 10;
 
-  const cQtd = ix + iw - 210, cUnit = ix + iw - 130, cSub = ix + iw;
-  T("PRODUTO", ix, y, 8.5, bld, MUTE);
-  TR("QTD", cQtd + 24, y, 8.5, bld, MUTE);
-  TR("UNIT.", cUnit + 10, y, 8.5, bld, MUTE);
-  TR("SUBTOTAL", cSub, y, 8.5, bld, MUTE);
-  y += 8; L(ix, y, ix + iw, LINEC, 1); y += 18;
+  // Cabeçalho da tabela
+  const cabTabela = () => {
+    T("PRODUTO", txtX, y, 8.5, bld, MUTE);
+    TC("QTD", cQtd, y, 8.5, bld, MUTE);
+    TR("UNIT.", cUnit, y, 8.5, bld, MUTE);
+    TR("SUBTOTAL", cSub, y, 8.5, bld, MUTE);
+    y += 9; L(ix, y, ix + iw, LINEC, 1.3); y += 16;
+  };
+  cabTabela();
 
   for (const it of d.itens) {
-    if (y > A4H - 90) { page = doc.addPage([A4W, A4H]); y = 50; }
-    const nomeLines = wrap(it.produto || "—", bld, 10.5, cQtd - ix - 14);
-    T(nomeLines[0] || "—", ix, y, 10.5, bld, INK);
-    const detalhe = [it.cor, it.tamanho].filter(Boolean).join(" · ");
-    TR(String(it.qtd), cQtd + 24, y, 10.5, reg, INK);
-    TR(brlPdf(it.valor), cUnit + 10, y, 10, reg, INK);
-    TR(brlPdf(it.qtd * it.valor), cSub, y, 10.5, bld, INK);
-    y += 15;
-    if (detalhe) { T(detalhe, ix, y, 9, reg, hx("#6b7280")); y += 14; }
-    for (let i = 1; i < nomeLines.length; i++) { T(nomeLines[i], ix, y, 9.5, reg, hx("#6b7280")); y += 13; }
-    y += 4; L(ix, y, ix + iw, hx("#f1f1f1"), 0.8); y += 14;
+    const rowH = 54;
+    if (y + rowH > A4H - 96) { page = doc.addPage([A4W, A4H]); y = 46; cabTabela(); }
+    const topo = y - 4;
+    // Miniatura: foto da cor; senão preenche com o hex; senão cinza claro.
+    const ci = corInfo(it.cor);
+    const img = fotos.get((it.cor || "").trim().toUpperCase());
+    if (img) {
+      page.drawImage(img, { x: thumbX, y: A4H - topo - thumbS, width: thumbS, height: thumbS });
+    } else {
+      R(thumbX, topo, thumbS, thumbS, ci.hex ? hx(ci.hex) : hx("#ece7df"));
+    }
+    page.drawRectangle({ x: thumbX, y: A4H - topo - thumbS, width: thumbS, height: thumbS, borderColor: hx("#e3ddd1"), borderWidth: 0.8 });
+    // Nome + cor (swatch) + tamanho
+    const nome = fit(it.produto || "—", bld, 12.5, txtMax);
+    T(nome, txtX, topo + 14, 12.5, bld, hx("#2c2721"));
+    let mx = txtX;
+    if (ci.hex) { Circ(txtX + 5, topo + 30, 5, hx(ci.hex)); mx = txtX + 16; }
+    const meta = [it.cor, it.tamanho].filter(Boolean).join("  ·  ");
+    if (meta) T(fit(meta, reg, 9.5, cQtd - 30 - mx), mx, topo + 33, 9.5, reg, hx("#6b7280"));
+    // Quantidade / unit / subtotal (alinhados ao centro vertical da linha)
+    TC(String(it.qtd), cQtd, topo + 24, 12.5, bld, INK);
+    TR(brlPdf(it.valor), cUnit, topo + 24, 10, reg, hx("#555"));
+    TR(brlPdf(it.qtd * it.valor), cSub, topo + 24, 12, bld, hx("#2c2721"));
+    y = topo + thumbS + 10;
+    L(ix, y - 5, ix + iw, hx("#f3efe8"), 0.8);
   }
 
-  if (y > A4H - 70) { page = doc.addPage([A4W, A4H]); y = 50; }
-  y += 4;
-  R(cQtd - 10, y - 4, cSub - (cQtd - 10), 30, GREY);
-  T("TOTAL", cQtd, y + 15, 11, bld, INK);
-  TR(brlPdf(d.total), cSub - 8, y + 15, 13, bld, NAVY);
-  y += 44;
+  // TOTAL
+  if (y + 44 > A4H - 80) { page = doc.addPage([A4W, A4H]); y = 46; }
+  y += 6;
+  R(cQtd - 6, y - 6, cSub - (cQtd - 6), 34, GREY);
+  T("TOTAL DO PEDIDO", cQtd + 4, y + 16, 9.5, bld, MUTE);
+  TR(brlPdf(d.total), cSub - 10, y + 17, 15, bld, NAVY);
+  y += 48;
 
+  // Observação
   if (d.observacao) {
-    const obsLines = wrap("Observação: " + d.observacao, reg, 9.5, iw);
-    for (const ln of obsLines) { if (y > A4H - 40) { page = doc.addPage([A4W, A4H]); y = 50; } T(ln, ix, y, 9.5, reg, hx("#444")); y += 13; }
+    const obsLines = wrap(d.observacao, reg, 9.5, iw - 24);
+    const boxH = 16 + obsLines.length * 13 + 6;
+    if (y + boxH > A4H - 70) { page = doc.addPage([A4W, A4H]); y = 46; }
+    page.drawRectangle({ x: ix, y: A4H - y - boxH, width: iw, height: boxH, color: hx("#faf7f1"), borderColor: hx("#efe9de"), borderWidth: 0.8 });
+    T("OBSERVAÇÃO", ix + 12, y + 14, 8, bld, hx("#9a8f7d"));
+    let oy = y + 28; for (const ln of obsLines) { T(ln, ix + 12, oy, 9.5, reg, hx("#5f584e")); oy += 13; }
+    y += boxH + 10;
   }
 
-  T("Pedido gerado pelo catálogo Big Tricot · " + geradoEm(), ix, A4H - 24, 8, reg, MUTE);
+  // RODAPÉ (faixa clara): situação do pedido + contato da Big
+  const fy = A4H - 40;
+  page.drawRectangle({ x: 0, y: 0, width: A4W, height: 46, color: hx("#f7f4ee") });
+  L(0, A4H - 46, A4W, hx("#efe9de"), 1);
+  if (d.statusLabel) {
+    const w = reg.widthOfTextAtSize(d.statusLabel, 9) + 18;
+    page.drawRectangle({ x: ix, y: A4H - fy - 13, width: w, height: 18, color: hx("#eef2ff") });
+    T(d.statusLabel, ix + 9, fy, 9, bld, hx("#4338ca"));
+  }
+  const contatos: string[] = [];
+  if (d.whatsapp) contatos.push("WhatsApp " + telBr(d.whatsapp));
+  contatos.push("Pedido gerado pelo catalogo Big Tricot");
+  TR(contatos.join("   ·   "), cSub, fy, 8.5, reg, MUTE);
+
   return await doc.save();
 }
 
