@@ -779,13 +779,13 @@
         var k=qKey(l.cod,l.id_tamanho); var q=sel.qtd[k]||0;
         return '<div class="tamrow"><div class="medbox"><div class="med">'+esc(medidaDe(l.id_tamanho).replace(/(\d)\s*[×xX]\s*(\d)/g,"$1 × $2"))+'</div>'+estTxtLinha(l.cod,l.id_tamanho)+'</div>'+
           '<div class="pr">'+precoVis(precoLinha(l))+'</div>'+
-          (LIBERADO ? '<div class="stepper" data-k="'+esc(k)+'"><button data-d="-1">−</button><input type="number" min="0" value="'+q+'"><button data-d="1">+</button></div>' : '<div class="pr" style="opacity:.6;font-size:11px">—</div>')+'</div>';
+          (REP_SOVER ? '' : (LIBERADO ? '<div class="stepper" data-k="'+esc(k)+'"><button data-d="-1">−</button><input type="number" min="0" value="'+q+'"><button data-d="1">+</button></div>' : '<div class="pr" style="opacity:.6;font-size:11px">—</div>'))+'</div>';
       }).join("");
       if(!rows) return "";                    // seção sem nenhuma opção visível → some
       return '<div class="grp"><div class="t">'+esc(g.titulo||"Itens")+'</div>'+rows+'</div>';
     }).join("");
     if(!grupos) grupos='<div class="estx off" style="padding:10px 0">Sem opções em estoque nesta cor.</div>';
-    return '<div class="lbl">Escolha os tamanhos — <b>'+esc(cc.nome||"")+'</b></div>'+grupos;
+    return '<div class="lbl">'+(REP_SOVER?'Tamanhos e preços':'Escolha os tamanhos')+' — <b>'+esc(cc.nome||"")+'</b></div>'+grupos;
   }
   function prazoHTML(p){
     var est=estoqueProduto(p);
@@ -835,14 +835,15 @@
           (p.composicao?'<div class="comp">'+esc(p.composicao)+'</div>':'')+
           blocosHTML(p)+
           prazoHTML(p)+
-          '<div class="montar"><h4>Montar pedido</h4>'+
+          '<div class="montar"><h4>'+(REP_SOVER?'Preços e estoque':'Montar pedido')+'</h4>'+
             '<div class="cor-sticky">'+
-              '<div class="lbl">Escolha a cor'+(ncores>1?' <span class="cnt">· '+ncores+' cores disponíveis</span>':'')+'</div><div class="cores" id="cores">'+coresHTML(p)+'</div>'+
+              '<div class="lbl">'+(REP_SOVER?'Cores':'Escolha a cor')+(ncores>1?' <span class="cnt">· '+ncores+' cores disponíveis</span>':'')+'</div><div class="cores" id="cores">'+coresHTML(p)+'</div>'+
               '<div id="corfoto">'+corFotoHTML(p)+'</div>'+
             '</div>'+
             '<div id="tamanhos">'+tamanhosHTML(p)+'</div>'+
-            '<div class="resumo" id="resumo">'+resumoHTML(p)+'</div>'+
-            (LIBERADO ? '<button class="addcart" id="addcart">Adicionar ao carrinho</button>' : '<div style="text-align:center;padding:12px;border:1px dashed #d6c6b0;border-radius:12px;color:#8a6d4f;font-size:13.5px;background:#fbf6ef">🔒 Seu cadastro está em análise. Assim que a Big Tricot aprovar, os preços e o pedido liberam aqui.</div>')+
+            (REP_SOVER ? '<div style="text-align:center;padding:11px;border:1px dashed #cdd6e2;border-radius:12px;color:#8a8073;font-size:13px;background:#f7f5f0;margin-top:4px">👁️ Só visualização. Para montar o pedido, volte e escolha um cliente.</div>' :
+              ('<div class="resumo" id="resumo">'+resumoHTML(p)+'</div>'+
+               (LIBERADO ? '<button class="addcart" id="addcart">Adicionar ao carrinho</button>' : '<div style="text-align:center;padding:12px;border:1px dashed #d6c6b0;border-radius:12px;color:#8a6d4f;font-size:13.5px;background:#fbf6ef">🔒 Seu cadastro está em análise. Assim que a Big Tricot aprovar, os preços e o pedido liberam aqui.</div>')))+
           '</div>'+
         '</div>'+
       '</div>';
