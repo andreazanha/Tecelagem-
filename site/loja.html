@@ -306,10 +306,10 @@
   .cart .itens{flex:1 1 auto; overflow-y:auto; padding:0; -webkit-overflow-scrolling:touch}
   .ctbl{width:100%; border-collapse:collapse; table-layout:fixed}
   .ctbl thead th{position:sticky; top:0; z-index:1; background:var(--card); text-align:left; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.02em; padding:7px 10px; border-bottom:1px solid var(--line)}
-  .ctbl td{padding:4px 10px; border-bottom:1px solid var(--line); font-size:12px; vertical-align:middle; height:40px}
+  .ctbl td{padding:8px 10px; border-bottom:1px solid var(--line); font-size:12px; vertical-align:top}
   .ctbl tbody tr:nth-child(even){background:var(--bg-soft,#faf8f4)}
-  .ctbl .c-prod{font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-  .ctbl .c-desc{font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .ctbl .c-prod{font-weight:700; color:var(--ink); width:140px; white-space:normal; word-break:break-word; line-height:1.3}
+  .ctbl .c-desc{font-size:11px; color:var(--muted); white-space:normal; word-break:break-word; line-height:1.4}
   .ctbl th.c-qtd{width:104px; text-align:center} .ctbl td.c-qtd{text-align:center}
   .ctbl th.c-val{width:92px; text-align:right} .ctbl td.c-val{text-align:right; font-weight:700; font-family:'Montserrat',sans-serif; color:var(--ink); white-space:nowrap}
   .ctbl th.c-rm{width:34px} .ctbl td.c-rm{text-align:center}
@@ -1043,9 +1043,10 @@
           '<input id="repObs" class="cad-inp cart-inp" placeholder="Observação (opcional)" value="'+esc(REP_PEDIDO_OBS||"")+'" style="width:100%;margin:0 0 7px">'+
           '<div id="cmsg" style="font-size:12.5px;margin:0 0 7px;min-height:1px;line-height:1.3"></div>'+
           '<button class="fin" id="repPdf" style="background:#2c3e50;margin-bottom:7px">📄 Gerar PDF e enviar ao cliente</button>'+
-          '<div style="display:flex;gap:7px">'+
-            '<button id="repEspera" style="flex:1;padding:10px;border:1.5px solid #d6cfc2;border-radius:10px;background:#fff;color:#5f584e;font-size:13px;font-weight:600;cursor:pointer">⏸️ Deixar em espera</button>'+
-            '<button id="repEnviarBig" style="flex:1;padding:10px;border:0;border-radius:10px;background:#1f7a4d;color:#fff;font-size:13px;font-weight:600;cursor:pointer">✅ Enviar à Big</button>'+
+          '<div style="display:flex;gap:7px;align-items:stretch">'+
+            '<button id="repEspera" style="flex:1;min-height:44px;padding:8px 6px;border:1.5px solid #d6cfc2;border-radius:10px;background:#fff;color:#5f584e;font-size:12.5px;font-weight:600;cursor:pointer;line-height:1.2">⏸️ Deixar em espera</button>'+
+            '<button id="repContinuar" style="flex:1;min-height:44px;padding:8px 6px;border:1.5px solid #ae5033;border-radius:10px;background:#fff;color:#ae5033;font-size:12.5px;font-weight:600;cursor:pointer;line-height:1.2">🛍️ Continuar comprando</button>'+
+            '<button id="repEnviarBig" style="flex:1;min-height:44px;padding:8px 6px;border:0;border-radius:10px;background:#1f7a4d;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;line-height:1.2">✅ Enviar à Big</button>'+
           '</div>'+
           '<div style="font-size:11px;color:#9aa3af;margin-top:7px;line-height:1.35">O pedido só vai pro Syntech depois que a Big Tricot aprovar.</div>'
         ):'')+'</div>';
@@ -1072,6 +1073,7 @@
     var fin=document.getElementById("finalizar"); if(fin) fin.onclick=finalizarPedido;
     var bPdf=document.getElementById("repPdf"); if(bPdf) bPdf.onclick=repGerarPdfEnviar;
     var bEsp=document.getElementById("repEspera"); if(bEsp) bEsp.onclick=repDeixarEspera;
+    var bCont=document.getElementById("repContinuar"); if(bCont) bCont.onclick=repContinuarComprando;
     var bBig=document.getElementById("repEnviarBig"); if(bBig) bBig.onclick=repEnviarBig;
   }
   function finalizarPedido(){
@@ -1158,6 +1160,14 @@
         repMsg("#166534","PDF gerado! Depois do OK do cliente, toque em ✅ Enviar à Big.");
       });
     }).catch(function(){ if(b){b.disabled=false;b.textContent="📄 Gerar PDF e enviar ao cliente";} repMsg("#b91c1c","Sem conexão. Tente de novo."); });
+  }
+  // "Continuar comprando": só fecha o carrinho e volta ao catálogo com o MESMO cliente.
+  // NÃO salva pedido nem gera número — os itens ficam no mesmo carrinho (mesmo pedido em
+  // andamento). Guarda a forma/observação já digitadas pra não perder ao reabrir.
+  function repContinuarComprando(){
+    var f=document.getElementById("repForma"); if(f) REP_PEDIDO_FORMA=f.value||"";
+    var o=document.getElementById("repObs"); if(o) REP_PEDIDO_OBS=o.value||"";
+    __fecharCart();
   }
   function repDeixarEspera(){
     if(!CART.length) return;
