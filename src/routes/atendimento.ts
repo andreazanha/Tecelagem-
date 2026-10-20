@@ -3728,10 +3728,16 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
     // IMAGEM com legenda: manda a foto embutida (base64) junto da legenda no MESMO pedido, pra a legenda
     // ir colada na foto (por URL a Z-API às vezes entregava a foto SEM a legenda). Só imagem pequena.
     let imgData: string | undefined;
-    try { if (ehImagem && legenda && bytes.byteLength <= 5 * 1024 * 1024) imgData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { imgData = undefined; }
+    try { if (ehImagem && legenda && bytes.byteLength <= 9 * 1024 * 1024) imgData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { imgData = undefined; }
     const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, dataUri: imgData, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
     if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgId).run();
     else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); // marca "⚠️ não entregue"
+    // GARANTIA DA LEGENDA: quando a imagem foi grande demais pra embutir (base64) e foi por URL,
+    // a Z-API às vezes entrega a foto SEM a legenda. Nesse caso manda a legenda como mensagem de
+    // texto logo em seguida — assim o cliente SEMPRE recebe o texto que acompanha a foto.
+    if (ehImagem && legenda && !imgData && r.enviado) {
+      try { await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto: legenda }); } catch { /* se falhar, a foto já foi */ }
+    }
   })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); } catch { /* ok */ } });
   try { c.executionCtx.waitUntil(enviarBg); } catch { /* sem executionCtx: segue sem bloquear */ }
   return c.json({ ok: true, enviado: true, url });
