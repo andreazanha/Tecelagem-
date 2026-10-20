@@ -2569,6 +2569,8 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
   const [numero, setNumero] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  // Confirmação obrigatória antes de encaminhar — evita envio acidental pra pessoa errada.
+  const [confirmar, setConfirmar] = useState<{ nome: string; dest: { telefone?: string; conversaId?: string } } | null>(null);
   useEffect(() => {
     const u = getUser();
     // Traz TODOS os contatos e também os grupos (estado 'grupo') — assim dá pra encaminhar pra um grupo.
@@ -2594,11 +2596,21 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
           <button onClick={onFechar} style={{ background: "transparent", border: 0, fontSize: 18, cursor: "pointer", color: "var(--muted)" }}>✕</button>
         </div>
         {msg && <div style={{ padding: "8px 14px", fontSize: 13, color: msg[0] === "✓" ? "#15803d" : "#b91c1c" }}>{msg}</div>}
+        {confirmar ? (
+          <div style={{ padding: "28px 20px", textAlign: "center" }}>
+            <div style={{ fontSize: 14, color: "var(--muted)" }}>Encaminhar esta mensagem para:</div>
+            <div style={{ fontSize: 19, fontWeight: 800, margin: "8px 0 22px", wordBreak: "break-word" }}>{confirmar.nome || "este contato"}</div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <button onClick={() => setConfirmar(null)} disabled={busy} style={{ border: "1px solid var(--line)", background: "var(--card,#fff)", color: "inherit", borderRadius: 10, padding: "10px 18px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>Cancelar</button>
+              <button onClick={() => enviar(confirmar.dest)} disabled={busy} style={{ border: 0, background: "#16a34a", color: "#fff", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>{busy ? "Enviando…" : "✓ Confirmar envio"}</button>
+            </div>
+          </div>
+        ) : (<>
         <div style={{ padding: "10px 14px", display: "grid", gap: 8, borderBottom: "1px solid var(--line)" }}>
           <div style={{ fontSize: 12, color: "var(--muted)" }}>Enviar para um número novo:</div>
           <div style={{ display: "flex", gap: 6 }}>
             <input value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="(35) 9 9999-9999" style={{ flex: 1, fontSize: 13, padding: "7px 8px", borderRadius: 8, border: "1px solid var(--line)" }} />
-            <button disabled={busy || numero.replace(/\D/g, "").length < 10} onClick={() => enviar({ telefone: numero })}
+            <button disabled={busy || numero.replace(/\D/g, "").length < 10} onClick={() => setConfirmar({ nome: telBonito(numero) || numero, dest: { telefone: numero } })}
               style={{ background: "#2563eb", color: "#fff", border: 0, borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontWeight: 700, fontSize: 12.5 }}>Enviar</button>
           </div>
         </div>
@@ -2611,7 +2623,7 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
           {filtrados.map((c) => {
             const nm = c.contato_nome || c.nome || telBonito(c.telefone);
             return (
-              <button key={c.id} disabled={busy} onClick={() => enviar({ conversaId: c.id })}
+              <button key={c.id} disabled={busy} onClick={() => setConfirmar({ nome: nm, dest: { conversaId: c.id } })}
                 style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "8px 10px", background: "transparent", border: 0, borderRadius: 8, cursor: "pointer", color: "inherit" }}>
                 <span className="conv-av" style={{ width: 30, height: 30, fontSize: 12 }}>{iniciais(nm)}</span>
                 <span style={{ minWidth: 0 }}>
@@ -2625,7 +2637,7 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
           {grupos.map((c) => {
             const nm = c.nome || c.contato_nome || "Grupo";
             return (
-              <button key={c.id} disabled={busy} onClick={() => enviar({ conversaId: c.id })}
+              <button key={c.id} disabled={busy} onClick={() => setConfirmar({ nome: nm, dest: { conversaId: c.id } })}
                 style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "8px 10px", background: "transparent", border: 0, borderRadius: 8, cursor: "pointer", color: "inherit" }}>
                 <span className="conv-av" style={{ width: 30, height: 30, fontSize: 14, background: "#dcfce7", color: "#166534" }}>👥</span>
                 <span style={{ minWidth: 0 }}>
@@ -2637,6 +2649,7 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
           })}
           {filtrados.length === 0 && grupos.length === 0 && <div style={{ padding: 12, fontSize: 12.5, color: "var(--muted)" }}>Nenhum grupo ou contato encontrado.</div>}
         </div>
+        </>)}
       </div>
     </div>
   );
