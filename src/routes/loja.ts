@@ -10,6 +10,7 @@
 // O envio pro Syntech é feito DEPOIS pela ponte (passo 4), atrás da trava erp_liberado.
 import { Hono } from "hono";
 import type { Env } from "../index";
+import { gerarPdfPedidoLoja, type PedidoLojaItem } from "../pdf";
 
 export const loja = new Hono<{ Bindings: Env }>();
 
@@ -328,14 +329,23 @@ loja.get("/consulta-cnpj", async (c) => {
 });
 
 loja.post("/pedido", async (c) => {
-  let body: { cnpj?: string; itens?: ItemLoja[]; idem?: string; vendedor?: string } = {};
+  let body: { cnpj?: string; itens?: ItemLoja[]; idem?: string; vendedor?: string; acao?: string; cod_prazo?: string; forma_desc?: string; pedido_id?: string; observacao?: string } = {};
   try { body = await c.req.json(); } catch { return c.json({ erro: "json_invalido", msg: "Não consegui ler o pedido." }, 400); }
 
   const cnpjDig = soDigitos(body.cnpj);
   const vendedor = String(body.vendedor || "").trim().slice(0, 80) || null; // nome do representante (quando o rep monta)
+  const ehRep = !!vendedor;
+  // acao: 'espera' = rascunho (não vai pro Syntech) · 'enviar' = manda (rep: aguarda aprovação da Big)
+  const acao = body.acao === "espera" ? "espera" : "enviar";
+  const codPrazo = String(body.cod_prazo || "").trim().slice(0, 20) || null;
+  const formaDesc = String(body.forma_desc || "").trim().slice(0, 120) || null;
+  const observacao = String(body.observacao || "").trim().slice(0, 400) || null;
+  const pedidoEditar = String(body.pedido_id || "").trim().slice(0, 40) || null; // atualizar um rascunho existente
   const itensIn = Array.isArray(body.itens) ? body.itens : [];
   if (cnpjDig.length < 11) return c.json({ erro: "cnpj_invalido", msg: "Informe um CNPJ (ou CPF) válido para enviar o pedido." }, 400);
   if (!itensIn.length) return c.json({ erro: "carrinho_vazio", msg: "Seu carrinho está vazio." }, 400);
+  // Rep enviando o pedido: forma de pagamento (prazo) é obrigatória.
+  if (ehRep && acao === "enviar" && !codPrazo) return c.json({ erro: "sem_forma_pagamento", msg: "Escolha a forma de pagamento antes de enviar o pedido." }, 400);
 
   // 1) cliente pelo CNPJ (comparando só os dígitos), não bloqueado E liberado (aprovado)
   const cli = await c.env.DB.prepare(
@@ -346,9 +356,18 @@ loja.post("/pedido", async (c) => {
   if (Number(cli.bloqueado) === 1) return c.json({ erro: "cliente_bloqueado", msg: "Seu cadastro está bloqueado no momento. Fale com a Big Tricot." }, 403);
   if (!clienteLiberado(cli.codigo_erp, cli.loja_status)) return c.json({ erro: "cadastro_em_analise", msg: "Seu cadastro ainda está em análise. Assim que a Big Tricot aprovar, você poderá finalizar pedidos. 💛" }, 403);
 
+  // Rep editando um rascunho existente ("em espera"): confere que o pedido é dele e ainda é rascunho.
+  if (pedidoEditar) {
+    const dr = await c.env.DB.prepare("SELECT id, COALESCE(erp_sync_status,'') AS sync FROM pedidos WHERE id=? AND canal='loja_b2b' AND cliente_id=? LIMIT 1")
+      .bind(pedidoEditar, cli.id).first<{ id: string; sync: string }>();
+    if (!dr) return c.json({ erro: "pedido_nao_encontrado", msg: "Esse pedido não está mais disponível para edição." }, 404);
+    if (dr.sync !== "rascunho") return c.json({ erro: "pedido_travado", msg: "Esse pedido já foi enviado e está travado. Peça liberação à Big Tricot." }, 409);
+  }
+
   // idempotência: se o mesmo checkout já foi gravado, devolve o mesmo pedido.
+  // (Pula quando é rep: rep pode salvar várias versões do rascunho / reenviar.)
   const idem = String(body.idem || "").trim().slice(0, 80) || null;
-  if (idem) {
+  if (idem && !ehRep && !pedidoEditar) {
     const ex = await c.env.DB.prepare("SELECT id, erp_numero FROM pedidos WHERE canal='loja_b2b' AND idem = ? LIMIT 1")
       .bind(idem).first<{ id: string; erp_numero: number | null }>();
     if (ex) return c.json({ ok: true, duplicado: true, pedido_id: ex.id, erp_numero: ex.erp_numero });
@@ -405,14 +424,29 @@ loja.post("/pedido", async (c) => {
 
   const total = Math.round(resolvidos.reduce((s, r) => s + r.qtd * r.preco, 0) * 100) / 100;
 
-  // 3) grava o pedido (canal loja_b2b, fora da produção, pendente de envio ao ERP)
-  const pedidoId = uid();
+  // 3) grava o pedido (canal loja_b2b, fora da produção).
+  //   - rascunho  (acao='espera'): erp_sync_status='rascunho' → a ponte NUNCA puxa. loja_fase='em_espera'.
+  //   - enviado   (acao='enviar'): erp_sync_status='pendente'. loja_fase='enviado' quando é rep.
+  //     Pedido de rep sempre fica erp_liberado=0 → espera a Big aprovar (a query da ponte respeita isso).
+  const ehEspera = acao === "espera";
+  const syncStatus = ehEspera ? "rascunho" : "pendente";
+  const lojaFase = ehRep ? (ehEspera ? "em_espera" : "enviado") : null;
+  const pedidoId = pedidoEditar || uid();
   const stmts: D1PreparedStatement[] = [];
-  stmts.push(c.env.DB.prepare(
-    `INSERT INTO pedidos (id, cliente_nome, cliente_id, cliente_cnpj, vendedor, tipo, status, canal, valor_total,
-       erp_sync_status, erp_liberado, idem, data_pedido, created_at)
-     VALUES (?, ?, ?, ?, ?, 'pedido', 'aguardando_aprovacao', 'loja_b2b', ?, 'pendente', 0, ?, datetime('now'), datetime('now'))`
-  ).bind(pedidoId, cli.nome || "SEM CLIENTE", cli.id, cnpjDig, vendedor, total, idem));
+  if (pedidoEditar) {
+    // Atualiza o rascunho existente: troca os dados e substitui os itens.
+    stmts.push(c.env.DB.prepare(
+      `UPDATE pedidos SET cliente_nome=?, vendedor=?, valor_total=?, erp_sync_status=?, loja_fase=?,
+         loja_cod_prazo=?, loja_forma_desc=?, observacao=?, data_pedido=datetime('now') WHERE id=? AND canal='loja_b2b'`
+    ).bind(cli.nome || "SEM CLIENTE", vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, pedidoEditar));
+    stmts.push(c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pedidoEditar));
+  } else {
+    stmts.push(c.env.DB.prepare(
+      `INSERT INTO pedidos (id, cliente_nome, cliente_id, cliente_cnpj, vendedor, tipo, status, canal, valor_total,
+         erp_sync_status, erp_liberado, loja_fase, loja_cod_prazo, loja_forma_desc, observacao, idem, data_pedido, created_at)
+       VALUES (?, ?, ?, ?, ?, 'pedido', 'aguardando_aprovacao', 'loja_b2b', ?, ?, 0, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+    ).bind(pedidoId, cli.nome || "SEM CLIENTE", cli.id, cnpjDig, vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, idem));
+  }
   for (const r of resolvidos) {
     stmts.push(c.env.DB.prepare(
       `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, cod_cor, tamanho, erp_tamanho, qtd, valor_unit, parte)
@@ -421,6 +455,11 @@ loja.post("/pedido", async (c) => {
   }
   await c.env.DB.batch(stmts);
 
+  const msg = ehEspera
+    ? "Pedido salvo em espera. Você pode gerar o PDF e enviar ao cliente quando quiser."
+    : ehRep
+      ? "Pedido enviado! Aguardando a Big Tricot aprovar para entrar no Syntech."
+      : "Pedido recebido! Ele será enviado para a Big Tricot (Syntech) e confirmado em breve.";
   return c.json({
     ok: true,
     pedido_id: pedidoId,
@@ -428,8 +467,57 @@ loja.post("/pedido", async (c) => {
     itens: resolvidos.length,
     pecas: resolvidos.reduce((s, r) => s + r.qtd, 0),
     total,
-    msg: "Pedido recebido! Ele será enviado para a Big Tricot (Syntech) e confirmado em breve.",
+    fase: lojaFase,
+    msg,
   }, 201);
+});
+
+// Formas de pagamento (prazos do Syntech) — o rep escolhe uma antes de enviar o pedido.
+loja.get("/prazos", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT codigo, descricao FROM erp_prazos ORDER BY CAST(codigo AS INTEGER), codigo"
+  ).all<{ codigo: string; descricao: string }>();
+  return c.json(results || []);
+});
+
+// PDF do pedido (pro rep enviar ao cliente / cliente baixar). Escopado por CNPJ (dígitos).
+loja.get("/pedido-pdf/:id", async (c) => {
+  const id = c.req.param("id");
+  const cnpjDig = soDigitos(c.req.query("cnpj"));
+  const ped = await c.env.DB.prepare(
+    `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.vendedor, p.valor_total, p.created_at,
+            COALESCE(p.loja_forma_desc,'') AS forma, COALESCE(p.observacao,'') AS obs
+       FROM pedidos p WHERE p.id=? AND p.canal='loja_b2b'`
+  ).bind(id).first<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; vendedor: string | null; valor_total: number | null; created_at: string | null; forma: string; obs: string }>();
+  if (!ped) return c.json({ erro: "nao_encontrado" }, 404);
+  // segurança leve: se veio CNPJ, tem que bater com o do pedido.
+  if (cnpjDig && soDigitos(ped.cliente_cnpj) !== cnpjDig) return c.json({ erro: "nao_autorizado" }, 403);
+  const { results: itensRaw } = await c.env.DB.prepare(
+    "SELECT produto, cor_grade, tamanho, qtd, valor_unit FROM pedido_itens WHERE pedido_id=? ORDER BY rowid"
+  ).bind(id).all<{ produto: string | null; cor_grade: string | null; tamanho: string | null; qtd: number | null; valor_unit: number | null }>();
+  const itens: PedidoLojaItem[] = (itensRaw || []).map((r) => ({
+    produto: String(r.produto || ""), cor: String(r.cor_grade || ""), tamanho: String(r.tamanho || ""),
+    qtd: Number(r.qtd) || 0, valor: Number(r.valor_unit) || 0,
+  }));
+  const emissao = (() => { const m = String(ped.created_at || "").match(/(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ""; })();
+  const cnpjFmt = (() => { const d2 = soDigitos(ped.cliente_cnpj); return d2.length === 14 ? d2.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5") : (ped.cliente_cnpj || ""); })();
+  const bytes = await gerarPdfPedidoLoja({
+    numero: String(ped.id).slice(0, 8).toUpperCase(),
+    cliente: ped.cliente_nome || "Cliente",
+    cnpj: cnpjFmt,
+    representante: ped.vendedor || "",
+    formaPagamento: ped.forma || "",
+    emissao,
+    observacao: ped.obs || "",
+    itens,
+    total: Number(ped.valor_total) || itens.reduce((s, i) => s + i.qtd * i.valor, 0),
+  });
+  const nomeArq = "pedido-" + String(ped.id).slice(0, 8) + ".pdf";
+  return new Response(bytes, { headers: {
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `inline; filename="${nomeArq}"`,
+    "Cache-Control": "no-store",
+  } });
 });
 
 // CADASTRO DE LOJA NOVA (Fase S): o CNPJ não existe → o visitante preenche e a gente

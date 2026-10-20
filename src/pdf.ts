@@ -1307,3 +1307,86 @@ export async function gerarOrdemCompra(d: OrdemCompraDados): Promise<Uint8Array>
 
   return await doc.save();
 }
+
+// ── Pedido da LOJA/REPRESENTANTE (B2B) — PDF limpo pro rep enviar ao cliente ──────────
+export interface PedidoLojaItem { produto: string; cor: string; tamanho: string; qtd: number; valor: number }
+export interface PedidoLojaPdf {
+  numero: string;
+  cliente: string;
+  cnpj?: string;
+  representante?: string;
+  formaPagamento?: string;
+  emissao: string;        // dd/mm/aaaa
+  observacao?: string;
+  itens: PedidoLojaItem[];
+  total: number;
+}
+function brlPdf(n: number): string {
+  const neg = n < 0; const v = Math.abs(Math.round(n * 100) / 100).toFixed(2);
+  const [ip, dp] = v.split("."); let out = ""; for (let i = 0; i < ip.length; i++) { if (i > 0 && (ip.length - i) % 3 === 0) out += "."; out += ip[i]; }
+  return (neg ? "-" : "") + "R$ " + out + "," + dp;
+}
+export async function gerarPdfPedidoLoja(d: PedidoLojaPdf): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const reg = await doc.embedFont(StandardFonts.Helvetica);
+  const bld = await doc.embedFont(StandardFonts.HelveticaBold);
+  const M = 36, iw = A4W - 2 * M, ix = M;
+  let page = doc.addPage([A4W, A4H]);
+  const T = (s: string, x: number, yTop: number, size: number, f: PDFFont, c = INK) => page.drawText(s, { x, y: A4H - yTop, size, font: f, color: c });
+  const TR = (s: string, xr: number, yTop: number, size: number, f: PDFFont, c = INK) => page.drawText(s, { x: xr - f.widthOfTextAtSize(s, size), y: A4H - yTop, size, font: f, color: c });
+  const R = (x: number, yTop: number, w: number, h: number, c = INK) => page.drawRectangle({ x, y: A4H - yTop - h, width: w, height: h, color: c });
+  const L = (x1: number, yTop: number, x2: number, c = LINEC, th = 1) => page.drawLine({ start: { x: x1, y: A4H - yTop }, end: { x: x2, y: A4H - yTop }, thickness: th, color: c });
+
+  const bh = 86;
+  R(0, 0, A4W, bh, NAVY);
+  T("BIG TRICOT", ix, 40, 23, bld, WHITE);
+  T("HOME DECOR", ix + 2, 56, 8, reg, hx("#c7d2e0"));
+  TR("PEDIDO", ix + iw, 38, 15, bld, WHITE);
+  TR("Nº " + d.numero, ix + iw, 56, 10, reg, hx("#c7d2e0"));
+  TR(d.emissao, ix + iw, 70, 9, reg, hx("#aab8cc"));
+
+  let y = bh + 26;
+  const info = (k: string, v: string) => { T(k, ix, y, 8.5, bld, MUTE); T(fit(v, bld, 10.5, iw - 150), ix + 150, y, 10.5, bld, INK); y += 20; };
+  info("CLIENTE", d.cliente || "—");
+  if (d.cnpj) info("CNPJ", d.cnpj);
+  if (d.representante) info("REPRESENTANTE", d.representante);
+  if (d.formaPagamento) info("FORMA DE PAGAMENTO", d.formaPagamento);
+  y += 4; L(ix, y, ix + iw, LINEC, 1); y += 22;
+
+  const cQtd = ix + iw - 210, cUnit = ix + iw - 130, cSub = ix + iw;
+  T("PRODUTO", ix, y, 8.5, bld, MUTE);
+  TR("QTD", cQtd + 24, y, 8.5, bld, MUTE);
+  TR("UNIT.", cUnit + 10, y, 8.5, bld, MUTE);
+  TR("SUBTOTAL", cSub, y, 8.5, bld, MUTE);
+  y += 8; L(ix, y, ix + iw, LINEC, 1); y += 18;
+
+  for (const it of d.itens) {
+    if (y > A4H - 90) { page = doc.addPage([A4W, A4H]); y = 50; }
+    const nomeLines = wrap(it.produto || "—", bld, 10.5, cQtd - ix - 14);
+    T(nomeLines[0] || "—", ix, y, 10.5, bld, INK);
+    const detalhe = [it.cor, it.tamanho].filter(Boolean).join(" · ");
+    TR(String(it.qtd), cQtd + 24, y, 10.5, reg, INK);
+    TR(brlPdf(it.valor), cUnit + 10, y, 10, reg, INK);
+    TR(brlPdf(it.qtd * it.valor), cSub, y, 10.5, bld, INK);
+    y += 15;
+    if (detalhe) { T(detalhe, ix, y, 9, reg, hx("#6b7280")); y += 14; }
+    for (let i = 1; i < nomeLines.length; i++) { T(nomeLines[i], ix, y, 9.5, reg, hx("#6b7280")); y += 13; }
+    y += 4; L(ix, y, ix + iw, hx("#f1f1f1"), 0.8); y += 14;
+  }
+
+  if (y > A4H - 70) { page = doc.addPage([A4W, A4H]); y = 50; }
+  y += 4;
+  R(cQtd - 10, y - 4, cSub - (cQtd - 10), 30, GREY);
+  T("TOTAL", cQtd, y + 15, 11, bld, INK);
+  TR(brlPdf(d.total), cSub - 8, y + 15, 13, bld, NAVY);
+  y += 44;
+
+  if (d.observacao) {
+    const obsLines = wrap("Observação: " + d.observacao, reg, 9.5, iw);
+    for (const ln of obsLines) { if (y > A4H - 40) { page = doc.addPage([A4W, A4H]); y = 50; } T(ln, ix, y, 9.5, reg, hx("#444")); y += 13; }
+  }
+
+  T("Pedido gerado pelo catálogo Big Tricot · " + geradoEm(), ix, A4H - 24, 8, reg, MUTE);
+  return await doc.save();
+}
+

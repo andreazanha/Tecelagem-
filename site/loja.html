@@ -49,6 +49,10 @@
   .busca input{border:0; outline:0; background:transparent; width:100%; font-size:14px; color:var(--ink)}
   .bf-right{grid-column:3; justify-self:end; display:flex; flex-direction:column; align-items:flex-end; gap:5px; min-width:0}
   .bf-right-top{display:flex; align-items:center; gap:12px}
+  /* Botão Voltar no cabeçalho (só no modo representante) — volta pra área do rep */
+  .bf-voltar{grid-column:1; justify-self:start; display:none; align-items:center; gap:7px; height:40px; padding:0 15px; border:1px solid rgba(255,255,255,.3); background:rgba(255,255,255,.08); color:#f0ebe2; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer}
+  .bf-voltar svg{width:17px; height:17px; stroke:currentColor; fill:none; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round}
+  body.rep-mode .bf-voltar{display:inline-flex}
   .saud{display:flex; align-items:center; gap:5px; font-size:12px; color:#cfc7ba; white-space:nowrap; min-width:0; max-width:320px}
   .saud b{color:#f0ebe2; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .saud a{flex:0 0 auto}
@@ -169,7 +173,7 @@
   .preco{margin-top:7px; font-size:11.5px; color:var(--muted)}
   .preco b{color:var(--accent); font-size:15px; font-weight:700; margin-left:2px}
   .vazio{text-align:center; color:var(--muted); padding:60px 16px}
-  @media(max-width:760px){ .buscafaixa{min-height:0} .bf-in{display:flex; flex-direction:column; align-items:stretch; gap:10px} .busca{grid-column:auto; justify-self:stretch; width:100%; max-width:none; order:1} .bf-right{grid-column:auto; justify-self:stretch; order:2; align-items:stretch; gap:6px} .bf-right-top{justify-content:flex-end; gap:10px} .saud{justify-content:flex-end; max-width:none} }
+  @media(max-width:760px){ .buscafaixa{min-height:0} .bf-in{display:flex; flex-direction:column; align-items:stretch; gap:10px} .busca{grid-column:auto; justify-self:stretch; width:100%; max-width:none; order:1} .bf-right{grid-column:auto; justify-self:stretch; order:2; align-items:stretch; gap:6px} .bf-right-top{justify-content:flex-end; gap:10px} .saud{justify-content:flex-end; max-width:none} body.rep-mode .bf-voltar{order:0; justify-self:stretch; justify-content:center} }
   @media(max-width:640px){ .buscafaixa{padding:10px 16px} .banner{aspect-ratio:1/1; max-height:none} .banner .b-in{padding:0 20px} .banner .b-tit{font-size:30px} main{padding:14px 16px 60px} .sec{margin-top:24px} .sec h2{font-size:24px; gap:12px} .sec h2::before,.sec h2::after{width:34px} }
   @media(max-width:420px){ .btn-ghost span,.btn-cart span:not(.n){display:none} .btn-ghost,.btn-cart{padding:0 12px} }
   /* ---- popup "continuar / escolher outro" ao adicionar no carrinho ---- */
@@ -291,6 +295,7 @@
 
 <div class="buscafaixa">
   <div class="bf-in">
+    <button class="bf-voltar" id="repVoltarCat" onclick="__repVoltarArea()" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Voltar</button>
     <label class="busca"><svg class="bf-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="q" name="busca-catalogo" placeholder="Buscar produto, cor ou referência…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')"></label>
     <div class="bf-right">
       <div class="bf-right-top">
@@ -935,14 +940,33 @@
         '<span class="sub">'+brl((Number(it.qtd)||0)*(Number(it.preco)||0))+'</span></div>'+
         '<button class="rm" data-rm="'+ix+'">remover</button></div></div>';
     }).join("") : '<div class="cvazio">Seu carrinho está vazio.<br>Escolha um produto e monte seu pedido.</div>';
+    var footHTML;
+    if(REP_CLIENTE){
+      // Carrinho no modo REPRESENTANTE: forma de pagamento + botões (espera / PDF / enviar à Big).
+      var opts='<option value="">Forma de pagamento *</option>'+REP_PRAZOS.map(function(p){ return '<option value="'+esc(p.codigo)+'">'+esc(p.descricao||p.codigo)+'</option>'; }).join("");
+      footHTML='<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+
+        (CART.length?(
+          '<div style="font-size:13px;color:#6b7280;margin:2px 0 8px">Pedido para <b style="color:#2c2721">'+esc(REP_CLIENTE.nome||REP_CLIENTE.fantasia||"")+'</b></div>'+
+          '<select id="repForma" class="cad-inp" style="width:100%;margin:0 0 8px">'+opts+'</select>'+
+          '<input id="repObs" class="cad-inp" placeholder="Observação (opcional)" style="width:100%;margin:0 0 8px">'+
+          '<div id="cmsg" style="font-size:13px;margin:0 0 8px;min-height:1px;line-height:1.35"></div>'+
+          '<button class="fin" id="repPdf" style="background:#2c3e50;margin-bottom:8px">📄 Gerar PDF e enviar ao cliente</button>'+
+          '<div style="display:flex;gap:8px">'+
+            '<button id="repEspera" style="flex:1;padding:13px;border:1.5px solid #d6cfc2;border-radius:12px;background:#fff;color:#5f584e;font-size:14px;font-weight:600;cursor:pointer">⏸️ Deixar em espera</button>'+
+            '<button id="repEnviarBig" style="flex:1;padding:13px;border:0;border-radius:12px;background:#1f7a4d;color:#fff;font-size:14px;font-weight:600;cursor:pointer">✅ Enviar à Big</button>'+
+          '</div>'+
+          '<div style="font-size:11.5px;color:#9aa3af;margin-top:8px;line-height:1.4">O pedido só vai pro Syntech depois que a Big Tricot aprovar.</div>'
+        ):'')+'</div>';
+    } else {
+      footHTML='<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+
+        (CART.length?('<label style="display:block;font-size:15px;color:#555;margin:2px 0 8px">Informe o CNPJ da sua loja'+
+          '<input id="cnpjInp" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" value="'+esc(cnpjSalvo())+'" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:12px;border:1px solid #d6d0c4;border-radius:10px;font-size:16px"></label>'+
+          '<div id="cmsg" style="font-size:13px;margin:0 0 8px;min-height:1px;line-height:1.35"></div>'):'')+
+        '<button class="fin" id="finalizar"'+(CART.length?"":" disabled")+'>Finalizar pedido</button></div>';
+    }
     document.getElementById("cartPane").innerHTML=
       '<div class="ctopo"><h3 class="serif">🛒 Meu carrinho</h3><button class="fechar" onclick="__fecharCart()">✕</button></div>'+
-      '<div class="itens">'+itens+'</div>'+
-      '<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+
-      (CART.length?('<label style="display:block;font-size:15px;color:#555;margin:2px 0 8px">Informe o CNPJ da sua loja'+
-        '<input id="cnpjInp" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" value="'+esc(cnpjSalvo())+'" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:12px;border:1px solid #d6d0c4;border-radius:10px;font-size:16px"></label>'+
-        '<div id="cmsg" style="font-size:13px;margin:0 0 8px;min-height:1px;line-height:1.35"></div>'):'')+
-      '<button class="fin" id="finalizar"'+(CART.length?"":" disabled")+'>'+(CART.length?"Finalizar pedido":"Finalizar pedido")+'</button></div>';
+      '<div class="itens">'+itens+'</div>'+footHTML;
     var box=document.getElementById("cartPane");
     box.querySelectorAll(".citem .stepper").forEach(function(st){
       var ix=Number(st.getAttribute("data-ix")); var inp=st.querySelector("input");
@@ -951,6 +975,9 @@
     });
     box.querySelectorAll("[data-rm]").forEach(function(b){ b.onclick=function(){ CART.splice(Number(b.getAttribute("data-rm")),1); salvarCart(); atualizarCartN(); renderCarrinho(); }; });
     var fin=document.getElementById("finalizar"); if(fin) fin.onclick=finalizarPedido;
+    var bPdf=document.getElementById("repPdf"); if(bPdf) bPdf.onclick=repGerarPdfEnviar;
+    var bEsp=document.getElementById("repEspera"); if(bEsp) bEsp.onclick=repDeixarEspera;
+    var bBig=document.getElementById("repEnviarBig"); if(bBig) bBig.onclick=repEnviarBig;
   }
   function finalizarPedido(){
     if(!CART.length) return;
@@ -982,6 +1009,91 @@
         }
       })
       .catch(function(){ erro("Sem conexão no momento. Tente novamente."); btn.disabled=false; btn.textContent="Finalizar pedido"; });
+  }
+
+  // ---------- pedido do REPRESENTANTE (espera / PDF / enviar à Big) ----------
+  function repColetarPedido(acao){
+    var itens=CART.map(function(it){ return {cod:it.cod, medida:it.medida, corNome:it.corNome, corId:it.corId, qtd:it.qtd, preco:it.preco, regiao:it.regiao, nome:it.nome, grupo:it.grupo}; });
+    var forma=document.getElementById("repForma");
+    var cod_prazo=forma?forma.value:"";
+    var forma_desc=(forma&&forma.selectedIndex>0)?forma.options[forma.selectedIndex].text:"";
+    var obs=(document.getElementById("repObs")||{}).value||"";
+    var cnpj=String((REP_CLIENTE&&REP_CLIENTE.cnpj)||"").replace(/\D/g,"");
+    return {cnpj:cnpj, itens:itens, vendedor:(REP&&REP.nome)||"", acao:acao, cod_prazo:cod_prazo, forma_desc:forma_desc, observacao:obs, pedido_id:REP_PEDIDO_ID||""};
+  }
+  function salvarRepPedido(acao){
+    return fetch("/api/loja/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(repColetarPedido(acao))})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+      .then(function(res){ if(res.ok&&res.j.ok&&res.j.pedido_id){ REP_PEDIDO_ID=res.j.pedido_id; } return res; });
+  }
+  function repNomeCli(){ return (REP_CLIENTE&&(REP_CLIENTE.nome||REP_CLIENTE.fantasia))||""; }
+  function repMsg(cor,txt){ var m=document.getElementById("cmsg"); if(m){ m.style.color=cor; m.innerHTML=txt; } }
+  // Gera o PDF do pedido e abre o compartilhamento (WhatsApp do próprio rep) ou baixa.
+  function repCompartilharPdf(id){
+    var cnpj=String((REP_CLIENTE&&REP_CLIENTE.cnpj)||"").replace(/\D/g,"");
+    var url="/api/loja/pedido-pdf/"+encodeURIComponent(id)+(cnpj?("?cnpj="+cnpj):"");
+    var nomeArq="pedido-"+String(id).slice(0,8)+".pdf";
+    return fetch(url).then(function(r){ if(!r.ok) throw new Error("pdf"); return r.blob(); }).then(function(blob){
+      try{
+        var file=new File([blob],nomeArq,{type:"application/pdf"});
+        if(navigator.canShare && navigator.canShare({files:[file]})){
+          return navigator.share({files:[file], title:"Pedido Big Tricot", text:"Olá! Segue o seu pedido da Big Tricot. 🧶"}).catch(function(){});
+        }
+      }catch(e){}
+      // fallback (desktop / sem share de arquivo): baixa o PDF pro rep mandar manualmente
+      var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=nomeArq; document.body.appendChild(a); a.click(); a.remove();
+      try{ setTimeout(function(){ URL.revokeObjectURL(a.href); },5000); }catch(e){}
+    });
+  }
+  function repGerarPdfEnviar(){
+    if(!CART.length) return;
+    var forma=document.getElementById("repForma");
+    if(!forma||!forma.value){ repMsg("#b91c1c","Escolha a forma de pagamento primeiro."); return; }
+    var b=document.getElementById("repPdf"); if(b){ b.disabled=true; b.textContent="Gerando PDF…"; }
+    repMsg("#666","");
+    salvarRepPedido("espera").then(function(res){
+      if(!(res.ok&&res.j.ok&&res.j.pedido_id)){ if(b){b.disabled=false;b.textContent="📄 Gerar PDF e enviar ao cliente";} repMsg("#b91c1c",(res.j&&res.j.msg)||"Não consegui salvar o pedido."); return; }
+      return repCompartilharPdf(res.j.pedido_id).then(function(){
+        if(b){ b.disabled=false; b.textContent="📄 Gerar PDF e enviar ao cliente"; }
+        repMsg("#166534","PDF gerado! Depois do OK do cliente, toque em ✅ Enviar à Big.");
+      });
+    }).catch(function(){ if(b){b.disabled=false;b.textContent="📄 Gerar PDF e enviar ao cliente";} repMsg("#b91c1c","Sem conexão. Tente de novo."); });
+  }
+  function repDeixarEspera(){
+    if(!CART.length) return;
+    var b=document.getElementById("repEspera"); if(b){ b.disabled=true; b.textContent="Salvando…"; }
+    repMsg("#666","");
+    salvarRepPedido("espera").then(function(res){
+      if(b){ b.disabled=false; b.textContent="⏸️ Deixar em espera"; }
+      if(res.ok&&res.j.ok){ CART=[]; salvarCart(); atualizarCartN();
+        repTelaOk("⏸️ Pedido em espera","Guardamos o pedido de <b>"+esc(repNomeCli())+"</b>. Você pode gerar o PDF e enviar ao cliente quando quiser.");
+      } else { repMsg("#b91c1c",(res.j&&res.j.msg)||"Não consegui salvar."); }
+    }).catch(function(){ if(b){b.disabled=false;b.textContent="⏸️ Deixar em espera";} repMsg("#b91c1c","Sem conexão. Tente de novo."); });
+  }
+  function repEnviarBig(){
+    if(!CART.length) return;
+    var forma=document.getElementById("repForma");
+    if(!forma||!forma.value){ repMsg("#b91c1c","Escolha a forma de pagamento antes de enviar."); return; }
+    if(!confirm("Enviar este pedido para a Big Tricot?\nDepois de enviado ele trava — pra mexer você precisa pedir liberação.")) return;
+    var b=document.getElementById("repEnviarBig"); if(b){ b.disabled=true; b.textContent="Enviando…"; }
+    repMsg("#666","");
+    salvarRepPedido("enviar").then(function(res){
+      if(res.ok&&res.j.ok){ CART=[]; salvarCart(); atualizarCartN();
+        repTelaOk("✅ Pedido enviado!","O pedido de <b>"+esc(repNomeCli())+"</b> foi enviado. A Big Tricot vai conferir e aprovar — aí ele entra no Syntech com o seu código.");
+      } else { if(b){b.disabled=false;b.textContent="✅ Enviar à Big";} repMsg("#b91c1c",(res.j&&res.j.msg)||"Não consegui enviar."); }
+    }).catch(function(){ if(b){b.disabled=false;b.textContent="✅ Enviar à Big";} repMsg("#b91c1c","Sem conexão. Tente de novo."); });
+  }
+  function repTelaOk(titulo, html){
+    document.getElementById("cartPane").innerHTML=
+      '<div class="ctopo"><h3 class="serif">🛒 Meu carrinho</h3><button class="fechar" onclick="__fecharCart()">✕</button></div>'+
+      '<div class="itens"><div style="padding:18px 6px;text-align:center">'+
+      '<div style="font-size:19px;font-weight:800;color:#166534;margin-bottom:10px">'+esc(titulo)+'</div>'+
+      '<div style="font-size:14px;color:#555;line-height:1.55">'+html+'</div>'+
+      (REP_PEDIDO_ID?('<button id="repOkPdf" class="fin" style="background:#2c3e50;margin-top:18px">📄 Gerar PDF e enviar ao cliente</button>'):'')+
+      '<button class="fin" style="background:#8a8073;margin-top:8px" id="repOkVoltar">Voltar ao menu</button>'+
+      '</div></div>';
+    var p=document.getElementById("repOkPdf"); if(p) p.onclick=function(){ repCompartilharPdf(REP_PEDIDO_ID); };
+    var v=document.getElementById("repOkVoltar"); if(v) v.onclick=function(){ __fecharCart(); __repVoltarArea(); };
   }
 
   // ---------- eventos globais ----------
@@ -1104,6 +1216,7 @@
       .catch(function(){ btn.disabled=false; btn.textContent="Entrar"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; });
   }
   var REP=null, REP_CLIENTES=[], REP_CLIENTE=null, REP_NOVO_CNPJ="";
+  var REP_PRAZOS=[], REP_PEDIDO_ID="";  // formas de pagamento (prazos) + rascunho atual do rep
   function aplicarRep(rep, clientes){
     if(!rep) return;
     REP=rep; REP_CLIENTES=clientes||[];
@@ -1173,9 +1286,11 @@
   };
   function iniciarPedidoRep(cli){
     REP_CLIENTE=cli;
+    REP_PEDIDO_ID="";  // novo pedido pra esse cliente
     regiao=(cli.regiao==="norte")?"norte":"sul";
     LIBERADO=!!cli.liberado;
     try{ localStorage.setItem("bt_cnpj", String(cli.cnpj||"").replace(/\D+/g,"")); }catch(e){}  // pro checkout e "meus pedidos"
+    if(!REP_PRAZOS.length){ fetch("/api/loja/prazos").then(function(r){return r.json();}).then(function(j){ if(Array.isArray(j)) REP_PRAZOS=j; }).catch(function(){}); }
     document.getElementById("repArea").style.display="none";
     document.body.style.overflow="";
     // Modo rep: cara de app de vendas — some o banner/hero e mostra o cliente no cabeçalho.
@@ -1184,8 +1299,7 @@
     var sa=document.getElementById("saudacao");
     if(sa){ sa.style.display="flex"; sa.innerHTML='<b style="color:#fff">'+esc(cli.nome||cli.fantasia||"Cliente")+'</b>'; }
     atualizarAvisoLib();
-    var bar=document.getElementById("repPedBar"); bar.style.display="flex";
-    document.getElementById("repPedNome").textContent=cli.nome||cli.fantasia||"";
+    var bar=document.getElementById("repPedBar"); bar.style.display="none"; // substituído pelo Voltar no cabeçalho
     render(); if(document.getElementById("modal").classList.contains("show")) renderDetalhe();
     try{ window.scrollTo({top:0}); }catch(e){}
   }

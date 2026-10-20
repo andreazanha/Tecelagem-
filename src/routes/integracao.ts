@@ -1213,7 +1213,11 @@ integracao.get("/pedidos-para-erp", async (c) => {
   if (!tokenOk(c)) return c.json({ error: "nao_autorizado" }, 401);
   const modo = await modoEnvioLoja(c.env);
   if (modo === "off") return c.json({ modo, pedidos: [] });
-  const filtroLiberado = modo === "on" ? "" : " AND COALESCE(p.erp_liberado,0) = 1";
+  // Pedido de REPRESENTANTE (tem vendedor) SEMPRE espera a aprovação da Big — mesmo no modo "on".
+  // Pedido de cliente direto segue o modo (on = envia automático; teste = só liberados).
+  const filtroLiberado = modo === "on"
+    ? " AND (COALESCE(p.vendedor,'') = '' OR COALESCE(p.erp_liberado,0) = 1)"
+    : " AND COALESCE(p.erp_liberado,0) = 1";
   const { results: peds } = await c.env.DB.prepare(
     `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.valor_total, p.data_pedido, cl.codigo_erp AS cod_cli
        FROM pedidos p LEFT JOIN clientes cl ON cl.id = p.cliente_id
@@ -1330,7 +1334,8 @@ integracao.get("/loja-pedidos", async (c) => {
             p.erp_numero, p.erp_sync_erro,
             (SELECT COUNT(*) FROM pedido_itens WHERE pedido_id=p.id) AS itens,
             (SELECT COALESCE(SUM(qtd),0) FROM pedido_itens WHERE pedido_id=p.id) AS pecas
-       FROM pedidos p WHERE p.canal='loja_b2b' ORDER BY p.created_at DESC LIMIT 200`
+       FROM pedidos p WHERE p.canal='loja_b2b' AND COALESCE(p.erp_sync_status,'')!='rascunho'
+       ORDER BY p.created_at DESC LIMIT 200`
   ).all();
   return c.json({ modo, pedidos: results });
 });
