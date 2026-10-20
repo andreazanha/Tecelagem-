@@ -92,6 +92,21 @@
   .rep-dash{flex:1 1 300px; min-width:0}
   .rep-dash-ph{height:100%; min-height:258px; border:1.5px dashed #cdd6e2; border-radius:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#9aa3af; font-size:15px; font-weight:700; text-align:center; line-height:1.5}
   .rep-dash-ph span{font-size:12.5px; font-weight:500}
+  .rep-dash-card{height:100%; min-height:258px; box-sizing:border-box; background:#fff; border:1px solid #DCE3EC; border-radius:16px; padding:15px 16px 12px; display:flex; flex-direction:column; box-shadow:0 2px 8px rgba(15,23,42,.05)}
+  .rdh{display:flex; align-items:baseline; justify-content:space-between; gap:8px}
+  .rdh-tit{font-weight:800; font-size:15px; color:#2c2721}
+  .rdh-sub{font-size:11.5px; color:#9aa3af}
+  .rdk{display:flex; gap:10px; margin:12px 0 2px}
+  .rdk-it{flex:1; min-width:0; background:#f4f7fb; border:1px solid #e6edf5; border-radius:11px; padding:9px 11px}
+  .rdk-lb{display:block; font-size:11px; color:#8a93a3; font-weight:600}
+  .rdk-vl{display:block; font-size:16px; font-weight:800; color:#1e4e8c; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .rdc{flex:1 1 auto; min-height:118px; margin-top:10px; position:relative}
+  .rdc svg{display:block; max-width:100%}
+  .rd-bar{fill:#9db7d6}
+  .rd-bar.cur{fill:#1e6fd0}
+  .rd-bar:hover{fill:#1457a8; cursor:default}
+  .rd-xl{font-size:9.5px; fill:#9aa3af; font-weight:600}
+  .rd-empty{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#b4bccb; font-size:12.5px; text-align:center; line-height:1.5; padding:0 14px}
   @media(max-width:900px){ .rep-home-layout{flex-direction:column} #repHome .rep-menu{grid-template-columns:repeat(3,minmax(0,1fr)); width:100%} .rep-dash{width:100%} }
   @media(max-width:560px){ #repHome .rep-menu{grid-template-columns:1fr 1fr} }
   .rep-tile{display:flex; flex-direction:column; align-items:flex-start; gap:4px; background:#fff; border:1px solid #DCE3EC; border-radius:16px; padding:20px 18px; cursor:pointer; box-shadow:0 2px 8px rgba(15,23,42,.05); font:inherit; text-align:left; min-height:120px; transition:box-shadow .15s ease, border-color .15s ease}
@@ -437,9 +452,16 @@
             <span class="tl">Novo cliente</span><span class="tt">cadastrar</span>
           </button>
         </div>
-        <!-- Espaço reservado pro mini dashboard/gráfico (a ser definido) -->
+        <!-- Mini painel de vendas do representante (últimos 6 meses) -->
         <div class="rep-dash" id="repDash">
-          <div class="rep-dash-ph">📊 Painel do representante<br><span>em breve</span></div>
+          <div class="rep-dash-card">
+            <div class="rdh"><div class="rdh-tit">Minhas vendas</div><div class="rdh-sub">últimos 6 meses</div></div>
+            <div class="rdk">
+              <div class="rdk-it"><span class="rdk-lb">Vendas do mês</span><span class="rdk-vl" id="rdVendaMes">R$ 0,00</span></div>
+              <div class="rdk-it"><span class="rdk-lb">Pedidos no mês</span><span class="rdk-vl" id="rdPedMes">0</span></div>
+            </div>
+            <div class="rdc" id="rdChart"><div class="rd-empty">Carregando…</div></div>
+          </div>
         </div>
       </div>
     </div>
@@ -1349,9 +1371,43 @@
     document.getElementById("repTileCount").textContent=REP_CLIENTES.length+" cliente"+(REP_CLIENTES.length===1?"":"s");
     __repHome();
   }
+  // Mini painel de vendas: busca os números reais do rep e desenha o gráfico de barras.
+  function carregarRepVendas(){
+    if(!REP||!REP.id) return;
+    var host=document.getElementById("rdChart"); if(!host) return;
+    fetch("/api/loja/rep-vendas?rep="+encodeURIComponent(REP.id))
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(!j||!j.ok){ host.innerHTML='<div class="rd-empty">Não consegui carregar as vendas agora.</div>'; return; }
+        var mv=document.getElementById("rdVendaMes"); if(mv) mv.textContent=brl((j.mes_atual&&j.mes_atual.valor)||0);
+        var mp=document.getElementById("rdPedMes"); if(mp) mp.textContent=String((j.mes_atual&&j.mes_atual.pedidos)||0);
+        renderRepChart(j.meses||[]);
+      }).catch(function(){ host.innerHTML='<div class="rd-empty">Não consegui carregar as vendas agora.</div>'; });
+  }
+  var REP_VENDAS_MESES=null, REP_VENDAS_RT=null;
+  window.addEventListener("resize",function(){ if(!REP_VENDAS_MESES) return; clearTimeout(REP_VENDAS_RT); REP_VENDAS_RT=setTimeout(function(){ renderRepChart(REP_VENDAS_MESES); },180); });
+  function renderRepChart(meses){
+    REP_VENDAS_MESES=meses;
+    var host=document.getElementById("rdChart"); if(!host) return;
+    var n=meses.length; var max=0;
+    meses.forEach(function(m){ var v=Number(m.valor)||0; if(v>max) max=v; });
+    if(!n || max<=0){ host.innerHTML='<div class="rd-empty">Sem vendas registradas ainda.<br>Seus pedidos efetuados aparecem aqui.</div>'; return; }
+    var W=Math.max(220, Math.round(host.clientWidth||300)), H=138, padT=8, padB=20;
+    var gap=Math.max(7, Math.round(W*0.03)); var bw=(W-gap*(n-1))/n;
+    var parts="";
+    for(var i=0;i<n;i++){
+      var m=meses[i], v=Number(m.valor)||0;
+      var h=Math.max(2, (v/max)*(H-padT-padB));
+      var x=i*(bw+gap), y=H-padB-h, cur=(i===n-1)?" cur":"";
+      var tip=String(m.label||"").toUpperCase()+": "+brl(v)+" · "+(Number(m.pedidos)||0)+" ped.";
+      parts+='<rect class="rd-bar'+cur+'" x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" rx="3"><title>'+esc(tip)+'</title></rect>';
+      parts+='<text class="rd-xl" x="'+(x+bw/2).toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle">'+esc(m.label||"")+'</text>';
+    }
+    host.innerHTML='<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Vendas dos últimos 6 meses">'+parts+'</svg>';
+  }
   var REP_SUBS=["repHome","repCartView","repMontar","repNovoCli","repNovoOk","repPedidos"];
   function repMostrarSub(id){ REP_SUBS.forEach(function(s){ var e=document.getElementById(s); if(e) e.style.display=(s===id)?"block":"none"; }); try{ document.getElementById("repArea").scrollTop=0; }catch(e){} }
-  window.__repHome=function(){ repMostrarSub("repHome"); };
+  window.__repHome=function(){ repMostrarSub("repHome"); carregarRepVendas(); };
   window.__repEscolher=function(){ __repSecao("carteira"); };
   window.__repSecao=function(sec){
     if(sec==="carteira"){ document.getElementById("repCartTit").innerHTML='Minha carteira <span class="rep-count" id="repCount"></span>'; document.getElementById("repCartDica").textContent="Toque num cliente para montar o pedido dele."; var rb=document.getElementById("repBusca"); if(rb) rb.value=""; repMostrarSub("repCartView"); renderCarteira(REP_CLIENTES); return; }

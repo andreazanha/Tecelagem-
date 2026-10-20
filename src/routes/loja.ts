@@ -241,6 +241,44 @@ loja.get("/rep-carteira", async (c) => {
   return c.json({ ok: true, rep: { id: rep.id, nome: rep.nome, email: rep.email || "" }, clientes: await carteiraDoRep(c.env, rep.nome) });
 });
 
+// Vendas do representante (mini painel): soma por mês dos últimos 6 meses + KPIs do mês
+// atual. Só pedidos REAIS do rep logado — exclui rascunho/em-espera (não é venda efetuada).
+loja.get("/rep-vendas", async (c) => {
+  const id = String(c.req.query("rep") || "").trim();
+  if (!id) return c.json({ ok: false });
+  const rep = await c.env.DB.prepare(
+    "SELECT id, nome, COALESCE(ativo,1) AS ativo FROM representantes WHERE id=? LIMIT 1"
+  ).bind(id).first<{ id: string; nome: string; ativo: number }>();
+  if (!rep || Number(rep.ativo) === 0) return c.json({ ok: false });
+  let rows: { v: number; dt: string }[] = [];
+  try {
+    const r = await c.env.DB.prepare(
+      `SELECT COALESCE(valor_total,0) AS v, COALESCE(created_at,'') AS dt
+         FROM pedidos
+        WHERE canal='loja_b2b'
+          AND TRIM(LOWER(COALESCE(vendedor,''))) = TRIM(LOWER(?))
+          AND COALESCE(erp_sync_status,'') <> 'rascunho'
+          AND COALESCE(created_at,'') >= datetime('now','-6 months','start of month')`
+    ).bind(rep.nome).all<{ v: number; dt: string }>();
+    rows = r.results || [];
+  } catch { rows = []; }
+  const ML = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const now = new Date();
+  const meses: { key: string; label: string; valor: number; pedidos: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    meses.push({ key: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`, label: ML[d.getUTCMonth()], valor: 0, pedidos: 0 });
+  }
+  const ix = new Map(meses.map((m, i) => [m.key, i] as const));
+  for (const r of rows) {
+    const k = String(r.dt || "").slice(0, 7);
+    const i = ix.get(k);
+    if (i != null) { meses[i].valor += Number(r.v) || 0; meses[i].pedidos += 1; }
+  }
+  const atual = meses[meses.length - 1];
+  return c.json({ ok: true, meses, mes_atual: { valor: atual.valor, pedidos: atual.pedidos } });
+});
+
 // Link de acesso do rep: valida o token e mostra quem é.
 loja.get("/rep-acesso", async (c) => {
   const token = String(c.req.query("token") || "").trim();
