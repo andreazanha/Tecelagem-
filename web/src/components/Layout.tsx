@@ -236,6 +236,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/cadastros-loja", icon: "🆕", label: "Cadastros da Loja", admin: true },
       { to: "/config-loja", icon: "🖼️", label: "Configurar catálogo (banner, vídeos)", admin: true },
       { to: "/api/integracao/loja", icon: "🛍️", label: "Abrir a loja (catálogo)", ext: true, admin: true },
+      { to: "/api/integracao/loja?rep=1", icon: "🧑‍💼", label: "Abrir área do representante", ext: true, admin: true },
       { icon: "💵", label: "Relatório de Vendas", soon: true },
     ],
   },
