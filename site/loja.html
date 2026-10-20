@@ -75,6 +75,14 @@
   .rep-count{font-size:14px; color:#8a8073; font-weight:400; font-family:system-ui}
   .rep-dica{font-size:13px; color:#8a8073; margin:2px 0 16px}
   .rep-menu{display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:14px; margin-top:14px}
+  /* Home do rep: bloco de atalhos 3x2 à esquerda + área do painel/gráfico à direita */
+  .rep-home-layout{display:flex; gap:22px; align-items:stretch; margin-top:14px}
+  #repHome .rep-menu{flex:0 0 auto; grid-template-columns:repeat(3, minmax(160px,196px)); margin-top:0}
+  .rep-dash{flex:1 1 300px; min-width:0}
+  .rep-dash-ph{height:100%; min-height:258px; border:1.5px dashed #cdd6e2; border-radius:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#9aa3af; font-size:15px; font-weight:700; text-align:center; line-height:1.5}
+  .rep-dash-ph span{font-size:12.5px; font-weight:500}
+  @media(max-width:900px){ .rep-home-layout{flex-direction:column} #repHome .rep-menu{grid-template-columns:repeat(3,minmax(0,1fr)); width:100%} .rep-dash{width:100%} }
+  @media(max-width:560px){ #repHome .rep-menu{grid-template-columns:1fr 1fr} }
   .rep-tile{display:flex; flex-direction:column; align-items:flex-start; gap:4px; background:#fff; border:1px solid #DCE3EC; border-radius:16px; padding:20px 18px; cursor:pointer; box-shadow:0 2px 8px rgba(15,23,42,.05); font:inherit; text-align:left; min-height:120px; transition:box-shadow .15s ease, border-color .15s ease}
   .rep-tile:hover{border-color:#cbd5e1; box-shadow:0 6px 16px rgba(15,23,42,.10)}
   .rep-tile:active{transform:scale(.99)}
@@ -347,31 +355,37 @@
     <div id="repHome">
       <h2 class="rep-h2">Olá, <span id="repOla"></span> 👋</h2>
       <div class="rep-dica">O que você quer fazer hoje?</div>
-      <div class="rep-menu">
-        <button class="rep-tile" onclick="__repSecao('carteira')">
-          <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <span class="tl">Minha carteira</span><span class="tt" id="repTileCount">clientes</span>
-        </button>
-        <button class="rep-tile" onclick="__repSecao('montar')">
-          <svg viewBox="0 0 24 24"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.5 2.5h2l2.6 12.4a2 2 0 0 0 2 1.6h9.3a2 2 0 0 0 2-1.6L23 6H6"/></svg>
-          <span class="tl">Novo pedido</span><span class="tt">começar agora</span>
-        </button>
-        <button class="rep-tile" onclick="__repSecao('produtos')">
-          <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
-          <span class="tl">Produtos</span><span class="tt">ver catálogo</span>
-        </button>
-        <button class="rep-tile" onclick="__repSecao('pedidos')">
-          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>
-          <span class="tl">Meus pedidos</span><span class="tt">acompanhar</span>
-        </button>
-        <button class="rep-tile" onclick="__repSecao('novo')">
-          <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
-          <span class="tl">Novo cliente</span><span class="tt">cadastrar</span>
-        </button>
-        <button class="rep-tile" onclick="__repSecao('avisos')">
-          <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-          <span class="tl">Avisos</span><span class="tt">recados</span>
-        </button>
+      <div class="rep-home-layout">
+        <div class="rep-menu">
+          <button class="rep-tile" onclick="__repSecao('carteira')">
+            <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span class="tl">Minha carteira</span><span class="tt" id="repTileCount">clientes</span>
+          </button>
+          <button class="rep-tile" onclick="__repSecao('montar')">
+            <svg viewBox="0 0 24 24"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.5 2.5h2l2.6 12.4a2 2 0 0 0 2 1.6h9.3a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+            <span class="tl">Novo pedido</span><span class="tt">começar agora</span>
+          </button>
+          <button class="rep-tile" onclick="__repSecao('produtos')">
+            <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+            <span class="tl">Produtos</span><span class="tt">ver catálogo</span>
+          </button>
+          <button class="rep-tile" onclick="__repSecao('avisos')">
+            <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+            <span class="tl">Avisos</span><span class="tt">recados</span>
+          </button>
+          <button class="rep-tile" onclick="__repSecao('pedidos')">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>
+            <span class="tl">Meus pedidos</span><span class="tt">acompanhar</span>
+          </button>
+          <button class="rep-tile" onclick="__repSecao('novo')">
+            <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
+            <span class="tl">Novo cliente</span><span class="tt">cadastrar</span>
+          </button>
+        </div>
+        <!-- Espaço reservado pro mini dashboard/gráfico (a ser definido) -->
+        <div class="rep-dash" id="repDash">
+          <div class="rep-dash-ph">📊 Painel do representante<br><span>em breve</span></div>
+        </div>
       </div>
     </div>
     <!-- Sub-tela: carteira -->
