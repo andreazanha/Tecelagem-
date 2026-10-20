@@ -147,7 +147,7 @@ function UndoRedo() {
 // Item do menu. `page` = permissão da tela (se ausente e sem `soon`, é livre).
 // `soon` = página ainda não existe → aparece só para admin, desabilitada (sem 404).
 // `admin` = link REAL visível só para o dono (admin). Diferente de `soon` (que aparece desabilitado).
-interface MenuItem { to?: string; icon: string; label: string; page?: string; func?: string; soon?: boolean; admin?: boolean; ext?: boolean; children?: MenuItem[]; dyn?: string }
+interface MenuItem { to?: string; icon: string; label: string; page?: string; func?: string; soon?: boolean; admin?: boolean; ext?: boolean; children?: MenuItem[]; dyn?: string; acc?: boolean }
 interface MenuGrupo { id: string; icon: string; label: string; itens: MenuItem[] }
 
 // Menu em grupos sanfonados. Itens existentes apontam para rotas reais (alguns
@@ -220,24 +220,33 @@ const GRUPOS: MenuGrupo[] = [
     ],
   },
   {
-    // GESTÃO — visível SÓ para o dono (admin). Lugar das coisas que só você vê.
+    // GESTÃO — visível SÓ para o dono (admin). Organizado em CATEGORIAS sanfonadas (acc:true).
+    // Os itens, nomes, destinos e permissões são os mesmos — só a arrumação muda.
     id: "gestao", icon: "🗝️", label: "Gestão", itens: [
-      { to: "/dashboard", icon: "📺", label: "Painel Geral", admin: true },
-      { to: "/relatorio-vendas", icon: "🏆", label: "Vendas (o que vende mais)", admin: true },
-      { to: "/acessos", icon: "🔐", label: "Usuários e acessos", admin: true },
-      // Relatórios (ainda em breve) agora vivem dentro da Gestão.
-      { to: "/relatorio-producao", icon: "🏭", label: "Relatório de Produção", admin: true },
-      { icon: "⏰", label: "Relatório de Atrasos", soon: true },
-      { icon: "🔍", label: "Relatório de Revisão", soon: true },
-      { icon: "🪡", label: "Relatório de Costureiras", soon: true },
-      { to: "/relatorio-estoque", icon: "📦", label: "Relatório de Estoque", admin: true },
-      { to: "/loja-pedidos", icon: "🛒", label: "Pedidos da Loja (B2B)", admin: true },
-      { to: "/cadastros-loja", icon: "🆕", label: "Cadastros da Loja", admin: true },
-      { to: "/config-loja", icon: "🖼️", label: "Configurar catálogo (banner, vídeos)", admin: true },
-      { to: "/comercial", icon: "🧑‍💼", label: "Representantes", page: "representantes" },
-      { to: "/api/integracao/loja", icon: "🛍️", label: "Abrir a loja (catálogo)", ext: true, admin: true },
-      { to: "/api/integracao/loja?rep=1", icon: "🧑‍💼", label: "Abrir área do representante", ext: true, admin: true },
-      { icon: "💵", label: "Relatório de Vendas", soon: true },
+      { icon: "📊", label: "Painéis e vendas", acc: true, children: [
+        { to: "/dashboard", icon: "📺", label: "Painel Geral", admin: true },
+        { to: "/relatorio-vendas", icon: "🏆", label: "Vendas (o que vende mais)", admin: true },
+      ] },
+      { icon: "🧑‍💼", label: "Representantes", acc: true, children: [
+        { to: "/comercial", icon: "👤", label: "Representantes", page: "representantes" },
+        { to: "/api/integracao/loja?rep=1", icon: "🪪", label: "Abrir área do representante", ext: true, admin: true },
+      ] },
+      { icon: "📈", label: "Relatórios", acc: true, children: [
+        { to: "/relatorio-producao", icon: "🏭", label: "Relatório de Produção", admin: true },
+        { icon: "⏰", label: "Relatório de Atrasos", soon: true },
+        { icon: "🔍", label: "Relatório de Revisão", soon: true },
+        { icon: "🪡", label: "Relatório de Costureiras", soon: true },
+        { to: "/relatorio-estoque", icon: "📦", label: "Relatório de Estoque", admin: true },
+      ] },
+      { icon: "🛍️", label: "Loja e catálogo", acc: true, children: [
+        { to: "/loja-pedidos", icon: "🛒", label: "Pedidos da Loja (B2B)", admin: true },
+        { to: "/cadastros-loja", icon: "🆕", label: "Cadastros da Loja", admin: true },
+        { to: "/config-loja", icon: "🖼️", label: "Configurar catálogo (banner, vídeos)", admin: true },
+        { to: "/api/integracao/loja", icon: "🏪", label: "Abrir a loja (catálogo)", ext: true, admin: true },
+      ] },
+      { icon: "🔐", label: "Acessos", acc: true, children: [
+        { to: "/acessos", icon: "🔐", label: "Usuários e acessos", admin: true },
+      ] },
     ],
   },
   {
@@ -328,7 +337,19 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
     return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
   }, []);
 
-  const grupos = GRUPOS.map((g) => ({ ...g, itens: g.itens.map(comDyn).filter((it) => itemVisivel(u, it)) })).filter((g) => g.itens.length);
+  const grupos = GRUPOS.map((g) => {
+    let itens = g.itens.map(comDyn);
+    if (g.id === "gestao") {
+      // Categorias sanfonadas da Gestão: filtra os FILHOS por permissão e esconde a
+      // categoria que ficar vazia (preserva exatamente as permissões de cada item).
+      itens = itens
+        .map((it) => (it.children ? { ...it, children: it.children.filter((ch) => itemVisivel(u, ch)) } : it))
+        .filter((it) => (it.children ? it.children.length > 0 : itemVisivel(u, it)));
+    } else {
+      itens = itens.filter((it) => itemVisivel(u, it));
+    }
+    return { ...g, itens };
+  }).filter((g) => g.itens.length);
   // inclui os filhos (submenus em qualquer nível) na detecção de item ativo
   const comLink = GRUPOS.flatMap((g) => g.itens.map(comDyn)).flatMap(comDescendentes).filter((it) => it.to);
 
@@ -354,6 +375,27 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
       const key = ctx + it.label;
       const subAtivo = it.children.some((ch) => !!ch.to && ch.to === ativoTo);
       const aberta = subs.has(key);
+      // CATEGORIA SANFONADA (menu Gestão): expande os itens INLINE (empurra pra baixo),
+      // e abrir uma fecha a outra (acordeão — só uma categoria aberta por vez).
+      if (it.acc) {
+        const toggleAcc = () => setSubs((s) => {
+          const n = new Set(s);
+          const estava = n.has(key);
+          for (const k of [...n]) if (k.startsWith("gestao")) n.delete(k); // fecha as outras categorias
+          if (!estava) n.add(key);
+          return n;
+        });
+        return (
+          <div className={"topnav-cat" + (subAtivo ? " active" : "") + (aberta ? " open" : "")} key={key}>
+            <button type="button" className="topnav-cat-h" onClick={(e) => { e.stopPropagation(); toggleAcc(); }} title={it.label}>
+              <span className="tn-dd-ic"><Icon emoji={it.icon} /></span>
+              <span className="tn-dd-lbl">{it.label}</span>
+              <span className="tn-cat-car">▾</span>
+            </button>
+            {aberta && <div className="topnav-cat-items">{it.children.map((ch) => DDItem(ch, key))}</div>}
+          </div>
+        );
+      }
       return (
         <div className={"topnav-dd-i has-sub" + (subAtivo ? " active" : "") + (aberta ? " open" : "")} key={key} title={it.label}
           onClick={(e) => { e.stopPropagation(); setSubs((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; }); }}>
@@ -392,7 +434,17 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
           <div className={"topnav-grp" + (aberto === g.id ? " open" : "")} key={g.id}>
             <button
               className={"topnav-btn" + (grupoAtivo === g.id ? " on" : "")}
-              onClick={() => { setSubs(new Set()); setAberto((a) => (a === g.id ? null : g.id)); }}
+              onClick={() => {
+                const abrindo = aberto !== g.id;
+                // Ao abrir a Gestão, já deixa aberta a categoria do item da página atual.
+                if (abrindo && g.id === "gestao") {
+                  const cat = g.itens.find((c) => (c.children || []).some((ch) => ch.to === ativoTo));
+                  setSubs(cat ? new Set([g.id + cat.label]) : new Set());
+                } else {
+                  setSubs(new Set());
+                }
+                setAberto(abrindo ? g.id : null);
+              }}
               title={g.label}
             >
               <span className="tn-ic"><Icon emoji={g.icon} /></span>
