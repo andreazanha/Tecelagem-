@@ -383,6 +383,38 @@ loja.post("/rep-pedido-acao", async (c) => {
   return c.json({ erro: "acao_invalida" }, 400);
 });
 
+// Reabrir um pedido EM ESPERA (rascunho) no catálogo: devolve o cliente + itens no
+// formato do carrinho, pro rep adicionar mais produtos e salvar de novo o mesmo rascunho.
+loja.get("/rep-pedido-itens", async (c) => {
+  const id = String(c.req.query("id") || "").trim();
+  const repId = String(c.req.query("rep") || "").trim();
+  if (!id || !repId) return c.json({ erro: "faltam_dados" }, 400);
+  const rep = await c.env.DB.prepare("SELECT nome FROM representantes WHERE id=? LIMIT 1").bind(repId).first<{ nome: string }>();
+  if (!rep) return c.json({ erro: "rep_invalido" }, 403);
+  const ped = await c.env.DB.prepare(
+    "SELECT id, cliente_id, COALESCE(erp_sync_status,'') AS sync, COALESCE(loja_cod_prazo,'') AS prazo, COALESCE(loja_forma_desc,'') AS forma, COALESCE(observacao,'') AS obs FROM pedidos WHERE id=? AND canal='loja_b2b' AND TRIM(LOWER(COALESCE(vendedor,'')))=TRIM(LOWER(?)) LIMIT 1"
+  ).bind(id, rep.nome).first<{ id: string; cliente_id: string | null; sync: string; prazo: string; forma: string; obs: string }>();
+  if (!ped) return c.json({ erro: "nao_encontrado", msg: "Pedido não encontrado." }, 404);
+  if (ped.sync !== "rascunho") return c.json({ erro: "nao_rascunho", msg: "Esse pedido já foi enviado — não dá mais pra editar. Peça liberação à Big Tricot." }, 409);
+  const cli = await c.env.DB.prepare(
+    "SELECT id, nome, fantasia, cnpj, uf, loja_regiao, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(loja_status,'') AS loja_status FROM clientes WHERE id=? LIMIT 1"
+  ).bind(ped.cliente_id).first<{ id: string; nome: string | null; fantasia: string | null; cnpj: string | null; uf: string | null; loja_regiao: string | null; codigo_erp: string; loja_status: string }>();
+  if (!cli) return c.json({ erro: "cliente_nao_encontrado" }, 404);
+  const regiao = regiaoDoCliente(cli.loja_regiao, cli.uf);
+  const { results: itensRaw } = await c.env.DB.prepare(
+    "SELECT produto, ref, cor_grade, tamanho, qtd, valor_unit FROM pedido_itens WHERE pedido_id=? ORDER BY rowid"
+  ).bind(id).all<{ produto: string | null; ref: string | null; cor_grade: string | null; tamanho: string | null; qtd: number | null; valor_unit: number | null }>();
+  const itens = (itensRaw || []).map((r) => ({
+    cod: String(r.ref || ""), nome: String(r.produto || ""), grupo: "", medida: String(r.tamanho || ""),
+    corNome: String(r.cor_grade || ""), preco: Number(r.valor_unit) || 0, qtd: Number(r.qtd) || 0, regiao,
+  }));
+  return c.json({
+    ok: true,
+    cliente: { id: cli.id, nome: cli.nome, fantasia: cli.fantasia, cnpj: cli.cnpj, regiao, liberado: clienteLiberado(cli.codigo_erp, cli.loja_status) },
+    cod_prazo: ped.prazo, forma_desc: ped.forma, observacao: ped.obs, itens,
+  });
+});
+
 // Consulta CNPJ na Receita (BrasilAPI) pra preencher o cadastro. ATENÇÃO: o e-mail pode
 // estar desatualizado — devolvemos, mas o rep confere/atualiza antes de salvar.
 loja.get("/consulta-cnpj", async (c) => {

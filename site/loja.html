@@ -1005,11 +1005,11 @@
     var footHTML;
     if(REP_CLIENTE){
       // Carrinho no modo REPRESENTANTE: forma de pagamento + botões (espera / PDF / enviar à Big).
-      var opts='<option value="">Forma de pagamento *</option>'+REP_PRAZOS.map(function(p){ return '<option value="'+esc(p.codigo)+'">'+esc(p.descricao||p.codigo)+'</option>'; }).join("");
+      var opts='<option value="">Forma de pagamento *</option>'+REP_PRAZOS.map(function(p){ return '<option value="'+esc(p.codigo)+'"'+(String(p.codigo)===String(REP_PEDIDO_FORMA||"")?" selected":"")+'>'+esc(p.descricao||p.codigo)+'</option>'; }).join("");
       footHTML='<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+
         (CART.length?(
           '<select id="repForma" class="cad-inp cart-inp" style="width:100%;margin:0 0 7px">'+opts+'</select>'+
-          '<input id="repObs" class="cad-inp cart-inp" placeholder="Observação (opcional)" style="width:100%;margin:0 0 7px">'+
+          '<input id="repObs" class="cad-inp cart-inp" placeholder="Observação (opcional)" value="'+esc(REP_PEDIDO_OBS||"")+'" style="width:100%;margin:0 0 7px">'+
           '<div id="cmsg" style="font-size:12.5px;margin:0 0 7px;min-height:1px;line-height:1.3"></div>'+
           '<button class="fin" id="repPdf" style="background:#2c3e50;margin-bottom:7px">📄 Gerar PDF e enviar ao cliente</button>'+
           '<div style="display:flex;gap:7px">'+
@@ -1277,7 +1277,7 @@
       .catch(function(){ btn.disabled=false; btn.textContent="Entrar"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; });
   }
   var REP=null, REP_CLIENTES=[], REP_CLIENTE=null, REP_NOVO_CNPJ="";
-  var REP_PRAZOS=[], REP_PEDIDO_ID="";  // formas de pagamento (prazos) + rascunho atual do rep
+  var REP_PRAZOS=[], REP_PEDIDO_ID="", REP_PEDIDO_FORMA="", REP_PEDIDO_OBS="";  // formas de pagamento (prazos) + rascunho atual do rep
   var REP_SOVER=false;  // catálogo em modo "só visualização" (rep vê produtos/preços, sem montar pedido)
   function aplicarRep(rep, clientes){
     if(!rep) return;
@@ -1366,8 +1366,9 @@
       var dt=fmtDataCurta(p.data);
       var resumo=(p.pecas||0)+" peça"+((p.pecas===1)?"":"s")+" · "+brl(p.total||0)+(p.forma?(" · "+esc(p.forma)):"");
       var acoes='<div class="rep-ped-acoes">'+
-        '<button class="prim" onclick="__repPedPdf(\''+esc(p.id)+'\')">📄 PDF</button>'+
-        (p.editavel?('<button class="go" onclick="__repPedEnviar(\''+esc(p.id)+'\',\''+(p.forma?"1":"")+'\')">✅ Enviar à Big</button>'+
+        '<button class="prim" onclick="__repPedPdf(\''+esc(p.id)+'\')">📄 Baixar PDF</button>'+
+        (p.editavel?('<button onclick="__repReabrir(\''+esc(p.id)+'\')">✏️ Reabrir / adicionar itens</button>'+
+                     '<button class="go" onclick="__repPedEnviar(\''+esc(p.id)+'\',\''+(p.forma?"1":"")+'\')">✅ Enviar à Big</button>'+
                      '<button class="del" onclick="__repPedExcluir(\''+esc(p.id)+'\')">Excluir</button>'):'')+
         '</div>';
       return '<div class="rep-row" style="flex-direction:column;align-items:stretch;cursor:default">'+
@@ -1379,7 +1380,44 @@
         '</div>'+acoes+'</div>';
     }).join("");
   }
-  window.__repPedPdf=function(id){ repCompartilharPdf(id); };
+  // Baixar/ver o PDF: abre numa aba nova (dá pra salvar, imprimir ou compartilhar de lá).
+  window.__repPedPdf=function(id){ var url="/api/loja/pedido-pdf/"+encodeURIComponent(id); try{ window.open(url,"_blank"); }catch(e){ location.href=url; } };
+  // Recompõe um item salvo (cod/medida/cor) nas chaves do catálogo (pid/grupo/id_tamanho/corId),
+  // pra ele casar com o catálogo ao reabrir (somar quantidade ao adicionar o mesmo produto de novo).
+  function reconstruirItemCart(it){
+    var base={pid:"", nome:it.nome, grupo:it.grupo||"", cod:it.cod, id_tamanho:"", medida:it.medida, corId:"", corNome:it.corNome, preco:it.preco, regiao:it.regiao, qtd:it.qtd};
+    try{
+      for(var pi=0; pi<PRODUTOS.length; pi++){
+        var p=PRODUTOS[pi], gs=p.grupos||[];
+        for(var gi=0; gi<gs.length; gi++){
+          var g=gs[gi], ls=g.linhas||[];
+          for(var li=0; li<ls.length; li++){
+            if(String(ls[li].cod)===String(it.cod)){
+              base.pid=p.id; base.grupo=g.titulo||base.grupo; base.id_tamanho=ls[li].id_tamanho; base.medida=medidaDe(ls[li].id_tamanho)||it.medida;
+              var cores=p.cores||[];
+              for(var ci=0; ci<cores.length; ci++){ if(String(cores[ci].nome||"").trim().toLowerCase()===String(it.corNome||"").trim().toLowerCase()){ base.corId=cores[ci].id_cor; break; } }
+              return base;
+            }
+          }
+        }
+      }
+    }catch(e){}
+    return base;
+  }
+  // Reabrir um pedido EM ESPERA no catálogo pra adicionar mais itens (atualiza o mesmo rascunho).
+  window.__repReabrir=function(id){
+    fetch("/api/loja/rep-pedido-itens?id="+encodeURIComponent(id)+"&rep="+encodeURIComponent((REP&&REP.id)||""))
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+      .then(function(res){
+        if(!(res.ok && res.j.ok)){ alert((res.j&&res.j.msg)||"Não consegui reabrir o pedido."); return; }
+        iniciarPedidoRep(res.j.cliente);     // abre o catálogo montando pedido pra esse cliente
+        REP_PEDIDO_ID=id;                    // continua editando ESTE rascunho
+        REP_PEDIDO_FORMA=res.j.cod_prazo||""; REP_PEDIDO_OBS=res.j.observacao||"";
+        CART=(res.j.itens||[]).map(reconstruirItemCart);
+        salvarCart(); atualizarCartN(); abrirCarrinho();
+      })
+      .catch(function(){ alert("Sem conexão. Tente de novo."); });
+  };
   window.__repPedExcluir=function(id){
     if(!confirm("Excluir este pedido em espera? Não dá pra desfazer.")) return;
     fetch("/api/loja/rep-pedido-acao",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rep:(REP&&REP.id)||"",pedido_id:id,acao:"excluir"})})
@@ -1411,7 +1449,7 @@
   };
   function iniciarPedidoRep(cli){
     REP_CLIENTE=cli;
-    REP_PEDIDO_ID="";  // novo pedido pra esse cliente
+    REP_PEDIDO_ID=""; REP_PEDIDO_FORMA=""; REP_PEDIDO_OBS="";  // novo pedido pra esse cliente
     regiao=(cli.regiao==="norte")?"norte":"sul";
     LIBERADO=!!cli.liberado;
     try{ localStorage.setItem("bt_cnpj", String(cli.cnpj||"").replace(/\D+/g,"")); }catch(e){}  // pro checkout e "meus pedidos"
