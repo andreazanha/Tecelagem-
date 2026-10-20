@@ -1199,8 +1199,8 @@
       '<div class="itens"><div style="padding:18px 6px;text-align:center">'+
       '<div style="font-size:19px;font-weight:800;color:#166534;margin-bottom:10px">'+esc(titulo)+'</div>'+
       '<div style="font-size:14px;color:#555;line-height:1.55">'+html+'</div>'+
-      (REP_PEDIDO_ID?('<button id="repOkPdf" class="fin" style="background:#2c3e50;margin-top:18px">📄 Gerar PDF e enviar ao cliente</button>'):'')+
-      '<button class="fin" style="background:#8a8073;margin-top:8px" id="repOkVoltar">Voltar ao menu</button>'+
+      (REP_PEDIDO_ID?('<button id="repOkPdf" style="display:block;width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;color:#fff;background:#2c3e50;margin-top:18px">📄 Gerar PDF e enviar ao cliente</button>'):'')+
+      '<button id="repOkVoltar" style="display:block;width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;color:#fff;background:#8a8073;margin-top:8px">Voltar ao menu</button>'+
       '</div></div>';
     var p=document.getElementById("repOkPdf"); if(p) p.onclick=function(){ repCompartilharPdf(REP_PEDIDO_ID); };
     var v=document.getElementById("repOkVoltar"); if(v) v.onclick=function(){ __fecharCart(); __repVoltarArea(); };
