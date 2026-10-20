@@ -1244,7 +1244,7 @@
 
   // ── REPRESENTANTE (R1): login + carteira ──
   function repSalvo(){ try{ return JSON.parse(localStorage.getItem("bt_rep")||"null"); }catch(e){ return null; } }
-  function mostrarRepView(){ var rb=document.getElementById("repBoot"); if(rb) rb.style.display="none"; ["entView","cadView","senhaView"].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display="none"; }); document.getElementById("repView").style.display="block"; document.getElementById("repMsg").textContent=""; var ov=document.getElementById("entrada"); ov.style.display="flex"; document.body.style.overflow="hidden"; var i=document.getElementById("repEmail"); setTimeout(function(){ try{ i.focus(); }catch(e){} },50); }
+  function mostrarRepView(){ try{ document.documentElement.classList.add("portal-rep"); }catch(e){} var rb=document.getElementById("repBoot"); if(rb) rb.style.display=""; /* mantém a cobertura: o catálogo do lojista NÃO aparece atrás do login do rep */ ["entView","cadView","senhaView"].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display="none"; }); document.getElementById("repView").style.display="block"; document.getElementById("repMsg").textContent=""; var ov=document.getElementById("entrada"); ov.style.display="flex"; document.body.style.overflow="hidden"; var i=document.getElementById("repEmail"); setTimeout(function(){ try{ i.focus(); }catch(e){} },50); }
   function repEntrar(){
     var email=(document.getElementById("repEmail").value||"").trim(); var senha=(document.getElementById("repSenha").value||"");
     var msg=document.getElementById("repMsg"), btn=document.getElementById("repBtn");
