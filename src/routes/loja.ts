@@ -415,6 +415,44 @@ loja.get("/rep-pedido-itens", async (c) => {
   });
 });
 
+// Detalhe (SÓ LEITURA) de um pedido do rep pra "Meus pedidos": cabeçalho + itens com
+// valor unitário e total. Funciona pra qualquer pedido do rep (rascunho/enviado/etc.).
+loja.get("/rep-pedido-detalhe", async (c) => {
+  const id = String(c.req.query("id") || "").trim();
+  const repId = String(c.req.query("rep") || "").trim();
+  if (!id || !repId) return c.json({ erro: "faltam_dados" }, 400);
+  const rep = await c.env.DB.prepare("SELECT nome FROM representantes WHERE id=? LIMIT 1").bind(repId).first<{ nome: string }>();
+  if (!rep) return c.json({ erro: "rep_invalido" }, 403);
+  const ped = await c.env.DB.prepare(
+    `SELECT id, erp_numero, cliente_nome, valor_total, created_at, data_pedido,
+            COALESCE(loja_forma_desc,'') AS forma, COALESCE(erp_sync_status,'') AS sync,
+            COALESCE(erp_liberado,0) AS liberado
+       FROM pedidos WHERE id=? AND canal='loja_b2b' AND TRIM(LOWER(COALESCE(vendedor,'')))=TRIM(LOWER(?)) LIMIT 1`
+  ).bind(id, rep.nome).first<{ id: string; erp_numero: number | null; cliente_nome: string | null; valor_total: number | null; created_at: string | null; data_pedido: string | null; forma: string; sync: string; liberado: number }>();
+  if (!ped) return c.json({ erro: "nao_encontrado" }, 404);
+  let status: string, label: string;
+  if (ped.sync === "rascunho") { status = "espera"; label = "Em espera"; }
+  else if (ped.sync === "enviado") { status = "syntech"; label = ped.erp_numero ? ("No Syntech · nº " + ped.erp_numero) : "No Syntech"; }
+  else if (ped.sync === "erro") { status = "erro"; label = "Com erro — a Big resolve"; }
+  else if (Number(ped.liberado) === 1) { status = "aprovado"; label = "Aprovado · indo pro Syntech"; }
+  else { status = "aguardando"; label = "Enviado · aguardando a Big"; }
+  const { results: itensRaw } = await c.env.DB.prepare(
+    "SELECT produto, cor_grade, tamanho, qtd, valor_unit FROM pedido_itens WHERE pedido_id=? ORDER BY rowid"
+  ).bind(id).all<{ produto: string | null; cor_grade: string | null; tamanho: string | null; qtd: number | null; valor_unit: number | null }>();
+  const itens = (itensRaw || []).map((r) => {
+    const q = Number(r.qtd) || 0, vu = Number(r.valor_unit) || 0;
+    return { produto: String(r.produto || ""), descricao: [r.cor_grade, r.tamanho].map((x) => String(x || "").trim()).filter(Boolean).join(" · "), qtd: q, valor_unit: vu, valor_total: Math.round(q * vu * 100) / 100 };
+  });
+  const pecas = itens.reduce((s, i) => s + i.qtd, 0);
+  const total = Number(ped.valor_total) || itens.reduce((s, i) => s + i.valor_total, 0);
+  return c.json({
+    ok: true, status, label,
+    numero: ped.erp_numero ? String(ped.erp_numero) : String(ped.id).slice(0, 8).toUpperCase(),
+    data: ped.created_at || ped.data_pedido || "", forma: ped.forma,
+    pecas, total, editavel: ped.sync === "rascunho", itens,
+  });
+});
+
 // Consulta CNPJ na Receita (BrasilAPI) pra preencher o cadastro. ATENÇÃO: o e-mail pode
 // estar desatualizado — devolvemos, mas o rep confere/atualiza antes de salvar.
 loja.get("/consulta-cnpj", async (c) => {

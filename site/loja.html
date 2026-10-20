@@ -296,32 +296,57 @@
   .cart.show{display:block}
   /* Janela ~55% da tela no desktop; abre pela direita; responsiva no tablet/celular. */
   .cart .pane{position:absolute; top:0; right:0; bottom:0; width:55vw; max-width:980px; min-width:460px; background:var(--bg); display:flex; flex-direction:column; box-shadow:-10px 0 40px rgba(0,0,0,.2)}
-  /* Cabeçalho FIXO (título + nome do cliente). */
-  .cart .ctopo{flex:0 0 auto; display:flex; justify-content:space-between; align-items:flex-start; gap:10px; padding:12px 18px; border-bottom:1px solid var(--line); background:var(--card)}
+  /* Cabeçalho FIXO (título 15px + cliente 12px + total de itens). */
+  .cart .ctopo{flex:0 0 auto; display:flex; justify-content:space-between; align-items:flex-start; gap:10px; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--card)}
   .cart .ctopo .ctit{min-width:0}
-  .cart .ctopo h3{margin:0; font-size:17px}
-  .cart .ctopo .csub{font-size:12.5px; color:var(--muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .cart .ctopo h3{margin:0; font-size:15px; font-weight:700}
+  .cart .ctopo .csub{font-size:12px; color:var(--muted); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   .cart .ctopo .csub b{color:var(--ink); font-weight:700}
-  /* Lista de itens ROLÁVEL entre o cabeçalho e o rodapé. */
-  .cart .itens{flex:1 1 auto; overflow-y:auto; padding:12px 16px; -webkit-overflow-scrolling:touch}
-  .citem{display:flex; align-items:center; gap:12px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:9px 12px; margin-bottom:7px}
-  .citem .d{flex:1; min-width:0}
-  .citem .nm{font-weight:600; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-  .citem .meta{color:var(--muted); font-size:11.5px; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-  .citem .cact{display:flex; align-items:center; gap:12px; flex:0 0 auto}
-  .citem .stepper{border:1px solid var(--line)}
-  .citem .stepper button{width:28px; height:28px; font-size:15px}
-  .citem .stepper input{width:32px; height:28px; font-size:13px}
-  .citem .sub{color:var(--ink); font-weight:700; font-family:'Montserrat',sans-serif; font-size:13.5px; min-width:82px; text-align:right}
-  .citem .rm{border:0; background:transparent; color:#c0463a; cursor:pointer; font-size:14px; line-height:1; padding:4px; opacity:.65}
-  .citem .rm:hover{opacity:1}
-  /* Rodapé FIXO (total + forma + ações). */
-  .cfoot{flex:0 0 auto; border-top:1px solid var(--line); background:var(--card); padding:12px 16px}
-  .cfoot .tot{display:flex; justify-content:space-between; align-items:baseline; font-size:14px; margin-bottom:9px}
-  .cfoot .tot b{font-family:'Montserrat',sans-serif; color:var(--ink); font-size:18px; font-weight:700}
-  .cfoot .fin{width:100%; border:0; background:var(--accent); color:#fff; border-radius:10px; padding:12px; font-size:15px; font-weight:600; cursor:pointer}
-  .cart-inp{font-size:13.5px !important; padding:9px 11px !important}
-  .cvazio{text-align:center; color:var(--muted); padding:40px 16px; font-size:13.5px}
+  /* Lista de itens: SÓ ela rola; o cabeçalho da tabela fica grudado no topo. */
+  .cart .itens{flex:1 1 auto; overflow-y:auto; padding:0; -webkit-overflow-scrolling:touch}
+  .ctbl{width:100%; border-collapse:collapse; table-layout:fixed}
+  .ctbl thead th{position:sticky; top:0; z-index:1; background:var(--card); text-align:left; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.02em; padding:7px 10px; border-bottom:1px solid var(--line)}
+  .ctbl td{padding:4px 10px; border-bottom:1px solid var(--line); font-size:12px; vertical-align:middle; height:40px}
+  .ctbl tbody tr:nth-child(even){background:var(--bg-soft,#faf8f4)}
+  .ctbl .c-prod{font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .ctbl .c-desc{font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .ctbl th.c-qtd{width:104px; text-align:center} .ctbl td.c-qtd{text-align:center}
+  .ctbl th.c-val{width:92px; text-align:right} .ctbl td.c-val{text-align:right; font-weight:700; font-family:'Montserrat',sans-serif; color:var(--ink); white-space:nowrap}
+  .ctbl th.c-rm{width:34px} .ctbl td.c-rm{text-align:center}
+  .ctbl td.c-rm button{border:0; background:transparent; color:#b23b30; cursor:pointer; font-size:13px; padding:2px; opacity:.7; line-height:1}
+  .ctbl td.c-rm button:hover{opacity:1}
+  .stepper.mini{display:inline-flex; border:1px solid var(--line); border-radius:7px}
+  .stepper.mini button{width:24px; height:24px; font-size:14px}
+  .stepper.mini input{width:28px; height:24px; font-size:12px}
+  /* Rodapé FIXO (total 16px + forma + obs + ações), bem compacto. */
+  .cfoot{flex:0 0 auto; border-top:1px solid var(--line); background:var(--card); padding:10px 16px}
+  .cfoot .tot{display:flex; justify-content:space-between; align-items:baseline; font-size:13px; margin-bottom:8px}
+  .cfoot .tot b{font-family:'Montserrat',sans-serif; color:var(--ink); font-size:16px; font-weight:700}
+  .cfoot .fin{width:100%; border:0; background:var(--accent); color:#fff; border-radius:9px; padding:11px; font-size:14px; font-weight:600; cursor:pointer}
+  .cart-inp{font-size:13px !important; padding:8px 10px !important}
+  .cvazio{text-align:center; color:var(--muted); padding:40px 16px; font-size:13px}
+  /* Meus pedidos do rep — acordeão (um pedido detalhado por vez) + tabela de itens. */
+  .rped{border:1px solid #DCE3EC; border-radius:12px; margin-bottom:8px; background:#fff; overflow:hidden}
+  .rped.open{box-shadow:0 2px 10px rgba(15,23,42,.06)}
+  .rped-h{display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:transparent; border:0; padding:11px 14px; cursor:pointer; font:inherit}
+  .rped-hi{flex:1; min-width:0}
+  .rped-cli{display:block; font-weight:800; font-size:14px; color:#2c2721; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .rped-res{display:block; font-size:12px; color:#8a8073; margin-top:2px}
+  .rped-chev{flex:0 0 auto; color:#c0c7d1; transition:transform .15s}
+  .rped.open .rped-chev{transform:rotate(180deg)}
+  .rped-det{display:none}
+  .rped.open .rped-det{display:block; border-top:1px solid #eef0f3}
+  .rped-body{padding:10px 12px}
+  .rped-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); gap:8px 14px; margin-bottom:10px}
+  .rped-grid > div{display:flex; flex-direction:column; gap:3px; align-items:flex-start}
+  .rped-grid span{font-size:10px; font-weight:700; color:#9aa3af; text-transform:uppercase; letter-spacing:.03em}
+  .rped-grid b{font-size:13px; color:#2c2721}
+  .rped-grid .rped-tot{font-size:15px; color:#1f7a4d; font-weight:800}
+  .pedtbl{border:1px solid #eef0f3; border-radius:8px; overflow:hidden; margin-bottom:10px}
+  .pedtbl th.c-qtd, .pedtbl td.c-qtd{width:52px; text-align:center}
+  .pedtbl th.c-val, .pedtbl td.c-val{width:84px}
+  .pedtbl td{background:#fff}
+  .pedtbl tbody tr:nth-child(even) td{background:#faf8f4}
   @media(max-width:900px){ .cart .pane{width:74vw} }
   @media(max-width:600px){ .cart .pane{width:100%; min-width:0; max-width:none} }
   footer{text-align:center; color:var(--muted); font-size:12px; padding:30px 16px 50px; border-top:1px solid var(--line)}
@@ -993,14 +1018,20 @@
     pane.innerHTML=cabMeus()+'<div class="itens">'+html+'</div>';
   }
   function renderCarrinho(){
-    var itens = CART.length? CART.map(function(it,ix){
-      var meta=[it.grupo, it.medida, it.corNome].filter(Boolean).join(" · ");
-      return '<div class="citem"><div class="d"><div class="nm">'+esc(it.nome)+'</div>'+
-        '<div class="meta">'+esc(meta)+'</div></div>'+
-        '<div class="cact"><div class="stepper" data-ix="'+ix+'"><button data-d="-1">−</button><input type="number" min="1" value="'+(Number(it.qtd)||0)+'"><button data-d="1">+</button></div>'+
-        '<span class="sub">'+brl((Number(it.qtd)||0)*(Number(it.preco)||0))+'</span>'+
-        '<button class="rm" data-rm="'+ix+'" title="Remover">✕</button></div></div>';
-    }).join("") : '<div class="cvazio">Seu carrinho está vazio.<br>Escolha um produto e monte seu pedido.</div>';
+    var linhas = CART.map(function(it,ix){
+      var desc=[it.grupo, it.medida, it.corNome].filter(Boolean).join(" · ");
+      var sub=(Number(it.qtd)||0)*(Number(it.preco)||0);
+      return '<tr>'+
+        '<td class="c-prod" title="'+esc(it.nome)+'">'+esc(it.nome)+'</td>'+
+        '<td class="c-desc" title="'+esc(desc)+'">'+esc(desc)+'</td>'+
+        '<td class="c-qtd"><div class="stepper mini" data-ix="'+ix+'"><button data-d="-1">−</button><input type="number" min="1" value="'+(Number(it.qtd)||0)+'"><button data-d="1">+</button></div></td>'+
+        '<td class="c-val">'+brl(sub)+'</td>'+
+        '<td class="c-rm"><button data-rm="'+ix+'" title="Excluir" aria-label="Excluir">🗑</button></td>'+
+      '</tr>';
+    }).join("");
+    var itens = CART.length
+      ? '<table class="ctbl"><thead><tr><th class="c-prod">Produto</th><th class="c-desc">Descrição</th><th class="c-qtd">Qtd.</th><th class="c-val">Valor</th><th class="c-rm"></th></tr></thead><tbody>'+linhas+'</tbody></table>'
+      : '<div class="cvazio">Seu carrinho está vazio.<br>Escolha um produto e monte seu pedido.</div>';
     var nomeCab = REP_CLIENTE ? (REP_CLIENTE.fantasia||REP_CLIENTE.nome||"") : "";
     var footHTML;
     if(REP_CLIENTE){
@@ -1025,11 +1056,14 @@
           '<div id="cmsg" style="font-size:13px;margin:0 0 8px;min-height:1px;line-height:1.35"></div>'):'')+
         '<button class="fin" id="finalizar"'+(CART.length?"":" disabled")+'>Finalizar pedido</button></div>';
     }
+    var qtdTot=cartQtd();
     document.getElementById("cartPane").innerHTML=
-      '<div class="ctopo"><div class="ctit"><h3 class="serif">🛒 Meu carrinho</h3>'+(nomeCab?('<div class="csub">Cliente: <b>'+esc(nomeCab)+'</b></div>'):'')+'</div><button class="fechar" onclick="__fecharCart()">✕</button></div>'+
+      '<div class="ctopo"><div class="ctit"><h3 class="serif">Meu carrinho</h3>'+
+        '<div class="csub">'+(nomeCab?('Cliente: <b>'+esc(nomeCab)+'</b> · '):'')+qtdTot+' '+(qtdTot===1?'item':'itens')+'</div>'+
+      '</div><button class="fechar" onclick="__fecharCart()">✕</button></div>'+
       '<div class="itens">'+itens+'</div>'+footHTML;
     var box=document.getElementById("cartPane");
-    box.querySelectorAll(".citem .stepper").forEach(function(st){
+    box.querySelectorAll(".stepper[data-ix]").forEach(function(st){
       var ix=Number(st.getAttribute("data-ix")); var inp=st.querySelector("input");
       st.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ var d=Number(b.getAttribute("data-d")); CART[ix].qtd=Math.max(1,(Number(CART[ix].qtd)||1)+d); salvarCart(); atualizarCartN(); renderCarrinho(); }; });
       inp.onchange=function(){ CART[ix].qtd=Math.max(1,Number(inp.value)||1); salvarCart(); atualizarCartN(); renderCarrinho(); };
@@ -1359,26 +1393,59 @@
     var cls = st==="espera"?"wait" : st==="aguardando"?"info" : (st==="aprovado"||st==="syntech")?"ok" : st==="erro"?"block":"info";
     return '<span class="rep-chip '+cls+'">● '+esc(label)+'</span>';
   }
+  var REP_PED_LISTA=[], REP_PED_ABERTO="";
   function renderRepPedidos(lista){
+    if(lista) REP_PED_LISTA=lista;
     var box=document.getElementById("repPedLista");
-    if(!lista.length){ box.innerHTML='<div class="rep-vazio">Você ainda não tem pedidos. Toque em <b>Novo pedido</b> pra começar.</div>'; return; }
-    box.innerHTML=lista.map(function(p){
+    if(!REP_PED_LISTA.length){ box.innerHTML='<div class="rep-vazio">Você ainda não tem pedidos. Toque em <b>Novo pedido</b> pra começar.</div>'; return; }
+    box.innerHTML=REP_PED_LISTA.map(function(p){
+      var aberto=REP_PED_ABERTO===p.id;
       var dt=fmtDataCurta(p.data);
-      var resumo=(p.pecas||0)+" peça"+((p.pecas===1)?"":"s")+" · "+brl(p.total||0)+(p.forma?(" · "+esc(p.forma)):"");
-      var acoes='<div class="rep-ped-acoes">'+
-        '<button class="prim" onclick="__repPedPdf(\''+esc(p.id)+'\')">📄 Baixar PDF</button>'+
-        (p.editavel?('<button onclick="__repReabrir(\''+esc(p.id)+'\')">✏️ Reabrir / adicionar itens</button>'+
-                     '<button class="go" onclick="__repPedEnviar(\''+esc(p.id)+'\',\''+(p.forma?"1":"")+'\')">✅ Enviar à Big</button>'+
-                     '<button class="del" onclick="__repPedExcluir(\''+esc(p.id)+'\')">Excluir</button>'):'')+
-        '</div>';
-      return '<div class="rep-row" style="flex-direction:column;align-items:stretch;cursor:default">'+
-        '<div style="display:flex;align-items:flex-start;gap:10px;width:100%">'+
-          '<div class="ri"><div class="nm">'+esc(p.cliente||"(cliente)")+'</div>'+
-          '<div class="sub">'+esc(resumo)+'</div>'+
-          (dt?('<div class="ped">'+esc(dt)+'</div>'):'')+'</div>'+
-          '<div class="rr">'+chipPed(p.status,p.label)+'</div>'+
-        '</div>'+acoes+'</div>';
+      var resumo=(p.pecas||0)+" peça"+((p.pecas===1)?"":"s")+" · "+brl(p.total||0)+(dt?(" · "+dt):"");
+      return '<div class="rped'+(aberto?" open":"")+'">'+
+        '<button class="rped-h" onclick="__repPedToggle(\''+esc(p.id)+'\')">'+
+          '<span class="rped-hi"><span class="rped-cli">'+esc(p.cliente||"(cliente)")+'</span><span class="rped-res">'+esc(resumo)+'</span></span>'+
+          chipPed(p.status,p.label)+'<span class="rped-chev">'+chevSvg()+'</span>'+
+        '</button>'+
+        '<div class="rped-det" id="rpd-'+esc(p.id)+'"></div>'+
+      '</div>';
     }).join("");
+    if(REP_PED_ABERTO) carregarRepPedDet(REP_PED_ABERTO);
+  }
+  window.__repPedToggle=function(id){ REP_PED_ABERTO=(REP_PED_ABERTO===id)?"":id; renderRepPedidos(); };
+  function carregarRepPedDet(id){
+    var el=document.getElementById("rpd-"+id); if(!el) return;
+    el.innerHTML='<div class="rep-vazio" style="padding:12px">Carregando itens…</div>';
+    fetch("/api/loja/rep-pedido-detalhe?id="+encodeURIComponent(id)+"&rep="+encodeURIComponent((REP&&REP.id)||""))
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(!d||!d.ok){ el.innerHTML='<div class="rep-vazio" style="padding:12px">Não consegui carregar os itens.</div>'; return; } el.innerHTML=renderRepPedDet(d,id); })
+      .catch(function(){ el.innerHTML='<div class="rep-vazio" style="padding:12px">Sem conexão. Tente de novo.</div>'; });
+  }
+  function renderRepPedDet(d,id){
+    var linhas=(d.itens||[]).map(function(it){
+      return '<tr><td class="c-prod" title="'+esc(it.produto)+'">'+esc(it.produto)+'</td>'+
+        '<td class="c-desc" title="'+esc(it.descricao||"")+'">'+esc(it.descricao||"—")+'</td>'+
+        '<td class="c-qtd">'+(Number(it.qtd)||0)+'x</td>'+
+        '<td class="c-val">'+brl(it.valor_unit||0)+'</td>'+
+        '<td class="c-val">'+brl(it.valor_total||0)+'</td></tr>';
+    }).join("");
+    var tbl=(d.itens&&d.itens.length)
+      ? '<table class="ctbl pedtbl"><thead><tr><th class="c-prod">Produto</th><th class="c-desc">Descrição</th><th class="c-qtd">Qtde</th><th class="c-val">Vlr unit.</th><th class="c-val">Vlr total</th></tr></thead><tbody>'+linhas+'</tbody></table>'
+      : '<div class="rep-vazio" style="padding:10px">Sem itens.</div>';
+    var grid='<div class="rped-grid">'+
+      '<div><span>Status</span>'+chipPed(d.status,d.label)+'</div>'+
+      '<div><span>Pedido</span><b>'+esc(d.numero)+'</b></div>'+
+      '<div><span>Data/hora</span><b>'+esc(fmtDataHora(d.data))+'</b></div>'+
+      '<div><span>Peças</span><b>'+(Number(d.pecas)||0)+'</b></div>'+
+      '<div><span>Valor total</span><b class="rped-tot">'+brl(d.total||0)+'</b></div>'+
+    '</div>';
+    var acoes='<div class="rep-ped-acoes">'+
+      '<button class="prim" onclick="__repPedPdf(\''+esc(id)+'\')">📄 Baixar PDF</button>'+
+      (d.editavel?('<button onclick="__repReabrir(\''+esc(id)+'\')">✏️ Reabrir / adicionar itens</button>'+
+                   '<button class="go" onclick="__repPedEnviar(\''+esc(id)+'\',\''+(d.forma?"1":"")+'\')">✅ Enviar à Big</button>'+
+                   '<button class="del" onclick="__repPedExcluir(\''+esc(id)+'\')">Excluir</button>'):'')+
+      '</div>';
+    return '<div class="rped-body">'+grid+tbl+acoes+'</div>';
   }
   // Baixar/ver o PDF: abre numa aba nova (dá pra salvar, imprimir ou compartilhar de lá).
   window.__repPedPdf=function(id){ var url="/api/loja/pedido-pdf/"+encodeURIComponent(id); try{ window.open(url,"_blank"); }catch(e){ location.href=url; } };
