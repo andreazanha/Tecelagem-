@@ -53,6 +53,8 @@
   .bf-voltar{grid-column:1; justify-self:start; display:none; align-items:center; gap:7px; height:40px; padding:0 15px; border:1px solid rgba(255,255,255,.3); background:rgba(255,255,255,.08); color:#f0ebe2; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer}
   .bf-voltar svg{width:17px; height:17px; stroke:currentColor; fill:none; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round}
   body.rep-mode .bf-voltar{display:inline-flex}
+  /* Modo "só visualização": esconde carrinho/meus pedidos (rep só vê, não monta pedido) */
+  body.rep-sover .bf-right-top{display:none}
   .saud{display:flex; align-items:center; gap:5px; font-size:12px; color:#cfc7ba; white-space:nowrap; min-width:0; max-width:320px}
   .saud b{color:#f0ebe2; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .saud a{flex:0 0 auto}
@@ -347,6 +349,10 @@
         <button class="rep-tile" onclick="__repSecao('montar')">
           <svg viewBox="0 0 24 24"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.5 2.5h2l2.6 12.4a2 2 0 0 0 2 1.6h9.3a2 2 0 0 0 2-1.6L23 6H6"/></svg>
           <span class="tl">Novo pedido</span><span class="tt">começar agora</span>
+        </button>
+        <button class="rep-tile" onclick="__repSecao('produtos')">
+          <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+          <span class="tl">Produtos</span><span class="tt">ver catálogo</span>
         </button>
         <button class="rep-tile" onclick="__repSecao('pedidos')">
           <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>
@@ -827,6 +833,7 @@
     });
   }
   function adicionarAoCarrinho(){
+    if(REP_SOVER){ alert("Você está só vendo o catálogo. Para montar um pedido, toque em ← Voltar e escolha um cliente. 👈"); return; }
     if(!LIBERADO){ alert("Seu cadastro ainda está em análise. Assim que a Big Tricot aprovar, você poderá montar o pedido. 💛"); return; }
     var p=sel.prod, add=0, LIN=linhasDoProd(p);
     // Percorre TODAS as cores selecionadas (a chave é "corId|cod|idtam") — não só a
@@ -1217,6 +1224,7 @@
   }
   var REP=null, REP_CLIENTES=[], REP_CLIENTE=null, REP_NOVO_CNPJ="";
   var REP_PRAZOS=[], REP_PEDIDO_ID="";  // formas de pagamento (prazos) + rascunho atual do rep
+  var REP_SOVER=false;  // catálogo em modo "só visualização" (rep vê produtos/preços, sem montar pedido)
   function aplicarRep(rep, clientes){
     if(!rep) return;
     REP=rep; REP_CLIENTES=clientes||[];
@@ -1237,6 +1245,7 @@
     if(sec==="carteira"){ document.getElementById("repCartTit").innerHTML='Minha carteira <span class="rep-count" id="repCount"></span>'; document.getElementById("repCartDica").textContent="Toque num cliente para montar o pedido dele."; var rb=document.getElementById("repBusca"); if(rb) rb.value=""; repMostrarSub("repCartView"); renderCarteira(REP_CLIENTES); return; }
     if(sec==="montar"){ repMostrarSub("repMontar"); return; }
     if(sec==="novo"){ document.getElementById("rncMsg").textContent=""; repMostrarSub("repNovoCli"); return; }
+    if(sec==="produtos"){ iniciarRepVerProdutos(); return; }
     var nomes={pedidos:"Meus pedidos",avisos:"Avisos"};
     alert("“"+(nomes[sec]||sec)+"” está chegando! 🧶\nEstamos liberando a área do representante por etapas.");
   };
@@ -1303,10 +1312,25 @@
     render(); if(document.getElementById("modal").classList.contains("show")) renderDetalhe();
     try{ window.scrollTo({top:0}); }catch(e){}
   }
-  window.__repVoltarArea=function(){
-    REP_CLIENTE=null;
+  // Catálogo em modo "só ver": rep vê produtos e preços, mas não monta pedido (sem cliente).
+  function iniciarRepVerProdutos(){
+    REP_CLIENTE=null; REP_SOVER=true; REP_PEDIDO_ID="";
+    regiao="sul"; LIBERADO=true;  // rep vê preços de referência
+    document.getElementById("repArea").style.display="none";
+    document.body.style.overflow="";
+    try{ document.body.classList.add("rep-mode"); document.body.classList.add("rep-sover"); }catch(e){}
+    var ban=document.getElementById("banner"); if(ban) ban.style.display="none";
+    var sa=document.getElementById("saudacao");
+    if(sa){ sa.style.display="flex"; sa.innerHTML='<b style="color:#fff">Catálogo</b> · só visualização'; }
+    atualizarAvisoLib();
     document.getElementById("repPedBar").style.display="none";
-    try{ document.body.classList.remove("rep-mode"); }catch(e){}
+    render(); if(document.getElementById("modal").classList.contains("show")) renderDetalhe();
+    try{ window.scrollTo({top:0}); }catch(e){}
+  }
+  window.__repVoltarArea=function(){
+    REP_CLIENTE=null; REP_SOVER=false;
+    document.getElementById("repPedBar").style.display="none";
+    try{ document.body.classList.remove("rep-mode"); document.body.classList.remove("rep-sover"); }catch(e){}
     var ban=document.getElementById("banner"); if(ban) ban.style.display="";
     mostrarSaudacao("");
     document.getElementById("repArea").style.display="block";
