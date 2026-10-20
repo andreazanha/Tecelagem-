@@ -369,7 +369,7 @@ export interface AtendConversa {
   funil_etapa?: string | null; lembrete?: number | null; silenciado?: number | null; agendado_ia?: number | null; agendado_enviado?: number | null; agendado_msg?: string | null; foto_url?: string | null; status_cliente?: string | null;
   remarket_em?: number | null; remarket_enviado?: number | null; transferido?: number | null;
 }
-export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; responder_texto?: string | null; arquivo_url?: string | null; status?: string | null; criado_em: string }
+export interface AtendMensagem { id: string; direcao: "in" | "out"; autor: string | null; tipo: string; texto: string | null; responder_texto?: string | null; responder_id?: string | null; arquivo_url?: string | null; status?: string | null; criado_em: string }
 export interface ArqRapido { id: string; nome: string; nomeArq: string; key: string; ct: string; tamanho: number }
 // Resposta pronta = atalho de texto; opcionalmente com um anexo (foto/arquivo) salvo no R2.
 export interface RespostaPronta { titulo: string; texto: string; arquivo_key?: string; arquivo_nome?: string; arquivo_ct?: string }

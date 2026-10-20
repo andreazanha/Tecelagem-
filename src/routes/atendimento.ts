@@ -279,11 +279,11 @@ async function avisarHumanoPush(env: Env, c: { id: string; nome?: string | null;
 // Autores AUTOMÁTICOS (robô/campanha/etc.): mensagens deles NÃO contam como "atendimento humano".
 const AUTORES_AUTO = new Set(["bot", "sistema", "system", "ia", "big", "robô", "robo", "campanha", "remarket", "aniversário", "aniversario"]);
 
-async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: string, tipo: string, texto: string, opts: { zapId?: string | null; responderTexto?: string | null; arquivoUrl?: string | null } = {}) {
+async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: string, tipo: string, texto: string, opts: { zapId?: string | null; responderTexto?: string | null; arquivoUrl?: string | null; responderId?: string | null } = {}) {
   const id = uid();
   await env.DB.prepare(
-    "INSERT INTO atend_mensagens (id, conversa_id, direcao, autor, tipo, texto, zap_id, responder_texto, arquivo_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).bind(id, convId, direcao, autor, tipo, texto, opts.zapId || null, opts.responderTexto || null, opts.arquivoUrl || null).run();
+    "INSERT INTO atend_mensagens (id, conversa_id, direcao, autor, tipo, texto, zap_id, responder_texto, arquivo_url, responder_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id, convId, direcao, autor, tipo, texto, opts.zapId || null, opts.responderTexto || null, opts.arquivoUrl || null, opts.responderId || null).run();
   // Marca QUANDO um HUMANO respondeu o cliente (não robô, não nota interna, não sistema). É isso que
   // mantém o card em "Em atendimento". Sem uma resposta humana depois da última mensagem do cliente, o
   // card fica em "Aguardando atendimento humano" (piscando) — inclusive quando só o robô respondeu
@@ -792,7 +792,7 @@ function ajustarCatalogoRegiao(texto: string, uf?: string | null, tel?: string |
 
 // ── Núcleo: recebe uma mensagem do cliente, roda o robô, responde e qualifica ────
 // Usado tanto pelo simulador (/entrada) quanto pelo webhook real da Z-API (/webhook).
-async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "", origin: string | null = null, zapId = "", arquivoUrl = "", soRegistrar = false, jaRegistrada = false, respostaA = "") {
+async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, origem = "whatsapp", contatoNome = "", origin: string | null = null, zapId = "", arquivoUrl = "", soRegistrar = false, jaRegistrada = false, respostaA = "", respostaId = "") {
   const tel = digitos(telRaw);
   const texto = String(textoRaw ?? "");
   const contato = String(contatoNome ?? "").trim().slice(0, 80) || null;
@@ -853,7 +853,7 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   }
   // jaRegistrada: a mensagem já está no histórico (ex.: a IA está reassumindo e respondendo
   // uma pergunta que o cliente já tinha mandado) → NÃO registra de novo, só reprocessa.
-  if (!jaRegistrada) await addMsg(env, conv.id, "in", "cliente", "texto", texto, { zapId: zapId || null, arquivoUrl: arquivoUrl || null, responderTexto: respostaA || null });
+  if (!jaRegistrada) await addMsg(env, conv.id, "in", "cliente", "texto", texto, { zapId: zapId || null, arquivoUrl: arquivoUrl || null, responderTexto: respostaA || null, responderId: respostaId || null });
   // Cliente mandou mensagem NOVA → "chamou de volta". Se o card estava ESTACIONADO numa
   // coluna à mão (coluna_manual), destrava: ele volta pro fluxo automático (Em atendimento /
   // Aguardando humano) pra ninguém esquecer que a cliente está esperando resposta.
@@ -1459,12 +1459,13 @@ atendimento.post("/webhook", async (c) => {
   // id da mensagem citada. Buscamos o texto dela no nosso histórico pra mostrar o trecho citado na
   // conversa do CRM (o mesmo balãozinho ↪ que aparece no WhatsApp). Se não achar, ignora sem erro.
   let respostaA = "";
+  let respostaId = "";
   try {
     const bb = b as Record<string, unknown>;
     const refId = String(bb.referenceMessageId ?? bb.quotedMsgId ?? bb.stanzaId ?? (bb.message as { quotedMsgId?: unknown } | undefined)?.quotedMsgId ?? "").trim();
     if (refId) {
-      const orig = await c.env.DB.prepare("SELECT texto, arquivo_url FROM atend_mensagens WHERE zap_id=? LIMIT 1").bind(refId).first<{ texto: string | null; arquivo_url: string | null }>().catch(() => null);
-      if (orig) respostaA = (String(orig.texto || "").trim() || (orig.arquivo_url ? "📎 arquivo" : "")).slice(0, 180);
+      const orig = await c.env.DB.prepare("SELECT id, texto, arquivo_url FROM atend_mensagens WHERE zap_id=? LIMIT 1").bind(refId).first<{ id: string; texto: string | null; arquivo_url: string | null }>().catch(() => null);
+      if (orig) { respostaA = (String(orig.texto || "").trim() || (orig.arquivo_url ? "📎 arquivo" : "")).slice(0, 180); respostaId = orig.id || ""; }
     }
   } catch { /* não bloqueia o recebimento */ }
   let arquivoUrl = "";
@@ -1477,7 +1478,7 @@ atendimento.post("/webhook", async (c) => {
     if (!texto.trim()) {
       // Sem transcrição: registra a conversa com o player (se baixou o áudio) pra o atendente ouvir.
       const label = arquivoUrl ? "🎤 (áudio)" : "🎤 (áudio — abra no WhatsApp)";
-      await receberMensagem(c.env, phone, label, "whatsapp", nomeContato, origin, zid, arquivoUrl, soRegistrar, false, respostaA);
+      await receberMensagem(c.env, phone, label, "whatsapp", nomeContato, origin, zid, arquivoUrl, soRegistrar, false, respostaA, respostaId);
       // Só pede "por escrito" se NÃO conseguimos nem baixar o áudio E o robô ainda está conduzindo.
       if (!arquivoUrl && !soRegistrar) await enviarWhatsapp(c.env, phone, { tipo: "texto", texto: "Oi! 😊 Recebi seu áudio, mas não consegui ouvir direitinho por aqui. Pode me mandar por *escrito*, por favor? Assim já te respondo! 💛" });
       return;
@@ -1526,12 +1527,12 @@ atendimento.post("/webhook", async (c) => {
     // Foto que não deu pra descrever e sem legenda: responde em vez de ignorar.
     if (img) {
       if (!soRegistrar) await enviarWhatsapp(c.env, phone, { tipo: "texto", texto: "Oi! 😊 Recebi sua foto! Me conta em uma frase o que você procura (produto, cor, tamanho) que eu já te ajudo? 💛" });
-      else await receberMensagem(c.env, phone, "📷 (foto)", "whatsapp", nomeContato, origin, String(b.messageId ?? ""), arquivoUrl, soRegistrar, false, respostaA);
+      else await receberMensagem(c.env, phone, "📷 (foto)", "whatsapp", nomeContato, origin, String(b.messageId ?? ""), arquivoUrl, soRegistrar, false, respostaA, respostaId);
       return c.json({ ignorado: "imagem-sem-descricao" });
     }
     return c.json({ ignorado: "sem-texto" });
   }
-  await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, origin, zid, arquivoUrl, soRegistrar, false, respostaA);
+  await receberMensagem(c.env, phone, texto, "whatsapp", nomeContato, origin, zid, arquivoUrl, soRegistrar, false, respostaA, respostaId);
   })();
   // waitUntil deixa o processamento seguir DEPOIS de já termos respondido 200 à Z-API.
   try { c.executionCtx.waitUntil(trabalho.catch(() => {})); } catch { await trabalho.catch(() => {}); }
@@ -3725,18 +3726,15 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
     // Documento pequeno (PDF etc.): vai embutido (base64) — mais confiável que a Z-API baixar nossa URL.
     let docData: string | undefined;
     try { if (!ehImagem && !ehAudio && bytes.byteLength <= 8 * 1024 * 1024) docData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { docData = undefined; }
-    // IMAGEM com legenda: manda a foto embutida (base64) junto da legenda no MESMO pedido, pra a legenda
-    // ir colada na foto (por URL a Z-API às vezes entregava a foto SEM a legenda). Só imagem pequena.
-    let imgData: string | undefined;
-    try { if (ehImagem && legenda && bytes.byteLength <= 9 * 1024 * 1024) imgData = `data:${ct};base64,${abParaBase64(bytes)}`; } catch { imgData = undefined; }
-    const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, dataUri: imgData, ehImagem, ehAudio, ext, fileName: nomeArq, caption: legenda });
+    // IMAGEM: manda a FOTO por URL (rápido e confiável, sem base64 gigante que a Z-API recusa) e,
+    // se tiver legenda, manda a legenda como mensagem de TEXTO logo em seguida. Assim a foto E o
+    // texto SEMPRE chegam — não depende do caption da foto (que a Z-API às vezes entregava vazio).
+    const captionMidia = ehImagem ? "" : legenda;   // doc/vídeo levam a legenda junto; imagem vai separada
+    const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: nomeArq, caption: captionMidia });
     if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgId).run();
     else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); // marca "⚠️ não entregue"
-    // GARANTIA DA LEGENDA: quando a imagem foi grande demais pra embutir (base64) e foi por URL,
-    // a Z-API às vezes entrega a foto SEM a legenda. Nesse caso manda a legenda como mensagem de
-    // texto logo em seguida — assim o cliente SEMPRE recebe o texto que acompanha a foto.
-    if (ehImagem && legenda && !imgData && r.enviado) {
-      try { await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto: legenda }); } catch { /* se falhar, a foto já foi */ }
+    if (ehImagem && legenda && r.enviado) {
+      try { await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto: legenda }); } catch { /* a foto já foi; se o texto falhar, só ele falta */ }
     }
   })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); } catch { /* ok */ } });
   try { c.executionCtx.waitUntil(enviarBg); } catch { /* sem executionCtx: segue sem bloquear */ }
@@ -4020,7 +4018,7 @@ atendimento.get("/:id", async (c) => {
   // Só as ÚLTIMAS 250 mensagens: conversas antigas (ou floods) podem ter centenas
   // de mensagens e travar a tela ("página sem resposta") em PC mais fraco.
   const { results: msgsDesc } = await c.env.DB.prepare(
-    "SELECT id, direcao, autor, tipo, texto, responder_texto, arquivo_url, status, criado_em FROM atend_mensagens WHERE conversa_id = ? ORDER BY criado_em DESC, rowid DESC LIMIT 250"
+    "SELECT id, direcao, autor, tipo, texto, responder_texto, responder_id, arquivo_url, status, criado_em FROM atend_mensagens WHERE conversa_id = ? ORDER BY criado_em DESC, rowid DESC LIMIT 250"
   ).bind(conv.id).all();
   const mensagens = (msgsDesc as unknown[]).slice().reverse();
   const { results: interesses } = await c.env.DB.prepare(
@@ -4382,7 +4380,7 @@ atendimento.post("/:id/enviar", async (c) => {
     if (alvo) quote = { zapId: alvo.zap_id, texto: (alvo.texto || "").slice(0, 180) };
   }
   const autor = (b.autor || "Atendente").trim();
-  const msgId = await addMsg(c.env, id, "out", autor, "texto", texto, { responderTexto: quote.texto || null });
+  const msgId = await addMsg(c.env, id, "out", autor, "texto", texto, { responderTexto: quote.texto || null, responderId: (b.responder_a as string) || null });
   await c.env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now'), atualizado_em=datetime('now') WHERE id=?").bind(id).run();
   // Responder pelo /enviar é SEMPRE ação de HUMANO → quem respondeu ASSUME o atendimento: a conversa
   // vira "atendimento-humano" e a IA PARA de responder (corrige "do nada a IA assumiu": antes, se o

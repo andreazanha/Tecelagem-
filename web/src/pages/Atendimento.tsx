@@ -1480,6 +1480,17 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [formD, setFormD] = useState({ contato_nome: "", nome: "", razao_social: "", setor: "", cnpj: "", cidade: "", uf: "", lojista: "" });
   const [respondendo, setRespondendo] = useState<{ id: string; texto: string } | null>(null);
   const [modo, setModo] = useState<"cliente" | "interno">("cliente");
+  // Pular pra mensagem citada (igual ao WhatsApp): refs por id + destaque temporário.
+  const msgRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [destacado, setDestacado] = useState<string | null>(null);
+  function irParaMsg(mid?: string | null) {
+    if (!mid) return;
+    const el = msgRefs.current[mid];
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setDestacado(mid);
+    setTimeout(() => setDestacado((d) => (d === mid ? null : d)), 1800);
+  }
   const fim = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const arqRef = useRef<HTMLInputElement>(null);
@@ -1860,7 +1871,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     setTexto(""); setRespondendo(null);
     const tmpId = "tmp-" + Date.now();
     const agora = new Date().toISOString().slice(0, 19).replace("T", " ");
-    setD((cur) => cur ? { ...cur, mensagens: [...cur.mensagens, { id: tmpId, direcao: "out", autor, tipo: "texto", texto: msg, responder_texto: respA?.texto || null, status: "sending", criado_em: agora }] } : cur);
+    setD((cur) => cur ? { ...cur, mensagens: [...cur.mensagens, { id: tmpId, direcao: "out", autor, tipo: "texto", texto: msg, responder_texto: respA?.texto || null, responder_id: respA?.id || null, status: "sending", criado_em: agora }] } : cur);
     setTimeout(() => fim.current?.scrollIntoView({ behavior: "smooth" }), 30);
     api.atendEnviar(id, { texto: msg, autor, responder_a: respA?.id })
       .then(() => { carregar(); onMudou(); })
@@ -1952,14 +1963,16 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 ? <div className="at-sys" key={m.id}>⚙️ {m.texto}</div>
                 : m.tipo === "nota"
                 ? <div className="at-nota" key={m.id}><span className="at-nota-hd">📝 {m.autor || "Equipe"} · nota interna (o cliente não vê)</span>{formatarMsg(m.texto)}<span className="at-tm">{hora(m.criado_em)}</span></div>
-                : <div key={m.id} className={"at-b " + (m.direcao === "in" ? "in" : "out")} style={{ position: "relative" }}>
+                : <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className={"at-b " + (m.direcao === "in" ? "in" : "out") + (destacado === m.id ? " at-destaque" : "")} style={{ position: "relative" }}>
                     {m.autor && m.direcao === "out" && (m.autor === "bot"
                       ? <div className="at-aut">🤖 Big (automático) · só você vê</div>
                       : <div className="at-aut" style={{ display: "flex", alignItems: "center", gap: 5 }}>
                           <span style={{ display: "inline-flex", width: 17, height: 17, borderRadius: "50%", background: corDoNome(m.autor), color: "#fff", fontSize: 8.5, fontWeight: 800, alignItems: "center", justifyContent: "center", flex: "0 0 auto" }}>{iniciais(m.autor)}</span>
                           {m.autor}
                         </div>)}
-                    {m.responder_texto && <div className="at-quote">↪ {m.responder_texto}</div>}
+                    {m.responder_texto && (m.responder_id
+                      ? <div className="at-quote at-quote-link" title="Ir para a mensagem" onClick={() => irParaMsg(m.responder_id)}>↪ {m.responder_texto}</div>
+                      : <div className="at-quote">↪ {m.responder_texto}</div>)}
                     {m.arquivo_url
                       ? <>
                           {/\.(jpg|jpeg|png|gif|webp)$/i.test(m.arquivo_url)
