@@ -301,6 +301,69 @@ loja.post("/rep-cadastrar-cliente", async (c) => {
   return c.json({ ok: true, cnpj: cnpjDig, msg: "Cliente cadastrado! Já pode montar o pedido.", clientes: await carteiraDoRep(c.env, rep.nome) });
 });
 
+// "Meus pedidos" do REPRESENTANTE: pedidos que ele montou (vendedor = nome do rep),
+// com status amigável do nosso fluxo (em espera / enviado / aprovado / no Syntech).
+loja.get("/rep-pedidos", async (c) => {
+  const repId = String(c.req.query("rep") || "").trim();
+  if (!repId) return c.json({ pedidos: [] });
+  const rep = await c.env.DB.prepare("SELECT nome FROM representantes WHERE id=? LIMIT 1").bind(repId).first<{ nome: string }>();
+  if (!rep) return c.json({ pedidos: [] });
+  const { results: peds } = await c.env.DB.prepare(
+    `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.valor_total, p.created_at,
+            COALESCE(p.erp_sync_status,'pendente') AS sync, COALESCE(p.erp_liberado,0) AS liberado,
+            COALESCE(p.loja_forma_desc,'') AS forma, p.erp_numero,
+            (SELECT COALESCE(SUM(qtd),0) FROM pedido_itens WHERE pedido_id=p.id) AS pecas
+       FROM pedidos p
+      WHERE p.canal='loja_b2b' AND TRIM(LOWER(COALESCE(p.vendedor,''))) = TRIM(LOWER(?))
+      ORDER BY p.created_at DESC LIMIT 100`
+  ).bind(rep.nome).all<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; valor_total: number | null; created_at: string | null; sync: string; liberado: number; forma: string; erp_numero: number | null; pecas: number }>();
+  const pedidos = (peds || []).map((p) => {
+    let status: string, label: string;
+    if (p.sync === "rascunho") { status = "espera"; label = "Em espera"; }
+    else if (p.sync === "enviado") { status = "syntech"; label = p.erp_numero ? ("No Syntech · nº " + p.erp_numero) : "No Syntech"; }
+    else if (p.sync === "erro") { status = "erro"; label = "Com erro — a Big resolve"; }
+    else if (Number(p.liberado) === 1) { status = "aprovado"; label = "Aprovado · indo pro Syntech"; }
+    else { status = "aguardando"; label = "Enviado · aguardando a Big"; }
+    return {
+      id: p.id, cliente: p.cliente_nome, cnpj: p.cliente_cnpj, data: p.created_at,
+      total: p.valor_total, pecas: Number(p.pecas) || 0, forma: p.forma,
+      status, label, editavel: p.sync === "rascunho",
+    };
+  });
+  return c.json({ pedidos });
+});
+
+// Ação do rep num pedido EM ESPERA (rascunho): enviar à Big ou excluir.
+loja.post("/rep-pedido-acao", async (c) => {
+  const b = await c.req.json().catch(() => ({})) as { rep?: string; pedido_id?: string; acao?: string; cod_prazo?: string; forma_desc?: string };
+  const repId = String(b.rep || "").trim(); const pid = String(b.pedido_id || "").trim(); const acao = String(b.acao || "").trim();
+  if (!repId || !pid) return c.json({ erro: "faltam_dados" }, 400);
+  const rep = await c.env.DB.prepare("SELECT nome FROM representantes WHERE id=? LIMIT 1").bind(repId).first<{ nome: string }>();
+  if (!rep) return c.json({ erro: "rep_invalido" }, 403);
+  const ped = await c.env.DB.prepare(
+    "SELECT id, COALESCE(erp_sync_status,'') AS sync, COALESCE(loja_cod_prazo,'') AS prazo FROM pedidos WHERE id=? AND canal='loja_b2b' AND TRIM(LOWER(COALESCE(vendedor,'')))=TRIM(LOWER(?)) LIMIT 1"
+  ).bind(pid, rep.nome).first<{ id: string; sync: string; prazo: string }>();
+  if (!ped) return c.json({ erro: "nao_encontrado", msg: "Pedido não encontrado." }, 404);
+  if (ped.sync !== "rascunho") return c.json({ erro: "nao_rascunho", msg: "Esse pedido já foi enviado." }, 409);
+  if (acao === "excluir") {
+    await c.env.DB.batch([
+      c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pid),
+      c.env.DB.prepare("DELETE FROM pedidos WHERE id=? AND canal='loja_b2b'").bind(pid),
+    ]);
+    return c.json({ ok: true, msg: "Pedido em espera excluído." });
+  }
+  if (acao === "enviar") {
+    const prazo = String(b.cod_prazo || "").trim() || ped.prazo;
+    if (!prazo) return c.json({ erro: "sem_forma", msg: "Escolha a forma de pagamento antes de enviar." }, 400);
+    const formaDesc = String(b.forma_desc || "").trim().slice(0, 120) || null;
+    await c.env.DB.prepare(
+      "UPDATE pedidos SET erp_sync_status='pendente', loja_fase='enviado', loja_cod_prazo=?, loja_forma_desc=COALESCE(?, loja_forma_desc) WHERE id=? AND canal='loja_b2b'"
+    ).bind(prazo, formaDesc, pid).run();
+    return c.json({ ok: true, msg: "Pedido enviado! Aguardando a Big Tricot aprovar." });
+  }
+  return c.json({ erro: "acao_invalida" }, 400);
+});
+
 // Consulta CNPJ na Receita (BrasilAPI) pra preencher o cadastro. ATENÇÃO: o e-mail pode
 // estar desatualizado — devolvemos, mas o rep confere/atualiza antes de salvar.
 loja.get("/consulta-cnpj", async (c) => {

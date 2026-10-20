@@ -91,6 +91,12 @@
   .rep-chip.ok{background:#dcfce7; color:#166534}
   .rep-chip.wait{background:#fef9c3; color:#854d0e}
   .rep-chip.block{background:#fee2e2; color:#991b1b}
+  .rep-chip.info{background:#dbeafe; color:#1e40af}
+  .rep-ped-acoes{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+  .rep-ped-acoes button{padding:9px 13px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; border:1.5px solid #d6cfc2; background:#fff; color:#5f584e}
+  .rep-ped-acoes button.prim{border:0; background:#2c3e50; color:#fff}
+  .rep-ped-acoes button.go{border:0; background:#1f7a4d; color:#fff}
+  .rep-ped-acoes button.del{border:0; background:#fff; color:#b91c1c; border:1.5px solid #f3c6c6}
   @media(max-width:560px){ .rep-grid{grid-template-columns:1fr} .rep-wrap{padding:16px} }
   /* Minha carteira em LISTA: busca + linhas (nome, cnpj/cidade, último pedido, status) */
   .rep-busca{display:flex; align-items:center; gap:9px; background:#fff; border:1px solid #DCE3EC; border-radius:12px; padding:0 14px; height:46px; max-width:520px; margin:4px 0 14px; box-shadow:0 1px 3px rgba(15,23,42,.05)}
@@ -391,6 +397,13 @@
           <span class="tl">Cliente novo</span><span class="tt">cadastrar agora</span>
         </button>
       </div>
+    </div>
+    <!-- Sub-tela: meus pedidos (do representante) -->
+    <div id="repPedidos" style="display:none">
+      <button class="rep-voltar" onclick="__repHome()">← Voltar</button>
+      <h2 class="rep-h2">Meus pedidos</h2>
+      <div class="rep-dica">Pedidos em espera e enviados. Toque num <b>em espera</b> pra gerar o PDF ou enviar à Big.</div>
+      <div id="repPedLista" class="rep-list"></div>
     </div>
     <!-- Sub-tela: cadastrar cliente novo (pelo rep) -->
     <div id="repNovoCli" style="display:none">
@@ -1229,6 +1242,9 @@
     if(!rep) return;
     REP=rep; REP_CLIENTES=clientes||[];
     try{ localStorage.setItem("bt_rep", JSON.stringify(rep)); }catch(e){}
+    // Portal do representante é separado do catálogo do cliente: fixa ?rep=1 na URL
+    // pra que recarregar continue na área do rep (e o /loja puro fique sendo do cliente).
+    try{ if(new URLSearchParams(location.search).get("rep")!=="1") history.replaceState(null,"",location.pathname+"?rep=1"); }catch(e){}
     document.getElementById("entrada").style.display="none";
     document.getElementById("repArea").style.display="block";
     document.body.style.overflow="";
@@ -1237,7 +1253,7 @@
     document.getElementById("repTileCount").textContent=REP_CLIENTES.length+" cliente"+(REP_CLIENTES.length===1?"":"s");
     __repHome();
   }
-  var REP_SUBS=["repHome","repCartView","repMontar","repNovoCli","repNovoOk"];
+  var REP_SUBS=["repHome","repCartView","repMontar","repNovoCli","repNovoOk","repPedidos"];
   function repMostrarSub(id){ REP_SUBS.forEach(function(s){ var e=document.getElementById(s); if(e) e.style.display=(s===id)?"block":"none"; }); try{ document.getElementById("repArea").scrollTop=0; }catch(e){} }
   window.__repHome=function(){ repMostrarSub("repHome"); };
   window.__repEscolher=function(){ __repSecao("carteira"); };
@@ -1246,7 +1262,8 @@
     if(sec==="montar"){ repMostrarSub("repMontar"); return; }
     if(sec==="novo"){ document.getElementById("rncMsg").textContent=""; repMostrarSub("repNovoCli"); return; }
     if(sec==="produtos"){ iniciarRepVerProdutos(); return; }
-    var nomes={pedidos:"Meus pedidos",avisos:"Avisos"};
+    if(sec==="pedidos"){ repMostrarSub("repPedidos"); carregarRepPedidos(); return; }
+    var nomes={avisos:"Avisos"};
     alert("“"+(nomes[sec]||sec)+"” está chegando! 🧶\nEstamos liberando a área do representante por etapas.");
   };
   function fmtDataCurta(s){
@@ -1286,6 +1303,63 @@
         '<div class="rr">'+chip+'<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div></button>';
     }).join("");
   }
+  // ---- Meus pedidos do representante (em espera + enviados) ----
+  function carregarRepPedidos(){
+    var box=document.getElementById("repPedLista");
+    box.innerHTML='<div class="rep-vazio">Carregando…</div>';
+    if(!REP_PRAZOS.length){ fetch("/api/loja/prazos").then(function(r){return r.json();}).then(function(j){ if(Array.isArray(j)) REP_PRAZOS=j; }).catch(function(){}); }
+    fetch("/api/loja/rep-pedidos?rep="+encodeURIComponent((REP&&REP.id)||""))
+      .then(function(r){ return r.json(); })
+      .then(function(j){ renderRepPedidos((j&&j.pedidos)||[]); })
+      .catch(function(){ box.innerHTML='<div class="rep-vazio">Não consegui carregar seus pedidos. Tente de novo.</div>'; });
+  }
+  function chipPed(st,label){
+    var cls = st==="espera"?"wait" : st==="aguardando"?"info" : (st==="aprovado"||st==="syntech")?"ok" : st==="erro"?"block":"info";
+    return '<span class="rep-chip '+cls+'">● '+esc(label)+'</span>';
+  }
+  function renderRepPedidos(lista){
+    var box=document.getElementById("repPedLista");
+    if(!lista.length){ box.innerHTML='<div class="rep-vazio">Você ainda não tem pedidos. Toque em <b>Novo pedido</b> pra começar.</div>'; return; }
+    box.innerHTML=lista.map(function(p){
+      var dt=fmtDataCurta(p.data);
+      var resumo=(p.pecas||0)+" peça"+((p.pecas===1)?"":"s")+" · "+brl(p.total||0)+(p.forma?(" · "+esc(p.forma)):"");
+      var acoes='<div class="rep-ped-acoes">'+
+        '<button class="prim" onclick="__repPedPdf(\''+esc(p.id)+'\')">📄 PDF</button>'+
+        (p.editavel?('<button class="go" onclick="__repPedEnviar(\''+esc(p.id)+'\',\''+(p.forma?"1":"")+'\')">✅ Enviar à Big</button>'+
+                     '<button class="del" onclick="__repPedExcluir(\''+esc(p.id)+'\')">Excluir</button>'):'')+
+        '</div>';
+      return '<div class="rep-row" style="flex-direction:column;align-items:stretch;cursor:default">'+
+        '<div style="display:flex;align-items:flex-start;gap:10px;width:100%">'+
+          '<div class="ri"><div class="nm">'+esc(p.cliente||"(cliente)")+'</div>'+
+          '<div class="sub">'+esc(resumo)+'</div>'+
+          (dt?('<div class="ped">'+esc(dt)+'</div>'):'')+'</div>'+
+          '<div class="rr">'+chipPed(p.status,p.label)+'</div>'+
+        '</div>'+acoes+'</div>';
+    }).join("");
+  }
+  window.__repPedPdf=function(id){ repCompartilharPdf(id); };
+  window.__repPedExcluir=function(id){
+    if(!confirm("Excluir este pedido em espera? Não dá pra desfazer.")) return;
+    fetch("/api/loja/rep-pedido-acao",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rep:(REP&&REP.id)||"",pedido_id:id,acao:"excluir"})})
+      .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ carregarRepPedidos(); } else { alert((j&&j.msg)||"Não consegui excluir."); } })
+      .catch(function(){ alert("Sem conexão. Tente de novo."); });
+  };
+  window.__repPedEnviar=function(id,temForma){
+    var cod_prazo="", forma_desc="";
+    if(!temForma){
+      if(!REP_PRAZOS.length){ alert("Carregando formas de pagamento… tente de novo em instantes."); return; }
+      var lista=REP_PRAZOS.map(function(p,i){ return (i+1)+") "+(p.descricao||p.codigo); }).join("\n");
+      var escolha=prompt("Escolha a forma de pagamento (digite o número):\n"+lista);
+      if(escolha===null) return;
+      var idx=parseInt(escolha,10)-1;
+      if(isNaN(idx)||idx<0||idx>=REP_PRAZOS.length){ alert("Opção inválida."); return; }
+      cod_prazo=REP_PRAZOS[idx].codigo; forma_desc=REP_PRAZOS[idx].descricao||REP_PRAZOS[idx].codigo;
+    }
+    if(!confirm("Enviar este pedido para a Big Tricot?\nDepois de enviado ele trava.")) return;
+    fetch("/api/loja/rep-pedido-acao",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rep:(REP&&REP.id)||"",pedido_id:id,acao:"enviar",cod_prazo:cod_prazo,forma_desc:forma_desc})})
+      .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ alert(j.msg||"Pedido enviado!"); carregarRepPedidos(); } else { alert((j&&j.msg)||"Não consegui enviar."); } })
+      .catch(function(){ alert("Sem conexão. Tente de novo."); });
+  };
   window.__repCliente=function(id){
     var cli=null; for(var i=0;i<REP_CLIENTES.length;i++){ if(String(REP_CLIENTES[i].id)===String(id)){ cli=REP_CLIENTES[i]; break; } }
     if(!cli) return;
@@ -1394,11 +1468,13 @@
       })
       .catch(function(){ btn.disabled=false; btn.textContent="Enviar cadastro"; msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; });
   }
-  function repSair(){ try{ localStorage.removeItem("bt_rep"); localStorage.removeItem("bt_cnpj"); }catch(e){} REP=null; REP_CLIENTE=null; document.getElementById("repArea").style.display="none"; mostrarEnt(); abrirEntrada(); }
+  function repSair(){ try{ localStorage.removeItem("bt_rep"); localStorage.removeItem("bt_cnpj"); }catch(e){} REP=null; REP_CLIENTE=null; try{ location.href=location.pathname; return; }catch(e){} document.getElementById("repArea").style.display="none"; mostrarEnt(); abrirEntrada(); }
   document.getElementById("repBtn").addEventListener("click",repEntrar);
   document.getElementById("repSenha").addEventListener("keydown",function(e){ if(e.key==="Enter") repEntrar(); });
-  document.getElementById("irRep").addEventListener("click",mostrarRepView);
-  document.getElementById("repVoltar").addEventListener("click",function(){ mostrarEnt(); });
+  // "Entrar como representante" leva pro PORTAL do rep (?rep=1), separado do catálogo do cliente.
+  document.getElementById("irRep").addEventListener("click",function(){ try{ location.href=location.pathname+"?rep=1"; }catch(e){ mostrarRepView(); } });
+  // "Voltar" na tela de login do rep volta pro catálogo do cliente (tira o ?rep=1).
+  document.getElementById("repVoltar").addEventListener("click",function(){ try{ if(new URLSearchParams(location.search).get("rep")==="1"){ location.href=location.pathname; return; } }catch(e){} mostrarEnt(); });
   document.getElementById("repSair").addEventListener("click",repSair);
   document.getElementById("rnBtn").addEventListener("click",repEnviarNovoCli);
   document.getElementById("rnReceita").addEventListener("click",repPuxarReceita);
@@ -1465,15 +1541,22 @@
         .catch(function(){ mostrarEnt(); abrirEntrada(); });
       return;
     }
-    // 0b) Representante já logado neste tablet: recarrega a carteira.
-    var rep=repSalvo();
-    if(rep && rep.id){
-      fetch("/api/loja/rep-carteira?rep="+encodeURIComponent(rep.id))
-        .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
-        .then(function(res){ if(res.ok && res.j.ok){ aplicarRep(res.j.rep, res.j.clientes); } else { try{ localStorage.removeItem("bt_rep"); }catch(e){} abrirEntrada(); } })
-        .catch(function(){ aplicarRep(rep, []); });
+    // 0b) PORTAL DO REPRESENTANTE (?rep=1): área do rep é SEPARADA do catálogo do cliente.
+    //     Só abre a área do rep aqui; no /loja puro nunca cai na tela do representante.
+    var ehPortalRep = qs && qs.get("rep")==="1";
+    if(ehPortalRep){
+      var rep=repSalvo();
+      if(rep && rep.id){
+        fetch("/api/loja/rep-carteira?rep="+encodeURIComponent(rep.id))
+          .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+          .then(function(res){ if(res.ok && res.j.ok){ aplicarRep(res.j.rep, res.j.clientes); } else { try{ localStorage.removeItem("bt_rep"); }catch(e){} mostrarRepView(); } })
+          .catch(function(){ aplicarRep(rep, []); });
+      } else {
+        mostrarRepView();  // portal do rep sem login → tela de login do representante
+      }
       return;
     }
+    // ---- daqui pra baixo é o CATÁLOGO DO CLIENTE (nunca abre a área do representante) ----
     var c=cliSalvo(); if(c && c.regiao){ regiao=(c.regiao==="norte")?"norte":"sul"; LIBERADO=!!c.liberado; mostrarSaudacao(c.nome); atualizarAvisoLib(); }
     // 1) Link de acesso enviado pelo gestor: o cliente cria a senha dele.
     var tok=""; try{ tok=qs?(qs.get("acesso")||""):""; }catch(e){}
