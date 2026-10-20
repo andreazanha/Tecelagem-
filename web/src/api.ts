@@ -1848,6 +1848,7 @@ export interface Representante {
   instagram?: string | null;
   cidades?: string | null;
   comissao?: number | null;
+  carteira?: number; // nº de clientes na carteira (clientes.representante = nome)
 }
 export interface VendaRep {
   vendedor: string;

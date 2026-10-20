@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { api, type Representante, type ComercialVendas, type ComercialDetalhe } from "../api";
+import { api, type Representante, type ComercialVendas, type ComercialDetalhe, type VendaRep } from "../api";
 import { getUser, pode } from "../auth";
 
-type Aba = "dashboard" | "representantes";
+type Aba = "visao" | "representantes" | "vendas" | "relatorios" | "automacoes";
 
 const brl = (n: number) =>
   "R$ " + (Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -12,6 +12,7 @@ const dataBr = (s?: string | null) => {
   const d = s.slice(0, 10).split("-");
   return d.length === 3 ? `${d[2]}/${d[1]}/${d[0]}` : s;
 };
+const norm = (s?: string | null) => String(s ?? "").trim().toLowerCase();
 
 // Primeiro e último dia do mês corrente (YYYY-MM-DD) — período padrão do dashboard.
 function mesCorrente(): { de: string; ate: string } {
@@ -25,47 +26,67 @@ function mesCorrente(): { de: string; ate: string } {
   return { de: primeiro, ate };
 }
 
+// Ícones Lucide (inline) — leves e padronizados.
+function Ic({ d, size = 16 }: { d: string; size?: number }) {
+  return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flex: "0 0 auto" }}><path d={d} /></svg>;
+}
+const ICON = {
+  visao: "M3 3v18h18M7 14l3-3 3 3 5-6",
+  reps: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0 0zM22 21v-2a4 4 0 0 0-3-3.87",
+  vendas: "M3 3v18h18M19 9l-5 5-4-4-4 4",
+  relat: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8",
+  auto: "M13 2 3 14h9l-1 8 10-12h-9z",
+  busca: "M11 11m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M21 21l-4.3-4.3",
+  mais: "M12 5v14M5 12h14",
+};
+
 export function Comercial() {
-  // Só mostra as abas que o usuário tem permissão (Dashboard = vendas-dashboard,
-  // Representantes = representantes). Admin vê as duas.
   const u = getUser();
-  const abas: { id: Aba; label: string }[] = [
-    ...(pode(u, "vendas-dashboard") ? [{ id: "dashboard" as Aba, label: "📊 Dashboard" }] : []),
-    ...(pode(u, "representantes") ? [{ id: "representantes" as Aba, label: "🧑‍💼 Representantes" }] : []),
+  const verDash = pode(u, "vendas-dashboard");
+  const verReps = pode(u, "representantes");
+  const abas: { id: Aba; label: string; icon: keyof typeof ICON; ok: boolean }[] = [
+    { id: "visao", label: "Visão geral", icon: "visao", ok: verDash },
+    { id: "representantes", label: "Representantes", icon: "reps", ok: verReps },
+    { id: "vendas", label: "Vendas", icon: "vendas", ok: verDash },
+    { id: "relatorios", label: "Relatórios", icon: "relat", ok: verReps },
+    { id: "automacoes", label: "Automações", icon: "auto", ok: verReps },
   ];
+  const disp = abas.filter((a) => a.ok);
   const abaInicial = (): Aba => {
     const salva = localStorage.getItem("comercial-aba") as Aba | null;
-    if (salva && abas.some((a) => a.id === salva)) return salva;
-    return abas[0]?.id ?? "dashboard";
+    if (salva && disp.some((a) => a.id === salva)) return salva;
+    return disp[0]?.id ?? "visao";
   };
   const [aba, setAba] = useState<Aba>(abaInicial);
-  function mudar(a: Aba) {
-    setAba(a);
-    localStorage.setItem("comercial-aba", a);
-  }
+  function mudar(a: Aba) { setAba(a); localStorage.setItem("comercial-aba", a); }
+
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Comercial</h1>
-          <div className="breadcrumb">Representantes › {abas.find((a) => a.id === aba)?.label.replace(/^\S+\s/, "")}</div>
-        </div>
-        <div className="segmented">
-          {abas.map((a) => (
-            <button key={a.id} type="button" className={"seg" + (aba === a.id ? " seg-on" : "")} onClick={() => mudar(a.id)}>
-              {a.label}
-            </button>
-          ))}
+          <div className="breadcrumb">Central de representantes › {disp.find((a) => a.id === aba)?.label}</div>
         </div>
       </div>
 
-      {aba === "dashboard" && <AbaDashboard />}
+      <div className="com-tabs">
+        {disp.map((a) => (
+          <button key={a.id} type="button" className={"com-tab" + (aba === a.id ? " on" : "")} onClick={() => mudar(a.id)}>
+            <Ic d={ICON[a.icon]} /> <span>{a.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {aba === "visao" && <AbaDashboard />}
       {aba === "representantes" && <AbaRepresentantes />}
+      {aba === "vendas" && <AbaVendas />}
+      {aba === "relatorios" && <AbaRelatorios />}
+      {aba === "automacoes" && <AbaAutomacoes />}
     </>
   );
 }
 
-// ── Dashboard de vendas por representante ────────────────────────────────────
+// ── VISÃO GERAL — dashboard de vendas por representante (ranking + drill-down) ────
 function AbaDashboard() {
   const inicial = useMemo(mesCorrente, []);
   const [de, setDe] = useState(inicial.de);
@@ -75,339 +96,317 @@ function AbaDashboard() {
   const [erro, setErro] = useState("");
 
   function carregar() {
-    setCarregando(true);
-    setErro("");
-    api
-      .vendasComercial({ de, ate })
-      .then(setDados)
-      .catch((e) => setErro((e as Error).message))
-      .finally(() => setCarregando(false));
+    setCarregando(true); setErro("");
+    api.vendasComercial({ de, ate }).then(setDados).catch((e) => setErro((e as Error).message)).finally(() => setCarregando(false));
   }
-  useEffect(() => {
-    carregar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { carregar(); /* eslint-disable-next-line */ }, []);
 
   const lista = dados?.lista || [];
   const totais = dados?.totais || { pedidos: 0, pecas: 0, valor: 0 };
   const maxValor = lista.reduce((m, g) => Math.max(m, g.valor), 0) || 1;
+  const semRep = lista.filter((g) => !g.vendedor || norm(g.vendedor) === "sem vendedor" || norm(g.vendedor) === "").reduce((s, g) => s + g.valor, 0);
 
-  // Drill-down: pedidos do representante clicado (cliente, data, qtd, valor, novo).
   const [aberto, setAberto] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<ComercialDetalhe | null>(null);
   const [carrDet, setCarrDet] = useState(false);
   function abrirDetalhe(vendedor: string) {
-    if (aberto === vendedor) {
-      setAberto(null);
-      setDetalhe(null);
-      return;
-    }
-    setAberto(vendedor);
-    setDetalhe(null);
-    setCarrDet(true);
-    api
-      .vendasDetalhe(vendedor, { de, ate })
-      .then(setDetalhe)
-      .catch((e) => setErro((e as Error).message))
-      .finally(() => setCarrDet(false));
+    if (aberto === vendedor) { setAberto(null); setDetalhe(null); return; }
+    setAberto(vendedor); setDetalhe(null); setCarrDet(true);
+    api.vendasDetalhe(vendedor, { de, ate }).then(setDetalhe).catch((e) => setErro((e as Error).message)).finally(() => setCarrDet(false));
   }
 
   return (
-    <div className="card">
-      <div className="filtros" style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 16 }}>
-        <label className="campo">
-          <span>De</span>
-          <input type="date" value={de} onChange={(e) => setDe(e.target.value)} />
-        </label>
-        <label className="campo">
-          <span>Até</span>
-          <input type="date" value={ate} onChange={(e) => setAte(e.target.value)} />
-        </label>
-        <button className="btn btn-primary" onClick={carregar} disabled={carregando}>
-          {carregando ? "Carregando…" : "Aplicar"}
-        </button>
+    <div className="com-card">
+      <div className="com-filtros">
+        <label className="campo"><span>De</span><input type="date" value={de} onChange={(e) => setDe(e.target.value)} /></label>
+        <label className="campo"><span>Até</span><input type="date" value={ate} onChange={(e) => setAte(e.target.value)} /></label>
+        <button className="btn btn-primary" onClick={carregar} disabled={carregando}>{carregando ? "Carregando…" : "Aplicar"}</button>
       </div>
 
       {erro && <div className="aviso-erro">{erro}</div>}
 
-      <div className="cards-resumo" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 20 }}>
-        <div className="kpi">
-          <div className="kpi-lbl">Faturamento</div>
-          <div className="kpi-val">{brl(totais.valor)}</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-lbl">Peças</div>
-          <div className="kpi-val">{nInt(totais.pecas)}</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-lbl">Pedidos</div>
-          <div className="kpi-val">{nInt(totais.pedidos)}</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-lbl">Representantes</div>
-          <div className="kpi-val">{nInt(lista.length)}</div>
-        </div>
+      <div className="com-kpis">
+        <div className="com-kpi"><div className="k-lbl">Faturamento no mês</div><div className="k-val">{brl(totais.valor)}</div></div>
+        <div className="com-kpi"><div className="k-lbl">Pedidos</div><div className="k-val">{nInt(totais.pedidos)}</div></div>
+        <div className="com-kpi"><div className="k-lbl">Representantes com venda</div><div className="k-val">{nInt(lista.length)}</div></div>
+        <div className="com-kpi"><div className="k-lbl">Vendas sem representante</div><div className="k-val" style={{ color: semRep > 0 ? "#b45309" : undefined }}>{brl(semRep)}</div></div>
       </div>
 
-      {lista.length === 0 ? (
-        <p className="muted">Nenhuma venda no período.</p>
-      ) : (
+      {lista.length === 0 ? <p className="muted" style={{ padding: "8px 2px" }}>Nenhuma venda no período.</p> : (
         <table className="table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Representante</th>
-              <th style={{ textAlign: "right" }}>Pedidos</th>
-              <th style={{ textAlign: "right" }}>Peças</th>
-              <th style={{ textAlign: "right" }}>Faturamento</th>
-              <th style={{ width: "22%" }}>Participação</th>
-            </tr>
-          </thead>
+          <thead><tr>
+            <th>#</th><th>Representante</th>
+            <th style={{ textAlign: "right" }}>Pedidos</th><th style={{ textAlign: "right" }}>Peças</th>
+            <th style={{ textAlign: "right" }}>Faturamento</th><th style={{ width: "24%" }}>Participação</th>
+          </tr></thead>
           <tbody>
             {lista.map((g, i) => (
               <Fragment key={g.vendedor}>
                 <tr style={{ cursor: "pointer" }} onClick={() => abrirDetalhe(g.vendedor)} title="Ver os pedidos deste representante">
                   <td>{i + 1}º</td>
-                  <td><span style={{ display: "inline-block", width: 14 }}>{aberto === g.vendedor ? "▾" : "▸"}</span> <strong>{g.vendedor}</strong></td>
+                  <td><span style={{ display: "inline-block", width: 14 }}>{aberto === g.vendedor ? "▾" : "▸"}</span> <strong>{g.vendedor || "— sem representante —"}</strong></td>
                   <td style={{ textAlign: "right" }}>{nInt(g.pedidos)}</td>
                   <td style={{ textAlign: "right" }}>{nInt(g.pecas)}</td>
                   <td style={{ textAlign: "right" }}>{brl(g.valor)}</td>
                   <td>
-                    <div style={{ background: "var(--barra-bg, #eee)", borderRadius: 6, overflow: "hidden", height: 14 }}>
-                      <div style={{ width: `${Math.round((g.valor / maxValor) * 100)}%`, height: "100%", background: "var(--acento, #7a5230)" }} />
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ flex: 1, background: "var(--bg-soft,#eef0f3)", borderRadius: 6, overflow: "hidden", height: 12 }}>
+                        <div style={{ width: `${Math.round((g.valor / maxValor) * 100)}%`, height: "100%", background: "#2563eb" }} />
+                      </div>
+                      <span className="muted" style={{ fontSize: 11.5, minWidth: 34, textAlign: "right" }}>{Math.round((g.valor / (totais.valor || 1)) * 100)}%</span>
                     </div>
                   </td>
                 </tr>
-                {aberto === g.vendedor && (
-                  <tr>
-                    <td colSpan={6} style={{ background: "var(--painel-bg, #fafafa)", padding: 0 }}>
-                      <DetalheRep detalhe={detalhe} carregando={carrDet} />
-                    </td>
-                  </tr>
-                )}
+                {aberto === g.vendedor && <tr><td colSpan={6} style={{ background: "var(--bg-soft,#fafafa)", padding: 0 }}><DetalheRep detalhe={detalhe} carregando={carrDet} /></td></tr>}
               </Fragment>
             ))}
           </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={2}><strong>Total</strong></td>
-              <td style={{ textAlign: "right" }}><strong>{nInt(totais.pedidos)}</strong></td>
-              <td style={{ textAlign: "right" }}><strong>{nInt(totais.pecas)}</strong></td>
-              <td style={{ textAlign: "right" }}><strong>{brl(totais.valor)}</strong></td>
-              <td></td>
-            </tr>
-          </tfoot>
+          <tfoot><tr>
+            <td colSpan={2}><strong>Total</strong></td>
+            <td style={{ textAlign: "right" }}><strong>{nInt(totais.pedidos)}</strong></td>
+            <td style={{ textAlign: "right" }}><strong>{nInt(totais.pecas)}</strong></td>
+            <td style={{ textAlign: "right" }}><strong>{brl(totais.valor)}</strong></td><td></td>
+          </tr></tfoot>
         </table>
       )}
     </div>
   );
 }
 
-// Detalhe (drill-down) dos pedidos de um representante.
 function DetalheRep({ detalhe, carregando }: { detalhe: ComercialDetalhe | null; carregando: boolean }) {
   if (carregando) return <div style={{ padding: 16 }} className="muted">Carregando pedidos…</div>;
   if (!detalhe || detalhe.pedidos.length === 0) return <div style={{ padding: 16 }} className="muted">Sem pedidos no período.</div>;
   return (
     <div style={{ padding: 12 }}>
       <table className="table" style={{ margin: 0 }}>
-        <thead>
-          <tr>
-            <th>Pedido</th>
-            <th>Cliente</th>
-            <th>Data</th>
-            <th style={{ textAlign: "right" }}>Qtd</th>
-            <th style={{ textAlign: "right" }}>Valor</th>
-            <th style={{ textAlign: "center" }}>Cliente</th>
-          </tr>
-        </thead>
+        <thead><tr>
+          <th>Pedido</th><th>Cliente</th><th>Data</th>
+          <th style={{ textAlign: "right" }}>Qtd</th><th style={{ textAlign: "right" }}>Valor</th><th style={{ textAlign: "center" }}>Cliente</th>
+        </tr></thead>
         <tbody>
           {detalhe.pedidos.map((p) => (
             <tr key={p.id}>
-              <td>{p.numero || "—"}</td>
-              <td>{p.cliente}</td>
-              <td>{dataBr(p.data)}</td>
-              <td style={{ textAlign: "right" }}>{nInt(p.pecas)}</td>
-              <td style={{ textAlign: "right" }}>{brl(p.valor)}</td>
-              <td style={{ textAlign: "center" }}>
-                {p.clienteNovo ? (
-                  <span className="tag" style={{ background: "#1f9d55", color: "#fff", padding: "2px 8px", borderRadius: 10, fontSize: 12 }}>NOVO</span>
-                ) : (
-                  <span className="muted" style={{ fontSize: 12 }}>recorrente</span>
-                )}
-              </td>
+              <td>{p.numero || "—"}</td><td>{p.cliente}</td><td>{dataBr(p.data)}</td>
+              <td style={{ textAlign: "right" }}>{nInt(p.pecas)}</td><td style={{ textAlign: "right" }}>{brl(p.valor)}</td>
+              <td style={{ textAlign: "center" }}>{p.clienteNovo
+                ? <span style={{ background: "#1f9d55", color: "#fff", padding: "2px 8px", borderRadius: 10, fontSize: 12 }}>NOVO</span>
+                : <span className="muted" style={{ fontSize: 12 }}>recorrente</span>}</td>
             </tr>
           ))}
         </tbody>
-        <tfoot>
-          <tr>
-            <td colSpan={3}><strong>{detalhe.totais.novos} cliente(s) novo(s)</strong></td>
-            <td style={{ textAlign: "right" }}><strong>{nInt(detalhe.totais.pecas)}</strong></td>
-            <td style={{ textAlign: "right" }}><strong>{brl(detalhe.totais.valor)}</strong></td>
-            <td></td>
-          </tr>
-        </tfoot>
+        <tfoot><tr>
+          <td colSpan={3}><strong>{detalhe.totais.novos} cliente(s) novo(s)</strong></td>
+          <td style={{ textAlign: "right" }}><strong>{nInt(detalhe.totais.pecas)}</strong></td>
+          <td style={{ textAlign: "right" }}><strong>{brl(detalhe.totais.valor)}</strong></td><td></td>
+        </tr></tfoot>
       </table>
     </div>
   );
 }
 
-// ── Cadastro de representantes ───────────────────────────────────────────────
+// ── REPRESENTANTES — listagem profissional + cadastro ────────────────────────────
 const VAZIO: Partial<Representante> = { nome: "", whatsapp: "", email: "", observacao: "", ufs: "", cidades: "", comissao: null, instagram: "", ativo: 1 };
 
 function AbaRepresentantes() {
   const [lista, setLista] = useState<Representante[]>([]);
+  const [vendasMes, setVendasMes] = useState<Record<string, VendaRep>>({});
   const [carregando, setCarregando] = useState(true);
   const [edit, setEdit] = useState<Partial<Representante> | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  const [busca, setBusca] = useState("");
+  const [fUf, setFUf] = useState("");
+  const [fSit, setFSit] = useState<"todos" | "ativo" | "inativo">("ativo");
+  const [ordem, setOrdem] = useState<"nome" | "faturamento">("nome");
+  const [verId, setVerId] = useState<string | null>(null);
 
   function carregar() {
     setCarregando(true);
-    api
-      .listarRepresentantes()
-      .then(setLista)
-      .catch((e) => setErro((e as Error).message))
-      .finally(() => setCarregando(false));
+    api.listarRepresentantes().then(setLista).catch((e) => setErro((e as Error).message)).finally(() => setCarregando(false));
+    const m = mesCorrente();
+    api.vendasComercial({ de: m.de, ate: m.ate }).then((d) => {
+      const map: Record<string, VendaRep> = {};
+      (d.lista || []).forEach((v) => { map[norm(v.vendedor)] = v; });
+      setVendasMes(map);
+    }).catch(() => {});
   }
   useEffect(carregar, []);
 
   async function salvar() {
-    if (!edit?.nome?.trim()) {
-      setErro("Informe o nome do representante.");
-      return;
-    }
-    setSalvando(true);
-    setErro("");
-    try {
-      await api.salvarRepresentante(edit);
-      setEdit(null);
-      carregar();
-    } catch (e) {
-      setErro((e as Error).message);
-    } finally {
-      setSalvando(false);
-    }
+    if (!edit?.nome?.trim()) { setErro("Informe o nome do representante."); return; }
+    setSalvando(true); setErro("");
+    try { await api.salvarRepresentante(edit); setEdit(null); carregar(); }
+    catch (e) { setErro((e as Error).message); } finally { setSalvando(false); }
   }
-  async function alternarAtivo(r: Representante) {
-    await api.ativarRepresentante(r.id, !(r.ativo ?? 1));
-    carregar();
-  }
+  async function alternarAtivo(r: Representante) { await api.ativarRepresentante(r.id, !(r.ativo ?? 1)); carregar(); }
   async function excluir(r: Representante) {
     if (!confirm(`Excluir o representante "${r.nome}"? As vendas dele continuam no histórico.`)) return;
-    await api.excluirRepresentante(r.id);
-    carregar();
+    await api.excluirRepresentante(r.id); carregar();
   }
+
+  // UFs disponíveis pro filtro.
+  const ufsDisp = useMemo(() => {
+    const s = new Set<string>();
+    lista.forEach((r) => (r.ufs || "").split(/[,;\s]+/).forEach((u) => { const x = u.trim().toUpperCase(); if (/^[A-Z]{2}$/.test(x)) s.add(x); }));
+    return [...s].sort();
+  }, [lista]);
+
+  const fatDe = (r: Representante) => vendasMes[norm(r.nome)]?.valor || 0;
+  const filtrada = useMemo(() => {
+    const t = busca.trim().toLowerCase();
+    return lista
+      .filter((r) => fSit === "todos" || (fSit === "ativo" ? (r.ativo ?? 1) : !(r.ativo ?? 1)))
+      .filter((r) => !fUf || (r.ufs || "").toUpperCase().split(/[,;\s]+/).includes(fUf))
+      .filter((r) => !t || [r.nome, r.whatsapp, r.email, r.cidades, r.ufs].some((x) => String(x ?? "").toLowerCase().includes(t)))
+      .sort((a, b) => ordem === "faturamento" ? fatDe(b) - fatDe(a) : String(a.nome).localeCompare(String(b.nome)));
+    // eslint-disable-next-line
+  }, [lista, busca, fUf, fSit, ordem, vendasMes]);
+
+  const totFat = filtrada.reduce((s, r) => s + fatDe(r), 0);
 
   return (
     <>
-    <RelatorioSemanalCard />
-    <div className="card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <p className="muted" style={{ margin: 0 }}>
-          Cadastro dos representantes/vendedores. As vendas são atribuídas pelo nome que vem no pedido.
-        </p>
-        <button className="btn btn-primary" onClick={() => setEdit({ ...VAZIO })}>+ Novo representante</button>
+      <div className="com-card">
+        <div className="com-head">
+          <div className="com-filtros" style={{ margin: 0 }}>
+            <div className="com-busca"><Ic d={ICON.busca} /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por nome, cidade, WhatsApp…" /></div>
+            <select className="com-sel" value={fUf} onChange={(e) => setFUf(e.target.value)}><option value="">Todos os estados</option>{ufsDisp.map((u) => <option key={u} value={u}>{u}</option>)}</select>
+            <select className="com-sel" value={fSit} onChange={(e) => setFSit(e.target.value as "todos" | "ativo" | "inativo")}><option value="ativo">Ativos</option><option value="inativo">Inativos</option><option value="todos">Todos</option></select>
+            <select className="com-sel" value={ordem} onChange={(e) => setOrdem(e.target.value as "nome" | "faturamento")}><option value="nome">Ordenar: Nome</option><option value="faturamento">Ordenar: Faturamento</option></select>
+          </div>
+          <button className="btn btn-primary" onClick={() => setEdit({ ...VAZIO })}><Ic d={ICON.mais} size={15} /> Novo representante</button>
+        </div>
+
+        {erro && <div className="aviso-erro">{erro}</div>}
+
+        {carregando ? <p className="muted">Carregando…</p> : filtrada.length === 0 ? <p className="muted" style={{ padding: "8px 2px" }}>Nenhum representante encontrado.</p> : (
+          <table className="table com-tbl">
+            <thead><tr>
+              <th>Representante</th><th>Estados</th>
+              <th style={{ textAlign: "right" }}>Carteira</th><th style={{ textAlign: "right" }}>Comissão</th>
+              <th>WhatsApp</th><th style={{ textAlign: "right" }}>Faturamento/mês</th>
+              <th style={{ textAlign: "center" }}>Situação</th><th style={{ textAlign: "right" }}>Ações</th>
+            </tr></thead>
+            <tbody>
+              {filtrada.map((r) => {
+                const aberto = verId === r.id;
+                return (
+                  <Fragment key={r.id}>
+                    <tr style={{ opacity: (r.ativo ?? 1) ? 1 : 0.55 }}>
+                      <td><button className="com-link" onClick={() => setVerId(aberto ? null : r.id)} title="Ver cadastro completo"><span style={{ width: 12, display: "inline-block" }}>{aberto ? "▾" : "▸"}</span> <strong>{r.nome}</strong></button></td>
+                      <td>{(r.ufs || "").split(/[,;\s]+/).filter(Boolean).slice(0, 4).map((u) => <span key={u} className="com-chip">{u}</span>) || "—"}{!r.ufs && <span className="muted">—</span>}</td>
+                      <td style={{ textAlign: "right" }}>{nInt(r.carteira || 0)}</td>
+                      <td style={{ textAlign: "right" }}>{r.comissao != null ? `${r.comissao}%` : "—"}</td>
+                      <td>{r.whatsapp || <span className="muted">—</span>}</td>
+                      <td style={{ textAlign: "right", fontWeight: 600 }}>{brl(fatDe(r))}</td>
+                      <td style={{ textAlign: "center" }}><span className={"com-badge " + ((r.ativo ?? 1) ? "ok" : "off")}>{(r.ativo ?? 1) ? "Ativo" : "Inativo"}</span></td>
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                        <button className="btn btn-soft" onClick={() => setEdit(r)}>Editar</button>{" "}
+                        <button className="btn btn-soft" onClick={() => alternarAtivo(r)}>{(r.ativo ?? 1) ? "Desativar" : "Ativar"}</button>{" "}
+                        <button className="btn btn-soft" onClick={() => excluir(r)}>Excluir</button>
+                      </td>
+                    </tr>
+                    {aberto && (
+                      <tr><td colSpan={8} style={{ background: "var(--bg-soft,#fafafa)" }}>
+                        <div className="com-detalhe">
+                          <div><b>E-mail:</b> {r.email || "—"}</div>
+                          <div><b>Instagram:</b> {r.instagram || "—"}</div>
+                          <div style={{ gridColumn: "1 / -1" }}><b>Cidades atendidas:</b> {r.cidades || "— (atende o estado inteiro)"}</div>
+                          {r.observacao && <div style={{ gridColumn: "1 / -1" }}><b>Observação:</b> {r.observacao}</div>}
+                          <div style={{ gridColumn: "1 / -1", marginTop: 6 }}><button className="btn btn-primary" onClick={() => setEdit(r)}>Abrir cadastro completo</button></div>
+                        </div>
+                      </td></tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+            <tfoot><tr>
+              <td colSpan={5}><strong>{filtrada.length} representante(s)</strong></td>
+              <td style={{ textAlign: "right" }}><strong>{brl(totFat)}</strong></td><td colSpan={2}></td>
+            </tr></tfoot>
+          </table>
+        )}
       </div>
 
-      {erro && <div className="aviso-erro">{erro}</div>}
-
-      {carregando ? (
-        <p className="muted">Carregando…</p>
-      ) : lista.length === 0 ? (
-        <p className="muted">Nenhum representante cadastrado.</p>
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Nome</th>
-              <th>WhatsApp</th>
-              <th>E-mail</th>
-              <th>Situação</th>
-              <th style={{ textAlign: "right" }}>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lista.map((r) => (
-              <tr key={r.id} style={{ opacity: r.ativo ?? 1 ? 1 : 0.5 }}>
-                <td><strong>{r.nome}</strong>
-                  {r.ufs ? <div style={{ fontSize: 11, color: "#4338ca" }}>🗺️ {r.ufs}</div> : null}
-                  {r.cidades ? <div className="muted" style={{ fontSize: 11 }}>📍 {r.cidades}</div> : null}
-                  {r.comissao != null ? <div style={{ fontSize: 11, color: "#047857" }}>💰 {r.comissao}% comissão</div> : null}
-                  {r.observacao ? <div className="muted" style={{ fontSize: 12 }}>{r.observacao}</div> : null}</td>
-                <td>{r.whatsapp || "—"}</td>
-                <td>{r.email || "—"}</td>
-                <td>{r.ativo ?? 1 ? "Ativo" : "Inativo"}</td>
-                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                  <button className="btn btn-soft" onClick={() => setEdit(r)}>Editar</button>{" "}
-                  <button className="btn btn-soft" onClick={() => alternarAtivo(r)}>{r.ativo ?? 1 ? "Desativar" : "Ativar"}</button>{" "}
-                  <button className="btn btn-soft" onClick={() => excluir(r)}>Excluir</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {edit && (
-        <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-hd">
-              <h3>{edit.id ? "Editar representante" : "Novo representante"}</h3>
-              <button className="modal-x" onClick={() => setEdit(null)}>×</button>
-            </div>
-            <div style={{ display: "grid", gap: 12, padding: 4 }}>
-              <label className="campo">
-                <span>Nome *</span>
-                <input value={edit.nome || ""} onChange={(e) => setEdit({ ...edit, nome: e.target.value })} autoFocus />
-              </label>
-              <label className="campo">
-                <span>WhatsApp</span>
-                <input value={edit.whatsapp || ""} onChange={(e) => setEdit({ ...edit, whatsapp: e.target.value })} placeholder="(00) 00000-0000" />
-              </label>
-              <label className="campo">
-                <span>E-mail</span>
-                <input value={edit.email || ""} onChange={(e) => setEdit({ ...edit, email: e.target.value })} />
-              </label>
-              <label className="campo">
-                <span>Instagram</span>
-                <input value={edit.instagram || ""} onChange={(e) => setEdit({ ...edit, instagram: e.target.value })} placeholder="@perfil ou link" />
-              </label>
-              <label className="campo">
-                <span>Estados que atende (carteira)</span>
-                <input value={edit.ufs || ""} onChange={(e) => setEdit({ ...edit, ufs: e.target.value })} placeholder="ex.: MG, SP, GO" />
-                <small className="muted" style={{ fontSize: 11 }}>Usado pra rotear o cliente da região pro representante certo.</small>
-              </label>
-              <label className="campo">
-                <span>Cidades que atende</span>
-                <input value={edit.cidades || ""} onChange={(e) => setEdit({ ...edit, cidades: e.target.value })} placeholder="ex.: Belo Horizonte, Contagem, Uberlândia" />
-                <small className="muted" style={{ fontSize: 11 }}>Separe por vírgula. Deixe em branco se atende o estado inteiro.</small>
-              </label>
-              <label className="campo">
-                <span>Comissão (%)</span>
-                <input type="number" step="0.1" min="0" value={edit.comissao ?? ""} onChange={(e) => setEdit({ ...edit, comissao: e.target.value === "" ? null : Number(e.target.value) })} placeholder="ex.: 5" />
-              </label>
-              <label className="campo">
-                <span>Observação</span>
-                <textarea value={edit.observacao || ""} onChange={(e) => setEdit({ ...edit, observacao: e.target.value })} rows={2} />
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input type="checkbox" checked={!!(edit.ativo ?? 1)} onChange={(e) => setEdit({ ...edit, ativo: e.target.checked ? 1 : 0 })} />
-                <span>Ativo</span>
-              </label>
-            </div>
-            <div className="modal-ft" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-              <button className="btn btn-soft" onClick={() => setEdit(null)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      {edit && <ModalRep edit={edit} setEdit={setEdit} salvar={salvar} salvando={salvando} />}
     </>
   );
 }
 
-// Configuração do relatório de vendas semanal no WhatsApp (liga/desliga + nº do gestor + teste).
+function ModalRep({ edit, setEdit, salvar, salvando }: { edit: Partial<Representante>; setEdit: (r: Partial<Representante> | null) => void; salvar: () => void; salvando: boolean }) {
+  const set = (p: Partial<Representante>) => setEdit({ ...edit, ...p });
+  return (
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+        <div className="modal-hd"><h3>{edit.id ? "Cadastro do representante" : "Novo representante"}</h3><button className="modal-x" onClick={() => setEdit(null)}>×</button></div>
+        <div style={{ display: "grid", gap: 14, padding: 4 }}>
+          <div className="com-sec">Dados principais</div>
+          <label className="campo"><span>Nome *</span><input value={edit.nome || ""} onChange={(e) => set({ nome: e.target.value })} autoFocus /></label>
+          <div className="com-grid2">
+            <label className="campo"><span>WhatsApp (p/ relatórios)</span><input value={edit.whatsapp || ""} onChange={(e) => set({ whatsapp: e.target.value })} placeholder="(00) 00000-0000" /></label>
+            <label className="campo"><span>E-mail</span><input value={edit.email || ""} onChange={(e) => set({ email: e.target.value })} /></label>
+          </div>
+          <label className="campo"><span>Instagram</span><input value={edit.instagram || ""} onChange={(e) => set({ instagram: e.target.value })} placeholder="@perfil ou link" /></label>
+
+          <div className="com-sec">Área de atuação</div>
+          <label className="campo"><span>Estados que atende (carteira)</span><input value={edit.ufs || ""} onChange={(e) => set({ ufs: e.target.value })} placeholder="ex.: MG, SP, GO" /><small className="muted">Usado pra rotear o cliente da região pro representante certo.</small></label>
+          <label className="campo"><span>Cidades que atende</span><textarea value={edit.cidades || ""} onChange={(e) => set({ cidades: e.target.value })} rows={2} placeholder="ex.: Belo Horizonte, Contagem, Uberlândia" /><small className="muted">Separe por vírgula. Deixe em branco se atende o estado inteiro.</small></label>
+          <label className="campo"><span>Observações comerciais</span><textarea value={edit.observacao || ""} onChange={(e) => set({ observacao: e.target.value })} rows={2} /></label>
+
+          <div className="com-sec">Comissão</div>
+          <label className="campo"><span>Percentual padrão (%)</span><input type="number" step="0.1" min="0" value={edit.comissao ?? ""} onChange={(e) => set({ comissao: e.target.value === "" ? null : Number(e.target.value) })} placeholder="ex.: 5" /><small className="muted">Por enquanto a comissão é uma <b>estimativa</b> (% × total vendido). As regras oficiais (base, deduções) entram numa etapa seguinte.</small></label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={!!(edit.ativo ?? 1)} onChange={(e) => set({ ativo: e.target.checked ? 1 : 0 })} /><span>Representante ativo</span></label>
+        </div>
+        <div className="modal-ft" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+          <button className="btn btn-soft" onClick={() => setEdit(null)}>Cancelar</button>
+          <button className="btn btn-primary" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── VENDAS / RELATÓRIOS — em construção (próximas etapas) ─────────────────────────
+function EmBreve({ titulo, itens }: { titulo: string; itens: string[] }) {
+  return (
+    <div className="com-card">
+      <h3 style={{ margin: "0 0 6px" }}>{titulo}</h3>
+      <p className="muted" style={{ marginTop: 0 }}>Em desenvolvimento — próxima etapa da central de representantes.</p>
+      <ul className="com-lista">{itens.map((i, k) => <li key={k}>{i}</li>)}</ul>
+    </div>
+  );
+}
+function AbaVendas() {
+  return <EmBreve titulo="Vendas" itens={[
+    "Importação automática das vendas do Syntech, com o representante identificado pelo código do vendedor (não só pelo nome).",
+    "Lançamento de vendas retroativas, com controle de duplicidade e histórico de quem lançou/alterou.",
+    "Correção do vínculo de um pedido ao representante certo, sem mexer nos dados do ERP.",
+  ]} />;
+}
+function AbaRelatorios() {
+  return <EmBreve titulo="Relatórios" itens={[
+    "Relatório semanal (segunda a sábado) em PDF, individual por representante.",
+    "Relatório mensal em PDF, com faturamento, pedidos, ticket médio e ranking de clientes.",
+    "Relatório consolidado para o gestor, comparando os representantes.",
+  ]} />;
+}
+
+// ── AUTOMAÇÕES — envio do relatório no WhatsApp ──────────────────────────────────
+function AbaAutomacoes() {
+  return (
+    <>
+      <RelatorioSemanalCard />
+      <EmBreve titulo="Mais automações (em breve)" itens={[
+        "Agendamento do relatório mensal, enviado após o fechamento do mês.",
+        "Ativar/desativar o envio por representante.",
+        "Histórico dos envios (data, tipo, destinatário, situação) com reenvio.",
+      ]} />
+    </>
+  );
+}
+
 function RelatorioSemanalCard() {
   const [cfg, setCfg] = useState<{ ativo: boolean; numero: string } | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -422,26 +421,18 @@ function RelatorioSemanalCard() {
   }
   async function testar() {
     setTestando(true);
-    try {
-      const r = await api.testarRelatorioVendas();
-      alert(r.ok ? `✅ Resumo da semana (${r.de} a ${r.ate}) enviado pro WhatsApp ${r.numero}.` : `⚠️ Não enviou. Confira o número do gestor e a conexão do WhatsApp.`);
-    } catch (e) { alert((e as Error).message); } finally { setTestando(false); }
+    try { const r = await api.testarRelatorioVendas(); alert(r.ok ? `✅ Resumo da semana (${r.de} a ${r.ate}) enviado pro WhatsApp ${r.numero}.` : `⚠️ Não enviou. Confira o número do gestor e a conexão do WhatsApp.`); }
+    catch (e) { alert((e as Error).message); } finally { setTestando(false); }
   }
   return (
-    <div className="card" style={{ marginBottom: 14, padding: "12px 14px" }}>
+    <div className="com-card">
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <strong>📊 Relatório de vendas no WhatsApp</strong>
-        <span className="muted" style={{ fontSize: 12 }}>Toda segunda de manhã: cada representante recebe o dele e você recebe o resumo geral.</span>
+        <span className="muted" style={{ fontSize: 12.5 }}>Toda segunda de manhã: cada representante recebe o dele e você recebe o resumo geral.</span>
       </div>
-      <div className="row-gap" style={{ alignItems: "center", gap: 14, marginTop: 10, flexWrap: "wrap" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-          <input type="checkbox" checked={cfg.ativo} disabled={salvando} onChange={(e) => salvar({ ativo: e.target.checked })} />
-          Enviar automático toda segunda
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-          WhatsApp do gestor:
-          <input value={cfg.numero} onChange={(e) => setCfg({ ...cfg, numero: e.target.value })} onBlur={(e) => salvar({ numero: e.target.value })} placeholder="só números com DDD" style={{ width: 170 }} />
-        </label>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}><input type="checkbox" checked={cfg.ativo} disabled={salvando} onChange={(e) => salvar({ ativo: e.target.checked })} /> Enviar automático toda segunda</label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}>WhatsApp do gestor:<input value={cfg.numero} onChange={(e) => setCfg({ ...cfg, numero: e.target.value })} onBlur={(e) => salvar({ numero: e.target.value })} placeholder="só números com DDD" style={{ width: 170 }} /></label>
         <button className="btn btn-soft" disabled={testando} onClick={testar}>{testando ? "Enviando…" : "📲 Testar (manda o resumo pra você)"}</button>
       </div>
     </div>

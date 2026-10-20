@@ -21,7 +21,9 @@ export const representantes = new Hono<{ Bindings: Env }>();
 
 representantes.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT id, nome, whatsapp, email, ativo, observacao, ufs, instagram, cidades, comissao FROM representantes ORDER BY nome"
+    `SELECT r.id, r.nome, r.whatsapp, r.email, r.ativo, r.observacao, r.ufs, r.instagram, r.cidades, r.comissao,
+            (SELECT COUNT(*) FROM clientes c WHERE TRIM(LOWER(COALESCE(c.representante,''))) = TRIM(LOWER(r.nome))) AS carteira
+       FROM representantes r ORDER BY r.nome`
   ).all();
   return c.json(results);
 });
