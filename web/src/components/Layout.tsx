@@ -452,7 +452,7 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
               <span className="tn-car">▾</span>
             </button>
             {aberto === g.id && (
-              <div className="topnav-dd">{g.itens.map((it) => DDItem(it, g.id))}</div>
+              <div className={"topnav-dd" + (g.id === "gestao" ? " topnav-dd-gestao" : "")}>{g.itens.map((it) => DDItem(it, g.id))}</div>
             )}
           </div>
         ))}

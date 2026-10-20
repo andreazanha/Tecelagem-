@@ -1814,9 +1814,10 @@ body.dark .topnav-cat-h { color: #e7ebf3; }
 body.dark .topnav-cat-h:hover { background: #ffffff12; }
 body.dark .topnav-cat.active > .topnav-cat-h { color: #c7d2fe; }
 body.dark .topnav-cat-items { border-left-color: #ffffff1f; }
-/* Se o conteúdo passar da altura da tela, rola dentro do dropdown (desktop). */
-.topnav-dd { max-height: calc(100vh - 88px); overflow-y: auto; }
-@media (max-width: 1280px) { .topnav-dd { max-height: none; overflow: visible; } }
+/* Rolagem SÓ no dropdown da Gestão (acordeão inline). Nos outros menus NÃO pode ter
+   overflow, senão corta os submenus que abrem pro lado (ex.: Cadastros do PCP). */
+.topnav-dd-gestao { max-height: calc(100vh - 88px); overflow-y: auto; }
+@media (max-width: 1280px) { .topnav-dd-gestao { max-height: none; overflow: visible; } }
 
 /* Estoque de material abaixo do mínimo (destaque para repor/comprar). */
 .mat-saldo-baixo { color: #b91c1c; font-weight: 800; }
