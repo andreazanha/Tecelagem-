@@ -1124,10 +1124,16 @@
   function repNomeCli(){ return (REP_CLIENTE&&(REP_CLIENTE.nome||REP_CLIENTE.fantasia))||""; }
   function repMsg(cor,txt){ var m=document.getElementById("cmsg"); if(m){ m.style.color=cor; m.innerHTML=txt; } }
   // Gera o PDF do pedido e abre o compartilhamento (WhatsApp do próprio rep) ou baixa.
+  // No COMPUTADOR o representante quer SALVAR/IMPRIMIR → abre o PDF numa aba (tem salvar).
+  // No TABLET/CELULAR, o fluxo é mandar pelo WhatsApp → usa o compartilhar do aparelho.
+  function ehDispositivoToque(){ try{ return (navigator.maxTouchPoints||0) > 1 || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||""); }catch(e){ return false; } }
   function repCompartilharPdf(id){
     var cnpj=String((REP_CLIENTE&&REP_CLIENTE.cnpj)||"").replace(/\D/g,"");
     var url="/api/loja/pedido-pdf/"+encodeURIComponent(id)+(cnpj?("?cnpj="+cnpj):"");
     var nomeArq="pedido-"+String(id).slice(0,8)+".pdf";
+    // Desktop (sem toque): abre numa aba nova pra ver/salvar/imprimir.
+    if(!ehDispositivoToque()){ try{ window.open(url,"_blank"); }catch(e){ location.href=url; } return Promise.resolve(); }
+    // Tablet/celular: compartilha o arquivo (WhatsApp); se não der, baixa.
     return fetch(url).then(function(r){ if(!r.ok) throw new Error("pdf"); return r.blob(); }).then(function(blob){
       try{
         var file=new File([blob],nomeArq,{type:"application/pdf"});
@@ -1135,7 +1141,6 @@
           return navigator.share({files:[file], title:"Pedido Big Tricot", text:"Olá! Segue o seu pedido da Big Tricot. 🧶"}).catch(function(){});
         }
       }catch(e){}
-      // fallback (desktop / sem share de arquivo): baixa o PDF pro rep mandar manualmente
       var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=nomeArq; document.body.appendChild(a); a.click(); a.remove();
       try{ setTimeout(function(){ URL.revokeObjectURL(a.href); },5000); }catch(e){}
     });
