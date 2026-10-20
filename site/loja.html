@@ -50,7 +50,9 @@
   .bf-right{grid-column:3; justify-self:end; display:flex; flex-direction:column; align-items:flex-end; gap:5px; min-width:0}
   .bf-right-top{display:flex; align-items:center; gap:12px}
   /* Botão Voltar no cabeçalho (só no modo representante) — volta pra área do rep */
-  .bf-voltar{grid-column:1; justify-self:start; display:none; align-items:center; gap:7px; height:40px; padding:0 15px; border:1px solid rgba(255,255,255,.3); background:rgba(255,255,255,.08); color:#f0ebe2; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer}
+  .bf-left{grid-column:1; justify-self:start; display:flex; align-items:center; gap:12px; min-width:0}
+  .bf-logo{height:36px; width:auto; display:block; flex:0 0 auto}
+  .bf-voltar{display:none; align-items:center; gap:7px; height:40px; padding:0 15px; border:1px solid rgba(255,255,255,.3); background:rgba(255,255,255,.08); color:#f0ebe2; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer}
   .bf-voltar svg{width:17px; height:17px; stroke:currentColor; fill:none; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round}
   body.rep-mode .bf-voltar{display:inline-flex}
   /* Modo "só visualização": esconde carrinho/meus pedidos (rep só vê, não monta pedido) */
@@ -198,7 +200,7 @@
   .preco{margin-top:7px; font-size:11.5px; color:var(--muted)}
   .preco b{color:var(--accent); font-size:15px; font-weight:700; margin-left:2px}
   .vazio{text-align:center; color:var(--muted); padding:60px 16px}
-  @media(max-width:760px){ .buscafaixa{min-height:0} .bf-in{display:flex; flex-direction:column; align-items:stretch; gap:10px} .busca{grid-column:auto; justify-self:stretch; width:100%; max-width:none; order:1} .bf-right{grid-column:auto; justify-self:stretch; order:2; align-items:stretch; gap:6px} .bf-right-top{justify-content:flex-end; gap:10px} .saud{justify-content:flex-end; max-width:none} body.rep-mode .bf-voltar{order:0; justify-self:stretch; justify-content:center} }
+  @media(max-width:760px){ .buscafaixa{min-height:0} .bf-in{display:flex; flex-direction:column; align-items:stretch; gap:10px} .bf-left{order:0; justify-content:space-between} .bf-logo{height:32px} .busca{grid-column:auto; justify-self:stretch; width:100%; max-width:none; order:1} .bf-right{grid-column:auto; justify-self:stretch; order:2; align-items:stretch; gap:6px} .bf-right-top{justify-content:flex-end; gap:10px} .saud{justify-content:flex-end; max-width:none} body.rep-mode .bf-voltar{justify-content:center} }
   @media(max-width:640px){ .buscafaixa{padding:10px 16px} .banner{aspect-ratio:1/1; max-height:none} .banner .b-in{padding:0 20px} .banner .b-tit{font-size:30px} main{padding:14px 16px 60px} .sec{margin-top:24px} .sec h2{font-size:24px; gap:12px} .sec h2::before,.sec h2::after{width:34px} }
   @media(max-width:420px){ .btn-ghost span,.btn-cart span:not(.n){display:none} .btn-ghost,.btn-cart{padding:0 12px} }
   /* ---- popup "continuar / escolher outro" ao adicionar no carrinho ---- */
@@ -361,7 +363,10 @@
 
 <div class="buscafaixa">
   <div class="bf-in">
-    <button class="bf-voltar" id="repVoltarCat" onclick="__repVoltarArea()" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Voltar</button>
+    <div class="bf-left">
+      <button class="bf-voltar" id="repVoltarCat" onclick="__repVoltarArea()" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Voltar</button>
+      <img class="bf-logo" src="/logo-bt-mark.png" alt="Big Tricot Home Decor">
+    </div>
     <label class="busca"><svg class="bf-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="q" name="busca-catalogo" placeholder="Buscar produto, cor ou referência…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')"></label>
     <div class="bf-right">
       <div class="bf-right-top">

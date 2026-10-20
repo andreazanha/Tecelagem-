@@ -1335,7 +1335,8 @@ function telBr(d?: string): string {
 }
 export async function gerarPdfPedidoLoja(
   d: PedidoLojaPdf,
-  cores: Record<string, { hex?: string; foto?: Uint8Array }> = {}
+  cores: Record<string, { hex?: string; foto?: Uint8Array }> = {},
+  logo?: Uint8Array
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
@@ -1366,11 +1367,20 @@ export async function gerarPdfPedidoLoja(
   const txtX = ix + thumbS + 12;        // texto do produto
   const txtMax = cQtd - 22 - txtX;      // largura do nome
 
-  // CABEÇALHO navy
+  // CABEÇALHO navy — usa o logotipo (versão branca) quando disponível; senão, texto.
   const bh = 88;
   R(0, 0, A4W, bh, NAVY);
-  T("BIG TRICOT", ix, 42, 24, bld, WHITE);
-  T("HOME DECOR · ATACADO", ix + 2, 58, 7.5, reg, hx("#c7d2e0"));
+  let logoImg: PDFImage | null = null;
+  if (logo && logo.length > 4) {
+    try { logoImg = logo[0] === 0x89 && logo[1] === 0x50 ? await doc.embedPng(logo) : await doc.embedJpg(logo); } catch { logoImg = null; }
+  }
+  if (logoImg) {
+    const lh = 52, lw = lh * (logoImg.width / logoImg.height);
+    page.drawImage(logoImg, { x: ix, y: A4H - 18 - lh, width: lw, height: lh });
+  } else {
+    T("BIG TRICOT", ix, 42, 24, bld, WHITE);
+    T("HOME DECOR · ATACADO", ix + 2, 58, 7.5, reg, hx("#c7d2e0"));
+  }
   TR("PEDIDO", cSub, 40, 15, bld, WHITE);
   TR("Nº " + d.numero, cSub, 57, 10, reg, hx("#c7d2e0"));
   TR(d.emissao, cSub, 70, 9, reg, hx("#9fb0c7"));

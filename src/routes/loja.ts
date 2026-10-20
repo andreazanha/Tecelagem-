@@ -669,6 +669,13 @@ loja.get("/pedido-pdf/:id", async (c) => {
           : Number(ped.liberado) === 1 ? "Aprovado pela Big Tricot"
             : ped.fase === "enviado" ? "Aguardando confirmacao"
               : "Pedido recebido";
+  // Logotipo (versão branca) pro cabeçalho do PDF — servido como asset estático.
+  let logoBytes: Uint8Array | undefined;
+  try {
+    const u = new URL(c.req.url);
+    const resp = await c.env.ASSETS.fetch(new Request(`${u.protocol}//${u.host}/logo-bt-mark.png`));
+    if (resp.ok) logoBytes = new Uint8Array(await resp.arrayBuffer());
+  } catch { logoBytes = undefined; }
   const bytes = await gerarPdfPedidoLoja({
     numero: String(ped.id).slice(0, 8).toUpperCase(),
     cliente: ped.cliente_nome || "Cliente",
@@ -681,7 +688,7 @@ loja.get("/pedido-pdf/:id", async (c) => {
     total: Number(ped.valor_total) || itens.reduce((s, i) => s + i.qtd * i.valor, 0),
     whatsapp,
     statusLabel,
-  }, cores);
+  }, cores, logoBytes);
   const nomeArq = "pedido-" + String(ped.id).slice(0, 8) + ".pdf";
   return new Response(bytes, { headers: {
     "Content-Type": "application/pdf",
