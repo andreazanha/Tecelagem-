@@ -2298,7 +2298,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#16a34a" }}>↪ Respondendo</div>
                 <div className="muted2" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{respondendo.texto}</div>
               </div>
-              <button className="modal-x" style={{ position: "static" }} onClick={() => setRespondendo(null)} title="Cancelar resposta">✕</button>
+              <button onClick={() => setRespondendo(null)} title="Cancelar resposta" style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid #d1d5db", background: "#fff", color: "#475569", borderRadius: 8, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>✕ Cancelar</button>
             </div>
           )}
           {/* Input de arquivo ÚNICO — fica sempre no DOM pra os dois modos (robô e humano) acionarem. */}
