@@ -66,6 +66,13 @@
   /* Meus pedidos (área do cliente) */
   /* Área do Representante (R1) — tela cheia com a carteira; otimizada pra tablet (toque). */
   #repArea{position:fixed; inset:0; z-index:900; background:#f4f0ea; overflow:auto; display:none}
+  /* Cobertura instantânea no portal do rep (?rep=1): evita o "flash" do catálogo
+     enquanto a área do representante carrega. Some assim que a área/login aparece. */
+  .rep-boot{display:none}
+  html.portal-rep .rep-boot{display:flex; position:fixed; inset:0; z-index:800; background:#f4f0ea; align-items:center; justify-content:center}
+  .rep-boot-in{display:flex; flex-direction:column; align-items:center; gap:14px; color:#8a8073; font-size:14.5px; font-family:system-ui,-apple-system,sans-serif}
+  .rep-boot-sp{width:34px; height:34px; border:3px solid #DCE3EC; border-top-color:#2c3e50; border-radius:50%; animation:repspin .8s linear infinite}
+  @keyframes repspin{to{transform:rotate(360deg)}}
   .rep-top{position:sticky; top:0; z-index:2; background:#2c3e50; color:#fff; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 20px}
   .rep-hello{font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#aebccb}
   .rep-name{font-size:18px; font-weight:700; margin-top:2px}
@@ -307,6 +314,8 @@
 </style>
 </head>
 <body>
+<script>try{if(new URLSearchParams(location.search).get("rep")==="1")document.documentElement.classList.add("portal-rep");}catch(e){}</script>
+<div id="repBoot" class="rep-boot"><div class="rep-boot-in"><div class="rep-boot-sp"></div>Abrindo área do representante…</div></div>
 <section class="banner" id="banner"></section>
 
 <div class="buscafaixa">
@@ -1232,7 +1241,7 @@
 
   // ── REPRESENTANTE (R1): login + carteira ──
   function repSalvo(){ try{ return JSON.parse(localStorage.getItem("bt_rep")||"null"); }catch(e){ return null; } }
-  function mostrarRepView(){ ["entView","cadView","senhaView"].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display="none"; }); document.getElementById("repView").style.display="block"; document.getElementById("repMsg").textContent=""; var ov=document.getElementById("entrada"); ov.style.display="flex"; document.body.style.overflow="hidden"; var i=document.getElementById("repEmail"); setTimeout(function(){ try{ i.focus(); }catch(e){} },50); }
+  function mostrarRepView(){ var rb=document.getElementById("repBoot"); if(rb) rb.style.display="none"; ["entView","cadView","senhaView"].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display="none"; }); document.getElementById("repView").style.display="block"; document.getElementById("repMsg").textContent=""; var ov=document.getElementById("entrada"); ov.style.display="flex"; document.body.style.overflow="hidden"; var i=document.getElementById("repEmail"); setTimeout(function(){ try{ i.focus(); }catch(e){} },50); }
   function repEntrar(){
     var email=(document.getElementById("repEmail").value||"").trim(); var senha=(document.getElementById("repSenha").value||"");
     var msg=document.getElementById("repMsg"), btn=document.getElementById("repBtn");
@@ -1259,6 +1268,7 @@
     // Portal do representante é separado do catálogo do cliente: fixa ?rep=1 na URL
     // pra que recarregar continue na área do rep (e o /loja puro fique sendo do cliente).
     try{ if(new URLSearchParams(location.search).get("rep")!=="1") history.replaceState(null,"",location.pathname+"?rep=1"); }catch(e){}
+    var rb=document.getElementById("repBoot"); if(rb) rb.style.display="none";
     document.getElementById("entrada").style.display="none";
     document.getElementById("repArea").style.display="block";
     document.body.style.overflow="";
