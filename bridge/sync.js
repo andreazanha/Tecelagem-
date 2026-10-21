@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-21.2";
+const PONTE_VERSAO = "2026-10-21.3";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -329,6 +329,14 @@ async function estoquePorCor(db) {
   try { prods = await query(db, prodSql); }
   catch (e) { log("! estoque por cor: lista de produtos falhou —", e.message); return null; }
   if (!prods || !prods.length) return null;
+  // A procedure devolve a cor como CÓDIGO (NUMERO da tabela CORES). O catálogo casa a cor
+  // pelo NOME — então montamos aqui o mapa código→nome da tabela CORES (a mesma que o
+  // catálogo usa pros produtos). Assim o estoque por cor casa certinho.
+  const corNomePorCod = new Map();
+  try {
+    const cs = await query(db, "SELECT NUMERO, NOME FROM CORES");
+    for (const c of (cs || [])) { const cod = String(c.NUMERO != null ? c.NUMERO : "").trim(); const nm = String(c.NOME || "").trim(); if (cod && nm) corNomePorCod.set(cod, nm); }
+  } catch (e) { log("! estoque por cor: mapa de cores (CORES) falhou —", e.message); }
   const itens = [];
   let okP = 0, erroP = 0, primeiroErro = "";
   for (const p of prods) {
@@ -338,7 +346,9 @@ async function estoquePorCor(db) {
       const rows = await query(db, `SELECT * FROM ${proc}(?)`, [cod]);
       let temLinha = false;
       for (const r of (rows || [])) {
-        const cor = String(r.COR || "").trim();
+        const codCor = String(r.COD_COR != null ? r.COD_COR : (r.COR != null ? r.COR : "")).trim();
+        // nome da cor: mapa CORES (por código) > NOME que a procedure devolver > o código cru.
+        const cor = corNomePorCod.get(codCor) || String(r.NOME || r.COR || "").trim();
         const tam = String(r.TAMANHO || "").trim();
         if (!cor && !tam) continue;
         itens.push({ produto: cod, ref: cod, cor, tamanho: tam, saldo: Number(r.SALDO) || 0, unidade: "" });
