@@ -1,6 +1,12 @@
-// Ordens de compra de insumos — lista + detalhe com aprovação do gestor.
-// Fluxo: PCP cria (aguardando aprovação) → gestor abre, ajusta se quiser e
-// APROVA → o sistema gera o PDF e envia no WhatsApp. Também dá pra RECUSAR.
+// Ordens de compra de insumos — lista + detalhe.
+// Fluxo (1 status por etapa):
+//   🟡 aguardando_aprovacao  (PCP cria)
+//     → gestor abre, confere e clica COTAR
+//   🔵 cotando               (em cotação)
+//     → gestor clica APROVAR COMPRA → gera PDF + WhatsApp
+//   🟢 compra_efetuada       (compra realizada; aguarda o recebimento)
+//     → ao dar entrada no estoque → recebida_parcial / recebida
+// Também dá pra RECUSAR enquanto aguardando/cotando.
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api, type OrdemCompra, type OrdemCompraDetalhe, type OrdemCompraItemRow, type OrdemCompraStatus } from "../api";
@@ -21,12 +27,13 @@ function dataEnt(s: string | null | undefined) {
 }
 
 const ST: Record<OrdemCompraStatus, { txt: string; bg: string; fg: string }> = {
-  aguardando_aprovacao: { txt: "Aguardando aprovação", bg: "#fef3c7", fg: "#92400e" },
-  cotando: { txt: "Cotando", bg: "#ede9fe", fg: "#6d28d9" },
-  aprovada: { txt: "Aprovada (falha no envio)", bg: "#e0e7ff", fg: "#3730a3" },
-  enviada: { txt: "Enviada ✓", bg: "#dcfce7", fg: "#166534" },
+  aguardando_aprovacao: { txt: "🟡 Aguardando aprovação", bg: "#fef3c7", fg: "#92400e" },
+  cotando: { txt: "🔵 Cotando", bg: "#dbeafe", fg: "#1e40af" },
+  compra_efetuada: { txt: "🟢 Compra efetuada", bg: "#dcfce7", fg: "#166534" },
+  enviada: { txt: "🟢 Compra efetuada", bg: "#dcfce7", fg: "#166534" }, // legado
+  aprovada: { txt: "Com falha no envio", bg: "#ffedd5", fg: "#9a3412" },
   recebida_parcial: { txt: "Recebido parcial", bg: "#fef9c3", fg: "#854d0e" },
-  recebida: { txt: "Recebido ✓", bg: "#dbeafe", fg: "#1e40af" },
+  recebida: { txt: "Recebido ✓", bg: "#ccfbf1", fg: "#0f766e" },
   recusada: { txt: "Recusada", bg: "#fee2e2", fg: "#991b1b" },
 };
 function Selo({ s }: { s: OrdemCompraStatus }) {
@@ -36,9 +43,9 @@ function Selo({ s }: { s: OrdemCompraStatus }) {
 
 const FILTROS: { id: string; label: string }[] = [
   { id: "", label: "Todas" },
-  { id: "aguardando_aprovacao", label: "Aguardando" },
+  { id: "aguardando_aprovacao", label: "Aguardando aprovação" },
   { id: "cotando", label: "Cotando" },
-  { id: "enviada", label: "Enviadas" },
+  { id: "compra_efetuada", label: "Compra efetuada" },
   { id: "recebida", label: "Recebidas" },
   { id: "aprovada", label: "Com falha" },
   { id: "recusada", label: "Recusadas" },
@@ -52,7 +59,6 @@ export function OrdensCompra() {
   const [lista, setLista] = useState<OrdemCompra[]>([]);
   const [carregou, setCarregou] = useState(false);
   const [abertaId, setAbertaId] = useState<string | null>(null);
-  const [agindo, setAgindo] = useState<string | null>(null);
 
   const recarregar = useCallback(async () => {
     try { setLista(await api.listarOrdensCompra(filtro)); } catch { /* mantém */ }
@@ -67,20 +73,12 @@ export function OrdensCompra() {
     catch (e) { alert((e as Error).message); }
   }
 
-  // Avançar o status direto na lista (sem abrir a ordem).
-  async function cotarLista(o: OrdemCompra) {
-    setAgindo(o.id);
-    try { await api.cotarOrdemCompra(o.id); await recarregar(); }
-    catch (e) { alert((e as Error).message); }
-    finally { setAgindo(null); }
-  }
-
   return (
     <>
       <div className="row-gap" style={{ alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0 }}>Ordens de compra</h2>
         <span className="muted" style={{ fontSize: 12 }}>
-          {podeAprovar ? "Revise, ajuste e aprove para enviar ao fornecedor." : "Suas ordens criadas (o gestor aprova e envia)."}
+          {podeAprovar ? "Confira e clique em COTAR; depois APROVAR COMPRA envia ao fornecedor." : "Suas ordens criadas (o gestor cota e aprova a compra)."}
         </span>
         <Link to="/compras" className="btn btn-soft" style={{ marginLeft: "auto" }} title="Criar ordens a partir das compras sugeridas (estoque baixo)">🛒 Sugestões de compra</Link>
         <button className="btn btn-soft" onClick={recarregar}>↻ Atualizar</button>
@@ -111,14 +109,7 @@ export function OrdensCompra() {
                   <td className="num">{o.n_itens ?? "—"}</td>
                   <td className="num">{rBR(o.total)}</td>
                   <td style={{ whiteSpace: "nowrap" }}>{dataEnt(o.data_entrega)}</td>
-                  <td>
-                    <Selo s={o.status} />
-                    {podeAprovar && o.status === "aguardando_aprovacao" && (
-                      <div style={{ marginTop: 5 }}>
-                        <button className="btn btn-soft" disabled={agindo === o.id} style={{ fontSize: 11, padding: "2px 8px", color: "#6d28d9" }} onClick={(e) => { e.stopPropagation(); cotarLista(o); }}>💬 Cotando</button>
-                      </div>
-                    )}
-                  </td>
+                  <td><Selo s={o.status} /></td>
                   <td style={{ whiteSpace: "nowrap" }}>{dataHora(o.criado_em)}</td>
                   <td className="muted">{o.criado_por_nome || "—"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
@@ -160,10 +151,13 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
     return () => { vivo = false; };
   }, [id]);
 
-  // Gestor edita em qualquer status (menos recusada). Quem só cria ordem (PCP/Grasiela)
-  // pode editar enquanto ainda está "aguardando aprovação".
-  const editavel = !!ord && ord.status !== "recusada" && (podeAprovar || ord.status === "aguardando_aprovacao");
-  const jaAprovada = !!ord && (ord.status === "aprovada" || ord.status === "enviada" || ord.status === "recebida_parcial" || ord.status === "recebida");
+  // Editável enquanto NÃO foi efetuada a compra: "aguardando" (quem criou) e "cotando" (só gestor).
+  const editavel = !!ord && (ord.status === "aguardando_aprovacao" || (ord.status === "cotando" && podeAprovar));
+  // Já passou pela aprovação (compra efetuada / falha / recebida) → libera "Receber no estoque".
+  const compraEfetuada = !!ord && (ord.status === "compra_efetuada" || ord.status === "enviada");
+  const podeReceber = !!ord && (compraEfetuada || ord.status === "aprovada" || ord.status === "recebida_parcial" || ord.status === "recebida");
+  // Reaprovar = reenviar o PDF de uma ordem que já foi efetuada ou falhou no envio.
+  const reaprovar = !!ord && (compraEfetuada || ord.status === "aprovada");
   const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.preco) || 0), 0);
 
   function setItem(i: number, patch: Partial<OrdemCompraItemRow>) {
@@ -226,18 +220,18 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
     if (!ord) return;
     const itensValidos = itens.filter((it) => (Number(it.qtd) || 0) > 0);
     if (!itensValidos.length) { alert("A ordem precisa de ao menos um item com quantidade."); return; }
-    const msg = jaAprovada
-      ? `Salvar as alterações e REENVIAR o PDF atualizado da ordem ${ord.numero} no WhatsApp do fornecedor?`
-      : `Aprovar a ordem ${ord.numero} e enviar o PDF no WhatsApp?`;
+    const msg = reaprovar
+      ? `REENVIAR o PDF da ordem ${ord.numero} no WhatsApp do fornecedor?`
+      : `APROVAR a compra da ordem ${ord.numero}? Isso marca como COMPRA EFETUADA e envia o PDF no WhatsApp do fornecedor.`;
     if (!confirm(msg)) return;
     setBusy(true);
     try {
       if (editavel) { if (!(await salvar())) { setBusy(false); return; } }
       const r = await api.aprovarOrdemCompra(ord.id);
       onMudou();
-      if (r.ok) { alert(jaAprovada ? `✅ Ordem ${ord.numero} atualizada e reenviada no WhatsApp.` : `✅ Ordem ${ord.numero} aprovada e enviada no WhatsApp.`); onFechar(); }
-      else if (r.status === "aprovada") { alert(`A ordem foi ${jaAprovada ? "salva" : "APROVADA"}, mas o envio no WhatsApp falhou (${r.motivo || "falha"}). Confira o número do gestor e a conexão, e tente reenviar.`); const o = await api.obterOrdemCompra(ord.id); setOrd(o); }
-      else alert(`⚠️ ${r.motivo || "Não foi possível aprovar."}`);
+      if (r.ok) { alert(reaprovar ? `✅ Ordem ${ord.numero} reenviada no WhatsApp.` : `✅ Compra efetuada — ordem ${ord.numero} enviada no WhatsApp.`); onFechar(); }
+      else if (r.status === "aprovada") { alert(`A compra foi APROVADA, mas o envio no WhatsApp falhou (${r.motivo || "falha"}). Confira o número do gestor e a conexão, e tente reenviar.`); const o = await api.obterOrdemCompra(ord.id); setOrd(o); }
+      else alert(`⚠️ ${r.motivo || "Não foi possível aprovar a compra."}`);
     } catch (e) { alert((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -272,7 +266,7 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
             <div className="muted" style={{ fontSize: 12 }}>
               Criada por {ord.criado_por_nome || "—"} em {dataHora(ord.criado_em)}
               {ord.aprovado_por_nome ? ` · Aprovada por ${ord.aprovado_por_nome} em ${dataHora(ord.aprovado_em)}` : ""}
-              {ord.enviado_em ? ` · Enviada em ${dataHora(ord.enviado_em)}` : ""}
+              {ord.enviado_em ? ` · Compra efetuada em ${dataHora(ord.enviado_em)}` : ""}
             </div>
             {ord.erro && <div style={{ background: "#fef2f2", color: "#991b1b", borderRadius: 8, padding: "6px 10px", fontSize: 12, margin: "8px 0" }}>⚠️ {ord.erro}</div>}
 
@@ -348,21 +342,27 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
 
             <div className="row-gap" style={{ marginTop: 14, gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
               {ehMaster && <button className="btn btn-soft" disabled={busy} style={{ color: "#b91c1c", marginRight: "auto" }} onClick={excluirAqui}>🗑 Excluir</button>}
-              {jaAprovada && <button className="btn btn-soft" disabled={busy} style={{ color: "#166534" }} onClick={() => setReceberOpen(true)}>📥 Receber no estoque</button>}
+              {podeReceber && <button className="btn btn-soft" disabled={busy} style={{ color: "#166534" }} onClick={() => setReceberOpen(true)}>📥 Receber no estoque</button>}
               <button className="btn btn-soft" disabled={busy} onClick={verPdf}>👁 Ver PDF</button>
               <button className="btn btn-soft" disabled={busy} style={{ color: "#166534" }} onClick={() => setWaOpen(true)}>📱 Enviar WhatsApp</button>
               {editavel && <button className="btn btn-soft" disabled={busy} onClick={salvarSo}>💾 Salvar alterações</button>}
+              {/* 1ª etapa — Aguardando: só COTAR (confere) e Recusar. Sem aprovar direto. */}
               {podeAprovar && ord.status === "aguardando_aprovacao" && (
-                <button className="btn btn-soft" disabled={busy} style={{ color: "#6d28d9" }} onClick={cotar}>💬 Cotando</button>
-              )}
-              {podeAprovar && (ord.status === "aguardando_aprovacao" || ord.status === "cotando") && (
                 <>
                   <button className="btn btn-soft" disabled={busy} style={{ color: "#b91c1c" }} onClick={recusar}>✖ Recusar</button>
-                  <button className="btn btn-primary" disabled={busy} onClick={aprovar}>{busy ? "Processando…" : "✅ Aprovar e enviar"}</button>
+                  <button className="btn btn-primary" disabled={busy} style={{ background: "#1e40af", borderColor: "#1e40af" }} onClick={cotar}>{busy ? "Processando…" : "🔵 Cotar"}</button>
                 </>
               )}
-              {podeAprovar && jaAprovada && (
-                <button className="btn btn-primary" disabled={busy} onClick={aprovar}>{busy ? "Enviando…" : "📲 Salvar e reenviar"}</button>
+              {/* 2ª etapa — Cotando: some o Cotar, aparece APROVAR COMPRA (+ Recusar). */}
+              {podeAprovar && ord.status === "cotando" && (
+                <>
+                  <button className="btn btn-soft" disabled={busy} style={{ color: "#b91c1c" }} onClick={recusar}>✖ Recusar</button>
+                  <button className="btn btn-primary" disabled={busy} style={{ background: "#166534", borderColor: "#166534" }} onClick={aprovar}>{busy ? "Processando…" : "🟢 Aprovar compra"}</button>
+                </>
+              )}
+              {/* Com falha no envio: permite tentar reenviar (reaprovar). */}
+              {podeAprovar && ord.status === "aprovada" && (
+                <button className="btn btn-primary" disabled={busy} style={{ background: "#166534", borderColor: "#166534" }} onClick={aprovar}>{busy ? "Enviando…" : "📲 Reenviar (aprovar compra)"}</button>
               )}
             </div>
           </>

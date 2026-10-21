@@ -1,6 +1,7 @@
-// Ordens de compra de insumos PERSISTIDAS, com aprovação do gestor.
-// Fluxo: PCP cria (aguardando_aprovacao) -> gestor edita/aprova -> gera PDF e
-// envia no WhatsApp (status 'enviada'). Recusar marca 'recusada'.
+// Ordens de compra de insumos PERSISTIDAS. Um status por etapa:
+//   aguardando_aprovacao -> (gestor COTAR) cotando -> (gestor APROVAR COMPRA:
+//   gera PDF + WhatsApp) compra_efetuada -> (entrada no estoque) recebida_parcial/recebida.
+// 'aprovada' = aprovou mas o envio no WhatsApp falhou (Com falha). 'recusada' = recusada.
 //
 // Permissões: compras.ordem = criar/ver; compras.aprovar = editar/aprovar/recusar.
 import { Hono } from "hono";
@@ -141,7 +142,9 @@ compras.get("/ordens", async (c) => {
                FROM ordens_compra o`;
   const binds: unknown[] = [];
   const where: string[] = [];
-  if (status) { where.push("o.status=?"); binds.push(status); }
+  if (status === "recebida") { where.push("o.status IN ('recebida','recebida_parcial')"); } // a aba "Recebidas" junta total e parcial
+  else if (status === "compra_efetuada") { where.push("o.status IN ('compra_efetuada','enviada')"); } // 'enviada' = legado
+  else if (status) { where.push("o.status=?"); binds.push(status); }
   if (!todas) { where.push("o.criado_por_id=?"); binds.push(g.u.id); }
   if (where.length) sql += " WHERE " + where.join(" AND ");
   sql += " ORDER BY o.criado_em DESC LIMIT 300";
@@ -388,7 +391,9 @@ compras.post("/ordens/:id/aprovar", async (c) => {
   const o = await carregarOrdem(c.env, id);
   if (!o) return c.json({ error: "nao_encontrada" }, 404);
   if (o.status === "recusada") return c.json({ error: "recusada" }, 409);
-  const reenvio = o.status === "enviada" || o.status === "aprovada"; // já passou por aprovação → é reenvio
+  // Fluxo obrigatório: precisa COTAR antes de aprovar (não dá pra aprovar direto do "aguardando").
+  if (o.status === "aguardando_aprovacao") return c.json({ error: "cote_antes" }, 409);
+  const reenvio = o.status === "compra_efetuada" || o.status === "enviada" || o.status === "aprovada"; // já passou por aprovação → é reenvio
 
   const num = ((await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_min_wpp'").first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
   if (!num) return c.json({ error: "numero_nao_configurado" }, 400);
@@ -449,8 +454,8 @@ compras.post("/ordens/:id/aprovar", async (c) => {
   }).catch(() => ({ enviado: false }));
 
   if (r.enviado) {
-    await c.env.DB.prepare("UPDATE ordens_compra SET status='enviada', enviado_em=?, erro=NULL WHERE id=?").bind(new Date().toISOString(), id).run();
-    return c.json({ ok: true, status: "enviada", numero: num });
+    await c.env.DB.prepare("UPDATE ordens_compra SET status='compra_efetuada', enviado_em=?, erro=NULL WHERE id=?").bind(new Date().toISOString(), id).run();
+    return c.json({ ok: true, status: "compra_efetuada", numero: num });
   }
   const motivo = (r as { motivo?: string }).motivo || "falha";
   await c.env.DB.prepare("UPDATE ordens_compra SET erro=? WHERE id=?").bind("envio: " + motivo, id).run();
@@ -463,7 +468,7 @@ compras.post("/ordens/:id/recusar", async (c) => {
   const id = c.req.param("id");
   const o = await c.env.DB.prepare("SELECT status FROM ordens_compra WHERE id=?").bind(id).first<{ status: string }>();
   if (!o) return c.json({ error: "nao_encontrada" }, 404);
-  if (o.status === "enviada") return c.json({ error: "ja_enviada" }, 409);
+  if (o.status === "compra_efetuada" || o.status === "enviada") return c.json({ error: "ja_efetuada" }, 409);
   const b = await c.req.json<{ motivo?: string }>().catch(() => ({} as { motivo?: string }));
   await c.env.DB.prepare("UPDATE ordens_compra SET status='recusada', erro=? WHERE id=?").bind((b.motivo || "").trim() || null, id).run();
   return c.json({ ok: true, status: "recusada" });
