@@ -267,6 +267,14 @@ integracao.get("/sync-status", async (c) => {
   });
 });
 
+// Zera o estoque espelhado (erp_estoque). A ponte repõe tudo na próxima rodada, já com a
+// correção de cor — serve pra "começar do zero" o estoque e limpar linhas antigas.
+integracao.post("/estoque-reset", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  await c.env.DB.prepare("DELETE FROM erp_estoque").run();
+  return c.json({ ok: true });
+});
+
 // A ponte reporta o resultado da sincronização de estoque por cor (diagnóstico).
 integracao.post("/estoque-diag", async (c) => {
   const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();

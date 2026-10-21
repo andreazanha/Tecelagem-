@@ -217,6 +217,8 @@ export function PedidosErp() {
           <span style={{ width: 10, height: 10, borderRadius: "50%", background: s.cor, display: "inline-block", flex: "0 0 auto" }} />
           <span>📦 <b>Estoque do Syntech:</b> {sync.estoque.itens.toLocaleString("pt-BR")} itens no espelho · <b style={{ color: s.cor }}>última atualização {s.txt}</b>{sync.estoque.atualizado_em ? <span className="muted"> ({dataBR(sync.estoque.atualizado_em)})</span> : null}</span>
           <button className="btn btn-soft" style={{ marginLeft: "auto", fontSize: 12 }} onClick={carregarSync}>↻ Checar estoque</button>
+          <button className="btn btn-soft" style={{ fontSize: 12, color: "#b91c1c" }} title="Apaga o estoque espelhado; a ponte repõe tudo na próxima rodada"
+            onClick={() => { if (confirm("Zerar o estoque espelhado?\n\nA ponte vai repor tudo na próxima rodada (~2 min), já com a correção de cor. Durante esse tempo o catálogo pode mostrar os produtos como indisponíveis.")) api.erpEstoqueReset().then(() => { setTimeout(carregarSync, 500); alert("Estoque zerado. Em ~2 min a ponte repõe tudo."); }).catch(() => alert("Não consegui zerar.")); }}>🧹 Zerar espelho</button>
           {sync.diag ? (
             <div style={{ width: "100%", fontSize: 12, color: "#64748b" }}>
               Sincronização por cor: <b style={{ color: (sync.diag.com_cor || 0) > 0 ? "#15803d" : "#b91c1c" }}>{sync.diag.com_cor || 0}</b> produto(s) com estoque por cor
