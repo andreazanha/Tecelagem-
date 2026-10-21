@@ -68,6 +68,15 @@ export function PedidosErp() {
     api.erpEstoque({ busca: b }).then((r) => setEstRows(r)).catch(() => setEstRows([])).finally(() => setEstLoad(false));
   }
 
+  // Diagnóstico de kit: mostra a receita + saldo por cor/tamanho de cada peça.
+  const [diag, setDiag] = useState<Awaited<ReturnType<typeof api.erpDiagProduto>> | null>(null);
+  const [diagLoad, setDiagLoad] = useState(false);
+  function rodarDiag() {
+    const b = estBusca.trim() || "balls";
+    setDiagLoad(true);
+    api.erpDiagProduto(b).then((r) => setDiag(r)).catch(() => setDiag(null)).finally(() => setDiagLoad(false));
+  }
+
   const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const removeSel = (id: string) => setSel((s) => { if (!s.has(id)) return s; const n = new Set(s); n.delete(id); return n; });
 
@@ -231,7 +240,38 @@ export function PedidosErp() {
             <input value={estBusca} placeholder="Conferir estoque por cor: digite o nome ou código do produto…" style={{ flex: 1, padding: "6px 10px", fontSize: 13 }}
               onChange={(e) => setEstBusca(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") buscarEstoque(); }} />
             <button className="btn btn-soft" style={{ fontSize: 12 }} disabled={estLoad} onClick={buscarEstoque}>{estLoad ? "…" : "🔍 Buscar"}</button>
+            <button className="btn btn-soft" style={{ fontSize: 12 }} disabled={diagLoad} onClick={rodarDiag} title="Mostra a receita do kit e o saldo por cor/tamanho de cada peça">{diagLoad ? "…" : "🧩 Diagnóstico kit"}</button>
           </div>
+          {diag != null && (
+            <div style={{ width: "100%", marginTop: 8, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px" }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>🧩 Diagnóstico de "{diag.busca}"</div>
+              <div style={{ fontSize: 12, color: "#555", marginBottom: 4 }}>Produtos (erp_produtos):</div>
+              <table className="table" style={{ fontSize: 12, marginBottom: 10 }}>
+                <thead><tr><th>Ref</th><th>Nome</th><th className="num">Est. geral</th><th className="num">#cores</th><th className="num">#tam</th><th>inativo</th></tr></thead>
+                <tbody>{diag.produtos.map((p, i) => {
+                  let nc = 0, nt = 0; try { nc = (JSON.parse(p.cores || "[]") as unknown[]).length; } catch { /* */ } try { nt = (JSON.parse(p.tamanhos || "[]") as unknown[]).length; } catch { /* */ }
+                  return <tr key={i}><td className="strong">{p.ref}</td><td>{p.nome}</td><td className="num">{p.estoque_geral ?? "—"}</td><td className="num">{nc}</td><td className="num">{nt}</td><td>{p.inativo ? "sim" : "não"}</td></tr>;
+                })}</tbody>
+              </table>
+              <div style={{ fontSize: 12, color: "#555", marginBottom: 4 }}>Receita do(s) kit(s):</div>
+              <table className="table" style={{ fontSize: 12, marginBottom: 10 }}>
+                <thead><tr><th>Kit</th><th>Componente</th><th className="num">Qtd</th><th>Tam</th></tr></thead>
+                <tbody>{diag.receita.length ? diag.receita.map((r, i) => <tr key={i}><td className="strong">{r.kit_ref}</td><td>{r.componente_ref}</td><td className="num">{r.quantidade}</td><td>{r.tamanho || "—"}</td></tr>) : <tr><td colSpan={4} className="muted">nenhum kit</td></tr>}</tbody>
+              </table>
+              <div style={{ fontSize: 12, color: "#555", marginBottom: 4 }}>Saldo por cor e tamanho de cada peça (erp_estoque):</div>
+              {Object.keys(diag.estoque_por_peca).length === 0 && <div className="muted" style={{ fontSize: 12 }}>nenhuma peça com saldo no espelho</div>}
+              {Object.entries(diag.estoque_por_peca).map(([ref, rows]) => (
+                <div key={ref} style={{ marginBottom: 8 }}>
+                  <div style={{ fontWeight: 700, fontSize: 12.5 }}>{ref} <span className="muted" style={{ fontWeight: 400 }}>({rows.length} linha{rows.length === 1 ? "" : "s"})</span></div>
+                  <table className="table" style={{ fontSize: 12 }}>
+                    <thead><tr><th>Tam.</th><th>Cor</th><th className="num">Saldo</th></tr></thead>
+                    <tbody>{rows.map((e, i) => <tr key={i}><td>{e.tamanho || "—"}</td><td>{e.cor || "—"}</td><td className="num" style={{ fontWeight: 700 }}>{(Number(e.saldo) || 0).toLocaleString("pt-BR")}</td></tr>)}</tbody>
+                  </table>
+                </div>
+              ))}
+              {diag.pecas_sem_espelho.length > 0 && <div style={{ fontSize: 12, color: "#b91c1c", marginTop: 4 }}>Peças SEM saldo no espelho (não espelhadas por cor): {diag.pecas_sem_espelho.join(", ")}</div>}
+            </div>
+          )}
           {estRows != null ? (
             <div style={{ width: "100%", marginTop: 4 }}>
               {estRows.length === 0 ? (

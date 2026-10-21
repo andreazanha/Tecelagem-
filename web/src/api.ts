@@ -1353,6 +1353,15 @@ export const api = {
     fetch("/api/integracao/sync-status").then((r) =>
       j<{ estoque: { itens: number; atualizado_em: string | null }; produtos: { itens: number; atualizado_em: string | null }; diag?: { proc?: string; com_cor?: number; sem_detalhe?: number; itens?: number; produtos?: number; erro?: string; em?: string } | null; agora: string }>(r)),
   erpEstoqueReset: () => jsonPost("/api/integracao/estoque-reset", {}).then((r) => j<{ ok: boolean }>(r)),
+  erpDiagProduto: (busca: string) =>
+    fetch("/api/integracao/diag-produto?format=json&busca=" + encodeURIComponent(busca)).then((r) =>
+      j<{
+        busca: string;
+        produtos: { ref: string; nome: string | null; estoque_geral: number | null; cores: string | null; tamanhos: string | null; inativo: number }[];
+        receita: { kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }[];
+        estoque_por_peca: Record<string, { ref: string | null; cor: string | null; tamanho: string | null; saldo: number }[]>;
+        pecas_sem_espelho: string[];
+      }>(r)),
   erpEstoque: (q?: { ref?: string; busca?: string }) => {
     const p = new URLSearchParams();
     if (q?.ref) p.set("ref", q.ref);

@@ -277,6 +277,16 @@ integracao.get("/diag-produto", async (c) => {
   }
   const estPorRef = new Map<string, typeof estoque>();
   for (const e of estoque) { const k = (e.ref || ""); const a = estPorRef.get(k) || []; a.push(e); estPorRef.set(k, a); }
+  // JSON (consumido pelo painel do admin) — mesma informação, sem HTML.
+  if ((c.req.query("format") || "") === "json") {
+    return c.json({
+      busca,
+      produtos: prod.results,
+      receita: rec,
+      estoque_por_peca: Object.fromEntries([...estPorRef.entries()]),
+      pecas_sem_espelho: refList.filter((r) => !(estPorRef.get(r) || []).length),
+    });
+  }
   // monta HTML
   const tabProd = (prod.results as { ref: string; nome: string | null; estoque_geral: number | null; cores: string | null; tamanhos: string | null; inativo: number }[]).map((p) => {
     let nc = 0, nt = 0; try { nc = (JSON.parse(p.cores || "[]") as unknown[]).length; } catch { /* */ } try { nt = (JSON.parse(p.tamanhos || "[]") as unknown[]).length; } catch { /* */ }
