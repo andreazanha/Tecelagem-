@@ -231,6 +231,7 @@ export interface OrdemCompraItemRow {
   codigo: string | null; tamanho: string | null; cor: string | null; unidade: string | null;
   saldo: number | null; minimo: number | null;
   qtd: number; preco: number; ordem: number; recebido?: number;
+  mat_tamanho?: string | null; mat_cor?: string | null; mat_codigo?: string | null; // dados atuais do material
 }
 export interface OrdemCompraDetalhe extends OrdemCompra {
   empresa: { nome?: string; cnpj?: string; endereco?: string; telefone?: string; email?: string };

@@ -44,7 +44,13 @@ function dataEntregaBR(s: string | null): string | null {
 async function carregarOrdem(env: Env, id: string) {
   const o = await env.DB.prepare("SELECT * FROM ordens_compra WHERE id=?").bind(id).first<Record<string, unknown>>();
   if (!o) return null;
-  const { results } = await env.DB.prepare("SELECT * FROM ordem_compra_itens WHERE ordem_id=? ORDER BY ordem, rowid").bind(id).all();
+  // Traz também a medida/código ATUAIS do material (ao vivo), pra identificar o insumo
+  // na hora de receber — mesmo que o item da ordem tenha sido criado sem esses dados.
+  const { results } = await env.DB.prepare(
+    `SELECT i.*, m.tamanho AS mat_tamanho, m.cor AS mat_cor, m.codigo AS mat_codigo
+       FROM ordem_compra_itens i LEFT JOIN materiais m ON m.id = i.material_id
+      WHERE i.ordem_id=? ORDER BY i.ordem, i.rowid`
+  ).bind(id).all();
   return {
     ...o,
     empresa: parse<EmpresaDados>(o.empresa_json as string, {}),

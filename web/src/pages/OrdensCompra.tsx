@@ -252,8 +252,8 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
                   const baixo = it.saldo != null && it.minimo != null && Number(it.saldo) < Number(it.minimo);
                   return (
                   <tr key={it.id || i}>
-                    <td className="strong">{it.codigo || "—"}</td>
-                    <td>{it.nome}{it.tamanho ? ` · ${it.tamanho}` : ""}{it.cor ? ` · ${it.cor}` : ""}</td>
+                    <td className="strong">{it.codigo || it.mat_codigo || "—"}</td>
+                    <td>{it.nome}{(it.tamanho || it.mat_tamanho) ? ` · ${it.tamanho || it.mat_tamanho}` : ""}{(it.cor || it.mat_cor) ? ` · ${it.cor || it.mat_cor}` : ""}</td>
                     <td className="num" style={baixo ? { color: "#b91c1c", fontWeight: 700 } : undefined}>{it.saldo != null ? nBR(Number(it.saldo)) : "—"}</td>
                     <td className="num muted">{it.minimo != null ? nBR(Number(it.minimo)) : "—"}</td>
                     <td className="num">
@@ -436,8 +436,8 @@ function ReceberModal({ ordem, itens, onFechar, onRecebido }: { ordem: OrdemComp
               const falta = restante(it);
               return (
                 <tr key={it.id} style={falta <= 0 ? { opacity: 0.5 } : undefined}>
-                  <td className="strong">{it.codigo || "—"}</td>
-                  <td>{it.nome}{it.tamanho ? ` · ${it.tamanho}` : ""}{it.cor ? ` · ${it.cor}` : ""} <span className="muted">{it.unidade || ""}</span></td>
+                  <td className="strong">{it.codigo || it.mat_codigo || "—"}</td>
+                  <td>{it.nome}{(it.tamanho || it.mat_tamanho) ? ` · ${it.tamanho || it.mat_tamanho}` : ""}{(it.cor || it.mat_cor) ? ` · ${it.cor || it.mat_cor}` : ""} <span className="muted">{it.unidade || ""}</span></td>
                   <td className="num muted">{it.saldo != null ? nBR(Number(it.saldo)) : "—"}</td>
                   <td className="num">{nBR(Number(it.qtd) || 0)}</td>
                   <td className="num muted">{nBR(Number(it.recebido) || 0)}</td>
