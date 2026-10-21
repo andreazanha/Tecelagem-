@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-19.3";
+const PONTE_VERSAO = "2026-10-21.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -284,19 +284,27 @@ async function enviarEstoque(itens) {
   return r.ok;
 }
 async function rodadaEstoque(db) {
-  const sql = CONFIG.estoque && CONFIG.estoque.sql;
-  if (!sql) return; // estoque desligado até o Syntech informar a tabela de saldo
-  let linhas = [];
-  try { linhas = await query(db, sql); }
-  catch (e) { log("! estoque: consulta falhou —", e.message); return; }
-  const itens = linhas.map((r) => ({
-    produto: String(r.PRODUTO || "").trim(),
-    ref: String(r.REF || "").trim(),
-    cor: String(r.COR || "").trim(),
-    tamanho: String(r.TAMANHO || "").trim(),
-    saldo: Number(r.SALDO) || 0,
-    unidade: String(r.UNIDADE || "").trim(),
-  })).filter((x) => x.ref || x.produto);
+  // PREFERIDO: estoque EXATO por cor/tamanho via a procedure OFICIAL do Syntech
+  // (documento de integração: APP_ESTOQUE_DETALHADO(COD_PROD) → COR, COD_COR, TAMANHO, SALDO…).
+  // Se não funcionar (procedure ausente/erro), CAI no modo antigo (CONFIG.estoque.sql).
+  let itens = null;
+  try { itens = await estoquePorCor(db); } catch (e) { log("! estoque por cor: erro —", e.message); itens = null; }
+
+  if (!itens) {
+    const sql = CONFIG.estoque && CONFIG.estoque.sql;
+    if (!sql) { log("estoque: sem APP_ESTOQUE_DETALHADO e sem CONFIG.estoque.sql — nada a espelhar"); return; }
+    let linhas = [];
+    try { linhas = await query(db, sql); }
+    catch (e) { log("! estoque: consulta (fallback) falhou —", e.message); return; }
+    itens = linhas.map((r) => ({
+      produto: String(r.PRODUTO || "").trim(),
+      ref: String(r.REF || "").trim(),
+      cor: String(r.COR || "").trim(),
+      tamanho: String(r.TAMANHO || "").trim(),
+      saldo: Number(r.SALDO) || 0,
+      unidade: String(r.UNIDADE || "").trim(),
+    })).filter((x) => x.ref || x.produto);
+  }
   if (!itens.length) { log("estoque: nada a enviar"); return; }
   // envia em lotes de 500 pra não estourar o tamanho da requisição
   let enviados = 0;
@@ -304,7 +312,43 @@ async function rodadaEstoque(db) {
     const ok = await enviarEstoque(itens.slice(i, i + 500));
     if (ok) enviados += Math.min(500, itens.length - i);
   }
-  log(`estoque: ${enviados}/${itens.length} saldo(s) espelhado(s)`);
+  log(`estoque: ${enviados}/${itens.length} saldo(s) por cor espelhado(s)`);
+}
+
+// Estoque EXATO por cor/tamanho usando a procedure do documento de integração.
+// Lista os produtos ativos e chama APP_ESTOQUE_DETALHADO(COD_PROD) pra cada um.
+// Devolve null (pra cair no fallback) se a procedure não existir / falhar em TODOS.
+async function estoquePorCor(db) {
+  const cfg = CONFIG.estoque || {};
+  if (cfg.porCor === false) return null; // dá pra desligar no config se precisar
+  const proc = cfg.proc || "APP_ESTOQUE_DETALHADO";
+  const prodSql = cfg.produtosSql || "SELECT CODIGO FROM PRODUTOS WHERE COALESCE(INATIVO,'N') <> 'S'";
+  let prods = [];
+  try { prods = await query(db, prodSql); }
+  catch (e) { log("! estoque por cor: lista de produtos falhou —", e.message); return null; }
+  if (!prods || !prods.length) return null;
+  const itens = [];
+  let okP = 0, erroP = 0, primeiroErro = "";
+  for (const p of prods) {
+    const cod = String((p.CODIGO != null ? p.CODIGO : (p.COD_PROD != null ? p.COD_PROD : p.COD)) || "").trim();
+    if (!cod) continue;
+    try {
+      const rows = await query(db, `SELECT * FROM ${proc}(?)`, [cod]);
+      let temLinha = false;
+      for (const r of (rows || [])) {
+        const cor = String(r.COR || "").trim();
+        const tam = String(r.TAMANHO || "").trim();
+        if (!cor && !tam) continue;
+        itens.push({ produto: cod, ref: cod, cor, tamanho: tam, saldo: Number(r.SALDO) || 0, unidade: "" });
+        temLinha = true;
+      }
+      if (temLinha) okP++;
+    } catch (e) { erroP++; if (!primeiroErro) primeiroErro = e.message; }
+  }
+  // Nenhum produto respondeu → procedure errada/ausente → cai no fallback antigo.
+  if (!okP && erroP) { log(`! estoque por cor: ${proc} falhou em todos (${erroP}) — ${primeiroErro}. Uso o modo antigo.`); return null; }
+  log(`estoque por cor: ${itens.length} saldo(s) por cor de ${okP} produto(s)` + (erroP ? ` (${erroP} sem detalhe)` : ""));
+  return itens;
 }
 
 // ── RECEITA DO KIT: lê INSUMOS_PROD (kit → peças) e espelha no sistema ─────────
