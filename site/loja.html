@@ -1275,7 +1275,13 @@
     var el=document.getElementById("saudacao"); if(!el) return;
     if(nome){ el.style.display="flex"; el.innerHTML='Olá, <b style="color:#fff">'+esc(nome)+'</b> · <a href="#" id="sairLoja" style="color:#e7a187;text-decoration:none">sair</a>';
       var s=document.getElementById("sairLoja"); if(s) s.onclick=function(ev){ ev.preventDefault(); sairLoja(); };
-    } else { el.style.display="none"; el.innerHTML=""; }
+    } else if(ehPortalRep()){ el.style.display="none"; el.innerHTML=""; }
+    else {
+      // Não logado (catálogo do cliente): mostra um botão "Entrar" pra reabrir o login.
+      el.style.display="flex";
+      el.innerHTML='<button type="button" id="entrarLoja" style="background:#ad5033;color:#fff;border:0;border-radius:8px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer">Entrar</button>';
+      var e2=document.getElementById("entrarLoja"); if(e2) e2.onclick=function(){ mostrarEnt(); abrirEntrada(); };
+    }
   }
   function aplicarSessao(nome,reg,liberado){
     regiao = (reg==="norte")?"norte":"sul";
@@ -1302,7 +1308,7 @@
     setTimeout(function(){ try{ inp.focus(); }catch(e){} },50);
   }
   // Fecha o login e deixa o cliente navegar pelo catálogo (sem logar).
-  function fecharEntrada(){ var ov=document.getElementById("entrada"); if(ov) ov.style.display="none"; document.body.style.overflow=""; }
+  function fecharEntrada(){ var ov=document.getElementById("entrada"); if(ov) ov.style.display="none"; document.body.style.overflow=""; var cs=cliSalvo(); mostrarSaudacao(cs&&cs.nome?cs.nome:""); }
   (function(){
     var fx=document.getElementById("entFechar"); if(fx) fx.addEventListener("click",fecharEntrada);
     var ov=document.getElementById("entrada");
