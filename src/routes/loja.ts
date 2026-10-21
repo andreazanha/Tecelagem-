@@ -784,11 +784,17 @@ loja.get("/meus-pedidos", async (c) => {
   const cnpj = soDigitos(c.req.query("cnpj"));
   if (cnpj.length < 11) return c.json({ erro: "cnpj_invalido", msg: "CNPJ inválido." }, 400);
   const { results: peds } = await c.env.DB.prepare(
-    "SELECT id, erp_numero, valor_total, data_pedido, created_at, COALESCE(erp_sync_status,'pendente') AS sync " +
+    "SELECT id, erp_numero, valor_total, data_pedido, created_at, COALESCE(cliente_nome,'') AS cliente_nome, COALESCE(erp_sync_status,'pendente') AS sync " +
     "FROM pedidos WHERE canal='loja_b2b' AND REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cliente_cnpj,''),'.',''),'/',''),'-',''),' ','') = ? " +
     "ORDER BY created_at DESC LIMIT 60"
-  ).bind(cnpj).all<{ id: string; erp_numero: number | null; valor_total: number | null; data_pedido: string | null; created_at: string | null; sync: string }>();
+  ).bind(cnpj).all<{ id: string; erp_numero: number | null; valor_total: number | null; data_pedido: string | null; created_at: string | null; cliente_nome: string; sync: string }>();
   if (!peds.length) return c.json({ pedidos: [] });
+  // Nome do cliente dono do CNPJ (fantasia > razão social do cadastro) — pro rep identificar.
+  const cliCad = await c.env.DB.prepare(
+    "SELECT COALESCE(NULLIF(TRIM(fantasia),''), NULLIF(TRIM(nome),'')) AS nome FROM clientes " +
+    "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
+  ).bind(cnpj).first<{ nome: string | null }>();
+  const clienteCad = String(cliCad?.nome || "").trim();
   const ids = peds.map((p) => p.id);
   const ph = ids.map(() => "?").join(",");
   const { results: itens } = await c.env.DB.prepare(
@@ -809,6 +815,7 @@ loja.get("/meus-pedidos", async (c) => {
     const st = statusKey(p.sync);
     return {
       id: p.id, numero: p.erp_numero, data: p.created_at || p.data_pedido, total: p.valor_total,
+      cliente: clienteCad || String(p.cliente_nome || "").trim(),
       pecas: its.reduce((s, it) => s + (Number(it.qtd) || 0), 0),
       status: st, status_label: statusLabel(st),
       situacao: statusLabel(st) + (p.erp_numero ? " · nº " + p.erp_numero : ""),
