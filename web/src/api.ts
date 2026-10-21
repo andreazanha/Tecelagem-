@@ -1347,7 +1347,7 @@ export const api = {
   // Estoque de produtos espelhado do ERP (só leitura).
   erpSyncStatus: () =>
     fetch("/api/integracao/sync-status").then((r) =>
-      j<{ estoque: { itens: number; atualizado_em: string | null }; produtos: { itens: number; atualizado_em: string | null }; agora: string }>(r)),
+      j<{ estoque: { itens: number; atualizado_em: string | null }; produtos: { itens: number; atualizado_em: string | null }; diag?: { proc?: string; com_cor?: number; sem_detalhe?: number; itens?: number; produtos?: number; erro?: string; em?: string } | null; agora: string }>(r)),
   erpEstoque: (q?: { ref?: string; busca?: string }) => {
     const p = new URLSearchParams();
     if (q?.ref) p.set("ref", q.ref);

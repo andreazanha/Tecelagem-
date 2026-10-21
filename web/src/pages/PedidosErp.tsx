@@ -54,7 +54,7 @@ export function PedidosErp() {
   useEffect(carregar, []);
 
   // Status da sincronização de estoque (pra saber se o espelho do Syntech está atualizando).
-  const [sync, setSync] = useState<{ estoque: { itens: number; atualizado_em: string | null }; agora: string } | null>(null);
+  const [sync, setSync] = useState<{ estoque: { itens: number; atualizado_em: string | null }; diag?: { proc?: string; com_cor?: number; sem_detalhe?: number; itens?: number; produtos?: number; erro?: string; em?: string } | null; agora: string } | null>(null);
   const carregarSync = () => api.erpSyncStatus().then(setSync).catch(() => setSync(null));
   useEffect(() => { carregarSync(); }, []);
 
@@ -217,6 +217,14 @@ export function PedidosErp() {
           <span style={{ width: 10, height: 10, borderRadius: "50%", background: s.cor, display: "inline-block", flex: "0 0 auto" }} />
           <span>📦 <b>Estoque do Syntech:</b> {sync.estoque.itens.toLocaleString("pt-BR")} itens no espelho · <b style={{ color: s.cor }}>última atualização {s.txt}</b>{sync.estoque.atualizado_em ? <span className="muted"> ({dataBR(sync.estoque.atualizado_em)})</span> : null}</span>
           <button className="btn btn-soft" style={{ marginLeft: "auto", fontSize: 12 }} onClick={carregarSync}>↻ Checar estoque</button>
+          {sync.diag ? (
+            <div style={{ width: "100%", fontSize: 12, color: "#64748b" }}>
+              Sincronização por cor: <b style={{ color: (sync.diag.com_cor || 0) > 0 ? "#15803d" : "#b91c1c" }}>{sync.diag.com_cor || 0}</b> produto(s) com estoque por cor
+              {(sync.diag.sem_detalhe || 0) > 0 ? <> · <b style={{ color: "#b45309" }}>{sync.diag.sem_detalhe}</b> sem detalhe</> : null}
+              {" · "}{sync.diag.itens || 0} linha(s){sync.diag.produtos ? <> de {sync.diag.produtos} produto(s)</> : null}
+              {sync.diag.erro ? <div style={{ color: "#b91c1c", marginTop: 2 }}>último erro: {sync.diag.erro}</div> : null}
+            </div>
+          ) : null}
           <div style={{ display: "flex", gap: 6, alignItems: "center", width: "100%", marginTop: 6 }}>
             <input value={estBusca} placeholder="Conferir estoque por cor: digite o nome ou código do produto…" style={{ flex: 1, padding: "6px 10px", fontSize: 13 }}
               onChange={(e) => setEstBusca(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") buscarEstoque(); }} />

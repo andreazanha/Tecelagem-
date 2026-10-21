@@ -257,11 +257,25 @@ integracao.get("/sync-status", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const est = await c.env.DB.prepare("SELECT COUNT(*) AS n, MAX(atualizado_em) AS ult FROM erp_estoque").first<{ n: number; ult: string | null }>().catch(() => null);
   const prod = await c.env.DB.prepare("SELECT COUNT(*) AS n, MAX(atualizado_em) AS ult FROM erp_produtos").first<{ n: number; ult: string | null }>().catch(() => null);
+  let diag: unknown = null;
+  try { const d = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_diag'").first<{ valor: string | null }>(); diag = d?.valor ? JSON.parse(d.valor) : null; } catch { diag = null; }
   return c.json({
     estoque: { itens: Number(est?.n) || 0, atualizado_em: est?.ult || null },
     produtos: { itens: Number(prod?.n) || 0, atualizado_em: prod?.ult || null },
+    diag,
     agora: new Date().toISOString(),
   });
+});
+
+// A ponte reporta o resultado da sincronização de estoque por cor (diagnóstico).
+integracao.post("/estoque-diag", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+  const b = await c.req.json().catch(() => ({}));
+  const valor = JSON.stringify({ ...(b as Record<string, unknown>), em: new Date().toISOString() }).slice(0, 4000);
+  await c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('estoque_diag', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(valor).run();
+  return c.json({ ok: true });
 });
 
 // ── DIAGNÓSTICO: a ponte manda a estrutura do banco do Syntech (uma vez) ───────

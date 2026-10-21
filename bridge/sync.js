@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-21.1";
+const PONTE_VERSAO = "2026-10-21.2";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -322,7 +322,9 @@ async function estoquePorCor(db) {
   const cfg = CONFIG.estoque || {};
   if (cfg.porCor === false) return null; // dá pra desligar no config se precisar
   const proc = cfg.proc || "APP_ESTOQUE_DETALHADO";
-  const prodSql = cfg.produtosSql || "SELECT CODIGO FROM PRODUTOS WHERE COALESCE(INATIVO,'N') <> 'S'";
+  // TODOS os produtos (inclusive INATIVOS): as peças de kit costumam ficar inativas no
+  // Syntech, mas o catálogo precisa do estoque por cor delas pra calcular o kit.
+  const prodSql = cfg.produtosSql || "SELECT CODIGO FROM PRODUTOS";
   let prods = [];
   try { prods = await query(db, prodSql); }
   catch (e) { log("! estoque por cor: lista de produtos falhou —", e.message); return null; }
@@ -345,6 +347,15 @@ async function estoquePorCor(db) {
       if (temLinha) okP++;
     } catch (e) { erroP++; if (!primeiroErro) primeiroErro = e.message; }
   }
+  // Reporta o resultado pro servidor (aparece no indicador "Estoque do Syntech"),
+  // pra dar pra diagnosticar sem precisar olhar o log da ponte.
+  try {
+    const base = CONFIG.api.base.replace(/\/+$/, "");
+    await fetch(base + "/api/integracao/estoque-diag", {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token || "" },
+      body: JSON.stringify({ proc, com_cor: okP, sem_detalhe: erroP, itens: itens.length, produtos: prods.length, erro: String(primeiroErro || "").slice(0, 300) }),
+    });
+  } catch { /* não bloqueia o estoque */ }
   // Nenhum produto respondeu → procedure errada/ausente → cai no fallback antigo.
   if (!okP && erroP) { log(`! estoque por cor: ${proc} falhou em todos (${erroP}) — ${primeiroErro}. Uso o modo antigo.`); return null; }
   log(`estoque por cor: ${itens.length} saldo(s) por cor de ${okP} produto(s)` + (erroP ? ` (${erroP} sem detalhe)` : ""));
