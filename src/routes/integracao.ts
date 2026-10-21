@@ -1413,6 +1413,26 @@ integracao.post("/loja-pedidos/:id/reenviar", async (c) => {
   }
   return c.json({ ok: true });
 });
+// Excluir UM pedido da loja (limpeza de testes). Apaga do NOSSO sistema — NÃO apaga do
+// Syntech (lá, se já entrou como orçamento, exclua por lá).
+integracao.delete("/loja-pedidos/:id", async (c) => {
+  const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=? AND (SELECT canal FROM pedidos WHERE id=?)='loja_b2b'").bind(id, id),
+    c.env.DB.prepare("DELETE FROM pedidos WHERE id=? AND canal='loja_b2b'").bind(id),
+  ]);
+  return c.json({ ok: true });
+});
+// Excluir TODOS os pedidos da loja (limpeza geral de testes).
+integracao.post("/loja-pedidos/limpar-todos", async (c) => {
+  const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id IN (SELECT id FROM pedidos WHERE canal='loja_b2b')"),
+    c.env.DB.prepare("DELETE FROM pedidos WHERE canal='loja_b2b'"),
+  ]);
+  return c.json({ ok: true });
+});
 integracao.post("/loja-config", async (c) => {
   const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
   const b = await c.req.json().catch(() => ({})) as { modo?: string };

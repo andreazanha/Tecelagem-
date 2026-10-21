@@ -41,6 +41,15 @@ export function LojaPedidos() {
     if (!confirm("Reenviar este pedido ao Syntech?\n\n⚠️ Use SÓ se você CONFERIU que ele NÃO está no Syntech. Ele vai entrar de novo e ganhar um número novo. Se já estiver lá, vai DUPLICAR.")) return;
     setAgindo(id); try { await api.lojaReenviar(id, true); carregar(); } finally { setAgindo(null); }
   }
+  async function excluir(id: string) {
+    if (!confirm("Excluir este pedido da loja?\n\nIsso apaga do NOSSO sistema (não apaga do Syntech — se já entrou lá como orçamento, exclua por lá).")) return;
+    setAgindo(id); try { await api.lojaExcluir(id); carregar(); } finally { setAgindo(null); }
+  }
+  async function limparTodos() {
+    if (!confirm("Excluir TODOS os pedidos da loja (B2B)?\n\n⚠️ Isso apaga TODOS daqui do sistema — bom pra limpar os testes. NÃO apaga do Syntech. Não dá pra desfazer.")) return;
+    if (!confirm("Tem certeza? Vai apagar todos os pedidos da loja de uma vez.")) return;
+    setAgindo("todos"); try { await api.lojaLimparTodos(); carregar(); } finally { setAgindo(null); }
+  }
   async function trocarModo(m: string) {
     if (m === "on" && !confirm("Ligar o envio AUTOMÁTICO? A partir de agora TODO pedido da loja vai sozinho pro Syntech (como orçamento). Confirme só depois do pedido de teste ter dado certo.")) return;
     try { await api.lojaConfig(m); setModo(m); carregar(); } catch { alert("Não consegui mudar o modo."); }
@@ -55,7 +64,12 @@ export function LojaPedidos() {
   return (
     <>
       <div className="page-head"><div><h1>Pedidos da Loja (B2B)</h1><div className="breadcrumb">Gestão › Pedidos vindos do catálogo online</div></div>
-        <button className="btn btn-soft" onClick={carregar}>Atualizar</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          {pedidos.length > 0 ? (
+            <button className="btn btn-soft" style={{ color: "#b91c1c" }} disabled={agindo === "todos"} onClick={limparTodos}>{agindo === "todos" ? "Excluindo…" : "🗑 Excluir todos"}</button>
+          ) : null}
+          <button className="btn btn-soft" onClick={carregar}>Atualizar</button>
+        </div>
       </div>
 
       <div className="card" style={{ padding: 14, marginBottom: 14 }}>
@@ -100,6 +114,7 @@ export function LojaPedidos() {
                         {p.erp_sync_status === "enviado" ? (
                           <button className="btn btn-soft" style={{ padding: "5px 9px", color: "#b45309" }} title="Use só se conferiu que o pedido NÃO está no Syntech" disabled={agindo === p.id} onClick={() => reenviarForcado(p.id)}>{agindo === p.id ? "…" : "↻ Reenviar"}</button>
                         ) : null}
+                        <button className="btn btn-soft" style={{ padding: "5px 9px", marginLeft: 6, color: "#b91c1c" }} title="Excluir pedido" disabled={agindo === p.id} onClick={() => excluir(p.id)}>🗑</button>
                       </td>
                     </tr>
                     {aberto === p.id ? (

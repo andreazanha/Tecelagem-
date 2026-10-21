@@ -1327,6 +1327,8 @@ export const api = {
   lojaLiberar: (id: string) => jsonPost(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}/liberar`, {}).then((r) => j<{ ok: boolean }>(r)),
   lojaReenviar: (id: string, forcar?: boolean) => jsonPost(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}/reenviar`, forcar ? { forcar: true } : {}).then((r) => j<{ ok: boolean }>(r)),
   lojaConfig: (modo: string) => jsonPost("/api/integracao/loja-config", { modo }).then((r) => j<{ ok: boolean; modo: string }>(r)),
+  lojaExcluir: (id: string) => fetch(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  lojaLimparTodos: () => jsonPost("/api/integracao/loja-pedidos/limpar-todos", {}).then((r) => j<{ ok: boolean }>(r)),
   // Fase S — fila de aprovação de cadastros de clientes vindos da loja.
   cadastrosLoja: () => fetch("/api/clientes/pendentes-loja").then((r) => j<CadastroLoja[]>(r)),
   cadastroPrazos: () => fetch("/api/clientes/prazos-erp").then((r) => j<{ codigo: string; descricao: string }[]>(r)),
