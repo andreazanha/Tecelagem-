@@ -1387,8 +1387,16 @@ integracao.post("/loja-pedidos/:id/liberar", async (c) => {
 integracao.post("/loja-pedidos/:id/reenviar", async (c) => {
   const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
   const id = c.req.param("id");
-  // volta pra 'pendente' (com liberado) pra ponte tentar de novo — só se deu erro.
-  await c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='pendente', erp_liberado=1, erp_sync_erro=NULL WHERE id=? AND canal='loja_b2b' AND erp_sync_status='erro'").bind(id).run();
+  const b = await c.req.json<{ forcar?: boolean }>().catch(() => ({} as { forcar?: boolean }));
+  if (b.forcar) {
+    // FORÇADO: reenvia um pedido marcado como ENVIADO (a ponte confirmou, mas o Syntech
+    // não persistiu). Limpa o número antigo pra ganhar um novo. CUIDADO: só usar quando
+    // confirmado que o pedido NÃO está no Syntech — senão duplica.
+    await c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='pendente', erp_liberado=1, erp_numero=NULL, erp_sync_erro=NULL WHERE id=? AND canal='loja_b2b' AND erp_sync_status IN ('enviado','erro')").bind(id).run();
+  } else {
+    // volta pra 'pendente' (com liberado) pra ponte tentar de novo — só se deu erro.
+    await c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='pendente', erp_liberado=1, erp_sync_erro=NULL WHERE id=? AND canal='loja_b2b' AND erp_sync_status='erro'").bind(id).run();
+  }
   return c.json({ ok: true });
 });
 integracao.post("/loja-config", async (c) => {

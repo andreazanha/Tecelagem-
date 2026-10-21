@@ -37,6 +37,10 @@ export function LojaPedidos() {
   async function reenviar(id: string) {
     setAgindo(id); try { await api.lojaReenviar(id); carregar(); } finally { setAgindo(null); }
   }
+  async function reenviarForcado(id: string) {
+    if (!confirm("Reenviar este pedido ao Syntech?\n\n⚠️ Use SÓ se você CONFERIU que ele NÃO está no Syntech. Ele vai entrar de novo e ganhar um número novo. Se já estiver lá, vai DUPLICAR.")) return;
+    setAgindo(id); try { await api.lojaReenviar(id, true); carregar(); } finally { setAgindo(null); }
+  }
   async function trocarModo(m: string) {
     if (m === "on" && !confirm("Ligar o envio AUTOMÁTICO? A partir de agora TODO pedido da loja vai sozinho pro Syntech (como orçamento). Confirme só depois do pedido de teste ter dado certo.")) return;
     try { await api.lojaConfig(m); setModo(m); carregar(); } catch { alert("Não consegui mudar o modo."); }
@@ -92,6 +96,9 @@ export function LojaPedidos() {
                         ) : null}
                         {p.erp_sync_status === "erro" ? (
                           <button className="btn btn-primary" style={{ padding: "5px 9px" }} disabled={agindo === p.id} onClick={() => reenviar(p.id)}>{agindo === p.id ? "…" : "Tentar de novo"}</button>
+                        ) : null}
+                        {p.erp_sync_status === "enviado" ? (
+                          <button className="btn btn-soft" style={{ padding: "5px 9px", color: "#b45309" }} title="Use só se conferiu que o pedido NÃO está no Syntech" disabled={agindo === p.id} onClick={() => reenviarForcado(p.id)}>{agindo === p.id ? "…" : "↻ Reenviar"}</button>
                         ) : null}
                       </td>
                     </tr>
