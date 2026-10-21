@@ -613,9 +613,14 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   const corIdPorNome = new Map<string, string>();
   const tamPorMedida = new Map<string, { id: string; nome: string; medida: string }>();
   const idCor = (nome: string, hex: string, categoria: string) => {
-    const chave = (nome || "").toLowerCase() + "|" + (hex || "").toLowerCase();
+    // Identidade da cor = só o NOME (minúsculo, sem espaços nas pontas). O MESMO nome sempre
+    // vira o MESMO id, não importa o hex nem de onde veio (produto, peça de kit ou estoque).
+    // Antes a chave incluía o hex, então uma cor que só existe em peça de kit (ex.: "bege
+    // novo", só na capa) ganhava um id diferente do estoque e "sumia" do catálogo.
+    const chave = (nome || "").trim().toLowerCase() || ("#" + (hex || "").toLowerCase());
     let c = corPorChave.get(chave);
-    if (!c) { c = { id: slugId(nome || hex || "cor", idsCor), nome: nome || "", hex: hex || "", categoria: categoria || "", foto: "" }; corPorChave.set(chave, c); if (nome) corIdPorNome.set(nome.toLowerCase(), c.id); }
+    if (!c) { c = { id: slugId(nome || hex || "cor", idsCor), nome: nome || "", hex: hex || "", categoria: categoria || "", foto: "" }; corPorChave.set(chave, c); if (nome) corIdPorNome.set((nome || "").trim().toLowerCase(), c.id); }
+    else { if (!c.hex && hex) c.hex = hex; if (!c.categoria && categoria) c.categoria = categoria; if (!c.nome && nome) c.nome = nome; } // completa hex/cat se vier depois
     return c.id;
   };
   const idTam = (medida: string) => {
@@ -719,7 +724,9 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   for (const e of est) {
     const ref = (e.ref || "").trim(); if (!ref) continue;
     const med = (e.tamanho || "").trim() || "-";
-    const cid = corIdPorNome.get((e.cor || "").toLowerCase()) || slugId(e.cor || "cor", idsCor);
+    // MESMO id da cor que a exibição usa (idCor, por NOME) — assim o saldo casa mesmo
+    // quando a cor só existe em peça de kit (ex.: bege novo). Antes gerava id separado.
+    const cid = idCor((e.cor || "").trim() || "cor", "", "");
     itens[ref] = itens[ref] || {};
     itens[ref][med] = itens[ref][med] || {};
     itens[ref][med][cid] = Number(e.saldo) || 0;
