@@ -418,7 +418,7 @@ function ReceberModal({ ordem, itens, onFechar, onRecebido }: { ordem: OrdemComp
 
   return (
     <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onFechar(); }}>
-      <div className="card pad" style={{ maxWidth: 720, width: "96%", maxHeight: "90vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+      <div className="card pad" style={{ maxWidth: 860, width: "96%", maxHeight: "90vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
         <div className="row-gap" style={{ alignItems: "center", gap: 8 }}>
           <h2 style={{ margin: 0 }}>📥 Receber no estoque</h2>
           <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={onFechar}>✕ Fechar</button>
@@ -429,14 +429,16 @@ function ReceberModal({ ordem, itens, onFechar, onRecebido }: { ordem: OrdemComp
         </p>
         <table className="table" style={{ marginTop: 8 }}>
           <thead><tr>
-            <th>Material</th><th className="num">Comprar</th><th className="num">Já recebido</th><th className="num">Falta</th><th className="num">Receber agora</th>
+            <th>Cód.</th><th>Material</th><th className="num">Estoque</th><th className="num">Comprar</th><th className="num">Já recebido</th><th className="num">Falta</th><th className="num">Receber agora</th>
           </tr></thead>
           <tbody>
             {itens.map((it) => {
               const falta = restante(it);
               return (
                 <tr key={it.id} style={falta <= 0 ? { opacity: 0.5 } : undefined}>
+                  <td className="strong">{it.codigo || "—"}</td>
                   <td>{it.nome}{it.tamanho ? ` · ${it.tamanho}` : ""}{it.cor ? ` · ${it.cor}` : ""} <span className="muted">{it.unidade || ""}</span></td>
+                  <td className="num muted">{it.saldo != null ? nBR(Number(it.saldo)) : "—"}</td>
                   <td className="num">{nBR(Number(it.qtd) || 0)}</td>
                   <td className="num muted">{nBR(Number(it.recebido) || 0)}</td>
                   <td className="num" style={{ fontWeight: 700 }}>{nBR(falta)}</td>
