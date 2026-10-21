@@ -3,6 +3,17 @@ import { api, type ErpPendente, type ErpPendenteDetalhe } from "../api";
 
 const dataBR = (s: string | null) => s ? (s.includes("T") || s.includes(" ") ? s.replace("T", " ").slice(0, 16) : s.split("-").reverse().join("/")) : "—";
 
+// Há quanto tempo foi a última sincronização (verde = fresco, laranja = atrasando, vermelho = parado).
+function haQuanto(ult: string | null, agoraIso: string): { txt: string; cor: string } {
+  if (!ult) return { txt: "nunca sincronizou", cor: "#b91c1c" };
+  const t = new Date(ult.replace(" ", "T") + (ult.includes("Z") ? "" : "Z")).getTime();
+  const now = new Date(agoraIso).getTime();
+  const min = Math.max(0, Math.round((now - t) / 60000));
+  const txt = min < 1 ? "agora mesmo" : min < 60 ? `há ${min} min` : min < 1440 ? `há ${Math.round(min / 60)} h` : `há ${Math.round(min / 1440)} dia(s)`;
+  const cor = min <= 5 ? "#15803d" : min <= 30 ? "#b45309" : "#b91c1c";
+  return { txt, cor };
+}
+
 export function PedidosErp() {
   const [lista, setLista] = useState<ErpPendente[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -41,6 +52,11 @@ export function PedidosErp() {
 
   function carregar() { setCarregando(true); api.erpPendentes().then(setLista).catch(() => setLista([])).finally(() => { setCarregando(false); setSel(new Set()); }); }
   useEffect(carregar, []);
+
+  // Status da sincronização de estoque (pra saber se o espelho do Syntech está atualizando).
+  const [sync, setSync] = useState<{ estoque: { itens: number; atualizado_em: string | null }; agora: string } | null>(null);
+  const carregarSync = () => api.erpSyncStatus().then(setSync).catch(() => setSync(null));
+  useEffect(() => { carregarSync(); }, []);
 
   const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const removeSel = (id: string) => setSel((s) => { if (!s.has(id)) return s; const n = new Set(s); n.delete(id); return n; });
@@ -185,6 +201,14 @@ export function PedidosErp() {
       <div className="page-head"><div><h1>Pedidos do ERP</h1><div className="breadcrumb">PCP › Pedidos do ERP (conferência)</div></div>
         <button className="btn btn-soft" onClick={carregar}>↻ Atualizar</button>
       </div>
+
+      {sync && (() => { const s = haQuanto(sync.estoque.atualizado_em, sync.agora); return (
+        <div className="card pad" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 13 }}>
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: s.cor, display: "inline-block", flex: "0 0 auto" }} />
+          <span>📦 <b>Estoque do Syntech:</b> {sync.estoque.itens.toLocaleString("pt-BR")} itens no espelho · <b style={{ color: s.cor }}>última atualização {s.txt}</b>{sync.estoque.atualizado_em ? <span className="muted"> ({dataBR(sync.estoque.atualizado_em)})</span> : null}</span>
+          <button className="btn btn-soft" style={{ marginLeft: "auto", fontSize: 12 }} onClick={carregarSync}>↻ Checar estoque</button>
+        </div>
+      ); })()}
 
       <div className="card pad" style={{ marginBottom: 14, background: "#f8fafc", borderStyle: "dashed" }}>
         <p className="muted" style={{ margin: 0, fontSize: 13 }}>

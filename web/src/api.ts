@@ -1345,6 +1345,9 @@ export const api = {
   catalogoProdutosExtra: () => fetch("/api/integracao/catalogo-produtos").then((r) => j<CatalogoProdutoExtra[]>(r)),
   produtoExtraSalvar: (id: string, video: string, texto: string) => jsonPost("/api/integracao/produto-extra", { id, video, texto }).then((r) => j<{ ok: boolean }>(r)),
   // Estoque de produtos espelhado do ERP (só leitura).
+  erpSyncStatus: () =>
+    fetch("/api/integracao/sync-status").then((r) =>
+      j<{ estoque: { itens: number; atualizado_em: string | null }; produtos: { itens: number; atualizado_em: string | null }; agora: string }>(r)),
   erpEstoque: (q?: { ref?: string; busca?: string }) => {
     const p = new URLSearchParams();
     if (q?.ref) p.set("ref", q.ref);
