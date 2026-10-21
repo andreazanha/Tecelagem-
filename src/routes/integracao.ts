@@ -747,24 +747,35 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           partes.push({ ordem: tp === "peseira" ? 0 : 1, txt: `${it.qtd}- ${rotulo}${dim ? " " + dim : ""}` });
         }
         vivo = isFinite(vivo) ? Math.max(0, vivo) : 0;
-        // Estoque do kit POR COR: menor( estoque_da_peça_na_cor ÷ qtd ), usando o estoque
-        // por cor dos componentes (erp_estoque). Se faltar o dado por cor de alguma peça,
-        // temCor=false → cai no estoque agregado (vivo) pra todas as cores (seguro).
+        // Estoque do kit POR COR: menor( estoque_da_peça_na_cor ÷ qtd ).
+        // Peça COM cor (capa) usa o estoque por cor (erp_estoque). Peça SEM cor
+        // (ex.: enchimento) vale pra QUALQUER cor → usa o estoque TOTAL. Assim o
+        // enchimento (que nunca tem dado por cor) não derruba o "por cor" do kit —
+        // era esse o bug que mostrava o total somado de todas as cores (ex.: 160).
         const compCorStock = (comp: string): Record<string, number> | null => {
           const m = itens[comp]; if (!m) return null;
           const acc: Record<string, number> = {}; let any = false;
           for (const med of Object.keys(m)) for (const cid of Object.keys(m[med])) { acc[cid] = (acc[cid] || 0) + (Number(m[med][cid]) || 0); any = true; }
           return any ? acc : null;
         };
-        const stocks = itensR.map((it) => ({ qtd: Number(it.qtd) || 1, cs: compCorStock(it.comp) }));
-        const temCor = itensR.length > 0 && stocks.every((x) => x.cs != null);
+        const stocks = itensR.map((it) => {
+          const info = compInfo.get(it.comp);
+          const temCores = !!(info && Array.isArray(info.cores) && info.cores.length > 0);
+          return { qtd: Number(it.qtd) || 1, temCores, cs: compCorStock(it.comp), total: Number(info?.estoque) || 0 };
+        });
+        // Só precisa do dado por cor das peças que TÊM cor; as sem cor usam o total.
+        const coloridas = stocks.filter((x) => x.temCores);
+        const temCor = coloridas.length > 0 && coloridas.every((x) => x.cs != null);
         const estCor: Record<string, number> = {};
         if (temCor) {
           const cids = new Set<string>();
-          for (const x of stocks) for (const cid of Object.keys(x.cs!)) cids.add(cid);
+          for (const x of coloridas) for (const cid of Object.keys(x.cs!)) cids.add(cid);
           for (const cid of cids) {
             let v = Infinity;
-            for (const x of stocks) v = Math.min(v, Math.floor((x.cs![cid] || 0) / (x.qtd || 1)));
+            for (const x of stocks) {
+              const disp = x.temCores ? (x.cs ? (x.cs[cid] || 0) : 0) : x.total; // sem cor → estoque total
+              v = Math.min(v, Math.floor(disp / (x.qtd || 1)));
+            }
             estCor[cid] = isFinite(v) ? Math.max(0, v) : 0;
           }
         }
