@@ -47,7 +47,14 @@ async function carregarOrdem(env: Env, id: string) {
   // Traz também a medida/código ATUAIS do material (ao vivo), pra identificar o insumo
   // na hora de receber — mesmo que o item da ordem tenha sido criado sem esses dados.
   const { results } = await env.DB.prepare(
-    `SELECT i.*, m.tamanho AS mat_tamanho, m.cor AS mat_cor, m.codigo AS mat_codigo
+    `SELECT i.*,
+            COALESCE(
+              CASE WHEN m.extra LIKE '{%' THEN NULLIF(json_extract(m.extra,'$.medida_interna'),'') END,
+              CASE WHEN m.extra LIKE '{%' THEN NULLIF(json_extract(m.extra,'$.medida'),'') END,
+              CASE WHEN m.extra LIKE '{%' THEN NULLIF(json_extract(m.extra,'$.comprimento'),'') END,
+              m.tamanho
+            ) AS mat_tamanho,
+            m.cor AS mat_cor, m.codigo AS mat_codigo
        FROM ordem_compra_itens i LEFT JOIN materiais m ON m.id = i.material_id
       WHERE i.ordem_id=? ORDER BY i.ordem, i.rowid`
   ).bind(id).all();
@@ -296,9 +303,10 @@ compras.post("/ordens/:id/receber", async (c) => {
     const comprar = Number(it.qtd) || 0;
     const jaRec = Number(it.recebido) || 0;
     const resta = Math.max(0, comprar - jaRec);
-    // quanto receber agora: o que veio no body (limitado ao que falta); default = tudo que falta
+    // quanto receber agora: o que veio no body; default = tudo que falta. NÃO limita ao
+    // comprado — se chegou mais que o pedido (ex.: comprou 500, veio 535), entra 535.
     const pedido1 = pedido.has(itemId) ? pedido.get(itemId)! : resta;
-    const receber = Math.min(resta, Math.max(0, pedido1));
+    const receber = Math.max(0, pedido1);
     if (receber <= 0) continue;
     recebidosAgora += receber;
     // atualiza o recebido do item

@@ -400,11 +400,12 @@ function ReceberModal({ ordem, itens, onFechar, onRecebido }: { ordem: OrdemComp
     return m;
   });
   const [busy, setBusy] = useState(false);
-  const totalReceber = itens.reduce((s, it) => s + Math.min(restante(it), Number((qtd[it.id] || "0").replace(",", ".")) || 0), 0);
+  // Não limita ao comprado: se chegou mais que o pedido, recebe o que veio de verdade.
+  const totalReceber = itens.reduce((s, it) => s + (Number((qtd[it.id] || "0").replace(",", ".")) || 0), 0);
 
   async function confirmar() {
     const lista = itens
-      .map((it) => ({ id: it.id, qtd: Math.min(restante(it), Number((qtd[it.id] || "0").replace(",", ".")) || 0) }))
+      .map((it) => ({ id: it.id, qtd: Number((qtd[it.id] || "0").replace(",", ".")) || 0 }))
       .filter((x) => x.qtd > 0);
     if (!lista.length) { alert("Informe a quantidade recebida de ao menos um item."); return; }
     setBusy(true);
