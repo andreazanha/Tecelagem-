@@ -555,7 +555,8 @@
 </div>
 
 <div id="entrada" style="position:fixed;inset:0;z-index:999;background:rgba(44,39,33,.55);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:18px">
-  <div style="background:#fff;border-radius:18px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden">
+  <div style="background:#fff;border-radius:18px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;position:relative">
+    <button type="button" id="entFechar" aria-label="Fechar e ver o catálogo" title="Fechar" style="position:absolute;top:10px;right:10px;z-index:2;width:34px;height:34px;border:0;border-radius:50%;background:#f1ece3;color:#6b6358;font-size:16px;line-height:1;cursor:pointer;display:none;align-items:center;justify-content:center">✕</button>
     <div style="padding:26px 24px 8px;text-align:center">
       <div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:26px;font-weight:700;letter-spacing:.02em;color:#2c2721">BIG TRICOT</div>
       <div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#ad5033;margin-top:2px">Catálogo de atacado</div>
@@ -1283,11 +1284,22 @@
     if(cnpjSalvo() && !LIBERADO){ el.style.display="block"; el.innerHTML='🔒 Seu cadastro está <b>em análise</b>. Você já pode navegar o catálogo; os <b>preços e pedidos</b> liberam assim que a Big Tricot aprovar seu acesso.'; }
     else { el.style.display="none"; }
   }
+  function ehPortalRep(){ try{ return document.documentElement.classList.contains("portal-rep") || new URLSearchParams(location.search).get("rep")==="1"; }catch(e){ return false; } }
   function abrirEntrada(){
     var ov=document.getElementById("entrada"); ov.style.display="flex"; document.body.style.overflow="hidden";
+    // ✕ só no catálogo do cliente (dá pra fechar e navegar). No portal do rep não há catálogo atrás.
+    var fx=document.getElementById("entFechar"); if(fx) fx.style.display=ehPortalRep()?"none":"flex";
     var inp=document.getElementById("entCnpj"); if(inp && !inp.value) inp.value=cnpjSalvo();
     setTimeout(function(){ try{ inp.focus(); }catch(e){} },50);
   }
+  // Fecha o login e deixa o cliente navegar pelo catálogo (sem logar).
+  function fecharEntrada(){ var ov=document.getElementById("entrada"); if(ov) ov.style.display="none"; document.body.style.overflow=""; }
+  (function(){
+    var fx=document.getElementById("entFechar"); if(fx) fx.addEventListener("click",fecharEntrada);
+    var ov=document.getElementById("entrada");
+    if(ov) ov.addEventListener("click",function(e){ if(e.target===ov && !ehPortalRep()) fecharEntrada(); });
+    document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ var o=document.getElementById("entrada"); if(o && o.style.display!=="none" && !ehPortalRep()) fecharEntrada(); } });
+  })();
   function sairLoja(){ try{ localStorage.removeItem("bt_cli"); localStorage.removeItem("bt_cnpj"); }catch(e){} LIBERADO=false; TOKEN_ACESSO=""; mostrarSaudacao(""); atualizarAvisoLib(); render(); mostrarEnt(); abrirEntrada(); }
   function entrarLoja(){
     var inp=document.getElementById("entCnpj"); var inps=document.getElementById("entSenha"); var msg=document.getElementById("entMsg"); var btn=document.getElementById("entBtn");
