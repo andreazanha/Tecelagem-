@@ -58,6 +58,16 @@ export function PedidosErp() {
   const carregarSync = () => api.erpSyncStatus().then(setSync).catch(() => setSync(null));
   useEffect(() => { carregarSync(); }, []);
 
+  // Busca o estoque espelhado por cor (pra conferir o que a ponte trouxe do Syntech).
+  const [estBusca, setEstBusca] = useState("");
+  const [estRows, setEstRows] = useState<{ produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; saldo: number; atualizado_em: string }[] | null>(null);
+  const [estLoad, setEstLoad] = useState(false);
+  function buscarEstoque() {
+    const b = estBusca.trim(); if (!b) { setEstRows(null); return; }
+    setEstLoad(true);
+    api.erpEstoque({ busca: b }).then((r) => setEstRows(r)).catch(() => setEstRows([])).finally(() => setEstLoad(false));
+  }
+
   const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const removeSel = (id: string) => setSel((s) => { if (!s.has(id)) return s; const n = new Set(s); n.delete(id); return n; });
 
@@ -207,6 +217,27 @@ export function PedidosErp() {
           <span style={{ width: 10, height: 10, borderRadius: "50%", background: s.cor, display: "inline-block", flex: "0 0 auto" }} />
           <span>📦 <b>Estoque do Syntech:</b> {sync.estoque.itens.toLocaleString("pt-BR")} itens no espelho · <b style={{ color: s.cor }}>última atualização {s.txt}</b>{sync.estoque.atualizado_em ? <span className="muted"> ({dataBR(sync.estoque.atualizado_em)})</span> : null}</span>
           <button className="btn btn-soft" style={{ marginLeft: "auto", fontSize: 12 }} onClick={carregarSync}>↻ Checar estoque</button>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", width: "100%", marginTop: 6 }}>
+            <input value={estBusca} placeholder="Conferir estoque por cor: digite o nome ou código do produto…" style={{ flex: 1, padding: "6px 10px", fontSize: 13 }}
+              onChange={(e) => setEstBusca(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") buscarEstoque(); }} />
+            <button className="btn btn-soft" style={{ fontSize: 12 }} disabled={estLoad} onClick={buscarEstoque}>{estLoad ? "…" : "🔍 Buscar"}</button>
+          </div>
+          {estRows != null ? (
+            <div style={{ width: "100%", marginTop: 4 }}>
+              {estRows.length === 0 ? (
+                <div className="muted" style={{ fontSize: 12.5 }}>Nada no espelho para "{estBusca}". Se o produto existe no Syntech com estoque, a ponte ainda não trouxe o saldo por cor dele.</div>
+              ) : (
+                <table className="table" style={{ fontSize: 12.5 }}>
+                  <thead><tr><th>Produto</th><th>Cód.</th><th>Cor</th><th>Tam.</th><th className="num">Saldo</th><th>Atualizado</th></tr></thead>
+                  <tbody>
+                    {estRows.slice(0, 60).map((r, i) => (
+                      <tr key={i}><td>{r.produto || "—"}</td><td className="strong">{r.ref || "—"}</td><td>{r.cor || "—"}</td><td>{r.tamanho || "—"}</td><td className="num" style={{ fontWeight: 700 }}>{(Number(r.saldo) || 0).toLocaleString("pt-BR")}</td><td className="muted">{dataBR(r.atualizado_em)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ) : null}
         </div>
       ); })()}
 
