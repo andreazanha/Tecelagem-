@@ -123,6 +123,15 @@ app.use("*", async (c, next) => {
       return new Response("Não consegui abrir a área do representante:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
     }
   }
+  // Subdomínio do CLIENTE (pedidos.bigtricot.com.br): a RAIZ abre o catálogo da loja.
+  if (url.hostname.startsWith("pedidos.") && url.pathname === "/") {
+    try {
+      const html = await construirLojaHtml(c.env, false);
+      return c.html(html, 200, { "Cache-Control": "no-store" });
+    } catch (e) {
+      return new Response("Não consegui abrir a loja:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    }
+  }
   await next();
 });
 
