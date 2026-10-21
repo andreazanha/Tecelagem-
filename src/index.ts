@@ -135,6 +135,29 @@ app.use("*", async (c, next) => {
   await next();
 });
 
+// O link antigo (…workers.dev) não deve ser usado diretamente: quando alguém ABRE a
+// página no navegador (aba/topo), mandamos para o endereço bonito. Só vale para
+// navegação direta — o iframe das páginas novas manda "Sec-Fetch-Dest: iframe" e a
+// ponte/API não mandam "document", então continuam funcionando normalmente (é o iframe
+// que alimenta pedidos./vendas./sistema.). Páginas públicas (vitrine, cadastrar-loja) e
+// a API ficam de fora.
+app.use("*", async (c, next) => {
+  if (c.req.method === "GET" && c.req.header("Sec-Fetch-Dest") === "document") {
+    const url = new URL(c.req.url);
+    const p = url.pathname;
+    if (p === "/api/integracao/loja") {
+      const rep = url.searchParams.get("rep") === "1";
+      return c.redirect(rep ? "https://vendas.bigtricot.com.br/" : "https://pedidos.bigtricot.com.br/", 302);
+    }
+    const manter = p.startsWith("/api/") || p === "/vitrine" || p === "/cadastrar-loja" || p.startsWith("/.well-known");
+    if (!manter) {
+      // páginas do sistema de gestão (SPA) → subdomínio próprio
+      return c.redirect("https://sistema.bigtricot.com.br/", 302);
+    }
+  }
+  await next();
+});
+
 // Vitrine pública de lojas parceiras (SEM login) — link que a Big manda pro consumidor
 // final e que pode ser divulgado por fora. Aceita ?uf= e ?cidade= pra já filtrar.
 app.get("/vitrine", async (c) => {
