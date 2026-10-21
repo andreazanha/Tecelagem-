@@ -52,6 +52,7 @@ export function OrdensCompra() {
   const [lista, setLista] = useState<OrdemCompra[]>([]);
   const [carregou, setCarregou] = useState(false);
   const [abertaId, setAbertaId] = useState<string | null>(null);
+  const [agindo, setAgindo] = useState<string | null>(null);
 
   const recarregar = useCallback(async () => {
     try { setLista(await api.listarOrdensCompra(filtro)); } catch { /* mantém */ }
@@ -64,6 +65,14 @@ export function OrdensCompra() {
     if (!confirm(`Excluir a ordem ${o.numero}? Esta ação não pode ser desfeita.`)) return;
     try { await api.excluirOrdemCompra(o.id); recarregar(); }
     catch (e) { alert((e as Error).message); }
+  }
+
+  // Avançar o status direto na lista (sem abrir a ordem).
+  async function cotarLista(o: OrdemCompra) {
+    setAgindo(o.id);
+    try { await api.cotarOrdemCompra(o.id); await recarregar(); }
+    catch (e) { alert((e as Error).message); }
+    finally { setAgindo(null); }
   }
 
   return (
@@ -102,7 +111,14 @@ export function OrdensCompra() {
                   <td className="num">{o.n_itens ?? "—"}</td>
                   <td className="num">{rBR(o.total)}</td>
                   <td style={{ whiteSpace: "nowrap" }}>{dataEnt(o.data_entrega)}</td>
-                  <td><Selo s={o.status} /></td>
+                  <td>
+                    <Selo s={o.status} />
+                    {podeAprovar && o.status === "aguardando_aprovacao" && (
+                      <div style={{ marginTop: 5 }}>
+                        <button className="btn btn-soft" disabled={agindo === o.id} style={{ fontSize: 11, padding: "2px 8px", color: "#6d28d9" }} onClick={(e) => { e.stopPropagation(); cotarLista(o); }}>💬 Cotando</button>
+                      </div>
+                    )}
+                  </td>
                   <td style={{ whiteSpace: "nowrap" }}>{dataHora(o.criado_em)}</td>
                   <td className="muted">{o.criado_por_nome || "—"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
