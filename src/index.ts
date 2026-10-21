@@ -20,7 +20,7 @@ import { assistente } from "./routes/assistente";
 import { relatorios } from "./routes/relatorios";
 import { tecelagem } from "./routes/tecelagem";
 import { setores } from "./routes/setores";
-import { integracao } from "./routes/integracao";
+import { integracao, construirLojaHtml } from "./routes/integracao";
 import { loja } from "./routes/loja";
 import compras from "./routes/compras";
 
@@ -112,6 +112,16 @@ app.use("*", async (c, next) => {
   const url = new URL(c.req.url);
   if (url.hostname.startsWith("cadastro.") && url.pathname === "/") {
     return c.html(cadastroHtml(), 200, { "Cache-Control": "no-cache" });
+  }
+  // Subdomínio do REPRESENTANTE (vendas.bigtricot.com.br): a RAIZ abre direto o portal
+  // do rep (login do representante), sem ?rep=1. /api, assets e o resto seguem normais.
+  if (url.hostname.startsWith("vendas.") && url.pathname === "/") {
+    try {
+      const html = await construirLojaHtml(c.env, true);
+      return c.html(html, 200, { "Cache-Control": "no-store" });
+    } catch (e) {
+      return new Response("Não consegui abrir a área do representante:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    }
   }
   await next();
 });

@@ -1069,17 +1069,20 @@ integracao.get("/loja-arquivo/:nome", async (c) => {
 // por tamanho, estoque, cores, seções. As fotos vêm casadas do Cloudinary (o
 // Syntech guarda foto no servidor interno, que o cliente não acessa pela net).
 // Aberta por enquanto (prévia). Login/carrinho/pedido vêm nas próximas fases.
-integracao.get("/loja", async (c) => {
+// Monta o HTML da loja com os dados injetados. repPortal=true marca a página como
+// "portal do representante" (usado no subdomínio vendas.* pra abrir o login do rep
+// direto na raiz, sem ?rep=1 na URL). Lança erro se não conseguir montar os dados.
+export async function construirLojaHtml(env: Env, repPortal = false): Promise<string> {
   let dados: { produtos: unknown[]; banco_cores: unknown; banco_tamanhos: unknown; estoque: unknown; banners?: unknown[]; banner_intervalo?: number; whatsapp?: string };
-  try {
-    const doc = await gerarDocSite(c.env);
+  {
+    const doc = await gerarDocSite(env);
     const normais = Array.isArray(doc.produtos) ? (doc.produtos as unknown[]) : [];
     const elDoc = doc.edicao_limitada as { produtos?: unknown[] } | undefined;
     const limitada = elDoc && Array.isArray(elDoc.produtos) ? elDoc.produtos : [];
     // Banners cadastrados pela dona (config loja_banners). Só os ATIVOS, por ordem.
     let banners: unknown[] = [];
     try {
-      const raw = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_banners'").first<{ valor: string | null }>();
+      const raw = await env.DB.prepare("SELECT valor FROM config WHERE chave='loja_banners'").first<{ valor: string | null }>();
       const arr = raw?.valor ? JSON.parse(raw.valor) : [];
       // "agora" em horário de Brasília no formato YYYY-MM-DDTHH:mm (compara com as datas do agendamento).
       const agora = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()).replace(" ", "T");
@@ -1093,22 +1096,29 @@ integracao.get("/loja", async (c) => {
       }).sort((a, b) => (Number((a as { ordem?: number }).ordem) || 0) - (Number((b as { ordem?: number }).ordem) || 0));
     } catch { banners = []; }
     let banner_intervalo = 5;
-    try { const ir = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_banner_intervalo'").first<{ valor: string | null }>(); banner_intervalo = Math.max(2, Math.min(30, Number(ir?.valor) || 5)); } catch { banner_intervalo = 5; }
+    try { const ir = await env.DB.prepare("SELECT valor FROM config WHERE chave='loja_banner_intervalo'").first<{ valor: string | null }>(); banner_intervalo = Math.max(2, Math.min(30, Number(ir?.valor) || 5)); } catch { banner_intervalo = 5; }
     // Número do WhatsApp da Big (pro botão flutuante da loja). Usa loja_whatsapp se
     // existir, senão o numero_whatsapp do atendimento. Só dígitos.
     let whatsapp = "";
     try {
-      const w = await c.env.DB.prepare("SELECT valor FROM config WHERE chave IN ('loja_whatsapp','numero_whatsapp') ORDER BY CASE chave WHEN 'loja_whatsapp' THEN 0 ELSE 1 END LIMIT 1").first<{ valor: string | null }>();
+      const w = await env.DB.prepare("SELECT valor FROM config WHERE chave IN ('loja_whatsapp','numero_whatsapp') ORDER BY CASE chave WHEN 'loja_whatsapp' THEN 0 ELSE 1 END LIMIT 1").first<{ valor: string | null }>();
       whatsapp = String(w?.valor || "").replace(/\D+/g, "");
     } catch { whatsapp = ""; }
     dados = { produtos: [...normais, ...limitada], banco_cores: doc.banco_cores, banco_tamanhos: doc.banco_tamanhos, estoque: doc.estoque, banners, banner_intervalo, whatsapp };
+  }
+  const json = JSON.stringify(dados).split("<").join("\\u003c").split("\u2028").join("\\u2028").split("\u2029").join("\\u2029");
+  let inject = `<script>window.__DADOS__=${json};</script>`;
+  if (repPortal) inject = `<script>window.__REP_PORTAL__=true;</script>` + inject;
+  return SITE_LOJA_HTML.includes("</head>") ? SITE_LOJA_HTML.replace("</head>", inject + "</head>") : inject + SITE_LOJA_HTML;
+}
+
+integracao.get("/loja", async (c) => {
+  try {
+    const html = await construirLojaHtml(c.env);
+    return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
   } catch (e) {
     return new Response("Não consegui montar a loja:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   }
-  const json = JSON.stringify(dados).split("<").join("\\u003c").split("\u2028").join("\\u2028").split("\u2029").join("\\u2029");
-  const inject = `<script>window.__DADOS__=${json};</script>`;
-  const html = SITE_LOJA_HTML.includes("</head>") ? SITE_LOJA_HTML.replace("</head>", inject + "</head>") : inject + SITE_LOJA_HTML;
-  return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 });
 
 // ════════════════════════════════════════════════════════════════════════════

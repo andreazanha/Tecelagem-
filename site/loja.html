@@ -383,7 +383,7 @@
 </style>
 </head>
 <body>
-<script>try{if(new URLSearchParams(location.search).get("rep")==="1")document.documentElement.classList.add("portal-rep");}catch(e){}</script>
+<script>try{if(window.__REP_PORTAL__===true||new URLSearchParams(location.search).get("rep")==="1")document.documentElement.classList.add("portal-rep");}catch(e){}</script>
 <div id="repBoot" class="rep-boot"><div class="rep-boot-in"><div class="rep-boot-sp"></div>Abrindo área do representante…</div></div>
 <section class="banner" id="banner"></section>
 
@@ -1293,7 +1293,7 @@
     if(cnpjSalvo() && !LIBERADO){ el.style.display="block"; el.innerHTML='🔒 Seu cadastro está <b>em análise</b>. Você já pode navegar o catálogo; os <b>preços e pedidos</b> liberam assim que a Big Tricot aprovar seu acesso.'; }
     else { el.style.display="none"; }
   }
-  function ehPortalRep(){ try{ return document.documentElement.classList.contains("portal-rep") || new URLSearchParams(location.search).get("rep")==="1"; }catch(e){ return false; } }
+  function ehPortalRep(){ try{ return window.__REP_PORTAL__===true || document.documentElement.classList.contains("portal-rep") || new URLSearchParams(location.search).get("rep")==="1"; }catch(e){ return false; } }
   function abrirEntrada(){
     var ov=document.getElementById("entrada"); ov.style.display="flex"; document.body.style.overflow="hidden";
     // ✕ só no catálogo do cliente (dá pra fechar e navegar). No portal do rep não há catálogo atrás.
@@ -1394,7 +1394,7 @@
     try{ localStorage.setItem("bt_rep", JSON.stringify(rep)); }catch(e){}
     // Portal do representante é separado do catálogo do cliente: fixa ?rep=1 na URL
     // pra que recarregar continue na área do rep (e o /loja puro fique sendo do cliente).
-    try{ if(new URLSearchParams(location.search).get("rep")!=="1") history.replaceState(null,"",location.pathname+"?rep=1"); }catch(e){}
+    try{ if(window.__REP_PORTAL__!==true && new URLSearchParams(location.search).get("rep")!=="1") history.replaceState(null,"",location.pathname+"?rep=1"); }catch(e){}
     var rb=document.getElementById("repBoot"); if(rb) rb.style.display="none";
     document.getElementById("entrada").style.display="none";
     document.getElementById("repArea").style.display="block";
@@ -1730,7 +1730,7 @@
   // "Entrar como representante" leva pro PORTAL do rep (?rep=1), separado do catálogo do cliente.
   document.getElementById("irRep").addEventListener("click",function(){ try{ location.href=location.pathname+"?rep=1"; }catch(e){ mostrarRepView(); } });
   // "Voltar" na tela de login do rep volta pro catálogo do cliente (tira o ?rep=1).
-  document.getElementById("repVoltar").addEventListener("click",function(){ try{ if(new URLSearchParams(location.search).get("rep")==="1"){ location.href=location.pathname; return; } }catch(e){} mostrarEnt(); });
+  document.getElementById("repVoltar").addEventListener("click",function(){ try{ if(window.__REP_PORTAL__===true){ location.href=location.pathname; return; } if(new URLSearchParams(location.search).get("rep")==="1"){ location.href=location.pathname; return; } }catch(e){} mostrarEnt(); });
   document.getElementById("repSair").addEventListener("click",repSair);
   document.getElementById("rnBtn").addEventListener("click",repEnviarNovoCli);
   document.getElementById("rnReceita").addEventListener("click",repPuxarReceita);
@@ -1799,7 +1799,7 @@
     }
     // 0b) PORTAL DO REPRESENTANTE (?rep=1): área do rep é SEPARADA do catálogo do cliente.
     //     Só abre a área do rep aqui; no /loja puro nunca cai na tela do representante.
-    var ehPortalRep = qs && qs.get("rep")==="1";
+    var ehPortalRep = window.__REP_PORTAL__===true || (qs && qs.get("rep")==="1");
     if(ehPortalRep){
       var rep=repSalvo();
       if(rep && rep.id){
