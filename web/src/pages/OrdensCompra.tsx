@@ -24,6 +24,8 @@ const ST: Record<OrdemCompraStatus, { txt: string; bg: string; fg: string }> = {
   aguardando_aprovacao: { txt: "Aguardando aprovação", bg: "#fef3c7", fg: "#92400e" },
   aprovada: { txt: "Aprovada (falha no envio)", bg: "#e0e7ff", fg: "#3730a3" },
   enviada: { txt: "Enviada ✓", bg: "#dcfce7", fg: "#166534" },
+  recebida_parcial: { txt: "Recebido parcial", bg: "#fef9c3", fg: "#854d0e" },
+  recebida: { txt: "Recebido ✓", bg: "#dbeafe", fg: "#1e40af" },
   recusada: { txt: "Recusada", bg: "#fee2e2", fg: "#991b1b" },
 };
 function Selo({ s }: { s: OrdemCompraStatus }) {
@@ -139,9 +141,10 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
     return () => { vivo = false; };
   }, [id]);
 
-  // Gestor pode editar em qualquer status menos "recusada" (inclui aprovada/enviada → reenvia o PDF atualizado).
-  const editavel = podeAprovar && !!ord && ord.status !== "recusada";
-  const jaAprovada = !!ord && (ord.status === "aprovada" || ord.status === "enviada");
+  // Gestor edita em qualquer status (menos recusada). Quem só cria ordem (PCP/Grasiela)
+  // pode editar enquanto ainda está "aguardando aprovação".
+  const editavel = !!ord && ord.status !== "recusada" && (podeAprovar || ord.status === "aguardando_aprovacao");
+  const jaAprovada = !!ord && (ord.status === "aprovada" || ord.status === "enviada" || ord.status === "recebida_parcial" || ord.status === "recebida");
   const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.preco) || 0), 0);
 
   function setItem(i: number, patch: Partial<OrdemCompraItemRow>) {

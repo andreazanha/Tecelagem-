@@ -298,6 +298,7 @@ compras.post("/ordens/:id/receber", async (c) => {
   const stmts: D1PreparedStatement[] = [];
   const numeroOrdem = String(o.numero || "");
   let recebidosAgora = 0;
+  const novoRec = new Map<string, number>(); // id do item → recebido DEPOIS desta entrada
   for (const it of (o.itens as Array<Record<string, unknown>>)) {
     const itemId = String(it.id || "");
     const comprar = Number(it.qtd) || 0;
@@ -307,6 +308,7 @@ compras.post("/ordens/:id/receber", async (c) => {
     // comprado — se chegou mais que o pedido (ex.: comprou 500, veio 535), entra 535.
     const pedido1 = pedido.has(itemId) ? pedido.get(itemId)! : resta;
     const receber = Math.max(0, pedido1);
+    novoRec.set(itemId, jaRec + (receber > 0 ? receber : 0));
     if (receber <= 0) continue;
     recebidosAgora += receber;
     // atualiza o recebido do item
@@ -325,19 +327,39 @@ compras.post("/ordens/:id/receber", async (c) => {
     }
   }
   if (!stmts.length) return c.json({ ok: false, motivo: "nada_a_receber" });
+  // Status: se TODOS os itens já chegaram por completo → "recebida"; se chegou algo mas
+  // ainda falta → "recebida_parcial". Não mexe em ordens recusadas.
+  let todosCompletos = true;
+  let algumRecebido = false;
+  for (const it of (o.itens as Array<Record<string, unknown>>)) {
+    const itemId = String(it.id || "");
+    const comprar = Number(it.qtd) || 0;
+    const rec = novoRec.has(itemId) ? novoRec.get(itemId)! : (Number(it.recebido) || 0);
+    if (rec > 0) algumRecebido = true;
+    if (comprar > 0 && rec < comprar) todosCompletos = false;
+  }
+  if (algumRecebido && o.status !== "recusada") {
+    const novoStatus = todosCompletos ? "recebida" : "recebida_parcial";
+    stmts.push(c.env.DB.prepare("UPDATE ordens_compra SET status=? WHERE id=? AND status<>'recusada'").bind(novoStatus, id));
+  }
   await c.env.DB.batch(stmts);
   const atual = await carregarOrdem(c.env, id);
   return c.json({ ok: true, recebidos: recebidosAgora, ordem: atual });
 });
 
-// ── Editar ordem (gestor) — em qualquer status, menos recusada (aprovada/enviada
-//    podem ser editadas e depois reenviadas pelo gestor). ───────────────────────
+// ── Editar ordem — quem só faz ordem (compras.ordem, ex.: PCP/Grasiela) edita
+//    enquanto está 'aguardando_aprovacao'; o gestor (compras.aprovar) edita em
+//    qualquer status, menos recusada (aprovada/enviada podem ser reenviadas). ───
 compras.patch("/ordens/:id", async (c) => {
-  const g = await exigirFuncao(c, "compras.aprovar"); if ("erro" in g) return g.erro;
+  const g = await exigirAlgumaFuncao(c, ["compras.ordem", "compras.aprovar"]); if ("erro" in g) return g.erro;
   const id = c.req.param("id");
   const o = await c.env.DB.prepare("SELECT status FROM ordens_compra WHERE id=?").bind(id).first<{ status: string }>();
   if (!o) return c.json({ error: "nao_encontrada" }, 404);
   if (o.status === "recusada") return c.json({ error: "nao_editavel", status: o.status }, 409);
+  // Sem a função de aprovar, só pode mexer enquanto ainda está aguardando aprovação.
+  if (o.status !== "aguardando_aprovacao" && !(await podeAprovarOrdens(c.env, g.u))) {
+    return c.json({ error: "sem_permissao", chave: "compras.aprovar" }, 403);
+  }
 
   type Body = { obs?: string; forma_pagamento?: string; data_entrega?: string; itens?: ItemBody[] };
   const b = await c.req.json<Body>().catch(() => ({} as Body));

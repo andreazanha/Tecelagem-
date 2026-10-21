@@ -212,7 +212,7 @@ export interface CompraSugestao extends Material {
 }
 
 // Ordem de compra persistida (fluxo de aprovação do gestor).
-export type OrdemCompraStatus = "aguardando_aprovacao" | "aprovada" | "enviada" | "recusada";
+export type OrdemCompraStatus = "aguardando_aprovacao" | "aprovada" | "enviada" | "recusada" | "recebida_parcial" | "recebida";
 export interface OrdemCompraItemIn {
   material_id?: string | null; nome: string; codigo?: string | null;
   tamanho?: string | null; cor?: string | null; unidade?: string | null;
