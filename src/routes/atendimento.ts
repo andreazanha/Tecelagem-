@@ -3809,6 +3809,7 @@ const CT_POR_EXT: Record<string, string> = {
   ogg: "audio/ogg", opus: "audio/ogg", mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4", webm: "audio/webm", aac: "audio/aac", amr: "audio/amr",
   doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xml: "application/xml", csv: "text/csv", txt: "text/plain", zip: "application/zip",
 };
 atendimento.get("/arquivo/:nome", async (c) => {
   const nome = c.req.param("nome");

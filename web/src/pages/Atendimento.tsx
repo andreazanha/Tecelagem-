@@ -2315,7 +2315,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             </div>
           )}
           {/* Input de arquivo ÚNICO — fica sempre no DOM pra os dois modos (robô e humano) acionarem. */}
-          <input ref={arqRef} type="file" multiple accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length === 1) escolherAnexo(fs[0]); else if (fs.length > 1) enviarVarios(fs); e.currentTarget.value = ""; }} />
+          <input ref={arqRef} type="file" multiple accept="image/*,audio/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.xml,.csv,.txt,.zip,text/xml,application/xml" style={{ display: "none" }} onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length === 1) escolherAnexo(fs[0]); else if (fs.length > 1) enviarVarios(fs); e.currentTarget.value = ""; }} />
           {/* Alternar: falar com o CLIENTE (WhatsApp) ou deixar NOTA INTERNA (só a equipe vê) */}
           <div style={{ flexBasis: "100%", display: "flex", gap: 6, marginBottom: 4 }}>
             <button className="at-modo-pill" style={modo === "cliente" ? { background: "#25d366", color: "#fff", borderColor: "#25d366" } : {}} onClick={() => setModo("cliente")}>💬 Cliente</button>
@@ -2698,7 +2698,7 @@ function ArquivosRapidosModal({ convId, autor, onFechar, onEnviado }: { convId: 
       <div className="modal-card" style={{ maxWidth: 520, width: "min(520px,96vw)" }} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ marginTop: 0 }}>📚 Arquivos rápidos</h3>
         <p className="muted" style={{ fontSize: 13 }}>Salve aqui os catálogos/PDFs que você mais manda. Depois é só clicar em <b>Enviar</b> pra mandar pro cliente desta conversa — sem procurar na pasta toda vez.</p>
-        <input ref={upRef} type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); }} />
+        <input ref={upRef} type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.xml,.csv,.txt,.zip,text/xml,application/xml" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); }} />
         <button className="btn btn-primary" disabled={busy} onClick={() => upRef.current?.click()} style={{ marginBottom: 12 }}>➕ Adicionar arquivo</button>
         {carregando ? <div className="muted">Carregando…</div>
           : lista.length === 0 ? <div className="muted" style={{ padding: "10px 0" }}>Nenhum arquivo salvo ainda. Adicione seus catálogos acima. 📎</div>
@@ -2796,7 +2796,7 @@ function RespostasModal({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: 
                     </span>
                   : <label className="btn btn-soft" style={{ fontSize: 12, cursor: subindoIdx === i ? "default" : "pointer" }}>
                       {subindoIdx === i ? "Subindo…" : "📎 Anexar foto/arquivo"}
-                      <input type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,audio/*" style={{ display: "none" }} disabled={subindoIdx != null} onChange={(e) => { const f = e.target.files?.[0]; if (f) anexar(i, f); e.currentTarget.value = ""; }} />
+                      <input type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,audio/*,.xml,.csv,.txt,.zip,text/xml,application/xml" style={{ display: "none" }} disabled={subindoIdx != null} onChange={(e) => { const f = e.target.files?.[0]; if (f) anexar(i, f); e.currentTarget.value = ""; }} />
                     </label>}
               </div>
             </div>
@@ -3031,7 +3031,7 @@ function NovaConversa({ onFechar, onAbrir, onMudou }: { onFechar: () => void; on
                 <button onClick={() => setAnexo(null)} title="Remover anexo" style={{ background: "transparent", border: 0, cursor: "pointer", color: "#dc2626", fontSize: 14, lineHeight: 1 }}>✕</button>
               </span>
             : <label className="btn btn-soft" style={{ fontSize: 12.5, cursor: "pointer" }}>📎 Anexar foto/arquivo
-                <input type="file" accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,audio/*" style={{ display: "none" }}
+                <input type="file" accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,audio/*,.xml,.csv,.txt,.zip,text/xml,application/xml" style={{ display: "none" }}
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) { if (f.size > 40 * 1024 * 1024) { alert("Arquivo acima de 40 MB. Comprima e tente de novo."); } else setAnexo(f); } e.currentTarget.value = ""; }} />
               </label>}
         </div>
@@ -3306,7 +3306,7 @@ function GruposModal({ onFechar }: { onFechar: () => void }) {
               ))}
           </div>
           <label className="fld full">Mensagem<textarea lang="pt-BR" spellCheck value={mensagem} onChange={(e) => setMensagem(e.target.value)} rows={4} placeholder="Escreva o que vai postar no grupo…" style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} /></label>
-          <input ref={arqRef} type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) subirAnexo(f); e.currentTarget.value = ""; }} />
+          <input ref={arqRef} type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.xml,.csv,.txt,.zip,text/xml,application/xml" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) subirAnexo(f); e.currentTarget.value = ""; }} />
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             {!anexo
               ? <button className="btn btn-soft" disabled={subindo} onClick={() => arqRef.current?.click()}>{subindo ? "Subindo…" : "📎 Anexar foto/arquivo"}</button>
@@ -3699,7 +3699,7 @@ function CampanhaModal({ onFechar, onMudou }: { onFechar: () => void; onMudou?: 
               {respsProntas.map((r, i) => <option key={i} value={i}>{r.titulo || (r.texto || "").slice(0, 40)}</option>)}
             </select>
           )}
-          <input ref={arqRef} type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) subirAnexo(f); e.currentTarget.value = ""; }} />
+          <input ref={arqRef} type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.xml,.csv,.txt,.zip,text/xml,application/xml" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) subirAnexo(f); e.currentTarget.value = ""; }} />
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             {!anexo
               ? <button className="btn btn-soft" disabled={subindo} onClick={() => arqRef.current?.click()}>{subindo ? "Subindo…" : "📎 Anexar foto/arquivo"}</button>
