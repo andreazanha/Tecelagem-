@@ -568,7 +568,8 @@
         <input id="entSenha" type="password" autocomplete="current-password" placeholder="Senha" style="display:block;width:100%;box-sizing:border-box;padding:13px;border:1px solid #d6d0c4;border-radius:12px;font-size:16px;margin-top:8px">
         <div id="entMsg" style="font-size:13px;min-height:1px;margin:8px 0;line-height:1.35"></div>
         <button id="entBtn" style="width:100%;padding:14px;border:0;border-radius:12px;background:#ad5033;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Entrar</button>
-        <div style="text-align:center;margin-top:14px;font-size:13.5px;color:#5f584e">Ainda não é cliente?<br><button type="button" id="irCad" style="margin-top:4px;background:none;border:0;color:#ad5033;font-weight:700;font-size:14px;cursor:pointer;text-decoration:underline">Cadastrar minha loja</button></div>
+        <div style="text-align:center;margin-top:10px"><button type="button" id="entEsqueci" style="background:none;border:0;color:#8a8073;font-size:13px;cursor:pointer;text-decoration:underline">Esqueci a senha</button></div>
+        <div style="text-align:center;margin-top:12px;font-size:13.5px;color:#5f584e">Ainda não é cliente?<br><button type="button" id="irCad" style="margin-top:4px;background:none;border:0;color:#ad5033;font-weight:700;font-size:14px;cursor:pointer;text-decoration:underline">Cadastrar minha loja</button></div>
       </div>
       <div id="repView" style="display:none">
         <div style="font-weight:700;font-size:17px;color:#2c2721;margin-bottom:2px">Área do Representante</div>
@@ -1747,6 +1748,15 @@
   function mostrarCad(prefill){ document.getElementById("entView").style.display="none"; document.getElementById("cadView").style.display="block"; var cc=document.getElementById("cCnpj"); if(cc && prefill && !cc.value) cc.value=prefill; document.getElementById("cadMsg").textContent=""; }
   function mostrarEnt(){ ["cadView","senhaView","repView"].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display="none"; }); document.getElementById("entView").style.display="block"; }
   document.getElementById("irCad").addEventListener("click",function(){ mostrarCad((document.getElementById("entCnpj").value||"").trim()); });
+  // "Esqueci a senha": abre o WhatsApp da Big pedindo a redefinição (com o CNPJ digitado).
+  (function(){ var be=document.getElementById("entEsqueci"); if(!be) return; be.addEventListener("click",function(){
+    var cnpj=(document.getElementById("entCnpj").value||"").trim();
+    var wa=String(D.whatsapp||"").replace(/\D/g,""); if(wa && wa.length<=11) wa="55"+wa;
+    if(!wa){ alert("Para redefinir sua senha, fale com a Big Tricot."); return; }
+    var msg="Olá! Esqueci a senha do catálogo da minha loja."+(cnpj?(" CNPJ: "+cnpj+"."):"")+" Podem me ajudar a redefinir? 🙏";
+    var url="https://wa.me/"+wa+"?text="+encodeURIComponent(msg);
+    try{ window.open(url,"_blank"); }catch(e){ location.href=url; }
+  }); })();
   document.getElementById("voltarEnt").addEventListener("click",mostrarEnt);
   function enviarCadastro(){
     var g=function(id){ return (document.getElementById(id).value||"").trim(); };
