@@ -469,6 +469,19 @@ compras.post("/ordens/:id/recusar", async (c) => {
   return c.json({ ok: true, status: "recusada" });
 });
 
+// ── Marcar "em cotação" (gestor) — passo intermediário entre aguardando e aprovar.
+//    Só avança a partir de 'aguardando_aprovacao'. ──────────────────────────────
+compras.post("/ordens/:id/cotar", async (c) => {
+  const g = await exigirFuncao(c, "compras.aprovar"); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const o = await c.env.DB.prepare("SELECT status FROM ordens_compra WHERE id=?").bind(id).first<{ status: string }>();
+  if (!o) return c.json({ error: "nao_encontrada" }, 404);
+  if (o.status !== "aguardando_aprovacao") return c.json({ error: "status_invalido", status: o.status }, 409);
+  await c.env.DB.prepare("UPDATE ordens_compra SET status='cotando' WHERE id=?").bind(id).run();
+  const atual = await carregarOrdem(c.env, id);
+  return c.json({ ok: true, ordem: atual });
+});
+
 // ── Excluir ordem (somente MASTER / admin) ────────────────────────────────────
 compras.delete("/ordens/:id", async (c) => {
   const g = await exigirFuncao(c, "compras.aprovar"); if ("erro" in g) return g.erro;

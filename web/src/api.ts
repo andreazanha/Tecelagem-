@@ -212,7 +212,7 @@ export interface CompraSugestao extends Material {
 }
 
 // Ordem de compra persistida (fluxo de aprovação do gestor).
-export type OrdemCompraStatus = "aguardando_aprovacao" | "aprovada" | "enviada" | "recusada" | "recebida_parcial" | "recebida";
+export type OrdemCompraStatus = "aguardando_aprovacao" | "cotando" | "aprovada" | "enviada" | "recusada" | "recebida_parcial" | "recebida";
 export interface OrdemCompraItemIn {
   material_id?: string | null; nome: string; codigo?: string | null;
   tamanho?: string | null; cor?: string | null; unidade?: string | null;
@@ -1175,6 +1175,8 @@ export const api = {
     fetch(`/api/compras/ordens/${encodeURIComponent(id)}`).then((r) => j<OrdemCompraDetalhe>(r)),
   editarOrdemCompra: (id: string, b: { obs?: string; forma_pagamento?: string; data_entrega?: string; itens?: OrdemCompraItemIn[] }) =>
     fetch(`/api/compras/ordens/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then((r) => j<{ ok: boolean; ordem: OrdemCompraDetalhe }>(r)),
+  cotarOrdemCompra: (id: string) =>
+    jsonPost(`/api/compras/ordens/${encodeURIComponent(id)}/cotar`, {}).then((r) => j<{ ok: boolean; ordem: OrdemCompraDetalhe }>(r)),
   aprovarOrdemCompra: (id: string) =>
     jsonPost(`/api/compras/ordens/${encodeURIComponent(id)}/aprovar`, {}).then((r) => j<{ ok: boolean; status: string; numero?: string; motivo?: string }>(r)),
   recusarOrdemCompra: (id: string, motivo?: string) =>

@@ -22,6 +22,7 @@ function dataEnt(s: string | null | undefined) {
 
 const ST: Record<OrdemCompraStatus, { txt: string; bg: string; fg: string }> = {
   aguardando_aprovacao: { txt: "Aguardando aprovação", bg: "#fef3c7", fg: "#92400e" },
+  cotando: { txt: "Cotando", bg: "#ede9fe", fg: "#6d28d9" },
   aprovada: { txt: "Aprovada (falha no envio)", bg: "#e0e7ff", fg: "#3730a3" },
   enviada: { txt: "Enviada ✓", bg: "#dcfce7", fg: "#166534" },
   recebida_parcial: { txt: "Recebido parcial", bg: "#fef9c3", fg: "#854d0e" },
@@ -36,7 +37,9 @@ function Selo({ s }: { s: OrdemCompraStatus }) {
 const FILTROS: { id: string; label: string }[] = [
   { id: "", label: "Todas" },
   { id: "aguardando_aprovacao", label: "Aguardando" },
+  { id: "cotando", label: "Cotando" },
   { id: "enviada", label: "Enviadas" },
+  { id: "recebida", label: "Recebidas" },
   { id: "aprovada", label: "Com falha" },
   { id: "recusada", label: "Recusadas" },
 ];
@@ -192,6 +195,17 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
     finally { setBusy(false); }
   }
 
+  async function cotar() {
+    if (!ord) return;
+    setBusy(true);
+    try {
+      if (editavel) { if (!(await salvar())) { setBusy(false); return; } }
+      const r = await api.cotarOrdemCompra(ord.id);
+      setOrd(r.ordem); setItens(r.ordem.itens || []); onMudou();
+    } catch (e) { alert((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
   async function aprovar() {
     if (!ord) return;
     const itensValidos = itens.filter((it) => (Number(it.qtd) || 0) > 0);
@@ -267,8 +281,18 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
                     <td className="num">{(() => {
                       const rec = Number(it.recebido) || 0, comp = Number(it.qtd) || 0;
                       if (rec <= 0) return <span className="muted">—</span>;
-                      const ok = rec >= comp;
-                      return <span style={{ color: ok ? "#166534" : "#92400e", fontWeight: 700 }}>{ok ? "✓ " : ""}{nBR(rec)}</span>;
+                      const dif = rec - comp;
+                      const cor = dif >= 0 ? "#166534" : "#92400e";
+                      return (
+                        <span style={{ color: cor, fontWeight: 700, display: "inline-block", lineHeight: 1.2 }}>
+                          {dif >= 0 ? "✓ " : ""}{nBR(rec)}
+                          {dif !== 0 && (
+                            <div style={{ fontSize: 11, fontWeight: 600 }}>
+                              {dif > 0 ? `+${nBR(dif)} a mais` : `faltam ${nBR(-dif)}`}
+                            </div>
+                          )}
+                        </span>
+                      );
                     })()}</td>
                     <td className="muted">{it.unidade || ""}</td>
                     <td className="num">
@@ -313,6 +337,9 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
               <button className="btn btn-soft" disabled={busy} style={{ color: "#166534" }} onClick={() => setWaOpen(true)}>📱 Enviar WhatsApp</button>
               {editavel && <button className="btn btn-soft" disabled={busy} onClick={salvarSo}>💾 Salvar alterações</button>}
               {podeAprovar && ord.status === "aguardando_aprovacao" && (
+                <button className="btn btn-soft" disabled={busy} style={{ color: "#6d28d9" }} onClick={cotar}>💬 Cotando</button>
+              )}
+              {podeAprovar && (ord.status === "aguardando_aprovacao" || ord.status === "cotando") && (
                 <>
                   <button className="btn btn-soft" disabled={busy} style={{ color: "#b91c1c" }} onClick={recusar}>✖ Recusar</button>
                   <button className="btn btn-primary" disabled={busy} onClick={aprovar}>{busy ? "Processando…" : "✅ Aprovar e enviar"}</button>
