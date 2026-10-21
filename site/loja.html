@@ -187,12 +187,21 @@
   .cats button:hover{border-color:#d4c6af; color:#2c2721; background:#fff; box-shadow:0 3px 12px rgba(44,39,33,.05)}
   .cats button.on{border-color:#ae5033; color:#2c2721; background:#fbf2ec}
   .cats button.on svg{opacity:1}
-  @media(max-width:560px){ .cats{gap:8px; margin-top:22px} .cats button{padding:8px 13px; font-size:12px; gap:7px} .cats button svg{width:16px; height:16px} }
+  @media(max-width:560px){
+    /* Categorias: uma única linha, com rolagem horizontal suave (sem quebrar texto). */
+    .cats{gap:8px; margin:0 auto; padding:10px 12px; justify-content:flex-start; flex-wrap:nowrap; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none}
+    .cats::-webkit-scrollbar{display:none}
+    .cats button{width:auto; flex:0 0 auto; white-space:nowrap; padding:8px 14px; font-size:12px; gap:7px}
+    .cats button span{white-space:nowrap}
+    .cats button svg{width:15px; height:15px}
+    /* Título da seção não pode ficar escondido atrás das barras fixas ao rolar até ele. */
+    .sec{scroll-margin-top:calc(var(--cats-top,150px) + 56px)}
+  }
   /* botão flutuante do WhatsApp */
   .wa-float{position:fixed; right:18px; bottom:18px; z-index:900; width:56px; height:56px; border-radius:50%; background:#25d366; box-shadow:0 6px 20px rgba(0,0,0,.28); display:flex; align-items:center; justify-content:center; transition:transform .12s ease}
   .wa-float:hover{transform:scale(1.07)}
   .wa-float svg{width:30px; height:30px; fill:#fff}
-  @media(max-width:560px){ .cats button{width:74px} .cats .ci{width:54px; height:54px; font-size:23px} .wa-float{width:52px; height:52px; right:14px; bottom:14px} }
+  @media(max-width:560px){ .cats .ci{width:54px; height:54px; font-size:23px} .wa-float{width:52px; height:52px; right:14px; bottom:14px} }
   main{max-width:1760px; margin:0 auto; padding:18px 24px 70px}
   .sec{margin-top:30px; scroll-margin-top:96px}
   .sec h2{font-size:30px; margin:0; text-align:center; font-weight:600; color:var(--ink); display:flex; align-items:center; justify-content:center; gap:20px}
