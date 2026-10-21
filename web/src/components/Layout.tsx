@@ -229,7 +229,7 @@ const GRUPOS: MenuGrupo[] = [
       ] },
       { icon: "🧑‍💼", label: "Representantes", acc: true, children: [
         { to: "/comercial", icon: "👤", label: "Representantes", page: "representantes" },
-        { to: "/api/integracao/loja?rep=1", icon: "🪪", label: "Abrir área do representante", ext: true, admin: true },
+        { to: "https://vendas.bigtricot.com.br", icon: "🪪", label: "Abrir área do representante", ext: true, admin: true },
       ] },
       { icon: "📈", label: "Relatórios", acc: true, children: [
         { to: "/relatorio-producao", icon: "🏭", label: "Relatório de Produção", admin: true },
@@ -242,7 +242,7 @@ const GRUPOS: MenuGrupo[] = [
         { to: "/loja-pedidos", icon: "🛒", label: "Pedidos da Loja (B2B)", admin: true },
         { to: "/cadastros-loja", icon: "🆕", label: "Cadastros da Loja", admin: true },
         { to: "/config-loja", icon: "🖼️", label: "Configurar catálogo (banner, vídeos)", admin: true },
-        { to: "/api/integracao/loja", icon: "🏪", label: "Abrir a loja (catálogo)", ext: true, admin: true },
+        { to: "https://pedidos.bigtricot.com.br", icon: "🏪", label: "Abrir a loja (catálogo)", ext: true, admin: true },
       ] },
       { icon: "🔐", label: "Acessos", acc: true, children: [
         { to: "/acessos", icon: "🔐", label: "Usuários e acessos", admin: true },
