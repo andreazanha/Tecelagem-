@@ -251,6 +251,55 @@ integracao.get("/estoque", async (c) => {
   return c.json(results);
 });
 
+// DIAGNÓSTICO visual de um produto/kit: mostra, numa página legível, a receita do kit
+// e o SALDO POR COR E TAMANHO (erp_estoque) de cada peça + o estoque_geral. Serve pra
+// ver DE ONDE vem cada número. Abra logado: /api/integracao/diag-produto?busca=balls
+integracao.get("/diag-produto", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const busca = (c.req.query("busca") || "balls").trim().toLowerCase();
+  const esc = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch] || ch));
+  // 1) produtos (erp_produtos) que casam a busca — inclui kit e peças (KT…).
+  const prod = await c.env.DB.prepare(
+    "SELECT ref, nome, estoque_geral, cores, tamanhos, COALESCE(inativo,0) AS inativo FROM erp_produtos WHERE lower(nome) LIKE ? OR lower(ref) LIKE ? ORDER BY nome LIMIT 60"
+  ).bind(`%${busca}%`, `%${busca}%`).all<{ ref: string; nome: string | null; estoque_geral: number | null; cores: string | null; tamanhos: string | null; inativo: number }>().catch(() => ({ results: [] as Record<string, unknown>[] }));
+  const refs = new Set<string>((prod.results as { ref: string }[]).map((p) => p.ref).filter(Boolean));
+  // 2) receita dos kits encontrados + peças (componentes) referenciadas.
+  const recRows = await c.env.DB.prepare("SELECT kit_ref, componente_ref, quantidade, tamanho FROM erp_kit_receita").all<{ kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }>().catch(() => ({ results: [] as Record<string, unknown>[] }));
+  const rec = (recRows.results as { kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }[]).filter((r) => refs.has(r.kit_ref));
+  for (const r of rec) refs.add(r.componente_ref);
+  // 3) estoque por cor/tamanho (erp_estoque) de TODAS as refs envolvidas.
+  const refList = [...refs];
+  let estoque: { ref: string | null; cor: string | null; tamanho: string | null; saldo: number }[] = [];
+  if (refList.length) {
+    const ph = refList.map(() => "?").join(",");
+    const r = await c.env.DB.prepare(`SELECT ref, cor, tamanho, saldo FROM erp_estoque WHERE ref IN (${ph}) ORDER BY ref, cor, tamanho`).bind(...refList).all<{ ref: string | null; cor: string | null; tamanho: string | null; saldo: number }>().catch(() => ({ results: [] as typeof estoque }));
+    estoque = (r.results as typeof estoque);
+  }
+  const estPorRef = new Map<string, typeof estoque>();
+  for (const e of estoque) { const k = (e.ref || ""); const a = estPorRef.get(k) || []; a.push(e); estPorRef.set(k, a); }
+  // monta HTML
+  const tabProd = (prod.results as { ref: string; nome: string | null; estoque_geral: number | null; cores: string | null; tamanhos: string | null; inativo: number }[]).map((p) => {
+    let nc = 0, nt = 0; try { nc = (JSON.parse(p.cores || "[]") as unknown[]).length; } catch { /* */ } try { nt = (JSON.parse(p.tamanhos || "[]") as unknown[]).length; } catch { /* */ }
+    return `<tr><td><b>${esc(p.ref)}</b></td><td>${esc(p.nome)}</td><td style="text-align:right">${esc(p.estoque_geral)}</td><td style="text-align:center">${nc}</td><td style="text-align:center">${nt}</td><td style="text-align:center">${p.inativo ? "sim" : "não"}</td></tr>`;
+  }).join("");
+  const tabRec = rec.map((r) => `<tr><td><b>${esc(r.kit_ref)}</b></td><td>${esc(r.componente_ref)}</td><td style="text-align:center">${esc(r.quantidade)}</td><td style="text-align:center">${esc(r.tamanho)}</td></tr>`).join("");
+  const blocosEst = refList.map((ref) => {
+    const rows = (estPorRef.get(ref) || []);
+    if (!rows.length) return `<h3>${esc(ref)} <span style="color:#b91c1c;font-weight:400">— sem linhas no erp_estoque (não espelhado por cor)</span></h3>`;
+    const body = rows.map((e) => `<tr><td>${esc(e.tamanho)}</td><td>${esc(e.cor)}</td><td style="text-align:right">${esc(e.saldo)}</td></tr>`).join("");
+    return `<h3>${esc(ref)} <span style="color:#555;font-weight:400">(${rows.length} linha(s))</span></h3><table><thead><tr><th>Tamanho</th><th>Cor</th><th>Saldo</th></tr></thead><tbody>${body}</tbody></table>`;
+  }).join("");
+  const html = `<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Diagnóstico — ${esc(busca)}</title>
+<style>body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:#f6f4ef;color:#2c2721;padding:18px}h1{font-size:20px}h2{font-size:16px;margin-top:26px;border-bottom:2px solid #e2dccf;padding-bottom:4px}h3{font-size:14px;margin:18px 0 6px}table{border-collapse:collapse;width:100%;max-width:720px;background:#fff;border:1px solid #e2dccf;border-radius:8px;overflow:hidden;font-size:13px}th,td{padding:6px 10px;border-bottom:1px solid #eee;text-align:left}th{background:#faf7f1;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:#6b6358}.muted{color:#6b6358;font-size:13px}</style></head>
+<body><h1>Diagnóstico de estoque — "${esc(busca)}"</h1>
+<p class="muted">Mostra, direto do espelho (erp_produtos / erp_kit_receita / erp_estoque), de onde vem cada número. Troque a busca na URL: <code>?busca=balls</code>.</p>
+<h2>1) Produtos encontrados (erp_produtos)</h2><table><thead><tr><th>Ref</th><th>Nome</th><th>Estoque geral</th><th>#cores</th><th>#tam</th><th>inativo</th></tr></thead><tbody>${tabProd || '<tr><td colspan="6">nada</td></tr>'}</tbody></table>
+<h2>2) Receita do(s) kit(s) (erp_kit_receita)</h2><table><thead><tr><th>Kit</th><th>Componente</th><th>Qtd</th><th>Tam</th></tr></thead><tbody>${tabRec || '<tr><td colspan="4">nenhum kit nessa busca</td></tr>'}</tbody></table>
+<h2>3) Saldo por cor e tamanho de cada peça (erp_estoque)</h2>${blocosEst || '<p class="muted">sem dados</p>'}
+</body></html>`;
+  return c.html(html);
+});
+
 // STATUS da sincronização do ERP: quantos itens de estoque/produtos e QUANDO foi a
 // última atualização da ponte. Serve pra saber se o espelho do estoque está "vivo".
 integracao.get("/sync-status", async (c) => {
@@ -747,24 +796,28 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           partes.push({ ordem: tp === "peseira" ? 0 : 1, txt: `${it.qtd}- ${rotulo}${dim ? " " + dim : ""}` });
         }
         vivo = isFinite(vivo) ? Math.max(0, vivo) : 0;
-        // Estoque do kit POR COR: menor( estoque_da_peça_na_cor ÷ qtd ).
-        // Peça COM cor (capa) usa o estoque por cor (erp_estoque). Peça SEM cor
-        // (ex.: enchimento) vale pra QUALQUER cor → usa o estoque TOTAL. Assim o
-        // enchimento (que nunca tem dado por cor) não derruba o "por cor" do kit —
-        // era esse o bug que mostrava o total somado de todas as cores (ex.: 160).
-        const compCorStock = (comp: string): Record<string, number> | null => {
+        // Estoque do kit POR COR = SÓ a CAPA (a peça que tem a cor do cliente). Puxa o
+        // saldo individual da capa (erp_estoque), por cor, SÓ no tamanho em que ela entra
+        // neste kit (it.tam, código do Syntech ex.: "5K") — nunca soma os outros tamanhos
+        // (era o bug que inflava, ex.: 160/180). Peseira/enchimento não limitam.
+        const corTamStock = (comp: string, tam: string): Record<string, number> | null => {
           const m = itens[comp]; if (!m) return null;
+          const keys = Object.keys(m);
+          const t = String(tam || "").trim().toLowerCase();
+          // casa o TAMANHO da peça no kit (código do Syntech) com a chave do estoque;
+          // se não casar, usa todas as chaves (seguro).
+          let meds = keys;
+          if (t) { const hit = keys.filter((k) => String(k).trim().toLowerCase() === t); if (hit.length) meds = hit; }
           const acc: Record<string, number> = {}; let any = false;
-          for (const med of Object.keys(m)) for (const cid of Object.keys(m[med])) { acc[cid] = (acc[cid] || 0) + (Number(m[med][cid]) || 0); any = true; }
+          for (const med of meds) for (const cid of Object.keys(m[med])) { acc[cid] = (acc[cid] || 0) + (Number(m[med][cid]) || 0); any = true; }
           return any ? acc : null;
         };
-        const stocks = itensR.map((it) => {
-          const info = compInfo.get(it.comp);
-          const temCores = !!(info && Array.isArray(info.cores) && info.cores.length > 0);
-          return { qtd: Number(it.qtd) || 1, temCores, cs: compCorStock(it.comp), total: Number(info?.estoque) || 0 };
-        });
-        // Só precisa do dado por cor das peças que TÊM cor; as sem cor usam o total.
-        const coloridas = stocks.filter((x) => x.temCores);
+        // As peças COM cor (capa E peseira) limitam o kit. Para cada cor, o menor
+        // ( saldo_da_peça_na_cor ÷ qtd ), puxando cada peça do cadastro individual no SEU
+        // tamanho. Enchimento (sem cor) não limita.
+        const coloridas = itensR
+          .map((it) => ({ qtd: Number(it.qtd) || 1, cs: corTamStock(it.comp, it.tam), info: compInfo.get(it.comp) }))
+          .filter((x) => !!(x.info && Array.isArray(x.info.cores) && x.info.cores.length > 0));
         const temCor = coloridas.length > 0 && coloridas.every((x) => x.cs != null);
         const estCor: Record<string, number> = {};
         if (temCor) {
@@ -772,13 +825,12 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           for (const x of coloridas) for (const cid of Object.keys(x.cs!)) cids.add(cid);
           for (const cid of cids) {
             let v = Infinity;
-            for (const x of stocks) {
-              const disp = x.temCores ? (x.cs ? (x.cs[cid] || 0) : 0) : x.total; // sem cor → estoque total
-              v = Math.min(v, Math.floor(disp / (x.qtd || 1)));
-            }
+            for (const x of coloridas) v = Math.min(v, Math.floor((Number(x.cs![cid]) || 0) / (x.qtd || 1)));
             estCor[cid] = isFinite(v) ? Math.max(0, v) : 0;
           }
         }
+        // total do kit (badge/soma) = soma das cores; se não tiver por cor, mantém o 'vivo'.
+        if (temCor) vivo = Object.values(estCor).reduce((s, n) => s + (Number(n) || 0), 0);
         partes.sort((a, b) => a.ordem - b.ordem);
         const comp = partes.map((p) => p.txt).join(" + ");
         // Rótulo da OPÇÃO = só a COMPOSIÇÃO (ex.: "1× Peseira 70×2,20 + 2× Capas 55×35").
@@ -850,6 +902,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           if (!tams.length) tams = cf.tamanhos.filter((t) => soDig(t.medida) === "5050");
           if (!tams.length) return null;                        // sem 50×50 → não cria a seção avulsa
           const linhasA: Linha0[] = [];
+          let estAv = 0;
           for (const t of tams) {
             const porTam = Number(campoPreco === "varejo" ? t.varejo : t.atacado) || 0;
             const base = porTam || (campoPreco === "varejo" ? cf.pv : cf.pa) || 0;
@@ -857,13 +910,16 @@ export async function gerarCatalogoSite(env: Env): Promise<{
             const norte = Math.round(base * (1 + markupNorte / 100) * 100) / 100;
             const tid = idTam(t.medida);
             linhasA.push({ id: `${ref}-${tid}`, cod: ref, id_tamanho: tid, sul, norte });
+            // saldo POR COR da peça NESTE tamanho (cadastro individual = erp_estoque, por
+            // código Syntech ex.: "5K"). Nunca usa o estoque_geral (soma de tudo).
+            const escTam = (itens[ref] && itens[ref][String(t.tamanho || "").trim()]) || null;
             itens[ref] = itens[ref] || {};
             itens[ref][t.medida] = itens[ref][t.medida] || {};
-            if (cf.cores.length) { for (const c of cf.cores) itens[ref][t.medida][idCor(c.nome || "", c.hex || "", "")] = cf.estoque; }
-            else itens[ref][t.medida]["-"] = cf.estoque;
+            if (cf.cores.length) { for (const c of cf.cores) { const cid = idCor(c.nome || "", c.hex || "", ""); const s = escTam ? (Number(escTam[cid]) || 0) : (Number(cf.estoque) || 0); itens[ref][t.medida][cid] = s; estAv += s; } }
+            else { const s = escTam ? Object.values(escTam).reduce((a, n) => a + (Number(n) || 0), 0) : (Number(cf.estoque) || 0); itens[ref][t.medida]["-"] = s; estAv += s; }
           }
           for (const c of cf.cores) { const cid = idCor(c.nome || "", c.hex || "", ""); if (!coresMap.has(cid)) coresMap.set(cid, { id_cor: cid, oculta: false }); }
-          return { id: `${prim.id}-av-${ref}`, titulo, ref, estoque: cf.estoque, linhas: linhasA };
+          return { id: `${prim.id}-av-${ref}`, titulo, ref, estoque: estAv, linhas: linhasA };
         };
         const capaRef = [...compRefsFam].find((r) => tipoPeca(compInfo.get(r)?.nome || "") === "capa");
         const almoRef = [...compRefsFam].find((r) => tipoPeca(compInfo.get(r)?.nome || "") === "almofada");
