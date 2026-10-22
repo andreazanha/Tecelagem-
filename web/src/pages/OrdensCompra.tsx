@@ -339,13 +339,13 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
                 {!addOpen ? (
                   <button className="btn btn-soft" disabled={busy} style={{ color: "#166534" }} onClick={() => setAddOpen(true)}>➕ Adicionar item</button>
                 ) : (
-                  <div className="card pad" style={{ background: "#f8fafc", border: "1px solid #e5e7eb" }}>
+                  <div className="card pad">
                     <div className="row-gap" style={{ alignItems: "center", gap: 6, marginBottom: 6 }}>
                       <strong style={{ fontSize: 13 }}>Adicionar material</strong>
                       <input autoFocus value={addBusca} placeholder="Buscar por nome, código, cor…" style={{ flex: 1, minWidth: 180, padding: "6px 10px", fontSize: 13 }} onChange={(e) => setAddBusca(e.target.value)} />
                       <button className="btn btn-soft" style={{ fontSize: 12 }} onClick={() => { setAddOpen(false); setAddBusca(""); }}>Cancelar</button>
                     </div>
-                    <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid #eee", borderRadius: 8, background: "#fff" }}>
+                    <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid var(--line)", borderRadius: 8, background: "var(--card)" }}>
                       {(() => {
                         const b = addBusca.trim().toLowerCase();
                         const jaTem = new Set(itens.map((it) => it.material_id).filter(Boolean));
@@ -354,8 +354,8 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
                           .slice(0, 80);
                         if (!lista.length) return <div className="muted" style={{ padding: 10, fontSize: 13 }}>Nenhum material{b ? ` para "${addBusca}"` : ""}.</div>;
                         return lista.map((m) => (
-                          <div key={m.id} onClick={() => adicionarMaterial(m)} style={{ padding: "7px 10px", borderBottom: "1px solid #f1f1f1", cursor: "pointer", display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = "#f0fdf4")} onMouseLeave={(e) => (e.currentTarget.style.background = "")}>
+                          <div key={m.id} onClick={() => adicionarMaterial(m)} style={{ padding: "7px 10px", borderBottom: "1px solid var(--line)", cursor: "pointer", display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(22,163,74,.12)")} onMouseLeave={(e) => (e.currentTarget.style.background = "")}>
                             <span className="strong">{m.codigo_interno || m.codigo || "—"}</span>
                             <span style={{ flex: 1 }}>{m.nome}{m.tamanho ? ` · ${m.tamanho}` : ""}{m.cor ? ` · ${m.cor}` : ""}{jaTem.has(m.id) ? " (já na ordem)" : ""}</span>
                             <span className="muted">estoque {m.saldo != null ? nBR(Number(m.saldo)) : "—"}{m.unidade ? " " + m.unidade : ""}</span>
