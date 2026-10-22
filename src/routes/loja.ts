@@ -11,6 +11,7 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { gerarPdfPedidoLoja, type PedidoLojaItem } from "../pdf";
+import { conferirEReservar } from "../loja-estoque";
 
 export const loja = new Hono<{ Bindings: Env }>();
 
@@ -622,6 +623,25 @@ loja.post("/pedido", async (c) => {
   const syncStatus = ehEspera ? "rascunho" : "pendente";
   const lojaFase = ehRep ? (ehEspera ? "em_espera" : "enviado") : null;
   const pedidoId = pedidoEditar || uid();
+
+  // TRAVA DE ESTOQUE — só pra pedidos que VÃO pro Syntech ('enviar'). Confere se as peças
+  // (capa/peseira) cabem no SALDO − reservas de outros pedidos ainda não refletidos; se
+  // couber, reserva. Rascunho ('espera') não reserva (e solta reserva anterior, se houver).
+  let reservaStmts: D1PreparedStatement[] = [];
+  if (ehEspera) {
+    reservaStmts = [c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pedidoId)];
+  } else {
+    const trava = await conferirEReservar(c.env, pedidoId, resolvidos.map((r) => ({ ref: r.ref, cor: r.corNome, tam: r.erp_tamanho, qtd: r.qtd })));
+    if (!trava.ok) {
+      return c.json({
+        erro: "sem_estoque",
+        msg: "Alguns itens não têm estoque suficiente no momento. Ajuste as quantidades e tente novamente.",
+        faltas: trava.faltas,
+      }, 409);
+    }
+    reservaStmts = trava.reservas;
+  }
+
   const stmts: D1PreparedStatement[] = [];
   if (pedidoEditar) {
     // Atualiza o rascunho existente: troca os dados e substitui os itens.
@@ -643,6 +663,7 @@ loja.post("/pedido", async (c) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unico')`
     ).bind(uid(), pedidoId, r.nome, r.ref, r.corNome, r.cod_cor, r.medida, r.erp_tamanho, r.qtd, r.preco));
   }
+  for (const s of reservaStmts) stmts.push(s); // reserva as peças junto com o pedido
   await c.env.DB.batch(stmts);
 
   const msg = ehEspera

@@ -17,6 +17,7 @@ import { SITE_ONLINE_HTML } from "../siteTemplate";
 import { SITE_FULL_HTML } from "../siteTemplateFull";
 import { SITE_LOJA_HTML } from "../siteLoja";
 import { lerDocumento, gravarDocumento } from "../firestore";
+import { limparReservasRefletidas } from "../loja-estoque";
 
 export const integracao = new Hono<{ Bindings: Env }>();
 
@@ -244,6 +245,9 @@ integracao.post("/estoque", async (c) => {
   if (b.fim === true && lote) {
     const del = await c.env.DB.prepare("DELETE FROM erp_estoque WHERE lote IS NULL OR lote <> ?").bind(lote).run();
     removidos = (del.meta && (del.meta.changes as number)) || 0;
+    // marca a hora desta sincronização e solta as reservas locais que o SALDO já reflete.
+    await c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('estoque_sync_em', datetime('now'), datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=datetime('now'), atualizado_em=datetime('now')").run().catch(() => {});
+    await limparReservasRefletidas(c.env).catch(() => 0);
   }
   return c.json({ ok: true, n: stmts.length, removidos });
 });
@@ -743,6 +747,29 @@ export async function gerarCatalogoSite(env: Env): Promise<{
     itens[ref][med] = itens[ref][med] || {};
     itens[ref][med][cid] = Number(e.saldo) || 0;
   }
+  // Desconta as RESERVAS locais (pedidos já enviados pelo cliente/rep, mas ainda não
+  // refletidos no SALDO do Syntech). Assim vender um kit/capa baixa NA HORA as outras
+  // opções que dividem a mesma capa (vazio, cheio e avulsa). Quando o Syntech empenha e a
+  // ponte traz o SALDO menor, a reserva deixa de contar (não desconta duas vezes).
+  try {
+    const syncEm = (await env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_sync_em'").first<{ valor: string | null }>())?.valor || null;
+    const { results: rvs } = await env.DB.prepare(
+      `SELECT rv.ref AS ref, rv.cor AS cor, rv.tamanho AS tamanho, SUM(rv.qtd) AS q
+         FROM erp_reserva rv JOIN pedidos p ON p.id = rv.pedido_id
+        WHERE rv.criado_em > datetime('now','-7 days')
+          AND COALESCE(p.erp_sync_status,'') IN ('pendente','erro','enviado')
+          AND NOT (COALESCE(p.erp_sync_status,'')='enviado' AND p.erp_sync_em IS NOT NULL AND ? IS NOT NULL AND p.erp_sync_em <= ?)
+        GROUP BY rv.ref, rv.cor, rv.tamanho`
+    ).bind(syncEm, syncEm).all<{ ref: string; cor: string | null; tamanho: string | null; q: number }>();
+    for (const rv of rvs || []) {
+      const ref = (rv.ref || "").trim(); if (!ref) continue;
+      const med = (rv.tamanho || "").trim() || "-";
+      const cid = idCor((rv.cor || "").trim() || "cor", "", "");
+      if (itens[ref] && itens[ref][med] && itens[ref][med][cid] != null) {
+        itens[ref][med][cid] = Math.max(0, (Number(itens[ref][med][cid]) || 0) - (Number(rv.q) || 0));
+      }
+    }
+  } catch { /* reservas: nunca derruba o catálogo */ }
 
   // ── KITS (pronta entrega): usa a RECEITA do Syntech (erp_kit_receita) pra
   //   1) marcar o produto como KIT e jogar na Pronta Entrega;
@@ -1554,6 +1581,7 @@ integracao.delete("/loja-pedidos/:id", async (c) => {
   const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
   const id = c.req.param("id");
   await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(id), // solta a reserva de estoque
     c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=? AND (SELECT canal FROM pedidos WHERE id=?)='loja_b2b'").bind(id, id),
     c.env.DB.prepare("DELETE FROM pedidos WHERE id=? AND canal='loja_b2b'").bind(id),
   ]);
@@ -1563,6 +1591,7 @@ integracao.delete("/loja-pedidos/:id", async (c) => {
 integracao.post("/loja-pedidos/limpar-todos", async (c) => {
   const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
   await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id IN (SELECT id FROM pedidos WHERE canal='loja_b2b')"),
     c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id IN (SELECT id FROM pedidos WHERE canal='loja_b2b')"),
     c.env.DB.prepare("DELETE FROM pedidos WHERE canal='loja_b2b'"),
   ]);
