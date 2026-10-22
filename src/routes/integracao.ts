@@ -860,6 +860,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         }
         // total do kit (badge/soma) = soma das cores; se não tiver por cor, mantém o 'vivo'.
         if (temCor) vivo = Object.values(estCor).reduce((s, n) => s + (Number(n) || 0), 0);
+        else vivo = 0; // SEM saldo real por cor/tamanho das peças → NÃO chuta o total do cadastro; mostra 0 (sob encomenda)
         partes.sort((a, b) => a.ordem - b.ordem);
         const comp = partes.map((p) => p.txt).join(" + ");
         // Rótulo da OPÇÃO = só a COMPOSIÇÃO (ex.: "1× Peseira 70×2,20 + 2× Capas 55×35").
@@ -973,8 +974,9 @@ export async function gerarCatalogoSite(env: Env): Promise<{
             const resvTam = (reservado[ref] && reservado[ref][String(t.tamanho || "").trim()]) || {}; // capas já seguradas pelos kits
             itens[ref] = itens[ref] || {};
             itens[ref][t.medida] = itens[ref][t.medida] || {};
-            if (cf.cores.length) { for (const c of cf.cores) { const cid = idCor(c.nome || "", c.hex || "", ""); const bruto = escTam ? (Number(escTam[cid]) || 0) : (Number(cf.estoque) || 0); const s = Math.max(0, bruto - (Number(resvTam[cid]) || 0)); itens[ref][t.medida][cid] = s; estAv += s; } }
-            else { const bruto = escTam ? Object.values(escTam).reduce((a, n) => a + (Number(n) || 0), 0) : (Number(cf.estoque) || 0); const resvTotal = Object.values(resvTam).reduce((a, n) => a + (Number(n) || 0), 0); const s = Math.max(0, bruto - resvTotal); itens[ref][t.medida]["-"] = s; estAv += s; }
+            // SEM saldo por cor/tamanho no espelho → 0 (sob encomenda), nunca o total do cadastro.
+            if (cf.cores.length) { for (const c of cf.cores) { const cid = idCor(c.nome || "", c.hex || "", ""); const bruto = escTam ? (Number(escTam[cid]) || 0) : 0; const s = Math.max(0, bruto - (Number(resvTam[cid]) || 0)); itens[ref][t.medida][cid] = s; estAv += s; } }
+            else { const bruto = escTam ? Object.values(escTam).reduce((a, n) => a + (Number(n) || 0), 0) : 0; const resvTotal = Object.values(resvTam).reduce((a, n) => a + (Number(n) || 0), 0); const s = Math.max(0, bruto - resvTotal); itens[ref][t.medida]["-"] = s; estAv += s; }
           }
           for (const c of cf.cores) { const cid = idCor(c.nome || "", c.hex || "", ""); if (!coresMap.has(cid)) coresMap.set(cid, { id_cor: cid, oculta: false }); }
           return { id: `${prim.id}-av-${ref}`, titulo, ref, estoque: estAv, linhas: linhasA };
