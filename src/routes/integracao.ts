@@ -215,25 +215,34 @@ integracao.post("/estoque", async (c) => {
   if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
 
   type EstoqueIn = { produto?: string; ref?: string; cor?: string; tamanho?: string; saldo?: number | string; unidade?: string };
-  const b = await c.req.json<{ itens?: EstoqueIn[]; full?: boolean }>().catch(() => ({} as { itens?: EstoqueIn[]; full?: boolean }));
+  const b = await c.req.json<{ itens?: EstoqueIn[]; full?: boolean; lote?: string; fim?: boolean }>().catch(() => ({} as { itens?: EstoqueIn[]; full?: boolean; lote?: string; fim?: boolean }));
   const itens: EstoqueIn[] = Array.isArray(b.itens) ? b.itens : [];
   if (!itens.length) return c.json({ error: "sem_itens" }, 400);
 
   const norm = (s: unknown) => String(s ?? "").trim();
+  const lote = norm(b.lote) || null; // carimbo desta rodada de sincronização
   const chaveDe = (ref: string, cor: string, tam: string) => `${ref}|${cor}|${tam}`.toLowerCase();
   const stmts = itens.map((it) => {
     const ref = norm(it.ref), cor = norm(it.cor), tam = norm(it.tamanho);
     const chave = chaveDe(ref, cor, tam);
     const saldo = Number(it.saldo) || 0;
     return c.env.DB.prepare(
-      `INSERT INTO erp_estoque (chave, produto, ref, cor, tamanho, saldo, unidade, atualizado_em)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `INSERT INTO erp_estoque (chave, produto, ref, cor, tamanho, saldo, unidade, lote, atualizado_em)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(chave) DO UPDATE SET produto=excluded.produto, ref=excluded.ref, cor=excluded.cor,
-         tamanho=excluded.tamanho, saldo=excluded.saldo, unidade=excluded.unidade, atualizado_em=datetime('now')`
-    ).bind(chave, norm(it.produto) || null, ref || null, cor || null, tam || null, saldo, norm(it.unidade) || null);
+         tamanho=excluded.tamanho, saldo=excluded.saldo, unidade=excluded.unidade, lote=excluded.lote, atualizado_em=datetime('now')`
+    ).bind(chave, norm(it.produto) || null, ref || null, cor || null, tam || null, saldo, norm(it.unidade) || null, lote);
   });
   await c.env.DB.batch(stmts);
-  return c.json({ ok: true, n: stmts.length });
+  // FIM da rodada: apaga tudo que NÃO é deste lote (saldo que sumiu do Syntech) — assim o
+  // espelho fica idêntico ao Syntech, sem estoque fantasma. Só varre se a rodada chegou
+  // completa (fim=true) e com lote (senão não mexe, pra não apagar nada por engano).
+  let removidos = 0;
+  if (b.fim === true && lote) {
+    const del = await c.env.DB.prepare("DELETE FROM erp_estoque WHERE lote IS NULL OR lote <> ?").bind(lote).run();
+    removidos = (del.meta && (del.meta.changes as number)) || 0;
+  }
+  return c.json({ ok: true, n: stmts.length, removidos });
 });
 
 // LÊ o estoque espelhado (pra exibir). Filtro opcional ?ref= / ?busca=.

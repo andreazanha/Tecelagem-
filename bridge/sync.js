@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-21.3";
+const PONTE_VERSAO = "2026-10-22.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -274,12 +274,12 @@ async function processarPedido(db, ped) {
 // A consulta fica no config.estoque.sql porque o nome da tabela/colunas de saldo
 // varia por base — o pessoal do Syntech informa. Ela deve devolver as colunas:
 //   PRODUTO, REF, COR, TAMANHO, SALDO, UNIDADE
-async function enviarEstoque(itens) {
+async function enviarEstoque(itens, lote, fim) {
   const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/estoque";
   const r = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
-    body: JSON.stringify({ itens, full: true }),
+    body: JSON.stringify({ itens, full: true, lote, fim: !!fim }),
   });
   return r.ok;
 }
@@ -306,13 +306,18 @@ async function rodadaEstoque(db) {
     })).filter((x) => x.ref || x.produto);
   }
   if (!itens.length) { log("estoque: nada a enviar"); return; }
-  // envia em lotes de 500 pra não estourar o tamanho da requisição
-  let enviados = 0;
+  // envia em lotes de 500 pra não estourar o tamanho da requisição. Usa um 'lote' único
+  // por rodada; no ÚLTIMO lote (e só se TODOS deram certo) manda fim=true, e aí o servidor
+  // apaga o estoque que sumiu do Syntech (sem saldo fantasma). Se algum lote falhar, não
+  // manda o fim — melhor deixar linha velha do que apagar algo por engano.
+  const lote = "L" + Date.now();
+  let enviados = 0, todasOk = true;
   for (let i = 0; i < itens.length; i += 500) {
-    const ok = await enviarEstoque(itens.slice(i, i + 500));
-    if (ok) enviados += Math.min(500, itens.length - i);
+    const ultimo = i + 500 >= itens.length;
+    const ok = await enviarEstoque(itens.slice(i, i + 500), lote, ultimo && todasOk);
+    if (ok) enviados += Math.min(500, itens.length - i); else todasOk = false;
   }
-  log(`estoque: ${enviados}/${itens.length} saldo(s) por cor espelhado(s)`);
+  log(`estoque: ${enviados}/${itens.length} saldo(s) por cor espelhado(s)` + (todasOk ? " [espelho = Syntech]" : " (incompleto — mantém linhas antigas)"));
 }
 
 // Estoque EXATO por cor/tamanho usando a procedure do documento de integração.
