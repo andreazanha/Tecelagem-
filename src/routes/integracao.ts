@@ -217,10 +217,13 @@ integracao.post("/estoque", async (c) => {
   type EstoqueIn = { produto?: string; ref?: string; cor?: string; tamanho?: string; saldo?: number | string; unidade?: string };
   const b = await c.req.json<{ itens?: EstoqueIn[]; full?: boolean; lote?: string; fim?: boolean }>().catch(() => ({} as { itens?: EstoqueIn[]; full?: boolean; lote?: string; fim?: boolean }));
   const itens: EstoqueIn[] = Array.isArray(b.itens) ? b.itens : [];
-  if (!itens.length) return c.json({ error: "sem_itens" }, 400);
-
   const norm = (s: unknown) => String(s ?? "").trim();
   const lote = norm(b.lote) || null; // carimbo desta rodada de sincronização
+  // Permite itens VAZIO só quando é o fim de uma rodada com lote → "Syntech sem nada" →
+  // limpa o espelho inteiro (a ponte confirma que leu e não veio saldo nenhum).
+  const limparTudo = itens.length === 0 && b.fim === true && !!lote;
+  if (!itens.length && !limparTudo) return c.json({ error: "sem_itens" }, 400);
+
   const chaveDe = (ref: string, cor: string, tam: string) => `${ref}|${cor}|${tam}`.toLowerCase();
   const stmts = itens.map((it) => {
     const ref = norm(it.ref), cor = norm(it.cor), tam = norm(it.tamanho);
@@ -233,7 +236,7 @@ integracao.post("/estoque", async (c) => {
          tamanho=excluded.tamanho, saldo=excluded.saldo, unidade=excluded.unidade, lote=excluded.lote, atualizado_em=datetime('now')`
     ).bind(chave, norm(it.produto) || null, ref || null, cor || null, tam || null, saldo, norm(it.unidade) || null, lote);
   });
-  await c.env.DB.batch(stmts);
+  if (stmts.length) await c.env.DB.batch(stmts);
   // FIM da rodada: apaga tudo que NÃO é deste lote (saldo que sumiu do Syntech) — assim o
   // espelho fica idêntico ao Syntech, sem estoque fantasma. Só varre se a rodada chegou
   // completa (fim=true) e com lote (senão não mexe, pra não apagar nada por engano).

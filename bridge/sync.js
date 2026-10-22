@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-22.1";
+const PONTE_VERSAO = "2026-10-22.2";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -305,12 +305,19 @@ async function rodadaEstoque(db) {
       unidade: String(r.UNIDADE || "").trim(),
     })).filter((x) => x.ref || x.produto);
   }
-  if (!itens.length) { log("estoque: nada a enviar"); return; }
-  // envia em lotes de 500 pra não estourar o tamanho da requisição. Usa um 'lote' único
-  // por rodada; no ÚLTIMO lote (e só se TODOS deram certo) manda fim=true, e aí o servidor
-  // apaga o estoque que sumiu do Syntech (sem saldo fantasma). Se algum lote falhar, não
-  // manda o fim — melhor deixar linha velha do que apagar algo por engano.
+  // Usa um 'lote' único por rodada; no ÚLTIMO lote (e só se TODOS deram certo) manda
+  // fim=true, e aí o servidor apaga o estoque que sumiu do Syntech (sem saldo fantasma).
+  // Se algum lote falhar, não manda o fim — melhor deixar linha velha do que apagar por engano.
   const lote = "L" + Date.now();
+  if (!itens.length) {
+    // Syntech sem NENHUM saldo (leitura ok, mas nada retornou) → manda fim com itens vazio
+    // pra o servidor ZERAR o espelho (senão ficaria estoque fantasma). Só acontece quando
+    // a leitura foi bem-sucedida e genuinamente vazia (erro vira null e cai no fallback).
+    const ok = await enviarEstoque([], lote, true);
+    log(ok ? "estoque: Syntech vazio — espelho zerado" : "estoque: vazio, mas falhou ao zerar (tenta na próxima)");
+    return;
+  }
+  // envia em lotes de 500 pra não estourar o tamanho da requisição.
   let enviados = 0, todasOk = true;
   for (let i = 0; i < itens.length; i += 500) {
     const ultimo = i + 500 >= itens.length;
