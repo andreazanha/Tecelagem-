@@ -898,6 +898,21 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         const prim = vars[0].prod;
         const grupos = ordemSec.map((key) => { const s = secoes.get(key)!; return { id: `${prim.id}-${key}`, titulo: s.titulo, ref: "", estoque: s.est, linhas: s.linhas }; });
 
+        // RESERVA de componentes pelos kits: cada kit disponível "segura" as peças que
+        // usa (capa/almofada) no tamanho dela. A venda avulsa mostra só o que SOBRA —
+        // assim não vende a mesma capa duas vezes (ex.: 10 kits manta usam 20 capas; de
+        // 30 sobram 10 pra avulsa). reservado[ref][tam][cor] = Σ (kit disponível × qtd).
+        const reservado: Record<string, Record<string, Record<string, number>>> = {};
+        for (const v of vars) {
+          if (!v.temCor) continue;
+          for (const it of (recPorKit.get(v.prod.id) || [])) {
+            const tamKey = String(it.tam || "").trim();
+            const r1 = (reservado[it.comp] ||= {});
+            const r2 = (r1[tamKey] ||= {});
+            for (const cid of Object.keys(v.estCor)) r2[cid] = (r2[cid] || 0) + (Number(v.estCor[cid]) || 0) * (Number(it.qtd) || 1);
+          }
+        }
+
         // AVULSAS: além dos kits, vende a CAPA e a ALMOFADA separadas (só 50×50), no
         // mesmo anúncio. Usa os componentes do kit (ex.: KT1078-C capa, KT1078-A almofada),
         // que têm estoque, preço (por tamanho) e cores próprios.
@@ -930,10 +945,11 @@ export async function gerarCatalogoSite(env: Env): Promise<{
             // saldo POR COR da peça NESTE tamanho (cadastro individual = erp_estoque, por
             // código Syntech ex.: "5K"). Nunca usa o estoque_geral (soma de tudo).
             const escTam = (itens[ref] && itens[ref][String(t.tamanho || "").trim()]) || null;
+            const resvTam = (reservado[ref] && reservado[ref][String(t.tamanho || "").trim()]) || {}; // capas já seguradas pelos kits
             itens[ref] = itens[ref] || {};
             itens[ref][t.medida] = itens[ref][t.medida] || {};
-            if (cf.cores.length) { for (const c of cf.cores) { const cid = idCor(c.nome || "", c.hex || "", ""); const s = escTam ? (Number(escTam[cid]) || 0) : (Number(cf.estoque) || 0); itens[ref][t.medida][cid] = s; estAv += s; } }
-            else { const s = escTam ? Object.values(escTam).reduce((a, n) => a + (Number(n) || 0), 0) : (Number(cf.estoque) || 0); itens[ref][t.medida]["-"] = s; estAv += s; }
+            if (cf.cores.length) { for (const c of cf.cores) { const cid = idCor(c.nome || "", c.hex || "", ""); const bruto = escTam ? (Number(escTam[cid]) || 0) : (Number(cf.estoque) || 0); const s = Math.max(0, bruto - (Number(resvTam[cid]) || 0)); itens[ref][t.medida][cid] = s; estAv += s; } }
+            else { const bruto = escTam ? Object.values(escTam).reduce((a, n) => a + (Number(n) || 0), 0) : (Number(cf.estoque) || 0); const resvTotal = Object.values(resvTam).reduce((a, n) => a + (Number(n) || 0), 0); const s = Math.max(0, bruto - resvTotal); itens[ref][t.medida]["-"] = s; estAv += s; }
           }
           for (const c of cf.cores) { const cid = idCor(c.nome || "", c.hex || "", ""); if (!coresMap.has(cid)) coresMap.set(cid, { id_cor: cid, oculta: false }); }
           return { id: `${prim.id}-av-${ref}`, titulo, ref, estoque: estAv, linhas: linhasA };
