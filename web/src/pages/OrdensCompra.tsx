@@ -9,7 +9,7 @@
 // Também dá pra RECUSAR enquanto aguardando/cotando.
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { api, type OrdemCompra, type OrdemCompraDetalhe, type OrdemCompraItemRow, type OrdemCompraStatus } from "../api";
+import { api, type OrdemCompra, type OrdemCompraDetalhe, type OrdemCompraItemRow, type OrdemCompraStatus, type Material } from "../api";
 import { getUser, podeFuncao } from "../auth";
 
 const nBR = (v: number) => (Number(v) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
@@ -141,6 +141,9 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
   const [busy, setBusy] = useState(false);
   const [receberOpen, setReceberOpen] = useState(false);
   const [waOpen, setWaOpen] = useState(false);
+  const [mats, setMats] = useState<Material[]>([]);
+  const [addBusca, setAddBusca] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
   const ehMaster = !!getUser()?.admin;
 
   useEffect(() => {
@@ -148,8 +151,22 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
     api.obterOrdemCompra(id).then((o) => { if (!vivo) return; setOrd(o); setItens(o.itens || []); setObs(o.obs || ""); setFormaPag(o.forma_pagamento || ""); setDataEntrega(o.data_entrega || ""); })
       .catch((e) => { if (vivo) setErro((e as Error).message); });
     api.listarFormasPagamento().then((l) => { if (vivo) setFormas(l.filter((x) => x.ativo !== 0).map((x) => x.nome)); }).catch(() => {});
+    api.listarMateriais().then((l) => { if (vivo) setMats(l); }).catch(() => {});
     return () => { vivo = false; };
   }, [id]);
+
+  // Adiciona um material novo como item da ordem (qtd 1, preço do cadastro).
+  function adicionarMaterial(m: Material) {
+    const novo: OrdemCompraItemRow = {
+      id: "novo-" + Math.random().toString(36).slice(2), ordem_id: id, material_id: m.id,
+      nome: m.nome || "", codigo: m.codigo_interno || m.codigo || null,
+      tamanho: m.tamanho || null, cor: m.cor || null, unidade: m.unidade || null,
+      saldo: m.saldo ?? null, minimo: m.minimo ?? null,
+      qtd: 1, preco: Number(m.preco) || 0, ordem: itens.length, recebido: 0,
+    };
+    setItens((arr) => [...arr, novo]);
+    setAddOpen(false); setAddBusca("");
+  }
 
   // Editável enquanto NÃO foi efetuada a compra: "aguardando" (quem criou) e "cotando" (só gestor).
   const editavel = !!ord && (ord.status === "aguardando_aprovacao" || (ord.status === "cotando" && podeAprovar));
@@ -317,6 +334,40 @@ function DetalheOrdem({ id, podeAprovar, onFechar, onMudou }: { id: string; pode
                 })}
               </tbody>
             </table>
+            {editavel && (
+              <div style={{ marginTop: 6 }}>
+                {!addOpen ? (
+                  <button className="btn btn-soft" disabled={busy} style={{ color: "#166534" }} onClick={() => setAddOpen(true)}>➕ Adicionar item</button>
+                ) : (
+                  <div className="card pad" style={{ background: "#f8fafc", border: "1px solid #e5e7eb" }}>
+                    <div className="row-gap" style={{ alignItems: "center", gap: 6, marginBottom: 6 }}>
+                      <strong style={{ fontSize: 13 }}>Adicionar material</strong>
+                      <input autoFocus value={addBusca} placeholder="Buscar por nome, código, cor…" style={{ flex: 1, minWidth: 180, padding: "6px 10px", fontSize: 13 }} onChange={(e) => setAddBusca(e.target.value)} />
+                      <button className="btn btn-soft" style={{ fontSize: 12 }} onClick={() => { setAddOpen(false); setAddBusca(""); }}>Cancelar</button>
+                    </div>
+                    <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid #eee", borderRadius: 8, background: "#fff" }}>
+                      {(() => {
+                        const b = addBusca.trim().toLowerCase();
+                        const jaTem = new Set(itens.map((it) => it.material_id).filter(Boolean));
+                        const lista = mats.filter((m) => m.status !== "inativo")
+                          .filter((m) => !b || `${m.nome || ""} ${m.codigo_interno || ""} ${m.codigo || ""} ${m.cor || ""} ${m.tamanho || ""}`.toLowerCase().includes(b))
+                          .slice(0, 80);
+                        if (!lista.length) return <div className="muted" style={{ padding: 10, fontSize: 13 }}>Nenhum material{b ? ` para "${addBusca}"` : ""}.</div>;
+                        return lista.map((m) => (
+                          <div key={m.id} onClick={() => adicionarMaterial(m)} style={{ padding: "7px 10px", borderBottom: "1px solid #f1f1f1", cursor: "pointer", display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "#f0fdf4")} onMouseLeave={(e) => (e.currentTarget.style.background = "")}>
+                            <span className="strong">{m.codigo_interno || m.codigo || "—"}</span>
+                            <span style={{ flex: 1 }}>{m.nome}{m.tamanho ? ` · ${m.tamanho}` : ""}{m.cor ? ` · ${m.cor}` : ""}{jaTem.has(m.id) ? " (já na ordem)" : ""}</span>
+                            <span className="muted">estoque {m.saldo != null ? nBR(Number(m.saldo)) : "—"}{m.unidade ? " " + m.unidade : ""}</span>
+                            <span style={{ color: "#166534", fontWeight: 700 }}>+ adicionar</span>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ textAlign: "right", fontWeight: 700, margin: "8px 2px" }}>Total estimado: {rBR(total)}</div>
 
             <div style={{ marginTop: 8 }}>
