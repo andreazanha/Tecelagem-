@@ -414,9 +414,15 @@ loja.post("/rep-pedido-acao", async (c) => {
     const prazo = String(b.cod_prazo || "").trim() || ped.prazo;
     if (!prazo) return c.json({ erro: "sem_forma", msg: "Escolha a forma de pagamento antes de enviar." }, 400);
     const formaDesc = String(b.forma_desc || "").trim().slice(0, 120) || null;
-    await c.env.DB.prepare(
-      "UPDATE pedidos SET erp_sync_status='pendente', loja_fase='enviado', loja_cod_prazo=?, loja_forma_desc=COALESCE(?, loja_forma_desc) WHERE id=? AND canal='loja_b2b'"
-    ).bind(prazo, formaDesc, pid).run();
+    // TRAVA DE ESTOQUE: ao enviar um rascunho do rep pro Syntech, confere/reserva as peças
+    // (mesma trava do checkout do cliente), senão esse caminho fugiria do controle.
+    const itensPed = ((await c.env.DB.prepare("SELECT ref, COALESCE(cor_grade,'') AS cor, COALESCE(erp_tamanho,'') AS tam, qtd FROM pedido_itens WHERE pedido_id=?").bind(pid).all<{ ref: string; cor: string; tam: string; qtd: number }>().catch(() => ({ results: [] as { ref: string; cor: string; tam: string; qtd: number }[] }))).results) || [];
+    const trava = await conferirEReservar(c.env, pid, itensPed.map((it) => ({ ref: it.ref, cor: it.cor, tam: it.tam, qtd: Number(it.qtd) || 0 })));
+    if (!trava.ok) return c.json({ erro: "sem_estoque", msg: "Alguns itens não têm estoque suficiente agora. Ajuste o pedido e tente novamente.", faltas: trava.faltas }, 409);
+    await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='pendente', loja_fase='enviado', loja_cod_prazo=?, loja_forma_desc=COALESCE(?, loja_forma_desc) WHERE id=? AND canal='loja_b2b'").bind(prazo, formaDesc, pid),
+      ...trava.reservas,
+    ]);
     return c.json({ ok: true, msg: "Pedido enviado! Aguardando a Big Tricot aprovar." });
   }
   return c.json({ erro: "acao_invalida" }, 400);
