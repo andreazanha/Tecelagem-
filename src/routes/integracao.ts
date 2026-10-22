@@ -876,6 +876,17 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       for (const grp of porFamilia.values()) {
         const vars = grp.vars.slice().sort((a, b) =>
           ((VAR_ORDEM[a.variacao] ?? 9) - (VAR_ORDEM[b.variacao] ?? 9)) || ((a.temEnch ? 1 : 0) - (b.temEnch ? 1 : 0)));
+        // O kit "com almofada" (cheio) usa as MESMAS capas do kit "com capa" (vazio) — só
+        // acrescenta enchimento; no Syntech a almofada (KT…-A) nunca tem saldo. Então o kit
+        // cheio REPLICA o estoque do vazio da MESMA variação (Queen/King/Manta). Como os
+        // dois leem a mesma capa ao vivo, vender um baixa o outro na próxima sincronização.
+        const vaziaPorVar = new Map<string, typeof vars[number]>();
+        for (const v of vars) if (!v.temEnch) vaziaPorVar.set(v.variacao || "x", v);
+        for (const v of vars) {
+          if (!v.temEnch) continue;
+          const base = vaziaPorVar.get(v.variacao || "x");
+          if (base) { v.estCor = base.estCor; v.vivo = base.vivo; v.temCor = base.temCor; }
+        }
         const coresMap = new Map<string, { id_cor: string; oculta: boolean }>();
         // UMA SEÇÃO por tamanho (Queen/King/Manta), cada uma com a capa e a almofada
         // dela embaixo — pra separar e não confundir. A variação vira o TÍTULO da seção
@@ -913,7 +924,9 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         // 30 sobram 10 pra avulsa). reservado[ref][tam][cor] = Σ (kit disponível × qtd).
         const reservado: Record<string, Record<string, Record<string, number>>> = {};
         for (const v of vars) {
-          if (!v.temCor) continue;
+          // só o kit VAZIO reserva a capa; o cheio compartilha a mesma capa (não reserva
+          // de novo, senão contaria 40 capas de 30).
+          if (!v.temCor || v.temEnch) continue;
           for (const it of (recPorKit.get(v.prod.id) || [])) {
             const tamKey = String(it.tam || "").trim();
             const r1 = (reservado[it.comp] ||= {});
