@@ -171,6 +171,68 @@ export async function conferirEReservar(env: Env, pedidoId: string, itens: { ref
   return { ok: true, reservas };
 }
 
+// ── ALERTA DE PEÇAS DO KIT ──────────────────────────────────────────────────
+// O kit é montado inteiro (peseira + capas). Se as peças não batem (ex.: tem peseira
+// mas falta capa), a equipe precisa saber ANTES de vender/montar. Detecta, por kit +
+// cor, quantos kits dá pra montar e quais peças ESTÃO SOBRANDO porque falta a outra.
+export type KitAlerta = { kit: string; cor: string; montaveis: number; faltando: string; sobrando: { peca: string; qtd: number }[] };
+
+export async function kitAlertas(env: Env): Promise<KitAlerta[]> {
+  const rec = (await env.DB.prepare("SELECT kit_ref, componente_ref, quantidade, tamanho FROM erp_kit_receita").all<{ kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }>().catch(() => ({ results: [] as { kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }[] }))).results || [];
+  if (!rec.length) return [];
+  const recPorKit = new Map<string, { ref: string; tam: string; qtd: number }[]>();
+  const refs = new Set<string>();
+  for (const r of rec) {
+    refs.add(r.kit_ref); refs.add(r.componente_ref);
+    const a = recPorKit.get(r.kit_ref) || [];
+    a.push({ ref: r.componente_ref, tam: String(r.tamanho || "").trim(), qtd: Number(r.quantidade) || 1 });
+    recPorKit.set(r.kit_ref, a);
+  }
+  const nome = new Map<string, string>();
+  const lista = [...refs];
+  for (let i = 0; i < lista.length; i += 100) {
+    const lote = lista.slice(i, i + 100);
+    const ph = lote.map(() => "?").join(",");
+    const rows = (await env.DB.prepare(`SELECT ref, nome FROM erp_produtos WHERE ref IN (${ph})`).bind(...lote).all<{ ref: string; nome: string | null }>().catch(() => ({ results: [] as { ref: string; nome: string | null }[] }))).results || [];
+    for (const r of rows) nome.set(r.ref, String(r.nome || r.ref));
+  }
+  // saldo de todas as peças, em memória
+  const est = (await env.DB.prepare("SELECT ref, cor, tamanho, saldo FROM erp_estoque").all<{ ref: string | null; cor: string | null; tamanho: string | null; saldo: number }>().catch(() => ({ results: [] as { ref: string | null; cor: string | null; tamanho: string | null; saldo: number }[] }))).results || [];
+  const saldo = new Map<string, number>();     // ref|cor|tam (lower) → saldo
+  const coresDaRef = new Map<string, Set<string>>(); // ref(lower) → cores
+  for (const e of est) {
+    const ref = (e.ref || "").trim().toLowerCase(); if (!ref) continue;
+    const cor = (e.cor || "").trim(); const tam = (e.tamanho || "").trim();
+    saldo.set(`${ref}|${cor.toLowerCase()}|${tam.toLowerCase()}`, Number(e.saldo) || 0);
+    const s = coresDaRef.get(ref) || new Set<string>(); if (cor) s.add(cor); coresDaRef.set(ref, s);
+  }
+  const rotulo = (ref: string) => { const t = tipoPeca(nome.get(ref) || ""); return t === "peseira" ? "Peseira" : t === "capa" ? "Capa" : t === "almofada" ? "Almofada" : (nome.get(ref) || ref); };
+  const out: KitAlerta[] = [];
+  for (const [kitRef, comps] of recPorKit) {
+    const pk = parseKit(nome.get(kitRef) || kitRef);
+    if (pk.temEnch) continue; // só o kit vazio (o cheio usa as mesmas capas)
+    // cores candidatas = união das cores das peças coloridas do kit
+    const cores = new Set<string>();
+    for (const c of comps) { const s = coresDaRef.get(c.ref.toLowerCase()); if (s) for (const x of s) cores.add(x); }
+    for (const cor of cores) {
+      const linhas = comps.map((c) => {
+        const sld = saldo.get(`${c.ref.toLowerCase()}|${cor.toLowerCase()}|${c.tam.toLowerCase()}`) || 0;
+        return { peca: rotulo(c.ref), saldo: sld, qtd: c.qtd, max: Math.floor(sld / (c.qtd || 1)) };
+      });
+      if (!linhas.length) continue;
+      const montaveis = Math.max(0, Math.min(...linhas.map((l) => l.max)));
+      // peças sobrando = saldo que não vira kit por falta de outra peça
+      const sobrando = linhas.map((l) => ({ peca: l.peca, qtd: l.saldo - montaveis * l.qtd })).filter((s) => s.qtd >= 1);
+      if (!sobrando.length) continue; // tudo casado → sem alerta
+      const limit = linhas.slice().sort((a, b) => a.max - b.max)[0]; // a peça que trava
+      out.push({ kit: `Kit ${pk.familia.charAt(0) + pk.familia.slice(1).toLowerCase()}${pk.variacao ? " " + pk.variacao.charAt(0) + pk.variacao.slice(1).toLowerCase() : ""}`, cor, montaveis, faltando: limit.peca, sobrando });
+    }
+  }
+  // mais graves primeiro (mais peças paradas)
+  out.sort((a, b) => b.sobrando.reduce((s, x) => s + x.qtd, 0) - a.sobrando.reduce((s, x) => s + x.qtd, 0));
+  return out;
+}
+
 // Limpa reservas que já foram refletidas no SALDO (pedido enviado + sincronização depois)
 // ou de pedidos que não existem mais. Chamado ao fim de cada sincronização de estoque.
 export async function limparReservasRefletidas(env: Env): Promise<number> {

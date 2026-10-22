@@ -21,11 +21,14 @@ export function EstoqueSyntech() {
   const [busca, setBusca] = useState("");
   const [erro, setErro] = useState("");
   const [sync, setSync] = useState<{ atualizado_em: string | null; agora: string; itens: number } | null>(null);
+  const [alertas, setAlertas] = useState<{ kit: string; cor: string; montaveis: number; faltando: string; sobrando: { peca: string; qtd: number }[] }[]>([]);
+  const [popup, setPopup] = useState(false);
 
   function carregar() {
     setLinhas(null); setErro("");
     api.erpEstoque().then((r) => setLinhas(r as Linha[])).catch((e) => setErro((e as Error).message));
     api.erpSyncStatus().then((s) => setSync({ atualizado_em: s.estoque.atualizado_em, agora: s.agora, itens: s.estoque.itens })).catch(() => {});
+    api.erpKitAlertas().then((r) => { setAlertas(r.alertas || []); if ((r.alertas || []).length) setPopup(true); }).catch(() => {});
   }
   useEffect(() => { carregar(); }, []);
 
@@ -55,6 +58,44 @@ export function EstoqueSyntech() {
         <span className="muted" style={{ fontSize: 12 }}>Espelho por modelo · cor · tamanho. Saldo disponível (empenho já descontado).</span>
         <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={carregar}>↻ Atualizar</button>
       </div>
+
+      {alertas.length > 0 && (
+        <div className="card pad" style={{ marginBottom: 12, background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 20 }}>⚠️</span>
+          <strong>Peças de kit desbalanceadas:</strong>
+          <span>{alertas.length} {alertas.length === 1 ? "caso" : "casos"} — tem peça sobrando por falta de outra pra montar o kit.</span>
+          <button className="btn btn-soft" style={{ marginLeft: "auto", color: "#991b1b" }} onClick={() => setPopup(true)}>Ver detalhes</button>
+        </div>
+      )}
+
+      {popup && alertas.length > 0 && (
+        <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setPopup(false); }}>
+          <div className="card pad" style={{ maxWidth: 680, width: "95%", maxHeight: "85vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+            <div className="row-gap" style={{ alignItems: "center", marginBottom: 6 }}>
+              <h2 style={{ margin: 0, color: "#991b1b" }}>⚠️ Faltam peças para montar kits</h2>
+              <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={() => setPopup(false)}>✕ Fechar</button>
+            </div>
+            <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+              O kit é montado inteiro. Nestes casos tem peça parada por falta da outra — a equipe
+              precisa repor pra não faltar na hora de montar/vender.
+            </p>
+            <table className="table" style={{ fontSize: 13 }}>
+              <thead><tr><th>Kit</th><th>Cor</th><th className="num">Dá pra montar</th><th>Falta</th><th>Sobrando</th></tr></thead>
+              <tbody>
+                {alertas.map((a, i) => (
+                  <tr key={i}>
+                    <td className="strong">{a.kit}</td>
+                    <td>{a.cor}</td>
+                    <td className="num" style={{ fontWeight: 700, color: a.montaveis > 0 ? "#854d0e" : "#991b1b" }}>{a.montaveis}</td>
+                    <td style={{ color: "#991b1b", fontWeight: 600 }}>{a.faltando}</td>
+                    <td>{a.sobrando.map((s) => `${s.qtd} ${s.peca}`).join(" · ")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {hq && (
         <div className="card pad" style={{ marginBottom: 12, fontSize: 13, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>

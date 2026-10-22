@@ -17,7 +17,7 @@ import { SITE_ONLINE_HTML } from "../siteTemplate";
 import { SITE_FULL_HTML } from "../siteTemplateFull";
 import { SITE_LOJA_HTML } from "../siteLoja";
 import { lerDocumento, gravarDocumento } from "../firestore";
-import { limparReservasRefletidas } from "../loja-estoque";
+import { limparReservasRefletidas, kitAlertas } from "../loja-estoque";
 
 export const integracao = new Hono<{ Bindings: Env }>();
 
@@ -324,6 +324,14 @@ integracao.get("/diag-produto", async (c) => {
 <h2>3) Saldo por cor e tamanho de cada peça (erp_estoque)</h2>${blocosEst || '<p class="muted">sem dados</p>'}
 </body></html>`;
   return c.html(html);
+});
+
+// ALERTA de peças do kit: avisa a equipe quando as peças não batem pra montar o kit
+// (ex.: sobra peseira por falta de capa). Usado pelo popup no admin.
+integracao.get("/kit-alertas", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const alertas = await kitAlertas(c.env).catch(() => []);
+  return c.json({ alertas });
 });
 
 // STATUS da sincronização do ERP: quantos itens de estoque/produtos e QUANDO foi a

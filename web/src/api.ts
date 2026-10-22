@@ -1352,6 +1352,8 @@ export const api = {
   erpSyncStatus: () =>
     fetch("/api/integracao/sync-status").then((r) =>
       j<{ estoque: { itens: number; atualizado_em: string | null }; produtos: { itens: number; atualizado_em: string | null }; diag?: { proc?: string; com_cor?: number; sem_detalhe?: number; itens?: number; produtos?: number; erro?: string; em?: string } | null; agora: string }>(r)),
+  erpKitAlertas: () =>
+    fetch("/api/integracao/kit-alertas").then((r) => j<{ alertas: { kit: string; cor: string; montaveis: number; faltando: string; sobrando: { peca: string; qtd: number }[] }[] }>(r)),
   erpEstoqueReset: () => jsonPost("/api/integracao/estoque-reset", {}).then((r) => j<{ ok: boolean }>(r)),
   erpDiagProduto: (busca: string) =>
     fetch("/api/integracao/diag-produto?format=json&busca=" + encodeURIComponent(busca)).then((r) =>
