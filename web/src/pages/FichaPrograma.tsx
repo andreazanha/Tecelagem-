@@ -102,9 +102,10 @@ const CSS = `
 .ficha-sheet select{cursor:pointer;-webkit-appearance:none;appearance:none;}
 .ficha-sheet .secao{font-weight:bold;font-size:11.5px;padding:3px 1px 1px;color:#111;}
 .ficha-sheet .cab{border:0;}
-.ficha-sheet .cab td{border:0;padding:2px 3px;vertical-align:top;}
-.ficha-sheet .cab .lab{font-weight:bold;white-space:nowrap;}
-.ficha-sheet .cab input,.ficha-sheet .cab select{border-bottom:1px solid #c9ccdd;height:19px;}
+.ficha-sheet .cab td{border:0;padding:3px 4px;vertical-align:bottom;}
+.ficha-sheet .cab .campo{display:flex;align-items:flex-end;gap:5px;}
+.ficha-sheet .cab .lab{font-weight:bold;white-space:nowrap;flex:none;padding-bottom:1px;}
+.ficha-sheet .cab input,.ficha-sheet .cab select{border-bottom:1px solid #c9ccdd;height:19px;flex:1;min-width:0;}
 .ficha-sheet .topo{display:grid;grid-template-columns:1.42fr 1fr;gap:5px;align-items:start;}
 .ficha-sheet .center{text-align:center;}
 .ficha-sheet .navy-cell{background:var(--navy);color:#fff;font-weight:bold;padding:3px 6px;white-space:nowrap;}
@@ -303,52 +304,35 @@ export function FichaPrograma() {
       <div className="ficha-sheet">
         <div className="titulo">FICHA TÉCNICA DE PROGRAMA</div>
 
-        {/* Cabeçalho (3 colunas) */}
+        {/* Cabeçalho (3 colunas), rótulo + valor na mesma linha (igual ao PDF) */}
         <table className="cab"><tbody>
           <tr>
-            <td style={{ width: "34%" }}><span className="lab">CLIENTE: </span></td>
-            <td style={{ width: "40%" }}><span className="lab">PROGRAMADOR: </span></td>
-            <td style={{ width: "26%" }}><span className="lab">DATA: </span></td>
+            <td style={{ width: "36%" }}><div className="campo"><span className="lab">CLIENTE:</span>{inp(f.cliente, (v) => set("cliente", v))}</div></td>
+            <td style={{ width: "40%" }}><div className="campo"><span className="lab">PROGRAMADOR:</span>{inp(f.programador, (v) => set("programador", v))}</div></td>
+            <td style={{ width: "24%" }}><div className="campo"><span className="lab">DATA:</span><input type="date" value={f.data || ""} onChange={(e) => set("data", e.target.value)} /></div></td>
           </tr>
           <tr>
-            <td>{inp(f.cliente, (v) => set("cliente", v))}</td>
-            <td>{inp(f.programador, (v) => set("programador", v))}</td>
-            <td><input type="date" value={f.data || ""} onChange={(e) => set("data", e.target.value)} /></td>
-          </tr>
-          <tr>
-            <td><span className="lab">Nº PROGRAMA: </span></td>
-            <td><span className="lab">MAQ. MODELO: </span></td>
-            <td><span className="lab">GALGA: </span></td>
-          </tr>
-          <tr>
-            <td>{inp(f.numero, (v) => set("numero", v))}</td>
-            <td>
+            <td><div className="campo"><span className="lab">Nº PROGRAMA:</span>{inp(f.numero, (v) => set("numero", v))}</div></td>
+            <td><div className="campo"><span className="lab">MAQ. MODELO:</span>
               <select value={maquinas.some((m) => m.nome === f.maquina) ? f.maquina : (f.maquina ? "__cur__" : "")}
                 onChange={(e) => { if (e.target.value === "__add__") adicionarMaquina(); else set("maquina", e.target.value === "__cur__" ? f.maquina || "" : e.target.value); }}>
                 <option value="">—</option>
                 {f.maquina && !maquinas.some((m) => m.nome === f.maquina) && <option value="__cur__">{f.maquina}</option>}
                 {maquinas.map((m) => <option key={m.id} value={m.nome}>{m.nome}</option>)}
                 <option value="__add__">➕ nova máquina…</option>
-              </select>
-            </td>
-            <td>
+              </select></div></td>
+            <td><div className="campo"><span className="lab">GALGA:</span>
               <select value={galgas.some((g) => g.nome === f.galga) ? f.galga : (f.galga ? "__cur__" : "")}
                 onChange={(e) => { if (e.target.value === "__add__") adicionarGalga(); else set("galga", e.target.value === "__cur__" ? f.galga || "" : e.target.value); }}>
                 <option value="">—</option>
                 {f.galga && !galgas.some((g) => g.nome === f.galga) && <option value="__cur__">{f.galga}</option>}
                 {galgas.map((g) => <option key={g.id} value={g.nome}>{g.nome}</option>)}
                 <option value="__add__">➕ nova galga…</option>
-              </select>
-            </td>
+              </select></div></td>
           </tr>
           <tr>
-            <td><span className="lab">DESCRIÇÃO: </span></td>
-            <td><span className="lab">FIO: </span></td>
-            <td></td>
-          </tr>
-          <tr>
-            <td>{inp(f.descricao, (v) => set("descricao", v))}</td>
-            <td>{inp(f.fio, (v) => set("fio", v))}</td>
+            <td><div className="campo"><span className="lab">DESCRIÇÃO:</span>{inp(f.descricao, (v) => set("descricao", v))}</div></td>
+            <td><div className="campo"><span className="lab">FIO:</span>{inp(f.fio, (v) => set("fio", v))}</div></td>
             <td></td>
           </tr>
         </tbody></table>
