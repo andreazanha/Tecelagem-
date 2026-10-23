@@ -349,12 +349,14 @@ export function FichaPrograma() {
                   <td>{inp(r.tempo, (v) => setLinha<FichaProgramaLinha>("programa", i, "tempo", v))}</td>
                 </tr>
               ))}
+            </tbody></table>
+            <table style={{ marginTop: -1 }}><tbody>
               <tr>
-                <td className="navy-cell">PESO TOTAL:</td>
-                <td>{inp(f.peso_total, (v) => set("peso_total", v))}</td>
-                <td className="navy-cell" style={{ fontSize: 10 }}>TEMPO TOTAL:</td>
+                <td className="navy-cell" style={{ width: "24%" }}>PESO TOTAL:</td>
+                <td style={{ width: "28%" }}>{inp(f.peso_total, (v) => set("peso_total", v))}</td>
+                <td className="navy-cell" style={{ width: "26%" }}>TEMPO TOTAL:</td>
+                <td>{inp(f.tempo_total, (v) => set("tempo_total", v))}</td>
               </tr>
-              <tr><td colSpan={3} style={{ border: 0, padding: 0 }}>{inp(f.tempo_total, (v) => set("tempo_total", v))}</td></tr>
             </tbody></table>
             <div className="addrow fp-noprint"><button onClick={() => addLinha("programa", () => ({ programa: "", descricao: "", tempo: "" }))}>+ linha</button></div>
           </div>
