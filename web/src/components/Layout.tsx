@@ -245,6 +245,9 @@ const GRUPOS: MenuGrupo[] = [
         { to: "/config-loja", icon: "🖼️", label: "Configurar catálogo (banner, vídeos)", admin: true },
         { to: "https://pedidos.bigtricot.com.br", icon: "🏪", label: "Abrir a loja (catálogo)", ext: true, admin: true },
       ] },
+      { icon: "🧵", label: "Técnico", acc: true, children: [
+        { to: "/ficha-programa", icon: "📐", label: "Ficha Técnica de Programa", page: "producao" },
+      ] },
       { icon: "🔐", label: "Acessos", acc: true, children: [
         { to: "/acessos", icon: "🔐", label: "Usuários e acessos", admin: true },
       ] },

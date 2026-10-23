@@ -54,6 +54,7 @@ import { TVFrame } from "./components/TVFrame";
 import { getUser, pode, podeAlgum, podeFuncao, primeiraPagina } from "./auth";
 import { ComprasMateriais } from "./pages/Cadastros";
 import { OrdensCompra } from "./pages/OrdensCompra";
+import { FichaPrograma } from "./pages/FichaPrograma";
 import ConfigLoja from "./pages/ConfigLoja";
 import "./styles.css";
 
@@ -166,6 +167,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/fiscal" element={<Protegido page="fiscal"><Fiscal /></Protegido>} />
           <Route path="/transporte" element={<Protegido page="transporte"><Transporte /></Protegido>} />
           <Route path="/todos-pedidos" element={<Protegido page="todos-pedidos"><TodosPedidos /></Protegido>} />
+          <Route path="/ficha-programa" element={<Protegido page="producao"><FichaPrograma /></Protegido>} />
         </Route>
       </Routes>
     </BrowserRouter>

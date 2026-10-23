@@ -774,7 +774,46 @@ export interface ResumoTec {
   }[];
 }
 
+// ── Ficha Técnica de Programa (tricô) ─────────────────────────────────────
+export interface FichaItemLista { id: string; nome: string }
+export interface FichaProgramaLinha {
+  programa?: string; descricao?: string; tempo?: string;
+}
+export interface FichaGuiaFio { num?: string; fio?: string; cabos?: string; fio2?: string }
+export interface FichaEconomizador { num?: string; c1?: string; c1p?: string; c2?: string; c2p?: string; c3?: string; c3p?: string; c4?: string; c4p?: string }
+export interface FichaGraduacao { num?: string; local?: string }
+export interface FichaTakeDown { tc?: string; tr?: string; local?: string }
+export interface FichaVelocidade { n?: string; ms?: string; local?: string }
+export interface FichaProgramaResumo {
+  id: string; numero?: string; cliente?: string; descricao?: string;
+  maquina?: string; galga?: string; data?: string; atualizado_em?: string;
+}
+export interface FichaPrograma extends FichaProgramaResumo {
+  programador?: string; fio?: string; peso_total?: string; tempo_total?: string;
+  imagem_key?: string | null;
+  programa?: FichaProgramaLinha[];
+  guia_fios?: FichaGuiaFio[];
+  economizador?: FichaEconomizador[];
+  graduacao?: FichaGraduacao[];
+  take_down?: FichaTakeDown[];
+  velocidade?: FichaVelocidade[];
+}
+
 export const api = {
+  // ── Ficha Técnica de Programa ───────────────────────────────────────────
+  fichasMaquinas: () => fetch("/api/fichas/maquinas").then((r) => j<FichaItemLista[]>(r)),
+  fichaMaquinaAdd: (nome: string) => jsonPost("/api/fichas/maquinas", { nome }).then((r) => j<{ ok: boolean; id: string }>(r)),
+  fichaMaquinaDel: (id: string) => fetch(`/api/fichas/maquinas/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  fichasGalgas: () => fetch("/api/fichas/galgas").then((r) => j<FichaItemLista[]>(r)),
+  fichaGalgaAdd: (nome: string) => jsonPost("/api/fichas/galgas", { nome }).then((r) => j<{ ok: boolean; id: string }>(r)),
+  fichaGalgaDel: (id: string) => fetch(`/api/fichas/galgas/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  fichasListar: () => fetch("/api/fichas").then((r) => j<FichaProgramaResumo[]>(r)),
+  fichaObter: (id: string) => fetch(`/api/fichas/${encodeURIComponent(id)}`).then((r) => j<FichaPrograma>(r)),
+  fichaSalvar: (f: FichaPrograma) => jsonPost("/api/fichas", f).then((r) => j<{ ok: boolean; ficha: FichaPrograma }>(r)),
+  fichaExcluir: (id: string) => fetch(`/api/fichas/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  fichaImagemUpload: (id: string, file: File) => { const fd = new FormData(); fd.append("file", file); return fetch(`/api/fichas/${encodeURIComponent(id)}/imagem`, { method: "POST", body: fd }).then((r) => j<{ ok: boolean; imagem_key: string }>(r)); },
+  fichaImagemUrl: (id: string) => `/api/fichas/imagem/${encodeURIComponent(id)}`,
+
   relatorioVendas: (de?: string, ate?: string, kits?: "todos" | "so" | "sem") => {
     const q = new URLSearchParams();
     if (de) q.set("de", de); if (ate) q.set("ate", ate); if (kits) q.set("kits", kits);
