@@ -13,3 +13,6 @@ dist/
 _*.mjs
 _*.pdf
 _*.ts
+
+# saida de trabalho da skill Taste (gerada ao usar a skill, nao versionar)
+.taste-skill/
