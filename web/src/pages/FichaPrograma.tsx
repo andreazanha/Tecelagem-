@@ -56,7 +56,7 @@ function novaFicha(): TFicha {
     id: "", numero: "", cliente: "", descricao: "", programador: "", maquina: "", galga: "", fio: "", data: hojeBR(),
     peso_total: "", tempo_total: "", imagem_key: null,
     programa: linhas(5, mkPrograma), guia_fios: linhas(8, mkGuia), economizador: linhas(4, mkEcon),
-    graduacao: linhas(8, mkGrad), take_down: linhas(8, mkTake),
+    graduacao: linhas(10, mkGrad), take_down: linhas(10, mkTake),
     velocidade: VELOC_N.map((n) => ({ n, ms: "", local: "" })),
   };
 }
@@ -82,33 +82,36 @@ function paraImpressao(f: TFicha): TFicha {
 }
 
 const CSS = `
-.fp-wrap{max-width:1040px;margin:0 auto;}
-.fp-top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;}
+.fp-wrap{max-width:1120px;margin:0 auto;padding:0 16px;}
+.fp-top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;}
 .fp-top .sp{flex:1;}
-.fp-h1{margin:0;font-size:22px;font-weight:800;display:flex;align-items:center;gap:9px;}
+.fp-h1{margin:0;font-size:20px;font-weight:800;color:var(--ink);}
+.fp-eh1{margin:0;font-size:19px;font-weight:800;color:var(--ink);letter-spacing:-.01em;}
 .fp-sub{color:var(--muted);font-size:13px;margin-top:2px;}
+.fp-err{color:#b91c1c;font-weight:600;font-size:13px;}
 
-.fp-card{background:var(--card,#fff);border:1px solid var(--line);border-radius:16px;box-shadow:0 2px 5px #0f172a12;padding:18px 18px 16px;margin-bottom:16px;}
+.fp-card{background:var(--card,#fff);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;}
 body.dark .fp-card{background:#0e1426;}
-.fp-ch{display:flex;align-items:center;gap:10px;margin:0 0 14px;font-weight:800;font-size:15px;}
-.fp-ch .ic{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none;}
+.fp-ch{display:flex;align-items:center;gap:9px;margin:0 0 12px;font-weight:700;font-size:14px;color:var(--ink);}
+.fp-ch::before{content:"";width:3px;height:14px;border-radius:2px;background:var(--brand1);flex:none;}
 .fp-ch .hint{margin-left:auto;font-weight:600;font-size:12px;color:var(--muted);}
 
 .fp-identi{display:grid;grid-template-columns:1.7fr 1fr;gap:18px;align-items:start;}
 .fp-fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;}
-.fp-field{display:flex;flex-direction:column;gap:6px;min-width:0;}
+.fp-field{display:flex;flex-direction:column;gap:5px;min-width:0;}
+.fp-field label{font-size:12px;}
 .fp-field.col2{grid-column:1 / -1;}
 .fp-field .selrow{display:flex;gap:6px;}
 .fp-field .selrow select{flex:1;min-width:0;}
 
-.fp-drop{border:2px dashed #c7d2fe;border-radius:14px;background:#fafbff;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;min-height:210px;overflow:hidden;color:#6366f1;font-size:13px;font-weight:600;position:relative;}
+.fp-drop{border:2px dashed #c7d2fe;border-radius:12px;background:#fafbff;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px;min-height:190px;overflow:hidden;color:#4338ca;font-size:13px;font-weight:600;position:relative;}
 body.dark .fp-drop{background:#0b1120;border-color:#4338ca66;color:#a5b4fc;}
 .fp-drop img{width:100%;height:100%;object-fit:contain;max-height:280px;}
 .fp-drop .rm{position:absolute;top:8px;right:8px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;}
 
 .fp-scroll{overflow-x:auto;}
 .fp-tbl{width:100%;border-collapse:separate;border-spacing:0 0;}
-.fp-tbl th{font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);font-weight:800;text-align:left;padding:0 6px 7px;white-space:nowrap;}
+.fp-tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);font-weight:700;text-align:left;padding:0 6px 7px;white-space:nowrap;}
 .fp-tbl td{padding:0 6px 8px;vertical-align:middle;}
 .fp-tbl input{width:100%;}
 .fp-tbl .c-num{width:66px;}.fp-tbl .c-num input{text-align:center;}
@@ -117,8 +120,8 @@ body.dark .fp-drop{background:#0b1120;border-color:#4338ca66;color:#a5b4fc;}
 .fp-tbl .c-rm{width:40px;}
 .fp-tbl .c-vn{width:52px;font-weight:800;color:var(--muted);text-align:center;}
 .fp-addrow{margin-top:2px;}
-.fp-tri{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
-.fp-mini{font-size:10px;color:var(--muted);margin-top:-6px;margin-bottom:12px;}
+.fp-tri{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:start;}
+.fp-mini{font-size:12px;color:var(--muted);}
 
 /* ── Modal de pré-visualização ─────────────────────────────────────────── */
 .fp-mback{position:fixed;inset:0;background:#0f172a99;z-index:90;display:flex;flex-direction:column;align-items:center;padding:18px 12px;overflow:auto;}
@@ -343,16 +346,16 @@ export function FichaPrograma() {
         <style>{CSS}</style>
         <div className="fp-top">
           <div>
-            <h1 className="fp-h1">📐 Ficha Técnica de Programa</h1>
+            <h1 className="fp-h1">Ficha Técnica de Programa</h1>
             <div className="fp-sub">Cadastre o programa de tricô e gere o PDF da ficha para preencher/imprimir.</div>
           </div>
           <div className="sp" />
-          <button className="btn" onClick={() => setGerenciando((v) => !v)}>⚙️ Máquinas e galgas</button>
-          <button className="btn btn-primary" onClick={abrirNova}>➕ Nova ficha</button>
+          <button className="btn" onClick={() => setGerenciando((v) => !v)}>Máquinas e galgas</button>
+          <button className="btn btn-primary" onClick={abrirNova}>Nova ficha</button>
         </div>
 
         {gerenciando && <GerenciarListas maquinas={maquinas} galgas={galgas} onChange={carregarListas} />}
-        {erro && <div className="aviso aviso-warn">⚠️ {erro}</div>}
+        {erro && <div className="aviso aviso-warn">{erro}</div>}
 
         <div className="fp-card" style={{ padding: 0, overflow: "hidden" }}>
           {lista === null ? (
@@ -393,11 +396,12 @@ export function FichaPrograma() {
       <style>{CSS}</style>
       <div className="fp-top">
         <button className="btn" onClick={() => { setEditando(null); carregarLista(); }}>← Voltar</button>
+        <h1 className="fp-eh1">Ficha Técnica de Programa{f.numero ? ` · ${f.numero}` : ""}</h1>
         <div className="sp" />
-        {erro && <span style={{ color: "#b91c1c", fontWeight: 600 }}>⚠️ {erro}</span>}
-        <button className="btn" onClick={() => setPreview(true)}>👁️ Pré-visualizar</button>
-        <button className="btn btn-soft" onClick={salvarEImprimir} disabled={salvando}>🖨️ Imprimir / PDF</button>
-        <button className="btn btn-primary" onClick={() => salvar()} disabled={salvando}>{salvando ? "Salvando…" : "💾 Salvar"}</button>
+        {erro && <span className="fp-err">{erro}</span>}
+        <button className="btn" onClick={() => setPreview(true)}>Pré-visualizar</button>
+        <button className="btn btn-soft" onClick={salvarEImprimir} disabled={salvando}>Imprimir / PDF</button>
+        <button className="btn btn-primary" onClick={() => salvar()} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</button>
       </div>
 
       <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
@@ -405,7 +409,7 @@ export function FichaPrograma() {
 
       {/* IDENTIFICAÇÃO + IMAGEM */}
       <div className="fp-card">
-        <div className="fp-ch"><span className="ic">🧵</span> Identificação</div>
+        <div className="fp-ch">Identificação</div>
         <div className="fp-identi">
           <div className="fp-fgrid">
             {campo("Cliente", txt("cliente", "Nome do cliente"))}
@@ -419,7 +423,7 @@ export function FichaPrograma() {
                   <option value="">— selecionar —</option>
                   {f.maquina && !maquinas.some((m) => m.nome === f.maquina) && <option value="__cur__">{f.maquina}</option>}
                   {maquinas.map((m) => <option key={m.id} value={m.nome}>{m.nome}</option>)}
-                  <option value="__add__">➕ nova máquina…</option>
+                  <option value="__add__">+ nova máquina…</option>
                 </select>
               </div>
             ))}
@@ -430,7 +434,7 @@ export function FichaPrograma() {
                   <option value="">— selecionar —</option>
                   {f.galga && !galgas.some((g) => g.nome === f.galga) && <option value="__cur__">{f.galga}</option>}
                   {galgas.map((g) => <option key={g.id} value={g.nome}>{g.nome}</option>)}
-                  <option value="__add__">➕ nova galga…</option>
+                  <option value="__add__">+ nova galga…</option>
                 </select>
               </div>
             ))}
@@ -445,7 +449,7 @@ export function FichaPrograma() {
                   <img src={api.fichaImagemUrl(f.id) + "?t=" + imgBust} alt="produto" />
                   <button className="rm" onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}>Trocar</button>
                 </>
-              ) : (<><div style={{ fontSize: 30 }}>🖼️</div><div>Clique para enviar a foto<br />do produto</div></>)}
+              ) : (<><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg><div>Clique para enviar a foto<br />do produto</div></>)}
             </div>
           </div>
         </div>
@@ -453,7 +457,7 @@ export function FichaPrograma() {
 
       {/* PROGRAMA */}
       <div className="fp-card">
-        <div className="fp-ch"><span className="ic">📋</span> Programa <span className="hint">passos do programa</span></div>
+        <div className="fp-ch">Programa <span className="hint">passos do programa</span></div>
         <div className="fp-scroll">
           <table className="fp-tbl"><thead><tr><th style={{ width: "28%" }}>Programa</th><th style={{ width: "50%" }}>Descrição</th><th>Tempo</th><th className="c-rm"></th></tr></thead>
             <tbody>
@@ -462,7 +466,7 @@ export function FichaPrograma() {
                   <td><input value={r.programa || ""} onChange={(e) => setLinha<FichaProgramaLinha>("programa", i, "programa", e.target.value)} /></td>
                   <td><input value={r.descricao || ""} onChange={(e) => setLinha<FichaProgramaLinha>("programa", i, "descricao", e.target.value)} /></td>
                   <td><input value={r.tempo || ""} onChange={(e) => setLinha<FichaProgramaLinha>("programa", i, "tempo", e.target.value)} /></td>
-                  <td className="c-rm"><button className="icon-btn danger" title="remover" onClick={() => delLinha("programa", i)}>✕</button></td>
+                  <td className="c-rm"><button className="icon-btn danger" title="remover" onClick={() => delLinha("programa", i)}>×</button></td>
                 </tr>
               ))}
             </tbody>
@@ -477,7 +481,7 @@ export function FichaPrograma() {
 
       {/* GUIA FIOS */}
       <div className="fp-card">
-        <div className="fp-ch"><span className="ic">🧶</span> Guia de fios</div>
+        <div className="fp-ch">Guia de fios</div>
         <div className="fp-scroll">
           <table className="fp-tbl"><thead><tr><th className="c-num">Nº</th><th style={{ width: "40%" }}>Fio</th><th className="c-num">Cabos</th><th>Fio (2)</th><th className="c-rm"></th></tr></thead>
             <tbody>
@@ -487,7 +491,7 @@ export function FichaPrograma() {
                   <td><input value={r.fio || ""} onChange={(e) => setLinha<FichaGuiaFio>("guia_fios", i, "fio", e.target.value)} /></td>
                   <td className="c-num"><input value={r.cabos || ""} onChange={(e) => setLinha<FichaGuiaFio>("guia_fios", i, "cabos", e.target.value)} /></td>
                   <td><input value={r.fio2 || ""} onChange={(e) => setLinha<FichaGuiaFio>("guia_fios", i, "fio2", e.target.value)} /></td>
-                  <td className="c-rm"><button className="icon-btn danger" title="remover" onClick={() => delLinha("guia_fios", i)}>✕</button></td>
+                  <td className="c-rm"><button className="icon-btn danger" title="remover" onClick={() => delLinha("guia_fios", i)}>×</button></td>
                 </tr>
               ))}
             </tbody>
@@ -498,7 +502,7 @@ export function FichaPrograma() {
 
       {/* ECONOMIZADOR */}
       <div className="fp-card">
-        <div className="fp-ch"><span className="ic">🧷</span> Economizador</div>
+        <div className="fp-ch">Economizador</div>
         <div className="fp-scroll">
           <table className="fp-tbl" style={{ minWidth: 760 }}>
             <thead><tr>
@@ -516,7 +520,7 @@ export function FichaPrograma() {
                       <td className="c-pts"><input value={(r as Record<string, string>)[cp] || ""} onChange={(e) => setLinha<FichaEconomizador>("economizador", i, cp, e.target.value)} /></td>
                     </React.Fragment>
                   ))}
-                  <td className="c-rm"><button className="icon-btn danger" title="remover" onClick={() => delLinha("economizador", i)}>✕</button></td>
+                  <td className="c-rm"><button className="icon-btn danger" title="remover" onClick={() => delLinha("economizador", i)}>×</button></td>
                 </tr>
               ))}
             </tbody>
@@ -528,14 +532,14 @@ export function FichaPrograma() {
       {/* GRADUAÇÃO · TAKE DOWN · VELOCIDADE */}
       <div className="fp-tri">
         <div className="fp-card">
-          <div className="fp-ch"><span className="ic">📏</span> Graduação</div>
+          <div className="fp-ch">Graduação</div>
           <table className="fp-tbl"><thead><tr><th className="c-num">Nº</th><th>Localização</th><th className="c-rm"></th></tr></thead>
             <tbody>
               {(f.graduacao || []).map((r, i) => (
                 <tr key={i}>
                   <td className="c-num"><input value={r.num || ""} onChange={(e) => setLinha<FichaGraduacao>("graduacao", i, "num", e.target.value)} /></td>
                   <td><input value={r.local || ""} onChange={(e) => setLinha<FichaGraduacao>("graduacao", i, "local", e.target.value)} /></td>
-                  <td className="c-rm"><button className="icon-btn danger" onClick={() => delLinha("graduacao", i)}>✕</button></td>
+                  <td className="c-rm"><button className="icon-btn danger" onClick={() => delLinha("graduacao", i)}>×</button></td>
                 </tr>
               ))}
             </tbody>
@@ -543,7 +547,7 @@ export function FichaPrograma() {
           <div className="fp-addrow"><button className="btn btn-soft" onClick={() => addLinha("graduacao", mkGrad)}>+ linha</button></div>
         </div>
         <div className="fp-card">
-          <div className="fp-ch"><span className="ic">⬇️</span> Take down</div>
+          <div className="fp-ch">Take down</div>
           <table className="fp-tbl"><thead><tr><th className="c-tctr">TC</th><th className="c-tctr">TR</th><th>Localização</th><th className="c-rm"></th></tr></thead>
             <tbody>
               {(f.take_down || []).map((r, i) => (
@@ -551,7 +555,7 @@ export function FichaPrograma() {
                   <td className="c-tctr"><input value={r.tc || ""} onChange={(e) => setLinha<FichaTakeDown>("take_down", i, "tc", e.target.value)} /></td>
                   <td className="c-tctr"><input value={r.tr || ""} onChange={(e) => setLinha<FichaTakeDown>("take_down", i, "tr", e.target.value)} /></td>
                   <td><input value={r.local || ""} onChange={(e) => setLinha<FichaTakeDown>("take_down", i, "local", e.target.value)} /></td>
-                  <td className="c-rm"><button className="icon-btn danger" onClick={() => delLinha("take_down", i)}>✕</button></td>
+                  <td className="c-rm"><button className="icon-btn danger" onClick={() => delLinha("take_down", i)}>×</button></td>
                 </tr>
               ))}
             </tbody>
@@ -559,7 +563,7 @@ export function FichaPrograma() {
           <div className="fp-addrow"><button className="btn btn-soft" onClick={() => addLinha("take_down", mkTake)}>+ linha</button></div>
         </div>
         <div className="fp-card">
-          <div className="fp-ch"><span className="ic">⚡</span> Velocidade</div>
+          <div className="fp-ch">Velocidade</div>
           <table className="fp-tbl"><thead><tr><th className="c-vn">N</th><th className="c-pts">M/S</th><th>Local</th></tr></thead>
             <tbody>
               {(f.velocidade || []).map((r, i) => (
@@ -580,7 +584,7 @@ export function FichaPrograma() {
         <div className="fp-mback" onClick={() => setPreview(false)}>
           <div className="fp-mbar" onClick={(e) => e.stopPropagation()} style={{ width: "min(210mm,100%)" }}>
             <span>Pré-visualização do PDF</span><div className="sp" />
-            <button className="btn btn-soft" onClick={() => window.print()}>🖨️ Imprimir / PDF</button>
+            <button className="btn btn-soft" onClick={() => window.print()}>Imprimir / PDF</button>
             <button className="btn" onClick={() => setPreview(false)}>Fechar</button>
           </div>
           <div onClick={(e) => e.stopPropagation()} style={{ width: "min(210mm,100%)", background: "#fff", boxShadow: "0 10px 40px #0008", borderRadius: 4, padding: "6mm" }}>
@@ -616,7 +620,7 @@ function GerenciarListas({ maquinas, galgas, onChange }: { maquinas: FichaItemLi
         {itens.length === 0 ? <span style={{ color: "var(--muted)", fontSize: 13 }}>nenhum cadastrado</span> :
           itens.map((it) => (
             <span key={it.id} style={{ display: "inline-flex", alignItems: "center", gap: 7, border: "1px solid var(--line)", borderRadius: 999, padding: "4px 7px 4px 12px", fontSize: 13 }}>
-              {it.nome}<button onClick={() => del(it.id)} title="remover" style={{ background: "none", border: 0, color: "#b91c1c", cursor: "pointer", fontWeight: 700 }}>✕</button>
+              {it.nome}<button onClick={() => del(it.id)} title="remover" style={{ background: "none", border: 0, color: "#b91c1c", cursor: "pointer", fontWeight: 700 }}>×</button>
             </span>
           ))}
       </div>
