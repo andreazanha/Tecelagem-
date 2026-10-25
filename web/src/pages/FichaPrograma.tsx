@@ -78,10 +78,34 @@ function normalizar(f: TFicha): TFicha {
 function paraImpressao(f: TFicha): TFicha {
   return {
     ...f,
-    programa: pad(f.programa, 7, mkPrograma), guia_fios: pad(f.guia_fios, 10, mkGuia),
+    programa: pad(f.programa, 7, mkPrograma), guia_fios: ordenarGuia(pad(f.guia_fios, 10, mkGuia)),
     economizador: pad(f.economizador, 8, mkEcon), graduacao: pad(f.graduacao, 13, mkGrad),
     take_down: pad(f.take_down, 13, mkTake),
     velocidade: VELOC_N.map((n, i) => ({ n, ms: f.velocidade?.[i]?.ms || "", local: f.velocidade?.[i]?.local || "" })),
+  };
+}
+
+// Seções com cadastro próprio de termos (autocomplete + cadastrar na hora).
+const TIPOS_TERMO = ["programa", "economizador", "stitch", "puxamento", "velocidade"] as const;
+
+// Ordena a Guia de fios pelo Nº (vazios/sem número vão para o fim, mantendo a ordem relativa).
+function ordenarGuia(arr: FichaGuiaFio[]): FichaGuiaFio[] {
+  const val = (n?: string) => { const x = parseInt(String(n ?? "").replace(/[^\d]/g, ""), 10); return Number.isFinite(x) ? x : Infinity; };
+  return arr.map((r, i) => ({ r, i })).sort((a, b) => (val(a.r.num) - val(b.r.num)) || (a.i - b.i)).map((x) => x.r);
+}
+// Padroniza a grafia (1ª letra maiúscula) nos textos livres e ordena a guia.
+// Não toca em código/Nº/sigla (número do programa, máquina, galga, cabos, pts, tc/tr, m/s, tempo).
+function padronizar(ff: TFicha): TFicha {
+  const cap = (s?: string) => capFirst(s);
+  return {
+    ...ff,
+    cliente: cap(ff.cliente), descricao: cap(ff.descricao), programador: cap(ff.programador), fio: cap(ff.fio),
+    programa: (ff.programa || []).map((r) => ({ ...r, programa: cap(r.programa), descricao: cap(r.descricao) })),
+    economizador: (ff.economizador || []).map((r) => ({ ...r, c1: cap(r.c1), c2: cap(r.c2), c3: cap(r.c3), c4: cap(r.c4) })),
+    graduacao: (ff.graduacao || []).map((r) => ({ ...r, local: cap(r.local) })),
+    take_down: (ff.take_down || []).map((r) => ({ ...r, local: cap(r.local) })),
+    velocidade: (ff.velocidade || []).map((r) => ({ ...r, local: cap(r.local) })),
+    guia_fios: ordenarGuia((ff.guia_fios || []).map((r) => ({ ...r, fio: cap(r.fio), fio2: cap(r.fio2) }))),
   };
 }
 
@@ -356,8 +380,7 @@ export function FichaPrograma() {
   const [maquinas, setMaquinas] = useState<FichaItemLista[]>([]);
   const [galgas, setGalgas] = useState<FichaItemLista[]>([]);
   const [fios, setFios] = useState<FichaItemLista[]>([]);
-  const [pontos, setPontos] = useState<FichaItemLista[]>([]);
-  const [programaTermos, setProgramaTermos] = useState<FichaItemLista[]>([]);
+  const [termos, setTermos] = useState<Record<string, FichaItemLista[]>>({});
   const [editando, setEditando] = useState<TFicha | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
@@ -371,13 +394,11 @@ export function FichaPrograma() {
     api.fichasMaquinas().then(setMaquinas).catch(() => {});
     api.fichasGalgas().then(setGalgas).catch(() => {});
     api.fichasFios().then(setFios).catch(() => {});
-    api.fichasTermos("ponto").then(setPontos).catch(() => {});
-    api.fichasTermos("programa").then(setProgramaTermos).catch(() => {});
+    TIPOS_TERMO.forEach((t) => api.fichasTermos(t).then((l) => setTermos((m) => ({ ...m, [t]: l }))).catch(() => {}));
   }
   // Adiciona um termo novo (sem sair da ficha) e deixa disponível na lista local.
   async function addFio(nome: string): Promise<string | null> { try { const r = await api.fichaFioAdd(nome); setFios((l) => l.some((x) => x.id === r.id) ? l : [...l, { id: r.id, nome: r.nome }]); return r.nome; } catch { return null; } }
-  async function addPonto(nome: string): Promise<string | null> { try { const r = await api.fichaTermoAdd("ponto", nome); setPontos((l) => l.some((x) => x.id === r.id) ? l : [...l, { id: r.id, nome: r.nome }]); return r.nome; } catch { return null; } }
-  async function addProgTermo(nome: string): Promise<string | null> { try { const r = await api.fichaTermoAdd("programa", nome); setProgramaTermos((l) => l.some((x) => x.id === r.id) ? l : [...l, { id: r.id, nome: r.nome }]); return r.nome; } catch { return null; } }
+  async function addTermo(tipo: string, nome: string): Promise<string | null> { try { const r = await api.fichaTermoAdd(tipo, nome); setTermos((m) => { const cur = m[tipo] || []; return cur.some((x) => x.id === r.id) ? m : { ...m, [tipo]: [...cur, { id: r.id, nome: r.nome }] }; }); return r.nome; } catch { return null; } }
   async function addMaquinaCombo(nome: string): Promise<string | null> { try { await api.fichaMaquinaAdd(nome); const l = await api.fichasMaquinas(); setMaquinas(l); return nome; } catch { return null; } }
   async function addGalgaCombo(nome: string): Promise<string | null> { try { await api.fichaGalgaAdd(nome); const l = await api.fichasGalgas(); setGalgas(l); return nome; } catch { return null; } }
   useEffect(() => { carregarLista(); carregarListas(); }, []);
@@ -409,7 +430,7 @@ export function FichaPrograma() {
   async function salvar(): Promise<TFicha | null> {
     if (!editando) return null;
     setSalvando(true); setErro("");
-    try { const r = await api.fichaSalvar(editando); const f = normalizar(r.ficha); setEditando(f); carregarLista(); return f; }
+    try { const payload = padronizar(editando); setEditando(payload); const r = await api.fichaSalvar(payload); const f = normalizar(r.ficha); setEditando(f); carregarLista(); return f; }
     catch (e) { setErro((e as Error).message); return null; }
     finally { setSalvando(false); }
   }
@@ -534,7 +555,7 @@ export function FichaPrograma() {
             <tbody>
               {(f.programa || []).map((r, i) => (
                 <tr key={i}>
-                  <td><Combo value={r.programa || ""} onChange={(v) => setLinha<FichaProgramaLinha>("programa", i, "programa", v)} options={programaTermos} onAdd={addProgTermo} cap /></td>
+                  <td><Combo value={r.programa || ""} onChange={(v) => setLinha<FichaProgramaLinha>("programa", i, "programa", v)} options={termos.programa || []} onAdd={(n) => addTermo("programa", n)} cap /></td>
                   <td><input value={r.descricao || ""} onChange={(e) => setLinha<FichaProgramaLinha>("programa", i, "descricao", e.target.value)} onBlur={(e) => { const cc = capFirst(e.target.value); if (cc !== (r.descricao || "")) setLinha<FichaProgramaLinha>("programa", i, "descricao", cc); }} /></td>
                   <td><input value={r.tempo || ""} onChange={(e) => setLinha<FichaProgramaLinha>("programa", i, "tempo", e.target.value)} /></td>
                   <td className="c-rm"><button className="icon-btn danger" title="remover" onClick={() => delLinha("programa", i)}>×</button></td>
@@ -587,7 +608,7 @@ export function FichaPrograma() {
                   <td className="c-num"><input value={r.num || ""} onChange={(e) => setLinha<FichaEconomizador>("economizador", i, "num", e.target.value)} /></td>
                   {ECON_COLS.map(([cn, cp], k) => (
                     <React.Fragment key={k}>
-                      <td><Combo value={(r as Record<string, string>)[cn] || ""} onChange={(v) => setLinha<FichaEconomizador>("economizador", i, cn, v)} options={pontos} onAdd={addPonto} cap /></td>
+                      <td><Combo value={(r as Record<string, string>)[cn] || ""} onChange={(v) => setLinha<FichaEconomizador>("economizador", i, cn, v)} options={termos.economizador || []} onAdd={(n) => addTermo("economizador", n)} cap /></td>
                       <td className="c-pts"><input value={(r as Record<string, string>)[cp] || ""} onChange={(e) => setLinha<FichaEconomizador>("economizador", i, cp, e.target.value)} /></td>
                     </React.Fragment>
                   ))}
@@ -609,7 +630,7 @@ export function FichaPrograma() {
               {(f.graduacao || []).map((r, i) => (
                 <tr key={i}>
                   <td className="c-num"><input value={r.num || ""} onChange={(e) => setLinha<FichaGraduacao>("graduacao", i, "num", e.target.value)} /></td>
-                  <td><Combo value={r.local || ""} onChange={(v) => setLinha<FichaGraduacao>("graduacao", i, "local", v)} options={pontos} onAdd={addPonto} cap /></td>
+                  <td><Combo value={r.local || ""} onChange={(v) => setLinha<FichaGraduacao>("graduacao", i, "local", v)} options={termos.stitch || []} onAdd={(n) => addTermo("stitch", n)} cap /></td>
                   <td className="c-rm"><button className="icon-btn danger" onClick={() => delLinha("graduacao", i)}>×</button></td>
                 </tr>
               ))}
@@ -625,7 +646,7 @@ export function FichaPrograma() {
                 <tr key={i}>
                   <td className="c-tctr"><input value={r.tc || ""} onChange={(e) => setLinha<FichaTakeDown>("take_down", i, "tc", e.target.value)} /></td>
                   <td className="c-tctr"><input value={r.tr || ""} onChange={(e) => setLinha<FichaTakeDown>("take_down", i, "tr", e.target.value)} /></td>
-                  <td><Combo value={r.local || ""} onChange={(v) => setLinha<FichaTakeDown>("take_down", i, "local", v)} options={pontos} onAdd={addPonto} cap /></td>
+                  <td><Combo value={r.local || ""} onChange={(v) => setLinha<FichaTakeDown>("take_down", i, "local", v)} options={termos.puxamento || []} onAdd={(n) => addTermo("puxamento", n)} cap /></td>
                   <td className="c-rm"><button className="icon-btn danger" onClick={() => delLinha("take_down", i)}>×</button></td>
                 </tr>
               ))}
@@ -641,7 +662,7 @@ export function FichaPrograma() {
                 <tr key={i}>
                   <td className="c-vn">{r.n}</td>
                   <td className="c-pts"><input value={r.ms || ""} onChange={(e) => setLinha<FichaVelocidade>("velocidade", i, "ms", e.target.value)} /></td>
-                  <td><Combo value={r.local || ""} onChange={(v) => setLinha<FichaVelocidade>("velocidade", i, "local", v)} options={pontos} onAdd={addPonto} cap /></td>
+                  <td><Combo value={r.local || ""} onChange={(v) => setLinha<FichaVelocidade>("velocidade", i, "local", v)} options={termos.velocidade || []} onAdd={(n) => addTermo("velocidade", n)} cap /></td>
                 </tr>
               ))}
             </tbody>
