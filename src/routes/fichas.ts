@@ -39,6 +39,63 @@ for (const tipo of ["maquina", "galga"] as const) {
   });
 }
 
+// ── Termos técnicos (autocomplete + dedup) ────────────────────────────────────
+// Normaliza para busca/dedup: minúsculo, sem acento, espaços colapsados.
+const chaveNorm = (s: unknown) => String(s ?? "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ");
+// Padroniza grafia: só a 1ª letra maiúscula, resto como foi digitado (não força CAIXA ALTA).
+const capInicial = (s: unknown) => { const t = String(s ?? "").trim().replace(/\s+/g, " "); return t ? t[0].toUpperCase() + t.slice(1) : t; };
+
+// Termos genéricos (pontos, stitch, nomes de programa, localizações…).
+fichas.get("/termos", async (c) => {
+  if (!(await exigeLogin(c))) return c.json({ error: "login" }, 401);
+  const tipo = chaveNorm(c.req.query("tipo"));
+  if (!tipo) return c.json([]);
+  const q = chaveNorm(c.req.query("q"));
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, nome, nome_norm FROM ficha_termo WHERE tipo=? ORDER BY usos DESC, nome LIMIT 500"
+  ).bind(tipo).all<{ id: string; nome: string; nome_norm: string }>();
+  const lista = results || [];
+  const filt = q ? lista.filter((r) => r.nome_norm.includes(q)) : lista;
+  return c.json(filt.slice(0, 50).map((r) => ({ id: r.id, nome: r.nome })));
+});
+fichas.post("/termos", async (c) => {
+  const u = await exigeLogin(c);
+  if (!u) return c.json({ error: "login" }, 401);
+  const b = await c.req.json<{ tipo?: string; nome?: string }>().catch(() => ({} as { tipo?: string; nome?: string }));
+  const tipo = chaveNorm(b.tipo);
+  const nome = capInicial(b.nome);
+  const nn = chaveNorm(nome);
+  if (!tipo || !nn) return c.json({ error: "sem_dados" }, 400);
+  const ja = await c.env.DB.prepare("SELECT id, nome FROM ficha_termo WHERE tipo=? AND nome_norm=?").bind(tipo, nn).first<{ id: string; nome: string }>();
+  if (ja) { await c.env.DB.prepare("UPDATE ficha_termo SET usos=usos+1 WHERE id=?").bind(ja.id).run(); return c.json({ ok: true, id: ja.id, nome: ja.nome }); }
+  const id = uid();
+  await c.env.DB.prepare("INSERT INTO ficha_termo (id, tipo, nome, nome_norm, usos, criado_por) VALUES (?,?,?,?,1,?)").bind(id, tipo, nome, nn, u.nome || null).run();
+  return c.json({ ok: true, id, nome });
+});
+
+// Fios: REUTILIZA o cadastro de fios dos produtos (tipos_fio). Dedup por grafia normalizada.
+fichas.get("/fios", async (c) => {
+  if (!(await exigeLogin(c))) return c.json({ error: "login" }, 401);
+  const q = chaveNorm(c.req.query("q"));
+  const { results } = await c.env.DB.prepare("SELECT id, nome FROM tipos_fio ORDER BY nome LIMIT 2000").all<{ id: string; nome: string }>();
+  const lista = results || [];
+  const filt = q ? lista.filter((r) => chaveNorm(r.nome).includes(q)) : lista;
+  return c.json(filt.slice(0, 50));
+});
+fichas.post("/fios", async (c) => {
+  if (!(await exigeLogin(c))) return c.json({ error: "login" }, 401);
+  const b = await c.req.json<{ nome?: string }>().catch(() => ({} as { nome?: string }));
+  const nome = capInicial(b.nome);
+  const nn = chaveNorm(nome);
+  if (!nn) return c.json({ error: "sem_nome" }, 400);
+  const { results } = await c.env.DB.prepare("SELECT id, nome FROM tipos_fio").all<{ id: string; nome: string }>();
+  const ja = (results || []).find((r) => chaveNorm(r.nome) === nn);
+  if (ja) return c.json({ ok: true, id: ja.id, nome: ja.nome });
+  const id = uid();
+  await c.env.DB.prepare("INSERT INTO tipos_fio (id, nome) VALUES (?, ?)").bind(id, nome).run();
+  return c.json({ ok: true, id, nome });
+});
+
 // ── Fichas ────────────────────────────────────────────────────────────────────
 const CAMPOS_JSON = ["programa", "guia_fios", "economizador", "graduacao", "take_down", "velocidade"] as const;
 function parseFicha(r: Record<string, unknown>): Record<string, unknown> {

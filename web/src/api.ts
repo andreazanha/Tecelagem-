@@ -813,6 +813,11 @@ export const api = {
   fichaExcluir: (id: string) => fetch(`/api/fichas/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   fichaImagemUpload: (id: string, file: File) => { const fd = new FormData(); fd.append("file", file); return fetch(`/api/fichas/${encodeURIComponent(id)}/imagem`, { method: "POST", body: fd }).then((r) => j<{ ok: boolean; imagem_key: string }>(r)); },
   fichaImagemUrl: (id: string) => `/api/fichas/imagem/${encodeURIComponent(id)}`,
+  // Termos técnicos (autocomplete + dedup). Fios reutilizam o cadastro de produtos.
+  fichasFios: (q?: string) => fetch("/api/fichas/fios" + (q ? "?q=" + encodeURIComponent(q) : "")).then((r) => j<FichaItemLista[]>(r)),
+  fichaFioAdd: (nome: string) => jsonPost("/api/fichas/fios", { nome }).then((r) => j<{ ok: boolean; id: string; nome: string }>(r)),
+  fichasTermos: (tipo: string, q?: string) => fetch(`/api/fichas/termos?tipo=${encodeURIComponent(tipo)}` + (q ? "&q=" + encodeURIComponent(q) : "")).then((r) => j<FichaItemLista[]>(r)),
+  fichaTermoAdd: (tipo: string, nome: string) => jsonPost("/api/fichas/termos", { tipo, nome }).then((r) => j<{ ok: boolean; id: string; nome: string }>(r)),
 
   relatorioVendas: (de?: string, ate?: string, kits?: "todos" | "so" | "sem") => {
     const q = new URLSearchParams();

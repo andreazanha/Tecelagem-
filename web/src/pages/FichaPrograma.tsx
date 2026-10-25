@@ -39,6 +39,10 @@ const fmtData = (iso?: string) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 };
+// Normaliza para busca/dedup: minúsculo, sem acento, espaços colapsados.
+const normKey = (s?: string) => String(s ?? "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ");
+// Padroniza grafia: só a 1ª letra maiúscula, resto como foi digitado (não força CAIXA ALTA).
+const capFirst = (s?: string) => { const t = String(s ?? "").trim().replace(/\s+/g, " "); return t ? t[0].toUpperCase() + t.slice(1) : t; };
 function linhas<T>(n: number, mk: () => T): T[] { return Array.from({ length: n }, mk); }
 function pad<T>(arr: T[] | undefined, min: number, mk: () => T): T[] {
   const base = Array.isArray(arr) ? arr.slice() : [];
@@ -122,6 +126,13 @@ body.dark .fp-drop{background:#0b1120;border-color:#4338ca66;color:#a5b4fc;}
 .fp-addrow{margin-top:2px;}
 .fp-tri{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:start;}
 .fp-mini{font-size:12px;color:var(--muted);}
+.fp-combo{position:relative;width:100%;}
+.fp-combo input.fp-ctr{text-align:center;}
+.fp-combo-pop{z-index:95;background:var(--card,#fff);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 26px #0f172a2e;max-height:230px;overflow:auto;padding:4px;}
+body.dark .fp-combo-pop{background:#0e1426;}
+.fp-combo-opt{padding:6px 9px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);}
+.fp-combo-opt.hi{background:rgba(79,70,229,.12);}
+.fp-combo-add{color:var(--brand1);font-weight:600;}
 
 /* ── Modal de pré-visualização ─────────────────────────────────────────── */
 .fp-mback{position:fixed;inset:0;background:#0f172a99;z-index:90;display:flex;flex-direction:column;align-items:center;padding:18px 12px;overflow:auto;}
@@ -280,10 +291,73 @@ function FichaSheet({ f }: { f: TFicha }) {
   );
 }
 
+// Campo com busca + autocomplete + adicionar novo (sem sair da ficha).
+// A lista suspensa vai num portal (position:fixed) para não ser cortada pelas
+// tabelas com rolagem horizontal.
+type ComboOpt = { id: string; nome: string };
+function Combo({ value, onChange, options, onAdd, cap, center, placeholder }: {
+  value: string; onChange: (v: string) => void; options: ComboOpt[];
+  onAdd?: (nome: string) => Promise<string | null>; cap?: boolean; center?: boolean; placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(0);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const inpRef = useRef<HTMLInputElement | null>(null);
+  const nq = normKey(value);
+  const matches = options.filter((o) => !nq || normKey(o.nome).includes(nq)).slice(0, 8);
+  const exact = options.some((o) => normKey(o.nome) === nq);
+  const showAdd = !!onAdd && nq.length > 0 && !exact;
+  const nItems = matches.length + (showAdd ? 1 : 0);
+
+  function medir() { const el = inpRef.current; if (el) { const r = el.getBoundingClientRect(); setRect({ top: r.bottom + 2, left: r.left, width: r.width }); } }
+  function abrir() { medir(); setOpen(true); }
+  function pick(nome: string) { onChange(nome); setOpen(false); }
+  async function doAdd() { if (!onAdd) return; const nome = cap ? capFirst(value) : value.trim(); const r = await onAdd(nome).catch(() => null); pick(r || nome); }
+  function onKey(e: React.KeyboardEvent) {
+    if (!open || nItems === 0) { if (e.key === "Escape") setOpen(false); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => Math.min(h + 1, nItems - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (hi < matches.length) pick(matches[hi].nome); else if (showAdd) doAdd(); }
+    else if (e.key === "Escape") setOpen(false);
+  }
+  function onBlur() { window.setTimeout(() => setOpen(false), 150); if (cap && value) { const c = capFirst(value); if (c !== value) onChange(c); } }
+  useEffect(() => { setHi(0); }, [value, open]);
+  useEffect(() => {
+    if (!open) return;
+    const fechar = () => setOpen(false);
+    window.addEventListener("scroll", fechar, true); window.addEventListener("resize", fechar);
+    return () => { window.removeEventListener("scroll", fechar, true); window.removeEventListener("resize", fechar); };
+  }, [open]);
+
+  return (
+    <div className="fp-combo">
+      <input ref={inpRef} value={value} placeholder={placeholder} className={center ? "fp-ctr" : undefined}
+        onChange={(e) => { onChange(e.target.value); if (!open) abrir(); else medir(); }}
+        onFocus={abrir} onBlur={onBlur} onKeyDown={onKey} autoComplete="off" />
+      {open && nItems > 0 && rect && createPortal(
+        <div className="fp-combo-pop" style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width }}>
+          {matches.map((o, i) => (
+            <div key={o.id} className={"fp-combo-opt" + (i === hi ? " hi" : "")}
+              onMouseEnter={() => setHi(i)} onMouseDown={(e) => { e.preventDefault(); pick(o.nome); }}>{o.nome}</div>
+          ))}
+          {showAdd && (
+            <div className={"fp-combo-opt fp-combo-add" + (hi === matches.length ? " hi" : "")}
+              onMouseEnter={() => setHi(matches.length)} onMouseDown={(e) => { e.preventDefault(); doAdd(); }}>
+              + Adicionar “{cap ? capFirst(value) : value.trim()}”
+            </div>
+          )}
+        </div>, document.body)}
+    </div>
+  );
+}
+
 export function FichaPrograma() {
   const [lista, setLista] = useState<FichaProgramaResumo[] | null>(null);
   const [maquinas, setMaquinas] = useState<FichaItemLista[]>([]);
   const [galgas, setGalgas] = useState<FichaItemLista[]>([]);
+  const [fios, setFios] = useState<FichaItemLista[]>([]);
+  const [pontos, setPontos] = useState<FichaItemLista[]>([]);
+  const [programaTermos, setProgramaTermos] = useState<FichaItemLista[]>([]);
   const [editando, setEditando] = useState<TFicha | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
@@ -293,7 +367,19 @@ export function FichaPrograma() {
   const [imgBust, setImgBust] = useState(0);
 
   function carregarLista() { setLista(null); api.fichasListar().then(setLista).catch((e) => setErro((e as Error).message)); }
-  function carregarListas() { api.fichasMaquinas().then(setMaquinas).catch(() => {}); api.fichasGalgas().then(setGalgas).catch(() => {}); }
+  function carregarListas() {
+    api.fichasMaquinas().then(setMaquinas).catch(() => {});
+    api.fichasGalgas().then(setGalgas).catch(() => {});
+    api.fichasFios().then(setFios).catch(() => {});
+    api.fichasTermos("ponto").then(setPontos).catch(() => {});
+    api.fichasTermos("programa").then(setProgramaTermos).catch(() => {});
+  }
+  // Adiciona um termo novo (sem sair da ficha) e deixa disponível na lista local.
+  async function addFio(nome: string): Promise<string | null> { try { const r = await api.fichaFioAdd(nome); setFios((l) => l.some((x) => x.id === r.id) ? l : [...l, { id: r.id, nome: r.nome }]); return r.nome; } catch { return null; } }
+  async function addPonto(nome: string): Promise<string | null> { try { const r = await api.fichaTermoAdd("ponto", nome); setPontos((l) => l.some((x) => x.id === r.id) ? l : [...l, { id: r.id, nome: r.nome }]); return r.nome; } catch { return null; } }
+  async function addProgTermo(nome: string): Promise<string | null> { try { const r = await api.fichaTermoAdd("programa", nome); setProgramaTermos((l) => l.some((x) => x.id === r.id) ? l : [...l, { id: r.id, nome: r.nome }]); return r.nome; } catch { return null; } }
+  async function addMaquinaCombo(nome: string): Promise<string | null> { try { await api.fichaMaquinaAdd(nome); const l = await api.fichasMaquinas(); setMaquinas(l); return nome; } catch { return null; } }
+  async function addGalgaCombo(nome: string): Promise<string | null> { try { await api.fichaGalgaAdd(nome); const l = await api.fichasGalgas(); setGalgas(l); return nome; } catch { return null; } }
   useEffect(() => { carregarLista(); carregarListas(); }, []);
 
   function abrirNova() { setErro(""); setEditando(normalizar(novaFicha())); setImgBust(0); }
@@ -328,9 +414,6 @@ export function FichaPrograma() {
     finally { setSalvando(false); }
   }
   async function salvarEImprimir() { const f = await salvar(); if (f) setTimeout(() => window.print(), 120); }
-
-  async function adicionarMaquina() { const nome = prompt("Nova máquina (modelo):")?.trim(); if (!nome) return; try { await api.fichaMaquinaAdd(nome); setMaquinas(await api.fichasMaquinas()); set("maquina", nome); } catch (e) { alert((e as Error).message); } }
-  async function adicionarGalga() { const nome = prompt("Nova galga:")?.trim(); if (!nome) return; try { await api.fichaGalgaAdd(nome); setGalgas(await api.fichasGalgas()); set("galga", nome); } catch (e) { alert((e as Error).message); } }
 
   async function escolherImagem(file: File) {
     let f = editando; if (!f) return;
@@ -389,7 +472,11 @@ export function FichaPrograma() {
   const campo = (label: string, node: React.ReactNode, col2 = false) => (
     <div className={"fp-field" + (col2 ? " col2" : "")}><label>{label}</label>{node}</div>
   );
-  const txt = (k: keyof TFicha, ph = "") => <input value={(f[k] as string) || ""} onChange={(e) => set(k, e.target.value as TFicha[typeof k])} placeholder={ph} />;
+  const txt = (k: keyof TFicha, ph = "", cap = false) => (
+    <input value={(f[k] as string) || ""} placeholder={ph}
+      onChange={(e) => set(k, e.target.value as TFicha[typeof k])}
+      onBlur={cap ? () => { const v = (f[k] as string) || ""; const cc = capFirst(v); if (cc !== v) set(k, cc as TFicha[typeof k]); } : undefined} />
+  );
 
   return (
     <div className="fp-wrap">
@@ -412,33 +499,17 @@ export function FichaPrograma() {
         <div className="fp-ch">Identificação</div>
         <div className="fp-identi">
           <div className="fp-fgrid">
-            {campo("Cliente", txt("cliente", "Nome do cliente"))}
+            {campo("Cliente", txt("cliente", "Nome do cliente", true))}
             {campo("Nº Programa", txt("numero", "ex.: AN289"))}
-            {campo("Descrição", txt("descricao", "ex.: Vestido"))}
-            {campo("Programador", txt("programador", "Quem programou"))}
+            {campo("Descrição", txt("descricao", "ex.: Vestido", true))}
+            {campo("Programador", txt("programador", "Quem programou", true))}
             {campo("Máq. modelo", (
-              <div className="selrow">
-                <select value={maquinas.some((m) => m.nome === f.maquina) ? f.maquina : (f.maquina ? "__cur__" : "")}
-                  onChange={(e) => { if (e.target.value === "__add__") adicionarMaquina(); else set("maquina", e.target.value === "__cur__" ? f.maquina || "" : e.target.value); }}>
-                  <option value="">— selecionar —</option>
-                  {f.maquina && !maquinas.some((m) => m.nome === f.maquina) && <option value="__cur__">{f.maquina}</option>}
-                  {maquinas.map((m) => <option key={m.id} value={m.nome}>{m.nome}</option>)}
-                  <option value="__add__">+ nova máquina…</option>
-                </select>
-              </div>
+              <Combo value={f.maquina || ""} onChange={(v) => set("maquina", v)} options={maquinas} onAdd={addMaquinaCombo} placeholder="Buscar ou cadastrar…" />
             ))}
             {campo("Galga", (
-              <div className="selrow">
-                <select value={galgas.some((g) => g.nome === f.galga) ? f.galga : (f.galga ? "__cur__" : "")}
-                  onChange={(e) => { if (e.target.value === "__add__") adicionarGalga(); else set("galga", e.target.value === "__cur__" ? f.galga || "" : e.target.value); }}>
-                  <option value="">— selecionar —</option>
-                  {f.galga && !galgas.some((g) => g.nome === f.galga) && <option value="__cur__">{f.galga}</option>}
-                  {galgas.map((g) => <option key={g.id} value={g.nome}>{g.nome}</option>)}
-                  <option value="__add__">+ nova galga…</option>
-                </select>
-              </div>
+              <Combo value={f.galga || ""} onChange={(v) => set("galga", v)} options={galgas} onAdd={addGalgaCombo} placeholder="Buscar ou cadastrar…" />
             ))}
-            {campo("Fio", txt("fio", "ex.: Powerbrite + Lurex"))}
+            {campo("Fio", txt("fio", "ex.: Powerbrite + Lurex", true))}
             {campo("Data", <input type="date" value={f.data || ""} onChange={(e) => set("data", e.target.value)} />)}
           </div>
           <div className="fp-field">
@@ -463,8 +534,8 @@ export function FichaPrograma() {
             <tbody>
               {(f.programa || []).map((r, i) => (
                 <tr key={i}>
-                  <td><input value={r.programa || ""} onChange={(e) => setLinha<FichaProgramaLinha>("programa", i, "programa", e.target.value)} /></td>
-                  <td><input value={r.descricao || ""} onChange={(e) => setLinha<FichaProgramaLinha>("programa", i, "descricao", e.target.value)} /></td>
+                  <td><Combo value={r.programa || ""} onChange={(v) => setLinha<FichaProgramaLinha>("programa", i, "programa", v)} options={programaTermos} onAdd={addProgTermo} cap /></td>
+                  <td><input value={r.descricao || ""} onChange={(e) => setLinha<FichaProgramaLinha>("programa", i, "descricao", e.target.value)} onBlur={(e) => { const cc = capFirst(e.target.value); if (cc !== (r.descricao || "")) setLinha<FichaProgramaLinha>("programa", i, "descricao", cc); }} /></td>
                   <td><input value={r.tempo || ""} onChange={(e) => setLinha<FichaProgramaLinha>("programa", i, "tempo", e.target.value)} /></td>
                   <td className="c-rm"><button className="icon-btn danger" title="remover" onClick={() => delLinha("programa", i)}>×</button></td>
                 </tr>
@@ -488,9 +559,9 @@ export function FichaPrograma() {
               {(f.guia_fios || []).map((r, i) => (
                 <tr key={i}>
                   <td className="c-num"><input value={r.num || ""} onChange={(e) => setLinha<FichaGuiaFio>("guia_fios", i, "num", e.target.value)} /></td>
-                  <td><input value={r.fio || ""} onChange={(e) => setLinha<FichaGuiaFio>("guia_fios", i, "fio", e.target.value)} /></td>
+                  <td><Combo value={r.fio || ""} onChange={(v) => setLinha<FichaGuiaFio>("guia_fios", i, "fio", v)} options={fios} onAdd={addFio} cap /></td>
                   <td className="c-num"><input value={r.cabos || ""} onChange={(e) => setLinha<FichaGuiaFio>("guia_fios", i, "cabos", e.target.value)} /></td>
-                  <td><input value={r.fio2 || ""} onChange={(e) => setLinha<FichaGuiaFio>("guia_fios", i, "fio2", e.target.value)} /></td>
+                  <td><Combo value={r.fio2 || ""} onChange={(v) => setLinha<FichaGuiaFio>("guia_fios", i, "fio2", v)} options={fios} onAdd={addFio} cap /></td>
                   <td className="c-rm"><button className="icon-btn danger" title="remover" onClick={() => delLinha("guia_fios", i)}>×</button></td>
                 </tr>
               ))}
@@ -516,7 +587,7 @@ export function FichaPrograma() {
                   <td className="c-num"><input value={r.num || ""} onChange={(e) => setLinha<FichaEconomizador>("economizador", i, "num", e.target.value)} /></td>
                   {ECON_COLS.map(([cn, cp], k) => (
                     <React.Fragment key={k}>
-                      <td><input value={(r as Record<string, string>)[cn] || ""} onChange={(e) => setLinha<FichaEconomizador>("economizador", i, cn, e.target.value)} /></td>
+                      <td><Combo value={(r as Record<string, string>)[cn] || ""} onChange={(v) => setLinha<FichaEconomizador>("economizador", i, cn, v)} options={pontos} onAdd={addPonto} cap /></td>
                       <td className="c-pts"><input value={(r as Record<string, string>)[cp] || ""} onChange={(e) => setLinha<FichaEconomizador>("economizador", i, cp, e.target.value)} /></td>
                     </React.Fragment>
                   ))}
@@ -538,7 +609,7 @@ export function FichaPrograma() {
               {(f.graduacao || []).map((r, i) => (
                 <tr key={i}>
                   <td className="c-num"><input value={r.num || ""} onChange={(e) => setLinha<FichaGraduacao>("graduacao", i, "num", e.target.value)} /></td>
-                  <td><input value={r.local || ""} onChange={(e) => setLinha<FichaGraduacao>("graduacao", i, "local", e.target.value)} /></td>
+                  <td><Combo value={r.local || ""} onChange={(v) => setLinha<FichaGraduacao>("graduacao", i, "local", v)} options={pontos} onAdd={addPonto} cap /></td>
                   <td className="c-rm"><button className="icon-btn danger" onClick={() => delLinha("graduacao", i)}>×</button></td>
                 </tr>
               ))}
@@ -554,7 +625,7 @@ export function FichaPrograma() {
                 <tr key={i}>
                   <td className="c-tctr"><input value={r.tc || ""} onChange={(e) => setLinha<FichaTakeDown>("take_down", i, "tc", e.target.value)} /></td>
                   <td className="c-tctr"><input value={r.tr || ""} onChange={(e) => setLinha<FichaTakeDown>("take_down", i, "tr", e.target.value)} /></td>
-                  <td><input value={r.local || ""} onChange={(e) => setLinha<FichaTakeDown>("take_down", i, "local", e.target.value)} /></td>
+                  <td><Combo value={r.local || ""} onChange={(v) => setLinha<FichaTakeDown>("take_down", i, "local", v)} options={pontos} onAdd={addPonto} cap /></td>
                   <td className="c-rm"><button className="icon-btn danger" onClick={() => delLinha("take_down", i)}>×</button></td>
                 </tr>
               ))}
@@ -570,7 +641,7 @@ export function FichaPrograma() {
                 <tr key={i}>
                   <td className="c-vn">{r.n}</td>
                   <td className="c-pts"><input value={r.ms || ""} onChange={(e) => setLinha<FichaVelocidade>("velocidade", i, "ms", e.target.value)} /></td>
-                  <td><input value={r.local || ""} onChange={(e) => setLinha<FichaVelocidade>("velocidade", i, "local", e.target.value)} /></td>
+                  <td><Combo value={r.local || ""} onChange={(v) => setLinha<FichaVelocidade>("velocidade", i, "local", v)} options={pontos} onAdd={addPonto} cap /></td>
                 </tr>
               ))}
             </tbody>
