@@ -198,12 +198,24 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
   }, []);
   // Menu "Mais ações" (ações secundárias): abre ao clicar, fecha ao clicar fora ou escolher uma ação.
   const [maisOpen, setMaisOpen] = useState(false);
+  const [maisRect, setMaisRect] = useState<{ top: number; right: number } | null>(null);
   const maisRef = useRef<HTMLDivElement | null>(null);
+  const maisBtnRef = useRef<HTMLButtonElement | null>(null);
+  const maisPopRef = useRef<HTMLDivElement | null>(null);
+  // Mede o botão e abre o menu num portal (a barra de ações tem overflow, que cortava o menu).
+  function abrirMais() {
+    const el = maisBtnRef.current;
+    if (el) { const r = el.getBoundingClientRect(); setMaisRect({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) }); }
+    setMaisOpen((v) => !v);
+  }
   useEffect(() => {
     if (!maisOpen) return;
-    const fora = (e: MouseEvent) => { if (maisRef.current && !maisRef.current.contains(e.target as Node)) setMaisOpen(false); };
+    const fora = (e: MouseEvent) => { const t = e.target as Node; if (maisRef.current?.contains(t) || maisPopRef.current?.contains(t)) return; setMaisOpen(false); };
+    const fechar = () => setMaisOpen(false);
     document.addEventListener("mousedown", fora);
-    return () => document.removeEventListener("mousedown", fora);
+    window.addEventListener("scroll", fechar, true);
+    window.addEventListener("resize", fechar);
+    return () => { document.removeEventListener("mousedown", fora); window.removeEventListener("scroll", fechar, true); window.removeEventListener("resize", fechar); };
   }, [maisOpen]);
   function colunaEmPonto(x: number, y: number): string | null {
     for (const el of document.elementsFromPoint(x, y)) { const d = (el as HTMLElement).dataset?.coluna; if (d) return d; }
@@ -679,16 +691,15 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
           {ehGestorAtend() && podeFuncao(getUser(), "crm.campanha") && <button className="btn at-btn" onClick={() => setCampanhaOpen(true)}><IcoAt n="campanha" />Campanha</button>}
           {ehGestorAtend() && (
             <div ref={maisRef} style={{ position: "relative" }}>
-              <button className={"btn at-btn" + (maisOpen ? " at-btn-on" : "")} onClick={() => setMaisOpen((v) => !v)} title="Mais ações"><IcoAt n="mais" />Mais ações</button>
-              {maisOpen && (
-                <div className="at-mais-pop" style={{ left: "auto", right: 0, minWidth: 230 }}>
+              <button ref={maisBtnRef} className={"btn at-btn" + (maisOpen ? " at-btn-on" : "")} onClick={abrirMais} title="Mais ações"><IcoAt n="mais" />Mais ações</button>
+              {maisOpen && maisRect && createPortal(
+                <div ref={maisPopRef} className="at-mais-pop" style={{ position: "fixed", top: maisRect.top, right: maisRect.right, left: "auto", minWidth: 230, zIndex: 1000 }}>
                   <button className="at-mais-item" onClick={() => { setMaisOpen(false); setReservasOpen(true); }}>📋 Reservas</button>
                   <button className="at-mais-item" onClick={() => { setMaisOpen(false); setCfgOpen(true); }}>⚙️ Conexão</button>
                   <button className="at-mais-item" onClick={() => { setMaisOpen(false); setSim(true); }}>💬 Simular cliente</button>
                   <button className="at-mais-item" onClick={() => { setMaisOpen(false); juntarDuplicados(); }} title="Junta cards repetidos do mesmo contato (número com/sem o 9º dígito) num só, preservando o histórico">🧹 Juntar duplicados</button>
                   <button className="at-mais-item" disabled={cruzando} onClick={() => { setMaisOpen(false); cruzarBase(); }} title="Liga os contatos à base de clientes E puxa os nomes salvos na sua agenda do WhatsApp (preenche nome/CNPJ/cidade/UF sozinho). O sistema também faz isso automático 3x/dia.">{cruzando ? "🔗 Cruzando…" : "🔗 Cruzar com a base"}</button>
-                </div>
-              )}
+                </div>, document.body)}
             </div>
           )}
         </div>
