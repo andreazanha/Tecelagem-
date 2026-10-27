@@ -48,6 +48,11 @@ export interface Env {
   // catálogo no site. É o JSON inteiro da chave, guardado como SEGREDO no
   // Cloudflare. Nunca vai no código/repositório.
   FIREBASE_SA?: string;
+  // Envio de e-mail (reset de senha do representante) via Resend.
+  // RESEND_API_KEY é SEGREDO (não vai no código). EMAIL_FROM é o remetente
+  // verificado no Resend (ex.: "Big Tricot <naoresponda@bigtricot.com.br>").
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();

@@ -317,6 +317,63 @@ loja.post("/rep-definir-senha", async (c) => {
   return c.json({ ok: true, rep: { id: rep.id, nome: rep.nome, email: rep.email || "" }, clientes: await carteiraDoRep(c.env, rep.nome) });
 });
 
+// Código curto (10 chars, sem caracteres ambíguos) para o link de acesso/redefinição.
+function gerarCodigoCurto(n = 10): string {
+  const alf = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const a = new Uint8Array(n); crypto.getRandomValues(a);
+  let s = ""; for (const x of a) s += alf[x % alf.length];
+  return s;
+}
+function escHtml(s: string): string {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+// Envia o e-mail de redefinição de senha do representante via Resend (HTTP API).
+async function enviarEmailReset(env: Env, para: string, nome: string, link: string): Promise<void> {
+  const from = String(env.EMAIL_FROM || "Big Tricot <naoresponda@bigtricot.com.br>");
+  const nm = escHtml((nome || "").split(" ")[0] || "");
+  const lk = escHtml(link);
+  const html =
+    `<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;color:#2c2721;line-height:1.5">` +
+    `<div style="font-size:20px;font-weight:bold;color:#ad5033;margin-bottom:4px">Big Tricot</div>` +
+    `<div style="font-size:13px;color:#8a8073;letter-spacing:1px;margin-bottom:18px">ÁREA DO REPRESENTANTE</div>` +
+    `<p>Olá${nm ? " " + nm : ""},</p>` +
+    `<p>Recebemos um pedido para redefinir a senha do seu acesso de representante.</p>` +
+    `<p style="margin:22px 0"><a href="${lk}" style="display:inline-block;background:#2c3e50;color:#fff;text-decoration:none;padding:13px 22px;border-radius:10px;font-weight:bold">Criar uma nova senha</a></p>` +
+    `<p style="font-size:13px;color:#777">Ou copie e cole este link no navegador:<br><span style="color:#2c3e50">${lk}</span></p>` +
+    `<p style="font-size:13px;color:#777;margin-top:22px">Se você não pediu isso, pode ignorar este e-mail — sua senha atual continua valendo.</p>` +
+    `</div>`;
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${String(env.RESEND_API_KEY || "")}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to: [para], subject: "Redefinir sua senha — Área do Representante", html }),
+  });
+  if (!r.ok) throw new Error("resend_falhou_" + r.status + "_" + (await r.text().catch(() => "")).slice(0, 200));
+}
+
+// "Esqueci minha senha" do rep (self-service): gera um link de redefinição e MANDA
+// no e-mail cadastrado dele. A resposta é sempre a mesma (não revela se o e-mail
+// existe) — evita que alguém descubra quais e-mails estão cadastrados. Se o envio
+// de e-mail não estiver configurado (sem RESEND_API_KEY), devolve 'email_desligado'
+// pra tela cair no fluxo do WhatsApp.
+loja.post("/rep-esqueci", async (c) => {
+  let b: { email?: string } = {};
+  try { b = await c.req.json(); } catch { return c.json({ erro: "json_invalido" }, 400); }
+  const email = String(b.email || "").trim().toLowerCase();
+  if (!email || !email.includes("@")) return c.json({ erro: "email_invalido", msg: "Digite o seu e-mail no campo acima e clique de novo." }, 400);
+  if (!String(c.env.RESEND_API_KEY || "").trim()) return c.json({ erro: "email_desligado" }, 200);
+  const rep = await c.env.DB.prepare(
+    "SELECT id, nome, email, COALESCE(ativo,1) AS ativo FROM representantes WHERE LOWER(TRIM(COALESCE(email,'')))=? LIMIT 1"
+  ).bind(email).first<{ id: string; nome: string; email: string | null; ativo: number }>();
+  // Só envia de fato se achou um representante ATIVO com e-mail; a resposta é igual nos dois casos.
+  if (rep && Number(rep.ativo) !== 0 && String(rep.email || "").trim()) {
+    const token = gerarCodigoCurto(10);
+    await c.env.DB.prepare("UPDATE representantes SET acesso_token=? WHERE id=?").bind(token, rep.id).run();
+    const link = `https://vendas.bigtricot.com.br/r/${token}`;
+    try { await enviarEmailReset(c.env, String(rep.email), rep.nome || "", link); } catch { /* não revela falha de envio */ }
+  }
+  return c.json({ ok: true });
+});
+
 // O REP cadastra um cliente novo da carteira dele → vai pra fila de aprovação (pendente),
 // já atrelado ao representante. Sem senha (o cliente não loga; o rep compra por ele).
 loja.post("/rep-cadastrar-cliente", async (c) => {

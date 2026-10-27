@@ -1737,15 +1737,30 @@
   function repSair(){ try{ localStorage.removeItem("bt_rep"); localStorage.removeItem("bt_cnpj"); }catch(e){} REP=null; REP_CLIENTE=null; try{ location.href=location.pathname; return; }catch(e){} document.getElementById("repArea").style.display="none"; mostrarEnt(); abrirEntrada(); }
   document.getElementById("repBtn").addEventListener("click",repEntrar);
   document.getElementById("repSenha").addEventListener("keydown",function(e){ if(e.key==="Enter") repEntrar(); });
-  // "Esqueci minha senha" do rep: abre o WhatsApp da Big pedindo um novo link de acesso
-  // (a Big gera o link em Cadastros da Loja → o rep abre e cria uma senha nova).
-  (function(){ var be=document.getElementById("repEsqueci"); if(!be) return; be.addEventListener("click",function(){
-    var email=(document.getElementById("repEmail").value||"").trim();
+  // "Esqueci minha senha" do rep (self-service): manda um link de redefinição pro
+  // e-mail cadastrado. Se o envio de e-mail não estiver ligado no servidor, cai no
+  // WhatsApp (o rep avisa a Big, que gera o link manualmente).
+  function repEsqueciWhats(email){
     var wa=String(D.whatsapp||"").replace(/\D/g,""); if(wa && wa.length<=11) wa="55"+wa;
     if(!wa){ alert("Para redefinir sua senha, fale com a Big Tricot."); return; }
     var msg="Olá! Esqueci a senha da Área do Representante."+(email?(" Meu e-mail: "+email+"."):"")+" Podem me enviar um novo link de acesso?";
     var url="https://wa.me/"+wa+"?text="+encodeURIComponent(msg);
     try{ window.open(url,"_blank"); }catch(e){ location.href=url; }
+  }
+  (function(){ var be=document.getElementById("repEsqueci"); if(!be) return; be.addEventListener("click",function(){
+    var email=(document.getElementById("repEmail").value||"").trim();
+    var msg=document.getElementById("repMsg");
+    if(!email || email.indexOf("@")<0){ if(msg){ msg.style.color="#b91c1c"; msg.textContent="Digite o seu e-mail no campo acima e clique de novo em 'Esqueci minha senha'."; } return; }
+    be.disabled=true; var txt=be.textContent; be.textContent="Enviando…";
+    fetch("/api/loja/rep-esqueci",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email})})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+      .then(function(res){
+        be.disabled=false; be.textContent=txt;
+        if(res.j && res.j.erro==="email_desligado"){ repEsqueciWhats(email); return; }
+        if(res.j && res.j.erro==="email_invalido"){ if(msg){ msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Informe o e-mail."; } return; }
+        if(msg){ msg.style.color="#166534"; msg.innerHTML="Se este e-mail estiver cadastrado, enviamos um link para criar uma nova senha.<br>Confira sua caixa de entrada (e o spam)."; }
+      })
+      .catch(function(){ be.disabled=false; be.textContent=txt; repEsqueciWhats(email); });
   }); })();
   // "Entrar como representante" leva pro PORTAL do rep (?rep=1), separado do catálogo do cliente.
   (function(){ var ir=document.getElementById("irRep"); if(ir) ir.addEventListener("click",function(){ try{ location.href=location.pathname+"?rep=1"; }catch(e){ mostrarRepView(); } }); })();
