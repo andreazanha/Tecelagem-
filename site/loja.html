@@ -581,6 +581,7 @@
         <input id="repSenha" type="password" autocomplete="current-password" placeholder="Senha" style="display:block;width:100%;box-sizing:border-box;padding:13px;border:1px solid #d6d0c4;border-radius:12px;font-size:16px;margin-top:8px">
         <div id="repMsg" style="font-size:13px;min-height:1px;margin:8px 0;line-height:1.35"></div>
         <button id="repBtn" style="width:100%;padding:14px;border:0;border-radius:12px;background:#2c3e50;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Entrar</button>
+        <div style="text-align:center;margin-top:10px"><button type="button" id="repEsqueci" style="background:none;border:0;color:#8a8073;font-size:13px;cursor:pointer;text-decoration:underline">Esqueci minha senha</button></div>
         <button type="button" id="repVoltar" style="width:100%;margin-top:8px;background:none;border:0;color:#8a8073;font-size:13px;cursor:pointer">← Voltar</button>
       </div>
       <div id="senhaView" style="display:none">
@@ -1736,6 +1737,16 @@
   function repSair(){ try{ localStorage.removeItem("bt_rep"); localStorage.removeItem("bt_cnpj"); }catch(e){} REP=null; REP_CLIENTE=null; try{ location.href=location.pathname; return; }catch(e){} document.getElementById("repArea").style.display="none"; mostrarEnt(); abrirEntrada(); }
   document.getElementById("repBtn").addEventListener("click",repEntrar);
   document.getElementById("repSenha").addEventListener("keydown",function(e){ if(e.key==="Enter") repEntrar(); });
+  // "Esqueci minha senha" do rep: abre o WhatsApp da Big pedindo um novo link de acesso
+  // (a Big gera o link em Cadastros da Loja → o rep abre e cria uma senha nova).
+  (function(){ var be=document.getElementById("repEsqueci"); if(!be) return; be.addEventListener("click",function(){
+    var email=(document.getElementById("repEmail").value||"").trim();
+    var wa=String(D.whatsapp||"").replace(/\D/g,""); if(wa && wa.length<=11) wa="55"+wa;
+    if(!wa){ alert("Para redefinir sua senha, fale com a Big Tricot."); return; }
+    var msg="Olá! Esqueci a senha da Área do Representante."+(email?(" Meu e-mail: "+email+"."):"")+" Podem me enviar um novo link de acesso? 🙏";
+    var url="https://wa.me/"+wa+"?text="+encodeURIComponent(msg);
+    try{ window.open(url,"_blank"); }catch(e){ location.href=url; }
+  }); })();
   // "Entrar como representante" leva pro PORTAL do rep (?rep=1), separado do catálogo do cliente.
   (function(){ var ir=document.getElementById("irRep"); if(ir) ir.addEventListener("click",function(){ try{ location.href=location.pathname+"?rep=1"; }catch(e){ mostrarRepView(); } }); })();
   // "Voltar" na tela de login do rep volta pro catálogo do cliente (tira o ?rep=1).
@@ -1801,18 +1812,17 @@
   // Inicia sessão: trata link de acesso (?acesso=token), senão usa o que está salvo e revalida.
   (function iniciarSessao(){
     var qs; try{ qs=new URLSearchParams(location.search); }catch(e){ qs=null; }
-    // 0) Link de acesso do REPRESENTANTE (?rep_acesso=token): ele cria a senha dele.
+    // 0) Link de acesso do REPRESENTANTE (?rep_acesso=token): ele cria/redefine a senha dele.
+    //    O link é o "define sua senha": serve tanto pro 1º acesso quanto pra redefinir (esqueci a senha).
     var rtok = qs ? (qs.get("rep_acesso")||"") : "";
     if(rtok){
       fetch("/api/loja/rep-acesso?token="+encodeURIComponent(rtok))
         .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
         .then(function(res){
-          if(res.ok && res.j.ok){
-            if(res.j.tem_senha){ mostrarRepView(); }
-            else { TOKEN_REP=rtok; mostrarCriarSenha(res.j.nome, ""); }
-          } else { mostrarEnt(); abrirEntrada(); }
+          if(res.ok && res.j.ok){ TOKEN_REP=rtok; mostrarCriarSenha(res.j.nome, ""); }
+          else { mostrarRepView(); }   // link inválido/expirado → login do rep (ele pode pedir um novo)
         })
-        .catch(function(){ mostrarEnt(); abrirEntrada(); });
+        .catch(function(){ mostrarRepView(); });
       return;
     }
     // 0b) PORTAL DO REPRESENTANTE (?rep=1): área do rep é SEPARADA do catálogo do cliente.

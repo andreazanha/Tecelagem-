@@ -387,8 +387,12 @@ clientes.post("/gerar-acesso-rep", async (c) => {
   const rep = await c.env.DB.prepare("SELECT id, nome, email, senha_hash FROM representantes WHERE id=?").bind(id).first<{ id: string; nome: string; email: string | null; senha_hash: string | null }>();
   if (!rep) return c.json({ error: "rep_nao_encontrado", msg: "Representante não encontrado." }, 404);
   if (!String(rep.email || "").trim()) return c.json({ error: "sem_email", msg: "Esse representante não tem e-mail no cadastro — e o e-mail é o login dele. Cadastre o e-mail primeiro." }, 400);
-  const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  // Código curto (10 caracteres, sem letras/números ambíguos: 0/O, 1/l/I) — vira o link bonito /r/CODIGO.
+  const alfabeto = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const aleat = new Uint8Array(10); crypto.getRandomValues(aleat);
+  let token = ""; for (const n of aleat) token += alfabeto[n % alfabeto.length];
   await c.env.DB.prepare("UPDATE representantes SET acesso_token=? WHERE id=?").bind(token, id).run();
-  const link = `${new URL(c.req.url).origin}/api/integracao/loja?rep_acesso=${token}`;
+  // Link curto e com domínio da loja (vendas.bigtricot.com.br/r/CODIGO encaminha pro acesso do rep).
+  const link = `https://vendas.bigtricot.com.br/r/${token}`;
   return c.json({ ok: true, nome: rep.nome, email: rep.email || "", link, tem_senha: !!rep.senha_hash });
 });
