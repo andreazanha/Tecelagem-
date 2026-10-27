@@ -392,7 +392,8 @@ clientes.post("/gerar-acesso-rep", async (c) => {
   const aleat = new Uint8Array(10); crypto.getRandomValues(aleat);
   let token = ""; for (const n of aleat) token += alfabeto[n % alfabeto.length];
   await c.env.DB.prepare("UPDATE representantes SET acesso_token=? WHERE id=?").bind(token, id).run();
-  // Link curto e com domínio da loja (vendas.bigtricot.com.br/r/CODIGO encaminha pro acesso do rep).
-  const link = `https://vendas.bigtricot.com.br/r/${token}`;
+  // Link curto e com domínio da loja. Usa ?c=CODIGO (query) em vez de /CODIGO no
+  // caminho, pra funcionar só com o index.html da pasta /r/ (sem depender do .htaccess).
+  const link = `https://vendas.bigtricot.com.br/r/?c=${token}`;
   return c.json({ ok: true, nome: rep.nome, email: rep.email || "", link, tem_senha: !!rep.senha_hash });
 });

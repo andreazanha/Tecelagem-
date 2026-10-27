@@ -368,7 +368,7 @@ loja.post("/rep-esqueci", async (c) => {
   if (rep && Number(rep.ativo) !== 0 && String(rep.email || "").trim()) {
     const token = gerarCodigoCurto(10);
     await c.env.DB.prepare("UPDATE representantes SET acesso_token=? WHERE id=?").bind(token, rep.id).run();
-    const link = `https://vendas.bigtricot.com.br/r/${token}`;
+    const link = `https://vendas.bigtricot.com.br/r/?c=${token}`;
     try { await enviarEmailReset(c.env, String(rep.email), rep.nome || "", link); } catch { /* não revela falha de envio */ }
   }
   return c.json({ ok: true });
