@@ -1743,7 +1743,7 @@
     var email=(document.getElementById("repEmail").value||"").trim();
     var wa=String(D.whatsapp||"").replace(/\D/g,""); if(wa && wa.length<=11) wa="55"+wa;
     if(!wa){ alert("Para redefinir sua senha, fale com a Big Tricot."); return; }
-    var msg="Olá! Esqueci a senha da Área do Representante."+(email?(" Meu e-mail: "+email+"."):"")+" Podem me enviar um novo link de acesso? 🙏";
+    var msg="Olá! Esqueci a senha da Área do Representante."+(email?(" Meu e-mail: "+email+"."):"")+" Podem me enviar um novo link de acesso?";
     var url="https://wa.me/"+wa+"?text="+encodeURIComponent(msg);
     try{ window.open(url,"_blank"); }catch(e){ location.href=url; }
   }); })();
@@ -1773,7 +1773,7 @@
     var cnpj=(document.getElementById("entCnpj").value||"").trim();
     var wa=String(D.whatsapp||"").replace(/\D/g,""); if(wa && wa.length<=11) wa="55"+wa;
     if(!wa){ alert("Para redefinir sua senha, fale com a Big Tricot."); return; }
-    var msg="Olá! Esqueci a senha do catálogo da minha loja."+(cnpj?(" CNPJ: "+cnpj+"."):"")+" Podem me ajudar a redefinir? 🙏";
+    var msg="Olá! Esqueci a senha do catálogo da minha loja."+(cnpj?(" CNPJ: "+cnpj+"."):"")+" Podem me ajudar a redefinir?";
     var url="https://wa.me/"+wa+"?text="+encodeURIComponent(msg);
     try{ window.open(url,"_blank"); }catch(e){ location.href=url; }
   }); })();
