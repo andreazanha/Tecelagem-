@@ -55,7 +55,7 @@ REM ---- 4) Criar o arquivo que roda UMA passada da ponte ----
 set "RODAR=%PASTA%\rodar-ponte.bat"
 >  "%RODAR%" echo @echo off
 >> "%RODAR%" echo cd /d "%%~dp0"
->> "%RODAR%" echo "!NODE!" sync.js --once
+>> "%RODAR%" echo "!NODE!" sync.js --once ^> "%%~dp0ponte-log.txt" 2^>^&1
 if not exist "%RODAR%" (
   echo [ERRO] Nao consegui criar o arquivo rodar-ponte.bat.
   echo.
@@ -89,7 +89,11 @@ echo  IMPORTANTE:
 echo   - Nao precisa mais abrir o start.bat (pode nem usar mais).
 echo   - Se o start.bat estiver aberto agora, pode fechar a janela.
 echo.
-echo  Para conferir depois: abra o "Agendador de Tarefas" do Windows
-echo  e procure por "TecelagemPonte".
+echo  Para CONFERIR se esta rodando: espere uns 2-3 minutos e abra o arquivo
+echo  "ponte-log.txt" que vai aparecer aqui nesta pasta. Ele mostra o resultado
+echo  da ultima execucao (deve terminar com "fim (--once)").
+echo.
+echo  Para gerenciar: abra o "Agendador de Tarefas" do Windows e procure
+echo  por "TecelagemPonte".
 echo.
 pause
