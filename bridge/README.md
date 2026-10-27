@@ -41,12 +41,27 @@ Deve listar os pedidos aprovados e dizer "enviado ✓" pra cada um. No sistema, 
 aparecem em **PCP › conferência de pedidos do ERP**.
 
 ## Deixar rodando sozinho
-Opção simples — **Agendador de Tarefas do Windows**:
+
+### Opção mais fácil — instalador (1 clique) ✅
+Dentro desta pasta tem o **`INSTALAR-PONTE-AUTOMATICA.bat`**. Clique com o botão
+**direito → "Executar como administrador"**. Ele cria uma **Tarefa Agendada do
+Windows** chamada `TecelagemPonte` que roda a ponte **a cada 2 minutos, em segundo
+plano, sem janela aberta e mesmo depois de reiniciar o PC** (roda como SYSTEM).
+Depois disso **não precisa mais do `start.bat`**.
+
+Pra desfazer, rode o **`DESINSTALAR-PONTE-AUTOMATICA.bat`** (também como administrador).
+
+> Observação: o instalador roda como **SYSTEM**. Isso funciona quando o Firebird
+> está **no mesmo PC** da ponte (caso mais comum). Se o banco estiver em outro
+> computador via **unidade de rede mapeada** (ex.: `Z:\`), use uma das opções
+> manuais abaixo rodando como o usuário que enxerga essa unidade.
+
+### Opção manual A — Agendador de Tarefas do Windows
 - Ação: `node.exe C:\tecelagem-bridge\sync.js --once`
 - Disparador: repetir a cada 5 minutos.
 
-Opção robusta — rodar como **serviço** (fica sempre ligado): use o
-[NSSM](https://nssm.cc/) apontando pra `node.exe sync.js` (sem `--once`); aí ele
+### Opção manual B — serviço (fica sempre ligado)
+Use o [NSSM](https://nssm.cc/) apontando pra `node.exe sync.js` (sem `--once`); aí ele
 mesmo repete a cada `intervaloSegundos`.
 
 ## Observações / ajustes finos
