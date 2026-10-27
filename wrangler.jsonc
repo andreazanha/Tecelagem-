@@ -37,6 +37,10 @@
   //   wrangler secret put VAPID_JWK
   "vars": {
     "VAPID_PUBLIC": "BI98zOHBfNIegLgU1F2RireVjvhlsgeZB3JO1uaZEWj4qUnwcVu-S75I2sUxe5nqbn7HVfkc8QQnp5e8j1bcJ0U",
-    "VAPID_SUBJECT": "mailto:admin@bigtricot.com.br"
+    "VAPID_SUBJECT": "mailto:admin@bigtricot.com.br",
+    // Remetente dos e-mails de redefinição de senha do representante (reset self-service).
+    // Usa um SUBDOMÍNIO próprio (send.bigtricot.com.br) pra NÃO mexer no e-mail/MX
+    // atual da bigtricot.com.br. A chave RESEND_API_KEY é um segredo (não vai aqui).
+    "EMAIL_FROM": "Big Tricot <naoresponda@send.bigtricot.com.br>"
   }
 }
