@@ -507,6 +507,44 @@ function SideNav({ u, onNav }: { u: NonNullable<ReturnType<typeof getUser>>; onN
   );
 }
 
+// Indicador de status da PONTE do ERP no topo: mostra se a ponte (que roda no PC
+// da fábrica e manda os pedidos do Syntech) está sincronizando. Consulta o
+// "último contato" a cada 60s. Verde = em dia, amarelo = atrasada, vermelho = parada.
+function PonteStatus() {
+  const [st, setSt] = useState<{ status: string; ha_segundos: number | null; ultimo_contato: string | null } | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    const carregar = () => {
+      fetch("/api/integracao/ponte-status", { credentials: "same-origin" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => { if (vivo && j) setSt(j); })
+        .catch(() => { /* offline: mantém o último estado */ });
+    };
+    carregar();
+    const t = setInterval(carregar, 60000);
+    return () => { vivo = false; clearInterval(t); };
+  }, []);
+  if (!st) return null;
+  const cor = st.status === "ativa" ? "#16a34a" : st.status === "atrasada" ? "#d97706" : st.status === "parada" ? "#dc2626" : "#9ca3af";
+  const s = st.ha_segundos;
+  const quando = s == null ? "sem contato" : s < 90 ? "agora" : s < 3600 ? `há ${Math.round(s / 60)} min` : s < 86400 ? `há ${Math.round(s / 3600)} h` : `há ${Math.round(s / 86400)} d`;
+  const explica =
+    st.status === "ativa" ? "sincronizando normalmente" :
+    st.status === "atrasada" ? "atrasada (o PC da fábrica pode ter dormido ou caiu a internet)" :
+    st.status === "parada" ? "PARADA — os pedidos do ERP não estão entrando" :
+    "ainda sem contato registrado";
+  const titulo = `Ponte do ERP (Syntech) — ${explica}` + (st.ultimo_contato ? `\nÚltima sincronização: ${new Date(st.ultimo_contato).toLocaleString("pt-BR")}` : "");
+  return (
+    <span
+      title={titulo}
+      style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 999, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", color: cor, background: cor + "1f", border: `1px solid ${cor}55`, cursor: "default" }}
+    >
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: cor, display: "inline-block", flex: "0 0 auto" }} />
+      Ponte <span style={{ fontWeight: 500, opacity: 0.85 }}>{quando}</span>
+    </span>
+  );
+}
+
 // Menu "Painel TV" no topo: um botão que abre a lista de telas de TV.
 function TvMenu({ tvs }: { tvs: typeof TVS }) {
   const [aberto, setAberto] = useState(false);
@@ -612,6 +650,7 @@ export function Layout() {
               </>
             )}
           </div>
+          <PonteStatus />
           <InstalarApp />
           <span className="avatar" title={`${u.nome} · ${VERSION}`}>{iniciais || "?"}</span>
           <span className="topnav-username" title={`Logado como ${u.usuario}`}>{u.nome}</span>

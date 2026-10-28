@@ -21,6 +21,25 @@ import { limparReservasRefletidas, kitAlertas } from "../loja-estoque";
 
 export const integracao = new Hono<{ Bindings: Env }>();
 
+// ── HEARTBEAT DA PONTE ───────────────────────────────────────────────────────
+// Toda chamada autenticada com o token da integração (ou seja, vinda da PONTE)
+// grava o horário do "último contato". Serve só pro indicador de status no
+// sistema — é fire-and-forget e NUNCA atrapalha a resposta da ponte.
+integracao.use("*", async (c, next) => {
+  try {
+    const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+    const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
+    if (esperado && recebido && recebido === esperado) {
+      c.executionCtx.waitUntil(
+        c.env.DB.prepare(
+          "INSERT INTO config (chave, valor, atualizado_em) VALUES ('ponte_ultimo_contato', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+        ).bind(new Date().toISOString()).run().then(() => {}).catch(() => {})
+      );
+    }
+  } catch { /* nunca atrapalha a ponte */ }
+  await next();
+});
+
 // ── AUTO-ATUALIZAÇÃO DA PONTE ────────────────────────────────────────────────
 // A ponte (bridge/sync.js) baixa daqui a versão mais nova de si mesma e se
 // atualiza sozinha. Protegido pelo mesmo token. O conteúdo é gerado no build a
@@ -348,6 +367,20 @@ integracao.get("/sync-status", async (c) => {
     diag,
     agora: new Date().toISOString(),
   });
+});
+
+// Status da PONTE pro indicador no sistema: quando foi o último contato dela e se
+// está em dia. A ponte roda ~a cada 2 min, então damos folga: até 5 min = ativa,
+// até 15 min = atrasada, mais que isso = parada.
+integracao.get("/ponte-status", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const row = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='ponte_ultimo_contato'").first<{ valor: string | null }>().catch(() => null);
+  const ultimo = row?.valor || null;
+  let ha_segundos: number | null = null;
+  if (ultimo) { const t = Date.parse(ultimo); if (!isNaN(t)) ha_segundos = Math.max(0, Math.round((Date.now() - t) / 1000)); }
+  let status: "ativa" | "atrasada" | "parada" | "sem_dados" = "sem_dados";
+  if (ha_segundos != null) status = ha_segundos <= 300 ? "ativa" : ha_segundos <= 900 ? "atrasada" : "parada";
+  return c.json({ ultimo_contato: ultimo, ha_segundos, status, agora: new Date().toISOString() });
 });
 
 // Zera o estoque espelhado (erp_estoque). A ponte repõe tudo na próxima rodada, já com a
