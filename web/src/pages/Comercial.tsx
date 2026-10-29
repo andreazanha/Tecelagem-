@@ -377,8 +377,8 @@ function ModalDiagnostico({ onFechar }: { onFechar: () => void }) {
     ? <span className="com-badge ok">sim</span>
     : <span className="com-badge off">não</span>;
 
-  // Seletor "Juntar com [rep] [botão]" pra um nome órfão da carteira.
-  const nomesReps = (d?.representantes || []).map((r) => r.nome);
+  // Seletor "Juntar com [rep] [botão]" pra um nome órfão da carteira (ordem alfabética).
+  const nomesReps = (d?.representantes || []).map((r) => r.nome).sort((a, b) => a.localeCompare(b, "pt-BR"));
   function Juntar({ de, clientes }: { de: string; clientes: number }) {
     const [para, setPara] = useState("");
     const ocupado = juntando === de;
