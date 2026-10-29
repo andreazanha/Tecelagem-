@@ -241,6 +241,26 @@ comercial.get("/diagnostico-carteira", async (c) => {
   });
 });
 
+// Junta duplicados: move toda a carteira de um nome antigo (clientes.representante
+// = "de") para um representante cadastrado ("para"). O "para" precisa existir no
+// cadastro — assim a gente nunca cria um nome órfão novo. Grava o nome EXATO do
+// cadastro, pra casar certinho dali pra frente. Não apaga cliente nenhum.
+comercial.post("/carteira/juntar", async (c) => {
+  const g = await exigirAlgumaFuncao(c, ["comercial", "pedidos"]); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ de?: string; para?: string }>().catch(() => ({} as { de?: string; para?: string }));
+  const de = (b.de || "").trim();
+  const para = (b.para || "").trim();
+  if (!de || !para) return c.json({ error: "informe 'de' e 'para'" }, 400);
+  // O destino precisa ser um representante cadastrado (usamos o nome exato dele).
+  const rep = await c.env.DB.prepare("SELECT nome FROM representantes WHERE TRIM(LOWER(nome)) = TRIM(LOWER(?)) LIMIT 1").bind(para).first<{ nome: string }>();
+  if (!rep) return c.json({ error: "o representante de destino não existe no cadastro" }, 400);
+  if (de.trim().toLowerCase() === rep.nome.trim().toLowerCase()) return c.json({ error: "origem e destino são o mesmo nome" }, 400);
+  const res = await c.env.DB.prepare(
+    "UPDATE clientes SET representante = ? WHERE TRIM(LOWER(COALESCE(representante,''))) = TRIM(LOWER(?))"
+  ).bind(rep.nome, de).run();
+  return c.json({ ok: true, movidos: res.meta?.changes ?? 0, de, para: rep.nome });
+});
+
 // ── RELATÓRIO DE VENDAS (semana + mês, por representante ou geral) ────────────────
 // Base do relatório semanal: reúne, para um período, o total por representante, e
 // calcula em paralelo o acumulado do mês. Usado pela tela, pelo PDF e pelo envio.

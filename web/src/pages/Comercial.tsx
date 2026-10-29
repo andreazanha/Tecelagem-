@@ -347,17 +347,51 @@ function ModalDiagnostico({ onFechar }: { onFechar: () => void }) {
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [aba, setAba] = useState<"resumo" | "reps" | "carteira" | "syntech">("resumo");
+  const [juntando, setJuntando] = useState("");   // nome de origem em processamento
+  const [msg, setMsg] = useState("");
 
-  useEffect(() => {
+  function recarregar() {
+    setCarregando(true);
     api.diagnosticoCarteira()
       .then(setD)
       .catch((e) => setErro((e as Error).message))
       .finally(() => setCarregando(false));
-  }, []);
+  }
+  useEffect(recarregar, []);
+
+  // Junta o nome antigo "de" na carteira do representante cadastrado "para".
+  async function juntar(de: string, para: string, clientes: number) {
+    if (!para) return;
+    if (!confirm(`Juntar os ${clientes} cliente(s) de "${de}" na carteira de "${para}"?\n\nOs clientes continuam os mesmos — só o representante passa a ser "${para}".`)) return;
+    setJuntando(de); setErro(""); setMsg("");
+    try {
+      const r = await api.juntarCarteira(de, para);
+      if (r.error) { setErro(r.error); return; }
+      setMsg(`✅ ${r.movidos} cliente(s) movidos de "${r.de}" para "${r.para}".`);
+      recarregar();
+    } catch (e) { setErro((e as Error).message); }
+    finally { setJuntando(""); }
+  }
 
   const sim = (v: boolean) => v
     ? <span className="com-badge ok">sim</span>
     : <span className="com-badge off">não</span>;
+
+  // Seletor "Juntar com [rep] [botão]" pra um nome órfão da carteira.
+  const nomesReps = (d?.representantes || []).map((r) => r.nome);
+  function Juntar({ de, clientes }: { de: string; clientes: number }) {
+    const [para, setPara] = useState("");
+    const ocupado = juntando === de;
+    return (
+      <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>
+        <select className="com-sel" value={para} onChange={(e) => setPara(e.target.value)} disabled={ocupado} style={{ maxWidth: 180 }}>
+          <option value="">Juntar com…</option>
+          {nomesReps.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <button className="btn btn-soft" disabled={!para || ocupado} onClick={() => juntar(de, para, clientes)}>{ocupado ? "…" : "Juntar"}</button>
+      </div>
+    );
+  }
 
   return (
     <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
@@ -371,6 +405,8 @@ function ModalDiagnostico({ onFechar }: { onFechar: () => void }) {
                 dele. O <b>Syntech</b> manda o <b>vendedor</b> em cada pedido — por isso cruzamos os três lados pra achar
                 nomes duplicados ou que não ligam.
               </p>
+
+              {msg && <div className="aviso-ok" style={{ marginBottom: 10 }}>{msg}</div>}
 
               <div className="com-filtros" style={{ margin: "0 0 12px" }}>
                 <button className={"btn " + (aba === "resumo" ? "btn-primary" : "btn-soft")} onClick={() => setAba("resumo")}>Resumo</button>
@@ -394,8 +430,8 @@ function ModalDiagnostico({ onFechar }: { onFechar: () => void }) {
                     <h4 style={{ margin: "4px 0 6px" }}>⚠️ Carteira sem representante cadastrado ({d.orfaos.carteiraSemRep.length})</h4>
                     <p className="muted" style={{ margin: "0 0 6px" }}>Estes clientes têm um nome de representante que <b>não existe</b> no cadastro. Normalmente é um nome antigo/variação — dá pra juntar com o rep certo.</p>
                     {d.orfaos.carteiraSemRep.length === 0 ? <p className="muted">Nenhum — tudo ligado. 🎉</p> : (
-                      <table className="table com-tbl"><thead><tr><th>Nome na carteira</th><th style={{ textAlign: "right" }}>Clientes</th><th style={{ textAlign: "right" }}>Do Syntech</th></tr></thead>
-                        <tbody>{d.orfaos.carteiraSemRep.map((x) => <tr key={x.nome}><td><strong>{x.nome}</strong></td><td style={{ textAlign: "right" }}>{nInt(x.clientes)}</td><td style={{ textAlign: "right" }}>{nInt(x.doSyntech)}</td></tr>)}</tbody>
+                      <table className="table com-tbl"><thead><tr><th>Nome na carteira</th><th style={{ textAlign: "right" }}>Clientes</th><th style={{ textAlign: "right" }}>Do Syntech</th><th style={{ textAlign: "right" }}>Juntar com o rep certo</th></tr></thead>
+                        <tbody>{d.orfaos.carteiraSemRep.map((x) => <tr key={x.nome}><td><strong>{x.nome}</strong></td><td style={{ textAlign: "right" }}>{nInt(x.clientes)}</td><td style={{ textAlign: "right" }}>{nInt(x.doSyntech)}</td><td style={{ textAlign: "right" }}><Juntar de={x.nome} clientes={x.clientes} /></td></tr>)}</tbody>
                       </table>
                     )}
                   </div>

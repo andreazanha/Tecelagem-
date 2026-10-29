@@ -1802,6 +1802,9 @@ export const api = {
   // Diagnóstico da carteira: cruza representantes cadastrados × carteira real × vendedores do Syntech.
   diagnosticoCarteira: () =>
     fetch("/api/comercial/diagnostico-carteira").then((r) => j<DiagnosticoCarteira>(r)),
+  // Junta duplicados: move a carteira do nome antigo "de" pro representante "para".
+  juntarCarteira: (de: string, para: string) =>
+    jsonPost("/api/comercial/carteira/juntar", { de, para }).then((r) => j<{ ok?: boolean; movidos?: number; de?: string; para?: string; error?: string }>(r)),
 
   // ── Insumos ─────────────────────────────────────────────────────────────
   listarInsumos: (p?: { ativo?: string; busca?: string }) => {
