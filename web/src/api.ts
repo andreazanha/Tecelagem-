@@ -1799,6 +1799,9 @@ export const api = {
     jsonPost("/api/comercial/relatorio/config", b).then((r) => j<{ ok: boolean }>(r)),
   testarRelatorioVendas: () =>
     jsonPost("/api/comercial/relatorio/testar", {}).then((r) => j<{ ok: boolean; numero: string; de: string; ate: string }>(r)),
+  // Diagnóstico da carteira: cruza representantes cadastrados × carteira real × vendedores do Syntech.
+  diagnosticoCarteira: () =>
+    fetch("/api/comercial/diagnostico-carteira").then((r) => j<DiagnosticoCarteira>(r)),
 
   // ── Insumos ─────────────────────────────────────────────────────────────
   listarInsumos: (p?: { ativo?: string; busca?: string }) => {
@@ -1937,6 +1940,25 @@ export interface ComercialDetalhe {
   vendedor: string;
   pedidos: PedidoVenda[];
   totais: { pedidos: number; pecas: number; valor: number; novos: number };
+}
+export interface DiagnosticoCarteira {
+  resumo: {
+    totalClientes: number;
+    comRep: number;
+    semRep: number;
+    representantes: number;
+    repsAtivos: number;
+    nomesNaCarteira: number;
+    vendedoresSyntech: number;
+  };
+  representantes: { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number }[];
+  carteira: { nome: string; clientes: number; doSyntech: number; temRep: boolean }[];
+  vendedores: { nome: string; pedidos: number; temRep: boolean; temCarteira: boolean }[];
+  orfaos: {
+    carteiraSemRep: { nome: string; clientes: number; doSyntech: number; temRep: boolean }[];
+    repsSemCarteira: { nome: string; ativo: boolean }[];
+    vendedoresSemRep: { nome: string; pedidos: number; temRep: boolean; temCarteira: boolean }[];
+  };
 }
 export interface KitComponente {
   id?: string;

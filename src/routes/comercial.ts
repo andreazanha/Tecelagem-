@@ -144,6 +144,103 @@ comercial.get("/vendas/detalhe", async (c) => {
   return c.json({ vendedor: vend, pedidos, totais });
 });
 
+// ── DIAGNÓSTICO DA CARTEIRA (só leitura) ─────────────────────────────────────────
+// Mostra como a carteira dos representantes está ligada hoje e cruza três fontes:
+//   1) os representantes cadastrados (tabela representantes);
+//   2) a carteira real (valores distintos em clientes.representante);
+//   3) os nomes de vendedor que vêm do Syntech (pedidos.vendedor, já "limpos").
+// Serve pra achar duplicados e nomes "órfãos" (carteira sem rep cadastrado, ou
+// vendedor do Syntech que não vira representante). Não altera nada.
+comercial.get("/diagnostico-carteira", async (c) => {
+  const g = await exigirAlgumaFuncao(c, ["comercial", "pedidos"]); if ("erro" in g) return g.erro;
+  const norm = (s?: string | null) => (s || "").trim().toLowerCase();
+
+  // 1) Representantes cadastrados.
+  const reps = (await c.env.DB.prepare(
+    "SELECT nome, ativo, whatsapp, senha_hash FROM representantes ORDER BY nome"
+  ).all<{ nome: string; ativo: number; whatsapp: string | null; senha_hash: string | null }>()).results;
+  const repPorNorm = new Map<string, { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number }>();
+  for (const r of reps) {
+    repPorNorm.set(norm(r.nome), {
+      nome: r.nome, ativo: r.ativo !== 0,
+      temWhatsapp: !!(r.whatsapp || "").trim(), temSenha: !!(r.senha_hash || "").trim(),
+      carteira: 0,
+    });
+  }
+
+  // 2) Carteira real: agrupa clientes por clientes.representante (valor cru), e
+  //    conta quantos desses clientes vieram do Syntech (codigo_erp preenchido).
+  const cartRows = (await c.env.DB.prepare(
+    `SELECT representante AS rep, COUNT(*) AS n,
+            SUM(CASE WHEN codigo_erp IS NOT NULL AND TRIM(codigo_erp) <> '' THEN 1 ELSE 0 END) AS syntech
+       FROM clientes GROUP BY representante`
+  ).all<{ rep: string | null; n: number; syntech: number }>()).results;
+
+  let totalClientes = 0, semRep = 0;
+  const carteiraPorNorm = new Map<string, { nome: string; clientes: number; doSyntech: number }>();
+  for (const row of cartRows) {
+    totalClientes += Number(row.n) || 0;
+    const nomeCru = (row.rep || "").trim();
+    if (!nomeCru) { semRep += Number(row.n) || 0; continue; }
+    const k = norm(nomeCru);
+    const atual = carteiraPorNorm.get(k) || { nome: nomeCru, clientes: 0, doSyntech: 0 };
+    atual.clientes += Number(row.n) || 0;
+    atual.doSyntech += Number(row.syntech) || 0;
+    carteiraPorNorm.set(k, atual);
+  }
+  // Leva a contagem de carteira pra ficha do rep cadastrado.
+  for (const [k, cart] of carteiraPorNorm) {
+    const rep = repPorNorm.get(k);
+    if (rep) rep.carteira += cart.clientes;
+  }
+  const carteira = [...carteiraPorNorm.values()].map((cart) => ({
+    ...cart, temRep: repPorNorm.has(norm(cart.nome)),
+  })).sort((a, b) => b.clientes - a.clientes);
+
+  // 3) Vendedores do Syntech (pedidos.vendedor), nomes limpos e reagrupados.
+  const vendRows = (await c.env.DB.prepare(
+    "SELECT vendedor, COUNT(*) AS pedidos FROM pedidos WHERE COALESCE(reposicao,0)=0 GROUP BY vendedor"
+  ).all<{ vendedor: string | null; pedidos: number }>()).results;
+  const vendPorNorm = new Map<string, { nome: string; pedidos: number }>();
+  for (const row of vendRows) {
+    const nome = limparVendedor(row.vendedor);
+    if (!nome) continue;
+    const k = norm(nome);
+    const atual = vendPorNorm.get(k) || { nome, pedidos: 0 };
+    atual.pedidos += Number(row.pedidos) || 0;
+    vendPorNorm.set(k, atual);
+  }
+  const vendedores = [...vendPorNorm.values()].map((v) => ({
+    ...v, temRep: repPorNorm.has(norm(v.nome)), temCarteira: carteiraPorNorm.has(norm(v.nome)),
+  })).sort((a, b) => b.pedidos - a.pedidos);
+
+  const representantes = [...repPorNorm.values()].sort((a, b) => b.carteira - a.carteira || a.nome.localeCompare(b.nome));
+
+  return c.json({
+    resumo: {
+      totalClientes,
+      comRep: totalClientes - semRep,
+      semRep,
+      representantes: representantes.length,
+      repsAtivos: representantes.filter((r) => r.ativo).length,
+      nomesNaCarteira: carteira.length,
+      vendedoresSyntech: vendedores.length,
+    },
+    representantes,
+    carteira,
+    vendedores,
+    // Pendências: o que não casa entre as três fontes.
+    orfaos: {
+      // Carteira com nome que NÃO existe como representante cadastrado.
+      carteiraSemRep: carteira.filter((x) => !x.temRep),
+      // Representante cadastrado SEM nenhum cliente na carteira.
+      repsSemCarteira: representantes.filter((r) => r.carteira === 0).map((r) => ({ nome: r.nome, ativo: r.ativo })),
+      // Vendedor que o Syntech manda mas que NÃO é representante cadastrado.
+      vendedoresSemRep: vendedores.filter((v) => !v.temRep),
+    },
+  });
+});
+
 // ── RELATÓRIO DE VENDAS (semana + mês, por representante ou geral) ────────────────
 // Base do relatório semanal: reúne, para um período, o total por representante, e
 // calcula em paralelo o acumulado do mês. Usado pela tela, pelo PDF e pelo envio.

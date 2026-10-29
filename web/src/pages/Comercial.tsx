@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { api, type Representante, type ComercialVendas, type ComercialDetalhe, type VendaRep } from "../api";
+import { api, type Representante, type ComercialVendas, type ComercialDetalhe, type VendaRep, type DiagnosticoCarteira } from "../api";
 import { getUser, pode } from "../auth";
 
 type Aba = "visao" | "representantes" | "vendas" | "relatorios" | "automacoes";
@@ -219,6 +219,7 @@ function AbaRepresentantes() {
   const [fSit, setFSit] = useState<"todos" | "ativo" | "inativo">("ativo");
   const [ordem, setOrdem] = useState<"nome" | "faturamento">("nome");
   const [verId, setVerId] = useState<string | null>(null);
+  const [diag, setDiag] = useState(false);
 
   function carregar() {
     setCarregando(true);
@@ -274,7 +275,10 @@ function AbaRepresentantes() {
             <select className="com-sel" value={fSit} onChange={(e) => setFSit(e.target.value as "todos" | "ativo" | "inativo")}><option value="ativo">Ativos</option><option value="inativo">Inativos</option><option value="todos">Todos</option></select>
             <select className="com-sel" value={ordem} onChange={(e) => setOrdem(e.target.value as "nome" | "faturamento")}><option value="nome">Ordenar: Nome</option><option value="faturamento">Ordenar: Faturamento</option></select>
           </div>
-          <button className="btn btn-primary" onClick={() => setEdit({ ...VAZIO })}><Ic d={ICON.mais} size={15} /> Novo representante</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-soft" onClick={() => setDiag(true)} title="Ver como a carteira está ligada e o que veio do Syntech"><Ic d={ICON.busca} size={15} /> Diagnóstico da carteira</button>
+            <button className="btn btn-primary" onClick={() => setEdit({ ...VAZIO })}><Ic d={ICON.mais} size={15} /> Novo representante</button>
+          </div>
         </div>
 
         {erro && <div className="aviso-erro">{erro}</div>}
@@ -330,7 +334,134 @@ function AbaRepresentantes() {
       </div>
 
       {edit && <ModalRep edit={edit} setEdit={setEdit} salvar={salvar} salvando={salvando} />}
+      {diag && <ModalDiagnostico onFechar={() => setDiag(false)} />}
     </>
+  );
+}
+
+// Diagnóstico da carteira: cruza representantes cadastrados × carteira real
+// (clientes.representante) × vendedores que vêm do Syntech (pedidos.vendedor).
+// Só leitura — serve pra ver o que está ligado e o que está "órfão".
+function ModalDiagnostico({ onFechar }: { onFechar: () => void }) {
+  const [d, setD] = useState<DiagnosticoCarteira | null>(null);
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(true);
+  const [aba, setAba] = useState<"resumo" | "reps" | "carteira" | "syntech">("resumo");
+
+  useEffect(() => {
+    api.diagnosticoCarteira()
+      .then(setD)
+      .catch((e) => setErro((e as Error).message))
+      .finally(() => setCarregando(false));
+  }, []);
+
+  const sim = (v: boolean) => v
+    ? <span className="com-badge ok">sim</span>
+    : <span className="com-badge off">não</span>;
+
+  return (
+    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 820, width: "min(96vw, 820px)" }}>
+        <div className="modal-hd"><h3>🔍 Diagnóstico da carteira</h3><button className="modal-x" onClick={onFechar}>×</button></div>
+        <div className="modal-bd">
+          {carregando ? <p className="muted">Carregando…</p> : erro ? <div className="aviso-erro">{erro}</div> : d && (
+            <>
+              <p className="muted" style={{ marginTop: 0 }}>
+                A carteira de cada representante é a lista de clientes cujo campo <b>“representante”</b> bate com o nome
+                dele. O <b>Syntech</b> manda o <b>vendedor</b> em cada pedido — por isso cruzamos os três lados pra achar
+                nomes duplicados ou que não ligam.
+              </p>
+
+              <div className="com-filtros" style={{ margin: "0 0 12px" }}>
+                <button className={"btn " + (aba === "resumo" ? "btn-primary" : "btn-soft")} onClick={() => setAba("resumo")}>Resumo</button>
+                <button className={"btn " + (aba === "reps" ? "btn-primary" : "btn-soft")} onClick={() => setAba("reps")}>Representantes ({d.representantes.length})</button>
+                <button className={"btn " + (aba === "carteira" ? "btn-primary" : "btn-soft")} onClick={() => setAba("carteira")}>Carteira ({d.carteira.length})</button>
+                <button className={"btn " + (aba === "syntech" ? "btn-primary" : "btn-soft")} onClick={() => setAba("syntech")}>Vendedores Syntech ({d.vendedores.length})</button>
+              </div>
+
+              {aba === "resumo" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div className="com-kpis" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+                    <div className="com-kpi"><div className="k-lbl">Clientes no total</div><div className="k-val">{nInt(d.resumo.totalClientes)}</div></div>
+                    <div className="com-kpi"><div className="k-lbl">Com representante</div><div className="k-val">{nInt(d.resumo.comRep)}</div></div>
+                    <div className="com-kpi"><div className="k-lbl">Sem representante</div><div className="k-val">{nInt(d.resumo.semRep)}</div></div>
+                    <div className="com-kpi"><div className="k-lbl">Reps cadastrados</div><div className="k-val">{nInt(d.resumo.representantes)} <small className="muted">({nInt(d.resumo.repsAtivos)} ativos)</small></div></div>
+                    <div className="com-kpi"><div className="k-lbl">Nomes na carteira</div><div className="k-val">{nInt(d.resumo.nomesNaCarteira)}</div></div>
+                    <div className="com-kpi"><div className="k-lbl">Vendedores do Syntech</div><div className="k-val">{nInt(d.resumo.vendedoresSyntech)}</div></div>
+                  </div>
+
+                  <div>
+                    <h4 style={{ margin: "4px 0 6px" }}>⚠️ Carteira sem representante cadastrado ({d.orfaos.carteiraSemRep.length})</h4>
+                    <p className="muted" style={{ margin: "0 0 6px" }}>Estes clientes têm um nome de representante que <b>não existe</b> no cadastro. Normalmente é um nome antigo/variação — dá pra juntar com o rep certo.</p>
+                    {d.orfaos.carteiraSemRep.length === 0 ? <p className="muted">Nenhum — tudo ligado. 🎉</p> : (
+                      <table className="table com-tbl"><thead><tr><th>Nome na carteira</th><th style={{ textAlign: "right" }}>Clientes</th><th style={{ textAlign: "right" }}>Do Syntech</th></tr></thead>
+                        <tbody>{d.orfaos.carteiraSemRep.map((x) => <tr key={x.nome}><td><strong>{x.nome}</strong></td><td style={{ textAlign: "right" }}>{nInt(x.clientes)}</td><td style={{ textAlign: "right" }}>{nInt(x.doSyntech)}</td></tr>)}</tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 style={{ margin: "4px 0 6px" }}>📭 Representantes sem carteira ({d.orfaos.repsSemCarteira.length})</h4>
+                    <p className="muted" style={{ margin: "0 0 6px" }}>Cadastrados, mas sem nenhum cliente ligado. Pode ser duplicata (o nome certo está na lista acima) ou rep novo.</p>
+                    {d.orfaos.repsSemCarteira.length === 0 ? <p className="muted">Nenhum.</p> : (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {d.orfaos.repsSemCarteira.map((r) => <span key={r.nome} className="com-chip">{r.nome}{!r.ativo && " (inativo)"}</span>)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 style={{ margin: "4px 0 6px" }}>🏭 Vendedores do Syntech sem cadastro ({d.orfaos.vendedoresSemRep.length})</h4>
+                    <p className="muted" style={{ margin: "0 0 6px" }}>Nomes que aparecem nos pedidos do Syntech mas que <b>não</b> têm representante cadastrado com esse nome.</p>
+                    {d.orfaos.vendedoresSemRep.length === 0 ? <p className="muted">Nenhum.</p> : (
+                      <table className="table com-tbl"><thead><tr><th>Vendedor (Syntech)</th><th style={{ textAlign: "right" }}>Pedidos</th><th style={{ textAlign: "center" }}>Vira carteira?</th></tr></thead>
+                        <tbody>{d.orfaos.vendedoresSemRep.map((v) => <tr key={v.nome}><td><strong>{v.nome}</strong></td><td style={{ textAlign: "right" }}>{nInt(v.pedidos)}</td><td style={{ textAlign: "center" }}>{sim(v.temCarteira)}</td></tr>)}</tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {aba === "reps" && (
+                <table className="table com-tbl"><thead><tr><th>Representante</th><th style={{ textAlign: "right" }}>Carteira</th><th style={{ textAlign: "center" }}>WhatsApp</th><th style={{ textAlign: "center" }}>Senha</th><th style={{ textAlign: "center" }}>Situação</th></tr></thead>
+                  <tbody>{d.representantes.map((r) => (
+                    <tr key={r.nome} style={{ opacity: r.ativo ? 1 : 0.55 }}>
+                      <td><strong>{r.nome}</strong></td>
+                      <td style={{ textAlign: "right" }}>{nInt(r.carteira)}</td>
+                      <td style={{ textAlign: "center" }}>{sim(r.temWhatsapp)}</td>
+                      <td style={{ textAlign: "center" }}>{sim(r.temSenha)}</td>
+                      <td style={{ textAlign: "center" }}><span className={"com-badge " + (r.ativo ? "ok" : "off")}>{r.ativo ? "Ativo" : "Inativo"}</span></td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              )}
+
+              {aba === "carteira" && (
+                <>
+                  <p className="muted" style={{ marginTop: 0 }}>Cada nome distinto que aparece em <b>clientes.representante</b>, com quantos clientes carrega e quantos desses vieram do Syntech (têm código do ERP).</p>
+                  <table className="table com-tbl"><thead><tr><th>Nome na carteira</th><th style={{ textAlign: "right" }}>Clientes</th><th style={{ textAlign: "right" }}>Do Syntech</th><th style={{ textAlign: "center" }}>Rep cadastrado?</th></tr></thead>
+                    <tbody>{d.carteira.map((x) => (
+                      <tr key={x.nome}><td><strong>{x.nome}</strong></td><td style={{ textAlign: "right" }}>{nInt(x.clientes)}</td><td style={{ textAlign: "right" }}>{nInt(x.doSyntech)}</td><td style={{ textAlign: "center" }}>{sim(x.temRep)}</td></tr>
+                    ))}</tbody>
+                  </table>
+                </>
+              )}
+
+              {aba === "syntech" && (
+                <>
+                  <p className="muted" style={{ marginTop: 0 }}>Nomes de vendedor que o Syntech manda nos pedidos (já limpos). “Vira carteira?” indica se esse nome é usado em <b>clientes.representante</b>.</p>
+                  <table className="table com-tbl"><thead><tr><th>Vendedor (Syntech)</th><th style={{ textAlign: "right" }}>Pedidos</th><th style={{ textAlign: "center" }}>Rep cadastrado?</th><th style={{ textAlign: "center" }}>Vira carteira?</th></tr></thead>
+                    <tbody>{d.vendedores.map((v) => (
+                      <tr key={v.nome}><td><strong>{v.nome}</strong></td><td style={{ textAlign: "right" }}>{nInt(v.pedidos)}</td><td style={{ textAlign: "center" }}>{sim(v.temRep)}</td><td style={{ textAlign: "center" }}>{sim(v.temCarteira)}</td></tr>
+                    ))}</tbody>
+                  </table>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
