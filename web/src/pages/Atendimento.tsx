@@ -1743,7 +1743,13 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   }
   useEffect(() => { carregar(); const t = setInterval(carregar, 5000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => { api.listarRepresentantes().then((r) => setReps(r.filter((x) => x.ativo))).catch(() => {}); }, []);
-  useEffect(() => { api.listarUsuarios().then((u) => setUsuarios(Array.isArray(u) ? u : [])).catch(() => {}); }, []);
+  useEffect(() => {
+    const carregar = () => api.listarUsuarios().then((u) => setUsuarios(Array.isArray(u) ? u : [])).catch(() => {});
+    carregar();
+    // Revalida a lista a cada 3 min: pega quem foi inativado/liberado sem precisar recarregar a página.
+    const t = setInterval(carregar, 180000);
+    return () => clearInterval(t);
+  }, []);
   useEffect(() => { api.atendSetores().then((s) => setSetores(Array.isArray(s) ? s : [])).catch(() => {}); }, []);
   async function enviarSetor(setorId: string, nome: string) {
     if (busy) return;
