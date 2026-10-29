@@ -1273,12 +1273,18 @@ body.dark .fx-card.red { background: #2a1618; }
 .fx-colnav-chip b { background: #eef2ff; color: #4338ca; border-radius: 999px; padding: 0 7px; font-size: 11px; }
 body.dark .fx-colnav-chip { background: #111826; border-color: #26324a; color: #e7ebf3; }
 body.dark .fx-colnav-chip b { background: #1e293b; color: #a5b4fc; }
+/* Aba (chip) da coluna que está em tela: destacada, estilo app. */
+.fx-colnav-chip.on { background: #171717; border-color: #171717; color: #fff; }
+.fx-colnav-chip.on b { background: #ffffff2e; color: #fff; }
+body.dark .fx-colnav-chip.on { background: #e7ebf3; border-color: #e7ebf3; color: #0b1220; }
+body.dark .fx-colnav-chip.on b { background: #0b122033; color: #0b1220; }
 /* Mobile: colunas ocupam quase a tela toda e a rolagem "encaixa" uma por vez. */
-@media (max-width: 700px) {
-  .fx-colnav { display: flex; gap: 7px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 2px 14px 8px; margin: 0 -14px; scrollbar-width: none; }
+@media (max-width: 759.98px) {
+  .fx-colnav { display: flex; gap: 7px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 2px 14px 10px; margin: 0 -14px; scrollbar-width: none; }
   .fx-colnav::-webkit-scrollbar { display: none; }
-  .fx-board { gap: 10px; scroll-snap-type: x proximity; scroll-padding-left: 4px; -webkit-overflow-scrolling: touch; }
-  .fx-col { flex: 0 0 88%; max-width: 88%; scroll-snap-align: start; }
+  /* Uma coluna por tela, largura cheia, deslizando de lado com snap limpo (cara de app). */
+  .fx-board { gap: 0; scroll-snap-type: x mandatory; scroll-padding-left: 0; -webkit-overflow-scrolling: touch; }
+  .fx-board.at-board .fx-col, .fx-col { flex: 0 0 100%; max-width: 100%; scroll-snap-align: start; border-radius: 0; border-left: 0; border-right: 0; }
   /* Barra de filtros/ações vira um strip que rola de lado (nada corta). */
   .fx-filtros { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; margin: 0 -14px; padding-left: 14px; padding-right: 14px; }
   .fx-filtros::-webkit-scrollbar { display: none; }

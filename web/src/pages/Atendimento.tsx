@@ -196,6 +196,18 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
     mq.addEventListener("change", on);
     return () => mq.removeEventListener("change", on);
   }, []);
+  // No celular (uma coluna por tela), destaca a aba (chip) da coluna que está em tela.
+  const [colVisivel, setColVisivel] = useState("");
+  const aoRolarBoard = () => {
+    const b = boardRef.current; if (!b) return;
+    let best = "", bestD = Infinity;
+    for (const id in colRefs.current) {
+      const el = colRefs.current[id]; if (!el) continue;
+      const dist = Math.abs(el.offsetLeft - b.scrollLeft);
+      if (dist < bestD) { bestD = dist; best = id; }
+    }
+    if (best) setColVisivel((v) => (v === best ? v : best));
+  };
   // Menu "Mais ações" (ações secundárias): abre ao clicar, fecha ao clicar fora ou escolher uma ação.
   const [maisOpen, setMaisOpen] = useState(false);
   const [maisRect, setMaisRect] = useState<{ top: number; right: number } | null>(null);
@@ -763,14 +775,15 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
         <div className="fx-colnav">
           {colsTodas.map((col) => {
             const n = (gruposPorColuna.get(col.id) || []).length;
+            const ativa = colVisivel ? col.id === colVisivel : col.id === colsTodas[0]?.id;
             return (
-              <button key={col.id} className="fx-colnav-chip" onClick={() => colRefs.current[col.id]?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })}>
+              <button key={col.id} className={"fx-colnav-chip" + (ativa ? " on" : "")} onClick={() => { setColVisivel(col.id); colRefs.current[col.id]?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" }); }}>
                 <span className="fx-dot" style={{ background: col.cor }} />{col.label}{n > 0 && <b>{n}</b>}
               </button>
             );
           })}
         </div>
-        <div className={"fx-board at-board" + (wide ? " at-pag4" : "")} ref={boardRef}>
+        <div className={"fx-board at-board" + (wide ? " at-pag4" : "")} ref={boardRef} onScroll={aoRolarBoard}>
           {colsMostra.map((col) => {
             const cs = gruposPorColuna.get(col.id) || [];
             return (
