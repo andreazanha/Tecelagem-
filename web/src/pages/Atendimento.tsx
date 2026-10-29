@@ -1490,6 +1490,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   }
   const [arqRapidoOpen, setArqRapidoOpen] = useState(false);
   const [transfOpen, setTransfOpen] = useState(false); // picker do botão "Transferir para outro vendedor"
+  const [ctxOpen, setCtxOpen] = useState(false); // no celular, os "Dados coletados" abrem numa aba que desliza (tipo "ver contato")
   const [anexoMenu, setAnexoMenu] = useState(false); // menu do clipe (📎): opções de anexo, como no WhatsApp
   const [movMenu, setMovMenu] = useState(false); // "Mover para coluna": submenu recolhível (deixa a tela limpa)
   const [emojiOpen, setEmojiOpen] = useState(false); // seletor de emojis (😊) do campo de mensagem
@@ -1979,6 +1980,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
           </div>
           {d && <span className="at-chip" style={{ background: "#eef2ff", color: "#4338ca" }}>{d.coluna.replace(/-/g, " ")}</span>}
           {bloqueado && <span className="at-chip" style={{ background: "#fee2e2", color: "#b91c1c" }} title="Mensagens bloqueadas para este cliente">🚫 bloqueado</span>}
+          {/* Celular: abre os "Dados coletados" (vendedor, funil, ações) numa aba que desliza. */}
+          <button className="at-thd-info" onClick={() => setCtxOpen(true)} title="Dados do cliente" aria-label="Dados do cliente">ℹ️</button>
           <button className="modal-x" onClick={onFechar}>✕</button>
         </div>
 
@@ -2053,7 +2056,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             <div ref={fim} />
           </div>
 
-          <div className="at-ctx">
+          <div className={"at-ctx" + (ctxOpen ? " aberto" : "")}>
+            {/* Celular: barra de voltar pro chat (só aparece quando a aba está deslizada por cima). */}
+            <button className="at-ctx-voltar" onClick={() => setCtxOpen(false)}>← Voltar pra conversa</button>
             <div className="at-block-h" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span>Dados coletados</span>
               {d && !editDados && <button className="btn btn-soft" style={{ fontSize: 11, padding: "2px 8px" }} onClick={abrirEdicaoDados} title="Preencher/corrigir à mão">✏️ Editar</button>}
