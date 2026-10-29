@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent as RP
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { api, type AtendBoard, type AtendConversa, type AtendConversaDetalhe, type ZapiConfig, type Representante, type FunilCardDetalhe, type AtendColuna, type RespostaPronta } from "../api";
-import { getUser, pode, podeFuncao } from "../auth";
+import { getUser, pode, podeFuncao, type Usuario } from "../auth";
 
 // Etapas do funil (venda) mostradas dentro da conversa.
 const ETAPAS_FUNIL: { id: string; label: string }[] = [
@@ -1455,7 +1455,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   const [busy, setBusy] = useState(false);
   const [reps, setReps] = useState<Representante[]>([]);
   const [repSel, setRepSel] = useState("");
-  const [usuarios, setUsuarios] = useState<{ nome: string; usuario: string }[]>([]);
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [setores, setSetores] = useState<{ id: string; nome: string; ativo?: number | boolean }[]>([]);
   const [setorOpen, setSetorOpen] = useState(false); // picker do botão "Enviar para um setor"
   const [respostas, setRespostas] = useState<RespostaPronta[]>([]);
@@ -2134,7 +2134,10 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
               <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>🧑‍💼 Vendedor responsável</div>
               <select className={"at-sel" + (d?.responsavel ? " on" : "")} value={d?.responsavel || ""} onChange={(e) => { if (e.target.value) transferir(e.target.value); }} disabled={busy}>
                 <option value="">— escolher vendedor —</option>
-                {usuarios.map((u) => <option key={u.usuario} value={u.nome}>{u.nome}</option>)}
+                {/* Só quem usa o atendimento (tem o acesso "Atendimento"). Admin sempre entra.
+                    Mantém o responsável atual visível mesmo que ele não esteja nessa lista. */}
+                {d?.responsavel && !usuarios.some((u) => u.nome === d?.responsavel && !u.bloqueado && pode(u, "atendimento")) && <option value={d?.responsavel || ""}>{d?.responsavel}</option>}
+                {usuarios.filter((u) => !u.bloqueado && pode(u, "atendimento")).map((u) => <option key={u.usuario} value={u.nome}>{u.nome}</option>)}
               </select>
             </div>
             {/* Botão dedicado de TRANSFERIR: manda a conversa pra outro vendedor (cai na fila
@@ -2144,13 +2147,13 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             </button>}
             {transfOpen && (
               <div style={{ marginTop: 6, border: "1px solid var(--line)", borderRadius: 10, padding: 6, display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto" }}>
-                {usuarios.filter((u) => u.nome !== d?.responsavel).map((u) => (
+                {usuarios.filter((u) => u.nome !== d?.responsavel && !u.bloqueado && pode(u, "atendimento")).map((u) => (
                   <button key={u.usuario} className="btn btn-soft" style={{ fontSize: 12.5, textAlign: "left", padding: "7px 10px" }} disabled={busy}
                     onClick={async () => { await transferir(u.nome); setTransfOpen(false); alert(`✓ Conversa transferida para ${u.nome}. Ela aparece pra ${u.nome} em "Aguardando atendimento humano".`); }}>
                     👤 {u.nome}
                   </button>
                 ))}
-                {usuarios.filter((u) => u.nome !== d?.responsavel).length === 0 && <div className="muted" style={{ fontSize: 12, padding: "4px 6px" }}>Nenhum outro vendedor cadastrado.</div>}
+                {usuarios.filter((u) => u.nome !== d?.responsavel && !u.bloqueado && pode(u, "atendimento")).length === 0 && <div className="muted" style={{ fontSize: 12, padding: "4px 6px" }}>Nenhum outro atendente disponível. (Libere o acesso "Atendimento" ao usuário em Configurar.)</div>}
               </div>
             )}
             {/* PUXAR PARA MIM: aparece quando a conversa está com OUTRO vendedor. Assume no
