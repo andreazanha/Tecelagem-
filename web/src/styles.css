@@ -1295,13 +1295,14 @@ body.dark .fx-colnav-chip.on b { background: #0b122033; color: #0b1220; }
   /* Topo mais compacto pra sobrar tela pros cards. */
   .quadro-page .page-head { margin-bottom: 8px; row-gap: 6px; }
   .quadro-page .breadcrumb { display: none; }
-  .quadro-page .page-head h1 { font-size: 20px; }
-  /* Ações do topo (status, Nova conversa, Campanha, Conexão…) viram UMA fileira que rola
-     de lado, em vez de quebrar em 2-3 linhas e comer a tela. */
-  .at-actions { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; margin: 0 -14px; padding-left: 14px; padding-right: 14px; scrollbar-width: none; }
+  /* No celular o título "Atendimento" é redundante (a aba "Conversas" já dá o contexto) — some pra sobrar tela. */
+  .quadro-page .page-head h1 { display: none; }
+  .quadro-page .at-head { display: block; }
+  /* Ações do topo QUEBRAM linha em vez de rolar de lado — assim nenhum botão fica cortado. */
+  .at-actions { flex-wrap: wrap !important; overflow: visible; margin: 0 !important; padding: 0 !important; gap: 8px !important; }
   .at-actions::-webkit-scrollbar { display: none; }
   .at-actions > * { flex: 0 0 auto; white-space: nowrap; }
-  .at-actions .btn { padding: 8px 12px; font-size: 13px; }
+  .at-actions .btn { padding: 9px 12px; font-size: 14px; }
   .at-status { font-size: 11.5px; padding: 6px 10px; }
   .fx-alertbar { margin-bottom: 10px; padding: 7px 11px; font-size: 12px; }
 }

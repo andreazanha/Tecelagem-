@@ -676,7 +676,7 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
             <button className={"crm-tab" + (crmTab === "funil" ? " on" : "")} onClick={() => onCrmTab("funil")}>🎯 Funil de Vendas</button>
           </div>
         )}
-        {board && ehGestorAtend() && (() => {
+        {wide && board && ehGestorAtend() && (() => {
           const atendentes = [...new Set(board.conversas.map((c) => c.responsavel).filter(Boolean) as string[])].sort();
           if (atendentes.length === 0) return null;
           return (
@@ -695,13 +695,13 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
       <div className="page-head at-head">
         <div><h1>Atendimento</h1><div className="breadcrumb">Comercial › Atendimento (robô do WhatsApp)</div></div>
         <div className="row-gap at-actions at-actions-v2" style={{ display: "flex", gap: 9, alignItems: "center" }}>
-          <span className="at-status">{conectado == null ? "…" : conectado ? "🟢 WhatsApp conectado (Z-API)" : "🟡 Z-API desligada (simulação)"}</span>
+          <span className="at-status" title={conectado == null ? "" : conectado ? "WhatsApp conectado (Z-API)" : "Z-API desligada (simulação)"}>{conectado == null ? "…" : conectado ? (wide ? "🟢 WhatsApp conectado (Z-API)" : "🟢 Conectado") : (wide ? "🟡 Z-API desligada (simulação)" : "🟡 Simulação")}</span>
           <button className="btn at-btn" onClick={() => setMudo((m) => { const n = !m; localStorage.setItem("atend-mudo", n ? "1" : "0"); if (!n) { try { if (!audioRef.current) audioRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)(); } catch { /* ok */ } audioRef.current?.resume?.(); setTimeout(() => tocarDing(), 60); } return n; })} title={mudo ? "Som desligado — clique para ligar (toca um teste)" : "Toca um som quando chega mensagem nova. Clique para desligar."}><IcoAt n={mudo ? "mudo" : "som"} />{mudo ? "Som off" : "Som on"}</button>
           {podeFuncao(getUser(), "crm.nova") && <button className="btn btn-primary at-btn" onClick={() => setNovaConv(true)}><IcoAt n="nova" />Nova conversa</button>}
-          {colGrupos && <button className="btn at-btn" onClick={() => setGruposColOpen(true)} title="Conversas de grupo"><IcoAt n="grupos" />Grupos{cardsGrupos.length ? ` (${cardsGrupos.length})` : ""}</button>}
-          {ehGestorAtend() && <button className="btn at-btn" onClick={() => setEquipeOpen(true)}><IcoAt n="equipe" />Equipe</button>}
-          {ehGestorAtend() && podeFuncao(getUser(), "crm.campanha") && <button className="btn at-btn" onClick={() => setCampanhaOpen(true)}><IcoAt n="campanha" />Campanha</button>}
-          {ehGestorAtend() && (
+          {wide && colGrupos && <button className="btn at-btn" onClick={() => setGruposColOpen(true)} title="Conversas de grupo"><IcoAt n="grupos" />Grupos{cardsGrupos.length ? ` (${cardsGrupos.length})` : ""}</button>}
+          {wide && ehGestorAtend() && <button className="btn at-btn" onClick={() => setEquipeOpen(true)}><IcoAt n="equipe" />Equipe</button>}
+          {wide && ehGestorAtend() && podeFuncao(getUser(), "crm.campanha") && <button className="btn at-btn" onClick={() => setCampanhaOpen(true)}><IcoAt n="campanha" />Campanha</button>}
+          {wide && ehGestorAtend() && (
             <div ref={maisRef} style={{ position: "relative" }}>
               <button ref={maisBtnRef} className={"btn at-btn" + (maisOpen ? " at-btn-on" : "")} onClick={abrirMais} title="Mais ações"><IcoAt n="mais" />Mais ações</button>
               {maisOpen && maisRect && createPortal(
