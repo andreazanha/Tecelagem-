@@ -34,7 +34,7 @@ body.dark .at-dt::-webkit-calendar-picker-indicator { filter: invert(1) brightne
 /* A página não rola no navegador: o app ocupa a tela toda e a rolagem acontece
    POR DENTRO — o conteúdo rola na vertical (barra à direita) e o quadro na
    horizontal (barra embaixo), ambas SEMPRE visíveis e fixas. */
-html, body { height: 100%; margin: 0; overflow: hidden; }
+html, body { height: 100%; margin: 0; overflow: hidden; touch-action: manipulation; /* sem duplo-toque-zoom (cara de app) */ }
 #root { height: 100%; }
 body {
   font-family: Inter, "Segoe UI", Helvetica, Arial, sans-serif;

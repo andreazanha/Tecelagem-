@@ -107,6 +107,19 @@ function Screensaver() {
 
 instalarDemoFetch(); // filtro do modo demonstração (não grava nada quando ligado)
 
+// ── Travar o ZOOM de PINÇA (cara de app) ───────────────────────────────────────
+// O iPhone/Safari ignora o user-scalable=no do meta por acessibilidade. Bloquear os
+// gestos de pinça (gesturestart/change) trava o zoom no iOS sem atrapalhar scroll,
+// toques normais nem gestos de 1 dedo. (O duplo-toque é tratado no CSS: touch-action.)
+(function travarZoomPinca() {
+  try {
+    const parar = (e: Event) => e.preventDefault();
+    document.addEventListener("gesturestart", parar, { passive: false });
+    document.addEventListener("gesturechange", parar, { passive: false });
+    document.addEventListener("gestureend", parar, { passive: false });
+  } catch { /* ok */ }
+})();
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
