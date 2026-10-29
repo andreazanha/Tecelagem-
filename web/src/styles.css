@@ -51,8 +51,10 @@ a { color: inherit; }
   grid-template-columns: 230px minmax(0, 1fr);
   grid-template-rows: 56px 1fr;
   grid-template-areas: "top top" "side main";
-  height: 100vh; /* altura fixa: topo + barra lateral fixos; conteúdo rola por dentro
-                    (assim a barra horizontal do quadro fica sempre visível na base) */
+  height: 100vh;
+  height: 100dvh; /* altura fixa: topo + barra lateral fixos; conteúdo rola por dentro.
+                    dvh (e não vh) pra bater com a área VISÍVEL no celular — sem corte do
+                    rodapé embaixo da barra do Safari/Chrome. */
   overflow: hidden; /* nada transborda a tela; a rolagem é interna (.content / .kanban) */
 }
 .topbar {
@@ -2794,3 +2796,17 @@ body.dark .com-badge.off { background: #1e293b; color: #94a3b8; }
 .com-lista { margin: 8px 0 2px; padding-left: 18px; color: var(--ink); font-size: 13.5px; line-height: 1.8; }
 .com-lista li { color: var(--muted, #475569); }
 @media (max-width: 640px) { .com-grid2, .com-detalhe { grid-template-columns: 1fr; } .com-head { flex-direction: column; align-items: stretch; } }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE — base de app (iPhone/Android). Só telas estreitas (≤ 760px).
+   Objetivo: nada de zoom ao tocar em campo, nada estourando a largura,
+   respeitar as áreas seguras do iPhone (notch / barra inferior).
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 759.98px) {
+  /* iOS dá ZOOM automático ao focar um campo com fonte < 16px. 16px mata o zoom. */
+  input, textarea, select { font-size: 16px !important; }
+  /* Mídia nunca estoura a largura. */
+  img, video, canvas, svg { max-width: 100%; height: auto; }
+  /* Safe-area inferior (home indicator do iPhone) na barra de digitar da conversa. */
+  .at-compose { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+}
