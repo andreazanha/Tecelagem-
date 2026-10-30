@@ -181,7 +181,7 @@ loja.get("/acesso", async (c) => {
 // DEFINIR / TROCAR A SENHA. Dois caminhos: (1) pelo token do link (primeiro acesso), ou
 // (2) logado: CNPJ + senha_atual. Depois de definir, já devolve a sessão (liberado etc.).
 loja.post("/definir-senha", async (c) => {
-  let b: { token?: string; cnpj?: string; senha_atual?: string; nova?: string } = {};
+  let b: { token?: string; cnpj?: string; senha_atual?: string; nova?: string; esqueci?: boolean } = {};
   try { b = await c.req.json(); } catch { return c.json({ erro: "json_invalido" }, 400); }
   const nova = String(b.nova || "");
   if (nova.length < 4) return c.json({ erro: "senha_curta", msg: "Crie uma senha com pelo menos 4 caracteres." }, 400);
@@ -201,7 +201,8 @@ loja.post("/definir-senha", async (c) => {
       "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
     ).bind(cnpjDig).first();
     if (!cli) return c.json({ erro: "cliente_nao_encontrado", msg: "CNPJ não encontrado." }, 404);
-    if (cli.senha_hash && !(await conferirSenha(String(b.senha_atual || ""), cli.senha_hash))) return c.json({ erro: "senha_invalida", msg: "Senha atual incorreta." }, 401);
+    // esqueci=true → redefine direto pelo CNPJ (self-service), sem exigir a senha antiga.
+    if (cli.senha_hash && !b.esqueci && !(await conferirSenha(String(b.senha_atual || ""), cli.senha_hash))) return c.json({ erro: "senha_invalida", msg: "Senha atual incorreta." }, 401);
   }
 
   const hash = await hashSenha(nova);
@@ -303,7 +304,7 @@ loja.get("/rep-acesso", async (c) => {
 
 // Definir/trocar a senha do rep (via token do link, ou e-mail + senha atual).
 loja.post("/rep-definir-senha", async (c) => {
-  let b: { token?: string; email?: string; senha_atual?: string; nova?: string } = {};
+  let b: { token?: string; email?: string; senha_atual?: string; nova?: string; esqueci?: boolean } = {};
   try { b = await c.req.json(); } catch { return c.json({ erro: "json_invalido" }, 400); }
   const nova = String(b.nova || "");
   if (nova.length < 4) return c.json({ erro: "senha_curta", msg: "Crie uma senha com pelo menos 4 caracteres." }, 400);
@@ -317,7 +318,8 @@ loja.post("/rep-definir-senha", async (c) => {
     if (!email) return c.json({ erro: "email_invalido", msg: "Informe o e-mail." }, 400);
     rep = await c.env.DB.prepare("SELECT id, nome, email, senha_hash FROM representantes WHERE LOWER(TRIM(COALESCE(email,'')))=? LIMIT 1").bind(email).first();
     if (!rep) return c.json({ erro: "rep_nao_encontrado", msg: "E-mail não encontrado." }, 404);
-    if (rep.senha_hash && !(await conferirSenha(String(b.senha_atual || ""), rep.senha_hash))) return c.json({ erro: "senha_invalida", msg: "Senha atual incorreta." }, 401);
+    // esqueci=true → redefine direto pelo e-mail (self-service), sem exigir a senha antiga.
+    if (rep.senha_hash && !b.esqueci && !(await conferirSenha(String(b.senha_atual || ""), rep.senha_hash))) return c.json({ erro: "senha_invalida", msg: "Senha atual incorreta." }, 401);
   }
   const hash = await hashSenha(nova);
   await c.env.DB.prepare("UPDATE representantes SET senha_hash=? WHERE id=?").bind(hash, rep.id).run();
