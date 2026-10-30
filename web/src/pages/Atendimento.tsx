@@ -1730,7 +1730,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     if (r.arquivo_key) {
       if (!confirm(`Enviar "${r.titulo || r.arquivo_nome || "anexo"}" para o cliente agora?`)) return;
       setBusy(true);
-      try { await api.atendEnviarResposta(id, { arquivo_key: r.arquivo_key, arquivo_nome: r.arquivo_nome, texto: r.texto, autor: d?.responsavel || getUser()?.nome || "Atendente" }); carregar(); onMudou(); }
+      try { await api.atendEnviarResposta(id, { arquivo_key: r.arquivo_key, arquivo_nome: r.arquivo_nome, texto: r.texto, autor: d?.responsavel || "Big Tricot" }); carregar(); onMudou(); }
       catch { alert("Não consegui enviar a resposta com anexo. Confira a conexão do WhatsApp."); }
       finally { setBusy(false); }
     } else {
@@ -1894,7 +1894,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     const respA = respondendo;
     // Manda em NOME do vendedor responsável (o cliente conhece ele). Só usa quem está logado
     // quando ainda NÃO tem responsável (aí quem responde primeiro assume).
-    const autor = d?.responsavel || getUser()?.nome || "Atendente";
+    // Sem vendedor responsável, o cliente vê "Big Tricot" (não o nome do usuário logado).
+    const autor = d?.responsavel || "Big Tricot";
     // OTIMISTA: LIMPA o campo e mostra a mensagem NA HORA; o envio vai por trás. Assim some o
     // "delay ao apertar Enter" E não corta a mensagem seguinte (antes o campo só limpava depois do
     // servidor responder — o texto novo que você já tinha digitado era apagado junto).
@@ -2430,7 +2431,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
         </div>
       </div>
       {gerenciarResp && <RespostasModal onFechar={() => setGerenciarResp(false)} onSalvo={() => { setGerenciarResp(false); carregarRespostas(); }} />}
-      {arqRapidoOpen && <ArquivosRapidosModal convId={id} autor={d?.responsavel || "Atendente"} onFechar={() => setArqRapidoOpen(false)} onEnviado={() => { setArqRapidoOpen(false); carregar(); onMudou(); }} />}
+      {arqRapidoOpen && <ArquivosRapidosModal convId={id} autor={d?.responsavel || "Big Tricot"} onFechar={() => setArqRapidoOpen(false)} onEnviado={() => { setArqRapidoOpen(false); carregar(); onMudou(); }} />}
       {encMsg && <EncaminharModal convId={id} msgId={encMsg} onFechar={() => setEncMsg(null)} />}
       {imgZoom && createPortal((
         <div onClick={() => setImgZoom(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.88)", zIndex: 100000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
