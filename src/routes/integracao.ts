@@ -1416,11 +1416,23 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
     }
   } catch { /* overrides de imagem: silencioso */ }
 
+  // Estoque REAL por cor/tamanho (espelho do erp_estoque), pra decidir o "sai quando zera"
+  // da EL. NÃO usa estoque_geral do cadastro — esse costuma vir 0 mesmo com saldo por cor.
+  const estItens = ((cat.estoque as { itens?: Record<string, Record<string, Record<string, number>>> } | undefined)?.itens) || {};
+  const temEstoqueReal = (p: Prod): boolean => {
+    const gs = (p as { grupos?: { linhas?: { cod?: string }[] }[] }).grupos || [];
+    for (const g of gs) for (const l of (g.linhas || [])) {
+      const m = estItens[String(l.cod || "")]; if (!m) continue;
+      for (const med of Object.keys(m)) for (const cor of Object.keys(m[med])) if ((Number(m[med][cor]) || 0) > 0) return true;
+    }
+    return false;
+  };
   const normais: Prod[] = [], limitada: Prod[] = [];
   for (const p of prods) {
     if (p._edicao_limitada) {
-      // Edição Limitada é promoção com estoque controlado: SAI do catálogo quando zera.
-      if (Number((p as { estoque_geral?: unknown }).estoque_geral) > 0) limitada.push(p);
+      // Edição Limitada é promoção com estoque controlado: SAI do catálogo quando NÃO há
+      // mais saldo REAL (por cor/tamanho). Enquanto tiver saldo, aparece.
+      if (temEstoqueReal(p)) limitada.push(p);
     } else normais.push(p);
   }
   // Edição Limitada: SÓ o que tem sigla ED (ED####) E ainda tem estoque. Não herda os
@@ -1612,6 +1624,26 @@ integracao.post("/loja-imagem", async (c) => {
   }
   await c.env.DB.prepare("INSERT INTO loja_imagem (tipo, modelo, cor, foto, atualizado_em) VALUES (?,?,?,?,datetime('now')) ON CONFLICT(tipo,modelo,cor) DO UPDATE SET foto=excluded.foto, atualizado_em=datetime('now')").bind(tipo, modelo, cor, foto).run();
   return c.json({ ok: true });
+});
+// DIAGNÓSTICO (aberto, só leitura): por que a Edição Limitada não aparece? Mostra os
+// produtos candidatos (sigla ED na ref OU grupo com "limit"/"edic"), com grupo, se tem
+// ED, estoque_geral do cadastro e o estoque REAL (soma do erp_estoque por ref).
+integracao.get("/diag-el", async (c) => {
+  const { results: prods } = await c.env.DB.prepare("SELECT ref, nome, grupo, estoque_geral FROM erp_produtos").all<{ ref: string | null; nome: string | null; grupo: string | null; estoque_geral: number | null }>().catch(() => ({ results: [] as { ref: string | null; nome: string | null; grupo: string | null; estoque_geral: number | null }[] }));
+  const { results: est } = await c.env.DB.prepare("SELECT ref, SUM(saldo) AS s FROM erp_estoque GROUP BY ref").all<{ ref: string | null; s: number | null }>().catch(() => ({ results: [] as { ref: string | null; s: number | null }[] }));
+  const estByRef = new Map<string, number>();
+  for (const e of est || []) estByRef.set(String(e.ref || "").trim(), Number(e.s) || 0);
+  const grupos = new Map<string, number>();
+  const amostra: { ref: string; nome: string; grupo: string; isED: boolean; estoque_geral: number; estoque_real: number }[] = [];
+  for (const p of prods || []) {
+    const ref = String(p.ref || "").trim(); const grupo = String(p.grupo || "");
+    const gl = grupo.toLowerCase();
+    const isED = /^ED\d/i.test(ref);
+    if (!(isED || gl.includes("limit") || gl.includes("edic"))) continue;
+    grupos.set(grupo, (grupos.get(grupo) || 0) + 1);
+    if (amostra.length < 80) amostra.push({ ref, nome: String(p.nome || ""), grupo, isED, estoque_geral: Number(p.estoque_geral) || 0, estoque_real: estByRef.get(ref) || 0 });
+  }
+  return c.json({ candidatos: amostra.length, grupos: [...grupos.entries()].map(([g, n]) => ({ grupo: g, n })), amostra });
 });
 
 // ── LOJA B2B (catálogo NOVO, feito do zero) ──────────────────────────────────
