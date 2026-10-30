@@ -195,7 +195,7 @@ comercial.get("/diagnostico-carteira", async (c) => {
   }
   const carteira = [...carteiraPorNorm.values()].map((cart) => ({
     ...cart, temRep: repPorNorm.has(norm(cart.nome)),
-  })).sort((a, b) => b.clientes - a.clientes);
+  })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
   // 3) Vendedores do Syntech (pedidos.vendedor), nomes limpos e reagrupados.
   const vendRows = (await c.env.DB.prepare(
@@ -212,9 +212,9 @@ comercial.get("/diagnostico-carteira", async (c) => {
   }
   const vendedores = [...vendPorNorm.values()].map((v) => ({
     ...v, temRep: repPorNorm.has(norm(v.nome)), temCarteira: carteiraPorNorm.has(norm(v.nome)),
-  })).sort((a, b) => b.pedidos - a.pedidos);
+  })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
-  const representantes = [...repPorNorm.values()].sort((a, b) => b.carteira - a.carteira || a.nome.localeCompare(b.nome));
+  const representantes = [...repPorNorm.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
   // Possíveis representantes duplicados: cadastros que compartilham o PRIMEIRO
   // nome (sem acento). Ex.: "Anderson - DF e GO" e "Anderson Rodrigues". Só
@@ -231,9 +231,8 @@ comercial.get("/diagnostico-carteira", async (c) => {
   }
   const repsDuplicados = [...porPrimeiro.entries()]
     .filter(([, arr]) => arr.length >= 2)
-    // mostra o de maior carteira primeiro dentro do grupo (candidato a "manter")
-    .map(([chave, reps]) => ({ chave, reps: [...reps].sort((a, b) => b.carteira - a.carteira) }))
-    .sort((a, b) => b.reps.length - a.reps.length || a.chave.localeCompare(b.chave));
+    .map(([chave, reps]) => ({ chave, reps: [...reps].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")) }))
+    .sort((a, b) => a.chave.localeCompare(b.chave, "pt-BR"));
 
   return c.json({
     resumo: {
