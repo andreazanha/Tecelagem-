@@ -875,12 +875,17 @@
     var cc=CORES[sel.corId]||{}; var filtra=filtraEstoque(p);
     var grupos=(p.grupos||[]).map(function(g){
       var rows=(g.linhas||[]).map(function(l){
-        // pronta entrega/kit: oculta a opção SEM estoque na cor selecionada
-        if(filtra){ var s=estSaldo(l.cod,l.id_tamanho); if(s!=null&&s<=0) return ""; }
         var k=qKey(l.cod,l.id_tamanho); var q=sel.qtd[k]||0;
-        return '<div class="tamrow"><div class="medbox"><div class="med">'+esc(medidaDe(l.id_tamanho).replace(/(\d)\s*[×xX]\s*(\d)/g,"$1 × $2"))+'</div>'+estTxtLinha(l.cod,l.id_tamanho)+'</div>'+
+        // pronta entrega/kit: estoque 0 nesta cor = ESGOTADO. Mantém o tamanho na tela
+        // (mostra "estoque esgotado" embaixo) mas NÃO deixa comprar — sem stepper.
+        var sEsg = filtra ? estSaldo(l.cod,l.id_tamanho) : null;
+        var esgotado = (sEsg!=null && sEsg<=0);
+        var ctrl = esgotado
+          ? '<div class="pr" style="opacity:.5;font-size:11.5px">—</div>'
+          : (REP_SOVER ? '' : (LIBERADO ? '<div class="stepper" data-k="'+esc(k)+'" data-cod="'+esc(l.cod)+'" data-idt="'+esc(l.id_tamanho)+'"><button data-d="-1">−</button><input type="number" min="0" value="'+q+'"><button data-d="1">+</button></div>' : '<div class="pr" style="opacity:.6;font-size:11px">—</div>'));
+        return '<div class="tamrow"'+(esgotado?' style="opacity:.62"':'')+'><div class="medbox"><div class="med">'+esc(medidaDe(l.id_tamanho).replace(/(\d)\s*[×xX]\s*(\d)/g,"$1 × $2"))+'</div>'+estTxtLinha(l.cod,l.id_tamanho)+'</div>'+
           '<div class="pr">'+precoVis(precoLinha(l))+'</div>'+
-          (REP_SOVER ? '' : (LIBERADO ? '<div class="stepper" data-k="'+esc(k)+'" data-cod="'+esc(l.cod)+'" data-idt="'+esc(l.id_tamanho)+'"><button data-d="-1">−</button><input type="number" min="0" value="'+q+'"><button data-d="1">+</button></div>' : '<div class="pr" style="opacity:.6;font-size:11px">—</div>'))+'</div>';
+          ctrl+'</div>';
       }).join("");
       if(!rows) return "";                    // seção sem nenhuma opção visível → some
       return '<div class="grp"><div class="t">'+esc(g.titulo||"Itens")+'</div>'+rows+'</div>';
