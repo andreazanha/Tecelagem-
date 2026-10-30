@@ -1957,6 +1957,7 @@ export interface DiagnosticoCarteira {
     nomesNaCarteira: number;
     vendedoresSyntech: number;
     gruposDuplicados: number;
+    comCodigoSyntech?: number;
   };
   representantes: { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number; noSyntech: boolean }[];
   repsDuplicados: { chave: string; reps: { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number; noSyntech: boolean }[] }[];

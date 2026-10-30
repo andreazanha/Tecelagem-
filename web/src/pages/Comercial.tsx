@@ -454,6 +454,7 @@ function ModalDiagnostico({ onFechar }: { onFechar: () => void }) {
                     <div className="com-kpi"><div className="k-lbl">Reps cadastrados</div><div className="k-val">{nInt(d.resumo.representantes)} <small className="muted">({nInt(d.resumo.repsAtivos)} ativos)</small></div></div>
                     <div className="com-kpi"><div className="k-lbl">Nomes na carteira</div><div className="k-val">{nInt(d.resumo.nomesNaCarteira)}</div></div>
                     <div className="com-kpi"><div className="k-lbl">Vendedores do Syntech</div><div className="k-val">{nInt(d.resumo.vendedoresSyntech)}</div></div>
+                    <div className="com-kpi"><div className="k-lbl">Reps com código do Syntech 🟢</div><div className="k-val">{nInt(d.resumo.comCodigoSyntech || 0)}</div></div>
                   </div>
 
                   <div>

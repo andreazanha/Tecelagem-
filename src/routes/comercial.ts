@@ -248,6 +248,7 @@ comercial.get("/diagnostico-carteira", async (c) => {
       nomesNaCarteira: carteira.length,
       vendedoresSyntech: vendedores.length,
       gruposDuplicados: repsDuplicados.length,
+      comCodigoSyntech: representantes.filter((r) => r.doSyntechCad).length,
     },
     representantes,
     repsDuplicados,
