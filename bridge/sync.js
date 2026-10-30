@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-30.4";
+const PONTE_VERSAO = "2026-10-30.5";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -283,7 +283,28 @@ async function enviarEstoque(itens, lote, fim) {
   });
   return r.ok;
 }
+// DIAGNÓSTICO temporário: descobre ONDE está o estoque dos kits (balls) no Syntech.
+// Imprime no log; o usuário só roda a ponte e manda o print. Nunca derruba a rodada.
+async function diagEstoqueBalls(db) {
+  const linha = (s) => log("  [DIAG-ESTOQUE] " + s);
+  log("── DIAG-ESTOQUE (onde está o estoque da balls) ──");
+  try { const r = await query(db, "SELECT COUNT(*) AS N FROM ESTOQUE_DETALHADO"); linha("ESTOQUE_DETALHADO total de linhas: " + (r[0] ? r[0].N : "?")); }
+  catch (e) { linha("COUNT ESTOQUE_DETALHADO erro: " + e.message); }
+  try {
+    const r = await query(db, "SELECT COD_PROD, COR, TAMANHO, QUANT FROM ESTOQUE_DETALHADO WHERE COD_PROD LIKE '%1078%'");
+    linha("ESTOQUE_DETALHADO p/ '1078' (balls): " + r.length + " linha(s)");
+    for (const x of r.slice(0, 15)) linha("   det " + String(x.COD_PROD).trim() + " cor=" + x.COR + " tam=" + String(x.TAMANHO || "").trim() + " qtd=" + x.QUANT);
+  } catch (e) { linha("ESTOQUE_DETALHADO 1078 erro: " + e.message); }
+  try {
+    const r = await query(db, "SELECT CODIGO, NOME, ESTOQUE_ATUAL FROM PRODUTOS WHERE UPPER(NOME) LIKE '%BALLS%' ORDER BY CODIGO");
+    linha("PRODUTOS BALLS (CODIGO | ESTOQUE_ATUAL | NOME): " + r.length + " produto(s)");
+    for (const x of r.slice(0, 25)) linha("   prod " + String(x.CODIGO).trim() + " | " + x.ESTOQUE_ATUAL + " | " + String(x.NOME || "").trim());
+  } catch (e) { linha("PRODUTOS BALLS erro: " + e.message); }
+  log("── fim DIAG-ESTOQUE ──");
+}
+
 async function rodadaEstoque(db) {
+  try { await diagEstoqueBalls(db); } catch (e) { log("! diag-estoque:", e.message); }
   // PREFERIDO: estoque EXATO por cor/tamanho via a procedure OFICIAL do Syntech
   // (documento de integração: APP_ESTOQUE_DETALHADO(COD_PROD) → COR, COD_COR, TAMANHO, SALDO…).
   // Se não funcionar (procedure ausente/erro), CAI no modo antigo (CONFIG.estoque.sql).
