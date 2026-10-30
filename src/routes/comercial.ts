@@ -155,16 +155,16 @@ comercial.get("/diagnostico-carteira", async (c) => {
   const g = await exigirAlgumaFuncao(c, ["comercial", "pedidos"]); if ("erro" in g) return g.erro;
   const norm = (s?: string | null) => (s || "").trim().toLowerCase();
 
-  // 1) Representantes cadastrados.
+  // 1) Representantes cadastrados. codigo_erp preenchido = veio do Syntech (GUIAS).
   const reps = (await c.env.DB.prepare(
-    "SELECT nome, ativo, whatsapp, senha_hash FROM representantes ORDER BY nome"
-  ).all<{ nome: string; ativo: number; whatsapp: string | null; senha_hash: string | null }>()).results;
-  const repPorNorm = new Map<string, { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number }>();
+    "SELECT nome, ativo, whatsapp, senha_hash, codigo_erp FROM representantes ORDER BY nome"
+  ).all<{ nome: string; ativo: number; whatsapp: string | null; senha_hash: string | null; codigo_erp: string | null }>()).results;
+  const repPorNorm = new Map<string, { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number; doSyntechCad: boolean }>();
   for (const r of reps) {
     repPorNorm.set(norm(r.nome), {
       nome: r.nome, ativo: r.ativo !== 0,
       temWhatsapp: !!(r.whatsapp || "").trim(), temSenha: !!(r.senha_hash || "").trim(),
-      carteira: 0,
+      carteira: 0, doSyntechCad: !!(r.codigo_erp || "").trim(),
     });
   }
 
@@ -214,9 +214,10 @@ comercial.get("/diagnostico-carteira", async (c) => {
     ...v, temRep: repPorNorm.has(norm(v.nome)), temCarteira: carteiraPorNorm.has(norm(v.nome)),
   })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
-  // noSyntech = esse nome aparece como vendedor nos pedidos do Syntech (fonte do ERP).
+  // noSyntech = veio da tabela GUIAS do Syntech (tem codigo_erp) OU aparece como
+  // vendedor nos pedidos do ERP. O código é a fonte mais confiável.
   const representantes = [...repPorNorm.values()]
-    .map((r) => ({ ...r, noSyntech: vendPorNorm.has(norm(r.nome)) }))
+    .map((r) => ({ ...r, noSyntech: r.doSyntechCad || vendPorNorm.has(norm(r.nome)) }))
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
   // Possíveis representantes duplicados: cadastros que compartilham o PRIMEIRO

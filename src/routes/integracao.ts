@@ -118,6 +118,99 @@ integracao.post("/pedido", async (c) => {
   return c.json({ ok: true, pedido_id: pedidoId, numero, itens: stmts.length - 1 }, 201);
 });
 
+// ── PORTA DE ENTRADA: recebe os REPRESENTANTES (GUIAS) do Syntech ───────────────
+// A ponte lê a tabela GUIAS do ERP e manda a lista aqui. A gente liga pelo CÓDIGO
+// (codigo_erp), nunca por nome — assim some a duplicação. Não renomeia nem apaga
+// cadastro existente: se já há um rep com esse código, atualiza contatos/comissão/UF;
+// senão cria (casando por nome EXATO quando houver, sem roubar o código de outro).
+type GuiaIn = { codigo?: string | number; fantasia?: string; nome?: string; cpf?: string; uf?: string; cidade?: string; telefone?: string; email?: string; comissao?: number | string; bloqueado?: string | number | boolean };
+integracao.post("/representantes", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+
+  const b = await c.req.json<{ representantes?: GuiaIn[] }>().catch(() => ({} as { representantes?: GuiaIn[] }));
+  const lista = Array.isArray(b.representantes) ? b.representantes : [];
+  if (!lista.length) return c.json({ error: "sem_representantes" }, 400);
+
+  const soDigitos = (v: unknown) => { const s = String(v ?? "").replace(/\D/g, ""); return s || null; };
+  const ufLimpa = (v: unknown) => { const s = String(v ?? "").trim().toUpperCase().slice(0, 2); return /^[A-Z]{2}$/.test(s) ? s : null; };
+  const num = (v: unknown) => { if (v == null || String(v).trim() === "") return null; const n = Number(String(v).replace(",", ".")); return Number.isFinite(n) ? n : null; };
+  const ehBloqueado = (v: unknown) => { const s = String(v ?? "").trim().toUpperCase(); return s === "S" || s === "1" || s === "TRUE" || v === true; };
+  const primeiroNome = (nome: string) => nome.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[\s\-]+/).filter(Boolean)[0] || "";
+
+  // Carrega os reps que AINDA não têm código, pra tentar casar automaticamente pelo
+  // 1º nome (+UF) e só ANEXAR o código — sem criar duplicado nem renomear.
+  const semCodigo = (await c.env.DB.prepare("SELECT id, nome, ufs FROM representantes WHERE COALESCE(codigo_erp,'') = ''").all<{ id: string; nome: string; ufs: string | null }>()).results;
+  const porPrimeiro = new Map<string, { id: string; nome: string; ufs: string | null }[]>();
+  for (const r of semCodigo) { const k = primeiroNome(r.nome); if (!k) continue; (porPrimeiro.get(k) || porPrimeiro.set(k, []).get(k)!).push(r); }
+  const jaAnexados = new Set<string>();
+
+  let recebidos = 0, pulados = 0, criados = 0, casados = 0, atualizados = 0;
+  for (const g of lista) {
+    const codigo = str(g.codigo);
+    const nomeFinal = (str(g.fantasia) || str(g.nome) || "").trim();
+    if (!codigo || !nomeFinal) { pulados++; continue; }
+    recebidos++;
+    const wpp = soDigitos(g.telefone);
+    const email = str(g.email);
+    const com = num(g.comissao);
+    const uf2 = ufLimpa(g.uf);
+    const ativo = ehBloqueado(g.bloqueado) ? 0 : 1;
+
+    // 1) já existe rep com esse código? atualiza contatos/comissão/UF (sem renomear).
+    const up = await c.env.DB.prepare(
+      `UPDATE representantes SET
+         whatsapp = COALESCE(NULLIF(TRIM(COALESCE(whatsapp,'')),''), ?),
+         email    = COALESCE(NULLIF(TRIM(COALESCE(email,'')),''), ?),
+         ufs      = COALESCE(NULLIF(TRIM(COALESCE(ufs,'')),''), ?),
+         comissao = COALESCE(?, comissao),
+         ativo    = ?
+       WHERE codigo_erp = ?`
+    ).bind(wpp, email, uf2, com, ativo, codigo).run();
+    if ((up.meta?.changes ?? 0) > 0) { atualizados++; continue; }
+
+    // 2) tenta casar com um cadastro existente SEM código, pelo 1º nome (+UF se houver).
+    //    Só anexa quando o casamento é ÚNICO e ainda não foi usado — evita flood e erro.
+    const cand = (porPrimeiro.get(primeiroNome(nomeFinal)) || []).filter((r) => !jaAnexados.has(r.id));
+    let alvo: { id: string; nome: string; ufs: string | null } | null = null;
+    if (cand.length === 1) alvo = cand[0];
+    else if (cand.length > 1 && uf2) {
+      const porUf = cand.filter((r) => (r.ufs || "").toUpperCase().includes(uf2));
+      if (porUf.length === 1) alvo = porUf[0];
+    }
+    if (alvo) {
+      jaAnexados.add(alvo.id);
+      await c.env.DB.prepare(
+        `UPDATE representantes SET codigo_erp = ?,
+           whatsapp = COALESCE(NULLIF(TRIM(COALESCE(whatsapp,'')),''), ?),
+           email    = COALESCE(NULLIF(TRIM(COALESCE(email,'')),''), ?),
+           ufs      = COALESCE(NULLIF(TRIM(COALESCE(ufs,'')),''), ?),
+           comissao = COALESCE(?, comissao), ativo = ?
+         WHERE id = ?`
+      ).bind(codigo, wpp, email, uf2, com, ativo, alvo.id).run();
+      casados++;
+      continue;
+    }
+
+    // 3) sem casamento: cria (ou, se já existir rep com NOME exato, anexa o código sem roubar).
+    await c.env.DB.prepare(
+      `INSERT INTO representantes (id, nome, whatsapp, email, ativo, ufs, cidades, comissao, codigo_erp)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(nome) DO UPDATE SET
+         codigo_erp = COALESCE(representantes.codigo_erp, excluded.codigo_erp),
+         whatsapp   = COALESCE(NULLIF(TRIM(COALESCE(representantes.whatsapp,'')),''), excluded.whatsapp),
+         email      = COALESCE(NULLIF(TRIM(COALESCE(representantes.email,'')),''), excluded.email),
+         ufs        = COALESCE(NULLIF(TRIM(COALESCE(representantes.ufs,'')),''), excluded.ufs),
+         comissao   = COALESCE(excluded.comissao, representantes.comissao),
+         ativo      = excluded.ativo`
+    ).bind(uid(), nomeFinal, wpp, email, ativo, uf2, str(g.cidade), com, codigo).run();
+    criados++;
+  }
+  const tot = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM representantes WHERE COALESCE(codigo_erp,'') <> ''").first<{ n: number }>();
+  return c.json({ ok: true, recebidos, pulados, criados, casados, atualizados, com_codigo: tot?.n ?? 0 });
+});
+
 // ── LISTA os pedidos do ERP aguardando conferência ──────────────────────────────
 integracao.get("/pendentes", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;

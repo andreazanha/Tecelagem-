@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-22.2";
+const PONTE_VERSAO = "2026-10-30.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -1020,6 +1020,43 @@ async function criarUmCliente(db, cli) {
 }
 
 // ── uma rodada: busca aprovados que mudaram desde a última data e envia ───────
+// ── Representantes (GUIAS) → sistema ─────────────────────────────────────────────
+// Lê a tabela GUIAS do Syntech (o "Cadastro de Representantes") e manda a lista pro
+// sistema, que liga tudo pelo CÓDIGO (nunca mais por nome). Tabela pequena: manda
+// inteira toda rodada (o servidor é idempotente). Nunca apaga nada no ERP — só lê.
+async function rodadaRepresentantes(db) {
+  let linhas;
+  try {
+    linhas = await query(db,
+      `SELECT CODIGO, NOME, FANTASIA, CPF, UF, CIDADE, TELEFONE, EMAIL, COMISSAO, BLOQUEADO
+         FROM GUIAS ORDER BY CODIGO`);
+  } catch (e) { log("! representantes: não li GUIAS —", e.message); return; }
+  const representantes = linhas.map((g) => ({
+    codigo: String(g.CODIGO == null ? "" : g.CODIGO).trim(),
+    fantasia: String(g.FANTASIA || "").trim(),
+    nome: String(g.NOME || "").trim(),
+    cpf: String(g.CPF || "").trim(),
+    uf: String(g.UF || "").trim(),
+    cidade: String(g.CIDADE || "").trim(),
+    telefone: String(g.TELEFONE || "").trim(),
+    email: String(g.EMAIL || "").trim(),
+    comissao: g.COMISSAO == null ? null : Number(g.COMISSAO),
+    bloqueado: g.BLOQUEADO == null ? "" : String(g.BLOQUEADO).trim(),
+  })).filter((g) => g.codigo && (g.fantasia || g.nome));
+  if (!representantes.length) { log("representantes: GUIAS vazia — nada a enviar"); return; }
+  const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/representantes";
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+      body: JSON.stringify({ representantes }),
+    });
+    const txt = await r.text(); let js = {}; try { js = JSON.parse(txt); } catch { /* não-JSON */ }
+    if (r.ok) log(`representantes: ${representantes.length} enviado(s) ✓ (com código no sistema: ${js.com_codigo != null ? js.com_codigo : "?"})`);
+    else log(`representantes: FALHOU (${r.status}) ${txt.slice(0, 160)}`);
+  } catch (e) { log("! representantes: erro ao enviar —", e.message); }
+}
+
 async function rodada() {
   const estado = lerEstado();
   const desde = estado.ultimaAlt || (CONFIG.desde ? `${CONFIG.desde} 00:00:00` : "1900-01-01 00:00:00");
@@ -1049,7 +1086,7 @@ async function rodada() {
         WHERE STATUS = ? AND COALESCE(CANC, 'N') <> 'S' AND DATA_ALT_REG > ?
         ORDER BY DATA_ALT_REG`;
     const pedidos = await query(db, SQL_PEDIDOS, [STATUS_APROVADO, desde]);
-    if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaProdutos(db, estado); await rodadaEstoque(db); await rodadaKits(db); return; }
+    if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaRepresentantes(db); await rodadaProdutos(db, estado); await rodadaEstoque(db); await rodadaKits(db); return; }
 
     log(`${pedidos.length} pedido(s) aprovado(s) novo(s)/alterado(s)`);
     let maiorAlt = estado.ultimaAlt || null;
@@ -1066,6 +1103,7 @@ async function rodada() {
       salvarEstado({ ...estado, ultimaAlt: formatarParaFirebird(ped.DATA_ALT_REG) });
     }
     log("rodada ok. última data:", formatarParaFirebird(maiorAlt));
+    await rodadaRepresentantes(db);
     await rodadaProdutos(db, estado);
     await rodadaEstoque(db);
     await rodadaKits(db);
