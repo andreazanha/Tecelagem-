@@ -491,24 +491,25 @@ function ModalDiagnostico({ onFechar }: { onFechar: () => void }) {
               {aba === "duplicados" && (
                 <>
                   <p className="muted" style={{ marginTop: 0 }}>
-                    Cadastros que têm o <b>mesmo primeiro nome</b> — provável a <b>mesma pessoa cadastrada 2×</b> (ex.: o nome
-                    antigo do Syntech <i>“Anderson - DF e GO”</i> e o nome real <i>“Anderson Rodrigues”</i>). Escolha em qual
-                    deles juntar e clique <b>Juntar e apagar</b>: a carteira vai pro escolhido e o cadastro repetido é removido.
-                    {" "}<b>Confira antes</b> — se forem pessoas diferentes com o mesmo nome, é só deixar como está.
+                    Cadastros que têm o <b>mesmo primeiro nome</b> — provável a <b>mesma pessoa cadastrada 2×</b>. A etiqueta
+                    {" "}<span className="com-badge ok">Syntech</span> marca o nome que vem do ERP. Para deixar <b>só o do Syntech</b>:
+                    na linha do <b>outro</b> cadastro, escolha o nome com Syntech e clique <b>Juntar e apagar</b> — a carteira vai
+                    pra ele e o WhatsApp/senha do que some é copiado junto (nada se perde). O seletor agora mostra <b>todos</b> os
+                    representantes, não só os deste grupo. <b>Confira antes</b> — se forem pessoas diferentes, é só deixar quieto.
                   </p>
                   {d.repsDuplicados.length === 0 ? <p className="muted">Nenhum grupo de nome repetido. 🎉</p> : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                       {d.repsDuplicados.map((grupo) => (
                         <div key={grupo.chave} className="com-card" style={{ margin: 0, padding: 12 }}>
                           <div style={{ fontWeight: 700, textTransform: "capitalize", marginBottom: 8 }}>{grupo.chave} <small className="muted" style={{ fontWeight: 400 }}>({grupo.reps.length} cadastros)</small></div>
-                          <table className="table com-tbl"><thead><tr><th>Cadastro</th><th style={{ textAlign: "right" }}>Carteira</th><th style={{ textAlign: "center" }}>WhatsApp</th><th style={{ textAlign: "center" }}>Situação</th><th>Ação</th></tr></thead>
+                          <table className="table com-tbl"><thead><tr><th>Cadastro</th><th style={{ textAlign: "right" }}>Carteira</th><th style={{ textAlign: "center" }}>WhatsApp</th><th style={{ textAlign: "center" }}>No Syntech</th><th>Juntar neste outro e apagar este</th></tr></thead>
                             <tbody>{grupo.reps.map((r) => (
                               <tr key={r.nome} style={{ opacity: r.ativo ? 1 : 0.55 }}>
-                                <td><strong>{r.nome}</strong></td>
+                                <td><strong>{r.nome}</strong> {r.noSyntech && <span className="com-badge ok">Syntech</span>}</td>
                                 <td style={{ textAlign: "right" }}>{nInt(r.carteira)}</td>
                                 <td style={{ textAlign: "center" }}>{sim(r.temWhatsapp)}</td>
-                                <td style={{ textAlign: "center" }}><span className={"com-badge " + (r.ativo ? "ok" : "off")}>{r.ativo ? "Ativo" : "Inativo"}</span></td>
-                                <td><JuntarNoGrupo de={r.nome} clientes={r.carteira} opcoes={grupo.reps.filter((o) => o.nome !== r.nome).map((o) => o.nome)} /></td>
+                                <td style={{ textAlign: "center" }}>{sim(r.noSyntech)}</td>
+                                <td><JuntarNoGrupo de={r.nome} clientes={r.carteira} opcoes={nomesReps.filter((n) => n !== r.nome)} /></td>
                               </tr>
                             ))}</tbody>
                           </table>
@@ -520,17 +521,24 @@ function ModalDiagnostico({ onFechar }: { onFechar: () => void }) {
               )}
 
               {aba === "reps" && (
-                <table className="table com-tbl"><thead><tr><th>Representante</th><th style={{ textAlign: "right" }}>Carteira</th><th style={{ textAlign: "center" }}>WhatsApp</th><th style={{ textAlign: "center" }}>Senha</th><th style={{ textAlign: "center" }}>Situação</th></tr></thead>
+                <>
+                  <p className="muted" style={{ marginTop: 0 }}>
+                    Todos os representantes. A etiqueta <span className="com-badge ok">Syntech</span> marca quem vem do ERP.
+                    Use <b>Juntar neste…</b> pra unir qualquer cadastro duplicado em outro (move a carteira, copia o WhatsApp/senha e apaga o repetido).
+                  </p>
+                  <table className="table com-tbl"><thead><tr><th>Representante</th><th style={{ textAlign: "right" }}>Carteira</th><th style={{ textAlign: "center" }}>WhatsApp</th><th style={{ textAlign: "center" }}>No Syntech</th><th style={{ textAlign: "center" }}>Situação</th><th>Juntar neste outro e apagar este</th></tr></thead>
                   <tbody>{d.representantes.map((r) => (
                     <tr key={r.nome} style={{ opacity: r.ativo ? 1 : 0.55 }}>
-                      <td><strong>{r.nome}</strong></td>
+                      <td><strong>{r.nome}</strong> {r.noSyntech && <span className="com-badge ok">Syntech</span>}</td>
                       <td style={{ textAlign: "right" }}>{nInt(r.carteira)}</td>
                       <td style={{ textAlign: "center" }}>{sim(r.temWhatsapp)}</td>
-                      <td style={{ textAlign: "center" }}>{sim(r.temSenha)}</td>
+                      <td style={{ textAlign: "center" }}>{sim(r.noSyntech)}</td>
                       <td style={{ textAlign: "center" }}><span className={"com-badge " + (r.ativo ? "ok" : "off")}>{r.ativo ? "Ativo" : "Inativo"}</span></td>
+                      <td><JuntarNoGrupo de={r.nome} clientes={r.carteira} opcoes={nomesReps.filter((n) => n !== r.nome)} /></td>
                     </tr>
                   ))}</tbody>
                 </table>
+                </>
               )}
 
               {aba === "carteira" && (

@@ -214,7 +214,10 @@ comercial.get("/diagnostico-carteira", async (c) => {
     ...v, temRep: repPorNorm.has(norm(v.nome)), temCarteira: carteiraPorNorm.has(norm(v.nome)),
   })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
-  const representantes = [...repPorNorm.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  // noSyntech = esse nome aparece como vendedor nos pedidos do Syntech (fonte do ERP).
+  const representantes = [...repPorNorm.values()]
+    .map((r) => ({ ...r, noSyntech: vendPorNorm.has(norm(r.nome)) }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
   // Possíveis representantes duplicados: cadastros que compartilham o PRIMEIRO
   // nome (sem acento). Ex.: "Anderson - DF e GO" e "Anderson Rodrigues". Só
@@ -281,6 +284,8 @@ comercial.post("/carteira/juntar", async (c) => {
   return c.json({ ok: true, movidos: res.meta?.changes ?? 0, de, para: rep.nome });
 });
 
+type RepRow = { id: string; nome: string; whatsapp: string | null; email: string | null; observacao: string | null; ufs: string | null; instagram: string | null; cidades: string | null; comissao: number | null; senha_hash: string | null; acesso_token: string | null };
+
 // Junta um representante DUPLICADO em outro: move a carteira do "de" pro "para"
 // (ambos cadastrados) e APAGA o cadastro repetido "de". As vendas (pedidos.vendedor)
 // continuam no histórico. Serve pra quando a mesma pessoa está cadastrada 2x.
@@ -291,15 +296,30 @@ comercial.post("/carteira/juntar-rep", async (c) => {
   const para = (b.para || "").trim();
   if (!de || !para) return c.json({ error: "informe 'de' e 'para'" }, 400);
   if (de.toLowerCase() === para.toLowerCase()) return c.json({ error: "origem e destino são o mesmo representante" }, 400);
-  const repPara = await c.env.DB.prepare("SELECT nome FROM representantes WHERE TRIM(LOWER(nome)) = TRIM(LOWER(?)) LIMIT 1").bind(para).first<{ nome: string }>();
+  const cols = "id, nome, whatsapp, email, observacao, ufs, instagram, cidades, comissao, senha_hash, acesso_token";
+  const repPara = await c.env.DB.prepare(`SELECT ${cols} FROM representantes WHERE TRIM(LOWER(nome)) = TRIM(LOWER(?)) LIMIT 1`).bind(para).first<RepRow>();
   if (!repPara) return c.json({ error: "o representante de destino não existe no cadastro" }, 400);
-  const repDe = await c.env.DB.prepare("SELECT id, nome FROM representantes WHERE TRIM(LOWER(nome)) = TRIM(LOWER(?)) LIMIT 1").bind(de).first<{ id: string; nome: string }>();
+  const repDe = await c.env.DB.prepare(`SELECT ${cols} FROM representantes WHERE TRIM(LOWER(nome)) = TRIM(LOWER(?)) LIMIT 1`).bind(de).first<RepRow>();
   if (!repDe) return c.json({ error: "o representante de origem não existe no cadastro" }, 400);
+
   // 1) move a carteira pro nome exato do destino.
   const res = await c.env.DB.prepare(
     "UPDATE clientes SET representante = ? WHERE TRIM(LOWER(COALESCE(representante,''))) = TRIM(LOWER(?))"
   ).bind(repPara.nome, repDe.nome).run();
-  // 2) apaga o cadastro duplicado de origem.
+
+  // 2) não perde dado: preenche no destino os campos que estavam vazios, copiando
+  //    da origem (ex.: o WhatsApp costuma estar no cadastro "Nome Sobrenome" e a
+  //    carteira no "Nome - UF" do Syntech — assim o destino fica completo).
+  const vazio = (v: unknown) => v == null || String(v).trim() === "";
+  const pick = (campo: keyof RepRow) => (vazio(repPara[campo]) ? (repDe[campo] ?? null) : repPara[campo]);
+  await c.env.DB.prepare(
+    `UPDATE representantes SET whatsapp=?, email=?, observacao=?, ufs=?, instagram=?, cidades=?, comissao=?, senha_hash=?, acesso_token=? WHERE id=?`
+  ).bind(
+    pick("whatsapp"), pick("email"), pick("observacao"), pick("ufs"), pick("instagram"),
+    pick("cidades"), pick("comissao"), pick("senha_hash"), pick("acesso_token"), repPara.id
+  ).run();
+
+  // 3) apaga o cadastro duplicado de origem.
   await c.env.DB.prepare("DELETE FROM representantes WHERE id = ?").bind(repDe.id).run();
   return c.json({ ok: true, movidos: res.meta?.changes ?? 0, de: repDe.nome, para: repPara.nome, excluido: true });
 });

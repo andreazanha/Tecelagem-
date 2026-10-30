@@ -1958,8 +1958,8 @@ export interface DiagnosticoCarteira {
     vendedoresSyntech: number;
     gruposDuplicados: number;
   };
-  representantes: { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number }[];
-  repsDuplicados: { chave: string; reps: { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number }[] }[];
+  representantes: { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number; noSyntech: boolean }[];
+  repsDuplicados: { chave: string; reps: { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number; noSyntech: boolean }[] }[];
   carteira: { nome: string; clientes: number; doSyntech: number; temRep: boolean }[];
   vendedores: { nome: string; pedidos: number; temRep: boolean; temCarteira: boolean }[];
   orfaos: {
