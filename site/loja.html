@@ -1819,26 +1819,31 @@
   // e-mail cadastrado. Se o envio de e-mail não estiver ligado no servidor, cai no
   // WhatsApp (o rep avisa a Big, que gera o link manualmente).
   function repEsqueciWhats(email){
+    // NÃO navega sozinho (em navegador in-app o window.open trava a tela em branco):
+    // mostra uma mensagem com link clicável pro WhatsApp.
+    var box=document.getElementById("repMsg");
     var wa=String(D.whatsapp||"").replace(/\D/g,""); if(wa && wa.length<=11) wa="55"+wa;
-    if(!wa){ alert("Para redefinir sua senha, fale com a Big Tricot."); return; }
-    var msg="Olá! Esqueci a senha da Área do Representante."+(email?(" Meu e-mail: "+email+"."):"")+" Podem me enviar um novo link de acesso?";
-    var url="https://wa.me/"+wa+"?text="+encodeURIComponent(msg);
-    try{ window.open(url,"_blank"); }catch(e){ location.href=url; }
+    if(!wa){ if(box){ box.style.color="#8a6d4f"; box.textContent="Para redefinir sua senha, fale com a Big Tricot."; } return; }
+    var texto="Olá! Esqueci a senha da Área do Representante."+(email?(" Meu e-mail: "+email+"."):"")+" Podem me enviar um novo link de acesso?";
+    var url="https://wa.me/"+wa+"?text="+encodeURIComponent(texto);
+    if(box){ box.style.color="#166534"; box.innerHTML='Para redefinir sua senha, fale com a Big Tricot: <a href="'+url+'" target="_blank" rel="noopener" style="color:#ad5033;font-weight:700;text-decoration:underline">abrir o WhatsApp</a>.'; }
   }
   (function(){ var be=document.getElementById("repEsqueci"); if(!be) return; be.addEventListener("click",function(){
     var email=(document.getElementById("repEmail").value||"").trim();
     var msg=document.getElementById("repMsg");
     if(!email || email.indexOf("@")<0){ if(msg){ msg.style.color="#b91c1c"; msg.textContent="Digite o seu e-mail no campo acima e clique de novo em 'Esqueci minha senha'."; } return; }
     be.disabled=true; var txt=be.textContent; be.textContent="Enviando…";
-    fetch("/api/loja/rep-esqueci",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email})})
+    var ctrl=("AbortController" in window)?new AbortController():null;
+    var to=setTimeout(function(){ try{ ctrl&&ctrl.abort(); }catch(e){} },12000);
+    fetch("/api/loja/rep-esqueci",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email}),signal:ctrl?ctrl.signal:undefined})
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
       .then(function(res){
-        be.disabled=false; be.textContent=txt;
+        clearTimeout(to); be.disabled=false; be.textContent=txt;
         if(res.j && res.j.erro==="email_desligado"){ repEsqueciWhats(email); return; }
         if(res.j && res.j.erro==="email_invalido"){ if(msg){ msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"Informe o e-mail."; } return; }
         if(msg){ msg.style.color="#166534"; msg.innerHTML="Se este e-mail estiver cadastrado, enviamos um link para criar uma nova senha.<br>Confira sua caixa de entrada (e o spam)."; }
       })
-      .catch(function(){ be.disabled=false; be.textContent=txt; repEsqueciWhats(email); });
+      .catch(function(){ clearTimeout(to); be.disabled=false; be.textContent=txt; repEsqueciWhats(email); });
   }); })();
   // "Entrar como representante" leva pro PORTAL do rep (?rep=1), separado do catálogo do cliente.
   (function(){ var ir=document.getElementById("irRep"); if(ir) ir.addEventListener("click",function(){ try{ location.href=location.pathname+"?rep=1"; }catch(e){ mostrarRepView(); } }); })();
@@ -1863,12 +1868,15 @@
   document.getElementById("irCad").addEventListener("click",function(){ mostrarCad((document.getElementById("entCnpj").value||"").trim()); });
   // "Esqueci a senha": abre o WhatsApp da Big pedindo a redefinição (com o CNPJ digitado).
   (function(){ var be=document.getElementById("entEsqueci"); if(!be) return; be.addEventListener("click",function(){
+    // NÃO navega sozinho (window.open trava a tela em branco no navegador in-app):
+    // mostra um link clicável pro WhatsApp.
     var cnpj=(document.getElementById("entCnpj").value||"").trim();
+    var box=document.getElementById("entMsg");
     var wa=String(D.whatsapp||"").replace(/\D/g,""); if(wa && wa.length<=11) wa="55"+wa;
-    if(!wa){ alert("Para redefinir sua senha, fale com a Big Tricot."); return; }
-    var msg="Olá! Esqueci a senha do catálogo da minha loja."+(cnpj?(" CNPJ: "+cnpj+"."):"")+" Podem me ajudar a redefinir?";
-    var url="https://wa.me/"+wa+"?text="+encodeURIComponent(msg);
-    try{ window.open(url,"_blank"); }catch(e){ location.href=url; }
+    if(!wa){ if(box){ box.style.color="#8a6d4f"; box.textContent="Para redefinir sua senha, fale com a Big Tricot."; } return; }
+    var texto="Olá! Esqueci a senha do catálogo da minha loja."+(cnpj?(" CNPJ: "+cnpj+"."):"")+" Podem me ajudar a redefinir?";
+    var url="https://wa.me/"+wa+"?text="+encodeURIComponent(texto);
+    if(box){ box.style.color="#166534"; box.innerHTML='Para redefinir sua senha, fale com a Big Tricot: <a href="'+url+'" target="_blank" rel="noopener" style="color:#ad5033;font-weight:700;text-decoration:underline">abrir o WhatsApp</a>.'; }
   }); })();
   document.getElementById("voltarEnt").addEventListener("click",mostrarEnt);
   function enviarCadastro(){
