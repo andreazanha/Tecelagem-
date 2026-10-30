@@ -1574,18 +1574,25 @@ integracao.get("/loja-imagens", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const doc = await gerarDocSite(c.env);
   type Cor = { id_cor?: string; foto?: string };
-  type P = { id?: string; nome?: string; foto?: string; cores?: Cor[] };
+  type P = { id?: string; nome?: string; foto?: string; cores?: Cor[]; pronta_entrega?: boolean; linha?: string };
   const banco = Array.isArray((doc as { banco_cores?: unknown }).banco_cores) ? (doc as { banco_cores: { id?: string; nome?: string; hex?: string }[] }).banco_cores : [];
   const corInfo = new Map<string, { nome: string; hex: string }>();
   for (const c2 of banco) corInfo.set(String(c2.id || ""), { nome: String(c2.nome || ""), hex: String(c2.hex || "") });
   const normais = Array.isArray((doc as { produtos?: unknown }).produtos) ? (doc as { produtos: P[] }).produtos : [];
   const elDoc = (doc as { edicao_limitada?: { produtos?: P[] } }).edicao_limitada;
   const el = elDoc && Array.isArray(elDoc.produtos) ? elDoc.produtos : [];
-  const monta = (p: P, secao: string) => ({
-    id: String(p.id || ""), nome: String(p.nome || ""), foto: String(p.foto || ""), secao,
+  // Mesma divisão de categorias que o catálogo da loja usa (SECOES em loja.html).
+  const catOf = (p: P): string =>
+    p.pronta_entrega ? "Pronta Entrega"
+      : p.linha === "polisoft" ? "Linha Polisoft"
+        : p.linha === "soft" ? "Linha Soft"
+          : p.linha === "natal" ? "Natal"
+            : "Outros";
+  const monta = (p: P, categoria: string) => ({
+    id: String(p.id || ""), nome: String(p.nome || ""), foto: String(p.foto || ""), categoria,
     cores: (Array.isArray(p.cores) ? p.cores : []).map((c2) => { const ci = corInfo.get(String(c2.id_cor || "")) || { nome: "", hex: "" }; return { id_cor: String(c2.id_cor || ""), nome: ci.nome, hex: ci.hex, foto: String(c2.foto || "") }; }),
   });
-  const produtos = [...normais.map((p) => monta(p, "catalogo")), ...el.map((p) => monta(p, "edicao"))];
+  const produtos = [...normais.map((p) => monta(p, catOf(p))), ...el.map((p) => monta(p, "Edição Limitada"))];
   return c.json({ produtos });
 });
 // Salva (ou remove, se foto vazia) a foto de um produto (tipo=produto) ou de uma cor de

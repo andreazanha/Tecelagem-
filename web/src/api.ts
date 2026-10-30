@@ -764,7 +764,7 @@ export interface CatalogoProdutoExtra {
   tem_video: boolean; extra_video: string; extra_texto: string;
 }
 export interface LojaImagemCor { id_cor: string; nome: string; hex: string; foto: string }
-export interface LojaImagemProduto { id: string; nome: string; foto: string; secao: string; cores: LojaImagemCor[] }
+export interface LojaImagemProduto { id: string; nome: string; foto: string; categoria: string; cores: LojaImagemCor[] }
 
 export interface MaquinaTec { id: string; nome: string; ordem: number; ativo: number }
 export interface MotivoTec { id: string; codigo: string; nome: string | null; tipo: string; ordem: number; ativo: number }
