@@ -1240,13 +1240,16 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           if (soDig(v.almofada) !== "5050") continue;
           for (const it of (recPorKit.get(v.prod.id) || [])) if (it.tam) tam50.set(it.comp, it.tam.slice(0, 10));
         }
-        const avulsaGrupo = (ref: string, titulo: string) => {
+        // Linhas avulsas de UMA peça (capa OU almofada), já com o rótulo de enchimento no
+        // nome da medida ("50×50 ( sem enchimento )" / "( com enchimento )") — a loja joga
+        // esse "enchimento" numa linha de baixo em destaque, igual aos kits.
+        const avulsaLinhas = (ref: string, ench: "sem" | "com") => {
           const cf = compInfo.get(ref); if (!cf) return null;
           const cod = (tam50.get(ref) || "").toLowerCase();
           // só o tamanho 50×50: casa pelo CÓDIGO da receita (5K/7K); se não achar, pela MEDIDA 50×50.
           let tams = cod ? cf.tamanhos.filter((t) => String(t.tamanho || "").trim().toLowerCase() === cod) : [];
           if (!tams.length) tams = cf.tamanhos.filter((t) => soDig(t.medida) === "5050");
-          if (!tams.length) return null;                        // sem 50×50 → não cria a seção avulsa
+          if (!tams.length) return null;                        // sem 50×50 → sem opção avulsa
           const linhasA: Linha0[] = [];
           let estAv = 0;
           for (const t of tams) {
@@ -1254,27 +1257,34 @@ export async function gerarCatalogoSite(env: Env): Promise<{
             const base = porTam || (campoPreco === "varejo" ? cf.pv : cf.pa) || 0;
             const sul = Math.round(base * 100) / 100;
             const norte = Math.round(base * (1 + markupNorte / 100) * 100) / 100;
-            const tid = idTam(t.medida);
+            const medEnch = `${t.medida} ( ${ench} enchimento )`;   // ex.: "50×50 ( sem enchimento )"
+            const tid = idTam(medEnch);
             linhasA.push({ id: `${ref}-${tid}`, cod: ref, id_tamanho: tid, sul, norte });
             // saldo POR COR da peça NESTE tamanho (cadastro individual = erp_estoque, por
             // código Syntech ex.: "5K"). Nunca usa o estoque_geral (soma de tudo).
             const escTam = (itens[ref] && itens[ref][String(t.tamanho || "").trim()]) || null;
             const resvTam = (reservado[ref] && reservado[ref][String(t.tamanho || "").trim()]) || {}; // capas já seguradas pelos kits
             itens[ref] = itens[ref] || {};
-            itens[ref][t.medida] = itens[ref][t.medida] || {};
+            itens[ref][medEnch] = itens[ref][medEnch] || {};
             // SEM saldo por cor/tamanho no espelho → 0 (sob encomenda), nunca o total do cadastro.
-            if (cf.cores.length) { for (const c of cf.cores) { const cid = idCor(c.nome || "", c.hex || "", ""); const bruto = escTam ? (Number(escTam[cid]) || 0) : 0; const s = Math.max(0, bruto - (Number(resvTam[cid]) || 0)); itens[ref][t.medida][cid] = s; estAv += s; } }
-            else { const bruto = escTam ? Object.values(escTam).reduce((a, n) => a + (Number(n) || 0), 0) : 0; const resvTotal = Object.values(resvTam).reduce((a, n) => a + (Number(n) || 0), 0); const s = Math.max(0, bruto - resvTotal); itens[ref][t.medida]["-"] = s; estAv += s; }
+            if (cf.cores.length) { for (const c of cf.cores) { const cid = idCor(c.nome || "", c.hex || "", ""); const bruto = escTam ? (Number(escTam[cid]) || 0) : 0; const s = Math.max(0, bruto - (Number(resvTam[cid]) || 0)); itens[ref][medEnch][cid] = s; estAv += s; } }
+            else { const bruto = escTam ? Object.values(escTam).reduce((a, n) => a + (Number(n) || 0), 0) : 0; const resvTotal = Object.values(resvTam).reduce((a, n) => a + (Number(n) || 0), 0); const s = Math.max(0, bruto - resvTotal); itens[ref][medEnch]["-"] = s; estAv += s; }
           }
           for (const c of cf.cores) { const cid = idCor(c.nome || "", c.hex || "", ""); if (!coresMap.has(cid)) coresMap.set(cid, { id_cor: cid, oculta: false }); }
-          return { id: `${prim.id}-av-${ref}`, titulo, ref, estoque: estAv, linhas: linhasA, compartilha: false };
+          return { estoque: estAv, linhas: linhasA };
         };
         const capaRef = [...compRefsFam].find((r) => tipoPeca(compInfo.get(r)?.nome || "") === "capa");
         const almoRef = [...compRefsFam].find((r) => tipoPeca(compInfo.get(r)?.nome || "") === "almofada");
-        const gCapa = capaRef ? avulsaGrupo(capaRef, "Capa avulsa 50×50") : null;
-        const gAlmo = almoRef ? avulsaGrupo(almoRef, "Almofada avulsa 50×50") : null;
-        if (gCapa) { grupos.push(gCapa); estTotal += gCapa.estoque; }
-        if (gAlmo) { grupos.push(gAlmo); estTotal += gAlmo.estoque; }
+        // UMA seção "Almofada avulsa 50×50" com as duas opções: sem enchimento (capa) e com
+        // enchimento (almofada), cada uma com seu preço e estoque próprios.
+        const avSem = capaRef ? avulsaLinhas(capaRef, "sem") : null;
+        const avCom = almoRef ? avulsaLinhas(almoRef, "com") : null;
+        const avLinhas = [...(avSem?.linhas || []), ...(avCom?.linhas || [])];
+        if (avLinhas.length) {
+          const estAv = (avSem?.estoque || 0) + (avCom?.estoque || 0);
+          grupos.push({ id: `${prim.id}-av`, titulo: "Almofada avulsa 50×50", ref: "", estoque: estAv, linhas: avLinhas, compartilha: false });
+          estTotal += estAv;
+        }
 
         unificados.push({
           id: "kit-" + grp.fam.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, ""),
