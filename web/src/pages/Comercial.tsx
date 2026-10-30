@@ -346,7 +346,7 @@ function ModalDiagnostico({ onFechar }: { onFechar: () => void }) {
   const [d, setD] = useState<DiagnosticoCarteira | null>(null);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
-  const [aba, setAba] = useState<"resumo" | "reps" | "carteira" | "syntech">("resumo");
+  const [aba, setAba] = useState<"resumo" | "duplicados" | "reps" | "carteira" | "syntech">("resumo");
   const [juntando, setJuntando] = useState("");   // nome de origem em processamento
   const [msg, setMsg] = useState("");
 
@@ -377,6 +377,20 @@ function ModalDiagnostico({ onFechar }: { onFechar: () => void }) {
     ? <span className="com-badge ok">sim</span>
     : <span className="com-badge off">não</span>;
 
+  // Junta um representante DUPLICADO "de" em outro cadastrado "para" (move carteira + apaga o repetido).
+  async function juntarRepetido(de: string, para: string, clientes: number) {
+    if (!para) return;
+    if (!confirm(`Juntar a carteira de "${de}" (${clientes} cliente(s)) em "${para}" e EXCLUIR o cadastro duplicado "${de}"?\n\nOs clientes continuam os mesmos — só passam pro "${para}". As vendas no histórico não se perdem.`)) return;
+    setJuntando(de); setErro(""); setMsg("");
+    try {
+      const r = await api.juntarRep(de, para);
+      if (r.error) { setErro(r.error); return; }
+      setMsg(`✅ ${r.movidos} cliente(s) movidos para "${r.para}" e o cadastro duplicado "${r.de}" foi removido.`);
+      recarregar();
+    } catch (e) { setErro((e as Error).message); }
+    finally { setJuntando(""); }
+  }
+
   // Seletor "Juntar com [rep] [botão]" pra um nome órfão da carteira (ordem alfabética).
   const nomesReps = (d?.representantes || []).map((r) => r.nome).sort((a, b) => a.localeCompare(b, "pt-BR"));
   function Juntar({ de, clientes }: { de: string; clientes: number }) {
@@ -389,6 +403,21 @@ function ModalDiagnostico({ onFechar }: { onFechar: () => void }) {
           {nomesReps.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
         <button className="btn btn-soft" disabled={!para || ocupado} onClick={() => juntar(de, para, clientes)}>{ocupado ? "…" : "Juntar"}</button>
+      </div>
+    );
+  }
+
+  // Dentro de um grupo de duplicados: junta ESTE rep em um dos OUTROS do grupo.
+  function JuntarNoGrupo({ de, clientes, opcoes }: { de: string; clientes: number; opcoes: string[] }) {
+    const [para, setPara] = useState(opcoes.length === 1 ? opcoes[0] : "");
+    const ocupado = juntando === de;
+    return (
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        <select className="com-sel" value={para} onChange={(e) => setPara(e.target.value)} disabled={ocupado} style={{ maxWidth: 220 }}>
+          <option value="">Juntar neste…</option>
+          {opcoes.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <button className="btn btn-soft" disabled={!para || ocupado} onClick={() => juntarRepetido(de, para, clientes)}>{ocupado ? "…" : "Juntar e apagar"}</button>
       </div>
     );
   }
@@ -410,6 +439,7 @@ function ModalDiagnostico({ onFechar }: { onFechar: () => void }) {
 
               <div className="com-filtros" style={{ margin: "0 0 12px" }}>
                 <button className={"btn " + (aba === "resumo" ? "btn-primary" : "btn-soft")} onClick={() => setAba("resumo")}>Resumo</button>
+                <button className={"btn " + (aba === "duplicados" ? "btn-primary" : "btn-soft")} onClick={() => setAba("duplicados")}>Duplicados{d.repsDuplicados.length ? ` (${d.repsDuplicados.length})` : ""}</button>
                 <button className={"btn " + (aba === "reps" ? "btn-primary" : "btn-soft")} onClick={() => setAba("reps")}>Representantes ({d.representantes.length})</button>
                 <button className={"btn " + (aba === "carteira" ? "btn-primary" : "btn-soft")} onClick={() => setAba("carteira")}>Carteira ({d.carteira.length})</button>
                 <button className={"btn " + (aba === "syntech" ? "btn-primary" : "btn-soft")} onClick={() => setAba("syntech")}>Vendedores Syntech ({d.vendedores.length})</button>
@@ -456,6 +486,37 @@ function ModalDiagnostico({ onFechar }: { onFechar: () => void }) {
                     )}
                   </div>
                 </div>
+              )}
+
+              {aba === "duplicados" && (
+                <>
+                  <p className="muted" style={{ marginTop: 0 }}>
+                    Cadastros que têm o <b>mesmo primeiro nome</b> — provável a <b>mesma pessoa cadastrada 2×</b> (ex.: o nome
+                    antigo do Syntech <i>“Anderson - DF e GO”</i> e o nome real <i>“Anderson Rodrigues”</i>). Escolha em qual
+                    deles juntar e clique <b>Juntar e apagar</b>: a carteira vai pro escolhido e o cadastro repetido é removido.
+                    {" "}<b>Confira antes</b> — se forem pessoas diferentes com o mesmo nome, é só deixar como está.
+                  </p>
+                  {d.repsDuplicados.length === 0 ? <p className="muted">Nenhum grupo de nome repetido. 🎉</p> : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                      {d.repsDuplicados.map((grupo) => (
+                        <div key={grupo.chave} className="com-card" style={{ margin: 0, padding: 12 }}>
+                          <div style={{ fontWeight: 700, textTransform: "capitalize", marginBottom: 8 }}>{grupo.chave} <small className="muted" style={{ fontWeight: 400 }}>({grupo.reps.length} cadastros)</small></div>
+                          <table className="table com-tbl"><thead><tr><th>Cadastro</th><th style={{ textAlign: "right" }}>Carteira</th><th style={{ textAlign: "center" }}>WhatsApp</th><th style={{ textAlign: "center" }}>Situação</th><th>Ação</th></tr></thead>
+                            <tbody>{grupo.reps.map((r) => (
+                              <tr key={r.nome} style={{ opacity: r.ativo ? 1 : 0.55 }}>
+                                <td><strong>{r.nome}</strong></td>
+                                <td style={{ textAlign: "right" }}>{nInt(r.carteira)}</td>
+                                <td style={{ textAlign: "center" }}>{sim(r.temWhatsapp)}</td>
+                                <td style={{ textAlign: "center" }}><span className={"com-badge " + (r.ativo ? "ok" : "off")}>{r.ativo ? "Ativo" : "Inativo"}</span></td>
+                                <td><JuntarNoGrupo de={r.nome} clientes={r.carteira} opcoes={grupo.reps.filter((o) => o.nome !== r.nome).map((o) => o.nome)} /></td>
+                              </tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
 
               {aba === "reps" && (

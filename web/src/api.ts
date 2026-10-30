@@ -1805,6 +1805,9 @@ export const api = {
   // Junta duplicados: move a carteira do nome antigo "de" pro representante "para".
   juntarCarteira: (de: string, para: string) =>
     jsonPost("/api/comercial/carteira/juntar", { de, para }).then((r) => j<{ ok?: boolean; movidos?: number; de?: string; para?: string; error?: string }>(r)),
+  // Junta um representante duplicado em outro: move a carteira e apaga o cadastro repetido.
+  juntarRep: (de: string, para: string) =>
+    jsonPost("/api/comercial/carteira/juntar-rep", { de, para }).then((r) => j<{ ok?: boolean; movidos?: number; de?: string; para?: string; excluido?: boolean; error?: string }>(r)),
 
   // ── Insumos ─────────────────────────────────────────────────────────────
   listarInsumos: (p?: { ativo?: string; busca?: string }) => {
@@ -1953,8 +1956,10 @@ export interface DiagnosticoCarteira {
     repsAtivos: number;
     nomesNaCarteira: number;
     vendedoresSyntech: number;
+    gruposDuplicados: number;
   };
   representantes: { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number }[];
+  repsDuplicados: { chave: string; reps: { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number }[] }[];
   carteira: { nome: string; clientes: number; doSyntech: number; temRep: boolean }[];
   vendedores: { nome: string; pedidos: number; temRep: boolean; temCarteira: boolean }[];
   orfaos: {

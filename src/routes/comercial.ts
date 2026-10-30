@@ -216,6 +216,25 @@ comercial.get("/diagnostico-carteira", async (c) => {
 
   const representantes = [...repPorNorm.values()].sort((a, b) => b.carteira - a.carteira || a.nome.localeCompare(b.nome));
 
+  // Possíveis representantes duplicados: cadastros que compartilham o PRIMEIRO
+  // nome (sem acento). Ex.: "Anderson - DF e GO" e "Anderson Rodrigues". Só
+  // sugere — quem decide juntar é o usuário (pode ser gente diferente c/ mesmo nome).
+  const primeiroNome = (nome: string) =>
+    nome.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[\s\-]+/).filter(Boolean)[0] || "";
+  const porPrimeiro = new Map<string, typeof representantes>();
+  for (const r of representantes) {
+    const k = primeiroNome(r.nome);
+    if (!k) continue;
+    const arr = porPrimeiro.get(k) || [];
+    arr.push(r);
+    porPrimeiro.set(k, arr);
+  }
+  const repsDuplicados = [...porPrimeiro.entries()]
+    .filter(([, arr]) => arr.length >= 2)
+    // mostra o de maior carteira primeiro dentro do grupo (candidato a "manter")
+    .map(([chave, reps]) => ({ chave, reps: [...reps].sort((a, b) => b.carteira - a.carteira) }))
+    .sort((a, b) => b.reps.length - a.reps.length || a.chave.localeCompare(b.chave));
+
   return c.json({
     resumo: {
       totalClientes,
@@ -225,8 +244,10 @@ comercial.get("/diagnostico-carteira", async (c) => {
       repsAtivos: representantes.filter((r) => r.ativo).length,
       nomesNaCarteira: carteira.length,
       vendedoresSyntech: vendedores.length,
+      gruposDuplicados: repsDuplicados.length,
     },
     representantes,
+    repsDuplicados,
     carteira,
     vendedores,
     // Pendências: o que não casa entre as três fontes.
@@ -259,6 +280,29 @@ comercial.post("/carteira/juntar", async (c) => {
     "UPDATE clientes SET representante = ? WHERE TRIM(LOWER(COALESCE(representante,''))) = TRIM(LOWER(?))"
   ).bind(rep.nome, de).run();
   return c.json({ ok: true, movidos: res.meta?.changes ?? 0, de, para: rep.nome });
+});
+
+// Junta um representante DUPLICADO em outro: move a carteira do "de" pro "para"
+// (ambos cadastrados) e APAGA o cadastro repetido "de". As vendas (pedidos.vendedor)
+// continuam no histórico. Serve pra quando a mesma pessoa está cadastrada 2x.
+comercial.post("/carteira/juntar-rep", async (c) => {
+  const g = await exigirAlgumaFuncao(c, ["comercial", "pedidos"]); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ de?: string; para?: string }>().catch(() => ({} as { de?: string; para?: string }));
+  const de = (b.de || "").trim();
+  const para = (b.para || "").trim();
+  if (!de || !para) return c.json({ error: "informe 'de' e 'para'" }, 400);
+  if (de.toLowerCase() === para.toLowerCase()) return c.json({ error: "origem e destino são o mesmo representante" }, 400);
+  const repPara = await c.env.DB.prepare("SELECT nome FROM representantes WHERE TRIM(LOWER(nome)) = TRIM(LOWER(?)) LIMIT 1").bind(para).first<{ nome: string }>();
+  if (!repPara) return c.json({ error: "o representante de destino não existe no cadastro" }, 400);
+  const repDe = await c.env.DB.prepare("SELECT id, nome FROM representantes WHERE TRIM(LOWER(nome)) = TRIM(LOWER(?)) LIMIT 1").bind(de).first<{ id: string; nome: string }>();
+  if (!repDe) return c.json({ error: "o representante de origem não existe no cadastro" }, 400);
+  // 1) move a carteira pro nome exato do destino.
+  const res = await c.env.DB.prepare(
+    "UPDATE clientes SET representante = ? WHERE TRIM(LOWER(COALESCE(representante,''))) = TRIM(LOWER(?))"
+  ).bind(repPara.nome, repDe.nome).run();
+  // 2) apaga o cadastro duplicado de origem.
+  await c.env.DB.prepare("DELETE FROM representantes WHERE id = ?").bind(repDe.id).run();
+  return c.json({ ok: true, movidos: res.meta?.changes ?? 0, de: repDe.nome, para: repPara.nome, excluido: true });
 });
 
 // ── RELATÓRIO DE VENDAS (semana + mês, por representante ou geral) ────────────────
