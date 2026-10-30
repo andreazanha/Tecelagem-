@@ -4090,7 +4090,10 @@ atendimento.post("/:id/liberar-responsavel", async (c) => {
   const id = c.req.param("id");
   const gA = await guardConversa(c, id);
   if ("erro" in gA) return gA.erro;
-  await c.env.DB.prepare("UPDATE atend_conversas SET responsavel=NULL, atualizado_em=datetime('now') WHERE id=?").bind(id).run();
+  // Marca como responsável "Big Tricot" (a marca é a "dona") — assim mostra "Big Tricot"
+  // E NÃO cai na fila de "precisa de atendente" (que dispararia aviso), diferente de deixar
+  // sem dono (NULL).
+  await c.env.DB.prepare("UPDATE atend_conversas SET responsavel='Big Tricot', atualizado_em=datetime('now') WHERE id=?").bind(id).run();
   try {
     const cfg = await lerConfig(c.env);
     const tr = (() => { try { const a = JSON.parse(cfg.atend_transferidos || "[]"); return Array.isArray(a) ? a.map(String) : []; } catch { return [] as string[]; } })().filter((x) => x !== id);
