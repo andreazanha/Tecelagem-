@@ -385,8 +385,8 @@ clientes.post("/gerar-acesso-rep", async (c) => {
   const id = String(b.id || "").trim();
   if (!id) return c.json({ error: "informe_id" }, 400);
   const rep = await c.env.DB.prepare("SELECT id, nome, email, senha_hash FROM representantes WHERE id=?").bind(id).first<{ id: string; nome: string; email: string | null; senha_hash: string | null }>();
-  if (!rep) return c.json({ error: "rep_nao_encontrado", msg: "Representante não encontrado." }, 404);
-  if (!String(rep.email || "").trim()) return c.json({ error: "sem_email", msg: "Esse representante não tem e-mail no cadastro — e o e-mail é o login dele. Cadastre o e-mail primeiro." }, 400);
+  if (!rep) return c.json({ error: "rep_nao_encontrado", msg: "Representante não encontrado." }, 200);
+  if (!String(rep.email || "").trim()) return c.json({ error: "sem_email", msg: "Esse representante não tem e-mail no cadastro — e o e-mail é o login dele. Cadastre o e-mail do rep (nas Guias do Syntech) e tente de novo." }, 200);
   // Código curto (10 caracteres, sem letras/números ambíguos: 0/O, 1/l/I) — vira o link bonito /r/CODIGO.
   const alfabeto = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
   const aleat = new Uint8Array(10); crypto.getRandomValues(aleat);
