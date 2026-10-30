@@ -1442,10 +1442,13 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
           <button className="card-fx-btn" title="Ligar a Big (IA) nesta conversa: manda uma saudação e recomeça o atendimento automático." onClick={(e) => { e.stopPropagation(); onReativarIa(); }} onPointerDown={(e) => e.stopPropagation()}
             style={{ background: "#e8f0ff", color: "#1a56db", border: "1px solid #bcd3ff", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700, padding: "1px 7px", lineHeight: 1.4, letterSpacing: 0.3 }}>IA</button>
         )}
-        {/* Lâmpada 💡: para de piscar (silenciar) — clica de novo pra voltar a piscar. */}
+        {/* Botão PISCAR: para de piscar (silenciar) — clica de novo pra voltar a piscar.
+            Mesma altura do IA/Fim, só mais largo, com o quadrado de "parar" (opção 1 do mockup).
+            Silenciado = cinza/apagado; piscando = amarelo de destaque. */}
         {onSilenciar && (
           <button className="card-fx-btn" title={c.silenciado ? "Voltar a piscar este card" : "Parar de piscar este card (silenciar)"} onClick={(e) => { e.stopPropagation(); onSilenciar(); }} onPointerDown={(e) => e.stopPropagation()}
-            style={{ background: c.silenciado ? "transparent" : "#fef3c7", border: c.silenciado ? 0 : "1px solid #fcd34d", borderRadius: 9, cursor: "pointer", padding: "6px 8px", lineHeight: 0, color: c.silenciado ? "var(--muted)" : "#b45309", opacity: c.silenciado ? 0.5 : 1 }}><IcoAt n="lampada" size={24} /></button>
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, background: c.silenciado ? "transparent" : "#fef3c7", border: c.silenciado ? "1px solid #e2e8f0" : "1px solid #fcd34d", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 800, letterSpacing: 0.3, padding: "1px 8px", lineHeight: 1.4, color: c.silenciado ? "#94a3b8" : "#b45309", opacity: c.silenciado ? 0.75 : 1 }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" style={{ display: "block" }}><rect x="5" y="5" width="14" height="14" rx="3" fill={c.silenciado ? "#94a3b8" : "#b45309"} /></svg>PISCAR</button>
         )}
         {/* Botão FIM: se a IA estiver atendendo (varejo) só para de piscar (IA continua); se for
             lojista/fila humana, encerra a conversa (vai pra "Atendimento finalizado"). */}
