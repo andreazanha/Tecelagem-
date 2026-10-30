@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-30.2";
+const PONTE_VERSAO = "2026-10-30.3";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -1065,11 +1065,15 @@ async function rodadaCarteira(db) {
   let linhas;
   try {
     linhas = await query(db,
-      "SELECT CODIGO, GUIA FROM CLIENTES WHERE GUIA IS NOT NULL AND TRIM(GUIA) <> '' AND TRIM(GUIA) <> '0'");
+      "SELECT CODIGO, CNPJ_CPF, GUIA FROM CLIENTES WHERE GUIA IS NOT NULL AND TRIM(GUIA) <> '' AND TRIM(GUIA) <> '0'");
   } catch (e) { log("! carteira: não li CLIENTES.GUIA —", e.message); return; }
   const mapa = linhas
-    .map((r) => ({ cod: String(r.CODIGO == null ? "" : r.CODIGO).trim(), guia: String(r.GUIA == null ? "" : r.GUIA).trim() }))
-    .filter((m) => m.cod && m.guia && m.guia !== "0");
+    .map((r) => ({
+      cod: String(r.CODIGO == null ? "" : r.CODIGO).trim(),
+      cnpj: String(r.CNPJ_CPF == null ? "" : r.CNPJ_CPF).replace(/\D/g, ""),
+      guia: String(r.GUIA == null ? "" : r.GUIA).trim(),
+    }))
+    .filter((m) => m.guia && m.guia !== "0" && (m.cod || m.cnpj));
   if (!mapa.length) { log("carteira: nenhum cliente com representante no Syntech"); return; }
   const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/carteira-codigos";
   let aplicados = 0, enviados = 0;

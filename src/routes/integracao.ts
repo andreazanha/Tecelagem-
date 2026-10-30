@@ -217,7 +217,7 @@ integracao.post("/representantes", async (c) => {
 // cliente no ERP (clientes.codigo_erp = CLIENTES.CODIGO). Assim a carteira de cada
 // rep passa a ser contada por código — independente da grafia do nome. NÃO mexe no
 // texto clientes.representante (nada é apagado); a contagem por código tem prioridade.
-type CarteiraIn = { cod?: string | number; guia?: string | number };
+type CarteiraIn = { cod?: string | number; cnpj?: string; guia?: string | number };
 integracao.post("/carteira-codigos", async (c) => {
   const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
   const recebido = (c.req.header("X-Integracao-Token") || "").trim();
@@ -227,24 +227,43 @@ integracao.post("/carteira-codigos", async (c) => {
   const mapa = Array.isArray(b.mapa) ? b.mapa : [];
   if (!mapa.length) return c.json({ error: "sem_mapa" }, 400);
 
+  // A maioria dos clientes NÃO tem codigo_erp (entraram por PDF/manual), então casamos
+  // principalmente pelo CNPJ (dígitos). Monta índices em memória pra não varrer a tabela
+  // a cada linha. (id, cnpj, codigo_erp de todos os clientes.)
+  const soDig = (v: unknown) => String(v ?? "").replace(/\D/g, "");
+  const todos = (await c.env.DB.prepare("SELECT id, cnpj, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(rep_codigo,'') AS rep_codigo FROM clientes").all<{ id: string; cnpj: string | null; codigo_erp: string; rep_codigo: string }>()).results;
+  const porCnpj = new Map<string, { id: string; rep: string }>();
+  const porCodigo = new Map<string, { id: string; rep: string }>();
+  for (const cli of todos) {
+    const d = soDig(cli.cnpj);
+    if (d.length >= 11) porCnpj.set(d, { id: cli.id, rep: cli.rep_codigo });
+    if (cli.codigo_erp) porCodigo.set(cli.codigo_erp.trim(), { id: cli.id, rep: cli.rep_codigo });
+  }
+
   const stmts: D1PreparedStatement[] = [];
+  let casados = 0, semCliente = 0;
+  const jaFeito = new Set<string>();
   for (const m of mapa) {
     const cod = str(m.cod);
     const guia = str(m.guia);
-    if (!cod || !guia || guia === "0") continue;
-    stmts.push(
-      c.env.DB.prepare("UPDATE clientes SET rep_codigo = ? WHERE codigo_erp = ? AND COALESCE(rep_codigo,'') <> ?")
-        .bind(guia, cod, guia)
-    );
+    const cnpjD = soDig(m.cnpj);
+    if (!guia || guia === "0") continue;
+    // casa primeiro por código do cliente (quando existe), senão por CNPJ.
+    const alvo = (cod && porCodigo.get(cod)) || (cnpjD.length >= 11 ? porCnpj.get(cnpjD) : undefined);
+    if (!alvo) { semCliente++; continue; }
+    if (jaFeito.has(alvo.id)) continue;
+    jaFeito.add(alvo.id);
+    casados++;
+    if (alvo.rep === guia) continue; // já está certo
+    stmts.push(c.env.DB.prepare("UPDATE clientes SET rep_codigo = ? WHERE id = ?").bind(guia, alvo.id));
   }
   let aplicados = 0;
-  // D1 em lotes (batch) pra não estourar o limite por chamada.
   for (let i = 0; i < stmts.length; i += 50) {
     const res = await c.env.DB.batch(stmts.slice(i, i + 50));
     for (const r of res) aplicados += (r.meta?.changes ?? 0);
   }
   const ligados = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM clientes WHERE COALESCE(rep_codigo,'') <> ''").first<{ n: number }>();
-  return c.json({ ok: true, recebidos: mapa.length, atualizados: aplicados, clientes_com_codigo: ligados?.n ?? 0 });
+  return c.json({ ok: true, recebidos: mapa.length, casados, sem_cliente: semCliente, atualizados: aplicados, clientes_com_codigo: ligados?.n ?? 0 });
 });
 
 // ── LISTA os pedidos do ERP aguardando conferência ──────────────────────────────
