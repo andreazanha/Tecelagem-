@@ -619,8 +619,12 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
     const quem = c.nome || c.contato_nome || telBonito(c.telefone);
     if ("Notification" in window && Notification.permission === "granted") {
       try {
-        const n = new Notification("🔔 Atendimento humano!", { body: `${quem} precisa de um atendente.`, tag: "atend-" + c.id, requireInteraction: true });
+        // SEM requireInteraction: com ele, o Windows deixava o popup preso na tela
+        // até clicar — por isso ficavam vários empilhados sem fechar. Agora somem
+        // sozinhos e ainda forçamos o fechamento em 8s.
+        const n = new Notification("🔔 Atendimento humano!", { body: `${quem} precisa de um atendente.`, tag: "atend-" + c.id });
         n.onclick = () => { window.focus(); setAbrir(c.id); setAlerta(null); n.close(); };
+        setTimeout(() => { try { n.close(); } catch { /* já fechado */ } }, 8000);
       } catch { /* alguns navegadores exigem service worker; o som + banner cobrem */ }
     }
     setAlerta(c);
