@@ -1193,15 +1193,14 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           // estoque da variação contado UMA vez: capa e almofada são a mesma peça (clone),
           // então o saldo da seção é o do par, não a soma das duas opções.
           sec.est = v.temCor ? Object.values(v.estCor).reduce((s, n) => s + (Number(n) || 0), 0) : Math.max(sec.est, v.vivo);
-          // estoque por variação E por cor (cada opção tem o código do kit dela).
-          // Kit SEM receita no Syntech (ex.: WAVE ainda sem composição) NÃO escreve saldo:
-          // fica "sob encomenda" e não é escondido pelo filtro de estoque da loja.
-          if (recPorKit.has(v.prod.id)) {
-            itens[v.prod.id] = itens[v.prod.id] || {};
-            itens[v.prod.id][v.medida] = itens[v.prod.id][v.medida] || {};
-            if (v.prod.cores.length) { for (const c of v.prod.cores) itens[v.prod.id][v.medida][c.id_cor] = v.temCor ? (v.estCor[c.id_cor] || 0) : v.vivo; }
-            else itens[v.prod.id][v.medida]["-"] = v.vivo;
-          }
+          // estoque por variação E por cor (cada opção tem o código do kit dela). Kit SEM
+          // receita no Syntech (ex.: WAVE ainda sem composição) escreve 0 → aparece como
+          // "estoque esgotado" e não deixa comprar (kit é pronta entrega, não sob encomenda);
+          // volta a ter saldo quando cadastrarem a composição no Syntech.
+          itens[v.prod.id] = itens[v.prod.id] || {};
+          itens[v.prod.id][v.medida] = itens[v.prod.id][v.medida] || {};
+          if (v.prod.cores.length) { for (const c of v.prod.cores) itens[v.prod.id][v.medida][c.id_cor] = v.temCor ? (v.estCor[c.id_cor] || 0) : v.vivo; }
+          else itens[v.prod.id][v.medida]["-"] = v.vivo;
         }
         // total do anúncio = soma do saldo de cada variação (já contado uma vez por par).
         estTotal = [...secoes.values()].reduce((s, sec) => s + (Number(sec.est) || 0), 0);
