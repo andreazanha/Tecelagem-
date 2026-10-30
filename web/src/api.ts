@@ -763,6 +763,8 @@ export interface CatalogoProdutoExtra {
   id: string; nome: string; pronta_entrega: boolean; kit: boolean;
   tem_video: boolean; extra_video: string; extra_texto: string;
 }
+export interface LojaImagemCor { id_cor: string; nome: string; hex: string; foto: string }
+export interface LojaImagemProduto { id: string; nome: string; foto: string; secao: string; cores: LojaImagemCor[] }
 
 export interface MaquinaTec { id: string; nome: string; ordem: number; ativo: number }
 export interface MotivoTec { id: string; codigo: string; nome: string | null; tipo: string; ordem: number; ativo: number }
@@ -1392,6 +1394,10 @@ export const api = {
   // Vídeos e textos por produto (catálogo).
   catalogoProdutosExtra: () => fetch("/api/integracao/catalogo-produtos").then((r) => j<CatalogoProdutoExtra[]>(r)),
   produtoExtraSalvar: (id: string, video: string, texto: string) => jsonPost("/api/integracao/produto-extra", { id, video, texto }).then((r) => j<{ ok: boolean }>(r)),
+  // Imagens da loja: foto do produto e foto da cor por modelo (upload no nosso R2).
+  lojaImagens: () => fetch("/api/integracao/loja-imagens").then((r) => j<{ produtos: LojaImagemProduto[] }>(r)),
+  lojaImagemUpload: (file: File) => { const fd = new FormData(); fd.append("file", file); return fetch("/api/integracao/loja-imagem-upload", { method: "POST", body: fd }).then((r) => j<{ ok: boolean; url: string; error?: string }>(r)); },
+  lojaImagemSalvar: (tipo: "produto" | "cor", modelo: string, cor: string, foto: string) => jsonPost("/api/integracao/loja-imagem", { tipo, modelo, cor, foto }).then((r) => j<{ ok: boolean; removido?: boolean }>(r)),
   // Estoque de produtos espelhado do ERP (só leitura).
   erpSyncStatus: () =>
     fetch("/api/integracao/sync-status").then((r) =>

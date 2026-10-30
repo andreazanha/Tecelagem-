@@ -1394,6 +1394,28 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
     if (f) c.foto = f;
   }
 
+  // OVERRIDE de imagens da dona (tabela loja_imagem, editada na página "Imagens"):
+  //  - foto do PRODUTO (tipo='produto') vence a foto casada do Syntech/Cloudinary;
+  //  - foto da COR por MODELO (tipo='cor') — a global é por NOME de cor (igual pra todos),
+  //    então aqui gravamos a foto NA PRÓPRIA cor do produto, pra cada modelo ter a sua
+  //    (é o que conserta Stanza/Chess). A loja lê a foto da cor do produto, caindo na
+  //    global só quando não há override.
+  try {
+    const { results: imgs } = await env.DB.prepare("SELECT tipo, modelo, cor, foto FROM loja_imagem").all<{ tipo: string; modelo: string; cor: string; foto: string }>();
+    const ovProd = new Map<string, string>(), ovCor = new Map<string, string>();
+    for (const r of imgs || []) { if (!r.foto) continue; if (r.tipo === "produto") ovProd.set(String(r.modelo), r.foto); else ovCor.set(String(r.modelo) + "|" + String(r.cor), r.foto); }
+    const corFotoGlobal = new Map<string, string>();
+    for (const c of (Array.isArray(cat.banco_cores) ? (cat.banco_cores as { id?: string; foto?: string }[]) : [])) if (c.id && c.foto) corFotoGlobal.set(String(c.id), c.foto);
+    for (const p of prods) {
+      const pid = String((p as { id?: unknown }).id || "");
+      if (pid && ovProd.has(pid)) p.foto = ovProd.get(pid)!;
+      const cores = (p as { cores?: { id_cor: string; foto?: string }[] }).cores;
+      if (Array.isArray(cores)) for (const c of cores) {
+        c.foto = ovCor.get(pid + "|" + String(c.id_cor)) || corFotoGlobal.get(String(c.id_cor)) || "";
+      }
+    }
+  } catch { /* overrides de imagem: silencioso */ }
+
   const normais: Prod[] = [], limitada: Prod[] = [];
   for (const p of prods) {
     if (p._edicao_limitada) {
@@ -1525,6 +1547,64 @@ integracao.get("/loja-arquivo/:nome", async (c) => {
   obj.writeHttpMetadata(h);
   h.set("Cache-Control", "public, max-age=31536000, immutable");
   return new Response(obj.body, { headers: h });
+});
+
+// ── IMAGENS da loja (fotos de cor por modelo + foto do produto) ──────────────
+// Página "Imagens": a dona sobe/troca as fotos. Guarda em loja_imagem e serve do R2.
+// Upload da imagem → R2 → devolve a URL nossa (mesmo esquema do banner).
+integracao.post("/loja-imagem-upload", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const form = await c.req.formData().catch(() => null);
+  const entry = form?.get("file");
+  if (!entry || typeof entry === "string") return c.json({ error: "arquivo é obrigatório" }, 400);
+  const file = entry as Blob & { name?: string };
+  if (file.size === 0) return c.json({ error: "arquivo vazio" }, 400);
+  if (file.size > 12 * 1024 * 1024) return c.json({ error: "imagem muito grande (máx. 12MB)" }, 400);
+  const ct = file.type || "image/jpeg";
+  if (!ct.startsWith("image/")) return c.json({ error: "envie uma imagem (jpg/png/webp)" }, 400);
+  const ext = (String(file.name || "").split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "jpg";
+  const nome = `img-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  try { await c.env.BUCKET.put(`loja/${nome}`, await file.arrayBuffer(), { httpMetadata: { contentType: ct } }); }
+  catch (e) { return c.json({ error: "não consegui salvar (" + String((e as Error)?.message || e).slice(0, 100) + ")" }, 500); }
+  return c.json({ ok: true, url: `${new URL(c.req.url).origin}/api/integracao/loja-arquivo/${nome}` });
+});
+// Lista os produtos do catálogo (com as cores) e a foto ATUAL de cada um — já com os
+// overrides aplicados — pra a dona ver e trocar. Inclui a Edição Limitada.
+integracao.get("/loja-imagens", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const doc = await gerarDocSite(c.env);
+  type Cor = { id_cor?: string; foto?: string };
+  type P = { id?: string; nome?: string; foto?: string; cores?: Cor[] };
+  const banco = Array.isArray((doc as { banco_cores?: unknown }).banco_cores) ? (doc as { banco_cores: { id?: string; nome?: string; hex?: string }[] }).banco_cores : [];
+  const corInfo = new Map<string, { nome: string; hex: string }>();
+  for (const c2 of banco) corInfo.set(String(c2.id || ""), { nome: String(c2.nome || ""), hex: String(c2.hex || "") });
+  const normais = Array.isArray((doc as { produtos?: unknown }).produtos) ? (doc as { produtos: P[] }).produtos : [];
+  const elDoc = (doc as { edicao_limitada?: { produtos?: P[] } }).edicao_limitada;
+  const el = elDoc && Array.isArray(elDoc.produtos) ? elDoc.produtos : [];
+  const monta = (p: P, secao: string) => ({
+    id: String(p.id || ""), nome: String(p.nome || ""), foto: String(p.foto || ""), secao,
+    cores: (Array.isArray(p.cores) ? p.cores : []).map((c2) => { const ci = corInfo.get(String(c2.id_cor || "")) || { nome: "", hex: "" }; return { id_cor: String(c2.id_cor || ""), nome: ci.nome, hex: ci.hex, foto: String(c2.foto || "") }; }),
+  });
+  const produtos = [...normais.map((p) => monta(p, "catalogo")), ...el.map((p) => monta(p, "edicao"))];
+  return c.json({ produtos });
+});
+// Salva (ou remove, se foto vazia) a foto de um produto (tipo=produto) ou de uma cor de
+// um modelo (tipo=cor). Chave: (tipo, modelo, cor).
+integracao.post("/loja-imagem", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ tipo?: string; modelo?: string; cor?: string; foto?: string }>().catch(() => ({} as { tipo?: string; modelo?: string; cor?: string; foto?: string }));
+  const tipo = b.tipo === "cor" ? "cor" : "produto";
+  const modelo = String(b.modelo || "").trim();
+  const cor = tipo === "cor" ? String(b.cor || "").trim() : "";
+  const foto = String(b.foto || "").trim();
+  if (!modelo) return c.json({ error: "modelo é obrigatório" }, 400);
+  if (tipo === "cor" && !cor) return c.json({ error: "cor é obrigatória" }, 400);
+  if (!foto) {
+    await c.env.DB.prepare("DELETE FROM loja_imagem WHERE tipo=? AND modelo=? AND cor=?").bind(tipo, modelo, cor).run();
+    return c.json({ ok: true, removido: true });
+  }
+  await c.env.DB.prepare("INSERT INTO loja_imagem (tipo, modelo, cor, foto, atualizado_em) VALUES (?,?,?,?,datetime('now')) ON CONFLICT(tipo,modelo,cor) DO UPDATE SET foto=excluded.foto, atualizado_em=datetime('now')").bind(tipo, modelo, cor, foto).run();
+  return c.json({ ok: true });
 });
 
 // ── LOJA B2B (catálogo NOVO, feito do zero) ──────────────────────────────────

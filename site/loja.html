@@ -806,7 +806,15 @@
       return '<div class="bloco"><h5>'+esc(k)+'</h5><ul>'+itens+'</ul></div>';
     }).join("");
   }
-  // Cores como BOLINHAS com a textura real (a mesma foto cc.foto que já existe).
+  // Foto da cor POR MODELO: a dona pode ter trocado a foto daquela cor só pra este
+  // produto (tabela loja_imagem → p.cores[].foto). Se não houver, cai na foto global da
+  // cor (CORES[id].foto). Assim Stanza e Chess podem ter fotos diferentes pra mesma cor.
+  function corFotoDe(p,corId){
+    var cc=CORES[corId]||{};
+    if(p&&p.cores){ for(var i=0;i<p.cores.length;i++){ if(String(p.cores[i].id_cor)===String(corId)){ if(p.cores[i].foto) return p.cores[i].foto; break; } } }
+    return cc.foto||"";
+  }
+  // Cores como BOLINHAS com a textura real (a foto da cor, por modelo quando houver).
   // Sem foto → cai na cor sólida (hex). Nome: no tooltip + destacado na área da cor.
   function coresHTML(p){
     // quantas peças já foram escolhidas em cada cor (pra marcar as bolinhas)
@@ -814,15 +822,17 @@
     Object.keys(sel.qtd).forEach(function(k){ var q=Number(sel.qtd[k])||0; if(q<=0) return; var corId=k.slice(0,k.indexOf("|")); porCor[corId]=(porCor[corId]||0)+q; });
     return coresVisiveis(p).map(function(c){
       var cc=CORES[c.id_cor]||{}; var on=String(c.id_cor)===String(sel.corId)?" on":"";
-      var fundo=cc.foto? "background-image:url('"+esc(cc.foto)+"')" : 'background-color:'+esc(cc.hex||"#ddd");
+      var cf=corFotoDe(p,c.id_cor);
+      var fundo=cf? "background-image:url('"+esc(cf)+"')" : 'background-color:'+esc(cc.hex||"#ddd");
       var n=porCor[c.id_cor]||0; var badge=n>0?'<span class="sw-n">'+n+'</span>':'';
       return '<button type="button" class="sw-dot'+on+(n>0?' has':'')+'" data-cor="'+esc(c.id_cor)+'" title="'+esc(cc.nome||"")+'" aria-label="'+esc(cc.nome||"")+'" style="'+fundo+'">'+badge+'</button>';
     }).join("");
   }
   function corFotoHTML(p){
     var cc=CORES[sel.corId]||{}; if(!cc.nome) return "";
-    var img=cc.foto? '<img class="cf-img" src="'+esc(cc.foto)+'" data-nome="'+esc(cc.nome||"")+'" onclick="__zoomCor(this.src,this.getAttribute(\'data-nome\'))" onerror="this.style.display=\'none\'">' : '<div class="cf-img ph"></div>';
-    return '<div class="corfoto">'+img+'<div class="cf-d"><div class="cf-nm">'+esc(cc.nome)+'</div>'+(cc.foto?'<div class="cf-amp">🔍 clique para ampliar</div>':'')+'</div></div>';
+    var cf=corFotoDe(p,sel.corId);
+    var img=cf? '<img class="cf-img" src="'+esc(cf)+'" data-nome="'+esc(cc.nome||"")+'" onclick="__zoomCor(this.src,this.getAttribute(\'data-nome\'))" onerror="this.style.display=\'none\'">' : '<div class="cf-img ph"></div>';
+    return '<div class="corfoto">'+img+'<div class="cf-d"><div class="cf-nm">'+esc(cc.nome)+'</div>'+(cf?'<div class="cf-amp">🔍 clique para ampliar</div>':'')+'</div></div>';
   }
   // Lightbox da foto do tecido da cor (abre a imagem grande pro cliente ver o detalhe).
   window.__zoomCor=function(src,nome){
