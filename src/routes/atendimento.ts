@@ -3696,7 +3696,7 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
   const msgId = await addMsg(c.env, id, "out", autor, "arquivo", legenda || nomeArq, { arquivoUrl: url });
   // Enviar arquivo também é ação de humano → ASSUME o atendimento (a IA para de responder).
   {
-    const generico = ["atendente", "sistema", "bot", "ia", "big", "robô", "robo"].includes((autor || "").toLowerCase());
+    const generico = ["atendente", "sistema", "bot", "ia", "big", "big tricot", "robô", "robo"].includes((autor || "").toLowerCase());
     const nomeReal = autor && !generico ? autor : "";
     await c.env.DB.prepare(
       `UPDATE atend_conversas SET estado = CASE WHEN estado IN ('grupo','reclamacao') THEN estado ELSE 'atendimento-humano' END,
@@ -4387,7 +4387,7 @@ atendimento.post("/:id/enviar", async (c) => {
   // vira "atendimento-humano" e a IA PARA de responder (corrige "do nada a IA assumiu": antes, se o
   // card ainda estava em triagem, a resposta do humano não marcava como humano e a IA voltava a falar).
   // Grupo e Reclamação mantêm o estado; os demais viram atendimento-humano. Responsável ganha o nome.
-  const GENERICOS = ["atendente", "sistema", "bot", "ia", "big", "robô", "robo"];
+  const GENERICOS = ["atendente", "sistema", "bot", "ia", "big", "big tricot", "robô", "robo"];
   const nomeReal = autor && !GENERICOS.includes(autor.toLowerCase()) ? autor : "";
   // Responder um card FINALIZADO = você REABRIU o contato você mesmo → tira de "Finalizados".
   // Sem isto, o card ficava pegajoso em Finalizado (só o cliente reabria) mesmo você mandando
