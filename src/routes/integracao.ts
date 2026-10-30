@@ -1237,6 +1237,58 @@ export async function gerarCatalogoSite(env: Env): Promise<{
     }
   } catch { /* kits: silencioso — nunca derruba o catálogo */ }
 
+  // ── AGRUPA KITS SEM RECEITA (fallback) ─────────────────────────────────────────
+  // Qualquer produto "KIT ..." que sobrou SOLTO (sem composição no Syntech) é juntado
+  // por FAMÍLIA num card só, com cada tamanho/opção dentro (sob encomenda). Assim o
+  // catálogo "junta os tamanhos" mesmo sem a receita. Roda FORA do bloco acima, então
+  // vale também se a receita faltar. Defensivo: nunca derruba o catálogo.
+  try {
+    const famKey = (s: string) => String(s || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Z0-9]/g, "");
+    const tcase = (s: string) => s.toLowerCase().replace(/\b[\p{L}]/gu, (ch) => ch.toUpperCase());
+    const VARS = ["QUEEN", "KING", "MANTAS", "MANTA"];
+    const familiaKit = (nome: string): { familia: string; opcao: string } | null => {
+      if (!/^\s*KIT\b/i.test(String(nome || ""))) return null;
+      let fam = String(nome).replace(/^\s*KITS?\s+/i, "");
+      let opcao = "", variacao = "";
+      for (const v of VARS) { if (new RegExp("\\b" + v + "\\b").test(fam.toUpperCase())) { variacao = v; break; } }
+      if (variacao) { const i = fam.toUpperCase().indexOf(variacao); opcao = fam.slice(i).trim(); fam = fam.slice(0, i); }
+      else { const ip = fam.indexOf("+"); if (ip >= 0) { opcao = fam.slice(ip).trim(); fam = fam.slice(0, ip); } }
+      fam = fam.replace(/[-–+\s]+$/, "").trim();
+      return { familia: fam || String(nome), opcao: opcao || "Único" };
+    };
+    const porFam = new Map<string, { familia: string; itens: typeof produtos }>();
+    for (const p of produtos) {
+      if ((p as { _kit?: boolean })._kit) continue;      // já é kit unificado (receita)
+      const fk = familiaKit(p.nome || "");
+      if (!fk) continue;
+      const k = famKey(fk.familia);
+      const g = porFam.get(k) || { familia: fk.familia, itens: [] as typeof produtos };
+      g.itens.push(p);
+      porFam.set(k, g);
+    }
+    const idsRem = new Set<string>();
+    const novos: typeof produtos = [];
+    for (const g of porFam.values()) {
+      if (g.itens.length < 2) continue;                  // 1 variação só: deixa como está
+      const prim = g.itens[0];
+      const coresU = new Map<string, { id_cor: string; oculta: boolean }>();
+      const grupos: { id: string; titulo: string; ref: string; estoque: number; linhas: Linha[] }[] = [];
+      for (const it of g.itens) {
+        idsRem.add(it.id);
+        for (const c of it.cores) if (!coresU.has(c.id_cor)) coresU.set(c.id_cor, c);
+        const fk = familiaKit(it.nome || "");
+        const linhas = (it.grupos || []).flatMap((gr) => gr.linhas || []);
+        grupos.push({ id: `${it.id}-opt`, titulo: tcase(fk?.opcao || "Opção"), ref: it.id, estoque: 0, linhas });
+      }
+      const famTit = "Kit " + tcase(g.familia);
+      novos.push({ ...prim, id: `kitf-${famKey(g.familia)}`, nome: famTit, pronta_entrega: true, _kit: true, _kitTitulo: famTit, foto: "", estoque_geral: 0, cores: [...coresU.values()], grupos });
+    }
+    if (novos.length) {
+      for (let i = produtos.length - 1; i >= 0; i--) if (idsRem.has(produtos[i].id)) produtos.splice(i, 1);
+      for (const n of novos) produtos.push(n);
+    }
+  } catch { /* agrupamento sem receita: silencioso */ }
+
   return {
     banco_cores: [...corPorChave.values()],
     banco_tamanhos: [...tamPorMedida.values()],
@@ -1277,16 +1329,23 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
   }
   const aber = (base.aberturas && typeof base.aberturas === "object") ? (base.aberturas as Record<string, { foto?: string }>) : {};
   const placeholder = aber.padrao?.foto || ((base.capa as { foto?: string } | undefined)?.foto) || "";
+  // Deriva o MODELO (a linha, ex.: "WAVE") a partir do nome do kit, pra casar a
+  // foto/ficha do card curado mesmo quando o kit AINDA não está agrupado (sem receita):
+  // "KIT WAVE KING + 55X35" → tira "KIT", corta na variação/"+" → "WAVE".
+  const modeloDoNome = (nome: string) =>
+    String(nome || "").replace(/^\s*KITS?\s+/i, "").replace(/\b(QUEEN|KING|MANTAS?)\b.*$/i, "").replace(/\+.*$/, "").trim();
   for (const p of prods) {
     // KIT: casa foto/vídeo/textos tentando vários nomes — a ficha do catálogo antigo
-    // pode estar na FAMÍLIA ("Kit Balls"), no MODELO sem "KIT" ("Balls", a mesma linha
-    // das peças) ou no nome longo do Syntech ("KIT BALLS QUEEN + 55X35").
+    // pode estar na FAMÍLIA ("Kit Balls"), no MODELO sem "KIT" ("Balls"/"Wave", a mesma
+    // linha das peças) ou no nome longo do Syntech ("KIT BALLS QUEEN + 55X35").
     const kitTit = (p as { _kitTitulo?: unknown })._kitTitulo;
     const fam = (typeof kitTit === "string" && kitTit.trim()) ? kitTit.trim() : "";
-    const modelo = fam ? fam.replace(/^\s*KITS?\s+/i, "").trim() : "";   // "Kit Balls" → "Balls"
+    // modelo = da família ("Kit Balls" → "Balls") OU derivado do nome do produto
+    // (serve pros kits ainda NÃO agrupados: "KIT WAVE KING + 55X35" → "Wave").
+    const modelo = (fam ? fam.replace(/^\s*KITS?\s+/i, "").trim() : "") || modeloDoNome(p.nome || "");
     const mMain = (fam && fotoMap.get(normNome(fam))) || fotoMap.get(normNome(p.nome || ""));
-    const mAlt = modelo ? fotoMap.get(normNome(modelo)) : undefined;      // herda vídeo/textos do modelo "Balls"
-    p.foto = mMain?.foto || p.foto || placeholder;
+    const mAlt = modelo ? fotoMap.get(normNome(modelo)) : undefined;      // herda foto/vídeo/textos do modelo ("Balls"/"Wave")
+    p.foto = mMain?.foto || mAlt?.foto || p.foto || placeholder;
     p.video = mMain?.video || mAlt?.video || "";
     p.fotoDescricao = mMain?.fotoDescricao || mAlt?.fotoDescricao || "";
     const bl = (mMain?.blocos && Object.keys(mMain.blocos).length) ? mMain.blocos
