@@ -1100,10 +1100,10 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         if (temCor) vivo = Object.values(estCor).reduce((s, n) => s + (Number(n) || 0), 0);
         else vivo = 0; // SEM saldo real por cor/tamanho das peças → NÃO chuta o total do cadastro; mostra 0 (sob encomenda)
         partes.sort((a, b) => a.ordem - b.ordem);
-        const comp = partes.map((p) => p.txt).join(" + ");
-        // Rótulo da OPÇÃO = só a COMPOSIÇÃO (ex.: "1× Peseira 70×2,20 + 2× Capas 55×35").
-        // A dona pediu pra NÃO repetir Queen/King/Manta: a medida da peseira já identifica
-        // o tamanho, "Capas" = só a capa e "Almofadas" = cheia (com enchimento).
+        // Composição no formato pedido: "1- Peseira 70×2,20 + 2- Capas 55×35 ( sem enchimento )"
+        // e "... + 2- Almofadas 55×35 ( com enchimento )". O sufixo deixa clara cada opção.
+        const compBase = partes.map((p) => p.txt).join(" + ");
+        const comp = compBase ? `${compBase} ( ${temEnch ? "com" : "sem"} enchimento )` : compBase;
         const medida = comp || (pk.variacao ? tituloCaso(pk.variacao) : "Único");
         const fam = pk.familia ? tituloCaso(pk.familia) : (prod.nome || prod.id);
         const l0 = (prod.grupos[0] && prod.grupos[0].linhas[0]) || null;
@@ -1143,8 +1143,8 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           const key = v.variacao || "x";
           if (!secoes.has(key)) {
             const tituloSec = v.variacao
-              ? `Kit ${v.pecas} ${v.pecas === 1 ? "peça" : "peças"} ${tituloCaso(v.variacao)}`
-              : (v.pecas ? `Kit ${v.pecas} ${v.pecas === 1 ? "peça" : "peças"}` : "Tamanho");
+              ? `Kit ${v.pecas} ${v.pecas === 1 ? "Peça" : "Peças"} ${tituloCaso(v.variacao)}`
+              : (v.pecas ? `Kit ${v.pecas} ${v.pecas === 1 ? "Peça" : "Peças"}` : "Tamanho");
             secoes.set(key, { titulo: tituloSec, est: 0, linhas: [] }); ordemSec.push(key);
           }
           const sec = secoes.get(key)!;
