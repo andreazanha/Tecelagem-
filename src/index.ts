@@ -156,8 +156,13 @@ app.use("*", async (c, next) => {
       const rep = url.searchParams.get("rep") === "1";
       return c.redirect(rep ? "https://vendas.bigtricot.com.br/" : "https://pedidos.bigtricot.com.br/", 302);
     }
+    // IMPORTANTE: só desvia o LINK ANTIGO (…workers.dev) pro domínio bonito. No domínio
+    // bonito (sistema./pedidos./vendas.) NÃO redireciona — senão o F5 (atualizar a página)
+    // numa tela interna, ex.: /atendimento, jogava o usuário de volta pro começo (Pedidos).
+    // Agora o SPA é servido normalmente e o React Router mantém a tela onde você estava.
+    const ehLinkAntigo = url.hostname.endsWith(".workers.dev");
     const manter = p.startsWith("/api/") || p === "/vitrine" || p === "/cadastrar-loja" || p.startsWith("/.well-known");
-    if (!manter) {
+    if (ehLinkAntigo && !manter) {
       // páginas do sistema de gestão (SPA) → subdomínio próprio
       return c.redirect("https://sistema.bigtricot.com.br/", 302);
     }
