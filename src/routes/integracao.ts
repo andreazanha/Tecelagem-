@@ -1100,9 +1100,9 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         if (temCor) vivo = Object.values(estCor).reduce((s, n) => s + (Number(n) || 0), 0);
         else vivo = 0; // SEM saldo real por cor/tamanho das peças → NÃO chuta o total do cadastro; mostra 0 (sob encomenda)
         partes.sort((a, b) => a.ordem - b.ordem);
-        // Composição no formato pedido: "1- Peseira 70×2,20 + 2- Capas 55×35 ( sem enchimento )"
-        // e "... + 2- Almofadas 55×35 ( com enchimento )". O sufixo deixa clara cada opção.
-        const compBase = partes.map((p) => p.txt).join(" + ");
+        // Composição no formato pedido (regra fixa): "1- Peseira 70×2,20 e 2- Capas 55×35
+        // ( sem enchimento )" e "... e 2- Almofadas 55×35 ( com enchimento )". Separador "e".
+        const compBase = partes.map((p) => p.txt).join(" e ");
         const comp = compBase ? `${compBase} ( ${temEnch ? "com" : "sem"} enchimento )` : compBase;
         const medida = comp || (pk.variacao ? tituloCaso(pk.variacao) : "Único");
         const fam = pk.familia ? tituloCaso(pk.familia) : (prod.nome || prod.id);
