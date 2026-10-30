@@ -1112,23 +1112,42 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         porFamilia.set(fam, g);
       }
 
+      // 1b) KITS SEM RECEITA no Syntech (ex.: WAVE): sem composição cadastrada em
+      //     INSUMOS_PROD, o passo acima os ignora e eles ficam como cards soltos (um por
+      //     tamanho). Aqui montamos a variação pela REGRA FIXA do kit (1 peseira + 2
+      //     capas/almofadas = 3 peças) só para AGRUPAR os tamanhos num anúncio só. Sem
+      //     receita não há saldo por peça → ficam "sob encomenda" (vivo=0) até cadastrarem
+      //     a composição; aí passam a puxar estoque igual à balls, sem mexer no código.
+      for (const prod of produtos) {
+        if (recPorKit.has(prod.id)) continue;             // já tratado pela receita acima
+        if (!/\bKIT\b/i.test(prod.nome || "")) continue;   // só kits
+        const pk = parseKit(prod.nome);
+        if (!pk.variacao) continue;                        // precisa de Queen/King/Manta pra agrupar
+        const temEnch = /ENCHIMENTO/i.test(prod.nome || "");
+        const partes = [
+          { ordem: 0, txt: `1- Peseira${pk.peseiraDim ? " " + pk.peseiraDim : ""}` },
+          { ordem: 1, txt: `2- ${temEnch ? "Almofadas" : "Capas"}${pk.almofada ? " " + pk.almofada : ""}` },
+        ].sort((a, b) => a.ordem - b.ordem);
+        const compBase = partes.map((p) => p.txt).join(" + ");
+        const medida = `${compBase} ( ${temEnch ? "com" : "sem"} enchimento )`;
+        const fam = pk.familia ? tituloCaso(pk.familia) : (prod.nome || prod.id);
+        const l0 = (prod.grupos[0] && prod.grupos[0].linhas[0]) || null;
+        const g = porFamilia.get(fam) || { fam, vars: [] };
+        g.vars.push({ prod, medida, vivo: 0, pecas: 3, variacao: pk.variacao, temEnch, almofada: pk.almofada, linha: l0, estCor: {}, temCor: false });
+        porFamilia.set(fam, g);
+      }
+
       // 2) Monta um PRODUTO unificado por família e remove os individuais.
       const idsRemover = new Set<string>();
       const unificados: (typeof produtos[number])[] = [];
       for (const grp of porFamilia.values()) {
         const vars = grp.vars.slice().sort((a, b) =>
           ((VAR_ORDEM[a.variacao] ?? 9) - (VAR_ORDEM[b.variacao] ?? 9)) || ((a.temEnch ? 1 : 0) - (b.temEnch ? 1 : 0)));
-        // O kit "com almofada" (cheio) usa as MESMAS capas do kit "com capa" (vazio) — só
-        // acrescenta enchimento; no Syntech a almofada (KT…-A) nunca tem saldo. Então o kit
-        // cheio REPLICA o estoque do vazio da MESMA variação (Queen/King/Manta). Como os
-        // dois leem a mesma capa ao vivo, vender um baixa o outro na próxima sincronização.
-        const vaziaPorVar = new Map<string, typeof vars[number]>();
-        for (const v of vars) if (!v.temEnch) vaziaPorVar.set(v.variacao || "x", v);
-        for (const v of vars) {
-          if (!v.temEnch) continue;
-          const base = vaziaPorVar.get(v.variacao || "x");
-          if (base) { v.estCor = base.estCor; v.vivo = base.vivo; v.temCor = base.temCor; }
-        }
+        // Cada kit lê o estoque da SUA peça colorida: o "sem enchimento" (vazio) pela CAPA
+        // (KT…-C) e o "com enchimento" (cheio) pela ALMOFADA (KT…-A) — cada peça tem saldo
+        // próprio no Syntech, por cor/tamanho. Quem limita o kit é min(saldo_da_peça ÷ 2,
+        // peseira). As almofadas são divididas entre o kit e a venda avulsa (ver RESERVA
+        // abaixo): o que o kit cheio segura não aparece mais na almofada avulsa.
         const coresMap = new Map<string, { id_cor: string; oculta: boolean }>();
         // UMA SEÇÃO por tamanho (Queen/King/Manta), cada uma com a capa e a almofada
         // dela embaixo — pra separar e não confundir. A variação vira o TÍTULO da seção
@@ -1151,11 +1170,15 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           sec.linhas.push({ id: `${v.prod.id}-${tid}`, cod: v.prod.id, id_tamanho: tid, sul: v.linha ? v.linha.sul : 0, norte: v.linha ? v.linha.norte : 0 });
           sec.est += v.vivo;
           estTotal += v.vivo;
-          // estoque por variação E por cor (cada opção tem o código do kit dela)
-          itens[v.prod.id] = itens[v.prod.id] || {};
-          itens[v.prod.id][v.medida] = itens[v.prod.id][v.medida] || {};
-          if (v.prod.cores.length) { for (const c of v.prod.cores) itens[v.prod.id][v.medida][c.id_cor] = v.temCor ? (v.estCor[c.id_cor] || 0) : v.vivo; }
-          else itens[v.prod.id][v.medida]["-"] = v.vivo;
+          // estoque por variação E por cor (cada opção tem o código do kit dela).
+          // Kit SEM receita no Syntech (ex.: WAVE ainda sem composição) NÃO escreve saldo:
+          // fica "sob encomenda" e não é escondido pelo filtro de estoque da loja.
+          if (recPorKit.has(v.prod.id)) {
+            itens[v.prod.id] = itens[v.prod.id] || {};
+            itens[v.prod.id][v.medida] = itens[v.prod.id][v.medida] || {};
+            if (v.prod.cores.length) { for (const c of v.prod.cores) itens[v.prod.id][v.medida][c.id_cor] = v.temCor ? (v.estCor[c.id_cor] || 0) : v.vivo; }
+            else itens[v.prod.id][v.medida]["-"] = v.vivo;
+          }
         }
         const prim = vars[0].prod;
         const grupos = ordemSec.map((key) => { const s = secoes.get(key)!; return { id: `${prim.id}-${key}`, titulo: s.titulo, ref: "", estoque: s.est, linhas: s.linhas }; });
@@ -1166,9 +1189,10 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         // 30 sobram 10 pra avulsa). reservado[ref][tam][cor] = Σ (kit disponível × qtd).
         const reservado: Record<string, Record<string, Record<string, number>>> = {};
         for (const v of vars) {
-          // só o kit VAZIO reserva a capa; o cheio compartilha a mesma capa (não reserva
-          // de novo, senão contaria 40 capas de 30).
-          if (!v.temCor || v.temEnch) continue;
+          // cada kit disponível reserva a SUA peça colorida: o vazio reserva a CAPA, o
+          // cheio reserva a ALMOFADA. Como são peças (refs) diferentes, não há dupla
+          // contagem; a venda avulsa de cada peça mostra só o que SOBRA depois dos kits.
+          if (!v.temCor) continue;
           for (const it of (recPorKit.get(v.prod.id) || [])) {
             const tamKey = String(it.tam || "").trim();
             const r1 = (reservado[it.comp] ||= {});
