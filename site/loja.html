@@ -839,6 +839,13 @@
   }
   // saldo de uma COR específica (pra ocultar opção/cor sem estoque)
   function estSaldoCor(cod,idt,corId){ var med=medidaDe(idt); var m=EST[cod]&&EST[cod][med]; if(!m) return null; var v=m[corId]; return (v==null)?null:(Number(v)||0); }
+  // REGRA capa/almofada: numa seção marcada com compartilha=true (capa + almofada da MESMA
+  // peça), as opções dividem o MESMO estoque. Não pode vender as duas além do que existe.
+  function grpCompart(p,cod,idt){ var r=null; ((p&&p.grupos)||[]).forEach(function(g){ if(!g.compartilha) return; (g.linhas||[]).forEach(function(l){ if(l.cod===cod&&String(l.id_tamanho)===String(idt)) r=g; }); }); return r; }
+  function estCompart(g,corId){ var s=null; (g.linhas||[]).forEach(function(l){ var v=estSaldoCor(l.cod,l.id_tamanho,corId); if(v!=null) s=(s==null)?v:Math.max(s,v); }); return s; }
+  function usadoCompart(g,corId,exceptK){ var u=0; (g.linhas||[]).forEach(function(l){ var k=corId+"|"+l.cod+"|"+l.id_tamanho; if(k===exceptK) return; u+=Number(sel.qtd[k]||0); }); return u; }
+  // teto da opção (compartilhado): estoque do par menos o que já está na OUTRA opção
+  function tetoCompart(cod,idt,k){ var g=grpCompart(sel.prod,cod,idt); if(!g) return null; var disp=estCompart(g,sel.corId); if(disp==null) return null; return Math.max(0, disp - usadoCompart(g,sel.corId,k)); }
   // só filtra se for pronta entrega/kit E houver dados de estoque (senão não esconde nada)
   function filtraEstoque(p){ if(!(p.pronta_entrega||p._kit)) return false; var has=false; (p.grupos||[]).forEach(function(g){(g.linhas||[]).forEach(function(l){ if(EST[l.cod]) has=true; });}); return has; }
   // a cor tem estoque em ALGUM tamanho?
@@ -863,7 +870,7 @@
         var k=qKey(l.cod,l.id_tamanho); var q=sel.qtd[k]||0;
         return '<div class="tamrow"><div class="medbox"><div class="med">'+esc(medidaDe(l.id_tamanho).replace(/(\d)\s*[×xX]\s*(\d)/g,"$1 × $2"))+'</div>'+estTxtLinha(l.cod,l.id_tamanho)+'</div>'+
           '<div class="pr">'+precoVis(precoLinha(l))+'</div>'+
-          (REP_SOVER ? '' : (LIBERADO ? '<div class="stepper" data-k="'+esc(k)+'"><button data-d="-1">−</button><input type="number" min="0" value="'+q+'"><button data-d="1">+</button></div>' : '<div class="pr" style="opacity:.6;font-size:11px">—</div>'))+'</div>';
+          (REP_SOVER ? '' : (LIBERADO ? '<div class="stepper" data-k="'+esc(k)+'" data-cod="'+esc(l.cod)+'" data-idt="'+esc(l.id_tamanho)+'"><button data-d="-1">−</button><input type="number" min="0" value="'+q+'"><button data-d="1">+</button></div>' : '<div class="pr" style="opacity:.6;font-size:11px">—</div>'))+'</div>';
       }).join("");
       if(!rows) return "";                    // seção sem nenhuma opção visível → some
       return '<div class="grp"><div class="t">'+esc(g.titulo||"Itens")+'</div>'+rows+'</div>';
@@ -949,8 +956,11 @@
     var box=document.getElementById("tamanhos");
     box.querySelectorAll(".stepper").forEach(function(st){
       var k=st.getAttribute("data-k"); var inp=st.querySelector("input");
-      st.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ var d=Number(b.getAttribute("data-d")); var v=Math.max(0,(Number(inp.value)||0)+d); inp.value=v; sel.qtd[k]=v; atualizarResumo(); }; });
-      inp.oninput=function(){ sel.qtd[k]=Math.max(0,Number(inp.value)||0); atualizarResumo(); };
+      var cod=st.getAttribute("data-cod"), idt=st.getAttribute("data-idt");
+      // capa e almofada da mesma peça dividem o estoque: a soma das duas não passa do par
+      function limita(v){ v=Math.max(0,v); var teto=tetoCompart(cod,idt,k); if(teto!=null) v=Math.min(v,teto); return v; }
+      st.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ var d=Number(b.getAttribute("data-d")); var v=limita((Number(inp.value)||0)+d); inp.value=v; sel.qtd[k]=v; atualizarResumo(); }; });
+      inp.oninput=function(){ var v=limita(Number(inp.value)||0); if(v!==(Number(inp.value)||0)) inp.value=v; sel.qtd[k]=v; atualizarResumo(); };
     });
   }
   function adicionarAoCarrinho(){

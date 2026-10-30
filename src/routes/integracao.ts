@@ -1148,6 +1148,24 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         // próprio no Syntech, por cor/tamanho. Quem limita o kit é min(saldo_da_peça ÷ 2,
         // peseira). As almofadas são divididas entre o kit e a venda avulsa (ver RESERVA
         // abaixo): o que o kit cheio segura não aparece mais na almofada avulsa.
+        //
+        // REGRA capa/almofada (clone): numa MESMA variação (Queen/King/Manta), o kit "sem
+        // enchimento" (capa) e o "com enchimento" (almofada) são a MESMA peça física — a
+        // almofada é a capa já com o enchimento. As duas opções COMPARTILHAM o estoque:
+        // tanto faz em qual peça o Syntech tem o saldo, as duas mostram o mesmo número por
+        // cor. A loja conta a peça UMA vez e impede vender as duas além do que existe.
+        const porVariacao = new Map<string, typeof vars>();
+        for (const v of vars) { const k = v.variacao || "x"; const a = porVariacao.get(k); if (a) a.push(v); else porVariacao.set(k, [v]); }
+        for (const lista of porVariacao.values()) {
+          if (lista.length < 2) continue;                 // só há clone quando há capa E almofada
+          const cids = new Set<string>();
+          for (const v of lista) for (const cid of Object.keys(v.estCor)) cids.add(cid);
+          if (!cids.size) continue;                       // sem saldo por cor (ex.: WAVE) → nada a clonar
+          const shared: Record<string, number> = {};
+          for (const cid of cids) shared[cid] = Math.max(...lista.map((v) => Number(v.estCor[cid]) || 0));
+          const vivoShared = Object.values(shared).reduce((s, n) => s + (Number(n) || 0), 0);
+          for (const v of lista) { v.estCor = { ...shared }; v.temCor = true; v.vivo = vivoShared; }
+        }
         const coresMap = new Map<string, { id_cor: string; oculta: boolean }>();
         // UMA SEÇÃO por tamanho (Queen/King/Manta), cada uma com a capa e a almofada
         // dela embaixo — pra separar e não confundir. A variação vira o TÍTULO da seção
@@ -1168,8 +1186,9 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           }
           const sec = secoes.get(key)!;
           sec.linhas.push({ id: `${v.prod.id}-${tid}`, cod: v.prod.id, id_tamanho: tid, sul: v.linha ? v.linha.sul : 0, norte: v.linha ? v.linha.norte : 0 });
-          sec.est += v.vivo;
-          estTotal += v.vivo;
+          // estoque da variação contado UMA vez: capa e almofada são a mesma peça (clone),
+          // então o saldo da seção é o do par, não a soma das duas opções.
+          sec.est = v.temCor ? Object.values(v.estCor).reduce((s, n) => s + (Number(n) || 0), 0) : Math.max(sec.est, v.vivo);
           // estoque por variação E por cor (cada opção tem o código do kit dela).
           // Kit SEM receita no Syntech (ex.: WAVE ainda sem composição) NÃO escreve saldo:
           // fica "sob encomenda" e não é escondido pelo filtro de estoque da loja.
@@ -1180,8 +1199,12 @@ export async function gerarCatalogoSite(env: Env): Promise<{
             else itens[v.prod.id][v.medida]["-"] = v.vivo;
           }
         }
+        // total do anúncio = soma do saldo de cada variação (já contado uma vez por par).
+        estTotal = [...secoes.values()].reduce((s, sec) => s + (Number(sec.est) || 0), 0);
         const prim = vars[0].prod;
-        const grupos = ordemSec.map((key) => { const s = secoes.get(key)!; return { id: `${prim.id}-${key}`, titulo: s.titulo, ref: "", estoque: s.est, linhas: s.linhas }; });
+        // `compartilha` marca as seções de KIT (capa+almofada da mesma peça) pra loja
+        // impedir vender as duas além do estoque; seções avulsas não compartilham.
+        const grupos = ordemSec.map((key) => { const s = secoes.get(key)!; return { id: `${prim.id}-${key}`, titulo: s.titulo, ref: "", estoque: s.est, linhas: s.linhas, compartilha: s.linhas.length > 1 }; });
 
         // RESERVA de componentes pelos kits: cada kit disponível "segura" as peças que
         // usa (capa/almofada) no tamanho dela. A venda avulsa mostra só o que SOBRA —
@@ -1241,7 +1264,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
             else { const bruto = escTam ? Object.values(escTam).reduce((a, n) => a + (Number(n) || 0), 0) : 0; const resvTotal = Object.values(resvTam).reduce((a, n) => a + (Number(n) || 0), 0); const s = Math.max(0, bruto - resvTotal); itens[ref][t.medida]["-"] = s; estAv += s; }
           }
           for (const c of cf.cores) { const cid = idCor(c.nome || "", c.hex || "", ""); if (!coresMap.has(cid)) coresMap.set(cid, { id_cor: cid, oculta: false }); }
-          return { id: `${prim.id}-av-${ref}`, titulo, ref, estoque: estAv, linhas: linhasA };
+          return { id: `${prim.id}-av-${ref}`, titulo, ref, estoque: estAv, linhas: linhasA, compartilha: false };
         };
         const capaRef = [...compRefsFam].find((r) => tipoPeca(compInfo.get(r)?.nome || "") === "capa");
         const almoRef = [...compRefsFam].find((r) => tipoPeca(compInfo.get(r)?.nome || "") === "almofada");
