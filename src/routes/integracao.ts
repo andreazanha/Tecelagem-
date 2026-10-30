@@ -211,6 +211,42 @@ integracao.post("/representantes", async (c) => {
   return c.json({ ok: true, recebidos, pulados, criados, casados, atualizados, com_codigo: tot?.n ?? 0 });
 });
 
+// ── PORTA DE ENTRADA: carteira por CÓDIGO (CLIENTES.GUIA do Syntech) ─────────────
+// A ponte manda, pra cada cliente, o código do representante dele no Syntech
+// (CLIENTES.GUIA). A gente grava em clientes.rep_codigo, casando pelo código do
+// cliente no ERP (clientes.codigo_erp = CLIENTES.CODIGO). Assim a carteira de cada
+// rep passa a ser contada por código — independente da grafia do nome. NÃO mexe no
+// texto clientes.representante (nada é apagado); a contagem por código tem prioridade.
+type CarteiraIn = { cod?: string | number; guia?: string | number };
+integracao.post("/carteira-codigos", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+
+  const b = await c.req.json<{ mapa?: CarteiraIn[] }>().catch(() => ({} as { mapa?: CarteiraIn[] }));
+  const mapa = Array.isArray(b.mapa) ? b.mapa : [];
+  if (!mapa.length) return c.json({ error: "sem_mapa" }, 400);
+
+  const stmts: D1PreparedStatement[] = [];
+  for (const m of mapa) {
+    const cod = str(m.cod);
+    const guia = str(m.guia);
+    if (!cod || !guia || guia === "0") continue;
+    stmts.push(
+      c.env.DB.prepare("UPDATE clientes SET rep_codigo = ? WHERE codigo_erp = ? AND COALESCE(rep_codigo,'') <> ?")
+        .bind(guia, cod, guia)
+    );
+  }
+  let aplicados = 0;
+  // D1 em lotes (batch) pra não estourar o limite por chamada.
+  for (let i = 0; i < stmts.length; i += 50) {
+    const res = await c.env.DB.batch(stmts.slice(i, i + 50));
+    for (const r of res) aplicados += (r.meta?.changes ?? 0);
+  }
+  const ligados = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM clientes WHERE COALESCE(rep_codigo,'') <> ''").first<{ n: number }>();
+  return c.json({ ok: true, recebidos: mapa.length, atualizados: aplicados, clientes_com_codigo: ligados?.n ?? 0 });
+});
+
 // ── LISTA os pedidos do ERP aguardando conferência ──────────────────────────────
 integracao.get("/pendentes", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;

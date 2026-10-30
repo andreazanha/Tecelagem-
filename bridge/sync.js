@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-30.1";
+const PONTE_VERSAO = "2026-10-30.2";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -1057,6 +1057,38 @@ async function rodadaRepresentantes(db) {
   } catch (e) { log("! representantes: erro ao enviar —", e.message); }
 }
 
+// ── Carteira por código (CLIENTES.GUIA) → sistema ───────────────────────────────
+// Manda, pra cada cliente, o código do representante dele no Syntech (CLIENTES.GUIA).
+// O sistema grava em clientes.rep_codigo e passa a contar a carteira por código —
+// independente da grafia do nome. Só lê; nunca escreve no ERP.
+async function rodadaCarteira(db) {
+  let linhas;
+  try {
+    linhas = await query(db,
+      "SELECT CODIGO, GUIA FROM CLIENTES WHERE GUIA IS NOT NULL AND TRIM(GUIA) <> '' AND TRIM(GUIA) <> '0'");
+  } catch (e) { log("! carteira: não li CLIENTES.GUIA —", e.message); return; }
+  const mapa = linhas
+    .map((r) => ({ cod: String(r.CODIGO == null ? "" : r.CODIGO).trim(), guia: String(r.GUIA == null ? "" : r.GUIA).trim() }))
+    .filter((m) => m.cod && m.guia && m.guia !== "0");
+  if (!mapa.length) { log("carteira: nenhum cliente com representante no Syntech"); return; }
+  const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/carteira-codigos";
+  let aplicados = 0, enviados = 0;
+  for (let i = 0; i < mapa.length; i += 500) {
+    const lote = mapa.slice(i, i + 500);
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+        body: JSON.stringify({ mapa: lote }),
+      });
+      const txt = await r.text(); let js = {}; try { js = JSON.parse(txt); } catch { /* não-JSON */ }
+      if (r.ok) { enviados += lote.length; aplicados += Number(js.atualizados) || 0; }
+      else { log(`carteira: lote FALHOU (${r.status}) ${txt.slice(0, 160)}`); return; }
+    } catch (e) { log("! carteira: erro ao enviar lote —", e.message); return; }
+  }
+  log(`carteira: ${enviados} cliente(s) enviado(s) ✓ (${aplicados} atualizado(s) no sistema)`);
+}
+
 async function rodada() {
   const estado = lerEstado();
   const desde = estado.ultimaAlt || (CONFIG.desde ? `${CONFIG.desde} 00:00:00` : "1900-01-01 00:00:00");
@@ -1086,7 +1118,7 @@ async function rodada() {
         WHERE STATUS = ? AND COALESCE(CANC, 'N') <> 'S' AND DATA_ALT_REG > ?
         ORDER BY DATA_ALT_REG`;
     const pedidos = await query(db, SQL_PEDIDOS, [STATUS_APROVADO, desde]);
-    if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaRepresentantes(db); await rodadaProdutos(db, estado); await rodadaEstoque(db); await rodadaKits(db); return; }
+    if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaRepresentantes(db); await rodadaCarteira(db); await rodadaProdutos(db, estado); await rodadaEstoque(db); await rodadaKits(db); return; }
 
     log(`${pedidos.length} pedido(s) aprovado(s) novo(s)/alterado(s)`);
     let maiorAlt = estado.ultimaAlt || null;
@@ -1104,6 +1136,7 @@ async function rodada() {
     }
     log("rodada ok. última data:", formatarParaFirebird(maiorAlt));
     await rodadaRepresentantes(db);
+    await rodadaCarteira(db);
     await rodadaProdutos(db, estado);
     await rodadaEstoque(db);
     await rodadaKits(db);

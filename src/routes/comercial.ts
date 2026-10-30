@@ -20,9 +20,13 @@ export function limparVendedor(v?: string | null): string {
 export const representantes = new Hono<{ Bindings: Env }>();
 
 representantes.get("/", async (c) => {
+  // Carteira: conta por CÓDIGO (clientes.rep_codigo = codigo_erp) quando o cliente já
+  // veio ligado do Syntech; senão cai no casamento por nome (clientes sem código).
   const { results } = await c.env.DB.prepare(
     `SELECT r.id, r.nome, r.whatsapp, r.email, r.ativo, r.observacao, r.ufs, r.instagram, r.cidades, r.comissao, r.codigo_erp,
-            (SELECT COUNT(*) FROM clientes c WHERE TRIM(LOWER(COALESCE(c.representante,''))) = TRIM(LOWER(r.nome))) AS carteira
+            (SELECT COUNT(*) FROM clientes c
+              WHERE (COALESCE(r.codigo_erp,'') <> '' AND c.rep_codigo = r.codigo_erp)
+                 OR (COALESCE(c.rep_codigo,'') = '' AND TRIM(LOWER(COALESCE(c.representante,''))) = TRIM(LOWER(r.nome)))) AS carteira
        FROM representantes r ORDER BY r.nome`
   ).all();
   return c.json(results);
@@ -159,39 +163,57 @@ comercial.get("/diagnostico-carteira", async (c) => {
   const reps = (await c.env.DB.prepare(
     "SELECT nome, ativo, whatsapp, senha_hash, codigo_erp FROM representantes ORDER BY nome"
   ).all<{ nome: string; ativo: number; whatsapp: string | null; senha_hash: string | null; codigo_erp: string | null }>()).results;
-  const repPorNorm = new Map<string, { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number; doSyntechCad: boolean }>();
+  const repPorNorm = new Map<string, { nome: string; ativo: boolean; temWhatsapp: boolean; temSenha: boolean; carteira: number; doSyntechCad: boolean; codigo: string }>();
+  const repPorCodigo = new Map<string, string>(); // codigo_erp → chave norm do rep
   for (const r of reps) {
-    repPorNorm.set(norm(r.nome), {
+    const codigo = (r.codigo_erp || "").trim();
+    const k = norm(r.nome);
+    repPorNorm.set(k, {
       nome: r.nome, ativo: r.ativo !== 0,
       temWhatsapp: !!(r.whatsapp || "").trim(), temSenha: !!(r.senha_hash || "").trim(),
-      carteira: 0, doSyntechCad: !!(r.codigo_erp || "").trim(),
+      carteira: 0, doSyntechCad: !!codigo, codigo,
     });
+    if (codigo) repPorCodigo.set(codigo, k);
   }
 
-  // 2) Carteira real: agrupa clientes por clientes.representante (valor cru), e
-  //    conta quantos desses clientes vieram do Syntech (codigo_erp preenchido).
+  // Totais gerais (todos os clientes). "sem rep" = sem código E sem nome de representante.
+  const totRow = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS total,
+            SUM(CASE WHEN COALESCE(rep_codigo,'') = '' AND COALESCE(TRIM(representante),'') = '' THEN 1 ELSE 0 END) AS sem_rep
+       FROM clientes`
+  ).first<{ total: number; sem_rep: number }>();
+  const totalClientes = Number(totRow?.total) || 0;
+  const semRep = Number(totRow?.sem_rep) || 0;
+
+  // 2a) Carteira por NOME — só dos clientes que AINDA não têm código (os que vieram
+  //     ligados do Syntech já contam por código, abaixo). Serve pros órfãos.
   const cartRows = (await c.env.DB.prepare(
     `SELECT representante AS rep, COUNT(*) AS n,
             SUM(CASE WHEN codigo_erp IS NOT NULL AND TRIM(codigo_erp) <> '' THEN 1 ELSE 0 END) AS syntech
-       FROM clientes GROUP BY representante`
+       FROM clientes WHERE COALESCE(rep_codigo,'') = '' GROUP BY representante`
   ).all<{ rep: string | null; n: number; syntech: number }>()).results;
-
-  let totalClientes = 0, semRep = 0;
   const carteiraPorNorm = new Map<string, { nome: string; clientes: number; doSyntech: number }>();
   for (const row of cartRows) {
-    totalClientes += Number(row.n) || 0;
     const nomeCru = (row.rep || "").trim();
-    if (!nomeCru) { semRep += Number(row.n) || 0; continue; }
+    if (!nomeCru) continue;
     const k = norm(nomeCru);
     const atual = carteiraPorNorm.get(k) || { nome: nomeCru, clientes: 0, doSyntech: 0 };
     atual.clientes += Number(row.n) || 0;
     atual.doSyntech += Number(row.syntech) || 0;
     carteiraPorNorm.set(k, atual);
   }
-  // Leva a contagem de carteira pra ficha do rep cadastrado.
+  // Carteira por NOME entra na ficha do rep (clientes sem código).
   for (const [k, cart] of carteiraPorNorm) {
     const rep = repPorNorm.get(k);
     if (rep) rep.carteira += cart.clientes;
+  }
+  // 2b) Carteira por CÓDIGO: cada cliente ligado (rep_codigo) conta pro rep do código.
+  const codRows = (await c.env.DB.prepare(
+    "SELECT rep_codigo AS cod, COUNT(*) AS n FROM clientes WHERE COALESCE(rep_codigo,'') <> '' GROUP BY rep_codigo"
+  ).all<{ cod: string; n: number }>()).results;
+  for (const row of codRows) {
+    const k = repPorCodigo.get((row.cod || "").trim());
+    if (k) { const rep = repPorNorm.get(k); if (rep) rep.carteira += Number(row.n) || 0; }
   }
   const carteira = [...carteiraPorNorm.values()].map((cart) => ({
     ...cart, temRep: repPorNorm.has(norm(cart.nome)),
