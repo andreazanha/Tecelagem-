@@ -1572,12 +1572,19 @@ body.dark .at-nota { background: #fef9c3; border-color: #fde68a; color: #713f12;
 /* Alternador cliente/interno no compose */
 .at-modo-pill { font: inherit; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line,#d5dbe6); background: var(--card,#fff); color: var(--ink,#334155); cursor: pointer; }
 body.dark .at-modo-pill { background: #fff; border-color: #d5dbe6; color: #334155; }
-/* Card aguardando resposta (mensagem nova do cliente): pisca e sobe pro topo */
-@keyframes atCardPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,.75); } 50% { box-shadow: 0 0 0 9px rgba(34,197,94,0); } }
-/* Cliente esperando: fundo BRANCO (sem verde), só a faixa lateral verde + um anel pulsante
-   de atenção (o anel é brilho, não fundo — mantém o aviso sem "pintar" o card). */
-.fx-card.pulsando { border-left: 3px solid #16a34a; background: #fff; animation: atCardPulse 1.15s ease-in-out infinite; }
-body.dark .fx-card.pulsando { background: #18202f; }
+/* Card aguardando resposta (mensagem nova do cliente): PISCA FORTE e sobe pro topo.
+   Antes era só um anelzinho verde quase invisível — a dona pediu bem mais destaque.
+   Agora o card inteiro "respira" num verde + borda verde ao redor + brilho, impossível de perder. */
+@keyframes atCardPulse {
+  0%, 100% { background: #fff; border-color: #dce3ec; box-shadow: 0 2px 8px rgba(15,23,42,.06); }
+  50%      { background: #bbf7d0; border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,.55), 0 0 18px 3px rgba(22,163,74,.55); }
+}
+.fx-card.pulsando { border-left: 6px solid #16a34a; animation: atCardPulse 1.05s ease-in-out infinite; }
+@keyframes atCardPulseDark {
+  0%, 100% { background: #18202f; border-color: #26324a; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+  50%      { background: #14432a; border-color: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.6), 0 0 18px 3px rgba(34,197,94,.55); }
+}
+body.dark .fx-card.pulsando { animation: atCardPulseDark 1.05s ease-in-out infinite; }
 /* Lembrete manual: fundo branco (a borda segue a cor da etapa; o aviso é o piscar). */
 .fx-card.lembrete { background: #fff !important; }
 body.dark .fx-card.lembrete { background: #18202f !important; }
