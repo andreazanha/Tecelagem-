@@ -627,10 +627,13 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
     tocarAlerta();
   }
 
-  // A cada atualização do quadro, detecta conversas NOVAS que precisam de humano (sem responsável).
+  // A cada atualização do quadro, detecta conversas que precisam de humano AGORA: sem
+  // responsável, com o CLIENTE aguardando resposta (aguardando) E que escreveu RECENTEMENTE
+  // (últimas ~3h). Sem isso, a fila ANTIGA inteira dispara aviso atrás de aviso.
   useEffect(() => {
     if (!board) return;
-    const pend = board.conversas.filter((c) => c.estado === "atendimento-humano" && !c.responsavel);
+    const recenteIn = (t?: string | null) => { if (!t) return false; const ms = Date.parse(String(t).replace(" ", "T") + "Z"); return Number.isFinite(ms) && (Date.now() - ms) < 3 * 3600 * 1000; };
+    const pend = board.conversas.filter((c) => c.estado === "atendimento-humano" && !c.responsavel && aguardando(c) && recenteIn(c.ultima_in_em));
     if (primeiraRef.current) { pend.forEach((c) => alertadosRef.current.add(c.id)); primeiraRef.current = false; return; }
     for (const c of pend) {
       if (!alertadosRef.current.has(c.id)) { alertadosRef.current.add(c.id); dispararAlerta(c); }
