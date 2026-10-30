@@ -530,6 +530,24 @@ integracao.get("/diag", async (c) => {
   const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
   const temToken = !!esperado && recebido === esperado;
   if (!temToken) { const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro; }
+  // ?pedido=tabelas → só o ESQUEMA (nomes de tabela + colunas) que a ponte já mapeou,
+  // do diagnóstico guardado (erp_diag). Nada de dados. Protegido (exige login OU token,
+  // como o resto deste GET). ?q=GUIA filtra por nome de tabela/coluna; sem q, destaca as
+  // que parecem de representante/vendedor/comissão. Serve pra montar a sincronização de reps.
+  if (c.req.query("pedido") === "tabelas") {
+    const r = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='erp_diag'").first<{ valor: string | null; atualizado_em: string | null }>();
+    if (!r || !r.valor) return c.json({ vazio: true, msg: "Ainda não recebi o diagnóstico da ponte." });
+    let d: { quando?: string; tabelas?: { nome: string; colunas: string[] }[] } = {};
+    try { d = JSON.parse(r.valor); } catch { return c.json({ erro: "diag ilegível" }); }
+    const tabs = Array.isArray(d.tabelas) ? d.tabelas : [];
+    const q = (c.req.query("q") || "").toUpperCase().trim();
+    const alvo = q || "GUIA|REPRES|VEND|COMISS|FANTASIA|AGENTE";
+    const re = new RegExp(alvo);
+    const casa = tabs
+      .filter((t) => re.test(String(t.nome).toUpperCase()) || (t.colunas || []).some((cc) => re.test(String(cc).toUpperCase())))
+      .map((t) => ({ nome: t.nome, colunas: t.colunas }));
+    return c.json({ quando: d.quando || r.atualizado_em, total_tabelas: tabs.length, nomes: tabs.map((t) => t.nome), casam: casa });
+  }
   // ?pedido=procs → confirmação LEVE das procedures APP_* (Fase 4). Lê do diagnóstico
   // minúsculo dedicado (erp_diag_procs); se não houver, cai de volta no erp_diag.pedido.
   if (c.req.query("pedido") === "procs") {
