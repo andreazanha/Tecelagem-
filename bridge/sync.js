@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-30.3";
+const PONTE_VERSAO = "2026-10-30.4";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -380,6 +380,15 @@ async function estoquePorCor(db) {
   } catch { /* não bloqueia o estoque */ }
   // Nenhum produto respondeu → procedure errada/ausente → cai no fallback antigo.
   if (!okP && erroP) { log(`! estoque por cor: ${proc} falhou em todos (${erroP}) — ${primeiroErro}. Uso o modo antigo.`); return null; }
+  // A procedure devolveu estoque pra POUQUÍSSIMOS produtos (ex.: rodando de fora da
+  // empresa, as chamadas uma-a-uma caem/voltam vazias). Não é confiável — e, pior, o
+  // servidor apagaria o estoque dos demais achando que zeraram. Então cai na consulta
+  // DIRETA na tabela (CONFIG.estoque.sql = ESTOQUE_DETALHADO): UMA query só, traz tudo.
+  const poucos = okP < Math.max(10, Math.floor((prods.length || 0) * 0.1));
+  if (poucos && CONFIG.estoque && CONFIG.estoque.sql) {
+    log(`estoque por cor: só ${okP} de ${prods.length} produto(s) via ${proc} — pouco demais; uso a consulta direta (ESTOQUE_DETALHADO).`);
+    return null;
+  }
   log(`estoque por cor: ${itens.length} saldo(s) por cor de ${okP} produto(s)` + (erroP ? ` (${erroP} sem detalhe)` : ""));
   return itens;
 }
