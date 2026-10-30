@@ -438,7 +438,11 @@ integracao.get("/estoque", async (c) => {
 // e o SALDO POR COR E TAMANHO (erp_estoque) de cada peça + o estoque_geral. Serve pra
 // ver DE ONDE vem cada número. Abra logado: /api/integracao/diag-produto?busca=balls
 integracao.get("/diag-produto", async (c) => {
-  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  // Aceita sessão (UI) OU o token de integração (?token=) — assim dá pra abrir direto
+  // no navegador pra diagnosticar o estoque por cor das peças. Só leitura.
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
+  if (!(!!esperado && recebido === esperado)) { const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro; }
   const busca = (c.req.query("busca") || "balls").trim().toLowerCase();
   const esc = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch] || ch));
   // 1) produtos (erp_produtos) que casam a busca — inclui kit e peças (KT…).
