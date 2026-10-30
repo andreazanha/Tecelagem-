@@ -1445,7 +1445,7 @@ function ConvMini({ c, foto, colunas, onMover, onAbrir, onLembrete, onAgendar, o
         {/* Lâmpada 💡: para de piscar (silenciar) — clica de novo pra voltar a piscar. */}
         {onSilenciar && (
           <button className="card-fx-btn" title={c.silenciado ? "Voltar a piscar este card" : "Parar de piscar este card (silenciar)"} onClick={(e) => { e.stopPropagation(); onSilenciar(); }} onPointerDown={(e) => e.stopPropagation()}
-            style={{ background: "transparent", border: 0, cursor: "pointer", padding: "0 2px", lineHeight: 0, color: c.silenciado ? "var(--muted)" : "#d97706", opacity: c.silenciado ? 0.5 : 1 }}><IcoAt n="lampada" size={16} /></button>
+            style={{ background: c.silenciado ? "transparent" : "#fef3c7", border: c.silenciado ? 0 : "1px solid #fcd34d", borderRadius: 9, cursor: "pointer", padding: "6px 8px", lineHeight: 0, color: c.silenciado ? "var(--muted)" : "#b45309", opacity: c.silenciado ? 0.5 : 1 }}><IcoAt n="lampada" size={24} /></button>
         )}
         {/* Botão FIM: se a IA estiver atendendo (varejo) só para de piscar (IA continua); se for
             lojista/fila humana, encerra a conversa (vai pra "Atendimento finalizado"). */}
