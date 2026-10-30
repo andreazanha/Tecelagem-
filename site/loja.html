@@ -967,8 +967,20 @@
     box.querySelectorAll(".stepper").forEach(function(st){
       var k=st.getAttribute("data-k"); var inp=st.querySelector("input");
       var cod=st.getAttribute("data-cod"), idt=st.getAttribute("data-idt");
-      // capa e almofada da mesma peça dividem o estoque: a soma das duas não passa do par
-      function limita(v){ v=Math.max(0,v); var teto=tetoCompart(cod,idt,k); if(teto!=null) v=Math.min(v,teto); return v; }
+      // Kit / pronta entrega: só vende o que TEM em estoque (não é sob encomenda).
+      //  - capa e almofada da mesma peça dividem o saldo (tetoCompart);
+      //  - senão, o teto é o saldo da própria opção; sem saldo na cor = 0 (trava).
+      // Produto SEM dados de estoque (ex.: linha sob encomenda) não tem teto.
+      function limita(v){
+        v=Math.max(0,v);
+        var p=sel.prod; if(!(p&&(p.pronta_entrega||p._kit))) return v;
+        var teto=tetoCompart(cod,idt,k);
+        if(teto==null){
+          if(!filtraEstoque(p)) return v;            // sem estoque mapeado → sob encomenda, sem teto
+          var s=estSaldo(cod,idt); teto=(s==null?0:s); // tem estoque no produto, mas 0/none nesta opção → trava
+        }
+        return Math.min(v, Math.max(0,teto));
+      }
       st.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ var d=Number(b.getAttribute("data-d")); var v=limita((Number(inp.value)||0)+d); inp.value=v; sel.qtd[k]=v; atualizarResumo(); }; });
       inp.oninput=function(){ var v=limita(Number(inp.value)||0); if(v!==(Number(inp.value)||0)) inp.value=v; sel.qtd[k]=v; atualizarResumo(); };
     });
