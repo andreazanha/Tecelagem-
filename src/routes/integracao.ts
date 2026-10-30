@@ -923,12 +923,16 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   const produtos = [...porModelo.values()].map((g) => {
     const vars = g.vars.slice().sort((a, b) => (TIPO_ORDEM[a.letra] ?? 9) - (TIPO_ORDEM[b.letra] ?? 9) || a.ref.localeCompare(b.ref));
     const sec = secaoDoGrupo(g.grupo);
+    // Edição Limitada é definida SÓ pela sigla ED na referência (ex.: ED1012-C/A/P), NÃO
+    // pelo nome do grupo do Syntech — que vinha marcando produto errado como EL. Quem é ED
+    // não entra em Pronta Entrega nem nas linhas: vai só pra seção Edição Limitada.
+    const isEL = vars.some((v) => /^ED\d/i.test((v.ref || "").trim()));
     return {
       id: g.base,
       nome: g.nome,
-      linha: sec.linha,
-      pronta_entrega: sec.pronta_entrega,
-      _edicao_limitada: sec.edicao_limitada,
+      linha: isEL ? "padrao" : sec.linha,
+      pronta_entrega: isEL ? false : sec.pronta_entrega,
+      _edicao_limitada: isEL,
       _kit: false,
       _kitTitulo: "",
       composicao: "100% Poliéster",
@@ -1391,9 +1395,14 @@ export async function gerarDocSite(env: Env): Promise<Record<string, unknown>> {
   }
 
   const normais: Prod[] = [], limitada: Prod[] = [];
-  for (const p of prods) { (p._edicao_limitada ? limitada : normais).push(p); }
-  // Edição Limitada: SÓ o que vier do Syntech (grupo "edição limitada"). Não
-  // herda os produtos do catálogo antigo — monta explícito e esconde se vazio.
+  for (const p of prods) {
+    if (p._edicao_limitada) {
+      // Edição Limitada é promoção com estoque controlado: SAI do catálogo quando zera.
+      if (Number((p as { estoque_geral?: unknown }).estoque_geral) > 0) limitada.push(p);
+    } else normais.push(p);
+  }
+  // Edição Limitada: SÓ o que tem sigla ED (ED####) E ainda tem estoque. Não herda os
+  // produtos do catálogo antigo — monta explícito e esconde se vazio.
   const edicaoLimitada = {
     produtos: limitada,
     oculta: limitada.length === 0,
