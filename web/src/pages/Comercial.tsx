@@ -297,7 +297,7 @@ function AbaRepresentantes() {
                 return (
                   <Fragment key={r.id}>
                     <tr style={{ opacity: (r.ativo ?? 1) ? 1 : 0.55 }}>
-                      <td><button className="com-link" onClick={() => setVerId(aberto ? null : r.id)} title="Ver cadastro completo"><span style={{ width: 12, display: "inline-block" }}>{aberto ? "▾" : "▸"}</span> <strong>{r.nome}</strong></button></td>
+                      <td><button className="com-link" onClick={() => setVerId(aberto ? null : r.id)} title="Ver cadastro completo"><span style={{ width: 12, display: "inline-block" }}>{aberto ? "▾" : "▸"}</span> <strong>{r.nome}</strong></button>{(r.codigo_erp || "").trim() && <span className="com-badge ok" style={{ marginLeft: 6 }} title={`Ligado ao Syntech (código ${r.codigo_erp})`}>🟢 Syntech</span>}</td>
                       <td>{(r.ufs || "").split(/[,;\s]+/).filter(Boolean).slice(0, 4).map((u) => <span key={u} className="com-chip">{u}</span>) || "—"}{!r.ufs && <span className="muted">—</span>}</td>
                       <td style={{ textAlign: "right" }}>{nInt(r.carteira || 0)}</td>
                       <td style={{ textAlign: "right" }}>{r.comissao != null ? `${r.comissao}%` : "—"}</td>

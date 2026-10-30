@@ -1922,6 +1922,7 @@ export interface Representante {
   cidades?: string | null;
   comissao?: number | null;
   carteira?: number; // nº de clientes na carteira (clientes.representante = nome)
+  codigo_erp?: string | null; // GUIAS.CODIGO — preenchido = ligado ao Syntech
 }
 export interface VendaRep {
   vendedor: string;
