@@ -1961,5 +1961,24 @@
   })();
 })();
 </script>
+<script>/* Olho pra mostrar/ocultar a senha nos campos de login, cadastro e criação de senha. */
+(function(){
+  function addOlho(id){
+    try{
+      var inp=document.getElementById(id); if(!inp || inp._olho) return; inp._olho=1;
+      var wrap=document.createElement("div"); wrap.style.cssText="position:relative";
+      var cs=window.getComputedStyle(inp); wrap.style.marginTop=cs.marginTop; inp.style.marginTop="0";
+      inp.parentNode.insertBefore(wrap, inp); wrap.appendChild(inp);
+      inp.style.paddingRight="46px";
+      var btn=document.createElement("button"); btn.type="button"; btn.tabIndex=-1; btn.setAttribute("aria-label","Mostrar senha");
+      btn.style.cssText="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:0;cursor:pointer;font-size:18px;line-height:1;padding:8px 10px;color:#8a8073";
+      btn.textContent="👁";
+      btn.onclick=function(){ var mostrar=inp.type==="password"; inp.type=mostrar?"text":"password"; btn.textContent=mostrar?"🙈":"👁"; btn.setAttribute("aria-label",mostrar?"Ocultar senha":"Mostrar senha"); try{ inp.focus(); }catch(e){} };
+      wrap.appendChild(btn);
+    }catch(e){}
+  }
+  ["entSenha","repSenha","snNova","snConf","cSenha","cSenha2"].forEach(addOlho);
+})();
+</script>
 </body>
 </html>
