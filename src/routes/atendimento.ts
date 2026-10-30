@@ -300,7 +300,7 @@ async function addMsg(env: Env, convId: string, direcao: "in" | "out", autor: st
 async function enviarBot(env: Env, convId: string, tel: string, saida: { tipo: string; texto: string }, autor = "bot") {
   const msgId = await addMsg(env, convId, "out", autor, saida.tipo, saida.texto);
   const r = await enviarWhatsapp(env, tel, saida);
-  if (r.enviado && r.messageId) await env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgId).run();
+  if (r.enviado) await env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId ?? null, r.zaapId ?? null, msgId).run();
   return r;
 }
 
@@ -1912,7 +1912,7 @@ async function enviarMsgEncerramento(env: Env, id: string, autor: string) {
   const msg = base.replace(/\{nome\}/gi, primeiro).replace(/\s{2,}/g, " ").trim();
   const msgId = await addMsg(env, id, "out", autor || "Atendente", "texto", msg);
   const r = await enviarWhatsapp(env, conv.telefone, { tipo: "texto", texto: msg });
-  if (r.enviado && r.messageId) await env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgId).run();
+  if (r.enviado) await env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId ?? null, r.zaapId ?? null, msgId).run();
   else if (!r.enviado) await env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run();
   await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(id).run();
   return r;
@@ -2861,6 +2861,19 @@ async function destinoWhatsapp(env: Env, phone: string): Promise<string> {
   } catch { return phone; }
 }
 
+// A Z-API devolve um id (messageId/zaapId/id) quando ACEITA a mensagem. Mas às vezes responde
+// 200 com um { message: "..." } SEM id (confirmação tipo "queued") — e isso É ENVIO NORMAL, a
+// mensagem chega. Só é FALHA de verdade quando vem um "error" explícito OU quando o texto do
+// "message" PARECE erro (grupo: "not a participant", bloqueio, número inválido, etc.). Antes,
+// QUALQUER 200 sem id com um "message" virava "⚠️ não entregue" — mesmo com a mensagem entregue
+// (o cliente respondia logo em seguida). Essa checagem conservadora acaba com o falso alarme.
+const ZAPI_ERRO_RE = /error|erro|fail|falh|inv[aá]lid|invalid|not a |not found|block|bloque|particip|member|membro|exist|permiss|denied|unauthor|forbidden|recus|reject|exceed|spam|\bban\b|n[aã]o (foi|pode|existe|é|e|est|part)/i;
+function zapiFalhou(dj: { error?: string; message?: string } | null | undefined, msgId: string | null): string {
+  if (dj?.error) return String(dj.error);
+  if (!msgId && dj?.message && ZAPI_ERRO_RE.test(String(dj.message))) return String(dj.message);
+  return "";
+}
+
 export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; texto: string }, quote: { zapId?: string | null; texto?: string | null } = {}) {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
@@ -2899,8 +2912,9 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
     // DIAGNÓSTICO: guarda a resposta CRUA da Z-API do último envio (pra ver por que não entregou).
     try { await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('webhook_send_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify({ endpoint: "send-text", para: dest, numero: phone, grupo: ehGrupoDest, status: resp.status, messageId: msgId, resp: rawTxt.slice(0, 400), quando: new Date().toISOString() })).run(); } catch { /* ok */ }
     if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}: ${rawTxt.slice(0, 120)}` };
-    // A Z-API às vezes responde 200 COM erro no corpo (ex.: não é membro do grupo). Isso NÃO é envio.
-    if (dj?.error || (!msgId && dj?.message)) return { enviado: false, motivo: `zapi: ${String(dj.error || dj.message).slice(0, 150)}` };
+    // 200 só é FALHA quando há erro explícito (ou "message" com cara de erro). 200 benigno sem id = enviado.
+    const erroZapi = zapiFalhou(dj, msgId);
+    if (erroZapi) return { enviado: false, motivo: `zapi: ${erroZapi.slice(0, 150)}` };
     return { enviado: true, messageId: msgId, zaapId: dj?.zaapId || null };
   } catch (e) {
     return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
@@ -2951,7 +2965,8 @@ export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string
     const msgId = dj?.messageId || dj?.id || dj?.zaapId || null;
     try { await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('webhook_send_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify({ endpoint, para: dest, numero: phone, grupo: ehGrupoDest, status: resp.status, messageId: msgId, resp: rawTxt.slice(0, 400), quando: new Date().toISOString() })).run(); } catch { /* ok */ }
     if (!resp.ok) return { enviado: false, motivo: `http-${resp.status}: ${rawTxt.slice(0, 120)}` };
-    if (dj?.error || (!msgId && dj?.message)) return { enviado: false, motivo: `zapi: ${String(dj.error || dj.message).slice(0, 150)}` };
+    const erroZapi = zapiFalhou(dj, msgId);
+    if (erroZapi) return { enviado: false, motivo: `zapi: ${erroZapi.slice(0, 150)}` };
     return { enviado: true, messageId: msgId, zaapId: dj?.zaapId || null };
   } catch (e) {
     return { enviado: false, motivo: "erro-rede", detalhe: String(e) };
@@ -3731,7 +3746,7 @@ atendimento.post("/:id/enviar-arquivo", async (c) => {
     // texto SEMPRE chegam — não depende do caption da foto (que a Z-API às vezes entregava vazio).
     const captionMidia = ehImagem ? "" : legenda;   // doc/vídeo levam a legenda junto; imagem vai separada
     const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: nomeArq, caption: captionMidia });
-    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgId).run();
+    if (r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId ?? null, r.zaapId ?? null, msgId).run();
     else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); // marca "⚠️ não entregue"
     if (ehImagem && legenda && r.enviado) {
       try { await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto: legenda }); } catch { /* a foto já foi; se o texto falhar, só ele falta */ }
@@ -3893,7 +3908,7 @@ atendimento.post("/:id/enviar-rapido", async (c) => {
   }
   const enviarBg = (async () => {
     const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: alvo.nomeArq || alvo.nome, caption: "" });
-    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgId).run();
+    if (r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId ?? null, r.zaapId ?? null, msgId).run();
     else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); // marca "⚠️ não entregue"
   })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run(); } catch { /* ok */ } });
   try { c.executionCtx.waitUntil(enviarBg); } catch { /* ok */ }
@@ -3931,12 +3946,12 @@ atendimento.post("/:id/enviar-resposta", async (c) => {
   }
   const enviarBg = (async () => {
     const r = await enviarMidiaZapi(c.env, conv.telefone, { url, docData, ehImagem, ehAudio, ext, fileName: nomeArq, caption: "" });
-    if (r.enviado && r.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId, r.zaapId ?? null, msgMidiaId).run();
+    if (r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId ?? null, r.zaapId ?? null, msgMidiaId).run();
     else if (!r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgMidiaId).run();
     // TEXTO logo DEPOIS da mídia (aparece embaixo, como se fosse a legenda — mas inteiro e garantido).
     if (caption && msgTxtId) {
       const rt = await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto: caption });
-      if (rt.enviado && rt.messageId) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(rt.messageId, rt.zaapId ?? null, msgTxtId).run();
+      if (rt.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(rt.messageId ?? null, rt.zaapId ?? null, msgTxtId).run();
       else if (!rt.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgTxtId).run();
     }
   })().catch(async () => { try { await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgMidiaId).run(); } catch { /* ok */ } });
