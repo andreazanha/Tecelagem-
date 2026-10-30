@@ -4082,6 +4082,23 @@ atendimento.post("/:id/assumir", async (c) => {
   return c.json({ ok: true });
 });
 
+// LIBERAR o responsável: a conversa fica SEM vendedor (as mensagens saem como
+// "Big Tricot"), mas CONTINUA em atendimento humano (não volta pra IA). Serve pra
+// quando a dona respondeu e não quer o próprio nome na conversa.
+atendimento.post("/:id/liberar-responsavel", async (c) => {
+  const gP = await exigirFuncao(c, "crm.assumir"); if ("erro" in gP) return gP.erro;
+  const id = c.req.param("id");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
+  await c.env.DB.prepare("UPDATE atend_conversas SET responsavel=NULL, atualizado_em=datetime('now') WHERE id=?").bind(id).run();
+  try {
+    const cfg = await lerConfig(c.env);
+    const tr = (() => { try { const a = JSON.parse(cfg.atend_transferidos || "[]"); return Array.isArray(a) ? a.map(String) : []; } catch { return [] as string[]; } })().filter((x) => x !== id);
+    await salvarConfigJson(c.env, "atend_transferidos", tr.slice(-500));
+  } catch { /* ok */ }
+  return c.json({ ok: true });
+});
+
 // ── Enviar a conversa para um SETOR inteiro (ex.: Fiscal) ──────────────────────
 // Fica SEM dono (cai na fila "Aguardando atendimento humano"), marcada com o setor,
 // e avisa (notificação + toque) os MEMBROS daquele setor. Qualquer um do setor pega.

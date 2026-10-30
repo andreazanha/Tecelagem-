@@ -1644,7 +1644,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     enviandoRef.current = true; setBusy(true);
     const ctrl = new AbortController(); uploadAbort.current = ctrl;
     try {
-      const r = await api.atendEnviarArquivo(id, anexo.file, d?.responsavel || "Atendente", legendaAnexo.trim() || undefined, ctrl.signal);
+      const r = await api.atendEnviarArquivo(id, anexo.file, d?.responsavel || "Big Tricot", legendaAnexo.trim() || undefined, ctrl.signal);
       if (!r.enviado && r.motivo && r.motivo !== "desligado") alert("Arquivo salvo na conversa, mas não foi enviado ao cliente: " + r.motivo);
       cancelarAnexo(); carregar(); onMudou();
     } catch (e) {
@@ -1666,7 +1666,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     if (!confirm(`Enviar ${validos.length} arquivo(s) para o cliente?` + (grandes ? `\n\n(${grandes} ignorado(s) por passar de 40 MB)` : ""))) return;
     enviandoRef.current = true; setBusy(true);
     try {
-      for (const f of validos) { try { await api.atendEnviarArquivo(id, f, d?.responsavel || "Atendente"); } catch { /* segue os próximos */ } }
+      for (const f of validos) { try { await api.atendEnviarArquivo(id, f, d?.responsavel || "Big Tricot"); } catch { /* segue os próximos */ } }
       carregar(); onMudou();
     } finally { setBusy(false); enviandoRef.current = false; }
   }
@@ -1794,6 +1794,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
     const pendente = nome !== (getUser()?.nome || "");
     setBusy(true);
     try { await api.atendAssumir(id, nome, pendente); carregar(); onMudou(); } finally { setBusy(false); }
+  }
+  // Deixar SEM vendedor: a conversa fica sem dono e as mensagens saem como "Big Tricot".
+  async function liberarResp() {
+    setBusy(true);
+    try { await api.atendLiberarResponsavel(id); carregar(); onMudou(); } finally { setBusy(false); }
   }
   // Puxar uma conversa que está com OUTRO vendedor para você (assume no seu nome e
   // vai direto pra "Em atendimento"). Escolher a si mesmo já não é "pendente".
@@ -2157,8 +2162,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             {/* Vendedor responsável: mostra o nome de quem atende e deixa escolher/trocar direto aqui. */}
             <div style={{ marginTop: 10 }}>
               <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>🧑‍💼 Vendedor responsável</div>
-              <select className={"at-sel" + (d?.responsavel ? " on" : "")} value={d?.responsavel || ""} onChange={(e) => { if (e.target.value) transferir(e.target.value); }} disabled={busy}>
+              <select className={"at-sel" + (d?.responsavel ? " on" : "")} value={d?.responsavel || ""} onChange={(e) => { if (e.target.value === "__big") liberarResp(); else if (e.target.value) transferir(e.target.value); }} disabled={busy}>
                 <option value="">— escolher vendedor —</option>
+                <option value="__big">🏷️ Big Tricot (sem vendedor)</option>
                 {/* Só quem usa o atendimento (tem o acesso "Atendimento"). Admin sempre entra.
                     Mantém o responsável atual visível mesmo que ele não esteja nessa lista. */}
                 {d?.responsavel && !usuarios.some((u) => u.nome === d?.responsavel && !u.bloqueado && pode(u, "atendimento")) && <option value={d?.responsavel || ""}>{d?.responsavel}</option>}
