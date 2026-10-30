@@ -650,6 +650,19 @@
   function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
   function findProd(id){ return PRODUTOS.filter(function(x){return String(x.id)===String(id);})[0]; }
   function medidaDe(idt){ var t=TAM[idt]; return (t&&(t.medida||t.nome))||idt||"-"; }
+  // Formata a composição do kit: tira o "( com/sem enchimento )" do fim e joga numa linha
+  // de baixo COM DESTAQUE e SEM parênteses (regra pra todos os kits). Ex.:
+  //   "1- Peseira 70 × 2,50 + 2- Capas 55 × 35"
+  //   "sem enchimento"  (em destaque)
+  function medFmt(med){
+    med=String(med==null?"":med);
+    var ench="";
+    var m=med.match(/\(\s*(com|sem)\s+enchimento\s*\)/i);
+    if(m){ ench=m[1].toLowerCase()+" enchimento"; med=med.replace(m[0],""); }
+    med=med.replace(/[+\-\s]+$/,"").trim();
+    var esp=esc(med).replace(/(\d)\s*[×xX]\s*(\d)/g,"$1 × $2");
+    return '<div class="med">'+esp+'</div>'+(ench?'<div class="med-ench" style="margin-top:3px;font-weight:700;font-size:12px;color:#ad5033;letter-spacing:.3px">'+esc(ench)+'</div>':'');
+  }
 
   // ---------- GRID ----------
   function badgeHTML(p){ var est=estoqueProduto(p); return est>0?'<span class="badge"><span class="dot"></span>Em estoque</span>':'<span class="badge off"><span class="dot"></span>Sob encomenda</span>'; }
@@ -906,7 +919,7 @@
         var ctrl = esgotado
           ? '<div class="pr" style="opacity:.5;font-size:11.5px">—</div>'
           : (REP_SOVER ? '' : (LIBERADO ? '<div class="stepper" data-k="'+esc(k)+'" data-cod="'+esc(l.cod)+'" data-idt="'+esc(l.id_tamanho)+'"><button data-d="-1">−</button><input type="number" min="0" value="'+q+'"><button data-d="1">+</button></div>' : '<div class="pr" style="opacity:.6;font-size:11px">—</div>'));
-        return '<div class="tamrow"'+(esgotado?' style="opacity:.62"':'')+'><div class="medbox"><div class="med">'+esc(medidaDe(l.id_tamanho).replace(/(\d)\s*[×xX]\s*(\d)/g,"$1 × $2"))+'</div>'+estTxtLinha(l.cod,l.id_tamanho)+'</div>'+
+        return '<div class="tamrow"'+(esgotado?' style="opacity:.62"':'')+'><div class="medbox">'+medFmt(medidaDe(l.id_tamanho))+estTxtLinha(l.cod,l.id_tamanho)+'</div>'+
           '<div class="pr">'+precoVis(precoLinha(l))+'</div>'+
           ctrl+'</div>';
       }).join("");
