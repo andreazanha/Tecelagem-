@@ -1056,16 +1056,26 @@ export async function gerarCatalogoSite(env: Env): Promise<{
 
   // estoque: itens[ref][medida][id_cor] = saldo (casa a cor pelo nome)
   const { results: est } = await env.DB.prepare("SELECT ref, cor, tamanho, saldo FROM erp_estoque").all<{ ref: string | null; cor: string | null; tamanho: string | null; saldo: number }>().catch(() => ({ results: [] as { ref: string | null; cor: string | null; tamanho: string | null; saldo: number }[] }));
+  // O CÓDIGO do tamanho é POR PEÇA; a loja procura o estoque pela MEDIDA, mas o Syntech
+  // guarda o saldo pelo CÓDIGO. Mapa código→medida de cada peça, pra gravar o saldo nas DUAS
+  // chaves: por MEDIDA (produto normal/EL casa aqui) e por CÓDIGO (os kits usam). Sem isso, o
+  // produto normal/EL aparecia SEM estoque e sem trava (a loja procurava "45×45" e só existia "1C").
+  const medPorCod = new Map<string, Map<string, string>>();
+  for (const p of prods) {
+    try { const a = JSON.parse(p.tamanhos || "[]"); if (Array.isArray(a)) for (const t of a) { const tt = normTam(t); const cod = String(tt.tamanho || "").trim().toLowerCase(); if (cod && tt.medida) { let mm = medPorCod.get(p.ref); if (!mm) { mm = new Map(); medPorCod.set(p.ref, mm); } mm.set(cod, tt.medida); } } } catch { /* tamanhos inválido */ }
+  }
   const itens: Record<string, Record<string, Record<string, number>>> = {};
+  const setItem = (ref: string, medKey: string, cid: string, saldo: number) => { itens[ref] = itens[ref] || {}; itens[ref][medKey] = itens[ref][medKey] || {}; itens[ref][medKey][cid] = saldo; };
   for (const e of est) {
     const ref = (e.ref || "").trim(); if (!ref) continue;
-    const med = (e.tamanho || "").trim() || "-";
+    const codeKey = (e.tamanho || "").trim() || "-";
     // MESMO id da cor que a exibição usa (idCor, por NOME) — assim o saldo casa mesmo
     // quando a cor só existe em peça de kit (ex.: bege novo). Antes gerava id separado.
     const cid = idCor((e.cor || "").trim() || "cor", "", "");
-    itens[ref] = itens[ref] || {};
-    itens[ref][med] = itens[ref][med] || {};
-    itens[ref][med][cid] = Number(e.saldo) || 0;
+    const saldo = Number(e.saldo) || 0;
+    setItem(ref, codeKey, cid, saldo);                                  // por CÓDIGO (os kits usam)
+    const med = medPorCod.get(ref)?.get(codeKey.toLowerCase());
+    if (med && med !== codeKey) setItem(ref, med, cid, saldo);          // por MEDIDA (loja normal/EL casa)
   }
   // Desconta as RESERVAS locais (pedidos já enviados pelo cliente/rep, mas ainda não
   // refletidos no SALDO do Syntech). Assim vender um kit/capa baixa NA HORA as outras
@@ -1083,11 +1093,12 @@ export async function gerarCatalogoSite(env: Env): Promise<{
     ).bind(syncEm, syncEm).all<{ ref: string; cor: string | null; tamanho: string | null; q: number }>();
     for (const rv of rvs || []) {
       const ref = (rv.ref || "").trim(); if (!ref) continue;
-      const med = (rv.tamanho || "").trim() || "-";
+      const codeKey = (rv.tamanho || "").trim() || "-";
       const cid = idCor((rv.cor || "").trim() || "cor", "", "");
-      if (itens[ref] && itens[ref][med] && itens[ref][med][cid] != null) {
-        itens[ref][med][cid] = Math.max(0, (Number(itens[ref][med][cid]) || 0) - (Number(rv.q) || 0));
-      }
+      const dec = (mk: string) => { if (itens[ref] && itens[ref][mk] && itens[ref][mk][cid] != null) itens[ref][mk][cid] = Math.max(0, (Number(itens[ref][mk][cid]) || 0) - (Number(rv.q) || 0)); };
+      dec(codeKey);                                                     // baixa pela chave CÓDIGO
+      const med = medPorCod.get(ref)?.get(codeKey.toLowerCase());
+      if (med && med !== codeKey) dec(med);                             // e pela chave MEDIDA
     }
   } catch { /* reservas: nunca derruba o catálogo */ }
 
