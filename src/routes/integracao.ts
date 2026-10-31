@@ -522,6 +522,10 @@ integracao.get("/diag-auditoria", async (c) => {
   const { results: rec } = await c.env.DB.prepare(
     "SELECT kit_ref, componente_ref, quantidade, tamanho FROM erp_kit_receita ORDER BY kit_ref, componente_ref"
   ).all<{ kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }>().catch(() => ({ results: [] as { kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }[] }));
+  // saldo REAL por ref (soma do erp_estoque) — pra mostrar o que aparece ou não na Edição Limitada.
+  const { results: estRows } = await c.env.DB.prepare("SELECT ref, SUM(saldo) AS s FROM erp_estoque GROUP BY ref").all<{ ref: string | null; s: number | null }>().catch(() => ({ results: [] as { ref: string | null; s: number | null }[] }));
+  const saldoDe = new Map<string, number>();
+  for (const e of estRows) saldoDe.set(String(e.ref || "").trim(), Number(e.s) || 0);
 
   // tamanhos por peça: ref -> { nome, map(codigo->medida), list }
   const tamsDe = new Map<string, { nome: string; map: Map<string, string>; list: { cod: string; med: string }[] }>();
@@ -555,11 +559,15 @@ integracao.get("/diag-auditoria", async (c) => {
     if (!med || !ehMedida(med)) compSemMedida.push({ kit: r.kit_ref, comp: r.componente_ref, cod: String(r.tamanho || ""), nomeComp: peca?.nome || r.componente_ref });
     const q = Number(r.quantidade) || 0; if (q > 4 || q < 1) qtdEstranha.push({ kit: r.kit_ref, comp: r.componente_ref, qtd: q, nomeComp: peca?.nome || r.componente_ref });
   }
+  // EDIÇÃO LIMITADA: refs ED… — aparece no catálogo SÓ com saldo real (some quando zera).
+  const elCands = prods.filter((p) => /^ED\d/i.test(String(p.ref || ""))).map((p) => ({ ref: p.ref, nome: String(p.nome || ""), saldo: saldoDe.get(p.ref.trim()) || 0 })).sort((a, b) => (b.saldo - a.saldo) || a.ref.localeCompare(b.ref));
+  const elAparece = elCands.filter((x) => x.saldo > 0);
 
   if ((c.req.query("format") || "") === "json") {
     return c.json({
       total_pecas: prods.length, total_receitas: temReceita.size,
       pecas: [...tamsDe.entries()].map(([ref, v]) => ({ ref, nome: v.nome, tamanhos: v.list })),
+      edicao_limitada: { total: elCands.length, aparecem: elAparece.length, itens: elCands },
       problemas: { kit_sem_receita: kitSemReceita, componente_sem_medida: compSemMedida, quantidade_estranha: qtdEstranha, ref_com_lixo: refLixo, nomes_duplicados: duplicados.map(([n, refs]) => ({ nome: n, refs })) },
     });
   }
@@ -582,6 +590,9 @@ integracao.get("/diag-auditoria", async (c) => {
 <p class="muted">Tudo lido do espelho do Syntech (erp_produtos / erp_kit_receita). O <b>código de tamanho é por peça</b> (não é global). Veja <code>?format=json</code> pro dado cru.</p>
 <h2>Peças e seus tamanhos (código → medida real)</h2>
 <table><tbody>${linhaPeca || '<tr><td colspan="3" class="muted">nenhuma peça encontrada</td></tr>'}</tbody></table>
+<h2 style="border-color:#7c3aed">🏷️ Edição Limitada (ref ED…) — ${elAparece.length} de ${elCands.length} aparecem no catálogo</h2>
+<p class="muted">EL é promoção com estoque controlado: aparece <b>só com saldo</b> e <b>some quando zera</b>. Verde = tem estoque e está no catálogo; cinza = esgotado (oculto).</p>
+<table><tbody>${elCands.map((x) => `<tr><td><b>${esc(x.ref)}</b></td><td>${esc(x.nome)}</td><td style="text-align:right">${esc(x.saldo)}</td><td>${x.saldo > 0 ? '<span style="color:#15803d;font-weight:700">✓ aparece</span>' : '<span class="muted">esgotado (oculto)</span>'}</td></tr>`).join("") || '<tr><td colspan="4" class="muted">nenhum produto ED cadastrado</td></tr>'}</tbody></table>
 ${bloco("⚠️ Kits SEM receita (somem do catálogo até cadastrar)", "#b91c1c", kitSemReceita.map((k) => `<tr><td><b>${esc(k.ref)}</b></td><td>${esc(k.nome)}</td></tr>`).join(""), "todo kit tem receita")}
 ${bloco("⚠️ Componente SEM medida pro código usado (fica sem medida na tela)", "#b91c1c", compSemMedida.map((x) => `<tr><td><b>${esc(x.kit)}</b></td><td>${esc(x.nomeComp)} (<code>${esc(x.comp)}</code>)</td><td>código <code>${esc(x.cod || "—")}</code> sem medida cadastrada</td></tr>`).join(""), "toda peça de receita tem a medida do seu código")}
 ${bloco("⚠️ Quantidade estranha na receita (esperado 1 peseira, 2 almofadas/capas)", "#d97706", qtdEstranha.map((x) => `<tr><td><b>${esc(x.kit)}</b></td><td>${esc(x.nomeComp)} (<code>${esc(x.comp)}</code>)</td><td>quantidade <b>${esc(x.qtd)}</b></td></tr>`).join(""), "quantidades ok")}
