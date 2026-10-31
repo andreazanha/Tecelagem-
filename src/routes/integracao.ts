@@ -507,6 +507,90 @@ integracao.get("/diag-produto", async (c) => {
   return c.html(html);
 });
 
+// ── AUDITORIA Syntech × catálogo ────────────────────────────────────────────────
+// Mostra, direto do espelho do Syntech: 1) cada PEÇA e seus tamanhos (CÓDIGO → MEDIDA
+// real — lembrando que o código é POR PEÇA, não global); 2) os PROBLEMAS (kit sem
+// receita, componente sem a medida do código usado, quantidade estranha, ref com lixo,
+// nomes duplicados). Aberto sem login (só dados de catálogo, nada sensível), igual aos
+// outros diag. Lido em /api/integracao/diag-auditoria (?format=json pro JSON cru).
+integracao.get("/diag-auditoria", async (c) => {
+  const esc = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch] || ch));
+  const ehMedida = (m: string) => /\d\s*[x×]\s*\d/i.test(String(m || ""));
+  const { results: prods } = await c.env.DB.prepare(
+    "SELECT ref, nome, tamanhos, COALESCE(estoque_geral,0) AS estoque_geral, COALESCE(inativo,0) AS inativo FROM erp_produtos"
+  ).all<{ ref: string; nome: string | null; tamanhos: string | null; estoque_geral: number; inativo: number }>().catch(() => ({ results: [] as { ref: string; nome: string | null; tamanhos: string | null; estoque_geral: number; inativo: number }[] }));
+  const { results: rec } = await c.env.DB.prepare(
+    "SELECT kit_ref, componente_ref, quantidade, tamanho FROM erp_kit_receita ORDER BY kit_ref, componente_ref"
+  ).all<{ kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }>().catch(() => ({ results: [] as { kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }[] }));
+
+  // tamanhos por peça: ref -> { nome, map(codigo->medida), list }
+  const tamsDe = new Map<string, { nome: string; map: Map<string, string>; list: { cod: string; med: string }[] }>();
+  for (const p of prods) {
+    const map = new Map<string, string>(); const list: { cod: string; med: string }[] = [];
+    try {
+      const a = JSON.parse(p.tamanhos || "[]");
+      if (Array.isArray(a)) for (const t of a) {
+        const cod = String((t && typeof t === "object" ? (t.tamanho ?? "") : "")).trim();
+        const med = String((t && typeof t === "object" ? (t.medida ?? t.tamanho ?? "") : t) ?? "").trim();
+        if (cod || med) { if (cod) map.set(cod.toLowerCase(), med); list.push({ cod, med }); }
+      }
+    } catch { /* tamanhos inválido */ }
+    tamsDe.set(p.ref, { nome: String(p.nome || p.ref), map, list });
+  }
+  const temReceita = new Set(rec.map((r) => r.kit_ref));
+  const compRefs = new Set(rec.map((r) => r.componente_ref).filter(Boolean));
+
+  // PROBLEMAS
+  const kitSemReceita = prods.filter((p) => /\bKIT\b/i.test(String(p.nome || "")) && /\b(QUEEN|KING|MANTA)\b/i.test(String(p.nome || "")) && !temReceita.has(p.ref)).map((p) => ({ ref: p.ref, nome: String(p.nome || "") }));
+  const refLixo = prods.filter((p) => p.ref !== p.ref.trim() || /[\t\n\r]/.test(p.ref) || /\s/.test(p.ref)).map((p) => ({ ref: p.ref, nome: String(p.nome || "") }));
+  const porNome = new Map<string, string[]>();
+  for (const p of prods) { const k = String(p.nome || "").trim().toUpperCase(); if (!k) continue; const a = porNome.get(k) || []; a.push(p.ref); porNome.set(k, a); }
+  const duplicados = [...porNome.entries()].filter(([, refs]) => refs.length > 1);
+  const compSemMedida: { kit: string; comp: string; cod: string; nomeComp: string }[] = [];
+  const qtdEstranha: { kit: string; comp: string; qtd: number; nomeComp: string }[] = [];
+  for (const r of rec) {
+    const cod = String(r.tamanho || "").trim().toLowerCase();
+    const peca = tamsDe.get(r.componente_ref);
+    const med = cod && peca ? peca.map.get(cod) : "";
+    if (!med || !ehMedida(med)) compSemMedida.push({ kit: r.kit_ref, comp: r.componente_ref, cod: String(r.tamanho || ""), nomeComp: peca?.nome || r.componente_ref });
+    const q = Number(r.quantidade) || 0; if (q > 4 || q < 1) qtdEstranha.push({ kit: r.kit_ref, comp: r.componente_ref, qtd: q, nomeComp: peca?.nome || r.componente_ref });
+  }
+
+  if ((c.req.query("format") || "") === "json") {
+    return c.json({
+      total_pecas: prods.length, total_receitas: temReceita.size,
+      pecas: [...tamsDe.entries()].map(([ref, v]) => ({ ref, nome: v.nome, tamanhos: v.list })),
+      problemas: { kit_sem_receita: kitSemReceita, componente_sem_medida: compSemMedida, quantidade_estranha: qtdEstranha, ref_com_lixo: refLixo, nomes_duplicados: duplicados.map(([n, refs]) => ({ nome: n, refs })) },
+    });
+  }
+
+  // PEÇAS (só as que são componentes de kit ou têm cara de peça KT…): código → medida
+  const pecasKT = [...tamsDe.entries()].filter(([ref]) => compRefs.has(ref) || /^KT/i.test(ref) || /^\d+[A-Z]$/i.test(ref)).sort((a, b) => a[0].localeCompare(b[0]));
+  const linhaPeca = pecasKT.map(([ref, v]) => {
+    const tags = v.list.length
+      ? v.list.map((t) => `<span class="tg ${ehMedida(t.med) ? "" : "bad"}">${esc(t.cod || "—")} → ${esc(t.med || "(sem medida)")}</span>`).join(" ")
+      : '<span class="bad2">(sem tamanhos cadastrados)</span>';
+    return `<tr><td><b>${esc(ref)}</b></td><td>${esc(v.nome)}</td><td>${tags}</td></tr>`;
+  }).join("");
+
+  const bloco = (titulo: string, cor: string, linhas: string, vazio: string) =>
+    `<h2 style="border-color:${cor}">${titulo} <span class="ct">${linhas ? "" : "0"}</span></h2>` + (linhas ? `<table><tbody>${linhas}</tbody></table>` : `<p class="ok">✓ ${vazio}</p>`);
+
+  const html = `<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Auditoria Syntech × catálogo</title>
+<style>body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:#f6f4ef;color:#2c2721;padding:18px;max-width:900px;margin:0 auto}h1{font-size:20px}h2{font-size:15px;margin:26px 0 8px;border-bottom:2px solid #ad5033;padding-bottom:4px}.ct{font-size:12px;color:#b91c1c;font-weight:700}table{border-collapse:collapse;width:100%;background:#fff;border:1px solid #e2dccf;border-radius:8px;overflow:hidden;font-size:13px}td{padding:6px 10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}.tg{display:inline-block;background:#eef7ee;border:1px solid #c7e3c7;border-radius:6px;padding:1px 7px;margin:2px;font-size:12px;white-space:nowrap}.tg.bad{background:#fdecec;border-color:#f3b4b4;color:#b91c1c}.bad2{color:#b91c1c;font-weight:600}.ok{color:#15803d;font-size:13px}.muted{color:#6b6358;font-size:13px}code{background:#efe9df;padding:1px 5px;border-radius:4px}</style></head>
+<body><h1>🔎 Auditoria Syntech × catálogo</h1>
+<p class="muted">Tudo lido do espelho do Syntech (erp_produtos / erp_kit_receita). O <b>código de tamanho é por peça</b> (não é global). Veja <code>?format=json</code> pro dado cru.</p>
+<h2>Peças e seus tamanhos (código → medida real)</h2>
+<table><tbody>${linhaPeca || '<tr><td colspan="3" class="muted">nenhuma peça encontrada</td></tr>'}</tbody></table>
+${bloco("⚠️ Kits SEM receita (somem do catálogo até cadastrar)", "#b91c1c", kitSemReceita.map((k) => `<tr><td><b>${esc(k.ref)}</b></td><td>${esc(k.nome)}</td></tr>`).join(""), "todo kit tem receita")}
+${bloco("⚠️ Componente SEM medida pro código usado (fica sem medida na tela)", "#b91c1c", compSemMedida.map((x) => `<tr><td><b>${esc(x.kit)}</b></td><td>${esc(x.nomeComp)} (<code>${esc(x.comp)}</code>)</td><td>código <code>${esc(x.cod || "—")}</code> sem medida cadastrada</td></tr>`).join(""), "toda peça de receita tem a medida do seu código")}
+${bloco("⚠️ Quantidade estranha na receita (esperado 1 peseira, 2 almofadas/capas)", "#d97706", qtdEstranha.map((x) => `<tr><td><b>${esc(x.kit)}</b></td><td>${esc(x.nomeComp)} (<code>${esc(x.comp)}</code>)</td><td>quantidade <b>${esc(x.qtd)}</b></td></tr>`).join(""), "quantidades ok")}
+${bloco("⚠️ Ref com espaço/caractere invisível", "#d97706", refLixo.map((x) => `<tr><td><code>${esc(JSON.stringify(x.ref))}</code></td><td>${esc(x.nome)}</td></tr>`).join(""), "nenhuma ref com lixo")}
+${bloco("⚠️ Nomes duplicados (mesma descrição, refs diferentes)", "#d97706", duplicados.map(([n, refs]) => `<tr><td>${esc(n)}</td><td>${refs.map((r) => `<code>${esc(r)}</code>`).join(" ")}</td></tr>`).join(""), "nenhum nome duplicado")}
+</body></html>`;
+  return c.html(html);
+});
+
 // ALERTA de peças do kit: avisa a equipe quando as peças não batem pra montar o kit
 // (ex.: sobra peseira por falta de capa). Usado pelo popup no admin.
 integracao.get("/kit-alertas", async (c) => {
@@ -1069,17 +1153,18 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           pecas += Number(it.qtd) || 0;
           vivo = Math.min(vivo, Math.floor(info.estoque / (it.qtd || 1)));
           const tp = tipoPeca(info.nome);
-          // MEDIDA REAL do Syntech: casa o CÓDIGO do tamanho da receita (ex.: peseira "2K",
-          // almofada "7K") com o cadastro da peça (compInfo.tamanhos) e usa a MEDIDA de verdade.
-          // Só cai na tabela fixa (pk.*) quando a peça NÃO tem uma medida válida cadastrada —
-          // nunca por cima do dado real. Assim a composição exibida vem 100% do Syntech.
+          // MEDIDA REAL do Syntech, SEM tabela fixa. O código do tamanho (ex.: "2K") é um slot
+          // DE CADA PEÇA — não é global (o "1K" da peseira pode ser outra medida que o "1K" da
+          // almofada). Então casa o código da receita com o cadastro DAQUELA peça (compInfo.
+          // tamanhos) e usa a MEDIDA cadastrada. Se a peça não tiver medida válida pro código,
+          // NÃO inventa: fica sem medida (a composição mostra só "1- Peseira" etc.). A peça sem
+          // medida é listada na auditoria (/diag-auditoria) pra cadastrarem no Syntech.
           const dim = (() => {
             const cod = String(it.tam || "").trim().toLowerCase();
             const tams = compInfo.get(it.comp)?.tamanhos;
             const hit = cod && tams ? tams.find((x) => String(x.tamanho || "").trim().toLowerCase() === cod) : undefined;
             const m = hit && hit.medida ? String(hit.medida).trim() : "";
-            if (/\d\s*[x×]\s*\d/i.test(m)) return m.replace(/x/gi, "×").replace(/\s+/g, "");
-            return tp === "peseira" ? pk.peseiraDim : (tp === "capa" || tp === "almofada") ? pk.almofada : "";
+            return /\d\s*[x×]\s*\d/i.test(m) ? m.replace(/x/gi, "×").replace(/\s+/g, "") : "";
           })();
           const rotulo = tp === "peseira" ? (it.qtd > 1 ? "Peseiras" : "Peseira")
             : tp === "almofada" ? (it.qtd > 1 ? "Almofadas" : "Almofada")
