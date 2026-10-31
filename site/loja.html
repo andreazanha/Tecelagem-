@@ -295,6 +295,11 @@
   .grp .t{color:var(--accent); font-weight:600; font-size:15px; margin:14px 0 2px; letter-spacing:.01em}
   .grp:first-child .t{margin-top:4px}
   .tamrow{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 0; border-bottom:1px solid var(--line)}
+  /* EL: cartãozinho por tamanho, unindo capa + almofada (par visualmente junto) */
+  .grp-el{background:#faf7f2; border:1px solid #efe7db; border-radius:12px; padding:2px 13px 6px; margin-top:14px}
+  .grp-el .t{margin-top:10px}
+  .grp-el .tamrow{padding:9px 0}
+  .grp-el .tamrow:last-child{border-bottom:none}
   .tamrow .medbox{flex:1 1 auto; min-width:0}
   .tamrow .med{font-size:15px; color:var(--ink); font-weight:500; line-height:1.3}
   .tamrow .med small{color:var(--muted); margin-left:6px}
@@ -922,9 +927,9 @@
         // (mostra "estoque esgotado" embaixo) mas NÃO deixa comprar — sem stepper.
         var sEsg = filtra ? estSaldo(l.cod,l.id_tamanho) : null;
         var esgotado = (sEsg!=null && sEsg<=0);
-        // EDIÇÃO LIMITADA: é promoção — tamanho/cor ZERADO some de vez (não mostra "esgotado"),
-        // pra não confundir cliente/representante. (Pronta entrega/kit continua mostrando esgotado.)
-        if(esgotado && p && p._edicao_limitada) return "";
+        // EDIÇÃO LIMITADA: é promoção — só mostra o tamanho/cor com estoque REAL > 0. Zerado OU
+        // sem estoque mapeado SOME de vez (não mostra "esgotado"), pra não confundir cliente/rep.
+        if(p && p._edicao_limitada && !(sEsg>0)) return "";
         var rot = l.rotulo ? medFmt(l.rotulo) : medFmt(medidaDe(l.id_tamanho));
         var ctrl = esgotado
           ? '<div class="pr" style="opacity:.5;font-size:11.5px">—</div>'
@@ -934,7 +939,8 @@
           ctrl+'</div>';
       }).join("");
       if(!rows) return "";                    // seção sem nenhuma opção visível → some
-      return '<div class="grp"><div class="t">'+esc(g.titulo||"Itens")+'</div>'+rows+'</div>';
+      // EL: cada tamanho vira um cartãozinho unindo capa + almofada (fica claro que é o par).
+      return '<div class="grp'+(p&&p._edicao_limitada?' grp-el':'')+'"><div class="t">'+esc(g.titulo||"Itens")+'</div>'+rows+'</div>';
     }).join("");
     if(!grupos) grupos='<div class="estx off" style="padding:10px 0">Sem opções em estoque nesta cor.</div>';
     return '<div class="lbl">'+(REP_SOVER?'Tamanhos e preços':'Escolha os tamanhos')+' — <b>'+esc(cc.nome||"")+'</b></div>'+grupos;
