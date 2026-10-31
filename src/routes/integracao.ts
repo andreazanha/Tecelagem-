@@ -232,16 +232,16 @@ integracao.post("/carteira-codigos", async (c) => {
   // a cada linha. (id, cnpj, codigo_erp de todos os clientes.)
   const soDig = (v: unknown) => String(v ?? "").replace(/\D/g, "");
   const todos = (await c.env.DB.prepare("SELECT id, cnpj, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(rep_codigo,'') AS rep_codigo FROM clientes").all<{ id: string; cnpj: string | null; codigo_erp: string; rep_codigo: string }>()).results;
-  const porCnpj = new Map<string, { id: string; rep: string }>();
-  const porCodigo = new Map<string, { id: string; rep: string }>();
+  const porCnpj = new Map<string, { id: string; rep: string; cod: string }>();
+  const porCodigo = new Map<string, { id: string; rep: string; cod: string }>();
   for (const cli of todos) {
     const d = soDig(cli.cnpj);
-    if (d.length >= 11) porCnpj.set(d, { id: cli.id, rep: cli.rep_codigo });
-    if (cli.codigo_erp) porCodigo.set(cli.codigo_erp.trim(), { id: cli.id, rep: cli.rep_codigo });
+    if (d.length >= 11) porCnpj.set(d, { id: cli.id, rep: cli.rep_codigo, cod: cli.codigo_erp });
+    if (cli.codigo_erp) porCodigo.set(cli.codigo_erp.trim(), { id: cli.id, rep: cli.rep_codigo, cod: cli.codigo_erp });
   }
 
   const stmts: D1PreparedStatement[] = [];
-  let casados = 0, semCliente = 0;
+  let casados = 0, semCliente = 0, codPreenchidos = 0;
   const jaFeito = new Set<string>();
   for (const m of mapa) {
     const cod = str(m.cod);
@@ -254,8 +254,18 @@ integracao.post("/carteira-codigos", async (c) => {
     if (jaFeito.has(alvo.id)) continue;
     jaFeito.add(alvo.id);
     casados++;
-    if (alvo.rep === guia) continue; // já está certo
-    stmts.push(c.env.DB.prepare("UPDATE clientes SET rep_codigo = ? WHERE id = ?").bind(guia, alvo.id));
+    // Além do representante (rep_codigo), GRAVA o código do cliente no ERP (codigo_erp) quando
+    // está vazio. Esse código já vinha da ponte (CLIENTES.CODIGO), mas antes era só usado pra
+    // casar e DESCARTADO — por isso todo cliente do Syntech ficava "Em análise" (sem codigo_erp
+    // = não liberado). Com o código preenchido, o cliente do ERP já aparece LIBERADO. Nunca
+    // sobrescreve um código que já existe.
+    const precisaRep = alvo.rep !== guia;
+    const precisaCod = !!cod && !alvo.cod;
+    if (!precisaRep && !precisaCod) continue; // já está tudo certo
+    if (precisaCod) codPreenchidos++;
+    if (precisaRep && precisaCod) stmts.push(c.env.DB.prepare("UPDATE clientes SET rep_codigo = ?, codigo_erp = ? WHERE id = ?").bind(guia, cod, alvo.id));
+    else if (precisaRep) stmts.push(c.env.DB.prepare("UPDATE clientes SET rep_codigo = ? WHERE id = ?").bind(guia, alvo.id));
+    else stmts.push(c.env.DB.prepare("UPDATE clientes SET codigo_erp = ? WHERE id = ?").bind(cod, alvo.id));
   }
   let aplicados = 0;
   for (let i = 0; i < stmts.length; i += 50) {
@@ -263,7 +273,7 @@ integracao.post("/carteira-codigos", async (c) => {
     for (const r of res) aplicados += (r.meta?.changes ?? 0);
   }
   const ligados = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM clientes WHERE COALESCE(rep_codigo,'') <> ''").first<{ n: number }>();
-  return c.json({ ok: true, recebidos: mapa.length, casados, sem_cliente: semCliente, atualizados: aplicados, clientes_com_codigo: ligados?.n ?? 0 });
+  return c.json({ ok: true, recebidos: mapa.length, casados, sem_cliente: semCliente, atualizados: aplicados, codigo_preenchidos: codPreenchidos, clientes_com_codigo: ligados?.n ?? 0 });
 });
 
 // ── LISTA os pedidos do ERP aguardando conferência ──────────────────────────────
