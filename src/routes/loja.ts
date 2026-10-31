@@ -31,10 +31,15 @@ function regiaoDoCliente(lojaRegiao?: string | null, uf?: string | null): "sul" 
   return regiaoDeUF(uf);
 }
 
-// "Liberado" = pode ver preços e comprar. Cliente que já é nosso (tem código no Syntech)
-// ou cadastro da loja já APROVADO pelo gestor. Cadastro novo em análise = não liberado.
-function clienteLiberado(codigoErp?: string | null, lojaStatus?: string | null): boolean {
+// "Liberado" = pode ver preços e comprar. É cliente nosso de verdade quando:
+//  - tem código no Syntech (codigo_erp), OU
+//  - está atribuído a um representante no Syntech (rep_codigo) — veio do ERP e já é aprovado,
+//    NÃO precisa aprovar de novo, OU
+//  - teve o cadastro da loja APROVADO pelo gestor (loja_status = aprovado).
+// Só fica "em análise" quem se cadastrou pela loja e ainda não foi aprovado (sem código, sem rep).
+function clienteLiberado(codigoErp?: string | null, lojaStatus?: string | null, repCodigo?: string | null): boolean {
   if (String(codigoErp || "").trim() !== "") return true;
+  if (String(repCodigo || "").trim() !== "") return true;
   return String(lojaStatus || "").trim() === "aprovado";
 }
 
@@ -48,6 +53,7 @@ async function carteiraDoRep(env: Env, repNome: string) {
   // Os pedidos guardam o CNPJ só com dígitos; o cadastro guarda formatado — normaliza os dois.
   const { results } = await env.DB.prepare(
     `SELECT c.id, c.nome, c.fantasia, c.cnpj, c.cidade, c.uf, c.loja_regiao, COALESCE(c.codigo_erp,'') AS codigo_erp,
+            COALESCE(c.rep_codigo,'') AS rep_codigo,
             COALESCE(c.loja_status,'') AS loja_status, COALESCE(c.bloqueado,0) AS bloqueado,
             (SELECT MAX(COALESCE(p.created_at, p.data_pedido)) FROM pedidos p
                WHERE p.canal='loja_b2b'
@@ -58,12 +64,12 @@ async function carteiraDoRep(env: Env, repNome: string) {
       WHERE (? <> '' AND c.rep_codigo = ?)
          OR (COALESCE(c.rep_codigo,'') = '' AND TRIM(LOWER(COALESCE(c.representante,''))) = TRIM(LOWER(?)))
       ORDER BY c.nome`
-  ).bind(codigo, codigo, repNome).all<{ id: string; nome: string | null; fantasia: string | null; cnpj: string | null; cidade: string | null; uf: string | null; loja_regiao: string | null; codigo_erp: string; loja_status: string; bloqueado: number; ultimo_pedido: string | null }>();
+  ).bind(codigo, codigo, repNome).all<{ id: string; nome: string | null; fantasia: string | null; cnpj: string | null; cidade: string | null; uf: string | null; loja_regiao: string | null; codigo_erp: string; rep_codigo: string; loja_status: string; bloqueado: number; ultimo_pedido: string | null }>();
   return results.map((r) => ({
     id: r.id, nome: r.nome, fantasia: r.fantasia, cnpj: r.cnpj, cidade: r.cidade, uf: r.uf,
     regiao: regiaoDoCliente(r.loja_regiao, r.uf),
-    liberado: clienteLiberado(r.codigo_erp, r.loja_status),
-    status: r.loja_status || (r.codigo_erp ? "aprovado" : ""),
+    liberado: clienteLiberado(r.codigo_erp, r.loja_status, r.rep_codigo),
+    status: (r.codigo_erp || r.rep_codigo) ? "aprovado" : (r.loja_status || ""),
     bloqueado: Number(r.bloqueado) === 1,
     ultimo_pedido: r.ultimo_pedido || null,
   }));
@@ -126,9 +132,9 @@ loja.post("/entrar", async (c) => {
 
   const cli = await c.env.DB.prepare(
     "SELECT nome, uf, loja_regiao, COALESCE(bloqueado,0) AS bloqueado, senha_hash, " +
-    "COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp FROM clientes " +
+    "COALESCE(rep_codigo,'') AS rep_codigo, COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp FROM clientes " +
     "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
-  ).bind(cnpjDig).first<{ nome: string | null; uf: string | null; loja_regiao: string | null; bloqueado: number; senha_hash: string | null; loja_status: string; codigo_erp: string }>();
+  ).bind(cnpjDig).first<{ nome: string | null; uf: string | null; loja_regiao: string | null; bloqueado: number; senha_hash: string | null; rep_codigo: string; loja_status: string; codigo_erp: string }>();
 
   if (!cli) return c.json({ erro: "cliente_nao_encontrado", msg: "Não encontramos esse CNPJ. Se é sua primeira vez, cadastre sua loja." }, 404);
   if (Number(cli.bloqueado) === 1) return c.json({ erro: "cliente_bloqueado", msg: "Seu cadastro está bloqueado no momento. Fale com a Big Tricot." }, 403);
@@ -140,8 +146,8 @@ loja.post("/entrar", async (c) => {
 
   return c.json({
     ok: true, nome: cli.nome || "", regiao: regiaoDoCliente(cli.loja_regiao, cli.uf),
-    liberado: clienteLiberado(cli.codigo_erp, cli.loja_status),
-    status: cli.loja_status || (cli.codigo_erp ? "aprovado" : ""),
+    liberado: clienteLiberado(cli.codigo_erp, cli.loja_status, cli.rep_codigo),
+    status: (cli.codigo_erp || cli.rep_codigo) ? "aprovado" : (cli.loja_status || ""),
   });
 });
 
@@ -152,14 +158,14 @@ loja.get("/sessao", async (c) => {
   if (cnpjDig.length < 11) return c.json({ ok: false });
   const cli = await c.env.DB.prepare(
     "SELECT nome, uf, loja_regiao, COALESCE(bloqueado,0) AS bloqueado, senha_hash, " +
-    "COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp FROM clientes " +
+    "COALESCE(rep_codigo,'') AS rep_codigo, COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp FROM clientes " +
     "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
-  ).bind(cnpjDig).first<{ nome: string | null; uf: string | null; loja_regiao: string | null; bloqueado: number; senha_hash: string | null; loja_status: string; codigo_erp: string }>();
+  ).bind(cnpjDig).first<{ nome: string | null; uf: string | null; loja_regiao: string | null; bloqueado: number; senha_hash: string | null; rep_codigo: string; loja_status: string; codigo_erp: string }>();
   if (!cli || Number(cli.bloqueado) === 1 || !cli.senha_hash) return c.json({ ok: false });
   return c.json({
     ok: true, nome: cli.nome || "", regiao: regiaoDoCliente(cli.loja_regiao, cli.uf),
-    liberado: clienteLiberado(cli.codigo_erp, cli.loja_status),
-    status: cli.loja_status || (cli.codigo_erp ? "aprovado" : ""),
+    liberado: clienteLiberado(cli.codigo_erp, cli.loja_status, cli.rep_codigo),
+    status: (cli.codigo_erp || cli.rep_codigo) ? "aprovado" : (cli.loja_status || ""),
   });
 });
 
@@ -186,18 +192,18 @@ loja.post("/definir-senha", async (c) => {
   const nova = String(b.nova || "");
   if (nova.length < 4) return c.json({ erro: "senha_curta", msg: "Crie uma senha com pelo menos 4 caracteres." }, 400);
 
-  let cli: { id: string; nome: string | null; cnpj: string | null; uf: string | null; loja_regiao: string | null; senha_hash: string | null; loja_status: string; codigo_erp: string } | null = null;
+  let cli: { id: string; nome: string | null; cnpj: string | null; uf: string | null; loja_regiao: string | null; senha_hash: string | null; loja_status: string; codigo_erp: string; rep_codigo: string } | null = null;
   const token = String(b.token || "").trim();
   if (token.length >= 10) {
     cli = await c.env.DB.prepare(
-      "SELECT id, nome, cnpj, uf, loja_regiao, senha_hash, COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(bloqueado,0) AS bloqueado FROM clientes WHERE acesso_token = ? LIMIT 1"
+      "SELECT id, nome, cnpj, uf, loja_regiao, senha_hash, COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(rep_codigo,'') AS rep_codigo, COALESCE(bloqueado,0) AS bloqueado FROM clientes WHERE acesso_token = ? LIMIT 1"
     ).bind(token).first();
     if (!cli) return c.json({ erro: "token_invalido", msg: "Link inválido. Peça um novo à Big Tricot." }, 404);
   } else {
     const cnpjDig = soDigitos(b.cnpj);
     if (cnpjDig.length < 11) return c.json({ erro: "cnpj_invalido", msg: "CNPJ inválido." }, 400);
     cli = await c.env.DB.prepare(
-      "SELECT id, nome, cnpj, uf, loja_regiao, senha_hash, COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp FROM clientes " +
+      "SELECT id, nome, cnpj, uf, loja_regiao, senha_hash, COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(rep_codigo,'') AS rep_codigo FROM clientes " +
       "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
     ).bind(cnpjDig).first();
     if (!cli) return c.json({ erro: "cliente_nao_encontrado", msg: "CNPJ não encontrado." }, 404);
@@ -208,7 +214,7 @@ loja.post("/definir-senha", async (c) => {
   const hash = await hashSenha(nova);
   // Se veio pelo LINK (token = o gestor confirmou que é cliente nosso), já LIBERA junto.
   const viaToken = token.length >= 10;
-  const statusFinal = viaToken && String(cli.loja_status) !== "recusado" ? "aprovado" : (cli.loja_status || (cli.codigo_erp ? "aprovado" : ""));
+  const statusFinal = viaToken && String(cli.loja_status) !== "recusado" ? "aprovado" : ((cli.codigo_erp || cli.rep_codigo) ? "aprovado" : (cli.loja_status || ""));
   if (viaToken && String(cli.loja_status) !== "recusado") {
     await c.env.DB.prepare("UPDATE clientes SET senha_hash=?, loja_status='aprovado' WHERE id=?").bind(hash, cli.id).run();
   } else {
@@ -216,7 +222,7 @@ loja.post("/definir-senha", async (c) => {
   }
   return c.json({
     ok: true, nome: cli.nome || "", cnpj: soDigitos(cli.cnpj), regiao: regiaoDoCliente(cli.loja_regiao, cli.uf),
-    liberado: clienteLiberado(cli.codigo_erp, statusFinal),
+    liberado: clienteLiberado(cli.codigo_erp, statusFinal, cli.rep_codigo),
     status: statusFinal,
   });
 });
@@ -508,8 +514,8 @@ loja.get("/rep-pedido-itens", async (c) => {
   if (!ped) return c.json({ erro: "nao_encontrado", msg: "Pedido não encontrado." }, 404);
   if (ped.sync !== "rascunho") return c.json({ erro: "nao_rascunho", msg: "Esse pedido já foi enviado — não dá mais pra editar. Peça liberação à Big Tricot." }, 409);
   const cli = await c.env.DB.prepare(
-    "SELECT id, nome, fantasia, cnpj, uf, loja_regiao, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(loja_status,'') AS loja_status FROM clientes WHERE id=? LIMIT 1"
-  ).bind(ped.cliente_id).first<{ id: string; nome: string | null; fantasia: string | null; cnpj: string | null; uf: string | null; loja_regiao: string | null; codigo_erp: string; loja_status: string }>();
+    "SELECT id, nome, fantasia, cnpj, uf, loja_regiao, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(rep_codigo,'') AS rep_codigo, COALESCE(loja_status,'') AS loja_status FROM clientes WHERE id=? LIMIT 1"
+  ).bind(ped.cliente_id).first<{ id: string; nome: string | null; fantasia: string | null; cnpj: string | null; uf: string | null; loja_regiao: string | null; codigo_erp: string; rep_codigo: string; loja_status: string }>();
   if (!cli) return c.json({ erro: "cliente_nao_encontrado" }, 404);
   const regiao = regiaoDoCliente(cli.loja_regiao, cli.uf);
   const { results: itensRaw } = await c.env.DB.prepare(
@@ -521,7 +527,7 @@ loja.get("/rep-pedido-itens", async (c) => {
   }));
   return c.json({
     ok: true,
-    cliente: { id: cli.id, nome: cli.nome, fantasia: cli.fantasia, cnpj: cli.cnpj, regiao, liberado: clienteLiberado(cli.codigo_erp, cli.loja_status) },
+    cliente: { id: cli.id, nome: cli.nome, fantasia: cli.fantasia, cnpj: cli.cnpj, regiao, liberado: clienteLiberado(cli.codigo_erp, cli.loja_status, cli.rep_codigo) },
     cod_prazo: ped.prazo, forma_desc: ped.forma, observacao: ped.obs, itens,
   });
 });
@@ -612,12 +618,12 @@ loja.post("/pedido", async (c) => {
 
   // 1) cliente pelo CNPJ (comparando só os dígitos), não bloqueado E liberado (aprovado)
   const cli = await c.env.DB.prepare(
-    "SELECT id, nome, cnpj, COALESCE(bloqueado,0) AS bloqueado, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(loja_status,'') AS loja_status FROM clientes " +
+    "SELECT id, nome, cnpj, COALESCE(bloqueado,0) AS bloqueado, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(rep_codigo,'') AS rep_codigo, COALESCE(loja_status,'') AS loja_status FROM clientes " +
     "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
-  ).bind(cnpjDig).first<{ id: string; nome: string | null; cnpj: string | null; bloqueado: number; codigo_erp: string; loja_status: string }>();
+  ).bind(cnpjDig).first<{ id: string; nome: string | null; cnpj: string | null; bloqueado: number; codigo_erp: string; rep_codigo: string; loja_status: string }>();
   if (!cli) return c.json({ erro: "cliente_nao_encontrado", msg: "Não encontramos esse CNPJ no nosso cadastro. Fale com a Big Tricot para liberar seu acesso." }, 404);
   if (Number(cli.bloqueado) === 1) return c.json({ erro: "cliente_bloqueado", msg: "Seu cadastro está bloqueado no momento. Fale com a Big Tricot." }, 403);
-  if (!clienteLiberado(cli.codigo_erp, cli.loja_status)) return c.json({ erro: "cadastro_em_analise", msg: "Seu cadastro ainda está em análise. Assim que a Big Tricot aprovar, você poderá finalizar pedidos. 💛" }, 403);
+  if (!clienteLiberado(cli.codigo_erp, cli.loja_status, cli.rep_codigo)) return c.json({ erro: "cadastro_em_analise", msg: "Seu cadastro ainda está em análise. Assim que a Big Tricot aprovar, você poderá finalizar pedidos. 💛" }, 403);
 
   // Rep editando um rascunho existente ("em espera"): confere que o pedido é dele e ainda é rascunho.
   if (pedidoEditar) {
