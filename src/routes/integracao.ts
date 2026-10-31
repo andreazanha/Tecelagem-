@@ -1025,6 +1025,38 @@ export async function gerarCatalogoSite(env: Env): Promise<{
     for (const c of v.cores) if (!g.cores.has(c.id_cor)) g.cores.set(c.id_cor, c);
   }
 
+  // Reverse: id_tamanho -> medida (pra rotular as seções da Edição Limitada por tamanho).
+  const medDoId = new Map<string, string>();
+  for (const t of tamPorMedida.values()) medDoId.set(t.id, t.medida);
+  const numMed = (m: string) => { const mm = String(m || "").match(/(\d+)\D+(\d+)/); return mm ? Number(mm[1]) * 100000 + Number(mm[2]) : 999999; };
+  const ordMed = (a: Linha, b: Linha) => numMed(medDoId.get(a.id_tamanho) || "") - numMed(medDoId.get(b.id_tamanho) || "");
+  const fmtMed = (m: string) => String(m || "").replace(/(\d)\s*[×xX]\s*(\d)/g, "$1 × $2");
+  // EDIÇÃO LIMITADA: organiza o produto por TAMANHO — capa em cima, almofada embaixo, com/sem
+  // enchimento igual aos kits, e estoque COMPARTILHADO (compartilha=true). Ordem: Peseiras
+  // (crescente) → Mantas → cada tamanho de Capa/Almofada (crescente). (Kit do modelo, quando
+  // existir, vem como produto de kit próprio — ordenado na seção EL.)
+  type LinhaEL = Linha & { rotulo?: string };
+  const regroupEL = (base: string, vars: Variacao[]): { id: string; titulo: string; ref: string; estoque: number; linhas: LinhaEL[]; compartilha: boolean }[] => {
+    const capaV = vars.find((v) => v.letra === "C");
+    const almoV = vars.find((v) => v.letra === "A");
+    const grupos: { id: string; titulo: string; ref: string; estoque: number; linhas: LinhaEL[]; compartilha: boolean }[] = [];
+    for (const v of vars.filter((v) => v.letra === "P")) grupos.push({ id: `${base}-P`, titulo: "Peseiras", ref: v.ref, estoque: v.estoque, linhas: v.linhas.slice().sort(ordMed), compartilha: false });
+    for (const v of vars.filter((v) => v.letra === "M")) grupos.push({ id: `${base}-M`, titulo: "Mantas", ref: v.ref, estoque: v.estoque, linhas: v.linhas.slice().sort(ordMed), compartilha: false });
+    const ids: string[] = []; const seen = new Set<string>();
+    for (const v of [capaV, almoV]) if (v) for (const l of v.linhas) if (l.id_tamanho && !seen.has(l.id_tamanho)) { seen.add(l.id_tamanho); ids.push(l.id_tamanho); }
+    ids.sort((a, b) => numMed(medDoId.get(a) || "") - numMed(medDoId.get(b) || ""));
+    for (const idt of ids) {
+      const linhas: LinhaEL[] = [];
+      const lc = capaV?.linhas.find((x) => x.id_tamanho === idt);
+      const la = almoV?.linhas.find((x) => x.id_tamanho === idt);
+      if (lc) linhas.push({ ...lc, rotulo: "Capa ( sem enchimento )" });
+      if (la) linhas.push({ ...la, rotulo: "Almofada ( com enchimento )" });
+      if (!linhas.length) continue;
+      grupos.push({ id: `${base}-${idt}`, titulo: fmtMed(medDoId.get(idt) || ""), ref: "", estoque: 0, linhas, compartilha: linhas.length > 1 });
+    }
+    return grupos;
+  };
+
   const produtos = [...porModelo.values()].map((g) => {
     const vars = g.vars.slice().sort((a, b) => (TIPO_ORDEM[a.letra] ?? 9) - (TIPO_ORDEM[b.letra] ?? 9) || a.ref.localeCompare(b.ref));
     const sec = secaoDoGrupo(g.grupo);
@@ -1050,7 +1082,9 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       blocos: {},
       estoque_geral: vars.reduce((s, v) => s + (Number(v.estoque) || 0), 0),
       cores: [...g.cores.values()],
-      grupos: vars.map((v) => ({ id: `${g.base}-${v.letra || "x"}`, titulo: TIPO_NOME[v.letra] || "", ref: v.ref, estoque: v.estoque, linhas: v.linhas })),
+      grupos: isEL
+        ? regroupEL(g.base, vars)
+        : vars.map((v) => ({ id: `${g.base}-${v.letra || "x"}`, titulo: TIPO_NOME[v.letra] || "", ref: v.ref, estoque: v.estoque, linhas: v.linhas })),
     };
   });
 
@@ -1101,6 +1135,26 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       if (med && med !== codeKey) dec(med);                             // e pela chave MEDIDA
     }
   } catch { /* reservas: nunca derruba o catálogo */ }
+
+  // EDIÇÃO LIMITADA — capa e almofada são a MESMA peça física (almofada = capa + enchimento):
+  // espelha o saldo entre as refs -C e -A do mesmo modelo (por medida/código + cor, o MAIOR), pra
+  // as duas mostrarem o mesmo número e a trava "compartilha" contar o par uma vez só (igual kit).
+  try {
+    const elPar = new Map<string, { capa?: string; almo?: string }>();
+    for (const p of prods) { const r = (p.ref || "").trim(); if (!/^ED\d/i.test(r)) continue; const e = elPar.get(baseCod(r)) || {}; const lt = tipoLetra(r); if (lt === "C") e.capa = r; else if (lt === "A") e.almo = r; elPar.set(baseCod(r), e); }
+    for (const { capa, almo } of elPar.values()) {
+      if (!capa || !almo) continue;
+      const ic = itens[capa] || {}, ia = itens[almo] || {};
+      for (const med of new Set([...Object.keys(ic), ...Object.keys(ia)])) {
+        const mc = ic[med] || {}, ma = ia[med] || {};
+        for (const cor of new Set([...Object.keys(mc), ...Object.keys(ma)])) {
+          const sh = Math.max(Number(mc[cor]) || 0, Number(ma[cor]) || 0);
+          (itens[capa] = itens[capa] || {})[med] = itens[capa][med] || {}; itens[capa][med][cor] = sh;
+          (itens[almo] = itens[almo] || {})[med] = itens[almo][med] || {}; itens[almo][med][cor] = sh;
+        }
+      }
+    }
+  } catch { /* espelho EL: nunca derruba o catálogo */ }
 
   // ── KITS (pronta entrega): usa a RECEITA do Syntech (erp_kit_receita) pra
   //   1) marcar o produto como KIT e jogar na Pronta Entrega;
