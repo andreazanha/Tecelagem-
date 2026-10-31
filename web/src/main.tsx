@@ -57,6 +57,7 @@ import { OrdensCompra } from "./pages/OrdensCompra";
 import { FichaPrograma } from "./pages/FichaPrograma";
 import ConfigLoja from "./pages/ConfigLoja";
 import ImagensLoja from "./pages/ImagensLoja";
+import AuditoriaCatalogo from "./pages/AuditoriaCatalogo";
 import "./styles.css";
 
 // Protege uma página: exige login e a permissão da tela. Sem permissão, manda
@@ -161,6 +162,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/catalogo" element={<Protegido page={["produtos", "comercial", "pedidos", "atendimento"]}><Catalogo /></Protegido>} />
           <Route path="/config-loja" element={<Protegido admin><ConfigLoja /></Protegido>} />
           <Route path="/imagens-loja" element={<Protegido admin><ImagensLoja /></Protegido>} />
+          <Route path="/auditoria-catalogo" element={<Protegido admin><AuditoriaCatalogo /></Protegido>} />
           <Route path="/acessos" element={<Protegido admin><Acessos /></Protegido>} />
           <Route path="/producao" element={<Protegido page="producao"><Producao /></Protegido>} />
           <Route path="/controle-tecelagem" element={<Protegido page="producao"><ControleTecelagem /></Protegido>} />
