@@ -700,14 +700,16 @@
   // tipo das peças do produto (grupos). Produto com peça colorida E peseira = Kit; só
   // almofada/capa = Almofadas; só peseira/manta = Peseiras e Mantas. Não classificou → Kits.
   function elCategoria(p){
-    if(p && p._kit) return "Kits";
-    var tit=(p&&p.grupos||[]).map(function(g){return String(g.titulo||"").toLowerCase();}).join(" ");
-    var temPM=/peseira|manta/.test(tit);
-    var temAC=/almofada|capa/.test(tit);
-    if(temPM && temAC) return "Kits";
+    if(p && p._kit) return "Kits";              // SÓ kit de verdade entra em Kits
+    // As seções da EL agora se chamam pelo tamanho ("45 × 45"); o tipo da peça está no RÓTULO
+    // de cada linha ("Capa ( sem enchimento )" / "Almofada ( com enchimento )") e no título das
+    // seções de Peseiras/Mantas. Lê os dois pra classificar — avulsa NUNCA é "Kits".
+    var txt=(p&&p.grupos||[]).map(function(g){ return String(g.titulo||"")+" "+((g.linhas||[]).map(function(l){return String(l.rotulo||"");}).join(" ")); }).join(" ").toLowerCase();
+    var temAC=/almofada|capa/.test(txt);
+    var temPM=/peseira|manta/.test(txt);
     if(temAC) return "Almofadas";
     if(temPM) return "Peseiras e Mantas";
-    return "Kits";
+    return "Almofadas";
   }
   function render(){
     var app=document.getElementById("app"), abas=document.getElementById("abas"), cats=document.getElementById("cats"), catsBar=document.getElementById("catsBar");
