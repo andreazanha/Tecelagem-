@@ -1069,7 +1069,18 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           pecas += Number(it.qtd) || 0;
           vivo = Math.min(vivo, Math.floor(info.estoque / (it.qtd || 1)));
           const tp = tipoPeca(info.nome);
-          const dim = tp === "peseira" ? pk.peseiraDim : (tp === "capa" || tp === "almofada") ? pk.almofada : "";
+          // MEDIDA REAL do Syntech: casa o CÓDIGO do tamanho da receita (ex.: peseira "2K",
+          // almofada "7K") com o cadastro da peça (compInfo.tamanhos) e usa a MEDIDA de verdade.
+          // Só cai na tabela fixa (pk.*) quando a peça NÃO tem uma medida válida cadastrada —
+          // nunca por cima do dado real. Assim a composição exibida vem 100% do Syntech.
+          const dim = (() => {
+            const cod = String(it.tam || "").trim().toLowerCase();
+            const tams = compInfo.get(it.comp)?.tamanhos;
+            const hit = cod && tams ? tams.find((x) => String(x.tamanho || "").trim().toLowerCase() === cod) : undefined;
+            const m = hit && hit.medida ? String(hit.medida).trim() : "";
+            if (/\d\s*[x×]\s*\d/i.test(m)) return m.replace(/x/gi, "×").replace(/\s+/g, "");
+            return tp === "peseira" ? pk.peseiraDim : (tp === "capa" || tp === "almofada") ? pk.almofada : "";
+          })();
           const rotulo = tp === "peseira" ? (it.qtd > 1 ? "Peseiras" : "Peseira")
             : tp === "almofada" ? (it.qtd > 1 ? "Almofadas" : "Almofada")
               : tp === "capa" ? (it.qtd > 1 ? "Capas" : "Capa")
@@ -1126,29 +1137,19 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         porFamilia.set(fam, g);
       }
 
-      // 1b) KITS SEM RECEITA no Syntech (ex.: WAVE): sem composição cadastrada em
-      //     INSUMOS_PROD, o passo acima os ignora e eles ficam como cards soltos (um por
-      //     tamanho). Aqui montamos a variação pela REGRA FIXA do kit (1 peseira + 2
-      //     capas/almofadas = 3 peças) só para AGRUPAR os tamanhos num anúncio só. Sem
-      //     receita não há saldo por peça → ficam "sob encomenda" (vivo=0) até cadastrarem
-      //     a composição; aí passam a puxar estoque igual à balls, sem mexer no código.
+      // 1b) KITS SEM RECEITA no Syntech (ex.: variantes do WAVE ainda não cadastradas em
+      //     INSUMOS_PROD): NÃO inventa composição nem medida. Antes, aqui a composição era
+      //     fabricada do NOME + tabela fixa (era o bug da auditoria: "Peseira 90×2,00 + 2 Capas
+      //     50×50" sem nada disso vir do cadastro). Agora a variante de kit SEM receita fica
+      //     OCULTA do catálogo até cadastrarem a composição real no Syntech — aí volta sozinha,
+      //     puxando medida/peça/estoque reais igual à Balls.
+      const ocultarSemReceita = new Set<string>();
       for (const prod of produtos) {
-        if (recPorKit.has(prod.id)) continue;             // já tratado pela receita acima
-        if (!/\bKIT\b/i.test(prod.nome || "")) continue;   // só kits
+        if (recPorKit.has(prod.id)) continue;              // tem receita → tratado acima
+        if (!/\bKIT\b/i.test(prod.nome || "")) continue;    // só kits
         const pk = parseKit(prod.nome);
-        if (!pk.variacao) continue;                        // precisa de Queen/King/Manta pra agrupar
-        const temEnch = /ENCHIMENTO/i.test(prod.nome || "");
-        const partes = [
-          { ordem: 0, txt: `1- Peseira${pk.peseiraDim ? " " + pk.peseiraDim : ""}` },
-          { ordem: 1, txt: `2- ${temEnch ? "Almofadas" : "Capas"}${pk.almofada ? " " + pk.almofada : ""}` },
-        ].sort((a, b) => a.ordem - b.ordem);
-        const compBase = partes.map((p) => p.txt).join(" + ");
-        const medida = `${compBase} ( ${temEnch ? "com" : "sem"} enchimento )`;
-        const fam = pk.familia ? tituloCaso(pk.familia) : (prod.nome || prod.id);
-        const l0 = (prod.grupos[0] && prod.grupos[0].linhas[0]) || null;
-        const g = porFamilia.get(fam) || { fam, vars: [] };
-        g.vars.push({ prod, medida, vivo: 0, pecas: 3, variacao: pk.variacao, temEnch, almofada: pk.almofada, linha: l0, estCor: {}, temCor: false });
-        porFamilia.set(fam, g);
+        if (!pk.variacao) continue;                         // sem Queen/King/Manta → não é variante agrupável
+        ocultarSemReceita.add(prod.id);                     // kit variante sem receita → some do catálogo
       }
 
       // 2) Monta um PRODUTO unificado por família e remove os individuais.
@@ -1305,8 +1306,9 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           grupos,
         });
       }
-      // troca os kits individuais pelos anúncios unificados
-      for (let i = produtos.length - 1; i >= 0; i--) if (idsRemover.has(produtos[i].id)) produtos.splice(i, 1);
+      // troca os kits individuais pelos anúncios unificados; remove também as variantes de kit
+      // SEM receita (ficam ocultas do catálogo até cadastrarem a composição no Syntech).
+      for (let i = produtos.length - 1; i >= 0; i--) if (idsRemover.has(produtos[i].id) || ocultarSemReceita.has(produtos[i].id)) produtos.splice(i, 1);
       for (const u of unificados) produtos.push(u);
     }
   } catch { /* kits: silencioso — nunca derruba o catálogo */ }
