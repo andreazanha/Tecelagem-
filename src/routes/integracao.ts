@@ -1382,9 +1382,17 @@ export async function gerarCatalogoSite(env: Env): Promise<{
           estTotal += estAv;
         }
 
+        // EDIÇÃO LIMITADA em formato de KIT: toda ref com sigla ED é Edição Limitada (regra da
+        // dona — vale pra almofada/capa/peseira/kit). Se as peças do kit (ou o ref do kit) forem
+        // ED…, o kit é EL → vai pra Edição Limitada e NÃO é forçado pra Pronta Entrega (antes,
+        // qualquer kit virava Pronta Entrega e perdia a EL). Sem ED → segue normal (nada muda).
+        const isELkit = vars.some((v) =>
+          /ED\d/i.test(String(v.prod.id || "")) ||
+          (recPorKit.get(v.prod.id) || []).some((it) => /^ED/i.test(String(it.comp || "").trim()))
+        );
         unificados.push({
           id: "kit-" + grp.fam.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, ""),
-          nome: grp.fam, linha: prim.linha, pronta_entrega: true, _edicao_limitada: false,
+          nome: grp.fam, linha: isELkit ? "padrao" : prim.linha, pronta_entrega: isELkit ? false : true, _edicao_limitada: isELkit,
           _kit: true, _kitTitulo: grp.fam, composicao: "", tipo: "avulso", lancamento: false,
           foto: prim.foto, video: "", blocos: {}, estoque_geral: estTotal,
           cores: [...coresMap.values()],
