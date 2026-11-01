@@ -318,6 +318,43 @@ integracao.post("/pcp-notificacoes/visto", async (c) => {
   return c.json({ ok: true });
 });
 
+// ETAPA 7 — RESERVAS PROTEGIDAS: pedidos da loja RECEBIDOS no Syntech ('enviado') que ainda
+// seguram estoque. A reserva NÃO expira sozinha (regra aprovada) — enquanto a ponte não detectar
+// cancelamentos de verdade, a única forma de soltar é a CONFERÊNCIA MANUAL abaixo (usuário
+// autorizado + motivo + registro). Nunca libera automaticamente.
+integracao.get("/reservas-protegidas", async (c) => {
+  const g = await exigirFuncao(c, "pcp.liberar"); if ("erro" in g) return g.erro;
+  const { results } = await c.env.DB.prepare(
+    `SELECT p.id, p.erp_numero, p.cliente_nome, COALESCE(p.vendedor,'') AS vendedor, p.erp_sync_em,
+            (SELECT COALESCE(SUM(qtd),0) FROM erp_reserva r WHERE r.pedido_id=p.id) AS pecas,
+            (SELECT COUNT(*) FROM erp_reserva r WHERE r.pedido_id=p.id) AS linhas
+       FROM pedidos p
+      WHERE p.canal='loja_b2b' AND COALESCE(p.erp_sync_status,'')='enviado'
+        AND EXISTS (SELECT 1 FROM erp_reserva r WHERE r.pedido_id=p.id)
+      ORDER BY p.erp_sync_em DESC`
+  ).all().catch(() => ({ results: [] as unknown[] }));
+  return c.json({ agora: new Date().toISOString(), reservas: results || [] });
+});
+// Libera MANUALMENTE a reserva de um pedido recebido (conferência). Exige MOTIVO e registra no
+// histórico. Só vale pra 'enviado' (recebido no Syntech). Não aprova/produz nada.
+integracao.post("/reserva-liberar", async (c) => {
+  const g = await exigirFuncao(c, "pcp.liberar"); if ("erro" in g) return g.erro;
+  const b = await c.req.json().catch(() => ({})) as { pedido_id?: string; motivo?: string };
+  const pid = String(b.pedido_id || "").trim();
+  const motivo = String(b.motivo || "").trim();
+  if (!pid || motivo.length < 3) return c.json({ error: "motivo_obrigatorio", msg: "Informe o motivo da liberação." }, 400);
+  const ped = await c.env.DB.prepare("SELECT COALESCE(erp_sync_status,'') AS s, erp_numero FROM pedidos WHERE id=? AND canal='loja_b2b' LIMIT 1").bind(pid).first<{ s: string; erp_numero: number | null }>();
+  if (!ped) return c.json({ error: "nao_encontrado" }, 404);
+  if (ped.s !== "enviado") return c.json({ error: "nao_elegivel", msg: "Só pedidos recebidos no Syntech podem ter a reserva liberada manualmente." }, 409);
+  const n = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM erp_reserva WHERE pedido_id=?").bind(pid).first<{ n: number }>();
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pid),
+    c.env.DB.prepare("INSERT INTO reserva_historico (id, pedido_id, evento, telefone, detalhe) VALUES (?,?,?,?,?)")
+      .bind(uid(), pid, "liberacao_manual", null, `nº ${ped.erp_numero ?? "—"} — liberado por ${g.u.nome}: ${motivo.slice(0, 400)}`),
+  ]);
+  return c.json({ ok: true, liberadas: Number(n?.n) || 0 });
+});
+
 // Itens de um pedido pendente (pra conferir antes de aprovar).
 integracao.get("/pendentes/:id", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
@@ -1144,18 +1181,15 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   // opções que dividem a mesma capa (vazio, cheio e avulsa). Quando o Syntech empenha e a
   // ponte traz o SALDO menor, a reserva deixa de contar (não desconta duas vezes).
   try {
-    const syncEm = (await env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_sync_em'").first<{ valor: string | null }>())?.valor || null;
+    // Mesmo filtro da trava (FILTRO_RESERVA_ATIVA): enviado conta SEMPRE (não expira por tempo),
+    // rascunho só com a janela ativa. Sem teto de 7 dias e sem auto-liberação por sincronização.
     const { results: rvs } = await env.DB.prepare(
       `SELECT rv.ref AS ref, rv.cor AS cor, rv.tamanho AS tamanho, SUM(rv.qtd) AS q
          FROM erp_reserva rv JOIN pedidos p ON p.id = rv.pedido_id
-        WHERE rv.criado_em > datetime('now','-7 days')
-          AND (
-                COALESCE(p.erp_sync_status,'') IN ('pendente','erro','enviado')
-             OR (COALESCE(p.erp_sync_status,'')='rascunho' AND p.reserva_expira_em IS NOT NULL AND p.reserva_expira_em > datetime('now'))
-              )
-          AND NOT (COALESCE(p.erp_sync_status,'')='enviado' AND p.erp_sync_em IS NOT NULL AND ? IS NOT NULL AND p.erp_sync_em <= ?)
+        WHERE ( COALESCE(p.erp_sync_status,'') IN ('pendente','erro','enviado')
+             OR (COALESCE(p.erp_sync_status,'')='rascunho' AND p.reserva_expira_em IS NOT NULL AND p.reserva_expira_em > datetime('now')) )
         GROUP BY rv.ref, rv.cor, rv.tamanho`
-    ).bind(syncEm, syncEm).all<{ ref: string; cor: string | null; tamanho: string | null; q: number }>();
+    ).all<{ ref: string; cor: string | null; tamanho: string | null; q: number }>();
     for (const rv of rvs || []) {
       const ref = (rv.ref || "").trim(); if (!ref) continue;
       const codeKey = (rv.tamanho || "").trim() || "-";

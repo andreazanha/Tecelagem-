@@ -11,7 +11,7 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { gerarPdfPedidoLoja, type PedidoLojaItem } from "../pdf";
-import { conferirEReservar, expirarCarrinhosVencidos } from "../loja-estoque";
+import { montarReservaAtomica, faltasDaReserva, expirarCarrinhosVencidos } from "../loja-estoque";
 import { gerarCatalogoSite } from "./integracao";
 import { opcoesValidas, prorrogarPedido, fmtBR } from "../reserva-avisos";
 
@@ -491,12 +491,21 @@ loja.post("/rep-pedido-acao", async (c) => {
     // TRAVA DE ESTOQUE: ao enviar um rascunho do rep pro Syntech, confere/reserva as peças
     // (mesma trava do checkout do cliente), senão esse caminho fugiria do controle.
     const itensPed = ((await c.env.DB.prepare("SELECT ref, COALESCE(cor_grade,'') AS cor, COALESCE(erp_tamanho,'') AS tam, qtd FROM pedido_itens WHERE pedido_id=?").bind(pid).all<{ ref: string; cor: string; tam: string; qtd: number }>().catch(() => ({ results: [] as { ref: string; cor: string; tam: string; qtd: number }[] }))).results) || [];
-    const trava = await conferirEReservar(c.env, pid, itensPed.map((it) => ({ ref: it.ref, cor: it.cor, tam: it.tam, qtd: Number(it.qtd) || 0 })));
-    if (!trava.ok) return c.json({ erro: "sem_estoque", msg: "Alguns itens não têm estoque suficiente agora. Ajuste o pedido e tente novamente.", faltas: trava.faltas }, 409);
+    // Trava ATÔMICA (mesma do checkout do cliente): reserva no MESMO batch do UPDATE pra pendente.
+    const { stmts: reservaStmts, alvo } = await montarReservaAtomica(c.env, pid, itensPed.map((it) => ({ ref: it.ref, cor: it.cor, tam: it.tam, qtd: Number(it.qtd) || 0 })));
     await c.env.DB.batch([
       c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='pendente', loja_fase='enviado', loja_cod_prazo=?, loja_forma_desc=COALESCE(?, loja_forma_desc) WHERE id=? AND canal='loja_b2b'").bind(prazo, formaDesc, pid),
-      ...trava.reservas,
+      ...reservaStmts,
     ]);
+    const faltas = alvo.length ? await faltasDaReserva(c.env, pid, alvo) : [];
+    if (faltas.length) {
+      // desfaz: volta o pedido pra rascunho e solta a reserva (nada vai pro Syntech sem estoque).
+      await c.env.DB.batch([
+        c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pid),
+        c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='rascunho', loja_fase='em_espera' WHERE id=? AND canal='loja_b2b'").bind(pid),
+      ]);
+      return c.json({ erro: "sem_estoque", msg: "Alguns itens não têm estoque suficiente agora. Ajuste o pedido e tente novamente.", faltas }, 409);
+    }
     return c.json({ ok: true, msg: "Pedido enviado! Aguardando a Big Tricot aprovar." });
   }
   return c.json({ erro: "acao_invalida" }, 400);
@@ -704,21 +713,14 @@ loja.post("/pedido", async (c) => {
   const lojaFase = ehRep ? (ehEspera ? "em_espera" : "enviado") : null;
   const pedidoId = pedidoEditar || uid();
 
-  // RESERVA DE ESTOQUE (Etapa 1) — o carrinho é o próprio pedido. TANTO o rascunho ('espera')
-  // QUANTO o envio ('enviar') reservam as peças físicas (capa/peseira) de forma atômica: confere
-  // se cabem no SALDO − reservas de OUTROS pedidos ainda não refletidos e, se couber, grava a
-  // reserva no MESMO batch. Peça SOB ENCOMENDA (sem espelho de estoque) passa sem travar.
-  // Se não couber, recusa (409) e nada é gravado.
-  const trava = await conferirEReservar(c.env, pedidoId, resolvidos.map((r) => ({ ref: r.ref, cor: r.corNome, tam: r.erp_tamanho, qtd: r.qtd })));
-  if (!trava.ok) {
-    return c.json({
-      erro: "sem_estoque",
-      msg: "Alguns itens não têm estoque suficiente no momento. Ajuste as quantidades e tente novamente.",
-      faltas: trava.faltas,
-    }, 409);
-  }
-  const reservaStmts = trava.reservas;
-  const abriuReserva = trava.reservou;             // sobrou peça física reservada → precisa de janela
+  // RESERVA DE ESTOQUE (Etapa 1 + trava atômica da Etapa 7) — o carrinho é o próprio pedido.
+  // TANTO o rascunho ('espera') QUANTO o envio ('enviar') reservam as peças físicas. A trava é
+  // ATÔMICA: cada peça entra por INSERT condicional (SALDO − reservas de OUTROS, reavaliado no
+  // momento da escrita dentro da transação do batch) — dois pedidos disputando a última unidade
+  // nunca reservam além do saldo. Peça SOB ENCOMENDA passa sem travar. Confere DEPOIS do batch;
+  // se faltou, desfaz (libera a reserva e, em pedido novo, apaga o pedido) e recusa (409).
+  const { stmts: reservaStmts, alvo } = await montarReservaAtomica(c.env, pedidoId, resolvidos.map((r) => ({ ref: r.ref, cor: r.corNome, tam: r.erp_tamanho, qtd: r.qtd })));
+  const abriuReserva = alvo.length > 0;            // há peça física a reservar → precisa de janela
   const reservaResp = ehRep ? "rep" : "cliente";
   // Janela de reserva: só quando há peça física. No rascunho conta enquanto estiver ativa; a
   // janela NÃO reinicia ao editar o carrinho (COALESCE preserva o início). Sem peça física → NULL.
@@ -752,8 +754,32 @@ loja.post("/pedido", async (c) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unico')`
     ).bind(uid(), pedidoId, r.nome, r.ref, r.corNome, r.cod_cor, r.medida, r.erp_tamanho, r.qtd, r.preco));
   }
-  for (const s of reservaStmts) stmts.push(s); // reserva as peças junto com o pedido
+  for (const s of reservaStmts) stmts.push(s); // reserva as peças ATOMICAMENTE junto com o pedido
   await c.env.DB.batch(stmts);
+
+  // Confere o que REALMENTE ficou reservado (a trava condicional pode ter barrado peças sem saldo).
+  const faltas = abriuReserva ? await faltasDaReserva(c.env, pedidoId, alvo) : [];
+  if (faltas.length) {
+    // desfaz: pedido NOVO → apaga tudo; EDIÇÃO → solta a reserva e zera a janela (o carrinho é
+    // revertido no navegador e re-sincronizado). Nunca deixa reserva acima do saldo.
+    if (pedidoEditar) {
+      await c.env.DB.batch([
+        c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pedidoId),
+        c.env.DB.prepare("UPDATE pedidos SET reserva_iniciada_em=NULL, reserva_expira_em=NULL, reserva_responsavel=NULL WHERE id=? AND canal='loja_b2b'").bind(pedidoId),
+      ]);
+    } else {
+      await c.env.DB.batch([
+        c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pedidoId),
+        c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pedidoId),
+        c.env.DB.prepare("DELETE FROM pedidos WHERE id=? AND canal='loja_b2b'").bind(pedidoId),
+      ]);
+    }
+    return c.json({
+      erro: "sem_estoque",
+      msg: "Alguns itens não têm estoque suficiente no momento. Ajuste as quantidades e tente novamente.",
+      faltas,
+    }, 409);
+  }
 
   const msg = ehEspera
     ? "Pedido salvo em espera. Você pode gerar o PDF e enviar ao cliente quando quiser."

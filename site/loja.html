@@ -1088,7 +1088,7 @@
     reservarCarrinho().then(function(res){
       if(ac) ac.disabled=false;
       if(res.ok){ perguntarContinuar(add); }
-      else { CART=prevCart; salvarCart(); atualizarCartN(); atualizarCorArea(); avisoSemEstoque(res.j||{}); }
+      else { CART=prevCart; salvarCart(); atualizarCartN(); atualizarCorArea(); avisoSemEstoque(res.j||{}); reservarCarrinho().then(function(){ atualizarStatusReserva(); }); }
     });
   }
   // Popup após adicionar: continuar neste modelo (fica no produto) ou escolher outro (volta ao catálogo).
@@ -1194,7 +1194,10 @@
     _rsvTimer=setTimeout(function(){
       var prev=_rsvPrev; _rsvPrev=null;
       reservarCarrinho().then(function(res){
-        if(!res.ok && res.j){ CART=prev; salvarCart(); atualizarCartN(); if(redesenhar) redesenhar(); avisoSemEstoque(res.j); }
+        if(!res.ok && res.j){
+          CART=prev; salvarCart(); atualizarCartN(); if(redesenhar) redesenhar(); avisoSemEstoque(res.j);
+          reservarCarrinho().then(function(){ atualizarStatusReserva(); }); // re-sincroniza o carrinho revertido no servidor
+        }
       });
     }, 250);
   }

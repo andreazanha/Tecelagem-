@@ -739,6 +739,10 @@ export interface ErpPendente {
   data_pedido: string | null; data_entrega: string | null; created_at: string;
   linhas: number; pecas: number;
 }
+export interface ReservaProtegida {
+  id: string; erp_numero: number | null; cliente_nome: string | null; vendedor: string | null;
+  erp_sync_em: string | null; pecas: number; linhas: number;
+}
 export interface PcpNotificacao {
   id: string; numero_erp: string; cliente_nome: string | null; vendedor: string | null; pecas: number; criado_em: string;
 }
@@ -1392,6 +1396,9 @@ export const api = {
   // ETAPA 5 — pop-up do PCP (pedidos recém-chegados em "Para conferir", ainda não tratados).
   pcpNotificacoes: () => fetch("/api/integracao/pcp-notificacoes").then((r) => j<{ agora: string; notificacoes: PcpNotificacao[] }>(r)),
   pcpNotificacaoVista: (id: string) => jsonPost("/api/integracao/pcp-notificacoes/visto", { id }).then((r) => j<{ ok: boolean }>(r)),
+  // ETAPA 7 — reservas protegidas (recebidas no Syntech) + conferência manual
+  reservasProtegidas: () => fetch("/api/integracao/reservas-protegidas").then((r) => j<{ agora: string; reservas: ReservaProtegida[] }>(r)),
+  reservaLiberar: (pedido_id: string, motivo: string) => jsonPost("/api/integracao/reserva-liberar", { pedido_id, motivo }).then((r) => j<{ ok?: boolean; liberadas?: number; error?: string; msg?: string }>(r)),
   // Loja B2B — pedidos capturados pela loja (só gestor). modo: off|teste|on.
   lojaPedidos: () => fetch("/api/integracao/loja-pedidos").then((r) => j<{ modo: string; pedidos: LojaPedido[] }>(r)),
   lojaPedidoDetalhe: (id: string) => fetch(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}`).then((r) => j<{ pedido: LojaPedido; itens: LojaPedidoItem[] }>(r)),
