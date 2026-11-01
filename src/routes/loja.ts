@@ -702,38 +702,47 @@ loja.post("/pedido", async (c) => {
   const lojaFase = ehRep ? (ehEspera ? "em_espera" : "enviado") : null;
   const pedidoId = pedidoEditar || uid();
 
-  // TRAVA DE ESTOQUE — só pra pedidos que VÃO pro Syntech ('enviar'). Confere se as peças
-  // (capa/peseira) cabem no SALDO − reservas de outros pedidos ainda não refletidos; se
-  // couber, reserva. Rascunho ('espera') não reserva (e solta reserva anterior, se houver).
-  let reservaStmts: D1PreparedStatement[] = [];
-  if (ehEspera) {
-    reservaStmts = [c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pedidoId)];
-  } else {
-    const trava = await conferirEReservar(c.env, pedidoId, resolvidos.map((r) => ({ ref: r.ref, cor: r.corNome, tam: r.erp_tamanho, qtd: r.qtd })));
-    if (!trava.ok) {
-      return c.json({
-        erro: "sem_estoque",
-        msg: "Alguns itens não têm estoque suficiente no momento. Ajuste as quantidades e tente novamente.",
-        faltas: trava.faltas,
-      }, 409);
-    }
-    reservaStmts = trava.reservas;
+  // RESERVA DE ESTOQUE (Etapa 1) — o carrinho é o próprio pedido. TANTO o rascunho ('espera')
+  // QUANTO o envio ('enviar') reservam as peças físicas (capa/peseira) de forma atômica: confere
+  // se cabem no SALDO − reservas de OUTROS pedidos ainda não refletidos e, se couber, grava a
+  // reserva no MESMO batch. Peça SOB ENCOMENDA (sem espelho de estoque) passa sem travar.
+  // Se não couber, recusa (409) e nada é gravado.
+  const trava = await conferirEReservar(c.env, pedidoId, resolvidos.map((r) => ({ ref: r.ref, cor: r.corNome, tam: r.erp_tamanho, qtd: r.qtd })));
+  if (!trava.ok) {
+    return c.json({
+      erro: "sem_estoque",
+      msg: "Alguns itens não têm estoque suficiente no momento. Ajuste as quantidades e tente novamente.",
+      faltas: trava.faltas,
+    }, 409);
   }
+  const reservaStmts = trava.reservas;
+  const abriuReserva = trava.reservou;             // sobrou peça física reservada → precisa de janela
+  const reservaResp = ehRep ? "rep" : "cliente";
+  // Janela de reserva: só quando há peça física. No rascunho conta enquanto estiver ativa; a
+  // janela NÃO reinicia ao editar o carrinho (COALESCE preserva o início). Sem peça física → NULL.
+  const janelaUpd = abriuReserva
+    ? "reserva_responsavel=COALESCE(reserva_responsavel, ?), reserva_iniciada_em=COALESCE(reserva_iniciada_em, datetime('now')), reserva_expira_em=COALESCE(reserva_expira_em, datetime('now','+12 hours'))"
+    : "reserva_responsavel=NULL, reserva_iniciada_em=NULL, reserva_expira_em=NULL";
 
   const stmts: D1PreparedStatement[] = [];
   if (pedidoEditar) {
     // Atualiza o rascunho existente: troca os dados e substitui os itens.
-    stmts.push(c.env.DB.prepare(
-      `UPDATE pedidos SET cliente_nome=?, vendedor=?, valor_total=?, erp_sync_status=?, loja_fase=?,
-         loja_cod_prazo=?, loja_forma_desc=?, observacao=?, data_pedido=datetime('now') WHERE id=? AND canal='loja_b2b'`
-    ).bind(cli.nome || "SEM CLIENTE", vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, pedidoEditar));
+    const sqlUpd = `UPDATE pedidos SET cliente_nome=?, vendedor=?, valor_total=?, erp_sync_status=?, loja_fase=?,
+         loja_cod_prazo=?, loja_forma_desc=?, observacao=?, data_pedido=datetime('now'), ${janelaUpd} WHERE id=? AND canal='loja_b2b'`;
+    const bindsUpd = abriuReserva
+      ? [cli.nome || "SEM CLIENTE", vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, reservaResp, pedidoEditar]
+      : [cli.nome || "SEM CLIENTE", vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, pedidoEditar];
+    stmts.push(c.env.DB.prepare(sqlUpd).bind(...bindsUpd));
     stmts.push(c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pedidoEditar));
   } else {
-    stmts.push(c.env.DB.prepare(
-      `INSERT INTO pedidos (id, cliente_nome, cliente_id, cliente_cnpj, vendedor, tipo, status, canal, valor_total,
-         erp_sync_status, erp_liberado, loja_fase, loja_cod_prazo, loja_forma_desc, observacao, idem, data_pedido, created_at)
-       VALUES (?, ?, ?, ?, ?, 'pedido', 'aguardando_aprovacao', 'loja_b2b', ?, ?, 0, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-    ).bind(pedidoId, cli.nome || "SEM CLIENTE", cli.id, cnpjDig, vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, idem));
+    const janelaVals = abriuReserva ? "datetime('now'), datetime('now','+12 hours'), ?" : "NULL, NULL, NULL";
+    const sqlIns = `INSERT INTO pedidos (id, cliente_nome, cliente_id, cliente_cnpj, vendedor, tipo, status, canal, valor_total,
+         erp_sync_status, erp_liberado, loja_fase, loja_cod_prazo, loja_forma_desc, observacao, idem,
+         reserva_iniciada_em, reserva_expira_em, reserva_responsavel, data_pedido, created_at)
+       VALUES (?, ?, ?, ?, ?, 'pedido', 'aguardando_aprovacao', 'loja_b2b', ?, ?, 0, ?, ?, ?, ?, ?, ${janelaVals}, datetime('now'), datetime('now'))`;
+    const bindsIns = [pedidoId, cli.nome || "SEM CLIENTE", cli.id, cnpjDig, vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, idem];
+    if (abriuReserva) bindsIns.push(reservaResp);
+    stmts.push(c.env.DB.prepare(sqlIns).bind(...bindsIns));
   }
   for (const r of resolvidos) {
     stmts.push(c.env.DB.prepare(

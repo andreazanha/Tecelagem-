@@ -1121,7 +1121,10 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       `SELECT rv.ref AS ref, rv.cor AS cor, rv.tamanho AS tamanho, SUM(rv.qtd) AS q
          FROM erp_reserva rv JOIN pedidos p ON p.id = rv.pedido_id
         WHERE rv.criado_em > datetime('now','-7 days')
-          AND COALESCE(p.erp_sync_status,'') IN ('pendente','erro','enviado')
+          AND (
+                COALESCE(p.erp_sync_status,'') IN ('pendente','erro','enviado')
+             OR (COALESCE(p.erp_sync_status,'')='rascunho' AND p.reserva_expira_em IS NOT NULL AND p.reserva_expira_em > datetime('now'))
+              )
           AND NOT (COALESCE(p.erp_sync_status,'')='enviado' AND p.erp_sync_em IS NOT NULL AND ? IS NOT NULL AND p.erp_sync_em <= ?)
         GROUP BY rv.ref, rv.cor, rv.tamanho`
     ).bind(syncEm, syncEm).all<{ ref: string; cor: string | null; tamanho: string | null; q: number }>();
