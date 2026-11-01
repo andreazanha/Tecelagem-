@@ -7,6 +7,7 @@ import type { Env } from "../index";
 import { processar, colunaDe, ATEND_COLUNAS, BOAS_VINDAS, montarCatalogo, type Conversa, type Deps, type LojaParceira, type Saida, type EstadoAtend } from "../atendimento_bot";
 import { ehClienteInterno } from "./funil";
 import { enviarPush, enviarPushPara } from "../push-send";
+import { tratarRespostaProrrogacao } from "../reserva-avisos";
 
 export const atendimento = new Hono<{ Bindings: Env }>();
 
@@ -1445,6 +1446,12 @@ atendimento.post("/webhook", async (c) => {
     const dup = await c.env.DB.prepare("SELECT 1 FROM atend_mensagens WHERE zap_id=? LIMIT 1").bind(zid).first().catch(() => null);
     if (dup) return c.json({ ok: true, duplicado: true });
   }
+  // RESERVA (Etapa 3): resposta de PRORROGAÇÃO ("1".."4"). Só age se houver UMA oferta ativa
+  // pra este telefone (segurança). Se tratou, NÃO segue pro robô de atendimento.
+  try {
+    const r = await tratarRespostaProrrogacao(c.env, phone, texto, (e, tel, t) => enviarWhatsapp(e, tel, { tipo: "texto", texto: t }));
+    if (r) return c.json({ ok: true, reserva_prorrogacao: r });
+  } catch { /* nunca derruba o webhook */ }
   // Responde 200 NA HORA e processa em SEGUNDO PLANO (waitUntil): a Z-API não fica esperando a
   // IA/transcrição (que levam segundos) e PARA de reenviar o webhook — fim da demora e das duplicações.
   const origin = new URL(c.req.url).origin;

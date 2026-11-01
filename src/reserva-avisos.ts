@@ -1,0 +1,194 @@
+// ETAPA 3 — AVISOS DE RESERVA POR WHATSAPP + PRORROGAÇÃO
+// Reusa a integração Z-API do CRM (o "sender" é injetado — normalmente enviarWhatsapp — pra
+// não acoplar nem criar ciclo de import). Todo envio é registrado em reserva_historico (auditoria
+// e também "simulação de envio" nos testes). Regras aprovadas nas Etapas 1 e 2 são respeitadas:
+//   • a janela/prazo é do SERVIDOR; aviso1 = 1h após criar, aviso2 = 1h antes de vencer;
+//   • pedido já enviado ao Syntech (sync != rascunho) nunca recebe aviso de reserva;
+//   • cliente: 1 prorrogação (6/12h), teto 24h desde o início; rep: 6/12/18/24h, teto 48h.
+import type { Env } from "./index";
+
+export type Sender = (env: Env, tel: string, texto: string) => Promise<unknown>;
+
+const ASSINATURA = "_Esta é uma mensagem automática do sistema Big Tricot._";
+const uid = () => crypto.randomUUID();
+const digits = (s: unknown) => String(s ?? "").replace(/\D+/g, "");
+const core = (s: unknown) => digits(s).replace(/^55/, "").slice(-8);
+const H = 3600000;
+
+// 'YYYY-MM-DD HH:MM:SS' (UTC) do instante — mesmo formato de datetime('now'), pra comparar no SQLite.
+const toSqlUTC = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+// epoch a partir do texto UTC do banco.
+const fromSql = (s: string | null) => (s ? new Date(String(s).replace(" ", "T") + "Z").getTime() : null);
+
+// "HH:MM de DD/MM" no fuso de Brasília.
+function fmtBR(ms: number): string {
+  try {
+    const f = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
+    const p: Record<string, string> = {};
+    for (const x of f.formatToParts(new Date(ms))) p[x.type] = x.value;
+    return `${p.hour}:${p.minute} de ${p.day}/${p.month}`;
+  } catch {
+    const d = new Date(ms - 3 * H); // fallback UTC-3
+    const z = (n: number) => String(n).padStart(2, "0");
+    return `${z(d.getUTCHours())}:${z(d.getUTCMinutes())} de ${z(d.getUTCDate())}/${z(d.getUTCMonth() + 1)}`;
+  }
+}
+
+// Opções de prorrogação VÁLIDAS agora (número fixo → horas), filtradas pelo teto total.
+// Cliente: só 1 prorrogação (nenhuma opção depois disso), teto 24h; rep: teto 48h.
+function opcoesValidas(ehRep: boolean, iniMs: number, expMs: number, prorr: number): [number, number][] {
+  if (!ehRep && prorr >= 1) return [];
+  const tetoH = ehRep ? 48 : 24;
+  const capAbs = iniMs + tetoH * H;
+  const tabela: [number, number][] = ehRep ? [[1, 6], [2, 12], [3, 18], [4, 24]] : [[1, 6], [2, 12]];
+  return tabela.filter(([, h]) => expMs + h * H <= capAbs + 60000); // 1min de folga
+}
+const listaOpcoes = (opts: [number, number][]) => opts.map(([n, h]) => `*${n}* = +${h} horas`).join("\n");
+
+// ── Mensagens ────────────────────────────────────────────────────────────────
+function msgAviso1(ehRep: boolean, cliente: string, expMs: number): string {
+  const quem = ehRep ? `do cliente *${cliente}*` : "do seu carrinho";
+  return `🧶 *Big Tricot* — Reserva confirmada\n\nSeparamos os itens ${quem}. Eles ficam *reservados até ${fmtBR(expMs)}* (horário de Brasília).\nFinalize o pedido antes disso para garantir as peças. 💛\n\n${ASSINATURA}`;
+}
+function msgAviso2(ehRep: boolean, cliente: string, expMs: number, opts: [number, number][]): string {
+  const quem = ehRep ? `A reserva do cliente *${cliente}*` : "Sua reserva";
+  const base = `⏳ *Big Tricot* — Vencimento da reserva\n\n${quem} vence às *${fmtBR(expMs)}* (horário de Brasília), daqui a cerca de 1 hora.`;
+  const extra = opts.length
+    ? `\n\nQuer mais tempo? Responda com o número:\n${listaOpcoes(opts)}\n\nOu finalize o pedido agora para garantir as peças.`
+    : `\n\nFinalize o pedido agora para garantir as peças.`;
+  return `${base}${extra}\n\n${ASSINATURA}`;
+}
+function msgConfirma(ehRep: boolean, cliente: string, novoExpMs: number): string {
+  const quem = ehRep ? `A reserva do cliente *${cliente}*` : "Sua reserva";
+  return `✅ *Big Tricot* — Prazo estendido\n\n${quem} agora vence às *${fmtBR(novoExpMs)}* (horário de Brasília).\n\n${ASSINATURA}`;
+}
+function msgRecusa(motivo: string, ehRep: boolean, opts: [number, number][], expMs: number): string {
+  let corpo: string;
+  if (motivo === "ja_prorrogado") corpo = `Esta reserva já foi prorrogada uma vez e não pode ser estendida novamente. Ela vence às *${fmtBR(expMs)}*.`;
+  else if (motivo === "expirado") corpo = "Esta reserva já venceu e as peças foram liberadas. Monte o pedido novamente, se desejar. 💛";
+  else corpo = opts.length ? `Opção inválida. Responda com:\n${listaOpcoes(opts)}` : `Não há mais prorrogação disponível. A reserva vence às *${fmtBR(expMs)}*.`;
+  return `*Big Tricot*\n\n${corpo}\n\n${ASSINATURA}`;
+}
+const msgAmbiguo = () => `*Big Tricot*\n\nVocê tem mais de um carrinho com reserva ativa. Para prorrogar o prazo com segurança, fale com a Big Tricot informando o cliente/pedido. 💛\n\n${ASSINATURA}`;
+
+async function registrar(env: Env, pedidoId: string, evento: string, tel: string, detalhe: string): Promise<void> {
+  try {
+    await env.DB.prepare("INSERT INTO reserva_historico (id, pedido_id, evento, telefone, detalhe) VALUES (?,?,?,?,?)")
+      .bind(uid(), pedidoId, evento, tel || null, detalhe.slice(0, 2000)).run();
+  } catch { /* histórico nunca derruba o fluxo */ }
+}
+
+// Destinatário do aviso: representante (por nome) quando é pedido de rep; senão o cliente.
+async function destinoDoPedido(env: Env, p: { vendedor: string; cliente_id: string | null; cliente_nome: string }):
+  Promise<{ tel: string; ehRep: boolean; cliente: string } | null> {
+  if (p.vendedor) {
+    const rep = await env.DB.prepare("SELECT whatsapp FROM representantes WHERE lower(nome)=lower(?) LIMIT 1").bind(p.vendedor).first<{ whatsapp: string | null }>().catch(() => null);
+    const tel = digits(rep?.whatsapp);
+    return tel ? { tel, ehRep: true, cliente: p.cliente_nome } : null;
+  }
+  const cli = await env.DB.prepare("SELECT COALESCE(whatsapp,'') AS w, COALESCE(telefone,'') AS t, COALESCE(nome,'') AS nome FROM clientes WHERE id=? LIMIT 1").bind(p.cliente_id).first<{ w: string; t: string; nome: string }>().catch(() => null);
+  const tel = digits(cli?.w) || digits(cli?.t);
+  return tel ? { tel, ehRep: false, cliente: cli?.nome || p.cliente_nome } : null;
+}
+
+type PedRow = { id: string; vendedor: string; cliente_id: string | null; cliente_nome: string; ini: string | null; exp: string | null; a1: string | null; a2: string | null; prorr: number };
+
+// Varredura dos avisos — chamada pelo cron */5. Envia aviso1 (1h após criar) e aviso2 (1h antes
+// de vencer). Só mexe em RASCUNHO ativo da loja; nunca em pedido enviado ao Syntech.
+export async function processarAvisosReserva(env: Env, sender: Sender): Promise<{ aviso1: number; aviso2: number }> {
+  const now = Date.now();
+  const rows = ((await env.DB.prepare(
+    `SELECT id, COALESCE(vendedor,'') AS vendedor, cliente_id, COALESCE(cliente_nome,'') AS cliente_nome,
+            reserva_iniciada_em AS ini, reserva_expira_em AS exp, reserva_aviso1_em AS a1, reserva_aviso2_em AS a2,
+            COALESCE(reserva_prorrogacoes,0) AS prorr
+       FROM pedidos
+      WHERE canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'
+        AND reserva_expira_em IS NOT NULL AND reserva_expira_em > datetime('now')`
+  ).all<PedRow>().catch(() => ({ results: [] as PedRow[] }))).results) || [];
+  let c1 = 0, c2 = 0;
+  for (const p of rows) {
+    const iniMs = fromSql(p.ini), expMs = fromSql(p.exp);
+    if (iniMs == null || expMs == null || now >= expMs) continue;
+    const dest = await destinoDoPedido(env, p);
+    if (!dest) continue; // sem telefone → não há como avisar
+    // AVISO 1 — 1h após a criação (uma única vez). RECLAMA o envio de forma atômica (UPDATE
+    // condicional) ANTES de enviar: dois crons concorrentes nunca mandam o mesmo aviso duas vezes.
+    if (!p.a1 && now >= iniMs + H) {
+      const r = await env.DB.prepare("UPDATE pedidos SET reserva_aviso1_em=datetime('now'), reserva_aviso_tel=? WHERE id=? AND reserva_aviso1_em IS NULL").bind(dest.tel, p.id).run();
+      if (Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) > 0) {
+        const texto = msgAviso1(dest.ehRep, dest.cliente, expMs);
+        await registrar(env, p.id, "aviso1", dest.tel, texto);
+        await sender(env, dest.tel, texto).catch(() => {});
+        c1++;
+      }
+    }
+    // AVISO 2 — 1h antes do vencimento (reagenda ao prorrogar, pois a2 volta a NULL). Mesma reclamação atômica.
+    if (!p.a2 && now >= expMs - H) {
+      const r = await env.DB.prepare("UPDATE pedidos SET reserva_aviso2_em=datetime('now'), reserva_aviso_tel=? WHERE id=? AND reserva_aviso2_em IS NULL").bind(dest.tel, p.id).run();
+      if (Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) > 0) {
+        const opts = opcoesValidas(dest.ehRep, iniMs, expMs, p.prorr);
+        const texto = msgAviso2(dest.ehRep, dest.cliente, expMs, opts);
+        await registrar(env, p.id, "aviso2", dest.tel, texto);
+        await sender(env, dest.tel, texto).catch(() => {});
+        c2++;
+      }
+    }
+  }
+  return { aviso1: c1, aviso2: c2 };
+}
+
+// Trata uma resposta recebida no WhatsApp. Devolve null se NÃO for uma resposta de prorrogação
+// (aí o webhook segue o fluxo normal do CRM). Devolve um rótulo quando tratou (aplicou/negou).
+// Segurança: só age se houver UMA oferta ativa (aviso2 enviado, não vencida) PARA ESTE telefone.
+export async function tratarRespostaProrrogacao(env: Env, phone: string, texto: string, sender: Sender): Promise<string | null> {
+  const m = String(texto ?? "").trim().match(/^([1-4])(?:\D|$)/); // opção 1..4 (bare ou "2 por favor")
+  if (!m) return null;
+  const opt = Number(m[1]);
+  const pc = core(phone);
+  if (pc.length < 7) return null;
+  const rows = ((await env.DB.prepare(
+    `SELECT id, COALESCE(vendedor,'') AS vendedor, cliente_id, COALESCE(cliente_nome,'') AS cliente_nome,
+            reserva_iniciada_em AS ini, reserva_expira_em AS exp, reserva_aviso1_em AS a1, reserva_aviso2_em AS a2,
+            COALESCE(reserva_prorrogacoes,0) AS prorr, COALESCE(reserva_aviso_tel,'') AS tel
+       FROM pedidos
+      WHERE canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'
+        AND reserva_aviso2_em IS NOT NULL AND reserva_expira_em > datetime('now')
+        AND reserva_aviso_tel IS NOT NULL`
+  ).all<PedRow & { tel: string }>().catch(() => ({ results: [] as (PedRow & { tel: string })[] }))).results) || [];
+  const cands = rows.filter((r) => core(r.tel) === pc);
+  if (cands.length === 0) return null;                 // telefone sem oferta ativa → não é pra nós
+  if (cands.length > 1) { await sender(env, phone, msgAmbiguo()).catch(() => {}); return "ambiguo"; }
+  const p = cands[0];
+  const iniMs = fromSql(p.ini), expMs = fromSql(p.exp);
+  if (iniMs == null || expMs == null) return null;
+  const opts = opcoesValidas(p.vendedor ? true : false, iniMs, expMs, p.prorr);
+  const escolha = opts.find(([n]) => n === opt);
+  if (!escolha) {
+    const motivo = (!p.vendedor && p.prorr >= 1) ? "ja_prorrogado" : "opcao_invalida";
+    const msg = msgRecusa(motivo, !!p.vendedor, opts, expMs);
+    await registrar(env, p.id, "prorrogacao_negada", phone, `[${motivo} opt=${opt}] ${msg}`);
+    await sender(env, phone, msg).catch(() => {});
+    return motivo;
+  }
+  const horas = escolha[1];
+  const novoExp = expMs + horas * H;
+  // aplica de forma ATÔMICA e idempotente: só se ainda for rascunho, não vencida e com a oferta ativa
+  // (reserva_aviso2_em NOT NULL). Ao aplicar, zera a2 → reagenda o aviso2 e bloqueia resposta repetida.
+  const r = await env.DB.prepare(
+    `UPDATE pedidos SET reserva_expira_em=?, reserva_prorrogacoes=COALESCE(reserva_prorrogacoes,0)+1, reserva_aviso2_em=NULL
+       WHERE id=? AND canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'
+         AND reserva_aviso2_em IS NOT NULL AND reserva_expira_em > datetime('now')`
+  ).bind(toSqlUTC(novoExp), p.id).run();
+  const aplicou = Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) > 0;
+  if (!aplicou) {                                      // corrida: venceu/enviou/já respondido
+    const msg = msgRecusa("expirado", !!p.vendedor, [], expMs);
+    await registrar(env, p.id, "prorrogacao_negada", phone, `[nao_aplicou corrida/expirado] ${msg}`);
+    await sender(env, phone, msg).catch(() => {});
+    return "expirado";
+  }
+  await registrar(env, p.id, "prorrogacao", phone, `+${horas}h -> ${toSqlUTC(novoExp)}`);
+  const conf = msgConfirma(!!p.vendedor, p.cliente_nome, novoExp);
+  await registrar(env, p.id, "confirmacao", phone, conf);
+  await sender(env, phone, conf).catch(() => {});
+  return "prorrogado";
+}
