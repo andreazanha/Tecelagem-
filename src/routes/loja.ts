@@ -12,6 +12,7 @@ import { Hono } from "hono";
 import type { Env } from "../index";
 import { gerarPdfPedidoLoja, type PedidoLojaItem } from "../pdf";
 import { conferirEReservar } from "../loja-estoque";
+import { gerarCatalogoSite } from "./integracao";
 
 export const loja = new Hono<{ Bindings: Env }>();
 
@@ -768,6 +769,48 @@ loja.post("/pedido", async (c) => {
     fase: lojaFase,
     msg,
   }, 201);
+});
+
+// DISPONIBILIDADE AO VIVO (Etapa 1) — devolve o MESMO mapa de estoque que o catálogo usa
+// (saldo do Syntech − TODAS as reservas ativas, inclusive os carrinhos em rascunho). A loja
+// chama isto de tempos em tempos (e ao focar a aba) pra refletir na hora as reservas de
+// outros clientes: a última unidade some das opções assim que alguém a coloca no carrinho.
+// Só LÊ — não reserva nada. Nunca derruba a loja (em erro, devolve vazio).
+loja.get("/disponibilidade", async (c) => {
+  try {
+    const cat = await gerarCatalogoSite(c.env);
+    return c.json({ ok: true, atualizadoMs: cat.estoque.atualizadoMs, itens: cat.estoque.itens });
+  } catch {
+    return c.json({ ok: false, itens: {} });
+  }
+});
+
+// LIMPAR CARRINHO (Etapa 1) — quando o carrinho fica VAZIO, solta a reserva na hora: apaga a
+// reserva + o rascunho (carrinho) daquele dono. Só mexe no que é 'rascunho' da loja e confere
+// a posse (cliente pelo CNPJ ou representante pelo nome). Nunca toca em pedido já enviado.
+loja.post("/carrinho-limpar", async (c) => {
+  let b: { cnpj?: string; pedido_id?: string; vendedor?: string } = {};
+  try { b = await c.req.json(); } catch { return c.json({ ok: true }); }
+  const pid = String(b.pedido_id || "").trim().slice(0, 40);
+  if (!pid) return c.json({ ok: true }); // nada pra limpar
+  const cnpjDig = soDigitos(b.cnpj);
+  const vendedor = String(b.vendedor || "").trim();
+  const ped = await c.env.DB.prepare(
+    "SELECT p.id, COALESCE(p.erp_sync_status,'') AS sync, COALESCE(p.vendedor,'') AS vend, COALESCE(cl.cnpj,'') AS cnpj " +
+    "FROM pedidos p LEFT JOIN clientes cl ON cl.id=p.cliente_id WHERE p.id=? AND p.canal='loja_b2b' LIMIT 1"
+  ).bind(pid).first<{ id: string; sync: string; vend: string; cnpj: string }>();
+  if (!ped) return c.json({ ok: true });               // pedido não existe mais
+  if (ped.sync !== "rascunho") return c.json({ ok: true }); // já foi enviado → não mexe
+  const donoOk = vendedor
+    ? ped.vend.trim().toLowerCase() === vendedor.toLowerCase()
+    : (cnpjDig.length >= 11 && soDigitos(ped.cnpj) === cnpjDig);
+  if (!donoOk) return c.json({ erro: "nao_dono" }, 403);
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pid),
+    c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pid),
+    c.env.DB.prepare("DELETE FROM pedidos WHERE id=? AND canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'").bind(pid),
+  ]);
+  return c.json({ ok: true });
 });
 
 // Formas de pagamento (prazos do Syntech) — o rep escolhe uma antes de enviar o pedido.

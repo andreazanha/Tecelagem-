@@ -844,6 +844,7 @@
     renderDetalhe();
     document.getElementById("modal").classList.add("show");
     document.body.style.overflow="hidden";
+    atualizarDisponibilidade(); // estoque fresquinho ao abrir (reflete reservas de outros)
   }
   window.__fechar=function(){ document.getElementById("modal").classList.remove("show"); document.body.style.overflow=""; };
 
@@ -1047,6 +1048,7 @@
   function adicionarAoCarrinho(){
     if(REP_SOVER){ alert("Você está só vendo o catálogo. Para montar um pedido, toque em ← Voltar e escolha um cliente. 👈"); return; }
     if(!LIBERADO){ alert("Seu cadastro ainda está em análise. Assim que a Big Tricot aprovar, você poderá montar o pedido. 💛"); return; }
+    var prevCart=clonarCart();              // pra desfazer se o servidor recusar a reserva
     var p=sel.prod, add=0, LIN=linhasDoProd(p);
     // Percorre TODAS as cores selecionadas (a chave é "corId|cod|idtam") — não só a
     // cor que está aberta —, pra todas as cores escolhidas entrarem no carrinho.
@@ -1066,7 +1068,15 @@
     salvarCart(); atualizarCartN();
     // feedback: zera os inputs e pergunta se continua no mesmo modelo ou escolhe outro
     atualizarCorArea();
-    perguntarContinuar(add);
+    // RESERVA NA HORA: confirma só depois que o servidor aceitar. Se recusar (sem estoque),
+    // desfaz a adição e avisa. Sem comprador identificado, segue otimista (reconcilia no envio).
+    if(!podeReservar()){ perguntarContinuar(add); return; }
+    var ac=document.getElementById("addcart"); if(ac) ac.disabled=true;
+    reservarCarrinho().then(function(res){
+      if(ac) ac.disabled=false;
+      if(res.ok){ perguntarContinuar(add); }
+      else { CART=prevCart; salvarCart(); atualizarCartN(); atualizarCorArea(); avisoSemEstoque(res.j||{}); }
+    });
   }
   // Popup após adicionar: continuar neste modelo (fica no produto) ou escolher outro (volta ao catálogo).
   function perguntarContinuar(add){
@@ -1100,6 +1110,76 @@
   function atualizarCartN(){ document.getElementById("cartN").textContent=cartQtd(); }
   function abrirCarrinho(){ renderCarrinho(); document.getElementById("cart").classList.add("show"); document.body.style.overflow="hidden"; }
   window.__fecharCart=function(){ document.getElementById("cart").classList.remove("show"); if(!document.getElementById("modal").classList.contains("show")) document.body.style.overflow=""; };
+
+  // ===== RESERVA AUTOMÁTICA DE ESTOQUE (Etapa 1) =====
+  // O carrinho é espelhado no servidor como RASCUNHO e reserva as peças físicas NA HORA
+  // (cliente logado ou representante com cliente escolhido). Produto sob encomenda (sem estoque
+  // mapeado) passa sem travar — a trava real é no servidor. A disponibilidade é relida do
+  // servidor pra refletir, ao vivo, as reservas de outros clientes.
+  function cartParaItens(){ return CART.map(function(it){ return {cod:it.cod, medida:it.medida, corNome:it.corNome, corId:it.corId, qtd:it.qtd, preco:it.preco, regiao:it.regiao, nome:it.nome, grupo:it.grupo}; }); }
+  function compradorCnpj(){ return (REP_CLIENTE ? String(REP_CLIENTE.cnpj||"") : (cnpjSalvo()||"")).replace(/\D+/g,""); }
+  function podeReservar(){ return !REP_SOVER && !!LIBERADO && compradorCnpj().length>=11; }
+  function getCartPid(){ if(REP_CLIENTE) return REP_PEDIDO_ID||""; try{ return localStorage.getItem("bt_cart_pid")||""; }catch(e){ return ""; } }
+  function setCartPid(id){ if(REP_CLIENTE){ REP_PEDIDO_ID=id||""; return; } try{ if(id) localStorage.setItem("bt_cart_pid", String(id)); else localStorage.removeItem("bt_cart_pid"); }catch(e){} }
+  function clonarCart(){ try{ return JSON.parse(JSON.stringify(CART)); }catch(e){ return CART.slice(); } }
+
+  // Relê a disponibilidade ao vivo (saldo − TODAS as reservas ativas) e redesenha o produto aberto.
+  var _dispBusy=false;
+  function atualizarDisponibilidade(){
+    if(_dispBusy) return Promise.resolve();
+    _dispBusy=true;
+    return fetch("/api/loja/disponibilidade").then(function(r){return r.json();}).then(function(d){
+      if(d && d.itens && typeof d.itens==="object"){
+        EST=d.itens;
+        if(sel.prod && document.getElementById("modal").classList.contains("show")) atualizarCorArea();
+      }
+    }).catch(function(){}).then(function(){ _dispBusy=false; });
+  }
+
+  function avisoSemEstoque(j){
+    var faltas=(j&&j.faltas)||[];
+    var det = faltas.length ? ("\n"+faltas.map(function(f){ return "• "+(f.ref||"")+(f.tam?(" "+f.tam):"")+(f.cor?(" "+f.cor):"")+": restam "+(Number(f.tem)||0); }).join("\n")) : "";
+    alert("Esse item acabou de ser reservado por outra loja — não há estoque suficiente agora."+det+"\n\nAjustei seu carrinho para o que ainda está disponível. 💛");
+  }
+
+  // Espelha o carrinho atual no servidor (rascunho + reserva). Resolve {ok:true} ou
+  // {ok:false, j} quando o servidor recusa (ex.: 409 sem estoque).
+  function reservarCarrinho(){
+    if(!podeReservar()) return Promise.resolve({ok:true, skip:true});
+    if(!CART.length) return limparCarrinhoServidor();
+    var body={cnpj:compradorCnpj(), itens:cartParaItens(), acao:"espera", pedido_id:getCartPid()};
+    if(REP_CLIENTE) body.vendedor=(REP&&REP.nome)||"";
+    return fetch("/api/loja/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){ return r.json().then(function(j){ return {status:r.status, ok:r.ok, j:j||{}}; }); })
+      .then(function(res){
+        if(res.ok && res.j.ok){ setCartPid(res.j.pedido_id); atualizarDisponibilidade(); return {ok:true}; }
+        if(res.j && res.j.erro==="pedido_nao_encontrado"){ setCartPid(""); return reservarCarrinho(); } // rascunho sumiu → recria
+        return {ok:false, j:res.j, status:res.status};
+      }).catch(function(){ return {ok:true, offline:true}; }); // sem rede: otimista, reconcilia no finalizar
+  }
+
+  function limparCarrinhoServidor(){
+    var pid=getCartPid(); if(!pid) return Promise.resolve({ok:true});
+    var body={cnpj:compradorCnpj(), pedido_id:pid};
+    if(REP_CLIENTE) body.vendedor=(REP&&REP.nome)||"";
+    return fetch("/api/loja/carrinho-limpar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){return r.json();}).then(function(){ setCartPid(""); atualizarDisponibilidade(); return {ok:true}; })
+      .catch(function(){ return {ok:true, offline:true}; });
+  }
+
+  // Reserva com DESFAZER: aplica no servidor; se recusar (sem estoque), volta o carrinho ao
+  // estado anterior e redesenha. Debounce de 250ms pros cliques rápidos no stepper.
+  var _rsvTimer=null, _rsvPrev=null;
+  function reservarComDesfazer(prevCart, redesenhar){
+    if(!_rsvPrev) _rsvPrev = prevCart;     // guarda o 1º estado do "burst"
+    clearTimeout(_rsvTimer);
+    _rsvTimer=setTimeout(function(){
+      var prev=_rsvPrev; _rsvPrev=null;
+      reservarCarrinho().then(function(res){
+        if(!res.ok && res.j){ CART=prev; salvarCart(); atualizarCartN(); if(redesenhar) redesenhar(); avisoSemEstoque(res.j); }
+      });
+    }, 250);
+  }
 
   // ÁREA DO CLIENTE — "Meus pedidos"
   window.__fecharMeus=function(){ document.getElementById("meus").classList.remove("show"); document.body.style.overflow=""; };
@@ -1201,10 +1281,10 @@
     var box=document.getElementById("cartPane");
     box.querySelectorAll(".stepper[data-ix]").forEach(function(st){
       var ix=Number(st.getAttribute("data-ix")); var inp=st.querySelector("input");
-      st.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ var d=Number(b.getAttribute("data-d")); CART[ix].qtd=Math.max(1,(Number(CART[ix].qtd)||1)+d); salvarCart(); atualizarCartN(); renderCarrinho(); }; });
-      inp.onchange=function(){ CART[ix].qtd=Math.max(1,Number(inp.value)||1); salvarCart(); atualizarCartN(); renderCarrinho(); };
+      st.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ var prev=clonarCart(); var d=Number(b.getAttribute("data-d")); CART[ix].qtd=Math.max(1,(Number(CART[ix].qtd)||1)+d); salvarCart(); atualizarCartN(); renderCarrinho(); reservarComDesfazer(prev, renderCarrinho); }; });
+      inp.onchange=function(){ var prev=clonarCart(); CART[ix].qtd=Math.max(1,Number(inp.value)||1); salvarCart(); atualizarCartN(); renderCarrinho(); reservarComDesfazer(prev, renderCarrinho); };
     });
-    box.querySelectorAll("[data-rm]").forEach(function(b){ b.onclick=function(){ CART.splice(Number(b.getAttribute("data-rm")),1); salvarCart(); atualizarCartN(); renderCarrinho(); }; });
+    box.querySelectorAll("[data-rm]").forEach(function(b){ b.onclick=function(){ var prev=clonarCart(); CART.splice(Number(b.getAttribute("data-rm")),1); salvarCart(); atualizarCartN(); renderCarrinho(); reservarComDesfazer(prev, renderCarrinho); }; });
     var fin=document.getElementById("finalizar"); if(fin) fin.onclick=finalizarPedido;
     var bPdf=document.getElementById("repPdf"); if(bPdf) bPdf.onclick=repGerarPdfEnviar;
     var bEsp=document.getElementById("repEspera"); if(bEsp) bEsp.onclick=repDeixarEspera;
@@ -1224,20 +1304,33 @@
     if(msg){ msg.textContent=""; }
     btn.disabled=true; btn.textContent="Enviando…";
     var extra = REP_CLIENTE ? {vendedor:(REP&&REP.nome)||""} : {};
-    fetch("/api/loja/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({cnpj:cnpj, itens:itens, idem:idem}, extra))})
-      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j||{}}; }); })
+    // Converte o MESMO rascunho (carrinho) do cliente em pedido enviado — não cria duplicado
+    // nem reserva em dobro. Se o rascunho sumiu (expirou/limpeza), reenvia sem pedido_id.
+    function enviar(usarPid){
+      var payload=Object.assign({cnpj:cnpj, itens:itens, idem:idem}, extra);
+      if(usarPid){ var pid=getCartPid(); if(pid) payload.pedido_id=pid; }
+      return fetch("/api/loja/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
+        .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j||{}}; }); })
+        .then(function(res){
+          if(!res.ok && res.j && res.j.erro==="pedido_nao_encontrado" && usarPid){ setCartPid(""); return enviar(false); }
+          return res;
+        });
+    }
+    enviar(true)
       .then(function(res){
         if(res.ok && res.j.ok){
-          CART=[]; salvarCart(); atualizarCartN();
+          CART=[]; salvarCart(); atualizarCartN(); setCartPid("");
           var nome=res.j.cliente?(", "+esc(res.j.cliente)):"";
           document.getElementById("cartPane").innerHTML=
             '<div class="ctopo"><h3 class="serif">🛒 Meu carrinho</h3><button class="fechar" onclick="__fecharCart()">✕</button></div>'+
             '<div class="itens"><div class="cvazio" style="color:#166534;font-weight:600">✓ '+esc(res.j.msg||"Pedido enviado!")+'</div>'+
             '<div class="cvazio" style="font-weight:400">Obrigado'+nome+'! Qualquer dúvida, fale com a Big Tricot.</div></div>';
+          atualizarDisponibilidade();
         } else {
           var m=res.j.msg||"Não consegui enviar o pedido agora. Tente novamente.";
           if(res.j.detalhe&&res.j.detalhe.length){ m+=" ("+res.j.detalhe.join("; ")+")"; }
           erro(m); btn.disabled=false; btn.textContent="Finalizar pedido";
+          if(res.j.erro==="sem_estoque") atualizarDisponibilidade();
         }
       })
       .catch(function(){ erro("Sem conexão no momento. Tente novamente."); btn.disabled=false; btn.textContent="Finalizar pedido"; });
@@ -1921,6 +2014,14 @@
   renderBanner();
   render();
   ligarWhatsApp();
+
+  // DISPONIBILIDADE AO VIVO (Etapa 1): relê o estoque de tempos em tempos e ao voltar pra aba,
+  // pra refletir as reservas feitas por outros clientes (ex.: a última unidade some das opções).
+  try{
+    setInterval(function(){ if(!document.hidden) atualizarDisponibilidade(); }, 30000);
+    window.addEventListener("focus", function(){ atualizarDisponibilidade(); });
+    document.addEventListener("visibilitychange", function(){ if(!document.hidden) atualizarDisponibilidade(); });
+  }catch(e){}
 
   // Inicia sessão: trata link de acesso (?acesso=token), senão usa o que está salvo e revalida.
   (function iniciarSessao(){
