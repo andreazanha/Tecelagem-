@@ -732,6 +732,9 @@ export interface ErpPendente {
   data_pedido: string | null; data_entrega: string | null; created_at: string;
   linhas: number; pecas: number;
 }
+export interface PcpNotificacao {
+  id: string; numero_erp: string; cliente_nome: string | null; vendedor: string | null; pecas: number; criado_em: string;
+}
 export interface ErpPendenteDetalhe {
   pedido: { id: string; numero_erp: string; cliente_nome: string; data_pedido: string | null; data_entrega: string | null };
   itens: { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number; valor_unit?: number }[];
@@ -1371,6 +1374,9 @@ export const api = {
   erpAceitar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aceitar`, {}).then((r) => j<{ ok: boolean }>(r)),
   erpRecusar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/recusar`, {}).then((r) => j<{ ok: boolean }>(r)),
   erpAprovarLote: (ids: string[]) => jsonPost("/api/integracao/aprovar-lote", { ids }).then((r) => j<{ ok: boolean; pedido_id: string; codigo_pai: string; pedidos: number }>(r)),
+  // ETAPA 5 — pop-up do PCP (pedidos recém-chegados em "Para conferir", ainda não tratados).
+  pcpNotificacoes: () => fetch("/api/integracao/pcp-notificacoes").then((r) => j<{ agora: string; notificacoes: PcpNotificacao[] }>(r)),
+  pcpNotificacaoVista: (id: string) => jsonPost("/api/integracao/pcp-notificacoes/visto", { id }).then((r) => j<{ ok: boolean }>(r)),
   // Loja B2B — pedidos capturados pela loja (só gestor). modo: off|teste|on.
   lojaPedidos: () => fetch("/api/integracao/loja-pedidos").then((r) => j<{ modo: string; pedidos: LojaPedido[] }>(r)),
   lojaPedidoDetalhe: (id: string) => fetch(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}`).then((r) => j<{ pedido: LojaPedido; itens: LojaPedidoItem[] }>(r)),

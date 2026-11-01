@@ -8,6 +8,7 @@ import { pushSuportado, pushAtivo, ativarPush, desativarPush } from "../push";
 import { Icon } from "./Icon";
 import { InstalarApp } from "./InstalarApp";
 import { DemoMode } from "./DemoMode";
+import { PcpNovoPedidoPopup } from "./PcpNovoPedidoPopup";
 
 // Aviso de NOVA VERSÃO pra TODOS os usuários: compara o "hash" do build que este navegador carregou
 // com o que o servidor está entregando agora. Assim que sai um deploy novo (o arquivo muda de hash),
@@ -668,6 +669,7 @@ export function Layout() {
         <Outlet />
       </main>
       <AvisoNovaVersao />
+      {pode(u, "pedidos") && <PcpNovoPedidoPopup />}
     </div>
   );
 }

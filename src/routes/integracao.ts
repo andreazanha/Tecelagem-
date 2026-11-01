@@ -18,6 +18,8 @@ import { SITE_FULL_HTML } from "../siteTemplateFull";
 import { SITE_LOJA_HTML } from "../siteLoja";
 import { lerDocumento, gravarDocumento } from "../firestore";
 import { limparReservasRefletidas, kitAlertas } from "../loja-estoque";
+import { avisarRecebidoSyntech } from "../reserva-avisos";
+import { enviarWhatsapp } from "./atendimento";
 
 export const integracao = new Hono<{ Bindings: Env }>();
 
@@ -114,8 +116,12 @@ integracao.post("/pedido", async (c) => {
       ).bind(uid(), pedidoId, produto, str(it.ref), str(it.cor), str(it.tamanho), inteiro(it.qtd))
     );
   }
+  // ETAPA 5 — pop-up do PCP: guarda UMA notificação "Para conferir" (idempotente por numero_erp).
+  // É só informativo; NÃO aprova, não explode e não mexe nos botões do PCP.
+  const pecasTotal = itens.reduce((s, it) => s + (inteiro(it.qtd) || 0), 0);
+  stmts.push(c.env.DB.prepare("INSERT OR IGNORE INTO pcp_notificacoes (id, numero_erp, cliente_nome, vendedor, pecas) VALUES (?,?,?,?,?)").bind(uid(), numero, clienteNome, str(b.vendedor), pecasTotal));
   await c.env.DB.batch(stmts);
-  return c.json({ ok: true, pedido_id: pedidoId, numero, itens: stmts.length - 1 }, 201);
+  return c.json({ ok: true, pedido_id: pedidoId, numero, itens: stmts.length - 2 }, 201);
 });
 
 // ── PORTA DE ENTRADA: recebe os REPRESENTANTES (GUIAS) do Syntech ───────────────
@@ -288,6 +294,28 @@ integracao.get("/pendentes", async (c) => {
       ORDER BY p.created_at DESC, p.numero_erp DESC`
   ).all();
   return c.json(results);
+});
+
+// ETAPA 5 — POP-UP DO PCP: notificações de pedidos recém-chegados em "Para conferir" ainda não
+// tratados (visto_em IS NULL). A tela do PCP consulta aqui e mostra o pop-up (sem recarregar).
+integracao.get("/pcp-notificacoes", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, numero_erp, cliente_nome, vendedor, pecas, criado_em FROM pcp_notificacoes WHERE visto_em IS NULL ORDER BY criado_em DESC, rowid DESC LIMIT 20"
+  ).all().catch(() => ({ results: [] as unknown[] }));
+  return c.json({ agora: new Date().toISOString(), notificacoes: results || [] });
+});
+// Marca uma notificação como TRATADA (botão "Fechar"/"Ver pedido") — não repete depois.
+integracao.post("/pcp-notificacoes/visto", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json().catch(() => ({})) as { id?: string; numero?: string | number };
+  const id = String(b.id || "").trim();
+  const numero = String(b.numero ?? "").trim();
+  if (!id && !numero) return c.json({ error: "faltam_dados" }, 400);
+  const campo = id ? "id=?" : "numero_erp=?";
+  await c.env.DB.prepare(`UPDATE pcp_notificacoes SET visto_em=datetime('now'), visto_por=? WHERE ${campo} AND visto_em IS NULL`)
+    .bind(g.u.nome || g.u.usuario || "", id || numero).run();
+  return c.json({ ok: true });
 });
 
 // Itens de um pedido pendente (pra conferir antes de aprovar).
@@ -2034,6 +2062,9 @@ integracao.post("/pedido-erp-gravado", async (c) => {
   const cod = String(b.cod_cli || "").trim();
   if (cod) stmts.push(c.env.DB.prepare("UPDATE clientes SET codigo_erp=? WHERE id=(SELECT cliente_id FROM pedidos WHERE id=?) AND COALESCE(codigo_erp,'')=''").bind(cod, id));
   await c.env.DB.batch(stmts);
+  // ETAPA 5 — recebido no Syntech (Evento 1): confirma por WhatsApp UMA vez, ao destinatário certo.
+  // Best-effort (waitUntil): falha de WhatsApp NUNCA afeta a confirmação da ponte nem o pedido.
+  try { c.executionCtx.waitUntil(avisarRecebidoSyntech(c.env, id, numero, (e, tel, texto) => enviarWhatsapp(e, tel, { tipo: "texto", texto })).then(() => {}).catch(() => {})); } catch { /* ok */ }
   return c.json({ ok: true });
 });
 

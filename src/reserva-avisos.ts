@@ -173,6 +173,34 @@ export async function processarAvisosReserva(env: Env, sender: Sender): Promise<
   return { aviso1: c1, aviso2: c2 };
 }
 
+// ETAPA 5 — CONFIRMAÇÃO DE RECEBIMENTO NO SYNTECH (Evento 1).
+// Chamada quando a ponte confirma a gravação no Syntech (erp_sync_status='enviado' + numero).
+// Envia UMA mensagem de recebimento (idempotente via reserva_recebido_aviso_em), ao destinatário
+// certo (cliente direto → cliente; pedido de rep → só o rep, identificando o cliente). NÃO libera
+// estoque e NÃO significa aprovação. Falha de WhatsApp não afeta o pedido (best-effort).
+export async function avisarRecebidoSyntech(env: Env, pedidoId: string, numero: number | string, sender: Sender): Promise<"enviado" | "ja_avisado" | "sem_destino" | "sem_pedido"> {
+  // reclama o aviso de forma atômica: só o PRIMEIRO a marcar envia (a ponte pode reenviar).
+  const r = await env.DB.prepare(
+    "UPDATE pedidos SET reserva_recebido_aviso_em=datetime('now') WHERE id=? AND canal='loja_b2b' AND reserva_recebido_aviso_em IS NULL"
+  ).bind(pedidoId).run();
+  if (Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) <= 0) {
+    // ou o pedido não é loja_b2b, ou já avisamos antes
+    const existe = await env.DB.prepare("SELECT 1 FROM pedidos WHERE id=? AND canal='loja_b2b' LIMIT 1").bind(pedidoId).first().catch(() => null);
+    return existe ? "ja_avisado" : "sem_pedido";
+  }
+  const p = await env.DB.prepare("SELECT COALESCE(vendedor,'') AS vendedor, cliente_id, COALESCE(cliente_nome,'') AS cliente_nome FROM pedidos WHERE id=? LIMIT 1").bind(pedidoId).first<{ vendedor: string; cliente_id: string | null; cliente_nome: string }>().catch(() => null);
+  if (!p) return "sem_pedido";
+  const dest = await destinoDoPedido(env, p);
+  if (!dest) return "sem_destino"; // sem telefone → não há como avisar (o carimbo fica; não retentamos)
+  const num = String(numero);
+  const msg = dest.ehRep
+    ? `Olá! 😊 O pedido nº ${num}, do cliente ${dest.cliente}, foi recebido pela Big Tricot!\nCaso tenhamos alguma dúvida ou precisemos confirmar alguma informação, nossa equipe entrará em contato.\nEsta é uma mensagem automática do sistema Big Tricot.`
+    : `Olá! 😊 Seu pedido nº ${num} foi recebido pela Big Tricot!\nCaso tenhamos alguma dúvida ou precisemos confirmar alguma informação, nossa equipe entrará em contato.\nAgradecemos pela preferência!\nEsta é uma mensagem automática do sistema Big Tricot.`;
+  await registrar(env, pedidoId, "recebido", dest.tel, msg);
+  await sender(env, dest.tel, msg).catch(() => {});
+  return "enviado";
+}
+
 // Trata uma resposta recebida no WhatsApp. Devolve null se NÃO for uma resposta de prorrogação
 // (aí o webhook segue o fluxo normal do CRM). Devolve um rótulo quando tratou (aplicou/negou).
 // Segurança: só age se houver UMA oferta ativa (aviso2 enviado, não vencida) PARA ESTE telefone.
