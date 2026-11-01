@@ -13,12 +13,22 @@ const str = (v: unknown) => String(v ?? "").trim() || null;
 // pontuação (colapsa tudo em espaços). Ex.: "Cris - Objetos (G M C)" → "cris objetos g m c".
 const norm = (s: unknown) =>
   String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+const uid = () => crypto.randomUUID();
 
 type ClienteRow = {
   id: string; nome: string; contato: string | null; whatsapp: string | null; email: string | null;
   cidade: string | null; uf: string | null; cnpj: string | null; representante: string | null;
   instagram: string | null; observacao: string | null; bloqueado?: number | boolean | null; nascimento?: string | null; loja_regiao?: string | null; ultima_compra?: string | null; ultimo_faturamento?: string | null; created_at?: string | null;
+  vendedor_interno?: string | null;
 };
+
+// Mapa usuarios.id → nome (pra mostrar o nome do vendedor interno sem N consultas).
+async function mapaUsuarios(env: Env): Promise<Map<string, string>> {
+  const { results } = await env.DB.prepare("SELECT id, nome FROM usuarios").all<{ id: string; nome: string }>().catch(() => ({ results: [] as { id: string; nome: string }[] }));
+  const m = new Map<string, string>();
+  for (const u of results || []) m.set(u.id, u.nome);
+  return m;
+}
 
 // Último vendedor conhecido de cada cliente (fallback do representante quando o
 // cadastro não tem representante definido). Mapa nome → vendedor (limpo).
@@ -41,7 +51,7 @@ clientes.get("/", async (c) => {
     return c.json(results);
   }
   const { results: cliAll } = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, loja_regiao, ultima_compra, ultimo_faturamento, prospectado_em, created_at FROM clientes ORDER BY nome"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, loja_regiao, ultima_compra, ultimo_faturamento, prospectado_em, vendedor_interno, created_at FROM clientes ORDER BY nome"
   ).all<ClienteRow>();
   // Nomes internos (ESTOQUE, OP CONSOLIDADA, REPOSIÇÃO, BIG TRICOT) não são clientes reais.
   const cli = cliAll.filter((c0) => !ehClienteInterno(c0.nome));
@@ -54,6 +64,7 @@ clientes.get("/", async (c) => {
   ).all<{ nome: string; pedidos: number; total: number; ultima: string | null }>();
   const smap = new Map(stats.map((s) => [s.nome, s]));
   const vmap = await ultimoVendedorPorCliente(c.env);
+  const umap = await mapaUsuarios(c.env);
   const lista = cli.map((c0) => {
     const s = smap.get(c0.nome);
     const pedidos = s?.pedidos || 0;
@@ -61,6 +72,8 @@ clientes.get("/", async (c) => {
     return {
       ...c0,
       representante: c0.representante || vmap.get(c0.nome) || null,
+      vendedor_interno: c0.vendedor_interno || null,
+      vendedor_interno_nome: c0.vendedor_interno ? (umap.get(c0.vendedor_interno) || null) : null,
       pedidos, total, ultima: s?.ultima || c0.ultima_compra || null,
       ticket: pedidos ? total / pedidos : 0,
     };
@@ -97,7 +110,14 @@ async function fichaDoCliente(env: Env, cli: ClienteRow) {
   const total = pedidos.reduce((s, p) => s + p.valor, 0);
   const kpis = { total, pedidos: pedidos.length, ticket: pedidos.length ? total / pedidos.length : 0, ultima: pedidos[0]?.data || cli.ultima_compra || null };
   const vmap = await ultimoVendedorPorCliente(env);
-  return { ...cli, representante: cli.representante || vmap.get(cli.nome) || null, kpis, historico: pedidos };
+  const umap = await mapaUsuarios(env);
+  return {
+    ...cli,
+    representante: cli.representante || vmap.get(cli.nome) || null,
+    vendedor_interno: cli.vendedor_interno || null,
+    vendedor_interno_nome: cli.vendedor_interno ? (umap.get(cli.vendedor_interno) || null) : null,
+    kpis, historico: pedidos,
+  };
 }
 
 // RESOLVEDOR do Navegador CRM (desktop): a partir do texto do cabeçalho da conversa
@@ -196,10 +216,80 @@ clientes.get("/loja-config", async (c) => {
 });
 
 // FICHA 360: dados do cliente + histórico de pedidos (não-reposição) + KPIs.
+// ETAPA 6 — CARTEIRAS (vendedor interno). Registrados ANTES de "/:id" pra não serem capturados.
+// Usuários que PODEM ser vendedor interno: admin OU com a função 'vendedor.interno'.
+async function vendedorElegivel(env: Env, usuarioId: string): Promise<boolean> {
+  if (!usuarioId) return false;
+  const r = await env.DB.prepare(
+    "SELECT 1 FROM usuarios u WHERE u.id=? AND (COALESCE(u.admin,0)=1 OR EXISTS (SELECT 1 FROM usuario_permissoes p WHERE p.usuario_id=u.id AND p.permissao='vendedor.interno')) LIMIT 1"
+  ).bind(usuarioId).first().catch(() => null);
+  return !!r;
+}
+// Lista os vendedores internos elegíveis (pro seletor no cadastro e na atribuição em lote).
+clientes.get("/vendedores-internos", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const { results } = await c.env.DB.prepare(
+    "SELECT u.id, u.nome FROM usuarios u WHERE COALESCE(u.admin,0)=1 OR EXISTS (SELECT 1 FROM usuario_permissoes p WHERE p.usuario_id=u.id AND p.permissao='vendedor.interno') ORDER BY u.nome"
+  ).all<{ id: string; nome: string }>().catch(() => ({ results: [] as { id: string; nome: string }[] }));
+  return c.json(results || []);
+});
+// Histórico de alterações da carteira de UM cliente.
+clientes.get("/:id/vendedor-hist", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const umap = await mapaUsuarios(c.env);
+  const { results } = await c.env.DB.prepare(
+    "SELECT de, para, por, por_nome, criado_em FROM cliente_vendedor_hist WHERE cliente_id=? ORDER BY criado_em DESC, rowid DESC LIMIT 50"
+  ).bind(id).all<{ de: string | null; para: string | null; por: string | null; por_nome: string | null; criado_em: string }>().catch(() => ({ results: [] as { de: string | null; para: string | null; por: string | null; por_nome: string | null; criado_em: string }[] }));
+  const nome = (x: string | null) => x ? (umap.get(x) || "(removido)") : "—";
+  return c.json((results || []).map((r) => ({ ...r, de_nome: nome(r.de), para_nome: nome(r.para), quando: r.criado_em })));
+});
+// Define/limpa o vendedor interno de UM cliente (vínculo pelo ID real do cliente).
+clientes.post("/:id/vendedor", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const b = await c.req.json().catch(() => ({})) as { usuario_id?: string | null };
+  const novo = String(b.usuario_id || "").trim() || null;
+  if (novo && !(await vendedorElegivel(c.env, novo))) return c.json({ error: "vendedor_invalido" }, 400);
+  const cli = await c.env.DB.prepare("SELECT COALESCE(vendedor_interno,'') AS atual FROM clientes WHERE id=? LIMIT 1").bind(id).first<{ atual: string }>();
+  if (!cli) return c.json({ error: "cliente_nao_encontrado" }, 404);
+  const atual = cli.atual || null;
+  if (atual === novo) return c.json({ ok: true, inalterado: true });
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE clientes SET vendedor_interno=? WHERE id=?").bind(novo, id),
+    c.env.DB.prepare("INSERT INTO cliente_vendedor_hist (id, cliente_id, de, para, por, por_nome) VALUES (?,?,?,?,?,?)").bind(uid(), id, atual, novo, g.u.id, g.u.nome),
+  ]);
+  return c.json({ ok: true });
+});
+// Atribui VÁRIOS clientes ao mesmo vendedor (ou limpa) de uma vez.
+clientes.post("/vendedor-lote", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const b = await c.req.json().catch(() => ({})) as { ids?: string[]; usuario_id?: string | null };
+  const ids = Array.isArray(b.ids) ? b.ids.map((x) => String(x || "").trim()).filter(Boolean) : [];
+  const novo = String(b.usuario_id || "").trim() || null;
+  if (!ids.length) return c.json({ error: "sem_clientes" }, 400);
+  if (novo && !(await vendedorElegivel(c.env, novo))) return c.json({ error: "vendedor_invalido" }, 400);
+  let mudados = 0;
+  for (let i = 0; i < ids.length; i += 40) {
+    const lote = ids.slice(i, i + 40); const ph = lote.map(() => "?").join(",");
+    const atuais = (await c.env.DB.prepare(`SELECT id, COALESCE(vendedor_interno,'') AS atual FROM clientes WHERE id IN (${ph})`).bind(...lote).all<{ id: string; atual: string }>().catch(() => ({ results: [] as { id: string; atual: string }[] }))).results || [];
+    const stmts: D1PreparedStatement[] = [];
+    for (const r of atuais) {
+      const atual = r.atual || null;
+      if (atual === novo) continue;
+      stmts.push(c.env.DB.prepare("UPDATE clientes SET vendedor_interno=? WHERE id=?").bind(novo, r.id));
+      stmts.push(c.env.DB.prepare("INSERT INTO cliente_vendedor_hist (id, cliente_id, de, para, por, por_nome) VALUES (?,?,?,?,?,?)").bind(uid(), r.id, atual, novo, g.u.id, g.u.nome));
+      mudados++;
+    }
+    if (stmts.length) await c.env.DB.batch(stmts);
+  }
+  return c.json({ ok: true, mudados });
+});
+
 clientes.get("/:id", async (c) => {
   const id = c.req.param("id");
   const cli = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, ultima_compra, ultimo_faturamento, razao_social, cnpj_situacao, cnpj_checado_em, created_at FROM clientes WHERE id = ?"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, ultima_compra, ultimo_faturamento, razao_social, cnpj_situacao, cnpj_checado_em, vendedor_interno, created_at FROM clientes WHERE id = ?"
   ).bind(id).first<ClienteRow>();
   if (!cli) return c.json({ error: "cliente não encontrado" }, 404);
   return c.json(await fichaDoCliente(c.env, cli));

@@ -2072,6 +2072,30 @@ atendimento.post("/:id/coluna", async (c) => {
   return c.json({ ok: true });
 });
 
+// ETAPA 6 — NOTIFICAÇÕES INDIVIDUAIS DO CRM (pop-up "seu cliente fez um pedido").
+// Só devolve/afeta as notificações DO PRÓPRIO usuário logado (segurança no servidor; nunca
+// confia em filtro visual). ?hist=1 inclui as já vistas (histórico simples).
+atendimento.get("/crm-notificacoes", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  const hist = c.req.query("hist") === "1";
+  const sql = hist
+    ? "SELECT id, pedido_id, cliente_id, numero_erp, cliente_nome, representante, valor_total, pecas, recebido_em, criado_em, visto_em FROM crm_notificacoes WHERE usuario_id=? ORDER BY criado_em DESC, rowid DESC LIMIT 50"
+    : "SELECT id, pedido_id, cliente_id, numero_erp, cliente_nome, representante, valor_total, pecas, recebido_em, criado_em FROM crm_notificacoes WHERE usuario_id=? AND visto_em IS NULL ORDER BY criado_em DESC, rowid DESC LIMIT 20";
+  const { results } = await c.env.DB.prepare(sql).bind(u.id).all().catch(() => ({ results: [] as unknown[] }));
+  return c.json({ agora: new Date().toISOString(), notificacoes: results || [] });
+});
+// Marca UMA notificação como vista — só se for do próprio usuário (ownership no WHERE).
+atendimento.post("/crm-notificacoes/visto", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  const b = await c.req.json().catch(() => ({})) as { id?: string };
+  const id = String(b.id || "").trim();
+  if (!id) return c.json({ error: "faltam_dados" }, 400);
+  await c.env.DB.prepare("UPDATE crm_notificacoes SET visto_em=datetime('now') WHERE id=? AND usuario_id=? AND visto_em IS NULL").bind(id, u.id).run();
+  return c.json({ ok: true });
+});
+
 // Diagnóstico do webhook (última chamada recebida + estado dos interruptores).
 atendimento.get("/webhook-debug", async (c) => {
   const cfg = await lerConfig(c.env);

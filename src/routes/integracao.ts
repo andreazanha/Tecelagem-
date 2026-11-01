@@ -18,7 +18,7 @@ import { SITE_FULL_HTML } from "../siteTemplateFull";
 import { SITE_LOJA_HTML } from "../siteLoja";
 import { lerDocumento, gravarDocumento } from "../firestore";
 import { limparReservasRefletidas, kitAlertas } from "../loja-estoque";
-import { avisarRecebidoSyntech } from "../reserva-avisos";
+import { avisarRecebidoSyntech, notificarVendedorInterno } from "../reserva-avisos";
 import { enviarWhatsapp } from "./atendimento";
 
 export const integracao = new Hono<{ Bindings: Env }>();
@@ -2065,6 +2065,8 @@ integracao.post("/pedido-erp-gravado", async (c) => {
   // ETAPA 5 — recebido no Syntech (Evento 1): confirma por WhatsApp UMA vez, ao destinatário certo.
   // Best-effort (waitUntil): falha de WhatsApp NUNCA afeta a confirmação da ponte nem o pedido.
   try { c.executionCtx.waitUntil(avisarRecebidoSyntech(c.env, id, numero, (e, tel, texto) => enviarWhatsapp(e, tel, { tipo: "texto", texto })).then(() => {}).catch(() => {})); } catch { /* ok */ }
+  // ETAPA 6 — pop-up individual no CRM para o vendedor interno dono da carteira (best-effort).
+  try { c.executionCtx.waitUntil(notificarVendedorInterno(c.env, id, numero).then(() => {}).catch(() => {})); } catch { /* ok */ }
   return c.json({ ok: true });
 });
 

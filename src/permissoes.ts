@@ -54,6 +54,8 @@ export const CHAVES_FUNCAO = new Set<string>([
   "pcp.liberar", "compras.ordem", "compras.aprovar",
   // Administração
   "admin.usuarios", "admin.setores", "admin.permissoes",
+  // Comercial — vendedor interno (dono de carteira; recebe o pop-up "seu cliente fez pedido")
+  "vendedor.interno",
 ]);
 
 export interface PermsUsuario {

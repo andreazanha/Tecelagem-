@@ -201,6 +201,27 @@ export async function avisarRecebidoSyntech(env: Env, pedidoId: string, numero: 
   return "enviado";
 }
 
+// ETAPA 6 — NOTIFICAÇÃO INDIVIDUAL DO CRM (Evento 1, recebido no Syntech).
+// Cria o aviso "seu cliente fez um pedido" SÓ para o VENDEDOR INTERNO dono da carteira do cliente.
+// Sem vendedor vinculado → NÃO notifica ninguém (o cliente aparece na lista admin "sem vínculo").
+// Idempotente (único por pedido+usuário). NÃO mexe em representante, PCP, produção ou reservas.
+export async function notificarVendedorInterno(env: Env, pedidoId: string, numero: number | string): Promise<"criada" | "sem_vendedor" | "sem_pedido"> {
+  const p = await env.DB.prepare(
+    "SELECT cliente_id, COALESCE(cliente_nome,'') AS cliente_nome, COALESCE(vendedor,'') AS vendedor, valor_total AS valor FROM pedidos WHERE id=? AND canal='loja_b2b' LIMIT 1"
+  ).bind(pedidoId).first<{ cliente_id: string | null; cliente_nome: string; vendedor: string; valor: number | null }>().catch(() => null);
+  if (!p) return "sem_pedido";
+  const cli = await env.DB.prepare("SELECT COALESCE(vendedor_interno,'') AS vi, COALESCE(representante,'') AS rep FROM clientes WHERE id=? LIMIT 1").bind(p.cliente_id).first<{ vi: string; rep: string }>().catch(() => null);
+  const vi = (cli?.vi || "").trim();
+  if (!vi) return "sem_vendedor";
+  const pc = await env.DB.prepare("SELECT COALESCE(SUM(qtd),0) AS n FROM pedido_itens WHERE pedido_id=?").bind(pedidoId).first<{ n: number }>().catch(() => null);
+  const pecas = Number(pc?.n) || 0;
+  const representante = (p.vendedor || cli?.rep || "").trim() || null;
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO crm_notificacoes (id, usuario_id, pedido_id, cliente_id, numero_erp, cliente_nome, representante, valor_total, pecas, recebido_em) VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))"
+  ).bind(uid(), vi, pedidoId, p.cliente_id ?? null, String(numero), p.cliente_nome, representante, p.valor ?? null, pecas).run().catch(() => {});
+  return "criada";
+}
+
 // Trata uma resposta recebida no WhatsApp. Devolve null se NÃO for uma resposta de prorrogação
 // (aí o webhook segue o fluxo normal do CRM). Devolve um rótulo quando tratou (aplicou/negou).
 // Segurança: só age se houver UMA oferta ativa (aviso2 enviado, não vencida) PARA ESTE telefone.
