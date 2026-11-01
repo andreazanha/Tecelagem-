@@ -34,9 +34,12 @@ function fmtBR(ms: number): string {
   }
 }
 
+// "HH:MM de DD/MM" no fuso de Brasília — exportado p/ a tela (loja) formatar igual ao WhatsApp.
+export { fmtBR };
+
 // Opções de prorrogação VÁLIDAS agora (número fixo → horas), filtradas pelo teto total.
 // Cliente: só 1 prorrogação (nenhuma opção depois disso), teto 24h; rep: teto 48h.
-function opcoesValidas(ehRep: boolean, iniMs: number, expMs: number, prorr: number): [number, number][] {
+export function opcoesValidas(ehRep: boolean, iniMs: number, expMs: number, prorr: number): [number, number][] {
   if (!ehRep && prorr >= 1) return [];
   const tetoH = ehRep ? 48 : 24;
   const capAbs = iniMs + tetoH * H;
@@ -92,6 +95,39 @@ async function destinoDoPedido(env: Env, p: { vendedor: string; cliente_id: stri
 }
 
 type PedRow = { id: string; vendedor: string; cliente_id: string | null; cliente_nome: string; ini: string | null; exp: string | null; a1: string | null; a2: string | null; prorr: number };
+
+// NÚCLEO DA PRORROGAÇÃO — compartilhado entre WhatsApp e TELA (mesmas regras/limites).
+// Valida a opção (1..4 → horas) contra o teto (cliente 24h/1x · rep 48h) e aplica de forma
+// ATÔMICA e idempotente. `exigirOferta`=true no WhatsApp (precisa do aviso2 pendente, o que
+// também bloqueia resposta repetida); false na tela (o dono pode prorrogar durante a janela).
+// Ao aplicar, zera reserva_aviso2_em → REAGENDA o aviso de vencimento pro novo prazo.
+export type ProrrogaRes =
+  | { ok: true; horas: number; novoExpMs: number; ehRep: boolean; cliente: string }
+  | { ok: false; motivo: "sem_reserva" | "expirado" | "opcao_invalida" | "ja_prorrogado" | "nao_aplicou"; expMs?: number; ehRep?: boolean; opts?: [number, number][] };
+export async function prorrogarPedido(env: Env, pedidoId: string, opt: number, exigirOferta: boolean): Promise<ProrrogaRes> {
+  const p = await env.DB.prepare(
+    `SELECT COALESCE(vendedor,'') AS vendedor, COALESCE(cliente_nome,'') AS cliente_nome,
+            reserva_iniciada_em AS ini, reserva_expira_em AS exp, COALESCE(reserva_prorrogacoes,0) AS prorr,
+            COALESCE(erp_sync_status,'') AS sync, reserva_aviso2_em AS a2
+       FROM pedidos WHERE id=? AND canal='loja_b2b' LIMIT 1`
+  ).bind(pedidoId).first<{ vendedor: string; cliente_nome: string; ini: string | null; exp: string | null; prorr: number; sync: string; a2: string | null }>().catch(() => null);
+  if (!p || p.sync !== "rascunho") return { ok: false, motivo: "sem_reserva" };
+  const iniMs = fromSql(p.ini), expMs = fromSql(p.exp);
+  const ehRep = !!p.vendedor;
+  if (iniMs == null || expMs == null || expMs <= Date.now()) return { ok: false, motivo: "expirado", ehRep };
+  const opts = opcoesValidas(ehRep, iniMs, expMs, p.prorr);
+  const escolha = opts.find(([n]) => n === opt);
+  if (!escolha) return { ok: false, motivo: (!ehRep && p.prorr >= 1) ? "ja_prorrogado" : "opcao_invalida", expMs, ehRep, opts };
+  const horas = escolha[1];
+  const novoExpMs = expMs + horas * H;
+  const cond = exigirOferta ? "AND reserva_aviso2_em IS NOT NULL" : "";
+  const r = await env.DB.prepare(
+    `UPDATE pedidos SET reserva_expira_em=?, reserva_prorrogacoes=COALESCE(reserva_prorrogacoes,0)+1, reserva_aviso2_em=NULL
+       WHERE id=? AND canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho' AND reserva_expira_em > datetime('now') ${cond}`
+  ).bind(toSqlUTC(novoExpMs), pedidoId).run();
+  if (Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) <= 0) return { ok: false, motivo: "nao_aplicou", expMs, ehRep, opts };
+  return { ok: true, horas, novoExpMs, ehRep, cliente: p.cliente_nome };
+}
 
 // Varredura dos avisos — chamada pelo cron */5. Envia aviso1 (1h após criar) e aviso2 (1h antes
 // de vencer). Só mexe em RASCUNHO ativo da loja; nunca em pedido enviado ao Syntech.
@@ -159,35 +195,16 @@ export async function tratarRespostaProrrogacao(env: Env, phone: string, texto: 
   if (cands.length === 0) return null;                 // telefone sem oferta ativa → não é pra nós
   if (cands.length > 1) { await sender(env, phone, msgAmbiguo()).catch(() => {}); return "ambiguo"; }
   const p = cands[0];
-  const iniMs = fromSql(p.ini), expMs = fromSql(p.exp);
-  if (iniMs == null || expMs == null) return null;
-  const opts = opcoesValidas(p.vendedor ? true : false, iniMs, expMs, p.prorr);
-  const escolha = opts.find(([n]) => n === opt);
-  if (!escolha) {
-    const motivo = (!p.vendedor && p.prorr >= 1) ? "ja_prorrogado" : "opcao_invalida";
-    const msg = msgRecusa(motivo, !!p.vendedor, opts, expMs);
+  const res = await prorrogarPedido(env, p.id, opt, true); // WhatsApp: exige a oferta (aviso2) ativa
+  if (!res.ok) {
+    const motivo = res.motivo === "nao_aplicou" ? "expirado" : res.motivo;
+    const msg = msgRecusa(motivo, !!res.ehRep, res.opts || [], res.expMs ?? fromSql(p.exp) ?? Date.now());
     await registrar(env, p.id, "prorrogacao_negada", phone, `[${motivo} opt=${opt}] ${msg}`);
     await sender(env, phone, msg).catch(() => {});
     return motivo;
   }
-  const horas = escolha[1];
-  const novoExp = expMs + horas * H;
-  // aplica de forma ATÔMICA e idempotente: só se ainda for rascunho, não vencida e com a oferta ativa
-  // (reserva_aviso2_em NOT NULL). Ao aplicar, zera a2 → reagenda o aviso2 e bloqueia resposta repetida.
-  const r = await env.DB.prepare(
-    `UPDATE pedidos SET reserva_expira_em=?, reserva_prorrogacoes=COALESCE(reserva_prorrogacoes,0)+1, reserva_aviso2_em=NULL
-       WHERE id=? AND canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'
-         AND reserva_aviso2_em IS NOT NULL AND reserva_expira_em > datetime('now')`
-  ).bind(toSqlUTC(novoExp), p.id).run();
-  const aplicou = Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) > 0;
-  if (!aplicou) {                                      // corrida: venceu/enviou/já respondido
-    const msg = msgRecusa("expirado", !!p.vendedor, [], expMs);
-    await registrar(env, p.id, "prorrogacao_negada", phone, `[nao_aplicou corrida/expirado] ${msg}`);
-    await sender(env, phone, msg).catch(() => {});
-    return "expirado";
-  }
-  await registrar(env, p.id, "prorrogacao", phone, `+${horas}h -> ${toSqlUTC(novoExp)}`);
-  const conf = msgConfirma(!!p.vendedor, p.cliente_nome, novoExp);
+  await registrar(env, p.id, "prorrogacao", phone, `whatsapp +${res.horas}h -> ${toSqlUTC(res.novoExpMs)}`);
+  const conf = msgConfirma(res.ehRep, res.cliente, res.novoExpMs);
   await registrar(env, p.id, "confirmacao", phone, conf);
   await sender(env, phone, conf).catch(() => {});
   return "prorrogado";

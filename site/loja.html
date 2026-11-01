@@ -365,6 +365,12 @@
   .stepper.mini input{width:28px; height:24px; font-size:12px}
   /* Rodapé FIXO (total 16px + forma + obs + ações), bem compacto. */
   .cfoot{flex:0 0 auto; border-top:1px solid var(--line); background:var(--card); padding:10px 16px}
+  /* Prorrogação pela tela (Etapa 4): bloco discreto no rodapé do carrinho. */
+  .prroga{margin:2px 0 10px; font-size:12.5px; color:#6b6358; line-height:1.4}
+  .prroga b{color:#2c2721}
+  .prroga-bts{display:flex; gap:6px; flex-wrap:wrap; margin-top:6px}
+  .prrbt{border:1.5px solid #d6cfc2; background:#fff; color:#5f584e; border-radius:999px; padding:5px 12px; font-size:12.5px; font-weight:600; cursor:pointer; font-family:inherit}
+  .prrbt:hover{border-color:#ae5033; color:#ae5033}
   .cfoot .tot{display:flex; justify-content:space-between; align-items:baseline; font-size:13px; margin-bottom:8px}
   .cfoot .tot b{font-family:'Montserrat',sans-serif; color:var(--ink); font-size:16px; font-weight:700}
   .cfoot .fin{width:100%; border:0; background:var(--accent); color:#fff; border-radius:9px; padding:11px; font-size:14px; font-weight:600; cursor:pointer}
@@ -1115,7 +1121,7 @@
   function cartQtd(){ return CART.reduce(function(s,i){return s+(Number(i.qtd)||0);},0); }
   function cartTotal(){ return CART.reduce(function(s,i){return s+(Number(i.qtd)||0)*(Number(i.preco)||0);},0); }
   function atualizarCartN(){ document.getElementById("cartN").textContent=cartQtd(); }
-  function abrirCarrinho(){ renderCarrinho(); document.getElementById("cart").classList.add("show"); document.body.style.overflow="hidden"; }
+  function abrirCarrinho(){ renderCarrinho(); document.getElementById("cart").classList.add("show"); document.body.style.overflow="hidden"; atualizarStatusReserva(true); }
   window.__fecharCart=function(){ document.getElementById("cart").classList.remove("show"); if(!document.getElementById("modal").classList.contains("show")) document.body.style.overflow=""; };
 
   // ===== RESERVA AUTOMÁTICA DE ESTOQUE (Etapa 1) =====
@@ -1196,7 +1202,8 @@
   // ===== CONTADOR + EXPIRAÇÃO 12h (Etapa 2) =====
   // O prazo é do SERVIDOR: a loja só exibe o tempo restante e, ao vencer, limpa o carrinho
   // (sem recarregar a página). O relógio do navegador é corrigido pelo 'agora' do servidor.
-  var _rsvDeadline=null, _rsvOffset=0, _rsvTick=null;
+  var _rsvDeadline=null, _rsvOffset=0, _rsvTick=null, _rsvStatus=null;
+  function fmtHoraBR(ms){ try{ return new Intl.DateTimeFormat("pt-BR",{timeZone:"America/Sao_Paulo",hour:"2-digit",minute:"2-digit"}).format(new Date(ms)); }catch(e){ var d=new Date(ms-3*3600000); return (""+d.getUTCHours()).padStart(2,"0")+":"+(""+d.getUTCMinutes()).padStart(2,"0"); } }
   function _toastEl(){ var t=document.getElementById("btToast"); if(!t){ t=document.createElement("div"); t.id="btToast"; t.className="bt-toast"; document.body.appendChild(t); } return t; }
   function toast(msg){ var t=_toastEl(); t.textContent=msg; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(function(){ t.classList.remove("show"); }, 6000); }
   function fmtRestante(ms){ var s=Math.max(0,Math.floor(ms/1000)); var h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=s%60; return h>0 ? ('reserva '+h+'h'+(m<10?'0':'')+m) : ('reserva '+m+':'+(ss<10?'0':'')+ss); }
@@ -1221,23 +1228,51 @@
   }
 
   // Autoridade = SERVIDOR. Lê o status, corrige o relógio e decide manter/encerrar/expirar.
-  function atualizarStatusReserva(){
+  function atualizarStatusReserva(rerender){
     var pid=getCartPid();
-    if(!pid || !podeReservar()){ pararTimer(); return Promise.resolve(); }
+    if(!pid || !podeReservar()){ _rsvStatus=null; pararTimer(); return Promise.resolve(); }
     var q="pedido_id="+encodeURIComponent(pid)+"&cnpj="+encodeURIComponent(compradorCnpj());
     if(REP_CLIENTE) q+="&vendedor="+encodeURIComponent((REP&&REP.nome)||"");
     return fetch("/api/loja/carrinho-status?"+q).then(function(r){return r.json();}).then(function(d){
       if(!d||!d.ok) return;
-      if(d.existe===false){ if(CART.length) expirarCarrinhoLocal(); else { setCartPid(""); pararTimer(); } return; }
-      if(d.enviado){ pararTimer(); return; }                 // recebido/enviado: contagem encerra, peças seguem reservadas
-      if(d.ativo && d.expira_em){
+      _rsvStatus=d;
+      if(d.existe===false){ _rsvStatus=null; if(CART.length) expirarCarrinhoLocal(); else { setCartPid(""); pararTimer(); } return; }
+      if(d.enviado){ pararTimer(); }                          // recebido/enviado: contagem encerra, peças seguem reservadas
+      else if(d.ativo && d.expira_em){
         _rsvOffset=(Number(d.agora)||Date.now())-Date.now(); // o servidor manda no relógio
         _rsvDeadline=Number(d.expira_em);
         if((_rsvDeadline-(Date.now()+_rsvOffset))<=0){ expirarCarrinhoLocal(); return; }
         garantirTick(); _tick();
       } else { pararTimer(); }                                // sem janela (só sob encomenda)
+      if(rerender && document.getElementById("cart").classList.contains("show")) renderCarrinho();
     }).catch(function(){});
   }
+
+  // Bloco discreto de prorrogação no rodapé do carrinho (cliente e representante). As opções
+  // válidas vêm do servidor (eh_rep + limites). A confirmação é na própria tela (toast).
+  function prorrogaHTML(){
+    var s=_rsvStatus;
+    if(!CART.length || !s || !s.ativo || !(s.prorroga_opcoes && s.prorroga_opcoes.length)) return "";
+    var ate = s.expira_em ? fmtHoraBR(Number(s.expira_em)) : "";
+    var bts = s.prorroga_opcoes.map(function(o){ return '<button type="button" class="prrbt" data-opt="'+o.n+'">+'+o.h+'h</button>'; }).join("");
+    return '<div class="prroga">⏳ Reserva até <b>'+esc(ate)+'</b>. Precisa de mais tempo?<div class="prroga-bts">'+bts+'</div></div>';
+  }
+  function prorrogarTela(n){
+    var pid=getCartPid(); if(!pid) return;
+    var body={pedido_id:pid, cnpj:compradorCnpj(), opcao:n};
+    if(REP_CLIENTE) body.vendedor=(REP&&REP.nome)||"";
+    fetch("/api/loja/prorrogar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j||{}}; }); })
+      .then(function(res){
+        if(res.ok && res.j.ok){ toast("✅ Reserva estendida até "+res.j.vencimento_txt+" (horário de Brasília). 💛"); atualizarStatusReserva(true); }
+        else {
+          var e=res.j.erro;
+          var m = e==="ja_prorrogado" ? "Esta reserva já foi prorrogada uma vez." : e==="expirado" ? "A reserva já venceu." : e==="opcao_invalida" ? "Essa opção não está mais disponível." : "Não consegui prorrogar agora.";
+          toast("⚠️ "+m); atualizarStatusReserva(true);
+        }
+      }).catch(function(){ toast("Sem conexão no momento. Tente de novo."); });
+  }
+  window.__prorrogar=prorrogarTela;
 
   // ÁREA DO CLIENTE — "Meus pedidos"
   window.__fecharMeus=function(){ document.getElementById("meus").classList.remove("show"); document.body.style.overflow=""; };
@@ -1310,7 +1345,7 @@
     if(REP_CLIENTE){
       // Carrinho no modo REPRESENTANTE: forma de pagamento + botões (espera / PDF / enviar à Big).
       var opts='<option value="">Forma de pagamento *</option>'+REP_PRAZOS.map(function(p){ return '<option value="'+esc(p.codigo)+'"'+(String(p.codigo)===String(REP_PEDIDO_FORMA||"")?" selected":"")+'>'+esc(p.descricao||p.codigo)+'</option>'; }).join("");
-      footHTML='<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+
+      footHTML='<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+prorrogaHTML()+
         (CART.length?(
           '<select id="repForma" class="cad-inp cart-inp" style="width:100%;margin:0 0 7px">'+opts+'</select>'+
           '<input id="repObs" class="cad-inp cart-inp" placeholder="Observação (opcional)" value="'+esc(REP_PEDIDO_OBS||"")+'" style="width:100%;margin:0 0 7px">'+
@@ -1324,7 +1359,7 @@
           '<div style="font-size:11px;color:#9aa3af;margin-top:7px;line-height:1.35">O pedido só vai pro Syntech depois que a Big Tricot aprovar.</div>'
         ):'')+'</div>';
     } else {
-      footHTML='<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+
+      footHTML='<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+prorrogaHTML()+
         (CART.length?('<label style="display:block;font-size:15px;color:#555;margin:2px 0 8px">Informe o CNPJ da sua loja'+
           '<input id="cnpjInp" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" value="'+esc(cnpjSalvo())+'" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:12px;border:1px solid #d6d0c4;border-radius:10px;font-size:16px"></label>'+
           '<div id="cmsg" style="font-size:13px;margin:0 0 8px;min-height:1px;line-height:1.35"></div>'):'')+
@@ -1348,6 +1383,7 @@
     var bEsp=document.getElementById("repEspera"); if(bEsp) bEsp.onclick=repDeixarEspera;
     var bCont=document.getElementById("repContinuar"); if(bCont) bCont.onclick=repContinuarComprando;
     var bBig=document.getElementById("repEnviarBig"); if(bBig) bBig.onclick=repEnviarBig;
+    box.querySelectorAll(".prrbt").forEach(function(bt){ bt.onclick=function(){ prorrogarTela(Number(bt.getAttribute("data-opt"))); }; });
   }
   function finalizarPedido(){
     if(!CART.length) return;
