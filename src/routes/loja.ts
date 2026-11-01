@@ -11,7 +11,7 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { gerarPdfPedidoLoja, type PedidoLojaItem } from "../pdf";
-import { conferirEReservar } from "../loja-estoque";
+import { conferirEReservar, expirarCarrinhosVencidos } from "../loja-estoque";
 import { gerarCatalogoSite } from "./integracao";
 
 export const loja = new Hono<{ Bindings: Env }>();
@@ -778,11 +778,38 @@ loja.post("/pedido", async (c) => {
 // Só LÊ — não reserva nada. Nunca derruba a loja (em erro, devolve vazio).
 loja.get("/disponibilidade", async (c) => {
   try {
+    await expirarCarrinhosVencidos(c.env).catch(() => 0); // solta carrinhos vencidos antes de medir
     const cat = await gerarCatalogoSite(c.env);
     return c.json({ ok: true, atualizadoMs: cat.estoque.atualizadoMs, itens: cat.estoque.itens });
   } catch {
     return c.json({ ok: false, itens: {} });
   }
+});
+
+// STATUS DA RESERVA DO CARRINHO (Etapa 2) — fonte de verdade do PRAZO. Varre os vencidos e
+// devolve, pro dono do carrinho, se a janela está ativa, QUANDO expira e QUE HORAS são no
+// servidor (agora) — a loja corrige o relógio do navegador por esse 'agora'. Pedido já enviado
+// (sync != rascunho) devolve enviado=true: contagem encerrada, peças seguem reservadas.
+loja.get("/carrinho-status", async (c) => {
+  await expirarCarrinhosVencidos(c.env).catch(() => 0);
+  const agora = Date.now();
+  const pid = String(c.req.query("pedido_id") || "").trim().slice(0, 40);
+  if (!pid) return c.json({ ok: true, existe: false, ativo: false, agora });
+  const row = await c.env.DB.prepare(
+    "SELECT p.id, COALESCE(p.erp_sync_status,'') AS sync, p.reserva_expira_em AS exp, COALESCE(p.vendedor,'') AS vend, COALESCE(cl.cnpj,'') AS cnpj " +
+    "FROM pedidos p LEFT JOIN clientes cl ON cl.id=p.cliente_id WHERE p.id=? AND p.canal='loja_b2b' LIMIT 1"
+  ).bind(pid).first<{ id: string; sync: string; exp: string | null; vend: string; cnpj: string }>();
+  if (!row) return c.json({ ok: true, existe: false, ativo: false, agora }); // foi esvaziado (expirou/limpou)
+  const cnpjDig = soDigitos(c.req.query("cnpj"));
+  const vendedor = String(c.req.query("vendedor") || "").trim();
+  const donoOk = vendedor
+    ? row.vend.trim().toLowerCase() === vendedor.toLowerCase()
+    : (cnpjDig.length >= 11 && soDigitos(row.cnpj) === cnpjDig);
+  if (!donoOk) return c.json({ ok: true, existe: true, ativo: false, agora }); // não revela a janela a terceiros
+  if (row.sync !== "rascunho") return c.json({ ok: true, existe: true, enviado: true, ativo: false, agora });
+  const exp = row.exp ? new Date(String(row.exp).replace(" ", "T") + "Z").getTime() : null;
+  const restante = exp != null ? Math.max(0, exp - agora) : null;
+  return c.json({ ok: true, existe: true, ativo: exp != null, expira_em: exp, restante_ms: restante, agora });
 });
 
 // LIMPAR CARRINHO (Etapa 1) — quando o carrinho fica VAZIO, solta a reserva na hora: apaga a

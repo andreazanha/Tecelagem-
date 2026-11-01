@@ -241,6 +241,28 @@ export async function kitAlertas(env: Env): Promise<KitAlerta[]> {
   return out;
 }
 
+// EXPIRAÇÃO DO CARRINHO (Etapa 2) — ao vencer a janela de 12h (sem prorrogação válida e sem ter
+// sido enviado ao Syntech), ESVAZIA o carrinho por completo: apaga a reserva, os itens e o
+// próprio rascunho, INCLUSIVE os produtos sob encomenda (que não reservam estoque, mas moram no
+// mesmo rascunho). Só mexe em RASCUNHO da loja; pedido já enviado (pendente/enviado) NUNCA é
+// tocado — as peças seguem reservadas aguardando aprovação (regras 8 e 9). O relógio é o do
+// servidor (datetime('now')), nunca o do navegador. Devolve quantos carrinhos foram esvaziados.
+export async function expirarCarrinhosVencidos(env: Env): Promise<number> {
+  const cond = "canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho' AND reserva_expira_em IS NOT NULL AND reserva_expira_em <= datetime('now')";
+  const alvo = (await env.DB.prepare(`SELECT id FROM pedidos WHERE ${cond}`).all<{ id: string }>().catch(() => ({ results: [] as { id: string }[] }))).results || [];
+  if (!alvo.length) return 0;
+  const ids = alvo.map((r) => r.id);
+  const stmts: D1PreparedStatement[] = [];
+  for (let i = 0; i < ids.length; i += 40) {
+    const lote = ids.slice(i, i + 40); const ph = lote.map(() => "?").join(",");
+    stmts.push(env.DB.prepare(`DELETE FROM erp_reserva WHERE pedido_id IN (${ph})`).bind(...lote));
+    stmts.push(env.DB.prepare(`DELETE FROM pedido_itens WHERE pedido_id IN (${ph})`).bind(...lote));
+    stmts.push(env.DB.prepare(`DELETE FROM pedidos WHERE id IN (${ph})`).bind(...lote));
+  }
+  await env.DB.batch(stmts);
+  return ids.length;
+}
+
 // Limpa reservas que já foram refletidas no SALDO (pedido enviado + sincronização depois)
 // ou de pedidos que não existem mais. Chamado ao fim de cada sincronização de estoque.
 export async function limparReservasRefletidas(env: Env): Promise<number> {

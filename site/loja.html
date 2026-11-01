@@ -68,6 +68,12 @@
   .saud a{flex:0 0 auto}
   .btn-cart{height:42px; box-sizing:border-box; display:inline-flex; align-items:center; gap:7px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:12px; padding:0 16px; font-weight:600; font-size:13px; cursor:pointer; white-space:nowrap; flex:0 0 auto}
   .btn-cart .n{background:#fff; color:var(--accent); border-radius:999px; min-width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; padding:0 5px}
+  /* Contador discreto da reserva (Etapa 2): pílula pequena, sem gritar. Vermelho suave quando acaba. */
+  .cart-timer{display:inline-block; margin-top:5px; align-self:flex-end; font-size:11px; line-height:1; color:#e9e2d6; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18); border-radius:999px; padding:3px 9px; white-space:nowrap; letter-spacing:.2px; font-variant-numeric:tabular-nums}
+  .cart-timer.urgente{color:#ffd9cf; background:rgba(201,80,51,.28); border-color:rgba(255,160,135,.5)}
+  /* Toast discreto (aviso de expiração) */
+  .bt-toast{position:fixed; left:50%; bottom:22px; transform:translateX(-50%) translateY(10px); z-index:120; background:#2c2721; color:#fff; font-size:13.5px; line-height:1.35; padding:12px 16px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.28); max-width:88vw; opacity:0; transition:opacity .25s ease, transform .25s ease; pointer-events:none}
+  .bt-toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
   .btn-ghost{height:42px; box-sizing:border-box; display:inline-flex; align-items:center; gap:7px; border:1px solid rgba(255,255,255,.35); background:transparent; color:#e9e2d6; border-radius:12px; padding:0 15px; font-weight:500; font-size:13px; cursor:pointer; white-space:nowrap; flex:0 0 auto; transition:background .15s ease,border-color .15s ease}
   .btn-ghost:hover{background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.6)}
   .btn-cart svg,.btn-ghost svg{width:18px; height:18px; flex:0 0 auto; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round}
@@ -412,6 +418,7 @@
         <button class="btn-ghost" id="abrirMeus" title="Meus pedidos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><span>Meus pedidos</span></button>
         <button class="btn-cart" id="abrirCart"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.5 2.5h2l2.6 12.4a2 2 0 0 0 2 1.6h9.3a2 2 0 0 0 2-1.6L23 6H6"/></svg><span>Carrinho</span> <span class="n" id="cartN">0</span></button>
       </div>
+      <span class="cart-timer" id="cartTimer" hidden title="Tempo que as peças do seu carrinho ficam reservadas"></span>
       <span id="saudacao" class="saud" style="display:none"></span>
     </div>
   </div>
@@ -1152,8 +1159,13 @@
     return fetch("/api/loja/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
       .then(function(r){ return r.json().then(function(j){ return {status:r.status, ok:r.ok, j:j||{}}; }); })
       .then(function(res){
-        if(res.ok && res.j.ok){ setCartPid(res.j.pedido_id); atualizarDisponibilidade(); return {ok:true}; }
+        if(res.ok && res.j.ok){ setCartPid(res.j.pedido_id); atualizarDisponibilidade(); atualizarStatusReserva(); return {ok:true}; }
         if(res.j && res.j.erro==="pedido_nao_encontrado"){ setCartPid(""); return reservarCarrinho(); } // rascunho sumiu → recria
+        if(res.j && res.j.erro==="pedido_travado"){        // já foi enviado à Big → não libera peças, só limpa o carrinho local
+          CART=[]; try{ salvarCart(); }catch(e){} setCartPid(""); atualizarCartN(); pararTimer();
+          if(document.getElementById("cart").classList.contains("show")) renderCarrinho();
+          toast("Esse pedido já foi enviado à Big Tricot. 💛"); return {ok:true};
+        }
         return {ok:false, j:res.j, status:res.status};
       }).catch(function(){ return {ok:true, offline:true}; }); // sem rede: otimista, reconcilia no finalizar
   }
@@ -1163,7 +1175,7 @@
     var body={cnpj:compradorCnpj(), pedido_id:pid};
     if(REP_CLIENTE) body.vendedor=(REP&&REP.nome)||"";
     return fetch("/api/loja/carrinho-limpar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
-      .then(function(r){return r.json();}).then(function(){ setCartPid(""); atualizarDisponibilidade(); return {ok:true}; })
+      .then(function(r){return r.json();}).then(function(){ setCartPid(""); pararTimer(); atualizarDisponibilidade(); return {ok:true}; })
       .catch(function(){ return {ok:true, offline:true}; });
   }
 
@@ -1179,6 +1191,52 @@
         if(!res.ok && res.j){ CART=prev; salvarCart(); atualizarCartN(); if(redesenhar) redesenhar(); avisoSemEstoque(res.j); }
       });
     }, 250);
+  }
+
+  // ===== CONTADOR + EXPIRAÇÃO 12h (Etapa 2) =====
+  // O prazo é do SERVIDOR: a loja só exibe o tempo restante e, ao vencer, limpa o carrinho
+  // (sem recarregar a página). O relógio do navegador é corrigido pelo 'agora' do servidor.
+  var _rsvDeadline=null, _rsvOffset=0, _rsvTick=null;
+  function _toastEl(){ var t=document.getElementById("btToast"); if(!t){ t=document.createElement("div"); t.id="btToast"; t.className="bt-toast"; document.body.appendChild(t); } return t; }
+  function toast(msg){ var t=_toastEl(); t.textContent=msg; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(function(){ t.classList.remove("show"); }, 6000); }
+  function fmtRestante(ms){ var s=Math.max(0,Math.floor(ms/1000)); var h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=s%60; return h>0 ? ('reserva '+h+'h'+(m<10?'0':'')+m) : ('reserva '+m+':'+(ss<10?'0':'')+ss); }
+  function mostrarTimer(txt, urgente){ var el=document.getElementById("cartTimer"); if(!el) return; if(txt){ el.textContent='⏳ '+txt; el.hidden=false; el.classList.toggle('urgente', !!urgente); } else { el.hidden=true; el.textContent=''; el.classList.remove('urgente'); } }
+  function pararTimer(){ if(_rsvTick){ clearInterval(_rsvTick); _rsvTick=null; } _rsvDeadline=null; mostrarTimer(""); }
+  function _tick(){
+    if(_rsvDeadline==null){ mostrarTimer(""); return; }
+    var restante=_rsvDeadline-(Date.now()+_rsvOffset);
+    if(restante<=0){ mostrarTimer("liberando…", true); atualizarStatusReserva(); return; } // servidor confirma
+    mostrarTimer(fmtRestante(restante), restante<=30*60*1000);
+  }
+  function garantirTick(){ if(!_rsvTick) _rsvTick=setInterval(_tick, 1000); }
+
+  // Esvazia o carrinho AQUI (sem recarregar) — regra 4. Inclui sob encomenda (limpa CART inteiro).
+  function expirarCarrinhoLocal(){
+    var tinha=CART.length>0;
+    CART=[]; try{ salvarCart(); }catch(e){} setCartPid(""); atualizarCartN(); pararTimer();
+    if(document.getElementById("cart").classList.contains("show")) renderCarrinho();
+    if(sel.prod && document.getElementById("modal").classList.contains("show")) atualizarCorArea();
+    atualizarDisponibilidade();
+    if(tinha) toast("⏳ Sua reserva de 12 h expirou — o carrinho foi liberado. Monte o pedido de novo quando quiser. 💛");
+  }
+
+  // Autoridade = SERVIDOR. Lê o status, corrige o relógio e decide manter/encerrar/expirar.
+  function atualizarStatusReserva(){
+    var pid=getCartPid();
+    if(!pid || !podeReservar()){ pararTimer(); return Promise.resolve(); }
+    var q="pedido_id="+encodeURIComponent(pid)+"&cnpj="+encodeURIComponent(compradorCnpj());
+    if(REP_CLIENTE) q+="&vendedor="+encodeURIComponent((REP&&REP.nome)||"");
+    return fetch("/api/loja/carrinho-status?"+q).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok) return;
+      if(d.existe===false){ if(CART.length) expirarCarrinhoLocal(); else { setCartPid(""); pararTimer(); } return; }
+      if(d.enviado){ pararTimer(); return; }                 // recebido/enviado: contagem encerra, peças seguem reservadas
+      if(d.ativo && d.expira_em){
+        _rsvOffset=(Number(d.agora)||Date.now())-Date.now(); // o servidor manda no relógio
+        _rsvDeadline=Number(d.expira_em);
+        if((_rsvDeadline-(Date.now()+_rsvOffset))<=0){ expirarCarrinhoLocal(); return; }
+        garantirTick(); _tick();
+      } else { pararTimer(); }                                // sem janela (só sob encomenda)
+    }).catch(function(){});
   }
 
   // ÁREA DO CLIENTE — "Meus pedidos"
@@ -1319,7 +1377,7 @@
     enviar(true)
       .then(function(res){
         if(res.ok && res.j.ok){
-          CART=[]; salvarCart(); atualizarCartN(); setCartPid("");
+          CART=[]; salvarCart(); atualizarCartN(); setCartPid(""); pararTimer();
           var nome=res.j.cliente?(", "+esc(res.j.cliente)):"";
           document.getElementById("cartPane").innerHTML=
             '<div class="ctopo"><h3 class="serif">🛒 Meu carrinho</h3><button class="fechar" onclick="__fecharCart()">✕</button></div>'+
@@ -1480,6 +1538,7 @@
     document.body.style.overflow="";
     atualizarAvisoLib();
     render(); if(document.getElementById("modal").classList.contains("show")) renderDetalhe();
+    if(LIBERADO){ try{ atualizarStatusReserva(); }catch(e){} } // retoma a contagem da reserva ao entrar
   }
   // Faixa de aviso no topo pra cliente em análise (preços/pedidos ainda bloqueados).
   function atualizarAvisoLib(){
@@ -2018,9 +2077,10 @@
   // DISPONIBILIDADE AO VIVO (Etapa 1): relê o estoque de tempos em tempos e ao voltar pra aba,
   // pra refletir as reservas feitas por outros clientes (ex.: a última unidade some das opções).
   try{
-    setInterval(function(){ if(!document.hidden) atualizarDisponibilidade(); }, 30000);
-    window.addEventListener("focus", function(){ atualizarDisponibilidade(); });
-    document.addEventListener("visibilitychange", function(){ if(!document.hidden) atualizarDisponibilidade(); });
+    atualizarStatusReserva(); // retoma a contagem ao (re)abrir a loja — regra 5
+    setInterval(function(){ if(!document.hidden){ atualizarDisponibilidade(); atualizarStatusReserva(); } }, 30000);
+    window.addEventListener("focus", function(){ atualizarDisponibilidade(); atualizarStatusReserva(); });
+    document.addEventListener("visibilitychange", function(){ if(!document.hidden){ atualizarDisponibilidade(); atualizarStatusReserva(); } });
   }catch(e){}
 
   // Inicia sessão: trata link de acesso (?acesso=token), senão usa o que está salvo e revalida.
