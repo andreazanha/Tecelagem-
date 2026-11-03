@@ -1438,9 +1438,13 @@ atendimento.post("/webhook", async (c) => {
   try {
     const fwdRaw = (cfg.reserva_teste_fwd || "").trim();
     if (fwdRaw) {
-      const fwd = JSON.parse(fwdRaw) as { tel?: string; url?: string };
+      const fwd = JSON.parse(fwdRaw) as { tel?: string; url?: string; ate?: number | string };
+      // VALIDADE AUTOMÁTICA: se 'ate' (epoch ms ou ISO) existe e já passou, o desvio se DESLIGA
+      // sozinho (segue o fluxo normal). Se 'ate' não vier, não expira (comportamento anterior).
+      const ateMs = fwd.ate ? (typeof fwd.ate === "number" ? fwd.ate : Date.parse(String(fwd.ate))) : 0;
+      const expirado = ateMs > 0 && Date.now() > ateMs;
       const tel8 = digitos(fwd.tel).slice(-8);
-      if (fwd.url && tel8.length === 8 && phone.slice(-8) === tel8) {
+      if (!expirado && fwd.url && tel8.length === 8 && phone.slice(-8) === tel8) {
         c.executionCtx.waitUntil(
           fetch(fwd.url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then(() => {}).catch(() => {})
         );
