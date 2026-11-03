@@ -1,0 +1,58 @@
+{
+  // ───────────────────────────────────────────────────────────────────────────
+  // STAGING — ambiente de TESTE totalmente separado da produção.
+  // Usa-se com a flag -c:  wrangler <cmd> -c wrangler.staging.jsonc
+  //
+  // NADA aqui aponta para os recursos de produção:
+  //   • Worker  : rolagem-de-fase-staging   (prod = rolagem-de-fase)
+  //   • Banco D1: rolagem-de-fase-staging    (prod = rolagem-de-fase / id ef152da6-…)
+  //   • Bucket  : rolagem-de-fase-staging-arquivos (prod = rolagem-de-fase-arquivos)
+  //
+  // O database_id começa como PLACEHOLDER e é resolvido pelo workflow de staging
+  // na primeira execução (cria o banco e injeta o id real). Nunca recebe o id de
+  // produção.
+  // ───────────────────────────────────────────────────────────────────────────
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rolagem-de-fase-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rolagem-de-fase-staging",
+      "database_id": "__STAGING_DB_ID__",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "rolagem-de-fase-staging-arquivos"
+    }
+  ],
+  "ai": { "binding": "AI" },
+  // ATIVIDADE: binding OPCIONAL no código (src/routes/atendimento.ts usa fetch
+  // normal quando ausente). Omitido de propósito no staging para não depender do
+  // worker bt-atividade de produção.
+  "observability": { "enabled": true },
+  // Mantém a expiração de carrinho e a varredura de avisos (*/5). Os avisos de
+  // WhatsApp ficam SIMULADOS porque zapi_ativo=0 no seed → enviarWhatsapp retorna
+  // "desligado" e nada é enviado de verdade.
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "vars": {
+    // Marcador do ambiente (nenhum código lê hoje; disponível para um banner futuro).
+    "AMBIENTE": "staging",
+    // Token da INTEGRAÇÃO exclusivo do staging (NÃO é o segredo de produção).
+    // Os scripts de simulação do Syntech usam este valor. Troque se quiser.
+    "INTEGRACAO_TOKEN": "staging-sim-token-trocar",
+    "VAPID_PUBLIC": "BI98zOHBfNIegLgU1F2RireVjvhlsgeZB3JO1uaZEWj4qUnwcVu-S75I2sUxe5nqbn7HVfkc8QQnp5e8j1bcJ0U",
+    "VAPID_SUBJECT": "mailto:staging@bigtricot.com.br",
+    "EMAIL_FROM": "Big Tricot STAGING <naoresponda@send.bigtricot.com.br>"
+  }
+}
