@@ -14,7 +14,6 @@ import { gerarPdfPedidoLoja, type PedidoLojaItem } from "../pdf";
 import { montarReservaAtomica, faltasDaReserva, expirarCarrinhosVencidos } from "../loja-estoque";
 import { flagLigado, FLAG_RESERVAS } from "../flags";
 import { gerarCatalogoSite } from "./integracao";
-import { opcoesValidas, prorrogarPedido, fmtBR } from "../reserva-avisos";
 
 export const loja = new Hono<{ Bindings: Env }>();
 
@@ -852,44 +851,15 @@ loja.get("/carrinho-status", async (c) => {
   if (!donoOk) return c.json({ ok: true, existe: true, ativo: false, agora }); // não revela a janela a terceiros
   if (row.sync !== "rascunho") return c.json({ ok: true, existe: true, enviado: true, ativo: false, agora });
   const exp = row.exp ? new Date(String(row.exp).replace(" ", "T") + "Z").getTime() : null;
-  const ini = row.ini ? new Date(String(row.ini).replace(" ", "T") + "Z").getTime() : null;
   const restante = exp != null ? Math.max(0, exp - agora) : null;
   const ehRep = !!row.vend;
-  // Opções de prorrogação VÁLIDAS agora (tela) — mesmas regras do WhatsApp.
-  const opcoes = (exp != null && ini != null) ? opcoesValidas(ehRep, ini, exp, Number(row.prorr) || 0).map(([n, h]) => ({ n, h })) : [];
-  return c.json({ ok: true, existe: true, ativo: exp != null, expira_em: exp, restante_ms: restante, agora, eh_rep: ehRep, prorrogacoes: Number(row.prorr) || 0, prorroga_opcoes: opcoes });
+  // A prorrogação é solicitada EXCLUSIVAMENTE pelo WhatsApp — a tela NÃO oferece opções nem botões.
+  // O carrinho mostra apenas o contador (restante_ms/expira_em) calculado pelo servidor.
+  return c.json({ ok: true, existe: true, ativo: exp != null, expira_em: exp, restante_ms: restante, agora, eh_rep: ehRep, prorrogacoes: Number(row.prorr) || 0 });
 });
 
-// PRORROGAR A RESERVA PELA TELA (Etapa 4) — mesmo núcleo/limites da prorrogação por WhatsApp.
-// Confere a posse (cliente pelo CNPJ ou representante pelo nome), aplica de forma atômica e
-// devolve o NOVO vencimento (o relógio é o do servidor). Registra no histórico (canal 'tela').
-loja.post("/prorrogar", async (c) => {
-  let b: { cnpj?: string; pedido_id?: string; vendedor?: string; opcao?: number | string } = {};
-  try { b = await c.req.json(); } catch { return c.json({ erro: "json_invalido" }, 400); }
-  const pid = String(b.pedido_id || "").trim().slice(0, 40);
-  const opt = Math.trunc(Number(b.opcao) || 0);
-  if (!pid || opt < 1 || opt > 4) return c.json({ erro: "parametros" }, 400);
-  const cnpjDig = soDigitos(b.cnpj);
-  const vendedor = String(b.vendedor || "").trim();
-  // Confere a POSSE do carrinho antes de qualquer coisa (segurança — regra 8 da Etapa 3).
-  const dono = await c.env.DB.prepare(
-    "SELECT COALESCE(p.vendedor,'') AS vend, COALESCE(cl.cnpj,'') AS cnpj FROM pedidos p LEFT JOIN clientes cl ON cl.id=p.cliente_id WHERE p.id=? AND p.canal='loja_b2b' LIMIT 1"
-  ).bind(pid).first<{ vend: string; cnpj: string }>();
-  if (!dono) return c.json({ erro: "nao_encontrado" }, 404);
-  const donoOk = vendedor ? dono.vend.trim().toLowerCase() === vendedor.toLowerCase() : (cnpjDig.length >= 11 && soDigitos(dono.cnpj) === cnpjDig);
-  if (!donoOk) return c.json({ erro: "nao_dono" }, 403);
-  const res = await prorrogarPedido(c.env, pid, opt, false); // tela: não exige a oferta do aviso2
-  if (!res.ok) {
-    const opcoes = (res.opts || []).map(([n, h]) => ({ n, h }));
-    return c.json({ erro: res.motivo, opcoes }, res.motivo === "sem_reserva" ? 404 : 409);
-  }
-  // histórico (sem enviar WhatsApp — a confirmação é na própria tela)
-  try {
-    await c.env.DB.prepare("INSERT INTO reserva_historico (id, pedido_id, evento, telefone, detalhe) VALUES (?,?,?,?,?)")
-      .bind(uid(), pid, "prorrogacao", null, `tela +${res.horas}h -> vence ${fmtBR(res.novoExpMs)}`).run();
-  } catch { /* histórico nunca derruba */ }
-  return c.json({ ok: true, horas: res.horas, expira_em: res.novoExpMs, vencimento_txt: fmtBR(res.novoExpMs), agora: Date.now() });
-});
+// PRORROGAÇÃO PELA TELA — REMOVIDA. A prorrogação passa a ser solicitada EXCLUSIVAMENTE pelo
+// WhatsApp (uma única vez, +6h), tratada em reserva-avisos.ts (tratarRespostaProrrogacao).
 
 // LIMPAR CARRINHO (Etapa 1) — quando o carrinho fica VAZIO, solta a reserva na hora: apaga a
 // reserva + o rascunho (carrinho) daquele dono. Só mexe no que é 'rascunho' da loja e confere
