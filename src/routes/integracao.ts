@@ -181,6 +181,28 @@ integracao.post("/pedido", async (c) => {
     stmts.push(c.env.DB.prepare("INSERT OR IGNORE INTO pcp_notificacoes (id, numero_erp, cliente_nome, vendedor, pecas) VALUES (?,?,?,?,?)").bind(uid(), numero, clienteNome, str(b.vendedor), pecasTotal));
   }
   await c.env.DB.batch(stmts);
+  // LIBERAÇÃO AUTOMÁTICA DA RESERVA (fecha o ciclo da Reserva EL): este /pedido é o pedido APROVADO
+  // que RETORNOU do Syntech (passo 4) — ou seja, o Syntech já aprovou e BAIXOU o estoque. Então
+  // soltamos a reserva do pedido da LOJA correspondente (mesmo número do ERP), para o saldo não
+  // contar em dobro (baixa real + reserva pendurada). Best-effort e idempotente: roda em transação
+  // SEPARADA e num try/catch — NUNCA quebra a importação do pedido aprovado. Só age se houver
+  // reserva ativa para aquele número (senão é no-op). Substitui a conferência manual no caso de
+  // aprovação; cancelamento continua pela liberação manual até a ponte sinalizar cancelamentos.
+  try {
+    const lojaPed = await c.env.DB.prepare(
+      `SELECT id FROM pedidos
+        WHERE canal='loja_b2b' AND CAST(erp_numero AS TEXT)=CAST(? AS TEXT)
+          AND COALESCE(erp_sync_status,'')='enviado'
+          AND EXISTS (SELECT 1 FROM erp_reserva r WHERE r.pedido_id=pedidos.id) LIMIT 1`
+    ).bind(numero).first<{ id: string }>().catch(() => null);
+    if (lojaPed?.id) {
+      await c.env.DB.batch([
+        c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(lojaPed.id),
+        c.env.DB.prepare("INSERT INTO reserva_historico (id, pedido_id, evento, telefone, detalhe) VALUES (?,?,?,?,?)")
+          .bind(uid(), lojaPed.id, "liberacao_aprovacao", null, `no ${numero} aprovado no Syntech - reserva liberada automaticamente`),
+      ]);
+    }
+  } catch { /* reserva e best-effort; nunca quebra a importacao do pedido aprovado */ }
   return c.json({ ok: true, pedido_id: pedidoId, numero, itens: nItens }, 201);
 });
 
