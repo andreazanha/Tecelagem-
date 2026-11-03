@@ -1,13 +1,15 @@
-// ETAPA 3 — AVISOS DE RESERVA POR WHATSAPP + PRORROGAÇÃO
+// AVISOS DE RESERVA POR WHATSAPP + PRORROGAÇÃO
 // Reusa a integração Z-API do CRM (o "sender" é injetado — normalmente enviarWhatsapp — pra
 // não acoplar nem criar ciclo de import). Todo envio é registrado em reserva_historico (auditoria
-// e também "simulação de envio" nos testes). Regras aprovadas nas Etapas 1 e 2 são respeitadas:
-//   • a janela/prazo é do SERVIDOR; aviso1 = 1h após criar, aviso2 = 1h antes de vencer;
-//   • pedido já enviado ao Syntech (sync != rascunho) nunca recebe aviso de reserva;
-//   • cliente: 1 prorrogação (6/12h), teto 24h desde o início; rep: 6/12/18/24h, teto 48h.
+// e também "simulação de envio" nos testes). Regras aprovadas (Reserva EL):
+//   • a janela/prazo é do SERVIDOR (fuso America/São_Paulo), com PROTEÇÃO NOTURNA (Etapa 1);
+//   • mensagens PROATIVAS só entre 08:00 e 20:00 (Etapa 2); resposta do cliente é tratada na hora;
+//   • aviso de PROTEÇÃO NOTURNA (1×, na criação do carrinho protegido) + lembrete ~1h antes de
+//     vencer. (O antigo "1h após criar" foi REMOVIDO.)
+//   • pedido já enviado ao Syntech (sync != rascunho) nunca recebe aviso de reserva.
 import type { Env } from "./index";
 import { flagLigado, FLAG_CRM_POPUP, FLAG_RESERVAS } from "./flags";
-import { protegerNoturno } from "./noite";
+import { protegerNoturno, dentroJanelaEnvio } from "./noite";
 
 export type Sender = (env: Env, tel: string, texto: string) => Promise<unknown>;
 
@@ -51,9 +53,12 @@ export function opcoesValidas(ehRep: boolean, iniMs: number, expMs: number, pror
 const listaOpcoes = (opts: [number, number][]) => opts.map(([n, h]) => `*${n}* = +${h} horas`).join("\n");
 
 // ── Mensagens ────────────────────────────────────────────────────────────────
-function msgAviso1(ehRep: boolean, cliente: string, expMs: number): string {
-  const quem = ehRep ? `do cliente *${cliente}*` : "do seu carrinho";
-  return `🧶 *Big Tricot* — Reserva confirmada\n\nSeparamos os itens ${quem}. Eles ficam *reservados até ${fmtBR(expMs)}* (horário de Brasília).\nFinalize o pedido antes disso para garantir as peças. 💛\n\n${ASSINATURA}`;
+// AVISO DE PROTEÇÃO NOTURNA — enviado uma vez, na criação de um carrinho protegido (o prazo cairia
+// de madrugada e foi estendido até a manhã). Informa o horário efetivo garantido. Não oferece
+// prorrogação (isso é o lembrete de 1h antes).
+function msgNoturno(ehRep: boolean, cliente: string, expMs: number): string {
+  const quem = ehRep ? `A reserva do cliente *${cliente}*` : "Sua reserva";
+  return `🌙 *Big Tricot* — Reserva protegida\n\n${quem} está garantida até *${fmtBR(expMs)}* (horário de Brasília). Como o prazo cairia de madrugada, estendemos até a manhã para você não perder as peças. 💛\n\n${ASSINATURA}`;
 }
 function msgAviso2(ehRep: boolean, cliente: string, expMs: number, opts: [number, number][]): string {
   const quem = ehRep ? `A reserva do cliente *${cliente}*` : "Sua reserva";
@@ -96,7 +101,7 @@ async function destinoDoPedido(env: Env, p: { vendedor: string; cliente_id: stri
   return tel ? { tel, ehRep: false, cliente: cli?.nome || p.cliente_nome } : null;
 }
 
-type PedRow = { id: string; vendedor: string; cliente_id: string | null; cliente_nome: string; ini: string | null; exp: string | null; a1: string | null; a2: string | null; prorr: number };
+type PedRow = { id: string; vendedor: string; cliente_id: string | null; cliente_nome: string; ini: string | null; exp: string | null; a2: string | null; prorr: number };
 
 // NÚCLEO DA PRORROGAÇÃO — compartilhado entre WhatsApp e TELA (mesmas regras/limites).
 // Valida a opção (1..4 → horas) contra o teto (cliente 24h/1x · rep 48h) e aplica de forma
@@ -136,40 +141,46 @@ export async function prorrogarPedido(env: Env, pedidoId: string, opt: number, e
   return { ok: true, horas, novoExpMs, ehRep, cliente: p.cliente_nome };
 }
 
-// Varredura dos avisos — chamada pelo cron */5. Envia aviso1 (1h após criar) e aviso2 (1h antes
-// de vencer). Só mexe em RASCUNHO ativo da loja; nunca em pedido enviado ao Syntech.
-export async function processarAvisosReserva(env: Env, sender: Sender): Promise<{ aviso1: number; aviso2: number }> {
+// Varredura dos avisos — chamada pelo cron */5. Envia o aviso de PROTEÇÃO NOTURNA (1×, para
+// carrinho protegido) e o lembrete ~1h antes do vencimento EFETIVO. Só mexe em RASCUNHO ativo da
+// loja; nunca em pedido enviado ao Syntech. Mensagens proativas só entre 08:00 e 20:00 (SP).
+export async function processarAvisosReserva(env: Env, sender: Sender): Promise<{ noturno: number; aviso2: number }> {
   // INTERRUPTOR "reservas_ativo": desligado → não processa avisos (o ciclo de reservas está parado).
   // Não altera pedido/reserva algum; apenas não dispara avisos novos. (O envio em si ainda depende
   // do controle próprio do WhatsApp, zapi_ativo, dentro do sender.)
-  if (!(await flagLigado(env, FLAG_RESERVAS))) return { aviso1: 0, aviso2: 0 };
+  if (!(await flagLigado(env, FLAG_RESERVAS))) return { noturno: 0, aviso2: 0 };
+  // JANELA DE ENVIO (Etapa 2): fora de 08:00–20:00 (SP) não dispara nada agora — tenta nos próximos
+  // ciclos do cron. (Respostas do cliente são tratadas na hora, por tratarRespostaProrrogacao.)
+  if (!dentroJanelaEnvio()) return { noturno: 0, aviso2: 0 };
   const now = Date.now();
+  type Row = { id: string; vendedor: string; cliente_id: string | null; cliente_nome: string; ini: string | null; exp: string | null; a2: string | null; prorr: number; nut: number; an: string | null };
   const rows = ((await env.DB.prepare(
     `SELECT id, COALESCE(vendedor,'') AS vendedor, cliente_id, COALESCE(cliente_nome,'') AS cliente_nome,
-            reserva_iniciada_em AS ini, reserva_expira_em AS exp, reserva_aviso1_em AS a1, reserva_aviso2_em AS a2,
-            COALESCE(reserva_prorrogacoes,0) AS prorr
+            reserva_iniciada_em AS ini, reserva_expira_em AS exp, reserva_aviso2_em AS a2,
+            COALESCE(reserva_prorrogacoes,0) AS prorr, COALESCE(reserva_noturna,0) AS nut, reserva_aviso_noturno_em AS an
        FROM pedidos
       WHERE canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'
         AND reserva_expira_em IS NOT NULL AND reserva_expira_em > datetime('now')`
-  ).all<PedRow>().catch(() => ({ results: [] as PedRow[] }))).results) || [];
-  let c1 = 0, c2 = 0;
+  ).all<Row>().catch(() => ({ results: [] as Row[] }))).results) || [];
+  let cn = 0, c2 = 0;
   for (const p of rows) {
     const iniMs = fromSql(p.ini), expMs = fromSql(p.exp);
     if (iniMs == null || expMs == null || now >= expMs) continue;
     const dest = await destinoDoPedido(env, p);
     if (!dest) continue; // sem telefone → não há como avisar
-    // AVISO 1 — 1h após a criação (uma única vez). RECLAMA o envio de forma atômica (UPDATE
-    // condicional) ANTES de enviar: dois crons concorrentes nunca mandam o mesmo aviso duas vezes.
-    if (!p.a1 && now >= iniMs + H) {
-      const r = await env.DB.prepare("UPDATE pedidos SET reserva_aviso1_em=datetime('now'), reserva_aviso_tel=? WHERE id=? AND reserva_aviso1_em IS NULL").bind(dest.tel, p.id).run();
+    // AVISO DE PROTEÇÃO NOTURNA — uma vez, para carrinho protegido (reserva_noturna=1). RECLAMA o
+    // envio de forma atômica (UPDATE condicional) ANTES de enviar: crons concorrentes nunca duplicam.
+    if (p.nut === 1 && !p.an) {
+      const r = await env.DB.prepare("UPDATE pedidos SET reserva_aviso_noturno_em=datetime('now'), reserva_aviso_tel=? WHERE id=? AND reserva_aviso_noturno_em IS NULL").bind(dest.tel, p.id).run();
       if (Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) > 0) {
-        const texto = msgAviso1(dest.ehRep, dest.cliente, expMs);
-        await registrar(env, p.id, "aviso1", dest.tel, texto);
+        const texto = msgNoturno(dest.ehRep, dest.cliente, expMs);
+        await registrar(env, p.id, "aviso_noturno", dest.tel, texto);
         await sender(env, dest.tel, texto).catch(() => {});
-        c1++;
+        cn++;
       }
     }
-    // AVISO 2 — 1h antes do vencimento (reagenda ao prorrogar, pois a2 volta a NULL). Mesma reclamação atômica.
+    // LEMBRETE ~1h antes do vencimento EFETIVO (reagenda ao prorrogar, pois a2 volta a NULL). Mesma
+    // reclamação atômica. Como o vencimento já vem com proteção noturna, o lembrete cai de dia.
     if (!p.a2 && now >= expMs - H) {
       const r = await env.DB.prepare("UPDATE pedidos SET reserva_aviso2_em=datetime('now'), reserva_aviso_tel=? WHERE id=? AND reserva_aviso2_em IS NULL").bind(dest.tel, p.id).run();
       if (Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) > 0) {
@@ -181,7 +192,7 @@ export async function processarAvisosReserva(env: Env, sender: Sender): Promise<
       }
     }
   }
-  return { aviso1: c1, aviso2: c2 };
+  return { noturno: cn, aviso2: c2 };
 }
 
 // ETAPA 5 — CONFIRMAÇÃO DE RECEBIMENTO NO SYNTECH (Evento 1).
@@ -247,7 +258,7 @@ export async function tratarRespostaProrrogacao(env: Env, phone: string, texto: 
   if (pc.length < 7) return null;
   const rows = ((await env.DB.prepare(
     `SELECT id, COALESCE(vendedor,'') AS vendedor, cliente_id, COALESCE(cliente_nome,'') AS cliente_nome,
-            reserva_iniciada_em AS ini, reserva_expira_em AS exp, reserva_aviso1_em AS a1, reserva_aviso2_em AS a2,
+            reserva_iniciada_em AS ini, reserva_expira_em AS exp, reserva_aviso2_em AS a2,
             COALESCE(reserva_prorrogacoes,0) AS prorr, COALESCE(reserva_aviso_tel,'') AS tel
        FROM pedidos
       WHERE canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'

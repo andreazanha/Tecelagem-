@@ -14,6 +14,8 @@ const TZ = "America/Sao_Paulo";
 export const NOITE_INICIO = 20; // 20:00 (inclusive) começa a noite
 export const NOITE_FIM = 8; // 08:00 (exclusive) termina a noite
 export const PROTECAO_HORA = 10; // vencimento protegido volta para as 10:00
+export const ENVIO_INICIO = 8; // mensagens proativas só a partir das 08:00
+export const ENVIO_FIM = 20; // ...e até as 20:00 (exclusive)
 
 // 'YYYY-MM-DD HH:MM:SS' (UTC) de um instante — igual ao datetime('now') do SQLite.
 export const toSqlUTC = (ms: number): string => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
@@ -67,4 +69,12 @@ export function calcularJanela12h(agoraMs: number = Date.now()): { expira: strin
   const base = agoraMs + 12 * H;
   const { exp, protegido } = protegerNoturno(base);
   return { expira: toSqlUTC(exp), original: toSqlUTC(base), noturna: protegido ? 1 : 0 };
+}
+
+// JANELA DE ENVIO (Etapa 2): mensagens PROATIVAS de reserva (lembrete de 1h antes, aviso de
+// proteção noturna) só saem entre 08:00 e 20:00 no fuso de SP. Respostas a mensagens do cliente
+// são tratadas na hora (não passam por aqui).
+export function dentroJanelaEnvio(ms: number = Date.now()): boolean {
+  const { hora } = partesSP(ms);
+  return hora >= ENVIO_INICIO && hora < ENVIO_FIM;
 }
