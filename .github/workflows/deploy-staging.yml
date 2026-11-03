@@ -70,9 +70,11 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -e
-          # Sanitiza o token: remove espaços/quebras de linha que possam ter entrado ao colar o
-          # segredo (causa do erro "invalid header value"). Tokens Cloudflare são só [A-Za-z0-9_-].
-          export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
+          # Sanitiza o token: mantém SÓ os caracteres válidos de um API Token da Cloudflare
+          # ([A-Za-z0-9_-]) — remove espaço, quebra de linha e qualquer caractere invisível
+          # (ex.: espaço não-separável/traço especial vindo de cópia) que cause "invalid header".
+          export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -cd 'A-Za-z0-9_-')"
+          echo "Comprimento do token após limpeza: ${#CLOUDFLARE_API_TOKEN} (um API Token da Cloudflare tem 40)"
           # Pré-checagem: confirma que o token é válido ANTES de criar qualquer recurso. Se falhar,
           # para aqui com erro claro (sem mascarar) — e nada é criado nem publicado.
           npx wrangler whoami || { echo "::error::Token Cloudflare (CLOUDFLARE_API_TOKEN_STAGING) inválido ou sem permissão. Confira o valor e os escopos (Workers Scripts/D1/R2)."; exit 1; }
@@ -98,7 +100,7 @@ jobs:
         run: |
           set -e
           # Mesma sanitização do token (cada step recebe o segredo cru do env).
-          export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
+          export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -cd 'A-Za-z0-9_-')"
           npx wrangler d1 migrations apply DB -c wrangler.staging.jsonc --remote
           npx wrangler d1 execute DB -c wrangler.staging.jsonc --remote --file=./seed/staging.sql
           npx wrangler deploy -c wrangler.staging.jsonc
