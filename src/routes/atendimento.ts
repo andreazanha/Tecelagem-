@@ -1429,6 +1429,25 @@ atendimento.post("/webhook", async (c) => {
   let texto = (t?.message ?? img?.caption ?? "").toString();
   const nomeContato = String(b.senderName ?? b.chatName ?? b.pushName ?? "").trim();
   if (!phone) return c.json({ ignorado: "sem-telefone" });
+  // ── DESVIO DE TESTE DE RESERVA (guardado, inerte por padrão) ───────────────
+  // Só age quando a config 'reserva_teste_fwd' = {"tel","url"} existe E a mensagem é DESTE telefone
+  // de teste: encaminha a mensagem CRUA para o webhook do STAGING e PARA aqui (não passa pela IA).
+  // Qualquer OUTRO número segue 100% normal. Compara os últimos 8 dígitos (ignora 55/9º dígito).
+  // Serve só para validar a prorrogação de reserva no staging sem um 2º número Z-API. Desligado por
+  // padrão (config ausente/vazia); qualquer erro aqui é ignorado e a mensagem segue o fluxo normal.
+  try {
+    const fwdRaw = (cfg.reserva_teste_fwd || "").trim();
+    if (fwdRaw) {
+      const fwd = JSON.parse(fwdRaw) as { tel?: string; url?: string };
+      const tel8 = digitos(fwd.tel).slice(-8);
+      if (fwd.url && tel8.length === 8 && phone.slice(-8) === tel8) {
+        c.executionCtx.waitUntil(
+          fetch(fwd.url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then(() => {}).catch(() => {})
+        );
+        return c.json({ ok: true, reserva_teste_fwd: true });
+      }
+    }
+  } catch { /* nunca atrapalha o atendimento */ }
   // AUTO-MENSAGEM: mensagem cujo remetente é o PRÓPRIO número conectado (mandar pra si mesmo).
   // Isso vira um laço confuso no CRM ("conversa com você mesmo"). Ignora — nunca é um cliente.
   const conectado = digitos(b.connectedPhone);
@@ -1749,7 +1768,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "numero_whatsapp", "atendimento_ativo", "atendimento_ia", "avisos_pedido_ativo", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "catalogo_varejo_url", "catalogo_varejo_senha", "catalogo_varejo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "encerramento_ativo", "fechar_inativos_ativo", "catalogo_evento_token", "catalogo_log_url"] as const) {
+  for (const k of [...ZAPI_CHAVES, "numero_whatsapp", "atendimento_ativo", "atendimento_ia", "avisos_pedido_ativo", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "catalogo_varejo_url", "catalogo_varejo_senha", "catalogo_varejo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "encerramento_ativo", "fechar_inativos_ativo", "catalogo_evento_token", "catalogo_log_url", "reserva_teste_fwd"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
