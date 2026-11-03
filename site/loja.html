@@ -68,6 +68,12 @@
   .saud a{flex:0 0 auto}
   .btn-cart{height:42px; box-sizing:border-box; display:inline-flex; align-items:center; gap:7px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:12px; padding:0 16px; font-weight:600; font-size:13px; cursor:pointer; white-space:nowrap; flex:0 0 auto}
   .btn-cart .n{background:#fff; color:var(--accent); border-radius:999px; min-width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; padding:0 5px}
+  /* Contador discreto da reserva (Etapa 2): pílula pequena, sem gritar. Vermelho suave quando acaba. */
+  .cart-timer{display:inline-block; margin-top:5px; align-self:flex-end; font-size:11px; line-height:1; color:#e9e2d6; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18); border-radius:999px; padding:3px 9px; white-space:nowrap; letter-spacing:.2px; font-variant-numeric:tabular-nums}
+  .cart-timer.urgente{color:#ffd9cf; background:rgba(201,80,51,.28); border-color:rgba(255,160,135,.5)}
+  /* Toast discreto (aviso de expiração) */
+  .bt-toast{position:fixed; left:50%; bottom:22px; transform:translateX(-50%) translateY(10px); z-index:120; background:#2c2721; color:#fff; font-size:13.5px; line-height:1.35; padding:12px 16px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.28); max-width:88vw; opacity:0; transition:opacity .25s ease, transform .25s ease; pointer-events:none}
+  .bt-toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
   .btn-ghost{height:42px; box-sizing:border-box; display:inline-flex; align-items:center; gap:7px; border:1px solid rgba(255,255,255,.35); background:transparent; color:#e9e2d6; border-radius:12px; padding:0 15px; font-weight:500; font-size:13px; cursor:pointer; white-space:nowrap; flex:0 0 auto; transition:background .15s ease,border-color .15s ease}
   .btn-ghost:hover{background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.6)}
   .btn-cart svg,.btn-ghost svg{width:18px; height:18px; flex:0 0 auto; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round}
@@ -359,6 +365,9 @@
   .stepper.mini input{width:28px; height:24px; font-size:12px}
   /* Rodapé FIXO (total 16px + forma + obs + ações), bem compacto. */
   .cfoot{flex:0 0 auto; border-top:1px solid var(--line); background:var(--card); padding:10px 16px}
+  /* Contador discreto da reserva no rodapé do carrinho (sem botões — prorrogação só por WhatsApp). */
+  .prroga{margin:2px 0 10px; font-size:12.5px; color:#6b6358; line-height:1.4}
+  .prroga b{color:#2c2721}
   .cfoot .tot{display:flex; justify-content:space-between; align-items:baseline; font-size:13px; margin-bottom:8px}
   .cfoot .tot b{font-family:'Montserrat',sans-serif; color:var(--ink); font-size:16px; font-weight:700}
   .cfoot .fin{width:100%; border:0; background:var(--accent); color:#fff; border-radius:9px; padding:11px; font-size:14px; font-weight:600; cursor:pointer}
@@ -412,6 +421,7 @@
         <button class="btn-ghost" id="abrirMeus" title="Meus pedidos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><span>Meus pedidos</span></button>
         <button class="btn-cart" id="abrirCart"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.5 2.5h2l2.6 12.4a2 2 0 0 0 2 1.6h9.3a2 2 0 0 0 2-1.6L23 6H6"/></svg><span>Carrinho</span> <span class="n" id="cartN">0</span></button>
       </div>
+      <span class="cart-timer" id="cartTimer" hidden title="Tempo que as peças do seu carrinho ficam reservadas"></span>
       <span id="saudacao" class="saud" style="display:none"></span>
     </div>
   </div>
@@ -844,6 +854,7 @@
     renderDetalhe();
     document.getElementById("modal").classList.add("show");
     document.body.style.overflow="hidden";
+    atualizarDisponibilidade(); // estoque fresquinho ao abrir (reflete reservas de outros)
   }
   window.__fechar=function(){ document.getElementById("modal").classList.remove("show"); document.body.style.overflow=""; };
 
@@ -1047,6 +1058,7 @@
   function adicionarAoCarrinho(){
     if(REP_SOVER){ alert("Você está só vendo o catálogo. Para montar um pedido, toque em ← Voltar e escolha um cliente. 👈"); return; }
     if(!LIBERADO){ alert("Seu cadastro ainda está em análise. Assim que a Big Tricot aprovar, você poderá montar o pedido. 💛"); return; }
+    var prevCart=clonarCart();              // pra desfazer se o servidor recusar a reserva
     var p=sel.prod, add=0, LIN=linhasDoProd(p);
     // Percorre TODAS as cores selecionadas (a chave é "corId|cod|idtam") — não só a
     // cor que está aberta —, pra todas as cores escolhidas entrarem no carrinho.
@@ -1066,7 +1078,15 @@
     salvarCart(); atualizarCartN();
     // feedback: zera os inputs e pergunta se continua no mesmo modelo ou escolhe outro
     atualizarCorArea();
-    perguntarContinuar(add);
+    // RESERVA NA HORA: confirma só depois que o servidor aceitar. Se recusar (sem estoque),
+    // desfaz a adição e avisa. Sem comprador identificado, segue otimista (reconcilia no envio).
+    if(!podeReservar()){ perguntarContinuar(add); return; }
+    var ac=document.getElementById("addcart"); if(ac) ac.disabled=true;
+    reservarCarrinho().then(function(res){
+      if(ac) ac.disabled=false;
+      if(res.ok){ perguntarContinuar(add); }
+      else { CART=prevCart; salvarCart(); atualizarCartN(); atualizarCorArea(); avisoSemEstoque(res.j||{}); reservarCarrinho().then(function(){ atualizarStatusReserva(); }); }
+    });
   }
   // Popup após adicionar: continuar neste modelo (fica no produto) ou escolher outro (volta ao catálogo).
   function perguntarContinuar(add){
@@ -1098,8 +1118,144 @@
   function cartQtd(){ return CART.reduce(function(s,i){return s+(Number(i.qtd)||0);},0); }
   function cartTotal(){ return CART.reduce(function(s,i){return s+(Number(i.qtd)||0)*(Number(i.preco)||0);},0); }
   function atualizarCartN(){ document.getElementById("cartN").textContent=cartQtd(); }
-  function abrirCarrinho(){ renderCarrinho(); document.getElementById("cart").classList.add("show"); document.body.style.overflow="hidden"; }
+  function abrirCarrinho(){ renderCarrinho(); document.getElementById("cart").classList.add("show"); document.body.style.overflow="hidden"; atualizarStatusReserva(true); }
   window.__fecharCart=function(){ document.getElementById("cart").classList.remove("show"); if(!document.getElementById("modal").classList.contains("show")) document.body.style.overflow=""; };
+
+  // ===== RESERVA AUTOMÁTICA DE ESTOQUE (Etapa 1) =====
+  // O carrinho é espelhado no servidor como RASCUNHO e reserva as peças físicas NA HORA
+  // (cliente logado ou representante com cliente escolhido). Produto sob encomenda (sem estoque
+  // mapeado) passa sem travar — a trava real é no servidor. A disponibilidade é relida do
+  // servidor pra refletir, ao vivo, as reservas de outros clientes.
+  function cartParaItens(){ return CART.map(function(it){ return {cod:it.cod, medida:it.medida, corNome:it.corNome, corId:it.corId, qtd:it.qtd, preco:it.preco, regiao:it.regiao, nome:it.nome, grupo:it.grupo}; }); }
+  function compradorCnpj(){ return (REP_CLIENTE ? String(REP_CLIENTE.cnpj||"") : (cnpjSalvo()||"")).replace(/\D+/g,""); }
+  function podeReservar(){ return !REP_SOVER && !!LIBERADO && compradorCnpj().length>=11; }
+  function getCartPid(){ if(REP_CLIENTE) return REP_PEDIDO_ID||""; try{ return localStorage.getItem("bt_cart_pid")||""; }catch(e){ return ""; } }
+  function setCartPid(id){ if(REP_CLIENTE){ REP_PEDIDO_ID=id||""; return; } try{ if(id) localStorage.setItem("bt_cart_pid", String(id)); else localStorage.removeItem("bt_cart_pid"); }catch(e){} }
+  function clonarCart(){ try{ return JSON.parse(JSON.stringify(CART)); }catch(e){ return CART.slice(); } }
+
+  // Relê a disponibilidade ao vivo (saldo − TODAS as reservas ativas) e redesenha o produto aberto.
+  var _dispBusy=false;
+  function atualizarDisponibilidade(){
+    if(_dispBusy) return Promise.resolve();
+    _dispBusy=true;
+    return fetch("/api/loja/disponibilidade").then(function(r){return r.json();}).then(function(d){
+      if(d && d.itens && typeof d.itens==="object"){
+        EST=d.itens;
+        if(sel.prod && document.getElementById("modal").classList.contains("show")) atualizarCorArea();
+      }
+    }).catch(function(){}).then(function(){ _dispBusy=false; });
+  }
+
+  function avisoSemEstoque(j){
+    var faltas=(j&&j.faltas)||[];
+    var det = faltas.length ? ("\n"+faltas.map(function(f){ return "• "+(f.ref||"")+(f.tam?(" "+f.tam):"")+(f.cor?(" "+f.cor):"")+": restam "+(Number(f.tem)||0); }).join("\n")) : "";
+    alert("Esse item acabou de ser reservado por outra loja — não há estoque suficiente agora."+det+"\n\nAjustei seu carrinho para o que ainda está disponível. 💛");
+  }
+
+  // Espelha o carrinho atual no servidor (rascunho + reserva). Resolve {ok:true} ou
+  // {ok:false, j} quando o servidor recusa (ex.: 409 sem estoque).
+  function reservarCarrinho(){
+    if(!podeReservar()) return Promise.resolve({ok:true, skip:true});
+    if(!CART.length) return limparCarrinhoServidor();
+    var body={cnpj:compradorCnpj(), itens:cartParaItens(), acao:"espera", pedido_id:getCartPid()};
+    if(REP_CLIENTE) body.vendedor=(REP&&REP.nome)||"";
+    return fetch("/api/loja/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){ return r.json().then(function(j){ return {status:r.status, ok:r.ok, j:j||{}}; }); })
+      .then(function(res){
+        if(res.ok && res.j.ok){ setCartPid(res.j.pedido_id); atualizarDisponibilidade(); atualizarStatusReserva(); return {ok:true}; }
+        if(res.j && res.j.erro==="pedido_nao_encontrado"){ setCartPid(""); return reservarCarrinho(); } // rascunho sumiu → recria
+        if(res.j && res.j.erro==="pedido_travado"){        // já foi enviado à Big → não libera peças, só limpa o carrinho local
+          CART=[]; try{ salvarCart(); }catch(e){} setCartPid(""); atualizarCartN(); pararTimer();
+          if(document.getElementById("cart").classList.contains("show")) renderCarrinho();
+          toast("Esse pedido já foi enviado à Big Tricot. 💛"); return {ok:true};
+        }
+        return {ok:false, j:res.j, status:res.status};
+      }).catch(function(){ return {ok:true, offline:true}; }); // sem rede: otimista, reconcilia no finalizar
+  }
+
+  function limparCarrinhoServidor(){
+    var pid=getCartPid(); if(!pid) return Promise.resolve({ok:true});
+    var body={cnpj:compradorCnpj(), pedido_id:pid};
+    if(REP_CLIENTE) body.vendedor=(REP&&REP.nome)||"";
+    return fetch("/api/loja/carrinho-limpar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){return r.json();}).then(function(){ setCartPid(""); pararTimer(); atualizarDisponibilidade(); return {ok:true}; })
+      .catch(function(){ return {ok:true, offline:true}; });
+  }
+
+  // Reserva com DESFAZER: aplica no servidor; se recusar (sem estoque), volta o carrinho ao
+  // estado anterior e redesenha. Debounce de 250ms pros cliques rápidos no stepper.
+  var _rsvTimer=null, _rsvPrev=null;
+  function reservarComDesfazer(prevCart, redesenhar){
+    if(!_rsvPrev) _rsvPrev = prevCart;     // guarda o 1º estado do "burst"
+    clearTimeout(_rsvTimer);
+    _rsvTimer=setTimeout(function(){
+      var prev=_rsvPrev; _rsvPrev=null;
+      reservarCarrinho().then(function(res){
+        if(!res.ok && res.j){
+          CART=prev; salvarCart(); atualizarCartN(); if(redesenhar) redesenhar(); avisoSemEstoque(res.j);
+          reservarCarrinho().then(function(){ atualizarStatusReserva(); }); // re-sincroniza o carrinho revertido no servidor
+        }
+      });
+    }, 250);
+  }
+
+  // ===== CONTADOR + EXPIRAÇÃO 12h (Etapa 2) =====
+  // O prazo é do SERVIDOR: a loja só exibe o tempo restante e, ao vencer, limpa o carrinho
+  // (sem recarregar a página). O relógio do navegador é corrigido pelo 'agora' do servidor.
+  var _rsvDeadline=null, _rsvOffset=0, _rsvTick=null, _rsvStatus=null;
+  function fmtHoraBR(ms){ try{ return new Intl.DateTimeFormat("pt-BR",{timeZone:"America/Sao_Paulo",hour:"2-digit",minute:"2-digit"}).format(new Date(ms)); }catch(e){ var d=new Date(ms-3*3600000); return (""+d.getUTCHours()).padStart(2,"0")+":"+(""+d.getUTCMinutes()).padStart(2,"0"); } }
+  function _toastEl(){ var t=document.getElementById("btToast"); if(!t){ t=document.createElement("div"); t.id="btToast"; t.className="bt-toast"; document.body.appendChild(t); } return t; }
+  function toast(msg){ var t=_toastEl(); t.textContent=msg; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(function(){ t.classList.remove("show"); }, 6000); }
+  function fmtRestante(ms){ var s=Math.max(0,Math.floor(ms/1000)); var h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=s%60; return h>0 ? ('reserva '+h+'h'+(m<10?'0':'')+m) : ('reserva '+m+':'+(ss<10?'0':'')+ss); }
+  function mostrarTimer(txt, urgente){ var el=document.getElementById("cartTimer"); if(!el) return; if(txt){ el.textContent='⏳ '+txt; el.hidden=false; el.classList.toggle('urgente', !!urgente); } else { el.hidden=true; el.textContent=''; el.classList.remove('urgente'); } }
+  function pararTimer(){ if(_rsvTick){ clearInterval(_rsvTick); _rsvTick=null; } _rsvDeadline=null; mostrarTimer(""); }
+  function _tick(){
+    if(_rsvDeadline==null){ mostrarTimer(""); return; }
+    var restante=_rsvDeadline-(Date.now()+_rsvOffset);
+    if(restante<=0){ mostrarTimer("liberando…", true); atualizarStatusReserva(); return; } // servidor confirma
+    mostrarTimer(fmtRestante(restante), restante<=30*60*1000);
+  }
+  function garantirTick(){ if(!_rsvTick) _rsvTick=setInterval(_tick, 1000); }
+
+  // Esvazia o carrinho AQUI (sem recarregar) — regra 4. Inclui sob encomenda (limpa CART inteiro).
+  function expirarCarrinhoLocal(){
+    var tinha=CART.length>0;
+    CART=[]; try{ salvarCart(); }catch(e){} setCartPid(""); atualizarCartN(); pararTimer();
+    if(document.getElementById("cart").classList.contains("show")) renderCarrinho();
+    if(sel.prod && document.getElementById("modal").classList.contains("show")) atualizarCorArea();
+    atualizarDisponibilidade();
+    if(tinha) toast("⏳ Sua reserva de 12 h expirou — o carrinho foi liberado. Monte o pedido de novo quando quiser. 💛");
+  }
+
+  // Autoridade = SERVIDOR. Lê o status, corrige o relógio e decide manter/encerrar/expirar.
+  function atualizarStatusReserva(rerender){
+    var pid=getCartPid();
+    if(!pid || !podeReservar()){ _rsvStatus=null; pararTimer(); return Promise.resolve(); }
+    var q="pedido_id="+encodeURIComponent(pid)+"&cnpj="+encodeURIComponent(compradorCnpj());
+    if(REP_CLIENTE) q+="&vendedor="+encodeURIComponent((REP&&REP.nome)||"");
+    return fetch("/api/loja/carrinho-status?"+q).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok) return;
+      _rsvStatus=d;
+      if(d.existe===false){ _rsvStatus=null; if(CART.length) expirarCarrinhoLocal(); else { setCartPid(""); pararTimer(); } return; }
+      if(d.enviado){ pararTimer(); }                          // recebido/enviado: contagem encerra, peças seguem reservadas
+      else if(d.ativo && d.expira_em){
+        _rsvOffset=(Number(d.agora)||Date.now())-Date.now(); // o servidor manda no relógio
+        _rsvDeadline=Number(d.expira_em);
+        if((_rsvDeadline-(Date.now()+_rsvOffset))<=0){ expirarCarrinhoLocal(); return; }
+        garantirTick(); _tick();
+      } else { pararTimer(); }                                // sem janela (só sob encomenda)
+      if(rerender && document.getElementById("cart").classList.contains("show")) renderCarrinho();
+    }).catch(function(){});
+  }
+
+  // Contador discreto no rodapé do carrinho: SÓ o tempo restante (sem botões de prorrogação).
+  // A prorrogação é solicitada EXCLUSIVAMENTE pelo WhatsApp (regra definida com a Big Tricot).
+  function prorrogaHTML(){
+    var s=_rsvStatus;
+    if(!CART.length || !s || !s.ativo || !s.expira_em) return "";
+    var ate = fmtHoraBR(Number(s.expira_em));
+    return '<div class="prroga">⏳ Reserva válida até <b>'+esc(ate)+'</b>.</div>';
+  }
 
   // ÁREA DO CLIENTE — "Meus pedidos"
   window.__fecharMeus=function(){ document.getElementById("meus").classList.remove("show"); document.body.style.overflow=""; };
@@ -1172,7 +1328,7 @@
     if(REP_CLIENTE){
       // Carrinho no modo REPRESENTANTE: forma de pagamento + botões (espera / PDF / enviar à Big).
       var opts='<option value="">Forma de pagamento *</option>'+REP_PRAZOS.map(function(p){ return '<option value="'+esc(p.codigo)+'"'+(String(p.codigo)===String(REP_PEDIDO_FORMA||"")?" selected":"")+'>'+esc(p.descricao||p.codigo)+'</option>'; }).join("");
-      footHTML='<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+
+      footHTML='<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+prorrogaHTML()+
         (CART.length?(
           '<select id="repForma" class="cad-inp cart-inp" style="width:100%;margin:0 0 7px">'+opts+'</select>'+
           '<input id="repObs" class="cad-inp cart-inp" placeholder="Observação (opcional)" value="'+esc(REP_PEDIDO_OBS||"")+'" style="width:100%;margin:0 0 7px">'+
@@ -1186,7 +1342,7 @@
           '<div style="font-size:11px;color:#9aa3af;margin-top:7px;line-height:1.35">O pedido só vai pro Syntech depois que a Big Tricot aprovar.</div>'
         ):'')+'</div>';
     } else {
-      footHTML='<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+
+      footHTML='<div class="cfoot"><div class="tot"><span>Total</span><b>'+brl(cartTotal())+'</b></div>'+prorrogaHTML()+
         (CART.length?('<label style="display:block;font-size:15px;color:#555;margin:2px 0 8px">Informe o CNPJ da sua loja'+
           '<input id="cnpjInp" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" value="'+esc(cnpjSalvo())+'" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:12px;border:1px solid #d6d0c4;border-radius:10px;font-size:16px"></label>'+
           '<div id="cmsg" style="font-size:13px;margin:0 0 8px;min-height:1px;line-height:1.35"></div>'):'')+
@@ -1201,10 +1357,10 @@
     var box=document.getElementById("cartPane");
     box.querySelectorAll(".stepper[data-ix]").forEach(function(st){
       var ix=Number(st.getAttribute("data-ix")); var inp=st.querySelector("input");
-      st.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ var d=Number(b.getAttribute("data-d")); CART[ix].qtd=Math.max(1,(Number(CART[ix].qtd)||1)+d); salvarCart(); atualizarCartN(); renderCarrinho(); }; });
-      inp.onchange=function(){ CART[ix].qtd=Math.max(1,Number(inp.value)||1); salvarCart(); atualizarCartN(); renderCarrinho(); };
+      st.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ var prev=clonarCart(); var d=Number(b.getAttribute("data-d")); CART[ix].qtd=Math.max(1,(Number(CART[ix].qtd)||1)+d); salvarCart(); atualizarCartN(); renderCarrinho(); reservarComDesfazer(prev, renderCarrinho); }; });
+      inp.onchange=function(){ var prev=clonarCart(); CART[ix].qtd=Math.max(1,Number(inp.value)||1); salvarCart(); atualizarCartN(); renderCarrinho(); reservarComDesfazer(prev, renderCarrinho); };
     });
-    box.querySelectorAll("[data-rm]").forEach(function(b){ b.onclick=function(){ CART.splice(Number(b.getAttribute("data-rm")),1); salvarCart(); atualizarCartN(); renderCarrinho(); }; });
+    box.querySelectorAll("[data-rm]").forEach(function(b){ b.onclick=function(){ var prev=clonarCart(); CART.splice(Number(b.getAttribute("data-rm")),1); salvarCart(); atualizarCartN(); renderCarrinho(); reservarComDesfazer(prev, renderCarrinho); }; });
     var fin=document.getElementById("finalizar"); if(fin) fin.onclick=finalizarPedido;
     var bPdf=document.getElementById("repPdf"); if(bPdf) bPdf.onclick=repGerarPdfEnviar;
     var bEsp=document.getElementById("repEspera"); if(bEsp) bEsp.onclick=repDeixarEspera;
@@ -1224,20 +1380,33 @@
     if(msg){ msg.textContent=""; }
     btn.disabled=true; btn.textContent="Enviando…";
     var extra = REP_CLIENTE ? {vendedor:(REP&&REP.nome)||""} : {};
-    fetch("/api/loja/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({cnpj:cnpj, itens:itens, idem:idem}, extra))})
-      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j||{}}; }); })
+    // Converte o MESMO rascunho (carrinho) do cliente em pedido enviado — não cria duplicado
+    // nem reserva em dobro. Se o rascunho sumiu (expirou/limpeza), reenvia sem pedido_id.
+    function enviar(usarPid){
+      var payload=Object.assign({cnpj:cnpj, itens:itens, idem:idem}, extra);
+      if(usarPid){ var pid=getCartPid(); if(pid) payload.pedido_id=pid; }
+      return fetch("/api/loja/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
+        .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j||{}}; }); })
+        .then(function(res){
+          if(!res.ok && res.j && res.j.erro==="pedido_nao_encontrado" && usarPid){ setCartPid(""); return enviar(false); }
+          return res;
+        });
+    }
+    enviar(true)
       .then(function(res){
         if(res.ok && res.j.ok){
-          CART=[]; salvarCart(); atualizarCartN();
+          CART=[]; salvarCart(); atualizarCartN(); setCartPid(""); pararTimer();
           var nome=res.j.cliente?(", "+esc(res.j.cliente)):"";
           document.getElementById("cartPane").innerHTML=
             '<div class="ctopo"><h3 class="serif">🛒 Meu carrinho</h3><button class="fechar" onclick="__fecharCart()">✕</button></div>'+
             '<div class="itens"><div class="cvazio" style="color:#166534;font-weight:600">✓ '+esc(res.j.msg||"Pedido enviado!")+'</div>'+
             '<div class="cvazio" style="font-weight:400">Obrigado'+nome+'! Qualquer dúvida, fale com a Big Tricot.</div></div>';
+          atualizarDisponibilidade();
         } else {
           var m=res.j.msg||"Não consegui enviar o pedido agora. Tente novamente.";
           if(res.j.detalhe&&res.j.detalhe.length){ m+=" ("+res.j.detalhe.join("; ")+")"; }
           erro(m); btn.disabled=false; btn.textContent="Finalizar pedido";
+          if(res.j.erro==="sem_estoque") atualizarDisponibilidade();
         }
       })
       .catch(function(){ erro("Sem conexão no momento. Tente novamente."); btn.disabled=false; btn.textContent="Finalizar pedido"; });
@@ -1387,6 +1556,7 @@
     document.body.style.overflow="";
     atualizarAvisoLib();
     render(); if(document.getElementById("modal").classList.contains("show")) renderDetalhe();
+    if(LIBERADO){ try{ atualizarStatusReserva(); }catch(e){} } // retoma a contagem da reserva ao entrar
   }
   // Faixa de aviso no topo pra cliente em análise (preços/pedidos ainda bloqueados).
   function atualizarAvisoLib(){
@@ -1407,7 +1577,8 @@
   (function(){
     var fx=document.getElementById("entFechar"); if(fx) fx.addEventListener("click",fecharEntrada);
     var ov=document.getElementById("entrada");
-    if(ov) ov.addEventListener("click",function(e){ if(e.target===ov && !ehPortalRep()) fecharEntrada(); });
+    /* Ajuste pedido: o login NÃO fecha mais ao clicar fora do cartão (evita sumir sem querer).
+       Para sair do modal, use o botão de fechar (X) ou faça login normalmente. */
     document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ var o=document.getElementById("entrada"); if(o && o.style.display!=="none" && !ehPortalRep()) fecharEntrada(); } });
   })();
   function sairLoja(){ try{ localStorage.removeItem("bt_cli"); localStorage.removeItem("bt_cnpj"); }catch(e){} LIBERADO=false; TOKEN_ACESSO=""; mostrarSaudacao(""); atualizarAvisoLib(); render(); mostrarEnt(); abrirEntrada(); }
@@ -1921,6 +2092,15 @@
   renderBanner();
   render();
   ligarWhatsApp();
+
+  // DISPONIBILIDADE AO VIVO (Etapa 1): relê o estoque de tempos em tempos e ao voltar pra aba,
+  // pra refletir as reservas feitas por outros clientes (ex.: a última unidade some das opções).
+  try{
+    atualizarStatusReserva(); // retoma a contagem ao (re)abrir a loja — regra 5
+    setInterval(function(){ if(!document.hidden){ atualizarDisponibilidade(); atualizarStatusReserva(); } }, 30000);
+    window.addEventListener("focus", function(){ atualizarDisponibilidade(); atualizarStatusReserva(); });
+    document.addEventListener("visibilitychange", function(){ if(!document.hidden){ atualizarDisponibilidade(); atualizarStatusReserva(); } });
+  }catch(e){}
 
   // Inicia sessão: trata link de acesso (?acesso=token), senão usa o que está salvo e revalida.
   (function iniciarSessao(){

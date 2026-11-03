@@ -59,6 +59,7 @@ export const CATEGORIAS_FUNCAO: CategoriaFuncao[] = [
       { key: "crm.excluir_msg", label: "Excluir mensagem" },
       { key: "crm.nova", label: "Nova conversa" },
       { key: "crm.campanha", label: "Criar / agendar campanha" },
+      { key: "vendedor.interno", label: "Vendedor interno (dono de carteira)", desc: "pode ser responsável por clientes e recebe o pop-up quando o cliente faz pedido" },
     ],
   },
   {

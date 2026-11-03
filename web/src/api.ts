@@ -314,10 +314,17 @@ export interface ClienteCrm {
   cnpj_situacao?: string | null;   // situação cadastral na Receita: ATIVA / BAIXADA / INAPTA / SUSPENSA / NÃO ENCONTRADO
   cnpj_checado_em?: string | null;
   prospectado_em?: string | null;  // data da última prospecção/reativação (marcado ao criar a campanha)
+  vendedor_interno?: string | null;        // usuarios.id (Etapa 6) — NÃO é o representante comercial
+  vendedor_interno_nome?: string | null;   // nome do vendedor interno (derivado no servidor)
   pedidos?: number;
   total?: number;
   ultima?: string | null;
   ticket?: number;
+}
+export interface CrmNotificacao {
+  id: string; pedido_id: string | null; cliente_id: string | null; numero_erp: string | null; cliente_nome: string | null;
+  representante: string | null; valor_total: number | null; pecas: number | null;
+  recebido_em: string | null; criado_em: string; visto_em?: string | null;
 }
 export interface ClientePedido {
   id: string;
@@ -732,6 +739,13 @@ export interface ErpPendente {
   data_pedido: string | null; data_entrega: string | null; created_at: string;
   linhas: number; pecas: number;
 }
+export interface ReservaProtegida {
+  id: string; erp_numero: number | null; cliente_nome: string | null; vendedor: string | null;
+  erp_sync_em: string | null; pecas: number; linhas: number;
+}
+export interface PcpNotificacao {
+  id: string; numero_erp: string; cliente_nome: string | null; vendedor: string | null; pecas: number; criado_em: string;
+}
 export interface ErpPendenteDetalhe {
   pedido: { id: string; numero_erp: string; cliente_nome: string; data_pedido: string | null; data_entrega: string | null };
   itens: { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number; valor_unit?: number }[];
@@ -876,6 +890,14 @@ export const api = {
   // CRM: lista com estatísticas, ficha 360 e salvar.
   listarClientesCrm: () => fetch("/api/clientes?crm=1").then((r) => j<ClienteCrm[]>(r)),
   obterCliente: (id: string) => fetch(`/api/clientes/${id}`).then((r) => j<ClienteFicha>(r)),
+  // ETAPA 6 — carteiras (vendedor interno)
+  vendedoresInternos: () => fetch("/api/clientes/vendedores-internos").then((r) => j<{ id: string; nome: string }[]>(r)),
+  setClienteVendedor: (id: string, usuario_id: string | null) => jsonPost(`/api/clientes/${encodeURIComponent(id)}/vendedor`, { usuario_id }).then((r) => j<{ ok?: boolean; error?: string }>(r)),
+  setClienteVendedorLote: (ids: string[], usuario_id: string | null) => jsonPost("/api/clientes/vendedor-lote", { ids, usuario_id }).then((r) => j<{ ok?: boolean; mudados?: number; error?: string }>(r)),
+  clienteVendedorHist: (id: string) => fetch(`/api/clientes/${encodeURIComponent(id)}/vendedor-hist`).then((r) => j<{ de_nome: string; para_nome: string; por_nome: string | null; quando: string }[]>(r)),
+  // ETAPA 6 — notificações individuais do CRM (pop-up "seu cliente fez um pedido")
+  crmNotificacoes: (hist = false) => fetch(`/api/atendimento/crm-notificacoes${hist ? "?hist=1" : ""}`).then((r) => j<{ agora: string; notificacoes: CrmNotificacao[] }>(r)),
+  crmNotificacaoVista: (id: string) => jsonPost("/api/atendimento/crm-notificacoes/visto", { id }).then((r) => j<{ ok: boolean }>(r)),
   // Varredura por CNPJ na Receita (situação + preenche cidade/UF/razão em branco). Roda um lote agora.
   enriquecerCnpj: (limite?: number) => jsonPost("/api/atendimento/enriquecer-cnpj", { limite }).then((r) => j<{ checados: number; inativos: number; faltam: number }>(r)),
   // Restaura os representantes pelos pedidos (desfaz nomes compridos do ERP vindos de importação).
@@ -1371,6 +1393,12 @@ export const api = {
   erpAceitar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aceitar`, {}).then((r) => j<{ ok: boolean }>(r)),
   erpRecusar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/recusar`, {}).then((r) => j<{ ok: boolean }>(r)),
   erpAprovarLote: (ids: string[]) => jsonPost("/api/integracao/aprovar-lote", { ids }).then((r) => j<{ ok: boolean; pedido_id: string; codigo_pai: string; pedidos: number }>(r)),
+  // ETAPA 5 — pop-up do PCP (pedidos recém-chegados em "Para conferir", ainda não tratados).
+  pcpNotificacoes: () => fetch("/api/integracao/pcp-notificacoes").then((r) => j<{ agora: string; notificacoes: PcpNotificacao[] }>(r)),
+  pcpNotificacaoVista: (id: string) => jsonPost("/api/integracao/pcp-notificacoes/visto", { id }).then((r) => j<{ ok: boolean }>(r)),
+  // ETAPA 7 — reservas protegidas (recebidas no Syntech) + conferência manual
+  reservasProtegidas: () => fetch("/api/integracao/reservas-protegidas").then((r) => j<{ agora: string; reservas: ReservaProtegida[] }>(r)),
+  reservaLiberar: (pedido_id: string, motivo: string) => jsonPost("/api/integracao/reserva-liberar", { pedido_id, motivo }).then((r) => j<{ ok?: boolean; liberadas?: number; error?: string; msg?: string }>(r)),
   // Loja B2B — pedidos capturados pela loja (só gestor). modo: off|teste|on.
   lojaPedidos: () => fetch("/api/integracao/loja-pedidos").then((r) => j<{ modo: string; pedidos: LojaPedido[] }>(r)),
   lojaPedidoDetalhe: (id: string) => fetch(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}`).then((r) => j<{ pedido: LojaPedido; itens: LojaPedidoItem[] }>(r)),

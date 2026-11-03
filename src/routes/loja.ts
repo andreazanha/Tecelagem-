@@ -11,7 +11,10 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { gerarPdfPedidoLoja, type PedidoLojaItem } from "../pdf";
-import { conferirEReservar } from "../loja-estoque";
+import { montarReservaAtomica, faltasDaReserva, expirarCarrinhosVencidos } from "../loja-estoque";
+import { calcularJanela12h } from "../noite";
+import { flagLigado, FLAG_RESERVAS } from "../flags";
+import { gerarCatalogoSite } from "./integracao";
 
 export const loja = new Hono<{ Bindings: Env }>();
 
@@ -488,13 +491,29 @@ loja.post("/rep-pedido-acao", async (c) => {
     const formaDesc = String(b.forma_desc || "").trim().slice(0, 120) || null;
     // TRAVA DE ESTOQUE: ao enviar um rascunho do rep pro Syntech, confere/reserva as peças
     // (mesma trava do checkout do cliente), senão esse caminho fugiria do controle.
-    const itensPed = ((await c.env.DB.prepare("SELECT ref, COALESCE(cor_grade,'') AS cor, COALESCE(erp_tamanho,'') AS tam, qtd FROM pedido_itens WHERE pedido_id=?").bind(pid).all<{ ref: string; cor: string; tam: string; qtd: number }>().catch(() => ({ results: [] as { ref: string; cor: string; tam: string; qtd: number }[] }))).results) || [];
-    const trava = await conferirEReservar(c.env, pid, itensPed.map((it) => ({ ref: it.ref, cor: it.cor, tam: it.tam, qtd: Number(it.qtd) || 0 })));
-    if (!trava.ok) return c.json({ erro: "sem_estoque", msg: "Alguns itens não têm estoque suficiente agora. Ajuste o pedido e tente novamente.", faltas: trava.faltas }, 409);
+    // INTERRUPTOR "reservas_ativo": desligado (padrão) → envia o pedido SEM reservar estoque.
+    const reservarEstoque = await flagLigado(c.env, FLAG_RESERVAS);
+    const itensPed = reservarEstoque ? (((await c.env.DB.prepare("SELECT ref, COALESCE(cor_grade,'') AS cor, COALESCE(erp_tamanho,'') AS tam, qtd FROM pedido_itens WHERE pedido_id=?").bind(pid).all<{ ref: string; cor: string; tam: string; qtd: number }>().catch(() => ({ results: [] as { ref: string; cor: string; tam: string; qtd: number }[] }))).results) || []) : [];
+    // Trava ATÔMICA (mesma do checkout do cliente): reserva no MESMO batch do UPDATE pra pendente.
+    let reservaStmts: D1PreparedStatement[] = [];
+    let alvo: Awaited<ReturnType<typeof montarReservaAtomica>>["alvo"] = [];
+    if (reservarEstoque) {
+      const rr = await montarReservaAtomica(c.env, pid, itensPed.map((it) => ({ ref: it.ref, cor: it.cor, tam: it.tam, qtd: Number(it.qtd) || 0 })));
+      reservaStmts = rr.stmts; alvo = rr.alvo;
+    }
     await c.env.DB.batch([
       c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='pendente', loja_fase='enviado', loja_cod_prazo=?, loja_forma_desc=COALESCE(?, loja_forma_desc) WHERE id=? AND canal='loja_b2b'").bind(prazo, formaDesc, pid),
-      ...trava.reservas,
+      ...reservaStmts,
     ]);
+    const faltas = alvo.length ? await faltasDaReserva(c.env, pid, alvo) : [];
+    if (faltas.length) {
+      // desfaz: volta o pedido pra rascunho e solta a reserva (nada vai pro Syntech sem estoque).
+      await c.env.DB.batch([
+        c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pid),
+        c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='rascunho', loja_fase='em_espera' WHERE id=? AND canal='loja_b2b'").bind(pid),
+      ]);
+      return c.json({ erro: "sem_estoque", msg: "Alguns itens não têm estoque suficiente agora. Ajuste o pedido e tente novamente.", faltas }, 409);
+    }
     return c.json({ ok: true, msg: "Pedido enviado! Aguardando a Big Tricot aprovar." });
   }
   return c.json({ erro: "acao_invalida" }, 400);
@@ -702,38 +721,57 @@ loja.post("/pedido", async (c) => {
   const lojaFase = ehRep ? (ehEspera ? "em_espera" : "enviado") : null;
   const pedidoId = pedidoEditar || uid();
 
-  // TRAVA DE ESTOQUE — só pra pedidos que VÃO pro Syntech ('enviar'). Confere se as peças
-  // (capa/peseira) cabem no SALDO − reservas de outros pedidos ainda não refletidos; se
-  // couber, reserva. Rascunho ('espera') não reserva (e solta reserva anterior, se houver).
+  // RESERVA DE ESTOQUE (Etapa 1 + trava atômica da Etapa 7) — o carrinho é o próprio pedido.
+  // TANTO o rascunho ('espera') QUANTO o envio ('enviar') reservam as peças físicas. A trava é
+  // ATÔMICA: cada peça entra por INSERT condicional (SALDO − reservas de OUTROS, reavaliado no
+  // momento da escrita dentro da transação do batch) — dois pedidos disputando a última unidade
+  // nunca reservam além do saldo. Peça SOB ENCOMENDA passa sem travar. Confere DEPOIS do batch;
+  // se faltou, desfaz (libera a reserva e, em pedido novo, apaga o pedido) e recusa (409).
+  // INTERRUPTOR "reservas_ativo": desligado (padrão) → NÃO reserva estoque nem abre a janela de 12h.
+  // O pedido é salvo igual (itens, prazo, PDF); só a reserva deixa de acontecer. Reservas já criadas
+  // por OUTROS pedidos não são tocadas. Ligado → trava atômica da Etapa 7, exatamente como antes.
+  const reservarEstoque = await flagLigado(c.env, FLAG_RESERVAS);
   let reservaStmts: D1PreparedStatement[] = [];
-  if (ehEspera) {
-    reservaStmts = [c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pedidoId)];
-  } else {
-    const trava = await conferirEReservar(c.env, pedidoId, resolvidos.map((r) => ({ ref: r.ref, cor: r.corNome, tam: r.erp_tamanho, qtd: r.qtd })));
-    if (!trava.ok) {
-      return c.json({
-        erro: "sem_estoque",
-        msg: "Alguns itens não têm estoque suficiente no momento. Ajuste as quantidades e tente novamente.",
-        faltas: trava.faltas,
-      }, 409);
-    }
-    reservaStmts = trava.reservas;
+  let alvo: Awaited<ReturnType<typeof montarReservaAtomica>>["alvo"] = [];
+  if (reservarEstoque) {
+    const rr = await montarReservaAtomica(c.env, pedidoId, resolvidos.map((r) => ({ ref: r.ref, cor: r.corNome, tam: r.erp_tamanho, qtd: r.qtd })));
+    reservaStmts = rr.stmts; alvo = rr.alvo;
   }
+  // JANELA DE 12h = FLUXO DO CARRINHO: vale para QUALQUER carrinho com itens (Edição Limitada, kit
+  // OU produto normal — Polisoft/Soft etc.). Só ED/KT travam estoque (as peças em 'alvo'), mas TODO
+  // carrinho ganha janela + contador e ESVAZIA ao vencer (expirarCarrinhosVencidos já apaga o
+  // rascunho inteiro). Continua sob o interruptor reservas_ativo: desligado (padrão produção) → sem
+  // janela nenhuma. 'alvo' permanece restrito às peças que controlam estoque.
+  const abrirJanela = reservarEstoque && resolvidos.length > 0;
+  const reservaResp = ehRep ? "rep" : "cliente";
+  // PROTEÇÃO NOTURNA (Etapa 1): o vencimento base é agora+12h; se cair de madrugada (20h–8h SP), o
+  // vencimento EFETIVO vai para as 10h da manhã seguinte. Calculado no SERVIDOR (fuso SP) e gravado
+  // como texto UTC. A janela conta enquanto o rascunho estiver ativo e NÃO reinicia ao editar o
+  // carrinho (COALESCE preserva início/efetivo/original/flag). Sem itens ou interruptor off → NULL.
+  const jw = calcularJanela12h();
+  const janelaUpd = abrirJanela
+    ? "reserva_responsavel=COALESCE(reserva_responsavel, ?), reserva_iniciada_em=COALESCE(reserva_iniciada_em, datetime('now')), reserva_expira_em=COALESCE(reserva_expira_em, ?), reserva_expira_original=COALESCE(reserva_expira_original, ?), reserva_noturna=CASE WHEN reserva_expira_em IS NULL THEN ? ELSE reserva_noturna END"
+    : "reserva_responsavel=NULL, reserva_iniciada_em=NULL, reserva_expira_em=NULL, reserva_expira_original=NULL, reserva_noturna=0";
 
   const stmts: D1PreparedStatement[] = [];
   if (pedidoEditar) {
     // Atualiza o rascunho existente: troca os dados e substitui os itens.
-    stmts.push(c.env.DB.prepare(
-      `UPDATE pedidos SET cliente_nome=?, vendedor=?, valor_total=?, erp_sync_status=?, loja_fase=?,
-         loja_cod_prazo=?, loja_forma_desc=?, observacao=?, data_pedido=datetime('now') WHERE id=? AND canal='loja_b2b'`
-    ).bind(cli.nome || "SEM CLIENTE", vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, pedidoEditar));
+    const sqlUpd = `UPDATE pedidos SET cliente_nome=?, vendedor=?, valor_total=?, erp_sync_status=?, loja_fase=?,
+         loja_cod_prazo=?, loja_forma_desc=?, observacao=?, data_pedido=datetime('now'), ${janelaUpd} WHERE id=? AND canal='loja_b2b'`;
+    const bindsUpd = abrirJanela
+      ? [cli.nome || "SEM CLIENTE", vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, reservaResp, jw.expira, jw.original, jw.noturna, pedidoEditar]
+      : [cli.nome || "SEM CLIENTE", vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, pedidoEditar];
+    stmts.push(c.env.DB.prepare(sqlUpd).bind(...bindsUpd));
     stmts.push(c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pedidoEditar));
   } else {
-    stmts.push(c.env.DB.prepare(
-      `INSERT INTO pedidos (id, cliente_nome, cliente_id, cliente_cnpj, vendedor, tipo, status, canal, valor_total,
-         erp_sync_status, erp_liberado, loja_fase, loja_cod_prazo, loja_forma_desc, observacao, idem, data_pedido, created_at)
-       VALUES (?, ?, ?, ?, ?, 'pedido', 'aguardando_aprovacao', 'loja_b2b', ?, ?, 0, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-    ).bind(pedidoId, cli.nome || "SEM CLIENTE", cli.id, cnpjDig, vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, idem));
+    const janelaVals = abrirJanela ? "datetime('now'), ?, ?, ?, ?" : "NULL, NULL, NULL, 0, NULL";
+    const sqlIns = `INSERT INTO pedidos (id, cliente_nome, cliente_id, cliente_cnpj, vendedor, tipo, status, canal, valor_total,
+         erp_sync_status, erp_liberado, loja_fase, loja_cod_prazo, loja_forma_desc, observacao, idem,
+         reserva_iniciada_em, reserva_expira_em, reserva_expira_original, reserva_noturna, reserva_responsavel, data_pedido, created_at)
+       VALUES (?, ?, ?, ?, ?, 'pedido', 'aguardando_aprovacao', 'loja_b2b', ?, ?, 0, ?, ?, ?, ?, ?, ${janelaVals}, datetime('now'), datetime('now'))`;
+    const bindsIns = [pedidoId, cli.nome || "SEM CLIENTE", cli.id, cnpjDig, vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, idem];
+    if (abrirJanela) bindsIns.push(jw.expira, jw.original, jw.noturna, reservaResp);
+    stmts.push(c.env.DB.prepare(sqlIns).bind(...bindsIns));
   }
   for (const r of resolvidos) {
     stmts.push(c.env.DB.prepare(
@@ -741,8 +779,32 @@ loja.post("/pedido", async (c) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unico')`
     ).bind(uid(), pedidoId, r.nome, r.ref, r.corNome, r.cod_cor, r.medida, r.erp_tamanho, r.qtd, r.preco));
   }
-  for (const s of reservaStmts) stmts.push(s); // reserva as peças junto com o pedido
+  for (const s of reservaStmts) stmts.push(s); // reserva as peças ATOMICAMENTE junto com o pedido
   await c.env.DB.batch(stmts);
+
+  // Confere o que REALMENTE ficou reservado (a trava condicional pode ter barrado peças sem saldo).
+  const faltas = alvo.length ? await faltasDaReserva(c.env, pedidoId, alvo) : [];
+  if (faltas.length) {
+    // desfaz: pedido NOVO → apaga tudo; EDIÇÃO → solta a reserva e zera a janela (o carrinho é
+    // revertido no navegador e re-sincronizado). Nunca deixa reserva acima do saldo.
+    if (pedidoEditar) {
+      await c.env.DB.batch([
+        c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pedidoId),
+        c.env.DB.prepare("UPDATE pedidos SET reserva_iniciada_em=NULL, reserva_expira_em=NULL, reserva_responsavel=NULL WHERE id=? AND canal='loja_b2b'").bind(pedidoId),
+      ]);
+    } else {
+      await c.env.DB.batch([
+        c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pedidoId),
+        c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pedidoId),
+        c.env.DB.prepare("DELETE FROM pedidos WHERE id=? AND canal='loja_b2b'").bind(pedidoId),
+      ]);
+    }
+    return c.json({
+      erro: "sem_estoque",
+      msg: "Alguns itens não têm estoque suficiente no momento. Ajuste as quantidades e tente novamente.",
+      faltas,
+    }, 409);
+  }
 
   const msg = ehEspera
     ? "Pedido salvo em espera. Você pode gerar o PDF e enviar ao cliente quando quiser."
@@ -759,6 +821,81 @@ loja.post("/pedido", async (c) => {
     fase: lojaFase,
     msg,
   }, 201);
+});
+
+// DISPONIBILIDADE AO VIVO (Etapa 1) — devolve o MESMO mapa de estoque que o catálogo usa
+// (saldo do Syntech − TODAS as reservas ativas, inclusive os carrinhos em rascunho). A loja
+// chama isto de tempos em tempos (e ao focar a aba) pra refletir na hora as reservas de
+// outros clientes: a última unidade some das opções assim que alguém a coloca no carrinho.
+// Só LÊ — não reserva nada. Nunca derruba a loja (em erro, devolve vazio).
+loja.get("/disponibilidade", async (c) => {
+  try {
+    await expirarCarrinhosVencidos(c.env).catch(() => 0); // solta carrinhos vencidos antes de medir
+    const cat = await gerarCatalogoSite(c.env);
+    return c.json({ ok: true, atualizadoMs: cat.estoque.atualizadoMs, itens: cat.estoque.itens });
+  } catch {
+    return c.json({ ok: false, itens: {} });
+  }
+});
+
+// STATUS DA RESERVA DO CARRINHO (Etapa 2) — fonte de verdade do PRAZO. Varre os vencidos e
+// devolve, pro dono do carrinho, se a janela está ativa, QUANDO expira e QUE HORAS são no
+// servidor (agora) — a loja corrige o relógio do navegador por esse 'agora'. Pedido já enviado
+// (sync != rascunho) devolve enviado=true: contagem encerrada, peças seguem reservadas.
+loja.get("/carrinho-status", async (c) => {
+  await expirarCarrinhosVencidos(c.env).catch(() => 0);
+  const agora = Date.now();
+  const pid = String(c.req.query("pedido_id") || "").trim().slice(0, 40);
+  if (!pid) return c.json({ ok: true, existe: false, ativo: false, agora });
+  const row = await c.env.DB.prepare(
+    "SELECT p.id, COALESCE(p.erp_sync_status,'') AS sync, p.reserva_expira_em AS exp, p.reserva_iniciada_em AS ini, COALESCE(p.reserva_prorrogacoes,0) AS prorr, COALESCE(p.vendedor,'') AS vend, COALESCE(cl.cnpj,'') AS cnpj " +
+    "FROM pedidos p LEFT JOIN clientes cl ON cl.id=p.cliente_id WHERE p.id=? AND p.canal='loja_b2b' LIMIT 1"
+  ).bind(pid).first<{ id: string; sync: string; exp: string | null; ini: string | null; prorr: number; vend: string; cnpj: string }>();
+  if (!row) return c.json({ ok: true, existe: false, ativo: false, agora }); // foi esvaziado (expirou/limpou)
+  const cnpjDig = soDigitos(c.req.query("cnpj"));
+  const vendedor = String(c.req.query("vendedor") || "").trim();
+  const donoOk = vendedor
+    ? row.vend.trim().toLowerCase() === vendedor.toLowerCase()
+    : (cnpjDig.length >= 11 && soDigitos(row.cnpj) === cnpjDig);
+  if (!donoOk) return c.json({ ok: true, existe: true, ativo: false, agora }); // não revela a janela a terceiros
+  if (row.sync !== "rascunho") return c.json({ ok: true, existe: true, enviado: true, ativo: false, agora });
+  const exp = row.exp ? new Date(String(row.exp).replace(" ", "T") + "Z").getTime() : null;
+  const restante = exp != null ? Math.max(0, exp - agora) : null;
+  const ehRep = !!row.vend;
+  // A prorrogação é solicitada EXCLUSIVAMENTE pelo WhatsApp — a tela NÃO oferece opções nem botões.
+  // O carrinho mostra apenas o contador (restante_ms/expira_em) calculado pelo servidor.
+  return c.json({ ok: true, existe: true, ativo: exp != null, expira_em: exp, restante_ms: restante, agora, eh_rep: ehRep, prorrogacoes: Number(row.prorr) || 0 });
+});
+
+// PRORROGAÇÃO PELA TELA — REMOVIDA. A prorrogação passa a ser solicitada EXCLUSIVAMENTE pelo
+// WhatsApp (uma única vez, +6h), tratada em reserva-avisos.ts (tratarRespostaProrrogacao).
+
+// LIMPAR CARRINHO (Etapa 1) — quando o carrinho fica VAZIO, solta a reserva na hora: apaga a
+// reserva + o rascunho (carrinho) daquele dono. Só mexe no que é 'rascunho' da loja e confere
+// a posse (cliente pelo CNPJ ou representante pelo nome). Nunca toca em pedido já enviado.
+loja.post("/carrinho-limpar", async (c) => {
+  let b: { cnpj?: string; pedido_id?: string; vendedor?: string } = {};
+  try { b = await c.req.json(); } catch { return c.json({ ok: true }); }
+  const pid = String(b.pedido_id || "").trim().slice(0, 40);
+  if (!pid) return c.json({ ok: true }); // nada pra limpar
+  const cnpjDig = soDigitos(b.cnpj);
+  const vendedor = String(b.vendedor || "").trim();
+  const ped = await c.env.DB.prepare(
+    "SELECT p.id, COALESCE(p.erp_sync_status,'') AS sync, COALESCE(p.vendedor,'') AS vend, COALESCE(cl.cnpj,'') AS cnpj " +
+    "FROM pedidos p LEFT JOIN clientes cl ON cl.id=p.cliente_id WHERE p.id=? AND p.canal='loja_b2b' LIMIT 1"
+  ).bind(pid).first<{ id: string; sync: string; vend: string; cnpj: string }>();
+  if (!ped) return c.json({ ok: true });               // pedido não existe mais
+  if (ped.sync !== "rascunho") return c.json({ ok: true }); // já foi enviado → não mexe
+  const donoOk = vendedor
+    ? ped.vend.trim().toLowerCase() === vendedor.toLowerCase()
+    : (cnpjDig.length >= 11 && soDigitos(ped.cnpj) === cnpjDig);
+  if (!donoOk) return c.json({ erro: "nao_dono" }, 403);
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pid),
+    c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pid),
+    c.env.DB.prepare("DELETE FROM pedidos WHERE id=? AND canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'").bind(pid),
+  ]);
+  return c.json({ ok: true });
 });
 
 // Formas de pagamento (prazos do Syntech) — o rep escolhe uma antes de enviar o pedido.

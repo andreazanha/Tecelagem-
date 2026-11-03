@@ -1,0 +1,120 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- SEED DE STAGING — dados 100% FICTÍCIOS para o ambiente de teste.
+-- Rodado SÓ contra o banco de staging (rolagem-de-fase-staging), nunca produção.
+-- Usa INSERT OR IGNORE / OR REPLACE em config para ser idempotente.
+--
+-- Logins de teste:
+--   • Admin (painel):        usuario = admin        senha = admin
+--   • Vendedor interno:      usuario = vint         senha = admin   (senha interna é texto)
+--   • Loja — cliente direto: CNPJ 11.111.111/0001-11   senha = teste123
+--   • Loja — cliente de rep: CNPJ 22.222.222/0001-22   senha = teste123
+--   • Representante (loja):  e-mail rep@example.test   senha = teste123   (login do rep é por e-mail)
+-- (Troque estes dados quando a lista real de usuários/telefones de teste for definida.)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- ── CONFIG ───────────────────────────────────────────────────────────────────
+-- WhatsApp DESLIGADO: garante que NENHUMA mensagem real sai nesta fase (enviarWhatsapp
+-- retorna "desligado" em todos os caminhos). Esta é a trava real da simulação de WhatsApp.
+INSERT INTO config (chave, valor, atualizado_em) VALUES ('zapi_ativo','0',datetime('now'))
+  ON CONFLICT(chave) DO UPDATE SET valor='0', atualizado_em=datetime('now');
+INSERT INTO config (chave, valor, atualizado_em) VALUES ('atendimento_ativo','0',datetime('now'))
+  ON CONFLICT(chave) DO UPDATE SET valor='0', atualizado_em=datetime('now');
+-- A ponte do Syntech NÃO cria clientes aqui (simulação só).
+INSERT INTO config (chave, valor, atualizado_em) VALUES ('loja_criar_clientes','0',datetime('now'))
+  ON CONFLICT(chave) DO UPDATE SET valor='0', atualizado_em=datetime('now');
+-- Catálogo mostra preço de atacado (lojista).
+INSERT OR IGNORE INTO config (chave, valor, atualizado_em) VALUES ('catalogo_preco','atacado',datetime('now'));
+-- Marcador do ambiente (útil para um banner "STAGING" futuro; nenhum código lê hoje).
+INSERT INTO config (chave, valor, atualizado_em) VALUES ('ambiente','staging',datetime('now'))
+  ON CONFLICT(chave) DO UPDATE SET valor='staging', atualizado_em=datetime('now');
+-- INTERRUPTORES DO NOVO SISTEMA (feature flags do servidor). Só ligam com valor EXATAMENTE "1".
+-- Em PRODUÇÃO estas chaves NÃO existem → tudo DESLIGADO por padrão (comportamento de antes).
+-- Aqui no STAGING começam LIGADAS para testar o fluxo completo (menos o WhatsApp, que fica off
+-- por zapi_ativo acima). Para testar desligado, troque o valor para '0' (ver STAGING.md).
+INSERT INTO config (chave, valor, atualizado_em) VALUES ('reservas_ativo','1',datetime('now'))
+  ON CONFLICT(chave) DO UPDATE SET valor='1', atualizado_em=datetime('now');
+INSERT INTO config (chave, valor, atualizado_em) VALUES ('pcp_popup_ativo','1',datetime('now'))
+  ON CONFLICT(chave) DO UPDATE SET valor='1', atualizado_em=datetime('now');
+INSERT INTO config (chave, valor, atualizado_em) VALUES ('crm_popup_ativo','1',datetime('now'))
+  ON CONFLICT(chave) DO UPDATE SET valor='1', atualizado_em=datetime('now');
+
+-- ── USUÁRIOS internos ────────────────────────────────────────────────────────
+INSERT OR IGNORE INTO usuarios (id, nome, usuario, senha, admin, paginas, perm_configurado) VALUES
+  ('u-admin-stg', 'Administrador (staging)', 'admin', 'admin', 1, '[]', 1),
+  ('u-vint',      'Vera (vendedora interna)', 'vint',  'admin', 0, '[]', 1);
+
+-- Permissões do vendedor interno de teste (CRM + PCP + conferência manual).
+INSERT OR IGNORE INTO usuario_permissoes (usuario_id, permissao) VALUES
+  ('u-vint','vendedor.interno'),
+  ('u-vint','pedidos'),
+  ('u-vint','pcp.liberar');
+
+-- ── REPRESENTANTE de teste ───────────────────────────────────────────────────
+INSERT OR IGNORE INTO representantes (id, nome, whatsapp, email, ativo, codigo_erp, senha_hash) VALUES
+  ('r-stg-1', 'Rogério (representante teste)', '5500000000001', 'rep@example.test', 1, 'R01',
+   'pbkdf2$100000$uirQpPDT8UN+2FkaBVSM0A==$IE8b+yUR9KCOtm6m12PnbK4Zplj7Vrtf1VQXRJdZ6Qo=');
+
+-- ── CLIENTES de teste ────────────────────────────────────────────────────────
+-- senha = teste123 (hash PBKDF2). cnpj em dígitos. loja_status aprovado = pode logar.
+INSERT OR IGNORE INTO clientes
+  (id, nome, razao_social, cnpj, uf, cidade, whatsapp, email, loja_status, rep_codigo, vendedor_interno, senha_hash)
+VALUES
+  ('cli-stg-1', 'Loja Teste Direto', 'Loja Teste Direto Ltda', '11111111000111', 'SP', 'São Paulo',
+   '5500000000011', 'cli1@example.test', 'aprovado', '', 'u-vint',
+   'pbkdf2$100000$E/h/xwcMImmHyMNaYAS+9w==$zTf4m864n3TTXPK91KopaqScCZbaHL93jtpA1MIev68='),
+  ('cli-stg-2', 'Loja Teste do Rep', 'Loja Teste do Rep Ltda', '22222222000122', 'RJ', 'Rio de Janeiro',
+   '5500000000022', 'cli2@example.test', 'aprovado', 'R01', 'u-vint',
+   'pbkdf2$100000$E/h/xwcMImmHyMNaYAS+9w==$zTf4m864n3TTXPK91KopaqScCZbaHL93jtpA1MIev68=');
+
+-- ── CATÁLOGO fictício (erp_produtos) ──────────────────────────────────────────
+-- MODELO TESTE A é EDIÇÃO LIMITADA: a CAPA (ED01C) e a ALMOFADA (ED01A) são a MESMA
+-- peça física (almofada = capa + enchimento). O prefixo "ED" nas refs liga o espelho
+-- do catálogo (capa e almofada mostram o MESMO estoque); a receita de kit (abaixo) faz
+-- a RESERVA/venda da almofada baixar a capa. Assim vale a regra "1 capa = 1 almofada".
+-- Letra final do ref = tipo (C=Capa, A=Almofada, P=Peseira/Manta).
+-- MODELO TESTE B (9002P) é uma manta normal (peça única, estoque próprio) — NÃO reserva.
+-- KIT TESTE C (9100P) é um kit de PRONTA ENTREGA: o kit é uma capa, e quem BAIXA de verdade é a
+-- peça KT9100 (ref KT…). O gate reserva pela peça KT. Produtos normais seguem sem reservar.
+-- Reset dos refs de teste (idempotência no re-seed do staging):
+DELETE FROM erp_produtos    WHERE ref     IN ('9001A','9001C','ED01A','ED01C','9002P','9100P','KT9100');
+DELETE FROM erp_estoque     WHERE ref     IN ('9001A','9001C','ED01A','ED01C','9002P','9100P','KT9100');
+DELETE FROM erp_kit_receita WHERE kit_ref IN ('9001A','ED01A','9100P');
+INSERT INTO erp_produtos (ref, nome, unidade, classe, grupo, preco_atacado, preco_varejo, estoque_geral, inativo, cores, tamanhos, atualizado_em) VALUES
+  ('ED01C', 'CAPA MODELO TESTE A', 'UN', 'TESTE', 'padrao', 29.90, 44.90, 10, 0,
+    '[{"numero":1,"nome":"Off-White","hex":"#f3efe6"},{"numero":2,"nome":"Marinho","hex":"#1b2a4a"}]',
+    '[{"medida":"45X45","atacado":29.90,"varejo":44.90}]', datetime('now')),
+  ('ED01A', 'ALMOFADA MODELO TESTE A', 'UN', 'TESTE', 'padrao', 39.90, 59.90, 10, 0,
+    '[{"numero":1,"nome":"Off-White","hex":"#f3efe6"},{"numero":2,"nome":"Marinho","hex":"#1b2a4a"}]',
+    '[{"medida":"45X45","atacado":39.90,"varejo":59.90}]', datetime('now')),
+  ('9002P', 'MANTA MODELO TESTE B', 'UN', 'TESTE', 'padrao', 129.90, 189.90, 5, 0,
+    '[{"numero":3,"nome":"Cacau","hex":"#5b3b2e"},{"numero":4,"nome":"Mostarda","hex":"#c99a2e"}]',
+    '[{"medida":"1,30X1,70","atacado":129.90,"varejo":189.90}]', datetime('now')),
+  -- Peça física do kit (ref KT…) — NÃO aparece no catálogo (refs KT% são componentes); só tem estoque.
+  ('KT9100', 'CAPA KT TESTE (peca de kit)', 'UN', 'TESTE', 'padrao', 0, 0, 10, 0,
+    '[{"numero":1,"nome":"Off-White","hex":"#f3efe6"},{"numero":2,"nome":"Marinho","hex":"#1b2a4a"}]',
+    '[{"medida":"45X45"}]', datetime('now')),
+  -- Kit "pai" de PRONTA ENTREGA (aparece no catálogo); a receita abaixo o liga à peça KT9100.
+  ('9100P', 'KIT ALMOFADA PRONTA ENTREGA', 'UN', 'TESTE', 'pronta entrega', 49.90, 69.90, 10, 0,
+    '[{"numero":1,"nome":"Off-White","hex":"#f3efe6"},{"numero":2,"nome":"Marinho","hex":"#1b2a4a"}]',
+    '[{"medida":"45X45","atacado":49.90,"varejo":69.90}]', datetime('now'));
+
+-- ── ESTOQUE físico (erp_estoque): SÓ a CAPA (ED01C) tem estoque — é o pool ÚNICO que a
+-- almofada compartilha. A manta (9002P) tem o seu próprio. chave = ref|cor|tam (minúsculo).
+-- Cenário de ÚLTIMA UNIDADE: Marinho = 1 (para testar concorrência + compartilhamento).
+INSERT INTO erp_estoque (chave, produto, ref, cor, tamanho, saldo, unidade, lote, atualizado_em) VALUES
+  ('ed01c|off-white|45x45', 'CAPA MODELO TESTE A',     'ED01C', 'Off-White', '45X45', 5, 'UN', 'seed-staging', datetime('now')),
+  ('ed01c|marinho|45x45',   'CAPA MODELO TESTE A',     'ED01C', 'Marinho',   '45X45', 1, 'UN', 'seed-staging', datetime('now')),
+  ('9002p|cacau|1,30x1,70',    'MANTA MODELO TESTE B', '9002P', 'Cacau',    '1,30X1,70', 5, 'UN', 'seed-staging', datetime('now')),
+  ('9002p|mostarda|1,30x1,70', 'MANTA MODELO TESTE B', '9002P', 'Mostarda', '1,30X1,70', 1, 'UN', 'seed-staging', datetime('now')),
+  -- Estoque da PEÇA do kit (KT9100): é o que baixa de verdade quando o kit pronta entrega é reservado.
+  ('kt9100|off-white|45x45', 'CAPA KT TESTE', 'KT9100', 'Off-White', '45X45', 4, 'UN', 'seed-staging', datetime('now')),
+  ('kt9100|marinho|45x45',   'CAPA KT TESTE', 'KT9100', 'Marinho',   '45X45', 2, 'UN', 'seed-staging', datetime('now'));
+
+-- ── RECEITA: a almofada (ED01A) = 1× capa (ED01C); e o kit pronta entrega (9100P) = 1× peça KT9100.
+-- Faz a RESERVA/venda baixar a PEÇA FÍSICA certa (capa EL ou peça KT).
+INSERT INTO erp_kit_receita (kit_ref, componente_ref, quantidade, tamanho, atualizado_em) VALUES
+  ('ED01A', 'ED01C', 1, '45X45', datetime('now')),
+  ('9100P', 'KT9100', 1, '45X45', datetime('now'));
+
+-- ── PRAZOS de pagamento (para o checkout da loja oferecer opção) ──────────────
+INSERT OR IGNORE INTO erp_prazos (codigo, descricao, atualizado_em) VALUES ('30', '30 dias', datetime('now'));

@@ -18,6 +18,9 @@ import { SITE_FULL_HTML } from "../siteTemplateFull";
 import { SITE_LOJA_HTML } from "../siteLoja";
 import { lerDocumento, gravarDocumento } from "../firestore";
 import { limparReservasRefletidas, kitAlertas } from "../loja-estoque";
+import { avisarRecebidoSyntech, notificarVendedorInterno } from "../reserva-avisos";
+import { flagLigado, FLAG_RESERVAS, FLAG_PCP_POPUP } from "../flags";
+import { enviarWhatsapp } from "./atendimento";
 
 export const integracao = new Hono<{ Bindings: Env }>();
 
@@ -62,6 +65,59 @@ const uid = () => crypto.randomUUID();
 const str = (v: unknown) => { const s = String(v ?? "").trim(); return s || null; };
 const inteiro = (v: unknown) => Math.max(0, Math.trunc(Number(v) || 0));
 
+// ── TESTE DE WHATSAPP (EXCLUSIVO DO STAGING) ─────────────────────────────────
+// Monta uma reserva FICTÍCIA perto do vencimento (vencimento acelerado) apontando o lembrete para
+// UM número de teste, e coloca esse número na allowlist (só ele poderá receber). NÃO liga o envio
+// (zapi_ativo continua como está) e é BARRADO fora do staging e sem o token. Em seguida, o cron de
+// avisos (a cada 5 min) manda o lembrete de "~1h antes" para esse número; responder "Sim" prorroga
+// +6h. Não toca em produção, não usa números de clientes/representantes reais.
+integracao.get("/_teste-reserva-whats", async (c) => {
+  // Token SÓ no cabeçalho X-Integracao-Token (nunca na URL — evita vazar em histórico/logs). Chame
+  // pelo console do navegador: fetch('…?tel=…',{headers:{'X-Integracao-Token':'<token staging>'}}).
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado", msg: "Token só no cabeçalho X-Integracao-Token." }, 401);
+  if (String(c.env.AMBIENTE || "").toLowerCase() !== "staging") return c.json({ error: "somente_staging" }, 403);
+  const tel = String(c.req.query("tel") || "").replace(/\D+/g, "");
+  if (tel.length < 10) return c.json({ error: "tel_invalido", msg: "Informe ?tel= com DDI+DDD+numero, só dígitos (ex.: 55DDDNÚMERO)." }, 400);
+  const min = Math.min(180, Math.max(2, Math.trunc(Number(c.req.query("min")) || 55))); // vence em ~min minutos
+  const pid = "teste-whats-reserva";
+  await c.env.DB.batch([
+    // 1) allowlist = SÓ este número (qualquer outro fica bloqueado pela trava de staging)
+    c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('zapi_allowlist', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(tel),
+    // 2) aponta o cliente FICTÍCIO de teste para este número (destino do lembrete)
+    c.env.DB.prepare("UPDATE clientes SET whatsapp=? WHERE id='cli-stg-1'").bind(tel),
+    // 3) (re)cria a reserva fictícia (rascunho EL) vencendo em ~min minutos, pronta para o lembrete
+    c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pid),
+    c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pid),
+    c.env.DB.prepare("DELETE FROM pedidos WHERE id=?").bind(pid),
+    c.env.DB.prepare(
+      `INSERT INTO pedidos (id, cliente_nome, cliente_id, cliente_cnpj, tipo, status, canal, valor_total,
+         erp_sync_status, erp_liberado, loja_fase, reserva_iniciada_em, reserva_expira_em,
+         reserva_expira_original, reserva_noturna, reserva_responsavel, reserva_prorrogacoes, data_pedido, created_at)
+       VALUES (?, 'Loja Teste Direto', 'cli-stg-1', '11111111000111', 'pedido', 'aguardando_aprovacao', 'loja_b2b', 44.90,
+         'rascunho', 0, 'em_espera', datetime('now','-2 hours'), datetime('now', ?), datetime('now', ?), 0, 'cliente', 0, datetime('now'), datetime('now'))`
+    ).bind(pid, `+${min} minutes`, `+${min} minutes`),
+    c.env.DB.prepare("INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, cod_cor, tamanho, erp_tamanho, qtd, valor_unit, parte) VALUES (?, ?, 'ALMOFADA MODELO TESTE A', 'ED01A', 'Off-White', 1, '45X45', '45X45', 1, 44.90, 'unico')").bind(uid(), pid),
+    c.env.DB.prepare("INSERT INTO erp_reserva (id, pedido_id, ref, cor, tamanho, qtd) VALUES (?, ?, 'ED01C', 'Off-White', '45X45', 1)").bind(uid(), pid),
+  ]);
+  const zap = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='zapi_ativo'").first<{ valor: string | null }>().catch(() => null);
+  const inst = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='zapi_instance'").first<{ valor: string | null }>().catch(() => null);
+  return c.json({
+    ok: true,
+    ambiente: "staging",
+    pedido_id: pid,
+    vence_em_min: min,
+    allowlist_so_este_numero: true,
+    numero_mascarado: "••••" + tel.slice(-2),
+    envio_ligado: (zap?.valor || "0") === "1",
+    tem_credencial_zapi: !!(inst?.valor || "").trim(),
+    proximo_passo: (zap?.valor || "0") === "1"
+      ? "Aguarde o lembrete no WhatsApp (até ~5 min) e responda 'Sim'."
+      : "Envio ainda DESLIGADO (zapi_ativo=0). Ligue só quando autorizado para receber o lembrete.",
+  });
+});
+
 // Depois que um pedido importado "vira produção" (aprovado), roda o MESMO pós-processo
 // do PDF: cadastra os produtos que faltam e dá baixa de estoque dos insumos. Não trava.
 async function posProcessar(env: Env, pedidoId: string, autor?: Autor) {
@@ -105,17 +161,27 @@ integracao.post("/pedido", async (c) => {
        VALUES (?, ?, ?, ?, 'pedido', ?, ?, 'aguardando_aprovacao', 1, datetime('now'))`
     ).bind(pedidoId, numero, clienteNome, str(b.vendedor), str(b.data), str(b.data_entrega)),
   ];
+  let nItens = 0;
   for (const it of itens) {
     const produto = str(it.produto);
     if (!produto) continue;
+    nItens++;
     stmts.push(
       c.env.DB.prepare(
         "INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte) VALUES (?, ?, ?, ?, ?, ?, ?, 'unico')"
       ).bind(uid(), pedidoId, produto, str(it.ref), str(it.cor), str(it.tamanho), inteiro(it.qtd))
     );
   }
+  // ETAPA 5 — pop-up do PCP: guarda UMA notificação "Para conferir" (idempotente por numero_erp).
+  // É só informativo; NÃO aprova, não explode e não mexe nos botões do PCP.
+  // INTERRUPTOR "pcp_popup_ativo": desligado (padrão) → NÃO cria a notificação. O pedido do ERP
+  // é importado normalmente; só o pop-up deixa de existir. Não altera nada já gravado.
+  if (await flagLigado(c.env, FLAG_PCP_POPUP)) {
+    const pecasTotal = itens.reduce((s, it) => s + (inteiro(it.qtd) || 0), 0);
+    stmts.push(c.env.DB.prepare("INSERT OR IGNORE INTO pcp_notificacoes (id, numero_erp, cliente_nome, vendedor, pecas) VALUES (?,?,?,?,?)").bind(uid(), numero, clienteNome, str(b.vendedor), pecasTotal));
+  }
   await c.env.DB.batch(stmts);
-  return c.json({ ok: true, pedido_id: pedidoId, numero, itens: stmts.length - 1 }, 201);
+  return c.json({ ok: true, pedido_id: pedidoId, numero, itens: nItens }, 201);
 });
 
 // ── PORTA DE ENTRADA: recebe os REPRESENTANTES (GUIAS) do Syntech ───────────────
@@ -288,6 +354,68 @@ integracao.get("/pendentes", async (c) => {
       ORDER BY p.created_at DESC, p.numero_erp DESC`
   ).all();
   return c.json(results);
+});
+
+// ETAPA 5 — POP-UP DO PCP: notificações de pedidos recém-chegados em "Para conferir" ainda não
+// tratados (visto_em IS NULL). A tela do PCP consulta aqui e mostra o pop-up (sem recarregar).
+integracao.get("/pcp-notificacoes", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  // INTERRUPTOR "pcp_popup_ativo": desligado (padrão) → não exibe nada (lista vazia). Não apaga
+  // o que já existe no banco; só deixa de mostrar. Validação no SERVIDOR, não só na tela.
+  if (!(await flagLigado(c.env, FLAG_PCP_POPUP))) return c.json({ agora: new Date().toISOString(), notificacoes: [] });
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, numero_erp, cliente_nome, vendedor, pecas, criado_em FROM pcp_notificacoes WHERE visto_em IS NULL ORDER BY criado_em DESC, rowid DESC LIMIT 20"
+  ).all().catch(() => ({ results: [] as unknown[] }));
+  return c.json({ agora: new Date().toISOString(), notificacoes: results || [] });
+});
+// Marca uma notificação como TRATADA (botão "Fechar"/"Ver pedido") — não repete depois.
+integracao.post("/pcp-notificacoes/visto", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json().catch(() => ({})) as { id?: string; numero?: string | number };
+  const id = String(b.id || "").trim();
+  const numero = String(b.numero ?? "").trim();
+  if (!id && !numero) return c.json({ error: "faltam_dados" }, 400);
+  const campo = id ? "id=?" : "numero_erp=?";
+  await c.env.DB.prepare(`UPDATE pcp_notificacoes SET visto_em=datetime('now'), visto_por=? WHERE ${campo} AND visto_em IS NULL`)
+    .bind(g.u.nome || g.u.usuario || "", id || numero).run();
+  return c.json({ ok: true });
+});
+
+// ETAPA 7 — RESERVAS PROTEGIDAS: pedidos da loja RECEBIDOS no Syntech ('enviado') que ainda
+// seguram estoque. A reserva NÃO expira sozinha (regra aprovada) — enquanto a ponte não detectar
+// cancelamentos de verdade, a única forma de soltar é a CONFERÊNCIA MANUAL abaixo (usuário
+// autorizado + motivo + registro). Nunca libera automaticamente.
+integracao.get("/reservas-protegidas", async (c) => {
+  const g = await exigirFuncao(c, "pcp.liberar"); if ("erro" in g) return g.erro;
+  const { results } = await c.env.DB.prepare(
+    `SELECT p.id, p.erp_numero, p.cliente_nome, COALESCE(p.vendedor,'') AS vendedor, p.erp_sync_em,
+            (SELECT COALESCE(SUM(qtd),0) FROM erp_reserva r WHERE r.pedido_id=p.id) AS pecas,
+            (SELECT COUNT(*) FROM erp_reserva r WHERE r.pedido_id=p.id) AS linhas
+       FROM pedidos p
+      WHERE p.canal='loja_b2b' AND COALESCE(p.erp_sync_status,'')='enviado'
+        AND EXISTS (SELECT 1 FROM erp_reserva r WHERE r.pedido_id=p.id)
+      ORDER BY p.erp_sync_em DESC`
+  ).all().catch(() => ({ results: [] as unknown[] }));
+  return c.json({ agora: new Date().toISOString(), reservas: results || [] });
+});
+// Libera MANUALMENTE a reserva de um pedido recebido (conferência). Exige MOTIVO e registra no
+// histórico. Só vale pra 'enviado' (recebido no Syntech). Não aprova/produz nada.
+integracao.post("/reserva-liberar", async (c) => {
+  const g = await exigirFuncao(c, "pcp.liberar"); if ("erro" in g) return g.erro;
+  const b = await c.req.json().catch(() => ({})) as { pedido_id?: string; motivo?: string };
+  const pid = String(b.pedido_id || "").trim();
+  const motivo = String(b.motivo || "").trim();
+  if (!pid || motivo.length < 3) return c.json({ error: "motivo_obrigatorio", msg: "Informe o motivo da liberação." }, 400);
+  const ped = await c.env.DB.prepare("SELECT COALESCE(erp_sync_status,'') AS s, erp_numero FROM pedidos WHERE id=? AND canal='loja_b2b' LIMIT 1").bind(pid).first<{ s: string; erp_numero: number | null }>();
+  if (!ped) return c.json({ error: "nao_encontrado" }, 404);
+  if (ped.s !== "enviado") return c.json({ error: "nao_elegivel", msg: "Só pedidos recebidos no Syntech podem ter a reserva liberada manualmente." }, 409);
+  const n = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM erp_reserva WHERE pedido_id=?").bind(pid).first<{ n: number }>();
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pid),
+    c.env.DB.prepare("INSERT INTO reserva_historico (id, pedido_id, evento, telefone, detalhe) VALUES (?,?,?,?,?)")
+      .bind(uid(), pid, "liberacao_manual", null, `nº ${ped.erp_numero ?? "—"} — liberado por ${g.u.nome}: ${motivo.slice(0, 400)}`),
+  ]);
+  return c.json({ ok: true, liberadas: Number(n?.n) || 0 });
 });
 
 // Itens de um pedido pendente (pra conferir antes de aprovar).
@@ -1115,16 +1243,19 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   // refletidos no SALDO do Syntech). Assim vender um kit/capa baixa NA HORA as outras
   // opções que dividem a mesma capa (vazio, cheio e avulsa). Quando o Syntech empenha e a
   // ponte traz o SALDO menor, a reserva deixa de contar (não desconta duas vezes).
-  try {
-    const syncEm = (await env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_sync_em'").first<{ valor: string | null }>())?.valor || null;
+  // INTERRUPTOR "reservas_ativo": só desconta reservas do catálogo quando a função está LIGADA.
+  // Desligada (padrão em produção) → o catálogo mostra o SALDO cru do Syntech, exatamente como
+  // antes do sistema de reservas. Não apaga nem libera reserva nenhuma — apenas deixa de descontar.
+  if (await flagLigado(env, FLAG_RESERVAS)) try {
+    // Mesmo filtro da trava (FILTRO_RESERVA_ATIVA): enviado conta SEMPRE (não expira por tempo),
+    // rascunho só com a janela ativa. Sem teto de 7 dias e sem auto-liberação por sincronização.
     const { results: rvs } = await env.DB.prepare(
       `SELECT rv.ref AS ref, rv.cor AS cor, rv.tamanho AS tamanho, SUM(rv.qtd) AS q
          FROM erp_reserva rv JOIN pedidos p ON p.id = rv.pedido_id
-        WHERE rv.criado_em > datetime('now','-7 days')
-          AND COALESCE(p.erp_sync_status,'') IN ('pendente','erro','enviado')
-          AND NOT (COALESCE(p.erp_sync_status,'')='enviado' AND p.erp_sync_em IS NOT NULL AND ? IS NOT NULL AND p.erp_sync_em <= ?)
+        WHERE ( COALESCE(p.erp_sync_status,'') IN ('pendente','erro','enviado')
+             OR (COALESCE(p.erp_sync_status,'')='rascunho' AND p.reserva_expira_em IS NOT NULL AND p.reserva_expira_em > datetime('now')) )
         GROUP BY rv.ref, rv.cor, rv.tamanho`
-    ).bind(syncEm, syncEm).all<{ ref: string; cor: string | null; tamanho: string | null; q: number }>();
+    ).all<{ ref: string; cor: string | null; tamanho: string | null; q: number }>();
     for (const rv of rvs || []) {
       const ref = (rv.ref || "").trim(); if (!ref) continue;
       const codeKey = (rv.tamanho || "").trim() || "-";
@@ -2031,6 +2162,11 @@ integracao.post("/pedido-erp-gravado", async (c) => {
   const cod = String(b.cod_cli || "").trim();
   if (cod) stmts.push(c.env.DB.prepare("UPDATE clientes SET codigo_erp=? WHERE id=(SELECT cliente_id FROM pedidos WHERE id=?) AND COALESCE(codigo_erp,'')=''").bind(cod, id));
   await c.env.DB.batch(stmts);
+  // ETAPA 5 — recebido no Syntech (Evento 1): confirma por WhatsApp UMA vez, ao destinatário certo.
+  // Best-effort (waitUntil): falha de WhatsApp NUNCA afeta a confirmação da ponte nem o pedido.
+  try { c.executionCtx.waitUntil(avisarRecebidoSyntech(c.env, id, numero, (e, tel, texto) => enviarWhatsapp(e, tel, { tipo: "texto", texto })).then(() => {}).catch(() => {})); } catch { /* ok */ }
+  // ETAPA 6 — pop-up individual no CRM para o vendedor interno dono da carteira (best-effort).
+  try { c.executionCtx.waitUntil(notificarVendedorInterno(c.env, id, numero).then(() => {}).catch(() => {})); } catch { /* ok */ }
   return c.json({ ok: true });
 });
 

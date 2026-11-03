@@ -69,7 +69,7 @@ export function Clientes() {
   const [carregando, setCarregando] = useState(true);
   const [novo, setNovo] = useState<ClienteCrm | null>(null);
   const [importar, setImportar] = useState(false);
-  const [dim, setDim] = useState<null | "estado" | "representante" | "letra" | "todos">(null); // menu escolhido
+  const [dim, setDim] = useState<null | "estado" | "representante" | "vendedor" | "letra" | "todos">(null); // menu escolhido
   const [sel, setSel] = useState<string | null>(null); // grupo selecionado (UF, representante, letra)
   const [abrindo, setAbrindo] = useState<string | null>(null);
   const [escolha, setEscolha] = useState<ClienteCrm | null>(null); // cliente aguardando "prospecção x só conversar"
@@ -100,6 +100,17 @@ export function Clientes() {
   const [selCli, setSelCli] = useState<Set<string>>(new Set()); // clientes marcados p/ campanha
   const [campanha, setCampanha] = useState(false);
   const toggleSel = (id: string) => setSelCli((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  // ETAPA 6 — vendedores internos (atribuição em lote). vends=null ⇒ sem permissão pra editar carteira.
+  const [vends, setVends] = useState<{ id: string; nome: string }[] | null>(null);
+  const [atribVend, setAtribVend] = useState(false);
+  useEffect(() => { api.vendedoresInternos().then(setVends).catch(() => setVends(null)); }, []);
+  async function atribuirLote(usuario_id: string | null) {
+    const ids = [...selCli];
+    if (!ids.length) return;
+    const r = await api.setClienteVendedorLote(ids, usuario_id).catch(() => ({ error: "erro" } as { error: string }));
+    if ((r as { error?: string }).error) { alert((r as { error?: string }).error === "sem_permissao" ? "Você não tem permissão para alterar carteiras." : "Não consegui atribuir agora."); return; }
+    setAtribVend(false); setSelCli(new Set()); recarregar();
+  }
 
   function recarregar() {
     api.listarClientesCrm().then((d) => { if (Array.isArray(d)) setLista(d); }).catch(() => {}).finally(() => setCarregando(false));
@@ -128,10 +139,11 @@ export function Clientes() {
   const primeiraLetra = (nome: string) => { const ch = semAcento(nome).replace(/^[^a-z0-9]+/, "")[0] || ""; return /[a-z]/.test(ch) ? ch : "#"; };
   const q = semAcento(busca.trim());
   // Chave do grupo conforme o menu escolhido (UF / representante / 1ª letra).
-  const chaveGrupo = (c: ClienteCrm, d: "estado" | "representante" | "letra") =>
+  const chaveGrupo = (c: ClienteCrm, d: "estado" | "representante" | "vendedor" | "letra") =>
     d === "estado" ? ((c.uf || "").trim().toUpperCase() || "—")
       : d === "representante" ? ((c.representante || "").trim() || "—")
-        : primeiraLetra(c.nome).toUpperCase();
+        : d === "vendedor" ? ((c.vendedor_interno_nome || "").trim() || "—")
+          : primeiraLetra(c.nome).toUpperCase();
   // Busca livre: nome, cidade, representante e WhatsApp/CNPJ por dígitos (sem acento).
   const resultadosBusca = useMemo(() => {
     if (!q) return [] as ClienteCrm[];
@@ -176,10 +188,11 @@ export function Clientes() {
     return (
       <tr key={c.id} onClick={() => nav(`/clientes/${c.id}`)}>
         <td style={{ textAlign: "center", width: 34 }} onClick={(e) => e.stopPropagation()}>
-          {c.whatsapp ? <input type="checkbox" checked={selCli.has(c.id)} onChange={() => toggleSel(c.id)} title="Selecionar para campanha" /> : null}
+          <input type="checkbox" checked={selCli.has(c.id)} onChange={() => toggleSel(c.id)} title="Selecionar (campanha / atribuir vendedor)" />
         </td>
         <td><div className="cli-nm">{c.nome}{c.prospectado_em ? <span title={`Prospectado em ${dataBr(c.prospectado_em)}`} style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: "#7c3aed", background: "#f3e8ff", borderRadius: 6, padding: "1px 6px", whiteSpace: "nowrap" }}>🎯 {dataBr(c.prospectado_em)}</span> : null}</div><div className="muted2">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div></td>
         <td>{c.representante ? <span className="rep-cli">🧑‍💼 {c.representante}</span> : <span className="muted2">—</span>}</td>
+        <td>{c.vendedor_interno_nome ? <span className="rep-cli" style={{ background: "#eef2ff", color: "#3730a3" }}>👤 {c.vendedor_interno_nome}</span> : <span className="muted2">—</span>}</td>
         <td>{c.whatsapp ? (
           <button className="wa wa-btn" disabled={abrindo === c.id} onClick={(e) => { e.stopPropagation(); setEscolha(c); }} title="Abrir conversa no funil">
             {abrindo === c.id ? "abrindo…" : `🟢 ${c.whatsapp}`}
@@ -204,20 +217,20 @@ export function Clientes() {
           <table className="crm">
             <thead><tr>
               <th style={{ width: 34, textAlign: "center" }}>
-                <input type="checkbox" title="Selecionar todos (com WhatsApp)"
-                  checked={items.some((c) => c.whatsapp) && items.filter((c) => c.whatsapp).every((c) => selCli.has(c.id))}
-                  onChange={(e) => setSelCli((s) => { const n = new Set(s); const alvos = items.filter((c) => c.whatsapp); if (e.target.checked) alvos.forEach((c) => n.add(c.id)); else alvos.forEach((c) => n.delete(c.id)); return n; })} />
+                <input type="checkbox" title="Selecionar todos"
+                  checked={items.length > 0 && items.every((c) => selCli.has(c.id))}
+                  onChange={(e) => setSelCli((s) => { const n = new Set(s); if (e.target.checked) items.forEach((c) => n.add(c.id)); else items.forEach((c) => n.delete(c.id)); return n; })} />
               </th>
-              <th>Cliente</th><th>Representante</th><th>WhatsApp</th><th style={{ textAlign: "center" }}>Pedidos</th><th>Total comprado</th><th>Última compra</th><th>Último faturamento</th></tr></thead>
+              <th>Cliente</th><th>Representante</th><th>Vendedor interno</th><th>WhatsApp</th><th style={{ textAlign: "center" }}>Pedidos</th><th>Total comprado</th><th>Última compra</th><th>Último faturamento</th></tr></thead>
             <tbody>{items.map((c) => linha(c))}</tbody>
           </table>
         </div>
       )}
     </div>
   );
-  const ICONE: Record<string, string> = { estado: "🗺️", representante: "🧑‍💼", letra: "🔤", todos: "☰" };
-  const ROTULO: Record<string, string> = { estado: "Por estado", representante: "Por representante", letra: "Por letra", todos: "Todos" };
-  const SEM: Record<string, string> = { estado: "Sem estado", representante: "Sem representante", letra: "#", todos: "" };
+  const ICONE: Record<string, string> = { estado: "🗺️", representante: "🧑‍💼", vendedor: "👤", letra: "🔤", todos: "☰" };
+  const ROTULO: Record<string, string> = { estado: "Por estado", representante: "Por representante", vendedor: "Por vendedor interno", letra: "Por letra", todos: "Todos" };
+  const SEM: Record<string, string> = { estado: "Sem estado", representante: "Sem representante", vendedor: "Sem vendedor", letra: "#", todos: "" };
 
   return (
     <div className="quadro-page">
@@ -264,6 +277,9 @@ export function Clientes() {
           </button>
           <button className="opt-card rep" onClick={() => { setDim("representante"); setSel(null); }}>
             <span className="opt-ic">🧑‍💼</span><span className="opt-tt">Por representante</span><span className="opt-sub">Clientes de cada representante</span>
+          </button>
+          <button className="opt-card rep" onClick={() => { setDim("vendedor"); setSel(null); }}>
+            <span className="opt-ic">👤</span><span className="opt-tt">Por vendedor interno</span><span className="opt-sub">Carteira de cada vendedor · inclui "Sem vendedor"</span>
           </button>
           <button className="opt-card let" onClick={() => { setDim("letra"); setSel(null); }}>
             <span className="opt-ic">🔤</span><span className="opt-tt">Por letra</span><span className="opt-sub">Índice A a Z pelo nome</span>
@@ -318,6 +334,23 @@ export function Clientes() {
           <b style={{ fontSize: 13 }}>{selCli.size} cliente(s) selecionado(s)</b>
           <button className="btn btn-soft" onClick={() => setSelCli(new Set())}>Limpar</button>
           <button className="btn btn-primary" onClick={() => setCampanha(true)}>📣 Campanha de reativação</button>
+          {vends && <button className="btn btn-soft" onClick={() => setAtribVend(true)}>👤 Atribuir vendedor</button>}
+        </div>
+      )}
+      {atribVend && vends && (
+        <div className="modal-back" onClick={() => setAtribVend(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 70, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="card pad" onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: "92vw", background: "#fff", borderRadius: 14 }}>
+            <h3 style={{ marginTop: 0 }}>👤 Atribuir vendedor interno</h3>
+            <div className="muted2" style={{ marginBottom: 10 }}>{selCli.size} cliente(s) selecionado(s) irão para o vendedor escolhido.</div>
+            <select className="inp" id="selVendLote" defaultValue="" style={{ width: "100%", padding: "8px 10px" }}>
+              <option value="">— sem vendedor (desvincular) —</option>
+              {vends.map((v) => <option key={v.id} value={v.id}>{v.nome}</option>)}
+            </select>
+            <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+              <button className="btn btn-soft" onClick={() => setAtribVend(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={() => { const el = document.getElementById("selVendLote") as HTMLSelectElement | null; atribuirLote(el?.value ? el.value : null); }}>Aplicar</button>
+            </div>
+          </div>
         </div>
       )}
       {campanha && <CampanhaReativacaoModal clientes={lista.filter((c) => selCli.has(c.id) && c.whatsapp)} onFechar={() => setCampanha(false)} onCriada={() => { setCampanha(false); setSelCli(new Set()); recarregar(); }} />}
@@ -401,12 +434,26 @@ export function ClienteFicha() {
   const [escolha, setEscolha] = useState(false); // abrir chooser "prospecção x só conversar"
   const [abrindo, setAbrindo] = useState(false);
   const [conversaAberta, setConversaAberta] = useState<string | null>(null); // conversa aberta como janela por cima da ficha
+  // ETAPA 6 — vendedor interno (carteira)
+  const [vends, setVends] = useState<{ id: string; nome: string }[] | null>(null); // null = ainda não sei / sem permissão
+  const [editVend, setEditVend] = useState(false);
+  const [salvandoVend, setSalvandoVend] = useState(false);
+  const [hist, setHist] = useState<{ de_nome: string; para_nome: string; por_nome: string | null; quando: string }[] | null>(null);
 
   function recarregar() {
     if (!id) return;
     api.obterCliente(id).then(setF).catch((e) => setErro((e as Error).message || "erro"));
   }
-  useEffect(() => { setF(null); setErro(""); recarregar(); /* eslint-disable-next-line */ }, [id]);
+  useEffect(() => { setF(null); setErro(""); setHist(null); setEditVend(false); recarregar(); /* eslint-disable-next-line */ }, [id]);
+  // carrega os vendedores elegíveis (se o usuário tiver permissão pra editar carteira; senão fica null)
+  useEffect(() => { api.vendedoresInternos().then(setVends).catch(() => setVends(null)); }, []);
+  async function salvarVendedor(usuario_id: string | null) {
+    if (!id) return;
+    setSalvandoVend(true);
+    try { const r = await api.setClienteVendedor(id, usuario_id); if (r.error) alert(r.error === "sem_permissao" ? "Você não tem permissão para alterar a carteira." : "Não consegui salvar."); else { setEditVend(false); recarregar(); if (hist) carregarHist(); } }
+    finally { setSalvandoVend(false); }
+  }
+  function carregarHist() { if (!id) return; api.clienteVendedorHist(id).then(setHist).catch(() => setHist([])); }
 
   // Abre a conversa do cliente LÁ NO FUNIL (e fica por lá). destino "prospeccao"
   // → coluna "Novo lead"; "atendimento" → coluna "Atendimento" (só conversa).
@@ -465,6 +512,34 @@ export function ClienteFicha() {
             ? <span style={{ fontWeight: 700, color: f.cnpj_situacao.toUpperCase().includes("ATIVA") ? "#059669" : "#dc2626" }}>{f.cnpj_situacao.toUpperCase().includes("ATIVA") ? "✅ " : "⚠️ "}{f.cnpj_situacao}</span>
             : <span className="muted2">— (na fila pra checar)</span>}</div>}
           <div className="frow"><span className="k">Representante</span> {f.representante ? <span className="rep-cli">🧑‍💼 {f.representante}</span> : "—"}</div>
+          <div className="frow"><span className="k">Vendedor interno</span>
+            {!editVend ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {f.vendedor_interno_nome ? <span className="rep-cli" style={{ background: "#eef2ff", color: "#3730a3" }}>👤 {f.vendedor_interno_nome}</span> : <span className="muted2">— sem vendedor</span>}
+                {vends && <button className="btn btn-soft" style={{ padding: "2px 10px", fontSize: 12 }} onClick={() => setEditVend(true)}>Alterar</button>}
+                {vends && <button className="btn" style={{ padding: "2px 10px", fontSize: 12, background: "transparent" }} onClick={() => { if (hist) setHist(null); else carregarHist(); }}>{hist ? "ocultar histórico" : "histórico"}</button>}
+              </span>
+            ) : (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <select className="inp" defaultValue={f.vendedor_interno || ""} id="selVend" disabled={salvandoVend} style={{ padding: "4px 8px" }}>
+                  <option value="">— sem vendedor —</option>
+                  {(vends || []).map((v) => <option key={v.id} value={v.id}>{v.nome}</option>)}
+                </select>
+                <button className="btn btn-ok" style={{ padding: "3px 10px", fontSize: 12 }} disabled={salvandoVend} onClick={() => { const el = document.getElementById("selVend") as HTMLSelectElement | null; salvarVendedor(el?.value ? el.value : null); }}>Salvar</button>
+                <button className="btn btn-soft" style={{ padding: "3px 10px", fontSize: 12 }} disabled={salvandoVend} onClick={() => setEditVend(false)}>Cancelar</button>
+              </span>
+            )}
+          </div>
+          {hist && (
+            <div className="frow" style={{ display: "block" }}>
+              <div className="muted2" style={{ marginBottom: 4 }}>Histórico da carteira</div>
+              {hist.length === 0 ? <div className="muted2">Sem alterações registradas.</div> : (
+                <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12.5, color: "#555" }}>
+                  {hist.map((h, i) => <li key={i}>{dataBr(h.quando)} — <b>{h.de_nome}</b> → <b>{h.para_nome}</b>{h.por_nome ? <> (por {h.por_nome})</> : null}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
           <div className="frow"><span className="k">Último faturamento</span> {f.ultimo_faturamento
             ? <>🧾 {dataBr(f.ultimo_faturamento)} <span className="muted2">({desde(f.ultimo_faturamento)})</span></>
             : "—"}</div>

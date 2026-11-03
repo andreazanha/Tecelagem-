@@ -8,6 +8,8 @@ import { pushSuportado, pushAtivo, ativarPush, desativarPush } from "../push";
 import { Icon } from "./Icon";
 import { InstalarApp } from "./InstalarApp";
 import { DemoMode } from "./DemoMode";
+import { PcpNovoPedidoPopup } from "./PcpNovoPedidoPopup";
+import { CrmPedidoPopup } from "./CrmPedidoPopup";
 
 // Aviso de NOVA VERSÃO pra TODOS os usuários: compara o "hash" do build que este navegador carregou
 // com o que o servidor está entregando agora. Assim que sai um deploy novo (o arquivo muda de hash),
@@ -196,6 +198,7 @@ const GRUPOS: MenuGrupo[] = [
     id: "pcp", icon: "📋", label: "PCP", itens: [
       { to: "/pcp", icon: "📦", label: "Pedidos", page: "pedidos" },
       { to: "/pedidos-erp", icon: "🔗", label: "Pedidos do ERP", page: "pedidos" },
+      { to: "/reservas-protegidas", icon: "🔒", label: "Reservas protegidas", page: "pedidos" },
       { to: "/pedidos/novo", icon: "➕", label: "Criar pedido", page: "pedidos" },
       { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
       { to: "/impressao-etiquetas", icon: "🏷️", label: "Impressão de etiquetas", page: "expedicao" },
@@ -668,6 +671,8 @@ export function Layout() {
         <Outlet />
       </main>
       <AvisoNovaVersao />
+      {pode(u, "pedidos") && <PcpNovoPedidoPopup />}
+      <CrmPedidoPopup />
     </div>
   );
 }

@@ -7,6 +7,8 @@ import type { Env } from "../index";
 import { processar, colunaDe, ATEND_COLUNAS, BOAS_VINDAS, montarCatalogo, type Conversa, type Deps, type LojaParceira, type Saida, type EstadoAtend } from "../atendimento_bot";
 import { ehClienteInterno } from "./funil";
 import { enviarPush, enviarPushPara } from "../push-send";
+import { tratarRespostaProrrogacao } from "../reserva-avisos";
+import { flagLigado, FLAG_CRM_POPUP } from "../flags";
 
 export const atendimento = new Hono<{ Bindings: Env }>();
 
@@ -1468,6 +1470,12 @@ atendimento.post("/webhook", async (c) => {
     const dup = await c.env.DB.prepare("SELECT 1 FROM atend_mensagens WHERE zap_id=? LIMIT 1").bind(zid).first().catch(() => null);
     if (dup) return c.json({ ok: true, duplicado: true });
   }
+  // RESERVA (Etapa 3): resposta de PRORROGAÇÃO ("1".."4"). Só age se houver UMA oferta ativa
+  // pra este telefone (segurança). Se tratou, NÃO segue pro robô de atendimento.
+  try {
+    const r = await tratarRespostaProrrogacao(c.env, phone, texto, (e, tel, t) => enviarWhatsapp(e, tel, { tipo: "texto", texto: t }));
+    if (r) return c.json({ ok: true, reserva_prorrogacao: r });
+  } catch { /* nunca derruba o webhook */ }
   // Responde 200 NA HORA e processa em SEGUNDO PLANO (waitUntil): a Z-API não fica esperando a
   // IA/transcrição (que levam segundos) e PARA de reenviar o webhook — fim da demora e das duplicações.
   const origin = new URL(c.req.url).origin;
@@ -2085,6 +2093,33 @@ atendimento.post("/:id/coluna", async (c) => {
     const tr = (() => { try { const a = JSON.parse(cfgT.atend_transferidos || "[]"); return Array.isArray(a) ? a.map(String) : []; } catch { return [] as string[]; } })();
     if (tr.includes(id)) await salvarConfigJson(c.env, "atend_transferidos", tr.filter((x) => x !== id));
   } catch { /* ok */ }
+  return c.json({ ok: true });
+});
+
+// ETAPA 6 — NOTIFICAÇÕES INDIVIDUAIS DO CRM (pop-up "seu cliente fez um pedido").
+// Só devolve/afeta as notificações DO PRÓPRIO usuário logado (segurança no servidor; nunca
+// confia em filtro visual). ?hist=1 inclui as já vistas (histórico simples).
+atendimento.get("/crm-notificacoes", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  // INTERRUPTOR "crm_popup_ativo": desligado (padrão) → não exibe nada (lista vazia). Não apaga
+  // o que já existe; só deixa de mostrar. Validação no SERVIDOR, não só na interface.
+  if (!(await flagLigado(c.env, FLAG_CRM_POPUP))) return c.json({ agora: new Date().toISOString(), notificacoes: [] });
+  const hist = c.req.query("hist") === "1";
+  const sql = hist
+    ? "SELECT id, pedido_id, cliente_id, numero_erp, cliente_nome, representante, valor_total, pecas, recebido_em, criado_em, visto_em FROM crm_notificacoes WHERE usuario_id=? ORDER BY criado_em DESC, rowid DESC LIMIT 50"
+    : "SELECT id, pedido_id, cliente_id, numero_erp, cliente_nome, representante, valor_total, pecas, recebido_em, criado_em FROM crm_notificacoes WHERE usuario_id=? AND visto_em IS NULL ORDER BY criado_em DESC, rowid DESC LIMIT 20";
+  const { results } = await c.env.DB.prepare(sql).bind(u.id).all().catch(() => ({ results: [] as unknown[] }));
+  return c.json({ agora: new Date().toISOString(), notificacoes: results || [] });
+});
+// Marca UMA notificação como vista — só se for do próprio usuário (ownership no WHERE).
+atendimento.post("/crm-notificacoes/visto", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  const b = await c.req.json().catch(() => ({})) as { id?: string };
+  const id = String(b.id || "").trim();
+  if (!id) return c.json({ error: "faltam_dados" }, 400);
+  await c.env.DB.prepare("UPDATE crm_notificacoes SET visto_em=datetime('now') WHERE id=? AND usuario_id=? AND visto_em IS NULL").bind(id, u.id).run();
   return c.json({ ok: true });
 });
 
@@ -2897,6 +2932,31 @@ function zapiFalhou(dj: { error?: string; message?: string } | null | undefined,
   return "";
 }
 
+// ── SALVAGUARDA DE STAGING (allowlist de WhatsApp) ───────────────────────────
+// Quando AMBIENTE="staging", o envio SÓ pode ir para números da lista de permitidos (config
+// 'zapi_allowlist', dígitos separados por vírgula/espaço). Lista VAZIA → bloqueia TUDO (à prova de
+// falha: melhor não enviar nada do que enviar para alguém errado). A comparação é pelos últimos 8
+// dígitos (ignora DDI 55 e o 9º dígito variável). Em produção (AMBIENTE != "staging") não se aplica.
+async function allowlistStaging(env: Env): Promise<Set<string>> {
+  const row = await env.DB.prepare("SELECT valor FROM config WHERE chave='zapi_allowlist'").first<{ valor: string | null }>().catch(() => null);
+  const raw = (row?.valor || "").trim();
+  if (!raw) return new Set();
+  return new Set(raw.split(/[^0-9]+/).filter(Boolean).map((p) => p.slice(-8)));
+}
+// Devolve o motivo do bloqueio (string) ou null se pode enviar. Só bloqueia quando é staging.
+async function bloqueioStaging(env: Env, phone: string): Promise<string | null> {
+  if (String(env.AMBIENTE || "").toLowerCase() !== "staging") return null;
+  const permitidos = await allowlistStaging(env);
+  const alvo8 = digitos(phone).slice(-8);
+  if (permitidos.has(alvo8)) return null;
+  // registra o bloqueio para auditoria — com o número MASCARADO (nunca o número inteiro).
+  try {
+    await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('whatsapp_bloqueio_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')")
+      .bind(JSON.stringify({ motivo: permitidos.size ? "fora_da_allowlist" : "allowlist_vazia", numero_mascarado: "••••" + alvo8.slice(-2), quando: new Date().toISOString() })).run();
+  } catch { /* auditoria nunca atrapalha */ }
+  return "bloqueado-allowlist-staging";
+}
+
 export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; texto: string }, quote: { zapId?: string | null; texto?: string | null } = {}) {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
@@ -2907,6 +2967,9 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
   const phone = completarNoveDigitoBR(tel); // completa o 9 do celular se veio sem
   let texto = linksClicaveis(String(saida.texto ?? "").trim());
   if (!phone || !texto) return { enviado: false, motivo: "vazio" };
+  // TRAVA de staging: só envia para a allowlist (bloqueia o resto; lista vazia bloqueia tudo).
+  const bloq = await bloqueioStaging(env, phone);
+  if (bloq) return { enviado: false, motivo: bloq };
   // GRUPO: envia DIRETO pelo id do grupo. NÃO passa por "cliente bloqueado" (grupo não é cliente)
   // nem por destinoWhatsapp (que é pra @lid de pessoa e desviaria a mensagem do grupo).
   const ehGrupoDest = pareceIdDeGrupo(phone);
@@ -2960,6 +3023,9 @@ export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string
   if (!inst || !token) return { enviado: false, motivo: "sem-credenciais" };
   const phone = completarNoveDigitoBR(tel); // completa o 9 do celular se veio sem
   if (!phone) return { enviado: false, motivo: "vazio" };
+  // TRAVA de staging: só envia para a allowlist (igual ao envio de texto).
+  const bloqMidia = await bloqueioStaging(env, phone);
+  if (bloqMidia) return { enviado: false, motivo: bloqMidia };
   // GRUPO: envia direto pelo id (sem checar bloqueio nem desviar por @lid).
   const ehGrupoDest = pareceIdDeGrupo(phone);
   if (!ehGrupoDest && await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };

@@ -1,0 +1,106 @@
+name: Deploy (Staging)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Publica o ambiente de TESTE (staging) — totalmente separado da produção.
+#
+# GATILHO: push na branch "staging" (e botão "Run workflow", quando o arquivo
+# existir na branch padrão). A branch "staging" NÃO está nos gatilhos do
+# deploy.yml de produção (que só observa main / claude/rolagem-fase-architecture-s47d3e),
+# então mexer no staging NUNCA dispara o deploy de produção.
+#
+# SEGURANÇA (por que não pode tocar na produção):
+#   • Tudo roda com -c wrangler.staging.jsonc → worker/banco/bucket com nomes
+#     próprios "…-staging". Um passo de verificação ABORTA se a config contiver
+#     o id do banco de produção ou não contiver os nomes "-staging".
+#   • Usa o segredo CLOUDFLARE_API_TOKEN_STAGING (específico do staging). Se ele
+#     não existir, o wrangler falha e NADA é publicado — não há fallback para o
+#     token de produção.
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # TRAVA DE SEGURANÇA: garante que estamos publicando o STAGING, nunca a produção.
+      - name: Verificar isolamento da config de staging
+        run: |
+          CFG=wrangler.staging.jsonc
+          test -f "$CFG" || { echo "::error::$CFG não encontrado"; exit 1; }
+          grep -q "rolagem-de-fase-staging" "$CFG" || { echo "::error::config não contém o nome -staging"; exit 1; }
+          grep -q "rolagem-de-fase-staging-arquivos" "$CFG" || { echo "::error::bucket -staging ausente"; exit 1; }
+          if grep -q "ef152da6-0798-42aa-a5ee-593539ddf17c" "$CFG"; then
+            echo "::error::config de staging contém o database_id de PRODUÇÃO — abortando"; exit 1;
+          fi
+          echo "Isolamento OK: staging confirmado."
+
+      - name: Instalar dependências
+        run: |
+          npm ci
+          npm --prefix web ci
+
+      - name: Build do frontend
+        run: npm run build:web
+
+      - name: Gerar script da ponte (auto-atualização)
+        run: node scripts/gen-bridge-script.mjs
+
+      - name: Gerar template do site (prévia do catálogo)
+        run: node scripts/gen-site-template.mjs
+
+      # Cria (idempotente) os recursos de staging e resolve o database_id real.
+      - name: Garantir recursos de staging (D1 + R2) e resolver o id do banco
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_STAGING }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -e
+          # Sanitiza o token: mantém SÓ os caracteres válidos de um API Token da Cloudflare
+          # ([A-Za-z0-9_-]) — remove espaço, quebra de linha e qualquer caractere invisível
+          # (ex.: espaço não-separável/traço especial vindo de cópia) que cause "invalid header".
+          export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -cd 'A-Za-z0-9_-')"
+          echo "Comprimento do token após limpeza: ${#CLOUDFLARE_API_TOKEN} (um API Token da Cloudflare tem 40)"
+          # Pré-checagem: confirma que o token é válido ANTES de criar qualquer recurso. Se falhar,
+          # para aqui com erro claro (sem mascarar) — e nada é criado nem publicado.
+          npx wrangler whoami || { echo "::error::Token Cloudflare (CLOUDFLARE_API_TOKEN_STAGING) inválido ou sem permissão. Confira o valor e os escopos (Workers Scripts/D1/R2)."; exit 1; }
+          # D1 (ignora erro se já existir)
+          npx wrangler d1 create rolagem-de-fase-staging || echo "D1 já existe (ok)"
+          # R2 (ignora erro se já existir)
+          npx wrangler r2 bucket create rolagem-de-fase-staging-arquivos || echo "R2 já existe (ok)"
+          # Resolve o id real do banco de staging pelo nome
+          DBID=$(npx wrangler d1 info rolagem-de-fase-staging --json 2>/dev/null | jq -r '.uuid // .database_id // empty')
+          if [ -z "$DBID" ]; then
+            DBID=$(npx wrangler d1 list --json 2>/dev/null | jq -r '.[] | select(.name=="rolagem-de-fase-staging") | (.uuid // .database_id)')
+          fi
+          test -n "$DBID" || { echo "::error::não consegui resolver o database_id de staging"; exit 1; }
+          echo "DB de staging = $DBID"
+          # Injeta o id no lugar do placeholder (segurança extra: nunca o id de prod)
+          sed -i "s/__STAGING_DB_ID__/$DBID/" wrangler.staging.jsonc
+          grep -q "$DBID" wrangler.staging.jsonc || { echo "::error::falha ao injetar o database_id"; exit 1; }
+
+      - name: Migrar banco de staging, semear dados fictícios e publicar
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_STAGING }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -e
+          # Mesma sanitização do token (cada step recebe o segredo cru do env).
+          export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -cd 'A-Za-z0-9_-')"
+          npx wrangler d1 migrations apply DB -c wrangler.staging.jsonc --remote
+          npx wrangler d1 execute DB -c wrangler.staging.jsonc --remote --file=./seed/staging.sql
+          npx wrangler deploy -c wrangler.staging.jsonc

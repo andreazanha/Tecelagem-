@@ -7,6 +7,7 @@
 // A reserva local só vale ENQUANTO o pedido ainda não apareceu no SALDO (status 'pendente'
 // ou 'enviado' mas antes da sincronização que o reflete). Depois o empenho do Syntech assume.
 import type { Env } from "./index";
+import { flagLigado, FLAG_RESERVAS } from "./flags";
 
 const uid = () => crypto.randomUUID();
 const up = (s: unknown) => String(s ?? "").toUpperCase();
@@ -111,19 +112,24 @@ export async function explodirPedido(env: Env, itens: { ref: string; cor: string
   return out;
 }
 
-// Quanto já está RESERVADO de uma peça por OUTROS pedidos ainda não refletidos no SALDO.
-// Conta pedidos 'pendente'/'erro' (ainda não empenharam no Syntech) e 'enviado' cujo
-// erp_sync_em é DEPOIS da última sincronização de estoque (empenho ainda não veio no SALDO).
-async function reservadoDe(env: Env, ref: string, cor: string, tam: string, pedidoId: string, syncEm: string | null): Promise<number> {
+// Filtro das reservas que CONTAM contra a disponibilidade (uma peça física). Regra aprovada:
+//  • pendente/erro/enviado SEMPRE contam — ENVIADO (recebido no Syntech) NÃO expira sozinho,
+//    fica protegido até uma liberação CONFIÁVEL (cancelamento/exclusão) — sem teto de dias;
+//  • rascunho (carrinho) conta só enquanto a janela de 12h está ativa.
+// (Mesmo filtro é usado no desconto do catálogo e na trava atômica.)
+export const FILTRO_RESERVA_ATIVA =
+  "( COALESCE(p.erp_sync_status,'') IN ('pendente','erro','enviado') " +
+  "  OR (COALESCE(p.erp_sync_status,'')='rascunho' AND p.reserva_expira_em IS NOT NULL AND p.reserva_expira_em > datetime('now')) )";
+
+// Quanto já está RESERVADO de uma peça por OUTROS pedidos ATIVOS (sem teto de 7 dias: um pedido
+// recebido no Syntech segura a peça indefinidamente até ser liberado de verdade).
+async function reservadoDe(env: Env, ref: string, cor: string, tam: string, pedidoId: string): Promise<number> {
   const r = await env.DB.prepare(
     `SELECT COALESCE(SUM(rv.qtd),0) AS q
        FROM erp_reserva rv JOIN pedidos p ON p.id = rv.pedido_id
       WHERE lower(rv.ref)=lower(?) AND lower(COALESCE(rv.cor,''))=lower(?) AND COALESCE(rv.tamanho,'')=?
-        AND rv.pedido_id <> ?
-        AND rv.criado_em > datetime('now','-7 days')
-        AND COALESCE(p.erp_sync_status,'') IN ('pendente','erro','enviado')
-        AND NOT (COALESCE(p.erp_sync_status,'')='enviado' AND p.erp_sync_em IS NOT NULL AND ? IS NOT NULL AND p.erp_sync_em <= ?)`
-  ).bind(ref, cor, tam, pedidoId, syncEm, syncEm).first<{ q: number }>();
+        AND rv.pedido_id <> ? AND ${FILTRO_RESERVA_ATIVA}`
+  ).bind(ref, cor, tam, pedidoId).first<{ q: number }>();
   return Number(r?.q) || 0;
 }
 
@@ -134,15 +140,22 @@ async function saldoDe(env: Env, ref: string, cor: string, tam: string): Promise
   return Number(r?.s) || 0;
 }
 
-// Confere se o pedido CABE no estoque (SALDO − reservas de outros) e, se couber, grava a
-// reserva. Devolve os statements da reserva pra entrarem no MESMO batch do pedido, ou a
-// lista de faltas pra recusar. Pedido em RASCUNHO não reserva (não chama isto).
-export async function conferirEReservar(env: Env, pedidoId: string, itens: { ref: string; cor: string; tam: string; qtd: number }[]):
-  Promise<{ ok: true; reservas: D1PreparedStatement[] } | { ok: false; faltas: { ref: string; cor: string; tam: string; pede: number; tem: number }[] }> {
+// EDIÇÃO LIMITADA — identificada pelo PREFIXO da ref da PEÇA FÍSICA: "ED" seguido de dígito
+// (ex.: ED01C, ED01A). Mesmo critério que o catálogo usa para o espelho capa/almofada.
+export const ehRefEL = (ref: string): boolean => /^ED\d/i.test(String(ref || "").trim());
+
+// Peça que RESERVA estoque automaticamente: Edição Limitada (ref ED) OU peça de KIT de pronta
+// entrega (ref KT). O kit (uma capa) é vendido como pronta entrega; quem BAIXA de verdade são as
+// peças KT, mapeadas pela receita (erp_kit_receita). Vale para TODOS os kits. Produtos normais,
+// produção e outras categorias NÃO reservam — seguem como hoje.
+export const ehRefReservavel = (ref: string): boolean => ehRefEL(ref) || /^KT/i.test(String(ref || "").trim());
+
+// Explode o pedido nas PEÇAS FÍSICAS e mantém só as que RESERVAM: rastreadas (têm saldo no espelho)
+// E reserváveis (Edição Limitada ED… ou peça de kit KT…). Produto SOB ENCOMENDA (sem linha no
+// espelho) e produto de OUTRA categoria ficam de fora — não travam estoque.
+async function explodirAlvo(env: Env, itens: { ref: string; cor: string; tam: string; qtd: number }[]): Promise<ItemConsumo[]> {
   const consumo = await explodirPedido(env, itens);
-  if (!consumo.size) return { ok: true, reservas: [] };
-  // Só trava peças RASTREADAS (que têm saldo no espelho). Produto SOB ENCOMENDA (sem linha
-  // no espelho) não é limitado por estoque — passa sem travar.
+  if (!consumo.size) return [];
   const refs = [...new Set([...consumo.values()].map((c) => c.ref))];
   const rastreado = new Set<string>();
   for (let i = 0; i < refs.length; i += 50) {
@@ -151,24 +164,53 @@ export async function conferirEReservar(env: Env, pedidoId: string, itens: { ref
     const rows = (await env.DB.prepare(`SELECT DISTINCT lower(ref) AS ref FROM erp_estoque WHERE lower(ref) IN (${ph})`).bind(...lote.map((r) => r.toLowerCase())).all<{ ref: string }>().catch(() => ({ results: [] as { ref: string }[] }))).results || [];
     for (const r of rows) rastreado.add(String(r.ref).toLowerCase());
   }
-  const alvo = [...consumo.values()].filter((c) => rastreado.has(c.ref.toLowerCase()));
-  if (!alvo.length) return { ok: true, reservas: [] };
-  const syncEm = (await env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_sync_em'").first<{ valor: string | null }>().catch(() => null))?.valor || null;
+  // GATE: só reserva peça rastreada E reservável (Edição Limitada ED… ou peça de kit KT…). Assim a
+  // janela de 12h só abre quando há peça reservável; carrinho sem nenhuma dessas nunca cria/expira reserva.
+  return [...consumo.values()].filter((c) => rastreado.has(c.ref.toLowerCase()) && ehRefReservavel(c.ref));
+}
+
+// TRAVA ATÔMICA (Etapa 7) — monta os statements que gravam a reserva de forma SEGURA contra
+// concorrência: cada peça entra por um INSERT CONDICIONAL cuja disponibilidade (SALDO − reservas
+// de OUTROS pedidos ativos) é reavaliada NO MOMENTO DA ESCRITA, dentro da transação serializada do
+// batch. Assim dois clientes/representantes disputando a MESMA última unidade (inclusive via kits
+// que dividem a mesma peça, pois explodirPedido agrega tudo na peça física) nunca reservam além do
+// saldo — o 2º INSERT simplesmente não grava nada. Os statements entram no MESMO batch do pedido.
+export async function montarReservaAtomica(env: Env, pedidoId: string, itens: { ref: string; cor: string; tam: string; qtd: number }[]):
+  Promise<{ stmts: D1PreparedStatement[]; alvo: ItemConsumo[] }> {
+  const alvo = await explodirAlvo(env, itens);
+  const stmts: D1PreparedStatement[] = [env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pedidoId)];
+  for (const c of alvo) {
+    stmts.push(env.DB.prepare(
+      `INSERT INTO erp_reserva (id, pedido_id, ref, cor, tamanho, qtd)
+         SELECT ?,?,?,?,?,?
+          WHERE ? <= (
+            (SELECT COALESCE(SUM(saldo),0) FROM erp_estoque WHERE lower(ref)=lower(?) AND lower(COALESCE(cor,''))=lower(?) AND COALESCE(tamanho,'')=?)
+            - (SELECT COALESCE(SUM(rv.qtd),0) FROM erp_reserva rv JOIN pedidos p ON p.id=rv.pedido_id
+                WHERE lower(rv.ref)=lower(?) AND lower(COALESCE(rv.cor,''))=lower(?) AND COALESCE(rv.tamanho,'')=? AND rv.pedido_id<>? AND ${FILTRO_RESERVA_ATIVA})
+          )`
+    ).bind(uid(), pedidoId, c.ref, c.cor || null, c.tam || null, c.qtd, c.qtd, c.ref, c.cor, c.tam, c.ref, c.cor, c.tam, pedidoId));
+  }
+  return { stmts, alvo };
+}
+
+// Depois do batch, confere O QUE REALMENTE ficou reservado. Devolve as faltas (peças que não
+// couberam) — vazio = tudo reservado. `tem` = disponível real (SALDO − reservas de outros).
+export async function faltasDaReserva(env: Env, pedidoId: string, alvo: ItemConsumo[]): Promise<{ ref: string; cor: string; tam: string; pede: number; tem: number }[]> {
+  if (!alvo.length) return [];
+  const got = new Map<string, number>();
+  const rows = (await env.DB.prepare("SELECT lower(ref) AS ref, lower(COALESCE(cor,'')) AS cor, COALESCE(tamanho,'') AS tam, SUM(qtd) AS q FROM erp_reserva WHERE pedido_id=? GROUP BY 1,2,3")
+    .bind(pedidoId).all<{ ref: string; cor: string; tam: string; q: number }>().catch(() => ({ results: [] as { ref: string; cor: string; tam: string; q: number }[] }))).results || [];
+  for (const r of rows) got.set(`${r.ref}|${r.cor}|${r.tam}`, Number(r.q) || 0);
   const faltas: { ref: string; cor: string; tam: string; pede: number; tem: number }[] = [];
   for (const c of alvo) {
-    const saldo = await saldoDe(env, c.ref, c.cor, c.tam);
-    const reservado = await reservadoDe(env, c.ref, c.cor, c.tam, pedidoId, syncEm);
-    const disp = saldo - reservado;
-    if (c.qtd > disp) faltas.push({ ref: c.ref, cor: c.cor, tam: c.tam, pede: c.qtd, tem: Math.max(0, disp) });
+    const key = `${c.ref.toLowerCase()}|${(c.cor || "").toLowerCase()}|${c.tam || ""}`;
+    if ((got.get(key) || 0) < c.qtd) {
+      const saldo = await saldoDe(env, c.ref, c.cor, c.tam);
+      const outros = await reservadoDe(env, c.ref, c.cor, c.tam, pedidoId);
+      faltas.push({ ref: c.ref, cor: c.cor, tam: c.tam, pede: c.qtd, tem: Math.max(0, saldo - outros) });
+    }
   }
-  if (faltas.length) return { ok: false, faltas };
-  // (re)grava a reserva deste pedido: limpa a antiga + insere a nova (só das peças rastreadas)
-  const reservas: D1PreparedStatement[] = [env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pedidoId)];
-  for (const c of alvo) {
-    reservas.push(env.DB.prepare("INSERT INTO erp_reserva (id, pedido_id, ref, cor, tamanho, qtd) VALUES (?,?,?,?,?,?)")
-      .bind(uid(), pedidoId, c.ref, c.cor || null, c.tam || null, c.qtd));
-  }
-  return { ok: true, reservas };
+  return faltas;
 }
 
 // ── ALERTA DE PEÇAS DO KIT ──────────────────────────────────────────────────
@@ -233,16 +275,44 @@ export async function kitAlertas(env: Env): Promise<KitAlerta[]> {
   return out;
 }
 
-// Limpa reservas que já foram refletidas no SALDO (pedido enviado + sincronização depois)
-// ou de pedidos que não existem mais. Chamado ao fim de cada sincronização de estoque.
+// EXPIRAÇÃO DO CARRINHO (Etapa 2) — ao vencer a janela de 12h (sem prorrogação válida e sem ter
+// sido enviado ao Syntech), ESVAZIA o carrinho por completo: apaga a reserva, os itens e o
+// próprio rascunho, INCLUSIVE os produtos sob encomenda (que não reservam estoque, mas moram no
+// mesmo rascunho). Só mexe em RASCUNHO da loja; pedido já enviado (pendente/enviado) NUNCA é
+// tocado — as peças seguem reservadas aguardando aprovação (regras 8 e 9). O relógio é o do
+// servidor (datetime('now')), nunca o do navegador. Devolve quantos carrinhos foram esvaziados.
+export async function expirarCarrinhosVencidos(env: Env): Promise<number> {
+  // INTERRUPTOR "reservas_ativo": desligado → NÃO expira nada. Congela o ciclo de reservas; uma
+  // reserva já criada (quando estava ligado) NUNCA é apagada/liberada automaticamente ao desligar.
+  if (!(await flagLigado(env, FLAG_RESERVAS))) return 0;
+  const cond = "canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho' AND reserva_expira_em IS NOT NULL AND reserva_expira_em <= datetime('now')";
+  const alvo = (await env.DB.prepare(`SELECT id FROM pedidos WHERE ${cond}`).all<{ id: string }>().catch(() => ({ results: [] as { id: string }[] }))).results || [];
+  if (!alvo.length) return 0;
+  const ids = alvo.map((r) => r.id);
+  const stmts: D1PreparedStatement[] = [];
+  for (let i = 0; i < ids.length; i += 40) {
+    const lote = ids.slice(i, i + 40); const ph = lote.map(() => "?").join(",");
+    stmts.push(env.DB.prepare(`DELETE FROM erp_reserva WHERE pedido_id IN (${ph})`).bind(...lote));
+    stmts.push(env.DB.prepare(`DELETE FROM pedido_itens WHERE pedido_id IN (${ph})`).bind(...lote));
+    stmts.push(env.DB.prepare(`DELETE FROM pedidos WHERE id IN (${ph})`).bind(...lote));
+  }
+  await env.DB.batch(stmts);
+  return ids.length;
+}
+
+// Solta SÓ as reservas que podem ser liberadas com segurança: pedido que não existe mais,
+// recusado/cancelado, ou RASCUNHO (carrinho) com a janela vencida. Chamado ao fim de cada
+// sincronização de estoque. ATENÇÃO (Etapa 7, regra aprovada): pedido 'enviado' (recebido no
+// Syntech) NÃO é liberado aqui por tempo/sincronização nenhuma — fica protegido até uma
+// liberação confiável (cancelamento) ou conferência manual. Sem teto de dias.
 export async function limparReservasRefletidas(env: Env): Promise<number> {
   const r = await env.DB.prepare(
     `DELETE FROM erp_reserva WHERE pedido_id IN (
        SELECT rv.pedido_id FROM erp_reserva rv LEFT JOIN pedidos p ON p.id = rv.pedido_id
         WHERE p.id IS NULL
-           OR COALESCE(p.erp_sync_status,'') IN ('rascunho','recusado','cancelado')
-           OR (COALESCE(p.erp_sync_status,'')='enviado' AND p.erp_sync_em IS NOT NULL
-               AND p.erp_sync_em <= COALESCE((SELECT valor FROM config WHERE chave='estoque_sync_em'), '0'))
+           OR COALESCE(p.erp_sync_status,'') IN ('recusado','cancelado')
+           OR (COALESCE(p.erp_sync_status,'')='rascunho'
+               AND (p.reserva_expira_em IS NULL OR p.reserva_expira_em <= datetime('now')))
      )`
   ).run().catch(() => ({ meta: { changes: 0 } }));
   return (r.meta && (r.meta.changes as number)) || 0;
