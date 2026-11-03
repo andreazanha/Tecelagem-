@@ -23,6 +23,10 @@
 //   erro <pedidoId> [mensagem]                 a ponte falhou ao gravar o pedido
 //   whatsapp-in <telefone> <texto>             simula mensagem RECEBIDA no WhatsApp (ex.: "12")
 //
+// ORDEM DO FLUXO REAL (ver FLUXO-PEDIDO-ERP.md): a ponte grava no Syntech (recebido),
+// o Syntech APROVA, e SÓ ENTÃO o pedido volta para "Pedidos do ERP" / "Para conferir".
+// Logo, simule nesta ordem: 1) recebido  →  2) pedido-pcp (pedido aprovado que retornou).
+//
 // Exemplos:
 //   STAGING_URL=https://...workers.dev node scripts/staging-sim.mjs estoque ED01C Marinho 45X45 1
 //   ... node scripts/staging-sim.mjs recebido <id-do-pedido> 90001
