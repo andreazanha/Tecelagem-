@@ -140,15 +140,19 @@ async function saldoDe(env: Env, ref: string, cor: string, tam: string): Promise
   return Number(r?.s) || 0;
 }
 
-// EDIÇÃO LIMITADA — a reserva automática é EXCLUSIVA dos produtos da Edição Limitada. A EL é
-// identificada pelo PREFIXO da ref da PEÇA FÍSICA: "ED" seguido de dígito (ex.: ED01C, ED01A).
-// (Critério confirmado com a Big Tricot; o mesmo que o catálogo já usa para o espelho capa/almofada.)
-// Produtos normais, kits, pronta entrega e outras categorias NÃO reservam — seguem como hoje.
+// EDIÇÃO LIMITADA — identificada pelo PREFIXO da ref da PEÇA FÍSICA: "ED" seguido de dígito
+// (ex.: ED01C, ED01A). Mesmo critério que o catálogo usa para o espelho capa/almofada.
 export const ehRefEL = (ref: string): boolean => /^ED\d/i.test(String(ref || "").trim());
 
+// Peça que RESERVA estoque automaticamente: Edição Limitada (ref ED) OU peça de KIT de pronta
+// entrega (ref KT). O kit (uma capa) é vendido como pronta entrega; quem BAIXA de verdade são as
+// peças KT, mapeadas pela receita (erp_kit_receita). Vale para TODOS os kits. Produtos normais,
+// produção e outras categorias NÃO reservam — seguem como hoje.
+export const ehRefReservavel = (ref: string): boolean => ehRefEL(ref) || /^KT/i.test(String(ref || "").trim());
+
 // Explode o pedido nas PEÇAS FÍSICAS e mantém só as que RESERVAM: rastreadas (têm saldo no espelho)
-// E da Edição Limitada (ref ED…). Produto SOB ENCOMENDA (sem linha no espelho) e produto de OUTRA
-// categoria (não-EL) ficam de fora — não travam estoque.
+// E reserváveis (Edição Limitada ED… ou peça de kit KT…). Produto SOB ENCOMENDA (sem linha no
+// espelho) e produto de OUTRA categoria ficam de fora — não travam estoque.
 async function explodirAlvo(env: Env, itens: { ref: string; cor: string; tam: string; qtd: number }[]): Promise<ItemConsumo[]> {
   const consumo = await explodirPedido(env, itens);
   if (!consumo.size) return [];
@@ -160,9 +164,9 @@ async function explodirAlvo(env: Env, itens: { ref: string; cor: string; tam: st
     const rows = (await env.DB.prepare(`SELECT DISTINCT lower(ref) AS ref FROM erp_estoque WHERE lower(ref) IN (${ph})`).bind(...lote.map((r) => r.toLowerCase())).all<{ ref: string }>().catch(() => ({ results: [] as { ref: string }[] }))).results || [];
     for (const r of rows) rastreado.add(String(r.ref).toLowerCase());
   }
-  // GATE EL: só reserva peça rastreada E da Edição Limitada. Assim a janela de 12h também só abre
-  // quando há peça EL (alvo não-vazio), e carrinho sem EL nunca cria/expira reserva.
-  return [...consumo.values()].filter((c) => rastreado.has(c.ref.toLowerCase()) && ehRefEL(c.ref));
+  // GATE: só reserva peça rastreada E reservável (Edição Limitada ED… ou peça de kit KT…). Assim a
+  // janela de 12h só abre quando há peça reservável; carrinho sem nenhuma dessas nunca cria/expira reserva.
+  return [...consumo.values()].filter((c) => rastreado.has(c.ref.toLowerCase()) && ehRefReservavel(c.ref));
 }
 
 // TRAVA ATÔMICA (Etapa 7) — monta os statements que gravam a reserva de forma SEGURA contra

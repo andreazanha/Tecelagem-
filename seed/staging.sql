@@ -72,11 +72,13 @@ VALUES
 -- do catálogo (capa e almofada mostram o MESMO estoque); a receita de kit (abaixo) faz
 -- a RESERVA/venda da almofada baixar a capa. Assim vale a regra "1 capa = 1 almofada".
 -- Letra final do ref = tipo (C=Capa, A=Almofada, P=Peseira/Manta).
--- MODELO TESTE B (9002P) é uma manta normal (peça única, estoque próprio).
+-- MODELO TESTE B (9002P) é uma manta normal (peça única, estoque próprio) — NÃO reserva.
+-- KIT TESTE C (9100P) é um kit de PRONTA ENTREGA: o kit é uma capa, e quem BAIXA de verdade é a
+-- peça KT9100 (ref KT…). O gate reserva pela peça KT. Produtos normais seguem sem reservar.
 -- Reset dos refs de teste (idempotência no re-seed do staging):
-DELETE FROM erp_produtos    WHERE ref     IN ('9001A','9001C','ED01A','ED01C','9002P');
-DELETE FROM erp_estoque     WHERE ref     IN ('9001A','9001C','ED01A','ED01C','9002P');
-DELETE FROM erp_kit_receita WHERE kit_ref IN ('9001A','ED01A');
+DELETE FROM erp_produtos    WHERE ref     IN ('9001A','9001C','ED01A','ED01C','9002P','9100P','KT9100');
+DELETE FROM erp_estoque     WHERE ref     IN ('9001A','9001C','ED01A','ED01C','9002P','9100P','KT9100');
+DELETE FROM erp_kit_receita WHERE kit_ref IN ('9001A','ED01A','9100P');
 INSERT INTO erp_produtos (ref, nome, unidade, classe, grupo, preco_atacado, preco_varejo, estoque_geral, inativo, cores, tamanhos, atualizado_em) VALUES
   ('ED01C', 'CAPA MODELO TESTE A', 'UN', 'TESTE', 'padrao', 29.90, 44.90, 10, 0,
     '[{"numero":1,"nome":"Off-White","hex":"#f3efe6"},{"numero":2,"nome":"Marinho","hex":"#1b2a4a"}]',
@@ -86,7 +88,15 @@ INSERT INTO erp_produtos (ref, nome, unidade, classe, grupo, preco_atacado, prec
     '[{"medida":"45X45","atacado":39.90,"varejo":59.90}]', datetime('now')),
   ('9002P', 'MANTA MODELO TESTE B', 'UN', 'TESTE', 'padrao', 129.90, 189.90, 5, 0,
     '[{"numero":3,"nome":"Cacau","hex":"#5b3b2e"},{"numero":4,"nome":"Mostarda","hex":"#c99a2e"}]',
-    '[{"medida":"1,30X1,70","atacado":129.90,"varejo":189.90}]', datetime('now'));
+    '[{"medida":"1,30X1,70","atacado":129.90,"varejo":189.90}]', datetime('now')),
+  -- Peça física do kit (ref KT…) — NÃO aparece no catálogo (refs KT% são componentes); só tem estoque.
+  ('KT9100', 'CAPA KT TESTE (peca de kit)', 'UN', 'TESTE', 'padrao', 0, 0, 10, 0,
+    '[{"numero":1,"nome":"Off-White","hex":"#f3efe6"},{"numero":2,"nome":"Marinho","hex":"#1b2a4a"}]',
+    '[{"medida":"45X45"}]', datetime('now')),
+  -- Kit "pai" de PRONTA ENTREGA (aparece no catálogo); a receita abaixo o liga à peça KT9100.
+  ('9100P', 'KIT ALMOFADA PRONTA ENTREGA', 'UN', 'TESTE', 'pronta entrega', 49.90, 69.90, 10, 0,
+    '[{"numero":1,"nome":"Off-White","hex":"#f3efe6"},{"numero":2,"nome":"Marinho","hex":"#1b2a4a"}]',
+    '[{"medida":"45X45","atacado":49.90,"varejo":69.90}]', datetime('now'));
 
 -- ── ESTOQUE físico (erp_estoque): SÓ a CAPA (ED01C) tem estoque — é o pool ÚNICO que a
 -- almofada compartilha. A manta (9002P) tem o seu próprio. chave = ref|cor|tam (minúsculo).
@@ -95,12 +105,16 @@ INSERT INTO erp_estoque (chave, produto, ref, cor, tamanho, saldo, unidade, lote
   ('ed01c|off-white|45x45', 'CAPA MODELO TESTE A',     'ED01C', 'Off-White', '45X45', 5, 'UN', 'seed-staging', datetime('now')),
   ('ed01c|marinho|45x45',   'CAPA MODELO TESTE A',     'ED01C', 'Marinho',   '45X45', 1, 'UN', 'seed-staging', datetime('now')),
   ('9002p|cacau|1,30x1,70',    'MANTA MODELO TESTE B', '9002P', 'Cacau',    '1,30X1,70', 5, 'UN', 'seed-staging', datetime('now')),
-  ('9002p|mostarda|1,30x1,70', 'MANTA MODELO TESTE B', '9002P', 'Mostarda', '1,30X1,70', 1, 'UN', 'seed-staging', datetime('now'));
+  ('9002p|mostarda|1,30x1,70', 'MANTA MODELO TESTE B', '9002P', 'Mostarda', '1,30X1,70', 1, 'UN', 'seed-staging', datetime('now')),
+  -- Estoque da PEÇA do kit (KT9100): é o que baixa de verdade quando o kit pronta entrega é reservado.
+  ('kt9100|off-white|45x45', 'CAPA KT TESTE', 'KT9100', 'Off-White', '45X45', 4, 'UN', 'seed-staging', datetime('now')),
+  ('kt9100|marinho|45x45',   'CAPA KT TESTE', 'KT9100', 'Marinho',   '45X45', 2, 'UN', 'seed-staging', datetime('now'));
 
--- ── RECEITA: a almofada (ED01A) = 1× capa (ED01C). Faz a RESERVA/venda da almofada
--- consumir a capa (estoque único). "Somente 1 almofada por capa" = quantidade 1.
+-- ── RECEITA: a almofada (ED01A) = 1× capa (ED01C); e o kit pronta entrega (9100P) = 1× peça KT9100.
+-- Faz a RESERVA/venda baixar a PEÇA FÍSICA certa (capa EL ou peça KT).
 INSERT INTO erp_kit_receita (kit_ref, componente_ref, quantidade, tamanho, atualizado_em) VALUES
-  ('ED01A', 'ED01C', 1, '45X45', datetime('now'));
+  ('ED01A', 'ED01C', 1, '45X45', datetime('now')),
+  ('9100P', 'KT9100', 1, '45X45', datetime('now'));
 
 -- ── PRAZOS de pagamento (para o checkout da loja oferecer opção) ──────────────
 INSERT OR IGNORE INTO erp_prazos (codigo, descricao, atualizado_em) VALUES ('30', '30 dias', datetime('now'));
