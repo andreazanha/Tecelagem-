@@ -27,13 +27,16 @@ INSERT OR IGNORE INTO config (chave, valor, atualizado_em) VALUES ('catalogo_pre
 -- Marcador do ambiente (útil para um banner "STAGING" futuro; nenhum código lê hoje).
 INSERT INTO config (chave, valor, atualizado_em) VALUES ('ambiente','staging',datetime('now'))
   ON CONFLICT(chave) DO UPDATE SET valor='staging', atualizado_em=datetime('now');
--- Flags do piloto (ligar/desligar funções). zapi_ativo acima JÁ controla o WhatsApp de
--- verdade. As três abaixo são MARCADORES: para virarem interruptores reais no servidor
--- é preciso uma pequena alteração de código, aprovada à parte (ver STAGING.md).
-INSERT OR IGNORE INTO config (chave, valor, atualizado_em) VALUES ('piloto_reservas','1',datetime('now'));
-INSERT OR IGNORE INTO config (chave, valor, atualizado_em) VALUES ('piloto_whatsapp','0',datetime('now'));
-INSERT OR IGNORE INTO config (chave, valor, atualizado_em) VALUES ('piloto_pcp_popup','1',datetime('now'));
-INSERT OR IGNORE INTO config (chave, valor, atualizado_em) VALUES ('piloto_crm_popup','1',datetime('now'));
+-- INTERRUPTORES DO NOVO SISTEMA (feature flags do servidor). Só ligam com valor EXATAMENTE "1".
+-- Em PRODUÇÃO estas chaves NÃO existem → tudo DESLIGADO por padrão (comportamento de antes).
+-- Aqui no STAGING começam LIGADAS para testar o fluxo completo (menos o WhatsApp, que fica off
+-- por zapi_ativo acima). Para testar desligado, troque o valor para '0' (ver STAGING.md).
+INSERT INTO config (chave, valor, atualizado_em) VALUES ('reservas_ativo','1',datetime('now'))
+  ON CONFLICT(chave) DO UPDATE SET valor='1', atualizado_em=datetime('now');
+INSERT INTO config (chave, valor, atualizado_em) VALUES ('pcp_popup_ativo','1',datetime('now'))
+  ON CONFLICT(chave) DO UPDATE SET valor='1', atualizado_em=datetime('now');
+INSERT INTO config (chave, valor, atualizado_em) VALUES ('crm_popup_ativo','1',datetime('now'))
+  ON CONFLICT(chave) DO UPDATE SET valor='1', atualizado_em=datetime('now');
 
 -- ── USUÁRIOS internos ────────────────────────────────────────────────────────
 INSERT OR IGNORE INTO usuarios (id, nome, usuario, senha, admin, paginas, perm_configurado) VALUES

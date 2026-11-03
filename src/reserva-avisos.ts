@@ -6,6 +6,7 @@
 //   • pedido já enviado ao Syntech (sync != rascunho) nunca recebe aviso de reserva;
 //   • cliente: 1 prorrogação (6/12h), teto 24h desde o início; rep: 6/12/18/24h, teto 48h.
 import type { Env } from "./index";
+import { flagLigado, FLAG_CRM_POPUP, FLAG_RESERVAS } from "./flags";
 
 export type Sender = (env: Env, tel: string, texto: string) => Promise<unknown>;
 
@@ -132,6 +133,10 @@ export async function prorrogarPedido(env: Env, pedidoId: string, opt: number, e
 // Varredura dos avisos — chamada pelo cron */5. Envia aviso1 (1h após criar) e aviso2 (1h antes
 // de vencer). Só mexe em RASCUNHO ativo da loja; nunca em pedido enviado ao Syntech.
 export async function processarAvisosReserva(env: Env, sender: Sender): Promise<{ aviso1: number; aviso2: number }> {
+  // INTERRUPTOR "reservas_ativo": desligado → não processa avisos (o ciclo de reservas está parado).
+  // Não altera pedido/reserva algum; apenas não dispara avisos novos. (O envio em si ainda depende
+  // do controle próprio do WhatsApp, zapi_ativo, dentro do sender.)
+  if (!(await flagLigado(env, FLAG_RESERVAS))) return { aviso1: 0, aviso2: 0 };
   const now = Date.now();
   const rows = ((await env.DB.prepare(
     `SELECT id, COALESCE(vendedor,'') AS vendedor, cliente_id, COALESCE(cliente_nome,'') AS cliente_nome,
@@ -205,7 +210,10 @@ export async function avisarRecebidoSyntech(env: Env, pedidoId: string, numero: 
 // Cria o aviso "seu cliente fez um pedido" SÓ para o VENDEDOR INTERNO dono da carteira do cliente.
 // Sem vendedor vinculado → NÃO notifica ninguém (o cliente aparece na lista admin "sem vínculo").
 // Idempotente (único por pedido+usuário). NÃO mexe em representante, PCP, produção ou reservas.
-export async function notificarVendedorInterno(env: Env, pedidoId: string, numero: number | string): Promise<"criada" | "sem_vendedor" | "sem_pedido"> {
+export async function notificarVendedorInterno(env: Env, pedidoId: string, numero: number | string): Promise<"criada" | "sem_vendedor" | "sem_pedido" | "desligado"> {
+  // INTERRUPTOR "crm_popup_ativo": desligado (padrão) → NÃO cria notificação de CRM.
+  // O recebido no Syntech segue normal; só o pop-up individual deixa de ser gerado.
+  if (!(await flagLigado(env, FLAG_CRM_POPUP))) return "desligado";
   const p = await env.DB.prepare(
     "SELECT cliente_id, COALESCE(cliente_nome,'') AS cliente_nome, COALESCE(vendedor,'') AS vendedor, valor_total AS valor FROM pedidos WHERE id=? AND canal='loja_b2b' LIMIT 1"
   ).bind(pedidoId).first<{ cliente_id: string | null; cliente_nome: string; vendedor: string; valor: number | null }>().catch(() => null);

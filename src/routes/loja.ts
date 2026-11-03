@@ -12,6 +12,7 @@ import { Hono } from "hono";
 import type { Env } from "../index";
 import { gerarPdfPedidoLoja, type PedidoLojaItem } from "../pdf";
 import { montarReservaAtomica, faltasDaReserva, expirarCarrinhosVencidos } from "../loja-estoque";
+import { flagLigado, FLAG_RESERVAS } from "../flags";
 import { gerarCatalogoSite } from "./integracao";
 import { opcoesValidas, prorrogarPedido, fmtBR } from "../reserva-avisos";
 
@@ -490,9 +491,16 @@ loja.post("/rep-pedido-acao", async (c) => {
     const formaDesc = String(b.forma_desc || "").trim().slice(0, 120) || null;
     // TRAVA DE ESTOQUE: ao enviar um rascunho do rep pro Syntech, confere/reserva as peças
     // (mesma trava do checkout do cliente), senão esse caminho fugiria do controle.
-    const itensPed = ((await c.env.DB.prepare("SELECT ref, COALESCE(cor_grade,'') AS cor, COALESCE(erp_tamanho,'') AS tam, qtd FROM pedido_itens WHERE pedido_id=?").bind(pid).all<{ ref: string; cor: string; tam: string; qtd: number }>().catch(() => ({ results: [] as { ref: string; cor: string; tam: string; qtd: number }[] }))).results) || [];
+    // INTERRUPTOR "reservas_ativo": desligado (padrão) → envia o pedido SEM reservar estoque.
+    const reservarEstoque = await flagLigado(c.env, FLAG_RESERVAS);
+    const itensPed = reservarEstoque ? (((await c.env.DB.prepare("SELECT ref, COALESCE(cor_grade,'') AS cor, COALESCE(erp_tamanho,'') AS tam, qtd FROM pedido_itens WHERE pedido_id=?").bind(pid).all<{ ref: string; cor: string; tam: string; qtd: number }>().catch(() => ({ results: [] as { ref: string; cor: string; tam: string; qtd: number }[] }))).results) || []) : [];
     // Trava ATÔMICA (mesma do checkout do cliente): reserva no MESMO batch do UPDATE pra pendente.
-    const { stmts: reservaStmts, alvo } = await montarReservaAtomica(c.env, pid, itensPed.map((it) => ({ ref: it.ref, cor: it.cor, tam: it.tam, qtd: Number(it.qtd) || 0 })));
+    let reservaStmts: D1PreparedStatement[] = [];
+    let alvo: Awaited<ReturnType<typeof montarReservaAtomica>>["alvo"] = [];
+    if (reservarEstoque) {
+      const rr = await montarReservaAtomica(c.env, pid, itensPed.map((it) => ({ ref: it.ref, cor: it.cor, tam: it.tam, qtd: Number(it.qtd) || 0 })));
+      reservaStmts = rr.stmts; alvo = rr.alvo;
+    }
     await c.env.DB.batch([
       c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='pendente', loja_fase='enviado', loja_cod_prazo=?, loja_forma_desc=COALESCE(?, loja_forma_desc) WHERE id=? AND canal='loja_b2b'").bind(prazo, formaDesc, pid),
       ...reservaStmts,
@@ -719,7 +727,16 @@ loja.post("/pedido", async (c) => {
   // momento da escrita dentro da transação do batch) — dois pedidos disputando a última unidade
   // nunca reservam além do saldo. Peça SOB ENCOMENDA passa sem travar. Confere DEPOIS do batch;
   // se faltou, desfaz (libera a reserva e, em pedido novo, apaga o pedido) e recusa (409).
-  const { stmts: reservaStmts, alvo } = await montarReservaAtomica(c.env, pedidoId, resolvidos.map((r) => ({ ref: r.ref, cor: r.corNome, tam: r.erp_tamanho, qtd: r.qtd })));
+  // INTERRUPTOR "reservas_ativo": desligado (padrão) → NÃO reserva estoque nem abre a janela de 12h.
+  // O pedido é salvo igual (itens, prazo, PDF); só a reserva deixa de acontecer. Reservas já criadas
+  // por OUTROS pedidos não são tocadas. Ligado → trava atômica da Etapa 7, exatamente como antes.
+  const reservarEstoque = await flagLigado(c.env, FLAG_RESERVAS);
+  let reservaStmts: D1PreparedStatement[] = [];
+  let alvo: Awaited<ReturnType<typeof montarReservaAtomica>>["alvo"] = [];
+  if (reservarEstoque) {
+    const rr = await montarReservaAtomica(c.env, pedidoId, resolvidos.map((r) => ({ ref: r.ref, cor: r.corNome, tam: r.erp_tamanho, qtd: r.qtd })));
+    reservaStmts = rr.stmts; alvo = rr.alvo;
+  }
   const abriuReserva = alvo.length > 0;            // há peça física a reservar → precisa de janela
   const reservaResp = ehRep ? "rep" : "cliente";
   // Janela de reserva: só quando há peça física. No rascunho conta enquanto estiver ativa; a

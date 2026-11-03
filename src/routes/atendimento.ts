@@ -8,6 +8,7 @@ import { processar, colunaDe, ATEND_COLUNAS, BOAS_VINDAS, montarCatalogo, type C
 import { ehClienteInterno } from "./funil";
 import { enviarPush, enviarPushPara } from "../push-send";
 import { tratarRespostaProrrogacao } from "../reserva-avisos";
+import { flagLigado, FLAG_CRM_POPUP } from "../flags";
 
 export const atendimento = new Hono<{ Bindings: Env }>();
 
@@ -2078,6 +2079,9 @@ atendimento.post("/:id/coluna", async (c) => {
 atendimento.get("/crm-notificacoes", async (c) => {
   const u = await usuarioLogado(c.env, c);
   if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  // INTERRUPTOR "crm_popup_ativo": desligado (padrão) → não exibe nada (lista vazia). Não apaga
+  // o que já existe; só deixa de mostrar. Validação no SERVIDOR, não só na interface.
+  if (!(await flagLigado(c.env, FLAG_CRM_POPUP))) return c.json({ agora: new Date().toISOString(), notificacoes: [] });
   const hist = c.req.query("hist") === "1";
   const sql = hist
     ? "SELECT id, pedido_id, cliente_id, numero_erp, cliente_nome, representante, valor_total, pecas, recebido_em, criado_em, visto_em FROM crm_notificacoes WHERE usuario_id=? ORDER BY criado_em DESC, rowid DESC LIMIT 50"

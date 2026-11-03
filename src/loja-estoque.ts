@@ -7,6 +7,7 @@
 // A reserva local só vale ENQUANTO o pedido ainda não apareceu no SALDO (status 'pendente'
 // ou 'enviado' mas antes da sincronização que o reflete). Depois o empenho do Syntech assume.
 import type { Env } from "./index";
+import { flagLigado, FLAG_RESERVAS } from "./flags";
 
 const uid = () => crypto.randomUUID();
 const up = (s: unknown) => String(s ?? "").toUpperCase();
@@ -268,6 +269,9 @@ export async function kitAlertas(env: Env): Promise<KitAlerta[]> {
 // tocado — as peças seguem reservadas aguardando aprovação (regras 8 e 9). O relógio é o do
 // servidor (datetime('now')), nunca o do navegador. Devolve quantos carrinhos foram esvaziados.
 export async function expirarCarrinhosVencidos(env: Env): Promise<number> {
+  // INTERRUPTOR "reservas_ativo": desligado → NÃO expira nada. Congela o ciclo de reservas; uma
+  // reserva já criada (quando estava ligado) NUNCA é apagada/liberada automaticamente ao desligar.
+  if (!(await flagLigado(env, FLAG_RESERVAS))) return 0;
   const cond = "canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho' AND reserva_expira_em IS NOT NULL AND reserva_expira_em <= datetime('now')";
   const alvo = (await env.DB.prepare(`SELECT id FROM pedidos WHERE ${cond}`).all<{ id: string }>().catch(() => ({ results: [] as { id: string }[] }))).results || [];
   if (!alvo.length) return 0;

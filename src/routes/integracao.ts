@@ -19,6 +19,7 @@ import { SITE_LOJA_HTML } from "../siteLoja";
 import { lerDocumento, gravarDocumento } from "../firestore";
 import { limparReservasRefletidas, kitAlertas } from "../loja-estoque";
 import { avisarRecebidoSyntech, notificarVendedorInterno } from "../reserva-avisos";
+import { flagLigado, FLAG_RESERVAS, FLAG_PCP_POPUP } from "../flags";
 import { enviarWhatsapp } from "./atendimento";
 
 export const integracao = new Hono<{ Bindings: Env }>();
@@ -107,9 +108,11 @@ integracao.post("/pedido", async (c) => {
        VALUES (?, ?, ?, ?, 'pedido', ?, ?, 'aguardando_aprovacao', 1, datetime('now'))`
     ).bind(pedidoId, numero, clienteNome, str(b.vendedor), str(b.data), str(b.data_entrega)),
   ];
+  let nItens = 0;
   for (const it of itens) {
     const produto = str(it.produto);
     if (!produto) continue;
+    nItens++;
     stmts.push(
       c.env.DB.prepare(
         "INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte) VALUES (?, ?, ?, ?, ?, ?, ?, 'unico')"
@@ -118,10 +121,14 @@ integracao.post("/pedido", async (c) => {
   }
   // ETAPA 5 — pop-up do PCP: guarda UMA notificação "Para conferir" (idempotente por numero_erp).
   // É só informativo; NÃO aprova, não explode e não mexe nos botões do PCP.
-  const pecasTotal = itens.reduce((s, it) => s + (inteiro(it.qtd) || 0), 0);
-  stmts.push(c.env.DB.prepare("INSERT OR IGNORE INTO pcp_notificacoes (id, numero_erp, cliente_nome, vendedor, pecas) VALUES (?,?,?,?,?)").bind(uid(), numero, clienteNome, str(b.vendedor), pecasTotal));
+  // INTERRUPTOR "pcp_popup_ativo": desligado (padrão) → NÃO cria a notificação. O pedido do ERP
+  // é importado normalmente; só o pop-up deixa de existir. Não altera nada já gravado.
+  if (await flagLigado(c.env, FLAG_PCP_POPUP)) {
+    const pecasTotal = itens.reduce((s, it) => s + (inteiro(it.qtd) || 0), 0);
+    stmts.push(c.env.DB.prepare("INSERT OR IGNORE INTO pcp_notificacoes (id, numero_erp, cliente_nome, vendedor, pecas) VALUES (?,?,?,?,?)").bind(uid(), numero, clienteNome, str(b.vendedor), pecasTotal));
+  }
   await c.env.DB.batch(stmts);
-  return c.json({ ok: true, pedido_id: pedidoId, numero, itens: stmts.length - 2 }, 201);
+  return c.json({ ok: true, pedido_id: pedidoId, numero, itens: nItens }, 201);
 });
 
 // ── PORTA DE ENTRADA: recebe os REPRESENTANTES (GUIAS) do Syntech ───────────────
@@ -300,6 +307,9 @@ integracao.get("/pendentes", async (c) => {
 // tratados (visto_em IS NULL). A tela do PCP consulta aqui e mostra o pop-up (sem recarregar).
 integracao.get("/pcp-notificacoes", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  // INTERRUPTOR "pcp_popup_ativo": desligado (padrão) → não exibe nada (lista vazia). Não apaga
+  // o que já existe no banco; só deixa de mostrar. Validação no SERVIDOR, não só na tela.
+  if (!(await flagLigado(c.env, FLAG_PCP_POPUP))) return c.json({ agora: new Date().toISOString(), notificacoes: [] });
   const { results } = await c.env.DB.prepare(
     "SELECT id, numero_erp, cliente_nome, vendedor, pecas, criado_em FROM pcp_notificacoes WHERE visto_em IS NULL ORDER BY criado_em DESC, rowid DESC LIMIT 20"
   ).all().catch(() => ({ results: [] as unknown[] }));
@@ -1180,7 +1190,10 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   // refletidos no SALDO do Syntech). Assim vender um kit/capa baixa NA HORA as outras
   // opções que dividem a mesma capa (vazio, cheio e avulsa). Quando o Syntech empenha e a
   // ponte traz o SALDO menor, a reserva deixa de contar (não desconta duas vezes).
-  try {
+  // INTERRUPTOR "reservas_ativo": só desconta reservas do catálogo quando a função está LIGADA.
+  // Desligada (padrão em produção) → o catálogo mostra o SALDO cru do Syntech, exatamente como
+  // antes do sistema de reservas. Não apaga nem libera reserva nenhuma — apenas deixa de descontar.
+  if (await flagLigado(env, FLAG_RESERVAS)) try {
     // Mesmo filtro da trava (FILTRO_RESERVA_ATIVA): enviado conta SEMPRE (não expira por tempo),
     // rascunho só com a janela ativa. Sem teto de 7 dias e sem auto-liberação por sincronização.
     const { results: rvs } = await env.DB.prepare(

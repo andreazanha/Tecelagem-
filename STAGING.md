@@ -133,12 +133,42 @@ node scripts/staging-sim.mjs whatsapp-in 5500000000011 12
 
 ---
 
-## Ligar/desligar funções do piloto
+## Interruptores do novo sistema (controle no servidor)
 
-- **WhatsApp:** controlado de verdade por `zapi_ativo` na tabela `config` (começa `0` = desligado).
-- **Reservas / pop-up PCP / pop-up CRM:** como o staging é um ambiente **isolado e fictício**, essas
-  funções já rodam normalmente lá — não é preciso "ligar" nada para testá-las. As chaves
-  `piloto_reservas` / `piloto_pcp_popup` / `piloto_crm_popup` ficam no seed como **marcadores**. Para
-  virarem **interruptores reais** (ligar/desligar cada função no servidor) é preciso uma pequena
-  alteração de código — que **eventualmente iria para produção** (inerte por padrão). Por isso deixei
-  essa parte para um passo **à parte, com sua aprovação**, em vez de embutir código novo agora.
+Quatro configurações **independentes**, na tabela `config`. Regra de ouro: **seguro por padrão** —
+cada função só liga com o valor **exatamente `1`** (após `trim`). Ausente, vazio, `0`, `true` ou
+qualquer outro texto → **desligado**. Em **produção** as três novas chaves **não existem** → tudo
+começa **desligado** (comportamento de antes). No **staging** o seed já as deixa `1`.
+
+| Chave (`config`) | Controla | Padrão produção | Staging (seed) |
+|---|---|---|---|
+| `reservas_ativo` | reserva automática no carrinho/checkout + desconto no catálogo + expiração/avisos | **ausente → off** | `1` |
+| `pcp_popup_ativo` | pop-up "Para conferir" no PCP (criar **e** exibir) | **ausente → off** | `1` |
+| `crm_popup_ativo` | pop-up individual "seu cliente fez um pedido" no CRM (criar **e** exibir) | **ausente → off** | `1` |
+| `zapi_ativo` (já existente) | envio de WhatsApp (todos os caminhos) | `0` = off | `0` (simulado) |
+
+**Garantias (validadas no servidor, não só na tela):**
+- Reservas **off** → o catálogo mostra o **SALDO cru** do Syntech (como antes); o checkout salva o
+  pedido **sem** reservar e **sem** janela de 12h; a expiração e os avisos ficam **congelados** —
+  reservas já criadas **não são apagadas nem liberadas** automaticamente.
+- Pop-ups **off** → **não** criam e **não** exibem notificações novas; linhas já existentes no banco
+  **não** são apagadas nem mostradas, e nenhum pedido/reserva é alterado.
+- Valor ausente/ inválido → **desligado** (sem ativação acidental).
+
+### Como ligar/desligar no staging
+Depois que o staging estiver no ar, pela conta Cloudflare (ajuste `0`/`1`):
+
+```sh
+# ligar reservas
+npx wrangler d1 execute DB -c wrangler.staging.jsonc --remote \
+  --command="UPDATE config SET valor='1' WHERE chave='reservas_ativo';"
+# desligar pop-up do PCP
+npx wrangler d1 execute DB -c wrangler.staging.jsonc --remote \
+  --command="UPDATE config SET valor='0' WHERE chave='pcp_popup_ativo';"
+# conferir todos
+npx wrangler d1 execute DB -c wrangler.staging.jsonc --remote \
+  --command="SELECT chave,valor FROM config WHERE chave IN ('reservas_ativo','pcp_popup_ativo','crm_popup_ativo','zapi_ativo');"
+```
+
+> O WhatsApp nesta fase fica **simulado** (`zapi_ativo=0`): não ligue essa chave no staging até
+> termos a allowlist de números e uma instância de teste.
