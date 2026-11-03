@@ -736,11 +736,16 @@ loja.post("/pedido", async (c) => {
     const rr = await montarReservaAtomica(c.env, pedidoId, resolvidos.map((r) => ({ ref: r.ref, cor: r.corNome, tam: r.erp_tamanho, qtd: r.qtd })));
     reservaStmts = rr.stmts; alvo = rr.alvo;
   }
-  const abriuReserva = alvo.length > 0;            // há peça física a reservar → precisa de janela
+  // JANELA DE 12h = FLUXO DO CARRINHO: vale para QUALQUER carrinho com itens (Edição Limitada, kit
+  // OU produto normal — Polisoft/Soft etc.). Só ED/KT travam estoque (as peças em 'alvo'), mas TODO
+  // carrinho ganha janela + contador e ESVAZIA ao vencer (expirarCarrinhosVencidos já apaga o
+  // rascunho inteiro). Continua sob o interruptor reservas_ativo: desligado (padrão produção) → sem
+  // janela nenhuma. 'alvo' permanece restrito às peças que controlam estoque.
+  const abrirJanela = reservarEstoque && resolvidos.length > 0;
   const reservaResp = ehRep ? "rep" : "cliente";
-  // Janela de reserva: só quando há peça física. No rascunho conta enquanto estiver ativa; a
-  // janela NÃO reinicia ao editar o carrinho (COALESCE preserva o início). Sem peça física → NULL.
-  const janelaUpd = abriuReserva
+  // A janela conta enquanto o rascunho estiver ativo e NÃO reinicia ao editar o carrinho (COALESCE
+  // preserva o início). Carrinho sem itens ou interruptor desligado → NULL.
+  const janelaUpd = abrirJanela
     ? "reserva_responsavel=COALESCE(reserva_responsavel, ?), reserva_iniciada_em=COALESCE(reserva_iniciada_em, datetime('now')), reserva_expira_em=COALESCE(reserva_expira_em, datetime('now','+12 hours'))"
     : "reserva_responsavel=NULL, reserva_iniciada_em=NULL, reserva_expira_em=NULL";
 
@@ -749,19 +754,19 @@ loja.post("/pedido", async (c) => {
     // Atualiza o rascunho existente: troca os dados e substitui os itens.
     const sqlUpd = `UPDATE pedidos SET cliente_nome=?, vendedor=?, valor_total=?, erp_sync_status=?, loja_fase=?,
          loja_cod_prazo=?, loja_forma_desc=?, observacao=?, data_pedido=datetime('now'), ${janelaUpd} WHERE id=? AND canal='loja_b2b'`;
-    const bindsUpd = abriuReserva
+    const bindsUpd = abrirJanela
       ? [cli.nome || "SEM CLIENTE", vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, reservaResp, pedidoEditar]
       : [cli.nome || "SEM CLIENTE", vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, pedidoEditar];
     stmts.push(c.env.DB.prepare(sqlUpd).bind(...bindsUpd));
     stmts.push(c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pedidoEditar));
   } else {
-    const janelaVals = abriuReserva ? "datetime('now'), datetime('now','+12 hours'), ?" : "NULL, NULL, NULL";
+    const janelaVals = abrirJanela ? "datetime('now'), datetime('now','+12 hours'), ?" : "NULL, NULL, NULL";
     const sqlIns = `INSERT INTO pedidos (id, cliente_nome, cliente_id, cliente_cnpj, vendedor, tipo, status, canal, valor_total,
          erp_sync_status, erp_liberado, loja_fase, loja_cod_prazo, loja_forma_desc, observacao, idem,
          reserva_iniciada_em, reserva_expira_em, reserva_responsavel, data_pedido, created_at)
        VALUES (?, ?, ?, ?, ?, 'pedido', 'aguardando_aprovacao', 'loja_b2b', ?, ?, 0, ?, ?, ?, ?, ?, ${janelaVals}, datetime('now'), datetime('now'))`;
     const bindsIns = [pedidoId, cli.nome || "SEM CLIENTE", cli.id, cnpjDig, vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, idem];
-    if (abriuReserva) bindsIns.push(reservaResp);
+    if (abrirJanela) bindsIns.push(reservaResp);
     stmts.push(c.env.DB.prepare(sqlIns).bind(...bindsIns));
   }
   for (const r of resolvidos) {
@@ -774,7 +779,7 @@ loja.post("/pedido", async (c) => {
   await c.env.DB.batch(stmts);
 
   // Confere o que REALMENTE ficou reservado (a trava condicional pode ter barrado peças sem saldo).
-  const faltas = abriuReserva ? await faltasDaReserva(c.env, pedidoId, alvo) : [];
+  const faltas = alvo.length ? await faltasDaReserva(c.env, pedidoId, alvo) : [];
   if (faltas.length) {
     // desfaz: pedido NOVO → apaga tudo; EDIÇÃO → solta a reserva e zera a janela (o carrinho é
     // revertido no navegador e re-sincronizado). Nunca deixa reserva acima do saldo.
