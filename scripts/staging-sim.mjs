@@ -24,7 +24,7 @@
 //   whatsapp-in <telefone> <texto>             simula mensagem RECEBIDA no WhatsApp (ex.: "12")
 //
 // Exemplos:
-//   STAGING_URL=https://...workers.dev node scripts/staging-sim.mjs estoque 9001A Marinho 45X45 1
+//   STAGING_URL=https://...workers.dev node scripts/staging-sim.mjs estoque ED01C Marinho 45X45 1
 //   ... node scripts/staging-sim.mjs recebido <id-do-pedido> 90001
 //   ... node scripts/staging-sim.mjs whatsapp-in 5500000000011 12
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ async function main() {
       return post("/api/integracao/pedido", {
         numero, cliente: { nome: nome.join(" ") || "Cliente Teste" }, vendedor: "Rogério",
         data: new Date().toISOString().slice(0, 10),
-        itens: [{ produto: "ALMOFADA MODELO TESTE A", ref: "9001A", cor: "Off-White", tamanho: "45X45", qtd: 2 }],
+        itens: [{ produto: "ALMOFADA MODELO TESTE A", ref: "ED01A", cor: "Off-White", tamanho: "45X45", qtd: 2 }],
       });
     }
     case "recebido": {

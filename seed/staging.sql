@@ -67,29 +67,40 @@ VALUES
    'pbkdf2$100000$E/h/xwcMImmHyMNaYAS+9w==$zTf4m864n3TTXPK91KopaqScCZbaHL93jtpA1MIev68=');
 
 -- ── CATÁLOGO fictício (erp_produtos) ──────────────────────────────────────────
--- Dois modelos. Letra final do ref = tipo (A=Almofada, C=Capa, P=Peseira/Manta).
--- cores e tamanhos em JSON, com preço de atacado/varejo por tamanho.
-INSERT OR IGNORE INTO erp_produtos (ref, nome, unidade, classe, grupo, preco_atacado, preco_varejo, estoque_geral, inativo, cores, tamanhos, atualizado_em) VALUES
-  ('9001A', 'ALMOFADA MODELO TESTE A', 'UN', 'TESTE', 'padrao', 39.90, 59.90, 10, 0,
-    '[{"numero":1,"nome":"Off-White","hex":"#f3efe6"},{"numero":2,"nome":"Marinho","hex":"#1b2a4a"}]',
-    '[{"medida":"45X45","atacado":39.90,"varejo":59.90}]', datetime('now')),
-  ('9001C', 'CAPA MODELO TESTE A', 'UN', 'TESTE', 'padrao', 29.90, 44.90, 10, 0,
+-- MODELO TESTE A é EDIÇÃO LIMITADA: a CAPA (ED01C) e a ALMOFADA (ED01A) são a MESMA
+-- peça física (almofada = capa + enchimento). O prefixo "ED" nas refs liga o espelho
+-- do catálogo (capa e almofada mostram o MESMO estoque); a receita de kit (abaixo) faz
+-- a RESERVA/venda da almofada baixar a capa. Assim vale a regra "1 capa = 1 almofada".
+-- Letra final do ref = tipo (C=Capa, A=Almofada, P=Peseira/Manta).
+-- MODELO TESTE B (9002P) é uma manta normal (peça única, estoque próprio).
+-- Reset dos refs de teste (idempotência no re-seed do staging):
+DELETE FROM erp_produtos    WHERE ref     IN ('9001A','9001C','ED01A','ED01C','9002P');
+DELETE FROM erp_estoque     WHERE ref     IN ('9001A','9001C','ED01A','ED01C','9002P');
+DELETE FROM erp_kit_receita WHERE kit_ref IN ('9001A','ED01A');
+INSERT INTO erp_produtos (ref, nome, unidade, classe, grupo, preco_atacado, preco_varejo, estoque_geral, inativo, cores, tamanhos, atualizado_em) VALUES
+  ('ED01C', 'CAPA MODELO TESTE A', 'UN', 'TESTE', 'padrao', 29.90, 44.90, 10, 0,
     '[{"numero":1,"nome":"Off-White","hex":"#f3efe6"},{"numero":2,"nome":"Marinho","hex":"#1b2a4a"}]',
     '[{"medida":"45X45","atacado":29.90,"varejo":44.90}]', datetime('now')),
+  ('ED01A', 'ALMOFADA MODELO TESTE A', 'UN', 'TESTE', 'padrao', 39.90, 59.90, 10, 0,
+    '[{"numero":1,"nome":"Off-White","hex":"#f3efe6"},{"numero":2,"nome":"Marinho","hex":"#1b2a4a"}]',
+    '[{"medida":"45X45","atacado":39.90,"varejo":59.90}]', datetime('now')),
   ('9002P', 'MANTA MODELO TESTE B', 'UN', 'TESTE', 'padrao', 129.90, 189.90, 5, 0,
     '[{"numero":3,"nome":"Cacau","hex":"#5b3b2e"},{"numero":4,"nome":"Mostarda","hex":"#c99a2e"}]',
     '[{"medida":"1,30X1,70","atacado":129.90,"varejo":189.90}]', datetime('now'));
 
--- ── ESTOQUE físico espelhado (erp_estoque) ────────────────────────────────────
--- chave = ref|cor|tamanho em minúsculas (igual ao que o POST /estoque grava).
--- Inclui um cenário de ÚLTIMA UNIDADE (saldo=1) para testar concorrência.
-INSERT OR IGNORE INTO erp_estoque (chave, produto, ref, cor, tamanho, saldo, unidade, lote, atualizado_em) VALUES
-  ('9001a|off-white|45x45', 'ALMOFADA MODELO TESTE A', '9001A', 'Off-White', '45X45', 4, 'UN', 'seed-staging', datetime('now')),
-  ('9001a|marinho|45x45',   'ALMOFADA MODELO TESTE A', '9001A', 'Marinho',   '45X45', 1, 'UN', 'seed-staging', datetime('now')),
-  ('9001c|off-white|45x45', 'CAPA MODELO TESTE A',     '9001C', 'Off-White', '45X45', 6, 'UN', 'seed-staging', datetime('now')),
-  ('9001c|marinho|45x45',   'CAPA MODELO TESTE A',     '9001C', 'Marinho',   '45X45', 2, 'UN', 'seed-staging', datetime('now')),
+-- ── ESTOQUE físico (erp_estoque): SÓ a CAPA (ED01C) tem estoque — é o pool ÚNICO que a
+-- almofada compartilha. A manta (9002P) tem o seu próprio. chave = ref|cor|tam (minúsculo).
+-- Cenário de ÚLTIMA UNIDADE: Marinho = 1 (para testar concorrência + compartilhamento).
+INSERT INTO erp_estoque (chave, produto, ref, cor, tamanho, saldo, unidade, lote, atualizado_em) VALUES
+  ('ed01c|off-white|45x45', 'CAPA MODELO TESTE A',     'ED01C', 'Off-White', '45X45', 5, 'UN', 'seed-staging', datetime('now')),
+  ('ed01c|marinho|45x45',   'CAPA MODELO TESTE A',     'ED01C', 'Marinho',   '45X45', 1, 'UN', 'seed-staging', datetime('now')),
   ('9002p|cacau|1,30x1,70',    'MANTA MODELO TESTE B', '9002P', 'Cacau',    '1,30X1,70', 5, 'UN', 'seed-staging', datetime('now')),
   ('9002p|mostarda|1,30x1,70', 'MANTA MODELO TESTE B', '9002P', 'Mostarda', '1,30X1,70', 1, 'UN', 'seed-staging', datetime('now'));
+
+-- ── RECEITA: a almofada (ED01A) = 1× capa (ED01C). Faz a RESERVA/venda da almofada
+-- consumir a capa (estoque único). "Somente 1 almofada por capa" = quantidade 1.
+INSERT INTO erp_kit_receita (kit_ref, componente_ref, quantidade, tamanho, atualizado_em) VALUES
+  ('ED01A', 'ED01C', 1, '45X45', datetime('now'));
 
 -- ── PRAZOS de pagamento (para o checkout da loja oferecer opção) ──────────────
 INSERT OR IGNORE INTO erp_prazos (codigo, descricao, atualizado_em) VALUES ('30', '30 dias', datetime('now'));
