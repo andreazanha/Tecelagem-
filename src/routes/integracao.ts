@@ -65,6 +65,57 @@ const uid = () => crypto.randomUUID();
 const str = (v: unknown) => { const s = String(v ?? "").trim(); return s || null; };
 const inteiro = (v: unknown) => Math.max(0, Math.trunc(Number(v) || 0));
 
+// ── TESTE DE WHATSAPP (EXCLUSIVO DO STAGING) ─────────────────────────────────
+// Monta uma reserva FICTÍCIA perto do vencimento (vencimento acelerado) apontando o lembrete para
+// UM número de teste, e coloca esse número na allowlist (só ele poderá receber). NÃO liga o envio
+// (zapi_ativo continua como está) e é BARRADO fora do staging e sem o token. Em seguida, o cron de
+// avisos (a cada 5 min) manda o lembrete de "~1h antes" para esse número; responder "Sim" prorroga
+// +6h. Não toca em produção, não usa números de clientes/representantes reais.
+integracao.get("/_teste-reserva-whats", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+  if (String(c.env.AMBIENTE || "").toLowerCase() !== "staging") return c.json({ error: "somente_staging" }, 403);
+  const tel = String(c.req.query("tel") || "").replace(/\D+/g, "");
+  if (tel.length < 10) return c.json({ error: "tel_invalido", msg: "Informe ?tel= com DDI+DDD+numero, só dígitos (ex.: 55DDDNÚMERO)." }, 400);
+  const min = Math.min(180, Math.max(2, Math.trunc(Number(c.req.query("min")) || 55))); // vence em ~min minutos
+  const pid = "teste-whats-reserva";
+  await c.env.DB.batch([
+    // 1) allowlist = SÓ este número (qualquer outro fica bloqueado pela trava de staging)
+    c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('zapi_allowlist', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(tel),
+    // 2) aponta o cliente FICTÍCIO de teste para este número (destino do lembrete)
+    c.env.DB.prepare("UPDATE clientes SET whatsapp=? WHERE id='cli-stg-1'").bind(tel),
+    // 3) (re)cria a reserva fictícia (rascunho EL) vencendo em ~min minutos, pronta para o lembrete
+    c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pid),
+    c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pid),
+    c.env.DB.prepare("DELETE FROM pedidos WHERE id=?").bind(pid),
+    c.env.DB.prepare(
+      `INSERT INTO pedidos (id, cliente_nome, cliente_id, cliente_cnpj, tipo, status, canal, valor_total,
+         erp_sync_status, erp_liberado, loja_fase, reserva_iniciada_em, reserva_expira_em,
+         reserva_expira_original, reserva_noturna, reserva_responsavel, reserva_prorrogacoes, data_pedido, created_at)
+       VALUES (?, 'Loja Teste Direto', 'cli-stg-1', '11111111000111', 'pedido', 'aguardando_aprovacao', 'loja_b2b', 44.90,
+         'rascunho', 0, 'em_espera', datetime('now','-2 hours'), datetime('now', ?), datetime('now', ?), 0, 'cliente', 0, datetime('now'), datetime('now'))`
+    ).bind(pid, `+${min} minutes`, `+${min} minutes`),
+    c.env.DB.prepare("INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, cod_cor, tamanho, erp_tamanho, qtd, valor_unit, parte) VALUES (?, ?, 'ALMOFADA MODELO TESTE A', 'ED01A', 'Off-White', 1, '45X45', '45X45', 1, 44.90, 'unico')").bind(uid(), pid),
+    c.env.DB.prepare("INSERT INTO erp_reserva (id, pedido_id, ref, cor, tamanho, qtd) VALUES (?, ?, 'ED01C', 'Off-White', '45X45', 1)").bind(uid(), pid),
+  ]);
+  const zap = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='zapi_ativo'").first<{ valor: string | null }>().catch(() => null);
+  const inst = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='zapi_instance'").first<{ valor: string | null }>().catch(() => null);
+  return c.json({
+    ok: true,
+    ambiente: "staging",
+    pedido_id: pid,
+    vence_em_min: min,
+    allowlist_so_este_numero: true,
+    numero_mascarado: "••••" + tel.slice(-2),
+    envio_ligado: (zap?.valor || "0") === "1",
+    tem_credencial_zapi: !!(inst?.valor || "").trim(),
+    proximo_passo: (zap?.valor || "0") === "1"
+      ? "Aguarde o lembrete no WhatsApp (até ~5 min) e responda 'Sim'."
+      : "Envio ainda DESLIGADO (zapi_ativo=0). Ligue só quando autorizado para receber o lembrete.",
+  });
+});
+
 // Depois que um pedido importado "vira produção" (aprovado), roda o MESMO pós-processo
 // do PDF: cadastra os produtos que faltam e dá baixa de estoque dos insumos. Não trava.
 async function posProcessar(env: Env, pedidoId: string, autor?: Autor) {

@@ -56,6 +56,10 @@ export interface Env {
   // verificado no Resend (ex.: "Big Tricot <naoresponda@bigtricot.com.br>").
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
+  // Nome do ambiente ("staging" no Worker de teste; ausente/outro em produção). Definido em
+  // wrangler.staging.jsonc › vars. Usado como TRAVA de segurança do WhatsApp: quando é "staging",
+  // o envio só vai para números da allowlist (config zapi_allowlist).
+  AMBIENTE?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();

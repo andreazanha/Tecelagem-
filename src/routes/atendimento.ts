@@ -2909,6 +2909,31 @@ function zapiFalhou(dj: { error?: string; message?: string } | null | undefined,
   return "";
 }
 
+// ── SALVAGUARDA DE STAGING (allowlist de WhatsApp) ───────────────────────────
+// Quando AMBIENTE="staging", o envio SÓ pode ir para números da lista de permitidos (config
+// 'zapi_allowlist', dígitos separados por vírgula/espaço). Lista VAZIA → bloqueia TUDO (à prova de
+// falha: melhor não enviar nada do que enviar para alguém errado). A comparação é pelos últimos 8
+// dígitos (ignora DDI 55 e o 9º dígito variável). Em produção (AMBIENTE != "staging") não se aplica.
+async function allowlistStaging(env: Env): Promise<Set<string>> {
+  const row = await env.DB.prepare("SELECT valor FROM config WHERE chave='zapi_allowlist'").first<{ valor: string | null }>().catch(() => null);
+  const raw = (row?.valor || "").trim();
+  if (!raw) return new Set();
+  return new Set(raw.split(/[^0-9]+/).filter(Boolean).map((p) => p.slice(-8)));
+}
+// Devolve o motivo do bloqueio (string) ou null se pode enviar. Só bloqueia quando é staging.
+async function bloqueioStaging(env: Env, phone: string): Promise<string | null> {
+  if (String(env.AMBIENTE || "").toLowerCase() !== "staging") return null;
+  const permitidos = await allowlistStaging(env);
+  const alvo8 = digitos(phone).slice(-8);
+  if (permitidos.has(alvo8)) return null;
+  // registra o bloqueio para auditoria — com o número MASCARADO (nunca o número inteiro).
+  try {
+    await env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('whatsapp_bloqueio_ultimo', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')")
+      .bind(JSON.stringify({ motivo: permitidos.size ? "fora_da_allowlist" : "allowlist_vazia", numero_mascarado: "••••" + alvo8.slice(-2), quando: new Date().toISOString() })).run();
+  } catch { /* auditoria nunca atrapalha */ }
+  return "bloqueado-allowlist-staging";
+}
+
 export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: string; texto: string }, quote: { zapId?: string | null; texto?: string | null } = {}) {
   const cfg = await lerConfig(env);
   if (cfg.zapi_ativo !== "1") return { enviado: false, motivo: "desligado" };
@@ -2919,6 +2944,9 @@ export async function enviarWhatsapp(env: Env, tel: string, saida: { tipo: strin
   const phone = completarNoveDigitoBR(tel); // completa o 9 do celular se veio sem
   let texto = linksClicaveis(String(saida.texto ?? "").trim());
   if (!phone || !texto) return { enviado: false, motivo: "vazio" };
+  // TRAVA de staging: só envia para a allowlist (bloqueia o resto; lista vazia bloqueia tudo).
+  const bloq = await bloqueioStaging(env, phone);
+  if (bloq) return { enviado: false, motivo: bloq };
   // GRUPO: envia DIRETO pelo id do grupo. NÃO passa por "cliente bloqueado" (grupo não é cliente)
   // nem por destinoWhatsapp (que é pra @lid de pessoa e desviaria a mensagem do grupo).
   const ehGrupoDest = pareceIdDeGrupo(phone);
@@ -2972,6 +3000,9 @@ export async function enviarMidiaZapi(env: Env, tel: string, opts: { url: string
   if (!inst || !token) return { enviado: false, motivo: "sem-credenciais" };
   const phone = completarNoveDigitoBR(tel); // completa o 9 do celular se veio sem
   if (!phone) return { enviado: false, motivo: "vazio" };
+  // TRAVA de staging: só envia para a allowlist (igual ao envio de texto).
+  const bloqMidia = await bloqueioStaging(env, phone);
+  if (bloqMidia) return { enviado: false, motivo: bloqMidia };
   // GRUPO: envia direto pelo id (sem checar bloqueio nem desviar por @lid).
   const ehGrupoDest = pareceIdDeGrupo(phone);
   if (!ehGrupoDest && await clienteBloqueado(env, phone)) return { enviado: false, motivo: "cliente-bloqueado" };
