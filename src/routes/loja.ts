@@ -12,6 +12,7 @@ import { Hono } from "hono";
 import type { Env } from "../index";
 import { gerarPdfPedidoLoja, type PedidoLojaItem } from "../pdf";
 import { montarReservaAtomica, faltasDaReserva, expirarCarrinhosVencidos } from "../loja-estoque";
+import { calcularJanela12h } from "../noite";
 import { flagLigado, FLAG_RESERVAS } from "../flags";
 import { gerarCatalogoSite } from "./integracao";
 
@@ -743,11 +744,14 @@ loja.post("/pedido", async (c) => {
   // janela nenhuma. 'alvo' permanece restrito às peças que controlam estoque.
   const abrirJanela = reservarEstoque && resolvidos.length > 0;
   const reservaResp = ehRep ? "rep" : "cliente";
-  // A janela conta enquanto o rascunho estiver ativo e NÃO reinicia ao editar o carrinho (COALESCE
-  // preserva o início). Carrinho sem itens ou interruptor desligado → NULL.
+  // PROTEÇÃO NOTURNA (Etapa 1): o vencimento base é agora+12h; se cair de madrugada (20h–8h SP), o
+  // vencimento EFETIVO vai para as 10h da manhã seguinte. Calculado no SERVIDOR (fuso SP) e gravado
+  // como texto UTC. A janela conta enquanto o rascunho estiver ativo e NÃO reinicia ao editar o
+  // carrinho (COALESCE preserva início/efetivo/original/flag). Sem itens ou interruptor off → NULL.
+  const jw = calcularJanela12h();
   const janelaUpd = abrirJanela
-    ? "reserva_responsavel=COALESCE(reserva_responsavel, ?), reserva_iniciada_em=COALESCE(reserva_iniciada_em, datetime('now')), reserva_expira_em=COALESCE(reserva_expira_em, datetime('now','+12 hours'))"
-    : "reserva_responsavel=NULL, reserva_iniciada_em=NULL, reserva_expira_em=NULL";
+    ? "reserva_responsavel=COALESCE(reserva_responsavel, ?), reserva_iniciada_em=COALESCE(reserva_iniciada_em, datetime('now')), reserva_expira_em=COALESCE(reserva_expira_em, ?), reserva_expira_original=COALESCE(reserva_expira_original, ?), reserva_noturna=CASE WHEN reserva_expira_em IS NULL THEN ? ELSE reserva_noturna END"
+    : "reserva_responsavel=NULL, reserva_iniciada_em=NULL, reserva_expira_em=NULL, reserva_expira_original=NULL, reserva_noturna=0";
 
   const stmts: D1PreparedStatement[] = [];
   if (pedidoEditar) {
@@ -755,18 +759,18 @@ loja.post("/pedido", async (c) => {
     const sqlUpd = `UPDATE pedidos SET cliente_nome=?, vendedor=?, valor_total=?, erp_sync_status=?, loja_fase=?,
          loja_cod_prazo=?, loja_forma_desc=?, observacao=?, data_pedido=datetime('now'), ${janelaUpd} WHERE id=? AND canal='loja_b2b'`;
     const bindsUpd = abrirJanela
-      ? [cli.nome || "SEM CLIENTE", vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, reservaResp, pedidoEditar]
+      ? [cli.nome || "SEM CLIENTE", vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, reservaResp, jw.expira, jw.original, jw.noturna, pedidoEditar]
       : [cli.nome || "SEM CLIENTE", vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, pedidoEditar];
     stmts.push(c.env.DB.prepare(sqlUpd).bind(...bindsUpd));
     stmts.push(c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pedidoEditar));
   } else {
-    const janelaVals = abrirJanela ? "datetime('now'), datetime('now','+12 hours'), ?" : "NULL, NULL, NULL";
+    const janelaVals = abrirJanela ? "datetime('now'), ?, ?, ?, ?" : "NULL, NULL, NULL, 0, NULL";
     const sqlIns = `INSERT INTO pedidos (id, cliente_nome, cliente_id, cliente_cnpj, vendedor, tipo, status, canal, valor_total,
          erp_sync_status, erp_liberado, loja_fase, loja_cod_prazo, loja_forma_desc, observacao, idem,
-         reserva_iniciada_em, reserva_expira_em, reserva_responsavel, data_pedido, created_at)
+         reserva_iniciada_em, reserva_expira_em, reserva_expira_original, reserva_noturna, reserva_responsavel, data_pedido, created_at)
        VALUES (?, ?, ?, ?, ?, 'pedido', 'aguardando_aprovacao', 'loja_b2b', ?, ?, 0, ?, ?, ?, ?, ?, ${janelaVals}, datetime('now'), datetime('now'))`;
     const bindsIns = [pedidoId, cli.nome || "SEM CLIENTE", cli.id, cnpjDig, vendedor, total, syncStatus, lojaFase, codPrazo, formaDesc, observacao, idem];
-    if (abrirJanela) bindsIns.push(reservaResp);
+    if (abrirJanela) bindsIns.push(jw.expira, jw.original, jw.noturna, reservaResp);
     stmts.push(c.env.DB.prepare(sqlIns).bind(...bindsIns));
   }
   for (const r of resolvidos) {

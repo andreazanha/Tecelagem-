@@ -7,6 +7,7 @@
 //   • cliente: 1 prorrogação (6/12h), teto 24h desde o início; rep: 6/12/18/24h, teto 48h.
 import type { Env } from "./index";
 import { flagLigado, FLAG_CRM_POPUP, FLAG_RESERVAS } from "./flags";
+import { protegerNoturno } from "./noite";
 
 export type Sender = (env: Env, tel: string, texto: string) => Promise<unknown>;
 
@@ -120,12 +121,17 @@ export async function prorrogarPedido(env: Env, pedidoId: string, opt: number, e
   const escolha = opts.find(([n]) => n === opt);
   if (!escolha) return { ok: false, motivo: (!ehRep && p.prorr >= 1) ? "ja_prorrogado" : "opcao_invalida", expMs, ehRep, opts };
   const horas = escolha[1];
-  const novoExpMs = expMs + horas * H;
+  // PROTEÇÃO NOTURNA na prorrogação (Etapa 1): os +Xh partem do vencimento EFETIVO atual; se o novo
+  // vencimento cair de madrugada (20h–8h SP), reaplica a proteção (volta para as 10h). Guarda o
+  // vencimento base (pré-proteção) em reserva_expira_original e marca reserva_noturna.
+  const baseMs = expMs + horas * H;
+  const prot = protegerNoturno(baseMs);
+  const novoExpMs = prot.exp;
   const cond = exigirOferta ? "AND reserva_aviso2_em IS NOT NULL" : "";
   const r = await env.DB.prepare(
-    `UPDATE pedidos SET reserva_expira_em=?, reserva_prorrogacoes=COALESCE(reserva_prorrogacoes,0)+1, reserva_aviso2_em=NULL
+    `UPDATE pedidos SET reserva_expira_em=?, reserva_expira_original=?, reserva_noturna=?, reserva_prorrogacoes=COALESCE(reserva_prorrogacoes,0)+1, reserva_aviso2_em=NULL
        WHERE id=? AND canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho' AND reserva_expira_em > datetime('now') ${cond}`
-  ).bind(toSqlUTC(novoExpMs), pedidoId).run();
+  ).bind(toSqlUTC(novoExpMs), toSqlUTC(baseMs), prot.protegido ? 1 : 0, pedidoId).run();
   if (Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) <= 0) return { ok: false, motivo: "nao_aplicou", expMs, ehRep, opts };
   return { ok: true, horas, novoExpMs, ehRep, cliente: p.cliente_nome };
 }
