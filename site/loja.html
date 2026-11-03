@@ -1598,7 +1598,8 @@
   (function(){
     var fx=document.getElementById("entFechar"); if(fx) fx.addEventListener("click",fecharEntrada);
     var ov=document.getElementById("entrada");
-    if(ov) ov.addEventListener("click",function(e){ if(e.target===ov && !ehPortalRep()) fecharEntrada(); });
+    /* Ajuste pedido: o login NÃO fecha mais ao clicar fora do cartão (evita sumir sem querer).
+       Para sair do modal, use o botão de fechar (X) ou faça login normalmente. */
     document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ var o=document.getElementById("entrada"); if(o && o.style.display!=="none" && !ehPortalRep()) fecharEntrada(); } });
   })();
   function sairLoja(){ try{ localStorage.removeItem("bt_cli"); localStorage.removeItem("bt_cnpj"); }catch(e){} LIBERADO=false; TOKEN_ACESSO=""; mostrarSaudacao(""); atualizarAvisoLib(); render(); mostrarEnt(); abrirEntrada(); }
