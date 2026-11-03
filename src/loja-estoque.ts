@@ -140,8 +140,15 @@ async function saldoDe(env: Env, ref: string, cor: string, tam: string): Promise
   return Number(r?.s) || 0;
 }
 
-// Explode o pedido nas PEÇAS FÍSICAS e mantém só as RASTREADAS (que têm saldo no espelho).
-// Produto SOB ENCOMENDA (sem linha no espelho) não é limitado por estoque — fica de fora.
+// EDIÇÃO LIMITADA — a reserva automática é EXCLUSIVA dos produtos da Edição Limitada. A EL é
+// identificada pelo PREFIXO da ref da PEÇA FÍSICA: "ED" seguido de dígito (ex.: ED01C, ED01A).
+// (Critério confirmado com a Big Tricot; o mesmo que o catálogo já usa para o espelho capa/almofada.)
+// Produtos normais, kits, pronta entrega e outras categorias NÃO reservam — seguem como hoje.
+export const ehRefEL = (ref: string): boolean => /^ED\d/i.test(String(ref || "").trim());
+
+// Explode o pedido nas PEÇAS FÍSICAS e mantém só as que RESERVAM: rastreadas (têm saldo no espelho)
+// E da Edição Limitada (ref ED…). Produto SOB ENCOMENDA (sem linha no espelho) e produto de OUTRA
+// categoria (não-EL) ficam de fora — não travam estoque.
 async function explodirAlvo(env: Env, itens: { ref: string; cor: string; tam: string; qtd: number }[]): Promise<ItemConsumo[]> {
   const consumo = await explodirPedido(env, itens);
   if (!consumo.size) return [];
@@ -153,7 +160,9 @@ async function explodirAlvo(env: Env, itens: { ref: string; cor: string; tam: st
     const rows = (await env.DB.prepare(`SELECT DISTINCT lower(ref) AS ref FROM erp_estoque WHERE lower(ref) IN (${ph})`).bind(...lote.map((r) => r.toLowerCase())).all<{ ref: string }>().catch(() => ({ results: [] as { ref: string }[] }))).results || [];
     for (const r of rows) rastreado.add(String(r.ref).toLowerCase());
   }
-  return [...consumo.values()].filter((c) => rastreado.has(c.ref.toLowerCase()));
+  // GATE EL: só reserva peça rastreada E da Edição Limitada. Assim a janela de 12h também só abre
+  // quando há peça EL (alvo não-vazio), e carrinho sem EL nunca cria/expira reserva.
+  return [...consumo.values()].filter((c) => rastreado.has(c.ref.toLowerCase()) && ehRefEL(c.ref));
 }
 
 // TRAVA ATÔMICA (Etapa 7) — monta os statements que gravam a reserva de forma SEGURA contra
