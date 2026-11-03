@@ -72,9 +72,11 @@ const inteiro = (v: unknown) => Math.max(0, Math.trunc(Number(v) || 0));
 // avisos (a cada 5 min) manda o lembrete de "~1h antes" para esse número; responder "Sim" prorroga
 // +6h. Não toca em produção, não usa números de clientes/representantes reais.
 integracao.get("/_teste-reserva-whats", async (c) => {
+  // Token SÓ no cabeçalho X-Integracao-Token (nunca na URL — evita vazar em histórico/logs). Chame
+  // pelo console do navegador: fetch('…?tel=…',{headers:{'X-Integracao-Token':'<token staging>'}}).
   const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
-  const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
-  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado", msg: "Token só no cabeçalho X-Integracao-Token." }, 401);
   if (String(c.env.AMBIENTE || "").toLowerCase() !== "staging") return c.json({ error: "somente_staging" }, 403);
   const tel = String(c.req.query("tel") || "").replace(/\D+/g, "");
   if (tel.length < 10) return c.json({ error: "tel_invalido", msg: "Informe ?tel= com DDI+DDD+numero, só dígitos (ex.: 55DDDNÚMERO)." }, 400);
