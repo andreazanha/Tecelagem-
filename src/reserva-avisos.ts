@@ -41,16 +41,11 @@ function fmtBR(ms: number): string {
 // "HH:MM de DD/MM" no fuso de Brasília — exportado p/ a tela (loja) formatar igual ao WhatsApp.
 export { fmtBR };
 
-// Opções de prorrogação VÁLIDAS agora (número fixo → horas), filtradas pelo teto total.
-// Cliente: só 1 prorrogação (nenhuma opção depois disso), teto 24h; rep: teto 48h.
-export function opcoesValidas(ehRep: boolean, iniMs: number, expMs: number, prorr: number): [number, number][] {
-  if (!ehRep && prorr >= 1) return [];
-  const tetoH = ehRep ? 48 : 24;
-  const capAbs = iniMs + tetoH * H;
-  const tabela: [number, number][] = ehRep ? [[1, 6], [2, 12], [3, 18], [4, 24]] : [[1, 6], [2, 12]];
-  return tabela.filter(([, h]) => expMs + h * H <= capAbs + 60000); // 1min de folga
+// Prorrogação UNIFICADA (Reserva EL — Etapa 3): UMA única vez, de +6h, igual para CLIENTE e
+// REPRESENTANTE. Antes de prorrogar há 1 opção (+6h = código 1); depois (prorr>=1) não há nenhuma.
+export function opcoesValidas(prorr: number): [number, number][] {
+  return prorr >= 1 ? [] : [[1, 6]];
 }
-const listaOpcoes = (opts: [number, number][]) => opts.map(([n, h]) => `*${n}* = +${h} horas`).join("\n");
 
 // ── Mensagens ────────────────────────────────────────────────────────────────
 // AVISO DE PROTEÇÃO NOTURNA — enviado uma vez, na criação de um carrinho protegido (o prazo cairia
@@ -64,7 +59,7 @@ function msgAviso2(ehRep: boolean, cliente: string, expMs: number, opts: [number
   const quem = ehRep ? `A reserva do cliente *${cliente}*` : "Sua reserva";
   const base = `⏳ *Big Tricot* — Vencimento da reserva\n\n${quem} vence às *${fmtBR(expMs)}* (horário de Brasília), daqui a cerca de 1 hora.`;
   const extra = opts.length
-    ? `\n\nQuer mais tempo? Responda com o número:\n${listaOpcoes(opts)}\n\nOu finalize o pedido agora para garantir as peças.`
+    ? `\n\nQuer *mais 6 horas*? Responda *Sim*.\nOu finalize o pedido agora para garantir as peças.`
     : `\n\nFinalize o pedido agora para garantir as peças.`;
   return `${base}${extra}\n\n${ASSINATURA}`;
 }
@@ -76,7 +71,7 @@ function msgRecusa(motivo: string, ehRep: boolean, opts: [number, number][], exp
   let corpo: string;
   if (motivo === "ja_prorrogado") corpo = `Esta reserva já foi prorrogada uma vez e não pode ser estendida novamente. Ela vence às *${fmtBR(expMs)}*.`;
   else if (motivo === "expirado") corpo = "Esta reserva já venceu e as peças foram liberadas. Monte o pedido novamente, se desejar. 💛";
-  else corpo = opts.length ? `Opção inválida. Responda com:\n${listaOpcoes(opts)}` : `Não há mais prorrogação disponível. A reserva vence às *${fmtBR(expMs)}*.`;
+  else corpo = opts.length ? `Para ganhar *mais 6 horas*, responda *Sim*.` : `Não há mais prorrogação disponível. A reserva vence às *${fmtBR(expMs)}*.`;
   return `*Big Tricot*\n\n${corpo}\n\n${ASSINATURA}`;
 }
 const msgAmbiguo = () => `*Big Tricot*\n\nVocê tem mais de um carrinho com reserva ativa. Para prorrogar o prazo com segurança, fale com a Big Tricot informando o cliente/pedido. 💛\n\n${ASSINATURA}`;
@@ -122,9 +117,9 @@ export async function prorrogarPedido(env: Env, pedidoId: string, opt: number, e
   const iniMs = fromSql(p.ini), expMs = fromSql(p.exp);
   const ehRep = !!p.vendedor;
   if (iniMs == null || expMs == null || expMs <= Date.now()) return { ok: false, motivo: "expirado", ehRep };
-  const opts = opcoesValidas(ehRep, iniMs, expMs, p.prorr);
+  const opts = opcoesValidas(p.prorr);
   const escolha = opts.find(([n]) => n === opt);
-  if (!escolha) return { ok: false, motivo: (!ehRep && p.prorr >= 1) ? "ja_prorrogado" : "opcao_invalida", expMs, ehRep, opts };
+  if (!escolha) return { ok: false, motivo: p.prorr >= 1 ? "ja_prorrogado" : "opcao_invalida", expMs, ehRep, opts };
   const horas = escolha[1];
   // PROTEÇÃO NOTURNA na prorrogação (Etapa 1): os +Xh partem do vencimento EFETIVO atual; se o novo
   // vencimento cair de madrugada (20h–8h SP), reaplica a proteção (volta para as 10h). Guarda o
@@ -184,7 +179,7 @@ export async function processarAvisosReserva(env: Env, sender: Sender): Promise<
     if (!p.a2 && now >= expMs - H) {
       const r = await env.DB.prepare("UPDATE pedidos SET reserva_aviso2_em=datetime('now'), reserva_aviso_tel=? WHERE id=? AND reserva_aviso2_em IS NULL").bind(dest.tel, p.id).run();
       if (Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) > 0) {
-        const opts = opcoesValidas(dest.ehRep, iniMs, expMs, p.prorr);
+        const opts = opcoesValidas(p.prorr);
         const texto = msgAviso2(dest.ehRep, dest.cliente, expMs, opts);
         await registrar(env, p.id, "aviso2", dest.tel, texto);
         await sender(env, dest.tel, texto).catch(() => {});
@@ -251,9 +246,13 @@ export async function notificarVendedorInterno(env: Env, pedidoId: string, numer
 // (aí o webhook segue o fluxo normal do CRM). Devolve um rótulo quando tratou (aplicou/negou).
 // Segurança: só age se houver UMA oferta ativa (aviso2 enviado, não vencida) PARA ESTE telefone.
 export async function tratarRespostaProrrogacao(env: Env, phone: string, texto: string, sender: Sender): Promise<string | null> {
-  const m = String(texto ?? "").trim().match(/^([1-4])(?:\D|$)/); // opção 1..4 (bare ou "2 por favor")
-  if (!m) return null;
-  const opt = Number(m[1]);
+  // Resposta AFIRMATIVA de prorrogação: aceita "Sim", "1" ou "✅" (bare ou seguidos de texto, ex.:
+  // "Sim, pode"). Só existe UMA opção agora (+6h = código 1), então qualquer afirmativo vale por ela.
+  const raw = String(texto ?? "").trim();
+  const low = raw.toLowerCase();
+  const afirmativo = /^sim\b/.test(low) || /^1\b/.test(low) || raw.startsWith("✅") || raw.startsWith("👍");
+  if (!afirmativo) return null;
+  const opt = 1;
   const pc = core(phone);
   if (pc.length < 7) return null;
   const rows = ((await env.DB.prepare(
