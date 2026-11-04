@@ -75,7 +75,9 @@ export function calcularJanela12h(agoraMs: number = Date.now(), minutos: number 
 // JANELA DE ENVIO (Etapa 2): mensagens PROATIVAS de reserva (lembrete de 1h antes, aviso de
 // proteção noturna) só saem entre 08:00 e 20:00 no fuso de SP. Respostas a mensagens do cliente
 // são tratadas na hora (não passam por aqui).
-export function dentroJanelaEnvio(ms: number = Date.now()): boolean {
+export function dentroJanelaEnvio(ms: number = Date.now(), ini: number = ENVIO_INICIO, fim: number = ENVIO_FIM): boolean {
   const { hora } = partesSP(ms);
-  return hora >= ENVIO_INICIO && hora < ENVIO_FIM;
+  const hi = Number.isFinite(ini) ? ini : ENVIO_INICIO;
+  const hf = Number.isFinite(fim) ? fim : ENVIO_FIM;
+  return hora >= hi && hora < hf;
 }

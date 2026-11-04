@@ -26,12 +26,20 @@ const fromSql = (s: string | null) => (s ? new Date(String(s).replace(" ", "T") 
 
 // Lê um NÚMERO (minutos) da config. Ausente/invalido/erro → o padrão de produção. Nunca lança.
 // Usado para deixar os tempos ajustáveis pela tela (testar rápido e voltar ao normal), sem deploy.
-async function lerNumConfig(env: Env, chave: string, padrao: number): Promise<number> {
+async function lerNumConfig(env: Env, chave: string, padrao: number, minVal = 1): Promise<number> {
   try {
     const r = await env.DB.prepare("SELECT valor FROM config WHERE chave=? LIMIT 1").bind(chave).first<{ valor: string | null }>();
-    const n = Math.trunc(Number(r?.valor));
-    return Number.isFinite(n) && n > 0 ? n : padrao;
+    const bruto = String(r?.valor ?? "").trim();
+    if (bruto === "") return padrao; // chave ausente/vazia → padrão de produção
+    const n = Math.trunc(Number(bruto));
+    return Number.isFinite(n) && n >= minVal ? n : padrao;
   } catch { return padrao; }
+}
+
+// Janela de envio (horas SP) lida da config: envio_hora_ini (padrão 8) / envio_hora_fim (padrão 20).
+// Ajustável pela tela só para TESTE (ex.: 0 e 24); em produção fica 8–20. Aceita 0 (meia-noite).
+async function janelaEnvioConfig(env: Env): Promise<{ ini: number; fim: number }> {
+  return { ini: await lerNumConfig(env, "envio_hora_ini", 8, 0), fim: await lerNumConfig(env, "envio_hora_fim", 20, 0) };
 }
 
 // "HH:MM de DD/MM" no fuso de Brasília.
@@ -165,7 +173,8 @@ export async function processarAvisosReserva(env: Env, sender: Sender): Promise<
   if (!(await flagLigado(env, FLAG_RESERVAS))) return { noturno: 0, aviso2: 0 };
   // JANELA DE ENVIO (Etapa 2): fora de 08:00–20:00 (SP) não dispara nada agora — tenta nos próximos
   // ciclos do cron. (Respostas do cliente são tratadas na hora, por tratarRespostaProrrogacao.)
-  if (!dentroJanelaEnvio()) return { noturno: 0, aviso2: 0 };
+  // A janela é ajustável pela tela (envio_hora_ini/fim) só para teste; padrão 8–20.
+  { const jw = await janelaEnvioConfig(env); if (!dentroJanelaEnvio(Date.now(), jw.ini, jw.fim)) return { noturno: 0, aviso2: 0 }; }
   const now = Date.now();
   type Row = { id: string; vendedor: string; cliente_id: string | null; cliente_nome: string; ini: string | null; exp: string | null; a2: string | null; prorr: number; nut: number; an: string | null };
   const rows = ((await env.DB.prepare(
@@ -216,7 +225,7 @@ export async function processarAvisosReserva(env: Env, sender: Sender): Promise<
 // "aviso_carrinho_ativo" (off por padrão) e pela janela de envio 08h–20h (SP).
 export async function processarCarrinhoAbandonado(env: Env, sender: Sender): Promise<{ enviados: number }> {
   if (!(await flagLigado(env, FLAG_AVISO_CARRINHO))) return { enviados: 0 };
-  if (!dentroJanelaEnvio()) return { enviados: 0 };
+  { const jw = await janelaEnvioConfig(env); if (!dentroJanelaEnvio(Date.now(), jw.ini, jw.fim)) return { enviados: 0 }; }
   // Minutos após criar o carrinho (sem enviar) para disparar o lembrete. Padrão 60; ajustável na tela.
   const mins = await lerNumConfig(env, "aviso_carrinho_minutos", 60);
   const offset = `-${mins} minutes`;
