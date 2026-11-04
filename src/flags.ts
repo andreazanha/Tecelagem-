@@ -16,6 +16,7 @@ import type { Env } from "./index";
 export const FLAG_RESERVAS = "reservas_ativo";    // reserva automática de estoque no carrinho/checkout
 export const FLAG_PCP_POPUP = "pcp_popup_ativo";   // pop-up "Para conferir" no PCP (pedido novo do ERP)
 export const FLAG_CRM_POPUP = "crm_popup_ativo";   // pop-up individual "seu cliente fez um pedido" no CRM
+export const FLAG_AVISO_CARRINHO = "aviso_carrinho_ativo"; // lembrete no WhatsApp ~1h após criar o pedido e NÃO enviar ao ERP
 
 // true SOMENTE quando config.<chave> == "1" (após trim). Qualquer outro caso → false.
 // Nunca lança: em erro de banco, devolve false (desligado) — o lado seguro.

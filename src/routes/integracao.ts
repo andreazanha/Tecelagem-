@@ -2184,6 +2184,21 @@ integracao.post("/pedido-erp-gravado", async (c) => {
   const cod = String(b.cod_cli || "").trim();
   if (cod) stmts.push(c.env.DB.prepare("UPDATE clientes SET codigo_erp=? WHERE id=(SELECT cliente_id FROM pedidos WHERE id=?) AND COALESCE(codigo_erp,'')=''").bind(cod, id));
   await c.env.DB.batch(stmts);
+  // POP-UP "ir conferir no Syntech": no MOMENTO em que a ponte grava o pedido da LOJA no Syntech,
+  // cria UMA notificação para a equipe ir aprovar lá. Gated por "pcp_popup_ativo" (off por padrão).
+  // INSERT OR IGNORE por numero_erp (UNIQUE) → quando o pedido aprovado RETORNA (passo 4 em /pedido),
+  // a segunda inserção é no-op: não duplica o pop-up. Best-effort: nunca afeta a confirmação da ponte.
+  try {
+    if (await flagLigado(c.env, FLAG_PCP_POPUP)) {
+      const p = await c.env.DB.prepare(
+        "SELECT COALESCE(cliente_nome,'') AS cliente_nome, COALESCE(vendedor,'') AS vendedor, (SELECT COALESCE(SUM(qtd),0) FROM pedido_itens WHERE pedido_id=pedidos.id) AS pecas FROM pedidos WHERE id=? AND canal='loja_b2b' LIMIT 1"
+      ).bind(id).first<{ cliente_nome: string; vendedor: string; pecas: number }>().catch(() => null);
+      if (p) {
+        await c.env.DB.prepare("INSERT OR IGNORE INTO pcp_notificacoes (id, numero_erp, cliente_nome, vendedor, pecas) VALUES (?,?,?,?,?)")
+          .bind(uid(), numero, p.cliente_nome || null, p.vendedor || null, Number(p.pecas) || 0).run().catch(() => {});
+      }
+    }
+  } catch { /* pop-up e best-effort; nunca quebra a confirmacao da ponte */ }
   // ETAPA 5 — recebido no Syntech (Evento 1): confirma por WhatsApp UMA vez, ao destinatário certo.
   // Best-effort (waitUntil): falha de WhatsApp NUNCA afeta a confirmação da ponte nem o pedido.
   try { c.executionCtx.waitUntil(avisarRecebidoSyntech(c.env, id, numero, (e, tel, texto) => enviarWhatsapp(e, tel, { tipo: "texto", texto })).then(() => {}).catch(() => {})); } catch { /* ok */ }

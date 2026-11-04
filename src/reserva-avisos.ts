@@ -8,7 +8,7 @@
 //     vencer. (O antigo "1h após criar" foi REMOVIDO.)
 //   • pedido já enviado ao Syntech (sync != rascunho) nunca recebe aviso de reserva.
 import type { Env } from "./index";
-import { flagLigado, FLAG_CRM_POPUP, FLAG_RESERVAS } from "./flags";
+import { flagLigado, FLAG_CRM_POPUP, FLAG_RESERVAS, FLAG_AVISO_CARRINHO } from "./flags";
 import { protegerNoturno, dentroJanelaEnvio } from "./noite";
 
 export type Sender = (env: Env, tel: string, texto: string) => Promise<unknown>;
@@ -75,6 +75,15 @@ function msgRecusa(motivo: string, ehRep: boolean, opts: [number, number][], exp
   return `*Big Tricot*\n\n${corpo}\n\n${ASSINATURA}`;
 }
 const msgAmbiguo = () => `*Big Tricot*\n\nVocê tem mais de um carrinho com reserva ativa. Para prorrogar o prazo com segurança, fale com a Big Tricot informando o cliente/pedido. 💛\n\n${ASSINATURA}`;
+
+// LEMBRETE DE CARRINHO ABANDONADO — ~1h depois de montar o pedido sem enviar ao ERP (fica em
+// rascunho). Gentil, uma única vez. Vale para TODO carrinho (não só ED/KT). Não oferece prazo.
+function msgCarrinhoAbandonado(ehRep: boolean, cliente: string): string {
+  const corpo = ehRep
+    ? `Vimos que o pedido do cliente *${cliente}* começou a ser montado na Big Tricot, mas ainda não foi enviado. 😊\n\nÉ só finalizar o envio para garantir as peças!`
+    : `Vimos que você começou um pedido na Big Tricot, mas ainda não finalizou. 😊\n\nQuer concluir? É só enviar o pedido para garantir as peças! 💛`;
+  return `🛒 *Big Tricot*\n\n${corpo}\n\n${ASSINATURA}`;
+}
 
 async function registrar(env: Env, pedidoId: string, evento: string, tel: string, detalhe: string): Promise<void> {
   try {
@@ -188,6 +197,41 @@ export async function processarAvisosReserva(env: Env, sender: Sender): Promise<
     }
   }
   return { noturno: cn, aviso2: c2 };
+}
+
+// LEMBRETE DE CARRINHO ABANDONADO — roda no mesmo cron. Para TODO carrinho da loja (ED/KT ou não):
+// se o pedido foi montado e NÃO enviado ao ERP (erp_sync_status='rascunho') há ~1 hora, manda UMA
+// mensagem gentil lembrando de concluir. ADICIONAL aos avisos de reserva (não substitui nenhum).
+// Idempotente por aviso_carrinho_em (reclamado de forma atômica antes do envio). Gated por
+// "aviso_carrinho_ativo" (off por padrão) e pela janela de envio 08h–20h (SP).
+export async function processarCarrinhoAbandonado(env: Env, sender: Sender): Promise<{ enviados: number }> {
+  if (!(await flagLigado(env, FLAG_AVISO_CARRINHO))) return { enviados: 0 };
+  if (!dentroJanelaEnvio()) return { enviados: 0 };
+  type Row = { id: string; vendedor: string; cliente_id: string | null; cliente_nome: string };
+  const rows = ((await env.DB.prepare(
+    `SELECT id, COALESCE(vendedor,'') AS vendedor, cliente_id, COALESCE(cliente_nome,'') AS cliente_nome
+       FROM pedidos
+      WHERE canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'
+        AND aviso_carrinho_em IS NULL
+        AND COALESCE(created_at, data_pedido) IS NOT NULL
+        AND COALESCE(created_at, data_pedido) <= datetime('now','-1 hour')
+      ORDER BY created_at LIMIT 30`
+  ).all<Row>().catch(() => ({ results: [] as Row[] }))).results) || [];
+  let n = 0;
+  for (const p of rows) {
+    const dest = await destinoDoPedido(env, p);
+    if (!dest) continue; // sem telefone → não há como avisar (deixa para quando houver, não carimba)
+    // reclama o envio de forma atômica: só o PRIMEIRO cron marca e envia (nunca duplica).
+    const r = await env.DB.prepare(
+      "UPDATE pedidos SET aviso_carrinho_em=datetime('now') WHERE id=? AND canal='loja_b2b' AND erp_sync_status='rascunho' AND aviso_carrinho_em IS NULL"
+    ).bind(p.id).run();
+    if (Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) <= 0) continue;
+    const texto = msgCarrinhoAbandonado(dest.ehRep, dest.cliente);
+    await registrar(env, p.id, "carrinho_abandonado", dest.tel, texto);
+    await sender(env, dest.tel, texto).catch(() => {});
+    n++;
+  }
+  return { enviados: n };
 }
 
 // ETAPA 5 — CONFIRMAÇÃO DE RECEBIMENTO NO SYNTECH (Evento 1).
