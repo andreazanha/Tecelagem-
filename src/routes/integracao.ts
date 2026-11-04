@@ -1084,8 +1084,8 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   // Produtos com código começando em "KT" são PEÇAS/COMPONENTES de kit — não entram
   // no catálogo (o kit "pai" aparece inteiro, com a composição no próprio nome).
   const { results: prodsRaw } = await env.DB.prepare(
-    "SELECT ref, nome, classe, grupo, preco_varejo, preco_atacado, preco_varejo_promo, preco_atacado_promo, estoque_geral, cores, tamanhos FROM erp_produtos WHERE COALESCE(inativo,0)=0 AND UPPER(COALESCE(ref,'')) NOT LIKE 'KT%' ORDER BY nome"
-  ).all<{ ref: string; nome: string | null; classe: string | null; grupo: string | null; preco_varejo: number | null; preco_atacado: number | null; preco_varejo_promo: number | null; preco_atacado_promo: number | null; estoque_geral: number | null; cores: string | null; tamanhos: string | null }>();
+    "SELECT ref, nome, classe, grupo, preco_varejo, preco_atacado, preco_varejo_promo, preco_atacado_promo, COALESCE(desconto_pct,0) AS desconto_pct, estoque_geral, cores, tamanhos FROM erp_produtos WHERE COALESCE(inativo,0)=0 AND UPPER(COALESCE(ref,'')) NOT LIKE 'KT%' ORDER BY nome"
+  ).all<{ ref: string; nome: string | null; classe: string | null; grupo: string | null; preco_varejo: number | null; preco_atacado: number | null; preco_varejo_promo: number | null; preco_atacado_promo: number | null; desconto_pct: number | null; estoque_geral: number | null; cores: string | null; tamanhos: string | null }>();
   // Ignora códigos bichados (com espaço/TAB no ref) — ex.: um duplicado "\tQC107855X35"
   // que o ERP gerou com um TAB grudado no código e polui o catálogo.
   const prods = prodsRaw.filter((p) => { const r = String(p.ref || ""); return r !== "" && !/\s/.test(r); });
@@ -1096,10 +1096,15 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   // Só vale quando há promo < base. Usado SÓ na Edição Limitada (decisão do gestor).
   const descPctPorRef = new Map<string, number>();
   for (const p of prods) {
-    const base = Number(campoPreco === "varejo" ? p.preco_varejo : p.preco_atacado) || 0;
-    const promo = Number(campoPreco === "varejo" ? p.preco_varejo_promo : p.preco_atacado_promo) || 0;
-    const pct = base > 0 && promo > 0 && promo < base ? Math.round((1 - promo / base) * 100) : 0;
-    if (pct > 0) descPctPorRef.set(p.ref, pct);
+    // 1º: o percentual que a ponte manda direto (DESCONTO_AUTO) — robusto mesmo com preço por tamanho.
+    let pct = Math.round(Number(p.desconto_pct) || 0);
+    // 2º (fallback): deriva do preço base vs. promocional do cabeçalho, se a ponte ainda não mandou o %.
+    if (pct <= 0) {
+      const base = Number(campoPreco === "varejo" ? p.preco_varejo : p.preco_atacado) || 0;
+      const promo = Number(campoPreco === "varejo" ? p.preco_varejo_promo : p.preco_atacado_promo) || 0;
+      pct = base > 0 && promo > 0 && promo < base ? Math.round((1 - promo / base) * 100) : 0;
+    }
+    if (pct > 0 && pct < 100) descPctPorRef.set(p.ref, pct);
   }
 
   const idsCor = new Set<string>(), idsTam = new Set<string>();
@@ -2551,6 +2556,7 @@ integracao.post("/produtos", async (c) => {
     ref?: string; nome?: string; unidade?: string; classe?: string; grupo?: string;
     preco_atacado?: number | string; preco_varejo?: number | string;
     preco_atacado_promo?: number | string; preco_varejo_promo?: number | string;
+    desconto_pct?: number | string;
     estoque_geral?: number | string; inativo?: number | string | boolean;
     cores?: unknown; tamanhos?: unknown; data_alt_reg?: string;
   };
@@ -2561,16 +2567,18 @@ integracao.post("/produtos", async (c) => {
   const numOrNull = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
   const stmts = itens.filter((it) => str(it.ref)).map((it) =>
     c.env.DB.prepare(
-      `INSERT INTO erp_produtos (ref, nome, unidade, classe, grupo, preco_atacado, preco_varejo, preco_atacado_promo, preco_varejo_promo, estoque_geral, inativo, cores, tamanhos, data_alt_reg, atualizado_em)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `INSERT INTO erp_produtos (ref, nome, unidade, classe, grupo, preco_atacado, preco_varejo, preco_atacado_promo, preco_varejo_promo, desconto_pct, estoque_geral, inativo, cores, tamanhos, data_alt_reg, atualizado_em)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(ref) DO UPDATE SET nome=excluded.nome, unidade=excluded.unidade, classe=excluded.classe, grupo=excluded.grupo,
          preco_atacado=excluded.preco_atacado, preco_varejo=excluded.preco_varejo,
          preco_atacado_promo=excluded.preco_atacado_promo, preco_varejo_promo=excluded.preco_varejo_promo,
+         desconto_pct=excluded.desconto_pct,
          estoque_geral=excluded.estoque_geral, inativo=excluded.inativo, cores=excluded.cores,
          tamanhos=excluded.tamanhos, data_alt_reg=excluded.data_alt_reg, atualizado_em=datetime('now')`
     ).bind(
       str(it.ref), str(it.nome), str(it.unidade), str(it.classe), str(it.grupo),
       numOrNull(it.preco_atacado), numOrNull(it.preco_varejo), numOrNull(it.preco_atacado_promo), numOrNull(it.preco_varejo_promo),
+      Math.max(0, Number(it.desconto_pct) || 0),
       numOrNull(it.estoque_geral), (it.inativo === 1 || it.inativo === "1" || it.inativo === true || it.inativo === "S") ? 1 : 0,
       JSON.stringify(Array.isArray(it.cores) ? it.cores : []), JSON.stringify(Array.isArray(it.tamanhos) ? it.tamanhos : []),
       str(it.data_alt_reg)
