@@ -24,6 +24,16 @@ const toSqlUTC = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace
 // epoch a partir do texto UTC do banco.
 const fromSql = (s: string | null) => (s ? new Date(String(s).replace(" ", "T") + "Z").getTime() : null);
 
+// Lê um NÚMERO (minutos) da config. Ausente/invalido/erro → o padrão de produção. Nunca lança.
+// Usado para deixar os tempos ajustáveis pela tela (testar rápido e voltar ao normal), sem deploy.
+async function lerNumConfig(env: Env, chave: string, padrao: number): Promise<number> {
+  try {
+    const r = await env.DB.prepare("SELECT valor FROM config WHERE chave=? LIMIT 1").bind(chave).first<{ valor: string | null }>();
+    const n = Math.trunc(Number(r?.valor));
+    return Number.isFinite(n) && n > 0 ? n : padrao;
+  } catch { return padrao; }
+}
+
 // "HH:MM de DD/MM" no fuso de Brasília.
 function fmtBR(ms: number): string {
   try {
@@ -207,6 +217,9 @@ export async function processarAvisosReserva(env: Env, sender: Sender): Promise<
 export async function processarCarrinhoAbandonado(env: Env, sender: Sender): Promise<{ enviados: number }> {
   if (!(await flagLigado(env, FLAG_AVISO_CARRINHO))) return { enviados: 0 };
   if (!dentroJanelaEnvio()) return { enviados: 0 };
+  // Minutos após criar o carrinho (sem enviar) para disparar o lembrete. Padrão 60; ajustável na tela.
+  const mins = await lerNumConfig(env, "aviso_carrinho_minutos", 60);
+  const offset = `-${mins} minutes`;
   type Row = { id: string; vendedor: string; cliente_id: string | null; cliente_nome: string };
   const rows = ((await env.DB.prepare(
     `SELECT id, COALESCE(vendedor,'') AS vendedor, cliente_id, COALESCE(cliente_nome,'') AS cliente_nome
@@ -214,9 +227,9 @@ export async function processarCarrinhoAbandonado(env: Env, sender: Sender): Pro
       WHERE canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'
         AND aviso_carrinho_em IS NULL
         AND COALESCE(created_at, data_pedido) IS NOT NULL
-        AND COALESCE(created_at, data_pedido) <= datetime('now','-1 hour')
+        AND COALESCE(created_at, data_pedido) <= datetime('now', ?)
       ORDER BY created_at LIMIT 30`
-  ).all<Row>().catch(() => ({ results: [] as Row[] }))).results) || [];
+  ).bind(offset).all<Row>().catch(() => ({ results: [] as Row[] }))).results) || [];
   let n = 0;
   for (const p of rows) {
     const dest = await destinoDoPedido(env, p);

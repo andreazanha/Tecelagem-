@@ -65,8 +65,9 @@ export function protegerNoturno(baseMs: number): { exp: number; protegido: boole
 // Janela inicial de 12h (base = agora + 12h) JÁ com proteção noturna aplicada. Devolve os valores
 // prontos para o SQLite: o vencimento EFETIVO, o ORIGINAL (base, antes da proteção, para auditoria)
 // e se a proteção noturna foi aplicada.
-export function calcularJanela12h(agoraMs: number = Date.now()): { expira: string; original: string; noturna: number } {
-  const base = agoraMs + 12 * H;
+export function calcularJanela12h(agoraMs: number = Date.now(), minutos: number = 720): { expira: string; original: string; noturna: number } {
+  const mins = Number.isFinite(minutos) && minutos > 0 ? minutos : 720; // guarda: padrão 12h (720 min)
+  const base = agoraMs + mins * 60000;
   const { exp, protegido } = protegerNoturno(base);
   return { expira: toSqlUTC(exp), original: toSqlUTC(base), noturna: protegido ? 1 : 0 };
 }

@@ -748,7 +748,11 @@ loja.post("/pedido", async (c) => {
   // vencimento EFETIVO vai para as 10h da manhã seguinte. Calculado no SERVIDOR (fuso SP) e gravado
   // como texto UTC. A janela conta enquanto o rascunho estiver ativo e NÃO reinicia ao editar o
   // carrinho (COALESCE preserva início/efetivo/original/flag). Sem itens ou interruptor off → NULL.
-  const jw = calcularJanela12h();
+  // Validade do carrinho/reserva em MINUTOS (padrão 720 = 12h). Ajustável pela tela de Configurações
+  // (chave 'reserva_janela_minutos') para testar rápido e depois voltar ao normal, sem deploy.
+  const jmRow = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='reserva_janela_minutos' LIMIT 1").first<{ valor: string | null }>().catch(() => null);
+  const janelaMin = (() => { const n = Math.trunc(Number(jmRow?.valor)); return Number.isFinite(n) && n > 0 ? n : 720; })();
+  const jw = calcularJanela12h(Date.now(), janelaMin);
   const janelaUpd = abrirJanela
     ? "reserva_responsavel=COALESCE(reserva_responsavel, ?), reserva_iniciada_em=COALESCE(reserva_iniciada_em, datetime('now')), reserva_expira_em=COALESCE(reserva_expira_em, ?), reserva_expira_original=COALESCE(reserva_expira_original, ?), reserva_noturna=CASE WHEN reserva_expira_em IS NULL THEN ? ELSE reserva_noturna END"
     : "reserva_responsavel=NULL, reserva_iniciada_em=NULL, reserva_expira_em=NULL, reserva_expira_original=NULL, reserva_noturna=0";
