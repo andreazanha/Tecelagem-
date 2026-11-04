@@ -885,7 +885,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
     if (!cfg) return;
     setSalvando(true); setMsg("");
     try {
-      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, numero_whatsapp: cfg.numero_whatsapp, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, avisos_pedido_ativo: cfg.avisos_pedido_ativo, ia_prompt: cfg.ia_prompt, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, catalogo_varejo_url: cfg.catalogo_varejo_url, catalogo_varejo_senha: cfg.catalogo_varejo_senha, catalogo_varejo_msg: cfg.catalogo_varejo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, reativacao_ativo: cfg.reativacao_ativo, reativacao_dias: cfg.reativacao_dias, reativacao_limite: cfg.reativacao_limite, reativacao_intervalo_seg: cfg.reativacao_intervalo_seg, reativacao_msg: cfg.reativacao_msg, aniversario_ativo: cfg.aniversario_ativo, aniversario_msg: cfg.aniversario_msg, encerramento_msg: cfg.encerramento_msg, encerramento_ativo: cfg.encerramento_ativo, fechar_inativos_ativo: cfg.fechar_inativos_ativo, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
+      await api.atendSalvarConfig({ zapi_base: cfg.zapi_base, zapi_instance: cfg.zapi_instance, zapi_token: cfg.zapi_token, zapi_client_token: cfg.zapi_client_token, zapi_ativo: cfg.zapi_ativo, numero_whatsapp: cfg.numero_whatsapp, atendimento_ativo: cfg.atendimento_ativo, atendimento_ia: cfg.atendimento_ia, avisos_pedido_ativo: cfg.avisos_pedido_ativo, ia_prompt: cfg.ia_prompt, catalogo_url: cfg.catalogo_url, catalogo_senha: cfg.catalogo_senha, catalogo_msg: cfg.catalogo_msg, catalogo_varejo_url: cfg.catalogo_varejo_url, catalogo_varejo_senha: cfg.catalogo_varejo_senha, catalogo_varejo_msg: cfg.catalogo_varejo_msg, followup_ativo: cfg.followup_ativo, followup_hora_ini: cfg.followup_hora_ini, followup_hora_fim: cfg.followup_hora_fim, followup_domingo: cfg.followup_domingo, followup_ia: cfg.followup_ia, pos_venda_ativo: cfg.pos_venda_ativo, pos_venda_dias: cfg.pos_venda_dias, recompra_ativo: cfg.recompra_ativo, recompra_dias: cfg.recompra_dias, reativacao_ativo: cfg.reativacao_ativo, reativacao_dias: cfg.reativacao_dias, reativacao_limite: cfg.reativacao_limite, reativacao_intervalo_seg: cfg.reativacao_intervalo_seg, reativacao_msg: cfg.reativacao_msg, aniversario_ativo: cfg.aniversario_ativo, aniversario_msg: cfg.aniversario_msg, encerramento_msg: cfg.encerramento_msg, encerramento_ativo: cfg.encerramento_ativo, fechar_inativos_ativo: cfg.fechar_inativos_ativo, reservas_ativo: cfg.reservas_ativo, pcp_popup_ativo: cfg.pcp_popup_ativo, crm_popup_ativo: cfg.crm_popup_ativo, aviso_carrinho_ativo: cfg.aviso_carrinho_ativo, catalogo_evento_token: cfg.catalogo_evento_token, catalogo_log_url: cfg.catalogo_log_url });
       setMsg("✓ Salvo!"); onMudou(); setTimeout(() => setMsg(""), 2500);
     } catch { setMsg("Erro ao salvar."); } finally { setSalvando(false); }
   }
@@ -920,6 +920,23 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
   }
   const copiar = (t: string) => navigator.clipboard?.writeText(t).then(() => { setMsg("Copiado!"); setTimeout(() => setMsg(""), 2000); });
 
+  // Linha de interruptor genérica (liga/desliga uma flag booleana da config). Verde quando ligado.
+  const linhaFlag = (chave: keyof ZapiConfig, titulo: string, descOn: string, descOff: string) => {
+    if (!cfg) return null;
+    const on = cfg[chave] === true;
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginBottom: 10, borderRadius: 10, border: "2px solid " + (on ? "#22c55e" : "#e2e8f0"), background: on ? "#f0fdf4" : "#f8fafc", color: "#1e293b" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 800 }}>{on ? "🟢 " + titulo + " LIGADO" : "⚪ " + titulo + " desligado"}</div>
+          <div style={{ fontSize: 12, color: "#475569" }}>{on ? descOn : descOff}</div>
+        </div>
+        <button type="button" className={"btn " + (on ? "btn-soft" : "btn-primary")} onClick={() => set(chave, !on)}>
+          {on ? "Desligar" : "Ligar"}
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className="modal-card" style={{ maxWidth: 560, width: "min(560px,96vw)" }} onClick={(e) => e.stopPropagation()}>
@@ -946,6 +963,12 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
                 {cfg.avisos_pedido_ativo ? "Desligar" : "Ligar"}
               </button>
             </div>
+            {/* LOJA B2B / RESERVA — interruptores do novo sistema (todos seguros-off por padrão) */}
+            <div style={{ marginTop: 6, marginBottom: 8, paddingTop: 10, borderTop: "1px dashed #e2e8f0", fontWeight: 800, fontSize: 13, color: "#334155" }}>🛒 Loja B2B / Reserva de estoque</div>
+            {linhaFlag("reservas_ativo", "Reserva de estoque (ED/KT)", "O carrinho segura o estoque das peças ED e KT e envia os avisos de reserva no WhatsApp.", "O carrinho não reserva estoque e não envia avisos de reserva.")}
+            {linhaFlag("pcp_popup_ativo", "Pop-up “conferir no Syntech”", "Quando um pedido da loja entra no Syntech, aparece um aviso no sistema para a equipe ir aprovar lá.", "Sem aviso no sistema quando o pedido entra no Syntech.")}
+            {linhaFlag("crm_popup_ativo", "Aviso ao vendedor (CRM)", "O vendedor interno dono da carteira recebe um aviso quando o cliente dele faz um pedido.", "Sem aviso individual para o vendedor.")}
+            {linhaFlag("aviso_carrinho_ativo", "Lembrete de carrinho abandonado", "Se o cliente monta o pedido e não envia, cerca de 1h depois recebe um lembrete no WhatsApp (só das 08h às 20h).", "Sem lembrete de carrinho abandonado.")}
             {/* IA de triagem — atende conversando antes de pedir o CNPJ */}
             <div style={{ padding: "12px 14px", marginBottom: 14, borderRadius: 10, border: "2px solid " + (cfg.atendimento_ia ? "#8b5cf6" : "#e2e8f0"), background: cfg.atendimento_ia ? "#faf5ff" : "#f8fafc", color: "#1e293b" }}>
              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

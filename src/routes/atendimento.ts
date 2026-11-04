@@ -1770,6 +1770,11 @@ atendimento.get("/config", async (c) => {
     encerramento_ativo: (cfg.encerramento_ativo ?? "1") === "1",   // ligado por padrão; desligar = não manda despedida
 
     fechar_inativos_ativo: (cfg.fechar_inativos_ativo ?? "0") === "1",   // desligado por padrão
+    // Interruptores da LOJA B2B / RESERVA (seguros-off: só "1" liga). Ausente = desligado.
+    reservas_ativo: cfg.reservas_ativo === "1",           // reserva de estoque ED/KT + avisos de reserva
+    pcp_popup_ativo: cfg.pcp_popup_ativo === "1",         // pop-up "ir conferir no Syntech"
+    crm_popup_ativo: cfg.crm_popup_ativo === "1",         // pop-up individual "seu cliente fez um pedido"
+    aviso_carrinho_ativo: cfg.aviso_carrinho_ativo === "1", // lembrete de carrinho abandonado (WhatsApp, ~1h)
     catalogo_evento_token: cfg.catalogo_evento_token || "",
     catalogo_evento_url: new URL(c.req.url).origin + "/api/atendimento/catalogo-evento",
     catalogo_log_url: cfg.catalogo_log_url || "",
