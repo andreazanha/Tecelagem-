@@ -1313,8 +1313,10 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   } catch { /* reservas: nunca derruba o catálogo */ }
 
   // EDIÇÃO LIMITADA — capa e almofada são a MESMA peça física (almofada = capa + enchimento):
-  // espelha o saldo entre as refs -C e -A do mesmo modelo (por medida/código + cor, o MAIOR), pra
-  // as duas mostrarem o mesmo número e a trava "compartilha" contar o par uma vez só (igual kit).
+  // CONTROLE PELA CAPA. A almofada avulsa (…A) reserva a capa (…C), então a disponibilidade de
+  // AMBAS é a da CAPA (saldo − reservas, já descontadas acima na ref -C). Espelha o valor da CAPA
+  // para a almofada (não o maior), para a reserva de qualquer um aparecer nas duas. A trava
+  // "compartilha" conta o par uma vez só (igual kit).
   try {
     const elPar = new Map<string, { capa?: string; almo?: string }>();
     for (const p of prods) { const r = (p.ref || "").trim(); if (!/^ED\d/i.test(r)) continue; const e = elPar.get(baseCod(r)) || {}; const lt = tipoLetra(r); if (lt === "C") e.capa = r; else if (lt === "A") e.almo = r; elPar.set(baseCod(r), e); }
@@ -1324,7 +1326,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       for (const med of new Set([...Object.keys(ic), ...Object.keys(ia)])) {
         const mc = ic[med] || {}, ma = ia[med] || {};
         for (const cor of new Set([...Object.keys(mc), ...Object.keys(ma)])) {
-          const sh = Math.max(Number(mc[cor]) || 0, Number(ma[cor]) || 0);
+          const sh = Number(mc[cor]) || 0; // a CAPA manda (controle pela capa)
           (itens[capa] = itens[capa] || {})[med] = itens[capa][med] || {}; itens[capa][med][cor] = sh;
           (itens[almo] = itens[almo] || {})[med] = itens[almo][med] || {}; itens[almo][med][cor] = sh;
         }

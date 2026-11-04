@@ -107,7 +107,13 @@ export async function explodirPedido(env: Env, itens: { ref: string; cor: string
   for (const it of itens) {
     const fis = kits.get(it.ref);
     if (fis && fis.length) { for (const f of fis) add(f.ref, it.cor, f.tam, it.qtd * f.qtd); }
-    else add(it.ref, it.cor, it.tam, it.qtd);
+    else {
+      // EDIÇÃO LIMITADA avulsa: a ALMOFADA (ref …A) consome a MESMA CAPA (…C) — é a mesma peça
+      // física (almofada = capa + enchimento). Controla-se o estoque PELA CAPA, igual aos kits.
+      // Capa e almofada do mesmo modelo usam o mesmo código de tamanho, então mantemos cor/tam.
+      const ref = /^ED\d/i.test(it.ref) && /A$/i.test(it.ref) ? it.ref.replace(/A$/i, "C") : it.ref;
+      add(ref, it.cor, it.tam, it.qtd);
+    }
   }
   return out;
 }
