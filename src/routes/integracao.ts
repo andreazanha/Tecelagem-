@@ -1084,11 +1084,23 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   // Produtos com código começando em "KT" são PEÇAS/COMPONENTES de kit — não entram
   // no catálogo (o kit "pai" aparece inteiro, com a composição no próprio nome).
   const { results: prodsRaw } = await env.DB.prepare(
-    "SELECT ref, nome, classe, grupo, preco_varejo, preco_atacado, estoque_geral, cores, tamanhos FROM erp_produtos WHERE COALESCE(inativo,0)=0 AND UPPER(COALESCE(ref,'')) NOT LIKE 'KT%' ORDER BY nome"
-  ).all<{ ref: string; nome: string | null; classe: string | null; grupo: string | null; preco_varejo: number | null; preco_atacado: number | null; estoque_geral: number | null; cores: string | null; tamanhos: string | null }>();
+    "SELECT ref, nome, classe, grupo, preco_varejo, preco_atacado, preco_varejo_promo, preco_atacado_promo, estoque_geral, cores, tamanhos FROM erp_produtos WHERE COALESCE(inativo,0)=0 AND UPPER(COALESCE(ref,'')) NOT LIKE 'KT%' ORDER BY nome"
+  ).all<{ ref: string; nome: string | null; classe: string | null; grupo: string | null; preco_varejo: number | null; preco_atacado: number | null; preco_varejo_promo: number | null; preco_atacado_promo: number | null; estoque_geral: number | null; cores: string | null; tamanhos: string | null }>();
   // Ignora códigos bichados (com espaço/TAB no ref) — ex.: um duplicado "\tQC107855X35"
   // que o ERP gerou com um TAB grudado no código e polui o catálogo.
   const prods = prodsRaw.filter((p) => { const r = String(p.ref || ""); return r !== "" && !/\s/.test(r); });
+
+  // DESCONTO (promoção) por referência, vindo do Syntech (PRODUTO.PROMOCAO='S' + DESCONTO_AUTO):
+  // a ponte grava o preço já com desconto em preco_*_promo. Aqui derivamos o % (inteiro) a partir
+  // do preço base vs. o preço promocional do MESMO campo que o catálogo exibe (atacado/varejo).
+  // Só vale quando há promo < base. Usado SÓ na Edição Limitada (decisão do gestor).
+  const descPctPorRef = new Map<string, number>();
+  for (const p of prods) {
+    const base = Number(campoPreco === "varejo" ? p.preco_varejo : p.preco_atacado) || 0;
+    const promo = Number(campoPreco === "varejo" ? p.preco_varejo_promo : p.preco_atacado_promo) || 0;
+    const pct = base > 0 && promo > 0 && promo < base ? Math.round((1 - promo / base) * 100) : 0;
+    if (pct > 0) descPctPorRef.set(p.ref, pct);
+  }
 
   const idsCor = new Set<string>(), idsTam = new Set<string>();
   const corPorChave = new Map<string, { id: string; nome: string; hex: string; categoria: string; foto: string }>();
@@ -1214,12 +1226,25 @@ export async function gerarCatalogoSite(env: Env): Promise<{
     // pelo nome do grupo do Syntech — que vinha marcando produto errado como EL. Quem é ED
     // não entra em Pronta Entrega nem nas linhas: vai só pra seção Edição Limitada.
     const isEL = vars.some((v) => /^ED\d/i.test((v.ref || "").trim()));
+    // % de desconto do produto (maior entre as variações). SÓ aplicado na Edição Limitada.
+    const descPct = isEL ? vars.reduce((mx, v) => Math.max(mx, descPctPorRef.get(v.ref) || 0), 0) : 0;
+    // Monta os grupos e, SÓ na Edição Limitada com desconto, embute o preço com desconto em
+    // sul/norte (o preço que o carrinho usa e que vai pro pedido) e guarda o ORIGINAL em
+    // sul0/norte0 (para o site mostrar riscado). Assim o cliente paga o valor com desconto.
+    const gruposBase: { id: string; titulo: string; ref: string; estoque: number; linhas: LinhaEL[]; compartilha: boolean }[] = isEL
+      ? regroupEL(g.base, vars)
+      : vars.map((v) => ({ id: `${g.base}-${v.letra || "x"}`, titulo: TIPO_NOME[v.letra] || "", ref: v.ref, estoque: v.estoque, linhas: v.linhas.slice() as LinhaEL[], compartilha: false }));
+    const fDesc = isEL && descPct > 0 ? 1 - descPct / 100 : 0;
+    const grupos = fDesc > 0
+      ? gruposBase.map((gr) => ({ ...gr, linhas: gr.linhas.map((l) => ({ ...l, sul0: l.sul, norte0: l.norte, sul: Math.round(l.sul * fDesc * 100) / 100, norte: Math.round(l.norte * fDesc * 100) / 100 })) }))
+      : gruposBase;
     return {
       id: g.base,
       nome: g.nome,
       linha: isEL ? "padrao" : sec.linha,
       pronta_entrega: isEL ? false : sec.pronta_entrega,
       _edicao_limitada: isEL,
+      _desc_pct: descPct,
       _kit: false,
       _kitTitulo: "",
       composicao: "100% Poliéster",
@@ -1232,9 +1257,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       blocos: {},
       estoque_geral: vars.reduce((s, v) => s + (Number(v.estoque) || 0), 0),
       cores: [...g.cores.values()],
-      grupos: isEL
-        ? regroupEL(g.base, vars)
-        : vars.map((v) => ({ id: `${g.base}-${v.letra || "x"}`, titulo: TIPO_NOME[v.letra] || "", ref: v.ref, estoque: v.estoque, linhas: v.linhas })),
+      grupos,
     };
   });
 
@@ -1622,6 +1645,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         unificados.push({
           id: "kit-" + grp.fam.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, ""),
           nome: grp.fam, linha: isELkit ? "padrao" : prim.linha, pronta_entrega: isELkit ? false : true, _edicao_limitada: isELkit,
+          _desc_pct: 0, // desconto por enquanto só nos avulsos EL; kits ficam sem riscado
           _kit: true, _kitTitulo: grp.fam, composicao: "", tipo: "avulso", lancamento: false,
           foto: prim.foto, video: "", blocos: {}, estoque_geral: estTotal,
           cores: [...coresMap.values()],
