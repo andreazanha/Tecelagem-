@@ -265,13 +265,17 @@ export async function kitAlertas(env: Env): Promise<KitAlerta[]> {
     for (const cor of cores) {
       const linhas = comps.map((c) => {
         const sld = saldo.get(`${c.ref.toLowerCase()}|${cor.toLowerCase()}|${c.tam.toLowerCase()}`) || 0;
-        return { peca: rotulo(c.ref), saldo: sld, qtd: c.qtd, max: Math.floor(sld / (c.qtd || 1)) };
+        return { peca: rotulo(c.ref), tipo: tipoPeca(nome.get(c.ref) || ""), saldo: sld, qtd: c.qtd, max: Math.floor(sld / (c.qtd || 1)) };
       });
       if (!linhas.length) continue;
       const montaveis = Math.max(0, Math.min(...linhas.map((l) => l.max)));
-      // peças sobrando = saldo que não vira kit por falta de outra peça
-      const sobrando = linhas.map((l) => ({ peca: l.peca, qtd: l.saldo - montaveis * l.qtd })).filter((s) => s.qtd >= 1);
-      if (!sobrando.length) continue; // tudo casado → sem alerta
+      // peças sobrando = saldo que não vira kit por falta de outra peça. CAPA/ALMOFADA que sobra
+      // NÃO fica parada: vira estoque AVULSO (vendida sozinha, regra da loja). Só alerta peça SEM
+      // venda avulsa (ex.: peseira) encalhada por falta de outra — essa sim precisa de reposição.
+      const sobrando = linhas
+        .filter((l) => l.tipo !== "capa" && l.tipo !== "almofada")
+        .map((l) => ({ peca: l.peca, qtd: l.saldo - montaveis * l.qtd })).filter((s) => s.qtd >= 1);
+      if (!sobrando.length) continue; // nada encalhado (fora capa/almofada avulsa) → sem alerta
       const limit = linhas.slice().sort((a, b) => a.max - b.max)[0]; // a peça que trava
       out.push({ kit: `Kit ${pk.familia.charAt(0) + pk.familia.slice(1).toLowerCase()}${pk.variacao ? " " + pk.variacao.charAt(0) + pk.variacao.slice(1).toLowerCase() : ""}`, cor, montaveis, faltando: limit.peca, sobrando });
     }
