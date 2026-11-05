@@ -53,8 +53,16 @@ clientes.get("/", async (c) => {
   const { results: cliAll } = await c.env.DB.prepare(
     "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, loja_regiao, ultima_compra, ultimo_faturamento, prospectado_em, vendedor_interno, origem, codigo_erp, created_at FROM clientes ORDER BY nome"
   ).all<ClienteRow>();
+  // Representantes NÃO são clientes: exclui da lista quem tem o mesmo documento (CPF/CNPJ) de um rep
+  // (ex.: um representante que também se cadastrou como cliente no Syntech).
+  const repDocs = new Set<string>();
+  try {
+    const rd = (await c.env.DB.prepare("SELECT documento FROM representantes WHERE COALESCE(documento,'') <> ''").all<{ documento: string | null }>()).results;
+    for (const r of rd) { const d = String(r.documento || "").replace(/\D/g, ""); if (d.length >= 11) repDocs.add(d); }
+  } catch { /* coluna pode não existir ainda → não filtra */ }
+  const ehRepDoc = (cnpj: string | null | undefined) => { const d = String(cnpj || "").replace(/\D/g, ""); return d.length >= 11 && repDocs.has(d); };
   // Nomes internos (ESTOQUE, OP CONSOLIDADA, REPOSIÇÃO, BIG TRICOT) não são clientes reais.
-  const cli = cliAll.filter((c0) => !ehClienteInterno(c0.nome));
+  const cli = cliAll.filter((c0) => !ehClienteInterno(c0.nome) && !ehRepDoc(c0.cnpj));
   const { results: stats } = await c.env.DB.prepare(
     `SELECT p.cliente_nome AS nome, COUNT(DISTINCT p.id) AS pedidos,
             COALESCE(SUM(i.qtd * i.valor_unit), 0) AS total, MAX(p.data_pedido) AS ultima

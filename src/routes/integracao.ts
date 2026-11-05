@@ -245,6 +245,7 @@ integracao.post("/representantes", async (c) => {
     const email = str(g.email);
     const com = num(g.comissao);
     const uf2 = ufLimpa(g.uf);
+    const doc = soDigitos(g.cpf);   // documento do rep (p/ não confundir com cliente)
     const ativo = ehBloqueado(g.bloqueado) ? 0 : 1;
 
     // 1) já existe rep com esse código? atualiza contatos/comissão/UF (sem renomear).
@@ -254,9 +255,10 @@ integracao.post("/representantes", async (c) => {
          email    = COALESCE(NULLIF(TRIM(COALESCE(email,'')),''), ?),
          ufs      = COALESCE(NULLIF(TRIM(COALESCE(ufs,'')),''), ?),
          comissao = COALESCE(?, comissao),
+         documento = COALESCE(?, documento),
          ativo    = ?
        WHERE codigo_erp = ?`
-    ).bind(wpp, email, uf2, com, ativo, codigo).run();
+    ).bind(wpp, email, uf2, com, doc, ativo, codigo).run();
     if ((up.meta?.changes ?? 0) > 0) { atualizados++; continue; }
 
     // 2) tenta casar com um cadastro existente SEM código, pelo 1º nome (+UF se houver).
@@ -275,25 +277,26 @@ integracao.post("/representantes", async (c) => {
            whatsapp = COALESCE(NULLIF(TRIM(COALESCE(whatsapp,'')),''), ?),
            email    = COALESCE(NULLIF(TRIM(COALESCE(email,'')),''), ?),
            ufs      = COALESCE(NULLIF(TRIM(COALESCE(ufs,'')),''), ?),
-           comissao = COALESCE(?, comissao), ativo = ?
+           comissao = COALESCE(?, comissao), documento = COALESCE(?, documento), ativo = ?
          WHERE id = ?`
-      ).bind(codigo, wpp, email, uf2, com, ativo, alvo.id).run();
+      ).bind(codigo, wpp, email, uf2, com, doc, ativo, alvo.id).run();
       casados++;
       continue;
     }
 
     // 3) sem casamento: cria (ou, se já existir rep com NOME exato, anexa o código sem roubar).
     await c.env.DB.prepare(
-      `INSERT INTO representantes (id, nome, whatsapp, email, ativo, ufs, cidades, comissao, codigo_erp)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO representantes (id, nome, whatsapp, email, ativo, ufs, cidades, comissao, codigo_erp, documento)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(nome) DO UPDATE SET
          codigo_erp = COALESCE(representantes.codigo_erp, excluded.codigo_erp),
          whatsapp   = COALESCE(NULLIF(TRIM(COALESCE(representantes.whatsapp,'')),''), excluded.whatsapp),
          email      = COALESCE(NULLIF(TRIM(COALESCE(representantes.email,'')),''), excluded.email),
          ufs        = COALESCE(NULLIF(TRIM(COALESCE(representantes.ufs,'')),''), excluded.ufs),
          comissao   = COALESCE(excluded.comissao, representantes.comissao),
+         documento  = COALESCE(excluded.documento, representantes.documento),
          ativo      = excluded.ativo`
-    ).bind(uid(), nomeFinal, wpp, email, ativo, uf2, str(g.cidade), com, codigo).run();
+    ).bind(uid(), nomeFinal, wpp, email, ativo, uf2, str(g.cidade), com, codigo, doc).run();
     criados++;
   }
   const tot = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM representantes WHERE COALESCE(codigo_erp,'') <> ''").first<{ n: number }>();
@@ -387,6 +390,12 @@ integracao.post("/clientes-sync", async (c) => {
   const todos = (await c.env.DB.prepare("SELECT id, cnpj, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(whatsapp,'') AS whatsapp, COALESCE(telefone,'') AS telefone, COALESCE(rep_codigo,'') AS rep_codigo FROM clientes").all<CliRow>().catch(() => ({ results: [] as CliRow[] }))).results;
   const porCnpj = new Map<string, CliRow>(), porCod = new Map<string, CliRow>();
   for (const cli of todos) { const d = soDig(cli.cnpj); if (d.length >= 11) porCnpj.set(d, cli); if (cli.codigo_erp) porCod.set(cli.codigo_erp.trim(), cli); }
+  // Documentos dos REPRESENTANTES: quem é rep NÃO entra como cliente (mesmo que exista no Syntech).
+  const repDocs = new Set<string>();
+  try {
+    const rd = (await c.env.DB.prepare("SELECT documento FROM representantes WHERE COALESCE(documento,'') <> ''").all<{ documento: string | null }>().catch(() => ({ results: [] as { documento: string | null }[] }))).results;
+    for (const r of rd) { const d = soDig(r.documento); if (d.length >= 11) repDocs.add(d); }
+  } catch { /* coluna pode nao existir ainda */ }
   const stmts: D1PreparedStatement[] = [];
   let criados = 0, atualizados = 0, casados = 0, pulados = 0;
   const feitos = new Set<string>();
@@ -394,6 +403,7 @@ integracao.post("/clientes-sync", async (c) => {
     const nome = txt(r.nome) || txt(r.razao);
     if (!nome || ehClienteInterno(nome)) { pulados++; continue; }   // nomes internos não entram
     const cnpjD = soDig(r.cnpj);
+    if (cnpjD.length >= 11 && repDocs.has(cnpjD)) { pulados++; continue; }   // é representante, não cliente
     const cod = txt(r.codigo) || txt(r.cod);
     const guia = txt(r.guia);
     const fone = soDig(r.fone) || soDig(r.telefone);
