@@ -968,9 +968,11 @@ loja.get("/pedido-pdf/:id", async (c) => {
     statusLabel,
   }, cores, logoBytes);
   const nomeArq = "pedido-" + String(ped.id).slice(0, 8) + ".pdf";
+  // dl=1 → força o DOWNLOAD direto (sem abrir o visualizador/impressora); senão abre inline.
+  const baixar = !!c.req.query("dl");
   return new Response(bytes, { headers: {
     "Content-Type": "application/pdf",
-    "Content-Disposition": `inline; filename="${nomeArq}"`,
+    "Content-Disposition": `${baixar ? "attachment" : "inline"}; filename="${nomeArq}"`,
     "Cache-Control": "no-store",
   } });
 });
