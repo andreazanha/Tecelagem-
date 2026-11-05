@@ -1105,3 +1105,79 @@ loja.get("/el-diag", async (c) => {
     `<table><thead><tr><th>Modelo</th><th>Peça</th><th>Preço cheio</th><th>Com desconto</th><th>% desc</th><th>Risca?</th></tr></thead><tbody>${rows}</tbody></table>`;
   return new Response(htmlOut, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 });
+
+// DIAGNÓSTICO — POR QUE O AVISO DE WHATSAPP NÃO CHEGA
+// Mostra, sem enviar nada: flags (zapi/reservas/carrinho), janela de envio, tempos,
+// e o estado real dos carrinhos em rascunho da loja (telefone resolvido, mascarado,
+// e se cada lembrete ainda consegue disparar antes do carrinho expirar).
+// Abra: pedidos.bigtricot.com.br/api/loja/wa-diag?k=bt-wadiag
+loja.get("/wa-diag", async (c) => {
+  if (String(c.req.query("k") || "").trim() !== "bt-wadiag") {
+    return new Response("Diagnóstico WhatsApp — abra com a chave: /api/loja/wa-diag?k=bt-wadiag", { status: 403, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
+  const DB = c.env.DB;
+  const cfg = async (chave: string): Promise<string> => ((await DB.prepare("SELECT valor FROM config WHERE chave=? LIMIT 1").bind(chave).first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
+  const num = (s: string, padrao: number) => { const n = Math.trunc(Number(s)); return Number.isFinite(n) ? n : padrao; };
+  const digits = (s: unknown) => String(s ?? "").replace(/\D+/g, "");
+  const mask = (t: string) => { const d = digits(t); return d ? (d.length <= 4 ? d : d.slice(0, 2) + "·····" + d.slice(-4)) + ` (${d.length} díg.)` : "—"; };
+  const esc = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[m] as string));
+  const fromSql = (s: string | null) => (s ? new Date(String(s).replace(" ", "T") + "Z").getTime() : null);
+  const horaSP = () => { try { return Number(new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }).format(new Date()).replace(/\D/g, "")); } catch { return new Date().getUTCHours() - 3; } };
+  const fmtSP = (ms: number | null) => { if (ms == null) return "—"; try { return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(ms)).replace(", ", " "); } catch { return "—"; } };
+
+  const zapi = await cfg("zapi_ativo");
+  const reservas = await cfg("reservas_ativo");
+  const carrinho = await cfg("aviso_carrinho_ativo");
+  const hIni = num(await cfg("envio_hora_ini"), 8), hFim = num(await cfg("envio_hora_fim"), 20);
+  const minCarr = Math.max(1, num(await cfg("aviso_carrinho_minutos"), 60));
+  const hSP = horaSP();
+  const naJanela = hIni <= hFim ? (hSP >= hIni && hSP < hFim) : (hSP >= hIni || hSP < hFim);
+  const now = Date.now();
+
+  type Row = { id: string; numero_loja: number | null; vendedor: string | null; cliente_id: string | null; cliente_nome: string | null; created_at: string | null; data_pedido: string | null; exp: string | null; a2: string | null; ac: string | null; nut: number };
+  const rows = ((await DB.prepare(
+    `SELECT id, numero_loja, COALESCE(vendedor,'') AS vendedor, cliente_id, COALESCE(cliente_nome,'') AS cliente_nome,
+            created_at, data_pedido, reserva_expira_em AS exp, reserva_aviso2_em AS a2, aviso_carrinho_em AS ac, COALESCE(reserva_noturna,0) AS nut
+       FROM pedidos WHERE canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'
+      ORDER BY COALESCE(created_at, data_pedido) DESC LIMIT 12`
+  ).all<Row>().catch(() => ({ results: [] as Row[] }))).results) || [];
+
+  let tr = "";
+  for (const p of rows) {
+    // resolve destino igual ao destinoDoPedido (rep → representantes.whatsapp; senão clientes.whatsapp||telefone)
+    let tel = "", quem = "";
+    if (p.vendedor) { const r = await DB.prepare("SELECT whatsapp FROM representantes WHERE lower(nome)=lower(?) LIMIT 1").bind(p.vendedor).first<{ whatsapp: string | null }>().catch(() => null); tel = digits(r?.whatsapp); quem = "Rep: " + esc(p.vendedor); }
+    else { const r = await DB.prepare("SELECT COALESCE(whatsapp,'') AS w, COALESCE(telefone,'') AS t FROM clientes WHERE id=? LIMIT 1").bind(p.cliente_id).first<{ w: string; t: string }>().catch(() => null); tel = digits(r?.w) || digits(r?.t); quem = "Cliente"; }
+    const criadoMs = fromSql(p.created_at || p.data_pedido), expMs = fromSql(p.exp);
+    const minExpira = expMs ? Math.round((expMs - now) / 60000) : null;
+    const dispAbandono = criadoMs != null ? now >= criadoMs + minCarr * 60000 : false;        // já passou o tempo p/ disparar
+    const abandonoAindaDaTempo = (criadoMs != null && expMs != null) ? (criadoMs + minCarr * 60000) < expMs : true; // dispara ANTES de expirar?
+    const aviso2Elegivel = expMs != null && now >= expMs - 3600000;                              // ~1h antes de vencer
+    // motivos por linha
+    const motivos: string[] = [];
+    if (!tel) motivos.push("❌ SEM TELEFONE no " + (p.vendedor ? "cadastro do representante" : "cadastro do cliente (nosso sistema)"));
+    else if (tel.replace(/^55/, "").length < 10) motivos.push("⚠️ telefone curto (falta DDD/9?)");
+    if (p.ac) motivos.push("carrinho: já avisado " + esc(fmtSP(fromSql(p.ac))));
+    else if (!carrinho) motivos.push("carrinho: flag desligada");
+    else if (!abandonoAindaDaTempo) motivos.push(`carrinho: ⏱ reserva expira antes dos ${minCarr} min → nunca dispara`);
+    else if (!dispAbandono) motivos.push(`carrinho: aguardando (${minCarr} min após criar)`);
+    else motivos.push("carrinho: ✅ pronto p/ disparar no próximo cron");
+    if (p.a2) motivos.push("vencimento: já avisado " + esc(fmtSP(fromSql(p.a2))));
+    else if (!reservas) motivos.push("vencimento: flag reservas desligada");
+    else if (!aviso2Elegivel) motivos.push("vencimento: ainda falta >1h p/ vencer");
+    else motivos.push("vencimento: ✅ elegível (próximo cron, ≤5 min)");
+    tr += `<tr><td>${p.numero_loja ? "#" + p.numero_loja : esc(p.id).slice(0, 8)}</td><td>${quem}<br><small>${esc(p.cliente_nome)}</small></td><td>${esc(mask(tel))}</td><td>${esc(fmtSP(criadoMs))}</td><td>${esc(fmtSP(expMs))}${minExpira != null ? `<br><small>${minExpira} min</small>` : ""}</td><td style="font-size:12.5px">${motivos.map(esc).join("<br>")}</td></tr>`;
+  }
+  if (!rows.length) tr = `<tr><td colspan=6 style="text-align:center;color:#8a8073">Nenhum carrinho em rascunho na loja agora.</td></tr>`;
+
+  const chip = (on: boolean, txt: string) => `<span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:13px;font-weight:700;background:${on ? "#dcfce7" : "#fee2e2"};color:${on ? "#166534" : "#991b1b"}">${on ? "LIGADO" : "DESLIGADO"} · ${txt}</span>`;
+  const html = `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Diagnóstico WhatsApp</title>` +
+    `<style>body{font-family:system-ui,-apple-system,sans-serif;padding:18px;color:#24201d;line-height:1.5}table{border-collapse:collapse;width:100%;max-width:1100px}th,td{border:1px solid #e2ddd3;padding:7px 10px;font-size:13.5px;vertical-align:top}th{background:#f3efe8;text-align:left}h1{font-size:20px}.box{max-width:1100px;background:#fff7ed;border:1px solid #f0d9c4;border-radius:10px;padding:12px 14px;margin:10px 0 16px}.chips>*{margin:3px 6px 3px 0}small{color:#6b6257}</style>` +
+    `<h1>Diagnóstico — avisos de WhatsApp</h1>` +
+    `<div class=box><div class=chips>${chip(zapi === "1", "WhatsApp (zapi_ativo)")} ${chip(reservas === "1", "Avisos de reserva (reservas_ativo)")} ${chip(carrinho === "1", "Carrinho abandonado (aviso_carrinho_ativo)")}</div>` +
+    `<div style="margin-top:10px">⏰ Janela de envio: <b>${hIni}h–${hFim}h</b> · agora em Brasília são <b>${hSP}h</b> → <b>${naJanela ? "✅ DENTRO da janela" : "⛔ FORA da janela (não envia agora)"}</b></div>` +
+    `<div>🛒 Carrinho abandonado dispara <b>${minCarr} min</b> após criar (config <code>aviso_carrinho_minutos</code>).</div>` +
+    `<div style="margin-top:8px;font-size:13px">Para o aviso SAIR: a flag correspondente tem que estar <b>LIGADA</b>, <b>zapi_ativo=1</b>, estar <b>dentro da janela</b>, haver <b>telefone</b> no cadastro (do cliente no nosso sistema, ou do representante) e o lembrete ainda ter <b>tempo de disparar antes do carrinho expirar</b>.</div></div>` +
+    `<table><thead><tr><th>Pedido</th><th>Destino</th><th>Telefone</th><th>Criado</th><th>Expira</th><th>Situação dos lembretes</th></tr></thead><tbody>${tr}</tbody></table>`;
+  return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+});
