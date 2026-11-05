@@ -266,7 +266,7 @@ function LojaB2B() {
         reservas_ativo: cfg.reservas_ativo, pcp_popup_ativo: cfg.pcp_popup_ativo, crm_popup_ativo: cfg.crm_popup_ativo,
         aviso_carrinho_ativo: cfg.aviso_carrinho_ativo, aviso_carrinho_minutos: cfg.aviso_carrinho_minutos,
         reserva_janela_minutos: cfg.reserva_janela_minutos, envio_hora_ini: cfg.envio_hora_ini, envio_hora_fim: cfg.envio_hora_fim,
-        desc_el_pct: cfg.desc_el_pct,
+        desc_el_pct: cfg.desc_el_pct, wa_teste_numero: cfg.wa_teste_numero,
       });
       setMsg("✓ Salvo! Atualize a loja (Ctrl+F5) pra ver."); setTimeout(() => setMsg(""), 3000);
     } catch { setMsg("Não consegui salvar."); } finally { setSalvando(false); }
@@ -311,6 +311,14 @@ function LojaB2B() {
         <label style={{ flex: "1 1 120px" }}><span style={lbl}>…até as (h)</span>
           <input type="number" min={1} max={24} value={cfg.envio_hora_fim} onChange={(e) => set("envio_hora_fim", e.target.value)} style={inp} placeholder="20" /></label>
         <div style={{ flexBasis: "100%", fontSize: 11, color: "#9a9185" }}>Padrão: 60 min (lembrete), 720 min = 12h (validade), envio 8h–20h. Para testar fora do horário, use 0 e 24; depois volte para 8 e 20.</div>
+      </div>
+      {/* NÚMERO DE TESTE: quando preenchido, TODO aviso da loja vai pra ele (ignora o cadastro). */}
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", padding: "12px 14px", marginBottom: 10, borderRadius: 10, border: "2px solid " + ((cfg.wa_teste_numero || "").replace(/\D/g, "").length >= 10 ? "#2563eb" : "#e2e8f0"), background: (cfg.wa_teste_numero || "").replace(/\D/g, "").length >= 10 ? "#eff6ff" : "#fbfaf7" }}>
+        <div style={{ flex: "1 1 240px" }}>
+          <div style={{ fontWeight: 700 }}>🧪 Número de teste do WhatsApp {(cfg.wa_teste_numero || "").replace(/\D/g, "").length >= 10 ? "— ATIVO" : ""}</div>
+          <div style={{ fontSize: 12, color: "#6b645a" }}>Se preencher, <b>todos os avisos da loja</b> (carrinho abandonado, reserva vencendo) vão pra esse número, <b>ignorando o cadastro do cliente</b>. Serve pra testar. <b>Deixe vazio em produção.</b></div>
+        </div>
+        <input value={cfg.wa_teste_numero || ""} onChange={(e) => set("wa_teste_numero", e.target.value)} style={{ ...inp, flex: "0 0 200px" }} placeholder="(31) 9 9999-9999" inputMode="tel" />
       </div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14 }}>
         <button onClick={salvar} disabled={salvando} style={btnPri}>{salvando ? "Salvando…" : "Salvar"}</button>

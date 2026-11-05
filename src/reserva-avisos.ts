@@ -113,13 +113,19 @@ async function registrar(env: Env, pedidoId: string, evento: string, tel: string
 // Destinatário do aviso: representante (por nome) quando é pedido de rep; senão o cliente.
 async function destinoDoPedido(env: Env, p: { vendedor: string; cliente_id: string | null; cliente_nome: string }):
   Promise<{ tel: string; ehRep: boolean; cliente: string } | null> {
+  // NÚMERO DE TESTE: se a chave de config 'wa_teste_numero' tiver um número válido, TODO aviso da
+  // loja vai pra ele (ignora o cadastro) — serve pra validar o WhatsApp sem mexer em cliente real.
+  // Vazio → comportamento normal (número do representante ou do cliente).
+  const tr = await env.DB.prepare("SELECT valor FROM config WHERE chave='wa_teste_numero' LIMIT 1").first<{ valor: string | null }>().catch(() => null);
+  const teste = digits(tr?.valor);
+  const usarTeste = teste.replace(/^55/, "").length >= 10;
   if (p.vendedor) {
     const rep = await env.DB.prepare("SELECT whatsapp FROM representantes WHERE lower(nome)=lower(?) LIMIT 1").bind(p.vendedor).first<{ whatsapp: string | null }>().catch(() => null);
-    const tel = digits(rep?.whatsapp);
+    const tel = usarTeste ? teste : digits(rep?.whatsapp);
     return tel ? { tel, ehRep: true, cliente: p.cliente_nome } : null;
   }
   const cli = await env.DB.prepare("SELECT COALESCE(whatsapp,'') AS w, COALESCE(telefone,'') AS t, COALESCE(nome,'') AS nome FROM clientes WHERE id=? LIMIT 1").bind(p.cliente_id).first<{ w: string; t: string; nome: string }>().catch(() => null);
-  const tel = digits(cli?.w) || digits(cli?.t);
+  const tel = usarTeste ? teste : (digits(cli?.w) || digits(cli?.t));
   return tel ? { tel, ehRep: false, cliente: cli?.nome || p.cliente_nome } : null;
 }
 

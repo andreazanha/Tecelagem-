@@ -1780,6 +1780,7 @@ atendimento.get("/config", async (c) => {
     envio_hora_ini: cfg.envio_hora_ini || "8",                    // janela de envio das mensagens proativas (início)
     envio_hora_fim: cfg.envio_hora_fim || "20",                   // janela de envio das mensagens proativas (fim)
     desc_el_pct: cfg.desc_el_pct || "0",                          // desconto manual da Edição Limitada (%) no catálogo
+    wa_teste_numero: cfg.wa_teste_numero || "",                   // se preenchido, TODO aviso da loja vai pra esse número (teste)
     catalogo_evento_token: cfg.catalogo_evento_token || "",
     catalogo_evento_url: new URL(c.req.url).origin + "/api/atendimento/catalogo-evento",
     catalogo_log_url: cfg.catalogo_log_url || "",
@@ -1790,7 +1791,7 @@ atendimento.get("/config", async (c) => {
 atendimento.post("/config", async (c) => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const pares: [string, string][] = [];
-  for (const k of [...ZAPI_CHAVES, "numero_whatsapp", "atendimento_ativo", "atendimento_ia", "avisos_pedido_ativo", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "catalogo_varejo_url", "catalogo_varejo_senha", "catalogo_varejo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "encerramento_ativo", "fechar_inativos_ativo", "catalogo_evento_token", "catalogo_log_url", "reserva_teste_fwd", "reservas_ativo", "pcp_popup_ativo", "crm_popup_ativo", "aviso_carrinho_ativo", "aviso_carrinho_minutos", "reserva_janela_minutos", "envio_hora_ini", "envio_hora_fim", "desc_el_pct"] as const) {
+  for (const k of [...ZAPI_CHAVES, "numero_whatsapp", "atendimento_ativo", "atendimento_ia", "avisos_pedido_ativo", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "catalogo_varejo_url", "catalogo_varejo_senha", "catalogo_varejo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "encerramento_ativo", "fechar_inativos_ativo", "catalogo_evento_token", "catalogo_log_url", "reserva_teste_fwd", "reservas_ativo", "pcp_popup_ativo", "crm_popup_ativo", "aviso_carrinho_ativo", "aviso_carrinho_minutos", "reserva_janela_minutos", "envio_hora_ini", "envio_hora_fim", "desc_el_pct", "wa_teste_numero"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
       pares.push([k, v]);
