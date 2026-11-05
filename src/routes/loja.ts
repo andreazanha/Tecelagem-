@@ -1133,10 +1133,12 @@ loja.get("/wa-diag", async (c) => {
   const hSP = horaSP();
   const naJanela = hIni <= hFim ? (hSP >= hIni && hSP < hFim) : (hSP >= hIni || hSP < hFim);
   const now = Date.now();
+  const agoraSP = (() => { try { return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date()); } catch { return `${hSP}h`; } })();
+  const agoraUTC = (() => { try { return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", hour: "2-digit", minute: "2-digit" }).format(new Date()); } catch { return ""; } })();
 
-  type Row = { id: string; numero_loja: number | null; vendedor: string | null; cliente_id: string | null; cliente_nome: string | null; created_at: string | null; data_pedido: string | null; exp: string | null; a2: string | null; ac: string | null; nut: number };
+  type Row = { id: string; erp_numero: number | null; vendedor: string | null; cliente_id: string | null; cliente_nome: string | null; created_at: string | null; data_pedido: string | null; exp: string | null; a2: string | null; ac: string | null; nut: number };
   const rows = ((await DB.prepare(
-    `SELECT id, numero_loja, COALESCE(vendedor,'') AS vendedor, cliente_id, COALESCE(cliente_nome,'') AS cliente_nome,
+    `SELECT id, erp_numero, COALESCE(vendedor,'') AS vendedor, cliente_id, COALESCE(cliente_nome,'') AS cliente_nome,
             created_at, data_pedido, reserva_expira_em AS exp, reserva_aviso2_em AS a2, aviso_carrinho_em AS ac, COALESCE(reserva_noturna,0) AS nut
        FROM pedidos WHERE canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'
       ORDER BY COALESCE(created_at, data_pedido) DESC LIMIT 12`
@@ -1166,7 +1168,7 @@ loja.get("/wa-diag", async (c) => {
     else if (!reservas) motivos.push("vencimento: flag reservas desligada");
     else if (!aviso2Elegivel) motivos.push("vencimento: ainda falta >1h p/ vencer");
     else motivos.push("vencimento: ✅ elegível (próximo cron, ≤5 min)");
-    tr += `<tr><td>${p.numero_loja ? "#" + p.numero_loja : esc(p.id).slice(0, 8)}</td><td>${quem}<br><small>${esc(p.cliente_nome)}</small></td><td>${esc(mask(tel))}</td><td>${esc(fmtSP(criadoMs))}</td><td>${esc(fmtSP(expMs))}${minExpira != null ? `<br><small>${minExpira} min</small>` : ""}</td><td style="font-size:12.5px">${motivos.map(esc).join("<br>")}</td></tr>`;
+    tr += `<tr><td>${p.erp_numero ? "#" + p.erp_numero : esc(p.id).slice(0, 8)}</td><td>${quem}<br><small>${esc(p.cliente_nome)}</small></td><td>${esc(mask(tel))}</td><td>${esc(fmtSP(criadoMs))}</td><td>${esc(fmtSP(expMs))}${minExpira != null ? `<br><small>${minExpira} min</small>` : ""}</td><td style="font-size:12.5px">${motivos.map(esc).join("<br>")}</td></tr>`;
   }
   if (!rows.length) tr = `<tr><td colspan=6 style="text-align:center;color:#8a8073">Nenhum carrinho em rascunho na loja agora.</td></tr>`;
 
@@ -1175,7 +1177,7 @@ loja.get("/wa-diag", async (c) => {
     `<style>body{font-family:system-ui,-apple-system,sans-serif;padding:18px;color:#24201d;line-height:1.5}table{border-collapse:collapse;width:100%;max-width:1100px}th,td{border:1px solid #e2ddd3;padding:7px 10px;font-size:13.5px;vertical-align:top}th{background:#f3efe8;text-align:left}h1{font-size:20px}.box{max-width:1100px;background:#fff7ed;border:1px solid #f0d9c4;border-radius:10px;padding:12px 14px;margin:10px 0 16px}.chips>*{margin:3px 6px 3px 0}small{color:#6b6257}</style>` +
     `<h1>Diagnóstico — avisos de WhatsApp</h1>` +
     `<div class=box><div class=chips>${chip(zapi === "1", "WhatsApp (zapi_ativo)")} ${chip(reservas === "1", "Avisos de reserva (reservas_ativo)")} ${chip(carrinho === "1", "Carrinho abandonado (aviso_carrinho_ativo)")}</div>` +
-    `<div style="margin-top:10px">⏰ Janela de envio: <b>${hIni}h–${hFim}h</b> · agora em Brasília são <b>${hSP}h</b> → <b>${naJanela ? "✅ DENTRO da janela" : "⛔ FORA da janela (não envia agora)"}</b></div>` +
+    `<div style="margin-top:10px">⏰ Janela de envio: <b>${hIni}h–${hFim}h</b> · agora em Brasília são <b>${agoraSP}</b> (UTC ${agoraUTC}) → <b>${naJanela ? "✅ DENTRO da janela" : "⛔ FORA da janela (não envia agora)"}</b></div>` +
     `<div>🛒 Carrinho abandonado dispara <b>${minCarr} min</b> após criar (config <code>aviso_carrinho_minutos</code>).</div>` +
     `<div style="margin-top:8px;font-size:13px">Para o aviso SAIR: a flag correspondente tem que estar <b>LIGADA</b>, <b>zapi_ativo=1</b>, estar <b>dentro da janela</b>, haver <b>telefone</b> no cadastro (do cliente no nosso sistema, ou do representante) e o lembrete ainda ter <b>tempo de disparar antes do carrinho expirar</b>.</div></div>` +
     `<table><thead><tr><th>Pedido</th><th>Destino</th><th>Telefone</th><th>Criado</th><th>Expira</th><th>Situação dos lembretes</th></tr></thead><tbody>${tr}</tbody></table>`;
