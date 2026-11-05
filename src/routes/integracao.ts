@@ -1242,9 +1242,23 @@ export async function gerarCatalogoSite(env: Env): Promise<{
     const gruposBase: { id: string; titulo: string; ref: string; estoque: number; linhas: LinhaEL[]; compartilha: boolean }[] = isEL
       ? regroupEL(g.base, vars)
       : vars.map((v) => ({ id: `${g.base}-${v.letra || "x"}`, titulo: TIPO_NOME[v.letra] || "", ref: v.ref, estoque: v.estoque, linhas: v.linhas.slice() as LinhaEL[], compartilha: false }));
-    const fDesc = isEL && descPct > 0 ? 1 - descPct / 100 : 0;
-    const grupos = fDesc > 0
-      ? gruposBase.map((gr) => ({ ...gr, linhas: gr.linhas.map((l) => ({ ...l, sul0: l.sul, norte0: l.norte, sul: Math.round(l.sul * fDesc * 100) / 100, norte: Math.round(l.norte * fDesc * 100) / 100 })) }))
+    // DESCONTO EL: incide SÓ sobre a CAPA. O ENCHIMENTO (que no Syntech não tem valor próprio) é
+    // derivado como (almofada − capa) e fica CHEIO. Ex.: capa 63, almofada 86 → enchimento 23; com
+    // 50% → capa 31,50 e almofada = 86 − 63×50% = 54,50. Peseiras/mantas (peça única) levam o
+    // desconto cheio. Guarda sul0/norte0 (preço cheio) para o site mostrar riscado.
+    const descFrac = isEL && descPct > 0 ? descPct / 100 : 0;
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const grupos = descFrac > 0
+      ? gruposBase.map((gr) => {
+        const capaL = gr.linhas.find((l) => /sem enchimento/i.test(l.rotulo || ""));
+        const capaSul = capaL ? capaL.sul : 0, capaNorte = capaL ? capaL.norte : 0;
+        return { ...gr, linhas: gr.linhas.map((l) => {
+          const ehAlmofada = !!capaL && l !== capaL && /com enchimento/i.test(l.rotulo || "");
+          const sul = ehAlmofada ? r2(l.sul - capaSul * descFrac) : r2(l.sul * (1 - descFrac));
+          const norte = ehAlmofada ? r2(l.norte - capaNorte * descFrac) : r2(l.norte * (1 - descFrac));
+          return { ...l, sul0: l.sul, norte0: l.norte, sul, norte };
+        }) };
+      })
       : gruposBase;
     return {
       id: g.base,
