@@ -448,12 +448,12 @@ loja.get("/rep-pedidos", async (c) => {
   const { results: peds } = await c.env.DB.prepare(
     `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.valor_total, p.created_at,
             COALESCE(p.erp_sync_status,'pendente') AS sync, COALESCE(p.erp_liberado,0) AS liberado,
-            COALESCE(p.loja_forma_desc,'') AS forma, p.erp_numero,
+            COALESCE(p.loja_forma_desc,'') AS forma, p.erp_numero, p.reserva_expira_em AS expira_em,
             (SELECT COALESCE(SUM(qtd),0) FROM pedido_itens WHERE pedido_id=p.id) AS pecas
        FROM pedidos p
       WHERE p.canal='loja_b2b' AND TRIM(LOWER(COALESCE(p.vendedor,''))) = TRIM(LOWER(?))
       ORDER BY p.created_at DESC LIMIT 100`
-  ).bind(rep.nome).all<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; valor_total: number | null; created_at: string | null; sync: string; liberado: number; forma: string; erp_numero: number | null; pecas: number }>();
+  ).bind(rep.nome).all<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; valor_total: number | null; created_at: string | null; sync: string; liberado: number; forma: string; erp_numero: number | null; expira_em: string | null; pecas: number }>();
   const pedidos = (peds || []).map((p) => {
     let status: string, label: string;
     if (p.sync === "rascunho") { status = "espera"; label = "Em espera"; }
@@ -464,6 +464,8 @@ loja.get("/rep-pedidos", async (c) => {
     return {
       id: p.id, cliente: p.cliente_nome, cnpj: p.cliente_cnpj, data: p.created_at,
       total: p.valor_total, pecas: Number(p.pecas) || 0, forma: p.forma,
+      // expira_em só faz sentido pro 'em espera' (rascunho com reserva ativa) — igual ao cliente.
+      expira_em: p.sync === "rascunho" ? (p.expira_em || "") : "",
       status, label, editavel: p.sync === "rascunho",
     };
   });

@@ -2068,9 +2068,11 @@
     box.innerHTML=REP_PED_LISTA.map(function(p){
       var dt=fmtDataCurta(p.data);
       var resumo=(p.pecas||0)+" peça"+((p.pecas===1)?"":"s")+" · "+brl(p.total||0)+(dt?(" · "+dt):"");
+      // Em espera (rascunho com reserva ativa): mostra "⏳ expira em Xh Ym", igual ao cliente.
+      var exp = (p.status==="espera") ? __expiraTxt(p.expira_em) : "";
       return '<div class="rped">'+
         '<button class="rped-h" onclick="__repAbrirPedido(\''+esc(p.id)+'\')">'+
-          '<span class="rped-hi"><span class="rped-cli">'+esc(p.cliente||"(cliente)")+'</span><span class="rped-res">'+esc(resumo)+'</span></span>'+
+          '<span class="rped-hi"><span class="rped-cli">'+esc(p.cliente||"(cliente)")+'</span><span class="rped-res">'+esc(resumo)+(exp?' · <b style="color:#b45309">⏳ '+esc(exp)+'</b>':'')+'</span></span>'+
           chipPed(p.status,p.label)+'<span class="rped-chev">'+chevSvg()+'</span>'+
         '</button>'+
       '</div>';
