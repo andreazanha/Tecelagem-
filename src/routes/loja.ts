@@ -1027,10 +1027,10 @@ loja.get("/meus-pedidos", async (c) => {
   const cnpj = soDigitos(c.req.query("cnpj"));
   if (cnpj.length < 11) return c.json({ erro: "cnpj_invalido", msg: "CNPJ inválido." }, 400);
   const { results: peds } = await c.env.DB.prepare(
-    "SELECT id, erp_numero, valor_total, data_pedido, created_at, COALESCE(cliente_nome,'') AS cliente_nome, COALESCE(erp_sync_status,'pendente') AS sync " +
+    "SELECT id, erp_numero, valor_total, data_pedido, created_at, reserva_expira_em, COALESCE(cliente_nome,'') AS cliente_nome, COALESCE(erp_sync_status,'pendente') AS sync " +
     "FROM pedidos WHERE canal='loja_b2b' AND REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cliente_cnpj,''),'.',''),'/',''),'-',''),' ','') = ? " +
     "ORDER BY created_at DESC LIMIT 60"
-  ).bind(cnpj).all<{ id: string; erp_numero: number | null; valor_total: number | null; data_pedido: string | null; created_at: string | null; cliente_nome: string; sync: string }>();
+  ).bind(cnpj).all<{ id: string; erp_numero: number | null; valor_total: number | null; data_pedido: string | null; created_at: string | null; reserva_expira_em: string | null; cliente_nome: string; sync: string }>();
   if (!peds.length) return c.json({ pedidos: [] });
   // Nome do cliente dono do CNPJ (fantasia > razão social do cadastro) — pro rep identificar.
   const cliCad = await c.env.DB.prepare(
@@ -1049,11 +1049,12 @@ loja.get("/meus-pedidos", async (c) => {
     a.push({ produto: it.produto, ref: it.ref, cor: it.cor_grade, tamanho: it.tamanho, qtd: it.qtd, valor_unit: it.valor_unit });
     porPed.set(it.pedido_id, a);
   }
-  // Status REAL do nosso fluxo (não inventa etapas): enviado→em produção, erro→em
-  // processamento, resto→recebido. 'status' é a chave pra cor; 'status_label' o texto.
-  const statusKey = (sync: string) => sync === "enviado" ? "producao" : sync === "erro" ? "processando" : "recebido";
+  // Status REAL do nosso fluxo (não inventa etapas): rascunho→carrinho não finalizado,
+  // enviado→confirmado, erro→em processamento, resto→recebido. 'status' é a chave pra cor.
+  const statusKey = (sync: string) => sync === "rascunho" ? "aberto" : sync === "enviado" ? "producao" : sync === "erro" ? "processando" : "recebido";
   // "enviado" = está no Syntech como orçamento (aguardando a Big aprovar lá) — NÃO é "produção".
-  const statusLabel = (st: string) => st === "producao" ? "Confirmado" : st === "processando" ? "Em processamento" : "Pedido recebido";
+  // "aberto" = carrinho que o cliente montou e NÃO finalizou (expira sozinho; não é pedido feito).
+  const statusLabel = (st: string) => st === "aberto" ? "Carrinho não finalizado" : st === "producao" ? "Confirmado" : st === "processando" ? "Em processamento" : "Pedido recebido";
   const pedidos = peds.map((p) => {
     const its = porPed.get(p.id) || [];
     const st = statusKey(p.sync);
@@ -1062,6 +1063,7 @@ loja.get("/meus-pedidos", async (c) => {
       cliente: clienteCad || String(p.cliente_nome || "").trim(),
       pecas: its.reduce((s, it) => s + (Number(it.qtd) || 0), 0),
       status: st, status_label: statusLabel(st),
+      expira_em: st === "aberto" ? (p.reserva_expira_em || null) : null,
       situacao: statusLabel(st) + (p.erp_numero ? " · nº " + p.erp_numero : ""),
       itens: its,
     };

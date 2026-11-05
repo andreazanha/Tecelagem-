@@ -170,6 +170,8 @@
   .mp-badge.entregue{background:#ede9fe; color:#5b21b6} .mp-badge.entregue .dot{background:#7c3aed}
   .mp-badge.cancelado{background:#fee2e2; color:#991b1b} .mp-badge.cancelado .dot{background:#dc2626}
   .mp-badge.processando,.mp-badge.recebido{background:#eef2f7; color:#475569} .mp-badge.processando .dot,.mp-badge.recebido .dot{background:#94a3b8}
+  .mp-badge.aberto{background:#fef3c7; color:#92610a} .mp-badge.aberto .dot{background:#f59e0b}
+  .mp-l2 .mp-exp{color:#b45309; font-weight:600}
   /* ---- Detalhe do pedido (popup grande do "Meus pedidos") ---- */
   .mp-card.mp-thin{display:block; width:100%; text-align:left; cursor:pointer; padding:12px 14px; font:inherit; color:inherit}
   .mp-thin .mp-chev{transform:rotate(-90deg)}
@@ -1409,6 +1411,14 @@
   };
   var MEUS_PEDS=[], MEUS_CNPJ="";
   function fmtCnpjBr(s){ var d=String(s||"").replace(/\D+/g,""); return d.length===14? d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,"$1.$2.$3/$4-$5") : (s||""); }
+  // "expira em Xh Ym" a partir do reserva_expira_em (UTC) do carrinho não finalizado.
+  function __expiraTxt(iso){
+    if(!iso) return "";
+    var d=new Date(String(iso).replace(" ","T")+"Z"); if(isNaN(d.getTime())) return "";
+    var ms=d.getTime()-Date.now(); if(ms<=0) return "reserva expirada";
+    var min=Math.floor(ms/60000), h=Math.floor(min/60), m=min%60;
+    return "expira em "+(h>0?(h+"h"+(m<10?"0":"")+m):(m+" min"));
+  }
   // Lista FINA: cada pedido é um cartão enxuto; clicar abre o popup grande com o detalhe.
   function renderMeus(peds){
     MEUS_PEDS=peds||[];
@@ -1417,7 +1427,9 @@
     var html=peds.map(function(p,ix){
       var data=fmtDataHora(p.data);
       var pecas=Number(p.pecas)||0;
-      var numTxt = p.numero ? ('Pedido nº '+p.numero) : 'Pedido';
+      var aberto = p.status==='aberto';
+      var numTxt = aberto ? 'Carrinho' : (p.numero ? ('Pedido nº '+p.numero) : 'Pedido');
+      var exp = aberto ? __expiraTxt(p.expira_em) : "";
       return '<button class="mp-card mp-thin" onclick="__abrirPedido('+ix+')">'+
           '<div class="mp-l1">'+
             '<span class="mp-badge '+esc(p.status||'recebido')+'"><span class="dot"></span>'+esc(p.status_label||p.situacao||"")+'</span>'+
@@ -1425,7 +1437,7 @@
             '<span class="mp-chev">'+chevSvg()+'</span>'+
           '</div>'+
           '<div class="mp-cli">'+esc(p.cliente||"Cliente não identificado")+'</div>'+
-          '<div class="mp-l2"><span class="mp-dt">'+esc(data)+'</span><span class="mp-sep">·</span><span>'+pecas+' '+(pecas===1?'peça':'peças')+'</span><span class="mp-tot">'+brl(p.total)+'</span></div>'+
+          '<div class="mp-l2"><span class="mp-dt">'+esc(data)+'</span><span class="mp-sep">·</span><span>'+pecas+' '+(pecas===1?'peça':'peças')+'</span>'+(exp?'<span class="mp-sep">·</span><span class="mp-exp">⏳ '+esc(exp)+'</span>':'')+'<span class="mp-tot">'+brl(p.total)+'</span></div>'+
       '</button>';
     }).join("");
     pane.innerHTML=cabMeus()+'<div class="itens">'+html+'</div>';
@@ -1493,8 +1505,8 @@
     return '<div class="pd2-top">'+
         '<span class="pd2-logobox"><img class="pd2-logo" src="/logo-bt-mark.png" alt="Big Tricot"></span>'+
         '<div class="pd2-sep"></div><div class="pd2-title">Detalhe do Pedido</div>'+
-        '<div class="pd2-hr"><div class="pd2-hr-top">Pedido nº '+esc(o.numero)+' <span class="pd2-badge '+esc(o.badgeCls||"info")+'">'+check+esc(o.statusLabel||"")+'</span></div>'+
-          '<div class="pd2-hr-meta">'+(o.cliente?(esc(o.cliente)+' · '):'')+(o.cnpj?('CNPJ '+esc(o.cnpj)+' · '):'')+esc(o.data||"")+'</div></div>'+
+        '<div class="pd2-hr"><div class="pd2-hr-top">'+esc(o.numeroTxt||('Pedido nº '+o.numero))+' <span class="pd2-badge '+esc(o.badgeCls||"info")+'">'+check+esc(o.statusLabel||"")+'</span></div>'+
+          '<div class="pd2-hr-meta">'+(o.cliente?(esc(o.cliente)+' · '):'')+(o.cnpj?('CNPJ '+esc(o.cnpj)+' · '):'')+esc(o.data||"")+(o.expira?(' · ⏳ '+esc(o.expira)):'')+'</div></div>'+
         '<button class="pd2-x" onclick="__fecharPed()" aria-label="Fechar">✕</button>'+
       '</div>'+
       '<div class="pd2-scroll">'+(cards||'<div style="color:#8a8073;padding:24px">Sem itens.</div>')+'</div>'+
@@ -1506,9 +1518,12 @@
   // CLIENTE: abre a janela do pedido selecionado.
   window.__abrirPedido=function(ix){
     var p=MEUS_PEDS[ix]; if(!p) return;
-    var badge = p.status==='producao'?'ok' : p.status==='processando'?'wait' : 'info';
+    var aberto = p.status==='aberto';
+    var badge = p.status==='producao'?'ok' : (p.status==='processando'||aberto)?'wait' : 'info';
     document.getElementById("pedSheet").innerHTML=__pedSheetHTML({
-      numero:p.numero||'—', statusLabel:p.status_label||'', badgeCls:badge,
+      numeroTxt: aberto ? 'Carrinho' : ('Pedido nº '+(p.numero||'—')),
+      statusLabel:p.status_label||'', badgeCls:badge,
+      expira: aberto ? __expiraTxt(p.expira_em) : '',
       cliente:p.cliente||'', cnpj:fmtCnpjBr(MEUS_CNPJ), data:fmtDataHora(p.data),
       itens:p.itens||[], total:p.total,
       botoes:'<button class="pd2-pdf" onclick="baixarPedidoPdf(\''+esc(p.id)+'\')">⬇ Baixar PDF</button>'
