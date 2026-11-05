@@ -37,12 +37,23 @@ export function LojaPedidos() {
   const [aberto, setAberto] = useState<string | null>(null);
   const [itens, setItens] = useState<Record<string, LojaPedidoItem[]>>({});
   const [agindo, setAgindo] = useState<string | null>(null);
+  const [ponte, setPonte] = useState<{ status: string; ha_segundos: number | null; ultimo_contato: string | null } | null>(null);
 
   function carregar() {
     setCarregando(true);
     api.lojaPedidos().then((d) => { setModo(d.modo || "teste"); setPedidos(d.pedidos || []); }).catch(() => setPedidos([])).finally(() => setCarregando(false));
   }
-  useEffect(() => { carregar(); const t = setInterval(carregar, 15000); return () => clearInterval(t); /* eslint-disable-next-line */ }, []);
+  function carregarPonte() {
+    fetch("/api/integracao/ponte-status", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j) setPonte(j); })
+      .catch(() => { /* offline: mantém último estado */ });
+  }
+  useEffect(() => {
+    carregar(); carregarPonte();
+    const t = setInterval(() => { carregar(); carregarPonte(); }, 15000);
+    return () => clearInterval(t); /* eslint-disable-next-line */
+  }, []);
 
   function verItens(id: string) {
     if (aberto === id) { setAberto(null); return; }
@@ -90,6 +101,25 @@ export function LojaPedidos() {
           <button className="btn btn-soft" onClick={carregar}>Atualizar</button>
         </div>
       </div>
+
+      {ponte && ponte.status !== "ativa" ? (() => {
+        const s = ponte.ha_segundos;
+        const quando = s == null ? "nunca contatou" : s < 90 ? "agora" : s < 3600 ? `há ${Math.round(s / 60)} min` : s < 86400 ? `há ${Math.round(s / 3600)} h` : `há ${Math.round(s / 86400)} dia(s)`;
+        const parada = ponte.status === "parada" || ponte.status === "sem_dados";
+        const cor = parada ? "#b91c1c" : "#b45309";   // vermelho = parada, âmbar = atrasada
+        return (
+          <div className="card" style={{ padding: "14px 16px", marginBottom: 14, background: cor + "14", border: `2px solid ${cor}`, color: cor }}>
+            <div style={{ fontWeight: 800, fontSize: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 20 }}>{parada ? "⛔" : "⚠️"}</span>
+              {parada ? "A PONTE ESTÁ PARADA — nenhum pedido está indo para o Syntech" : "A ponte está ATRASADA — os pedidos podem estar demorando a ir"}
+            </div>
+            <div style={{ fontSize: 13, marginTop: 6, color: cor, opacity: 0.95 }}>
+              Último contato da ponte: <b>{quando}</b>{ponte.ultimo_contato ? ` (${new Date(ponte.ultimo_contato).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })})` : ""}.
+              {parada ? " Ligue/reinicie a ponte no PC da fábrica (tarefa “TecelagemPonte” ou o start.bat). Assim que ela voltar, os pedidos abaixo vão sozinhos." : " Pode ser que o PC da fábrica tenha dormido ou a internet oscilou."}
+            </div>
+          </div>
+        );
+      })() : null}
 
       <div className="card" style={{ padding: 14, marginBottom: 14 }}>
         <div style={{ fontWeight: 600, marginBottom: 8 }}>Envio para o Syntech</div>
