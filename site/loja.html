@@ -1080,8 +1080,11 @@
           ctrl+'</div>';
       }).join("");
       if(!rows) return "";                    // seção sem nenhuma opção visível → some
+      // Estoque COMPARTILHADO (capa + almofada da mesma peça dividem a capa): avisa que vender uma
+      // reduz a outra — pra não parecer "baixa dupla". Mesma regra do tetoCompart.
+      var notaCompart = g.compartilha ? '<div style="font-size:11.5px;color:#9a8c78;margin:2px 0 7px;line-height:1.4;background:#fbf6ef;border:1px solid #efe6d7;border-radius:8px;padding:6px 9px">ℹ️ As opções desta peça <b>dividem a mesma capa</b> — o estoque é compartilhado, então escolher uma reduz o disponível da outra.</div>' : '';
       // EL: cada tamanho vira um cartãozinho unindo capa + almofada (fica claro que é o par).
-      return '<div class="grp'+(p&&p._edicao_limitada?' grp-el':'')+'"><div class="t">'+esc(g.titulo||"Itens")+'</div>'+rows+'</div>';
+      return '<div class="grp'+(p&&p._edicao_limitada?' grp-el':'')+'"><div class="t">'+esc(g.titulo||"Itens")+'</div>'+notaCompart+rows+'</div>';
     }).join("");
     if(!grupos) grupos='<div class="estx off" style="padding:10px 0">Sem opções em estoque nesta cor.</div>';
     return '<div class="lbl">'+(REP_SOVER?'Tamanhos e preços':'Escolha os tamanhos')+' — <b>'+esc(cc.nome||"")+'</b></div>'+grupos;
@@ -1586,7 +1589,9 @@
         (CART.length?('<label style="display:block;font-size:15px;color:#555;margin:2px 0 8px">Informe o CNPJ da sua loja'+
           '<input id="cnpjInp" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" value="'+esc(cnpjSalvo())+'" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:12px;border:1px solid #d6d0c4;border-radius:10px;font-size:16px"></label>'+
           '<div id="cmsg" style="font-size:13px;margin:0 0 8px;min-height:1px;line-height:1.35"></div>'):'')+
-        '<button class="fin" id="finalizar"'+(CART.length?"":" disabled")+'>Finalizar pedido</button></div>';
+        '<button class="fin" id="finalizar"'+(CART.length?"":" disabled")+'>Finalizar pedido</button>'+
+        (CART.length?('<button id="novoPedido" type="button" style="display:block;width:100%;margin-top:8px;padding:10px;border:1.5px solid #d6cfc2;border-radius:10px;background:#fff;color:#8a6d4f;font-size:13px;font-weight:600;cursor:pointer">🆕 Começar um pedido novo (esvaziar este carrinho)</button>'):'')+
+        '</div>';
     }
     var qtdTot=cartQtd();
     document.getElementById("cartPane").innerHTML=
@@ -1602,10 +1607,21 @@
     });
     box.querySelectorAll("[data-rm]").forEach(function(b){ b.onclick=function(){ var prev=clonarCart(); CART.splice(Number(b.getAttribute("data-rm")),1); salvarCart(); atualizarCartN(); renderCarrinho(); reservarComDesfazer(prev, renderCarrinho); }; });
     var fin=document.getElementById("finalizar"); if(fin) fin.onclick=finalizarPedido;
+    var bNovo=document.getElementById("novoPedido"); if(bNovo) bNovo.onclick=novoPedidoCliente;
     var bPdf=document.getElementById("repPdf"); if(bPdf) bPdf.onclick=repGerarPdfEnviar;
     var bEsp=document.getElementById("repEspera"); if(bEsp) bEsp.onclick=repDeixarEspera;
     var bCont=document.getElementById("repContinuar"); if(bCont) bCont.onclick=repContinuarComprando;
     var bBig=document.getElementById("repEnviarBig"); if(bBig) bBig.onclick=repEnviarBig;
+  }
+  // "Começar um pedido novo": desvincula o rascunho atual (que CONTINUA salvo em "Meus Pedidos"
+  // até expirar sozinho) e esvazia SÓ o carrinho local — assim o próximo item abre um pedido NOVO,
+  // sem colar no anterior. Não apaga o rascunho no servidor nem solta a reserva dele.
+  function novoPedidoCliente(){
+    if(!CART.length) return;
+    if(!confirm("Começar um pedido novo?\n\nEste carrinho será esvaziado. O pedido anterior continua salvo em \"Meus pedidos\".")) return;
+    CART=[]; salvarCart(); setCartPid(""); atualizarCartN(); try{ pararTimer(); }catch(e){}
+    renderCarrinho();
+    toast("Pronto! Pode montar um novo pedido. 💛");
   }
   function finalizarPedido(){
     if(!CART.length) return;
