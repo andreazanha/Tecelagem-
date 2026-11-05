@@ -204,6 +204,82 @@
   .pd-act.go{border:0; background:#1f7a4d; color:#fff}
   .pd-act.del{border:1.5px solid #f3c6c6; color:#b91c1c; background:#fff}
   .pd-act:active{transform:translateY(1px)}
+  /* ===== Detalhe do Pedido v2 (layout Big Tricot) ===== */
+  #pedModal.pd2mode .sheet{max-width:1120px; inset:3% 2%; background:#fff; border-radius:16px}
+  .pd2-top{flex:0 0 auto; display:flex; align-items:center; gap:16px; padding:16px 22px; border-bottom:1px solid #eee4d6; background:#fff}
+  .pd2-logobox{flex:0 0 auto; background:#2c3e50; border-radius:11px; padding:8px 14px; display:inline-flex; align-items:center}
+  .pd2-logo{height:28px; width:auto; display:block}
+  .pd2-sep{width:1px; align-self:stretch; background:#e6ddcf; margin:2px 0}
+  .pd2-title{font-size:22px; font-weight:800; color:#2c2721; white-space:nowrap}
+  .pd2-hr{margin-left:auto; text-align:right}
+  .pd2-hr-top{display:flex; align-items:center; gap:10px; justify-content:flex-end; font-size:18px; font-weight:800; color:#2c2721}
+  .pd2-hr-meta{font-size:12.5px; color:#9a8f80; margin-top:2px}
+  .pd2-badge{display:inline-flex; align-items:center; gap:5px; font-size:12.5px; font-weight:700; padding:3px 10px; border-radius:999px; white-space:nowrap}
+  .pd2-badge.ok{background:#dcfce7; color:#166534}
+  .pd2-badge.wait{background:#fef3c7; color:#92610a}
+  .pd2-badge.info{background:#eef2f7; color:#475569}
+  .pd2-x{flex:0 0 auto; border:1px solid #e3ddd2; background:#fff; width:40px; height:40px; border-radius:50%; font-size:18px; cursor:pointer; color:#2c2721}
+  .pd2-scroll{flex:1 1 auto; overflow:auto; padding:18px 22px; background:#f7f3ec}
+  .pd2-card{background:#fff; border:1px solid #ece3d4; border-radius:16px; padding:14px; margin-bottom:16px; box-shadow:0 1px 2px rgba(60,48,32,.04)}
+  .pd2-chead{display:flex; align-items:center; gap:16px}
+  .pd2-fotobox{width:150px; height:120px; flex:0 0 auto; border-radius:12px; overflow:hidden; position:relative; background:linear-gradient(135deg,#efe7d8,#e4d8c4)}
+  .pd2-ph{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:"Cormorant Garamond",serif; font-size:30px; color:#b7a788}
+  .pd2-foto{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
+  .pd2-ginfo{flex:1 1 auto; min-width:0}
+  .pd2-modelo{font-size:21px; font-weight:800; color:#2c2721}
+  .pd2-cor{display:flex; align-items:center; gap:8px; margin-top:6px; color:#6b6358; font-size:15px}
+  .pd2-cor b{color:#2c2721}
+  .pd2-dot{width:16px; height:16px; border-radius:50%; flex:0 0 auto; border:1px solid rgba(0,0,0,.12)}
+  .pd2-gtot{display:flex; align-items:center; gap:12px; flex:0 0 auto}
+  .pd2-gtot-lb{background:#f1e7d8; color:#7a6a55; font-size:12.5px; font-weight:600; padding:6px 12px; border-radius:999px}
+  .pd2-gtot-v{font-size:22px; font-weight:800; color:#a0492c; white-space:nowrap}
+  .pd2-chev{border:0; background:none; cursor:pointer; color:#b0a593; display:flex; padding:4px}
+  .pd2-chev svg{width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; transform:rotate(180deg); transition:transform .2s}
+  .pd2-card.closed .pd2-chev svg{transform:rotate(0)}
+  .pd2-lines{margin-top:12px; background:#faf6ef; border:1px solid #efe6d7; border-radius:12px; padding:4px 14px}
+  .pd2-card.closed .pd2-lines{display:none}
+  .pd2-lhead,.pd2-line{display:grid; grid-template-columns:1fr 92px 130px 130px; gap:10px; align-items:center}
+  .pd2-lhead{padding:9px 0 6px; font-size:11.5px; font-weight:700; color:#9a8f80}
+  .pd2-lhead>div:nth-child(2){text-align:center}
+  .pd2-lhead>div:nth-child(3),.pd2-lhead>div:nth-child(4){text-align:right}
+  .pd2-line{padding:12px 0; border-top:1px solid #efe6d7}
+  .pd2-desc{display:flex; align-items:center; gap:9px; font-size:15px; color:#2c2721; font-weight:600; min-width:0}
+  .pd2-kit{background:#a0492c; color:#fff; font-size:11px; font-weight:700; padding:3px 9px; border-radius:7px; flex:0 0 auto}
+  .pd2-q{justify-self:center; background:#fff; border:1px solid #e6ddcf; border-radius:999px; padding:5px 18px; font-weight:700; color:#2c2721}
+  .pd2-u{text-align:right; color:#2c2721; font-weight:600}
+  .pd2-t{text-align:right; color:#a0492c; font-weight:800}
+  .pd2-foot{flex:0 0 auto; display:flex; align-items:center; gap:16px; padding:14px 22px; border-top:1px solid #eee4d6; background:#fff; flex-wrap:wrap}
+  .pd2-foot-l{background:#f5efe6; border:1px solid #ece3d4; color:#6b6358; font-size:13px; font-weight:600; padding:9px 15px; border-radius:12px; display:flex; align-items:center; gap:8px}
+  .pd2-foot-c{margin-left:auto; display:flex; align-items:baseline; gap:10px; font-size:15px; color:#6b6358}
+  .pd2-foot-c b{font-size:26px; font-weight:800; color:#a0492c}
+  .pd2-foot-r{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  .pd2-pdf{display:inline-flex; align-items:center; gap:8px; border:1.5px solid #cdbfa8; background:#fff; color:#2c2721; font-weight:700; font-size:15px; padding:11px 20px; border-radius:12px; cursor:pointer}
+  .pd2-pdf:active,.pd2-act:active{transform:translateY(1px)}
+  .pd2-act{border:1.5px solid #e6ddcf; background:#fff; color:#5f584e; font-weight:600; font-size:14px; padding:11px 16px; border-radius:12px; cursor:pointer}
+  .pd2-act.go{border:0; background:#1f7a4d; color:#fff}
+  .pd2-act.del{border:1.5px solid #f3c6c6; color:#b91c1c; background:#fff}
+  @media(max-width:760px){
+    #pedModal.pd2mode .sheet{inset:0; border-radius:0; max-width:none}
+    .pd2-top{flex-wrap:wrap; gap:10px; padding:12px 14px; position:relative}
+    .pd2-title{font-size:17px}
+    .pd2-hr{margin-left:0; text-align:left; width:100%; order:3}
+    .pd2-hr-top{justify-content:flex-start}
+    .pd2-x{position:absolute; top:12px; right:12px}
+    .pd2-scroll{padding:12px}
+    .pd2-chead{flex-wrap:wrap}
+    .pd2-fotobox{width:100%; height:160px}
+    .pd2-gtot{width:100%; justify-content:space-between; margin-top:2px}
+    .pd2-lhead{display:none}
+    .pd2-line{grid-template-columns:1fr auto; gap:4px 10px; padding:11px 0}
+    .pd2-desc{grid-column:1 / -1}
+    .pd2-q{justify-self:start}
+    .pd2-u::before{content:"Unit.: "; color:#9a8f80; font-weight:500}
+    .pd2-t::before{content:"Total: "; color:#9a8f80; font-weight:500}
+    .pd2-foot{padding:12px 14px}
+    .pd2-foot-c{margin-left:0; width:100%; order:2; justify-content:flex-start}
+    .pd2-foot-r{width:100%; order:3}
+    .pd2-pdf{flex:1; justify-content:center}
+  }
   .mp-num{font-weight:800; font-size:14px; color:var(--ink)}
   .mp-chev{margin-left:auto; color:#94a3b8; display:flex; transition:transform .2s ease}
   .mp-card.open .mp-chev{transform:rotate(180deg)}
@@ -1353,43 +1429,92 @@
     }).join("");
     pane.innerHTML=cabMeus()+'<div class="itens">'+html+'</div>';
   }
-  // Agrupa os itens por MODELO (produto); dentro, cada linha é uma cor+tamanho.
-  function __grpModelo(itens){ var map={}, ord=[]; (itens||[]).forEach(function(it){ var k=it.produto||it.ref||"—"; if(!map[k]){map[k]=[]; ord.push(k);} map[k].push(it); }); return ord.map(function(k){ return {modelo:k, itens:map[k]}; }); }
+  // ── Detalhe do Pedido (janela grande, layout Big Tricot) ─────────────────────
+  function __norm(s){ return String(s||"").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^A-Z0-9]/g,""); }
   // Edição Limitada: pela ref (ED####C = capa, ED####A = almofada) diz o tipo da peça.
   function __tipoPeca(ref){ var r=String(ref||"").toUpperCase(); if(!/^ED\d/.test(r)) return ""; if(/A$/.test(r)) return "Almofada · com enchimento"; if(/C$/.test(r)) return "Capa · sem enchimento"; return ""; }
-  // Popup GRANDE do pedido: cabeçalho + itens por modelo/cor/tamanho com valor unitário e
-  // total de cada linha; no rodapé o total do pedido e o botão de baixar PDF direto.
+  // Acha o produto do CATÁLOGO pela ref do item (procura a ref nas linhas; depois pelo id base).
+  function __prodDoRef(ref){
+    var r=String(ref||"").trim(); if(!r) return null;
+    for(var i=0;i<PRODUTOS.length;i++){ var gs=PRODUTOS[i].grupos||[]; for(var gi=0;gi<gs.length;gi++){ var ls=gs[gi].linhas||[]; for(var li=0;li<ls.length;li++){ if(String(ls[li].cod)===r) return PRODUTOS[i]; } } }
+    var base=r.replace(/[-_ ]?[A-Za-z]$/,"");
+    for(var j=0;j<PRODUTOS.length;j++){ if(String(PRODUTOS[j].id)===r||String(PRODUTOS[j].id)===base) return PRODUTOS[j]; }
+    return null;
+  }
+  // id_cor do produto pelo NOME da cor (casa com o cadastro; cai na cor global do catálogo).
+  function __corIdDoNome(p,nome){ var n=__norm(nome); if(!n) return null; var cs=(p&&p.cores)||[]; for(var i=0;i<cs.length;i++){ var cc=CORES[cs[i].id_cor]||{}; if(__norm(cc.nome)===n) return cs[i].id_cor; } for(var k in CORES){ if(__norm(CORES[k].nome)===n) return k; } return null; }
+  // FOTO principal do catálogo: foto específica da cor (se houver) senão a foto do modelo.
+  function __fotoPedido(p,corId){ if(!p) return ""; var cf=corId?corFotoDe(p,corId):""; return cf||p.foto||""; }
+  function __hexCor(corId){ var cc=CORES[corId]||{}; return cc.hex||"#d9cdba"; }
+  function __modeloNome(p,fallback){ var nm=(p&&p.nome)||fallback||""; return String(nm).replace(/^\s*kits?\s+/i,"").trim()||String(fallback||"—"); }
+  function __ehKit(it,p){ var r=String(it.ref||"").toUpperCase(); if(/^KT/.test(r)) return true; if(p&&p._kit) return true; var t=String(it.tamanho||it.descricao||""); return /\+/.test(t)&&/(peseira|capa|almofada)/i.test(t); }
+  function __descKit(t){ t=String(t||""); t=t.replace(/\(\s*(com|sem)\s+enchimento\s*\)/ig,"").replace(/[+\-\s]+$/,"").trim(); return t.replace(/(\d)\s*[×xX]\s*(\d)/g,"$1 × $2"); }
+  // Agrupa por MODELO + COR (cada grupo com foto e cor reais do catálogo).
+  function __grpModeloCor(itens){
+    var map={}, ord=[];
+    (itens||[]).forEach(function(it){
+      var p=__prodDoRef(it.ref); var modelo=__modeloNome(p,it.produto); var cor=it.cor||"";
+      var key=__norm(modelo)+"|"+__norm(cor);
+      if(!map[key]){ var corId=p?__corIdDoNome(p,cor):null; map[key]={modelo:modelo,cor:cor,corId:corId,foto:__fotoPedido(p,corId),hex:__hexCor(corId),itens:[]}; ord.push(key); }
+      map[key].itens.push(it);
+    });
+    return ord.map(function(k){ return map[k]; });
+  }
+  // Monta a janela inteira (cabeçalho + cards + rodapé). Usada pelo CLIENTE e pelo REPRESENTANTE.
+  function __pedSheetHTML(o){
+    var grupos=__grpModeloCor(o.itens), totalQtd=0, nKits=0, totalCalc=0;
+    var cards=grupos.map(function(g,gi){
+      var sub=0;
+      var linhas=g.itens.map(function(it){
+        var pe=__prodDoRef(it.ref); var kit=__ehKit(it,pe);
+        var q=Number(it.qtd)||0, u=Number(it.valor_unit)||0, t=q*u; sub+=t; totalQtd+=q; if(kit) nKits+=q;
+        var tp=__tipoPeca(it.ref);
+        var desc = kit ? __descKit(it.tamanho||it.descricao) : (tp ? (tp+(it.tamanho?(" · "+it.tamanho):"")) : (it.tamanho||it.descricao||it.cor||"—"));
+        return '<div class="pd2-line"><div class="pd2-desc">'+(kit?'<span class="pd2-kit">Kit</span>':'')+'<span>'+esc(desc)+'</span></div>'+
+          '<div class="pd2-q">'+q+'</div><div class="pd2-u">'+brl(u)+'</div><div class="pd2-t">'+brl(t)+'</div></div>';
+      }).join("");
+      totalCalc+=sub;
+      var ini=esc(String(g.modelo||"?").slice(0,1));
+      var fotobox='<div class="pd2-fotobox"><div class="pd2-ph">'+ini+'</div>'+(g.foto?'<img class="pd2-foto" src="'+esc(g.foto)+'" loading="lazy" onerror="this.remove()">':'')+'</div>';
+      return '<div class="pd2-card" id="pd2c-'+gi+'">'+
+        '<div class="pd2-chead">'+fotobox+
+          '<div class="pd2-ginfo"><div class="pd2-modelo">Modelo: <b>'+esc(g.modelo)+'</b></div>'+
+            '<div class="pd2-cor"><span class="pd2-dot" style="background:'+esc(g.hex)+'"></span>Cor: <b>'+esc(g.cor||"—")+'</b></div></div>'+
+          '<div class="pd2-gtot"><span class="pd2-gtot-lb">Total do modelo</span><span class="pd2-gtot-v">'+brl(sub)+'</span></div>'+
+          '<button class="pd2-chev" onclick="__pd2Toggle('+gi+')" aria-label="recolher">'+chevSvg()+'</button>'+
+        '</div>'+
+        '<div class="pd2-lines"><div class="pd2-lhead"><div></div><div>Qtd.</div><div>Valor Unit.</div><div>Total</div></div>'+linhas+'</div>'+
+      '</div>';
+    }).join("");
+    var total=(o.total!=null?Number(o.total):totalCalc);
+    var kitsLbl=(nKits===totalQtd&&nKits>0)?'kits':'peças';
+    var check=(o.badgeCls==='ok')?'✓ ':'';
+    return '<div class="pd2-top">'+
+        '<span class="pd2-logobox"><img class="pd2-logo" src="/logo-bt-mark.png" alt="Big Tricot"></span>'+
+        '<div class="pd2-sep"></div><div class="pd2-title">Detalhe do Pedido</div>'+
+        '<div class="pd2-hr"><div class="pd2-hr-top">Pedido nº '+esc(o.numero)+' <span class="pd2-badge '+esc(o.badgeCls||"info")+'">'+check+esc(o.statusLabel||"")+'</span></div>'+
+          '<div class="pd2-hr-meta">'+(o.cliente?(esc(o.cliente)+' · '):'')+(o.cnpj?('CNPJ '+esc(o.cnpj)+' · '):'')+esc(o.data||"")+'</div></div>'+
+        '<button class="pd2-x" onclick="__fecharPed()" aria-label="Fechar">✕</button>'+
+      '</div>'+
+      '<div class="pd2-scroll">'+(cards||'<div style="color:#8a8073;padding:24px">Sem itens.</div>')+'</div>'+
+      '<div class="pd2-foot"><div class="pd2-foot-l">📦 '+grupos.length+' '+(grupos.length===1?'modelo':'modelos')+' · '+totalQtd+' '+kitsLbl+'</div>'+
+        '<div class="pd2-foot-c">Total do pedido <b>'+brl(total)+'</b></div>'+
+        '<div class="pd2-foot-r">'+(o.botoes||'')+'</div></div>';
+  }
+  window.__pd2Toggle=function(gi){ var el=document.getElementById("pd2c-"+gi); if(el) el.classList.toggle("closed"); };
+  // CLIENTE: abre a janela do pedido selecionado.
   window.__abrirPedido=function(ix){
     var p=MEUS_PEDS[ix]; if(!p) return;
-    var totalCalc=0;
-    var corpo=__grpModelo(p.itens).map(function(g){
-      var linhas=g.itens.map(function(it){
-        var q=Number(it.qtd)||0, u=Number(it.valor_unit)||0, sub=q*u; totalCalc+=sub;
-        var tp=__tipoPeca(it.ref);
-        return '<div class="pd-row">'+
-          '<div class="pd-ct"><span class="pd-cor">'+esc(it.cor||"—")+'</span>'+(it.tamanho?'<span class="pd-tam">'+esc(it.tamanho)+'</span>':'')+(tp?'<span class="pd-tipo">'+esc(tp)+'</span>':'')+'</div>'+
-          '<div class="pd-q">'+q+'×</div><div class="pd-u">'+brl(u)+'</div><div class="pd-s">'+brl(sub)+'</div>'+
-        '</div>';
-      }).join("");
-      return '<div class="pd-grupo"><div class="pd-modelo">'+esc(g.modelo)+'</div><div class="pd-rows">'+
-        '<div class="pd-row pd-head"><div class="pd-ct">Cor · Tamanho</div><div class="pd-q">Qtd</div><div class="pd-u">Unit.</div><div class="pd-s">Total</div></div>'+
-        linhas+'</div></div>';
-    }).join("");
-    var total = (p.total!=null? Number(p.total): totalCalc);
-    var numTxt = p.numero ? ('Pedido nº '+p.numero) : 'Pedido';
-    var cnpj = fmtCnpjBr(MEUS_CNPJ);
-    var cab='<div class="pd-cab"><div class="pd-cab-l"><h3>'+esc(numTxt)+'</h3>'+
-        '<span class="mp-badge '+esc(p.status||'recebido')+'"><span class="dot"></span>'+esc(p.status_label||"")+'</span></div>'+
-        '<div class="pd-cli">'+esc(p.cliente||"Cliente")+'</div>'+
-        '<div class="pd-meta">'+(cnpj?('CNPJ '+esc(cnpj)+' · '):'')+esc(fmtDataHora(p.data))+'</div></div>';
-    var foot='<div class="pd-foot"><div class="pd-total"><span>Total do pedido</span><b>'+brl(total)+'</b></div>'+
-        '<button class="pd-pdf" onclick="baixarPedidoPdf(\''+esc(p.id)+'\')">⬇ Baixar PDF</button></div>';
-    document.getElementById("pedSheet").innerHTML=
-      '<div class="topo"><span class="lb">Detalhe do pedido</span><button class="fechar" onclick="__fecharPed()">✕</button></div>'+
-      '<div class="pd-scroll">'+cab+corpo+'</div>'+foot;
-    document.getElementById("pedModal").classList.add("show"); document.body.style.overflow="hidden";
+    var badge = p.status==='producao'?'ok' : p.status==='processando'?'wait' : 'info';
+    document.getElementById("pedSheet").innerHTML=__pedSheetHTML({
+      numero:p.numero||'—', statusLabel:p.status_label||'', badgeCls:badge,
+      cliente:p.cliente||'', cnpj:fmtCnpjBr(MEUS_CNPJ), data:fmtDataHora(p.data),
+      itens:p.itens||[], total:p.total,
+      botoes:'<button class="pd2-pdf" onclick="baixarPedidoPdf(\''+esc(p.id)+'\')">⬇ Baixar PDF</button>'
+    });
+    var m=document.getElementById("pedModal"); m.classList.add("pd2mode","show"); document.body.style.overflow="hidden";
   };
-  window.__fecharPed=function(){ document.getElementById("pedModal").classList.remove("show"); document.body.style.overflow="hidden"; };
+  window.__fecharPed=function(){ document.getElementById("pedModal").classList.remove("show","pd2mode"); document.body.style.overflow="hidden"; };
   // Baixa o PDF do pedido DIRETO (dl=1 → attachment), sem abrir visualizador/impressora.
   window.baixarPedidoPdf=function(id){
     var url="/api/loja/pedido-pdf/"+encodeURIComponent(id)+"?dl=1"+(MEUS_CNPJ?("&cnpj="+encodeURIComponent(MEUS_CNPJ)):"");
@@ -1907,36 +2032,24 @@
   // itens por modelo/cor/tamanho com valor unitário e total, total no rodapé e ações.
   window.__repAbrirPedido=function(id){
     var sheet=document.getElementById("pedSheet");
-    sheet.innerHTML='<div class="topo"><span class="lb">Detalhe do pedido</span><button class="fechar" onclick="__fecharPed()">✕</button></div><div class="pd-scroll"><div class="rep-vazio" style="padding:22px">Carregando…</div></div>';
-    document.getElementById("pedModal").classList.add("show"); document.body.style.overflow="hidden";
+    var m=document.getElementById("pedModal"); m.classList.add("pd2mode","show"); document.body.style.overflow="hidden";
+    sheet.innerHTML='<div class="pd2-top"><div class="pd2-title">Detalhe do Pedido</div><button class="pd2-x" onclick="__fecharPed()" aria-label="Fechar">✕</button></div><div class="pd2-scroll"><div class="rep-vazio" style="padding:24px">Carregando…</div></div>';
     fetch("/api/loja/rep-pedido-detalhe?id="+encodeURIComponent(id)+"&rep="+encodeURIComponent((REP&&REP.id)||""))
       .then(function(r){ return r.json(); })
-      .then(function(d){ if(!d||!d.ok){ sheet.innerHTML=__repPedSheetTop()+'<div class="pd-scroll"><div class="rep-vazio" style="padding:22px">Não consegui carregar os itens.</div></div>'; return; } sheet.innerHTML=__repPedSheetHtml(d,id); })
-      .catch(function(){ sheet.innerHTML=__repPedSheetTop()+'<div class="pd-scroll"><div class="rep-vazio" style="padding:22px">Sem conexão. Tente de novo.</div></div>'; });
+      .then(function(d){ if(!d||!d.ok){ sheet.innerHTML='<div class="pd2-top"><div class="pd2-title">Detalhe do Pedido</div><button class="pd2-x" onclick="__fecharPed()">✕</button></div><div class="pd2-scroll"><div class="rep-vazio" style="padding:24px">Não consegui carregar os itens.</div></div>'; return; } sheet.innerHTML=__repPedSheetHtml(d,id); })
+      .catch(function(){ sheet.innerHTML='<div class="pd2-top"><div class="pd2-title">Detalhe do Pedido</div><button class="pd2-x" onclick="__fecharPed()">✕</button></div><div class="pd2-scroll"><div class="rep-vazio" style="padding:24px">Sem conexão. Tente de novo.</div></div>'; });
   };
-  function __repPedSheetTop(){ return '<div class="topo"><span class="lb">Detalhe do pedido</span><button class="fechar" onclick="__fecharPed()">✕</button></div>'; }
   function __repPedSheetHtml(d,id){
-    var corpo=__grpModelo(d.itens).map(function(g){
-      var linhas=g.itens.map(function(it){
-        var tp=__tipoPeca(it.ref);
-        return '<div class="pd-row">'+
-          '<div class="pd-ct"><span class="pd-cor">'+esc(it.cor||it.descricao||"—")+'</span>'+(it.tamanho?'<span class="pd-tam">'+esc(it.tamanho)+'</span>':'')+(tp?'<span class="pd-tipo">'+esc(tp)+'</span>':'')+'</div>'+
-          '<div class="pd-q">'+(Number(it.qtd)||0)+'×</div><div class="pd-u">'+brl(it.valor_unit||0)+'</div><div class="pd-s">'+brl(it.valor_total||0)+'</div>'+
-        '</div>';
-      }).join("");
-      return '<div class="pd-grupo"><div class="pd-modelo">'+esc(g.modelo)+'</div><div class="pd-rows">'+
-        '<div class="pd-row pd-head"><div class="pd-ct">Cor · Tamanho</div><div class="pd-q">Qtd</div><div class="pd-u">Unit.</div><div class="pd-s">Total</div></div>'+
-        linhas+'</div></div>';
-    }).join("");
-    var cab='<div class="pd-cab"><div class="pd-cab-l"><h3>Pedido nº '+esc(d.numero)+'</h3>'+chipPed(d.status,d.label)+'</div>'+
-      '<div class="pd-cli">'+esc(d.cliente||"Cliente")+'</div>'+
-      '<div class="pd-meta">'+esc(fmtDataHora(d.data))+'</div></div>';
-    var botoes='<button class="pd-pdf" onclick="__repPedPdf(\''+esc(id)+'\')">⬇ Baixar PDF</button>';
-    if(d.editavel){ botoes+='<button class="pd-act" onclick="__fecharPed();__repReabrir(\''+esc(id)+'\')">✏️ Reabrir</button>'+
-      '<button class="pd-act go" onclick="__repPedEnviar(\''+esc(id)+'\',\''+(d.forma?"1":"")+'\')">✅ Enviar à Big</button>'+
-      '<button class="pd-act del" onclick="__repPedExcluir(\''+esc(id)+'\')">Excluir</button>'; }
-    var foot='<div class="pd-foot"><div class="pd-total"><span>Total do pedido</span><b>'+brl(d.total||0)+'</b></div><div class="pd-botoes">'+botoes+'</div></div>';
-    return __repPedSheetTop()+'<div class="pd-scroll">'+cab+corpo+'</div>'+foot;
+    var badge = (d.status==='syntech'||d.status==='aprovado')?'ok' : (d.status==='erro'||d.status==='espera')?'wait' : 'info';
+    var botoes='<button class="pd2-pdf" onclick="__repPedPdf(\''+esc(id)+'\')">⬇ Baixar PDF</button>';
+    if(d.editavel){ botoes+='<button class="pd2-act" onclick="__fecharPed();__repReabrir(\''+esc(id)+'\')">✏️ Reabrir</button>'+
+      '<button class="pd2-act go" onclick="__repPedEnviar(\''+esc(id)+'\',\''+(d.forma?"1":"")+'\')">✅ Enviar à Big</button>'+
+      '<button class="pd2-act del" onclick="__repPedExcluir(\''+esc(id)+'\')">Excluir</button>'; }
+    return __pedSheetHTML({
+      numero:d.numero||'—', statusLabel:d.label||'', badgeCls:badge,
+      cliente:d.cliente||'', cnpj:'', data:fmtDataHora(d.data),
+      itens:d.itens||[], total:d.total, botoes:botoes
+    });
   }
   function carregarRepPedDet(id){
     var el=document.getElementById("rpd-"+id); if(!el) return;
