@@ -69,7 +69,7 @@
   .btn-cart{height:42px; box-sizing:border-box; display:inline-flex; align-items:center; gap:7px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:12px; padding:0 16px; font-weight:600; font-size:13px; cursor:pointer; white-space:nowrap; flex:0 0 auto}
   .btn-cart .n{background:#fff; color:var(--accent); border-radius:999px; min-width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; padding:0 5px}
   /* Contador discreto da reserva (Etapa 2): pílula pequena, sem gritar. Vermelho suave quando acaba. */
-  .cart-timer{display:inline-block; margin-top:5px; align-self:flex-end; font-size:11px; line-height:1; color:#e9e2d6; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18); border-radius:999px; padding:3px 9px; white-space:nowrap; letter-spacing:.2px; font-variant-numeric:tabular-nums}
+  .cart-timer{display:none !important}
   .cart-timer.urgente{color:#ffd9cf; background:rgba(201,80,51,.28); border-color:rgba(255,160,135,.5)}
   /* Toast discreto (aviso de expiração) */
   .bt-toast{position:fixed; left:50%; bottom:22px; transform:translateX(-50%) translateY(10px); z-index:120; background:#2c2721; color:#fff; font-size:13.5px; line-height:1.35; padding:12px 16px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.28); max-width:88vw; opacity:0; transition:opacity .25s ease, transform .25s ease; pointer-events:none}
@@ -1330,7 +1330,8 @@
   function _toastEl(){ var t=document.getElementById("btToast"); if(!t){ t=document.createElement("div"); t.id="btToast"; t.className="bt-toast"; document.body.appendChild(t); } return t; }
   function toast(msg){ var t=_toastEl(); t.textContent=msg; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(function(){ t.classList.remove("show"); }, 6000); }
   function fmtRestante(ms){ var s=Math.max(0,Math.floor(ms/1000)); var h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=s%60; return h>0 ? ('reserva '+h+'h'+(m<10?'0':'')+m) : ('reserva '+m+':'+(ss<10?'0':'')+ss); }
-  function mostrarTimer(txt, urgente){ var el=document.getElementById("cartTimer"); if(!el) return; if(txt){ el.textContent='⏳ '+txt; el.hidden=false; el.classList.toggle('urgente', !!urgente); } else { el.hidden=true; el.textContent=''; el.classList.remove('urgente'); } }
+  // Relógio de reserva no topo REMOVIDO a pedido — mostrarTimer é no-op (nunca exibe nada).
+  function mostrarTimer(){ var el=document.getElementById("cartTimer"); if(el){ el.hidden=true; el.textContent=''; } }
   function pararTimer(){ if(_rsvTick){ clearInterval(_rsvTick); _rsvTick=null; } _rsvDeadline=null; mostrarTimer(""); }
   function _tick(){
     if(_rsvDeadline==null){ mostrarTimer(""); return; }
