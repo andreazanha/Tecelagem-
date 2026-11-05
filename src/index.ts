@@ -141,7 +141,15 @@ app.use("*", async (c, next) => {
   if (url.hostname.startsWith("pedidos.") && url.pathname === "/") {
     try {
       const html = await construirLojaHtml(c.env, false);
-      return c.html(html, 200, { "Cache-Control": "no-store" });
+      // Não-cache REFORÇADO: o catálogo muda a cada deploy/preço, então um F5 normal tem que trazer a
+      // versão nova (sem precisar de aba anônima). Cobre navegador E qualquer CDN na frente.
+      return c.html(html, 200, {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "CDN-Cache-Control": "no-store",
+        "Cloudflare-CDN-Cache-Control": "no-store",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      });
     } catch (e) {
       return new Response("Não consegui abrir a loja:\n\n" + (e as Error).message, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
     }
