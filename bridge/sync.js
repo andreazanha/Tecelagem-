@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-10-30.6";
+const PONTE_VERSAO = "2026-11-05.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -1102,6 +1102,51 @@ async function rodadaCarteira(db) {
   log(`carteira: ${enviados} cliente(s) enviado(s) ✓ (${aplicados} atualizado(s) no sistema)`);
 }
 
+// ── Clientes do Syntech → sistema (cria/atualiza, no máx. 1x a cada 12h) ─────────
+// Lê a tabela CLIENTES e manda nome + telefone/celular + cidade/UF + código + guia.
+// O sistema cria os que faltam (origem=syntech) e preenche SÓ o telefone vazio dos
+// existentes (nunca sobrescreve o que foi digitado à mão). Throttle de 12h via estado.
+async function rodadaClientesSync(db) {
+  const est = lerEstado();
+  const ultimo = est.ultimaSyncClientes ? Date.parse(est.ultimaSyncClientes) : 0;
+  if (ultimo && (Date.now() - ultimo) < 12 * 3600 * 1000) return; // já sincronizou faz < 12h
+  let linhas;
+  try {
+    linhas = await query(db, "SELECT CODIGO, CNPJ_CPF, NOME, FANTASIA, TELEFONE, CELULAR, CIDADE, UF, GUIA FROM CLIENTES");
+  } catch (e) { log("! clientes-sync: não li CLIENTES —", e.message); return; }
+  const clientes = linhas
+    .map((r) => ({
+      codigo: String(r.CODIGO == null ? "" : r.CODIGO).trim(),
+      cnpj: String(r.CNPJ_CPF == null ? "" : r.CNPJ_CPF).replace(/\D/g, ""),
+      nome: String(r.NOME == null ? "" : r.NOME).trim(),
+      fantasia: String(r.FANTASIA == null ? "" : r.FANTASIA).trim(),
+      fone: String(r.TELEFONE == null ? "" : r.TELEFONE).replace(/\D/g, ""),
+      celular: String(r.CELULAR == null ? "" : r.CELULAR).replace(/\D/g, ""),
+      cidade: String(r.CIDADE == null ? "" : r.CIDADE).trim(),
+      uf: String(r.UF == null ? "" : r.UF).trim(),
+      guia: String(r.GUIA == null ? "" : r.GUIA).trim(),
+    }))
+    .filter((m) => m.nome && (m.cnpj || m.codigo));
+  if (!clientes.length) { log("clientes-sync: nenhum cliente lido"); return; }
+  const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/clientes-sync";
+  let criados = 0, atualizados = 0, enviados = 0;
+  for (let i = 0; i < clientes.length; i += 400) {
+    const lote = clientes.slice(i, i + 400);
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+        body: JSON.stringify({ clientes: lote }),
+      });
+      const txt = await r.text(); let js = {}; try { js = JSON.parse(txt); } catch { /* não-JSON */ }
+      if (r.ok) { enviados += lote.length; criados += Number(js.criados) || 0; atualizados += Number(js.atualizados) || 0; }
+      else { log(`clientes-sync: lote FALHOU (${r.status}) ${txt.slice(0, 160)}`); return; }
+    } catch (e) { log("! clientes-sync: erro ao enviar lote —", e.message); return; }
+  }
+  salvarEstado({ ...lerEstado(), ultimaSyncClientes: new Date().toISOString() });
+  log(`clientes-sync: ${enviados} enviado(s) ✓ (${criados} criado(s), ${atualizados} atualizado(s))`);
+}
+
 async function rodada() {
   const estado = lerEstado();
   const desde = estado.ultimaAlt || (CONFIG.desde ? `${CONFIG.desde} 00:00:00` : "1900-01-01 00:00:00");
@@ -1131,7 +1176,7 @@ async function rodada() {
         WHERE STATUS = ? AND COALESCE(CANC, 'N') <> 'S' AND DATA_ALT_REG > ?
         ORDER BY DATA_ALT_REG`;
     const pedidos = await query(db, SQL_PEDIDOS, [STATUS_APROVADO, desde]);
-    if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaRepresentantes(db); await rodadaCarteira(db); await rodadaProdutos(db, estado); await rodadaEstoque(db); await rodadaKits(db); return; }
+    if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaRepresentantes(db); await rodadaCarteira(db); await rodadaClientesSync(db); await rodadaProdutos(db, estado); await rodadaEstoque(db); await rodadaKits(db); return; }
 
     log(`${pedidos.length} pedido(s) aprovado(s) novo(s)/alterado(s)`);
     let maiorAlt = estado.ultimaAlt || null;
@@ -1150,6 +1195,7 @@ async function rodada() {
     log("rodada ok. última data:", formatarParaFirebird(maiorAlt));
     await rodadaRepresentantes(db);
     await rodadaCarteira(db);
+    await rodadaClientesSync(db);
     await rodadaProdutos(db, estado);
     await rodadaEstoque(db);
     await rodadaKits(db);
