@@ -1077,6 +1077,9 @@ export async function gerarCatalogoSite(env: Env): Promise<{
   const cfg = async (k: string) => ((await env.DB.prepare("SELECT valor FROM config WHERE chave=?").bind(k).first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
   const fotosBase = ((await cfg("erp_fotos_base")) || "https://bigtricot.syntechsistemas.com").replace(/\/+$/, "");
   const markupNorte = Number(await cfg("catalogo_markup_norte_pct")) || 10;
+  // DESCONTO MANUAL da Edição Limitada (%), escolhido na tela (chave desc_el_pct). Aplica-se a TODOS
+  // os produtos EL (além de qualquer promoção do Syntech — vale o MAIOR). 0 = sem desconto manual.
+  const descElManual = Math.max(0, Math.min(90, Math.round(Number(await cfg("desc_el_pct")) || 0)));
   // Qual preço o catálogo mostra: "atacado" (lojista, padrão) ou "varejo" (consumidor).
   // Os dois vêm por tamanho do ERP (TAMANHO_PROD.PRECO_VENDA / PRECO_VENDA_LJ).
   const campoPreco = (await cfg("catalogo_preco")) === "varejo" ? "varejo" : "atacado";
@@ -1232,7 +1235,7 @@ export async function gerarCatalogoSite(env: Env): Promise<{
     // não entra em Pronta Entrega nem nas linhas: vai só pra seção Edição Limitada.
     const isEL = vars.some((v) => /^ED\d/i.test((v.ref || "").trim()));
     // % de desconto do produto (maior entre as variações). SÓ aplicado na Edição Limitada.
-    const descPct = isEL ? vars.reduce((mx, v) => Math.max(mx, descPctPorRef.get(v.ref) || 0), 0) : 0;
+    const descPct = isEL ? Math.max(descElManual, vars.reduce((mx, v) => Math.max(mx, descPctPorRef.get(v.ref) || 0), 0)) : 0;
     // Monta os grupos e, SÓ na Edição Limitada com desconto, embute o preço com desconto em
     // sul/norte (o preço que o carrinho usa e que vai pro pedido) e guarda o ORIGINAL em
     // sul0/norte0 (para o site mostrar riscado). Assim o cliente paga o valor com desconto.
