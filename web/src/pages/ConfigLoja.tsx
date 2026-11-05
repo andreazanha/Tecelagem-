@@ -294,6 +294,7 @@ function LojaB2B() {
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <input type="number" min={0} max={90} value={cfg.desc_el_pct} onChange={(e) => set("desc_el_pct", e.target.value)} style={{ ...inp, width: 80, textAlign: "right" }} placeholder="0" />
           <span style={{ fontWeight: 800, color: "#ad5033" }}>%</span>
+          <a href="/api/integracao/el-diag" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 10, fontSize: 12, color: "#ad5033", fontWeight: 700, whiteSpace: "nowrap" }} title="Ver preço cheio × com desconto de cada peça EL">🔍 Diagnóstico</a>
         </div>
       </div>
       {linha("reservas_ativo", "Reserva de estoque (ED/KT)", "O carrinho segura o estoque das peças ED e KT e envia os avisos de reserva no WhatsApp.")}
