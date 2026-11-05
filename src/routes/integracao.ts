@@ -1860,31 +1860,39 @@ integracao.get("/catalogo-site", async (c) => {
   return c.json(await gerarCatalogoSite(c.env));
 });
 
-// DIAGNÓSTICO do RISCADO da Edição Limitada (JSON): por peça EL devolve o preço CHEIO (sul0),
-// o preço COM desconto (sul), o % e se vai riscar. A tela da Gestão renderiza inline (a sessão
-// só vale dentro do app — por isso NÃO é página solta). Serve pra entender por que o "de/por"
-// não aparece (geralmente % = 0, ou o preço no Syntech já veio descontado).
+// DIAGNÓSTICO do RISCADO da Edição Limitada (HTML, PÚBLICO gated por chave): por peça EL
+// mostra o preço CHEIO (sul0), o preço COM desconto (sul), o % e se vai riscar. É público
+// porque a sessão do sistema não vale no domínio do catálogo; a chave ?k= evita descoberta
+// casual. Serve pra entender por que o "de/por" não aparece (geralmente % = 0, ou o preço
+// no Syntech já veio descontado). Abra: pedidos.bigtricot.com.br/api/integracao/el-diag?k=bt-eldiag
 integracao.get("/el-diag", async (c) => {
-  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  if ((c.req.query("k") || "").trim() !== "bt-eldiag") {
+    return new Response("Diagnóstico EL — abra com a chave: /api/integracao/el-diag?k=bt-eldiag", { status: 403, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
   const cat = await gerarCatalogoSite(c.env);
-  const desc_el_pct = ((await c.env.DB.prepare("SELECT valor FROM config WHERE chave='desc_el_pct'").first<{ valor: string | null }>().catch(() => null))?.valor || "0").trim();
+  const cfgv = ((await c.env.DB.prepare("SELECT valor FROM config WHERE chave='desc_el_pct'").first<{ valor: string | null }>().catch(() => null))?.valor || "0").trim();
   const prods = ((cat.produtos as Array<Record<string, unknown>>) || []).filter((p) => p._edicao_limitada);
-  const linhas: { modelo: string; peca: string; sul0: number | null; sul: number; pct: number; risca: boolean }[] = [];
+  const esc = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[m] as string));
+  const brl = (n: unknown) => "R$ " + (Number(n) || 0).toFixed(2).replace(".", ",");
+  let rows = "";
   for (const p of prods) {
     for (const gr of ((p.grupos as Array<Record<string, unknown>>) || [])) {
       for (const l of ((gr.linhas as Array<Record<string, unknown>>) || [])) {
-        const sul0 = l.sul0 == null ? null : Number(l.sul0);
-        const sul = Number(l.sul) || 0;
-        linhas.push({
-          modelo: String(p.id ?? ""),
-          peca: String(l.rotulo || gr.titulo || ""),
-          sul0, sul, pct: Number(p._desc_pct) || 0,
-          risca: sul0 != null && sul0 > sul,
-        });
+        const sul0 = l.sul0, sul = l.sul;
+        const risca = sul0 != null && Number(sul0) > Number(sul);
+        rows += `<tr><td>${esc(p.id)}</td><td>${esc(l.rotulo || gr.titulo || "")}</td><td class=r>${sul0 != null ? brl(sul0) : "—"}</td><td class=r>${brl(sul)}</td><td class=c>${esc(p._desc_pct)}%</td><td class=c>${risca ? "✅ risca" : "— sem risco"}</td></tr>`;
       }
     }
   }
-  return c.json({ desc_el_pct, total: linhas.length, linhas });
+  if (!rows) rows = `<tr><td colspan=6 style="text-align:center;color:#8a8073">Nenhum produto de Edição Limitada com estoque.</td></tr>`;
+  const htmlOut = `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Diagnóstico EL</title>` +
+    `<style>body{font-family:system-ui,-apple-system,sans-serif;padding:18px;color:#24201d}table{border-collapse:collapse;width:100%;max-width:980px}th,td{border:1px solid #e2ddd3;padding:7px 10px;font-size:14px}th{background:#f3efe8;text-align:left}td.r{text-align:right}td.c{text-align:center}h1{font-size:20px}.note{color:#555;margin:10px 0 18px;max-width:980px;line-height:1.55;background:#fff7ed;border:1px solid #f0d9c4;border-radius:10px;padding:12px 14px}</style>` +
+    `<h1>Diagnóstico — preços da Edição Limitada</h1>` +
+    `<div class=note>Desconto manual configurado na Gestão (<b>desc_el_pct</b>): <b>${esc(cfgv)}%</b>.<br><br>` +
+    `Pra aparecer o <b>riscado</b> (de/por), a coluna <b>Preço cheio</b> tem que ser MAIOR que o <b>Preço com desconto</b> → aí a coluna <b>Risca?</b> mostra ✅.<br>` +
+    `Se o <b>% desc = 0</b> e os dois preços são IGUAIS: não há desconto configurado. Ponha o preço <b>CHEIO</b> no Syntech e defina o <b>%</b> na Gestão → Configurar catálogo → Loja B2B.</div>` +
+    `<table><thead><tr><th>Modelo</th><th>Peça</th><th>Preço cheio</th><th>Com desconto</th><th>% desc</th><th>Risca?</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return new Response(htmlOut, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 });
 
 // Lista os produtos do catálogo (id, nome, se já tem vídeo) + o EXTRA salvo pela dona,
