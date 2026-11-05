@@ -1489,7 +1489,12 @@
         var pe=__prodDoRef(it.ref); var kit=__ehKit(it,pe);
         var q=Number(it.qtd)||0, u=Number(it.valor_unit)||0, t=q*u; sub+=t; totalQtd+=q; if(kit) nKits+=q;
         var tp=__tipoPeca(it.ref);
-        var desc = kit ? __descKit(it.tamanho||it.descricao) : (tp ? (tp+(it.tamanho?(" · "+it.tamanho):"")) : (it.tamanho||it.descricao||it.cor||"—"));
+        // Preserva "com/sem enchimento" nos kits (almofada avulsa KT…A/KT…C): __descKit tira o
+        // "( com/sem enchimento )" do texto, então reanexo como sufixo pra NÃO perder a distinção.
+        var raw=String(it.tamanho||it.descricao||"");
+        var enchM=raw.match(/\(\s*(com|sem)\s+enchimento\s*\)/i);
+        var enchTxt=enchM?(" · "+enchM[1].toLowerCase()+" enchimento"):"";
+        var desc = kit ? (__descKit(raw)+enchTxt) : (tp ? (tp+(it.tamanho?(" · "+it.tamanho):"")) : (it.tamanho||it.descricao||it.cor||"—"));
         return '<div class="pd2-line"><div class="pd2-desc">'+(kit?'<span class="pd2-kit">Kit</span>':'')+'<span>'+esc(desc)+'</span></div>'+
           '<div class="pd2-q">'+q+'</div><div class="pd2-u">'+brl(u)+'</div><div class="pd2-t">'+brl(t)+'</div></div>';
       }).join("");
