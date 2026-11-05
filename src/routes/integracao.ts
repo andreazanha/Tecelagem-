@@ -2334,6 +2334,7 @@ integracao.get("/loja-pedidos", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.valor_total, p.data_pedido, p.created_at,
             COALESCE(p.erp_sync_status,'pendente') AS erp_sync_status, COALESCE(p.erp_liberado,0) AS erp_liberado,
+            COALESCE(p.vendedor,'') AS vendedor,
             p.erp_numero, p.erp_sync_erro,
             (SELECT COUNT(*) FROM pedido_itens WHERE pedido_id=p.id) AS itens,
             (SELECT COALESCE(SUM(qtd),0) FROM pedido_itens WHERE pedido_id=p.id) AS pecas

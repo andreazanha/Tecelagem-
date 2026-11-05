@@ -2,12 +2,31 @@ import { Fragment, useEffect, useState } from "react";
 import { api, type LojaPedido, type LojaPedidoItem } from "../api";
 
 const brl = (v: number | null) => "R$ " + (Number(v) || 0).toFixed(2).replace(".", ",");
-const dataHora = (em: string | null) => (em || "").replace("T", " ").slice(0, 16);
+// O banco guarda os horários em UTC ("YYYY-MM-DD HH:MM:SS", sem fuso). Aqui convertemos
+// pro horário de Brasília (America/Sao_Paulo) pra não mostrar 3h adiantado.
+const dataHora = (em: string | null) => {
+  const s = String(em || "").trim();
+  if (!s) return "—";
+  const iso = s.includes("T") ? s : s.replace(" ", "T");
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + "Z");
+  if (isNaN(d.getTime())) return s.replace("T", " ").slice(0, 16);
+  return d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+};
 
-function statusTxt(p: LojaPedido): { txt: string; cor: string } {
+// No modo AUTOMÁTICO ("on"), pedido de cliente direto (sem vendedor) vai sozinho pela
+// ponte — não precisa liberar. Só pedido de REPRESENTANTE (tem vendedor) ainda espera
+// a liberação. Isso decide tanto o texto da situação quanto se aparece o botão "Liberar".
+function precisaLiberar(p: LojaPedido, modo: string): boolean {
+  if (p.erp_sync_status !== "pendente" || Number(p.erp_liberado) === 1) return false;
+  if (modo === "on") return !!String(p.vendedor || "").trim();   // só representante
+  return true;                                                    // teste/off: sempre
+}
+
+function statusTxt(p: LojaPedido, modo: string): { txt: string; cor: string } {
   if (p.erp_sync_status === "enviado") return { txt: "✓ No Syntech" + (p.erp_numero ? " (nº " + p.erp_numero + ")" : ""), cor: "#166534" };
   if (p.erp_sync_status === "erro") return { txt: "⚠ Erro ao enviar", cor: "#b91c1c" };
   if (Number(p.erp_liberado) === 1) return { txt: "Liberado — a ponte envia em ~2 min", cor: "#92610a" };
+  if (modo === "on" && !precisaLiberar(p, modo)) return { txt: "Automático — a ponte envia em ~2 min", cor: "#92610a" };
   return { txt: "Aguardando liberação", cor: "#555" };
 }
 
@@ -93,7 +112,7 @@ export function LojaPedidos() {
             <thead><tr><th>Quando</th><th>Cliente</th><th>CNPJ</th><th style={{ textAlign: "right" }}>Peças</th><th style={{ textAlign: "right" }}>Total</th><th>Situação</th><th></th></tr></thead>
             <tbody>
               {pedidos.map((p) => {
-                const s = statusTxt(p);
+                const s = statusTxt(p, modo);
                 return (
                   <Fragment key={p.id}>
                     <tr>
@@ -105,7 +124,7 @@ export function LojaPedidos() {
                       <td style={{ color: s.cor }}>{s.txt}{p.erp_sync_status === "erro" && p.erp_sync_erro ? <div style={{ fontSize: 11 }}>{p.erp_sync_erro}</div> : null}</td>
                       <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
                         <button className="btn btn-soft" style={{ padding: "5px 9px", marginRight: 6 }} onClick={() => verItens(p.id)}>{aberto === p.id ? "Fechar" : "Ver itens"}</button>
-                        {p.erp_sync_status === "pendente" && Number(p.erp_liberado) === 0 ? (
+                        {precisaLiberar(p, modo) ? (
                           <button className="btn btn-primary" style={{ padding: "5px 9px" }} disabled={agindo === p.id} onClick={() => liberar(p.id)}>{agindo === p.id ? "…" : "Liberar envio"}</button>
                         ) : null}
                         {p.erp_sync_status === "erro" ? (
