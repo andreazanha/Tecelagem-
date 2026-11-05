@@ -1399,10 +1399,14 @@
       .catch(function(){ pane.innerHTML=cabMeus()+'<div class="itens"><div class="cvazio">Não consegui carregar agora. Tente de novo.</div></div>'; });
   }
   function fmtDataHora(s){
-    s=String(s||"").replace("T"," ");
-    var m=s.match(/(\d{4})-(\d{2})-(\d{2})[ ]?(\d{2}):(\d{2})/);
-    if(!m) return s.slice(0,16);
-    return m[3]+"/"+m[2]+"/"+m[1]+" às "+m[4]+":"+m[5];
+    s=String(s||"").trim(); if(!s) return "";
+    var iso = s.indexOf("T")>=0 ? s : s.replace(" ","T");
+    var d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso+"Z");
+    if(isNaN(d.getTime())){
+      var m=s.match(/(\d{4})-(\d{2})-(\d{2})[ T]?(\d{2}):(\d{2})/);
+      return m ? (m[3]+"/"+m[2]+"/"+m[1]+" às "+m[4]+":"+m[5]) : s.slice(0,16);
+    }
+    return d.toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}).replace(", "," às ");
   }
   function chevSvg(){ return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'; }
   // Abre/fecha um pedido; mantém só UM aberto por vez.
