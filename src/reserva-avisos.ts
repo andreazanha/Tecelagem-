@@ -229,6 +229,11 @@ export async function processarCarrinhoAbandonado(env: Env, sender: Sender): Pro
   // Minutos após criar o carrinho (sem enviar) para disparar o lembrete. Padrão 60; ajustável na tela.
   const mins = await lerNumConfig(env, "aviso_carrinho_minutos", 60);
   const offset = `-${mins} minutes`;
+  // LEMBRETE INTELIGENTE: dispara aos N min após criar, OU — se o carrinho for expirar antes disso —
+  // dentro de uma MARGEM antes do vencimento (ainda vivo), pra sempre dar tempo de sair mesmo com
+  // validade curta. ~1 ciclo do cron de folga. Nunca dispara em carrinho já vencido.
+  const MARGEM_MIN = 6;
+  const margem = `+${MARGEM_MIN} minutes`;
   type Row = { id: string; vendedor: string; cliente_id: string | null; cliente_nome: string };
   const rows = ((await env.DB.prepare(
     `SELECT id, COALESCE(vendedor,'') AS vendedor, cliente_id, COALESCE(cliente_nome,'') AS cliente_nome
@@ -236,9 +241,14 @@ export async function processarCarrinhoAbandonado(env: Env, sender: Sender): Pro
       WHERE canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'
         AND aviso_carrinho_em IS NULL
         AND COALESCE(created_at, data_pedido) IS NOT NULL
-        AND COALESCE(created_at, data_pedido) <= datetime('now', ?)
+        AND (
+              COALESCE(created_at, data_pedido) <= datetime('now', ?)
+              OR (reserva_expira_em IS NOT NULL
+                  AND reserva_expira_em > datetime('now')
+                  AND reserva_expira_em <= datetime('now', ?))
+            )
       ORDER BY created_at LIMIT 30`
-  ).bind(offset).all<Row>().catch(() => ({ results: [] as Row[] }))).results) || [];
+  ).bind(offset, margem).all<Row>().catch(() => ({ results: [] as Row[] }))).results) || [];
   let n = 0;
   for (const p of rows) {
     const dest = await destinoDoPedido(env, p);
