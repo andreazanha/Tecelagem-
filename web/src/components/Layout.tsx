@@ -207,6 +207,8 @@ const GRUPOS: MenuGrupo[] = [
       {
         icon: "🧱", label: "Estoque de matéria prima", page: "estoque", children: [
           { to: "/fio-por-cor", icon: "🧵", label: "Estoque de fios", page: "estoque" },
+          // Tela dedicada de movimentação: botões Entrada (verde) / Saída (vermelho) por item + QR.
+          { to: "/estoque-materiais", icon: "📦", label: "Entrada / Saída de materiais", page: "estoque" },
           // Materiais = tela única (estoque + cadastro). Submenu dinâmico: Fios + insumos + Compras.
           { to: "/cadastros?aba=materiais", icon: "🧷", label: "Materiais (estoque + cadastro)", page: "cadastros", dyn: "materiais", children: [] },
         ],
