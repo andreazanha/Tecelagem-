@@ -1420,6 +1420,9 @@ export const api = {
   cadastroGerarAcesso: (arg: { id?: string; cnpj?: string; regiao?: string; cod_prazo?: string }) => jsonPost("/api/clientes/gerar-acesso-loja", arg).then((r) => j<{ ok: boolean; nome: string; link: string; tem_senha: boolean; error?: string; msg?: string }>(r)),
   cadastroBuscarCliente: (q: string) => fetch("/api/clientes/buscar-loja?q=" + encodeURIComponent(q)).then((r) => j<ClienteCrm[]>(r)),
   repGerarAcesso: (id: string) => jsonPost("/api/clientes/gerar-acesso-rep", { id }).then((r) => j<{ ok: boolean; nome: string; email: string; link: string; tem_senha: boolean; error?: string; msg?: string }>(r)),
+  // A Big cria a senha direto (sem link): cliente por {id|cnpj}+senha, rep por {id}+senha.
+  cadastroDefinirSenha: (arg: { id?: string; cnpj?: string; senha: string; regiao?: string; cod_prazo?: string }) => jsonPost("/api/clientes/definir-senha-loja", arg).then((r) => j<{ ok: boolean; nome: string; error?: string; msg?: string }>(r)),
+  repDefinirSenha: (id: string, senha: string) => jsonPost("/api/clientes/definir-senha-rep", { id, senha }).then((r) => j<{ ok: boolean; nome: string; email: string; error?: string; msg?: string }>(r)),
   // Banners da loja (cadastro pela dona) + upload da imagem no nosso R2.
   lojaBanners: () => fetch("/api/integracao/loja-banners").then((r) => j<{ banners: LojaBanner[]; intervalo: number }>(r)),
   lojaBannersSalvar: (banners: LojaBanner[], intervalo: number) => jsonPost("/api/integracao/loja-banners", { banners, intervalo }).then((r) => j<{ ok: boolean; n: number }>(r)),

@@ -194,6 +194,8 @@ function AcessoExistente({ prazos }: { prazos: { codigo: string; descricao: stri
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  const [senha, setSenha] = useState("");
+  const [senhaOk, setSenhaOk] = useState("");
 
   const q = busca.trim();
   // Busca no servidor (varre todos os clientes), com um pequeno atraso pra não disparar a cada tecla.
@@ -208,11 +210,23 @@ function AcessoExistente({ prazos }: { prazos: { codigo: string; descricao: stri
   }, [q, sel]);
 
   function escolher(c: ClienteCrm) {
-    setSel(c); setLink(""); setMsg("");
+    setSel(c); setLink(""); setMsg(""); setSenha(""); setSenhaOk("");
     setRegiao(c.loja_regiao === "norte" ? "norte" : regiaoSugerida(c.uf || null));
     setPrazo("1");
   }
-  function trocar() { setSel(null); setLink(""); setMsg(""); setBusca(""); }
+  function trocar() { setSel(null); setLink(""); setMsg(""); setBusca(""); setSenha(""); setSenhaOk(""); }
+
+  // A Big cria a senha do cliente direto (mais seguro). Já grava região/prazo e libera.
+  async function criarSenha() {
+    if (!sel) return;
+    if (senha.trim().length < 4) { setMsg("A senha precisa ter pelo menos 4 caracteres."); return; }
+    setBusy(true); setMsg(""); setSenhaOk("");
+    try {
+      const r = await api.cadastroDefinirSenha({ id: sel.id, senha: senha.trim(), regiao, cod_prazo: prazo });
+      if (r.ok) { setSenhaOk(`✓ Senha criada para ${r.nome || sel.nome}. Ele entra com o CNPJ + essa senha.`); setJaTemSenha(true); }
+      else setMsg(r.msg || "Não consegui criar a senha.");
+    } catch { setMsg("Não consegui criar a senha."); } finally { setBusy(false); }
+  }
 
   async function gerar() {
     if (!sel) return;
@@ -231,8 +245,8 @@ function AcessoExistente({ prazos }: { prazos: { codigo: string; descricao: stri
     <div className="card pad" style={{ display: "grid", gap: 10 }}>
       <div style={{ fontWeight: 800, fontSize: 14 }}>🔑 Dar acesso a um cliente que já é nosso</div>
       <div className="muted" style={{ fontSize: 12.5, maxWidth: 640 }}>
-        Busque o cliente, confira os dados, escolha a <b>região</b> e a <b>forma de pagamento</b>, e gere o link.
-        Ao abrir, ele <b>cria a senha dele</b> e já entra vendo os preços (não precisa aprovar — já é cliente).
+        Busque o cliente, confira os dados, escolha a <b>região</b> e a <b>forma de pagamento</b>, e <b>crie a senha dele</b>.
+        Ele entra com o <b>CNPJ + senha</b> e já vê os preços (não precisa aprovar — já é cliente). Passe a senha pelo WhatsApp.
       </div>
 
       {!sel && (
@@ -287,8 +301,17 @@ function AcessoExistente({ prazos }: { prazos: { codigo: string; descricao: stri
                 {prazos.map((p) => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
               </select>
             </label>
-            <button className="btn btn-primary" disabled={busy} onClick={gerar} style={{ marginLeft: "auto" }}>{busy ? "Gerando…" : link ? "Gerar de novo" : "🔗 Gerar link"}</button>
           </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", borderTop: "1px solid var(--line)", paddingTop: 10 }}>
+            <label style={{ display: "grid", gap: 3, flex: "1 1 220px" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>Senha do cliente (mín. 4 caracteres)</span>
+              <input value={senha} onChange={(e) => { setSenha(e.target.value); setSenhaOk(""); }} placeholder="defina a senha dele"
+                style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13 }} />
+            </label>
+            <button className="btn btn-primary" disabled={busy || senha.trim().length < 4} onClick={criarSenha}>{busy ? "Salvando…" : "🔒 Criar senha"}</button>
+            <button className="btn" disabled={busy} onClick={gerar} title="Em vez de você criar a senha, gera um link pro cliente criar sozinho" style={{ marginLeft: "auto" }}>{busy ? "…" : link ? "Gerar link de novo" : "🔗 Gerar link (cliente cria)"}</button>
+          </div>
+          {senhaOk && <div style={{ fontSize: 12.5, fontWeight: 700, color: "#166534", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "9px 11px" }}>{senhaOk}</div>}
           {msg && <div style={{ fontSize: 12.5, color: "#92400e" }}>{msg}</div>}
           {link && (
             <div style={{ display: "grid", gap: 6, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "10px 12px" }}>
@@ -314,8 +337,20 @@ function AcessoRepresentante() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  const [senha, setSenha] = useState("");
+  const [senhaOk, setSenhaOk] = useState("");
   useEffect(() => { api.listarRepresentantes().then((r) => setReps(r.filter((x) => x.ativo !== 0))).catch(() => setReps([])); }, []);
   const repSel = (reps || []).find((r) => r.id === sel);
+  async function criarSenhaRep() {
+    if (!sel) { setMsg("Escolha um representante."); return; }
+    if (senha.trim().length < 4) { setMsg("A senha precisa ter pelo menos 4 caracteres."); return; }
+    setBusy(true); setMsg(""); setSenhaOk("");
+    try {
+      const r = await api.repDefinirSenha(sel, senha.trim());
+      if (r.ok) setSenhaOk(`✓ Senha criada para ${r.nome}. Ele entra com o e-mail (${r.email}) + essa senha.`);
+      else setMsg(r.msg || "Não consegui criar a senha.");
+    } catch { setMsg("Não consegui criar a senha."); } finally { setBusy(false); }
+  }
   async function gerar() {
     if (!sel) { setMsg("Escolha um representante."); return; }
     setBusy(true); setMsg(""); setLink("");
@@ -330,18 +365,29 @@ function AcessoRepresentante() {
     <div className="card pad" style={{ display: "grid", gap: 8 }}>
       <div style={{ fontWeight: 800, fontSize: 14 }}>🧑‍💼 Dar acesso a um representante</div>
       <div className="muted" style={{ fontSize: 12.5, maxWidth: 640 }}>
-        O representante entra com o <b>e-mail + senha</b> e vê só a <b>carteira dele</b>. Gere o link e envie —
-        ao abrir, ele cria a senha. <i>(O rep precisa ter e-mail no cadastro, que é o login.)</i>
+        O representante entra com o <b>e-mail + senha</b> e vê só a <b>carteira dele</b>. <b>Crie a senha dele</b> e
+        passe pelo WhatsApp. <i>(O rep precisa ter e-mail no cadastro, que é o login.)</i>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <select value={sel} onChange={(e) => { setSel(e.target.value); setLink(""); setMsg(""); }} disabled={!reps}
+        <select value={sel} onChange={(e) => { setSel(e.target.value); setLink(""); setMsg(""); setSenha(""); setSenhaOk(""); }} disabled={!reps}
           style={{ padding: "9px 11px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 14, minWidth: 260 }}>
           <option value="">{reps ? "Escolha o representante…" : "Carregando…"}</option>
           {(reps || []).map((r) => <option key={r.id} value={r.id}>{r.nome}{r.email ? "" : " (sem e-mail!)"}</option>)}
         </select>
-        <button className="btn btn-primary" disabled={busy || !sel} onClick={gerar}>{busy ? "Gerando…" : "🔗 Gerar link"}</button>
       </div>
       {repSel && !repSel.email && <div style={{ fontSize: 12.5, color: "#92400e" }}>⚠️ {repSel.nome} está sem e-mail no cadastro — cadastre o e-mail dele primeiro (é o login).</div>}
+      {sel && repSel?.email && (
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <label style={{ display: "grid", gap: 3, flex: "1 1 220px" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>Senha do rep (mín. 4 caracteres)</span>
+            <input value={senha} onChange={(e) => { setSenha(e.target.value); setSenhaOk(""); }} placeholder="defina a senha dele"
+              style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13 }} />
+          </label>
+          <button className="btn btn-primary" disabled={busy || senha.trim().length < 4} onClick={criarSenhaRep}>{busy ? "Salvando…" : "🔒 Criar senha"}</button>
+          <button className="btn" disabled={busy} onClick={gerar} title="Em vez de você criar a senha, gera um link pro rep criar sozinho">{busy ? "…" : "🔗 Gerar link (rep cria)"}</button>
+        </div>
+      )}
+      {senhaOk && <div style={{ fontSize: 12.5, fontWeight: 700, color: "#166534", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "9px 11px" }}>{senhaOk}</div>}
       {msg && <div style={{ fontSize: 12.5, color: "#92400e" }}>{msg}</div>}
       {link && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "9px 11px" }}>

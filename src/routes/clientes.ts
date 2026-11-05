@@ -4,6 +4,7 @@ import { limparVendedor } from "./comercial";
 import { ehClienteInterno } from "./funil";
 import { garantirParceiroPendente } from "./parceiros";
 import { exigirFuncao } from "../permissoes";
+import { hashSenha } from "./loja";
 
 export const clientes = new Hono<{ Bindings: Env }>();
 
@@ -494,4 +495,44 @@ clientes.post("/gerar-acesso-rep", async (c) => {
   // caminho, pra funcionar só com o index.html da pasta /r/ (sem depender do .htaccess).
   const link = `https://vendas.bigtricot.com.br/r/?c=${token}`;
   return c.json({ ok: true, nome: rep.nome, email: rep.email || "", link, tem_senha: !!rep.senha_hash });
+});
+
+// A BIG CRIA A SENHA DO CLIENTE direto (mais seguro que mandar o cliente criar sozinho): o
+// cliente se cadastra, a Big recebe e cadastra a senha por ele aqui. Aceita {id} ou {cnpj}.
+// Grava região/prazo (como o link faz) e já LIBERA (loja_status='aprovado', exceto 'recusado').
+clientes.post("/definir-senha-loja", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ id?: string; cnpj?: string; senha?: string; regiao?: string; cod_prazo?: string }>().catch(() => ({} as { id?: string; cnpj?: string; senha?: string; regiao?: string; cod_prazo?: string }));
+  const id = String(b.id || "").trim();
+  const cnpjDig = String(b.cnpj || "").replace(/\D+/g, "");
+  const senha = String(b.senha || "");
+  if (senha.length < 4) return c.json({ error: "senha_curta", msg: "A senha precisa ter pelo menos 4 caracteres." }, 400);
+  const regiao = String(b.regiao || "").toLowerCase() === "norte" ? "norte" : "sul";
+  const codPrazo = String(b.cod_prazo || "").trim() || null;
+  let cli: { id: string; nome: string | null } | null = null;
+  if (id) cli = await c.env.DB.prepare("SELECT id, nome FROM clientes WHERE id=?").bind(id).first();
+  else if (cnpjDig.length >= 11) cli = await c.env.DB.prepare("SELECT id, nome FROM clientes WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1").bind(cnpjDig).first();
+  else return c.json({ error: "informe_id_ou_cnpj" }, 400);
+  if (!cli) return c.json({ error: "cliente_nao_encontrado", msg: "Não achei esse cliente. Confira o CNPJ." }, 404);
+  const hash = await hashSenha(senha);
+  await c.env.DB.prepare(
+    "UPDATE clientes SET senha_hash=?, loja_regiao=?, loja_cod_prazo=?, loja_status=CASE WHEN COALESCE(loja_status,'') <> 'recusado' THEN 'aprovado' ELSE loja_status END WHERE id=?"
+  ).bind(hash, regiao, codPrazo, cli.id).run();
+  return c.json({ ok: true, nome: cli.nome || "" });
+});
+
+// A BIG CRIA A SENHA DO REPRESENTANTE direto. Login do rep = e-mail, então exige e-mail no cadastro.
+clientes.post("/definir-senha-rep", async (c) => {
+  const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ id?: string; senha?: string }>().catch(() => ({} as { id?: string; senha?: string }));
+  const id = String(b.id || "").trim();
+  const senha = String(b.senha || "");
+  if (!id) return c.json({ error: "informe_id" }, 400);
+  if (senha.length < 4) return c.json({ error: "senha_curta", msg: "A senha precisa ter pelo menos 4 caracteres." }, 400);
+  const rep = await c.env.DB.prepare("SELECT id, nome, email FROM representantes WHERE id=?").bind(id).first<{ id: string; nome: string; email: string | null }>();
+  if (!rep) return c.json({ error: "rep_nao_encontrado", msg: "Representante não encontrado." }, 200);
+  if (!String(rep.email || "").trim()) return c.json({ error: "sem_email", msg: "Esse representante não tem e-mail no cadastro — e o e-mail é o login dele. Cadastre o e-mail do rep e tente de novo." }, 200);
+  const hash = await hashSenha(senha);
+  await c.env.DB.prepare("UPDATE representantes SET senha_hash=? WHERE id=?").bind(hash, id).run();
+  return c.json({ ok: true, nome: rep.nome, email: rep.email || "" });
 });

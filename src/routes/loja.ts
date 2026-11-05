@@ -99,7 +99,7 @@ async function coresLojaPdf(env: Env, nomes: string[]): Promise<Record<string, {
 
 // ── Senha da loja (PBKDF2 via Web Crypto; sem dependência externa) ──────────────
 const b64 = (a: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(a as ArrayBuffer)));
-async function hashSenha(senha: string): Promise<string> {
+export async function hashSenha(senha: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, key, 256);
@@ -210,8 +210,10 @@ loja.post("/definir-senha", async (c) => {
       "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
     ).bind(cnpjDig).first();
     if (!cli) return c.json({ erro: "cliente_nao_encontrado", msg: "CNPJ não encontrado." }, 404);
-    // esqueci=true → redefine direto pelo CNPJ (self-service), sem exigir a senha antiga.
-    if (cli.senha_hash && !b.esqueci && !(await conferirSenha(String(b.senha_atual || ""), cli.senha_hash))) return c.json({ erro: "senha_invalida", msg: "Senha atual incorreta." }, 401);
+    // SEM self-service pelo CNPJ: quem já tem senha só troca sabendo a senha atual. Redefinição
+    // de quem esqueceu a senha é SEMPRE por LINK (token) reenviado pela Big — nunca pelo CNPJ só
+    // (senão qualquer um que saiba o CNPJ trocaria a senha e entraria como o cliente).
+    if (cli.senha_hash && !(await conferirSenha(String(b.senha_atual || ""), cli.senha_hash))) return c.json({ erro: "senha_invalida", msg: "Senha atual incorreta. Para redefinir, peça um novo link à Big Tricot." }, 401);
   }
 
   const hash = await hashSenha(nova);
@@ -327,8 +329,10 @@ loja.post("/rep-definir-senha", async (c) => {
     if (!email) return c.json({ erro: "email_invalido", msg: "Informe o e-mail." }, 400);
     rep = await c.env.DB.prepare("SELECT id, nome, email, senha_hash FROM representantes WHERE LOWER(TRIM(COALESCE(email,'')))=? LIMIT 1").bind(email).first();
     if (!rep) return c.json({ erro: "rep_nao_encontrado", msg: "E-mail não encontrado." }, 404);
-    // esqueci=true → redefine direto pelo e-mail (self-service), sem exigir a senha antiga.
-    if (rep.senha_hash && !b.esqueci && !(await conferirSenha(String(b.senha_atual || ""), rep.senha_hash))) return c.json({ erro: "senha_invalida", msg: "Senha atual incorreta." }, 401);
+    // SEM self-service pelo e-mail: quem já tem senha só troca sabendo a senha atual. Quem esqueceu
+    // redefine SEMPRE pelo LINK (token) enviado por e-mail via /rep-esqueci — nunca só com o e-mail
+    // (senão qualquer um que saiba o e-mail do rep trocaria a senha e entraria como ele).
+    if (rep.senha_hash && !(await conferirSenha(String(b.senha_atual || ""), rep.senha_hash))) return c.json({ erro: "senha_invalida", msg: "Senha atual incorreta. Para redefinir, use o link enviado no seu e-mail." }, 401);
   }
   const hash = await hashSenha(nova);
   await c.env.DB.prepare("UPDATE representantes SET senha_hash=? WHERE id=?").bind(hash, rep.id).run();

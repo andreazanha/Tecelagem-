@@ -2305,13 +2305,27 @@
   function repSair(){ try{ localStorage.removeItem("bt_rep"); localStorage.removeItem("bt_cnpj"); }catch(e){} REP=null; REP_CLIENTE=null; try{ location.href=location.pathname; return; }catch(e){} document.getElementById("repArea").style.display="none"; mostrarEnt(); abrirEntrada(); }
   document.getElementById("repBtn").addEventListener("click",repEntrar);
   document.getElementById("repSenha").addEventListener("keydown",function(e){ if(e.key==="Enter") repEntrar(); });
-  // "Esqueci minha senha" do rep (self-service): abre a redefinição direta pelo e-mail
-  // (cria uma senha nova na hora, sem senha antiga nem link).
+  // "Esqueci minha senha" do rep: NÃO troca a senha na hora (seria perigoso). Pede ao servidor
+  // para ENVIAR UM LINK de redefinição no e-mail cadastrado do rep. Se o e-mail estiver desligado
+  // (sem RESEND), cai pro WhatsApp da Big. A resposta é sempre igual (não revela se o e-mail existe).
   (function(){ var be=document.getElementById("repEsqueci"); if(!be) return; be.addEventListener("click",function(){
     var email=(document.getElementById("repEmail").value||"").trim();
     var msg=document.getElementById("repMsg");
     if(!email || email.indexOf("@")<0){ if(msg){ msg.style.color="#b91c1c"; msg.textContent="Digite o seu e-mail no campo acima e clique de novo em 'Esqueci minha senha'."; } return; }
-    abrirResetSenha(true, email);
+    if(msg){ msg.style.color="#6b645a"; msg.textContent="Enviando link de redefinição…"; }
+    fetch("/api/loja/rep-esqueci",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email})})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
+      .then(function(res){
+        if(res.j && res.j.erro==="email_desligado"){
+          var wa=String((D&&D.whatsapp)||"").replace(/\D/g,""); if(wa && wa.length<=11) wa="55"+wa;
+          if(wa){ if(msg){ msg.style.color="#6b645a"; msg.textContent="Abrindo o WhatsApp da Big para redefinir…"; } try{ window.open("https://wa.me/"+wa+"?text="+encodeURIComponent("Olá! Sou representante e preciso redefinir minha senha de acesso ("+email+")."),"_blank"); }catch(e){} }
+          else if(msg){ msg.style.color="#b91c1c"; msg.textContent="Fale com a Big Tricot para redefinir sua senha."; }
+          return;
+        }
+        if(res.j && res.j.erro==="email_invalido"){ if(msg){ msg.style.color="#b91c1c"; msg.textContent=res.j.msg||"E-mail inválido."; } return; }
+        if(msg){ msg.style.color="#166534"; msg.textContent="Se este e-mail estiver cadastrado, enviamos um link para criar uma nova senha. Confira sua caixa de entrada."; }
+      })
+      .catch(function(){ if(msg){ msg.style.color="#b91c1c"; msg.textContent="Sem conexão. Tente de novo."; } });
   }); })();
   // "Entrar como representante" leva pro PORTAL do rep (?rep=1), separado do catálogo do cliente.
   (function(){ var ir=document.getElementById("irRep"); if(ir) ir.addEventListener("click",function(){ try{ location.href=location.pathname+"?rep=1"; }catch(e){ mostrarRepView(); } }); })();
@@ -2334,14 +2348,16 @@
   function mostrarCad(prefill){ document.getElementById("entView").style.display="none"; document.getElementById("cadView").style.display="block"; var cc=document.getElementById("cCnpj"); if(cc && prefill && !cc.value) cc.value=prefill; document.getElementById("cadMsg").textContent=""; }
   function mostrarEnt(){ MODO_ESQUECI=false; ["cadView","senhaView","repView"].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display="none"; }); document.getElementById("entView").style.display="block"; }
   document.getElementById("irCad").addEventListener("click",function(){ mostrarCad((document.getElementById("entCnpj").value||"").trim()); });
-  // "Esqueci a senha": abre o WhatsApp da Big pedindo a redefinição (com o CNPJ digitado).
-  // "Esqueci a senha" do cliente (self-service): abre a redefinição direta pelo CNPJ
-  // (cria uma senha nova na hora, sem senha antiga nem link).
+  // "Esqueci a senha" do cliente: NÃO redefine pelo CNPJ na hora (seria perigoso — qualquer um
+  // que saiba o CNPJ entraria). Abre o WhatsApp da Big pedindo um novo LINK de acesso; o gestor
+  // reenvia o link (que é o caminho seguro pra criar nova senha).
   (function(){ var be=document.getElementById("entEsqueci"); if(!be) return; be.addEventListener("click",function(){
     var cnpj=(document.getElementById("entCnpj").value||"").trim(); var dig=cnpj.replace(/\D/g,"");
     var box=document.getElementById("entMsg");
     if(dig.length<11){ if(box){ box.style.color="#b91c1c"; box.textContent="Digite o CNPJ no campo acima e clique de novo em 'Esqueci a senha'."; } return; }
-    abrirResetSenha(false, cnpj);
+    var wa=String((D&&D.whatsapp)||"").replace(/\D/g,""); if(wa && wa.length<=11) wa="55"+wa;
+    if(wa){ if(box){ box.style.color="#6b645a"; box.textContent="Abrindo o WhatsApp da Big para redefinir sua senha…"; } try{ window.open("https://wa.me/"+wa+"?text="+encodeURIComponent("Olá! Esqueci minha senha do catálogo. Meu CNPJ é "+cnpj+". Pode me reenviar o link de acesso?"),"_blank"); }catch(e){} }
+    else if(box){ box.style.color="#b91c1c"; box.textContent="Fale com a Big Tricot para redefinir sua senha."; }
   }); })();
   document.getElementById("voltarEnt").addEventListener("click",mostrarEnt);
   function enviarCadastro(){

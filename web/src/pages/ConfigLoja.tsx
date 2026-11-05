@@ -256,16 +256,23 @@ function LojaB2B() {
   const [cfg, setCfg] = useState<ZapiConfig | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
-  useEffect(() => { api.atendConfig().then(setCfg).catch(() => setMsg("Não consegui carregar a configuração.")); }, []);
+  // VALIDADE em HORAS no campo (o back guarda em minutos). Estado próprio pra digitar sem jank;
+  // converte min→h ao carregar e h→min ao salvar. Aceita decimal (ex.: 0.2h ≈ 12min) pra teste.
+  const [validadeHoras, setValidadeHoras] = useState("");
+  const minParaHoras = (min: string | number) => { const n = Number(min); return Number.isFinite(n) && n > 0 ? String(+(n / 60).toFixed(4).replace(/\.?0+$/, "")) : ""; };
+  useEffect(() => { api.atendConfig().then((c) => { setCfg(c); setValidadeHoras(minParaHoras(c.reserva_janela_minutos)); }).catch(() => setMsg("Não consegui carregar a configuração.")); }, []);
   const set = (k: keyof ZapiConfig, v: string | boolean) => setCfg((c) => (c ? { ...c, [k]: v } : c));
   async function salvar() {
     if (!cfg) return;
     setSalvando(true); setMsg("");
     try {
+      // Campo em horas → guarda em minutos (mín. 5). Vazio/zero → mantém o padrão 720 (12h).
+      const horas = Number(validadeHoras);
+      const janelaMin = Number.isFinite(horas) && horas > 0 ? String(Math.max(5, Math.round(horas * 60))) : "720";
       await api.atendSalvarConfig({
         reservas_ativo: cfg.reservas_ativo, pcp_popup_ativo: cfg.pcp_popup_ativo, crm_popup_ativo: cfg.crm_popup_ativo,
         aviso_carrinho_ativo: cfg.aviso_carrinho_ativo, aviso_carrinho_minutos: cfg.aviso_carrinho_minutos,
-        reserva_janela_minutos: cfg.reserva_janela_minutos, envio_hora_ini: cfg.envio_hora_ini, envio_hora_fim: cfg.envio_hora_fim,
+        reserva_janela_minutos: janelaMin, envio_hora_ini: cfg.envio_hora_ini, envio_hora_fim: cfg.envio_hora_fim,
         desc_el_pct: cfg.desc_el_pct, wa_teste_numero: cfg.wa_teste_numero,
       });
       setMsg("✓ Salvo! Atualize a loja (Ctrl+F5) pra ver."); setTimeout(() => setMsg(""), 3000);
@@ -304,13 +311,13 @@ function LojaB2B() {
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", padding: "10px 14px", marginBottom: 10, borderRadius: 10, border: "1px solid #ece5d8", background: "#fbfaf7" }}>
         <label style={{ flex: "1 1 180px" }}><span style={lbl}>Lembrete de carrinho: enviar após (min)</span>
           <input type="number" min={1} value={cfg.aviso_carrinho_minutos} onChange={(e) => set("aviso_carrinho_minutos", e.target.value)} style={inp} placeholder="60" /></label>
-        <label style={{ flex: "1 1 180px" }}><span style={lbl}>Validade do carrinho/reserva (min)</span>
-          <input type="number" min={5} value={cfg.reserva_janela_minutos} onChange={(e) => set("reserva_janela_minutos", e.target.value)} style={inp} placeholder="720" /></label>
+        <label style={{ flex: "1 1 180px" }}><span style={lbl}>Validade do carrinho/reserva (horas)</span>
+          <input type="number" min={0.1} step={0.5} value={validadeHoras} onChange={(e) => setValidadeHoras(e.target.value)} style={inp} placeholder="12" /></label>
         <label style={{ flex: "1 1 120px" }}><span style={lbl}>Enviar msgs a partir das (h)</span>
           <input type="number" min={0} max={23} value={cfg.envio_hora_ini} onChange={(e) => set("envio_hora_ini", e.target.value)} style={inp} placeholder="8" /></label>
         <label style={{ flex: "1 1 120px" }}><span style={lbl}>…até as (h)</span>
           <input type="number" min={1} max={24} value={cfg.envio_hora_fim} onChange={(e) => set("envio_hora_fim", e.target.value)} style={inp} placeholder="20" /></label>
-        <div style={{ flexBasis: "100%", fontSize: 11, color: "#9a9185" }}>Padrão: 60 min (lembrete), 720 min = 12h (validade), envio 8h–20h. Para testar fora do horário, use 0 e 24; depois volte para 8 e 20.</div>
+        <div style={{ flexBasis: "100%", fontSize: 11, color: "#9a9185" }}>Padrão: 60 min (lembrete), <b>12 horas</b> (validade do carrinho), envio 8h–20h. A validade agora é em <b>horas</b> (ex.: 12 = 12h; para testar rápido use 0.2 ≈ 12 min). Para testar fora do horário, use 0 e 24; depois volte para 8 e 20.</div>
       </div>
       {/* NÚMERO DE TESTE: quando preenchido, TODO aviso da loja vai pra ele (ignora o cadastro). */}
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", padding: "12px 14px", marginBottom: 10, borderRadius: 10, border: "2px solid " + ((cfg.wa_teste_numero || "").replace(/\D/g, "").length >= 10 ? "#2563eb" : "#e2e8f0"), background: (cfg.wa_teste_numero || "").replace(/\D/g, "").length >= 10 ? "#eff6ff" : "#fbfaf7" }}>
