@@ -1658,9 +1658,11 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         // Linhas avulsas de UMA peça (capa OU almofada), já com o rótulo de enchimento no
         // nome da medida ("50×50 ( sem enchimento )" / "( com enchimento )") — a loja joga
         // esse "enchimento" numa linha de baixo em destaque, igual aos kits.
-        const avulsaLinhas = (ref: string, ench: "sem" | "com") => {
+        const avulsaLinhas = (ref: string, ench: "sem" | "com", stockRef?: string) => {
           const cf = compInfo.get(ref); if (!cf) return null;
-          const cod = (tam50.get(ref) || "").toLowerCase();
+          const sref = stockRef || ref;                         // de qual peça LER o estoque (controle pela capa)
+          const scod = String(tam50.get(sref) || "").trim();    // código 50×50 da peça do ESTOQUE (capa)
+          const cod = (tam50.get(ref) || "").toLowerCase();     // código 50×50 da peça do PREÇO (ref)
           // só o tamanho 50×50: casa pelo CÓDIGO da receita (5K/7K); se não achar, pela MEDIDA 50×50.
           let tams = cod ? cf.tamanhos.filter((t) => String(t.tamanho || "").trim().toLowerCase() === cod) : [];
           if (!tams.length) tams = cf.tamanhos.filter((t) => soDig(t.medida) === "5050");
@@ -1677,8 +1679,9 @@ export async function gerarCatalogoSite(env: Env): Promise<{
             linhasA.push({ id: `${ref}-${tid}`, cod: ref, id_tamanho: tid, sul, norte });
             // saldo POR COR da peça NESTE tamanho (cadastro individual = erp_estoque, por
             // código Syntech ex.: "5K"). Nunca usa o estoque_geral (soma de tudo).
-            const escTam = (itens[ref] && itens[ref][String(t.tamanho || "").trim()]) || null;
-            const resvTam = (reservado[ref] && reservado[ref][String(t.tamanho || "").trim()]) || {}; // capas já seguradas pelos kits
+            const stKey = scod || String(t.tamanho || "").trim();   // capa → código da capa; capa própria → o mesmo
+            const escTam = (itens[sref] && itens[sref][stKey]) || null;
+            const resvTam = (reservado[sref] && reservado[sref][stKey]) || {}; // capas já seguradas pelos kits
             itens[ref] = itens[ref] || {};
             itens[ref][medEnch] = itens[ref][medEnch] || {};
             // SEM saldo por cor/tamanho no espelho → 0 (sob encomenda), nunca o total do cadastro.
@@ -1693,11 +1696,15 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         // UMA seção "Almofada avulsa 50×50" com as duas opções: sem enchimento (capa) e com
         // enchimento (almofada), cada uma com seu preço e estoque próprios.
         const avSem = capaRef ? avulsaLinhas(capaRef, "sem") : null;
-        const avCom = almoRef ? avulsaLinhas(almoRef, "com") : null;
+        // CONTROLE PELA CAPA: a almofada (com enchimento) = capa + enchimento. Lê o estoque DA CAPA
+        // (capaRef), não da almofada (que no Syntech fica esgotada — é montada na hora).
+        const avCom = almoRef ? avulsaLinhas(almoRef, "com", capaRef || undefined) : null;
         const avLinhas = [...(avSem?.linhas || []), ...(avCom?.linhas || [])];
         if (avLinhas.length) {
-          const estAv = (avSem?.estoque || 0) + (avCom?.estoque || 0);
-          grupos.push({ id: `${prim.id}-av`, titulo: "Almofada avulsa 50×50", ref: "", estoque: estAv, linhas: avLinhas, compartilha: false });
+          // capa e almofada dividem a MESMA capa física → o disponível é o da capa (não soma os dois).
+          const estAv = Math.max(avSem?.estoque || 0, avCom?.estoque || 0);
+          // compartilha=true: a loja divide o teto entre as duas opções (não vende além da capa).
+          grupos.push({ id: `${prim.id}-av`, titulo: "Almofada avulsa 50×50", ref: "", estoque: estAv, linhas: avLinhas, compartilha: !!(capaRef && almoRef) });
           estTotal += estAv;
         }
 
