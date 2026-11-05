@@ -256,6 +256,12 @@ function LojaB2B() {
   const [cfg, setCfg] = useState<ZapiConfig | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
+  const [diag, setDiag] = useState<{ desc_el_pct: string; linhas: { modelo: string; peca: string; sul0: number | null; sul: number; pct: number; risca: boolean }[] } | null>(null);
+  const [diagLoad, setDiagLoad] = useState(false);
+  function verDiag() {
+    setDiagLoad(true);
+    api.elDiag().then(setDiag).catch(() => setMsg("Não consegui carregar o diagnóstico.")).finally(() => setDiagLoad(false));
+  }
   useEffect(() => { api.atendConfig().then(setCfg).catch(() => setMsg("Não consegui carregar a configuração.")); }, []);
   const set = (k: keyof ZapiConfig, v: string | boolean) => setCfg((c) => (c ? { ...c, [k]: v } : c));
   async function salvar() {
@@ -294,9 +300,38 @@ function LojaB2B() {
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <input type="number" min={0} max={90} value={cfg.desc_el_pct} onChange={(e) => set("desc_el_pct", e.target.value)} style={{ ...inp, width: 80, textAlign: "right" }} placeholder="0" />
           <span style={{ fontWeight: 800, color: "#ad5033" }}>%</span>
-          <a href="/api/integracao/el-diag" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 10, fontSize: 12, color: "#ad5033", fontWeight: 700, whiteSpace: "nowrap" }} title="Ver preço cheio × com desconto de cada peça EL">🔍 Diagnóstico</a>
+          <button type="button" onClick={verDiag} disabled={diagLoad} style={{ marginLeft: 10, fontSize: 12, color: "#ad5033", fontWeight: 700, whiteSpace: "nowrap", background: "#fff", border: "1px solid #ad5033", borderRadius: 8, padding: "6px 10px", cursor: "pointer" }} title="Ver preço cheio × com desconto de cada peça EL">{diagLoad ? "…" : "🔍 Diagnóstico"}</button>
         </div>
       </div>
+      {diag ? (
+        <div style={{ marginBottom: 14, border: "1px solid #f0d9c4", background: "#fff7ed", borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontSize: 12.5, color: "#6b645a", marginBottom: 10, lineHeight: 1.5 }}>
+            Desconto configurado (desc_el_pct): <b>{diag.desc_el_pct}%</b>. Pra aparecer o <b>riscado</b>, o <b>preço cheio</b> tem que ser maior que o <b>com desconto</b> (coluna Risca = ✅).
+            Se o % é 0 e os preços são iguais, não há desconto: ponha o preço <b>cheio</b> no Syntech e o <b>%</b> aqui em cima.
+          </div>
+          {diag.linhas.length === 0 ? <div style={{ color: "#8a8073" }}>Nenhum produto de Edição Limitada com estoque.</div> : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+                <thead><tr>{["Modelo", "Peça", "Preço cheio", "Com desconto", "% desc", "Risca?"].map((h, i) => (
+                  <th key={i} style={{ border: "1px solid #e2ddd3", padding: "6px 9px", background: "#f3efe8", textAlign: i >= 2 && i <= 4 ? "right" : "left" }}>{h}</th>
+                ))}</tr></thead>
+                <tbody>
+                  {diag.linhas.map((l, i) => (
+                    <tr key={i}>
+                      <td style={{ border: "1px solid #e2ddd3", padding: "6px 9px" }}>{l.modelo}</td>
+                      <td style={{ border: "1px solid #e2ddd3", padding: "6px 9px" }}>{l.peca}</td>
+                      <td style={{ border: "1px solid #e2ddd3", padding: "6px 9px", textAlign: "right" }}>{l.sul0 == null ? "—" : "R$ " + l.sul0.toFixed(2).replace(".", ",")}</td>
+                      <td style={{ border: "1px solid #e2ddd3", padding: "6px 9px", textAlign: "right" }}>{"R$ " + l.sul.toFixed(2).replace(".", ",")}</td>
+                      <td style={{ border: "1px solid #e2ddd3", padding: "6px 9px", textAlign: "right" }}>{l.pct}%</td>
+                      <td style={{ border: "1px solid #e2ddd3", padding: "6px 9px", textAlign: "center", color: l.risca ? "#166534" : "#b45309", fontWeight: 700 }}>{l.risca ? "✅" : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : null}
       {linha("reservas_ativo", "Reserva de estoque (ED/KT)", "O carrinho segura o estoque das peças ED e KT e envia os avisos de reserva no WhatsApp.")}
       {linha("pcp_popup_ativo", "Pop-up “conferir no Syntech”", "Quando um pedido da loja entra no Syntech, aparece um aviso no sistema para a equipe ir aprovar lá.")}
       {linha("crm_popup_ativo", "Aviso ao vendedor (CRM)", "O vendedor interno dono da carteira recebe um aviso quando o cliente dele faz um pedido.")}
