@@ -1416,6 +1416,18 @@ export async function gerarCatalogoSite(env: Env): Promise<{
       type Linha0 = { id: string; cod: string; id_tamanho: string; sul: number; norte: number };
       type KitVar = { prod: typeof produtos[number]; medida: string; vivo: number; pecas: number; variacao: string; temEnch: boolean; almofada: string; linha: Linha0 | null; estCor: Record<string, number>; temCor: boolean };
       const porFamilia = new Map<string, { fam: string; vars: KitVar[] }>();
+      // CONTROLE PELA CAPA (kits KT, igual à Edição Limitada): a almofada (com enchimento) é a MESMA
+      // peça física da capa do kit vazio (almofada = capa + enchimento). Monta família|variação → capa
+      // (ref + código de tamanho), tirada dos kits SEM enchimento, pra o kit CHEIO ler o estoque PELA
+      // CAPA — assim a EXIBIÇÃO bate com a BAIXA (consumoDosKits, que já reserva a capa).
+      const capaDaVarKit = new Map<string, { ref: string; tam: string }>();
+      for (const prod of produtos) {
+        const itensR = recPorKit.get(prod.id); if (!itensR) continue;
+        if (/ENCHIMENTO/i.test(prod.nome)) continue;           // só o kit VAZIO carrega a capa
+        const pk = parseKit(prod.nome);
+        const capaIt = itensR.find((it) => tipoPeca(compInfo.get(it.comp)?.nome || "") === "capa");
+        if (capaIt) capaDaVarKit.set(pk.familia + "|" + pk.variacao, { ref: capaIt.comp, tam: capaIt.tam });
+      }
       for (const prod of produtos) {
         const itensR = recPorKit.get(prod.id);
         if (!itensR) continue;
@@ -1469,7 +1481,15 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         // ( saldo_da_peça_na_cor ÷ qtd ), puxando cada peça do cadastro individual no SEU
         // tamanho. Enchimento (sem cor) não limita.
         const coloridas = itensR
-          .map((it) => ({ qtd: Number(it.qtd) || 1, cs: corTamStock(it.comp, it.tam), info: compInfo.get(it.comp) }))
+          .map((it) => {
+            // ALMOFADA (com enchimento) → lê o estoque DA CAPA da mesma variação (controle pela capa).
+            let cRef = it.comp, cTam = it.tam, cInfo = compInfo.get(it.comp);
+            if (tipoPeca(cInfo?.nome || "") === "almofada") {
+              const capa = capaDaVarKit.get(pk.familia + "|" + pk.variacao);
+              if (capa) { cRef = capa.ref; cTam = capa.tam; cInfo = compInfo.get(capa.ref) || cInfo; }
+            }
+            return { qtd: Number(it.qtd) || 1, cs: corTamStock(cRef, cTam), info: cInfo };
+          })
           .filter((x) => !!(x.info && Array.isArray(x.info.cores) && x.info.cores.length > 0));
         const temCor = coloridas.length > 0 && coloridas.every((x) => x.cs != null);
         const estCor: Record<string, number> = {};
