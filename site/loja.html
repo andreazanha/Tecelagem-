@@ -178,7 +178,8 @@
   .pd-scroll{flex:1 1 auto; overflow:auto; padding:16px 18px}
   .pd-cab{margin-bottom:6px}
   .pd-cab-l{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
-  .pd-cab-l h3{margin:0; font-size:26px; color:var(--ink)}
+  .pd-cab-l h3{margin:0; font-size:22px; font-weight:800; color:var(--ink)}
+  .pd-tipo{color:#b45309; font-size:11.5px; font-weight:600; margin-top:1px}
   .pd-cli{font-weight:600; color:var(--ink); margin-top:6px}
   .pd-meta{color:var(--muted); font-size:13px; margin-top:2px}
   .pd-grupo{margin-top:14px; border:1px solid var(--line); border-radius:12px; overflow:hidden}
@@ -1354,6 +1355,8 @@
   }
   // Agrupa os itens por MODELO (produto); dentro, cada linha é uma cor+tamanho.
   function __grpModelo(itens){ var map={}, ord=[]; (itens||[]).forEach(function(it){ var k=it.produto||it.ref||"—"; if(!map[k]){map[k]=[]; ord.push(k);} map[k].push(it); }); return ord.map(function(k){ return {modelo:k, itens:map[k]}; }); }
+  // Edição Limitada: pela ref (ED####C = capa, ED####A = almofada) diz o tipo da peça.
+  function __tipoPeca(ref){ var r=String(ref||"").toUpperCase(); if(!/^ED\d/.test(r)) return ""; if(/A$/.test(r)) return "Almofada · com enchimento"; if(/C$/.test(r)) return "Capa · sem enchimento"; return ""; }
   // Popup GRANDE do pedido: cabeçalho + itens por modelo/cor/tamanho com valor unitário e
   // total de cada linha; no rodapé o total do pedido e o botão de baixar PDF direto.
   window.__abrirPedido=function(ix){
@@ -1362,8 +1365,9 @@
     var corpo=__grpModelo(p.itens).map(function(g){
       var linhas=g.itens.map(function(it){
         var q=Number(it.qtd)||0, u=Number(it.valor_unit)||0, sub=q*u; totalCalc+=sub;
+        var tp=__tipoPeca(it.ref);
         return '<div class="pd-row">'+
-          '<div class="pd-ct"><span class="pd-cor">'+esc(it.cor||"—")+'</span>'+(it.tamanho?'<span class="pd-tam">'+esc(it.tamanho)+'</span>':'')+'</div>'+
+          '<div class="pd-ct"><span class="pd-cor">'+esc(it.cor||"—")+'</span>'+(it.tamanho?'<span class="pd-tam">'+esc(it.tamanho)+'</span>':'')+(tp?'<span class="pd-tipo">'+esc(tp)+'</span>':'')+'</div>'+
           '<div class="pd-q">'+q+'×</div><div class="pd-u">'+brl(u)+'</div><div class="pd-s">'+brl(sub)+'</div>'+
         '</div>';
       }).join("");
@@ -1374,7 +1378,7 @@
     var total = (p.total!=null? Number(p.total): totalCalc);
     var numTxt = p.numero ? ('Pedido nº '+p.numero) : 'Pedido';
     var cnpj = fmtCnpjBr(MEUS_CNPJ);
-    var cab='<div class="pd-cab"><div class="pd-cab-l"><h3 class="serif">'+esc(numTxt)+'</h3>'+
+    var cab='<div class="pd-cab"><div class="pd-cab-l"><h3>'+esc(numTxt)+'</h3>'+
         '<span class="mp-badge '+esc(p.status||'recebido')+'"><span class="dot"></span>'+esc(p.status_label||"")+'</span></div>'+
         '<div class="pd-cli">'+esc(p.cliente||"Cliente")+'</div>'+
         '<div class="pd-meta">'+(cnpj?('CNPJ '+esc(cnpj)+' · '):'')+esc(fmtDataHora(p.data))+'</div></div>';
@@ -1914,8 +1918,9 @@
   function __repPedSheetHtml(d,id){
     var corpo=__grpModelo(d.itens).map(function(g){
       var linhas=g.itens.map(function(it){
+        var tp=__tipoPeca(it.ref);
         return '<div class="pd-row">'+
-          '<div class="pd-ct"><span class="pd-cor">'+esc(it.cor||it.descricao||"—")+'</span>'+(it.tamanho?'<span class="pd-tam">'+esc(it.tamanho)+'</span>':'')+'</div>'+
+          '<div class="pd-ct"><span class="pd-cor">'+esc(it.cor||it.descricao||"—")+'</span>'+(it.tamanho?'<span class="pd-tam">'+esc(it.tamanho)+'</span>':'')+(tp?'<span class="pd-tipo">'+esc(tp)+'</span>':'')+'</div>'+
           '<div class="pd-q">'+(Number(it.qtd)||0)+'×</div><div class="pd-u">'+brl(it.valor_unit||0)+'</div><div class="pd-s">'+brl(it.valor_total||0)+'</div>'+
         '</div>';
       }).join("");
@@ -1923,7 +1928,7 @@
         '<div class="pd-row pd-head"><div class="pd-ct">Cor · Tamanho</div><div class="pd-q">Qtd</div><div class="pd-u">Unit.</div><div class="pd-s">Total</div></div>'+
         linhas+'</div></div>';
     }).join("");
-    var cab='<div class="pd-cab"><div class="pd-cab-l"><h3 class="serif">Pedido nº '+esc(d.numero)+'</h3>'+chipPed(d.status,d.label)+'</div>'+
+    var cab='<div class="pd-cab"><div class="pd-cab-l"><h3>Pedido nº '+esc(d.numero)+'</h3>'+chipPed(d.status,d.label)+'</div>'+
       '<div class="pd-cli">'+esc(d.cliente||"Cliente")+'</div>'+
       '<div class="pd-meta">'+esc(fmtDataHora(d.data))+'</div></div>';
     var botoes='<button class="pd-pdf" onclick="__repPedPdf(\''+esc(id)+'\')">⬇ Baixar PDF</button>';
