@@ -123,10 +123,63 @@ instalarDemoFetch(); // filtro do modo demonstração (não grava nada quando li
   } catch { /* ok */ }
 })();
 
+// Lembra a última tela visitada e volta nela no F5 (a casca recarrega o app na raiz "/").
+function rotaInicial(): string {
+  try {
+    const r = localStorage.getItem("bt_rota");
+    if (r && r.startsWith("/") && r !== "/" && !r.startsWith("/login") && r !== "/sem-acesso") return r;
+  } catch { /* ok */ }
+  return primeiraPagina(getUser());
+}
+function SalvarRota() {
+  const loc = useLocation();
+  useEffect(() => {
+    const p = loc.pathname;
+    if (p && p !== "/" && !p.startsWith("/login") && p !== "/sem-acesso") {
+      try { localStorage.setItem("bt_rota", p); } catch { /* ok */ }
+    }
+  }, [loc.pathname]);
+  return null;
+}
+// Título do navegador = página atual. Dentro do iframe (domínio com "casca"), avisa o pai por
+// postMessage pra ele poder refletir no título da aba (precisa de um listener na página da casca).
+const NOMES_ROTA: Record<string, string> = {
+  pedidos: "Pedidos", cadastros: "Cadastros", compras: "Compras", "ordens-compra": "Ordens de Compra",
+  produtos: "Produtos", comercial: "Comercial", clientes: "Clientes", funil: "Funil",
+  atendimento: "Atendimento", "navegador-crm": "Navegador CRM", "lojas-parceiras": "Lojas Parceiras",
+  "treinar-bia": "Treinar Bia", "setores-atendimento": "Setores", "painel-atendimento": "Painel",
+  romaneios: "Romaneios", pcp: "PCP", "pedidos-erp": "Pedidos da Loja", "reservas-protegidas": "Reservas",
+  "estoque-syntech": "Estoque Syntech", catalogo: "Catálogo", "config-loja": "Configurar Catálogo",
+  "imagens-loja": "Imagens da Loja", "auditoria-catalogo": "Auditoria", acessos: "Acessos",
+  producao: "Produção", "controle-tecelagem": "Controle Tecelagem", passadoria: "Passadoria",
+  corte: "Corte", costura: "Costura", revisao: "Revisão", estoque: "Estoque", "fio-por-cor": "Fio por Cor",
+  "estoque-materiais": "Estoque Materiais", "estoque-scan": "Scan Estoque", "relatorio-vendas": "Relatório de Vendas",
+  "relatorio-producao": "Relatório de Produção", "relatorio-estoque": "Relatório de Estoque",
+  "loja-pedidos": "Pedidos da Loja", "cadastros-loja": "Cadastros da Loja", expedicao: "Expedição",
+  "impressao-etiquetas": "Etiquetas", fiscal: "Fiscal", transporte: "Transporte", "todos-pedidos": "Todos os Pedidos",
+  "ficha-programa": "Ficha Programa", dashboard: "Dashboard", "sem-acesso": "Sem acesso",
+};
+function nomeDaRota(path: string): string {
+  const seg = (path.split("/")[1] || "").toLowerCase();
+  if (!seg) return "Big Tricot";
+  return NOMES_ROTA[seg] || (seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, " "));
+}
+function TituloRota() {
+  const loc = useLocation();
+  useEffect(() => {
+    const t = "Big Tricot — " + nomeDaRota(loc.pathname);
+    try { document.title = t; } catch { /* ok */ }
+    try { if (window.parent && window.parent !== window) window.parent.postMessage({ type: "bt-titulo", titulo: t }, "*"); } catch { /* ok */ }
+  }, [loc.pathname]);
+  return null;
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
       <Screensaver />
+      <SalvarRota />
+      <TituloRota />
       <Routes>
         <Route path="/dashboard" element={<TVFrame><Dashboard /></TVFrame>} />
         <Route path="/tv/tecelagem" element={<TVFrame><TvTecelagem /></TVFrame>} />
@@ -135,7 +188,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Route path="/tv/novo-pedido" element={<TVFrame><NovoPedidoTV /></TVFrame>} />
         <Route path="/login" element={<Login />} />
         <Route element={<Layout />}>
-          <Route path="/" element={<Navigate to={primeiraPagina(getUser())} replace />} />
+          <Route path="/" element={<Navigate to={rotaInicial()} replace />} />
           <Route path="/sem-acesso" element={<SemAcesso />} />
           <Route path="/pedidos" element={<Protegido page="pedidos"><Pedidos /></Protegido>} />
           <Route path="/pedidos/novo" element={<Protegido page="pedidos"><NovoPedido /></Protegido>} />
