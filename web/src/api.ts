@@ -308,6 +308,7 @@ export interface ClienteCrm {
   bloqueado?: number | boolean | null;
   nascimento?: string | null;
   loja_regiao?: string | null;     // 'sul' | 'norte' — região de preço na loja B2B
+  origem?: string | null;          // 'syntech' = veio da ponte; 'loja' = cadastro online
   created_at?: string | null;
   ultimo_faturamento?: string | null;
   razao_social?: string | null;

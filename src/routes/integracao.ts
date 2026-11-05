@@ -21,6 +21,7 @@ import { limparReservasRefletidas, kitAlertas } from "../loja-estoque";
 import { avisarRecebidoSyntech, notificarVendedorInterno } from "../reserva-avisos";
 import { flagLigado, FLAG_RESERVAS, FLAG_PCP_POPUP } from "../flags";
 import { enviarWhatsapp } from "./atendimento";
+import { ehClienteInterno } from "./funil";
 
 export const integracao = new Hono<{ Bindings: Env }>();
 
@@ -362,6 +363,62 @@ integracao.post("/carteira-codigos", async (c) => {
   }
   const ligados = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM clientes WHERE COALESCE(rep_codigo,'') <> ''").first<{ n: number }>();
   return c.json({ ok: true, recebidos: mapa.length, casados, sem_cliente: semCliente, atualizados: aplicados, codigo_preenchidos: codPreenchidos, clientes_com_codigo: ligados?.n ?? 0 });
+});
+
+// ── SYNC DE CLIENTES DO SYNTECH → nosso cadastro ────────────────────────────────
+// A ponte lê a tabela CLIENTES do Firebird e manda a lista aqui. A gente:
+//   • CASA por código (codigo_erp = CLIENTES.CODIGO) ou por CNPJ (dígitos);
+//   • se EXISTE: preenche SÓ o que está vazio (codigo_erp, rep_codigo, whatsapp, telefone) —
+//     NUNCA sobrescreve o que foi digitado à mão;
+//   • se NÃO existe: CRIA o cliente marcado origem='syntech' (é o selo "veio do Syntech").
+// Nomes internos (ESTOQUE, BIG TRICOT, etc.) são ignorados. Não apaga ninguém. Idempotente.
+type ClienteSyncIn = { codigo?: string | number; cod?: string | number; cnpj?: string; nome?: string; razao?: string; fantasia?: string; fone?: string; telefone?: string; celular?: string; whatsapp?: string; cidade?: string; uf?: string; guia?: string | number; representante?: string };
+integracao.post("/clientes-sync", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+  const b = await c.req.json<{ clientes?: ClienteSyncIn[] }>().catch(() => ({} as { clientes?: ClienteSyncIn[] }));
+  const lista = Array.isArray(b.clientes) ? b.clientes : [];
+  if (!lista.length) return c.json({ error: "sem_clientes", msg: "Envie { clientes: [...] }." }, 400);
+  const soDig = (v: unknown) => String(v ?? "").replace(/\D/g, "");
+  const txt = (v: unknown) => String(v ?? "").trim();
+  // índice dos clientes atuais (por código e por CNPJ) — pra casar sem varrer a tabela por linha
+  type CliRow = { id: string; cnpj: string | null; codigo_erp: string; whatsapp: string; telefone: string; rep_codigo: string };
+  const todos = (await c.env.DB.prepare("SELECT id, cnpj, COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(whatsapp,'') AS whatsapp, COALESCE(telefone,'') AS telefone, COALESCE(rep_codigo,'') AS rep_codigo FROM clientes").all<CliRow>().catch(() => ({ results: [] as CliRow[] }))).results;
+  const porCnpj = new Map<string, CliRow>(), porCod = new Map<string, CliRow>();
+  for (const cli of todos) { const d = soDig(cli.cnpj); if (d.length >= 11) porCnpj.set(d, cli); if (cli.codigo_erp) porCod.set(cli.codigo_erp.trim(), cli); }
+  const stmts: D1PreparedStatement[] = [];
+  let criados = 0, atualizados = 0, casados = 0, pulados = 0;
+  const feitos = new Set<string>();
+  for (const r of lista) {
+    const nome = txt(r.nome) || txt(r.razao);
+    if (!nome || ehClienteInterno(nome)) { pulados++; continue; }   // nomes internos não entram
+    const cnpjD = soDig(r.cnpj);
+    const cod = txt(r.codigo) || txt(r.cod);
+    const guia = txt(r.guia);
+    const fone = soDig(r.fone) || soDig(r.telefone);
+    const wpp = soDig(r.celular) || soDig(r.whatsapp) || fone;      // WhatsApp preferido = celular
+    const alvo = (cod && porCod.get(cod)) || (cnpjD.length >= 11 ? porCnpj.get(cnpjD) : undefined);
+    if (alvo) {
+      if (feitos.has(alvo.id)) continue; feitos.add(alvo.id);
+      casados++;
+      const sets: string[] = [], binds: unknown[] = [];
+      if (!alvo.codigo_erp && cod) { sets.push("codigo_erp=?"); binds.push(cod); }
+      if (!alvo.rep_codigo && guia && guia !== "0") { sets.push("rep_codigo=?"); binds.push(guia); }
+      if (!soDig(alvo.whatsapp) && wpp) { sets.push("whatsapp=?"); binds.push(wpp); }
+      if (!soDig(alvo.telefone) && fone) { sets.push("telefone=?"); binds.push(fone); }
+      if (sets.length) { atualizados++; binds.push(alvo.id); stmts.push(c.env.DB.prepare(`UPDATE clientes SET ${sets.join(", ")} WHERE id=?`).bind(...binds)); }
+    } else {
+      criados++;
+      stmts.push(c.env.DB.prepare(
+        "INSERT INTO clientes (id, nome, fantasia, cnpj, cidade, uf, telefone, whatsapp, representante, codigo_erp, rep_codigo, origem) VALUES (?,?,?,?,?,?,?,?,?,?,?, 'syntech')"
+      ).bind(uid(), nome, txt(r.fantasia) || null, cnpjD || null, txt(r.cidade) || null, txt(r.uf).toUpperCase().slice(0, 2) || null, fone || null, wpp || null, txt(r.representante) || null, cod || null, (guia && guia !== "0") ? guia : null));
+    }
+  }
+  let aplicados = 0;
+  for (let i = 0; i < stmts.length; i += 50) { const res = await c.env.DB.batch(stmts.slice(i, i + 50)); for (const x of res) aplicados += (x.meta?.changes ?? 0); }
+  const totSyntech = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM clientes WHERE origem='syntech'").first<{ n: number }>().catch(() => null);
+  return c.json({ ok: true, recebidos: lista.length, criados, atualizados, casados, pulados, aplicados, clientes_do_syntech: totSyntech?.n ?? 0 });
 });
 
 // ── LISTA os pedidos do ERP aguardando conferência ──────────────────────────────

@@ -190,7 +190,7 @@ export function Clientes() {
         <td style={{ textAlign: "center", width: 34 }} onClick={(e) => e.stopPropagation()}>
           <input type="checkbox" checked={selCli.has(c.id)} onChange={() => toggleSel(c.id)} title="Selecionar (campanha / atribuir vendedor)" />
         </td>
-        <td><div className="cli-nm">{c.nome}{c.prospectado_em ? <span title={`Prospectado em ${dataBr(c.prospectado_em)}`} style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: "#7c3aed", background: "#f3e8ff", borderRadius: 6, padding: "1px 6px", whiteSpace: "nowrap" }}>🎯 {dataBr(c.prospectado_em)}</span> : null}</div><div className="muted2">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div></td>
+        <td><div className="cli-nm">{c.nome}{c.origem === "syntech" ? <span title="Veio do Syntech (pela ponte)" style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: "#0e7490", background: "#cffafe", borderRadius: 6, padding: "1px 6px", whiteSpace: "nowrap" }}>🔗 Syntech</span> : null}{c.prospectado_em ? <span title={`Prospectado em ${dataBr(c.prospectado_em)}`} style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: "#7c3aed", background: "#f3e8ff", borderRadius: 6, padding: "1px 6px", whiteSpace: "nowrap" }}>🎯 {dataBr(c.prospectado_em)}</span> : null}</div><div className="muted2">{[c.cidade, c.uf].filter(Boolean).join(" · ") || "—"}</div></td>
         <td>{c.representante ? <span className="rep-cli">🧑‍💼 {c.representante}</span> : <span className="muted2">—</span>}</td>
         <td>{c.vendedor_interno_nome ? <span className="rep-cli" style={{ background: "#eef2ff", color: "#3730a3" }}>👤 {c.vendedor_interno_nome}</span> : <span className="muted2">—</span>}</td>
         <td>{c.whatsapp ? (
