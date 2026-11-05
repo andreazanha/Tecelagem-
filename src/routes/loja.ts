@@ -577,12 +577,13 @@ loja.get("/rep-pedido-detalhe", async (c) => {
   ).bind(id).all<{ produto: string | null; cor_grade: string | null; tamanho: string | null; qtd: number | null; valor_unit: number | null }>();
   const itens = (itensRaw || []).map((r) => {
     const q = Number(r.qtd) || 0, vu = Number(r.valor_unit) || 0;
-    return { produto: String(r.produto || ""), descricao: [r.cor_grade, r.tamanho].map((x) => String(x || "").trim()).filter(Boolean).join(" · "), qtd: q, valor_unit: vu, valor_total: Math.round(q * vu * 100) / 100 };
+    const cor = String(r.cor_grade || "").trim(), tamanho = String(r.tamanho || "").trim();
+    return { produto: String(r.produto || ""), cor, tamanho, descricao: [cor, tamanho].filter(Boolean).join(" · "), qtd: q, valor_unit: vu, valor_total: Math.round(q * vu * 100) / 100 };
   });
   const pecas = itens.reduce((s, i) => s + i.qtd, 0);
   const total = Number(ped.valor_total) || itens.reduce((s, i) => s + i.valor_total, 0);
   return c.json({
-    ok: true, status, label,
+    ok: true, status, label, cliente: ped.cliente_nome || "",
     numero: ped.erp_numero ? String(ped.erp_numero) : String(ped.id).slice(0, 8).toUpperCase(),
     data: ped.created_at || ped.data_pedido || "", forma: ped.forma,
     pecas, total, editavel: ped.sync === "rascunho", itens,

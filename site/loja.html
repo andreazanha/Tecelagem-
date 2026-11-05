@@ -173,7 +173,7 @@
   /* ---- Detalhe do pedido (popup grande do "Meus pedidos") ---- */
   .mp-card.mp-thin{display:block; width:100%; text-align:left; cursor:pointer; padding:12px 14px; font:inherit; color:inherit}
   .mp-thin .mp-chev{transform:rotate(-90deg)}
-  #pedModal{z-index:90}
+  #pedModal{z-index:1000}
   #pedModal .sheet{max-width:720px; inset:4% 2%}
   .pd-scroll{flex:1 1 auto; overflow:auto; padding:16px 18px}
   .pd-cab{margin-bottom:6px}
@@ -198,6 +198,11 @@
   .pd-total b{font-size:25px; color:var(--accent)}
   .pd-pdf{border:0; background:var(--accent); color:#fff; font-weight:700; font-size:15px; padding:12px 20px; border-radius:12px; cursor:pointer; box-shadow:0 6px 16px rgba(173,80,51,.3)}
   .pd-pdf:active{transform:translateY(1px)}
+  .pd-botoes{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .pd-act{border:1.5px solid var(--line); background:#fff; color:#5f584e; font-weight:600; font-size:14px; padding:11px 15px; border-radius:12px; cursor:pointer}
+  .pd-act.go{border:0; background:#1f7a4d; color:#fff}
+  .pd-act.del{border:1.5px solid #f3c6c6; color:#b91c1c; background:#fff}
+  .pd-act:active{transform:translateY(1px)}
   .mp-num{font-weight:800; font-size:14px; color:var(--ink)}
   .mp-chev{margin-left:auto; color:#94a3b8; display:flex; transition:transform .2s ease}
   .mp-card.open .mp-chev{transform:rotate(180deg)}
@@ -1871,20 +1876,51 @@
     var box=document.getElementById("repPedLista");
     if(!REP_PED_LISTA.length){ box.innerHTML='<div class="rep-vazio">Você ainda não tem pedidos. Toque em <b>Novo pedido</b> pra começar.</div>'; return; }
     box.innerHTML=REP_PED_LISTA.map(function(p){
-      var aberto=REP_PED_ABERTO===p.id;
       var dt=fmtDataCurta(p.data);
       var resumo=(p.pecas||0)+" peça"+((p.pecas===1)?"":"s")+" · "+brl(p.total||0)+(dt?(" · "+dt):"");
-      return '<div class="rped'+(aberto?" open":"")+'">'+
-        '<button class="rped-h" onclick="__repPedToggle(\''+esc(p.id)+'\')">'+
+      return '<div class="rped">'+
+        '<button class="rped-h" onclick="__repAbrirPedido(\''+esc(p.id)+'\')">'+
           '<span class="rped-hi"><span class="rped-cli">'+esc(p.cliente||"(cliente)")+'</span><span class="rped-res">'+esc(resumo)+'</span></span>'+
           chipPed(p.status,p.label)+'<span class="rped-chev">'+chevSvg()+'</span>'+
         '</button>'+
-        '<div class="rped-det" id="rpd-'+esc(p.id)+'"></div>'+
       '</div>';
     }).join("");
-    if(REP_PED_ABERTO) carregarRepPedDet(REP_PED_ABERTO);
   }
   window.__repPedToggle=function(id){ REP_PED_ABERTO=(REP_PED_ABERTO===id)?"":id; renderRepPedidos(); };
+  // Popup GRANDE do pedido (lado REPRESENTANTE): mesmo visual do cliente — cabeçalho,
+  // itens por modelo/cor/tamanho com valor unitário e total, total no rodapé e ações.
+  window.__repAbrirPedido=function(id){
+    var sheet=document.getElementById("pedSheet");
+    sheet.innerHTML='<div class="topo"><span class="lb">Detalhe do pedido</span><button class="fechar" onclick="__fecharPed()">✕</button></div><div class="pd-scroll"><div class="rep-vazio" style="padding:22px">Carregando…</div></div>';
+    document.getElementById("pedModal").classList.add("show"); document.body.style.overflow="hidden";
+    fetch("/api/loja/rep-pedido-detalhe?id="+encodeURIComponent(id)+"&rep="+encodeURIComponent((REP&&REP.id)||""))
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(!d||!d.ok){ sheet.innerHTML=__repPedSheetTop()+'<div class="pd-scroll"><div class="rep-vazio" style="padding:22px">Não consegui carregar os itens.</div></div>'; return; } sheet.innerHTML=__repPedSheetHtml(d,id); })
+      .catch(function(){ sheet.innerHTML=__repPedSheetTop()+'<div class="pd-scroll"><div class="rep-vazio" style="padding:22px">Sem conexão. Tente de novo.</div></div>'; });
+  };
+  function __repPedSheetTop(){ return '<div class="topo"><span class="lb">Detalhe do pedido</span><button class="fechar" onclick="__fecharPed()">✕</button></div>'; }
+  function __repPedSheetHtml(d,id){
+    var corpo=__grpModelo(d.itens).map(function(g){
+      var linhas=g.itens.map(function(it){
+        return '<div class="pd-row">'+
+          '<div class="pd-ct"><span class="pd-cor">'+esc(it.cor||it.descricao||"—")+'</span>'+(it.tamanho?'<span class="pd-tam">'+esc(it.tamanho)+'</span>':'')+'</div>'+
+          '<div class="pd-q">'+(Number(it.qtd)||0)+'×</div><div class="pd-u">'+brl(it.valor_unit||0)+'</div><div class="pd-s">'+brl(it.valor_total||0)+'</div>'+
+        '</div>';
+      }).join("");
+      return '<div class="pd-grupo"><div class="pd-modelo">'+esc(g.modelo)+'</div><div class="pd-rows">'+
+        '<div class="pd-row pd-head"><div class="pd-ct">Cor · Tamanho</div><div class="pd-q">Qtd</div><div class="pd-u">Unit.</div><div class="pd-s">Total</div></div>'+
+        linhas+'</div></div>';
+    }).join("");
+    var cab='<div class="pd-cab"><div class="pd-cab-l"><h3 class="serif">Pedido nº '+esc(d.numero)+'</h3>'+chipPed(d.status,d.label)+'</div>'+
+      '<div class="pd-cli">'+esc(d.cliente||"Cliente")+'</div>'+
+      '<div class="pd-meta">'+esc(fmtDataHora(d.data))+'</div></div>';
+    var botoes='<button class="pd-pdf" onclick="__repPedPdf(\''+esc(id)+'\')">⬇ Baixar PDF</button>';
+    if(d.editavel){ botoes+='<button class="pd-act" onclick="__fecharPed();__repReabrir(\''+esc(id)+'\')">✏️ Reabrir</button>'+
+      '<button class="pd-act go" onclick="__repPedEnviar(\''+esc(id)+'\',\''+(d.forma?"1":"")+'\')">✅ Enviar à Big</button>'+
+      '<button class="pd-act del" onclick="__repPedExcluir(\''+esc(id)+'\')">Excluir</button>'; }
+    var foot='<div class="pd-foot"><div class="pd-total"><span>Total do pedido</span><b>'+brl(d.total||0)+'</b></div><div class="pd-botoes">'+botoes+'</div></div>';
+    return __repPedSheetTop()+'<div class="pd-scroll">'+cab+corpo+'</div>'+foot;
+  }
   function carregarRepPedDet(id){
     var el=document.getElementById("rpd-"+id); if(!el) return;
     el.innerHTML='<div class="rep-vazio" style="padding:12px">Carregando itens…</div>';
@@ -1919,8 +1955,8 @@
       '</div>';
     return '<div class="rped-body">'+grid+tbl+acoes+'</div>';
   }
-  // Baixar/ver o PDF: abre numa aba nova (dá pra salvar, imprimir ou compartilhar de lá).
-  window.__repPedPdf=function(id){ var url="/api/loja/pedido-pdf/"+encodeURIComponent(id); try{ window.open(url,"_blank"); }catch(e){ location.href=url; } };
+  // Baixar o PDF DIRETO (dl=1 → download, sem abrir visualizador/impressora).
+  window.__repPedPdf=function(id){ var url="/api/loja/pedido-pdf/"+encodeURIComponent(id)+"?dl=1"; var a=document.createElement("a"); a.href=url; a.download="pedido-"+String(id).slice(0,8)+".pdf"; document.body.appendChild(a); a.click(); setTimeout(function(){ try{a.remove();}catch(e){} },200); };
   // Recompõe um item salvo (cod/medida/cor) nas chaves do catálogo (pid/grupo/id_tamanho/corId),
   // pra ele casar com o catálogo ao reabrir (somar quantidade ao adicionar o mesmo produto de novo).
   function reconstruirItemCart(it){
@@ -1960,7 +1996,7 @@
   window.__repPedExcluir=function(id){
     if(!confirm("Excluir este pedido em espera? Não dá pra desfazer.")) return;
     fetch("/api/loja/rep-pedido-acao",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rep:(REP&&REP.id)||"",pedido_id:id,acao:"excluir"})})
-      .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ carregarRepPedidos(); } else { alert((j&&j.msg)||"Não consegui excluir."); } })
+      .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ __fecharPed(); carregarRepPedidos(); } else { alert((j&&j.msg)||"Não consegui excluir."); } })
       .catch(function(){ alert("Sem conexão. Tente de novo."); });
   };
   window.__repPedEnviar=function(id,temForma){
@@ -1976,7 +2012,7 @@
     }
     if(!confirm("Enviar este pedido para a Big Tricot?\nDepois de enviado ele trava.")) return;
     fetch("/api/loja/rep-pedido-acao",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rep:(REP&&REP.id)||"",pedido_id:id,acao:"enviar",cod_prazo:cod_prazo,forma_desc:forma_desc})})
-      .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ alert(j.msg||"Pedido enviado!"); carregarRepPedidos(); } else { alert((j&&j.msg)||"Não consegui enviar."); } })
+      .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ __fecharPed(); alert(j.msg||"Pedido enviado!"); carregarRepPedidos(); } else { alert((j&&j.msg)||"Não consegui enviar."); } })
       .catch(function(){ alert("Sem conexão. Tente de novo."); });
   };
   window.__repCliente=function(id){
