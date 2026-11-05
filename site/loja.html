@@ -805,12 +805,20 @@
   //   "sem enchimento"  (em destaque)
   function medFmt(med){
     med=String(med==null?"":med);
-    var ench="";
+    var temMais=/\+/.test(med);                 // "+" = kit multi-peça (peseira + capas) → não é avulsa
+    var ench="", lado="";
     var m=med.match(/\(\s*(com|sem)\s+enchimento\s*\)/i);
-    if(m){ ench=m[1].toLowerCase()+" enchimento"; med=med.replace(m[0],""); }
+    if(m){ lado=m[1].toLowerCase(); ench=lado+" enchimento"; med=med.replace(m[0],""); }
     med=med.replace(/[+\-\s]+$/,"").trim();
     var esp=esc(med).replace(/(\d)\s*[×xX]\s*(\d)/g,"$1 × $2");
-    return '<div class="med">'+esp+'</div>'+(ench?'<div class="med-ench" style="margin-top:3px;font-weight:600;font-size:12px;color:#9a948b;letter-spacing:.3px">'+esc(ench)+'</div>':'');
+    // ALMOFADA AVULSA (peça única, sem "+", e o texto ainda não traz Capa/Almofada — a EL já traz):
+    // a versão SEM enchimento é a CAPA; a COM enchimento é a ALMOFADA. Mostra isso em destaque.
+    var jaTipo=/capa|almofada/i.test(med);
+    var tipo = (!temMais && lado && !jaTipo) ? (lado==="sem" ? "Capa" : "Almofada") : "";
+    var sub = tipo ? (tipo+(ench?" · "+ench:"")) : ench;
+    return (tipo?'<div class="med-tipo" style="font-weight:700;color:#6b4f3a;font-size:13px">'+esc(tipo)+'</div>':'')+
+      '<div class="med"'+(tipo?' style="font-weight:500;color:#8a847a"':'')+'>'+esp+'</div>'+
+      (ench?'<div class="med-ench" style="margin-top:3px;font-weight:600;font-size:12px;color:#9a948b;letter-spacing:.3px">'+esc(ench)+'</div>':'');
   }
 
   // ---------- GRID ----------
