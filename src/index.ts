@@ -127,9 +127,9 @@ app.use("*", async (c, next) => {
   if (url.hostname.startsWith("cadastro.") && url.pathname === "/") {
     return c.html(cadastroHtml(), 200, { "Cache-Control": "no-cache" });
   }
-  // Subdomínio do REPRESENTANTE (vendas.bigtricot.com.br): a RAIZ abre direto o portal
-  // do rep (login do representante), sem ?rep=1. /api, assets e o resto seguem normais.
-  if (url.hostname.startsWith("vendas.") && url.pathname === "/") {
+  // Subdomínio do REPRESENTANTE (vendas.bigtricot.com.br): a RAIZ e o link /r/ (acesso do rep
+  // por e-mail, ?c=token) abrem direto o portal do rep. /api, assets e o resto seguem normais.
+  if (url.hostname.startsWith("vendas.") && (url.pathname === "/" || url.pathname === "/r" || url.pathname === "/r/")) {
     try {
       const html = await construirLojaHtml(c.env, true);
       return c.html(html, 200, { "Cache-Control": "no-store" });

@@ -2389,7 +2389,10 @@
     var qs; try{ qs=new URLSearchParams(location.search); }catch(e){ qs=null; }
     // 0) Link de acesso do REPRESENTANTE (?rep_acesso=token): ele cria/redefine a senha dele.
     //    O link é o "define sua senha": serve tanto pro 1º acesso quanto pra redefinir (esqueci a senha).
-    var rtok = qs ? (qs.get("rep_acesso")||"") : "";
+    // link do rep: /r/?c=TOKEN (ou ?rep_acesso=). O "c" só vale no PORTAL DO REP (vendas /r/ ou
+    // __REP_PORTAL__), nunca no catálogo do cliente — senão um "?c=" qualquer abriria tela de rep.
+    var ehRepCtx = (window.__REP_PORTAL__===true) || (String(location.pathname||"").indexOf("/r")===0);
+    var rtok = qs ? (qs.get("rep_acesso") || (ehRepCtx ? (qs.get("c")||"") : "")) : "";
     if(rtok){
       fetch("/api/loja/rep-acesso?token="+encodeURIComponent(rtok))
         .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j||{}}; }); })
