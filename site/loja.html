@@ -699,7 +699,19 @@
   // Preço só aparece pra cliente LIBERADO. Em análise, mostra um cadeado no lugar.
   function precoVis(v){ return LIBERADO ? brl(v) : '<span style="color:#b08968">🔒</span>'; }
   function precoLinha(l){ return Number(regiao==="norte"? l.norte : l.sul)||0; }
+  // Preço CHEIO da linha (antes do desconto da Edição Limitada). Cai no próprio preço quando
+  // não há desconto (sul0/norte0 ausentes), então nunca risca sem motivo.
+  function precoLinha0(l){ return Number(regiao==="norte"? (l.norte0||l.norte) : (l.sul0||l.sul))||0; }
+  // Preço da linha COM o "de/por": risca o cheio e destaca o com desconto quando o cheio é maior.
+  function precoVisL(l){
+    if(!LIBERADO) return '<span style="color:#b08968">🔒</span>';
+    var v=precoLinha(l), o=precoLinha0(l);
+    if(o>v) return '<s style="color:#9c7b4a;font-weight:600">'+brl(o)+'</s> <b style="color:#b45309">'+brl(v)+'</b>';
+    return brl(v);
+  }
   function menorPreco(p){ var m=Infinity; (p.grupos||[]).forEach(function(g){(g.linhas||[]).forEach(function(l){var v=precoLinha(l); if(v>0&&v<m)m=v;});}); return m===Infinity?0:m; }
+  // Menor preço CHEIO (antes do desconto) — pro card mostrar "de X por Y" na Edição Limitada.
+  function menorPreco0(p){ var m=Infinity; (p.grupos||[]).forEach(function(g){(g.linhas||[]).forEach(function(l){var v=precoLinha0(l); if(v>0&&v<m)m=v;});}); return m===Infinity?0:m; }
   function estoqueProduto(p){ var tot=Number(p.estoque_geral)||0; return tot; }
   function inicial(nome){ return (String(nome||"?").trim()[0]||"?").toUpperCase(); }
   function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
@@ -727,7 +739,7 @@
       '<div class="foto">'+ (p.foto? '<div class="ph">'+inicial(p.nome)+'</div><img loading="lazy" src="'+esc(p.foto)+'" onload="this.style.opacity=1" onerror="this.remove()" style="opacity:0;transition:opacity .3s">' : '<div class="ph">'+inicial(p.nome)+'</div>') +
         badgeHTML(p) +
       '</div><div class="info"><div class="nome">'+esc(p.nome)+'</div>'+
-      (LIBERADO ? (mp? '<div class="preco">a partir de <b>'+brl(mp)+'</b></div>' : '<div class="preco">—</div>') : '<div class="preco" style="color:#b08968">🔒 preços após liberação</div>')+
+      (LIBERADO ? (mp? ((menorPreco0(p)>mp) ? '<div class="preco">a partir de <s style="color:#9c7b4a;font-weight:600">'+brl(menorPreco0(p))+'</s> <b style="color:#b45309">'+brl(mp)+'</b></div>' : '<div class="preco">a partir de <b>'+brl(mp)+'</b></div>') : '<div class="preco">—</div>') : '<div class="preco" style="color:#b08968">🔒 preços após liberação</div>')+
       '</div></article>';
   }
   // Ícones SVG (traço fino, estilo Lucide) por categoria — minimalistas e elegantes.
@@ -982,7 +994,7 @@
           ? '<div class="pr" style="opacity:.5;font-size:11.5px">—</div>'
           : (REP_SOVER ? '' : (LIBERADO ? '<div class="stepper" data-k="'+esc(k)+'" data-cod="'+esc(l.cod)+'" data-idt="'+esc(l.id_tamanho)+'"><button data-d="-1">−</button><input type="number" min="0" value="'+q+'"><button data-d="1">+</button></div>' : '<div class="pr" style="opacity:.6;font-size:11px">—</div>'));
         return '<div class="tamrow"'+(esgotado?' style="opacity:.62"':'')+'><div class="medbox">'+rot+'<div style="font-size:10.5px;color:#9a8c78;margin-top:1px;letter-spacing:.2px">cód: '+esc(l.cod)+'</div>'+estTxtLinha(l.cod,l.id_tamanho)+'</div>'+
-          '<div class="pr">'+precoVis(precoLinha(l))+'</div>'+
+          '<div class="pr">'+precoVisL(l)+'</div>'+
           ctrl+'</div>';
       }).join("");
       if(!rows) return "";                    // seção sem nenhuma opção visível → some
