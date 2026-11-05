@@ -589,9 +589,32 @@ integracao.get("/estoque", async (c) => {
   if (ref) { cond.push("ref = ?"); binds.push(ref); }
   if (busca) { cond.push("(lower(produto) LIKE ? OR lower(ref) LIKE ?)"); binds.push(`%${busca}%`, `%${busca}%`); }
   if (cond.length) sql += " WHERE " + cond.join(" AND ");
-  sql += " ORDER BY produto, cor, tamanho LIMIT 1000";
+  sql += " ORDER BY ref, produto, cor, tamanho LIMIT 1000";
   const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
-  return c.json(results);
+  // Enriquece cada linha com a MEDIDA real (ex.: "50 × 50") — o Syntech guarda o estoque pelo
+  // CÓDIGO do tamanho (ex.: "5K"), que é por peça. O cadastro da peça (erp_produtos.tamanhos)
+  // tem código→medida; resolvo aqui pra a tela mostrar a medida, não o código cru.
+  const rows = (results || []) as { produto?: string | null; ref?: string | null; cor?: string | null; tamanho?: string | null; saldo?: number; unidade?: string | null; atualizado_em?: string }[];
+  const refs = [...new Set(rows.map((r) => String(r.ref || "").trim()).filter(Boolean))];
+  const codToMed = new Map<string, string>(); // "ref|cod(lower)" -> medida
+  for (let i = 0; i < refs.length; i += 100) {
+    const lote = refs.slice(i, i + 100); const ph = lote.map(() => "?").join(",");
+    const tr = ((await c.env.DB.prepare(`SELECT ref, tamanhos FROM erp_produtos WHERE ref IN (${ph})`).bind(...lote).all<{ ref: string; tamanhos: string | null }>().catch(() => ({ results: [] as { ref: string; tamanhos: string | null }[] }))).results) || [];
+    for (const p of tr) {
+      try { const a = JSON.parse(p.tamanhos || "[]"); if (Array.isArray(a)) for (const t of a) {
+        const cod = String((t && (t.tamanho ?? t.codigo)) || "").trim().toLowerCase();
+        const med = String((t && (t.medida ?? t.tamanho)) || "").trim();
+        if (cod && med) codToMed.set(p.ref + "|" + cod, med);
+      } } catch { /* tamanhos inválido → ignora */ }
+    }
+  }
+  const fmtMed = (m: string) => m.replace(/(\d)\s*[x×X]\s*(\d)/g, "$1 × $2");
+  const out = rows.map((r) => {
+    const cod = String(r.tamanho || "").trim();
+    const med = codToMed.get(String(r.ref || "") + "|" + cod.toLowerCase());
+    return { ...r, codigo_tamanho: cod || null, medida: med ? fmtMed(med) : null };
+  });
+  return c.json(out);
 });
 
 // DIAGNÓSTICO visual de um produto/kit: mostra, numa página legível, a receita do kit

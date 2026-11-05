@@ -4,7 +4,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 
-type Linha = { produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; saldo: number; unidade: string | null; atualizado_em: string };
+type Linha = { produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; unidade: string | null; atualizado_em: string };
+
+// Ordena texto com números "naturalmente" (ex.: ref2 < ref10; 50×50 antes de 55×35).
+const chaveMedida = (m: string): number[] => (String(m || "").match(/\d+(?:[.,]\d+)?/g) || []).map((n) => Number(n.replace(",", ".")));
+const cmpMedida = (a: string, b: string): number => {
+  const ka = chaveMedida(a), kb = chaveMedida(b);
+  for (let i = 0; i < Math.max(ka.length, kb.length); i++) { const d = (ka[i] ?? Infinity) - (kb[i] ?? Infinity); if (d) return d; }
+  return String(a || "").localeCompare(String(b || ""));
+};
 
 function haQuanto(iso: string | null, agora: string): { txt: string; cor: string } {
   if (!iso) return { txt: "sem dados", cor: "#b91c1c" };
@@ -44,8 +52,11 @@ export function EstoqueSyntech() {
       g.linhas.push(l); m.set(ref, g);
     }
     const arr = [...m.values()];
-    for (const g of arr) g.linhas.sort((a, b2) => (a.tamanho || "").localeCompare(b2.tamanho || "") || (a.cor || "").localeCompare(b2.cor || ""));
-    arr.sort((a, b2) => a.nome.localeCompare(b2.nome));
+    // dentro de cada produto: por MEDIDA (tamanho real, em sequência) e depois por cor
+    const medDe = (l: Linha) => l.medida || l.codigo_tamanho || l.tamanho || "";
+    for (const g of arr) g.linhas.sort((a, b2) => cmpMedida(medDe(a), medDe(b2)) || (a.cor || "").localeCompare(b2.cor || ""));
+    // os produtos em sequência por REFERÊNCIA (natural), depois pelo nome
+    arr.sort((a, b2) => cmpMedida(a.ref, b2.ref) || a.ref.localeCompare(b2.ref) || a.nome.localeCompare(b2.nome));
     return arr;
   }, [linhas, busca]);
 
@@ -128,7 +139,7 @@ export function EstoqueSyntech() {
               <tbody>
                 {g.linhas.map((l, i) => (
                   <tr key={i}>
-                    <td>{l.tamanho || "—"}</td>
+                    <td>{l.medida || l.codigo_tamanho || l.tamanho || "—"}{(l.medida && (l.codigo_tamanho || l.tamanho)) ? <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>({l.codigo_tamanho || l.tamanho})</span> : null}</td>
                     <td>{l.cor || "—"}</td>
                     <td className="num" style={{ fontWeight: 700, color: (Number(l.saldo) || 0) > 0 ? "#166534" : "#b91c1c" }}>{(Number(l.saldo) || 0).toLocaleString("pt-BR")}</td>
                   </tr>
