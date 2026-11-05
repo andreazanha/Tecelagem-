@@ -73,9 +73,15 @@ function msgNoturno(ehRep: boolean, cliente: string, expMs: number): string {
   const quem = ehRep ? `A reserva do cliente *${cliente}*` : "Sua reserva";
   return `🌙 *Big Tricot* — Reserva protegida\n\n${quem} está garantida até *${fmtBR(expMs)}* (horário de Brasília). Como o prazo cairia de madrugada, estendemos até a manhã para você não perder as peças. 💛\n\n${ASSINATURA}`;
 }
+function restanteTexto(expMs: number): string {
+  const min = Math.max(1, Math.round((expMs - Date.now()) / 60000));
+  if (min >= 90) return `cerca de ${Math.round(min / 60)} horas`;
+  if (min >= 50) return "cerca de 1 hora";
+  return `cerca de ${min} minuto${min === 1 ? "" : "s"}`;
+}
 function msgAviso2(ehRep: boolean, cliente: string, expMs: number, opts: [number, number][]): string {
   const quem = ehRep ? `A reserva do cliente *${cliente}*` : "Sua reserva";
-  const base = `⏳ *Big Tricot* — Vencimento da reserva\n\n${quem} vence às *${fmtBR(expMs)}* (horário de Brasília), daqui a cerca de 1 hora.`;
+  const base = `⏳ *Big Tricot* — Vencimento da reserva\n\n${quem} vence às *${fmtBR(expMs)}* (horário de Brasília), daqui a ${restanteTexto(expMs)}.`;
   const extra = opts.length
     ? `\n\nQuer *mais 6 horas*? Responda *Sim*.\nOu finalize o pedido agora para garantir as peças.`
     : `\n\nFinalize o pedido agora para garantir as peças.`;
