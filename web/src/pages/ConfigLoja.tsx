@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type LojaBanner, type CatalogoProdutoExtra } from "../api";
+import { api, type LojaBanner, type CatalogoProdutoExtra, type ZapiConfig } from "../api";
 
 // Tela "Configurar catálogo": banners da loja + vídeos/textos dos produtos.
 // Só aparência/conteúdo do catálogo — não mexe em preço, estoque nem pedidos.
@@ -9,7 +9,7 @@ const LOJA_URL = "/api/integracao/loja";
 function uid() { return Math.random().toString(36).slice(2, 9); }
 
 export default function ConfigLoja() {
-  const [aba, setAba] = useState<"banner" | "textos">("banner");
+  const [aba, setAba] = useState<"banner" | "textos" | "loja">("banner");
   return (
     <div style={{ maxWidth: 980, margin: "0 auto", padding: "18px 16px 80px" }}>
       <h1 style={{ fontSize: 24, margin: "4px 0 2px" }}>Configurar catálogo</h1>
@@ -19,8 +19,9 @@ export default function ConfigLoja() {
       <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
         <button onClick={() => setAba("banner")} style={tab(aba === "banner")}>🖼️ Banner</button>
         <button onClick={() => setAba("textos")} style={tab(aba === "textos")}>🎬 Vídeos e textos</button>
+        <button onClick={() => setAba("loja")} style={tab(aba === "loja")}>🛒 Loja B2B / Reserva</button>
       </div>
-      {aba === "banner" ? <Banners /> : <Textos />}
+      {aba === "banner" ? <Banners /> : aba === "textos" ? <Textos /> : <LojaB2B />}
     </div>
   );
 }
@@ -243,6 +244,76 @@ function EditarExtra({ p, onClose, onSalvo }: { p: CatalogoProdutoExtra; onClose
           <button onClick={onClose} style={{ ...btnMini(false) }}>Cancelar</button>
           {msg && <span style={{ fontSize: 13, color: "#b3402a" }}>{msg}</span>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────── LOJA B2B / RESERVA ───────────────────────────
+// Interruptores e preços da loja/reserva (antes ficavam na Conexão do WhatsApp).
+// Carrega/salva pela mesma config do servidor (atendConfig / atendSalvarConfig).
+function LojaB2B() {
+  const [cfg, setCfg] = useState<ZapiConfig | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [msg, setMsg] = useState("");
+  useEffect(() => { api.atendConfig().then(setCfg).catch(() => setMsg("Não consegui carregar a configuração.")); }, []);
+  const set = (k: keyof ZapiConfig, v: string | boolean) => setCfg((c) => (c ? { ...c, [k]: v } : c));
+  async function salvar() {
+    if (!cfg) return;
+    setSalvando(true); setMsg("");
+    try {
+      await api.atendSalvarConfig({
+        reservas_ativo: cfg.reservas_ativo, pcp_popup_ativo: cfg.pcp_popup_ativo, crm_popup_ativo: cfg.crm_popup_ativo,
+        aviso_carrinho_ativo: cfg.aviso_carrinho_ativo, aviso_carrinho_minutos: cfg.aviso_carrinho_minutos,
+        reserva_janela_minutos: cfg.reserva_janela_minutos, envio_hora_ini: cfg.envio_hora_ini, envio_hora_fim: cfg.envio_hora_fim,
+        desc_el_pct: cfg.desc_el_pct,
+      });
+      setMsg("✓ Salvo! Atualize a loja (Ctrl+F5) pra ver."); setTimeout(() => setMsg(""), 3000);
+    } catch { setMsg("Não consegui salvar."); } finally { setSalvando(false); }
+  }
+  if (!cfg) return <div style={{ color: "#8a8073" }}>Carregando…{msg && " · " + msg}</div>;
+  const on = (k: keyof ZapiConfig) => cfg[k] === true;
+  const linha = (k: keyof ZapiConfig, titulo: string, desc: string) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginBottom: 10, borderRadius: 10, border: "2px solid " + (on(k) ? "#22c55e" : "#e2e8f0"), background: on(k) ? "#f0fdf4" : "#fbfaf7" }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 700 }}>{on(k) ? "🟢 " + titulo + " LIGADO" : "⚪ " + titulo + " desligado"}</div>
+        <div style={{ fontSize: 12, color: "#6b645a" }}>{desc}</div>
+      </div>
+      <button type="button" onClick={() => set(k, !on(k))} style={{ ...btnMini(false), borderColor: on(k) ? "#94a3b8" : "#ad5033", color: on(k) ? "#475569" : "#ad5033", fontWeight: 700 }}>{on(k) ? "Desligar" : "Ligar"}</button>
+    </div>
+  );
+  return (
+    <div>
+      <div style={{ color: "#8a8073", fontSize: 13.5, marginBottom: 14 }}>Reserva de estoque, avisos e preços da loja B2B. O que você salvar aqui vale na hora (atualize a loja com Ctrl+F5).</div>
+      {/* Desconto da Edição Limitada */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginBottom: 14, borderRadius: 10, border: "2px solid " + (Number(cfg.desc_el_pct) > 0 ? "#ad5033" : "#e2e8f0"), background: Number(cfg.desc_el_pct) > 0 ? "#fff7ed" : "#fbfaf7" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700 }}>🏷️ Desconto da Edição Limitada</div>
+          <div style={{ fontSize: 12, color: "#6b645a" }}>Aplica esse % de desconto em <b>todos</b> os produtos de Edição Limitada. O preço com desconto é o que vai no pedido e é enviado ao Syntech. 0 = sem desconto.</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <input type="number" min={0} max={90} value={cfg.desc_el_pct} onChange={(e) => set("desc_el_pct", e.target.value)} style={{ ...inp, width: 80, textAlign: "right" }} placeholder="0" />
+          <span style={{ fontWeight: 800, color: "#ad5033" }}>%</span>
+        </div>
+      </div>
+      {linha("reservas_ativo", "Reserva de estoque (ED/KT)", "O carrinho segura o estoque das peças ED e KT e envia os avisos de reserva no WhatsApp.")}
+      {linha("pcp_popup_ativo", "Pop-up “conferir no Syntech”", "Quando um pedido da loja entra no Syntech, aparece um aviso no sistema para a equipe ir aprovar lá.")}
+      {linha("crm_popup_ativo", "Aviso ao vendedor (CRM)", "O vendedor interno dono da carteira recebe um aviso quando o cliente dele faz um pedido.")}
+      {linha("aviso_carrinho_ativo", "Lembrete de carrinho abandonado", "Se o cliente monta o pedido e não envia, cerca de 1h depois recebe um lembrete no WhatsApp (só no horário de envio).")}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", padding: "10px 14px", marginBottom: 10, borderRadius: 10, border: "1px solid #ece5d8", background: "#fbfaf7" }}>
+        <label style={{ flex: "1 1 180px" }}><span style={lbl}>Lembrete de carrinho: enviar após (min)</span>
+          <input type="number" min={1} value={cfg.aviso_carrinho_minutos} onChange={(e) => set("aviso_carrinho_minutos", e.target.value)} style={inp} placeholder="60" /></label>
+        <label style={{ flex: "1 1 180px" }}><span style={lbl}>Validade do carrinho/reserva (min)</span>
+          <input type="number" min={5} value={cfg.reserva_janela_minutos} onChange={(e) => set("reserva_janela_minutos", e.target.value)} style={inp} placeholder="720" /></label>
+        <label style={{ flex: "1 1 120px" }}><span style={lbl}>Enviar msgs a partir das (h)</span>
+          <input type="number" min={0} max={23} value={cfg.envio_hora_ini} onChange={(e) => set("envio_hora_ini", e.target.value)} style={inp} placeholder="8" /></label>
+        <label style={{ flex: "1 1 120px" }}><span style={lbl}>…até as (h)</span>
+          <input type="number" min={1} max={24} value={cfg.envio_hora_fim} onChange={(e) => set("envio_hora_fim", e.target.value)} style={inp} placeholder="20" /></label>
+        <div style={{ flexBasis: "100%", fontSize: 11, color: "#9a9185" }}>Padrão: 60 min (lembrete), 720 min = 12h (validade), envio 8h–20h. Para testar fora do horário, use 0 e 24; depois volte para 8 e 20.</div>
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14 }}>
+        <button onClick={salvar} disabled={salvando} style={btnPri}>{salvando ? "Salvando…" : "Salvar"}</button>
+        {msg && <span style={{ fontSize: 13, color: msg.startsWith("✓") ? "#15803d" : "#b3402a" }}>{msg}</span>}
       </div>
     </div>
   );
