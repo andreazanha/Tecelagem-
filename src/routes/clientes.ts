@@ -51,7 +51,7 @@ clientes.get("/", async (c) => {
     return c.json(results);
   }
   const { results: cliAll } = await c.env.DB.prepare(
-    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, loja_regiao, ultima_compra, ultimo_faturamento, prospectado_em, vendedor_interno, origem, created_at FROM clientes ORDER BY nome"
+    "SELECT id, nome, contato, whatsapp, email, cidade, uf, cnpj, representante, instagram, observacao, bloqueado, nascimento, loja_regiao, ultima_compra, ultimo_faturamento, prospectado_em, vendedor_interno, origem, codigo_erp, created_at FROM clientes ORDER BY nome"
   ).all<ClienteRow>();
   // Nomes internos (ESTOQUE, OP CONSOLIDADA, REPOSIÇÃO, BIG TRICOT) não são clientes reais.
   const cli = cliAll.filter((c0) => !ehClienteInterno(c0.nome));

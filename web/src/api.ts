@@ -309,6 +309,7 @@ export interface ClienteCrm {
   nascimento?: string | null;
   loja_regiao?: string | null;     // 'sul' | 'norte' — região de preço na loja B2B
   origem?: string | null;          // 'syntech' = veio da ponte; 'loja' = cadastro online
+  codigo_erp?: string | null;      // código do cliente no Syntech (preenchido pela ponte)
   created_at?: string | null;
   ultimo_faturamento?: string | null;
   razao_social?: string | null;
