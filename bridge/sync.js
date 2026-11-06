@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-11-05.1";
+const PONTE_VERSAO = "2026-11-06.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -737,6 +737,66 @@ async function rodadaDiagProcs(db, estado) {
   }
 }
 
+// ── DIAG ESTOQUE (entrada de estoque pela ponte — estudo de viabilidade) ─────────────
+// SÓ LEITURA de METADADOS (sem dados/custo): lista as PROCEDURES e as TABELAS ligadas a
+// estoque/movimento/entrada (nomes + colunas + parâmetros), pra descobrir se dá pra dar
+// entrada pelo caminho OFICIAL do Syntech. Roda uma vez (flag própria). POST pequeno.
+const DIAG_ESTOQUE_FLAG = "diagEstoqueV1";
+async function rodadaDiagEstoque(db, estado) {
+  if (estado[DIAG_ESTOQUE_FLAG]) return;
+  log("diag-estoque: mapeando procedures/tabelas de estoque (leve, uma vez só)…");
+  const out = { versao: PONTE_VERSAO, quando: new Date().toISOString(), procedures: {}, tabelas: {}, erros: [] };
+  // Procedures ligadas a estoque/movimento/entrada + as oficiais APP_*.
+  try {
+    const procs = await query(db,
+      "SELECT TRIM(RDB$PROCEDURE_NAME) AS NOME FROM RDB$PROCEDURES WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 AND (" +
+      "RDB$PROCEDURE_NAME LIKE '%ESTOQUE%' OR RDB$PROCEDURE_NAME LIKE '%ENTRADA%' OR RDB$PROCEDURE_NAME LIKE '%SALDO%' OR " +
+      "RDB$PROCEDURE_NAME LIKE '%MOVIMENT%' OR RDB$PROCEDURE_NAME LIKE '%KARDEX%' OR RDB$PROCEDURE_NAME LIKE '%INVENT%' OR " +
+      "RDB$PROCEDURE_NAME LIKE '%AJUSTE%' OR RDB$PROCEDURE_NAME LIKE '%APP%') ORDER BY RDB$PROCEDURE_NAME");
+    for (const pr of procs) {
+      const nome = String(pr.NOME || "").trim(); if (!nome) continue;
+      let params = [];
+      try {
+        const ps = await query(db,
+          "SELECT TRIM(PP.RDB$PARAMETER_NAME) AS CAMPO, PP.RDB$PARAMETER_NUMBER AS ORDEM, PP.RDB$PARAMETER_TYPE AS TIPO_PARAM, " +
+          "F.RDB$FIELD_TYPE AS TIPO, F.RDB$FIELD_LENGTH AS TAM FROM RDB$PROCEDURE_PARAMETERS PP " +
+          "JOIN RDB$FIELDS F ON F.RDB$FIELD_NAME = PP.RDB$FIELD_SOURCE WHERE PP.RDB$PROCEDURE_NAME = ? " +
+          "ORDER BY PP.RDB$PARAMETER_TYPE, PP.RDB$PARAMETER_NUMBER", [nome]);
+        params = ps.map((r) => ({ campo: String(r.CAMPO || "").trim(), ordem: r.ORDEM, dir: Number(r.TIPO_PARAM) === 1 ? "out" : "in", tipo: r.TIPO, tam: r.TAM }));
+      } catch (e) { out.erros.push(`params ${nome}: ${e.message}`); }
+      out.procedures[nome] = params;
+    }
+  } catch (e) { out.erros.push("procedures: " + e.message); }
+  // Tabelas de estoque/movimento/entrada: só NOMES + COLUNAS (sem dados).
+  try {
+    const tbs = await query(db,
+      "SELECT TRIM(RDB$RELATION_NAME) AS NOME FROM RDB$RELATIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 AND RDB$VIEW_BLR IS NULL AND (" +
+      "RDB$RELATION_NAME LIKE '%ESTOQUE%' OR RDB$RELATION_NAME LIKE '%MOVIMENT%' OR RDB$RELATION_NAME LIKE '%SALDO%' OR " +
+      "RDB$RELATION_NAME LIKE '%KARDEX%' OR RDB$RELATION_NAME LIKE '%ENTRADA%' OR RDB$RELATION_NAME LIKE '%INVENT%' OR " +
+      "RDB$RELATION_NAME LIKE '%AJUSTE%') ORDER BY RDB$RELATION_NAME");
+    for (const t of tbs) {
+      const nome = String(t.NOME || "").trim(); if (!nome) continue;
+      try {
+        const cs = await query(db,
+          "SELECT TRIM(RF.RDB$FIELD_NAME) AS CAMPO FROM RDB$RELATION_FIELDS RF WHERE RF.RDB$RELATION_NAME = ? ORDER BY RF.RDB$FIELD_POSITION", [nome]);
+        out.tabelas[nome] = cs.map((r) => String(r.CAMPO || "").trim()).filter(Boolean);
+      } catch (e) { out.erros.push(`cols ${nome}: ${e.message}`); }
+    }
+  } catch (e) { out.erros.push("tabelas: " + e.message); }
+  let ok = false;
+  try {
+    const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/diag-estoque";
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token }, body: JSON.stringify(out) });
+    ok = r.ok;
+  } catch (e) { log("! diag-estoque: falhou ao enviar —", e.message); }
+  if (ok) {
+    salvarEstado({ ...lerEstado(), [DIAG_ESTOQUE_FLAG]: true });
+    log(`diag-estoque: enviado (${Object.keys(out.procedures).length} procs, ${Object.keys(out.tabelas).length} tabelas). Não roda de novo.`);
+  } else {
+    log("diag-estoque: não enviou — tenta na próxima rodada.");
+  }
+}
+
 // Descobre a RECEITA DO KIT no Syntech. O kit (ex.: produto QC1078-1 "KIT BALLS
 // QUEEN + 55X35") é montado em "Industrialização Simplificada → Cadastro de Insumos
 // de Produtos": tem INSUMOS (ex.: KT1078-C qtd 2, KT1078-P qtd 1). Então procuramos
@@ -1162,6 +1222,7 @@ async function rodada() {
     try { await rodadaDiagnostico(db, estado); } catch (e) { log("! diagnóstico:", e.message); }
     // Confirmação leve das procedures APP_* (Fase 4; roda só uma vez).
     try { await rodadaDiagProcs(db, estado); } catch (e) { log("! diag-procs:", e.message); }
+    try { await rodadaDiagEstoque(db, estado); } catch (e) { log("! diag-estoque:", e.message); }
     // Descobre a receita do kit (tabelas com KIT; roda só uma vez).
     try { await rodadaDiagKit(db, estado); } catch (e) { log("! diag-kit:", e.message); }
     // Envia pros Syntech os pedidos da loja B2B liberados (Fase 4).

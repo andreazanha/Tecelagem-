@@ -924,6 +924,18 @@ integracao.post("/diag-procs", async (c) => {
   ).bind(txt.slice(0, 200000)).run();
   return c.json({ ok: true, bytes: txt.length });
 });
+// Diagnóstico de ESTOQUE (viabilidade de dar entrada pela ponte): procedures + tabelas de
+// movimento/entrada (só estrutura, sem dados). Lido via GET /diag?pedido=estoque.
+integracao.post("/diag-estoque", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+  const txt = await c.req.text();
+  await c.env.DB.prepare(
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('erp_diag_estoque', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(txt.slice(0, 300000)).run();
+  return c.json({ ok: true, bytes: txt.length });
+});
 // Diagnóstico da RECEITA DO KIT no Syntech (tabelas/colunas com KIT). Lido via GET /diag?pedido=kit.
 integracao.post("/diag-kit", async (c) => {
   const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
@@ -1044,6 +1056,30 @@ integracao.get("/diag", async (c) => {
       .filter((t) => re.test(String(t.nome).toUpperCase()) || (t.colunas || []).some((cc) => re.test(String(cc).toUpperCase())))
       .map((t) => ({ nome: t.nome, colunas: t.colunas }));
     return c.json({ quando: d.quando || r.atualizado_em, total_tabelas: tabs.length, nomes: tabs.map((t) => t.nome), casam: casa });
+  }
+  // ?pedido=estoque → viabilidade de dar ENTRADA de estoque pela ponte: procedures e tabelas
+  // ligadas a estoque/movimento/entrada (só estrutura). Sem login (nada sensível, só nomes).
+  if (c.req.query("pedido") === "estoque") {
+    const er = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='erp_diag_estoque'").first<{ valor: string | null; atualizado_em: string | null }>();
+    if (!er || !er.valor) return c.json({ pronto: false, aviso: "A ponte ainda não mandou o mapa de estoque. Espere a ponte atualizar e rodar (~2-5 min) e abra de novo." });
+    type EstSrc = { quando?: string; procedures?: Record<string, { campo: string; dir: string }[]>; tabelas?: Record<string, string[]>; erros?: string[] };
+    let src: EstSrc | null = null;
+    try { src = JSON.parse(er.valor) as EstSrc; } catch { /* ignora */ }
+    if (!src) return c.json({ pronto: false, aviso: "Mapa de estoque ilegível; aguarde a próxima rodada da ponte." });
+    const procedures: Record<string, string> = {};
+    for (const nome of Object.keys(src.procedures || {})) {
+      const ins = (src.procedures![nome] || []).filter((x) => x.dir === "in").map((x) => x.campo);
+      const outs = (src.procedures![nome] || []).filter((x) => x.dir === "out").map((x) => x.campo);
+      procedures[nome] = `(${ins.join(", ")})` + (outs.length ? ` → ${outs.join(", ")}` : "");
+    }
+    return c.json({
+      quando: src.quando || er.atualizado_em,
+      total_procedures: Object.keys(procedures).length,
+      procedures,
+      total_tabelas: Object.keys(src.tabelas || {}).length,
+      tabelas: src.tabelas || {},
+      erros: src.erros || [],
+    });
   }
   // ?pedido=procs → confirmação LEVE das procedures APP_* (Fase 4). Lê do diagnóstico
   // minúsculo dedicado (erp_diag_procs); se não houver, cai de volta no erp_diag.pedido.
