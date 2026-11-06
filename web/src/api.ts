@@ -1420,6 +1420,9 @@ export const api = {
   cadastroGerarAcesso: (arg: { id?: string; cnpj?: string; regiao?: string; cod_prazo?: string }) => jsonPost("/api/clientes/gerar-acesso-loja", arg).then((r) => j<{ ok: boolean; nome: string; link: string; tem_senha: boolean; error?: string; msg?: string }>(r)),
   cadastroBuscarCliente: (q: string) => fetch("/api/clientes/buscar-loja?q=" + encodeURIComponent(q)).then((r) => j<ClienteCrm[]>(r)),
   repGerarAcesso: (id: string) => jsonPost("/api/clientes/gerar-acesso-rep", { id }).then((r) => j<{ ok: boolean; nome: string; email: string; link: string; tem_senha: boolean; error?: string; msg?: string }>(r)),
+  // Catálogo seguro (teste): gera/revoga link com token por cliente (por CNPJ ou id).
+  catalogoEmitirLink: (arg: { cnpj?: string; cliente_id?: string; dias?: number }) => jsonPost("/api/catalogo/emitir", arg).then((r) => j<{ ok?: boolean; nome?: string; cliente_id?: string; autorizado?: boolean; regiao?: string; url?: string; error?: string }>(r)),
+  catalogoRevogar: (arg: { token?: string; cliente_id?: string }) => jsonPost("/api/catalogo/revogar", arg).then((r) => j<{ ok?: boolean; revogado?: string; error?: string }>(r)),
   // A Big cria a senha direto (sem link): cliente por {id|cnpj}+senha, rep por {id}+senha.
   cadastroDefinirSenha: (arg: { id?: string; cnpj?: string; senha: string; regiao?: string; cod_prazo?: string }) => jsonPost("/api/clientes/definir-senha-loja", arg).then((r) => j<{ ok: boolean; nome: string; error?: string; msg?: string }>(r)),
   repDefinirSenha: (id: string, senha: string) => jsonPost("/api/clientes/definir-senha-rep", { id, senha }).then((r) => j<{ ok: boolean; nome: string; email: string; error?: string; msg?: string }>(r)),
