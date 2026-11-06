@@ -241,26 +241,22 @@ export async function processarCarrinhoAbandonado(env: Env, sender: Sender): Pro
   // Minutos após criar o carrinho (sem enviar) para disparar o lembrete. Padrão 60; ajustável na tela.
   const mins = await lerNumConfig(env, "aviso_carrinho_minutos", 60);
   const offset = `-${mins} minutes`;
-  // LEMBRETE INTELIGENTE: dispara aos N min após criar, OU — se o carrinho for expirar antes disso —
-  // dentro de uma MARGEM antes do vencimento (ainda vivo), pra sempre dar tempo de sair mesmo com
-  // validade curta. ~1 ciclo do cron de folga. Nunca dispara em carrinho já vencido.
-  const MARGEM_MIN = 6;
-  const margem = `+${MARGEM_MIN} minutes`;
+  // NÃO DUPLICAR com o aviso de VENCIMENTO: quando o carrinho tem reserva perto de vencer (dentro de
+  // 1h, a janela do aviso2) OU já recebeu o aviso de vencimento, quem avisa é o de vencimento (ele é
+  // mais útil — oferece +6h). O abandonado só fala de carrinho criado há ~N min cuja reserva (se
+  // houver) ainda está longe do fim — assim nunca chegam as duas mensagens juntas no mesmo carrinho.
   type Row = { id: string; vendedor: string; cliente_id: string | null; cliente_nome: string };
   const rows = ((await env.DB.prepare(
     `SELECT id, COALESCE(vendedor,'') AS vendedor, cliente_id, COALESCE(cliente_nome,'') AS cliente_nome
        FROM pedidos
       WHERE canal='loja_b2b' AND COALESCE(erp_sync_status,'')='rascunho'
         AND aviso_carrinho_em IS NULL
+        AND reserva_aviso2_em IS NULL
         AND COALESCE(created_at, data_pedido) IS NOT NULL
-        AND (
-              COALESCE(created_at, data_pedido) <= datetime('now', ?)
-              OR (reserva_expira_em IS NOT NULL
-                  AND reserva_expira_em > datetime('now')
-                  AND reserva_expira_em <= datetime('now', ?))
-            )
+        AND COALESCE(created_at, data_pedido) <= datetime('now', ?)
+        AND (reserva_expira_em IS NULL OR reserva_expira_em > datetime('now', '+60 minutes'))
       ORDER BY created_at LIMIT 30`
-  ).bind(offset, margem).all<Row>().catch(() => ({ results: [] as Row[] }))).results) || [];
+  ).bind(offset).all<Row>().catch(() => ({ results: [] as Row[] }))).results) || [];
   let n = 0;
   for (const p of rows) {
     const dest = await destinoDoPedido(env, p);
