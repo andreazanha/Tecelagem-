@@ -162,6 +162,7 @@ catalogoSeguro.get("/diag", async (c) => {
   return c.json({
     leu_documento: !!doc, erro: erro || undefined,
     produtos: prods.length, com_foto: comFoto, foto_dominio: dominio,
+    foto_exemplo: amostra?.foto ? String(amostra.foto) : null,
     chaves_do_primeiro_produto: chaves,
     tem_edicao_limitada: !!(doc as { edicao_limitada?: unknown })?.edicao_limitada,
   });
