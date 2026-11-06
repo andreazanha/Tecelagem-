@@ -425,11 +425,14 @@ function CatalogoLinkTeste() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  const [buscando, setBuscando] = useState(false);
   const q = busca.trim();
   useEffect(() => {
-    if (sel || q.length < 2) { setMatches([]); return; }
-    let vivo = true;
-    const t = setTimeout(() => { api.cadastroBuscarCliente(q).then((r) => { if (vivo) setMatches(r); }).catch(() => { if (vivo) setMatches([]); }); }, 250);
+    if (sel || q.length < 2) { setMatches([]); setBuscando(false); return; }
+    let vivo = true; setBuscando(true);
+    const t = setTimeout(() => {
+      api.cadastroBuscarCliente(q).then((r) => { if (vivo) setMatches(r); }).catch(() => { if (vivo) setMatches([]); }).finally(() => { if (vivo) setBuscando(false); });
+    }, 250);
     return () => { vivo = false; clearTimeout(t); };
   }, [q, sel]);
 
@@ -463,15 +466,19 @@ function CatalogoLinkTeste() {
         <div style={{ maxWidth: 460 }}>
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar cliente por nome, CNPJ ou cidade…"
             style={{ width: "100%", boxSizing: "border-box", padding: "9px 11px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 14 }} />
-          {q.length >= 2 && matches.length > 0 && (
+          {q.length >= 2 && (
             <div style={{ marginTop: 6, border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", maxHeight: 280, overflowY: "auto" }}>
-              {matches.map((c, i) => (
-                <button key={c.id} onClick={() => { setSel(c); setRes(null); setMsg(""); }}
-                  style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: 0, borderTop: i ? "1px solid var(--line)" : 0, background: "transparent", cursor: "pointer" }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{c.nome}</div>
-                  <div className="muted" style={{ fontSize: 11.5 }}>{c.cnpj || "sem CNPJ"}{c.cidade ? ` · ${c.cidade}/${c.uf || ""}` : ""}</div>
-                </button>
-              ))}
+              {buscando
+                ? <div className="muted" style={{ padding: "10px 12px", fontSize: 12.5 }}>Procurando…</div>
+                : matches.length === 0
+                ? <div className="muted" style={{ padding: "10px 12px", fontSize: 12.5 }}>Nenhum cliente encontrado. Tente outro nome ou o CNPJ.</div>
+                : matches.map((c, i) => (
+                  <button key={c.id} onClick={() => { setSel(c); setRes(null); setMsg(""); }}
+                    style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: 0, borderTop: i ? "1px solid var(--line)" : 0, background: "transparent", cursor: "pointer" }}>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{c.nome}</div>
+                    <div className="muted" style={{ fontSize: 11.5 }}>{c.cnpj || "sem CNPJ"}{c.cidade ? ` · ${c.cidade}/${c.uf || ""}` : ""}</div>
+                  </button>
+                ))}
             </div>
           )}
         </div>

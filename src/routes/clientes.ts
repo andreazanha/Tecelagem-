@@ -205,13 +205,18 @@ clientes.get("/buscar-loja", async (c) => {
   const g = await exigirFuncao(c, "clientes.aprovar"); if ("erro" in g) return g.erro;
   const qRaw = String(c.req.query("q") || "").trim();
   if (qRaw.length < 2) return c.json([]);
-  const like = "%" + qRaw.replace(/[%_]/g, " ") + "%";
+  // Busca IGNORANDO ACENTO: tira os acentos da pesquisa (JS) e da coluna (SQL, via REPLACEs),
+  // pra "omega" achar "Ômega", "sao" achar "São" etc.
+  const semAcentoStr = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const PARES: [string, string][] = [["á", "a"], ["à", "a"], ["â", "a"], ["ã", "a"], ["é", "e"], ["ê", "e"], ["í", "i"], ["ó", "o"], ["ô", "o"], ["õ", "o"], ["ú", "u"], ["ü", "u"], ["ç", "c"], ["Á", "A"], ["À", "A"], ["Â", "A"], ["Ã", "A"], ["É", "E"], ["Ê", "E"], ["Í", "I"], ["Ó", "O"], ["Ô", "O"], ["Õ", "O"], ["Ú", "U"], ["Ü", "U"], ["Ç", "C"]];
+  const semAcentoSql = (col: string) => PARES.reduce((e, [de, para]) => `REPLACE(${e},'${de}','${para}')`, col);
+  const like = "%" + semAcentoStr(qRaw).replace(/[%_]/g, " ") + "%";
   const dig = qRaw.replace(/\D/g, "");
   const temDig = dig.length >= 3;
   const sql =
     `SELECT id, nome, cnpj, cidade, uf, whatsapp, contato, email, representante, loja_regiao
        FROM clientes
-      WHERE nome LIKE ? COLLATE NOCASE OR COALESCE(cidade,'') LIKE ? COLLATE NOCASE` +
+      WHERE ${semAcentoSql("nome")} LIKE ? COLLATE NOCASE OR ${semAcentoSql("COALESCE(cidade,'')")} LIKE ? COLLATE NOCASE` +
     (temDig ? " OR REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') LIKE ?" : "") +
     " ORDER BY nome LIMIT 15";
   const binds = temDig ? [like, like, "%" + dig + "%"] : [like, like];
