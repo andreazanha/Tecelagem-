@@ -146,6 +146,27 @@ async function servirParaCliente(env: Env, cli: ClienteCat): Promise<Response> {
   return servirCatalogo(rr.regiao, dados);
 }
 
+// DIAGNÓSTICO (público, só contagens — sem preço): confirma o que o servidor LÊ do catalogo/main
+// (quantos produtos, quantos têm foto, e o domínio da primeira foto). Serve pra achar o "sem foto".
+catalogoSeguro.get("/diag", async (c) => {
+  let doc: Record<string, unknown> | null = null;
+  let erro = "";
+  try { doc = await lerDocumento(c.env, "catalogo/main"); } catch (e) { erro = String((e as Error).message || e); }
+  const prods = Array.isArray((doc as { produtos?: unknown })?.produtos) ? ((doc as { produtos: unknown[] }).produtos) : [];
+  const temFoto = (p: unknown) => !!p && typeof (p as { foto?: unknown }).foto === "string" && String((p as { foto: string }).foto).trim() !== "";
+  const comFoto = prods.filter(temFoto).length;
+  const amostra = prods.find(temFoto) as { foto?: string } | undefined;
+  let dominio = "";
+  try { dominio = amostra?.foto ? new URL(String(amostra.foto)).host : ""; } catch { dominio = amostra?.foto ? String(amostra.foto).slice(0, 40) : ""; }
+  const chaves = prods[0] && typeof prods[0] === "object" ? Object.keys(prods[0] as object).slice(0, 25) : [];
+  return c.json({
+    leu_documento: !!doc, erro: erro || undefined,
+    produtos: prods.length, com_foto: comFoto, foto_dominio: dominio,
+    chaves_do_primeiro_produto: chaves,
+    tem_edicao_limitada: !!(doc as { edicao_limitada?: unknown })?.edicao_limitada,
+  });
+});
+
 // ── Rotas ──────────────────────────────────────────────────────────────────────────────────────
 catalogoSeguro.get("/ver", async (c) => {
   const token = String(c.req.query("t") || "").trim();
