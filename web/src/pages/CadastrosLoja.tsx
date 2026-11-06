@@ -54,8 +54,6 @@ export function CadastrosLoja() {
       {/* Dar acesso ao REPRESENTANTE (ele entra com e-mail + senha e vê a carteira dele) */}
       <AcessoRepresentante />
 
-      {/* TESTE do catálogo seguro: gera/revoga link com token por cliente (isolamento de região) */}
-      <CatalogoLinkTeste />
 
 
       {erro && <div className="card pad" style={{ color: "#b91c1c" }}>{erro}</div>}
@@ -409,111 +407,6 @@ function Campo({ l, v }: { l: string; v: string | null | undefined }) {
     <div>
       <div style={{ fontSize: 10, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".3px" }}>{l}</div>
       <div>{v && String(v).trim() ? v : <span className="muted">—</span>}</div>
-    </div>
-  );
-}
-
-// TESTE do catálogo seguro (Etapa 1): busca um cliente, gera um link com token (validade
-// ajustável pra testar o vencimento) e revoga. O link abre o catálogo com SÓ a tabela da
-// região do cliente. Em produção (depois) o domínio vira catalogo.bigtricot.com.br.
-function CatalogoLinkTeste() {
-  const [busca, setBusca] = useState("");
-  const [matches, setMatches] = useState<ClienteCrm[]>([]);
-  const [sel, setSel] = useState<ClienteCrm | null>(null);
-  const [dias, setDias] = useState("60");
-  const [res, setRes] = useState<{ url: string; regiao?: string; autorizado?: boolean; nome?: string } | null>(null);
-  const [msg, setMsg] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [copiado, setCopiado] = useState(false);
-  const [buscando, setBuscando] = useState(false);
-  const q = busca.trim();
-  useEffect(() => {
-    if (sel || q.length < 2) { setMatches([]); setBuscando(false); return; }
-    let vivo = true; setBuscando(true);
-    const t = setTimeout(() => {
-      api.cadastroBuscarCliente(q).then((r) => { if (vivo) setMatches(r); }).catch(() => { if (vivo) setMatches([]); }).finally(() => { if (vivo) setBuscando(false); });
-    }, 250);
-    return () => { vivo = false; clearTimeout(t); };
-  }, [q, sel]);
-
-  async function gerar() {
-    if (!sel) return;
-    setBusy(true); setMsg(""); setRes(null);
-    try {
-      const r = await api.catalogoEmitirLink({ cliente_id: sel.id, dias: Math.max(1, Number(dias) || 60) });
-      if (r.ok && r.url) setRes({ url: r.url, regiao: r.regiao, autorizado: r.autorizado, nome: r.nome });
-      else setMsg(r.error || "Não consegui gerar o link.");
-    } catch { setMsg("Não consegui gerar o link."); } finally { setBusy(false); }
-  }
-  async function revogar() {
-    if (!sel) return;
-    setBusy(true); setMsg("");
-    try { await api.catalogoRevogar({ cliente_id: sel.id }); setRes(null); setMsg("✓ Todos os links deste cliente foram revogados."); }
-    catch { setMsg("Não consegui revogar."); } finally { setBusy(false); }
-  }
-  async function copiar() { if (res) try { await navigator.clipboard.writeText(res.url); setCopiado(true); setTimeout(() => setCopiado(false), 1800); } catch { /* ok */ } }
-
-  const regiaoLabel = res?.regiao === "sul" ? "Sul/SE/CO" : res?.regiao === "norte" ? "Norte/NE" : res?.regiao === "divergencia" ? "⚠️ divergência (tabela × UF) — vai pedir atendimento" : res?.regiao === "indefinida" ? "⚠️ região indefinida — vai pedir atendimento" : res?.regiao;
-
-  return (
-    <div className="card pad" style={{ display: "grid", gap: 10 }}>
-      <div style={{ fontWeight: 800, fontSize: 14 }}>🔐 Catálogo seguro — gerar link de teste</div>
-      <div className="muted" style={{ fontSize: 12.5, maxWidth: 680 }}>
-        Gera um link individual (com token) que abre o catálogo mostrando <b>só a tabela comercial da região</b> do cliente.
-        Trocar a região pela URL não funciona. Use a <b>validade curta</b> (ex.: 1 dia) pra testar o vencimento, e o botão revogar pra testar a revogação.
-      </div>
-      {!sel ? (
-        <div style={{ maxWidth: 460 }}>
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar cliente por nome, CNPJ ou cidade…"
-            style={{ width: "100%", boxSizing: "border-box", padding: "9px 11px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 14 }} />
-          {q.length >= 2 && (
-            <div style={{ marginTop: 6, border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", maxHeight: 280, overflowY: "auto" }}>
-              {buscando
-                ? <div className="muted" style={{ padding: "10px 12px", fontSize: 12.5 }}>Procurando…</div>
-                : matches.length === 0
-                ? <div className="muted" style={{ padding: "10px 12px", fontSize: 12.5 }}>Nenhum cliente encontrado. Tente outro nome ou o CNPJ.</div>
-                : matches.map((c, i) => (
-                  <button key={c.id} onClick={() => { setSel(c); setRes(null); setMsg(""); }}
-                    style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", border: 0, borderTop: i ? "1px solid var(--line)" : 0, background: "transparent", cursor: "pointer" }}>
-                    <div style={{ fontWeight: 700, fontSize: 13 }}>{c.nome}</div>
-                    <div className="muted" style={{ fontSize: 11.5 }}>{c.cnpj || "sem CNPJ"}{c.cidade ? ` · ${c.cidade}/${c.uf || ""}` : ""}</div>
-                  </button>
-                ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 14, display: "grid", gap: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>{sel.nome}</div>
-              <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>{sel.cnpj ? `CNPJ ${sel.cnpj}` : "sem CNPJ"}{sel.cidade ? ` · ${sel.cidade}/${sel.uf || ""}` : ""}</div>
-            </div>
-            <button className="btn" onClick={() => { setSel(null); setRes(null); setMsg(""); setBusca(""); }}>↩ Trocar cliente</button>
-          </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", borderTop: "1px solid var(--line)", paddingTop: 10 }}>
-            <label style={{ display: "grid", gap: 3 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>Validade (dias)</span>
-              <input type="number" min={1} value={dias} onChange={(e) => setDias(e.target.value)} style={{ width: 90, padding: "7px 9px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13 }} />
-            </label>
-            <button className="btn btn-primary" disabled={busy} onClick={gerar}>{busy ? "…" : "🔗 Gerar link"}</button>
-            <button className="btn" disabled={busy} onClick={revogar} style={{ marginLeft: "auto", borderColor: "#ad5033", color: "#ad5033" }}>Revogar links deste cliente</button>
-          </div>
-          {res && (
-            <div style={{ display: "grid", gap: 6, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "10px 12px" }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#166534" }}>
-                ✓ Link gerado · Região: <b>{regiaoLabel}</b>{res.autorizado === false ? " · ⚠️ NÃO autorizado (vai pedir atendimento)" : ""}
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <input readOnly value={res.url} onFocus={(e) => e.target.select()} style={{ flex: 1, minWidth: 240, padding: "7px 9px", borderRadius: 8, border: "1px solid #bbf7d0", fontSize: 12.5, background: "#fff" }} />
-                <button className="btn" onClick={copiar}>{copiado ? "✓ Copiado" : "Copiar"}</button>
-                <a href={res.url} target="_blank" rel="noopener noreferrer" className="btn">Abrir</a>
-              </div>
-            </div>
-          )}
-          {msg && <div style={{ fontSize: 12.5, color: msg.startsWith("✓") ? "#166534" : "#92400e" }}>{msg}</div>}
-        </div>
-      )}
     </div>
   );
 }

@@ -25,7 +25,6 @@ import { expirarCarrinhosVencidos } from "./loja-estoque";
 import { processarAvisosReserva, processarCarrinhoAbandonado } from "./reserva-avisos";
 import { enviarWhatsapp } from "./routes/atendimento";
 import { loja } from "./routes/loja";
-import { catalogoSeguro } from "./routes/catalogo-seguro";
 import compras from "./routes/compras";
 import { fichas } from "./routes/fichas";
 
@@ -105,7 +104,9 @@ app.route("/api/relatorios", relatorios);
 app.route("/api/tecelagem", tecelagem);
 app.route("/api/integracao", integracao);
 app.route("/api/loja", loja);
-app.route("/api/catalogo", catalogoSeguro);
+// ⛔ /api/catalogo (catálogo seguro de TESTE) DESLIGADO: a tela de identificação com a marca
+// "Big Tricot" pedindo WhatsApp foi marcada pelo Google como "página enganosa". Projeto pausado;
+// desmontado pra tirar esse motivo. Os arquivos ficam no repo pra retomar depois (ver catalogo-seguro.ts).
 app.route("/api/compras", compras);
 app.route("/api/fichas", fichas);
 
