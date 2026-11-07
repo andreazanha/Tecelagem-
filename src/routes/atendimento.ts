@@ -254,6 +254,17 @@ const SEM_CNPJ_RE = /s[óo] (tenho |o |tenho o )?cpf|tenho s[óo] (o )?cpf|apena
 // vocês", "já sou cliente", "já compro com vocês", "meu vendedor é o Pedro".
 const JA_CLIENTE_RE = /sou cliente|j[áa] sou cliente|j[áa] sou seu cliente|cliente (de |da )?voc[êe]s|cliente aqui|j[áa] (sou )?cadastrad|j[áa] compr(o|ei|amos|ava)|(compro|comprei|compramos) (com |de |na |a )?voc[êe]s|(compro|comprei) (com |de |na )?(a )?big|meu vendedor|minha vendedora|meu atendente/i;
 
+// 🔐 SENHA / LOGIN / ACESSO: assunto DELICADO de segurança. A Big (IA) NUNCA cria, informa, reseta
+// ou "chuta" login/senha de ninguém — isso é da equipe (feito à mão no admin). Quando o cliente fala
+// de senha/login/acesso ("não sei minha senha", "esqueci a senha", "como entro no portal/catálogo",
+// "qual meu login"), a conversa vai DIRETO pro humano — a IA nem tenta responder. (Decisão André.)
+const SENHA_LOGIN_RE = /\bsenhas?\b|\blogins?\b|\busu[áa]rios?\b|\bacesso\b|\bacessar\b|\bentrar\b.*\b(portal|cat[áa]logo|sistema|conta|[áa]rea)\b|\b(portal|cat[áa]logo|sistema|conta|[áa]rea)\b.*\b(entrar|acess)|\b(esqueci|redefinir|resetar|recuperar)\b.*\b(senha|acesso|conta|login|usu[áa]rio)\b|credencial/i;
+// 🚫 RESPOSTA INSEGURA da IA: trava DURA de saída. Mesmo que o modelo (ou um treino antigo na base de
+// conhecimento) tente, a Big NUNCA envia no chat: credenciais (login/senha/usuário), desconto/promoção,
+// preço/valor em R$, ou prazo de produção/entrega em dias. Se a fala gerada contiver qualquer um desses,
+// a gente DESCARTA a fala e passa pro VENDEDOR humano. É o "exatamente como era antes": a IA só triagem.
+const RESPOSTA_INSEGURA_RE = /\bsenhas?\b|\blogins?\b|\bcredencia|\busu[áa]rio\s*:|bigtricot\d|\bR\$\s*\d|\d+\s*rea(l|is)\b|\d+\s*%|\bdesconto\b|\bpromo[çc][ãa]o\b|\boff\b|\bmetade do pre[çc]o|\d+\s*dias?\s*([úu]teis|de|pra|para|até)?\s*(produ|entrega|pronta|fabrica|enviar|despach)|(produ[çc][ãa]o|entrega|pronta entrega|prazo).{0,12}\d+\s*dias?/i;
+
 async function detectarInteresse(env: Env, convId: string, texto: string, modelosCsv: string): Promise<boolean> {
   const t = texto || "";
   const interessou = INTERESSE_RE.test(t);
@@ -496,6 +507,8 @@ REGRAS IMPORTANTES:
 - 🔒 VOCÊ NUNCA FALA PREÇO/VALOR VOCÊ MESMA (REGRA ABSOLUTA): nunca informe preço, valor, tabela, pedido mínimo ou frete NO CHAT — nem pra lojista, nem pra consumidor. Pro LOJISTA, quem passa preço é o vendedor (depois do CNPJ). Pro CONSUMIDOR FINAL, a Big não vende no varejo — você indica uma *loja parceira* (acao "indicar_parceiro") e é a loja parceira que atende e passa preço. Se a BASE DE CONHECIMENTO tiver um valor específico e a pessoa perguntar, você pode usar aquela informação; fora isso, não invente valores.
 - FOTOS: quando aparecer no histórico algo como "[O cliente enviou uma foto. O que aparece nela: ...]", é porque ele mandou uma imagem e um sistema de visão descreveu o conteúdo. Use essa descrição pra entender o que ele quer (reconheceu um produto, mandou um comprovante, um print de conversa etc.). Comente de forma natural o que você "viu" (ex.: "Que linda essa manta cinza! 😍") e siga as regras normais — inclusive preço só pra lojista. NUNCA leia o texto entre colchetes em voz alta pro cliente nem diga "sistema de visão"; é uma nota interna.
 - ✂️ SEJA CURTA (REGRA FORTE, VALE SEMPRE): responda em NO MÁXIMO 2 frases curtas (2 a 3 linhas no total, como uma mensagem de WhatsApp de verdade). Vá DIRETO ao ponto. NÃO faça introduções longas, NÃO explique demais, NÃO repita a mesma ideia com outras palavras, NÃO escreva parágrafos. Faça só UMA pergunta ou UM pedido por mensagem. No máximo 1 emoji. Mensagem comprida afasta o cliente — se der pra dizer em 1 frase, diga em 1 frase.
+- 🔐 SENHA / LOGIN / ACESSO (REGRA ABSOLUTA DE SEGURANÇA): você NUNCA cria, informa, reseta, "chuta" ou sugere login, senha, usuário ou qualquer credencial de acesso — JAMAIS, por nenhum motivo. É PROIBIDO inventar um login/senha. Se o cliente falar de senha, login, acesso ao portal/catálogo, "não sei a senha", "esqueci a senha", "como entro": use acao "humano" e diga só que a *equipe* cuida disso com segurança. NUNCA escreva uma senha ou login na resposta.
+- 💸 NUNCA fale DESCONTO, PROMOÇÃO, "X% off", "metade do preço" nem PRAZO de produção/entrega em dias — você NÃO tem essa informação e NÃO pode prometer. Isso é com o vendedor (acao "humano").
 - 🔗 NUNCA escreva link, site ou endereço (URL) na sua resposta — nem de loja parceira, nem "onde comprar", nem catálogo. Quem envia o link é o SISTEMA (acao "indicar_parceiro" manda o link da vitrine). Se VOCÊ escrever um link, ele estará ERRADO/inventado. Só diga que vai indicar uma loja parceira e use a acao "indicar_parceiro" — o sistema coloca o link certo.
 - Tom: caloroso, brasileiro, informal de WhatsApp. Nunca repita a mesma pergunta que já foi respondida.
 - Escreva os emojis COMO EMOJI de verdade (😊 💛 👍), NUNCA como código escapado tipo \\u{1f603}.
@@ -727,6 +740,16 @@ async function iaTriagem(env: Env, conv: ConvRow, sistema: string, vitrineBase: 
   // 🔒 Segurança: a IA às vezes INVENTA um link (ex.: "lojaparceira.com.br/sp"). Remove QUALQUER
   // link/URL da fala dela — quem envia o link (vitrine das lojas parceiras) é o sistema, no lugar certo.
   if (dec.resposta) dec.resposta = semLinks(dec.resposta);
+  // 🚫 TRAVA DURA DE SAÍDA: se a fala gerada contiver senha/login, desconto/promoção, preço (R$) ou
+  // prazo em dias, a gente DESCARTA a fala e passa pro VENDEDOR humano — mesmo que um treino antigo
+  // na base de conhecimento tenha mandado a IA dizer isso. A Big só faz triagem; preço/prazo/senha é
+  // com a equipe. (Blinda contra a IA inventar login+senha, dar "50% off", citar prazo, etc.)
+  if (dec.resposta && RESPOSTA_INSEGURA_RE.test(dec.resposta)) {
+    return {
+      saidas: [{ tipo: "texto", texto: "Pra te passar esses detalhes certinho, já vou chamar um dos nossos vendedores pra te atender, tá? 💛" }],
+      novoEstado: "atendimento-humano", notificarHumano: true, tipo: conv.tipo ?? null, setor: setorDe(dec.setor),
+    };
+  }
   const setor = setorDe(dec.setor); // setor que a Big identificou (vendas/fiscal/estoque/pcp)
 
   const uf = ufDe(dec.uf) || ufDe(conv.uf);
@@ -1036,6 +1059,19 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     await enviarBot(env, conv.id, tel, { tipo: "texto", texto: ack });
     await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
     return { conversa_id: conv.id, estado: "reclamacao", coluna: "reclamacao", respostas: [{ tipo: "texto", texto: ack }], notificarHumano: true };
+  }
+
+  // 🔐 SENHA / LOGIN / ACESSO: segurança. A Big (IA) NUNCA mexe com senha/login — nem informa, nem cria,
+  // nem reseta (isso é da equipe, feito à mão). Se o cliente fala de senha/login/acesso/esqueci, passa
+  // DIRETO pro humano — a IA nem chega a responder (evita a IA INVENTAR login+senha pro cliente).
+  if (SENHA_LOGIN_RE.test(texto) && !arquivoUrl) {
+    await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    await garantirCardDaConversa(env, conv.id, "Cliente falou de senha/login/acesso → humano", "atendimento");
+    await avisarHumanoPush(env, conv).catch(() => {});
+    const ack = "Claro! 💛 Pra sua *segurança*, quem cuida de acesso e senha é a nossa equipe — já vou chamar alguém pra te ajudar com isso, tá? 😊" + aviso;
+    await enviarBot(env, conv.id, tel, { tipo: "texto", texto: ack });
+    await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: ack }], notificarHumano: true };
   }
 
   // ── MENU DE SETORES: o contato novo (estado 'menu') escolheu uma opção (número ou palavra). ──
