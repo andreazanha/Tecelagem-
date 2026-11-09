@@ -788,15 +788,84 @@ integracao.get("/producao-necessidade", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const todos = c.req.query("todos") === "1"; // ?todos=1 traz também os que estão OK
   const unidades = await necessidadeProducao(c.env);
+  // "precisa produzir" = falta algo E ainda não tem OP aberta. Em produção = já tem OP.
+  const precisa = (u: UnidadePEl) => u.status !== "ok" && !u.op_aberta;
   const resumo = {
-    zerado_pedido: unidades.filter((u) => u.status === "zerado_pedido").length,
-    zerado: unidades.filter((u) => u.status === "zerado").length,
-    abaixo: unidades.filter((u) => u.status === "abaixo").length,
-    ok: unidades.filter((u) => u.status === "ok").length,
+    zerado_pedido: unidades.filter((u) => u.status === "zerado_pedido" && !u.op_aberta).length,
+    zerado: unidades.filter((u) => u.status === "zerado" && !u.op_aberta).length,
+    abaixo: unidades.filter((u) => u.status === "abaixo" && !u.op_aberta).length,
+    em_producao: unidades.filter((u) => u.op_aberta).length,
+    ok: unidades.filter((u) => u.status === "ok" && !u.op_aberta).length,
     kits: new Set(unidades.filter((u) => u.tipo === "kit").map((u) => u.ref)).size,
     avulsos: new Set(unidades.filter((u) => u.tipo === "avulso").map((u) => u.ref)).size,
   };
-  return c.json({ resumo, unidades: todos ? unidades : unidades.filter((u) => u.status !== "ok") });
+  // sem ?todos: devolve o que PRECISA produzir + o que está EM PRODUÇÃO (esconde só os OK parados).
+  return c.json({ resumo, unidades: todos ? unidades : unidades.filter((u) => precisa(u) || u.op_aberta) });
+});
+// Tipo local só pra tipar o filtro acima (espelha UnidadePE do loja-estoque).
+type UnidadePEl = { status: string; op_aberta: boolean; tipo: string; ref: string };
+
+// CRIA a ORDEM DE PRODUÇÃO (estoque) de uma unidade: um pedido de reposição (reposicao=1)
+// que entra na esteira Tecelagem→Corte→Revisão, igual às reposições que a fábrica já produz.
+// NÃO grava no Syntech (isso é a Etapa 4). Recusa se já houver OP aberta pra o mesmo modelo+cor.
+integracao.post("/producao-op", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ ref?: string; cor?: string; tipo?: string; modelo?: string; qtd?: number | string }>().catch(() => ({} as { ref?: string; cor?: string; tipo?: string; modelo?: string; qtd?: number | string }));
+  const ref = String(b.ref ?? "").trim();
+  const cor = String(b.cor ?? "").trim();
+  const tipo = b.tipo === "avulso" ? "avulso" : "kit";
+  const modelo = String(b.modelo ?? ref).trim();
+  const qtd = Math.max(1, Math.round(Number(b.qtd) || 0));
+  if (!ref || !cor) return c.json({ error: "ref_cor_obrigatorios" }, 400);
+  if (!qtd) return c.json({ error: "qtd_invalida" }, 400);
+  // já tem OP aberta pra esse modelo+cor?
+  const existe = await c.env.DB.prepare(
+    `SELECT o.id, COALESCE(ped.numero_erp,'') AS numero FROM producao_op_estoque o JOIN pedidos ped ON ped.id=o.pedido_id
+      WHERE o.concluida_em IS NULL AND lower(o.ref)=lower(?) AND lower(o.cor)=lower(?) AND COALESCE(ped.status,'') NOT IN ('cancelado','recusado') LIMIT 1`
+  ).bind(ref, cor).first<{ id: string; numero: string }>().catch(() => null);
+  if (existe) return c.json({ error: "op_ja_aberta", numero: existe.numero }, 409);
+  const pedidoId = uid();
+  const numero = "OP-" + pedidoId.slice(0, 6).toUpperCase();
+  const usuario = ("u" in g && g.u ? (g.u as { nome?: string }).nome : "") || "";
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO pedidos (id, numero_erp, cliente_nome, tipo, reposicao, data_pedido, observacao, status)
+       VALUES (?, ?, 'PRODUÇÃO ESTOQUE', 'auto', 1, date('now'), ?, 'novo')`
+    ).bind(pedidoId, numero, `Ordem de produção p/ estoque — ${modelo} ${cor} × ${qtd}`),
+    c.env.DB.prepare(
+      `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, valor_unit)
+       VALUES (?, ?, ?, ?, ?, NULL, ?, 'kit', 1, 0)`
+    ).bind(uid(), pedidoId, modelo, ref, cor, qtd),
+    c.env.DB.prepare(
+      `INSERT INTO producao_op_estoque (id, ref, cor, tipo, modelo, pedido_id, qtd, criado_em, criado_por)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)`
+    ).bind(uid(), ref, cor.toLowerCase(), tipo, modelo, pedidoId, qtd, usuario),
+  ]);
+  return c.json({ ok: true, pedido_id: pedidoId, numero });
+});
+
+// CANCELA uma OP de estoque ainda não iniciada (apaga o pedido de reposição + cards intocados).
+integracao.post("/producao-op-cancelar", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ ref?: string; cor?: string }>().catch(() => ({} as { ref?: string; cor?: string }));
+  const ref = String(b.ref ?? "").trim(); const cor = String(b.cor ?? "").trim();
+  if (!ref || !cor) return c.json({ error: "ref_cor_obrigatorios" }, 400);
+  const op = await c.env.DB.prepare(
+    "SELECT id, pedido_id FROM producao_op_estoque WHERE concluida_em IS NULL AND lower(ref)=lower(?) AND lower(cor)=lower(?) ORDER BY criado_em DESC LIMIT 1"
+  ).bind(ref, cor).first<{ id: string; pedido_id: string }>().catch(() => null);
+  if (!op) return c.json({ error: "op_nao_encontrada" }, 404);
+  // só cancela se a produção ainda não começou (nenhum card com operador/início)
+  const comecou = await c.env.DB.prepare(
+    "SELECT 1 FROM producao WHERE pedido_id=? AND (operador IS NOT NULL OR iniciado_em IS NOT NULL OR finalizado_em IS NOT NULL) LIMIT 1"
+  ).bind(op.pedido_id).first().catch(() => null);
+  if (comecou) return c.json({ error: "op_ja_em_producao", msg: "A produção já começou — cancele pela esteira." }, 409);
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM producao WHERE pedido_id=?").bind(op.pedido_id),
+    c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(op.pedido_id),
+    c.env.DB.prepare("DELETE FROM pedidos WHERE id=?").bind(op.pedido_id),
+    c.env.DB.prepare("DELETE FROM producao_op_estoque WHERE id=?").bind(op.id),
+  ]);
+  return c.json({ ok: true });
 });
 
 // Define/atualiza o ESTOQUE MÍNIMO de um modelo+cor (gatilho do "precisa produzir").

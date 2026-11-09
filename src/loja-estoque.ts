@@ -302,6 +302,9 @@ export type UnidadePE = {
   falta: number;          // quanto falta pro mínimo (0 se já atende)
   limitante: string;      // peça que trava o kit (ou "")
   status: "zerado_pedido" | "zerado" | "abaixo" | "ok";
+  op_aberta: boolean;     // já tem ordem de produção rodando na esteira?
+  op_numero: string;      // número da OP (se aberta)
+  op_qtd: number;         // quantidade da OP (se aberta)
 };
 
 const ehRefED = (ref: string) => /^ED\d/i.test(String(ref || "").trim());
@@ -348,6 +351,15 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
   const mins = (await env.DB.prepare("SELECT ref, cor, minimo FROM estoque_min").all<{ ref: string; cor: string; minimo: number }>().catch(() => ({ results: [] as { ref: string; cor: string; minimo: number }[] }))).results || [];
   for (const m of mins) minMap.set(`${String(m.ref).toLowerCase()}|${String(m.cor).toLowerCase()}`, Number(m.minimo) || 0);
   const minDe = (ref: string, cor: string) => minMap.get(`${ref.toLowerCase()}|${cor.toLowerCase()}`) || 0;
+  // 6) OPs abertas (pedido de reposição ainda ativo) por ref+cor
+  const opMap = new Map<string, { numero: string; qtd: number }>(); // ref(lower)|cor(lower) → OP
+  const ops = (await env.DB.prepare(
+    `SELECT o.ref, lower(o.cor) AS cor, o.qtd, COALESCE(ped.numero_erp,'') AS numero
+       FROM producao_op_estoque o JOIN pedidos ped ON ped.id = o.pedido_id
+      WHERE o.concluida_em IS NULL AND COALESCE(ped.status,'') NOT IN ('cancelado','recusado')`
+  ).all<{ ref: string; cor: string; qtd: number; numero: string }>().catch(() => ({ results: [] as { ref: string; cor: string; qtd: number; numero: string }[] }))).results || [];
+  for (const o of ops) { const k = `${String(o.ref).toLowerCase()}|${o.cor}`; const cur = opMap.get(k); opMap.set(k, { numero: o.numero, qtd: (cur?.qtd || 0) + (Number(o.qtd) || 0) }); }
+  const opDe = (ref: string, cor: string) => opMap.get(`${ref.toLowerCase()}|${cor.toLowerCase()}`) || null;
   const peca = (ref: string) => { const t = tipoPeca(nomes.get(ref) || ""); return t === "peseira" ? "Peseira" : t === "capa" ? "Capa" : t === "almofada" ? "Almofada" : (nomes.get(ref) || ref); };
 
   const out: UnidadePE[] = [];
@@ -370,7 +382,7 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
         if (maxD < limMax) { limMax = maxD; limNome = peca(c.ref); }
       }
       if (!isFinite(montDisp)) continue;
-      out.push(montarUnidade("kit", kitRef, modelo, cor, montDisp, montSaldo, resTot, minDe(kitRef, cor), limNome));
+      out.push(montarUnidade("kit", kitRef, modelo, cor, montDisp, montSaldo, resTot, minDe(kitRef, cor), limNome, opDe(kitRef, cor)));
     }
   }
   // ── AVULSOS (pronta entrega estocada solta): produto com grupo "pronta", fora kit/ED/peça-KT ──
@@ -388,20 +400,20 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
         const sld = Number(e.saldo) || 0; const res = resMap.get(`${ref.toLowerCase()}|${cor.toLowerCase()}|${tam}`) || 0;
         saldoSum += sld; resSum += res; dispSum += Math.max(0, sld - res);
       }
-      out.push(montarUnidade("avulso", ref, nomes.get(ref) || ref, cor, dispSum, saldoSum, resSum, minDe(ref, cor), ""));
+      out.push(montarUnidade("avulso", ref, nomes.get(ref) || ref, cor, dispSum, saldoSum, resSum, minDe(ref, cor), "", opDe(ref, cor)));
     }
   }
   out.sort((a, b) => rankStatus[a.status] - rankStatus[b.status] || b.falta - a.falta || b.reservado - a.reservado || a.modelo.localeCompare(b.modelo, "pt-BR"));
   return out;
 }
 
-function montarUnidade(tipo: "kit" | "avulso", ref: string, modelo: string, cor: string, disponivel: number, saldo: number, reservado: number, minimo: number, limitante: string): UnidadePE {
+function montarUnidade(tipo: "kit" | "avulso", ref: string, modelo: string, cor: string, disponivel: number, saldo: number, reservado: number, minimo: number, limitante: string, op: { numero: string; qtd: number } | null): UnidadePE {
   const falta = Math.max(0, minimo - disponivel);
   let status: UnidadePE["status"];
   if (disponivel <= 0) status = reservado > 0 ? "zerado_pedido" : "zerado";
   else if (minimo > 0 && disponivel < minimo) status = "abaixo";
   else status = "ok";
-  return { tipo, ref, modelo, cor, disponivel, saldo, reservado, minimo, falta, limitante, status };
+  return { tipo, ref, modelo, cor, disponivel, saldo, reservado, minimo, falta, limitante, status, op_aberta: !!op, op_numero: op?.numero || "", op_qtd: op?.qtd || 0 };
 }
 
 // EXPIRAÇÃO DO CARRINHO (Etapa 2) — ao vencer a janela de 12h (sem prorrogação válida e sem ter
