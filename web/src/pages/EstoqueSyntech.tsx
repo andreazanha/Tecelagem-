@@ -44,6 +44,7 @@ export function EstoqueSyntech() {
   const [resumo, setResumo] = useState<Resumo | null>(null);
   const [painel, setPainel] = useState<"" | "ruptura" | "baixo">(""); // qual lista de problemas está aberta
   const [abertos, setAbertos] = useState<Set<string>>(() => new Set()); // modelos expandidos (lista fechada por padrão)
+  const [catsAbertas, setCatsAbertas] = useState<Set<string>>(() => new Set()); // categorias expandidas (fechadas por padrão)
 
   function carregar() {
     setLinhas(null); setErro("");
@@ -90,6 +91,7 @@ export function EstoqueSyntech() {
   const hq = sync ? haQuanto(sync.atualizado_em, sync.agora) : null;
   const buscando = busca.trim().length > 0;
   const toggle = (k: string) => setAbertos((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const toggleCat = (k: string) => setCatsAbertas((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
   return (
     <>
@@ -208,21 +210,24 @@ export function EstoqueSyntech() {
       <div className="card pad" style={{ marginBottom: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <input value={busca} placeholder="Filtrar por modelo, código ou cor…" style={{ flex: "1 1 240px", padding: "8px 12px", fontSize: 14 }}
           onChange={(e) => setBusca(e.target.value)} />
-        <button className="btn btn-soft" onClick={() => setAbertos(new Set(categorias.flatMap((c) => c.modelos.map((g) => c.nome + "|" + g.chave))))}>Abrir tudo</button>
-        <button className="btn btn-soft" onClick={() => setAbertos(new Set())}>Fechar tudo</button>
+        <button className="btn btn-soft" onClick={() => { setCatsAbertas(new Set(categorias.map((c) => c.nome))); setAbertos(new Set(categorias.flatMap((c) => c.modelos.map((g) => c.nome + "|" + g.chave)))); }}>Abrir tudo</button>
+        <button className="btn btn-soft" onClick={() => { setCatsAbertas(new Set()); setAbertos(new Set()); }}>Fechar tudo</button>
       </div>
 
       {erro && <div className="card pad" style={{ color: "#b91c1c" }}>{erro}</div>}
       {linhas == null && !erro && <div className="card pad muted">Carregando estoque…</div>}
       {linhas != null && categorias.length === 0 && <div className="card pad muted">Nada encontrado{busca ? ` para "${busca}"` : " no espelho (a ponte ainda não trouxe o estoque por cor)"}.</div>}
 
-      {categorias.map((cat) => (
+      {categorias.map((cat) => {
+        const catAberta = buscando || catsAbertas.has(cat.nome);
+        return (
         <div key={cat.nome} style={{ marginBottom: 20 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, margin: "4px 2px 8px", flexWrap: "wrap" }}>
+          <button onClick={() => toggleCat(cat.nome)} style={{ width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "baseline", gap: 8, margin: "4px 0 8px", padding: "2px 0", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 15, color: "var(--muted)", alignSelf: "center" }}>{catAberta ? "▾" : "▸"}</span>
             <h3 style={{ margin: 0 }}>{ICONE_CAT[cat.nome] || "📦"} {cat.nome}</h3>
             <span className="muted" style={{ fontSize: 12 }}>{cat.modelos.length} {cat.modelos.length === 1 ? "modelo" : "modelos"} · disponível {cat.totalDisp.toLocaleString("pt-BR")}</span>
-          </div>
-          {cat.modelos.map((g) => {
+          </button>
+          {catAberta && cat.modelos.map((g) => {
             const temReserva = g.linhas.some((l) => (Number(l.reservado) || 0) > 0);
             const k = cat.nome + "|" + g.chave;
             const aberto = buscando || abertos.has(k);
@@ -263,7 +268,8 @@ export function EstoqueSyntech() {
             );
           })}
         </div>
-      ))}
+        );
+      })}
     </>
   );
 }
