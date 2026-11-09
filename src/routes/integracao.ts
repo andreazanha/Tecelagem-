@@ -632,7 +632,7 @@ integracao.post("/estoque", async (c) => {
   const recebido = (c.req.header("X-Integracao-Token") || "").trim();
   if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
 
-  type EstoqueIn = { produto?: string; ref?: string; cor?: string; tamanho?: string; saldo?: number | string; unidade?: string };
+  type EstoqueIn = { produto?: string; ref?: string; cor?: string; tamanho?: string; saldo?: number | string; unidade?: string; producao?: number | string; pedido?: number | string; ped_compra?: number | string };
   const b = await c.req.json<{ itens?: EstoqueIn[]; full?: boolean; lote?: string; fim?: boolean }>().catch(() => ({} as { itens?: EstoqueIn[]; full?: boolean; lote?: string; fim?: boolean }));
   const itens: EstoqueIn[] = Array.isArray(b.itens) ? b.itens : [];
   const norm = (s: unknown) => String(s ?? "").trim();
@@ -647,12 +647,17 @@ integracao.post("/estoque", async (c) => {
     const ref = norm(it.ref), cor = norm(it.cor), tam = norm(it.tamanho);
     const chave = chaveDe(ref, cor, tam);
     const saldo = Number(it.saldo) || 0;
+    const prod = Math.max(0, Number(it.producao) || 0);     // em produção no Syntech (OP aberta)
+    const ped = Math.max(0, Number(it.pedido) || 0);        // reservado em pedido de venda no Syntech
+    const pcompra = Math.max(0, Number(it.ped_compra) || 0); // em compra no Syntech
     return c.env.DB.prepare(
-      `INSERT INTO erp_estoque (chave, produto, ref, cor, tamanho, saldo, unidade, lote, atualizado_em)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `INSERT INTO erp_estoque (chave, produto, ref, cor, tamanho, saldo, unidade, producao, pedido, ped_compra, lote, atualizado_em)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(chave) DO UPDATE SET produto=excluded.produto, ref=excluded.ref, cor=excluded.cor,
-         tamanho=excluded.tamanho, saldo=excluded.saldo, unidade=excluded.unidade, lote=excluded.lote, atualizado_em=datetime('now')`
-    ).bind(chave, norm(it.produto) || null, ref || null, cor || null, tam || null, saldo, norm(it.unidade) || null, lote);
+         tamanho=excluded.tamanho, saldo=excluded.saldo, unidade=excluded.unidade,
+         producao=excluded.producao, pedido=excluded.pedido, ped_compra=excluded.ped_compra,
+         lote=excluded.lote, atualizado_em=datetime('now')`
+    ).bind(chave, norm(it.produto) || null, ref || null, cor || null, tam || null, saldo, norm(it.unidade) || null, prod, ped, pcompra, lote);
   });
   if (stmts.length) await c.env.DB.batch(stmts);
   // FIM da rodada: apaga tudo que NÃO é deste lote (saldo que sumiu do Syntech) — assim o
@@ -691,7 +696,7 @@ integracao.get("/estoque", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const ref = (c.req.query("ref") || "").trim();
   const busca = (c.req.query("busca") || "").trim().toLowerCase();
-  let sql = "SELECT produto, ref, cor, tamanho, saldo, unidade, atualizado_em FROM erp_estoque";
+  let sql = "SELECT produto, ref, cor, tamanho, saldo, unidade, COALESCE(producao,0) AS producao, atualizado_em FROM erp_estoque";
   const cond: string[] = [], binds: unknown[] = [];
   if (ref) { cond.push("ref = ?"); binds.push(ref); }
   if (busca) { cond.push("(lower(produto) LIKE ? OR lower(ref) LIKE ?)"); binds.push(`%${busca}%`, `%${busca}%`); }
@@ -701,7 +706,7 @@ integracao.get("/estoque", async (c) => {
   // Enriquece cada linha com a MEDIDA real (ex.: "50 × 50") — o Syntech guarda o estoque pelo
   // CÓDIGO do tamanho (ex.: "5K"), que é por peça. O cadastro da peça (erp_produtos.tamanhos)
   // tem código→medida; resolvo aqui pra a tela mostrar a medida, não o código cru.
-  const rows = (results || []) as { produto?: string | null; ref?: string | null; cor?: string | null; tamanho?: string | null; saldo?: number; unidade?: string | null; atualizado_em?: string }[];
+  const rows = (results || []) as { produto?: string | null; ref?: string | null; cor?: string | null; tamanho?: string | null; saldo?: number; unidade?: string | null; producao?: number; atualizado_em?: string }[];
   const refs = [...new Set(rows.map((r) => String(r.ref || "").trim()).filter(Boolean))];
   const codToMed = new Map<string, string>(); // "ref|cod(lower)" -> medida
   for (let i = 0; i < refs.length; i += 100) {
@@ -788,23 +793,27 @@ integracao.get("/producao-necessidade", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const todos = c.req.query("todos") === "1"; // ?todos=1 traz também os que estão OK
   const [unidades, ops] = await Promise.all([necessidadeProducao(c.env), listarOpsAbertas(c.env)]);
-  // "precisa produzir" = falta algo E ainda não tem OP aberta (no nível kit/cor).
-  const precisa = (u: UnidadePEl) => u.status !== "ok" && !u.op_aberta;
+  // "precisa produzir" = falta algo, ainda não tem OP aberta (nossa) E não está em produção no Syntech.
+  const precisa = (u: UnidadePEl) => u.status !== "ok" && !u.op_aberta && (u.em_producao || 0) <= 0;
+  const emProd = (u: UnidadePEl) => u.op_aberta || (u.em_producao || 0) > 0; // em produção (nossa OP OU Syntech)
   const resumo = {
-    zerado_pedido: unidades.filter((u) => u.status === "zerado_pedido" && !u.op_aberta).length,
-    zerado: unidades.filter((u) => u.status === "zerado" && !u.op_aberta).length,
-    abaixo: unidades.filter((u) => u.status === "abaixo" && !u.op_aberta).length,
-    em_producao: ops.length, // todas as OPs abertas (fila de kit + buscador por produto/tamanho)
-    ok: unidades.filter((u) => u.status === "ok" && !u.op_aberta).length,
+    zerado_pedido: unidades.filter((u) => u.status === "zerado_pedido" && !emProd(u)).length,
+    zerado: unidades.filter((u) => u.status === "zerado" && !emProd(u)).length,
+    abaixo: unidades.filter((u) => u.status === "abaixo" && !emProd(u)).length,
+    em_producao: ops.length, // nossas OPs abertas (fila de kit + buscador por produto/tamanho)
+    em_producao_erp: unidades.filter((u) => (u.em_producao || 0) > 0).length, // unidades em produção no Syntech
+    ok: unidades.filter((u) => u.status === "ok" && !emProd(u)).length,
     kits: new Set(unidades.filter((u) => u.tipo === "kit").map((u) => u.ref)).size,
     avulsos: new Set(unidades.filter((u) => u.tipo === "avulso").map((u) => u.ref)).size,
   };
-  // fila = o que precisa produzir (sem OP). ops = tudo que está em produção (inclui as do buscador).
+  // fila = o que precisa produzir (sem OP nossa e sem OP no Syntech). ops = nossas OPs na esteira.
   const fila = unidades.filter((u) => todos ? (precisa(u) || u.status === "ok") : precisa(u));
-  return c.json({ resumo, unidades: fila, ops });
+  // em produção no Syntech (coluna PRODUCAO) e SEM OP nossa — pra mostrar "já está sendo produzido lá".
+  const producao_erp = unidades.filter((u) => (u.em_producao || 0) > 0 && !u.op_aberta);
+  return c.json({ resumo, unidades: fila, ops, producao_erp });
 });
 // Tipo local só pra tipar o filtro acima (espelha UnidadePE do loja-estoque).
-type UnidadePEl = { status: string; op_aberta: boolean; tipo: string; ref: string };
+type UnidadePEl = { status: string; op_aberta: boolean; tipo: string; ref: string; em_producao: number };
 
 // CRIA a ORDEM DE PRODUÇÃO (estoque) de uma unidade: um pedido de reposição (reposicao=1)
 // que entra na esteira Tecelagem→Corte→Revisão, igual às reposições que a fábrica já produz.

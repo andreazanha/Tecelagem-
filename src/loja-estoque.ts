@@ -302,9 +302,10 @@ export type UnidadePE = {
   falta: number;          // quanto falta pro mínimo (0 se já atende)
   limitante: string;      // peça que trava o kit (ou "")
   status: "zerado_pedido" | "zerado" | "abaixo" | "ok";
-  op_aberta: boolean;     // já tem ordem de produção rodando na esteira?
+  op_aberta: boolean;     // já tem ordem de produção rodando na esteira (OP nossa)?
   op_numero: string;      // número da OP (se aberta)
   op_qtd: number;         // quantidade da OP (se aberta)
+  em_producao: number;    // quantas unidades estão EM PRODUÇÃO no Syntech (coluna PRODUCAO)
 };
 
 const ehRefED = (ref: string) => /^ED\d/i.test(String(ref || "").trim());
@@ -323,9 +324,10 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
     a.push({ ref: r.componente_ref, tam: String(r.tamanho || "").trim(), qtd: Number(r.quantidade) || 1 });
     recPorKit.set(r.kit_ref, a);
   }
-  // 2) saldo por peça + cores por ref
-  const est = (await env.DB.prepare("SELECT ref, cor, tamanho, saldo FROM erp_estoque").all<{ ref: string | null; cor: string | null; tamanho: string | null; saldo: number }>().catch(() => ({ results: [] as { ref: string | null; cor: string | null; tamanho: string | null; saldo: number }[] }))).results || [];
+  // 2) saldo + em produção (Syntech) por peça + cores por ref
+  const est = (await env.DB.prepare("SELECT ref, cor, tamanho, saldo, COALESCE(producao,0) AS producao FROM erp_estoque").all<{ ref: string | null; cor: string | null; tamanho: string | null; saldo: number; producao: number }>().catch(() => ({ results: [] as { ref: string | null; cor: string | null; tamanho: string | null; saldo: number; producao: number }[] }))).results || [];
   const saldoMap = new Map<string, number>();        // ref|cor|tam (lower) → saldo
+  const prodMap = new Map<string, number>();         // ref|cor|tam (lower) → em produção (Syntech)
   const coresDaRef = new Map<string, Set<string>>(); // ref(lower) → cores (nome original)
   const refsEstoque = new Set<string>();
   for (const e of est) {
@@ -333,6 +335,7 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
     refsEstoque.add(ref);
     const cor = (e.cor || "").trim(); const tam = (e.tamanho || "").trim();
     saldoMap.set(`${ref.toLowerCase()}|${cor.toLowerCase()}|${tam.toLowerCase()}`, Number(e.saldo) || 0);
+    prodMap.set(`${ref.toLowerCase()}|${cor.toLowerCase()}|${tam.toLowerCase()}`, Number(e.producao) || 0);
     const s = coresDaRef.get(ref.toLowerCase()) || new Set<string>(); if (cor) s.add(cor); coresDaRef.set(ref.toLowerCase(), s);
   }
   // 3) reservado por peça (pedidos ativos)
@@ -373,18 +376,20 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
     const cores = new Set<string>();
     for (const c of comps) { const s = coresDaRef.get(c.ref.toLowerCase()); if (s) for (const x of s) cores.add(x); }
     for (const cor of cores) {
-      let montDisp = Infinity, montSaldo = Infinity, resTot = 0, limMax = Infinity, limNome = "";
+      let montDisp = Infinity, montSaldo = Infinity, montProd = Infinity, resTot = 0, limMax = Infinity, limNome = "";
       for (const c of comps) {
         const k = `${c.ref.toLowerCase()}|${cor.toLowerCase()}|${c.tam.toLowerCase()}`;
         const sld = saldoMap.get(k) || 0;
         const res = resMap.get(k) || 0; resTot += res;
+        const prd = prodMap.get(k) || 0;
         const disp = Math.max(0, sld - res);
         const maxD = Math.floor(disp / (c.qtd || 1)); const maxS = Math.floor(sld / (c.qtd || 1));
         montDisp = Math.min(montDisp, maxD); montSaldo = Math.min(montSaldo, maxS);
+        montProd = Math.min(montProd, Math.floor(prd / (c.qtd || 1)));
         if (maxD < limMax) { limMax = maxD; limNome = peca(c.ref); }
       }
       if (!isFinite(montDisp)) continue;
-      out.push(montarUnidade("kit", kitRef, modelo, cor, montDisp, montSaldo, resTot, minDe(kitRef, cor), limNome, opDe(kitRef, cor)));
+      out.push(montarUnidade("kit", kitRef, modelo, cor, montDisp, montSaldo, resTot, minDe(kitRef, cor), limNome, opDe(kitRef, cor), isFinite(montProd) ? montProd : 0));
     }
   }
   // ── AVULSOS (pronta entrega estocada solta): produto com grupo "pronta", fora kit/ED/peça-KT ──
@@ -395,14 +400,14 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
     const cores = coresDaRef.get(ref.toLowerCase()); if (!cores) continue;
     for (const cor of cores) {
       // soma todos os tamanhos dessa cor (almofada avulsa normalmente tem 1 tamanho)
-      let dispSum = 0, saldoSum = 0, resSum = 0;
+      let dispSum = 0, saldoSum = 0, resSum = 0, prodSum = 0;
       for (const e of est) {
         if ((e.ref || "").trim().toLowerCase() !== ref.toLowerCase() || (e.cor || "").trim().toLowerCase() !== cor.toLowerCase()) continue;
         const tam = (e.tamanho || "").trim().toLowerCase();
         const sld = Number(e.saldo) || 0; const res = resMap.get(`${ref.toLowerCase()}|${cor.toLowerCase()}|${tam}`) || 0;
-        saldoSum += sld; resSum += res; dispSum += Math.max(0, sld - res);
+        saldoSum += sld; resSum += res; dispSum += Math.max(0, sld - res); prodSum += Number(e.producao) || 0;
       }
-      out.push(montarUnidade("avulso", ref, nomes.get(ref) || ref, cor, dispSum, saldoSum, resSum, minDe(ref, cor), "", opDe(ref, cor)));
+      out.push(montarUnidade("avulso", ref, nomes.get(ref) || ref, cor, dispSum, saldoSum, resSum, minDe(ref, cor), "", opDe(ref, cor), prodSum));
     }
   }
   out.sort((a, b) => rankStatus[a.status] - rankStatus[b.status] || b.falta - a.falta || b.reservado - a.reservado || a.modelo.localeCompare(b.modelo, "pt-BR"));
@@ -424,13 +429,13 @@ export async function listarOpsAbertas(env: Env): Promise<OpAberta[]> {
   return rows;
 }
 
-function montarUnidade(tipo: "kit" | "avulso", ref: string, modelo: string, cor: string, disponivel: number, saldo: number, reservado: number, minimo: number, limitante: string, op: { numero: string; qtd: number } | null): UnidadePE {
+function montarUnidade(tipo: "kit" | "avulso", ref: string, modelo: string, cor: string, disponivel: number, saldo: number, reservado: number, minimo: number, limitante: string, op: { numero: string; qtd: number } | null, emProducao: number): UnidadePE {
   const falta = Math.max(0, minimo - disponivel);
   let status: UnidadePE["status"];
   if (disponivel <= 0) status = reservado > 0 ? "zerado_pedido" : "zerado";
   else if (minimo > 0 && disponivel < minimo) status = "abaixo";
   else status = "ok";
-  return { tipo, ref, modelo, cor, disponivel, saldo, reservado, minimo, falta, limitante, status, op_aberta: !!op, op_numero: op?.numero || "", op_qtd: op?.qtd || 0 };
+  return { tipo, ref, modelo, cor, disponivel, saldo, reservado, minimo, falta, limitante, status, op_aberta: !!op, op_numero: op?.numero || "", op_qtd: op?.qtd || 0, em_producao: Math.max(0, Number(emProducao) || 0) };
 }
 
 // EXPIRAÇÃO DO CARRINHO (Etapa 2) — ao vencer a janela de 12h (sem prorrogação válida e sem ter

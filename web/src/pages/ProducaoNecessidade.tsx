@@ -23,6 +23,7 @@ const tipoBadge = (tipo: string) => (
 export function ProducaoNecessidade() {
   const [unidades, setUnidades] = useState<UnidadePE[] | null>(null);
   const [ops, setOps] = useState<OpAberta[]>([]);
+  const [prodErp, setProdErp] = useState<UnidadePE[]>([]);
   const [resumo, setResumo] = useState<NecessidadeResumo | null>(null);
   const [erro, setErro] = useState("");
   const [todos, setTodos] = useState(false);
@@ -33,7 +34,7 @@ export function ProducaoNecessidade() {
 
   function carregar() {
     setUnidades(null); setErro("");
-    api.producaoNecessidade(todos).then((r) => { setUnidades(r.unidades); setOps(r.ops || []); setResumo(r.resumo); }).catch((e) => setErro((e as Error).message));
+    api.producaoNecessidade(todos).then((r) => { setUnidades(r.unidades); setOps(r.ops || []); setProdErp(r.producao_erp || []); setResumo(r.resumo); }).catch((e) => setErro((e as Error).message));
   }
   useEffect(() => { carregar(); /* eslint-disable-next-line */ }, [todos]);
 
@@ -46,6 +47,10 @@ export function ProducaoNecessidade() {
     const b = busca.trim().toLowerCase();
     return ops.filter((o) => !b || o.modelo.toLowerCase().includes(b) || o.cor.toLowerCase().includes(b) || o.ref.toLowerCase().includes(b));
   }, [ops, busca]);
+  const emProducaoErp = useMemo(() => {
+    const b = busca.trim().toLowerCase();
+    return prodErp.filter((u) => !b || u.modelo.toLowerCase().includes(b) || u.cor.toLowerCase().includes(b) || u.ref.toLowerCase().includes(b));
+  }, [prodErp, busca]);
 
   async function salvarMin(u: UnidadePE, valor: string) {
     const k = u.ref + "|" + u.cor.toLowerCase();
@@ -114,8 +119,13 @@ export function ProducaoNecessidade() {
             <div style={{ fontSize: 24, fontWeight: 800, color: "#b45309" }}>{resumo.abaixo}</div>
           </div>
           <div className="card pad" style={{ flex: "1 1 140px", minWidth: 130, background: resumo.em_producao > 0 ? "#eff6ff" : undefined }}>
-            <div style={{ fontSize: 12, color: "#1d4ed8", fontWeight: 600 }}>🏭 Em produção</div>
+            <div style={{ fontSize: 12, color: "#1d4ed8", fontWeight: 600 }}>🏭 Em produção (nossa OP)</div>
             <div style={{ fontSize: 24, fontWeight: 800, color: "#1d4ed8" }}>{resumo.em_producao}</div>
+          </div>
+          <div className="card pad" style={{ flex: "1 1 140px", minWidth: 130, background: resumo.em_producao_erp > 0 ? "#eef2ff" : undefined }}>
+            <div style={{ fontSize: 12, color: "#4338ca", fontWeight: 600 }}>🏭 Em produção (Syntech)</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: "#4338ca" }}>{resumo.em_producao_erp}</div>
+            <div className="muted" style={{ fontSize: 10 }}>OP criada no Syntech</div>
           </div>
         </div>
       )}
@@ -189,6 +199,30 @@ export function ProducaoNecessidade() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* EM PRODUÇÃO NO SYNTECH — a OP foi criada lá (coluna PRODUCAO); só leitura */}
+      {emProducaoErp.length > 0 && (
+        <div className="card" style={{ overflowX: "auto", marginBottom: 14, borderColor: "#c7d2fe" }}>
+          <div className="pad" style={{ borderBottom: "1px solid var(--line)", fontWeight: 700, color: "#4338ca", background: "#eef2ff" }}>
+            🏭 Em produção no Syntech <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· {emProducaoErp.length} · OP criada lá — já saiu da fila daqui</span>
+          </div>
+          <table className="table" style={{ fontSize: 13 }}>
+            <thead><tr><th>Modelo</th><th>Cor</th><th className="num">Disp.</th><th className="num">Mín.</th><th className="num">Em produção</th></tr></thead>
+            <tbody>
+              {emProducaoErp.map((u) => (
+                <tr key={u.ref + "|" + u.cor.toLowerCase()} style={{ background: "#f5f3ff" }}>
+                  <td className="strong">{u.modelo}{tipoBadge(u.tipo)}</td>
+                  <td>{u.cor || "—"}</td>
+                  <td className="num" style={{ fontWeight: 700, color: u.disponivel > 0 ? "#166534" : "#dc2626" }}>{u.disponivel.toLocaleString("pt-BR")}</td>
+                  <td className="num">{u.minimo || "—"}</td>
+                  <td className="num" style={{ fontWeight: 800, color: "#4338ca" }}>{u.em_producao.toLocaleString("pt-BR")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="pad muted" style={{ fontSize: 11 }}>💡 Esses estão com <b>OP aberta no Syntech</b> (a ponte lê a coluna PRODUCAO). Por isso saíram da fila de “Precisa Produzir” — pra não mandar produzir de novo.</div>
         </div>
       )}
 

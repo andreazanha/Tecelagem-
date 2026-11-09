@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type EstoqueResumoLinha } from "../api";
 
-type Linha = { produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; reservado?: number; disponivel?: number; unidade: string | null; atualizado_em: string };
+type Linha = { produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; reservado?: number; disponivel?: number; producao?: number; unidade: string | null; atualizado_em: string };
 type Resumo = { totais: { skus: number; refs: number; pecas: number; sem_disponivel: number; ruptura_com_demanda: number; baixos: number }; limiar_baixo: number; rupturas: EstoqueResumoLinha[]; baixos: EstoqueResumoLinha[] };
 
 // Ordena texto com números "naturalmente" (ex.: ref2 < ref10; 50×50 antes de 55×35).
@@ -229,6 +229,7 @@ export function EstoqueSyntech() {
           </button>
           {catAberta && cat.modelos.map((g) => {
             const temReserva = g.linhas.some((l) => (Number(l.reservado) || 0) > 0);
+            const temProducao = g.linhas.some((l) => (Number(l.producao) || 0) > 0);
             const k = cat.nome + "|" + g.chave;
             const aberto = buscando || abertos.has(k);
             return (
@@ -245,11 +246,12 @@ export function EstoqueSyntech() {
                 </button>
                 {aberto && (
                   <table className="table" style={{ fontSize: 13 }}>
-                    <thead><tr><th>Tamanho</th><th>Cor</th><th className="num">Saldo</th>{temReserva && <th className="num">Reservado</th>}<th className="num">Disponível</th></tr></thead>
+                    <thead><tr><th>Tamanho</th><th>Cor</th><th className="num">Saldo</th>{temReserva && <th className="num">Reservado</th>}{temProducao && <th className="num">Em prod.</th>}<th className="num">Disponível</th></tr></thead>
                     <tbody>
                       {g.linhas.map((l, i) => {
                         const saldo = Number(l.saldo) || 0;
                         const reservado = Number(l.reservado) || 0;
+                        const producao = Number(l.producao) || 0;
                         const disp = Number(l.disponivel ?? saldo) || 0;
                         return (
                           <tr key={i}>
@@ -257,6 +259,7 @@ export function EstoqueSyntech() {
                             <td>{l.cor || "—"}</td>
                             <td className="num" style={{ color: saldo > 0 ? "#334155" : "#b91c1c" }}>{saldo.toLocaleString("pt-BR")}</td>
                             {temReserva && <td className="num" style={{ color: reservado > 0 ? "#b45309" : "var(--muted)" }}>{reservado ? reservado.toLocaleString("pt-BR") : "—"}</td>}
+                            {temProducao && <td className="num" style={{ color: producao > 0 ? "#4338ca" : "var(--muted)", fontWeight: producao > 0 ? 700 : 400 }}>{producao ? `🏭 ${producao.toLocaleString("pt-BR")}` : "—"}</td>}
                             <td className="num" style={{ fontWeight: 700, color: disp > 0 ? "#166534" : "#b91c1c" }}>{disp.toLocaleString("pt-BR")}</td>
                           </tr>
                         );

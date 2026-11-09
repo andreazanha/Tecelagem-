@@ -783,8 +783,8 @@ export interface CatalogoProdutoExtra {
 export interface LojaImagemCor { id_cor: string; nome: string; hex: string; foto: string }
 export interface LojaImagemProduto { id: string; nome: string; foto: string; categoria: string; cores: LojaImagemCor[] }
 export interface EstoqueResumoLinha { produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; reservado: number; disponivel: number }
-export interface UnidadePE { tipo: "kit" | "avulso"; ref: string; modelo: string; cor: string; disponivel: number; saldo: number; reservado: number; minimo: number; falta: number; limitante: string; status: "zerado_pedido" | "zerado" | "abaixo" | "ok"; op_aberta: boolean; op_numero: string; op_qtd: number }
-export interface NecessidadeResumo { zerado_pedido: number; zerado: number; abaixo: number; em_producao: number; ok: number; kits: number; avulsos: number }
+export interface UnidadePE { tipo: "kit" | "avulso"; ref: string; modelo: string; cor: string; disponivel: number; saldo: number; reservado: number; minimo: number; falta: number; limitante: string; status: "zerado_pedido" | "zerado" | "abaixo" | "ok"; op_aberta: boolean; op_numero: string; op_qtd: number; em_producao: number }
+export interface NecessidadeResumo { zerado_pedido: number; zerado: number; abaixo: number; em_producao: number; em_producao_erp: number; ok: number; kits: number; avulsos: number }
 export interface OpAberta { id: string; pedido_id: string; ref: string; cor: string; tamanho: string; tipo: string; modelo: string; qtd: number; numero: string; criado_em: string; bloqueado: number }
 export interface ProdutoBusca { ref: string; nome: string; cores: string[]; tamanhos: { codigo: string; medida: string }[] }
 export interface InventarioItem { produto: string | null; ref: string; cor: string; tamanho: string; medida: string | null; sistema: number; contado: number | null; diferenca: number | null; reservado: number; motivo_provavel: string; motivo: string }
@@ -1474,12 +1474,12 @@ export const api = {
     if (q?.busca) p.set("busca", q.busca);
     const qs = p.toString();
     return fetch("/api/integracao/estoque" + (qs ? `?${qs}` : "")).then((r) =>
-      j<{ produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; reservado: number; disponivel: number; unidade: string | null; atualizado_em: string }[]>(r));
+      j<{ produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; reservado: number; disponivel: number; producao?: number; unidade: string | null; atualizado_em: string }[]>(r));
   },
   // Necessidade de produção (Pronta Entrega): kits montados + avulsos, com disponível/mínimo/status.
   producaoNecessidade: (todos?: boolean) =>
     fetch("/api/integracao/producao-necessidade" + (todos ? "?todos=1" : "")).then((r) =>
-      j<{ resumo: NecessidadeResumo; unidades: UnidadePE[]; ops: OpAberta[] }>(r)),
+      j<{ resumo: NecessidadeResumo; unidades: UnidadePE[]; ops: OpAberta[]; producao_erp: UnidadePE[] }>(r)),
   produtosBusca: (q: string) =>
     fetch("/api/integracao/produtos-busca?q=" + encodeURIComponent(q)).then((r) => j<{ produtos: ProdutoBusca[] }>(r)),
   // Inventário (contagem física × sistema).
