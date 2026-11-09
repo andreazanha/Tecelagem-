@@ -788,6 +788,8 @@ export interface NecessidadeResumo { zerado_pedido: number; zerado: number; abai
 export interface OpAberta { id: string; pedido_id: string; ref: string; cor: string; tamanho: string; tipo: string; modelo: string; qtd: number; numero: string; criado_em: string; bloqueado: number }
 export interface ProdutoBusca { ref: string; nome: string; cores: string[]; tamanhos: { codigo: string; medida: string }[] }
 export interface InventarioItem { produto: string | null; ref: string; cor: string; tamanho: string; medida: string | null; sistema: number; contado: number | null; diferenca: number | null; reservado: number; motivo_provavel: string; motivo: string }
+export interface PreparaEntradaItem { ref: string; produto: string; cor: string; tamanho: string; qtd: number }
+export interface PreparaEntradaOp { id: string; pedido_id: string; numero: string; modelo: string; tipo: string; qtd: number; pronta: boolean; em_producao: boolean; itens: PreparaEntradaItem[] }
 
 export interface MaquinaTec { id: string; nome: string; ordem: number; ativo: number }
 export interface MotivoTec { id: string; codigo: string; nome: string | null; tipo: string; ordem: number; ativo: number }
@@ -1495,6 +1497,11 @@ export const api = {
     jsonPost(`/api/integracao/inventario/${id}/contar`, it).then((r) => j<{ ok: boolean }>(r)),
   inventarioFechar: (id: string) =>
     jsonPost(`/api/integracao/inventario/${id}/fechar`, {}).then((r) => j<{ ok: boolean }>(r)),
+  // Preparar entrada: a lista pronta pra digitar no Syntech (kit explodido em peças × qtd).
+  prepararEntrada: () =>
+    fetch("/api/integracao/preparar-entrada").then((r) => j<{ ops: PreparaEntradaOp[] }>(r)),
+  prepararEntradaFeita: (id: string) =>
+    jsonPost(`/api/integracao/preparar-entrada/${id}/feita`, {}).then((r) => j<{ ok?: boolean; error?: string }>(r)),
   // Visão geral do estoque (dashboard): peças, valor (atacado), produtos/SKUs, por categoria, top.
   estoqueVisao: () =>
     fetch("/api/integracao/estoque-visao").then((r) =>

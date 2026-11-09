@@ -1042,6 +1042,64 @@ integracao.post("/inventario/:id/fechar", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── PREPARAR ENTRADA (a lista pronta pra digitar no Syntech) ────────────────────────
+// Pra cada OP de estoque, mostra o que precisa dar entrada no Syntech: explode o KIT nas
+// PEÇAS reais (capa/peseira, pela receita) × a quantidade; avulso entra direto. Marca quando
+// a OP já passou pela produção ("pronta pra entrada"). Só leitura; a entrada em si é no Syntech.
+integracao.get("/preparar-entrada", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const ops = ((await c.env.DB.prepare(
+    `SELECT o.id, o.pedido_id, o.ref, COALESCE(o.cor,'') AS cor, COALESCE(o.tamanho,'') AS tamanho, COALESCE(o.tipo,'') AS tipo,
+            COALESCE(o.modelo, o.ref) AS modelo, COALESCE(o.qtd,0) AS qtd, COALESCE(ped.numero_erp,'') AS numero,
+            (SELECT COUNT(*) FROM producao pr WHERE pr.pedido_id=o.pedido_id AND pr.setor='estoque') AS em_estoque,
+            (SELECT COUNT(*) FROM producao pr WHERE pr.pedido_id=o.pedido_id AND pr.setor<>'estoque'
+                AND (pr.finalizado_em IS NULL)) AS em_producao
+       FROM producao_op_estoque o JOIN pedidos ped ON ped.id=o.pedido_id
+      WHERE o.concluida_em IS NULL AND COALESCE(ped.status,'') NOT IN ('cancelado','recusado')
+      ORDER BY (SELECT COUNT(*) FROM producao pr WHERE pr.pedido_id=o.pedido_id AND pr.setor='estoque') DESC, o.criado_em DESC`
+  ).all<{ id: string; pedido_id: string; ref: string; cor: string; tamanho: string; tipo: string; modelo: string; qtd: number; numero: string; em_estoque: number; em_producao: number }>().catch(() => ({ results: [] as { id: string; pedido_id: string; ref: string; cor: string; tamanho: string; tipo: string; modelo: string; qtd: number; numero: string; em_estoque: number; em_producao: number }[] }))).results) || [];
+  // receitas dos kits envolvidos
+  const kitRefs = [...new Set(ops.filter((o) => o.tipo === "kit").map((o) => o.ref))];
+  const recPorKit = new Map<string, { ref: string; tam: string; qtd: number }[]>();
+  if (kitRefs.length) {
+    const ph = kitRefs.map(() => "?").join(",");
+    const rec = ((await c.env.DB.prepare(`SELECT kit_ref, componente_ref, quantidade, tamanho FROM erp_kit_receita WHERE kit_ref IN (${ph})`).bind(...kitRefs).all<{ kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }>().catch(() => ({ results: [] as { kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }[] }))).results) || [];
+    for (const r of rec) { const a = recPorKit.get(r.kit_ref) || []; a.push({ ref: r.componente_ref, tam: String(r.tamanho || "").trim(), qtd: Number(r.quantidade) || 1 }); recPorKit.set(r.kit_ref, a); }
+  }
+  // nomes dos produtos (pra exibir a peça)
+  const refsItens = new Set<string>();
+  for (const o of ops) { if (o.tipo === "kit") for (const comp of recPorKit.get(o.ref) || []) refsItens.add(comp.ref); else refsItens.add(o.ref); }
+  const nomes = new Map<string, string>();
+  const refsArr = [...refsItens];
+  for (let i = 0; i < refsArr.length; i += 100) {
+    const lote = refsArr.slice(i, i + 100); const ph = lote.map(() => "?").join(",");
+    for (const p of (((await c.env.DB.prepare(`SELECT ref, nome FROM erp_produtos WHERE ref IN (${ph})`).bind(...lote).all<{ ref: string; nome: string | null }>().catch(() => ({ results: [] as { ref: string; nome: string | null }[] }))).results) || [])) nomes.set(p.ref, String(p.nome || p.ref));
+  }
+  const out = ops.map((o) => {
+    const itens = o.tipo === "kit"
+      ? (recPorKit.get(o.ref) || []).map((comp) => ({ ref: comp.ref, produto: nomes.get(comp.ref) || comp.ref, cor: o.cor, tamanho: comp.tam, qtd: comp.qtd * o.qtd }))
+      : [{ ref: o.ref, produto: nomes.get(o.ref) || o.modelo, cor: o.cor, tamanho: o.tamanho, qtd: o.qtd }];
+    return {
+      id: o.id, pedido_id: o.pedido_id, numero: o.numero, modelo: o.modelo, tipo: o.tipo, qtd: o.qtd,
+      pronta: o.em_estoque > 0, em_producao: o.em_producao > 0 && o.em_estoque === 0,
+      itens,
+    };
+  });
+  return c.json({ ops: out });
+});
+// Marca a entrada da OP como FEITA (você já digitou no Syntech): fecha a OP e tira o card da esteira.
+integracao.post("/preparar-entrada/:id/feita", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const op = await c.env.DB.prepare("SELECT id, pedido_id FROM producao_op_estoque WHERE id=? AND concluida_em IS NULL").bind(c.req.param("id")).first<{ id: string; pedido_id: string }>().catch(() => null);
+  if (!op) return c.json({ error: "op_nao_encontrada" }, 404);
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE producao_op_estoque SET concluida_em=datetime('now') WHERE id=?").bind(op.id),
+    // tira o card da esteira; garantirCards NÃO recria porque a OP está concluída (ver producao.ts).
+    c.env.DB.prepare("DELETE FROM producao WHERE pedido_id=?").bind(op.pedido_id),
+  ]);
+  return c.json({ ok: true });
+});
+
 // DIAGNÓSTICO visual de um produto/kit: mostra, numa página legível, a receita do kit
 // e o SALDO POR COR E TAMANHO (erp_estoque) de cada peça + o estoque_geral. Serve pra
 // ver DE ONDE vem cada número. Abra logado: /api/integracao/diag-produto?busca=balls

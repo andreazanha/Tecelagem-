@@ -334,6 +334,7 @@ async function garantirCards(env: Env) {
   const { results: faltantes } = await env.DB.prepare(
     `SELECT p.id, p.reposicao, p.entrega_pe, COALESCE(p.bloqueado,0) AS bloqueado FROM pedidos p
       WHERE NOT EXISTS (SELECT 1 FROM producao pr WHERE pr.pedido_id = p.id)
+        AND NOT EXISTS (SELECT 1 FROM producao_op_estoque o WHERE o.pedido_id = p.id AND o.concluida_em IS NOT NULL)
         AND COALESCE(p.status, '') NOT IN ('aguardando_aprovacao', 'aguardando_explosao')`
   ).all<{ id: string; reposicao: number; entrega_pe: string | null; bloqueado: number }>();
   if (!faltantes.length) return;

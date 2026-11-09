@@ -31,6 +31,7 @@ export function EstoqueVisao() {
       {/* Atalhos pras ferramentas do estoque */}
       <div className="row-gap" style={{ gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <Link className="btn btn-soft" to="/precisa-produzir">🏭 Precisa Produzir</Link>
+        <Link className="btn btn-soft" to="/preparar-entrada">📥 Preparar Entrada</Link>
         <Link className="btn btn-soft" to="/estoque-syntech">🔎 Estoque por cor/tamanho</Link>
         <Link className="btn btn-soft" to="/estoque-inventario">🔢 Inventário</Link>
       </div>
