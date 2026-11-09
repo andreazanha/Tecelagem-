@@ -15,6 +15,15 @@ const cmpMedida = (a: string, b: string): number => {
   return String(a || "").localeCompare(String(b || ""));
 };
 
+// Categoria do produto pela ref: Edição Limitada (ED + dígito) vs Pronta Entrega (resto, KT incluso).
+const ehEL = (ref?: string | null) => /^ED\d/i.test(String(ref || "").trim());
+const ehKT = (ref?: string | null) => /^KT/i.test(String(ref || "").trim());
+const categoriaDe = (ref?: string | null) => (ehEL(ref) ? "Edição Limitada" : "Pronta Entrega");
+const ORDEM_CAT = ["Edição Limitada", "Pronta Entrega"];
+const ICONE_CAT: Record<string, string> = { "Edição Limitada": "✨", "Pronta Entrega": "📦" };
+type Modelo = { nome: string; chave: string; refs: string[]; kit: boolean; linhas: Linha[]; totalSaldo: number; totalDisp: number };
+type Categoria = { nome: string; modelos: Modelo[]; totalDisp: number };
+
 function haQuanto(iso: string | null, agora: string): { txt: string; cor: string } {
   if (!iso) return { txt: "sem dados", cor: "#b91c1c" };
   const ms = new Date(agora).getTime() - new Date(iso.replace(" ", "T") + (iso.includes("Z") ? "" : "Z")).getTime();
@@ -34,6 +43,7 @@ export function EstoqueSyntech() {
   const [popup, setPopup] = useState(false);
   const [resumo, setResumo] = useState<Resumo | null>(null);
   const [painel, setPainel] = useState<"" | "ruptura" | "baixo">(""); // qual lista de problemas está aberta
+  const [abertos, setAbertos] = useState<Set<string>>(() => new Set()); // modelos expandidos (lista fechada por padrão)
 
   function carregar() {
     setLinhas(null); setErro("");
@@ -44,27 +54,42 @@ export function EstoqueSyntech() {
   }
   useEffect(() => { carregar(); }, []);
 
-  // agrupa por produto (modelo) → cada um com suas linhas cor/tamanho
-  const grupos = useMemo(() => {
+  // Agrupa em CATEGORIAS (Edição Limitada / Pronta Entrega) → MODELOS (por nome) → linhas cor/tamanho.
+  const categorias = useMemo(() => {
     const b = busca.trim().toLowerCase();
     const filtradas = (linhas || []).filter((l) =>
       !b || (l.produto || "").toLowerCase().includes(b) || (l.ref || "").toLowerCase().includes(b) || (l.cor || "").toLowerCase().includes(b));
-    const m = new Map<string, { ref: string; nome: string; linhas: Linha[] }>();
-    for (const l of filtradas) {
-      const ref = (l.ref || "—");
-      const g = m.get(ref) || { ref, nome: l.produto || ref, linhas: [] };
-      g.linhas.push(l); m.set(ref, g);
-    }
-    const arr = [...m.values()];
-    // dentro de cada produto: por MEDIDA (tamanho real, em sequência) e depois por cor
     const medDe = (l: Linha) => l.medida || l.codigo_tamanho || l.tamanho || "";
-    for (const g of arr) g.linhas.sort((a, b2) => cmpMedida(medDe(a), medDe(b2)) || (a.cor || "").localeCompare(b2.cor || ""));
-    // os produtos em sequência por REFERÊNCIA (natural), depois pelo nome
-    arr.sort((a, b2) => cmpMedida(a.ref, b2.ref) || a.ref.localeCompare(b2.ref) || a.nome.localeCompare(b2.nome));
-    return arr;
+    // categoria → (nome do modelo minúsculo) → modelo
+    const catMap = new Map<string, Map<string, Modelo>>();
+    for (const l of filtradas) {
+      const cat = categoriaDe(l.ref);
+      const nome = String(l.produto || l.ref || "—").trim();
+      const chave = nome.toLowerCase();
+      let modelos = catMap.get(cat); if (!modelos) { modelos = new Map(); catMap.set(cat, modelos); }
+      let g = modelos.get(chave); if (!g) { g = { nome, chave, refs: [], kit: false, linhas: [], totalSaldo: 0, totalDisp: 0 }; modelos.set(chave, g); }
+      g.linhas.push(l);
+      if (l.ref && !g.refs.includes(l.ref)) g.refs.push(l.ref);
+      if (ehKT(l.ref)) g.kit = true;
+    }
+    const cats: Categoria[] = [];
+    for (const cn of ORDEM_CAT) {
+      const modelos = catMap.get(cn); if (!modelos) continue;
+      const arr = [...modelos.values()];
+      for (const g of arr) {
+        g.linhas.sort((a, b2) => cmpMedida(medDe(a), medDe(b2)) || (a.cor || "").localeCompare(b2.cor || ""));
+        g.totalSaldo = g.linhas.reduce((s, l) => s + (Number(l.saldo) || 0), 0);
+        g.totalDisp = g.linhas.reduce((s, l) => s + (Number(l.disponivel ?? l.saldo) || 0), 0);
+      }
+      arr.sort((a, b2) => a.nome.localeCompare(b2.nome, "pt-BR"));
+      cats.push({ nome: cn, modelos: arr, totalDisp: arr.reduce((s, g) => s + g.totalDisp, 0) });
+    }
+    return cats;
   }, [linhas, busca]);
 
   const hq = sync ? haQuanto(sync.atualizado_em, sync.agora) : null;
+  const buscando = busca.trim().length > 0;
+  const toggle = (k: string) => setAbertos((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
   return (
     <>
@@ -180,51 +205,65 @@ export function EstoqueSyntech() {
         );
       })()}
 
-      <div className="card pad" style={{ marginBottom: 12 }}>
-        <input value={busca} placeholder="Filtrar por modelo, código ou cor…" style={{ width: "100%", padding: "8px 12px", fontSize: 14 }}
+      <div className="card pad" style={{ marginBottom: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input value={busca} placeholder="Filtrar por modelo, código ou cor…" style={{ flex: "1 1 240px", padding: "8px 12px", fontSize: 14 }}
           onChange={(e) => setBusca(e.target.value)} />
+        <button className="btn btn-soft" onClick={() => setAbertos(new Set(categorias.flatMap((c) => c.modelos.map((g) => c.nome + "|" + g.chave))))}>Abrir tudo</button>
+        <button className="btn btn-soft" onClick={() => setAbertos(new Set())}>Fechar tudo</button>
       </div>
 
       {erro && <div className="card pad" style={{ color: "#b91c1c" }}>{erro}</div>}
       {linhas == null && !erro && <div className="card pad muted">Carregando estoque…</div>}
-      {linhas != null && grupos.length === 0 && <div className="card pad muted">Nada encontrado{busca ? ` para "${busca}"` : " no espelho (a ponte ainda não trouxe o estoque por cor)"}.</div>}
+      {linhas != null && categorias.length === 0 && <div className="card pad muted">Nada encontrado{busca ? ` para "${busca}"` : " no espelho (a ponte ainda não trouxe o estoque por cor)"}.</div>}
 
-      {grupos.map((g) => {
-        const total = g.linhas.reduce((s, l) => s + (Number(l.saldo) || 0), 0);
-        const totalDisp = g.linhas.reduce((s, l) => s + (Number(l.disponivel ?? l.saldo) || 0), 0);
-        const temReserva = g.linhas.some((l) => (Number(l.reservado) || 0) > 0);
-        return (
-          <div className="card" key={g.ref} style={{ marginBottom: 12 }}>
-            <div className="pad" style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", borderBottom: "1px solid var(--line)" }}>
-              <strong>{g.nome}</strong>
-              <span className="muted" style={{ fontSize: 12 }}>{g.ref}</span>
-              <span style={{ marginLeft: "auto", fontSize: 12, color: "#166534", fontWeight: 700 }}>
-                Disponível: {totalDisp.toLocaleString("pt-BR")}
-                {total !== totalDisp ? <span className="muted" style={{ fontWeight: 500 }}> · saldo {total.toLocaleString("pt-BR")}</span> : null}
-              </span>
-            </div>
-            <table className="table" style={{ fontSize: 13 }}>
-              <thead><tr><th>Tamanho</th><th>Cor</th><th className="num">Saldo</th>{temReserva && <th className="num">Reservado</th>}<th className="num">Disponível</th></tr></thead>
-              <tbody>
-                {g.linhas.map((l, i) => {
-                  const saldo = Number(l.saldo) || 0;
-                  const reservado = Number(l.reservado) || 0;
-                  const disp = Number(l.disponivel ?? saldo) || 0;
-                  return (
-                    <tr key={i}>
-                      <td>{l.medida || l.codigo_tamanho || l.tamanho || "—"}{(l.medida && (l.codigo_tamanho || l.tamanho)) ? <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>({l.codigo_tamanho || l.tamanho})</span> : null}</td>
-                      <td>{l.cor || "—"}</td>
-                      <td className="num" style={{ color: saldo > 0 ? "#334155" : "#b91c1c" }}>{saldo.toLocaleString("pt-BR")}</td>
-                      {temReserva && <td className="num" style={{ color: reservado > 0 ? "#b45309" : "var(--muted)" }}>{reservado ? reservado.toLocaleString("pt-BR") : "—"}</td>}
-                      <td className="num" style={{ fontWeight: 700, color: disp > 0 ? "#166534" : "#b91c1c" }}>{disp.toLocaleString("pt-BR")}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      {categorias.map((cat) => (
+        <div key={cat.nome} style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, margin: "4px 2px 8px", flexWrap: "wrap" }}>
+            <h3 style={{ margin: 0 }}>{ICONE_CAT[cat.nome] || "📦"} {cat.nome}</h3>
+            <span className="muted" style={{ fontSize: 12 }}>{cat.modelos.length} {cat.modelos.length === 1 ? "modelo" : "modelos"} · disponível {cat.totalDisp.toLocaleString("pt-BR")}</span>
           </div>
-        );
-      })}
+          {cat.modelos.map((g) => {
+            const temReserva = g.linhas.some((l) => (Number(l.reservado) || 0) > 0);
+            const k = cat.nome + "|" + g.chave;
+            const aberto = buscando || abertos.has(k);
+            return (
+              <div className="card" key={k} style={{ marginBottom: 8 }}>
+                <button onClick={() => toggle(k)} style={{ width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "10px 12px", borderBottom: aberto ? "1px solid var(--line)" : "none" }}>
+                  <span style={{ fontSize: 12, color: "var(--muted)", width: 12 }}>{aberto ? "▾" : "▸"}</span>
+                  <strong>{g.nome}</strong>
+                  {g.kit && <span style={{ fontSize: 11, background: "#eef2ff", color: "#3730a3", borderRadius: 6, padding: "1px 6px", fontWeight: 600 }}>🧩 kit</span>}
+                  {g.refs.length > 0 && <span className="muted" style={{ fontSize: 11 }}>{g.refs.join(" · ")}</span>}
+                  <span style={{ marginLeft: "auto", fontSize: 12, color: g.totalDisp > 0 ? "#166534" : "#b91c1c", fontWeight: 700 }}>
+                    Disponível: {g.totalDisp.toLocaleString("pt-BR")}
+                    {g.totalSaldo !== g.totalDisp ? <span className="muted" style={{ fontWeight: 500 }}> · saldo {g.totalSaldo.toLocaleString("pt-BR")}</span> : null}
+                  </span>
+                </button>
+                {aberto && (
+                  <table className="table" style={{ fontSize: 13 }}>
+                    <thead><tr><th>Tamanho</th><th>Cor</th><th className="num">Saldo</th>{temReserva && <th className="num">Reservado</th>}<th className="num">Disponível</th></tr></thead>
+                    <tbody>
+                      {g.linhas.map((l, i) => {
+                        const saldo = Number(l.saldo) || 0;
+                        const reservado = Number(l.reservado) || 0;
+                        const disp = Number(l.disponivel ?? saldo) || 0;
+                        return (
+                          <tr key={i}>
+                            <td>{l.medida || l.codigo_tamanho || l.tamanho || "—"}{(l.medida && (l.codigo_tamanho || l.tamanho)) ? <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>({l.codigo_tamanho || l.tamanho})</span> : null}</td>
+                            <td>{l.cor || "—"}</td>
+                            <td className="num" style={{ color: saldo > 0 ? "#334155" : "#b91c1c" }}>{saldo.toLocaleString("pt-BR")}</td>
+                            {temReserva && <td className="num" style={{ color: reservado > 0 ? "#b45309" : "var(--muted)" }}>{reservado ? reservado.toLocaleString("pt-BR") : "—"}</td>}
+                            <td className="num" style={{ fontWeight: 700, color: disp > 0 ? "#166534" : "#b91c1c" }}>{disp.toLocaleString("pt-BR")}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </>
   );
 }
