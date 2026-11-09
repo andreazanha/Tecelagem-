@@ -43,6 +43,7 @@ import { EstoqueSyntech } from "./pages/EstoqueSyntech";
 import { ProducaoNecessidade } from "./pages/ProducaoNecessidade";
 import { DiagSyntech } from "./pages/DiagSyntech";
 import { EstoqueVisao } from "./pages/EstoqueVisao";
+import { AvisosCorte } from "./pages/AvisosCorte";
 import { Catalogo } from "./pages/Catalogo";
 import { Expedicao } from "./pages/Expedicao";
 import { Fiscal } from "./pages/Fiscal";
@@ -229,6 +230,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/controle-tecelagem" element={<Protegido page="producao"><ControleTecelagem /></Protegido>} />
           <Route path="/passadoria" element={<Protegido page="passadoria"><Passadoria /></Protegido>} />
           <Route path="/corte" element={<Protegido page="corte"><Corte /></Protegido>} />
+          <Route path="/avisos-corte" element={<Protegido page="pedidos"><AvisosCorte /></Protegido>} />
           <Route path="/costura" element={<Protegido page="costura"><Costura /></Protegido>} />
           <Route path="/revisao" element={<Protegido page="revisao"><Revisao /></Protegido>} />
           <Route path="/estoque" element={<Protegido page="estoque"><Estoque /></Protegido>} />

@@ -4,6 +4,7 @@ import { classificar, criarCatalogo, resolverModelo, ehKit, juntarCapaAlmofadaBl
 import { casarProduto } from "./produtos";
 import { exigirFuncao, exigirAlgumaFuncao } from "../permissoes";
 import { necessidadeProducao } from "../loja-estoque";
+import { enviarWhatsapp } from "./atendimento";
 
 export const producao = new Hono<{ Bindings: Env }>();
 
@@ -121,10 +122,63 @@ async function enriquecerEstoque(env: Env, cards: CardStock[]): Promise<CardStoc
   rank.forEach((r, i) => {
     r.c.est_estoque = r.estoque;
     r.c.est_min = r.min;
+    r.c.est_nome = r.nome;
     r.c.est_rank = i + 1;
     r.c.est_urgencia = r.estoque <= 0 ? "critico" : r.min > 0 && r.estoque <= r.min ? "baixo" : r.min > 0 && r.estoque <= r.min * 1.5 ? "atencao" : "ok";
   });
   return cards;
+}
+
+// ── AVISO DE URGÊNCIA DO CORTE (WhatsApp) ────────────────────────────────────
+// 2x/dia (dias úteis) manda um resumo do que o Corte precisa priorizar: reposições
+// críticas (estoque baixo/zerado) + pedidos de cliente perto/passados do prazo.
+// Números em config: aviso_corte_wpp (setor do corte) + aviso_gerente_wpp (gerente).
+function parseNums(v: string | null | undefined): string[] {
+  const raw = (v || "").trim(); if (!raw) return [];
+  let arr: unknown[] = [];
+  if (raw.startsWith("[")) { try { const j = JSON.parse(raw); if (Array.isArray(j)) arr = j; } catch { arr = []; } }
+  else arr = raw.split(/[,\n;]+/);
+  const out: string[] = []; const seen = new Set<string>();
+  for (const b of arr) { const n = String(b ?? "").replace(/\D/g, ""); if (n.length >= 10 && !seen.has(n)) { seen.add(n); out.push(n); } }
+  return out;
+}
+async function cfgValor(env: Env, k: string): Promise<string> {
+  return ((await env.DB.prepare("SELECT valor FROM config WHERE chave=?").bind(k).first<{ valor: string | null }>().catch(() => null))?.valor) || "";
+}
+export async function avisarCorteUrgencia(env: Env): Promise<{ enviados: number; urgentes: number; msg: string; numeros: number }> {
+  const nums = [...new Set([...parseNums(await cfgValor(env, "aviso_corte_wpp")), ...parseNums(await cfgValor(env, "aviso_gerente_wpp"))])];
+  const { results } = await env.DB.prepare(
+    `SELECT pr.pedido_id, pr.parte, pr.setor, pr.status, pr.pecas, pr.resumo, p.numero_erp,
+            COALESCE(NULLIF(pr.cliente,''), p.cliente_nome) AS cliente_nome, p.data_entrega, p.reposicao
+       FROM producao pr JOIN pedidos p ON p.id = pr.pedido_id WHERE pr.setor='corte'`
+  ).all<CardStock>().catch(() => ({ results: [] as CardStock[] }));
+  const cards = await enriquecerEstoque(env, results);
+  const hoje = new Date();
+  const hojeMs = Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), hoje.getUTCDate());
+  const limiteMs = hojeMs + 2 * 86400000; // hoje + 2 dias
+  const repCrit: string[] = []; const cliUrg: string[] = [];
+  for (const c of cards) {
+    if (Number(c.reposicao) === 1) {
+      if (c.est_urgencia === "critico" || c.est_urgencia === "baixo") {
+        const nome = String(c.est_nome || c.resumo || c.numero_erp || "produto");
+        repCrit.push(`• ${nome}: estoque ${Number(c.est_estoque) || 0}/${Number(c.est_min) || 0}`);
+      }
+    } else {
+      const m = String(c.data_entrega || "").slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) { const ms = Date.UTC(+m[1], +m[2] - 1, +m[3]); if (ms <= limiteMs) {
+        cliUrg.push(`• Pedido ${c.numero_erp || "?"}${c.cliente_nome ? " (" + c.cliente_nome + ")" : ""} — entrega ${m[3]}/${m[2]}${ms < hojeMs ? " ⚠️ atrasado" : ""}`);
+      } }
+    }
+  }
+  const urgentes = repCrit.length + cliUrg.length;
+  let msg = "✂️ *Corte — urgências de hoje*\n";
+  if (repCrit.length) msg += `\n🔴 *Reposição crítica* (estoque baixo):\n${repCrit.join("\n")}\n`;
+  if (cliUrg.length) msg += `\n📦 *Pedidos de cliente no prazo:*\n${cliUrg.join("\n")}\n`;
+  msg += urgentes ? "\nPrioridade: cortar esses primeiro. 💪" : "Nada urgente pra cortar agora. 👍";
+  if (!urgentes || !nums.length) return { enviados: 0, urgentes, msg, numeros: nums.length };
+  let enviados = 0;
+  for (const tel of nums) { try { await enviarWhatsapp(env, tel, { tipo: "texto", texto: msg }); enviados++; } catch { /* segue */ } }
+  return { enviados, urgentes, msg, numeros: nums.length };
 }
 
 // GALGA de cada card (3 ou 7), decidida PELO PRODUTO (catálogo de modelos):
@@ -382,6 +436,29 @@ producao.get("/", async (c) => {
   }
   if (setor === "revisao") await enriquecerRevisaoPE(c.env, enriquecido);
   return c.json(enriquecido);
+});
+
+// Números de WhatsApp do aviso de urgência do Corte (setor do corte + gerente).
+producao.get("/avisos-corte", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  return c.json({ corte: parseNums(await cfgValor(c.env, "aviso_corte_wpp")), gerente: parseNums(await cfgValor(c.env, "aviso_gerente_wpp")) });
+});
+producao.post("/avisos-corte", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ corte?: string[]; gerente?: string[] }>().catch(() => ({} as { corte?: string[]; gerente?: string[] }));
+  const corte = parseNums((Array.isArray(b.corte) ? b.corte : []).join(","));
+  const gerente = parseNums((Array.isArray(b.gerente) ? b.gerente : []).join(","));
+  await c.env.DB.batch([
+    c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('aviso_corte_wpp', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify(corte)),
+    c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('aviso_gerente_wpp', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(JSON.stringify(gerente)),
+  ]);
+  return c.json({ ok: true, corte, gerente });
+});
+// Testar agora: roda o aviso e manda pros números (ou só mostra a prévia se não houver número).
+producao.post("/avisos-corte/testar", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const r = await avisarCorteUrgencia(c.env);
+  return c.json(r);
 });
 
 // DETALHE de uma parte (para o popup): dados + os blocos (modelo/cor/tamanhos) daquela parte.

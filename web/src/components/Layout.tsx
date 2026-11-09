@@ -175,6 +175,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/controle-tecelagem", icon: "📈", label: "Controle da Tecelagem", page: "producao" },
       { to: "/passadoria", icon: "🔥", label: "Passadoria", page: "passadoria" },
       { to: "/corte", icon: "✂️", label: "Corte", page: "corte" },
+      { to: "/avisos-corte", icon: "📱", label: "Aviso do Corte (WhatsApp)", page: "pedidos" },
       { to: "/costura", icon: "🪡", label: "Costura", page: "costura" },
       { to: "/revisao", icon: "🔍", label: "Revisão", page: "revisao" },
       { to: "/estoque", icon: "⚡", label: "Separação Pronta Entrega", page: "estoque" },

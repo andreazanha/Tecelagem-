@@ -3,7 +3,7 @@ import { cors } from "hono/cors";
 import { pedidos } from "./routes/pedidos";
 import { clientes } from "./routes/clientes";
 import { modelos, cores, tiposFio, tamanhos, tasseis, prestadores, costura, operadores, usuarios } from "./routes/catalogo";
-import { producao } from "./routes/producao";
+import { producao, avisarCorteUrgencia } from "./routes/producao";
 import { expedicao } from "./routes/expedicao";
 import { romaneios } from "./routes/romaneios";
 import { dashboard } from "./routes/dashboard";
@@ -235,6 +235,14 @@ export default {
     ctx.waitUntil(processarGruposPosts(env).then(() => {})); // posts agendados/recorrentes nos grupos
     ctx.waitUntil(parabensAniversario(env)); // parabéns de aniversário (1x/dia, se ligado)
     ctx.waitUntil(avisarEstoqueMinimo(env)); // resumo diário no WhatsApp: materiais abaixo do mínimo
+    // Aviso de urgência do CORTE (reposição crítica + pedidos de cliente no prazo), 2x/dia em
+    // dias úteis: de manhã (0 11 = 8h BRT) e início da tarde (0 15 = 12h BRT). Seg–sex.
+    {
+      const d = new Date().getUTCDay(); // 1–5 = seg–sex (nesses horários o dia UTC = dia BRT)
+      if (d >= 1 && d <= 5 && (event.cron === "0 11 * * *" || event.cron === "0 15 * * *")) {
+        ctx.waitUntil(avisarCorteUrgencia(env).then(() => {}));
+      }
+    }
     ctx.waitUntil(enviarRelatoriosSemanais(env).then(() => {})); // relatório de vendas (segunda de manhã, se ligado)
     ctx.waitUntil(fecharInativos24h(env).then(() => {})); // encerra sozinho quem ficou 24h sem conversa
     // (desativado a pedido) lerAtividadeCatalogo — quem só VÊ o catálogo NÃO vira lead aqui.

@@ -1314,6 +1314,13 @@ export const api = {
     }).then((r) => j<{ ok: boolean }>(r)),
   listarProducao: (setor = "tecelagem") =>
     fetch(`/api/producao?setor=${encodeURIComponent(setor)}`).then((r) => j<CardProducao[]>(r)),
+  // Aviso de urgência do Corte (WhatsApp): números do corte + gerente, e testar agora.
+  avisosCorteGet: () =>
+    fetch("/api/producao/avisos-corte").then((r) => j<{ corte: string[]; gerente: string[] }>(r)),
+  avisosCorteSalvar: (corte: string[], gerente: string[]) =>
+    jsonPost("/api/producao/avisos-corte", { corte, gerente }).then((r) => j<{ ok: boolean; corte: string[]; gerente: string[] }>(r)),
+  avisosCorteTestar: () =>
+    jsonPost("/api/producao/avisos-corte/testar", {}).then((r) => j<{ enviados: number; urgentes: number; msg: string; numeros: number }>(r)),
   // WhatsApp que recebe o aviso automático de entrada no estoque.
   obterEstoqueWpp: () => fetch("/api/produtos/estoque-wpp").then((r) => j<{ numeros: string[]; numero: string }>(r)),
   salvarEstoqueWpp: (numeros: string[]) =>
