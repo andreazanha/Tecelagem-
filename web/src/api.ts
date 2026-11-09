@@ -785,7 +785,7 @@ export interface LojaImagemProduto { id: string; nome: string; foto: string; cat
 export interface EstoqueResumoLinha { produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; reservado: number; disponivel: number }
 export interface UnidadePE { tipo: "kit" | "avulso"; ref: string; modelo: string; cor: string; disponivel: number; saldo: number; reservado: number; minimo: number; falta: number; limitante: string; status: "zerado_pedido" | "zerado" | "abaixo" | "ok"; op_aberta: boolean; op_numero: string; op_qtd: number }
 export interface NecessidadeResumo { zerado_pedido: number; zerado: number; abaixo: number; em_producao: number; ok: number; kits: number; avulsos: number }
-export interface OpAberta { id: string; ref: string; cor: string; tamanho: string; tipo: string; modelo: string; qtd: number; numero: string; criado_em: string }
+export interface OpAberta { id: string; pedido_id: string; ref: string; cor: string; tamanho: string; tipo: string; modelo: string; qtd: number; numero: string; criado_em: string; bloqueado: number }
 export interface ProdutoBusca { ref: string; nome: string; cores: string[]; tamanhos: { codigo: string; medida: string }[] }
 
 export interface MaquinaTec { id: string; nome: string; ordem: number; ativo: number }

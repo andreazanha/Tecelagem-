@@ -411,11 +411,12 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
 
 // OPs de estoque ABERTAS (pedido de reposição ainda ativo) — inclui as criadas pelo buscador
 // (produto+cor+tamanho), não só as da fila de kit. Usado na seção "Em produção".
-export type OpAberta = { id: string; ref: string; cor: string; tamanho: string; tipo: string; modelo: string; qtd: number; numero: string; criado_em: string };
+export type OpAberta = { id: string; pedido_id: string; ref: string; cor: string; tamanho: string; tipo: string; modelo: string; qtd: number; numero: string; criado_em: string; bloqueado: number };
 export async function listarOpsAbertas(env: Env): Promise<OpAberta[]> {
   const rows = (await env.DB.prepare(
-    `SELECT o.id, o.ref, COALESCE(o.cor,'') AS cor, COALESCE(o.tamanho,'') AS tamanho, COALESCE(o.tipo,'') AS tipo,
-            COALESCE(o.modelo, o.ref) AS modelo, COALESCE(o.qtd,0) AS qtd, COALESCE(ped.numero_erp,'') AS numero, COALESCE(o.criado_em,'') AS criado_em
+    `SELECT o.id, o.pedido_id, o.ref, COALESCE(o.cor,'') AS cor, COALESCE(o.tamanho,'') AS tamanho, COALESCE(o.tipo,'') AS tipo,
+            COALESCE(o.modelo, o.ref) AS modelo, COALESCE(o.qtd,0) AS qtd, COALESCE(ped.numero_erp,'') AS numero,
+            COALESCE(o.criado_em,'') AS criado_em, COALESCE(ped.bloqueado,0) AS bloqueado
        FROM producao_op_estoque o JOIN pedidos ped ON ped.id = o.pedido_id
       WHERE o.concluida_em IS NULL AND COALESCE(ped.status,'') NOT IN ('cancelado','recusado')
       ORDER BY o.criado_em DESC`

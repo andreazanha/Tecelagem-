@@ -63,8 +63,22 @@ export function ProducaoNecessidade() {
     const qtd = Math.max(1, Math.round(Number(resp) || 0));
     const k = u.ref + "|" + u.cor.toLowerCase();
     setOcupado(k); setErro("");
-    try { await api.producaoOpCriar({ ref: u.ref, cor: u.cor, tipo: u.tipo, modelo: u.modelo, qtd }); carregar(); }
+    try {
+      const r = await api.producaoOpCriar({ ref: u.ref, cor: u.cor, tipo: u.tipo, modelo: u.modelo, qtd });
+      if (r.pedido_id) await api.gerarPdfs(r.pedido_id).catch(() => {}); // gera o PDF + trava o card no PCP
+      carregar();
+    }
     catch (e) { setErro(ERRO_OP[(e as Error).message] || (e as Error).message); }
+    finally { setOcupado(""); }
+  }
+
+  async function imprimirOp(o: OpAberta) {
+    setOcupado("op:" + o.id); setErro("");
+    try {
+      const r = await api.gerarPdfs(o.pedido_id);
+      const arq = (r.arquivos || []).find((a) => a.tipo === "pronta-entrega") || (r.arquivos || [])[0];
+      if (arq) window.open(arq.url, "_blank"); else setErro("PDF não gerado.");
+    } catch (e) { setErro((e as Error).message); }
     finally { setOcupado(""); }
   }
 
@@ -157,7 +171,7 @@ export function ProducaoNecessidade() {
         <div className="card" style={{ overflowX: "auto", marginBottom: 14, borderColor: "#bfdbfe" }}>
           <div className="pad" style={{ borderBottom: "1px solid var(--line)", fontWeight: 700, color: "#1d4ed8" }}>🏭 Em produção <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· {emProducao.length} OP(s) na esteira</span></div>
           <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>OP</th><th>Modelo</th><th>Cor</th><th>Tam.</th><th className="num">Produzindo</th><th></th></tr></thead>
+            <thead><tr><th>OP</th><th>Modelo</th><th>Cor</th><th>Tam.</th><th className="num">Produzindo</th><th>Situação</th><th></th></tr></thead>
             <tbody>
               {emProducao.map((o) => (
                 <tr key={o.id} style={{ background: "#eff6ff" }}>
@@ -166,7 +180,11 @@ export function ProducaoNecessidade() {
                   <td>{o.cor || "—"}</td>
                   <td>{o.tamanho || "—"}</td>
                   <td className="num" style={{ fontWeight: 700 }}>{o.qtd.toLocaleString("pt-BR")}</td>
-                  <td><button className="btn btn-soft" style={{ fontSize: 12, padding: "5px 10px", color: "#b91c1c" }} disabled={ocupado === "op:" + o.id} onClick={() => cancelarOp(o)}>Cancelar</button></td>
+                  <td>{o.bloqueado ? <span style={{ color: "#b45309", fontWeight: 600 }}>🔒 aguardando PCP</span> : <span style={{ color: "#166534" }}>✓ liberada</span>}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <button className="btn btn-soft" style={{ fontSize: 12, padding: "5px 10px" }} disabled={ocupado === "op:" + o.id} onClick={() => imprimirOp(o)}>📄 PDF</button>
+                    <button className="btn btn-soft" style={{ fontSize: 12, padding: "5px 10px", color: "#b91c1c", marginLeft: 4 }} disabled={ocupado === "op:" + o.id} onClick={() => cancelarOp(o)}>Cancelar</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -243,7 +261,8 @@ function PickerOP({ onFechar, onCriado }: { onFechar: () => void; onCriado: () =
     if (!n) { setErro("Informe a quantidade."); return; }
     setSalvando(true); setErro("");
     try {
-      await api.producaoOpCriar({ ref: sel.ref, cor, tamanho: tam, tipo: "avulso", modelo: sel.nome, qtd: n });
+      const r = await api.producaoOpCriar({ ref: sel.ref, cor, tamanho: tam, tipo: "avulso", modelo: sel.nome, qtd: n });
+      if (r.pedido_id) await api.gerarPdfs(r.pedido_id).catch(() => {}); // gera o PDF + trava no PCP
       onCriado();
     } catch (e) { setErro(ERRO_OP[(e as Error).message] || (e as Error).message); setSalvando(false); }
   }

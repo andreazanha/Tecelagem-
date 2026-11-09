@@ -833,8 +833,9 @@ integracao.post("/producao-op", async (c) => {
   const desc = `${modelo} ${cor}${tamanho ? " " + tamanho : ""} × ${qtd}`;
   await c.env.DB.batch([
     c.env.DB.prepare(
-      `INSERT INTO pedidos (id, numero_erp, cliente_nome, tipo, reposicao, data_pedido, observacao, status)
-       VALUES (?, ?, 'PRODUÇÃO ESTOQUE', 'auto', 1, date('now'), ?, 'novo')`
+      // bloqueado=1: a OP NASCE travada no PCP (igual pedido de cliente) — o PCP libera pra produzir.
+      `INSERT INTO pedidos (id, numero_erp, cliente_nome, tipo, reposicao, data_pedido, observacao, status, bloqueado)
+       VALUES (?, ?, 'PRODUÇÃO ESTOQUE', 'auto', 1, date('now'), ?, 'novo', 1)`
     ).bind(pedidoId, numero, `Ordem de produção p/ estoque — ${desc}`),
     c.env.DB.prepare(
       `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, valor_unit)
