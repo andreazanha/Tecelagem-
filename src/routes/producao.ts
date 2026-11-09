@@ -3,6 +3,7 @@ import type { Env } from "../index";
 import { classificar, criarCatalogo, resolverModelo, ehKit, juntarCapaAlmofadaBlocos, type ItemBase } from "../classificar";
 import { casarProduto } from "./produtos";
 import { exigirFuncao, exigirAlgumaFuncao } from "../permissoes";
+import { necessidadeProducao } from "../loja-estoque";
 
 export const producao = new Hono<{ Bindings: Env }>();
 
@@ -60,15 +61,51 @@ async function enriquecerEstoque(env: Env, cards: CardStock[]): Promise<CardStoc
     "SELECT id, nome, ref, cor, tamanho, estoque, estoque_min FROM produtos WHERE ativo = 1"
   ).all<{ id: string; nome: string; ref: string | null; cor: string | null; tamanho: string | null; estoque: number; estoque_min: number }>();
 
+  // NOVO (estoque do Syntech): OPs criadas pelo módulo "Precisa Produzir" ficam ligadas em
+  // producao_op_estoque (ref/cor/tamanho). Pra essas, o estoque atual + mínimo vêm do estoque
+  // REAL do Syntech (disponível = montáveis do kit / saldo do avulso) e do estoque_min por
+  // modelo+cor — os MESMOS números da tela Precisa Produzir. (O caminho antigo via produtos
+  // fica de reserva pras reposições antigas que não têm OP vinculada.)
+  const { results: opRows } = await env.DB.prepare(
+    `SELECT pedido_id, ref, COALESCE(cor,'') AS cor, COALESCE(tamanho,'') AS tamanho, COALESCE(modelo, ref) AS modelo
+       FROM producao_op_estoque WHERE pedido_id IN (${ph})`
+  ).bind(...ids).all<{ pedido_id: string; ref: string; cor: string; tamanho: string; modelo: string }>();
+  const opByPid = new Map(opRows.map((o) => [o.pedido_id, o]));
+  const necMap = new Map<string, { disponivel: number; minimo: number }>();
+  if (opRows.length) {
+    const unidades = await necessidadeProducao(env).catch(() => []);
+    for (const u of unidades) necMap.set(`${u.ref.toLowerCase()}|${u.cor.toLowerCase()}`, { disponivel: u.disponivel, minimo: u.minimo });
+  }
+
   // por pedido, acha o produto mais crítico (menor cobertura) entre seus itens
   const info = new Map<string, { estoque: number; min: number; cobertura: number; nome: string }>();
+  const cobertura = (est: number, min: number) => (min > 0 ? est / min : est > 0 ? 999 : 0);
   for (const pid of ids) {
+    const op = opByPid.get(pid);
+    if (op) {
+      // Estoque do Syntech: usa os números do Precisa Produzir (kit montável / avulso + mínimo).
+      const u = necMap.get(`${op.ref.toLowerCase()}|${op.cor.toLowerCase()}`);
+      let est: number, min: number;
+      if (u) { est = u.disponivel; min = u.minimo; }
+      else {
+        // OP de um produto específico (ex.: por tamanho) fora da fila de kit → saldo direto.
+        const binds: unknown[] = [op.ref, op.cor];
+        let sql = "SELECT COALESCE(SUM(saldo),0) AS s FROM erp_estoque WHERE lower(ref)=lower(?) AND lower(COALESCE(cor,''))=lower(?)";
+        if (op.tamanho) { sql += " AND lower(COALESCE(tamanho,''))=lower(?)"; binds.push(op.tamanho); }
+        const sal = await env.DB.prepare(sql).bind(...binds).first<{ s: number }>().catch(() => null);
+        const mn = await env.DB.prepare("SELECT minimo FROM estoque_min WHERE lower(ref)=lower(?) AND lower(cor)=lower(?)").bind(op.ref, op.cor).first<{ minimo: number }>().catch(() => null);
+        est = Number(sal?.s) || 0; min = Number(mn?.minimo) || 0;
+      }
+      info.set(pid, { estoque: est, min, cobertura: cobertura(est, min), nome: op.modelo });
+      continue;
+    }
+    // Caminho antigo (produtos locais) pras reposições sem OP vinculada.
     let pior: { estoque: number; min: number; cobertura: number; nome: string } | null = null;
     for (const it of itens.filter((x) => x.pedido_id === pid)) {
       const p = casarProduto(it, prods) as (typeof prods)[number] | null;
       if (!p) continue;
       const est = Number(p.estoque) || 0, min = Number(p.estoque_min) || 0;
-      const cob = min > 0 ? est / min : est > 0 ? 999 : 0;
+      const cob = cobertura(est, min);
       if (!pior || cob < pior.cobertura) pior = { estoque: est, min, cobertura: cob, nome: p.nome };
     }
     if (pior) info.set(pid, pior);
