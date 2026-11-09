@@ -1520,6 +1520,10 @@ export const api = {
   diagSyntechProcs: () =>
     fetch("/api/integracao/diag?pedido=procs").then((r) =>
       j<{ pronto?: boolean; aviso?: string; quando?: string | null; procedures?: Record<string, string>; triggers?: Record<string, string[]>; erros?: string[] }>(r)),
+  // Mapa da ORDEM DE PRODUÇÃO (OP) do Syntech: procedures/geradores/tabelas + amostra das OPs mais novas.
+  diagSyntechProducao: () =>
+    fetch("/api/integracao/diag?pedido=producao").then((r) =>
+      j<{ pronto?: boolean; aviso?: string; quando?: string | null; total_procedures?: number; procedures?: Record<string, string>; geradores?: { nome: string; valor: number | null }[]; total_tabelas?: number; tabelas?: Record<string, string[]>; contagem?: Record<string, number | null>; amostras?: Record<string, Record<string, unknown>[]>; erros?: string[] }>(r)),
   // Cria a ordem de produção (reposição que entra na esteira). Recusa se já houver OP aberta.
   producaoOpCriar: (u: { ref: string; cor: string; tamanho?: string; tipo: string; modelo: string; qtd: number }) =>
     jsonPost("/api/integracao/producao-op", u).then((r) => j<{ ok?: boolean; pedido_id?: string; numero?: string; error?: string }>(r)),

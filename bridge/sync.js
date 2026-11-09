@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-11-06.1";
+const PONTE_VERSAO = "2026-11-09.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -861,6 +861,94 @@ async function rodadaDiagKit(db, estado) {
   else log("diag-kit: não enviou — tenta na próxima.");
 }
 
+// ── DIAGNÓSTICO: ORDEM DE PRODUÇÃO (OP) do Syntech ───────────────────────────
+// A dona cria a OP no Syntech e quer que a esteira acenda aqui sozinha. Pra isso eu
+// preciso saber EM QUAL tabela a OP cai, as colunas, e ver UMA OP real (a mais recente)
+// pra mapear produto/cor/tamanho/quantidade. SÓ LEITURA. Procura tabelas/procedures/
+// geradores com nome de produção (ORDEM/PRODUC/FABRIC/PCP/CONFEC/OP) e tira uma amostra
+// das linhas MAIS NOVAS de cada tabela (pra pegar a OP que ela acabou de gerar). Roda
+// repetidamente até achar pelo menos uma tabela de produção COM linhas (aí fixa a flag),
+// porque a OP pode ainda não existir quando a ponte roda a primeira vez.
+const DIAG_PROD_FLAG = "diagProducaoV1";
+async function rodadaDiagProducao(db, estado) {
+  if (estado[DIAG_PROD_FLAG]) return;
+  log("diag-producao: procurando a Ordem de Produção no Syntech…");
+  const out = { versao: PONTE_VERSAO, quando: new Date().toISOString(), procedures: {}, geradores: [], tabelas: {}, colunas: {}, amostras: {}, contagem: {}, erros: [] };
+  const FILTRO = "(RDB$%NAME% LIKE '%ORDEM%' OR RDB$%NAME% LIKE '%PRODUC%' OR RDB$%NAME% LIKE '%FABRIC%' OR RDB$%NAME% LIKE '%PCP%' OR RDB$%NAME% LIKE '%CONFEC%' OR RDB$%NAME% LIKE '%ROTEIRO%' OR TRIM(RDB$%NAME%) = 'OP')";
+  // procedures de produção (nome + parâmetros in/out)
+  try {
+    const procs = await query(db, "SELECT TRIM(RDB$PROCEDURE_NAME) AS NOME FROM RDB$PROCEDURES WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 AND " + FILTRO.replace(/%NAME%/g, "PROCEDURE_NAME") + " ORDER BY RDB$PROCEDURE_NAME");
+    for (const pr of procs) {
+      const nome = String(pr.NOME || "").trim(); if (!nome) continue;
+      let params = [];
+      try {
+        const ps = await query(db,
+          "SELECT TRIM(PP.RDB$PARAMETER_NAME) AS CAMPO, PP.RDB$PARAMETER_NUMBER AS ORDEM, PP.RDB$PARAMETER_TYPE AS TIPO_PARAM, " +
+          "F.RDB$FIELD_TYPE AS TIPO, F.RDB$FIELD_LENGTH AS TAM FROM RDB$PROCEDURE_PARAMETERS PP " +
+          "JOIN RDB$FIELDS F ON F.RDB$FIELD_NAME = PP.RDB$FIELD_SOURCE WHERE PP.RDB$PROCEDURE_NAME = ? " +
+          "ORDER BY PP.RDB$PARAMETER_TYPE, PP.RDB$PARAMETER_NUMBER", [nome]);
+        params = ps.map((r) => ({ campo: String(r.CAMPO || "").trim(), ordem: r.ORDEM, dir: Number(r.TIPO_PARAM) === 1 ? "out" : "in", tipo: r.TIPO, tam: r.TAM }));
+      } catch (e) { out.erros.push(`params ${nome}: ${e.message}`); }
+      out.procedures[nome] = params;
+    }
+  } catch (e) { out.erros.push("procedures: " + e.message); }
+  // geradores (numeração da OP): valor atual SEM incrementar
+  try {
+    const gs = await query(db, "SELECT TRIM(RDB$GENERATOR_NAME) AS NOME FROM RDB$GENERATORS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 AND (RDB$GENERATOR_NAME LIKE '%ORDEM%' OR RDB$GENERATOR_NAME LIKE '%PRODUC%' OR RDB$GENERATOR_NAME LIKE '%FABRIC%' OR RDB$GENERATOR_NAME LIKE '%_OP_%' OR RDB$GENERATOR_NAME LIKE '%PCP%') ORDER BY RDB$GENERATOR_NAME");
+    for (const g of gs) {
+      const nome = String(g.NOME || "").trim(); if (!nome || !/^[A-Za-z0-9_$]+$/.test(nome)) continue;
+      let valor = null;
+      try { const v = await query(db, `SELECT GEN_ID(${nome}, 0) AS V FROM RDB$DATABASE`); valor = v[0] ? v[0].V : null; } catch { /* ignora */ }
+      out.geradores.push({ nome, valor });
+    }
+  } catch (e) { out.erros.push("geradores: " + e.message); }
+  // tabelas de produção: colunas + amostra das linhas MAIS NOVAS + contagem
+  let achouComLinhas = false;
+  try {
+    const tbs = await query(db, "SELECT TRIM(RDB$RELATION_NAME) AS NOME FROM RDB$RELATIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 AND RDB$VIEW_BLR IS NULL AND " + FILTRO.replace(/%NAME%/g, "RELATION_NAME") + " ORDER BY RDB$RELATION_NAME");
+    const PRIOR = ["EMISSAO", "DT_EMISSAO", "DATA_EMISSAO", "DATA", "DT", "NUMERO", "NUM_OP", "NUMOP", "NRO", "NR", "ID", "CODIGO", "COD", "SEQ", "SEQUENCIA", "AUTOINC"];
+    for (const t of tbs) {
+      const nome = String(t.NOME || "").trim(); if (!nome) continue;
+      let cols = [];
+      try {
+        const cs = await query(db,
+          "SELECT TRIM(RF.RDB$FIELD_NAME) AS CAMPO, F.RDB$FIELD_TYPE AS TIPO, F.RDB$FIELD_LENGTH AS TAM, RF.RDB$NULL_FLAG AS NOTNULL " +
+          "FROM RDB$RELATION_FIELDS RF JOIN RDB$FIELDS F ON F.RDB$FIELD_NAME = RF.RDB$FIELD_SOURCE WHERE RF.RDB$RELATION_NAME = ? ORDER BY RF.RDB$FIELD_POSITION", [nome]);
+        cols = cs.map((r) => ({ campo: String(r.CAMPO || "").trim(), tipo: Number(r.TIPO), tam: r.TAM, obrigatorio: Number(r.NOTNULL) === 1 }));
+      } catch (e) { out.erros.push(`cols ${nome}: ${e.message}`); }
+      out.colunas[nome] = cols;
+      out.tabelas[nome] = cols.map((c) => c.campo);
+      try { const cc = await query(db, `SELECT COUNT(*) AS N FROM "${nome}"`); out.contagem[nome] = cc[0] ? Number(cc[0].N) : null; } catch { /* ignora */ }
+      // colunas não-blob (261=BLOB, 9=ARRAY/QUAD) pra amostrar com segurança
+      const naoBlob = cols.filter((c) => c.tipo !== 261 && c.tipo !== 9 && c.campo).map((c) => c.campo);
+      if (!naoBlob.length) continue;
+      const lista = naoBlob.map((c) => '"' + c + '"').join(", ");
+      // ordena pelas linhas mais novas (pra pegar a OP recém-criada), se houver coluna boa
+      const nomesUp = naoBlob.map((c) => c.toUpperCase());
+      let ordCol = null;
+      for (const p of PRIOR) { const i = nomesUp.indexOf(p); if (i >= 0) { ordCol = naoBlob[i]; break; } }
+      let rows = null;
+      if (ordCol) { try { rows = await query(db, `SELECT FIRST 5 ${lista} FROM "${nome}" ORDER BY "${ordCol}" DESC`); } catch { /* tenta sem ordem */ } }
+      if (!rows) { try { rows = await query(db, `SELECT FIRST 5 ${lista} FROM "${nome}"`); } catch (e) { out.erros.push(`amostra ${nome}: ${e.message}`); } }
+      if (rows && rows.length) { out.amostras[nome] = rows.map(limparLinha); achouComLinhas = true; }
+    }
+  } catch (e) { out.erros.push("tabelas: " + e.message); }
+  let ok = false;
+  try {
+    const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/diag-producao";
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token }, body: JSON.stringify(out) });
+    ok = r.ok;
+  } catch (e) { log("! diag-producao: falhou ao enviar —", e.message); }
+  if (ok && achouComLinhas) {
+    salvarEstado({ ...lerEstado(), [DIAG_PROD_FLAG]: true });
+    log(`diag-producao: enviado (${Object.keys(out.tabelas).length} tabela(s), ${Object.keys(out.amostras).length} com amostra). Não roda de novo.`);
+  } else if (ok) {
+    log(`diag-producao: enviado (${Object.keys(out.tabelas).length} tabela(s)), mas sem linhas ainda — roda de novo na próxima (crie/gere a OP no Syntech).`);
+  } else {
+    log("diag-producao: não enviou — tenta na próxima rodada.");
+  }
+}
+
 // ── FASE 4: envia pros Syntech os pedidos da loja B2B (via procedures APP_*) ──
 // Busca no worker os pedidos liberados (GET /pedidos-para-erp), e pra cada um grava
 // no Firebird usando as procedures OFICIAIS (APP_PEDIDO_INSERT_V2 devolve o NUMERO;
@@ -1225,6 +1313,8 @@ async function rodada() {
     try { await rodadaDiagEstoque(db, estado); } catch (e) { log("! diag-estoque:", e.message); }
     // Descobre a receita do kit (tabelas com KIT; roda só uma vez).
     try { await rodadaDiagKit(db, estado); } catch (e) { log("! diag-kit:", e.message); }
+    // Descobre a Ordem de Produção (OP) — roda até achar a OP recém-criada no Syntech.
+    try { await rodadaDiagProducao(db, estado); } catch (e) { log("! diag-producao:", e.message); }
     // Envia pros Syntech os pedidos da loja B2B liberados (Fase 4).
     try { await rodadaGravarPedidos(db); } catch (e) { log("! loja→ERP:", e.message); }
     // Espelha as formas de pagamento (PRAZO) e cria os clientes aprovados no Syntech (Fase S).

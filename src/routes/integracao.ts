@@ -1352,6 +1352,18 @@ integracao.post("/diag-estoque", async (c) => {
   ).bind(txt.slice(0, 300000)).run();
   return c.json({ ok: true, bytes: txt.length });
 });
+// Diagnóstico da ORDEM DE PRODUÇÃO (OP) do Syntech: tabelas/colunas/procedures/geradores
+// de produção + amostra das OPs mais novas (pra mapear a OP criada lá). Lido via GET /diag?pedido=producao.
+integracao.post("/diag-producao", async (c) => {
+  const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+  const recebido = (c.req.header("X-Integracao-Token") || "").trim();
+  if (!esperado || recebido !== esperado) return c.json({ error: "nao_autorizado" }, 401);
+  const txt = await c.req.text();
+  await c.env.DB.prepare(
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('erp_diag_producao', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(txt.slice(0, 500000)).run();
+  return c.json({ ok: true, bytes: txt.length });
+});
 // Diagnóstico da RECEITA DO KIT no Syntech (tabelas/colunas com KIT). Lido via GET /diag?pedido=kit.
 integracao.post("/diag-kit", async (c) => {
   const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
@@ -1494,6 +1506,34 @@ integracao.get("/diag", async (c) => {
       procedures,
       total_tabelas: Object.keys(src.tabelas || {}).length,
       tabelas: src.tabelas || {},
+      erros: src.erros || [],
+    });
+  }
+  // ?pedido=producao → mapa da ORDEM DE PRODUÇÃO (OP) do Syntech: procedures/geradores/
+  // tabelas de produção + amostra das OPs mais novas, pra eu montar a leitura da OP.
+  if (c.req.query("pedido") === "producao") {
+    const pr = await c.env.DB.prepare("SELECT valor, atualizado_em FROM config WHERE chave='erp_diag_producao'").first<{ valor: string | null; atualizado_em: string | null }>();
+    if (!pr || !pr.valor) return c.json({ pronto: false, aviso: "A ponte ainda não mandou o mapa de produção. Gere a OP no Syntech, espere a ponte atualizar e rodar (~2-5 min) e abra de novo." });
+    type ProdSrc = { quando?: string; procedures?: Record<string, { campo: string; dir: string }[]>; geradores?: { nome: string; valor: number | null }[]; tabelas?: Record<string, string[]>; colunas?: Record<string, { campo: string; tipo: number; obrigatorio: boolean }[]>; amostras?: Record<string, Record<string, unknown>[]>; contagem?: Record<string, number | null>; erros?: string[] };
+    let src: ProdSrc | null = null;
+    try { src = JSON.parse(pr.valor) as ProdSrc; } catch { /* ignora */ }
+    if (!src) return c.json({ pronto: false, aviso: "Mapa de produção ilegível; aguarde a próxima rodada da ponte." });
+    const procedures: Record<string, string> = {};
+    for (const nome of Object.keys(src.procedures || {})) {
+      const ins = (src.procedures![nome] || []).filter((x) => x.dir === "in").map((x) => x.campo);
+      const outs = (src.procedures![nome] || []).filter((x) => x.dir === "out").map((x) => x.campo);
+      procedures[nome] = `(${ins.join(", ")})` + (outs.length ? ` → ${outs.join(", ")}` : "");
+    }
+    return c.json({
+      pronto: true,
+      quando: src.quando || pr.atualizado_em,
+      total_procedures: Object.keys(procedures).length,
+      procedures,
+      geradores: src.geradores || [],
+      total_tabelas: Object.keys(src.tabelas || {}).length,
+      tabelas: src.tabelas || {},
+      contagem: src.contagem || {},
+      amostras: src.amostras || {},
       erros: src.erros || [],
     });
   }
