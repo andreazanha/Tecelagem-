@@ -882,6 +882,24 @@ integracao.post("/producao-op-cancelar", async (c) => {
   return c.json({ ok: true });
 });
 
+// EXCLUIR de vez uma OP de estoque (inclusive se já tiver começado) — pra limpar OPs de TESTE.
+// Diferente do cancelar: não checa se a produção começou. Apaga pedido + itens + cards + a OP.
+integracao.post("/producao-op-excluir", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ id?: string }>().catch(() => ({} as { id?: string }));
+  const id = String(b.id ?? "").trim();
+  if (!id) return c.json({ error: "id_obrigatorio" }, 400);
+  const op = await c.env.DB.prepare("SELECT id, pedido_id FROM producao_op_estoque WHERE id=? LIMIT 1").bind(id).first<{ id: string; pedido_id: string }>().catch(() => null);
+  if (!op) return c.json({ error: "op_nao_encontrada" }, 404);
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM producao WHERE pedido_id=?").bind(op.pedido_id),
+    c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(op.pedido_id),
+    c.env.DB.prepare("DELETE FROM pedidos WHERE id=?").bind(op.pedido_id),
+    c.env.DB.prepare("DELETE FROM producao_op_estoque WHERE id=?").bind(op.id),
+  ]);
+  return c.json({ ok: true });
+});
+
 // Define/atualiza o ESTOQUE MÍNIMO de um modelo+cor (gatilho do "precisa produzir").
 // minimo <= 0 remove o mínimo (volta a só alertar quando zerar).
 integracao.post("/estoque-min", async (c) => {

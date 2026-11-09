@@ -1529,6 +1529,9 @@ export const api = {
     jsonPost("/api/integracao/producao-op", u).then((r) => j<{ ok?: boolean; pedido_id?: string; numero?: string; error?: string }>(r)),
   producaoOpCancelar: (id: string) =>
     jsonPost("/api/integracao/producao-op-cancelar", { id }).then((r) => j<{ ok?: boolean; error?: string; msg?: string }>(r)),
+  // Exclui de vez uma OP (inclusive já iniciada) — pra limpar OPs de teste.
+  producaoOpExcluir: (id: string) =>
+    jsonPost("/api/integracao/producao-op-excluir", { id }).then((r) => j<{ ok?: boolean; error?: string }>(r)),
   // Resumo/inteligência do estoque: contagens + listas de ruptura e estoque baixo.
   erpEstoqueResumo: (baixo?: number) =>
     fetch("/api/integracao/estoque-resumo" + (baixo != null ? `?baixo=${baixo}` : "")).then((r) =>
