@@ -1470,6 +1470,13 @@ export const api = {
       j<{ resumo: NecessidadeResumo; unidades: UnidadePE[] }>(r)),
   estoqueMinSalvar: (ref: string, cor: string, minimo: number) =>
     jsonPost("/api/integracao/estoque-min", { ref, cor, minimo }).then((r) => j<{ ok: boolean; minimo?: number; removido?: boolean }>(r)),
+  // Diagnóstico do Syntech (estrutura das procedures/tabelas de estoque) — pra planejar a Etapa 4.
+  diagSyntechEstoque: () =>
+    fetch("/api/integracao/diag?pedido=estoque").then((r) =>
+      j<{ pronto?: boolean; aviso?: string; quando?: string; total_procedures?: number; procedures?: Record<string, string>; total_tabelas?: number; tabelas?: Record<string, string[]>; erros?: string[] }>(r)),
+  diagSyntechProcs: () =>
+    fetch("/api/integracao/diag?pedido=procs").then((r) =>
+      j<{ pronto?: boolean; aviso?: string; quando?: string | null; procedures?: Record<string, string>; triggers?: Record<string, string[]>; erros?: string[] }>(r)),
   // Cria a ordem de produção (reposição que entra na esteira). Recusa se já houver OP aberta.
   producaoOpCriar: (u: { ref: string; cor: string; tipo: string; modelo: string; qtd: number }) =>
     jsonPost("/api/integracao/producao-op", u).then((r) => j<{ ok?: boolean; pedido_id?: string; numero?: string; error?: string }>(r)),

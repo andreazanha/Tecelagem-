@@ -251,6 +251,7 @@ const GRUPOS: MenuGrupo[] = [
         { to: "/config-loja", icon: "🖼️", label: "Configurar catálogo (banner, vídeos)", admin: true },
         { to: "/imagens-loja", icon: "🎨", label: "Imagens (fotos de cor e produto)", admin: true },
         { to: "/auditoria-catalogo", icon: "🔎", label: "Auditoria do catálogo (Syntech)", admin: true },
+        { to: "/diag-syntech", icon: "🔧", label: "Diagnóstico do Syntech (estoque)", admin: true },
         { to: "https://pedidos.bigtricot.com.br", icon: "🏪", label: "Abrir a loja (catálogo)", ext: true, admin: true },
       ] },
       { icon: "🧵", label: "Técnico", acc: true, children: [
