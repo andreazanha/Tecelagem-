@@ -17,7 +17,7 @@ import { SITE_ONLINE_HTML } from "../siteTemplate";
 import { SITE_FULL_HTML } from "../siteTemplateFull";
 import { SITE_LOJA_HTML } from "../siteLoja";
 import { lerDocumento, gravarDocumento } from "../firestore";
-import { limparReservasRefletidas, kitAlertas } from "../loja-estoque";
+import { limparReservasRefletidas, kitAlertas, FILTRO_RESERVA_ATIVA } from "../loja-estoque";
 import { avisarRecebidoSyntech, notificarVendedorInterno } from "../reserva-avisos";
 import { flagLigado, FLAG_RESERVAS, FLAG_PCP_POPUP } from "../flags";
 import { enviarWhatsapp } from "./atendimento";
@@ -604,6 +604,29 @@ integracao.post("/aprovar-lote", async (c) => {
 // ── ESTOQUE DE PRODUTOS (espelho do ERP) ────────────────────────────────────────
 // A ponte manda o saldo (lido do Firebird). Guardamos e só EXIBIMOS. Read-only aqui.
 // body: { itens: [{ produto, ref, cor, tamanho, saldo, unidade }], full?: boolean }
+
+type EstoqueResumoLinha = { produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; saldo: number; reservado: number; disponivel: number };
+
+// Resolve o CÓDIGO do tamanho (ex.: "5K") para a MEDIDA real (ex.: "50 × 50"), lendo o cadastro
+// da peça (erp_produtos.tamanhos). Devolve mapa "ref|cod(minúsculo)" → medida já formatada.
+async function medidasDeRefs(env: Env, refsIn: string[]): Promise<Map<string, string>> {
+  const refs = [...new Set(refsIn.map((r) => String(r || "").trim()).filter(Boolean))];
+  const codToMed = new Map<string, string>();
+  const fmtMed = (m: string) => m.replace(/(\d)\s*[x×X]\s*(\d)/g, "$1 × $2");
+  for (let i = 0; i < refs.length; i += 100) {
+    const lote = refs.slice(i, i + 100); const ph = lote.map(() => "?").join(",");
+    const tr = ((await env.DB.prepare(`SELECT ref, tamanhos FROM erp_produtos WHERE ref IN (${ph})`).bind(...lote).all<{ ref: string; tamanhos: string | null }>().catch(() => ({ results: [] as { ref: string; tamanhos: string | null }[] }))).results) || [];
+    for (const p of tr) {
+      try { const a = JSON.parse(p.tamanhos || "[]"); if (Array.isArray(a)) for (const t of a) {
+        const cod = String((t && (t.tamanho ?? t.codigo)) || "").trim().toLowerCase();
+        const med = String((t && (t.medida ?? t.tamanho)) || "").trim();
+        if (cod && med) codToMed.set(p.ref + "|" + cod, fmtMed(med));
+      } } catch { /* tamanhos inválido → ignora */ }
+    }
+  }
+  return codToMed;
+}
+
 integracao.post("/estoque", async (c) => {
   const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
   const recebido = (c.req.header("X-Integracao-Token") || "").trim();
@@ -642,6 +665,23 @@ integracao.post("/estoque", async (c) => {
     // marca a hora desta sincronização e solta as reservas locais que o SALDO já reflete.
     await c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES ('estoque_sync_em', datetime('now'), datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=datetime('now'), atualizado_em=datetime('now')").run().catch(() => {});
     await limparReservasRefletidas(c.env).catch(() => 0);
+    // 📸 FOTO DIÁRIA do saldo (histórico pra previsão de ruptura). Um registro por SKU por dia
+    // (dia do Brasil, UTC-3); a última foto do dia vence. A ponte manda fim=true a cada ~2 min, então
+    // só tiramos foto nova se a última do dia tiver mais de ~55 min (≈1/hora) — evita gastar escrita à toa.
+    const ultimaFoto = await c.env.DB.prepare(
+      "SELECT atualizado_em FROM erp_estoque_hist WHERE dia=date('now','-3 hours') ORDER BY atualizado_em DESC LIMIT 1"
+    ).first<{ atualizado_em: string }>().catch(() => null);
+    const precisaFoto = !ultimaFoto || (Date.now() - new Date(String(ultimaFoto.atualizado_em).replace(" ", "T") + "Z").getTime()) > 55 * 60 * 1000;
+    if (precisaFoto) {
+      await c.env.DB.prepare(
+        `INSERT INTO erp_estoque_hist (dia, chave, ref, cor, tamanho, produto, saldo, atualizado_em)
+           SELECT date('now','-3 hours'), chave, ref, cor, tamanho, produto, saldo, datetime('now') FROM erp_estoque WHERE true
+         ON CONFLICT(dia, chave) DO UPDATE SET saldo=excluded.saldo, ref=excluded.ref, cor=excluded.cor,
+           tamanho=excluded.tamanho, produto=excluded.produto, atualizado_em=excluded.atualizado_em`
+      ).run().catch(() => {});
+      // Poda o histórico antigo (mantém ~400 dias) pra não crescer sem limite.
+      await c.env.DB.prepare("DELETE FROM erp_estoque_hist WHERE dia < date('now','-400 days')").run().catch(() => {});
+    }
   }
   return c.json({ ok: true, n: stmts.length, removidos });
 });
@@ -676,12 +716,70 @@ integracao.get("/estoque", async (c) => {
     }
   }
   const fmtMed = (m: string) => m.replace(/(\d)\s*[x×X]\s*(\d)/g, "$1 × $2");
+  // RESERVADO por peça (ref|cor|tam) pelos pedidos ATIVOS → disponível = saldo − reservado.
+  // Uma query só (as reservas ativas são poucas); casa pela MESMA chave do espelho.
+  const resMap = new Map<string, number>();
+  const resRows = ((await c.env.DB.prepare(
+    `SELECT lower(rv.ref) AS ref, lower(COALESCE(rv.cor,'')) AS cor, COALESCE(rv.tamanho,'') AS tam, COALESCE(SUM(rv.qtd),0) AS q
+       FROM erp_reserva rv JOIN pedidos p ON p.id = rv.pedido_id
+      WHERE ${FILTRO_RESERVA_ATIVA} GROUP BY 1,2,3`
+  ).all<{ ref: string; cor: string; tam: string; q: number }>().catch(() => ({ results: [] as { ref: string; cor: string; tam: string; q: number }[] }))).results) || [];
+  for (const r of resRows) resMap.set(`${r.ref}|${r.cor}|${r.tam}`, Number(r.q) || 0);
   const out = rows.map((r) => {
     const cod = String(r.tamanho || "").trim();
     const med = codToMed.get(String(r.ref || "") + "|" + cod.toLowerCase());
-    return { ...r, codigo_tamanho: cod || null, medida: med ? fmtMed(med) : null };
+    const saldo = Number(r.saldo) || 0;
+    const reservado = resMap.get(`${String(r.ref || "").toLowerCase()}|${String(r.cor || "").toLowerCase()}|${cod}`) || 0;
+    return { ...r, codigo_tamanho: cod || null, medida: med ? fmtMed(med) : null, reservado, disponivel: Math.max(0, saldo - reservado) };
   });
   return c.json(out);
+});
+
+// RESUMO/INTELIGÊNCIA do estoque: contagens certas sobre o espelho INTEIRO (sem o LIMIT da lista)
+// + as listas de RUPTURA (sem disponível) e de ESTOQUE BAIXO. disponível = saldo − reservado.
+// ?baixo=N define o limiar de "estoque baixo" (padrão 5) — enquanto não houver mínimo por produto (Etapa 2).
+integracao.get("/estoque-resumo", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const baixo = Math.max(0, Number(c.req.query("baixo") || "5") || 5);
+  // CTE: cada SKU do espelho com o seu reservado (pedidos ativos) e o disponível.
+  const comDisp = (extra: string, ...binds: unknown[]) => c.env.DB.prepare(
+    `WITH res AS (
+       SELECT lower(rv.ref) AS ref, lower(COALESCE(rv.cor,'')) AS cor, COALESCE(rv.tamanho,'') AS tam, COALESCE(SUM(rv.qtd),0) AS q
+         FROM erp_reserva rv JOIN pedidos p ON p.id = rv.pedido_id
+        WHERE ${FILTRO_RESERVA_ATIVA} GROUP BY 1,2,3),
+     e AS (
+       SELECT e.produto, e.ref, e.cor, e.tamanho, e.saldo,
+              COALESCE(r.q,0) AS reservado,
+              MAX(0, e.saldo - COALESCE(r.q,0)) AS disponivel
+         FROM erp_estoque e
+         LEFT JOIN res r ON r.ref=lower(e.ref) AND r.cor=lower(COALESCE(e.cor,'')) AND r.tam=COALESCE(e.tamanho,''))
+     ${extra}`
+  ).bind(...binds);
+  const tot = await comDisp(
+    `SELECT COUNT(*) AS skus, COUNT(DISTINCT ref) AS refs, COALESCE(SUM(saldo),0) AS pecas,
+            SUM(CASE WHEN disponivel<=0 THEN 1 ELSE 0 END) AS sem_disponivel,
+            SUM(CASE WHEN disponivel<=0 AND reservado>0 THEN 1 ELSE 0 END) AS ruptura_com_demanda,
+            SUM(CASE WHEN disponivel>0 AND disponivel<=? THEN 1 ELSE 0 END) AS baixos
+       FROM e`, baixo
+  ).first<{ skus: number; refs: number; pecas: number; sem_disponivel: number; ruptura_com_demanda: number; baixos: number }>().catch(() => null);
+  const rupturas = ((await comDisp(
+    "SELECT produto, ref, cor, tamanho, saldo, reservado, disponivel FROM e WHERE disponivel<=0 AND reservado>0 ORDER BY reservado DESC LIMIT 200"
+  ).all<EstoqueResumoLinha>().catch(() => ({ results: [] as EstoqueResumoLinha[] }))).results) || [];
+  const baixos = ((await comDisp(
+    "SELECT produto, ref, cor, tamanho, saldo, reservado, disponivel FROM e WHERE disponivel>0 AND disponivel<=? ORDER BY disponivel ASC, reservado DESC LIMIT 200", baixo
+  ).all<EstoqueResumoLinha>().catch(() => ({ results: [] as EstoqueResumoLinha[] }))).results) || [];
+  // Enriquece a MEDIDA (código→medida) só das refs listadas — poucas.
+  const medMap = await medidasDeRefs(c.env, [...rupturas, ...baixos].map((r) => String(r.ref || "")));
+  const enriquecer = (arr: EstoqueResumoLinha[]) => arr.map((r) => {
+    const cod = String(r.tamanho || "").trim();
+    return { ...r, codigo_tamanho: cod || null, medida: medMap.get(String(r.ref || "") + "|" + cod.toLowerCase()) || null };
+  });
+  return c.json({
+    totais: tot || { skus: 0, refs: 0, pecas: 0, sem_disponivel: 0, ruptura_com_demanda: 0, baixos: 0 },
+    limiar_baixo: baixo,
+    rupturas: enriquecer(rupturas),
+    baixos: enriquecer(baixos),
+  });
 });
 
 // DIAGNÓSTICO visual de um produto/kit: mostra, numa página legível, a receita do kit

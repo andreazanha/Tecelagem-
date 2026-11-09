@@ -782,6 +782,7 @@ export interface CatalogoProdutoExtra {
 }
 export interface LojaImagemCor { id_cor: string; nome: string; hex: string; foto: string }
 export interface LojaImagemProduto { id: string; nome: string; foto: string; categoria: string; cores: LojaImagemCor[] }
+export interface EstoqueResumoLinha { produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; reservado: number; disponivel: number }
 
 export interface MaquinaTec { id: string; nome: string; ordem: number; ativo: number }
 export interface MotivoTec { id: string; codigo: string; nome: string | null; tipo: string; ordem: number; ativo: number }
@@ -1459,8 +1460,17 @@ export const api = {
     if (q?.busca) p.set("busca", q.busca);
     const qs = p.toString();
     return fetch("/api/integracao/estoque" + (qs ? `?${qs}` : "")).then((r) =>
-      j<{ produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; saldo: number; unidade: string | null; atualizado_em: string }[]>(r));
+      j<{ produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; reservado: number; disponivel: number; unidade: string | null; atualizado_em: string }[]>(r));
   },
+  // Resumo/inteligência do estoque: contagens + listas de ruptura e estoque baixo.
+  erpEstoqueResumo: (baixo?: number) =>
+    fetch("/api/integracao/estoque-resumo" + (baixo != null ? `?baixo=${baixo}` : "")).then((r) =>
+      j<{
+        totais: { skus: number; refs: number; pecas: number; sem_disponivel: number; ruptura_com_demanda: number; baixos: number };
+        limiar_baixo: number;
+        rupturas: EstoqueResumoLinha[];
+        baixos: EstoqueResumoLinha[];
+      }>(r)),
   // Catálogo de produtos espelhado do ERP (só leitura)
   catalogoProdutos: (q?: { busca?: string; grupo?: string }) => {
     const p = new URLSearchParams();
