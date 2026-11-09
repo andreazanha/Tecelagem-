@@ -285,6 +285,125 @@ export async function kitAlertas(env: Env): Promise<KitAlerta[]> {
   return out;
 }
 
+// ── NECESSIDADE DE PRODUÇÃO (Pronta Entrega) ─────────────────────────────────
+// Mostra o estoque do jeito que a fábrica estoca: KITS montados (igual catálogo) +
+// ALMOFADAS AVULSAS, por cor. disponível = saldo − reservado (mesma conta da loja).
+// Compara com o MÍNIMO (estoque_min por modelo+cor) e diz o que PRECISA PRODUZIR.
+// Edição Limitada (ref ED) fica de fora — é ponta de estoque, não se repõe.
+export type UnidadePE = {
+  tipo: "kit" | "avulso";
+  ref: string;            // chave do mínimo (kit_ref vazio, ou ref do avulso)
+  modelo: string;         // nome amigável do modelo
+  cor: string;
+  disponivel: number;     // kit: quantos dá pra montar (c/ reserva descontada); avulso: soma disponível
+  saldo: number;          // idem, mas sem descontar reserva (pra detectar demanda)
+  reservado: number;      // total reservado nas peças (sinal de demanda)
+  minimo: number;
+  falta: number;          // quanto falta pro mínimo (0 se já atende)
+  limitante: string;      // peça que trava o kit (ou "")
+  status: "zerado_pedido" | "zerado" | "abaixo" | "ok";
+};
+
+const ehRefED = (ref: string) => /^ED\d/i.test(String(ref || "").trim());
+const rankStatus: Record<UnidadePE["status"], number> = { zerado_pedido: 0, zerado: 1, abaixo: 2, ok: 3 };
+
+export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
+  // 1) receita dos kits
+  const rec = (await env.DB.prepare("SELECT kit_ref, componente_ref, quantidade, tamanho FROM erp_kit_receita").all<{ kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }>().catch(() => ({ results: [] as { kit_ref: string; componente_ref: string; quantidade: number; tamanho: string | null }[] }))).results || [];
+  const recPorKit = new Map<string, { ref: string; tam: string; qtd: number }[]>();
+  const refsRec = new Set<string>();
+  const kitRefs = new Set<string>();
+  for (const r of rec) {
+    kitRefs.add(String(r.kit_ref).toLowerCase());
+    refsRec.add(r.kit_ref); refsRec.add(r.componente_ref);
+    const a = recPorKit.get(r.kit_ref) || [];
+    a.push({ ref: r.componente_ref, tam: String(r.tamanho || "").trim(), qtd: Number(r.quantidade) || 1 });
+    recPorKit.set(r.kit_ref, a);
+  }
+  // 2) saldo por peça + cores por ref
+  const est = (await env.DB.prepare("SELECT ref, cor, tamanho, saldo FROM erp_estoque").all<{ ref: string | null; cor: string | null; tamanho: string | null; saldo: number }>().catch(() => ({ results: [] as { ref: string | null; cor: string | null; tamanho: string | null; saldo: number }[] }))).results || [];
+  const saldoMap = new Map<string, number>();        // ref|cor|tam (lower) → saldo
+  const coresDaRef = new Map<string, Set<string>>(); // ref(lower) → cores (nome original)
+  const refsEstoque = new Set<string>();
+  for (const e of est) {
+    const ref = (e.ref || "").trim(); if (!ref) continue;
+    refsEstoque.add(ref);
+    const cor = (e.cor || "").trim(); const tam = (e.tamanho || "").trim();
+    saldoMap.set(`${ref.toLowerCase()}|${cor.toLowerCase()}|${tam.toLowerCase()}`, Number(e.saldo) || 0);
+    const s = coresDaRef.get(ref.toLowerCase()) || new Set<string>(); if (cor) s.add(cor); coresDaRef.set(ref.toLowerCase(), s);
+  }
+  // 3) reservado por peça (pedidos ativos)
+  const resMap = new Map<string, number>();
+  const resRows = (await env.DB.prepare(
+    `SELECT lower(rv.ref) AS ref, lower(COALESCE(rv.cor,'')) AS cor, lower(COALESCE(rv.tamanho,'')) AS tam, COALESCE(SUM(rv.qtd),0) AS q
+       FROM erp_reserva rv JOIN pedidos p ON p.id = rv.pedido_id WHERE ${FILTRO_RESERVA_ATIVA} GROUP BY 1,2,3`
+  ).all<{ ref: string; cor: string; tam: string; q: number }>().catch(() => ({ results: [] as { ref: string; cor: string; tam: string; q: number }[] }))).results || [];
+  for (const r of resRows) resMap.set(`${r.ref}|${r.cor}|${r.tam}`, Number(r.q) || 0);
+  // 4) nomes + grupo dos produtos (pra nome do modelo e achar os avulsos de pronta entrega)
+  const nomes = new Map<string, string>(); const grupos = new Map<string, string>();
+  const prod = (await env.DB.prepare("SELECT ref, nome, grupo FROM erp_produtos WHERE COALESCE(inativo,0)=0").all<{ ref: string; nome: string | null; grupo: string | null }>().catch(() => ({ results: [] as { ref: string; nome: string | null; grupo: string | null }[] }))).results || [];
+  for (const p of prod) { nomes.set(p.ref, String(p.nome || p.ref)); grupos.set(p.ref, String(p.grupo || "")); }
+  // 5) mínimos cadastrados
+  const minMap = new Map<string, number>(); // ref(lower)|cor(lower) → minimo
+  const mins = (await env.DB.prepare("SELECT ref, cor, minimo FROM estoque_min").all<{ ref: string; cor: string; minimo: number }>().catch(() => ({ results: [] as { ref: string; cor: string; minimo: number }[] }))).results || [];
+  for (const m of mins) minMap.set(`${String(m.ref).toLowerCase()}|${String(m.cor).toLowerCase()}`, Number(m.minimo) || 0);
+  const minDe = (ref: string, cor: string) => minMap.get(`${ref.toLowerCase()}|${cor.toLowerCase()}`) || 0;
+  const peca = (ref: string) => { const t = tipoPeca(nomes.get(ref) || ""); return t === "peseira" ? "Peseira" : t === "capa" ? "Capa" : t === "almofada" ? "Almofada" : (nomes.get(ref) || ref); };
+
+  const out: UnidadePE[] = [];
+  // ── KITS (montados, igual catálogo) ──
+  for (const [kitRef, comps] of recPorKit) {
+    const pk = parseKit(nomes.get(kitRef) || kitRef);
+    if (pk.temEnch) continue; // só o kit vazio (o cheio usa as mesmas capas → não dobra)
+    const modelo = `Kit ${pk.familia.charAt(0) + pk.familia.slice(1).toLowerCase()}${pk.variacao ? " " + pk.variacao.charAt(0) + pk.variacao.slice(1).toLowerCase() : ""}`;
+    const cores = new Set<string>();
+    for (const c of comps) { const s = coresDaRef.get(c.ref.toLowerCase()); if (s) for (const x of s) cores.add(x); }
+    for (const cor of cores) {
+      let montDisp = Infinity, montSaldo = Infinity, resTot = 0, limMax = Infinity, limNome = "";
+      for (const c of comps) {
+        const k = `${c.ref.toLowerCase()}|${cor.toLowerCase()}|${c.tam.toLowerCase()}`;
+        const sld = saldoMap.get(k) || 0;
+        const res = resMap.get(k) || 0; resTot += res;
+        const disp = Math.max(0, sld - res);
+        const maxD = Math.floor(disp / (c.qtd || 1)); const maxS = Math.floor(sld / (c.qtd || 1));
+        montDisp = Math.min(montDisp, maxD); montSaldo = Math.min(montSaldo, maxS);
+        if (maxD < limMax) { limMax = maxD; limNome = peca(c.ref); }
+      }
+      if (!isFinite(montDisp)) continue;
+      out.push(montarUnidade("kit", kitRef, modelo, cor, montDisp, montSaldo, resTot, minDe(kitRef, cor), limNome));
+    }
+  }
+  // ── AVULSOS (pronta entrega estocada solta): produto com grupo "pronta", fora kit/ED/peça-KT ──
+  for (const ref of refsEstoque) {
+    const grupo = (grupos.get(ref) || "").toLowerCase();
+    const ehAvulsoPE = grupo.includes("pronta") && !ehRefED(ref) && !/^kt/i.test(ref) && !kitRefs.has(ref.toLowerCase());
+    if (!ehAvulsoPE) continue;
+    const cores = coresDaRef.get(ref.toLowerCase()); if (!cores) continue;
+    for (const cor of cores) {
+      // soma todos os tamanhos dessa cor (almofada avulsa normalmente tem 1 tamanho)
+      let dispSum = 0, saldoSum = 0, resSum = 0;
+      for (const e of est) {
+        if ((e.ref || "").trim().toLowerCase() !== ref.toLowerCase() || (e.cor || "").trim().toLowerCase() !== cor.toLowerCase()) continue;
+        const tam = (e.tamanho || "").trim().toLowerCase();
+        const sld = Number(e.saldo) || 0; const res = resMap.get(`${ref.toLowerCase()}|${cor.toLowerCase()}|${tam}`) || 0;
+        saldoSum += sld; resSum += res; dispSum += Math.max(0, sld - res);
+      }
+      out.push(montarUnidade("avulso", ref, nomes.get(ref) || ref, cor, dispSum, saldoSum, resSum, minDe(ref, cor), ""));
+    }
+  }
+  out.sort((a, b) => rankStatus[a.status] - rankStatus[b.status] || b.falta - a.falta || b.reservado - a.reservado || a.modelo.localeCompare(b.modelo, "pt-BR"));
+  return out;
+}
+
+function montarUnidade(tipo: "kit" | "avulso", ref: string, modelo: string, cor: string, disponivel: number, saldo: number, reservado: number, minimo: number, limitante: string): UnidadePE {
+  const falta = Math.max(0, minimo - disponivel);
+  let status: UnidadePE["status"];
+  if (disponivel <= 0) status = reservado > 0 ? "zerado_pedido" : "zerado";
+  else if (minimo > 0 && disponivel < minimo) status = "abaixo";
+  else status = "ok";
+  return { tipo, ref, modelo, cor, disponivel, saldo, reservado, minimo, falta, limitante, status };
+}
+
 // EXPIRAÇÃO DO CARRINHO (Etapa 2) — ao vencer a janela de 12h (sem prorrogação válida e sem ter
 // sido enviado ao Syntech), ESVAZIA o carrinho por completo: apaga a reserva, os itens e o
 // próprio rascunho, INCLUSIVE os produtos sob encomenda (que não reservam estoque, mas moram no

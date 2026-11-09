@@ -188,6 +188,7 @@ const GRUPOS: MenuGrupo[] = [
       // Fios + insumos (matéria prima) foram movidos para o PCP › Estoque de matéria prima.
       { to: "/produtos?aba=estoque", icon: "📊", label: "Estoque de Produtos", page: "produtos" },
       { to: "/estoque-syntech", icon: "🔎", label: "Estoque do Syntech", page: "pedidos" },
+      { to: "/precisa-produzir", icon: "🏭", label: "Precisa Produzir", page: "pedidos" },
       { to: "/produtos?aba=reposicao", icon: "⚠️", label: "Reposição", page: "produtos" },
       { to: "/produtos?aba=entradas", icon: "⬇️", label: "Entrada de Estoque", page: "produtos" },
       { to: "/produtos?aba=ficha", icon: "🧵", label: "Ficha Técnica", page: "produtos" },

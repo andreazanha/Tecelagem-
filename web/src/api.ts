@@ -783,6 +783,8 @@ export interface CatalogoProdutoExtra {
 export interface LojaImagemCor { id_cor: string; nome: string; hex: string; foto: string }
 export interface LojaImagemProduto { id: string; nome: string; foto: string; categoria: string; cores: LojaImagemCor[] }
 export interface EstoqueResumoLinha { produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; reservado: number; disponivel: number }
+export interface UnidadePE { tipo: "kit" | "avulso"; ref: string; modelo: string; cor: string; disponivel: number; saldo: number; reservado: number; minimo: number; falta: number; limitante: string; status: "zerado_pedido" | "zerado" | "abaixo" | "ok" }
+export interface NecessidadeResumo { zerado_pedido: number; zerado: number; abaixo: number; ok: number; kits: number; avulsos: number }
 
 export interface MaquinaTec { id: string; nome: string; ordem: number; ativo: number }
 export interface MotivoTec { id: string; codigo: string; nome: string | null; tipo: string; ordem: number; ativo: number }
@@ -1462,6 +1464,12 @@ export const api = {
     return fetch("/api/integracao/estoque" + (qs ? `?${qs}` : "")).then((r) =>
       j<{ produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; reservado: number; disponivel: number; unidade: string | null; atualizado_em: string }[]>(r));
   },
+  // Necessidade de produção (Pronta Entrega): kits montados + avulsos, com disponível/mínimo/status.
+  producaoNecessidade: (todos?: boolean) =>
+    fetch("/api/integracao/producao-necessidade" + (todos ? "?todos=1" : "")).then((r) =>
+      j<{ resumo: NecessidadeResumo; unidades: UnidadePE[] }>(r)),
+  estoqueMinSalvar: (ref: string, cor: string, minimo: number) =>
+    jsonPost("/api/integracao/estoque-min", { ref, cor, minimo }).then((r) => j<{ ok: boolean; minimo?: number; removido?: boolean }>(r)),
   // Resumo/inteligência do estoque: contagens + listas de ruptura e estoque baixo.
   erpEstoqueResumo: (baixo?: number) =>
     fetch("/api/integracao/estoque-resumo" + (baixo != null ? `?baixo=${baixo}` : "")).then((r) =>

@@ -17,7 +17,7 @@ import { SITE_ONLINE_HTML } from "../siteTemplate";
 import { SITE_FULL_HTML } from "../siteTemplateFull";
 import { SITE_LOJA_HTML } from "../siteLoja";
 import { lerDocumento, gravarDocumento } from "../firestore";
-import { limparReservasRefletidas, kitAlertas, FILTRO_RESERVA_ATIVA } from "../loja-estoque";
+import { limparReservasRefletidas, kitAlertas, FILTRO_RESERVA_ATIVA, necessidadeProducao } from "../loja-estoque";
 import { avisarRecebidoSyntech, notificarVendedorInterno } from "../reserva-avisos";
 import { flagLigado, FLAG_RESERVAS, FLAG_PCP_POPUP } from "../flags";
 import { enviarWhatsapp } from "./atendimento";
@@ -780,6 +780,42 @@ integracao.get("/estoque-resumo", async (c) => {
     rupturas: enriquecer(rupturas),
     baixos: enriquecer(baixos),
   });
+});
+
+// NECESSIDADE DE PRODUÇÃO (Pronta Entrega): kits montados + avulsos, por cor, com disponível,
+// mínimo e status (zerado/abaixo). Ordenado do mais crítico pro menos (fila automática).
+integracao.get("/producao-necessidade", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const todos = c.req.query("todos") === "1"; // ?todos=1 traz também os que estão OK
+  const unidades = await necessidadeProducao(c.env);
+  const resumo = {
+    zerado_pedido: unidades.filter((u) => u.status === "zerado_pedido").length,
+    zerado: unidades.filter((u) => u.status === "zerado").length,
+    abaixo: unidades.filter((u) => u.status === "abaixo").length,
+    ok: unidades.filter((u) => u.status === "ok").length,
+    kits: new Set(unidades.filter((u) => u.tipo === "kit").map((u) => u.ref)).size,
+    avulsos: new Set(unidades.filter((u) => u.tipo === "avulso").map((u) => u.ref)).size,
+  };
+  return c.json({ resumo, unidades: todos ? unidades : unidades.filter((u) => u.status !== "ok") });
+});
+
+// Define/atualiza o ESTOQUE MÍNIMO de um modelo+cor (gatilho do "precisa produzir").
+// minimo <= 0 remove o mínimo (volta a só alertar quando zerar).
+integracao.post("/estoque-min", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ ref?: string; cor?: string; minimo?: number | string }>().catch(() => ({} as { ref?: string; cor?: string; minimo?: number | string }));
+  const ref = String(b.ref ?? "").trim();
+  const cor = String(b.cor ?? "").trim().toLowerCase();
+  const minimo = Math.max(0, Math.round(Number(b.minimo) || 0));
+  if (!ref || !cor) return c.json({ error: "ref_cor_obrigatorios" }, 400);
+  if (minimo <= 0) {
+    await c.env.DB.prepare("DELETE FROM estoque_min WHERE ref=? AND cor=?").bind(ref, cor).run();
+    return c.json({ ok: true, removido: true });
+  }
+  await c.env.DB.prepare(
+    "INSERT INTO estoque_min (ref, cor, minimo, atualizado_em) VALUES (?, ?, ?, datetime('now')) ON CONFLICT(ref, cor) DO UPDATE SET minimo=excluded.minimo, atualizado_em=datetime('now')"
+  ).bind(ref, cor, minimo).run();
+  return c.json({ ok: true, minimo });
 });
 
 // DIAGNÓSTICO visual de um produto/kit: mostra, numa página legível, a receita do kit
