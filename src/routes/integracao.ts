@@ -948,6 +948,100 @@ integracao.get("/produtos-busca", async (c) => {
   return c.json({ produtos });
 });
 
+// ── INVENTÁRIO (contagem física × sistema, com divergências e motivos) ──────────────
+function motivoProvavel(dif: number, reservado: number): string {
+  if (!dif) return "";
+  if (dif < 0) {
+    const base = "Falta física — venda/saída não lançada, perda ou erro de contagem";
+    return reservado > 0 ? `${base} · há ${reservado} reservado em pedidos (confira se já saiu)` : base;
+  }
+  return "Sobra física — produção/entrada não lançada, devolução ou erro de contagem";
+}
+// Lista as rodadas de inventário.
+integracao.get("/inventario", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const { results } = await c.env.DB.prepare(
+    `SELECT i.id, i.nome, i.criado_em, i.criado_por, i.fechado_em,
+            (SELECT COUNT(*) FROM inventario_item it WHERE it.inventario_id=i.id AND it.contado IS NOT NULL) AS contados,
+            (SELECT COUNT(*) FROM inventario_item it WHERE it.inventario_id=i.id AND it.contado IS NOT NULL AND it.contado <> COALESCE(it.sistema,0)) AS divergentes
+       FROM inventario i ORDER BY i.criado_em DESC LIMIT 50`
+  ).all().catch(() => ({ results: [] }));
+  return c.json({ inventarios: results || [] });
+});
+// Cria uma rodada de inventário.
+integracao.post("/inventario", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ nome?: string }>().catch(() => ({} as { nome?: string }));
+  const id = uid();
+  const usuario = ("u" in g && g.u ? (g.u as { nome?: string }).nome : "") || "";
+  const nome = String(b.nome ?? "").trim() || `Inventário ${new Date().toLocaleDateString("pt-BR")}`;
+  await c.env.DB.prepare("INSERT INTO inventario (id, nome, criado_em, criado_por) VALUES (?, ?, datetime('now'), ?)").bind(id, nome, usuario).run();
+  return c.json({ ok: true, id, nome });
+});
+// Detalhe: todos os SKUs do estoque com o saldo do sistema + o contado + divergência + motivo.
+integracao.get("/inventario/:id", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const invId = c.req.param("id");
+  const inv = await c.env.DB.prepare("SELECT id, nome, criado_em, fechado_em FROM inventario WHERE id=?").bind(invId).first().catch(() => null);
+  if (!inv) return c.json({ error: "inventario_nao_encontrado" }, 404);
+  const est = ((await c.env.DB.prepare("SELECT produto, ref, cor, tamanho, saldo FROM erp_estoque ORDER BY produto, ref, cor, tamanho").all<{ produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; saldo: number }>().catch(() => ({ results: [] as { produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; saldo: number }[] }))).results) || [];
+  // contagens já feitas
+  const cont = new Map<string, { contado: number | null; motivo: string | null }>();
+  const itens = ((await c.env.DB.prepare("SELECT ref, cor, tamanho, contado, motivo FROM inventario_item WHERE inventario_id=?").bind(invId).all<{ ref: string; cor: string; tamanho: string; contado: number | null; motivo: string | null }>().catch(() => ({ results: [] as { ref: string; cor: string; tamanho: string; contado: number | null; motivo: string | null }[] }))).results) || [];
+  for (const it of itens) cont.set(`${String(it.ref).toLowerCase()}|${String(it.cor).toLowerCase()}|${String(it.tamanho).toLowerCase()}`, { contado: it.contado, motivo: it.motivo });
+  // reservado por peça
+  const resMap = new Map<string, number>();
+  for (const r of (((await c.env.DB.prepare(`SELECT lower(rv.ref) AS ref, lower(COALESCE(rv.cor,'')) AS cor, lower(COALESCE(rv.tamanho,'')) AS tam, COALESCE(SUM(rv.qtd),0) AS q FROM erp_reserva rv JOIN pedidos p ON p.id=rv.pedido_id WHERE ${FILTRO_RESERVA_ATIVA} GROUP BY 1,2,3`).all<{ ref: string; cor: string; tam: string; q: number }>().catch(() => ({ results: [] as { ref: string; cor: string; tam: string; q: number }[] }))).results) || [])) resMap.set(`${r.ref}|${r.cor}|${r.tam}`, Number(r.q) || 0);
+  const medMap = await medidasDeRefs(c.env, est.map((e) => String(e.ref || "")));
+  let contados = 0, divergentes = 0, pecasMais = 0, pecasMenos = 0;
+  const out = est.map((e) => {
+    const ref = String(e.ref || ""), cor = String(e.cor || ""), tam = String(e.tamanho || "");
+    const k = `${ref.toLowerCase()}|${cor.toLowerCase()}|${tam.toLowerCase()}`;
+    const sistema = Number(e.saldo) || 0;
+    const c0 = cont.get(k);
+    const contado = c0 && c0.contado != null ? Number(c0.contado) : null;
+    const reservado = resMap.get(k) || 0;
+    const dif = contado != null ? contado - sistema : null;
+    if (contado != null) { contados++; if (dif !== 0) { divergentes++; if ((dif || 0) > 0) pecasMais += dif || 0; else pecasMenos += Math.abs(dif || 0); } }
+    return {
+      produto: e.produto, ref, cor, tamanho: tam, medida: medMap.get(ref + "|" + tam.toLowerCase()) || null,
+      sistema, contado, diferenca: dif, reservado,
+      motivo_provavel: dif != null && dif !== 0 ? motivoProvavel(dif, reservado) : "",
+      motivo: c0?.motivo || "",
+    };
+  });
+  return c.json({
+    inventario: inv,
+    resumo: { skus: est.length, contados, nao_contados: est.length - contados, divergentes, pecas_mais: pecasMais, pecas_menos: pecasMenos },
+    itens: out,
+  });
+});
+// Registra/atualiza a contagem de um SKU.
+integracao.post("/inventario/:id/contar", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const invId = c.req.param("id");
+  const b = await c.req.json<{ ref?: string; cor?: string; tamanho?: string; produto?: string; contado?: number | string | null; motivo?: string }>().catch(() => ({} as { ref?: string; cor?: string; tamanho?: string; produto?: string; contado?: number | string | null; motivo?: string }));
+  const ref = String(b.ref ?? "").trim(), cor = String(b.cor ?? "").trim(), tam = String(b.tamanho ?? "").trim();
+  if (!ref) return c.json({ error: "ref_obrigatorio" }, 400);
+  const contado = b.contado === null || b.contado === "" || b.contado === undefined ? null : Math.max(0, Math.round(Number(b.contado) || 0));
+  const motivo = String(b.motivo ?? "").trim() || null;
+  const usuario = ("u" in g && g.u ? (g.u as { nome?: string }).nome : "") || "";
+  // saldo do sistema no momento (congela pra divergência ficar estável)
+  const sal = await c.env.DB.prepare("SELECT COALESCE(SUM(saldo),0) AS s FROM erp_estoque WHERE lower(ref)=lower(?) AND lower(COALESCE(cor,''))=lower(?) AND lower(COALESCE(tamanho,''))=lower(?)").bind(ref, cor, tam).first<{ s: number }>().catch(() => null);
+  await c.env.DB.prepare(
+    `INSERT INTO inventario_item (id, inventario_id, ref, cor, tamanho, produto, sistema, contado, motivo, por, atualizado_em)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(inventario_id, ref, cor, tamanho) DO UPDATE SET contado=excluded.contado, sistema=excluded.sistema, motivo=excluded.motivo, por=excluded.por, atualizado_em=datetime('now')`
+  ).bind(uid(), invId, ref, cor, tam, String(b.produto ?? "").trim() || null, Number(sal?.s) || 0, contado, motivo, usuario).run();
+  return c.json({ ok: true });
+});
+// Fecha a rodada de inventário.
+integracao.post("/inventario/:id/fechar", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  await c.env.DB.prepare("UPDATE inventario SET fechado_em=datetime('now') WHERE id=?").bind(c.req.param("id")).run();
+  return c.json({ ok: true });
+});
+
 // DIAGNÓSTICO visual de um produto/kit: mostra, numa página legível, a receita do kit
 // e o SALDO POR COR E TAMANHO (erp_estoque) de cada peça + o estoque_geral. Serve pra
 // ver DE ONDE vem cada número. Abra logado: /api/integracao/diag-produto?busca=balls

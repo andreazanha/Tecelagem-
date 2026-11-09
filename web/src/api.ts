@@ -787,6 +787,7 @@ export interface UnidadePE { tipo: "kit" | "avulso"; ref: string; modelo: string
 export interface NecessidadeResumo { zerado_pedido: number; zerado: number; abaixo: number; em_producao: number; ok: number; kits: number; avulsos: number }
 export interface OpAberta { id: string; pedido_id: string; ref: string; cor: string; tamanho: string; tipo: string; modelo: string; qtd: number; numero: string; criado_em: string; bloqueado: number }
 export interface ProdutoBusca { ref: string; nome: string; cores: string[]; tamanhos: { codigo: string; medida: string }[] }
+export interface InventarioItem { produto: string | null; ref: string; cor: string; tamanho: string; medida: string | null; sistema: number; contado: number | null; diferenca: number | null; reservado: number; motivo_provavel: string; motivo: string }
 
 export interface MaquinaTec { id: string; nome: string; ordem: number; ativo: number }
 export interface MotivoTec { id: string; codigo: string; nome: string | null; tipo: string; ordem: number; ativo: number }
@@ -1479,6 +1480,21 @@ export const api = {
       j<{ resumo: NecessidadeResumo; unidades: UnidadePE[]; ops: OpAberta[] }>(r)),
   produtosBusca: (q: string) =>
     fetch("/api/integracao/produtos-busca?q=" + encodeURIComponent(q)).then((r) => j<{ produtos: ProdutoBusca[] }>(r)),
+  // Inventário (contagem física × sistema).
+  inventarioListar: () =>
+    fetch("/api/integracao/inventario").then((r) => j<{ inventarios: { id: string; nome: string; criado_em: string; criado_por: string; fechado_em: string | null; contados: number; divergentes: number }[] }>(r)),
+  inventarioCriar: (nome?: string) =>
+    jsonPost("/api/integracao/inventario", { nome }).then((r) => j<{ ok: boolean; id: string; nome: string }>(r)),
+  inventarioGet: (id: string) =>
+    fetch("/api/integracao/inventario/" + id).then((r) => j<{
+      inventario: { id: string; nome: string; criado_em: string; fechado_em: string | null };
+      resumo: { skus: number; contados: number; nao_contados: number; divergentes: number; pecas_mais: number; pecas_menos: number };
+      itens: InventarioItem[];
+    }>(r)),
+  inventarioContar: (id: string, it: { ref: string; cor: string; tamanho: string; produto?: string; contado: number | null; motivo?: string }) =>
+    jsonPost(`/api/integracao/inventario/${id}/contar`, it).then((r) => j<{ ok: boolean }>(r)),
+  inventarioFechar: (id: string) =>
+    jsonPost(`/api/integracao/inventario/${id}/fechar`, {}).then((r) => j<{ ok: boolean }>(r)),
   // Visão geral do estoque (dashboard): peças, valor (atacado), produtos/SKUs, por categoria, top.
   estoqueVisao: () =>
     fetch("/api/integracao/estoque-visao").then((r) =>

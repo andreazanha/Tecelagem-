@@ -32,6 +32,7 @@ export function EstoqueVisao() {
       <div className="row-gap" style={{ gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <Link className="btn btn-soft" to="/precisa-produzir">🏭 Precisa Produzir</Link>
         <Link className="btn btn-soft" to="/estoque-syntech">🔎 Estoque por cor/tamanho</Link>
+        <Link className="btn btn-soft" to="/estoque-inventario">🔢 Inventário</Link>
       </div>
 
       {erro && <div className="card pad" style={{ color: "#b91c1c" }}>{erro}</div>}
