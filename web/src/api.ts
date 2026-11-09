@@ -785,6 +785,8 @@ export interface LojaImagemProduto { id: string; nome: string; foto: string; cat
 export interface EstoqueResumoLinha { produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; reservado: number; disponivel: number }
 export interface UnidadePE { tipo: "kit" | "avulso"; ref: string; modelo: string; cor: string; disponivel: number; saldo: number; reservado: number; minimo: number; falta: number; limitante: string; status: "zerado_pedido" | "zerado" | "abaixo" | "ok"; op_aberta: boolean; op_numero: string; op_qtd: number }
 export interface NecessidadeResumo { zerado_pedido: number; zerado: number; abaixo: number; em_producao: number; ok: number; kits: number; avulsos: number }
+export interface OpAberta { id: string; ref: string; cor: string; tamanho: string; tipo: string; modelo: string; qtd: number; numero: string; criado_em: string }
+export interface ProdutoBusca { ref: string; nome: string; cores: string[]; tamanhos: { codigo: string; medida: string }[] }
 
 export interface MaquinaTec { id: string; nome: string; ordem: number; ativo: number }
 export interface MotivoTec { id: string; codigo: string; nome: string | null; tipo: string; ordem: number; ativo: number }
@@ -1467,7 +1469,9 @@ export const api = {
   // Necessidade de produção (Pronta Entrega): kits montados + avulsos, com disponível/mínimo/status.
   producaoNecessidade: (todos?: boolean) =>
     fetch("/api/integracao/producao-necessidade" + (todos ? "?todos=1" : "")).then((r) =>
-      j<{ resumo: NecessidadeResumo; unidades: UnidadePE[] }>(r)),
+      j<{ resumo: NecessidadeResumo; unidades: UnidadePE[]; ops: OpAberta[] }>(r)),
+  produtosBusca: (q: string) =>
+    fetch("/api/integracao/produtos-busca?q=" + encodeURIComponent(q)).then((r) => j<{ produtos: ProdutoBusca[] }>(r)),
   estoqueMinSalvar: (ref: string, cor: string, minimo: number) =>
     jsonPost("/api/integracao/estoque-min", { ref, cor, minimo }).then((r) => j<{ ok: boolean; minimo?: number; removido?: boolean }>(r)),
   // Diagnóstico do Syntech (estrutura das procedures/tabelas de estoque) — pra planejar a Etapa 4.
@@ -1478,10 +1482,10 @@ export const api = {
     fetch("/api/integracao/diag?pedido=procs").then((r) =>
       j<{ pronto?: boolean; aviso?: string; quando?: string | null; procedures?: Record<string, string>; triggers?: Record<string, string[]>; erros?: string[] }>(r)),
   // Cria a ordem de produção (reposição que entra na esteira). Recusa se já houver OP aberta.
-  producaoOpCriar: (u: { ref: string; cor: string; tipo: string; modelo: string; qtd: number }) =>
+  producaoOpCriar: (u: { ref: string; cor: string; tamanho?: string; tipo: string; modelo: string; qtd: number }) =>
     jsonPost("/api/integracao/producao-op", u).then((r) => j<{ ok?: boolean; pedido_id?: string; numero?: string; error?: string }>(r)),
-  producaoOpCancelar: (ref: string, cor: string) =>
-    jsonPost("/api/integracao/producao-op-cancelar", { ref, cor }).then((r) => j<{ ok?: boolean; error?: string; msg?: string }>(r)),
+  producaoOpCancelar: (id: string) =>
+    jsonPost("/api/integracao/producao-op-cancelar", { id }).then((r) => j<{ ok?: boolean; error?: string; msg?: string }>(r)),
   // Resumo/inteligência do estoque: contagens + listas de ruptura e estoque baixo.
   erpEstoqueResumo: (baixo?: number) =>
     fetch("/api/integracao/estoque-resumo" + (baixo != null ? `?baixo=${baixo}` : "")).then((r) =>

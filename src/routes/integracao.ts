@@ -17,7 +17,7 @@ import { SITE_ONLINE_HTML } from "../siteTemplate";
 import { SITE_FULL_HTML } from "../siteTemplateFull";
 import { SITE_LOJA_HTML } from "../siteLoja";
 import { lerDocumento, gravarDocumento } from "../firestore";
-import { limparReservasRefletidas, kitAlertas, FILTRO_RESERVA_ATIVA, necessidadeProducao } from "../loja-estoque";
+import { limparReservasRefletidas, kitAlertas, FILTRO_RESERVA_ATIVA, necessidadeProducao, listarOpsAbertas } from "../loja-estoque";
 import { avisarRecebidoSyntech, notificarVendedorInterno } from "../reserva-avisos";
 import { flagLigado, FLAG_RESERVAS, FLAG_PCP_POPUP } from "../flags";
 import { enviarWhatsapp } from "./atendimento";
@@ -787,20 +787,21 @@ integracao.get("/estoque-resumo", async (c) => {
 integracao.get("/producao-necessidade", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const todos = c.req.query("todos") === "1"; // ?todos=1 traz também os que estão OK
-  const unidades = await necessidadeProducao(c.env);
-  // "precisa produzir" = falta algo E ainda não tem OP aberta. Em produção = já tem OP.
+  const [unidades, ops] = await Promise.all([necessidadeProducao(c.env), listarOpsAbertas(c.env)]);
+  // "precisa produzir" = falta algo E ainda não tem OP aberta (no nível kit/cor).
   const precisa = (u: UnidadePEl) => u.status !== "ok" && !u.op_aberta;
   const resumo = {
     zerado_pedido: unidades.filter((u) => u.status === "zerado_pedido" && !u.op_aberta).length,
     zerado: unidades.filter((u) => u.status === "zerado" && !u.op_aberta).length,
     abaixo: unidades.filter((u) => u.status === "abaixo" && !u.op_aberta).length,
-    em_producao: unidades.filter((u) => u.op_aberta).length,
+    em_producao: ops.length, // todas as OPs abertas (fila de kit + buscador por produto/tamanho)
     ok: unidades.filter((u) => u.status === "ok" && !u.op_aberta).length,
     kits: new Set(unidades.filter((u) => u.tipo === "kit").map((u) => u.ref)).size,
     avulsos: new Set(unidades.filter((u) => u.tipo === "avulso").map((u) => u.ref)).size,
   };
-  // sem ?todos: devolve o que PRECISA produzir + o que está EM PRODUÇÃO (esconde só os OK parados).
-  return c.json({ resumo, unidades: todos ? unidades : unidades.filter((u) => precisa(u) || u.op_aberta) });
+  // fila = o que precisa produzir (sem OP). ops = tudo que está em produção (inclui as do buscador).
+  const fila = unidades.filter((u) => todos ? (precisa(u) || u.status === "ok") : precisa(u));
+  return c.json({ resumo, unidades: fila, ops });
 });
 // Tipo local só pra tipar o filtro acima (espelha UnidadePE do loja-estoque).
 type UnidadePEl = { status: string; op_aberta: boolean; tipo: string; ref: string };
@@ -810,36 +811,39 @@ type UnidadePEl = { status: string; op_aberta: boolean; tipo: string; ref: strin
 // NÃO grava no Syntech (isso é a Etapa 4). Recusa se já houver OP aberta pra o mesmo modelo+cor.
 integracao.post("/producao-op", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
-  const b = await c.req.json<{ ref?: string; cor?: string; tipo?: string; modelo?: string; qtd?: number | string }>().catch(() => ({} as { ref?: string; cor?: string; tipo?: string; modelo?: string; qtd?: number | string }));
+  const b = await c.req.json<{ ref?: string; cor?: string; tamanho?: string; tipo?: string; modelo?: string; qtd?: number | string }>().catch(() => ({} as { ref?: string; cor?: string; tamanho?: string; tipo?: string; modelo?: string; qtd?: number | string }));
   const ref = String(b.ref ?? "").trim();
   const cor = String(b.cor ?? "").trim();
+  const tamanho = String(b.tamanho ?? "").trim();
   const tipo = b.tipo === "avulso" ? "avulso" : "kit";
   const modelo = String(b.modelo ?? ref).trim();
   const qtd = Math.max(1, Math.round(Number(b.qtd) || 0));
   if (!ref || !cor) return c.json({ error: "ref_cor_obrigatorios" }, 400);
   if (!qtd) return c.json({ error: "qtd_invalida" }, 400);
-  // já tem OP aberta pra esse modelo+cor?
+  // já tem OP aberta pra esse modelo+cor+tamanho?
   const existe = await c.env.DB.prepare(
     `SELECT o.id, COALESCE(ped.numero_erp,'') AS numero FROM producao_op_estoque o JOIN pedidos ped ON ped.id=o.pedido_id
-      WHERE o.concluida_em IS NULL AND lower(o.ref)=lower(?) AND lower(o.cor)=lower(?) AND COALESCE(ped.status,'') NOT IN ('cancelado','recusado') LIMIT 1`
-  ).bind(ref, cor).first<{ id: string; numero: string }>().catch(() => null);
+      WHERE o.concluida_em IS NULL AND lower(o.ref)=lower(?) AND lower(o.cor)=lower(?) AND lower(COALESCE(o.tamanho,''))=lower(?)
+        AND COALESCE(ped.status,'') NOT IN ('cancelado','recusado') LIMIT 1`
+  ).bind(ref, cor, tamanho).first<{ id: string; numero: string }>().catch(() => null);
   if (existe) return c.json({ error: "op_ja_aberta", numero: existe.numero }, 409);
   const pedidoId = uid();
   const numero = "OP-" + pedidoId.slice(0, 6).toUpperCase();
   const usuario = ("u" in g && g.u ? (g.u as { nome?: string }).nome : "") || "";
+  const desc = `${modelo} ${cor}${tamanho ? " " + tamanho : ""} × ${qtd}`;
   await c.env.DB.batch([
     c.env.DB.prepare(
       `INSERT INTO pedidos (id, numero_erp, cliente_nome, tipo, reposicao, data_pedido, observacao, status)
        VALUES (?, ?, 'PRODUÇÃO ESTOQUE', 'auto', 1, date('now'), ?, 'novo')`
-    ).bind(pedidoId, numero, `Ordem de produção p/ estoque — ${modelo} ${cor} × ${qtd}`),
+    ).bind(pedidoId, numero, `Ordem de produção p/ estoque — ${desc}`),
     c.env.DB.prepare(
       `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, valor_unit)
-       VALUES (?, ?, ?, ?, ?, NULL, ?, 'kit', 1, 0)`
-    ).bind(uid(), pedidoId, modelo, ref, cor, qtd),
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'kit', 1, 0)`
+    ).bind(uid(), pedidoId, modelo, ref, cor, tamanho || null, qtd),
     c.env.DB.prepare(
-      `INSERT INTO producao_op_estoque (id, ref, cor, tipo, modelo, pedido_id, qtd, criado_em, criado_por)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)`
-    ).bind(uid(), ref, cor.toLowerCase(), tipo, modelo, pedidoId, qtd, usuario),
+      `INSERT INTO producao_op_estoque (id, ref, cor, tamanho, tipo, modelo, pedido_id, qtd, criado_em, criado_por)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)`
+    ).bind(uid(), ref, cor.toLowerCase(), tamanho || null, tipo, modelo, pedidoId, qtd, usuario),
   ]);
   return c.json({ ok: true, pedido_id: pedidoId, numero });
 });
@@ -847,12 +851,12 @@ integracao.post("/producao-op", async (c) => {
 // CANCELA uma OP de estoque ainda não iniciada (apaga o pedido de reposição + cards intocados).
 integracao.post("/producao-op-cancelar", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
-  const b = await c.req.json<{ ref?: string; cor?: string }>().catch(() => ({} as { ref?: string; cor?: string }));
-  const ref = String(b.ref ?? "").trim(); const cor = String(b.cor ?? "").trim();
-  if (!ref || !cor) return c.json({ error: "ref_cor_obrigatorios" }, 400);
+  const b = await c.req.json<{ id?: string }>().catch(() => ({} as { id?: string }));
+  const id = String(b.id ?? "").trim();
+  if (!id) return c.json({ error: "id_obrigatorio" }, 400);
   const op = await c.env.DB.prepare(
-    "SELECT id, pedido_id FROM producao_op_estoque WHERE concluida_em IS NULL AND lower(ref)=lower(?) AND lower(cor)=lower(?) ORDER BY criado_em DESC LIMIT 1"
-  ).bind(ref, cor).first<{ id: string; pedido_id: string }>().catch(() => null);
+    "SELECT id, pedido_id FROM producao_op_estoque WHERE concluida_em IS NULL AND id=? LIMIT 1"
+  ).bind(id).first<{ id: string; pedido_id: string }>().catch(() => null);
   if (!op) return c.json({ error: "op_nao_encontrada" }, 404);
   // só cancela se a produção ainda não começou (nenhum card com operador/início)
   const comecou = await c.env.DB.prepare(
@@ -885,6 +889,30 @@ integracao.post("/estoque-min", async (c) => {
     "INSERT INTO estoque_min (ref, cor, minimo, atualizado_em) VALUES (?, ?, ?, datetime('now')) ON CONFLICT(ref, cor) DO UPDATE SET minimo=excluded.minimo, atualizado_em=datetime('now')"
   ).bind(ref, cor, minimo).run();
   return c.json({ ok: true, minimo });
+});
+
+// BUSCA de produtos (pro seletor "Criar OP de qualquer produto"): devolve os produtos que
+// casam a busca, cada um com suas CORES e TAMANHOS (código + medida). Fonte: cadastro do ERP.
+integracao.get("/produtos-busca", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const q = (c.req.query("q") || "").trim().toLowerCase();
+  if (q.length < 2) return c.json({ produtos: [] });
+  const { results } = await c.env.DB.prepare(
+    "SELECT ref, nome, cores, tamanhos FROM erp_produtos WHERE COALESCE(inativo,0)=0 AND (lower(nome) LIKE ? OR lower(ref) LIKE ?) ORDER BY nome LIMIT 40"
+  ).bind(`%${q}%`, `%${q}%`).all<{ ref: string; nome: string | null; cores: string | null; tamanhos: string | null }>().catch(() => ({ results: [] as { ref: string; nome: string | null; cores: string | null; tamanhos: string | null }[] }));
+  const fmtMed = (m: string) => m.replace(/(\d)\s*[x×X]\s*(\d)/g, "$1 × $2");
+  const produtos = (results || []).map((p) => {
+    let cores: string[] = [];
+    try { const a = JSON.parse(p.cores || "[]"); if (Array.isArray(a)) cores = a.map((x) => typeof x === "string" ? x : String((x && (x.nome ?? x.cor)) || "")).map((s) => s.trim()).filter(Boolean); } catch { /* vazio */ }
+    let tamanhos: { codigo: string; medida: string }[] = [];
+    try { const a = JSON.parse(p.tamanhos || "[]"); if (Array.isArray(a)) tamanhos = a.map((t) => {
+      const codigo = String((t && (t.tamanho ?? t.codigo)) || (typeof t === "string" ? t : "")).trim();
+      const medida = fmtMed(String((t && (t.medida ?? t.tamanho)) || (typeof t === "string" ? t : "")).trim());
+      return { codigo, medida };
+    }).filter((t) => t.codigo || t.medida); } catch { /* vazio */ }
+    return { ref: p.ref, nome: p.nome || p.ref, cores: [...new Set(cores)], tamanhos };
+  });
+  return c.json({ produtos });
 });
 
 // DIAGNÓSTICO visual de um produto/kit: mostra, numa página legível, a receita do kit

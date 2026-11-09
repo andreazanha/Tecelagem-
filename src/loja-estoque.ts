@@ -367,7 +367,9 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
   for (const [kitRef, comps] of recPorKit) {
     const pk = parseKit(nomes.get(kitRef) || kitRef);
     if (pk.temEnch) continue; // só o kit vazio (o cheio usa as mesmas capas → não dobra)
-    const modelo = `Kit ${pk.familia.charAt(0) + pk.familia.slice(1).toLowerCase()}${pk.variacao ? " " + pk.variacao.charAt(0) + pk.variacao.slice(1).toLowerCase() : ""}`;
+    const titulo = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
+    const fam = pk.familia.replace(/^KIT\s+/i, ""); // evita "Kit Kit balls" (a família já pode vir com "KIT")
+    const modelo = `Kit ${titulo(fam)}${pk.variacao ? " " + titulo(pk.variacao) : ""}`;
     const cores = new Set<string>();
     for (const c of comps) { const s = coresDaRef.get(c.ref.toLowerCase()); if (s) for (const x of s) cores.add(x); }
     for (const cor of cores) {
@@ -405,6 +407,20 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
   }
   out.sort((a, b) => rankStatus[a.status] - rankStatus[b.status] || b.falta - a.falta || b.reservado - a.reservado || a.modelo.localeCompare(b.modelo, "pt-BR"));
   return out;
+}
+
+// OPs de estoque ABERTAS (pedido de reposição ainda ativo) — inclui as criadas pelo buscador
+// (produto+cor+tamanho), não só as da fila de kit. Usado na seção "Em produção".
+export type OpAberta = { id: string; ref: string; cor: string; tamanho: string; tipo: string; modelo: string; qtd: number; numero: string; criado_em: string };
+export async function listarOpsAbertas(env: Env): Promise<OpAberta[]> {
+  const rows = (await env.DB.prepare(
+    `SELECT o.id, o.ref, COALESCE(o.cor,'') AS cor, COALESCE(o.tamanho,'') AS tamanho, COALESCE(o.tipo,'') AS tipo,
+            COALESCE(o.modelo, o.ref) AS modelo, COALESCE(o.qtd,0) AS qtd, COALESCE(ped.numero_erp,'') AS numero, COALESCE(o.criado_em,'') AS criado_em
+       FROM producao_op_estoque o JOIN pedidos ped ON ped.id = o.pedido_id
+      WHERE o.concluida_em IS NULL AND COALESCE(ped.status,'') NOT IN ('cancelado','recusado')
+      ORDER BY o.criado_em DESC`
+  ).all<OpAberta>().catch(() => ({ results: [] as OpAberta[] }))).results || [];
+  return rows;
 }
 
 function montarUnidade(tipo: "kit" | "avulso", ref: string, modelo: string, cor: string, disponivel: number, saldo: number, reservado: number, minimo: number, limitante: string, op: { numero: string; qtd: number } | null): UnidadePE {
