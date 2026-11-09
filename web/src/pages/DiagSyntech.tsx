@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 
-const CANDIDATO = /ESTOQUE|ENTRADA|SAIDA|SAÍDA|MOVIMENT|SALDO|AJUSTE|INVENT|KARDEX|\bOP\b|ORDEM|PRODUC|PRODUÇ|FABRIC/i;
+const CANDIDATO = /ESTOQUE|ENTRADA|SAIDA|SAÍDA|MOVIMENT|SALDO|AJUSTE|INVENT|KARDEX|\bOP\b|ORDEM|PRODUC|PRODUÇ|FABRIC|COMPRA|ORCAMENT|ORÇAMENT|\bNOTA\b|\bNF\b|\bDOC\b|INSERE|GRAVA|CADASTR/i;
 
 type Diag = { pronto?: boolean; aviso?: string; quando?: string; total_procedures?: number; procedures?: Record<string, string>; total_tabelas?: number; tabelas?: Record<string, string[]>; erros?: string[] };
 
