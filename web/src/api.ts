@@ -1472,6 +1472,15 @@ export const api = {
       j<{ resumo: NecessidadeResumo; unidades: UnidadePE[]; ops: OpAberta[] }>(r)),
   produtosBusca: (q: string) =>
     fetch("/api/integracao/produtos-busca?q=" + encodeURIComponent(q)).then((r) => j<{ produtos: ProdutoBusca[] }>(r)),
+  // Visão geral do estoque (dashboard): peças, valor (atacado), produtos/SKUs, por categoria, top.
+  estoqueVisao: () =>
+    fetch("/api/integracao/estoque-visao").then((r) =>
+      j<{
+        totais: { pecas: number; valor: number; skus: number; produtos: number; zerados: number };
+        categorias: { categoria: string; pecas: number; valor: number; produtos: number }[];
+        top_produtos: { ref: string; nome: string; pecas: number; valor: number }[];
+        sync_em: string | null; base_preco: string;
+      }>(r)),
   estoqueMinSalvar: (ref: string, cor: string, minimo: number) =>
     jsonPost("/api/integracao/estoque-min", { ref, cor, minimo }).then((r) => j<{ ok: boolean; minimo?: number; removido?: boolean }>(r)),
   // Diagnóstico do Syntech (estrutura das procedures/tabelas de estoque) — pra planejar a Etapa 4.

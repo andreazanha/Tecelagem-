@@ -42,6 +42,7 @@ import { ReservasProtegidas } from "./pages/ReservasProtegidas";
 import { EstoqueSyntech } from "./pages/EstoqueSyntech";
 import { ProducaoNecessidade } from "./pages/ProducaoNecessidade";
 import { DiagSyntech } from "./pages/DiagSyntech";
+import { EstoqueVisao } from "./pages/EstoqueVisao";
 import { Catalogo } from "./pages/Catalogo";
 import { Expedicao } from "./pages/Expedicao";
 import { Fiscal } from "./pages/Fiscal";
@@ -215,6 +216,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/pcp" element={<Protegido page="pedidos"><Pcp /></Protegido>} />
           <Route path="/pedidos-erp" element={<Protegido page="pedidos"><PedidosErp /></Protegido>} />
           <Route path="/reservas-protegidas" element={<Protegido page="pedidos"><ReservasProtegidas /></Protegido>} />
+          <Route path="/estoque-visao" element={<Protegido page="pedidos"><EstoqueVisao /></Protegido>} />
           <Route path="/estoque-syntech" element={<Protegido page="pedidos"><EstoqueSyntech /></Protegido>} />
           <Route path="/precisa-produzir" element={<Protegido page="pedidos"><ProducaoNecessidade /></Protegido>} />
           <Route path="/diag-syntech" element={<Protegido admin><DiagSyntech /></Protegido>} />

@@ -891,6 +891,38 @@ integracao.post("/estoque-min", async (c) => {
   return c.json({ ok: true, minimo });
 });
 
+// VISÃO GERAL do estoque (dashboard): total de peças, valor (a preço de atacado), nº de produtos
+// e SKUs, quebra por categoria (Edição Limitada × Pronta Entrega) e os produtos de maior valor.
+integracao.get("/estoque-visao", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  // valor por linha = saldo × preço de atacado do produto (estimativa; custo não vem do ERP hoje).
+  const tot = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(e.saldo),0) AS pecas, COALESCE(SUM(e.saldo*COALESCE(p.preco_atacado,0)),0) AS valor,
+            COUNT(*) AS skus, COUNT(DISTINCT e.ref) AS produtos,
+            SUM(CASE WHEN COALESCE(e.saldo,0)<=0 THEN 1 ELSE 0 END) AS zerados
+       FROM erp_estoque e LEFT JOIN erp_produtos p ON p.ref = e.ref`
+  ).first<{ pecas: number; valor: number; skus: number; produtos: number; zerados: number }>().catch(() => null);
+  const { results: cats } = await c.env.DB.prepare(
+    `SELECT CASE WHEN UPPER(COALESCE(e.ref,'')) GLOB 'ED[0-9]*' THEN 'Edição Limitada' ELSE 'Pronta Entrega' END AS categoria,
+            COALESCE(SUM(e.saldo),0) AS pecas, COALESCE(SUM(e.saldo*COALESCE(p.preco_atacado,0)),0) AS valor,
+            COUNT(DISTINCT e.ref) AS produtos
+       FROM erp_estoque e LEFT JOIN erp_produtos p ON p.ref = e.ref GROUP BY 1 ORDER BY valor DESC`
+  ).all<{ categoria: string; pecas: number; valor: number; produtos: number }>().catch(() => ({ results: [] as { categoria: string; pecas: number; valor: number; produtos: number }[] }));
+  const { results: top } = await c.env.DB.prepare(
+    `SELECT e.ref, MAX(COALESCE(p.nome, e.produto, e.ref)) AS nome, COALESCE(SUM(e.saldo),0) AS pecas,
+            COALESCE(SUM(e.saldo*COALESCE(p.preco_atacado,0)),0) AS valor
+       FROM erp_estoque e LEFT JOIN erp_produtos p ON p.ref = e.ref GROUP BY e.ref HAVING pecas > 0 ORDER BY valor DESC LIMIT 15`
+  ).all<{ ref: string; nome: string; pecas: number; valor: number }>().catch(() => ({ results: [] as { ref: string; nome: string; pecas: number; valor: number }[] }));
+  const sync = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_sync_em'").first<{ valor: string | null }>().catch(() => null);
+  return c.json({
+    totais: tot || { pecas: 0, valor: 0, skus: 0, produtos: 0, zerados: 0 },
+    categorias: cats || [],
+    top_produtos: top || [],
+    sync_em: sync?.valor || null,
+    base_preco: "atacado",
+  });
+});
+
 // BUSCA de produtos (pro seletor "Criar OP de qualquer produto"): devolve os produtos que
 // casam a busca, cada um com suas CORES e TAMANHOS (código + medida). Fonte: cadastro do ERP.
 integracao.get("/produtos-busca", async (c) => {

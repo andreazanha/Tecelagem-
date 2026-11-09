@@ -186,6 +186,7 @@ const GRUPOS: MenuGrupo[] = [
   {
     id: "estoque", icon: "📊", label: "Estoque", itens: [
       // Fios + insumos (matéria prima) foram movidos para o PCP › Estoque de matéria prima.
+      { to: "/estoque-visao", icon: "📊", label: "Visão do Estoque", page: "pedidos" },
       { to: "/produtos?aba=estoque", icon: "📊", label: "Estoque de Produtos", page: "produtos" },
       { to: "/estoque-syntech", icon: "🔎", label: "Estoque do Syntech", page: "pedidos" },
       { to: "/precisa-produzir", icon: "🏭", label: "Precisa Produzir", page: "pedidos" },
