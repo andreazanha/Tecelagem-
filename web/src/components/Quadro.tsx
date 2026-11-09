@@ -331,8 +331,11 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
 
   // Próximo setor de um card (kits podem ter destino diferente, ex.: Costura → Estoque).
   function destinoDe(c: CardProducao) {
-    // Reposição pode ter destino próprio (ex.: da Revisão vai p/ o Estoque dar entrada).
-    if (ehRep(c) && cfg.proxSetorReposicao) return cfg.proxSetorReposicao;
+    // REPOSIÇÃO (produção pra estoque) segue SEMPRE o fluxo normal da produção — incluindo a
+    // Revisão — e nunca pega o atalho do kit (proxSetorKit, ex.: Costura → Estoque), que é só pra
+    // kit de PEDIDO DE CLIENTE (já pronto, sem produção). O destino próprio da reposição
+    // (ex.: Revisão → Estoque p/ dar entrada) vem de proxSetorReposicao; senão, segue proxSetor.
+    if (ehRep(c)) return cfg.proxSetorReposicao || cfg.proxSetor;
     return c.parte === "pronta-entrega" && cfg.proxSetorKit !== undefined ? cfg.proxSetorKit : cfg.proxSetor;
   }
 
