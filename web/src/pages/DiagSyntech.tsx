@@ -70,24 +70,25 @@ export function DiagSyntech() {
             {Object.keys(prod.amostras || {}).length === 0 && (
               <div className="muted">Encontrei {Object.keys(prod.tabelas || {}).length} tabela(s) de produção, mas ainda <b>sem linhas</b>. Se você acabou de criar a OP, espere a próxima rodada da ponte e atualize.</div>
             )}
-            {Object.entries(prod.amostras || {}).map(([tab, rows]) => {
-              const cols = rows.length ? Object.keys(rows[0]) : [];
-              return (
-                <div key={tab}>
-                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>🗂️ {tab} <span className="muted" style={{ fontWeight: 400 }}>· {prod.contagem?.[tab] != null ? `${prod.contagem[tab]} linha(s) no total` : ""} · mostrando as {rows.length} mais novas</span></div>
-                  <div style={{ overflowX: "auto", border: "1px solid var(--line)", borderRadius: 6 }}>
-                    <table className="table" style={{ fontSize: 11 }}>
-                      <thead><tr>{cols.map((c) => <th key={c} style={{ whiteSpace: "nowrap" }}>{c}</th>)}</tr></thead>
-                      <tbody>
-                        {rows.map((r, i) => (
-                          <tr key={i}>{cols.map((c) => <td key={c} style={{ whiteSpace: "nowrap", fontFamily: "monospace" }}>{r[c] == null ? "—" : String(r[c])}</td>)}</tr>
-                        ))}
-                      </tbody>
-                    </table>
+            {/* Cada linha em formato VERTICAL (campo: valor) — pra ver todas as colunas sem rolar. */}
+            {Object.entries(prod.amostras || {}).map(([tab, rows]) => (
+              <div key={tab}>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>🗂️ {tab} <span className="muted" style={{ fontWeight: 400 }}>· {prod.contagem?.[tab] != null ? `${prod.contagem[tab]} linha(s) no total` : ""} · {rows.length} mais nova(s)</span></div>
+                {rows.map((r, i) => (
+                  <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 6, padding: 8, marginBottom: 6, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: "3px 14px" }}>
+                    {Object.keys(r).map((c) => {
+                      const v = r[c];
+                      const vazio = v == null || v === "";
+                      return (
+                        <div key={c} style={{ fontSize: 11, opacity: vazio ? 0.4 : 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <span className="muted" style={{ fontFamily: "monospace" }}>{c}:</span> <b style={{ fontFamily: "monospace", color: vazio ? "var(--muted)" : "#1e3a8a" }}>{vazio ? "—" : String(v)}</b>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            ))}
             {/* Procedures e geradores de produção */}
             {prod.procedures && Object.keys(prod.procedures).length > 0 && (
               <details>
