@@ -966,16 +966,30 @@ integracao.get("/estoque-baixa-lista", async (c) => {
        FROM erp_reserva rv JOIN pedidos p ON p.id=rv.pedido_id WHERE ${FILTRO_RESERVA_ATIVA} GROUP BY 1,2,3`
   ).all<{ ref: string; cor: string; tam: string; q: number }>().catch(() => ({ results: [] as { ref: string; cor: string; tam: string; q: number }[] }))).results) || [])) resMap.set(`${r.ref}|${r.cor}|${r.tam}`, Number(r.q) || 0);
   const est = (((await c.env.DB.prepare(
-    `SELECT e.ref, COALESCE(p.nome, e.produto, e.ref) AS nome, e.cor, e.tamanho, COALESCE(e.saldo,0) AS saldo
+    `SELECT e.ref, COALESCE(p.nome, e.produto, e.ref) AS nome, e.cor, e.tamanho, COALESCE(e.saldo,0) AS saldo, p.tamanhos
        FROM erp_estoque e LEFT JOIN erp_produtos p ON p.ref = e.ref
       WHERE COALESCE(e.saldo,0) > 0 ORDER BY nome, e.cor, e.tamanho`
-  ).all<{ ref: string; nome: string; cor: string | null; tamanho: string | null; saldo: number }>().catch(() => ({ results: [] as { ref: string; nome: string; cor: string | null; tamanho: string | null; saldo: number }[] }))).results) || []);
+  ).all<{ ref: string; nome: string; cor: string | null; tamanho: string | null; saldo: number; tamanhos: string | null }>().catch(() => ({ results: [] as { ref: string; nome: string; cor: string | null; tamanho: string | null; saldo: number; tamanhos: string | null }[] }))).results) || []);
+  // traduz o CÓDIGO do tamanho (ex.: "5K") pra MEDIDA real (ex.: "55×35") pelo cadastro da peça.
+  const medidaDe = (tamanhosJson: string | null, cod: string): string => {
+    if (!cod) return "";
+    try {
+      const arr = tamanhosJson ? JSON.parse(tamanhosJson) : [];
+      if (Array.isArray(arr)) {
+        const hit = arr.find((x: { tamanho?: string; medida?: string }) => String(x?.tamanho || "").trim().toLowerCase() === cod.toLowerCase());
+        const m = hit && hit.medida ? String(hit.medida).trim() : "";
+        if (/\d\s*[x×]\s*\d/i.test(m)) return m.replace(/x/gi, "×").replace(/\s+/g, "");
+      }
+    } catch { /* sem medida */ }
+    return "";
+  };
   const itens = est.map((e) => {
     const ref = (e.ref || "").trim(); const cor = (e.cor || "").trim(); const tam = (e.tamanho || "").trim();
     const reservado = resMap.get(`${ref.toLowerCase()}|${cor.toLowerCase()}|${tam}`) || 0;
     const livre = Math.max(0, (Number(e.saldo) || 0) - reservado);
-    return { ref, nome: String(e.nome || ref), cor, tamanho: tam, saldo: Number(e.saldo) || 0, reservado, livre };
-  }).filter((x) => !q || `${x.nome} ${x.ref} ${x.cor} ${x.tamanho}`.toLowerCase().includes(q));
+    const medida = medidaDe(e.tamanhos, tam);
+    return { ref, nome: String(e.nome || ref), cor, tamanho: tam, medida, saldo: Number(e.saldo) || 0, reservado, livre };
+  }).filter((x) => !q || `${x.nome} ${x.ref} ${x.cor} ${x.tamanho} ${x.medida}`.toLowerCase().includes(q));
   // baixas recentes (canal='baixa')
   const baixas = (((await c.env.DB.prepare(
     `SELECT p.id, p.numero_erp AS numero, p.observacao AS motivo, p.created_at, COALESCE(p.erp_sync_status,'pendente') AS status, p.erp_numero, p.erp_sync_erro,

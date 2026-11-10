@@ -1536,7 +1536,7 @@ export const api = {
   estoqueBaixaLista: (q?: string) =>
     fetch("/api/integracao/estoque-baixa-lista" + (q ? `?q=${encodeURIComponent(q)}` : ""), { headers: { ...authHeaders() } }).then((r) =>
       j<{
-        itens: { ref: string; nome: string; cor: string; tamanho: string; saldo: number; reservado: number; livre: number }[];
+        itens: { ref: string; nome: string; cor: string; tamanho: string; medida: string; saldo: number; reservado: number; livre: number }[];
         baixas: { id: string; numero: string | null; motivo: string | null; created_at: string | null; status: string; erp_numero: number | null; erp_sync_erro: string | null; qtd: number; produto: string | null; cor: string | null; tamanho: string | null }[];
         cliente: { nome: string; configurado: boolean };
       }>(r)),

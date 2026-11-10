@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 
-type Item = { ref: string; nome: string; cor: string; tamanho: string; saldo: number; reservado: number; livre: number };
+type Item = { ref: string; nome: string; cor: string; tamanho: string; medida: string; saldo: number; reservado: number; livre: number };
 type Baixa = { id: string; numero: string | null; motivo: string | null; created_at: string | null; status: string; erp_numero: number | null; erp_sync_erro: string | null; qtd: number; produto: string | null; cor: string | null; tamanho: string | null };
 
 const nf = (n: number) => (Number(n) || 0).toLocaleString("pt-BR");
@@ -105,14 +105,15 @@ export function EstoqueBaixa() {
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="pad" style={{ borderBottom: "1px solid var(--line)", fontWeight: 700 }}>Peças em estoque</div>
           <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>Peça</th><th>Cor</th><th>Tam.</th><th className="num">Saldo</th><th className="num">Reservado</th><th className="num">Livre</th><th></th></tr></thead>
+            <thead><tr><th>Peça</th><th>Referência</th><th>Cor</th><th>Tamanho</th><th className="num">Saldo</th><th className="num">Reservado</th><th className="num">Livre</th><th></th></tr></thead>
             <tbody>
-              {itens.length === 0 && <tr><td colSpan={7} className="muted" style={{ textAlign: "center", padding: 16 }}>Nenhuma peça encontrada.</td></tr>}
+              {itens.length === 0 && <tr><td colSpan={8} className="muted" style={{ textAlign: "center", padding: 16 }}>Nenhuma peça encontrada.</td></tr>}
               {itens.map((it) => (
                 <tr key={`${it.ref}|${it.cor}|${it.tamanho}`}>
                   <td>{it.nome}</td>
+                  <td className="muted" style={{ fontFamily: "monospace", fontSize: 12 }}>{it.ref}</td>
                   <td>{it.cor}</td>
-                  <td>{it.tamanho || "—"}</td>
+                  <td>{it.medida ? <><b>{it.medida}</b>{it.tamanho ? <span className="muted" style={{ fontSize: 11 }}> ({it.tamanho})</span> : null}</> : (it.tamanho || "—")}</td>
                   <td className="num">{nf(it.saldo)}</td>
                   <td className="num" style={{ color: it.reservado > 0 ? "#b45309" : undefined }}>{nf(it.reservado)}</td>
                   <td className="num" style={{ fontWeight: 700, color: it.livre > 0 ? "#166534" : "#b91c1c" }}>{nf(it.livre)}</td>
@@ -157,7 +158,8 @@ export function EstoqueBaixa() {
         <div className="modal-bg" onClick={() => !salvando && setSel(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
           <div className="card pad" onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: "92vw" }}>
             <h3 style={{ marginTop: 0 }}>Baixar peça</h3>
-            <div style={{ marginBottom: 8 }}><b>{sel.nome}</b> · {sel.cor}{sel.tamanho ? " · " + sel.tamanho : ""}</div>
+            <div style={{ marginBottom: 8 }}><b>{sel.nome}</b> · {sel.cor}{(sel.medida || sel.tamanho) ? " · " + (sel.medida || sel.tamanho) : ""}</div>
+            <div className="muted" style={{ fontSize: 11, fontFamily: "monospace", marginBottom: 6 }}>{sel.ref}</div>
             <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>Saldo {nf(sel.saldo)} · reservado {nf(sel.reservado)} · <b style={{ color: "#166534" }}>livre {nf(sel.livre)}</b></div>
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Quantidade a baixar</label>
             <input className="input" type="number" min={1} max={sel.livre} value={qtd} onChange={(e) => setQtd(e.target.value)} style={{ width: 120, marginBottom: 10 }} />
