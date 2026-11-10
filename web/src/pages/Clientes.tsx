@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams, Link } from "react-router-dom";
 import { api, type ClienteCrm, type ClienteFicha as TFicha } from "../api";
 import { ConversaModal } from "./Atendimento";
 
@@ -62,15 +62,28 @@ const SIT: Record<string, { l: string; c: string }> = {
 };
 
 // ── LISTA de clientes ─────────────────────────────────────────────────────────
+const DIMS = ["estado", "representante", "vendedor", "letra", "todos"] as const;
 export function Clientes() {
   const nav = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [lista, setLista] = useState<ClienteCrm[]>([]);
   const [busca, setBusca] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [novo, setNovo] = useState<ClienteCrm | null>(null);
   const [importar, setImportar] = useState(false);
-  const [dim, setDim] = useState<null | "estado" | "representante" | "vendedor" | "letra" | "todos">(null); // menu escolhido
-  const [sel, setSel] = useState<string | null>(null); // grupo selecionado (UF, representante, letra)
+  // dim/sel ficam guardados na URL (?dim=&sel=) pra que, ao abrir um cliente e clicar "Voltar",
+  // a lista volte EXATAMENTE pra camada onde você estava (sem ter que escolher tudo de novo).
+  const [dim, setDim] = useState<null | "estado" | "representante" | "vendedor" | "letra" | "todos">(() => DIMS.find((d) => d === searchParams.get("dim")) || null); // menu escolhido
+  const [sel, setSel] = useState<string | null>(() => searchParams.get("sel") || null); // grupo selecionado (UF, representante, letra)
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (dim) p.set("dim", dim); else p.delete("dim");
+      if (sel) p.set("sel", sel); else p.delete("sel");
+      return p;
+    }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dim, sel]);
   const [abrindo, setAbrindo] = useState<string | null>(null);
   const [escolha, setEscolha] = useState<ClienteCrm | null>(null); // cliente aguardando "prospecção x só conversar"
   const [conversaAberta, setConversaAberta] = useState<string | null>(null); // conversa aberta como janela por cima da lista
@@ -483,7 +496,9 @@ export function ClienteFicha() {
           <div className="breadcrumb"><Link to="/clientes">Comercial › Clientes</Link> › ficha</div>
         </div>
         <div className="row-gap" style={{ display: "flex", gap: 10 }}>
-          <Link to="/clientes" className="btn">← Voltar</Link>
+          {/* Volta pra lista NO PONTO onde você estava (a camada/grupo fica na URL). Se abriu
+              o cliente direto por link, cai na lista de clientes. */}
+          <button className="btn" onClick={() => { if (window.history.length > 1) nav(-1); else nav("/clientes"); }}>← Voltar</button>
           <button className="btn" onClick={() => setEditar(true)}>✏️ Editar</button>
         </div>
       </div>
