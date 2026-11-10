@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-11-09.2";
+const PONTE_VERSAO = "2026-11-10.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -875,7 +875,7 @@ async function rodadaDiagKit(db, estado) {
 // das linhas MAIS NOVAS de cada tabela (pra pegar a OP que ela acabou de gerar). Roda
 // repetidamente até achar pelo menos uma tabela de produção COM linhas (aí fixa a flag),
 // porque a OP pode ainda não existir quando a ponte roda a primeira vez.
-const DIAG_PROD_FLAG = "diagProducaoV1";
+const DIAG_PROD_FLAG = "diagProducaoV2";  // V2: tambem acha a tabela de ITENS da OP (cor/qtd)
 async function rodadaDiagProducao(db, estado) {
   if (estado[DIAG_PROD_FLAG]) return;
   log("diag-producao: procurando a Ordem de Produção no Syntech…");
@@ -911,7 +911,19 @@ async function rodadaDiagProducao(db, estado) {
   // tabelas de produção: colunas + amostra das linhas MAIS NOVAS + contagem
   let achouComLinhas = false;
   try {
-    const tbs = await query(db, "SELECT TRIM(RDB$RELATION_NAME) AS NOME FROM RDB$RELATIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 AND RDB$VIEW_BLR IS NULL AND " + FILTRO.replace(/%NAME%/g, "RELATION_NAME") + " ORDER BY RDB$RELATION_NAME");
+    // Acha as tabelas de produção por NOME (ORDEM/PRODUC/…/ITENS/GRADE) OU pela ASSINATURA
+    // das colunas (tem QUANT + TAM + COR) — assim pega a tabela dos ITENS da OP (cor/quantidade)
+    // mesmo que o nome seja diferente.
+    const tbs = await query(db,
+      "SELECT TRIM(R.RDB$RELATION_NAME) AS NOME FROM RDB$RELATIONS R " +
+      "WHERE COALESCE(R.RDB$SYSTEM_FLAG,0)=0 AND R.RDB$VIEW_BLR IS NULL AND (" +
+        "R.RDB$RELATION_NAME LIKE '%ORDEM%' OR R.RDB$RELATION_NAME LIKE '%PRODUC%' OR R.RDB$RELATION_NAME LIKE '%FABRIC%' OR " +
+        "R.RDB$RELATION_NAME LIKE '%PCP%' OR R.RDB$RELATION_NAME LIKE '%CONFEC%' OR R.RDB$RELATION_NAME LIKE '%ROTEIRO%' OR " +
+        "R.RDB$RELATION_NAME LIKE '%ITENS%' OR R.RDB$RELATION_NAME LIKE '%GRADE%' OR TRIM(R.RDB$RELATION_NAME)='OP' OR " +
+        "(EXISTS (SELECT 1 FROM RDB$RELATION_FIELDS FQ WHERE FQ.RDB$RELATION_NAME=R.RDB$RELATION_NAME AND FQ.RDB$FIELD_NAME CONTAINING 'QUANT') " +
+        " AND EXISTS (SELECT 1 FROM RDB$RELATION_FIELDS FT WHERE FT.RDB$RELATION_NAME=R.RDB$RELATION_NAME AND FT.RDB$FIELD_NAME CONTAINING 'TAM') " +
+        " AND EXISTS (SELECT 1 FROM RDB$RELATION_FIELDS FC WHERE FC.RDB$RELATION_NAME=R.RDB$RELATION_NAME AND FC.RDB$FIELD_NAME CONTAINING 'COR'))" +
+      ") ORDER BY R.RDB$RELATION_NAME");
     const PRIOR = ["EMISSAO", "DT_EMISSAO", "DATA_EMISSAO", "DATA", "DT", "NUMERO", "NUM_OP", "NUMOP", "NRO", "NR", "ID", "CODIGO", "COD", "SEQ", "SEQUENCIA", "AUTOINC"];
     for (const t of tbs) {
       const nome = String(t.NOME || "").trim(); if (!nome) continue;
