@@ -1291,10 +1291,10 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
   if (r.qualificado || r.conv.lojista === 1) tipoFinal = "lojista";
   else if (r.conv.estado === "aguardando-cidade-parceiro" || r.conv.estado === "indicado-parceiro") tipoFinal = "consumidor";
 
-  // Encaminhamento ao representante NÃO é automático: se há um representante
-  // sugerido e ainda não foi autorizado, marca como PENDENTE (a equipe aprova).
-  let autorizado = conv.autorizado ?? null;
-  if (representanteFinal && autorizado == null) autorizado = 0;
+  // (Desativado a pedido) A autorização de representante foi desligada: as conversas
+  // NÃO ficam mais "aguardando autorização". Mantém o valor que já existia e nunca cria
+  // uma pendência nova (antes, um representante sugerido marcava autorizado=0).
+  const autorizado = conv.autorizado ?? null;
 
   await env.DB.prepare(
     `UPDATE atend_conversas SET estado=?, nome=?, setor=?, cnpj=?, cidade=?, uf=?, lojista=?, tipo=?, representante=?, autorizado=?, atualizado_em=datetime('now') WHERE id=?`

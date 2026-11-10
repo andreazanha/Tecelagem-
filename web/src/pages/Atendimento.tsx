@@ -2137,18 +2137,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
             </>)}
             {/* (Removidos a pedido: botão "Marcar como lojista" e o seletor de "Representante".) */}
 
-            {d?.autorizado === 0 && (
-              <div style={{ marginTop: 10, padding: "10px 11px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" }}>
-                <div style={{ fontWeight: 800, fontSize: 13, color: "#92400e", marginBottom: 6 }}>⏳ Aguardando autorização</div>
-                <div style={{ fontSize: 12, color: "#78350f", marginBottom: 8 }}>Confira o representante e autorize pra conectar o cliente. Nada foi enviado a ninguém ainda.</div>
-                <select value={repSel} onChange={(e) => setRepSel(e.target.value)} style={{ width: "100%", marginBottom: 8 }}>
-                  <option value="">— escolher representante —</option>
-                  {reps.map((r) => <option key={r.id} value={r.nome}>{r.nome}</option>)}
-                  {d.representante && !reps.some((r) => r.nome === d.representante) && <option value={d.representante}>{d.representante} (sugerido)</option>}
-                </select>
-                <button className="kbtn go" style={{ width: "100%" }} disabled={busy || !repSel} onClick={autorizar}>✅ Autorizar e conectar</button>
-              </div>
-            )}
+            {/* (Desativado a pedido) O bloco "Aguardando autorização / Autorizar e conectar" do
+                representante foi removido — as conversas não ficam mais aguardando autorização. */}
 
             {d?.pedidos_resumo && d.pedidos_resumo.qtd > 0 && (
               <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 8, background: "#f0fdf4", border: "1px solid #bbf7d0", fontSize: 12.5, color: "#166534" }}>
