@@ -2074,14 +2074,30 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         // saldo individual da capa (erp_estoque), por cor, SÓ no tamanho em que ela entra
         // neste kit (it.tam, código do Syntech ex.: "5K") — nunca soma os outros tamanhos
         // (era o bug que inflava, ex.: 160/180). Peseira/enchimento não limitam.
+        // Normaliza código/medida de tamanho pra comparar: minúsculo, sem espaços,
+        // × e x viram o mesmo caractere. Assim "5K"=="5k" e "55X35"=="55×35".
+        const normTamKey = (s: string) => String(s || "").trim().toLowerCase().replace(/\s+/g, "").replace(/[×x]/g, "x");
         const corTamStock = (comp: string, tam: string): Record<string, number> | null => {
           const m = itens[comp]; if (!m) return null;
           const keys = Object.keys(m);
-          const t = String(tam || "").trim().toLowerCase();
-          // casa o TAMANHO da peça no kit (código do Syntech) com a chave do estoque;
-          // se não casar, usa todas as chaves (seguro).
+          const t = normTamKey(tam);
           let meds = keys;
-          if (t) { const hit = keys.filter((k) => String(k).trim().toLowerCase() === t); if (hit.length) meds = hit; }
+          if (t) {
+            // O estoque pode estar chaveado pelo CÓDIGO ("5K") OU pela MEDIDA ("55×35"). A
+            // receita traz o CÓDIGO (it.tam); traduz pro MEDIDA pelo cadastro da peça
+            // (compInfo.tamanhos) e aceita a chave do estoque que casar com QUALQUER um.
+            const medDaPeca = (() => {
+              const tams = compInfo.get(comp)?.tamanhos;
+              const hit = tams ? tams.find((x) => normTamKey(x.tamanho || "") === t) : undefined;
+              return hit && hit.medida ? normTamKey(hit.medida) : "";
+            })();
+            const alvos = new Set([t]); if (medDaPeca) alvos.add(medDaPeca);
+            const hit = keys.filter((k) => alvos.has(normTamKey(k)));
+            // Tamanho ESPECÍFICO do kit sem saldo nesse tamanho → NÃO herda de outros
+            // tamanhos (era o bug que dava a entrada da Queen em TODOS os kits). Mostra 0.
+            if (!hit.length) return null;
+            meds = hit;
+          }
           const acc: Record<string, number> = {}; let any = false;
           for (const med of meds) for (const cid of Object.keys(m[med])) { acc[cid] = (acc[cid] || 0) + (Number(m[med][cid]) || 0); any = true; }
           return any ? acc : null;
