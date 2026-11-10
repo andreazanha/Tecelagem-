@@ -919,6 +919,168 @@ integracao.post("/estoque-min", async (c) => {
   return c.json({ ok: true, minimo });
 });
 
+// ── BAIXA DE ESTOQUE (ajuste/saída) ──────────────────────────────────────────
+// Tirar uma peça do estoque por perda/defeito/brinde etc. A baixa NÃO mexe no espelho
+// (o Syntech é o dono); ela nasce como um PEDIDO (canal='baixa') pro cliente interno de
+// AJUSTE — mesmo encanamento do pedido de venda — e, ao faturar sem cobrança no Syntech,
+// o saldo cai e a ponte traz. ANTES de aceitar, confere os CARRINHOS/pedidos ativos
+// (reserva atômica): nunca baixa uma peça que já está reservada em carrinho/pedido —
+// é o que impede o oversell (o medo do gestor). O envio ao Syntech só liga quando o
+// cliente de AJUSTE estiver configurado (documento), senão a baixa fica retida (local),
+// segurando a peça, até configurar.
+
+// Documento do cliente de AJUSTE (só dígitos) + nome, lidos da config.
+async function baixaClienteCfg(env: Env): Promise<{ doc: string; nome: string; cod: string; configurado: boolean }> {
+  const get = async (k: string) => ((await env.DB.prepare("SELECT valor FROM config WHERE chave=?").bind(k).first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
+  const doc = (await get("baixa_cliente_doc")).replace(/\D/g, "");
+  const nome = (await get("baixa_cliente_nome")) || "AJUSTE DE ESTOQUE";
+  const cod = await get("baixa_cliente_cod");
+  return { doc, nome, cod, configurado: doc.length >= 11 };
+}
+
+// GET/POST do cliente de ajuste (documento/nome/código ERP).
+integracao.get("/baixa-config", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const cli = await baixaClienteCfg(c.env);
+  return c.json({ doc: cli.doc, nome: cli.nome, cod: cli.cod, configurado: cli.configurado });
+});
+integracao.post("/baixa-config", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ doc?: string; nome?: string; cod?: string }>().catch(() => ({} as { doc?: string; nome?: string; cod?: string }));
+  const doc = String(b.doc ?? "").replace(/\D/g, "").slice(0, 14);
+  const nome = String(b.nome ?? "").trim().slice(0, 80) || "AJUSTE DE ESTOQUE";
+  const cod = String(b.cod ?? "").trim().slice(0, 20);
+  const up = (k: string, v: string) => c.env.DB.prepare("INSERT INTO config (chave, valor, atualizado_em) VALUES (?, ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')").bind(k, v);
+  await c.env.DB.batch([up("baixa_cliente_doc", doc), up("baixa_cliente_nome", nome), up("baixa_cliente_cod", cod)]);
+  return c.json({ ok: true, configurado: doc.length >= 11 });
+});
+
+// Lista as peças do estoque (saldo + reservado + livre) pra escolher o que baixar, e as baixas recentes.
+integracao.get("/estoque-baixa-lista", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const q = (c.req.query("q") || "").trim().toLowerCase();
+  // reservado ativo por peça (carrinhos/pedidos) — a mesma conta da trava.
+  const resMap = new Map<string, number>();
+  for (const r of (((await c.env.DB.prepare(
+    `SELECT lower(rv.ref) AS ref, lower(COALESCE(rv.cor,'')) AS cor, COALESCE(rv.tamanho,'') AS tam, COALESCE(SUM(rv.qtd),0) AS q
+       FROM erp_reserva rv JOIN pedidos p ON p.id=rv.pedido_id WHERE ${FILTRO_RESERVA_ATIVA} GROUP BY 1,2,3`
+  ).all<{ ref: string; cor: string; tam: string; q: number }>().catch(() => ({ results: [] as { ref: string; cor: string; tam: string; q: number }[] }))).results) || [])) resMap.set(`${r.ref}|${r.cor}|${r.tam}`, Number(r.q) || 0);
+  const est = (((await c.env.DB.prepare(
+    `SELECT e.ref, COALESCE(p.nome, e.produto, e.ref) AS nome, e.cor, e.tamanho, COALESCE(e.saldo,0) AS saldo
+       FROM erp_estoque e LEFT JOIN erp_produtos p ON p.ref = e.ref
+      WHERE COALESCE(e.saldo,0) > 0 ORDER BY nome, e.cor, e.tamanho`
+  ).all<{ ref: string; nome: string; cor: string | null; tamanho: string | null; saldo: number }>().catch(() => ({ results: [] as { ref: string; nome: string; cor: string | null; tamanho: string | null; saldo: number }[] }))).results) || []);
+  const itens = est.map((e) => {
+    const ref = (e.ref || "").trim(); const cor = (e.cor || "").trim(); const tam = (e.tamanho || "").trim();
+    const reservado = resMap.get(`${ref.toLowerCase()}|${cor.toLowerCase()}|${tam}`) || 0;
+    const livre = Math.max(0, (Number(e.saldo) || 0) - reservado);
+    return { ref, nome: String(e.nome || ref), cor, tamanho: tam, saldo: Number(e.saldo) || 0, reservado, livre };
+  }).filter((x) => !q || `${x.nome} ${x.ref} ${x.cor} ${x.tamanho}`.toLowerCase().includes(q));
+  // baixas recentes (canal='baixa')
+  const baixas = (((await c.env.DB.prepare(
+    `SELECT p.id, p.numero_erp AS numero, p.observacao AS motivo, p.created_at, COALESCE(p.erp_sync_status,'pendente') AS status, p.erp_numero, p.erp_sync_erro,
+            (SELECT COALESCE(SUM(qtd),0) FROM pedido_itens WHERE pedido_id=p.id) AS qtd,
+            (SELECT COALESCE(produto,ref) FROM pedido_itens WHERE pedido_id=p.id LIMIT 1) AS produto,
+            (SELECT cor_grade FROM pedido_itens WHERE pedido_id=p.id LIMIT 1) AS cor,
+            (SELECT tamanho FROM pedido_itens WHERE pedido_id=p.id LIMIT 1) AS tamanho
+       FROM pedidos p WHERE p.canal='baixa' ORDER BY p.created_at DESC LIMIT 40`
+  ).all<{ id: string; numero: string | null; motivo: string | null; created_at: string | null; status: string; erp_numero: number | null; erp_sync_erro: string | null; qtd: number; produto: string | null; cor: string | null; tamanho: string | null }>().catch(() => ({ results: [] as { id: string; numero: string | null; motivo: string | null; created_at: string | null; status: string; erp_numero: number | null; erp_sync_erro: string | null; qtd: number; produto: string | null; cor: string | null; tamanho: string | null }[] }))).results) || []);
+  const cli = await baixaClienteCfg(c.env);
+  return c.json({ itens, baixas, cliente: { nome: cli.nome, configurado: cli.configurado } });
+});
+
+// Dá baixa de uma peça. Confere a disponibilidade (saldo − reservas ativas) ATOMICAMENTE:
+// recusa se a peça estiver em carrinho/pedido. Cria o pedido de baixa (cliente AJUSTE).
+integracao.post("/estoque-baixa", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ ref?: string; cor?: string; tamanho?: string; qtd?: number | string; motivo?: string; produto?: string }>().catch(() => ({} as { ref?: string; cor?: string; tamanho?: string; qtd?: number | string; motivo?: string; produto?: string }));
+  const ref = String(b.ref ?? "").trim();
+  const cor = String(b.cor ?? "").trim();
+  const tamanho = String(b.tamanho ?? "").trim();
+  const qtd = Math.max(1, Math.round(Number(b.qtd) || 0));
+  const motivo = String(b.motivo ?? "").trim().slice(0, 200);
+  const produto = String(b.produto ?? ref).trim();
+  if (!ref || !cor) return c.json({ error: "ref_cor_obrigatorios" }, 400);
+  if (!qtd) return c.json({ error: "qtd_invalida" }, 400);
+  if (!motivo) return c.json({ error: "motivo_obrigatorio", msg: "Diga o motivo da baixa (ex.: perda, defeito, brinde)." }, 400);
+  // disponibilidade AGORA = saldo − reservas ativas de outros pedidos
+  const saldoRow = await c.env.DB.prepare(
+    "SELECT COALESCE(SUM(saldo),0) AS s FROM erp_estoque WHERE lower(ref)=lower(?) AND lower(COALESCE(cor,''))=lower(?) AND COALESCE(tamanho,'')=?"
+  ).bind(ref, cor, tamanho).first<{ s: number }>().catch(() => null);
+  const saldo = Number(saldoRow?.s) || 0;
+  const resRow = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(rv.qtd),0) AS q FROM erp_reserva rv JOIN pedidos p ON p.id=rv.pedido_id
+      WHERE lower(rv.ref)=lower(?) AND lower(COALESCE(rv.cor,''))=lower(?) AND COALESCE(rv.tamanho,'')=? AND ${FILTRO_RESERVA_ATIVA}`
+  ).bind(ref, cor, tamanho).first<{ q: number }>().catch(() => null);
+  const reservado = Number(resRow?.q) || 0;
+  const livre = Math.max(0, saldo - reservado);
+  if (qtd > livre) return c.json({ error: "sem_estoque", msg: `Só dá pra baixar ${livre} agora (saldo ${saldo} − ${reservado} reservada(s) em carrinho/pedido).`, livre, saldo, reservado }, 409);
+  // resolve o código da cor (CORES.NUMERO) pelo cadastro — best-effort (pro envio ao Syntech)
+  let codCor: number | null = null;
+  try {
+    const pr = await c.env.DB.prepare("SELECT cores FROM erp_produtos WHERE ref=? LIMIT 1").bind(ref).first<{ cores: string | null }>();
+    const arr = pr?.cores ? JSON.parse(pr.cores) : [];
+    if (Array.isArray(arr)) { const hit = arr.find((x: { nome?: string; numero?: number }) => String(x?.nome || "").trim().toLowerCase() === cor.toLowerCase()); if (hit && hit.numero != null) codCor = Number(hit.numero); }
+  } catch { /* cod_cor fica null; resolvido depois */ }
+  const cli = await baixaClienteCfg(c.env);
+  const pedidoId = uid();
+  const numero = "BX-" + pedidoId.slice(0, 6).toUpperCase();
+  const usuario = ("u" in g && g.u ? (g.u as { nome?: string }).nome : "") || "";
+  const obs = `Baixa de estoque — ${motivo}${usuario ? " (por " + usuario + ")" : ""}`;
+  // ATÔMICO: pedido + item + reserva CONDICIONAL (só grava se couber no disponível, reavaliado
+  // dentro do batch). Se dois lançamentos disputarem a última peça, o 2º não grava a reserva.
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      // reposicao=1: marca "NÃO é venda de cliente" (mesmo flag que os relatórios de venda já
+      // excluem com reposicao=0). A baixa não cria card de produção nem producao_op_estoque,
+      // então não aparece na esteira nem no "precisa produzir" — fica inerte fora do canal 'baixa'.
+      `INSERT INTO pedidos (id, numero_erp, canal, cliente_nome, cliente_cnpj, tipo, reposicao, data_pedido, observacao, status, bloqueado, erp_sync_status, erp_liberado)
+       VALUES (?, ?, 'baixa', ?, ?, 'baixa', 1, date('now'), ?, 'novo', 0, 'pendente', 1)`
+    ).bind(pedidoId, numero, cli.nome, cli.configurado ? cli.doc : null, obs),
+    c.env.DB.prepare(
+      `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, cod_cor, tamanho, erp_tamanho, qtd, parte, kit, valor_unit)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'baixa', 0, 0)`
+    ).bind(uid(), pedidoId, produto, ref, cor, codCor, tamanho || null, tamanho || null, qtd),
+    c.env.DB.prepare(
+      `INSERT INTO erp_reserva (id, pedido_id, ref, cor, tamanho, qtd)
+         SELECT ?,?,?,?,?,?
+          WHERE ? <= (
+            (SELECT COALESCE(SUM(saldo),0) FROM erp_estoque WHERE lower(ref)=lower(?) AND lower(COALESCE(cor,''))=lower(?) AND COALESCE(tamanho,'')=?)
+            - (SELECT COALESCE(SUM(rv.qtd),0) FROM erp_reserva rv JOIN pedidos p ON p.id=rv.pedido_id
+                WHERE lower(rv.ref)=lower(?) AND lower(COALESCE(rv.cor,''))=lower(?) AND COALESCE(rv.tamanho,'')=? AND rv.pedido_id<>? AND ${FILTRO_RESERVA_ATIVA})
+          )`
+    ).bind(uid(), pedidoId, ref, cor || null, tamanho || null, qtd, qtd, ref, cor, tamanho, ref, cor, tamanho, pedidoId),
+  ]);
+  // confere se a reserva pegou (a condicional pode ter barrado numa corrida)
+  const got = await c.env.DB.prepare("SELECT COALESCE(SUM(qtd),0) AS q FROM erp_reserva WHERE pedido_id=?").bind(pedidoId).first<{ q: number }>().catch(() => null);
+  if ((Number(got?.q) || 0) < qtd) {
+    await c.env.DB.batch([
+      c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pedidoId),
+      c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pedidoId),
+      c.env.DB.prepare("DELETE FROM pedidos WHERE id=?").bind(pedidoId),
+    ]);
+    return c.json({ error: "sem_estoque", msg: "A peça acabou de ser reservada em outro pedido. Tente de novo.", livre: Math.max(0, livre - qtd) }, 409);
+  }
+  return c.json({ ok: true, pedido_id: pedidoId, numero, enviaSyntech: cli.configurado });
+});
+
+// Cancela/desfaz uma baixa que ainda NÃO foi gravada no Syntech (solta a reserva).
+integracao.post("/estoque-baixa-cancelar", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ id?: string }>().catch(() => ({} as { id?: string }));
+  const id = String(b.id ?? "").trim();
+  if (!id) return c.json({ error: "id_obrigatorio" }, 400);
+  const p = await c.env.DB.prepare("SELECT COALESCE(erp_sync_status,'pendente') AS s FROM pedidos WHERE id=? AND canal='baixa' LIMIT 1").bind(id).first<{ s: string }>().catch(() => null);
+  if (!p) return c.json({ error: "baixa_nao_encontrada" }, 404);
+  if (p.s === "enviado") return c.json({ error: "ja_enviada", msg: "Essa baixa já foi gravada no Syntech — não dá pra cancelar por aqui." }, 409);
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(id),
+    c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(id),
+    c.env.DB.prepare("DELETE FROM pedidos WHERE id=? AND canal='baixa'").bind(id),
+  ]);
+  return c.json({ ok: true });
+});
+
 // VISÃO GERAL do estoque (dashboard): total de peças, valor (a preço de atacado), nº de produtos
 // e SKUs, quebra por categoria (Edição Limitada × Pronta Entrega) e os produtos de maior valor.
 integracao.get("/estoque-visao", async (c) => {
@@ -2857,7 +3019,8 @@ integracao.get("/pedidos-para-erp", async (c) => {
   const { results: peds } = await c.env.DB.prepare(
     `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.valor_total, p.data_pedido, cl.codigo_erp AS cod_cli
        FROM pedidos p LEFT JOIN clientes cl ON cl.id = p.cliente_id
-      WHERE p.canal='loja_b2b' AND COALESCE(p.erp_sync_status,'pendente')='pendente'${filtroLiberado}
+      WHERE (p.canal='loja_b2b' OR (p.canal='baixa' AND COALESCE(p.cliente_cnpj,'')<>''))
+        AND COALESCE(p.erp_sync_status,'pendente')='pendente'${filtroLiberado}
       ORDER BY p.created_at LIMIT 20`
   ).all<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; valor_total: number | null; data_pedido: string | null; cod_cli: string | null }>();
   const pedidos = [];
@@ -2880,7 +3043,7 @@ integracao.post("/pedido-erp-gravado", async (c) => {
   const numero = Math.trunc(Number(b.numero_erp) || 0);
   if (!id || !numero) return c.json({ error: "faltam_dados" }, 400);
   const stmts: D1PreparedStatement[] = [
-    c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='enviado', erp_numero=?, erp_sync_em=datetime('now'), erp_sync_erro=NULL WHERE id=? AND canal='loja_b2b'").bind(numero, id),
+    c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='enviado', erp_numero=?, erp_sync_em=datetime('now'), erp_sync_erro=NULL WHERE id=? AND canal IN ('loja_b2b','baixa')").bind(numero, id),
   ];
   const cod = String(b.cod_cli || "").trim();
   if (cod) stmts.push(c.env.DB.prepare("UPDATE clientes SET codigo_erp=? WHERE id=(SELECT cliente_id FROM pedidos WHERE id=?) AND COALESCE(codigo_erp,'')=''").bind(cod, id));
@@ -2914,7 +3077,7 @@ integracao.post("/pedido-erp-erro", async (c) => {
   const b = await c.req.json().catch(() => ({})) as { id?: string; erro?: string };
   const id = String(b.id || "").trim();
   if (!id) return c.json({ error: "faltam_dados" }, 400);
-  await c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='erro', erp_sync_erro=?, erp_sync_em=datetime('now') WHERE id=? AND canal='loja_b2b'")
+  await c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='erro', erp_sync_erro=?, erp_sync_em=datetime('now') WHERE id=? AND canal IN ('loja_b2b','baixa')")
     .bind(String(b.erro || "erro desconhecido").slice(0, 500), id).run();
   return c.json({ ok: true });
 });

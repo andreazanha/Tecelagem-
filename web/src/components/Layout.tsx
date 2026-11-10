@@ -193,6 +193,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/estoque-syntech", icon: "🔎", label: "Estoque do Syntech", page: "pedidos" },
       { to: "/precisa-produzir", icon: "🏭", label: "Precisa Produzir", page: "pedidos" },
       { to: "/preparar-entrada", icon: "📥", label: "Preparar Entrada", page: "pedidos" },
+      { to: "/estoque-baixa", icon: "📉", label: "Baixa de Estoque", page: "pedidos" },
       { to: "/produtos?aba=reposicao", icon: "⚠️", label: "Reposição", page: "produtos" },
       { to: "/produtos?aba=entradas", icon: "⬇️", label: "Entrada de Estoque", page: "produtos" },
       { to: "/produtos?aba=ficha", icon: "🧵", label: "Ficha Técnica", page: "produtos" },

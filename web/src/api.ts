@@ -1532,6 +1532,22 @@ export const api = {
   // Exclui de vez uma OP (inclusive já iniciada) — pra limpar OPs de teste.
   producaoOpExcluir: (id: string) =>
     jsonPost("/api/integracao/producao-op-excluir", { id }).then((r) => j<{ ok?: boolean; error?: string }>(r)),
+  // ── Baixa de estoque (ajuste/saída) ──
+  estoqueBaixaLista: (q?: string) =>
+    fetch("/api/integracao/estoque-baixa-lista" + (q ? `?q=${encodeURIComponent(q)}` : ""), { headers: { ...authHeaders() } }).then((r) =>
+      j<{
+        itens: { ref: string; nome: string; cor: string; tamanho: string; saldo: number; reservado: number; livre: number }[];
+        baixas: { id: string; numero: string | null; motivo: string | null; created_at: string | null; status: string; erp_numero: number | null; erp_sync_erro: string | null; qtd: number; produto: string | null; cor: string | null; tamanho: string | null }[];
+        cliente: { nome: string; configurado: boolean };
+      }>(r)),
+  estoqueBaixar: (bx: { ref: string; cor: string; tamanho: string; qtd: number; motivo: string; produto?: string }) =>
+    jsonPost("/api/integracao/estoque-baixa", bx).then((r) => j<{ ok?: boolean; pedido_id?: string; numero?: string; enviaSyntech?: boolean; error?: string; msg?: string; livre?: number; saldo?: number; reservado?: number }>(r)),
+  estoqueBaixaCancelar: (id: string) =>
+    jsonPost("/api/integracao/estoque-baixa-cancelar", { id }).then((r) => j<{ ok?: boolean; error?: string; msg?: string }>(r)),
+  baixaConfigGet: () =>
+    fetch("/api/integracao/baixa-config", { headers: { ...authHeaders() } }).then((r) => j<{ doc: string; nome: string; cod: string; configurado: boolean }>(r)),
+  baixaConfigSalvar: (b: { doc: string; nome: string; cod: string }) =>
+    jsonPost("/api/integracao/baixa-config", b).then((r) => j<{ ok?: boolean; configurado?: boolean }>(r)),
   // Resumo/inteligência do estoque: contagens + listas de ruptura e estoque baixo.
   erpEstoqueResumo: (baixo?: number) =>
     fetch("/api/integracao/estoque-resumo" + (baixo != null ? `?baixo=${baixo}` : "")).then((r) =>
