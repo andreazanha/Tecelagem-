@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-11-10.1";
+const PONTE_VERSAO = "2026-11-10.2";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -875,7 +875,7 @@ async function rodadaDiagKit(db, estado) {
 // das linhas MAIS NOVAS de cada tabela (pra pegar a OP que ela acabou de gerar). Roda
 // repetidamente até achar pelo menos uma tabela de produção COM linhas (aí fixa a flag),
 // porque a OP pode ainda não existir quando a ponte roda a primeira vez.
-const DIAG_PROD_FLAG = "diagProducaoV2";  // V2: tambem acha a tabela de ITENS da OP (cor/qtd)
+const DIAG_PROD_FLAG = "diagProducaoV3";  // V3: itens por QUANT/QTD + TAM/GRADE + COR
 async function rodadaDiagProducao(db, estado) {
   if (estado[DIAG_PROD_FLAG]) return;
   log("diag-producao: procurando a Ordem de Produção no Syntech…");
@@ -920,8 +920,8 @@ async function rodadaDiagProducao(db, estado) {
         "R.RDB$RELATION_NAME LIKE '%ORDEM%' OR R.RDB$RELATION_NAME LIKE '%PRODUC%' OR R.RDB$RELATION_NAME LIKE '%FABRIC%' OR " +
         "R.RDB$RELATION_NAME LIKE '%PCP%' OR R.RDB$RELATION_NAME LIKE '%CONFEC%' OR R.RDB$RELATION_NAME LIKE '%ROTEIRO%' OR " +
         "R.RDB$RELATION_NAME LIKE '%ITENS%' OR R.RDB$RELATION_NAME LIKE '%GRADE%' OR TRIM(R.RDB$RELATION_NAME)='OP' OR " +
-        "(EXISTS (SELECT 1 FROM RDB$RELATION_FIELDS FQ WHERE FQ.RDB$RELATION_NAME=R.RDB$RELATION_NAME AND FQ.RDB$FIELD_NAME CONTAINING 'QUANT') " +
-        " AND EXISTS (SELECT 1 FROM RDB$RELATION_FIELDS FT WHERE FT.RDB$RELATION_NAME=R.RDB$RELATION_NAME AND FT.RDB$FIELD_NAME CONTAINING 'TAM') " +
+        "(EXISTS (SELECT 1 FROM RDB$RELATION_FIELDS FQ WHERE FQ.RDB$RELATION_NAME=R.RDB$RELATION_NAME AND (FQ.RDB$FIELD_NAME CONTAINING 'QUANT' OR FQ.RDB$FIELD_NAME CONTAINING 'QTD')) " +
+        " AND EXISTS (SELECT 1 FROM RDB$RELATION_FIELDS FT WHERE FT.RDB$RELATION_NAME=R.RDB$RELATION_NAME AND (FT.RDB$FIELD_NAME CONTAINING 'TAM' OR FT.RDB$FIELD_NAME CONTAINING 'GRADE')) " +
         " AND EXISTS (SELECT 1 FROM RDB$RELATION_FIELDS FC WHERE FC.RDB$RELATION_NAME=R.RDB$RELATION_NAME AND FC.RDB$FIELD_NAME CONTAINING 'COR'))" +
       ") ORDER BY R.RDB$RELATION_NAME");
     const PRIOR = ["EMISSAO", "DT_EMISSAO", "DATA_EMISSAO", "DATA", "DT", "NUMERO", "NUM_OP", "NUMOP", "NRO", "NR", "ID", "CODIGO", "COD", "SEQ", "SEQUENCIA", "AUTOINC"];
