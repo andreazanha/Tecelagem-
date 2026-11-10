@@ -205,7 +205,7 @@ function DetalheRep({ detalhe, carregando }: { detalhe: ComercialDetalhe | null;
 }
 
 // ── REPRESENTANTES — listagem profissional + cadastro ────────────────────────────
-const VAZIO: Partial<Representante> = { nome: "", whatsapp: "", email: "", observacao: "", ufs: "", cidades: "", comissao: null, instagram: "", ativo: 1 };
+const VAZIO: Partial<Representante> = { nome: "", whatsapp: "", email: "", observacao: "", ufs: "", cidades: "", comissao: null, meta_pecas: 0, instagram: "", ativo: 1 };
 
 function AbaRepresentantes() {
   const [lista, setLista] = useState<Representante[]>([]);
@@ -289,6 +289,7 @@ function AbaRepresentantes() {
               <th>Representante</th><th>Estados</th>
               <th style={{ textAlign: "right" }}>Carteira</th><th style={{ textAlign: "right" }}>Comissão</th>
               <th>WhatsApp</th><th style={{ textAlign: "right" }}>Faturamento/mês</th>
+              <th style={{ textAlign: "right" }}>Meta (pç/mês)</th>
               <th style={{ textAlign: "center" }}>Situação</th><th style={{ textAlign: "right" }}>Ações</th>
             </tr></thead>
             <tbody>
@@ -303,6 +304,13 @@ function AbaRepresentantes() {
                       <td style={{ textAlign: "right" }}>{r.comissao != null ? `${r.comissao}%` : "—"}</td>
                       <td>{r.whatsapp || <span className="muted">—</span>}</td>
                       <td style={{ textAlign: "right", fontWeight: 600 }}>{brl(fatDe(r))}</td>
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{(() => {
+                        const meta = r.meta_pecas || 0;
+                        if (meta <= 0) return <span className="muted">—</span>;
+                        const pec = vendasMes[norm(r.nome)]?.pecas || 0;
+                        const falta = Math.max(0, meta - pec);
+                        return <span title={`${Math.min(100, Math.round((pec / meta) * 100))}% da meta`}><b style={{ color: falta === 0 ? "#166534" : "#1e3a8a" }}>{nInt(pec)}</b> <span className="muted">/ {nInt(meta)}</span>{falta > 0 ? <span className="muted" style={{ fontSize: 11, display: "block" }}>faltam {nInt(falta)}</span> : <span style={{ fontSize: 11, display: "block", color: "#166534" }}>✓ batida</span>}</span>;
+                      })()}</td>
                       <td style={{ textAlign: "center" }}><span className={"com-badge " + ((r.ativo ?? 1) ? "ok" : "off")}>{(r.ativo ?? 1) ? "Ativo" : "Inativo"}</span></td>
                       <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                         <button className="btn btn-soft" onClick={() => setEdit(r)}>Editar</button>{" "}
@@ -311,7 +319,7 @@ function AbaRepresentantes() {
                       </td>
                     </tr>
                     {aberto && (
-                      <tr><td colSpan={8} style={{ background: "var(--bg-soft,#fafafa)" }}>
+                      <tr><td colSpan={9} style={{ background: "var(--bg-soft,#fafafa)" }}>
                         <div className="com-detalhe">
                           <div><b>E-mail:</b> {r.email || "—"}</div>
                           <div><b>Instagram:</b> {r.instagram || "—"}</div>
@@ -593,6 +601,9 @@ function ModalRep({ edit, setEdit, salvar, salvando }: { edit: Partial<Represent
 
           <div className="com-sec">Comissão</div>
           <label className="campo"><span>Percentual padrão (%)</span><input type="number" step="0.1" min="0" value={edit.comissao ?? ""} onChange={(e) => set({ comissao: e.target.value === "" ? null : Number(e.target.value) })} placeholder="ex.: 5" /><small className="muted">Por enquanto a comissão é uma <b>estimativa</b> (% × total vendido). As regras oficiais (base, deduções) entram numa etapa seguinte.</small></label>
+
+          <div className="com-sec">Meta</div>
+          <label className="campo"><span>Meta mensal (peças)</span><input type="number" step="1" min="0" value={edit.meta_pecas ?? ""} onChange={(e) => set({ meta_pecas: e.target.value === "" ? 0 : Math.max(0, Math.round(Number(e.target.value))) })} placeholder="ex.: 300" /><small className="muted">Quantas peças o representante deve vender no mês. Aparece no acompanhamento e no relatório semanal. Deixe 0 pra sem meta.</small></label>
 
           <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={!!(edit.ativo ?? 1)} onChange={(e) => set({ ativo: e.target.checked ? 1 : 0 })} /><span>Representante ativo</span></label>
         </div>

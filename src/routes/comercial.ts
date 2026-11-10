@@ -23,7 +23,7 @@ representantes.get("/", async (c) => {
   // Carteira: conta por CÓDIGO (clientes.rep_codigo = codigo_erp) quando o cliente já
   // veio ligado do Syntech; senão cai no casamento por nome (clientes sem código).
   const { results } = await c.env.DB.prepare(
-    `SELECT r.id, r.nome, r.whatsapp, r.email, r.ativo, r.observacao, r.ufs, r.instagram, r.cidades, r.comissao, r.codigo_erp,
+    `SELECT r.id, r.nome, r.whatsapp, r.email, r.ativo, r.observacao, r.ufs, r.instagram, r.cidades, r.comissao, r.codigo_erp, COALESCE(r.meta_pecas,0) AS meta_pecas,
             (SELECT COUNT(*) FROM clientes c
               WHERE (COALESCE(r.codigo_erp,'') <> '' AND c.rep_codigo = r.codigo_erp)
                  OR (COALESCE(c.rep_codigo,'') = '' AND TRIM(LOWER(COALESCE(c.representante,''))) = TRIM(LOWER(r.nome)))) AS carteira
@@ -33,9 +33,10 @@ representantes.get("/", async (c) => {
 });
 
 representantes.post("/", async (c) => {
-  const b = await c.req.json<{ id?: string; nome?: string; whatsapp?: string; email?: string; ativo?: boolean | number; observacao?: string; ufs?: string; instagram?: string; cidades?: string; comissao?: number | string }>().catch(() => ({}) as Record<string, never>);
+  const b = await c.req.json<{ id?: string; nome?: string; whatsapp?: string; email?: string; ativo?: boolean | number; observacao?: string; ufs?: string; instagram?: string; cidades?: string; comissao?: number | string; meta_pecas?: number | string }>().catch(() => ({}) as Record<string, never>);
   const nome = (b.nome || "").trim();
   if (!nome) return c.json({ error: "nome é obrigatório" }, 400);
+  const metaPecas = Math.max(0, Math.round(Number(b.meta_pecas) || 0)); // meta mensal em peças (0 = sem meta)
   // Normaliza a carteira de UFs: "mg, sp ; go" → "MG,SP,GO".
   const ufs = (b.ufs || "").split(/[,;\s]+/).map((u) => u.trim().toUpperCase()).filter((u) => /^[A-Z]{2}$/.test(u)).join(",") || null;
   const cidades = (b.cidades || "").split(/[;\n]+/).map((s) => s.trim()).filter(Boolean).join(", ") || null;
@@ -43,12 +44,12 @@ representantes.post("/", async (c) => {
   const existe = b.id ? await c.env.DB.prepare("SELECT id FROM representantes WHERE id = ?").bind(b.id).first() : null;
   const id = b.id || uid();
   await c.env.DB.prepare(
-    `INSERT INTO representantes (id, nome, whatsapp, email, ativo, observacao, ufs, instagram, cidades, comissao) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO representantes (id, nome, whatsapp, email, ativo, observacao, ufs, instagram, cidades, comissao, meta_pecas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, whatsapp = excluded.whatsapp, email = excluded.email,
        ativo = excluded.ativo, observacao = excluded.observacao, ufs = excluded.ufs, instagram = excluded.instagram,
-       cidades = excluded.cidades, comissao = excluded.comissao`
+       cidades = excluded.cidades, comissao = excluded.comissao, meta_pecas = excluded.meta_pecas`
   )
-    .bind(id, nome, (b.whatsapp || "").trim() || null, (b.email || "").trim() || null, b.ativo === false || b.ativo === 0 ? 0 : 1, (b.observacao || "").trim() || null, ufs, (b.instagram || "").trim() || null, cidades, Number.isFinite(comissao as number) ? comissao : null)
+    .bind(id, nome, (b.whatsapp || "").trim() || null, (b.email || "").trim() || null, b.ativo === false || b.ativo === 0 ? 0 : 1, (b.observacao || "").trim() || null, ufs, (b.instagram || "").trim() || null, cidades, Number.isFinite(comissao as number) ? comissao : null, metaPecas)
     .run();
   return c.json({ id, nome }, existe ? 200 : 201);
 });

@@ -2046,6 +2046,7 @@ export interface Representante {
   instagram?: string | null;
   cidades?: string | null;
   comissao?: number | null;
+  meta_pecas?: number | null; // meta mensal em PEÇAS (0 = sem meta)
   carteira?: number; // nº de clientes na carteira (clientes.representante = nome)
   codigo_erp?: string | null; // GUIAS.CODIGO — preenchido = ligado ao Syntech
 }
