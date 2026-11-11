@@ -449,17 +449,24 @@ loja.get("/rep-pedidos", async (c) => {
     `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.valor_total, p.created_at,
             COALESCE(p.erp_sync_status,'pendente') AS sync, COALESCE(p.erp_liberado,0) AS liberado,
             COALESCE(p.loja_forma_desc,'') AS forma, p.erp_numero, p.reserva_expira_em AS expira_em,
+            COALESCE(p.aprovado_erp_em,'') AS aprovado,
             (SELECT COALESCE(SUM(qtd),0) FROM pedido_itens WHERE pedido_id=p.id) AS pecas
        FROM pedidos p
       WHERE p.canal='loja_b2b' AND TRIM(LOWER(COALESCE(p.vendedor,''))) = TRIM(LOWER(?))
       ORDER BY p.created_at DESC LIMIT 100`
-  ).bind(rep.nome).all<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; valor_total: number | null; created_at: string | null; sync: string; liberado: number; forma: string; erp_numero: number | null; expira_em: string | null; pecas: number }>();
+  ).bind(rep.nome).all<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; valor_total: number | null; created_at: string | null; sync: string; liberado: number; forma: string; erp_numero: number | null; expira_em: string | null; aprovado: string; pecas: number }>();
   const pedidos = (peds || []).map((p) => {
+    // Status AUTOMÁTICO: segue a aprovação real (aprovado_erp_em) e o retorno do Syntech
+    // (faturado/cancelado, atualizados pela ponte). Vira "Confirmado" sozinho quando a Big aprova.
+    const aprovadoDeVerdade = !!String(p.aprovado || "").trim();
+    const nSuf = p.erp_numero ? (" · nº " + p.erp_numero) : "";
     let status: string, label: string;
-    if (p.sync === "rascunho") { status = "espera"; label = "Em espera"; }
-    else if (p.sync === "enviado") { status = "syntech"; label = p.erp_numero ? ("No Syntech · nº " + p.erp_numero) : "No Syntech"; }
+    if (p.sync === "cancelado") { status = "cancelado"; label = "Cancelado"; }
+    else if (p.sync === "rascunho") { status = "espera"; label = "Em espera"; }
+    else if (aprovadoDeVerdade || p.sync === "faturado") { status = "aprovado"; label = "Confirmado" + nSuf; }
+    else if (p.sync === "enviado") { status = "syntech"; label = "Aguardando aprovação" + nSuf; }
     else if (p.sync === "erro") { status = "erro"; label = "Com erro — a Big resolve"; }
-    else if (Number(p.liberado) === 1) { status = "aprovado"; label = "Aprovado · indo pro Syntech"; }
+    else if (Number(p.liberado) === 1) { status = "aguardando"; label = "Aprovado · indo pro Syntech"; }
     else { status = "aguardando"; label = "Enviado · aguardando a Big"; }
     return {
       id: p.id, cliente: p.cliente_nome, cnpj: p.cliente_cnpj, data: p.created_at,

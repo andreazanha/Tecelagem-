@@ -2090,7 +2090,7 @@
       .catch(function(){ box.innerHTML='<div class="rep-vazio">Não consegui carregar seus pedidos. Tente de novo.</div>'; });
   }
   function chipPed(st,label){
-    var cls = st==="espera"?"wait" : st==="aguardando"?"info" : (st==="aprovado"||st==="syntech")?"ok" : st==="erro"?"block":"info";
+    var cls = st==="espera"?"wait" : st==="aprovado"?"ok" : (st==="cancelado"||st==="erro")?"block" : "info";
     return '<span class="rep-chip '+cls+'">● '+esc(label)+'</span>';
   }
   var REP_PED_LISTA=[], REP_PED_ABERTO="";
