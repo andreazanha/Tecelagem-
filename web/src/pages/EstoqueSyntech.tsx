@@ -55,7 +55,7 @@ export function EstoqueSyntech() {
 
   function carregar() {
     setLinhas(null); setErro("");
-    api.erpEstoque().then((r) => setLinhas(r as Linha[])).catch((e) => setErro((e as Error).message));
+    api.erpEstoque({ completo: true }).then((r) => setLinhas(r as Linha[])).catch((e) => setErro((e as Error).message));
     api.erpSyncStatus().then((s) => setSync({ atualizado_em: s.estoque.atualizado_em, agora: s.agora, itens: s.estoque.itens })).catch(() => {});
     api.erpKitAlertas().then((r) => { setAlertas(r.alertas || []); if ((r.alertas || []).length) setPopup(true); }).catch(() => {});
     api.erpEstoqueResumo().then((r) => setResumo(r as Resumo)).catch(() => {});

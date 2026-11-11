@@ -741,6 +741,21 @@ integracao.get("/estoque", async (c) => {
     const reservado = resMap.get(`${String(r.ref || "").toLowerCase()}|${String(r.cor || "").toLowerCase()}|${cod}`) || 0;
     return { ...r, codigo_tamanho: cod || null, medida: med ? fmtMed(med) : null, reservado, disponivel: Math.max(0, saldo - reservado) };
   });
+  // ?completo=1 → inclui TODOS os kits (KT…) e Edição Limitada (ED…) CADASTRADOS, mesmo sem saldo
+  // no espelho (aparecem com 0). Assim a tela mostra todos os cadastrados no Syntech, não só os que
+  // já tiveram entrada. Só na visão completa (sem filtro de ref/busca), pra não poluir outras telas.
+  if ((c.req.query("completo") || "") === "1" && !ref && !busca) {
+    const presentes = new Set(out.map((r) => String(r.ref || "").trim().toLowerCase()).filter(Boolean));
+    const regs = ((await c.env.DB.prepare(
+      "SELECT ref, nome FROM erp_produtos WHERE UPPER(COALESCE(ref,'')) LIKE 'KT%' OR UPPER(COALESCE(ref,'')) GLOB 'ED[0-9]*' ORDER BY nome"
+    ).all<{ ref: string; nome: string | null }>().catch(() => ({ results: [] as { ref: string; nome: string | null }[] }))).results) || [];
+    for (const p of regs) {
+      const rref = String(p.ref || "").trim();
+      if (!rref || presentes.has(rref.toLowerCase())) continue;
+      presentes.add(rref.toLowerCase());
+      out.push({ produto: p.nome || rref, ref: rref, cor: null, tamanho: null, saldo: 0, unidade: null, producao: 0, atualizado_em: "", codigo_tamanho: null, medida: null, reservado: 0, disponivel: 0 });
+    }
+  }
   return c.json(out);
 });
 

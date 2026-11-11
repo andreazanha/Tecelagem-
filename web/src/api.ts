@@ -1469,10 +1469,11 @@ export const api = {
         estoque_por_peca: Record<string, { ref: string | null; cor: string | null; tamanho: string | null; saldo: number }[]>;
         pecas_sem_espelho: string[];
       }>(r)),
-  erpEstoque: (q?: { ref?: string; busca?: string }) => {
+  erpEstoque: (q?: { ref?: string; busca?: string; completo?: boolean }) => {
     const p = new URLSearchParams();
     if (q?.ref) p.set("ref", q.ref);
     if (q?.busca) p.set("busca", q.busca);
+    if (q?.completo) p.set("completo", "1");
     const qs = p.toString();
     return fetch("/api/integracao/estoque" + (qs ? `?${qs}` : "")).then((r) =>
       j<{ produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; reservado: number; disponivel: number; producao?: number; unidade: string | null; atualizado_em: string }[]>(r));
