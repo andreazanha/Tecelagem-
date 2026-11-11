@@ -2231,21 +2231,37 @@
       .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ __fecharPed(); carregarRepPedidos(); } else { alert((j&&j.msg)||"Não consegui aprovar. Tente de novo."); } })
       .catch(function(){ alert("Sem conexão. Tente de novo."); });
   };
-  window.__repPedEnviar=function(id,temForma){
-    var cod_prazo="", forma_desc="";
-    if(!temForma){
-      if(!REP_PRAZOS.length){ alert("Carregando formas de pagamento… tente de novo em instantes."); return; }
-      var lista=REP_PRAZOS.map(function(p,i){ return (i+1)+") "+(p.descricao||p.codigo); }).join("\n");
-      var escolha=prompt("Escolha a forma de pagamento (digite o número):\n"+lista);
-      if(escolha===null) return;
-      var idx=parseInt(escolha,10)-1;
-      if(isNaN(idx)||idx<0||idx>=REP_PRAZOS.length){ alert("Opção inválida."); return; }
-      cod_prazo=REP_PRAZOS[idx].codigo; forma_desc=REP_PRAZOS[idx].descricao||REP_PRAZOS[idx].codigo;
-    }
+  // Escolha da forma de pagamento (prazo) em BOTÕES CLICÁVEIS (substitui o prompt antigo, que
+  // listava os prazos como texto e não dava pra clicar). Chama onPick(codigo, descricao).
+  function __pedirPrazo(onPick){
+    if(!REP_PRAZOS.length){ alert("Carregando formas de pagamento… tente de novo em instantes."); return; }
+    var ov=document.createElement("div");
+    ov.style.cssText="position:fixed;inset:0;z-index:12000;background:rgba(20,16,12,.55);display:flex;align-items:center;justify-content:center;padding:16px";
+    ov.innerHTML='<div style="width:420px;max-width:94vw;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.34)">'+
+      '<div style="background:#2c3e50;color:#fff;padding:15px 20px;font-size:17px;font-weight:800">Forma de pagamento</div>'+
+      '<div style="padding:13px 16px 6px;color:#6b6358;font-size:13.5px">Toque na forma de pagamento deste pedido:</div>'+
+      '<div style="padding:4px 16px 14px;display:flex;flex-direction:column;gap:8px">'+
+        REP_PRAZOS.map(function(p,i){ return '<button type="button" data-i="'+i+'" class="__pzbtn" style="text-align:left;padding:13px 16px;border:2px solid #e2e8f0;background:#fff;border-radius:12px;font-size:15px;font-weight:600;color:#2c2721;cursor:pointer;width:100%">'+esc(p.descricao||p.codigo)+'</button>'; }).join("")+
+      '</div>'+
+      '<div style="padding:0 16px 16px"><button type="button" class="__pzcancel" style="width:100%;padding:11px;border:1px solid #e2e8f0;background:#fbfaf7;border-radius:12px;font-weight:700;color:#8a8073;cursor:pointer">Cancelar</button></div>'+
+    '</div>';
+    function fechar(){ try{ document.body.removeChild(ov); }catch(e){} }
+    ov.addEventListener("click",function(e){ if(e.target===ov) fechar(); });
+    var btns=ov.querySelectorAll(".__pzbtn");
+    for(var k=0;k<btns.length;k++){ (function(btn){ btn.addEventListener("click",function(){ var p=REP_PRAZOS[Number(btn.getAttribute("data-i"))]; fechar(); if(p) onPick(p.codigo,p.descricao||p.codigo); }); })(btns[k]); }
+    ov.querySelector(".__pzcancel").addEventListener("click",fechar);
+    document.body.appendChild(ov);
+  }
+  function __repPedEnviarGo(id,cod_prazo,forma_desc){
     if(!confirm("Enviar este pedido para a Big Tricot?\nDepois de enviado ele trava.")) return;
     fetch("/api/loja/rep-pedido-acao",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rep:(REP&&REP.id)||"",pedido_id:id,acao:"enviar",cod_prazo:cod_prazo,forma_desc:forma_desc})})
       .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ __fecharPed(); alert(j.msg||"Pedido enviado!"); carregarRepPedidos(); } else { alert((j&&j.msg)||"Não consegui enviar."); } })
       .catch(function(){ alert("Sem conexão. Tente de novo."); });
+  }
+  window.__repPedEnviar=function(id,temForma){
+    // Sem forma ainda → mostra os prazos em botões clicáveis; com forma já definida → envia direto.
+    if(!temForma){ __pedirPrazo(function(cod_prazo,forma_desc){ __repPedEnviarGo(id,cod_prazo,forma_desc); }); return; }
+    __repPedEnviarGo(id,"","");
   };
   window.__repCliente=function(id){
     var cli=null; for(var i=0;i<REP_CLIENTES.length;i++){ if(String(REP_CLIENTES[i].id)===String(id)){ cli=REP_CLIENTES[i]; break; } }
