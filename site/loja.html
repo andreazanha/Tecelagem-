@@ -2122,7 +2122,9 @@
       .catch(function(){ sheet.innerHTML='<div class="pd2-top"><div class="pd2-title">Detalhe do Pedido</div><button class="pd2-x" onclick="__fecharPed()">✕</button></div><div class="pd2-scroll"><div class="rep-vazio" style="padding:24px">Sem conexão. Tente de novo.</div></div>'; });
   };
   function __repPedSheetHtml(d,id){
-    var badge = (d.status==='syntech'||d.status==='aprovado')?'ok' : (d.status==='erro'||d.status==='espera')?'wait' : 'info';
+    // Mesmo padrão do cliente: só 'aprovado' (Confirmado) leva o selo verde com ✓.
+    // 'syntech' (Aguardando aprovação) fica neutro, igual o cliente.
+    var badge = (d.status==='aprovado')?'ok' : (d.status==='erro'||d.status==='espera')?'wait' : 'info';
     var botoes='<button class="pd2-pdf" onclick="__repPedPdf(\''+esc(id)+'\')">⬇ Baixar PDF</button>';
     if(d.editavel){ botoes+='<button class="pd2-act" onclick="__fecharPed();__repReabrir(\''+esc(id)+'\')">✏️ Reabrir</button>'+
       '<button class="pd2-act go" onclick="__repPedEnviar(\''+esc(id)+'\',\''+(d.forma?"1":"")+'\')">✅ Enviar à Big</button>'+
@@ -2131,7 +2133,7 @@
     if(d.status==='syntech' && !d.aprovado){ botoes='<button class="pd2-aprovar" onclick="__repAprovarPedido(\''+esc(id)+'\')">✓ Aprovar pedido</button>'+'<button class="pd2-cancel" onclick="__repCancelarPedido(\''+esc(id)+'\')">✗ Cancelar pedido</button>'+botoes; }
     return __pedSheetHTML({
       numero:d.numero||'—', statusLabel:d.label||'', badgeCls:badge,
-      cliente:d.cliente||'', cnpj:'', data:fmtDataHora(d.data),
+      cliente:d.cliente||'', cnpj:(d.cnpj?fmtCnpjBr(d.cnpj):''), data:fmtDataHora(d.data),
       itens:d.itens||[], total:d.total, botoes:botoes
     });
   }

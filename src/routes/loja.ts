@@ -591,11 +591,11 @@ loja.get("/rep-pedido-detalhe", async (c) => {
   const rep = await c.env.DB.prepare("SELECT nome FROM representantes WHERE id=? LIMIT 1").bind(repId).first<{ nome: string }>();
   if (!rep) return c.json({ erro: "rep_invalido" }, 403);
   const ped = await c.env.DB.prepare(
-    `SELECT id, erp_numero, cliente_nome, valor_total, created_at, data_pedido,
+    `SELECT id, erp_numero, cliente_nome, COALESCE(cliente_cnpj,'') AS cnpj, valor_total, created_at, data_pedido,
             COALESCE(loja_forma_desc,'') AS forma, COALESCE(erp_sync_status,'') AS sync,
             COALESCE(erp_liberado,0) AS liberado, COALESCE(aprovado_erp_em,'') AS aprovado
        FROM pedidos WHERE id=? AND canal='loja_b2b' AND TRIM(LOWER(COALESCE(vendedor,'')))=TRIM(LOWER(?)) LIMIT 1`
-  ).bind(id, rep.nome).first<{ id: string; erp_numero: number | null; cliente_nome: string | null; valor_total: number | null; created_at: string | null; data_pedido: string | null; forma: string; sync: string; liberado: number; aprovado: string }>();
+  ).bind(id, rep.nome).first<{ id: string; erp_numero: number | null; cliente_nome: string | null; cnpj: string; valor_total: number | null; created_at: string | null; data_pedido: string | null; forma: string; sync: string; liberado: number; aprovado: string }>();
   if (!ped) return c.json({ erro: "nao_encontrado" }, 404);
   const foiAprovado = !!String(ped.aprovado || "").trim();
   let status: string, label: string;
@@ -618,7 +618,7 @@ loja.get("/rep-pedido-detalhe", async (c) => {
   const pecas = itens.reduce((s, i) => s + i.qtd, 0);
   const total = Number(ped.valor_total) || itens.reduce((s, i) => s + i.valor_total, 0);
   return c.json({
-    ok: true, status, label, cliente: ped.cliente_nome || "",
+    ok: true, status, label, cliente: ped.cliente_nome || "", cnpj: ped.cnpj || "",
     numero: ped.erp_numero ? String(ped.erp_numero) : String(ped.id).slice(0, 8).toUpperCase(),
     data: ped.created_at || ped.data_pedido || "", forma: ped.forma,
     pecas, total, editavel: ped.sync === "rascunho", aprovado: foiAprovado, itens,
