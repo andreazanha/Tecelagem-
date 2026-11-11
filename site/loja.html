@@ -258,7 +258,8 @@
   .pd2-foot-r{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
   .pd2-pdf{display:inline-flex; align-items:center; gap:8px; border:1.5px solid #cdbfa8; background:#fff; color:#2c2721; font-weight:700; font-size:15px; padding:11px 20px; border-radius:12px; cursor:pointer}
   .pd2-cancel{display:inline-flex; align-items:center; gap:8px; border:1.5px solid #f3b4b4; background:#fff; color:#b91c1c; font-weight:700; font-size:15px; padding:11px 20px; border-radius:12px; cursor:pointer; margin-right:8px}
-  .pd2-cancel:active{transform:translateY(1px)}
+  .pd2-aprovar{display:inline-flex; align-items:center; gap:8px; border:1.5px solid #16a34a; background:#16a34a; color:#fff; font-weight:700; font-size:15px; padding:11px 20px; border-radius:12px; cursor:pointer; margin-right:8px}
+  .pd2-cancel:active,.pd2-aprovar:active{transform:translateY(1px)}
   .pd2-pdf:active,.pd2-act:active{transform:translateY(1px)}
   .pd2-act{border:1.5px solid #e6ddcf; background:#fff; color:#5f584e; font-weight:600; font-size:14px; padding:11px 16px; border-radius:12px; cursor:pointer}
   .pd2-act.go{border:0; background:#1f7a4d; color:#fff}
@@ -283,7 +284,7 @@
     .pd2-foot{padding:12px 14px}
     .pd2-foot-c{margin-left:0; width:100%; order:2; justify-content:flex-start}
     .pd2-foot-r{width:100%; order:3}
-    .pd2-pdf,.pd2-cancel{flex:1; justify-content:center; margin-right:0}
+    .pd2-pdf,.pd2-cancel,.pd2-aprovar{flex:1; justify-content:center; margin-right:0}
   }
   .mp-num{font-weight:800; font-size:14px; color:var(--ink)}
   .mp-chev{margin-left:auto; color:#94a3b8; display:flex; transition:transform .2s ease}
@@ -1543,16 +1544,18 @@
     var p=MEUS_PEDS[ix]; if(!p) return;
     var aberto = p.status==='aberto';
     var badge = p.status==='producao'?'ok' : (p.status==='processando'||aberto)?'wait' : 'info';
-    // Cliente pode CANCELAR o próprio pedido enquanto está "Aguardando aprovação" (status 'analise').
-    // Depois de aprovado/em produção, não dá por aqui (fala com a Big).
-    var btnCancelar = (p.status==='analise') ? '<button class="pd2-cancel" onclick="__cancelarPedido(\''+esc(p.id)+'\')">✗ Cancelar pedido</button>' : '';
+    // Enquanto "Aguardando aprovação" (status 'analise'), o CLIENTE aprova ou cancela o próprio
+    // pedido. Depois de aprovado/em produção, some (fala com a Big).
+    var podeDecidir = (p.status==='analise');
+    var btnAprovar  = podeDecidir ? '<button class="pd2-aprovar" onclick="__aprovarPedido(\''+esc(p.id)+'\')">✓ Aprovar pedido</button>' : '';
+    var btnCancelar = podeDecidir ? '<button class="pd2-cancel" onclick="__cancelarPedido(\''+esc(p.id)+'\')">✗ Cancelar pedido</button>' : '';
     document.getElementById("pedSheet").innerHTML=__pedSheetHTML({
       numeroTxt: aberto ? 'Carrinho' : ('Pedido nº '+(p.numero||'—')),
       statusLabel:p.status_label||'', badgeCls:badge,
       expira: aberto ? __expiraTxt(p.expira_em) : '',
       cliente:p.cliente||'', cnpj:fmtCnpjBr(MEUS_CNPJ), data:fmtDataHora(p.data),
       itens:p.itens||[], total:p.total,
-      botoes:btnCancelar+'<button class="pd2-pdf" onclick="baixarPedidoPdf(\''+esc(p.id)+'\')">⬇ Baixar PDF</button>'
+      botoes:btnAprovar+btnCancelar+'<button class="pd2-pdf" onclick="baixarPedidoPdf(\''+esc(p.id)+'\')">⬇ Baixar PDF</button>'
     });
     var m=document.getElementById("pedModal"); m.classList.add("pd2mode","show"); document.body.style.overflow="hidden";
   };
@@ -1570,6 +1573,17 @@
       .then(function(res){
         if(res.ok&&res.j.ok){ __fecharPed(); try{ abrirMeus(); }catch(e){ location.reload(); } }
         else alert(res.j.msg||"Não consegui cancelar. Tente de novo ou fale com a Big Tricot.");
+      })
+      .catch(function(){ alert("Sem conexão. Tente de novo."); });
+  };
+  // CLIENTE aprova/confirma o próprio pedido (enquanto "Aguardando aprovação").
+  window.__aprovarPedido=function(id){
+    if(!confirm("Aprovar este pedido? Ele passa a 'Confirmado' e segue para a Big Tricot produzir.")) return;
+    fetch("/api/loja/meus-pedidos/"+encodeURIComponent(id)+"/aprovar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cnpj:MEUS_CNPJ})})
+      .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j||{}};});})
+      .then(function(res){
+        if(res.ok&&res.j.ok){ __fecharPed(); try{ abrirMeus(); }catch(e){ location.reload(); } }
+        else alert(res.j.msg||"Não consegui aprovar. Tente de novo.");
       })
       .catch(function(){ alert("Sem conexão. Tente de novo."); });
   };
@@ -2113,8 +2127,8 @@
     if(d.editavel){ botoes+='<button class="pd2-act" onclick="__fecharPed();__repReabrir(\''+esc(id)+'\')">✏️ Reabrir</button>'+
       '<button class="pd2-act go" onclick="__repPedEnviar(\''+esc(id)+'\',\''+(d.forma?"1":"")+'\')">✅ Enviar à Big</button>'+
       '<button class="pd2-act del" onclick="__repPedExcluir(\''+esc(id)+'\')">Excluir</button>'; }
-    // Rep cancela o pedido JÁ ENVIADO enquanto a Big não aprovou (status 'syntech' = aguardando aprovação).
-    if(d.status==='syntech' && !d.aprovado){ botoes='<button class="pd2-cancel" onclick="__repCancelarPedido(\''+esc(id)+'\')">✗ Cancelar pedido</button>'+botoes; }
+    // Rep aprova OU cancela o pedido JÁ ENVIADO enquanto a Big não aprovou ('syntech' = aguardando).
+    if(d.status==='syntech' && !d.aprovado){ botoes='<button class="pd2-aprovar" onclick="__repAprovarPedido(\''+esc(id)+'\')">✓ Aprovar pedido</button>'+'<button class="pd2-cancel" onclick="__repCancelarPedido(\''+esc(id)+'\')">✗ Cancelar pedido</button>'+botoes; }
     return __pedSheetHTML({
       numero:d.numero||'—', statusLabel:d.label||'', badgeCls:badge,
       cliente:d.cliente||'', cnpj:'', data:fmtDataHora(d.data),
@@ -2204,6 +2218,13 @@
     if(!confirm("Cancelar este pedido?\n\nAs peças voltam para o estoque. Só dá para cancelar enquanto a Big Tricot ainda não aprovou. Não dá para desfazer.")) return;
     fetch("/api/loja/rep-pedido-acao",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rep:(REP&&REP.id)||"",pedido_id:id,acao:"cancelar"})})
       .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ __fecharPed(); carregarRepPedidos(); } else { alert((j&&j.msg)||"Não consegui cancelar. Fale com a Big Tricot."); } })
+      .catch(function(){ alert("Sem conexão. Tente de novo."); });
+  };
+  // Rep aprova/confirma o próprio pedido enviado (enquanto "Aguardando aprovação").
+  window.__repAprovarPedido=function(id){
+    if(!confirm("Aprovar este pedido? Ele passa a 'Confirmado' e segue para a Big Tricot produzir.")) return;
+    fetch("/api/loja/rep-pedido-acao",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rep:(REP&&REP.id)||"",pedido_id:id,acao:"aprovar"})})
+      .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ __fecharPed(); carregarRepPedidos(); } else { alert((j&&j.msg)||"Não consegui aprovar. Tente de novo."); } })
       .catch(function(){ alert("Sem conexão. Tente de novo."); });
   };
   window.__repPedEnviar=function(id,temForma){

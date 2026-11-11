@@ -501,6 +501,13 @@ loja.post("/rep-pedido-acao", async (c) => {
     ]);
     return c.json({ ok: true, msg: "Pedido cancelado. As peças voltaram para o estoque." });
   }
+  // APROVAR: o rep confirma o PRÓPRIO pedido enviado (status "Aguardando aprovação"). Vira "Confirmado".
+  if (acao === "aprovar") {
+    if (String(ped.aprovado || "").trim()) return c.json({ ok: true, msg: "Pedido já aprovado." });
+    if (ped.sync !== "enviado") return c.json({ erro: "nao_aprovavel", msg: "Esse pedido não pode ser aprovado agora." }, 409);
+    await c.env.DB.prepare("UPDATE pedidos SET aprovado_erp_em=datetime('now') WHERE id=? AND canal='loja_b2b'").bind(pid).run();
+    return c.json({ ok: true, msg: "Pedido aprovado! Confirmado para produção." });
+  }
   if (ped.sync !== "rascunho") return c.json({ erro: "nao_rascunho", msg: "Esse pedido já foi enviado." }, 409);
   if (acao === "excluir") {
     await c.env.DB.batch([
@@ -1127,6 +1134,26 @@ loja.post("/meus-pedidos/:id/cancelar", async (c) => {
     c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(id), // devolve o estoque reservado
     c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='cancelado' WHERE id=? AND canal='loja_b2b'").bind(id),
   ]);
+  return c.json({ ok: true });
+});
+
+// CLIENTE aprova/confirma o PRÓPRIO pedido (foi ele que fez). Marca como "Confirmado" e mantém
+// o estoque reservado. Só enquanto está "Aguardando aprovação" (enviado e ainda não aprovado).
+loja.post("/meus-pedidos/:id/aprovar", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ cnpj?: string }>().catch(() => ({} as { cnpj?: string }));
+  const cnpj = soDigitos(b.cnpj);
+  if (cnpj.length < 11) return c.json({ erro: "cnpj_invalido", msg: "CNPJ inválido." }, 400);
+  const ped = await c.env.DB.prepare(
+    "SELECT COALESCE(erp_sync_status,'') AS sync, COALESCE(aprovado_erp_em,'') AS aprovado, " +
+    "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cliente_cnpj,''),'.',''),'/',''),'-',''),' ','') AS cnpjped " +
+    "FROM pedidos WHERE id=? AND canal='loja_b2b' LIMIT 1"
+  ).bind(id).first<{ sync: string; aprovado: string; cnpjped: string }>();
+  if (!ped) return c.json({ erro: "nao_encontrado" }, 404);
+  if (ped.cnpjped !== cnpj) return c.json({ erro: "nao_autorizado" }, 403);
+  if (String(ped.aprovado || "").trim()) return c.json({ ok: true, jaAprovado: true });
+  if (ped.sync !== "enviado") return c.json({ erro: "nao_aprovavel", msg: "Esse pedido não pode ser aprovado agora." }, 409);
+  await c.env.DB.prepare("UPDATE pedidos SET aprovado_erp_em=datetime('now') WHERE id=? AND canal='loja_b2b'").bind(id).run();
   return c.json({ ok: true });
 });
 
