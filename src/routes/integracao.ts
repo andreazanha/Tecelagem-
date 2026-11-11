@@ -190,15 +190,19 @@ integracao.post("/pedido", async (c) => {
   // reserva ativa para aquele número (senão é no-op). Substitui a conferência manual no caso de
   // aprovação; cancelamento continua pela liberação manual até a ponte sinalizar cancelamentos.
   try {
+    // Acha o pedido da LOJA correspondente (mesmo nº do ERP). NÃO exige mais ter reserva ativa:
+    // precisamos marcar a APROVAÇÃO mesmo quando a reserva já foi solta (ou está desligada), pra o
+    // status do cliente virar "Confirmado" só agora (antes era "Aguardando aprovação").
     const lojaPed = await c.env.DB.prepare(
       `SELECT id FROM pedidos
         WHERE canal='loja_b2b' AND CAST(erp_numero AS TEXT)=CAST(? AS TEXT)
-          AND COALESCE(erp_sync_status,'')='enviado'
-          AND EXISTS (SELECT 1 FROM erp_reserva r WHERE r.pedido_id=pedidos.id) LIMIT 1`
+          AND COALESCE(erp_sync_status,'')='enviado' LIMIT 1`
     ).bind(numero).first<{ id: string }>().catch(() => null);
     if (lojaPed?.id) {
       await c.env.DB.batch([
-        c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(lojaPed.id),
+        // marca a aprovação real (idempotente — mantém a 1ª data) → status do cliente vira "Confirmado"
+        c.env.DB.prepare("UPDATE pedidos SET aprovado_erp_em=COALESCE(aprovado_erp_em, datetime('now')) WHERE id=?").bind(lojaPed.id),
+        c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(lojaPed.id),  // solta a reserva (no-op se não houver)
         c.env.DB.prepare("INSERT INTO reserva_historico (id, pedido_id, evento, telefone, detalhe) VALUES (?,?,?,?,?)")
           .bind(uid(), lojaPed.id, "liberacao_aprovacao", null, `no ${numero} aprovado no Syntech - reserva liberada automaticamente`),
       ]);

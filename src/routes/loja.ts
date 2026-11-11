@@ -925,9 +925,9 @@ loja.get("/pedido-pdf/:id", async (c) => {
     `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.vendedor, p.valor_total, p.created_at,
             COALESCE(p.loja_forma_desc,'') AS forma, COALESCE(p.observacao,'') AS obs,
             COALESCE(p.loja_fase,'') AS fase, COALESCE(p.erp_sync_status,'') AS sync,
-            COALESCE(p.erp_liberado,0) AS liberado, p.erp_numero
+            COALESCE(p.erp_liberado,0) AS liberado, p.erp_numero, COALESCE(p.aprovado_erp_em,'') AS aprovado
        FROM pedidos p WHERE p.id=? AND p.canal='loja_b2b'`
-  ).bind(id).first<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; vendedor: string | null; valor_total: number | null; created_at: string | null; forma: string; obs: string; fase: string; sync: string; liberado: number; erp_numero: number | null }>();
+  ).bind(id).first<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; vendedor: string | null; valor_total: number | null; created_at: string | null; forma: string; obs: string; fase: string; sync: string; liberado: number; erp_numero: number | null; aprovado: string }>();
   if (!ped) return c.json({ erro: "nao_encontrado" }, 404);
   // segurança leve: se veio CNPJ, tem que bater com o do pedido.
   if (cnpjDig && soDigitos(ped.cliente_cnpj) !== cnpjDig) return c.json({ erro: "nao_autorizado" }, 403);
@@ -947,9 +947,13 @@ loja.get("/pedido-pdf/:id", async (c) => {
     const w = await c.env.DB.prepare("SELECT valor FROM config WHERE chave IN ('loja_whatsapp','numero_whatsapp') ORDER BY CASE chave WHEN 'loja_whatsapp' THEN 0 ELSE 1 END LIMIT 1").first<{ valor: string | null }>();
     whatsapp = String(w?.valor || "").replace(/\D/g, "");
   } catch { whatsapp = ""; }
+  // "enviado" no Syntech = recebido, AGUARDANDO a Big aprovar. Só vira "Confirmado" quando o pedido
+  // aprovado RETORNA da integração (aprovado_erp_em preenchido). Antes mostrava "Confirmado" cedo demais.
+  const aprovadoDeVerdade = !!String(ped.aprovado || "").trim();
+  const nSuf = ped.erp_numero ? " · nº " + ped.erp_numero : "";
   const statusLabel =
     ped.sync === "rascunho" ? "Em espera"
-      : ped.sync === "enviado" ? (ped.erp_numero ? "Confirmado · nº " + ped.erp_numero : "Confirmado")
+      : ped.sync === "enviado" ? ((aprovadoDeVerdade ? "Confirmado" : "Aguardando aprovação") + nSuf)
         : ped.sync === "erro" ? "Em processamento"
           : Number(ped.liberado) === 1 ? "Aprovado pela Big Tricot"
             : ped.fase === "enviado" ? "Aguardando confirmacao"
@@ -1033,10 +1037,10 @@ loja.get("/meus-pedidos", async (c) => {
   const cnpj = soDigitos(c.req.query("cnpj"));
   if (cnpj.length < 11) return c.json({ erro: "cnpj_invalido", msg: "CNPJ inválido." }, 400);
   const { results: peds } = await c.env.DB.prepare(
-    "SELECT id, erp_numero, valor_total, data_pedido, created_at, reserva_expira_em, COALESCE(cliente_nome,'') AS cliente_nome, COALESCE(erp_sync_status,'pendente') AS sync " +
+    "SELECT id, erp_numero, valor_total, data_pedido, created_at, reserva_expira_em, COALESCE(cliente_nome,'') AS cliente_nome, COALESCE(erp_sync_status,'pendente') AS sync, COALESCE(aprovado_erp_em,'') AS aprovado " +
     "FROM pedidos WHERE canal='loja_b2b' AND REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cliente_cnpj,''),'.',''),'/',''),'-',''),' ','') = ? " +
     "ORDER BY created_at DESC LIMIT 60"
-  ).bind(cnpj).all<{ id: string; erp_numero: number | null; valor_total: number | null; data_pedido: string | null; created_at: string | null; reserva_expira_em: string | null; cliente_nome: string; sync: string }>();
+  ).bind(cnpj).all<{ id: string; erp_numero: number | null; valor_total: number | null; data_pedido: string | null; created_at: string | null; reserva_expira_em: string | null; cliente_nome: string; sync: string; aprovado: string }>();
   if (!peds.length) return c.json({ pedidos: [] });
   // Nome do cliente dono do CNPJ (fantasia > razão social do cadastro) — pro rep identificar.
   const cliCad = await c.env.DB.prepare(
@@ -1057,13 +1061,14 @@ loja.get("/meus-pedidos", async (c) => {
   }
   // Status REAL do nosso fluxo (não inventa etapas): rascunho→carrinho não finalizado,
   // enviado→confirmado, erro→em processamento, resto→recebido. 'status' é a chave pra cor.
-  const statusKey = (sync: string) => sync === "rascunho" ? "aberto" : sync === "enviado" ? "producao" : sync === "erro" ? "processando" : "recebido";
-  // "enviado" = está no Syntech como orçamento (aguardando a Big aprovar lá) — NÃO é "produção".
+  // "enviado" = está no Syntech AGUARDANDO a Big aprovar — NÃO é "Confirmado" ainda. Só vira
+  // "Confirmado" quando o pedido aprovado RETORNA da integração (aprovado_erp_em preenchido).
+  const statusKey = (sync: string, aprovado: string) => sync === "rascunho" ? "aberto" : sync === "enviado" ? (String(aprovado || "").trim() ? "producao" : "analise") : sync === "erro" ? "processando" : "recebido";
   // "aberto" = carrinho que o cliente montou e NÃO finalizou (expira sozinho; não é pedido feito).
-  const statusLabel = (st: string) => st === "aberto" ? "Carrinho não finalizado" : st === "producao" ? "Confirmado" : st === "processando" ? "Em processamento" : "Pedido recebido";
+  const statusLabel = (st: string) => st === "aberto" ? "Carrinho não finalizado" : st === "producao" ? "Confirmado" : st === "analise" ? "Aguardando aprovação" : st === "processando" ? "Em processamento" : "Pedido recebido";
   const pedidos = peds.map((p) => {
     const its = porPed.get(p.id) || [];
-    const st = statusKey(p.sync);
+    const st = statusKey(p.sync, p.aprovado);
     return {
       id: p.id, numero: p.erp_numero, data: p.created_at || p.data_pedido, total: p.valor_total,
       cliente: clienteCad || String(p.cliente_nome || "").trim(),
