@@ -1056,14 +1056,15 @@ integracao.post("/estoque-baixa", async (c) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'baixa', 0, 0)`
     ).bind(uid(), pedidoId, produto, ref, cor, codCor, tamanho || null, tamanho || null, qtd),
     c.env.DB.prepare(
-      `INSERT INTO erp_reserva (id, pedido_id, ref, cor, tamanho, qtd)
-         SELECT ?,?,?,?,?,?
+      // baixa_saldo_ref = saldo ANTES da baixa; usado pra soltar a reserva quando o Syntech refletir.
+      `INSERT INTO erp_reserva (id, pedido_id, ref, cor, tamanho, qtd, baixa_saldo_ref)
+         SELECT ?,?,?,?,?,?,?
           WHERE ? <= (
             (SELECT COALESCE(SUM(saldo),0) FROM erp_estoque WHERE lower(ref)=lower(?) AND lower(COALESCE(cor,''))=lower(?) AND COALESCE(tamanho,'')=?)
             - (SELECT COALESCE(SUM(rv.qtd),0) FROM erp_reserva rv JOIN pedidos p ON p.id=rv.pedido_id
                 WHERE lower(rv.ref)=lower(?) AND lower(COALESCE(rv.cor,''))=lower(?) AND COALESCE(rv.tamanho,'')=? AND rv.pedido_id<>? AND ${FILTRO_RESERVA_ATIVA})
           )`
-    ).bind(uid(), pedidoId, ref, cor || null, tamanho || null, qtd, qtd, ref, cor, tamanho, ref, cor, tamanho, pedidoId),
+    ).bind(uid(), pedidoId, ref, cor || null, tamanho || null, qtd, saldo, qtd, ref, cor, tamanho, ref, cor, tamanho, pedidoId),
   ]);
   // confere se a reserva pegou (a condicional pode ter barrado numa corrida)
   const got = await c.env.DB.prepare("SELECT COALESCE(SUM(qtd),0) AS q FROM erp_reserva WHERE pedido_id=?").bind(pedidoId).first<{ q: number }>().catch(() => null);

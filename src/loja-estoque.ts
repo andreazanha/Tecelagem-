@@ -478,5 +478,20 @@ export async function limparReservasRefletidas(env: Env): Promise<number> {
                AND (p.reserva_expira_em IS NULL OR p.reserva_expira_em <= datetime('now')))
      )`
   ).run().catch(() => ({ meta: { changes: 0 } }));
-  return (r.meta && (r.meta.changes as number)) || 0;
+  // BAIXA DE ESTOQUE: a reserva segura a peça só até o Syntech refletir a saída. Quando o saldo
+  // atual já caiu pelo menos a quantidade da baixa (vs. o saldo de antes, baixa_saldo_ref), solta
+  // a reserva — senão o "livre" descontaria duas vezes (saldo menor do Syntech + reserva local).
+  // Só vale pra baixa já gravada no Syntech (enviado); antes disso a peça continua segura.
+  const rb = await env.DB.prepare(
+    `DELETE FROM erp_reserva
+      WHERE baixa_saldo_ref IS NOT NULL
+        AND pedido_id IN (SELECT id FROM pedidos WHERE canal='baixa' AND COALESCE(erp_sync_status,'')='enviado')
+        AND (
+          SELECT COALESCE(SUM(e.saldo),0) FROM erp_estoque e
+           WHERE lower(e.ref)=lower(erp_reserva.ref)
+             AND lower(COALESCE(e.cor,''))=lower(COALESCE(erp_reserva.cor,''))
+             AND COALESCE(e.tamanho,'')=COALESCE(erp_reserva.tamanho,'')
+        ) <= baixa_saldo_ref - qtd`
+  ).run().catch(() => ({ meta: { changes: 0 } }));
+  return ((r.meta && (r.meta.changes as number)) || 0) + ((rb.meta && (rb.meta.changes as number)) || 0);
 }
