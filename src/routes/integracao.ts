@@ -156,6 +156,28 @@ integracao.post("/pedido", async (c) => {
   ).bind(numero).first<{ id: string; status: string | null }>();
   if (existe) return c.json({ ok: true, duplicado: true, pedido_id: existe.id, status: existe.status });
 
+  // CATÁLOGO/KITS NÃO PRODUZEM: se este número do ERP corresponde a um pedido da LOJA (canal
+  // 'loja_b2b'), ele é VENDA DE ESTOQUE — NÃO pode virar pedido de produção (senão um kit/pedido do
+  // catálogo entra na tecelagem, como aconteceu com o Celine). Aqui só marcamos a APROVAÇÃO real
+  // (status do cliente vira "Confirmado") e soltamos a reserva (o Syntech já baixou o estoque).
+  // Best-effort/idempotente: re-envio da ponte mantém a 1ª data e é no-op na reserva.
+  const lojaPed = await c.env.DB.prepare(
+    `SELECT id FROM pedidos
+      WHERE canal='loja_b2b' AND CAST(erp_numero AS TEXT)=CAST(? AS TEXT)
+        AND COALESCE(erp_sync_status,'')='enviado' LIMIT 1`
+  ).bind(numero).first<{ id: string }>().catch(() => null);
+  if (lojaPed?.id) {
+    try {
+      await c.env.DB.batch([
+        c.env.DB.prepare("UPDATE pedidos SET aprovado_erp_em=COALESCE(aprovado_erp_em, datetime('now')) WHERE id=?").bind(lojaPed.id),
+        c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(lojaPed.id),
+        c.env.DB.prepare("INSERT INTO reserva_historico (id, pedido_id, evento, telefone, detalhe) VALUES (?,?,?,?,?)")
+          .bind(uid(), lojaPed.id, "liberacao_aprovacao", null, `nº ${numero} aprovado no Syntech - reserva liberada (pedido do catálogo NÃO produz)`),
+      ]);
+    } catch { /* best-effort; nunca quebra a resposta pra ponte */ }
+    return c.json({ ok: true, loja: true, pedido_loja_id: lojaPed.id, numero, produz: false });
+  }
+
   const pedidoId = uid();
   const stmts = [
     c.env.DB.prepare(
@@ -183,32 +205,6 @@ integracao.post("/pedido", async (c) => {
     stmts.push(c.env.DB.prepare("INSERT OR IGNORE INTO pcp_notificacoes (id, numero_erp, cliente_nome, vendedor, pecas) VALUES (?,?,?,?,?)").bind(uid(), numero, clienteNome, str(b.vendedor), pecasTotal));
   }
   await c.env.DB.batch(stmts);
-  // LIBERAÇÃO AUTOMÁTICA DA RESERVA (fecha o ciclo da Reserva EL): este /pedido é o pedido APROVADO
-  // que RETORNOU do Syntech (passo 4) — ou seja, o Syntech já aprovou e BAIXOU o estoque. Então
-  // soltamos a reserva do pedido da LOJA correspondente (mesmo número do ERP), para o saldo não
-  // contar em dobro (baixa real + reserva pendurada). Best-effort e idempotente: roda em transação
-  // SEPARADA e num try/catch — NUNCA quebra a importação do pedido aprovado. Só age se houver
-  // reserva ativa para aquele número (senão é no-op). Substitui a conferência manual no caso de
-  // aprovação; cancelamento continua pela liberação manual até a ponte sinalizar cancelamentos.
-  try {
-    // Acha o pedido da LOJA correspondente (mesmo nº do ERP). NÃO exige mais ter reserva ativa:
-    // precisamos marcar a APROVAÇÃO mesmo quando a reserva já foi solta (ou está desligada), pra o
-    // status do cliente virar "Confirmado" só agora (antes era "Aguardando aprovação").
-    const lojaPed = await c.env.DB.prepare(
-      `SELECT id FROM pedidos
-        WHERE canal='loja_b2b' AND CAST(erp_numero AS TEXT)=CAST(? AS TEXT)
-          AND COALESCE(erp_sync_status,'')='enviado' LIMIT 1`
-    ).bind(numero).first<{ id: string }>().catch(() => null);
-    if (lojaPed?.id) {
-      await c.env.DB.batch([
-        // marca a aprovação real (idempotente — mantém a 1ª data) → status do cliente vira "Confirmado"
-        c.env.DB.prepare("UPDATE pedidos SET aprovado_erp_em=COALESCE(aprovado_erp_em, datetime('now')) WHERE id=?").bind(lojaPed.id),
-        c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(lojaPed.id),  // solta a reserva (no-op se não houver)
-        c.env.DB.prepare("INSERT INTO reserva_historico (id, pedido_id, evento, telefone, detalhe) VALUES (?,?,?,?,?)")
-          .bind(uid(), lojaPed.id, "liberacao_aprovacao", null, `no ${numero} aprovado no Syntech - reserva liberada automaticamente`),
-      ]);
-    }
-  } catch { /* reserva e best-effort; nunca quebra a importacao do pedido aprovado */ }
   return c.json({ ok: true, pedido_id: pedidoId, numero, itens: nItens }, 201);
 });
 
