@@ -210,6 +210,15 @@ async function indicar(conv: Conversa, saidas: Saida[], deps: Deps): Promise<Res
   return { conv, saidas, notificarHumano: false, qualificado: false };
 }
 
+// Sinais CLAROS de CONSUMIDOR FINAL (uso próprio / sem CNPJ). Só com UM destes a Big manda pra loja
+// parceira — NUNCA por "achar" que a pessoa não é lojista. Atenção: "tenho cnpj" NÃO casa aqui.
+const CONSUMIDOR_RE = /uso pessoal|uso personal|uso pr[óo]prio|consumo pr[óo]prio|é pra mim|pra mim mesm|para mim mesm|(n[ãa]o|nao) (sou|é|e) (lojist|revend)|(n[ãa]o|nao) (tenho|possuo) (loja|empresa|cnpj)|sem cnpj|sou consumidor|consumidor final|pessoa f[íi]sica|(n[ãa]o|nao) (vou|quero|pretendo) revend/i;
+// Sinais de que a pessoa quer seguir como LOJISTA (tem CNPJ / loja / quer revender). Usados pra NÃO
+// jogar pra loja parceira quando, no lugar do CNPJ, ela faz uma pergunta ou afirma ter loja.
+const LOJISTA_SINAL_RE = /\bcnpj\b|tenho (uma )?(loja|empresa)|minha loja|sou lojist|quero revend|revenda|atacad/i;
+// Pessoa pedindo um atendente de verdade (saída de emergência em qualquer estado de coleta).
+const PEDE_HUMANO_RE = /atendente|humano|falar com|uma pessoa|me atend|algu[ée]m/i;
+
 // ── Motor ─────────────────────────────────────────────────────────────────────
 export async function processar(conv0: Conversa, texto: string, deps: Deps): Promise<Resultado> {
   const conv: Conversa = { ...conv0 };
@@ -255,6 +264,17 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
     }
 
     case "triagem-nome":
+      // Em vez do nome da loja, a pessoa disse que é uso pessoal / não tem loja → consumidor.
+      if (CONSUMIDOR_RE.test(t)) {
+        return await indicar(conv, saidas, deps);
+      }
+      // Pediu pra falar com atendente → humano.
+      if (PEDE_HUMANO_RE.test(t)) {
+        push("Claro! Já chamo alguém do nosso time pra te atender. 💬");
+        conv.estado = "atendimento-humano";
+        notificarHumano = true;
+        break;
+      }
       conv.nome = t.slice(0, 80);
       push("E o *CNPJ* da loja?");
       conv.estado = "aguardando-cnpj";
@@ -268,9 +288,17 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
         notificarHumano = true;
         break;
       }
-      // Poucos dígitos / "não tenho CNPJ" → consumidor final: indica loja parceira da região.
+      // Poucos dígitos: NÃO assuma consumidor. Só vai pra loja parceira com SINAL CLARO (sem CNPJ /
+      // uso pessoal). Se a pessoa faz uma PERGUNTA (ex.: "qual o valor mínimo?") ou afirma ter loja,
+      // ela é lojista/indefinida → passa pro VENDEDOR humano, NUNCA pra loja parceira (decisão do André).
       if (digitos.length < 8) {
-        return await indicar(conv, saidas, deps);
+        if (CONSUMIDOR_RE.test(t)) {
+          return await indicar(conv, saidas, deps);
+        }
+        push("Boa! 💛 O CNPJ eu confirmo rapidinho — e os valores e o mínimo quem te passa certinho é um dos nossos vendedores. Já vou te conectar com ele(a), tá? 😊");
+        conv.estado = "atendimento-humano";
+        notificarHumano = true;
+        break;
       }
       // Tentou um CNPJ, mas os dígitos verificadores não batem → pede pra reenviar.
       if (!cnpjValido(digitos)) {
@@ -311,6 +339,20 @@ export async function processar(conv0: Conversa, texto: string, deps: Deps): Pro
     }
 
     case "aguardando-cidade-parceiro": {
+      // Caiu no fluxo de loja parceira, mas na verdade é LOJISTA (fala em CNPJ/loja/revenda)? Volta a
+      // qualificar como lojista, em vez de insistir na loja parceira.
+      if (LOJISTA_SINAL_RE.test(t) && !CONSUMIDOR_RE.test(t)) {
+        push("Ah, você tem loja? 💛 Então me passa o *CNPJ* que eu confirmo seu cadastro e já te passo pro vendedor! 😊");
+        conv.estado = "aguardando-cnpj";
+        break;
+      }
+      // Pediu atendente de verdade → humano (não força a loja parceira).
+      if (PEDE_HUMANO_RE.test(t)) {
+        push("Claro! Já chamo alguém do nosso time pra te atender. 💬");
+        conv.estado = "atendimento-humano";
+        notificarHumano = true;
+        break;
+      }
       const loc = parseCidadeUf(t);
       conv.cidade = loc.cidade || conv.cidade;
       conv.uf = loc.uf || conv.uf;

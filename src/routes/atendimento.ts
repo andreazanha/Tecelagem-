@@ -245,7 +245,7 @@ const RESPOSTA_AUTOMATICA_RE = /mensagem autom[áa]tica|resposta autom[áa]tica|
 // CONSUMIDOR FINAL: sinais claros de que a pessoa quer comprar PRA USO PRÓPRIO (não é lojista). A Big
 // vende SÓ no atacado pra lojista — então, com esses sinais, NUNCA mandamos o catálogo com preços de
 // atacado; indicamos a loja parceira. "uso pessoal", "pra mim", "não sou lojista", "não tenho CNPJ"…
-const CONSUMIDOR_FINAL_RE = /uso pessoal|uso pr[óo]prio|consumo pr[óo]prio|(pra|para) uso pessoal|é pra mim|e pra mim|pra mim mesm|para mim mesm|(n[ãa]o|nao) (sou|é) (lojist|revend)|(n[ãa]o|nao) tenho (loja|empresa)|sou consumidor|consumidor final|pessoa f[íi]sica|(n[ãa]o|nao) (vou|quero|pretendo) revend/i;
+const CONSUMIDOR_FINAL_RE = /uso pessoal|uso personal|uso pr[óo]prio|consumo pr[óo]prio|(pra|para) uso pessoal|é pra mim|e pra mim|pra mim mesm|para mim mesm|(n[ãa]o|nao) (sou|é) (lojist|revend)|(n[ãa]o|nao) tenho (loja|empresa|cnpj)|sou consumidor|consumidor final|pessoa f[íi]sica|(n[ãa]o|nao) (vou|quero|pretendo) revend/i;
 // SEM CNPJ (mas querendo comprar/revender): a Big só vende no atacado pra LOJISTA COM CNPJ. Quem diz
 // "só tenho CPF" / "não tenho CNPJ" ainda NÃO é lojista → não recebe catálogo/preço até ter CNPJ.
 const SEM_CNPJ_RE = /s[óo] (tenho |o |tenho o )?cpf|tenho s[óo] (o )?cpf|apenas (o )?cpf|s[óo] cpf|(n[ãa]o|nao) tenho (o )?cnpj|sem cnpj|(cpf|cnpj) n[ãa]o tenho/i;
