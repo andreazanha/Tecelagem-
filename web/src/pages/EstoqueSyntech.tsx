@@ -24,6 +24,13 @@ const ICONE_CAT: Record<string, string> = { "Edição Limitada": "✨", "Pronta 
 type Modelo = { nome: string; chave: string; refs: string[]; kit: boolean; linhas: Linha[]; totalSaldo: number; totalDisp: number };
 type Categoria = { nome: string; modelos: Modelo[]; totalDisp: number };
 
+// Medida pra exibir/ordenar. Família = nome sem a palavra do tipo (CAPA/PESEIRA/ALMOFADA/MANTA)
+// → "CAPA BALLS" vira "BALLS", juntando capa+peseira+almofada do mesmo modelo.
+const medDe = (l: Linha) => l.medida || l.codigo_tamanho || l.tamanho || "";
+const familiaDe = (nome: string) => String(nome || "").replace(/^\s*(CAPAS?|PESEIRAS?|ALMOFADAS?|MANTAS?|PESEIRA E MANTA)\s+/i, "").trim() || nome || "—";
+// Nome curto da peça (pra coluna dentro da cor): Capa / Peseira / Almofada / Manta.
+const pecaDe = (nome: string | null) => { const u = (nome || "").toUpperCase(); if (/MANTA/.test(u)) return "Manta"; if (/PESEIRA/.test(u)) return "Peseira"; if (/ALMOFADA/.test(u)) return "Almofada"; if (/CAPA/.test(u)) return "Capa"; return String(nome || "—"); };
+
 function haQuanto(iso: string | null, agora: string): { txt: string; cor: string } {
   if (!iso) return { txt: "sem dados", cor: "#b91c1c" };
   const ms = new Date(agora).getTime() - new Date(iso.replace(" ", "T") + (iso.includes("Z") ? "" : "Z")).getTime();
@@ -60,15 +67,14 @@ export function EstoqueSyntech() {
     const b = busca.trim().toLowerCase();
     const filtradas = (linhas || []).filter((l) =>
       !b || (l.produto || "").toLowerCase().includes(b) || (l.ref || "").toLowerCase().includes(b) || (l.cor || "").toLowerCase().includes(b));
-    const medDe = (l: Linha) => l.medida || l.codigo_tamanho || l.tamanho || "";
-    // categoria → (nome do modelo minúsculo) → modelo
+    // categoria → (FAMÍLIA minúscula) → grupo (todas as peças do modelo: capa+peseira+almofada)
     const catMap = new Map<string, Map<string, Modelo>>();
     for (const l of filtradas) {
       const cat = categoriaDe(l.ref);
-      const nome = String(l.produto || l.ref || "—").trim();
-      const chave = nome.toLowerCase();
+      const fam = familiaDe(String(l.produto || l.ref || "—").trim());
+      const chave = fam.toLowerCase();
       let modelos = catMap.get(cat); if (!modelos) { modelos = new Map(); catMap.set(cat, modelos); }
-      let g = modelos.get(chave); if (!g) { g = { nome, chave, refs: [], kit: false, linhas: [], totalSaldo: 0, totalDisp: 0 }; modelos.set(chave, g); }
+      let g = modelos.get(chave); if (!g) { g = { nome: fam, chave, refs: [], kit: false, linhas: [], totalSaldo: 0, totalDisp: 0 }; modelos.set(chave, g); }
       g.linhas.push(l);
       if (l.ref && !g.refs.includes(l.ref)) g.refs.push(l.ref);
       if (ehKT(l.ref)) g.kit = true;
@@ -78,7 +84,8 @@ export function EstoqueSyntech() {
       const modelos = catMap.get(cn); if (!modelos) continue;
       const arr = [...modelos.values()];
       for (const g of arr) {
-        g.linhas.sort((a, b2) => cmpMedida(medDe(a), medDe(b2)) || (a.cor || "").localeCompare(b2.cor || ""));
+        // ordena por COR (agrupa), depois peça, depois medida → "Areia: capas e peseiras juntas".
+        g.linhas.sort((a, b2) => (a.cor || "").localeCompare(b2.cor || "", "pt-BR") || (a.produto || "").localeCompare(b2.produto || "", "pt-BR") || cmpMedida(medDe(a), medDe(b2)));
         g.totalSaldo = g.linhas.reduce((s, l) => s + (Number(l.saldo) || 0), 0);
         g.totalDisp = g.linhas.reduce((s, l) => s + (Number(l.disponivel ?? l.saldo) || 0), 0);
       }
@@ -244,29 +251,40 @@ export function EstoqueSyntech() {
                     {g.totalSaldo !== g.totalDisp ? <span className="muted" style={{ fontWeight: 500 }}> · saldo {g.totalSaldo.toLocaleString("pt-BR")}</span> : null}
                   </span>
                 </button>
-                {aberto && (
-                  <table className="table" style={{ fontSize: 13 }}>
-                    <thead><tr><th>Tamanho</th><th>Cor</th><th className="num">Saldo</th>{temReserva && <th className="num">Reservado</th>}{temProducao && <th className="num">Em prod.</th>}<th className="num">Disponível</th></tr></thead>
-                    <tbody>
-                      {g.linhas.map((l, i) => {
-                        const saldo = Number(l.saldo) || 0;
-                        const reservado = Number(l.reservado) || 0;
-                        const producao = Number(l.producao) || 0;
-                        const disp = Number(l.disponivel ?? saldo) || 0;
-                        return (
-                          <tr key={i}>
-                            <td>{l.medida || l.codigo_tamanho || l.tamanho || "—"}{(l.medida && (l.codigo_tamanho || l.tamanho)) ? <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>({l.codigo_tamanho || l.tamanho})</span> : null}</td>
-                            <td>{l.cor || "—"}</td>
-                            <td className="num" style={{ color: saldo > 0 ? "#334155" : "#b91c1c" }}>{saldo.toLocaleString("pt-BR")}</td>
-                            {temReserva && <td className="num" style={{ color: reservado > 0 ? "#b45309" : "var(--muted)" }}>{reservado ? reservado.toLocaleString("pt-BR") : "—"}</td>}
-                            {temProducao && <td className="num" style={{ color: producao > 0 ? "#4338ca" : "var(--muted)", fontWeight: producao > 0 ? 700 : 400 }}>{producao ? `🏭 ${producao.toLocaleString("pt-BR")}` : "—"}</td>}
-                            <td className="num" style={{ fontWeight: 700, color: disp > 0 ? "#166534" : "#b91c1c" }}>{disp.toLocaleString("pt-BR")}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
+                {aberto && (() => {
+                  const cols = 4 + (temReserva ? 1 : 0) + (temProducao ? 1 : 0);
+                  const rows: JSX.Element[] = [];
+                  let corAtual = "\u0000";
+                  g.linhas.forEach((l, i) => {
+                    const cor = (l.cor || "—").trim() || "—";
+                    if (cor !== corAtual) {
+                      corAtual = cor;
+                      rows.push(
+                        <tr key={"cor-" + i}><td colSpan={cols} style={{ background: "var(--surface-2, #f3f1ec)", fontWeight: 700, padding: "5px 10px", borderTop: "1px solid var(--line)" }}>🎨 {cor}</td></tr>
+                      );
+                    }
+                    const saldo = Number(l.saldo) || 0;
+                    const reservado = Number(l.reservado) || 0;
+                    const producao = Number(l.producao) || 0;
+                    const disp = Number(l.disponivel ?? saldo) || 0;
+                    rows.push(
+                      <tr key={i}>
+                        <td>{pecaDe(l.produto)}</td>
+                        <td>{l.medida || l.codigo_tamanho || l.tamanho || "—"}{(l.medida && (l.codigo_tamanho || l.tamanho)) ? <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>({l.codigo_tamanho || l.tamanho})</span> : null}</td>
+                        <td className="num" style={{ color: saldo > 0 ? "#334155" : "#b91c1c" }}>{saldo.toLocaleString("pt-BR")}</td>
+                        {temReserva && <td className="num" style={{ color: reservado > 0 ? "#b45309" : "var(--muted)" }}>{reservado ? reservado.toLocaleString("pt-BR") : "—"}</td>}
+                        {temProducao && <td className="num" style={{ color: producao > 0 ? "#4338ca" : "var(--muted)", fontWeight: producao > 0 ? 700 : 400 }}>{producao ? `🏭 ${producao.toLocaleString("pt-BR")}` : "—"}</td>}
+                        <td className="num" style={{ fontWeight: 700, color: disp > 0 ? "#166534" : "#b91c1c" }}>{disp.toLocaleString("pt-BR")}</td>
+                      </tr>
+                    );
+                  });
+                  return (
+                    <table className="table" style={{ fontSize: 13 }}>
+                      <thead><tr><th>Peça</th><th>Tamanho</th><th className="num">Saldo</th>{temReserva && <th className="num">Reservado</th>}{temProducao && <th className="num">Em prod.</th>}<th className="num">Disponível</th></tr></thead>
+                      <tbody>{rows}</tbody>
+                    </table>
+                  );
+                })()}
               </div>
             );
           })}
