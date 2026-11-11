@@ -248,6 +248,7 @@
   .pd2-line{padding:12px 0; border-top:1px solid #efe6d7}
   .pd2-desc{display:flex; align-items:center; gap:9px; font-size:15px; color:#2c2721; font-weight:600; min-width:0}
   .pd2-kit{background:#a0492c; color:#fff; font-size:11px; font-weight:700; padding:3px 9px; border-radius:7px; flex:0 0 auto}
+  .pd2-cod{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; font-weight:700; color:#8a7a5a; background:#f3ecdd; padding:2px 7px; border-radius:6px; flex:0 0 auto; letter-spacing:.02em}
   .pd2-q{justify-self:center; background:#fff; border:1px solid #e6ddcf; border-radius:999px; padding:5px 18px; font-weight:700; color:#2c2721}
   .pd2-u{text-align:right; color:#2c2721; font-weight:600}
   .pd2-t{text-align:right; color:#a0492c; font-weight:800}
@@ -1507,7 +1508,8 @@
         var enchM=raw.match(/\(\s*(com|sem)\s+enchimento\s*\)/i);
         var enchTxt=enchM?(" · "+enchM[1].toLowerCase()+" enchimento"):"";
         var desc = kit ? (__descKit(raw)+enchTxt) : (tp ? (tp+(it.tamanho?(" · "+it.tamanho):"")) : (it.tamanho||it.descricao||it.cor||"—"));
-        return '<div class="pd2-line"><div class="pd2-desc">'+(kit?'<span class="pd2-kit">Kit</span>':'')+'<span>'+esc(desc)+'</span></div>'+
+        var codTxt = String(it.ref||"").trim();   // código do produto (ex.: KT1082-C / ED1075-C) — vai no pedido
+        return '<div class="pd2-line"><div class="pd2-desc">'+(kit?'<span class="pd2-kit">Kit</span>':'')+'<span>'+esc(desc)+'</span>'+(codTxt?'<span class="pd2-cod">'+esc(codTxt)+'</span>':'')+'</div>'+
           '<div class="pd2-q">'+q+'</div><div class="pd2-u">'+brl(u)+'</div><div class="pd2-t">'+brl(t)+'</div></div>';
       }).join("");
       totalCalc+=sub;
