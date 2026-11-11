@@ -8,7 +8,8 @@
 // cai na produção sem conferência.
 import { Hono } from "hono";
 import type { Env } from "../index";
-import { exigirFuncao } from "../permissoes";
+import { exigirFuncao, permissoesDoUsuario } from "../permissoes";
+import { usuarioLogado } from "../sessao";
 import { proximoCodigoPai } from "./pedidos";
 import { cadastrarProdutosDoPedido } from "./produtos";
 import { consumoDoPedido, baixarPorPedido, type Autor } from "../estoque-baixa";
@@ -449,29 +450,65 @@ integracao.get("/pendentes", async (c) => {
   return c.json(results);
 });
 
+// Config "pcp_popup_usuarios": lista de IDs (separados por vírgula) que DEVEM ver o pop-up
+// "Aprovar pedido no Syntech". VAZIA → mantém o padrão antigo (admin + usuários legados).
+async function idsPopupPcp(env: Env): Promise<Set<string>> {
+  try {
+    const row = await env.DB.prepare("SELECT valor FROM config WHERE chave='pcp_popup_usuarios' LIMIT 1").first<{ valor: string | null }>();
+    return new Set(String(row?.valor ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+  } catch { return new Set(); }
+}
+
+// Decide se ESTE usuário deve ver o pop-up do PCP. Com lista preenchida: só os escolhidos.
+// Lista vazia: padrão antigo (admin OU usuário ainda sem permissão fina configurada).
+async function usuarioVePopupPcp(env: Env, u: { id: string; admin?: boolean }): Promise<boolean> {
+  const alvo = await idsPopupPcp(env);
+  if (alvo.size > 0) return alvo.has(u.id);
+  if (u.admin) return true;
+  const p = await permissoesDoUsuario(env, u.id);
+  return !p.configurado; // legado (ainda não configurado) continua vendo, como antes
+}
+
 // ETAPA 5 — POP-UP DO PCP: notificações de pedidos recém-chegados em "Para conferir" ainda não
 // tratados (visto_em IS NULL). A tela do PCP consulta aqui e mostra o pop-up (sem recarregar).
 integracao.get("/pcp-notificacoes", async (c) => {
-  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  const vazio = { agora: new Date().toISOString(), notificacoes: [] as unknown[] };
   // INTERRUPTOR "pcp_popup_ativo": desligado (padrão) → não exibe nada (lista vazia). Não apaga
   // o que já existe no banco; só deixa de mostrar. Validação no SERVIDOR, não só na tela.
-  if (!(await flagLigado(c.env, FLAG_PCP_POPUP))) return c.json({ agora: new Date().toISOString(), notificacoes: [] });
+  if (!(await flagLigado(c.env, FLAG_PCP_POPUP))) return c.json(vazio);
+  // SÓ AS PESSOAS ESCOLHIDAS (config "pcp_popup_usuarios") veem; vazio = padrão antigo.
+  if (!(await usuarioVePopupPcp(c.env, u))) return c.json(vazio);
   const { results } = await c.env.DB.prepare(
     "SELECT id, numero_erp, cliente_nome, vendedor, pecas, criado_em FROM pcp_notificacoes WHERE visto_em IS NULL ORDER BY criado_em DESC, rowid DESC LIMIT 20"
   ).all().catch(() => ({ results: [] as unknown[] }));
   return c.json({ agora: new Date().toISOString(), notificacoes: results || [] });
 });
-// Marca uma notificação como TRATADA (botão "Fechar"/"Ver pedido") — não repete depois.
+// Marca uma notificação como TRATADA (botão "Já vou aprovar") — não repete depois. Qualquer
+// usuário que ESTEJA vendo o aviso pode marcar (ação de equipe sobre a mesma notificação).
 integracao.post("/pcp-notificacoes/visto", async (c) => {
-  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
   const b = await c.req.json().catch(() => ({})) as { id?: string; numero?: string | number };
   const id = String(b.id || "").trim();
   const numero = String(b.numero ?? "").trim();
   if (!id && !numero) return c.json({ error: "faltam_dados" }, 400);
   const campo = id ? "id=?" : "numero_erp=?";
   await c.env.DB.prepare(`UPDATE pcp_notificacoes SET visto_em=datetime('now'), visto_por=? WHERE ${campo} AND visto_em IS NULL`)
-    .bind(g.u.nome || g.u.usuario || "", id || numero).run();
+    .bind(u.nome || u.usuario || "", id || numero).run();
   return c.json({ ok: true });
+});
+
+// Lista básica de usuários (id + nome) para o seletor "quem recebe o aviso" na config.
+// SEM senha/dados sensíveis. Só exige estar logado. Exclui bloqueados.
+integracao.get("/usuarios-basico", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "sessao_invalida", relogar: true }, 401);
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, nome, COALESCE(usuario,'') AS usuario, COALESCE(admin,0) AS admin FROM usuarios WHERE COALESCE(bloqueado,0)=0 ORDER BY nome"
+  ).all<{ id: string; nome: string; usuario: string; admin: number }>().catch(() => ({ results: [] as { id: string; nome: string; usuario: string; admin: number }[] }));
+  return c.json({ usuarios: (results || []).map((r) => ({ id: r.id, nome: r.nome, usuario: r.usuario, admin: !!r.admin })) });
 });
 
 // ETAPA 7 — RESERVAS PROTEGIDAS: pedidos da loja RECEBIDOS no Syntech ('enviado') que ainda

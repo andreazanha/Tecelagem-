@@ -256,11 +256,16 @@ function LojaB2B() {
   const [cfg, setCfg] = useState<ZapiConfig | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
+  // Seletor "quem recebe o pop-up conferir no Syntech": lista de usuários + IDs escolhidos.
+  const [usuarios, setUsuarios] = useState<{ id: string; nome: string; usuario: string; admin: boolean }[]>([]);
+  const [popupIds, setPopupIds] = useState<string[]>([]);
+  useEffect(() => { api.usuariosBasico().then((r) => setUsuarios(r.usuarios || [])).catch(() => { /* ignora */ }); }, []);
+  const togglePopupUser = (id: string) => setPopupIds((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : [...xs, id]));
   // VALIDADE em HORAS no campo (o back guarda em minutos). Estado próprio pra digitar sem jank;
   // converte min→h ao carregar e h→min ao salvar. Aceita decimal (ex.: 0.2h ≈ 12min) pra teste.
   const [validadeHoras, setValidadeHoras] = useState("");
   const minParaHoras = (min: string | number) => { const n = Number(min); return Number.isFinite(n) && n > 0 ? String(+(n / 60).toFixed(4).replace(/\.?0+$/, "")) : ""; };
-  useEffect(() => { api.atendConfig().then((c) => { setCfg(c); setValidadeHoras(minParaHoras(c.reserva_janela_minutos)); }).catch(() => setMsg("Não consegui carregar a configuração.")); }, []);
+  useEffect(() => { api.atendConfig().then((c) => { setCfg(c); setValidadeHoras(minParaHoras(c.reserva_janela_minutos)); setPopupIds(String(c.pcp_popup_usuarios || "").split(",").map((s) => s.trim()).filter(Boolean)); }).catch(() => setMsg("Não consegui carregar a configuração.")); }, []);
   const set = (k: keyof ZapiConfig, v: string | boolean) => setCfg((c) => (c ? { ...c, [k]: v } : c));
   async function salvar() {
     if (!cfg) return;
@@ -270,7 +275,7 @@ function LojaB2B() {
       const horas = Number(validadeHoras);
       const janelaMin = Number.isFinite(horas) && horas > 0 ? String(Math.max(5, Math.round(horas * 60))) : "720";
       await api.atendSalvarConfig({
-        reservas_ativo: cfg.reservas_ativo, pcp_popup_ativo: cfg.pcp_popup_ativo, crm_popup_ativo: cfg.crm_popup_ativo,
+        reservas_ativo: cfg.reservas_ativo, pcp_popup_ativo: cfg.pcp_popup_ativo, pcp_popup_usuarios: popupIds.join(","), crm_popup_ativo: cfg.crm_popup_ativo,
         aviso_carrinho_ativo: cfg.aviso_carrinho_ativo, aviso_carrinho_minutos: cfg.aviso_carrinho_minutos,
         reserva_janela_minutos: janelaMin, envio_hora_ini: cfg.envio_hora_ini, envio_hora_fim: cfg.envio_hora_fim,
         desc_el_pct: cfg.desc_el_pct, wa_teste_numero: cfg.wa_teste_numero,
@@ -306,6 +311,40 @@ function LojaB2B() {
       </div>
       {linha("reservas_ativo", "Reserva de estoque (ED/KT)", "O carrinho segura o estoque das peças ED e KT e envia os avisos de reserva no WhatsApp.")}
       {linha("pcp_popup_ativo", "Pop-up “conferir no Syntech”", "Quando um pedido da loja entra no Syntech, aparece um aviso no sistema para a equipe ir aprovar lá.")}
+      {/* QUEM RECEBE o pop-up "conferir no Syntech". Nenhum marcado = todos. Só aparece com o pop-up ligado. */}
+      {cfg.pcp_popup_ativo && (
+        <div style={{ margin: "-4px 0 12px", padding: "12px 14px", borderRadius: 10, border: "1px solid #ece5d8", background: "#fbfaf7" }}>
+          <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 2 }}>📣 Quem recebe esse aviso</div>
+          <div style={{ fontSize: 12, color: "#6b645a", marginBottom: 10 }}>
+            Marque as pessoas que devem ver o pop-up “Aprovar pedido no Syntech”. <b>Se não marcar ninguém, todos recebem</b> (como é hoje).
+          </div>
+          {usuarios.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: "#9a9185" }}>Carregando a lista de pessoas…</div>
+          ) : (
+            <>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {usuarios.map((u) => {
+                  const marcado = popupIds.includes(u.id);
+                  return (
+                    <button key={u.id} type="button" onClick={() => togglePopupUser(u.id)}
+                      style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 999, cursor: "pointer",
+                        border: "2px solid " + (marcado ? "#22c55e" : "#e2e8f0"), background: marcado ? "#f0fdf4" : "#fff",
+                        color: marcado ? "#15803d" : "#475569", fontWeight: 700, fontSize: 13 }}>
+                      <span>{marcado ? "✅" : "⬜"}</span>
+                      <span>{u.nome}{u.admin ? " (admin)" : ""}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: 10, fontSize: 12.5, color: popupIds.length ? "#15803d" : "#9a7a3a", fontWeight: 600 }}>
+                {popupIds.length
+                  ? <>Só <b>{popupIds.length}</b> {popupIds.length === 1 ? "pessoa vai ver" : "pessoas vão ver"} esse aviso. <button type="button" onClick={() => setPopupIds([])} style={{ marginLeft: 8, border: "none", background: "none", color: "#ad5033", cursor: "pointer", fontWeight: 700, textDecoration: "underline", fontSize: 12.5 }}>Voltar para todos</button></>
+                  : <>Todos recebem (nenhuma pessoa marcada).</>}
+              </div>
+            </>
+          )}
+        </div>
+      )}
       {linha("crm_popup_ativo", "Aviso ao vendedor (CRM)", "O vendedor interno dono da carteira recebe um aviso quando o cliente dele faz um pedido.")}
       {linha("aviso_carrinho_ativo", "Lembrete de carrinho abandonado", "Se o cliente monta o pedido e não envia, cerca de 1h depois recebe um lembrete no WhatsApp (só no horário de envio).")}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", padding: "10px 14px", marginBottom: 10, borderRadius: 10, border: "1px solid #ece5d8", background: "#fbfaf7" }}>
