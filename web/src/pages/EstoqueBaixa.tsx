@@ -3,13 +3,21 @@
 // (evita oversell). Nasce como pedido do cliente interno de AJUSTE; ao faturar sem cobrança
 // no Syntech, o saldo cai e a ponte traz. O envio ao Syntech só liga com o cliente de
 // AJUSTE configurado (documento) — senão a baixa fica retida, segurando a peça, até configurar.
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { api } from "../api";
 
 type Item = { ref: string; nome: string; cor: string; tamanho: string; medida: string; saldo: number; reservado: number; livre: number };
 type Baixa = { id: string; numero: string | null; motivo: string | null; created_at: string | null; status: string; erp_numero: number | null; erp_sync_erro: string | null; qtd: number; produto: string | null; cor: string | null; tamanho: string | null };
 
 const nf = (n: number) => (Number(n) || 0).toLocaleString("pt-BR");
+// Modelo = nome sem a palavra do tipo (CAPA/PESEIRA/ALMOFADA/MANTA) → "CAPA CELINE" vira "CELINE".
+const modeloDe = (nome: string) => (nome || "").replace(/^\s*(CAPAS?|PESEIRAS?|ALMOFADAS?|MANTAS?|PESEIRA E MANTA)\s+/i, "").trim() || nome || "—";
+// Agrupa as peças por modelo (todas as Celine juntas: capa + peseira), modelos em ordem alfabética.
+function agruparPorModelo(itens: Item[]): { modelo: string; itens: Item[] }[] {
+  const m = new Map<string, Item[]>();
+  for (const it of itens) { const mod = modeloDe(it.nome).toUpperCase(); if (!m.has(mod)) m.set(mod, []); m.get(mod)!.push(it); }
+  return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], "pt-BR")).map(([modelo, its]) => ({ modelo, itens: its }));
+}
 const dataHora = (s: string | null) => { if (!s) return ""; const d = new Date(s.replace(" ", "T") + (s.includes("Z") ? "" : "Z")); return isNaN(+d) ? s : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 
 const STATUS: Record<string, { txt: string; cor: string }> = {
@@ -117,19 +125,28 @@ export function EstoqueBaixa() {
             <thead><tr><th>Peça</th><th>Referência</th><th>Cor</th><th>Tamanho</th><th className="num">Saldo</th><th className="num">Reservado</th><th className="num">Livre</th><th></th></tr></thead>
             <tbody>
               {itens.length === 0 && <tr><td colSpan={8} className="muted" style={{ textAlign: "center", padding: 16 }}>Nenhuma peça encontrada.</td></tr>}
-              {itens.map((it) => (
-                <tr key={`${it.ref}|${it.cor}|${it.tamanho}`}>
-                  <td>{it.nome}</td>
-                  <td className="muted" style={{ fontFamily: "monospace", fontSize: 12 }}>{it.ref}</td>
-                  <td>{it.cor}</td>
-                  <td>{it.medida ? <><b>{it.medida}</b>{it.tamanho ? <span className="muted" style={{ fontSize: 11 }}> ({it.tamanho})</span> : null}</> : (it.tamanho || "—")}</td>
-                  <td className="num">{nf(it.saldo)}</td>
-                  <td className="num" style={{ color: it.reservado > 0 ? "#b45309" : undefined }}>{nf(it.reservado)}</td>
-                  <td className="num" style={{ fontWeight: 700, color: it.livre > 0 ? "#166534" : "#b91c1c" }}>{nf(it.livre)}</td>
-                  <td style={{ textAlign: "right" }}>
-                    <button className="btn btn-soft" disabled={it.livre < 1} onClick={() => abrir(it)}>Baixar</button>
-                  </td>
-                </tr>
+              {agruparPorModelo(itens).map((grupo) => (
+                <Fragment key={grupo.modelo}>
+                  <tr>
+                    <td colSpan={8} style={{ background: "var(--surface-2, #f3f1ec)", fontWeight: 800, letterSpacing: .3, padding: "6px 10px", borderTop: "2px solid var(--line)" }}>
+                      {grupo.modelo} <span className="muted" style={{ fontWeight: 500, fontSize: 12 }}>· {grupo.itens.length} {grupo.itens.length === 1 ? "variação" : "variações"}</span>
+                    </td>
+                  </tr>
+                  {grupo.itens.map((it) => (
+                    <tr key={`${it.ref}|${it.cor}|${it.tamanho}`}>
+                      <td>{it.nome}</td>
+                      <td className="muted" style={{ fontFamily: "monospace", fontSize: 12 }}>{it.ref}</td>
+                      <td>{it.cor}</td>
+                      <td>{it.medida ? <><b>{it.medida}</b>{it.tamanho ? <span className="muted" style={{ fontSize: 11 }}> ({it.tamanho})</span> : null}</> : (it.tamanho || "—")}</td>
+                      <td className="num">{nf(it.saldo)}</td>
+                      <td className="num" style={{ color: it.reservado > 0 ? "#b45309" : undefined }}>{nf(it.reservado)}</td>
+                      <td className="num" style={{ fontWeight: 700, color: it.livre > 0 ? "#166534" : "#b91c1c" }}>{nf(it.livre)}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <button className="btn btn-soft" disabled={it.livre < 1} onClick={() => abrir(it)}>Baixar</button>
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </table>
