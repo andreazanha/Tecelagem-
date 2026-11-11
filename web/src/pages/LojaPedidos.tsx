@@ -72,8 +72,12 @@ export function LojaPedidos() {
     setAgindo(id); try { await api.lojaReenviar(id, true); carregar(); } finally { setAgindo(null); }
   }
   async function excluir(id: string) {
-    if (!confirm("Excluir este pedido da loja?\n\nIsso apaga do NOSSO sistema (não apaga do Syntech — se já entrou lá como orçamento, exclua por lá).")) return;
+    if (!confirm("Cancelar este pedido da loja?\n\nIsso apaga do NOSSO sistema e DEVOLVE o estoque reservado. (Não mexe no Syntech — se já entrou lá, trate por lá.)")) return;
     setAgindo(id); try { await api.lojaExcluir(id); carregar(); } finally { setAgindo(null); }
+  }
+  async function aprovarManual(id: string) {
+    if (!confirm("Aprovar este pedido manualmente?\n\nEle passa a contar como CONFIRMADO (o cliente vê 'Confirmado') e mantém o estoque reservado. Use pra destravar um pedido que ficou parado. Não mexe no Syntech.")) return;
+    setAgindo(id); try { await api.lojaAprovarManual(id); carregar(); } finally { setAgindo(null); }
   }
   async function limparTodos() {
     if (!confirm("Excluir TODOS os pedidos da loja (B2B)?\n\n⚠️ Isso apaga TODOS daqui do sistema — bom pra limpar os testes. NÃO apaga do Syntech. Não dá pra desfazer.")) return;
@@ -163,7 +167,8 @@ export function LojaPedidos() {
                         {p.erp_sync_status === "enviado" ? (
                           <button className="btn btn-soft" style={{ padding: "5px 9px", color: "#b45309" }} title="Use só se conferiu que o pedido NÃO está no Syntech" disabled={agindo === p.id} onClick={() => reenviarForcado(p.id)}>{agindo === p.id ? "…" : "↻ Reenviar"}</button>
                         ) : null}
-                        <button className="btn btn-soft" style={{ padding: "5px 9px", marginLeft: 6, color: "#b91c1c" }} title="Excluir pedido" disabled={agindo === p.id} onClick={() => excluir(p.id)}>🗑</button>
+                        <button className="btn btn-ok" style={{ padding: "5px 9px", marginLeft: 6 }} title="Aprovar manualmente (destrava o pedido parado; conta como Confirmado)" disabled={agindo === p.id} onClick={() => aprovarManual(p.id)}>{agindo === p.id ? "…" : "✓ Aprovar"}</button>
+                        <button className="btn btn-danger" style={{ padding: "5px 9px", marginLeft: 6 }} title="Cancelar pedido (apaga daqui e devolve o estoque)" disabled={agindo === p.id} onClick={() => excluir(p.id)}>{agindo === p.id ? "…" : "✗ Cancelar"}</button>
                       </td>
                     </tr>
                     {aberto === p.id ? (

@@ -3242,6 +3242,18 @@ integracao.delete("/loja-pedidos/:id", async (c) => {
   ]);
   return c.json({ ok: true });
 });
+// APROVAR manualmente um pedido da loja que ficou travado (ex.: o Syntech não devolveu a
+// aprovação, ou é um pedido de teste). Marca aprovado_erp_em → o status do cliente vira
+// "Confirmado". MANTÉM a reserva (as peças continuam comprometidas com o pedido). NÃO mexe no
+// Syntech. É o par do "Cancelar" (DELETE), pra o gestor destravar o pedido pelo nosso lado.
+integracao.post("/loja-pedidos/:id/aprovar-manual", async (c) => {
+  const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const ped = await c.env.DB.prepare("SELECT COALESCE(erp_sync_status,'') AS s FROM pedidos WHERE id=? AND canal='loja_b2b' LIMIT 1").bind(id).first<{ s: string }>().catch(() => null);
+  if (!ped) return c.json({ error: "nao_encontrado" }, 404);
+  await c.env.DB.prepare("UPDATE pedidos SET aprovado_erp_em=COALESCE(aprovado_erp_em, datetime('now')) WHERE id=? AND canal='loja_b2b'").bind(id).run();
+  return c.json({ ok: true });
+});
 // Excluir TODOS os pedidos da loja (limpeza geral de testes).
 integracao.post("/loja-pedidos/limpar-todos", async (c) => {
   const g = await exigirFuncao(c, "relatorios"); if ("erro" in g) return g.erro;

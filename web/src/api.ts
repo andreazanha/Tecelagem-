@@ -1424,6 +1424,7 @@ export const api = {
   lojaReenviar: (id: string, forcar?: boolean) => jsonPost(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}/reenviar`, forcar ? { forcar: true } : {}).then((r) => j<{ ok: boolean }>(r)),
   lojaConfig: (modo: string) => jsonPost("/api/integracao/loja-config", { modo }).then((r) => j<{ ok: boolean; modo: string }>(r)),
   lojaExcluir: (id: string) => fetch(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  lojaAprovarManual: (id: string) => jsonPost(`/api/integracao/loja-pedidos/${encodeURIComponent(id)}/aprovar-manual`, {}).then((r) => j<{ ok?: boolean; error?: string }>(r)),
   lojaLimparTodos: () => jsonPost("/api/integracao/loja-pedidos/limpar-todos", {}).then((r) => j<{ ok: boolean }>(r)),
   // Fase S — fila de aprovação de cadastros de clientes vindos da loja.
   cadastrosLoja: () => fetch("/api/clientes/pendentes-loja").then((r) => j<CadastroLoja[]>(r)),
