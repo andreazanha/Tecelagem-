@@ -60,10 +60,18 @@ export function EstoqueBaixa() {
   }
 
   async function cancelar(bx: Baixa) {
-    if (!confirm(`Cancelar a baixa ${bx.numero || ""} (${nf(bx.qtd)} × ${bx.produto || ""})? A peça volta a ficar disponível.`)) return;
+    const aviso = bx.status === "enviado"
+      ? `Desfazer a baixa ${bx.numero || ""} (${nf(bx.qtd)} × ${bx.produto || ""})? A peça volta a ficar disponível AQUI.\n\n⚠️ Essa baixa já foi gravada no Syntech — confira lá se ela não saiu de verdade (faturada) antes de desfazer.`
+      : `Cancelar a baixa ${bx.numero || ""} (${nf(bx.qtd)} × ${bx.produto || ""})? A peça volta a ficar disponível.`;
+    if (!confirm(aviso)) return;
     const r = await api.estoqueBaixaCancelar(bx.id);
     if (r.error) { alert(r.msg || r.error); return; }
     carregar();
+  }
+  async function limparTudo() {
+    if (!confirm("Devolver TODAS as baixas (soltar todas as reservas)? Use isto pra limpar baixas de teste que ficaram segurando o estoque sem terem saído do Syntech.\n\n⚠️ Só mexe no NOSSO lado — confira no Syntech o que realmente saiu.")) return;
+    const r = await api.estoqueBaixaLimparTudo();
+    if (r.ok) { alert(`${r.removidas || 0} baixa(s) devolvida(s). Estoque liberado.`); carregar(); }
   }
 
   return (
@@ -72,6 +80,7 @@ export function EstoqueBaixa() {
         <h2 style={{ margin: 0 }}>📉 Baixa de Estoque</h2>
         <span className="muted" style={{ fontSize: 12 }}>Tirar peça do estoque (perda, defeito, brinde…). Confere carrinhos antes — não baixa peça reservada.</span>
         <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={() => carregar()}>↻ Atualizar</button>
+        {baixas.length > 0 && <button className="btn btn-soft" style={{ color: "#b91c1c" }} onClick={limparTudo}>↩ Devolver todas</button>}
       </div>
 
       {/* Cliente de ajuste (destino da baixa no Syntech) */}
@@ -144,7 +153,7 @@ export function EstoqueBaixa() {
                   <td className="muted" style={{ maxWidth: 220, whiteSpace: "normal" }}>{(bx.motivo || "").replace(/^Baixa de estoque — /, "")}</td>
                   <td><span style={{ color: st.cor, fontWeight: 600 }}>{st.txt}</span>{bx.erp_numero ? <span className="muted"> · nº {bx.erp_numero}</span> : null}{bx.status === "erro" && bx.erp_sync_erro ? <div className="muted" style={{ fontSize: 11 }}>{bx.erp_sync_erro}</div> : null}</td>
                   <td style={{ textAlign: "right" }}>
-                    {bx.status !== "enviado" && <button className="btn btn-soft" onClick={() => cancelar(bx)}>Cancelar</button>}
+                    <button className="btn btn-soft" onClick={() => cancelar(bx)}>{bx.status === "enviado" ? "Desfazer" : "Cancelar"}</button>
                   </td>
                 </tr>
               );

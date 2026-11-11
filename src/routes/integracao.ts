@@ -1079,7 +1079,10 @@ integracao.post("/estoque-baixa", async (c) => {
   return c.json({ ok: true, pedido_id: pedidoId, numero, enviaSyntech: cli.configurado });
 });
 
-// Cancela/desfaz uma baixa que ainda NÃO foi gravada no Syntech (solta a reserva).
+// Cancela/desfaz uma baixa e DEVOLVE a peça (solta a reserva). Funciona em qualquer status —
+// inclusive 'enviado' (gravada no Syntech), porque o "Baixar" do Syntech na verdade CANCELA o
+// pedido lá, então a baixa pode nunca ter saído do estoque. Isso é SÓ do nosso lado: se a peça
+// realmente saiu do Syntech (faturada), confira lá antes. Devolve o status pra tela avisar.
 integracao.post("/estoque-baixa-cancelar", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const b = await c.req.json<{ id?: string }>().catch(() => ({} as { id?: string }));
@@ -1087,13 +1090,25 @@ integracao.post("/estoque-baixa-cancelar", async (c) => {
   if (!id) return c.json({ error: "id_obrigatorio" }, 400);
   const p = await c.env.DB.prepare("SELECT COALESCE(erp_sync_status,'pendente') AS s FROM pedidos WHERE id=? AND canal='baixa' LIMIT 1").bind(id).first<{ s: string }>().catch(() => null);
   if (!p) return c.json({ error: "baixa_nao_encontrada" }, 404);
-  if (p.s === "enviado") return c.json({ error: "ja_enviada", msg: "Essa baixa já foi gravada no Syntech — não dá pra cancelar por aqui." }, 409);
   await c.env.DB.batch([
     c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(id),
     c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(id),
     c.env.DB.prepare("DELETE FROM pedidos WHERE id=? AND canal='baixa'").bind(id),
   ]);
-  return c.json({ ok: true });
+  return c.json({ ok: true, era: p.s });
+});
+
+// LIMPAR TODAS as baixas (solta todas as reservas de baixa de uma vez) — pra devolver o estoque
+// quando as baixas de teste ficaram "fantasmas" (o Syntech cancelou/não baixou). Só do nosso lado.
+integracao.post("/estoque-baixa-limpar-tudo", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const n = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM pedidos WHERE canal='baixa'").first<{ n: number }>().catch(() => ({ n: 0 }));
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id IN (SELECT id FROM pedidos WHERE canal='baixa')"),
+    c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id IN (SELECT id FROM pedidos WHERE canal='baixa')"),
+    c.env.DB.prepare("DELETE FROM pedidos WHERE canal='baixa'"),
+  ]);
+  return c.json({ ok: true, removidas: Number(n?.n) || 0 });
 });
 
 // VISÃO GERAL do estoque (dashboard): total de peças, valor (a preço de atacado), nº de produtos
