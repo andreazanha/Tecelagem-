@@ -257,6 +257,8 @@
   .pd2-foot-c b{font-size:26px; font-weight:800; color:#a0492c}
   .pd2-foot-r{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
   .pd2-pdf{display:inline-flex; align-items:center; gap:8px; border:1.5px solid #cdbfa8; background:#fff; color:#2c2721; font-weight:700; font-size:15px; padding:11px 20px; border-radius:12px; cursor:pointer}
+  .pd2-cancel{display:inline-flex; align-items:center; gap:8px; border:1.5px solid #f3b4b4; background:#fff; color:#b91c1c; font-weight:700; font-size:15px; padding:11px 20px; border-radius:12px; cursor:pointer; margin-right:8px}
+  .pd2-cancel:active{transform:translateY(1px)}
   .pd2-pdf:active,.pd2-act:active{transform:translateY(1px)}
   .pd2-act{border:1.5px solid #e6ddcf; background:#fff; color:#5f584e; font-weight:600; font-size:14px; padding:11px 16px; border-radius:12px; cursor:pointer}
   .pd2-act.go{border:0; background:#1f7a4d; color:#fff}
@@ -281,7 +283,7 @@
     .pd2-foot{padding:12px 14px}
     .pd2-foot-c{margin-left:0; width:100%; order:2; justify-content:flex-start}
     .pd2-foot-r{width:100%; order:3}
-    .pd2-pdf{flex:1; justify-content:center}
+    .pd2-pdf,.pd2-cancel{flex:1; justify-content:center; margin-right:0}
   }
   .mp-num{font-weight:800; font-size:14px; color:var(--ink)}
   .mp-chev{margin-left:auto; color:#94a3b8; display:flex; transition:transform .2s ease}
@@ -1541,13 +1543,16 @@
     var p=MEUS_PEDS[ix]; if(!p) return;
     var aberto = p.status==='aberto';
     var badge = p.status==='producao'?'ok' : (p.status==='processando'||aberto)?'wait' : 'info';
+    // Cliente pode CANCELAR o próprio pedido enquanto está "Aguardando aprovação" (status 'analise').
+    // Depois de aprovado/em produção, não dá por aqui (fala com a Big).
+    var btnCancelar = (p.status==='analise') ? '<button class="pd2-cancel" onclick="__cancelarPedido(\''+esc(p.id)+'\')">✗ Cancelar pedido</button>' : '';
     document.getElementById("pedSheet").innerHTML=__pedSheetHTML({
       numeroTxt: aberto ? 'Carrinho' : ('Pedido nº '+(p.numero||'—')),
       statusLabel:p.status_label||'', badgeCls:badge,
       expira: aberto ? __expiraTxt(p.expira_em) : '',
       cliente:p.cliente||'', cnpj:fmtCnpjBr(MEUS_CNPJ), data:fmtDataHora(p.data),
       itens:p.itens||[], total:p.total,
-      botoes:'<button class="pd2-pdf" onclick="baixarPedidoPdf(\''+esc(p.id)+'\')">⬇ Baixar PDF</button>'
+      botoes:btnCancelar+'<button class="pd2-pdf" onclick="baixarPedidoPdf(\''+esc(p.id)+'\')">⬇ Baixar PDF</button>'
     });
     var m=document.getElementById("pedModal"); m.classList.add("pd2mode","show"); document.body.style.overflow="hidden";
   };
@@ -1556,6 +1561,17 @@
   window.baixarPedidoPdf=function(id){
     var url="/api/loja/pedido-pdf/"+encodeURIComponent(id)+"?dl=1"+(MEUS_CNPJ?("&cnpj="+encodeURIComponent(MEUS_CNPJ)):"");
     var a=document.createElement("a"); a.href=url; a.download="pedido-"+String(id).slice(0,8)+".pdf"; document.body.appendChild(a); a.click(); setTimeout(function(){ try{a.remove();}catch(e){} },200);
+  };
+  // CLIENTE cancela o próprio pedido (enquanto "Aguardando aprovação"). Devolve o estoque.
+  window.__cancelarPedido=function(id){
+    if(!confirm("Cancelar este pedido?\n\nAs peças voltam para o estoque. Só dá para cancelar enquanto a Big Tricot ainda não aprovou. Essa ação não pode ser desfeita.")) return;
+    fetch("/api/loja/meus-pedidos/"+encodeURIComponent(id)+"/cancelar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cnpj:MEUS_CNPJ})})
+      .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j||{}};});})
+      .then(function(res){
+        if(res.ok&&res.j.ok){ __fecharPed(); try{ abrirMeus(); }catch(e){ location.reload(); } }
+        else alert(res.j.msg||"Não consegui cancelar. Tente de novo ou fale com a Big Tricot.");
+      })
+      .catch(function(){ alert("Sem conexão. Tente de novo."); });
   };
   function renderCarrinho(){
     var linhas = CART.map(function(it,ix){
@@ -2097,6 +2113,8 @@
     if(d.editavel){ botoes+='<button class="pd2-act" onclick="__fecharPed();__repReabrir(\''+esc(id)+'\')">✏️ Reabrir</button>'+
       '<button class="pd2-act go" onclick="__repPedEnviar(\''+esc(id)+'\',\''+(d.forma?"1":"")+'\')">✅ Enviar à Big</button>'+
       '<button class="pd2-act del" onclick="__repPedExcluir(\''+esc(id)+'\')">Excluir</button>'; }
+    // Rep cancela o pedido JÁ ENVIADO enquanto a Big não aprovou (status 'syntech' = aguardando aprovação).
+    if(d.status==='syntech' && !d.aprovado){ botoes='<button class="pd2-cancel" onclick="__repCancelarPedido(\''+esc(id)+'\')">✗ Cancelar pedido</button>'+botoes; }
     return __pedSheetHTML({
       numero:d.numero||'—', statusLabel:d.label||'', badgeCls:badge,
       cliente:d.cliente||'', cnpj:'', data:fmtDataHora(d.data),
@@ -2179,6 +2197,13 @@
     if(!confirm("Excluir este pedido em espera? Não dá pra desfazer.")) return;
     fetch("/api/loja/rep-pedido-acao",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rep:(REP&&REP.id)||"",pedido_id:id,acao:"excluir"})})
       .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ __fecharPed(); carregarRepPedidos(); } else { alert((j&&j.msg)||"Não consegui excluir."); } })
+      .catch(function(){ alert("Sem conexão. Tente de novo."); });
+  };
+  // Rep cancela pedido JÁ ENVIADO (enquanto a Big não aprovou). Devolve o estoque.
+  window.__repCancelarPedido=function(id){
+    if(!confirm("Cancelar este pedido?\n\nAs peças voltam para o estoque. Só dá para cancelar enquanto a Big Tricot ainda não aprovou. Não dá para desfazer.")) return;
+    fetch("/api/loja/rep-pedido-acao",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rep:(REP&&REP.id)||"",pedido_id:id,acao:"cancelar"})})
+      .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ __fecharPed(); carregarRepPedidos(); } else { alert((j&&j.msg)||"Não consegui cancelar. Fale com a Big Tricot."); } })
       .catch(function(){ alert("Sem conexão. Tente de novo."); });
   };
   window.__repPedEnviar=function(id,temForma){

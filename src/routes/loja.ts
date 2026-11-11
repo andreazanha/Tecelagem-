@@ -480,9 +480,27 @@ loja.post("/rep-pedido-acao", async (c) => {
   const rep = await c.env.DB.prepare("SELECT nome FROM representantes WHERE id=? LIMIT 1").bind(repId).first<{ nome: string }>();
   if (!rep) return c.json({ erro: "rep_invalido" }, 403);
   const ped = await c.env.DB.prepare(
-    "SELECT id, COALESCE(erp_sync_status,'') AS sync, COALESCE(loja_cod_prazo,'') AS prazo FROM pedidos WHERE id=? AND canal='loja_b2b' AND TRIM(LOWER(COALESCE(vendedor,'')))=TRIM(LOWER(?)) LIMIT 1"
-  ).bind(pid, rep.nome).first<{ id: string; sync: string; prazo: string }>();
+    "SELECT id, COALESCE(erp_sync_status,'') AS sync, COALESCE(loja_cod_prazo,'') AS prazo, COALESCE(aprovado_erp_em,'') AS aprovado FROM pedidos WHERE id=? AND canal='loja_b2b' AND TRIM(LOWER(COALESCE(vendedor,'')))=TRIM(LOWER(?)) LIMIT 1"
+  ).bind(pid, rep.nome).first<{ id: string; sync: string; prazo: string; aprovado: string }>();
   if (!ped) return c.json({ erro: "nao_encontrado", msg: "Pedido não encontrado." }, 404);
+  // CANCELAR: o rep cancela o PRÓPRIO pedido enquanto a Big não aprovou (rascunho OU enviado-não-aprovado).
+  if (acao === "cancelar") {
+    if (String(ped.aprovado || "").trim()) return c.json({ erro: "ja_aprovado", msg: "Esse pedido já foi aprovado pela Big Tricot e está em produção. Fale com a Big para cancelar." }, 409);
+    if (ped.sync === "rascunho") {
+      await c.env.DB.batch([
+        c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pid),
+        c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(pid),
+        c.env.DB.prepare("DELETE FROM pedidos WHERE id=? AND canal='loja_b2b'").bind(pid),
+      ]);
+      return c.json({ ok: true, msg: "Pedido cancelado." });
+    }
+    if (!["enviado", "pendente", "erro"].includes(String(ped.sync))) return c.json({ erro: "nao_cancelavel", msg: "Esse pedido não pode mais ser cancelado por aqui." }, 409);
+    await c.env.DB.batch([
+      c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(pid), // devolve o estoque reservado
+      c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='cancelado' WHERE id=? AND canal='loja_b2b'").bind(pid),
+    ]);
+    return c.json({ ok: true, msg: "Pedido cancelado. As peças voltaram para o estoque." });
+  }
   if (ped.sync !== "rascunho") return c.json({ erro: "nao_rascunho", msg: "Esse pedido já foi enviado." }, 409);
   if (acao === "excluir") {
     await c.env.DB.batch([
@@ -568,13 +586,18 @@ loja.get("/rep-pedido-detalhe", async (c) => {
   const ped = await c.env.DB.prepare(
     `SELECT id, erp_numero, cliente_nome, valor_total, created_at, data_pedido,
             COALESCE(loja_forma_desc,'') AS forma, COALESCE(erp_sync_status,'') AS sync,
-            COALESCE(erp_liberado,0) AS liberado
+            COALESCE(erp_liberado,0) AS liberado, COALESCE(aprovado_erp_em,'') AS aprovado
        FROM pedidos WHERE id=? AND canal='loja_b2b' AND TRIM(LOWER(COALESCE(vendedor,'')))=TRIM(LOWER(?)) LIMIT 1`
-  ).bind(id, rep.nome).first<{ id: string; erp_numero: number | null; cliente_nome: string | null; valor_total: number | null; created_at: string | null; data_pedido: string | null; forma: string; sync: string; liberado: number }>();
+  ).bind(id, rep.nome).first<{ id: string; erp_numero: number | null; cliente_nome: string | null; valor_total: number | null; created_at: string | null; data_pedido: string | null; forma: string; sync: string; liberado: number; aprovado: string }>();
   if (!ped) return c.json({ erro: "nao_encontrado" }, 404);
+  const foiAprovado = !!String(ped.aprovado || "").trim();
   let status: string, label: string;
-  if (ped.sync === "rascunho") { status = "espera"; label = "Em espera"; }
-  else if (ped.sync === "enviado") { status = "syntech"; label = ped.erp_numero ? ("No Syntech · nº " + ped.erp_numero) : "No Syntech"; }
+  if (ped.sync === "cancelado") { status = "cancelado"; label = "Cancelado"; }
+  else if (ped.sync === "rascunho") { status = "espera"; label = "Em espera"; }
+  else if (ped.sync === "enviado") {
+    if (foiAprovado) { status = "aprovado"; label = ped.erp_numero ? ("Confirmado · nº " + ped.erp_numero) : "Confirmado"; }
+    else { status = "syntech"; label = ped.erp_numero ? ("Aguardando aprovação · nº " + ped.erp_numero) : "Aguardando aprovação"; }
+  }
   else if (ped.sync === "erro") { status = "erro"; label = "Com erro — a Big resolve"; }
   else if (Number(ped.liberado) === 1) { status = "aprovado"; label = "Aprovado · indo pro Syntech"; }
   else { status = "aguardando"; label = "Enviado · aguardando a Big"; }
@@ -592,7 +615,7 @@ loja.get("/rep-pedido-detalhe", async (c) => {
     ok: true, status, label, cliente: ped.cliente_nome || "",
     numero: ped.erp_numero ? String(ped.erp_numero) : String(ped.id).slice(0, 8).toUpperCase(),
     data: ped.created_at || ped.data_pedido || "", forma: ped.forma,
-    pecas, total, editavel: ped.sync === "rascunho", itens,
+    pecas, total, editavel: ped.sync === "rascunho", aprovado: foiAprovado, itens,
   });
 });
 
@@ -952,7 +975,8 @@ loja.get("/pedido-pdf/:id", async (c) => {
   const aprovadoDeVerdade = !!String(ped.aprovado || "").trim();
   const nSuf = ped.erp_numero ? " · nº " + ped.erp_numero : "";
   const statusLabel =
-    ped.sync === "rascunho" ? "Em espera"
+    ped.sync === "cancelado" ? "Cancelado"
+    : ped.sync === "rascunho" ? "Em espera"
       : ped.sync === "enviado" ? ((aprovadoDeVerdade ? "Confirmado" : "Aguardando aprovação") + nSuf)
         : ped.sync === "erro" ? "Em processamento"
           : Number(ped.liberado) === 1 ? "Aprovado pela Big Tricot"
@@ -1063,9 +1087,9 @@ loja.get("/meus-pedidos", async (c) => {
   // enviado→confirmado, erro→em processamento, resto→recebido. 'status' é a chave pra cor.
   // "enviado" = está no Syntech AGUARDANDO a Big aprovar — NÃO é "Confirmado" ainda. Só vira
   // "Confirmado" quando o pedido aprovado RETORNA da integração (aprovado_erp_em preenchido).
-  const statusKey = (sync: string, aprovado: string) => sync === "rascunho" ? "aberto" : sync === "enviado" ? (String(aprovado || "").trim() ? "producao" : "analise") : sync === "erro" ? "processando" : "recebido";
+  const statusKey = (sync: string, aprovado: string) => sync === "cancelado" ? "cancelado" : sync === "rascunho" ? "aberto" : sync === "enviado" ? (String(aprovado || "").trim() ? "producao" : "analise") : sync === "erro" ? "processando" : "recebido";
   // "aberto" = carrinho que o cliente montou e NÃO finalizou (expira sozinho; não é pedido feito).
-  const statusLabel = (st: string) => st === "aberto" ? "Carrinho não finalizado" : st === "producao" ? "Confirmado" : st === "analise" ? "Aguardando aprovação" : st === "processando" ? "Em processamento" : "Pedido recebido";
+  const statusLabel = (st: string) => st === "aberto" ? "Carrinho não finalizado" : st === "producao" ? "Confirmado" : st === "analise" ? "Aguardando aprovação" : st === "cancelado" ? "Cancelado" : st === "processando" ? "Em processamento" : "Pedido recebido";
   const pedidos = peds.map((p) => {
     const its = porPed.get(p.id) || [];
     const st = statusKey(p.sync, p.aprovado);
@@ -1080,6 +1104,30 @@ loja.get("/meus-pedidos", async (c) => {
     };
   });
   return c.json({ pedidos });
+});
+
+// CLIENTE/REPRESENTANTE cancela o PRÓPRIO pedido — enquanto a Big AINDA NÃO aprovou (produção).
+// Confere pelo CNPJ (mesma segurança do /meus-pedidos). Depois de aprovado, não dá por aqui
+// (tem que falar com a Big). Solta a reserva de estoque e marca o pedido como 'cancelado'.
+loja.post("/meus-pedidos/:id/cancelar", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json<{ cnpj?: string }>().catch(() => ({} as { cnpj?: string }));
+  const cnpj = soDigitos(b.cnpj);
+  if (cnpj.length < 11) return c.json({ erro: "cnpj_invalido", msg: "CNPJ inválido." }, 400);
+  const ped = await c.env.DB.prepare(
+    "SELECT COALESCE(erp_sync_status,'') AS sync, COALESCE(aprovado_erp_em,'') AS aprovado, " +
+    "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cliente_cnpj,''),'.',''),'/',''),'-',''),' ','') AS cnpjped " +
+    "FROM pedidos WHERE id=? AND canal='loja_b2b' LIMIT 1"
+  ).bind(id).first<{ sync: string; aprovado: string; cnpjped: string }>();
+  if (!ped) return c.json({ erro: "nao_encontrado" }, 404);
+  if (ped.cnpjped !== cnpj) return c.json({ erro: "nao_autorizado" }, 403);
+  if (String(ped.aprovado || "").trim()) return c.json({ erro: "ja_aprovado", msg: "Esse pedido já foi aprovado pela Big Tricot e está em produção. Fale com a gente para cancelar." }, 409);
+  if (!["enviado", "pendente", "erro", "rascunho"].includes(String(ped.sync))) return c.json({ erro: "nao_cancelavel", msg: "Esse pedido não pode mais ser cancelado por aqui." }, 409);
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id=?").bind(id), // devolve o estoque reservado
+    c.env.DB.prepare("UPDATE pedidos SET erp_sync_status='cancelado' WHERE id=? AND canal='loja_b2b'").bind(id),
+  ]);
+  return c.json({ ok: true });
 });
 
 // DIAGNÓSTICO do RISCADO da Edição Limitada (HTML, público gated por ?k=). Fica aqui (em
