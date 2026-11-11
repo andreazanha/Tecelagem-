@@ -756,6 +756,7 @@ export interface LojaPedido {
   id: string; cliente_nome: string | null; cliente_cnpj: string | null;
   valor_total: number | null; data_pedido: string | null; created_at: string | null;
   erp_sync_status: string; erp_liberado: number; erp_numero: number | null; erp_sync_erro: string | null;
+  erp_status?: number | null; erp_canc?: string | null; erp_status_em?: string | null;
   vendedor?: string | null;
   itens?: number; pecas?: number;
 }

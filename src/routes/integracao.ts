@@ -3168,6 +3168,63 @@ integracao.post("/pedido-erp-erro", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── STATUS dos pedidos da loja no Syntech (fecha o ciclo da reserva) ────────────
+// A ponte lê o PEDIDO.STATUS de cada pedido da loja que está 'enviado' e devolve aqui.
+// Lifecycle Syntech: Registrado → Aprovado(10) → Separado → Faturado → Cancelado(CANC='S').
+// Quando o pedido é FATURADO, o Syntech já baixou o estoque (o espelho reflete); quando é
+// CANCELADO, o estoque nunca baixou. Nos dois casos a reserva local deve ser solta.
+// O número do "faturado" fica na config 'erp_status_faturado' (descoberto no painel). Enquanto
+// não estiver preenchido, só o CANCELADO solta sozinho (CANC='S' é certo); o faturado fica só
+// registrando o número pra gente ver qual é.
+async function statusFaturadoCfg(env: Env): Promise<number | null> {
+  try {
+    const row = await env.DB.prepare("SELECT valor FROM config WHERE chave='erp_status_faturado' LIMIT 1").first<{ valor: string | null }>();
+    const n = Math.trunc(Number(String(row?.valor ?? "").trim()));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch { return null; }
+}
+
+// A PONTE pede a lista de pedidos da loja 'enviados' (pra ler o STATUS atual deles no Syntech).
+integracao.get("/loja-pedidos-abertos", async (c) => {
+  if (!tokenOk(c)) return c.json({ error: "nao_autorizado" }, 401);
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, erp_numero FROM pedidos
+      WHERE canal='loja_b2b' AND COALESCE(erp_sync_status,'')='enviado' AND erp_numero IS NOT NULL
+      ORDER BY erp_sync_em DESC LIMIT 200`
+  ).all<{ id: string; erp_numero: number }>().catch(() => ({ results: [] as { id: string; erp_numero: number }[] }));
+  return c.json({ pedidos: (results || []).map((r) => ({ id: r.id, numero_erp: r.erp_numero })) });
+});
+
+// A PONTE devolve o STATUS/CANC lido de cada pedido. Registra sempre (pro painel) e, quando o
+// pedido chega em FATURADO (>= número configurado) ou CANCELADO (CANC='S'), solta a reserva dele.
+integracao.post("/loja-pedidos-status", async (c) => {
+  if (!tokenOk(c)) return c.json({ error: "nao_autorizado" }, 401);
+  const b = await c.req.json().catch(() => ({})) as { itens?: { id?: string; numero_erp?: number | string; status?: number | string | null; canc?: string | null }[] };
+  const itens = Array.isArray(b.itens) ? b.itens : [];
+  if (!itens.length) return c.json({ ok: true, atualizados: 0, reservas_soltas: 0 });
+  const faturadoNum = await statusFaturadoCfg(c.env);
+  const stmts: D1PreparedStatement[] = [];
+  let soltas = 0;
+  for (const it of itens) {
+    const id = String(it.id || "").trim();
+    if (!id) continue;
+    const status = it.status != null && String(it.status).trim() !== "" ? Math.trunc(Number(it.status)) : null;
+    const canc = it.canc != null ? String(it.canc).trim().toUpperCase() : null;
+    // Registra o status lido (pro painel mostrar e pra descobrirmos o número do faturado).
+    stmts.push(c.env.DB.prepare("UPDATE pedidos SET erp_status=?, erp_status_em=datetime('now'), erp_canc=? WHERE id=? AND canal='loja_b2b'").bind(status, canc, id));
+    const cancelado = canc === "S";
+    const faturado = !cancelado && faturadoNum != null && status != null && status >= faturadoNum;
+    if (cancelado || faturado) {
+      // Solta a reserva DAQUELE pedido (faturado: estoque já caiu; cancelado: nunca caiu).
+      stmts.push(c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id IN (SELECT id FROM pedidos WHERE id=? AND canal='loja_b2b')").bind(id));
+      stmts.push(c.env.DB.prepare("UPDATE pedidos SET erp_sync_status=? WHERE id=? AND canal='loja_b2b' AND COALESCE(erp_sync_status,'')='enviado'").bind(cancelado ? "cancelado" : "faturado", id));
+      soltas++;
+    }
+  }
+  if (stmts.length) await c.env.DB.batch(stmts);
+  return c.json({ ok: true, atualizados: itens.length, reservas_soltas: soltas });
+});
+
 // ── Fase S: CLIENTES da loja pra ponte criar no Syntech ─────────────────────────
 // A ponte busca os cadastros APROVADOS que o gestor liberou (loja_criar_erp=1) e que
 // ainda não têm código no Syntech. Devolve tudo que o APP_CLIENTES_INSERT_V2 pede.
@@ -3237,7 +3294,7 @@ integracao.get("/loja-pedidos", async (c) => {
     `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.valor_total, p.data_pedido, p.created_at,
             COALESCE(p.erp_sync_status,'pendente') AS erp_sync_status, COALESCE(p.erp_liberado,0) AS erp_liberado,
             COALESCE(p.vendedor,'') AS vendedor,
-            p.erp_numero, p.erp_sync_erro,
+            p.erp_numero, p.erp_sync_erro, p.erp_status, p.erp_canc, p.erp_status_em,
             (SELECT COUNT(*) FROM pedido_itens WHERE pedido_id=p.id) AS itens,
             (SELECT COALESCE(SUM(qtd),0) FROM pedido_itens WHERE pedido_id=p.id) AS pecas
        FROM pedidos p WHERE p.canal='loja_b2b' AND COALESCE(p.erp_sync_status,'')!='rascunho'

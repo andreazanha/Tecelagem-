@@ -30,6 +30,16 @@ function statusTxt(p: LojaPedido, modo: string): { txt: string; cor: string } {
   return { txt: "Aguardando liberação", cor: "#555" };
 }
 
+// Mostra o STATUS lido no Syntech (pela ponte). Rótulos conhecidos: 10 = Aprovado; CANC='S' = Cancelado.
+// O número do "faturado" a gente descobre vendo aqui qual número aparece num pedido que você faturou.
+function statusSyntech(p: LojaPedido): string {
+  if (p.erp_canc && p.erp_canc.toUpperCase() === "S") return "🟥 Cancelado";
+  if (p.erp_status == null) return "—";
+  const n = Number(p.erp_status);
+  const rotulo = n === 10 ? " · Aprovado" : "";
+  return `nº ${n}${rotulo}`;
+}
+
 export function LojaPedidos() {
   const [modo, setModo] = useState<string>("teste");
   const [pedidos, setPedidos] = useState<LojaPedido[]>([]);
@@ -143,7 +153,7 @@ export function LojaPedidos() {
       {pedidos.length ? (
         <div className="card" style={{ overflowX: "auto" }}>
           <table className="table">
-            <thead><tr><th>Quando</th><th>Cliente</th><th>CNPJ</th><th style={{ textAlign: "right" }}>Peças</th><th style={{ textAlign: "right" }}>Total</th><th>Situação</th><th></th></tr></thead>
+            <thead><tr><th>Quando</th><th>Cliente</th><th>CNPJ</th><th style={{ textAlign: "right" }}>Peças</th><th style={{ textAlign: "right" }}>Total</th><th>Situação</th><th title="STATUS lido no Syntech pela ponte (10 = Aprovado)">Syntech</th><th></th></tr></thead>
             <tbody>
               {pedidos.map((p) => {
                 const s = statusTxt(p, modo);
@@ -156,6 +166,7 @@ export function LojaPedidos() {
                       <td style={{ textAlign: "right" }}>{p.pecas ?? "—"}</td>
                       <td style={{ textAlign: "right" }}>{brl(p.valor_total)}</td>
                       <td style={{ color: s.cor }}>{s.txt}{p.erp_sync_status === "erro" && p.erp_sync_erro ? <div style={{ fontSize: 11 }}>{p.erp_sync_erro}</div> : null}</td>
+                      <td style={{ whiteSpace: "nowrap", fontSize: 13 }}>{statusSyntech(p)}</td>
                       <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
                         <button className="btn btn-soft" style={{ padding: "5px 9px", marginRight: 6 }} onClick={() => verItens(p.id)}>{aberto === p.id ? "Fechar" : "Ver itens"}</button>
                         {precisaLiberar(p, modo) ? (
@@ -172,7 +183,7 @@ export function LojaPedidos() {
                       </td>
                     </tr>
                     {aberto === p.id ? (
-                      <tr><td colSpan={7} style={{ background: "var(--bg-soft)", color: "var(--ink)" }}>
+                      <tr><td colSpan={8} style={{ background: "var(--bg-soft)", color: "var(--ink)" }}>
                         {!itens[p.id] ? <div style={{ padding: 8, color: "var(--muted)" }}>Carregando itens…</div> : (
                           <table className="table" style={{ margin: 4 }}>
                             <thead><tr><th>Produto</th><th>Ref</th><th>Cor</th><th>Tamanho</th><th style={{ textAlign: "right" }}>Qtd</th><th style={{ textAlign: "right" }}>Preço</th></tr></thead>

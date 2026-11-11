@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-11-10.2";
+const PONTE_VERSAO = "2026-11-11.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -1003,6 +1003,45 @@ async function rodadaGravarPedidos(db) {
     }
   }
 }
+// Lê o STATUS/CANC atual (no Syntech) dos pedidos da loja que estão 'enviado' e devolve pro
+// worker. Só LEITURA no Firebird (SELECT). O worker usa isso pra soltar a reserva quando o
+// pedido é FATURADO (estoque já baixou) ou CANCELADO, e pra mostrar o número do status no painel.
+async function rodadaStatusPedidos(db) {
+  const base = CONFIG.api.base.replace(/\/+$/, "");
+  let lista = [];
+  try {
+    const r = await fetch(base + "/api/integracao/loja-pedidos-abertos", { headers: { "X-Integracao-Token": CONFIG.api.token } });
+    if (!r.ok) return;
+    const j = await r.json();
+    lista = Array.isArray(j.pedidos) ? j.pedidos : [];
+  } catch (e) { log("! status-loja: não busquei abertos —", e.message); return; }
+  if (!lista.length) return;
+  const itens = [];
+  for (const p of lista) {
+    const num = Math.trunc(Number(p.numero_erp) || 0);
+    if (!num) continue;
+    try {
+      const rs = await query(db, "SELECT STATUS, CANC FROM PEDIDO WHERE NUMERO = ?", [num]);
+      if (rs && rs[0]) {
+        itens.push({
+          id: p.id,
+          numero_erp: num,
+          status: rs[0].STATUS != null ? Number(rs[0].STATUS) : null,
+          canc: rs[0].CANC != null ? String(rs[0].CANC).trim() : null,
+        });
+      }
+    } catch (e) { /* pula esse pedido; tenta de novo na próxima rodada */ }
+  }
+  if (!itens.length) return;
+  try {
+    const r = await fetch(base + "/api/integracao/loja-pedidos-status", {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Integracao-Token": CONFIG.api.token },
+      body: JSON.stringify({ itens }),
+    });
+    const j = await r.json().catch(() => ({}));
+    log(`status-loja: ${itens.length} pedido(s) lido(s)${j && j.reservas_soltas ? `, ${j.reservas_soltas} reserva(s) solta(s)` : ""}`);
+  } catch (e) { log("! status-loja: não enviei —", e.message); }
+}
 async function gravarUmPedido(db, p) {
   // 1) COD_CLI + COD_PRAZO do cliente: usa o cache; senão procura pelo CNPJ (SP oficial).
   let codCli = p.cod_cli ? String(p.cod_cli).trim() : "";
@@ -1345,7 +1384,7 @@ async function rodada() {
         WHERE STATUS = ? AND COALESCE(CANC, 'N') <> 'S' AND DATA_ALT_REG > ?
         ORDER BY DATA_ALT_REG`;
     const pedidos = await query(db, SQL_PEDIDOS, [STATUS_APROVADO, desde]);
-    if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaRepresentantes(db); await rodadaCarteira(db); await rodadaClientesSync(db); await rodadaProdutos(db, estado); await rodadaEstoque(db); await rodadaKits(db); return; }
+    if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaRepresentantes(db); await rodadaCarteira(db); await rodadaClientesSync(db); await rodadaProdutos(db, estado); await rodadaEstoque(db); await rodadaKits(db); try { await rodadaStatusPedidos(db); } catch (e) { log("! status-loja:", e.message); } return; }
 
     log(`${pedidos.length} pedido(s) aprovado(s) novo(s)/alterado(s)`);
     let maiorAlt = estado.ultimaAlt || null;
@@ -1368,6 +1407,7 @@ async function rodada() {
     await rodadaProdutos(db, estado);
     await rodadaEstoque(db);
     await rodadaKits(db);
+    try { await rodadaStatusPedidos(db); } catch (e) { log("! status-loja:", e.message); }
   } catch (e) {
     log("! erro na rodada:", e.message);
   } finally {
