@@ -1,32 +1,64 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type CardExpedicao, type ConferenciaExpedicao, type PecaExpedicao } from "../api";
-import { opCodigo } from "../expedicaoUtil";
+import { api, type ConferenciaExpedicao, type PecaExpedicao, type FaseConf } from "../api";
 import { getUser } from "../auth";
 import { svgBarcode } from "../barcode";
 import { svgQR } from "../qrPrint";
 import { LeitorCamera } from "./LeitorCamera";
 
-// Conferência de Expedição (bipagem peça a peça). Cada peça do pedido tem um
-// CÓDIGO ÚNICO. O operador bipa cada peça; cada código conta UMA vez só (impede
-// bipar a mesma peça várias vezes) e o "Expedir" só libera quando TODAS as peças
-// foram bipadas. Controle 100% interno — NADA é escrito no Syntech.
+// Conferência por bipagem — serve às DUAS fases (a `fase` decide os textos):
+//  • separacao = bipa o que sai do ESTOQUE (kit inteiro + avulsa) — só pronta entrega,
+//    feito pelo CELULAR (o computador fica longe do estoque).
+//  • expedicao = bipa cada PEÇA física que sai (kit explodido + avulsas) — tudo.
+// Cada código conta UMA vez só; o botão de concluir só libera quando tudo foi
+// bipado. Controle 100% interno — NADA é escrito no Syntech.
 
 type Feedback = { tipo: "ok" | "aviso" | "erro"; msg: string } | null;
 
-// Agrupa peças iguais (mesmo produto/tipo/tamanho/cor) para mostrar "bipado/total".
+const CFG: Record<FaseConf, {
+  pill: string; unidade: string; acao: string; etiqueta: string;
+  sucesso: (n: number) => string; semItens: string; faltaLiberar: string;
+}> = {
+  expedicao: {
+    pill: "📦 Conferência de Expedição",
+    unidade: "peças",
+    acao: "✅ Expedir",
+    etiqueta: "🖨️ Etiquetas das peças",
+    sucesso: (n) => `✅ Todas as ${n} peças foram conferidas. Pode expedir!`,
+    semItens: "Este pedido não tem peças para conferir. Você pode expedir normalmente.",
+    faltaLiberar: "Bipe todas as peças para liberar",
+  },
+  separacao: {
+    pill: "📋 Separação (bipar estoque)",
+    unidade: "itens",
+    acao: "✅ Separado ▶ Revisão",
+    etiqueta: "🖨️ Etiquetas (kit / avulso)",
+    sucesso: (n) => `✅ Tudo separado (${n}). Pode mandar pra Revisão!`,
+    semItens: "Este pedido não tem itens de estoque para separar.",
+    faltaLiberar: "Bipe todos os itens para liberar",
+  },
+};
+
+// Agrupa unidades iguais (mesmo produto/tipo/tamanho/cor) para mostrar "bipado/total".
 function chaveGrupo(p: PecaExpedicao): string {
   return [p.produto, p.tipo, p.tamanho, p.cor || ""].join("|");
 }
 
-export function ConferenciaExpedicaoModal({
-  card,
+export function ConferenciaBipagemModal({
+  pedidoId,
+  cliente,
+  codigoPedido,
+  fase,
   onFechar,
   onConcluir,
 }: {
-  card: CardExpedicao;
+  pedidoId: string;
+  cliente: string | null;
+  codigoPedido: string;
+  fase: FaseConf;
   onFechar: () => void;
   onConcluir: () => void;
 }) {
+  const t = CFG[fase];
   const [conf, setConf] = useState<ConferenciaExpedicao | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -40,16 +72,15 @@ export function ConferenciaExpedicaoModal({
   function carregar(regerar?: boolean) {
     setCarregando(true);
     api
-      .pecasExpedicao(card.pedido_id, regerar)
+      .conferencia(pedidoId, fase, regerar)
       .then((d) => { setConf(d); setErro(null); })
-      .catch(() => setErro("Não consegui carregar as peças deste pedido."))
+      .catch(() => setErro("Não consegui carregar os itens deste pedido."))
       .finally(() => { setCarregando(false); foco(); });
   }
-  useEffect(() => { carregar(); /* eslint-disable-next-line */ }, [card.pedido_id]);
+  useEffect(() => { carregar(); /* eslint-disable-next-line */ }, [pedidoId, fase]);
 
   function foco() { setTimeout(() => inputRef.current?.focus(), 30); }
 
-  // Marca uma peça como bipada (ou não) no estado local, sem recarregar tudo.
   function aplicar(codigo: string, bipado: boolean, total?: number, bipados?: number) {
     setConf((c) =>
       c
@@ -69,13 +100,15 @@ export function ConferenciaExpedicaoModal({
     if (!codigo || ocupado) { foco(); return; }
     setOcupado(true);
     try {
-      const r = await api.biparPeca(card.pedido_id, codigo);
+      const r = await api.biparConferencia(pedidoId, fase, codigo);
       if (r.status === "ok") {
         aplicar(codigo, true, r.total, r.bipados);
         const p = r.peca;
-        setFeedback({ tipo: "ok", msg: `✓ Bipada: ${p ? `${p.tipo} ${p.tamanho} · ${p.cor || ""}`.trim() : codigo}` });
+        setFeedback({ tipo: "ok", msg: `✓ Bipado: ${p ? `${p.tipo} ${p.tamanho} · ${p.cor || ""}`.trim() : codigo}` });
       } else if (r.status === "ja_bipada") {
-        setFeedback({ tipo: "aviso", msg: `⚠ Essa peça já foi bipada (${codigo}). Não conta de novo.` });
+        setFeedback({ tipo: "aviso", msg: `⚠ Esse item já foi bipado (${codigo}). Não conta de novo.` });
+      } else if (r.status === "nivel_errado") {
+        setFeedback({ tipo: "aviso", msg: `⚠ ${r.dica || "Código do nível errado para esta tela."}` });
       } else if (r.status === "outro_pedido") {
         setFeedback({ tipo: "erro", msg: `✗ O código ${codigo} NÃO é deste pedido.` });
       } else if (r.status === "desconhecido") {
@@ -91,11 +124,10 @@ export function ConferenciaExpedicaoModal({
     }
   }
 
-  // Desfaz a bipagem de uma peça (correção de engano).
   async function desbipar(p: PecaExpedicao) {
     if (!p.bipado) return;
     try {
-      const r = await api.desbiparPeca(card.pedido_id, p.codigo);
+      const r = await api.desbiparConferencia(pedidoId, fase, p.codigo);
       aplicar(p.codigo, false, r.total, r.bipados);
       setFeedback({ tipo: "aviso", msg: `Desfeito: ${p.tipo} ${p.tamanho} voltou para "falta bipar".` });
     } catch { /* ok */ }
@@ -114,15 +146,15 @@ export function ConferenciaExpedicaoModal({
 
   const total = conf?.total ?? 0;
   const bipados = conf?.bipados ?? 0;
-  const semPecas = !carregando && !erro && total === 0;
-  // Sem peças cadastradas = não há o que conferir; libera a expedição (não trava).
-  const completo = semPecas || (total > 0 && bipados >= total);
+  const semItens = !carregando && !erro && total === 0;
+  const completo = semItens || (total > 0 && bipados >= total);
   const pct = total ? Math.round((bipados / total) * 100) : 0;
 
-  // Imprime as etiquetas com o CÓDIGO ÚNICO (uma por peça) — rolo térmico 50×30mm.
+  // Imprime as etiquetas (uma por unidade da fase) com código de barras (leitor
+  // USB) + QR (câmera do celular) — rolo térmico 50×30mm.
   function imprimirEtiquetas() {
     const pecas = conf?.pecas || [];
-    if (!pecas.length) { alert("Este pedido não tem peças para etiquetar."); return; }
+    if (!pecas.length) { alert("Nada para etiquetar neste pedido."); return; }
     const W = 50, H = 30; // mm
     const et = (p: PecaExpedicao) => `
       <div class="et">
@@ -137,7 +169,7 @@ export function ConferenciaExpedicaoModal({
     const body = pecas
       .map((p) => `<div class="pg" style="width:${W}mm;height:${H}mm">${et(p)}</div>`)
       .join("");
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas de expedição</title><style>
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas</title><style>
       @page { size: ${W}mm ${H}mm; margin: 0; } *{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif}
       .pg{position:relative;overflow:hidden;page-break-after:always}
       .et{width:100%;height:100%;padding:1.5mm 2mm;display:flex;flex-direction:column}
@@ -159,20 +191,20 @@ export function ConferenciaExpedicaoModal({
         <div className={"modal-hd " + (completo ? "kit" : "unica")}>
           <div className="modal-hd-top">
             <span className="modal-pills">
-              <span className="modal-pill">{opCodigo(card)}</span>
-              <span className="modal-pill">📦 Conferência de Expedição</span>
+              <span className="modal-pill">{codigoPedido}</span>
+              <span className="modal-pill">{t.pill}</span>
             </span>
             <button className="modal-x" onClick={onFechar}>✕</button>
           </div>
           <div className="modal-hd-row">
-            <span className="modal-cli">{card.cliente_nome}</span>
-            <span className={"conf-chip " + (completo ? "ok" : "")}>{bipados} / {total} peças</span>
+            <span className="modal-cli">{cliente || "—"}</span>
+            <span className={"conf-chip " + (completo ? "ok" : "")}>{bipados} / {total} {t.unidade}</span>
           </div>
         </div>
 
         <div className="modal-bd">
           {carregando ? (
-            <div className="card pad">Carregando peças…</div>
+            <div className="card pad">Carregando itens…</div>
           ) : erro ? (
             <div className="conf-fb erro">{erro}</div>
           ) : (
@@ -181,15 +213,15 @@ export function ConferenciaExpedicaoModal({
 
               {feedback && <div className={"conf-fb " + feedback.tipo}>{feedback.msg}</div>}
 
-              {semPecas ? (
-                <div className="conf-fb aviso">Este pedido não tem peças cadastradas para conferir. Você pode expedir normalmente.</div>
+              {semItens ? (
+                <div className="conf-fb aviso">{t.semItens}</div>
               ) : !completo ? (
                 <div className="conf-scan">
                   <div className="conf-scan-row">
                     <input
                       ref={inputRef}
                       className="conf-input"
-                      placeholder="Bipe o código da peça (leitor USB) e aperte Enter…"
+                      placeholder="Bipe o código (leitor USB) e aperte Enter…"
                       value={valor}
                       autoFocus
                       disabled={ocupado}
@@ -200,7 +232,7 @@ export function ConferenciaExpedicaoModal({
                     <button
                       className={"conf-cam-btn" + (camera ? " on" : "")}
                       onClick={() => setCamera((v) => !v)}
-                      title="Ler o QR da peça com a câmera do celular"
+                      title="Ler o QR com a câmera do celular"
                     >
                       📷 {camera ? "Fechar câmera" : "Câmera"}
                     </button>
@@ -211,10 +243,10 @@ export function ConferenciaExpedicaoModal({
                       onErro={(m) => { setFeedback({ tipo: "erro", msg: m }); setCamera(false); }}
                     />
                   )}
-                  <div className="conf-dica">Leia pelo <b>celular (câmera, QR)</b> ou pelo <b>leitor USB</b> (código de barras). <b>Cada código vale uma vez</b> — bipar a mesma peça de novo avisa “já bipada”.</div>
+                  <div className="conf-dica">Leia pelo <b>celular (câmera, QR)</b> ou pelo <b>leitor USB</b> (código de barras). <b>Cada código vale uma vez</b> — bipar o mesmo de novo avisa “já bipado”.</div>
                 </div>
               ) : (
-                <div className="conf-fb ok" style={{ fontSize: 15 }}>✅ Todas as {total} peças foram conferidas. Pode expedir!</div>
+                <div className="conf-fb ok" style={{ fontSize: 15 }}>{t.sucesso(total)}</div>
               )}
 
               <div className="conf-grupos">
@@ -236,7 +268,7 @@ export function ConferenciaExpedicaoModal({
                           <button
                             key={p.codigo}
                             className={"conf-dot " + (p.bipado ? "on" : "")}
-                            title={p.bipado ? `Bipada (${p.codigo}) — clique p/ desfazer` : `Falta bipar (${p.codigo})`}
+                            title={p.bipado ? `Bipado (${p.codigo}) — clique p/ desfazer` : `Falta bipar (${p.codigo})`}
                             onClick={() => p.bipado && desbipar(p)}
                           >
                             {p.bipado ? "✓" : "○"}
@@ -252,14 +284,14 @@ export function ConferenciaExpedicaoModal({
         </div>
 
         <div className="modal-ft">
-          <button className="btn btn-soft" onClick={imprimirEtiquetas}>🖨️ Imprimir etiquetas (código único)</button>
+          <button className="btn btn-soft" onClick={imprimirEtiquetas}>{t.etiqueta}</button>
           {admin && !carregando && bipados === 0 && (
             <button className="btn btn-soft" onClick={() => carregar(true)} title="Refaz os códigos deste pedido (só enquanto nada foi bipado)">↻ Refazer códigos</button>
           )}
           <div style={{ flex: 1 }} />
           <button className="btn" onClick={onFechar}>Fechar</button>
-          <button className="kbtn tecer" disabled={!completo} onClick={onConcluir} title={completo ? "" : "Bipe todas as peças para liberar"}>
-            ✅ Expedir
+          <button className="kbtn tecer" disabled={!completo} onClick={onConcluir} title={completo ? "" : t.faltaLiberar}>
+            {t.acao}
           </button>
         </div>
       </div>

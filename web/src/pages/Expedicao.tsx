@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type CardExpedicao, type Volume } from "../api";
 import { MedidasModal } from "../components/MedidasModal";
-import { ConferenciaExpedicaoModal } from "../components/ConferenciaExpedicaoModal";
+import { ConferenciaBipagemModal } from "../components/ConferenciaExpedicaoModal";
 import { br, opCodigo, tipoDe } from "../expedicaoUtil";
 import { getUser, podeFuncao } from "../auth";
 
@@ -90,8 +90,11 @@ export function Expedicao() {
       </p>
 
       {conf && (
-        <ConferenciaExpedicaoModal
-          card={conf}
+        <ConferenciaBipagemModal
+          pedidoId={conf.pedido_id}
+          cliente={conf.cliente_nome}
+          codigoPedido={opCodigo(conf)}
+          fase="expedicao"
           onFechar={() => setConf(null)}
           onConcluir={() => { const c = conf; setConf(null); setMedidas(c); }}
         />

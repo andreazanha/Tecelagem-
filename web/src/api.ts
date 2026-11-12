@@ -491,7 +491,10 @@ export interface ExpedicaoUpdate {
   transportadora?: string | null;
 }
 
-// Conferência de expedição (bipagem peça a peça) — cada peça tem um código único.
+// Conferência por bipagem — dois níveis no mesmo pedido:
+//  • separacao = bipa o que sai do ESTOQUE (kit inteiro + avulsa) — só pronta entrega.
+//  • expedicao = bipa cada PEÇA física (kit explodido + avulsas) — tudo que sai.
+export type FaseConf = "expedicao" | "separacao";
 export interface PecaExpedicao {
   codigo: string;
   seq: number;
@@ -501,12 +504,15 @@ export interface PecaExpedicao {
   tamanho: string;
   tipo: string;
   kit: number;
+  nivel: "kit" | "peca";
+  grupo: number | null;
   bipado: boolean;
   bipado_em?: string | null;
   bipado_por?: string | null;
 }
 export interface ConferenciaExpedicao {
   pedido_id: string;
+  fase: FaseConf;
   numero_erp: string | null;
   cliente: string | null;
   total: number;
@@ -514,9 +520,10 @@ export interface ConferenciaExpedicao {
   pecas: PecaExpedicao[];
 }
 export interface BipagemResultado {
-  status: "ok" | "ja_bipada" | "outro_pedido" | "desconhecido" | "vazio";
+  status: "ok" | "ja_bipada" | "outro_pedido" | "desconhecido" | "nivel_errado" | "vazio";
   codigo?: string;
   peca?: PecaExpedicao;
+  dica?: string;
   total: number;
   bipados: number;
   completo: boolean;
@@ -1640,13 +1647,13 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => j<{ ok: boolean }>(r)),
-  // Conferência de expedição (bipagem). 100% interno — não escreve no Syntech.
-  pecasExpedicao: (pedido_id: string, regerar?: boolean) =>
-    fetch(`/api/pedidos/${encodeURIComponent(pedido_id)}/pecas-expedicao${regerar ? "?regerar=1" : ""}`).then((r) => j<ConferenciaExpedicao>(r)),
-  biparPeca: (pedido_id: string, codigo: string) =>
-    jsonPost(`/api/pedidos/${encodeURIComponent(pedido_id)}/bipar`, { codigo }).then((r) => j<BipagemResultado>(r)),
-  desbiparPeca: (pedido_id: string, codigo: string) =>
-    jsonPost(`/api/pedidos/${encodeURIComponent(pedido_id)}/desbipar`, { codigo }).then((r) => j<{ ok: boolean; total: number; bipados: number; completo: boolean }>(r)),
+  // Conferência por bipagem (fase = expedicao | separacao). Interno — não escreve no Syntech.
+  conferencia: (pedido_id: string, fase: FaseConf, regerar?: boolean) =>
+    fetch(`/api/pedidos/${encodeURIComponent(pedido_id)}/conferencia?fase=${fase}${regerar ? "&regerar=1" : ""}`).then((r) => j<ConferenciaExpedicao>(r)),
+  biparConferencia: (pedido_id: string, fase: FaseConf, codigo: string) =>
+    jsonPost(`/api/pedidos/${encodeURIComponent(pedido_id)}/conferencia-bipar`, { codigo, fase }).then((r) => j<BipagemResultado>(r)),
+  desbiparConferencia: (pedido_id: string, fase: FaseConf, codigo: string) =>
+    jsonPost(`/api/pedidos/${encodeURIComponent(pedido_id)}/conferencia-desbipar`, { codigo, fase }).then((r) => j<{ ok: boolean; total: number; bipados: number; completo: boolean }>(r)),
   todosPedidos: (params?: { mes?: string; setor?: string }) => {
     const q = new URLSearchParams();
     if (params?.mes) q.set("mes", params.mes);
