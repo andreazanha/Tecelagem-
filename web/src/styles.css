@@ -2841,3 +2841,32 @@ body.dark .com-badge.off { background: #1e293b; color: #94a3b8; }
     margin: -14px -14px 12px; width: calc(100% + 28px);
     padding: calc(14px + env(safe-area-inset-top, 0px)) 14px 14px; }
 }
+
+
+/* ── Conferência de Expedição (bipagem peça a peça) ───────────────────────── */
+.conf-chip { background: #ffffff33; font-size: 14px; font-weight: 800; padding: 5px 14px; border-radius: 20px; }
+.conf-chip.ok { background: #16a34a; }
+.conf-barra { height: 10px; background: #e2e8f0; border-radius: 6px; overflow: hidden; margin: 2px 0 12px; }
+.conf-barra-fill { height: 100%; background: linear-gradient(90deg, #0ea5e9, #22c55e); transition: width .18s; }
+.conf-fb { border-radius: 10px; padding: 11px 14px; font-weight: 700; font-size: 14px; margin-bottom: 12px; }
+.conf-fb.ok { background: #dcfce7; color: #14532d; border: 1px solid #86efac; }
+.conf-fb.aviso { background: #fef9c3; color: #713f12; border: 1px solid #fde047; }
+.conf-fb.erro { background: #fee2e2; color: #7f1d1d; border: 1px solid #fca5a5; }
+.conf-scan { margin-bottom: 14px; }
+.conf-input { width: 100%; font-size: 20px; font-weight: 700; padding: 14px 16px; border: 2px solid #0ea5e9; border-radius: 12px; outline: none; letter-spacing: 1px; }
+.conf-input:focus { border-color: #0284c7; box-shadow: 0 0 0 4px #0ea5e933; }
+.conf-input:disabled { background: #f1f5f9; }
+.conf-dica { font-size: 12px; color: #64748b; margin-top: 7px; }
+.conf-grupos { display: flex; flex-direction: column; gap: 9px; }
+.conf-grp { border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 12px; background: #fff; }
+.conf-grp.full { background: #f0fdf4; border-color: #bbf7d0; }
+.conf-grp-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.conf-grp-nome { display: flex; flex-direction: column; line-height: 1.2; }
+.conf-grp-nome b { font-size: 15px; }
+.conf-grp-sub { font-size: 12px; color: #64748b; }
+.conf-grp-cont { font-size: 15px; font-weight: 800; color: #64748b; background: #f1f5f9; border-radius: 8px; padding: 3px 11px; min-width: 48px; text-align: center; }
+.conf-grp-cont.ok { color: #14532d; background: #bbf7d0; }
+.conf-dots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.conf-dot { width: 30px; height: 30px; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #fff; color: #94a3b8; font-weight: 800; font-size: 13px; cursor: default; }
+.conf-dot.on { background: #22c55e; border-color: #16a34a; color: #fff; cursor: pointer; }
+.modal-ft .kbtn.tecer:disabled { opacity: .45; filter: grayscale(.4); cursor: not-allowed; }

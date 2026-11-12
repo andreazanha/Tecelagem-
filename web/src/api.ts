@@ -491,6 +491,37 @@ export interface ExpedicaoUpdate {
   transportadora?: string | null;
 }
 
+// Conferência de expedição (bipagem peça a peça) — cada peça tem um código único.
+export interface PecaExpedicao {
+  codigo: string;
+  seq: number;
+  produto: string;
+  ref: string | null;
+  cor: string | null;
+  tamanho: string;
+  tipo: string;
+  kit: number;
+  bipado: boolean;
+  bipado_em?: string | null;
+  bipado_por?: string | null;
+}
+export interface ConferenciaExpedicao {
+  pedido_id: string;
+  numero_erp: string | null;
+  cliente: string | null;
+  total: number;
+  bipados: number;
+  pecas: PecaExpedicao[];
+}
+export interface BipagemResultado {
+  status: "ok" | "ja_bipada" | "outro_pedido" | "desconhecido" | "vazio";
+  codigo?: string;
+  peca?: PecaExpedicao;
+  total: number;
+  bipados: number;
+  completo: boolean;
+}
+
 // Romaneio de costura (simplificado): peseiras/mantas e almofadas/capas somadas.
 export interface RomaneioPedido {
   pedido_id: string;
@@ -1609,6 +1640,13 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => j<{ ok: boolean }>(r)),
+  // Conferência de expedição (bipagem). 100% interno — não escreve no Syntech.
+  pecasExpedicao: (pedido_id: string, regerar?: boolean) =>
+    fetch(`/api/pedidos/${encodeURIComponent(pedido_id)}/pecas-expedicao${regerar ? "?regerar=1" : ""}`).then((r) => j<ConferenciaExpedicao>(r)),
+  biparPeca: (pedido_id: string, codigo: string) =>
+    jsonPost(`/api/pedidos/${encodeURIComponent(pedido_id)}/bipar`, { codigo }).then((r) => j<BipagemResultado>(r)),
+  desbiparPeca: (pedido_id: string, codigo: string) =>
+    jsonPost(`/api/pedidos/${encodeURIComponent(pedido_id)}/desbipar`, { codigo }).then((r) => j<{ ok: boolean; total: number; bipados: number; completo: boolean }>(r)),
   todosPedidos: (params?: { mes?: string; setor?: string }) => {
     const q = new URLSearchParams();
     if (params?.mes) q.set("mes", params.mes);
