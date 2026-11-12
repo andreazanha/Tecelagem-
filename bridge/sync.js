@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-11-11.1";
+const PONTE_VERSAO = "2026-11-12.1";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -166,7 +166,7 @@ async function autoAtualizar() {
   try {
     if (!CONFIG.api || !CONFIG.api.base) return;
     const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/bridge-sync";
-    const r = await fetch(url, { headers: { "X-Integracao-Token": CONFIG.api.token || "" } });
+    const r = await fetch(url, { headers: { "X-Integracao-Token": CONFIG.api.token || "", "X-Ponte-Versao": PONTE_VERSAO } });
     if (!r.ok) return; // 401/404/sem versão no servidor → segue com a atual
     const novo = await r.text();
     // validações de segurança: conteúdo precisa parecer o sync.js de verdade

@@ -525,7 +525,7 @@ function SideNav({ u, onNav }: { u: NonNullable<ReturnType<typeof getUser>>; onN
 // da fábrica e manda os pedidos do Syntech) está sincronizando. Consulta o
 // "último contato" a cada 60s. Verde = em dia, amarelo = atrasada, vermelho = parada.
 function PonteStatus() {
-  const [st, setSt] = useState<{ status: string; ha_segundos: number | null; ultimo_contato: string | null } | null>(null);
+  const [st, setSt] = useState<{ status: string; ha_segundos: number | null; ultimo_contato: string | null; versao?: string | null } | null>(null);
   useEffect(() => {
     let vivo = true;
     const carregar = () => {
@@ -547,7 +547,7 @@ function PonteStatus() {
     st.status === "atrasada" ? "atrasada (o PC da fábrica pode ter dormido ou caiu a internet)" :
     st.status === "parada" ? "PARADA — os pedidos do ERP não estão entrando" :
     "ainda sem contato registrado";
-  const titulo = `Ponte do ERP (Syntech) — ${explica}` + (st.ultimo_contato ? `\nÚltima sincronização: ${new Date(st.ultimo_contato).toLocaleString("pt-BR")}` : "");
+  const titulo = `Ponte do ERP (Syntech) — ${explica}` + (st.ultimo_contato ? `\nÚltima sincronização: ${new Date(st.ultimo_contato).toLocaleString("pt-BR")}` : "") + (st.versao ? `\nVersão da ponte: v${st.versao}` : "");
   return (
     <span
       title={titulo}

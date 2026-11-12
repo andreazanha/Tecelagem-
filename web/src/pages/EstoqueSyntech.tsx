@@ -45,7 +45,7 @@ export function EstoqueSyntech() {
   const [linhas, setLinhas] = useState<Linha[] | null>(null);
   const [busca, setBusca] = useState("");
   const [erro, setErro] = useState("");
-  const [sync, setSync] = useState<{ atualizado_em: string | null; agora: string; itens: number } | null>(null);
+  const [sync, setSync] = useState<{ atualizado_em: string | null; agora: string; itens: number; ponteVersao?: string | null } | null>(null);
   const [alertas, setAlertas] = useState<{ kit: string; cor: string; montaveis: number; faltando: string; sobrando: { peca: string; qtd: number }[] }[]>([]);
   const [popup, setPopup] = useState(false);
   const [resumo, setResumo] = useState<Resumo | null>(null);
@@ -56,7 +56,7 @@ export function EstoqueSyntech() {
   function carregar() {
     setLinhas(null); setErro("");
     api.erpEstoque({ completo: true }).then((r) => setLinhas(r as Linha[])).catch((e) => setErro((e as Error).message));
-    api.erpSyncStatus().then((s) => setSync({ atualizado_em: s.estoque.atualizado_em, agora: s.agora, itens: s.estoque.itens })).catch(() => {});
+    api.erpSyncStatus().then((s) => setSync({ atualizado_em: s.estoque.atualizado_em, agora: s.agora, itens: s.estoque.itens, ponteVersao: s.ponte_versao || null })).catch(() => {});
     api.erpKitAlertas().then((r) => { setAlertas(r.alertas || []); if ((r.alertas || []).length) setPopup(true); }).catch(() => {});
     api.erpEstoqueResumo().then((r) => setResumo(r as Resumo)).catch(() => {});
   }
@@ -151,6 +151,7 @@ export function EstoqueSyntech() {
           <span style={{ width: 9, height: 9, borderRadius: 999, background: hq.cor, display: "inline-block" }} />
           <span style={{ color: hq.cor, fontWeight: 600 }}>{hq.txt}</span>
           <span className="muted">· {sync?.itens ?? 0} saldos no espelho</span>
+          {sync?.ponteVersao && <span className="muted" title="Versão da ponte que está rodando no PC da fábrica">· ponte v{sync.ponteVersao}</span>}
         </div>
       )}
 

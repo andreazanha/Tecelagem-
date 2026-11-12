@@ -35,11 +35,18 @@ integracao.use("*", async (c, next) => {
     const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
     const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
     if (esperado && recebido && recebido === esperado) {
-      c.executionCtx.waitUntil(
+      // A ponte manda a versão dela no cabeçalho X-Ponte-Versao → guardamos pra mostrar no sistema
+      // ("rodando + versão X") sem precisar abrir o PC da fábrica.
+      const versao = (c.req.header("X-Ponte-Versao") || "").trim().slice(0, 40);
+      const stmts = [
         c.env.DB.prepare(
           "INSERT INTO config (chave, valor, atualizado_em) VALUES ('ponte_ultimo_contato', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
-        ).bind(new Date().toISOString()).run().then(() => {}).catch(() => {})
-      );
+        ).bind(new Date().toISOString()),
+      ];
+      if (versao) stmts.push(c.env.DB.prepare(
+        "INSERT INTO config (chave, valor, atualizado_em) VALUES ('ponte_versao', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+      ).bind(versao));
+      c.executionCtx.waitUntil(c.env.DB.batch(stmts).then(() => {}).catch(() => {}));
     }
   } catch { /* nunca atrapalha a ponte */ }
   await next();
@@ -1545,9 +1552,11 @@ integracao.get("/sync-status", async (c) => {
   const prod = await c.env.DB.prepare("SELECT COUNT(*) AS n, MAX(atualizado_em) AS ult FROM erp_produtos").first<{ n: number; ult: string | null }>().catch(() => null);
   let diag: unknown = null;
   try { const d = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_diag'").first<{ valor: string | null }>(); diag = d?.valor ? JSON.parse(d.valor) : null; } catch { diag = null; }
+  const pv = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='ponte_versao'").first<{ valor: string | null }>().catch(() => null);
   return c.json({
     estoque: { itens: Number(est?.n) || 0, atualizado_em: est?.ult || null },
     produtos: { itens: Number(prod?.n) || 0, atualizado_em: prod?.ult || null },
+    ponte_versao: pv?.valor || null,
     diag,
     agora: new Date().toISOString(),
   });
@@ -1564,7 +1573,8 @@ integracao.get("/ponte-status", async (c) => {
   if (ultimo) { const t = Date.parse(ultimo); if (!isNaN(t)) ha_segundos = Math.max(0, Math.round((Date.now() - t) / 1000)); }
   let status: "ativa" | "atrasada" | "parada" | "sem_dados" = "sem_dados";
   if (ha_segundos != null) status = ha_segundos <= 300 ? "ativa" : ha_segundos <= 900 ? "atrasada" : "parada";
-  return c.json({ ultimo_contato: ultimo, ha_segundos, status, agora: new Date().toISOString() });
+  const vrow = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='ponte_versao'").first<{ valor: string | null }>().catch(() => null);
+  return c.json({ ultimo_contato: ultimo, ha_segundos, status, versao: vrow?.valor || null, agora: new Date().toISOString() });
 });
 
 // Zera o estoque espelhado (erp_estoque). A ponte repõe tudo na próxima rodada, já com a
