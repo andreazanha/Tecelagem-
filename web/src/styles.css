@@ -2886,7 +2886,7 @@ body.dark .com-badge.off { background: #1e293b; color: #94a3b8; }
 .chatfab.on { background: #ef4444; }
 .chatfab-badge { position: absolute; top: -3px; right: -3px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 12px; background: #ef4444; color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; border: 2px solid #fff; }
 
-.chatpane { position: fixed; right: 22px; bottom: 90px; width: 380px; height: min(72vh, 640px); background: #fff; border-radius: 16px; box-shadow: 0 16px 50px #0006; z-index: 70; display: flex; flex-direction: column; overflow: hidden; font-size: 14px; }
+.chatpane { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(920px, 94vw); height: min(86vh, 780px); background: #fff; border-radius: 18px; box-shadow: 0 24px 80px #0008, 0 0 0 100vmax #00000055; z-index: 70; display: flex; flex-direction: column; overflow: hidden; font-size: 15px; }
 .chatpane-hd { background: #128c7e; color: #fff; padding: 11px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .chatpane-ttl { font-weight: 800; font-size: 15px; }
 .chatpane-sub { font-size: 11.5px; opacity: .92; margin-top: 2px; }
@@ -2949,3 +2949,8 @@ body.dark .com-badge.off { background: #1e293b; color: #94a3b8; }
 .chat-foto { width: 40px; height: 40px; border-radius: 50%; border: none; background: #e2e8f0; color: #334155; font-size: 17px; cursor: pointer; flex: none; }
 .chat-foto:disabled { opacity: .6; cursor: default; }
 .chat-img { max-width: 220px; max-height: 260px; border-radius: 8px; display: block; cursor: pointer; margin-bottom: 2px; }
+
+/* Chat: controle do Boss (ver todas as conversas) */
+.chat-vertudo { width: 100%; text-align: left; padding: 13px 16px; border: none; border-bottom: 1px solid #e2e8f0; background: #ecfdf5; color: #065f46; font-weight: 800; font-size: 14px; cursor: pointer; }
+.chat-vertudo:hover { background: #d1fae5; }
+.chat-obs { padding: 9px 12px; text-align: center; font-size: 12.5px; color: #64748b; background: #f1f5f9; border-top: 1px solid #e2e8f0; }

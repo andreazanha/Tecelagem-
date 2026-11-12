@@ -538,6 +538,11 @@ export interface ChatConversa {
   ultima: { texto: string | null; de_setor: string; autor: string | null; imagem_key: string | null; criado_em: string } | null;
   nao_lidas: number;
 }
+// Controle do Boss (admin): resumo de uma conversa entre dois setores quaisquer.
+export interface ChatParResumo {
+  a: string; b: string; nomeA: string; nomeB: string; total: number;
+  ultima: { texto: string | null; de_setor: string; autor: string | null; imagem_key: string | null; criado_em: string } | null;
+}
 
 // Romaneio de costura (simplificado): peseiras/mantas e almofadas/capas somadas.
 export interface RomaneioPedido {
@@ -1676,6 +1681,10 @@ export const api = {
     fd.append("de", de); fd.append("para", para); if (texto) fd.append("texto", texto); fd.append("file", file);
     return fetch("/api/chat/enviar-foto", { method: "POST", body: fd }).then((r) => j<ChatMsg>(r));
   },
+  // Controle do Boss (admin): ver todas as conversas e qualquer par de setores.
+  chatTodas: () => fetch("/api/chat/todas").then((r) => j<ChatParResumo[]>(r)),
+  chatConversaPar: (a: string, b: string) =>
+    fetch(`/api/chat/conversa-par?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`).then((r) => j<ChatMsg[]>(r)),
   todosPedidos: (params?: { mes?: string; setor?: string }) => {
     const q = new URLSearchParams();
     if (params?.mes) q.set("mes", params.mes);

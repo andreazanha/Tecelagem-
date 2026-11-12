@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type ChatSetor, type ChatConversa, type ChatMsg } from "../api";
+import { api, type ChatSetor, type ChatConversa, type ChatMsg, type ChatParResumo } from "../api";
+import { getUser } from "../auth";
 
 // CHAT INTERNO da equipe — botão flutuante + painel estilo WhatsApp. Os setores
 // conversam 1 a 1 (cada setor é um contato). O setor DESTE computador é escolhido
@@ -22,6 +23,11 @@ export function ChatWidget() {
   const [trocarSetor, setTrocarSetor] = useState(false);
   const [aviso, setAviso] = useState<{ setor: string; nome: string; autor: string | null; texto: string | null } | null>(null);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const [vendoTudo, setVendoTudo] = useState(false);
+  const [todas, setTodas] = useState<ChatParResumo[]>([]);
+  const [parAberto, setParAberto] = useState<{ a: string; b: string; nomeA: string; nomeB: string } | null>(null);
+  const [msgsPar, setMsgsPar] = useState<ChatMsg[]>([]);
+  const admin = !!getUser()?.admin;
   const fimRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const comRef = useRef(com); comRef.current = com;
@@ -145,6 +151,16 @@ export function ChatWidget() {
     } catch { /* ok */ } finally { setEnviandoFoto(false); }
   }
 
+  // Controle do Boss (admin): abre a lista de TODAS as conversas / uma conversa qualquer (só leitura).
+  function abrirVerTudo() {
+    setVendoTudo(true); setParAberto(null); setCom("");
+    api.chatTodas().then((d) => Array.isArray(d) && setTodas(d)).catch(() => {});
+  }
+  function abrirPar(p: ChatParResumo) {
+    setParAberto({ a: p.a, b: p.b, nomeA: p.nomeA, nomeB: p.nomeB }); setMsgsPar([]);
+    api.chatConversaPar(p.a, p.b).then((d) => { if (Array.isArray(d)) { setMsgsPar(d); setTimeout(scrollFim, 30); } }).catch(() => {});
+  }
+
   function escolherSetor(id: string) {
     prepararAvisos();
     try { localStorage.setItem(LS_SETOR, id); } catch { /* ok */ }
@@ -194,8 +210,47 @@ export function ChatWidget() {
               </div>
               <div className="chat-dica">Fica salvo só neste computador. Dá pra trocar quando quiser.</div>
             </div>
+          ) : vendoTudo ? (
+            parAberto ? (
+              <div className="chat-conversa">
+                <div className="chat-conv-top">
+                  <button className="chat-voltar" onClick={() => setParAberto(null)} title="Voltar">‹</button>
+                  <span className="chat-conv-av sm">👁</span>
+                  <b>{parAberto.nomeA} ↔ {parAberto.nomeB}</b>
+                </div>
+                <div className="chat-msgs">
+                  {msgsPar.length === 0 && <div className="chat-vazio" style={{ margin: "auto" }}>Sem mensagens nesta conversa.</div>}
+                  {msgsPar.map((m) => (
+                    <div key={m.id} className={"chat-bolha " + (m.de_setor === parAberto.a ? "dele" : "minha")}>
+                      <div className="chat-autor">{m.autor || "—"} · {nomeSetor(m.de_setor)}</div>
+                      {m.imagem_key ? <img className="chat-img" src={`/api/chat/foto/${m.imagem_key}`} alt="foto" loading="lazy" onClick={() => window.open(`/api/chat/foto/${m.imagem_key}`, "_blank")} /> : null}
+                      {m.texto ? <div className="chat-txt">{m.texto}</div> : null}
+                      <div className="chat-hora">{horaDe(m.criado_em)}</div>
+                    </div>
+                  ))}
+                  <div ref={fimRef} />
+                </div>
+                <div className="chat-obs">👁 Visão do Boss — só leitura.</div>
+              </div>
+            ) : (
+              <div className="chat-list">
+                <div className="chat-conv-top"><button className="chat-voltar" onClick={() => setVendoTudo(false)} title="Voltar">‹</button><b>👁 Todas as conversas (Boss)</b></div>
+                {todas.length === 0 && <div className="chat-vazio">Ainda não há conversas entre os setores.</div>}
+                {todas.map((p) => (
+                  <button key={p.a + "|" + p.b} className="chat-conv" onClick={() => abrirPar(p)}>
+                    <span className="chat-conv-av">👁</span>
+                    <span className="chat-conv-mid">
+                      <span className="chat-conv-nome">{p.nomeA} ↔ {p.nomeB}</span>
+                      <span className="chat-conv-prev">{p.ultima ? (p.ultima.autor ? p.ultima.autor.split(" ")[0] + ": " : "") + (p.ultima.texto || "📷 foto") : "—"}</span>
+                    </span>
+                    <span className="chat-conv-rt">{p.ultima && <span className="chat-conv-hora">{horaDe(p.ultima.criado_em)}</span>}</span>
+                  </button>
+                ))}
+              </div>
+            )
           ) : !com ? (
             <div className="chat-list">
+              {admin && <button className="chat-vertudo" onClick={abrirVerTudo}>👁 Ver todas as conversas (Boss)</button>}
               {conversas.length === 0 && <div className="chat-vazio">Carregando conversas…</div>}
               {conversas.map((c) => (
                 <button key={c.setor} className="chat-conv" onClick={() => abrirConversa(c.setor)}>

@@ -141,3 +141,37 @@ chat.get("/foto/:nome", async (c) => {
   const ct = obj.httpMetadata?.contentType || "image/jpeg";
   return new Response(obj.body, { headers: { "Content-Type": ct, "Cache-Control": "public, max-age=86400" } });
 });
+
+const nomeSetor = (id: string) => SETORES.find((s) => s.id === id)?.nome || id;
+
+// CONTROLE DO BOSS (só ADMIN): lista TODAS as conversas (todos os pares de setores
+// que já trocaram mensagem), pra ele poder acompanhar tudo. Só leitura.
+chat.get("/todas", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u?.admin) return c.json({ error: "so_admin" }, 403);
+  const { results } = await c.env.DB.prepare(
+    "SELECT par, COUNT(*) AS n, MAX(criado_em) AS ultima_em FROM chat_mensagens GROUP BY par ORDER BY ultima_em DESC"
+  ).all<{ par: string; n: number; ultima_em: string }>();
+  const out = [];
+  for (const r of results) {
+    const [a, b] = r.par.split("|");
+    if (!IDS.has(a) || !IDS.has(b)) continue;
+    const ultima = await c.env.DB.prepare(
+      "SELECT texto, de_setor, autor, imagem_key, criado_em FROM chat_mensagens WHERE par=? ORDER BY criado_em DESC, rowid DESC LIMIT 1"
+    ).bind(r.par).first<Partial<Msg>>();
+    out.push({ a, b, nomeA: nomeSetor(a), nomeB: nomeSetor(b), total: Number(r.n || 0), ultima: ultima || null });
+  }
+  return c.json(out);
+});
+
+// CONTROLE DO BOSS (só ADMIN): mensagens de QUALQUER par de setores (só leitura).
+chat.get("/conversa-par", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u?.admin) return c.json({ error: "so_admin" }, 403);
+  const a = (c.req.query("a") || "").trim(), b = (c.req.query("b") || "").trim();
+  if (!IDS.has(a) || !IDS.has(b) || a === b) return c.json({ error: "setor inválido" }, 400);
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, de_setor, para_setor, autor, texto, imagem_key, criado_em FROM chat_mensagens WHERE par=? ORDER BY criado_em, rowid LIMIT 500"
+  ).bind(parDe(a, b)).all<Msg>();
+  return c.json(results);
+});
