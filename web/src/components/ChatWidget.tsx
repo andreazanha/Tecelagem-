@@ -21,7 +21,9 @@ export function ChatWidget() {
   const [texto, setTexto] = useState("");
   const [trocarSetor, setTrocarSetor] = useState(false);
   const [aviso, setAviso] = useState<{ setor: string; nome: string; autor: string | null; texto: string | null } | null>(null);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
   const fimRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const comRef = useRef(com); comRef.current = com;
   const meuRef = useRef(meu); meuRef.current = meu;
   const abertoRef = useRef(aberto); abertoRef.current = aberto;
@@ -133,6 +135,16 @@ export function ChatWidget() {
     } catch { /* ok */ }
   }
 
+  async function enviarFoto(file?: File | null) {
+    if (!file || !com || enviandoFoto) return;
+    setEnviandoFoto(true);
+    try {
+      const m = await api.chatEnviarFoto(meu, com, file, texto.trim() || undefined);
+      if (m && m.id) { setMsgs((prev) => [...prev, m]); setTexto(""); }
+      carregarConversas();
+    } catch { /* ok */ } finally { setEnviandoFoto(false); }
+  }
+
   function escolherSetor(id: string) {
     prepararAvisos();
     try { localStorage.setItem(LS_SETOR, id); } catch { /* ok */ }
@@ -211,13 +223,17 @@ export function ChatWidget() {
                 {msgs.map((m) => (
                   <div key={m.id} className={"chat-bolha " + (m.de_setor === meu ? "minha" : "dele")}>
                     {m.de_setor !== meu && m.autor ? <div className="chat-autor">{m.autor}</div> : null}
-                    <div className="chat-txt">{m.texto}</div>
+                    {m.imagem_key ? <img className="chat-img" src={`/api/chat/foto/${m.imagem_key}`} alt="foto" loading="lazy" onClick={() => window.open(`/api/chat/foto/${m.imagem_key}`, "_blank")} /> : null}
+                    {m.texto ? <div className="chat-txt">{m.texto}</div> : null}
                     <div className="chat-hora">{horaDe(m.criado_em)}</div>
                   </div>
                 ))}
                 <div ref={fimRef} />
               </div>
               <div className="chat-input">
+                <input type="file" accept="image/*" ref={fileRef} style={{ display: "none" }}
+                  onChange={(e) => { const f = e.target.files?.[0]; const el = e.currentTarget; enviarFoto(f); if (el) el.value = ""; }} />
+                <button className="chat-foto" onClick={() => fileRef.current?.click()} disabled={enviandoFoto} title="Enviar foto">{enviandoFoto ? "⏳" : "📷"}</button>
                 <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Escreva uma mensagem…" autoFocus
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); enviar(); } }} />
                 <button className="chat-send" onClick={enviar} disabled={!texto.trim()} title="Enviar">➤</button>
