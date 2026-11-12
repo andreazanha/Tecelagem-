@@ -1910,6 +1910,8 @@ body.dark .demo-guia-ol li span { color: #8b97ab; }
 .a4-et { border: 1px dashed #d0d3da; border-radius: 3px; padding: 3px 4px; display: flex; flex-direction: column; justify-content: center; gap: 0px; overflow: hidden; box-sizing: border-box; }
 .a4-cli { font-size: 8px; color: #475569; line-height: 1.15; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .a4-mod { font-size: 12px; font-weight: 800; color: #0f172a; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prev-bc { width: 100%; margin-top: auto; height: 38%; line-height: 0; }
+.prev-bc svg { display: block; width: 100%; height: 100%; }
 .a4-lin { font-size: 8.5px; color: #334155; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .a4-et-skip { border-style: dashed !important; border-color: #c8ccd4 !important; color: #aab; align-items: center; justify-content: center; font-size: 8px; text-transform: uppercase; letter-spacing: .06em; background: repeating-linear-gradient(45deg, #f4f5f7, #f4f5f7 4px, #eceef1 4px, #eceef1 8px); }
 .a4-et-empty { border-style: dashed !important; border-color: #d7dbe1 !important; }
