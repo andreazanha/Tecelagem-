@@ -10,6 +10,7 @@ import { InstalarApp } from "./InstalarApp";
 import { DemoMode } from "./DemoMode";
 import { PcpNovoPedidoPopup } from "./PcpNovoPedidoPopup";
 import { CrmPedidoPopup } from "./CrmPedidoPopup";
+import { ChatWidget } from "./ChatWidget";
 
 // Aviso de NOVA VERSÃO pra TODOS os usuários: compara o "hash" do build que este navegador carregou
 // com o que o servidor está entregando agora. Assim que sai um deploy novo (o arquivo muda de hash),
@@ -682,6 +683,7 @@ export function Layout() {
       <AvisoNovaVersao />
       {pode(u, "pedidos") && <PcpNovoPedidoPopup />}
       <CrmPedidoPopup />
+      <ChatWidget />
     </div>
   );
 }
