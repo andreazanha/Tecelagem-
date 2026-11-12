@@ -117,7 +117,7 @@ export function ChatWidget() {
                   <span className="chat-conv-av">{c.nome.slice(0, 1)}</span>
                   <span className="chat-conv-mid">
                     <span className="chat-conv-nome">{c.nome}</span>
-                    <span className="chat-conv-prev">{c.ultima ? (c.ultima.de_setor === meu ? "Você: " : "") + (c.ultima.texto || "📷 foto") : "Toque para começar"}</span>
+                    <span className="chat-conv-prev">{c.ultima ? (c.ultima.de_setor === meu ? "Você: " : (c.ultima.autor ? c.ultima.autor.split(" ")[0] + ": " : "")) + (c.ultima.texto || "📷 foto") : "Toque para começar"}</span>
                   </span>
                   <span className="chat-conv-rt">
                     {c.ultima && <span className="chat-conv-hora">{horaDe(c.ultima.criado_em)}</span>}
