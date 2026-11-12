@@ -590,7 +590,39 @@ export function ImpressaoEtiquetas() {
       </div>
       )}
 
-      {/* Prévia da 1ª folha (proporcional ao tamanho escolhido) */}
+      {/* Prévia: na TÉRMICA mostra uma fileira de `cols` etiquetas no tamanho do rolo
+          (igual à impressão térmica); na FOLHA mostra a 1ª página A4/Carta. */}
+      {modoImp === "termica" ? (() => {
+        const gap = 2; // mm entre colunas (igual ao imprimirTermica)
+        const cols = Math.max(1, Math.min(3, Math.trunc(termica.cols) || 1));
+        const pageW = cols * termica.w + (cols - 1) * gap;
+        // Fonte proporcional à LARGURA do rolo (não da folha), senão fica minúscula.
+        const tfpt = (mult: number) => `${(cfg.fonte * mult * 0.3528 / pageW * 100).toFixed(3)}cqw`;
+        const ph = { cliente: "Cliente", modelo: "(etiqueta)", tamanho: "55×35", cor: "AREIA", composicao: "", ref: "KT0000" } as Etq;
+        return (
+          <div style={{ marginTop: 16 }}>
+            <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Prévia da térmica {termica.w} × {termica.h} mm · {cols} coluna{cols > 1 ? "s" : ""} no rolo:</div>
+            <div className="a4-folha" style={{ padding: 0, position: "relative", aspectRatio: `${pageW} / ${termica.h}`, width: "100%", maxWidth: cols === 1 ? 190 : cols === 2 ? 360 : 500 }}>
+              {Array.from({ length: cols }, (_, c) => {
+                const x = c * (termica.w + gap);
+                const style = { position: "absolute" as const, left: pct(x, pageW) + "%", top: 0, width: pct(termica.w, pageW) + "%", height: "100%", overflow: "hidden" };
+                const e = etqs.length ? etqs[c] : ph;
+                if (!e) return <div key={c} className="a4-et a4-et-empty" style={style}></div>;
+                return (
+                  <div key={c} className="a4-et" style={{ ...style, gap: 0, justifyContent: "flex-start" }}>
+                    <div className="a4-mod" style={{ fontSize: tfpt(1.3), lineHeight: 1.05 }}>{e.kit ? e.modelo : modeloLinha(e.modelo)}</div>
+                    {e.kit
+                      ? <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}><b>{e.tamanho || "—"}</b></div>
+                      : <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>{e.ref ? <>Ref: <b>{e.ref}</b> · </> : null}Tam: <b>{e.tamanho || "—"}</b></div>}
+                    <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
+                    {e.ref ? <div className="prev-bc" dangerouslySetInnerHTML={{ __html: svgBarcode(e.ref, { height: 26, fontSize: 11, width: 1.1 }) }} /> : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })() : (
       <div style={{ marginTop: 16 }}>
         <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Prévia da folha {cfg.pagina === "carta" ? "Carta" : "A4"} (1ª de {paginas}):</div>
         <div className="a4-folha" style={{ padding: 0, position: "relative", aspectRatio: `${pag.w} / ${pag.h}` }}>
@@ -623,6 +655,7 @@ export function ImpressaoEtiquetas() {
           })}
         </div>
       </div>
+      )}
 
       {/* Diálogo: salvar modelo (novo ou por cima de um existente) */}
       {modalSalvar && (
