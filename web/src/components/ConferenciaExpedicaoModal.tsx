@@ -3,6 +3,8 @@ import { api, type CardExpedicao, type ConferenciaExpedicao, type PecaExpedicao 
 import { opCodigo } from "../expedicaoUtil";
 import { getUser } from "../auth";
 import { svgBarcode } from "../barcode";
+import { svgQR } from "../qrPrint";
+import { LeitorCamera } from "./LeitorCamera";
 
 // Conferência de Expedição (bipagem peça a peça). Cada peça do pedido tem um
 // CÓDIGO ÚNICO. O operador bipa cada peça; cada código conta UMA vez só (impede
@@ -31,6 +33,7 @@ export function ConferenciaExpedicaoModal({
   const [valor, setValor] = useState("");
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [camera, setCamera] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const admin = !!getUser()?.admin;
 
@@ -126,7 +129,10 @@ export function ConferenciaExpedicaoModal({
         <div class="mod">${p.produto}</div>
         <div class="lin"><b>${p.tipo} ${p.tamanho}</b></div>
         <div class="lin">Cor: <b>${p.cor || "—"}</b>${p.ref ? ` · ${p.ref}` : ""}</div>
-        <div class="bc">${svgBarcode(p.codigo, { height: 30, width: 1.3, fontSize: 13 })}</div>
+        <div class="cods">
+          <div class="bc">${svgBarcode(p.codigo, { height: 26, width: 1.2, fontSize: 12 })}</div>
+          <div class="qr">${svgQR(p.codigo)}</div>
+        </div>
       </div>`;
     const body = pecas
       .map((p) => `<div class="pg" style="width:${W}mm;height:${H}mm">${et(p)}</div>`)
@@ -137,8 +143,11 @@ export function ConferenciaExpedicaoModal({
       .et{width:100%;height:100%;padding:1.5mm 2mm;display:flex;flex-direction:column}
       .et .mod{font-size:8pt;font-weight:700;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .et .lin{font-size:8pt;line-height:1.15}
-      .et .bc{margin-top:auto;width:100%;height:46%;line-height:0}
-      .et .bc svg{display:block;width:100%;height:100%}
+      .et .cods{margin-top:auto;display:flex;align-items:flex-end;gap:1.5mm;width:100%;height:52%}
+      .et .cods .bc{flex:1;min-width:0;height:100%;line-height:0}
+      .et .cods .bc svg{display:block;width:100%;height:100%}
+      .et .cods .qr{width:13mm;height:13mm;flex:none}
+      .et .cods .qr svg{display:block;width:100%;height:100%}
     </style></head><body>${body}<script>window.onload=function(){window.print()}</script></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(html); w.document.close(); }
@@ -176,18 +185,33 @@ export function ConferenciaExpedicaoModal({
                 <div className="conf-fb aviso">Este pedido não tem peças cadastradas para conferir. Você pode expedir normalmente.</div>
               ) : !completo ? (
                 <div className="conf-scan">
-                  <input
-                    ref={inputRef}
-                    className="conf-input"
-                    placeholder="📷 Bipe o código da peça (leitor USB) e aperte Enter…"
-                    value={valor}
-                    autoFocus
-                    disabled={ocupado}
-                    onChange={(e) => setValor(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); bipar(valor); } }}
-                    onBlur={() => { if (!completo) foco(); }}
-                  />
-                  <div className="conf-dica">Não dá pra digitar à mão a peça conferida — <b>cada código vale uma vez</b>. Bipar a mesma peça de novo avisa “já bipada”.</div>
+                  <div className="conf-scan-row">
+                    <input
+                      ref={inputRef}
+                      className="conf-input"
+                      placeholder="Bipe o código da peça (leitor USB) e aperte Enter…"
+                      value={valor}
+                      autoFocus
+                      disabled={ocupado}
+                      onChange={(e) => setValor(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); bipar(valor); } }}
+                      onBlur={() => { if (!completo && !camera) foco(); }}
+                    />
+                    <button
+                      className={"conf-cam-btn" + (camera ? " on" : "")}
+                      onClick={() => setCamera((v) => !v)}
+                      title="Ler o QR da peça com a câmera do celular"
+                    >
+                      📷 {camera ? "Fechar câmera" : "Câmera"}
+                    </button>
+                  </div>
+                  {camera && (
+                    <LeitorCamera
+                      onCodigo={(txt) => bipar(txt)}
+                      onErro={(m) => { setFeedback({ tipo: "erro", msg: m }); setCamera(false); }}
+                    />
+                  )}
+                  <div className="conf-dica">Leia pelo <b>celular (câmera, QR)</b> ou pelo <b>leitor USB</b> (código de barras). <b>Cada código vale uma vez</b> — bipar a mesma peça de novo avisa “já bipada”.</div>
                 </div>
               ) : (
                 <div className="conf-fb ok" style={{ fontSize: 15 }}>✅ Todas as {total} peças foram conferidas. Pode expedir!</div>

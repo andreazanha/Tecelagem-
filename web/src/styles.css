@@ -2870,3 +2870,12 @@ body.dark .com-badge.off { background: #1e293b; color: #94a3b8; }
 .conf-dot { width: 30px; height: 30px; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #fff; color: #94a3b8; font-weight: 800; font-size: 13px; cursor: default; }
 .conf-dot.on { background: #22c55e; border-color: #16a34a; color: #fff; cursor: pointer; }
 .modal-ft .kbtn.tecer:disabled { opacity: .45; filter: grayscale(.4); cursor: not-allowed; }
+
+/* ── Leitor de câmera (QR) na conferência ─────────────────────────────────── */
+.conf-scan-row { display: flex; gap: 8px; align-items: stretch; }
+.conf-scan-row .conf-input { flex: 1; }
+.conf-cam-btn { flex: none; border: 2px solid #0ea5e9; background: #e0f2fe; color: #075985; font-weight: 800; border-radius: 12px; padding: 0 16px; cursor: pointer; font-size: 14px; white-space: nowrap; }
+.conf-cam-btn.on { background: #0ea5e9; color: #fff; }
+.leitor-cam { position: relative; margin-top: 10px; border-radius: 12px; overflow: hidden; background: #000; }
+.leitor-cam video { width: 100%; display: block; max-height: 340px; object-fit: cover; }
+.leitor-alvo { position: absolute; inset: 20% 18%; border: 3px solid #22c55e; border-radius: 12px; pointer-events: none; box-shadow: 0 0 0 100vmax #00000066; }
