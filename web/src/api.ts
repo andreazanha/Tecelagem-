@@ -529,6 +529,16 @@ export interface BipagemResultado {
   completo: boolean;
 }
 
+// Chat interno da equipe (conversa entre setores) — isolado do resto do sistema.
+export interface ChatSetor { id: string; nome: string; }
+export interface ChatMsg { id: string; de_setor: string; para_setor: string; autor: string | null; texto: string | null; imagem_key: string | null; criado_em: string; }
+export interface ChatConversa {
+  setor: string;
+  nome: string;
+  ultima: { texto: string | null; de_setor: string; autor: string | null; imagem_key: string | null; criado_em: string } | null;
+  nao_lidas: number;
+}
+
 // Romaneio de costura (simplificado): peseiras/mantas e almofadas/capas somadas.
 export interface RomaneioPedido {
   pedido_id: string;
@@ -1654,6 +1664,13 @@ export const api = {
     jsonPost(`/api/pedidos/${encodeURIComponent(pedido_id)}/conferencia-bipar`, { codigo, fase }).then((r) => j<BipagemResultado>(r)),
   desbiparConferencia: (pedido_id: string, fase: FaseConf, codigo: string) =>
     jsonPost(`/api/pedidos/${encodeURIComponent(pedido_id)}/conferencia-desbipar`, { codigo, fase }).then((r) => j<{ ok: boolean; total: number; bipados: number; completo: boolean }>(r)),
+  // Chat interno da equipe (isolado — não toca em pedido/estoque/Syntech).
+  chatSetores: () => fetch("/api/chat/setores").then((r) => j<ChatSetor[]>(r)),
+  chatConversas: (setor: string) => fetch(`/api/chat/conversas?setor=${encodeURIComponent(setor)}`).then((r) => j<ChatConversa[]>(r)),
+  chatMensagens: (setor: string, com: string, desde?: string) =>
+    fetch(`/api/chat/mensagens?setor=${encodeURIComponent(setor)}&com=${encodeURIComponent(com)}${desde ? `&desde=${encodeURIComponent(desde)}` : ""}`).then((r) => j<ChatMsg[]>(r)),
+  chatEnviar: (de: string, para: string, texto: string) =>
+    jsonPost("/api/chat/enviar", { de, para, texto }).then((r) => j<ChatMsg>(r)),
   todosPedidos: (params?: { mes?: string; setor?: string }) => {
     const q = new URLSearchParams();
     if (params?.mes) q.set("mes", params.mes);

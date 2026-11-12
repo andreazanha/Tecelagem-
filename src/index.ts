@@ -27,6 +27,7 @@ import { enviarWhatsapp } from "./routes/atendimento";
 import { loja } from "./routes/loja";
 import compras from "./routes/compras";
 import { fichas } from "./routes/fichas";
+import { chat } from "./routes/chat";
 
 export interface Env {
   DB: D1Database;
@@ -109,6 +110,7 @@ app.route("/api/loja", loja);
 // desmontado pra tirar esse motivo. Os arquivos ficam no repo pra retomar depois (ver catalogo-seguro.ts).
 app.route("/api/compras", compras);
 app.route("/api/fichas", fichas);
+app.route("/api/chat", chat); // chat interno da equipe — isolado, não toca em pedido/estoque/Syntech
 
 // Fallback: serve o SPA (assets estáticos do build do Vite).
 // IMPORTANTE: como o worker intercepta todas as rotas e busca o asset por código,
