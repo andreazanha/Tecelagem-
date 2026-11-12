@@ -2881,7 +2881,7 @@ body.dark .com-badge.off { background: #1e293b; color: #94a3b8; }
 .leitor-alvo { position: absolute; inset: 20% 18%; border: 3px solid #22c55e; border-radius: 12px; pointer-events: none; box-shadow: 0 0 0 100vmax #00000066; }
 
 /* ── Chat interno da equipe (botão flutuante + painel estilo WhatsApp) ─────── */
-.chatfab { position: fixed; right: 22px; bottom: 22px; width: 58px; height: 58px; border-radius: 50%; border: none; background: #25d366; color: #fff; cursor: pointer; box-shadow: 0 6px 20px #0005; display: grid; place-items: center; z-index: 70; }
+.chatfab { position: fixed; right: 22px; bottom: 22px; width: 58px; height: 58px; border-radius: 50%; border: none; background: #25d366; color: #fff; cursor: pointer; box-shadow: 0 6px 20px #0005; display: grid; place-items: center; z-index: 70; touch-action: none; }
 .chatfab:hover { filter: brightness(1.05); }
 .chatfab.on { background: #ef4444; }
 .chatfab-badge { position: absolute; top: -3px; right: -3px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 12px; background: #ef4444; color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; border: 2px solid #fff; }

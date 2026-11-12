@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { api, type ChatSetor, type ChatConversa, type ChatMsg, type ChatParResumo, type ChatFigurinha } from "../api";
 import { getUser } from "../auth";
 
@@ -17,6 +17,9 @@ export function ChatWidget() {
   const [setores, setSetores] = useState<ChatSetor[]>([]);
   const [meu, setMeu] = useState<string>(() => { try { return localStorage.getItem(LS_SETOR) || ""; } catch { return ""; } });
   const [aberto, setAberto] = useState(false);
+  const [fabPos, setFabPos] = useState<{ x: number; y: number } | null>(() => { try { const s = localStorage.getItem("bt_chat_fabpos"); return s ? JSON.parse(s) : null; } catch { return null; } });
+  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
+  const liveRef = useRef<{ x: number; y: number } | null>(null);
   const [conversas, setConversas] = useState<ChatConversa[]>([]);
   const [com, setCom] = useState<string>("");
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
@@ -191,6 +194,28 @@ export function ChatWidget() {
     setMeu(id); setTrocarSetor(false); setCom("");
   }
 
+  // Botão flutuante ARRASTÁVEL (pra não atrapalhar no celular): toque abre/fecha o
+  // chat; segurar e arrastar move o botão e salva a posição só neste aparelho.
+  function fabDown(e: RPointerEvent<HTMLButtonElement>) {
+    const r = e.currentTarget.getBoundingClientRect();
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: e.clientX - r.left, oy: e.clientY - r.top, moved: false };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ok */ }
+  }
+  function fabMove(e: RPointerEvent<HTMLButtonElement>) {
+    const d = dragRef.current; if (!d) return;
+    if (!d.moved && Math.abs(e.clientX - d.sx) + Math.abs(e.clientY - d.sy) < 6) return;
+    d.moved = true;
+    const sz = e.currentTarget.offsetWidth || 58, m = 6;
+    const x = Math.max(m, Math.min(window.innerWidth - sz - m, e.clientX - d.ox));
+    const y = Math.max(m, Math.min(window.innerHeight - sz - m, e.clientY - d.oy));
+    liveRef.current = { x, y }; setFabPos({ x, y });
+  }
+  function fabUp() {
+    const d = dragRef.current; dragRef.current = null;
+    if (d?.moved) { try { localStorage.setItem("bt_chat_fabpos", JSON.stringify(liveRef.current)); } catch { /* ok */ } }
+    else { prepararAvisos(); setAberto((v) => !v); }
+  }
+
   const precisaSetor = !meu || trocarSetor;
 
   return (
@@ -207,7 +232,10 @@ export function ChatWidget() {
         </div>
       )}
 
-      <button className={"chatfab" + (aberto ? " on" : "")} onClick={() => { prepararAvisos(); setAberto((v) => !v); }} title="Chat da equipe" aria-label="Chat da equipe">
+      <button className={"chatfab" + (aberto ? " on" : "")}
+        style={fabPos ? { left: fabPos.x, top: fabPos.y, right: "auto", bottom: "auto" } : undefined}
+        onPointerDown={fabDown} onPointerMove={fabMove} onPointerUp={fabUp}
+        title="Chat da equipe (segure e arraste para mover)" aria-label="Chat da equipe">
         {aberto
           ? <span style={{ fontSize: 22, fontWeight: 700 }}>✕</span>
           : <svg viewBox="0 0 24 24" width="27" height="27" fill="#fff"><path d="M12 2a10 10 0 0 0-8.63 15.05L2 22l5.1-1.33A10 10 0 1 0 12 2zm0 1.8a8.2 8.2 0 1 1-4.2 15.24l-.3-.18-3 .78.8-2.92-.2-.31A8.2 8.2 0 0 1 12 3.8zM8.2 9a1 1 0 1 0 0 2h7.6a1 1 0 1 0 0-2H8.2zm0 3.4a1 1 0 1 0 0 2h4.8a1 1 0 1 0 0-2H8.2z"/></svg>}
