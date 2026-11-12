@@ -2944,3 +2944,8 @@ body.dark .com-badge.off { background: #1e293b; color: #94a3b8; }
 .chat-aviso-txt { font-size: 32px; line-height: 1.22; margin-top: 6px; font-weight: 800; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .chat-aviso-cta { font-size: 17px; opacity: .92; margin-top: 12px; font-weight: 700; }
 .chat-aviso-x { background: #ffffff33; border: none; color: #fff; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; flex: none; font-size: 17px; align-self: flex-start; }
+
+/* Chat: botão de foto e imagem na bolha */
+.chat-foto { width: 40px; height: 40px; border-radius: 50%; border: none; background: #e2e8f0; color: #334155; font-size: 17px; cursor: pointer; flex: none; }
+.chat-foto:disabled { opacity: .6; cursor: default; }
+.chat-img { max-width: 220px; max-height: 260px; border-radius: 8px; display: block; cursor: pointer; margin-bottom: 2px; }

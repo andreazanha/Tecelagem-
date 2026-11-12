@@ -104,3 +104,40 @@ chat.post("/lido", async (c) => {
   ).bind(setor, com).run();
   return c.json({ ok: true });
 });
+
+// Envia uma FOTO (com legenda opcional). Guarda no R2; a mensagem leva o imagem_key.
+chat.post("/enviar-foto", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  const form = await c.req.formData().catch(() => null);
+  const de = String(form?.get("de") || "").trim();
+  const para = String(form?.get("para") || "").trim();
+  const texto = (String(form?.get("texto") || "").trim().slice(0, 4000)) || null;
+  const file = form?.get("file") as unknown as File | null;
+  if (!IDS.has(de) || !IDS.has(para) || de === para) return c.json({ error: "setor inválido" }, 400);
+  if (!file || typeof file.arrayBuffer !== "function") return c.json({ error: "sem_arquivo" }, 400);
+  const ct = file.type || "image/jpeg";
+  if (!ct.startsWith("image/")) return c.json({ error: "so_imagem" }, 400);
+  const buf = await file.arrayBuffer();
+  if (buf.byteLength > 12 * 1024 * 1024) return c.json({ error: "muito_grande" }, 400); // 12 MB
+  const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : ct.includes("gif") ? "gif" : "jpg";
+  const nome = `${uid()}.${ext}`;
+  await c.env.BUCKET.put(`chat/${nome}`, buf, { httpMetadata: { contentType: ct } });
+  const id = uid();
+  await c.env.DB.prepare(
+    "INSERT INTO chat_mensagens (id, par, de_setor, para_setor, autor, texto, imagem_key) VALUES (?,?,?,?,?,?,?)"
+  ).bind(id, parDe(de, para), de, para, u?.nome || null, texto, nome).run();
+  const row = await c.env.DB.prepare(
+    "SELECT id, de_setor, para_setor, autor, texto, imagem_key, criado_em FROM chat_mensagens WHERE id=?"
+  ).bind(id).first<Msg>();
+  return c.json(row);
+});
+
+// Serve a foto do chat (guardada no R2 em chat/<nome>).
+chat.get("/foto/:nome", async (c) => {
+  const nome = c.req.param("nome");
+  if (!/^[A-Za-z0-9._-]+$/.test(nome)) return c.notFound();
+  const obj = await c.env.BUCKET.get(`chat/${nome}`);
+  if (!obj) return c.notFound();
+  const ct = obj.httpMetadata?.contentType || "image/jpeg";
+  return new Response(obj.body, { headers: { "Content-Type": ct, "Cache-Control": "public, max-age=86400" } });
+});

@@ -1671,6 +1671,11 @@ export const api = {
     fetch(`/api/chat/mensagens?setor=${encodeURIComponent(setor)}&com=${encodeURIComponent(com)}${desde ? `&desde=${encodeURIComponent(desde)}` : ""}`).then((r) => j<ChatMsg[]>(r)),
   chatEnviar: (de: string, para: string, texto: string) =>
     jsonPost("/api/chat/enviar", { de, para, texto }).then((r) => j<ChatMsg>(r)),
+  chatEnviarFoto: (de: string, para: string, file: File, texto?: string) => {
+    const fd = new FormData();
+    fd.append("de", de); fd.append("para", para); if (texto) fd.append("texto", texto); fd.append("file", file);
+    return fetch("/api/chat/enviar-foto", { method: "POST", body: fd }).then((r) => j<ChatMsg>(r));
+  },
   todosPedidos: (params?: { mes?: string; setor?: string }) => {
     const q = new URLSearchParams();
     if (params?.mes) q.set("mes", params.mes);
