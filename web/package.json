@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "jsbarcode": "^3.12.3",
     "jsqr": "^1.4.0",
     "qrcode-generator": "^1.5.2",
     "react": "^18.3.1",
@@ -17,6 +18,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/jsbarcode": "^3.11.4",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",

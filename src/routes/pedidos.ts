@@ -2,7 +2,12 @@ import { Hono } from "hono";
 import { extractText, getDocumentProxy } from "unpdf";
 import type { Env } from "../index";
 import { parsePedido } from "../parser";
-import { exigirFuncao } from "../permissoes";
+import { exigirFuncao, exigirAlgumaFuncao } from "../permissoes";
+import { usuarioLogado } from "../sessao";
+
+// Funções que podem conferir/bipar a expedição: o operador da Expedição, quem
+// imprime etiquetas e o gestor de pedidos (admin passa por cima de tudo).
+const FUNCOES_CONFERENCIA = ["expedicao.fase", "expedicao.etiquetas", "pedidos"];
 import {
   classificar,
   criarCatalogo,
@@ -408,6 +413,194 @@ pedidos.get("/etiquetas", async (c) => {
       ORDER BY COALESCE(i.kit,0), p.numero_erp, i.produto, i.tamanho, i.cor_grade`
   ).bind(...ids).all();
   return c.json(results);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFERÊNCIA DE EXPEDIÇÃO (bipagem peça a peça) — controle 100% INTERNO.
+// Cada peça física do pedido ganha um CÓDIGO ÚNICO (ex.: "000022-003"). Na
+// Expedição o operador bipa peça por peça; cada código conta UMA vez só — não
+// adianta pegar uma peça e bipar várias — e o pedido só fecha quando TODAS as
+// peças distintas forem bipadas. NADA disto é escrito no Syntech.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Tipo da peça principal pela largura (mesma regra da produção/etiquetas).
+function pcTipoPrincipal(tamanho: string): string {
+  const m = (tamanho || "").toUpperCase().replace(/\s/g, "").match(/^([\d.,]+)X([\d.,]+)/);
+  if (!m) return "Peça";
+  const cm = (x: string) => { const n = parseFloat(x.replace(",", ".")); return n < 10 ? Math.round(n * 100) : Math.round(n); };
+  const W = cm(m[1]), H = cm(m[2]);
+  if (W <= 60 && H <= 60) return "Almofada";
+  if (W <= 75) return "Peseira";
+  return "Manta";
+}
+function pcFmt(s: string): string { return (s || "").replace(/[xX]/g, "×").replace(/\./g, ",").trim(); }
+function pcKitNome(produto: string): string {
+  const p = (produto || "").replace(/^\s*KIT\s+/i, "").trim();
+  const nome = (p.match(/^([^\s+]+)/)?.[1] || p);
+  return "Kit " + nome.toLowerCase().replace(/\b\p{L}/gu, (ch) => ch.toUpperCase());
+}
+// Peças de um kit = 1 principal (peseira/manta) + N almofadas/capas ("+2-55X35").
+function pcKitPecas(produto: string, tamanho: string | null): { tipo: string; tamanho: string }[] {
+  const nome = (produto || "").toUpperCase();
+  const pecas: { tipo: string; tamanho: string }[] = [];
+  const mainSize = (tamanho || "").trim();
+  if (mainSize) pecas.push({ tipo: pcTipoPrincipal(mainSize), tamanho: pcFmt(mainSize) });
+  const count = parseInt(nome.match(/\+\s*(\d+)/)?.[1] || "0", 10);
+  const almSize = (nome.match(/\+\s*\d+\s*-?\s*(\d[\d.,]*\s*X\s*\d[\d.,]*)/i)?.[1] || "").replace(/\s+/g, "");
+  const vazio = /\bCAPA\b/.test(nome) || /S\/\s*ENCH/.test(nome) || /\bSEM\s+ENCH/.test(nome);
+  const almTipo = vazio ? "Capa" : "Almofada";
+  if (almSize && count) for (let i = 0; i < count; i++) pecas.push({ tipo: almTipo, tamanho: pcFmt(almSize) });
+  return pecas.length ? pecas : [{ tipo: "Peça", tamanho: pcFmt(mainSize) }];
+}
+
+type Unidade = { nivel: "kit" | "peca"; grupo: number | null; produto: string; ref: string | null; cor: string | null; tamanho: string; tipo: string };
+
+// Monta as unidades do pedido para a bipagem (gera uma vez, serve às duas fases):
+//  • SEPARAÇÃO bipa o que SAI DO ESTOQUE: o KIT inteiro (1 unidade) + cada AVULSA.
+//  • EXPEDIÇÃO bipa cada PEÇA física (kit explodido em peseira/almofadas + avulsas).
+// Kit → 1 'kit' (separação) + N 'peca' (expedição). Avulsa → 1 'peca' (as duas fases).
+async function unidadesEsperadas(env: Env, pedidoId: string) {
+  const ped = await env.DB.prepare(
+    "SELECT id, numero_erp, cliente_nome FROM pedidos WHERE id = ?"
+  ).bind(pedidoId).first<{ id: string; numero_erp: string | null; cliente_nome: string | null }>();
+  if (!ped) return null;
+  const { results } = await env.DB.prepare(
+    `SELECT produto, ref, cor_grade AS cor, tamanho, qtd, COALESCE(kit,0) AS kit
+       FROM pedido_itens WHERE pedido_id = ? AND qtd > 0
+      ORDER BY COALESCE(kit,0), produto, tamanho, cor_grade`
+  ).bind(pedidoId).all<{ produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number; kit: number }>();
+  const unidades: Unidade[] = [];
+  let kitN = 0;
+  for (const it of results) {
+    const q = Math.max(0, Math.trunc(Number(it.qtd) || 0));
+    if (it.kit) {
+      const nome = pcKitNome(it.produto);
+      for (let k = 0; k < q; k++) {
+        kitN++;
+        unidades.push({ nivel: "kit", grupo: kitN, produto: nome, ref: it.ref, cor: it.cor, tamanho: pcFmt((it.tamanho || "").trim()), tipo: "Kit" });
+        for (const pc of pcKitPecas(it.produto, it.tamanho))
+          unidades.push({ nivel: "peca", grupo: kitN, produto: nome, ref: it.ref, cor: it.cor, tamanho: pc.tamanho, tipo: pc.tipo });
+      }
+    } else {
+      const tipo = (it.produto || "").trim().split(/\s+/)[0] || "Peça";
+      for (let u = 0; u < q; u++)
+        unidades.push({ nivel: "peca", grupo: null, produto: it.produto, ref: it.ref, cor: it.cor, tamanho: pcFmt((it.tamanho || "").trim()), tipo });
+    }
+  }
+  return { ped, unidades };
+}
+
+// Fase válida (expedição por padrão). Filtro SQL das unidades e coluna de estado.
+function faseConf(q: string | undefined): "separacao" | "expedicao" { return q === "separacao" ? "separacao" : "expedicao"; }
+// separação = o que sai do estoque: o KIT + peças avulsas (grupo NULL).
+// expedição = cada peça física (todas as 'peca').
+function filtroFase(fase: string): string {
+  return fase === "separacao" ? "(nivel = 'kit' OR (nivel = 'peca' AND grupo IS NULL))" : "nivel = 'peca'";
+}
+function colEstado(fase: string): { em: "separado_em" | "bipado_em"; por: "separado_por" | "bipado_por" } {
+  return fase === "separacao" ? { em: "separado_em", por: "separado_por" } : { em: "bipado_em", por: "bipado_por" };
+}
+function pertenceAFase(nivel: string, grupo: number | null, fase: string): boolean {
+  return fase === "separacao" ? (nivel === "kit" || (nivel === "peca" && grupo == null)) : nivel === "peca";
+}
+async function progresso(env: Env, pedidoId: string, fase: string) {
+  const e = colEstado(fase);
+  const r = await env.DB.prepare(
+    `SELECT COUNT(*) AS total, SUM(CASE WHEN ${e.em} IS NOT NULL THEN 1 ELSE 0 END) AS bip FROM peca_codigo WHERE pedido_id = ? AND ${filtroFase(fase)}`
+  ).bind(pedidoId).first<{ total: number; bip: number }>();
+  const total = Number(r?.total || 0), bipados = Number(r?.bip || 0);
+  return { total, bipados, completo: total > 0 && bipados >= total };
+}
+// Garante que os códigos do pedido já existem (gera na 1ª vez). Idempotente.
+async function garantirCodigos(env: Env, id: string, regerar: boolean): Promise<boolean> {
+  const atual = await env.DB.prepare(
+    "SELECT COUNT(*) AS n, SUM(CASE WHEN bipado_em IS NOT NULL OR separado_em IS NOT NULL THEN 1 ELSE 0 END) AS usados FROM peca_codigo WHERE pedido_id = ?"
+  ).bind(id).first<{ n: number; usados: number }>();
+  let n = Number(atual?.n || 0);
+  const usados = Number(atual?.usados || 0);
+  if (regerar && usados === 0 && n > 0) {
+    await env.DB.prepare("DELETE FROM peca_codigo WHERE pedido_id = ?").bind(id).run();
+    n = 0;
+  }
+  if (n > 0) return true;
+  const exp = await unidadesEsperadas(env, id);
+  if (!exp) return false;
+  const pref = String(exp.ped.numero_erp || exp.ped.id.slice(0, 6));
+  let pecaSeq = 0;
+  const stmts = exp.unidades.map((unit, i) => {
+    const seq = i + 1;
+    const codigo = unit.nivel === "kit" ? `${pref}-K${unit.grupo}` : `${pref}-${String(++pecaSeq).padStart(3, "0")}`;
+    const kitFlag = unit.nivel === "kit" || unit.grupo != null ? 1 : 0;
+    return env.DB.prepare(
+      "INSERT OR IGNORE INTO peca_codigo (codigo, pedido_id, seq, produto, ref, cor, tamanho, tipo, kit, nivel, grupo) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+    ).bind(codigo, id, seq, unit.produto, unit.ref, unit.cor, unit.tamanho, unit.tipo, kitFlag, unit.nivel, unit.grupo);
+  });
+  if (stmts.length) await env.DB.batch(stmts);
+  return true;
+}
+
+// Lê (gerando na 1ª vez) as unidades da conferência do pedido para a FASE pedida
+// (?fase=expedicao|separacao), com o estado de bipagem daquela fase.
+// ?regerar=1 refaz os códigos — só se NADA (nem separado, nem bipado) foi marcado.
+pedidos.get("/:id/conferencia", async (c) => {
+  const g = await exigirAlgumaFuncao(c, FUNCOES_CONFERENCIA); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const fase = faseConf(c.req.query("fase"));
+  const ok = await garantirCodigos(c.env, id, c.req.query("regerar") === "1");
+  if (!ok) return c.json({ error: "pedido não encontrado" }, 404);
+  const e = colEstado(fase);
+  const { results: cods } = await c.env.DB.prepare(
+    `SELECT codigo, seq, produto, ref, cor, tamanho, tipo, kit, nivel, grupo, ${e.em} AS marcado_em, ${e.por} AS marcado_por
+       FROM peca_codigo WHERE pedido_id = ? AND ${filtroFase(fase)} ORDER BY seq`
+  ).bind(id).all<Record<string, unknown>>();
+  const ped = await c.env.DB.prepare("SELECT numero_erp, cliente_nome FROM pedidos WHERE id = ?").bind(id).first<{ numero_erp: string | null; cliente_nome: string | null }>();
+  const pecas = cods.map((r) => ({ ...r, bipado: !!r.marcado_em, bipado_em: r.marcado_em, bipado_por: r.marcado_por }));
+  return c.json({
+    pedido_id: id, fase, numero_erp: ped?.numero_erp || null, cliente: ped?.cliente_nome || null,
+    total: pecas.length, bipados: pecas.filter((p) => p.bipado).length, pecas,
+  });
+});
+
+// Bipa um código numa FASE: valida pedido, nível (kit×peça) e repetição.
+pedidos.post("/:id/conferencia-bipar", async (c) => {
+  const g = await exigirAlgumaFuncao(c, FUNCOES_CONFERENCIA); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const b = (await c.req.json<{ codigo?: string; fase?: string }>().catch(() => ({}))) as { codigo?: string; fase?: string };
+  const codigo = (b.codigo || "").trim();
+  const fase = faseConf(b.fase);
+  if (!codigo) return c.json({ status: "vazio", ...(await progresso(c.env, id, fase)) }, 400);
+  const u = await usuarioLogado(c.env, c);
+  const e = colEstado(fase);
+  const row = await c.env.DB.prepare(
+    `SELECT codigo, pedido_id, produto, ref, cor, tamanho, tipo, nivel, grupo, ${e.em} AS marcado_em FROM peca_codigo WHERE codigo = ?`
+  ).bind(codigo).first<{ codigo: string; pedido_id: string; produto: string; ref: string | null; cor: string | null; tamanho: string; tipo: string; nivel: string; grupo: number | null; marcado_em: string | null }>();
+  if (!row) return c.json({ status: "desconhecido", codigo, ...(await progresso(c.env, id, fase)) });
+  if (row.pedido_id !== id) return c.json({ status: "outro_pedido", codigo, ...(await progresso(c.env, id, fase)) });
+  if (!pertenceAFase(row.nivel, row.grupo, fase)) {
+    const dica = fase === "separacao"
+      ? "Esse é o código de uma PEÇA de dentro do kit. Na separação, bipe o KIT."
+      : "Esse é o código do KIT. Na expedição, bipe as PEÇAS de dentro.";
+    return c.json({ status: "nivel_errado", peca: row, dica, ...(await progresso(c.env, id, fase)) });
+  }
+  if (row.marcado_em) return c.json({ status: "ja_bipada", peca: row, ...(await progresso(c.env, id, fase)) });
+  await c.env.DB.prepare(
+    `UPDATE peca_codigo SET ${e.em} = datetime('now'), ${e.por} = ? WHERE codigo = ?`
+  ).bind(u?.nome || null, codigo).run();
+  return c.json({ status: "ok", peca: { ...row, bipado_em: new Date().toISOString() }, ...(await progresso(c.env, id, fase)) });
+});
+
+// Desfaz a bipagem de um código numa fase (correção de engano).
+pedidos.post("/:id/conferencia-desbipar", async (c) => {
+  const g = await exigirAlgumaFuncao(c, FUNCOES_CONFERENCIA); if ("erro" in g) return g.erro;
+  const id = c.req.param("id");
+  const b = (await c.req.json<{ codigo?: string; fase?: string }>().catch(() => ({}))) as { codigo?: string; fase?: string };
+  const codigo = (b.codigo || "").trim();
+  const fase = faseConf(b.fase);
+  const e = colEstado(fase);
+  await c.env.DB.prepare(
+    `UPDATE peca_codigo SET ${e.em} = NULL, ${e.por} = NULL WHERE codigo = ? AND pedido_id = ?`
+  ).bind(codigo, id).run();
+  return c.json({ ok: true, ...(await progresso(c.env, id, fase)) });
 });
 
 // Prévia do número da OP (explosão): o menor número livre que a próxima explosão receberá.

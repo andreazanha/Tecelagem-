@@ -3,6 +3,7 @@ import { api, type CardProducao, type ItemPedidoEstoque, type RomaneioPedido } f
 import { historico } from "../historico";
 import { getUser, podeFuncao } from "../auth";
 import { RomaneioModal } from "../pages/Romaneios";
+import { ConferenciaBipagemModal } from "./ConferenciaExpedicaoModal";
 
 const SETOR_LABEL: Record<string, string> = {
   tecelagem: "Tecelagem", passadoria: "Passadoria", corte: "Corte",
@@ -883,6 +884,8 @@ function PainelSepPE({ cfg, cards, onAbrir, onAcao, onEntrada }: {
   onAcao: (cards: CardProducao[], acao: Acao) => void;
   onEntrada: (c: CardProducao) => void;
 }) {
+  // Separação por bipagem (celular): abre a conferência; só manda p/ Revisão no fim.
+  const [sep, setSep] = useState<CardProducao | null>(null);
   // Número do card:
   //  • desmembrado (tem op) → mostra o NÚMERO ORIGINAL do pedido (op), não o código pai.
   //  • explosão ainda inteira (vários números) → código pai ou "1º +N" (não a lista toda).
@@ -916,7 +919,7 @@ function PainelSepPE({ cfg, cards, onAbrir, onAcao, onEntrada }: {
       <span className="tecn-act">
         {col === "ent"
           ? <button className="tecn-btn ent" onClick={(e) => { e.stopPropagation(); onEntrada(c); }}>📥 Dar entrada</button>
-          : (podeAcao("enviar") && <button className="tecn-btn env" onClick={(e) => { e.stopPropagation(); onAcao([c], "enviar"); }}>Separado ▶ Revisão</button>)}
+          : (podeAcao("enviar") && <button className="tecn-btn env" onClick={(e) => { e.stopPropagation(); setSep(c); }} title="Bipar os itens de estoque (celular) antes de mandar p/ Revisão">📷 Separado ▶ Revisão</button>)}
       </span>
     </div>
   );
@@ -935,6 +938,16 @@ function PainelSepPE({ cfg, cards, onAbrir, onAcao, onEntrada }: {
           );
         })}
       </div>
+      {sep && (
+        <ConferenciaBipagemModal
+          pedidoId={sep.pedido_id}
+          cliente={sep.cliente_nome}
+          codigoPedido={numDe(sep)}
+          fase="separacao"
+          onFechar={() => setSep(null)}
+          onConcluir={() => { const c = sep; setSep(null); onAcao([c], "enviar"); }}
+        />
+      )}
     </div>
   );
 }

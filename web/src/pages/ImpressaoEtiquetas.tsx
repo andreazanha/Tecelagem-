@@ -1,7 +1,15 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { api, type Pedido } from "../api";
+import { svgBarcode } from "../barcode";
+import { getUser } from "../auth";
 
-type Etq = { cliente: string; modelo: string; tamanho: string | null; cor: string | null; composicao: string | null; kit?: boolean };
+// Tamanhos de etiqueta TÉRMICA (rolo) prontos, em mm. O operador escolhe na hora.
+const TERMICA_TAMANHOS: { w: number; h: number }[] = [
+  { w: 100, h: 150 }, { w: 100, h: 50 }, { w: 80, h: 40 }, { w: 60, h: 40 },
+  { w: 50, h: 30 }, { w: 50, h: 25 }, { w: 40, h: 60 }, { w: 40, h: 25 }, { w: 33, h: 22 },
+];
+
+type Etq = { cliente: string; modelo: string; tamanho: string | null; cor: string | null; composicao: string | null; ref: string | null; kit?: boolean; pid?: string };
 
 // Configuração da folha de etiquetas (tudo em milímetros). Casa com as folhas
 // de etiqueta adesiva comuns (tipo Pimaco): tamanho da folha + margem + tamanho
@@ -113,21 +121,19 @@ function kitPecas(produto: string, tamanho: string | null): { tipo: string; tama
   return pecas.length ? pecas : [{ tipo: "Peça", tamanho: fmtMedida(mainSize) }];
 }
 function conteudoEt(e: Etq): string {
+  // Código de barras (Code 128) da referência — lê no leitor USB e na câmera do celular.
+  const bc = e.ref ? `<div class="bc">${svgBarcode(e.ref, { height: 34, fontSize: 13, width: 1.3 })}</div>` : "";
   if (e.kit) {
-    // Cada etiqueta do kit é uma peça (peseira/manta ou almofada): modelo em
-    // cima, tipo+tamanho da peça em destaque, cor + composição, cliente.
-    const comp = e.composicao ? ` · ${e.composicao}` : "";
+    // Cada etiqueta do kit é uma peça (peseira/manta ou almofada).
     return `<div class="mod">${e.modelo}</div>
       <div class="lin"><b>${e.tamanho || "—"}</b></div>
-      <div class="lin">Cor: <b>${e.cor || "—"}</b><span class="comp">${comp}</span></div>
-      <div class="cli">${e.cliente || ""}</div>`;
+      <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
+      ${bc}`;
   }
-  const comp = e.composicao ? ` · ${e.composicao}` : "";
-  const mod = `<div class="mod">${modeloLinha(e.modelo)}</div>`;
-  return `${mod}
-    <div class="lin">Tam: <b>${e.tamanho || "—"}</b><span class="comp">${comp}</span></div>
+  return `<div class="mod">${modeloLinha(e.modelo)}</div>
+    <div class="lin">${e.ref ? `Ref: <b>${e.ref}</b> · ` : ""}Tam: <b>${e.tamanho || "—"}</b></div>
     <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
-    <div class="cli">${e.cliente || ""}</div>`;
+    ${bc}`;
 }
 
 export function ImpressaoEtiquetas() {
@@ -152,6 +158,11 @@ export function ImpressaoEtiquetas() {
   const [modalSalvar, setModalSalvar] = useState(false); // diálogo "salvar modelo"
   const [novoNome, setNovoNome] = useState("");
   const [incluirKits, setIncluirKits] = useState(false); // por padrão os kits ficam de fora
+  // MODO de impressão: "folha" (A4/Carta, Pimaco) ou "termica" (rolo). A folha continua igual.
+  const [modoImp, setModoImp] = useState<"folha" | "termica">(() => { try { return localStorage.getItem("etq-modo") === "termica" ? "termica" : "folha"; } catch { return "folha"; } });
+  const [termica, setTermica] = useState<{ w: number; h: number; cols: number }>(() => { try { const s = localStorage.getItem("etq-termica"); if (s) return { w: 60, h: 40, cols: 1, ...JSON.parse(s) }; } catch { /* ignore */ } return { w: 60, h: 40, cols: 1 }; });
+  const [kitInteiro, setKitInteiro] = useState(false); // etiqueta do KIT inteiro (1 por kit) em vez das peças
+  const admin = !!getUser()?.admin;                    // só admin mexe na configuração
 
   const todosPresets = [...PRESETS_FIXOS, ...presets];
   function aplicarPreset(nome: string) { const p = todosPresets.find((x) => x.nome === nome); if (p) setCfg({ ...p.cfg }); }
@@ -226,6 +237,7 @@ export function ImpressaoEtiquetas() {
     setPdfsAbertos((p) => p.filter((x) => x.id !== id));
   }
   useEffect(() => { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } }, [cfg]);
+  useEffect(() => { try { localStorage.setItem("etq-modo", modoImp); localStorage.setItem("etq-termica", JSON.stringify(termica)); } catch { /* ignore */ } }, [modoImp, termica]);
   useEffect(() => { try { localStorage.setItem("etq-comp", composicaoPadrao); } catch { /* ignore */ } }, [composicaoPadrao]);
   // Ao trocar de pedidos, reinicia a edição (tudo marcado, quantidade do pedido).
   useEffect(() => { setLinhas(rows.map((r) => ({ qtd: Math.max(0, Math.trunc(r.qtd)), incluir: true }))); }, [rows]);
@@ -273,20 +285,28 @@ export function ImpressaoEtiquetas() {
         const composicao = r.composicao || compDoCadastro(r.kit ? kitInfo(r.modelo, r.tamanho).nome : r.modelo) || compFallback;
         const qtd = Math.max(0, Math.trunc(ln.qtd));
         if (r.kit) {
-          // Cada kit vira 3 etiquetas: 1 peça principal (peseira/manta) + 2 almofadas.
-          const nome = "Kit " + cap(kitInfo(r.modelo, r.tamanho).nome);
-          const pecas = kitPecas(r.modelo, r.tamanho);
-          for (let n = 0; n < qtd; n++)
-            for (const pc of pecas)
-              out.push({ cliente: r.cliente, modelo: nome, tamanho: `${pc.tipo} ${pc.tamanho}`.trim(), cor: r.cor, composicao, kit: true });
+          const ki = kitInfo(r.modelo, r.tamanho);
+          const nome = "Kit " + cap(ki.nome);
+          if (kitInteiro) {
+            // ETIQUETA DO KIT INTEIRO: 1 por kit, com a composição e o código de barras do kit
+            // (para bipar e guardar/achar o kit no estoque).
+            for (let n = 0; n < qtd; n++)
+              out.push({ cliente: r.cliente, modelo: nome, tamanho: ki.comp, cor: r.cor, composicao, ref: r.ref, kit: true, pid });
+          } else {
+            // Cada kit vira as peças: 1 peseira/manta + as almofadas.
+            const pecas = kitPecas(r.modelo, r.tamanho);
+            for (let n = 0; n < qtd; n++)
+              for (const pc of pecas)
+                out.push({ cliente: r.cliente, modelo: nome, tamanho: `${pc.tipo} ${pc.tamanho}`.trim(), cor: r.cor, composicao, ref: r.ref, kit: true, pid });
+          }
         } else {
           for (let n = 0; n < qtd; n++)
-            out.push({ cliente: r.cliente, modelo: r.modelo, tamanho: r.tamanho, cor: r.cor, composicao, kit: false });
+            out.push({ cliente: r.cliente, modelo: r.modelo, tamanho: r.tamanho, cor: r.cor, composicao, ref: r.ref, kit: false, pid });
         }
       });
     }
     return out;
-  }, [rows, linhas, ordemPedidos, composicaoPadrao, compMap, incluirKits]);
+  }, [rows, linhas, ordemPedidos, composicaoPadrao, compMap, incluirKits, kitInteiro]);
 
   const etqs = useMemo(() => cells.filter(Boolean) as Etq[], [cells]);
   // Células finais = espaços pulados (folha usada) + células (etiquetas + separadores).
@@ -305,19 +325,26 @@ export function ImpressaoEtiquetas() {
 
   // CSS comum da etiqueta (prévia e impressão), com a fonte configurável.
   // Disposição horizontal: linha de topo com modelo (esq.) e tamanho (dir.).
-  const cssEt = `.et{position:absolute;overflow:hidden;box-sizing:border-box;padding:1.4mm 2.2mm;display:flex;flex-direction:column;justify-content:center;gap:0.5mm;font-family:Arial,Helvetica,sans-serif}
+  const cssEt = `.et{position:absolute;overflow:hidden;box-sizing:border-box;padding:1.4mm 2.2mm;display:flex;flex-direction:column;justify-content:flex-start;gap:0.5mm;font-family:Arial,Helvetica,sans-serif}
     .mod{font-size:${(cfg.fonte * 1.3).toFixed(1)}pt;font-weight:800;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .lin{font-size:${cfg.fonte}pt;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .lin b{color:#111}
     .lin .comp{color:#555;font-weight:400}
-    .cli{font-size:${(cfg.fonte * 0.82).toFixed(1)}pt;color:#555;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}`;
+    .cli{font-size:${(cfg.fonte * 0.82).toFixed(1)}pt;color:#555;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .bc{width:100%;margin-top:auto} .bc svg{display:block;width:100%;height:8mm}`;
 
-  function imprimir() {
+  function abrirImpressao(html: string) {
+    const w = window.open("", "_blank");
+    if (w) { w.document.write(html); w.document.close(); }
+  }
+  // Imprime em FOLHA (A4/Carta) a partir de uma lista de células (etiqueta ou null = espaço vazio).
+  function imprimirFolha(cels: (Etq | null)[]) {
+    const pgs = Math.max(1, Math.ceil(cels.length / porPagina));
     let body = "";
-    for (let pg = 0; pg < paginas; pg++) {
+    for (let pg = 0; pg < pgs; pg++) {
       let labels = "";
       for (let k = 0; k < porPagina; k++) {
-        const cel = finalCells[pg * porPagina + k]; // null = espaço em branco (pulado ou separador)
+        const cel = cels[pg * porPagina + k];
         if (!cel) continue;
         const col = k % cfg.colunas, row = Math.floor(k / cfg.colunas);
         const x = cfg.margemEsq + col * (cfg.larguraEt + cfg.gapH);
@@ -326,14 +353,46 @@ export function ImpressaoEtiquetas() {
       }
       body += `<div class="pg">${labels}</div>`;
     }
-    const pag = PAG[cfg.pagina] || PAG.A4;
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas</title><style>
-      @page { size: ${pag.css}; margin: 0; } *{box-sizing:border-box} body{margin:0}
-      .pg{position:relative;width:${pag.w}mm;height:${pag.h}mm;overflow:hidden;page-break-after:always}
+    const p = PAG[cfg.pagina] || PAG.A4;
+    abrirImpressao(`<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas</title><style>
+      @page { size: ${p.css}; margin: 0; } *{box-sizing:border-box} body{margin:0}
+      .pg{position:relative;width:${p.w}mm;height:${p.h}mm;overflow:hidden;page-break-after:always}
       ${cssEt}
-    </style></head><body>${body}<script>window.onload=function(){window.print()}</script></body></html>`;
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); }
+    </style></head><body>${body}<script>window.onload=function(){window.print()}</script></body></html>`);
+  }
+  // Imprime em TÉRMICA (rolo): cada "página" é uma fileira de `cols` etiquetas no tamanho escolhido.
+  function imprimirTermica(lista: Etq[]) {
+    if (!lista.length) return;
+    const { w, h } = termica;
+    const cols = Math.max(1, Math.min(3, Math.trunc(termica.cols) || 1));
+    const gap = 2; // mm entre colunas
+    const pageW = cols * w + (cols - 1) * gap;
+    let body = "";
+    for (let i = 0; i < lista.length; i += cols) {
+      let rowHtml = "";
+      for (let c = 0; c < cols; c++) {
+        const e = lista[i + c]; if (!e) continue;
+        rowHtml += `<div class="et" style="left:${c * (w + gap)}mm;top:0;width:${w}mm;height:${h}mm">${conteudoEt(e)}</div>`;
+      }
+      body += `<div class="pg" style="width:${pageW}mm;height:${h}mm">${rowHtml}</div>`;
+    }
+    abrirImpressao(`<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas</title><style>
+      @page { size: ${pageW}mm ${h}mm; margin: 0; } *{box-sizing:border-box} body{margin:0}
+      .pg{position:relative;overflow:hidden;page-break-after:always}
+      ${cssEt}
+    </style></head><body>${body}<script>window.onload=function(){window.print()}</script></body></html>`);
+  }
+  // Imprime TUDO, respeitando o modo. Na folha usa finalCells (com o "começar na etiqueta nº").
+  function imprimir() {
+    if (modoImp === "termica") { imprimirTermica(etqs); return; }
+    if (finalCells.some(Boolean)) imprimirFolha(finalCells);
+  }
+  // Imprime só as etiquetas de UM pedido (nem a mais, nem a menos).
+  function imprimirPedido(pid: string) {
+    const lista = etqs.filter((e) => e.pid === pid);
+    if (!lista.length) { alert("Esse pedido não tem etiquetas para imprimir (confira os kits/quantidades)."); return; }
+    if (modoImp === "termica") imprimirTermica(lista);
+    else imprimirFolha(lista);
   }
 
   // Prévia da 1ª página em A4 proporcional (posições em % da folha).
@@ -347,6 +406,33 @@ export function ImpressaoEtiquetas() {
       <div className="page-head"><div><h1>Impressão de etiquetas</h1><div className="breadcrumb">Expedição › Etiquetas dos pedidos</div></div></div>
 
       <div className="card pad">
+        <div className="row-gap" style={{ alignItems: "flex-end", gap: 10, flexWrap: "wrap", marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--line)" }}>
+          <div>
+            <div className="campo-label" style={{ marginBottom: 4 }}>Imprimir em</div>
+            <div style={{ display: "inline-flex", gap: 6 }}>
+              <button className={"btn " + (modoImp === "folha" ? "btn-primary" : "btn-soft")} style={{ padding: "8px 14px" }} onClick={() => setModoImp("folha")}>📄 Folha</button>
+              <button className={"btn " + (modoImp === "termica" ? "btn-primary" : "btn-soft")} style={{ padding: "8px 14px" }} onClick={() => setModoImp("termica")}>🧻 Térmica (rolo)</button>
+            </div>
+          </div>
+          {modoImp === "termica" && (
+            <>
+              <label className="campo" style={{ margin: 0, minWidth: 160 }}>
+                <span className="campo-label">Tamanho da etiqueta</span>
+                <select value={`${termica.w}x${termica.h}`} onChange={(e) => { const [w, h] = e.target.value.split("x").map(Number); setTermica((t) => ({ ...t, w, h })); }}>
+                  {TERMICA_TAMANHOS.map((t) => <option key={`${t.w}x${t.h}`} value={`${t.w}x${t.h}`}>{t.w} × {t.h} mm</option>)}
+                </select>
+              </label>
+              <label className="campo" style={{ margin: 0, minWidth: 130 }}>
+                <span className="campo-label">Colunas no rolo</span>
+                <select value={String(termica.cols)} onChange={(e) => setTermica((t) => ({ ...t, cols: Math.max(1, Math.min(3, Number(e.target.value) || 1)) }))}>
+                  <option value="1">1 coluna</option>
+                  <option value="2">2 colunas</option>
+                  <option value="3">3 colunas</option>
+                </select>
+              </label>
+            </>
+          )}
+        </div>
         <div className="row-gap" style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <label className="campo" style={{ minWidth: 280 }}>
             <span className="campo-label">Adicionar pedido</span>
@@ -363,15 +449,25 @@ export function ImpressaoEtiquetas() {
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) abrirPdf(f); e.currentTarget.value = ""; }} />
             </label>
           </label>
+          {modoImp === "folha" && (
           <label className="campo" style={{ minWidth: 150 }} title="Para reaproveitar uma folha que já tem etiquetas coladas: conte os espaços já usados (esquerda→direita, cima→baixo) e comece na próxima.">
             <span className="campo-label">Começar na etiqueta nº</span>
             <input type="number" min={1} max={porPagina} step={1} value={String(inicio)} onChange={(e) => setInicio(Math.max(1, Math.min(porPagina, Math.trunc(Number(e.target.value) || 1))))} />
           </label>
+          )}
           {temKits && (
             <label className="campo" style={{ minWidth: 150, cursor: "pointer" }} title="Por padrão os kits ficam de fora. Marque para gerar as etiquetas do kit: 1 da peseira/manta + 2 das almofadas.">
               <span className="campo-label">Kits</span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 0" }}>
                 <input type="checkbox" checked={incluirKits} onChange={(e) => setIncluirKits(e.target.checked)} /> Incluir kits ({qtdKits} → {qtdKits * 3} etq.)
+              </span>
+            </label>
+          )}
+          {(temKits || qtdKitsOT > 0) && (
+            <label className="campo" style={{ minWidth: 150, cursor: "pointer" }} title="Liga para gerar 1 etiqueta do KIT inteiro (com o código de barras do kit, pra guardar/achar no estoque), em vez das etiquetas das peças.">
+              <span className="campo-label">Kit inteiro</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 0" }}>
+                <input type="checkbox" checked={kitInteiro} onChange={(e) => setKitInteiro(e.target.checked)} /> 1 etiqueta por kit
               </span>
             </label>
           )}
@@ -421,7 +517,12 @@ export function ImpressaoEtiquetas() {
                   const ped = pedidos.find((p) => p.id === pid);
                   return (
                     <Fragment key={pid}>
-                      <tr><td colSpan={5} style={{ background: "var(--accent-soft, #eef)", fontWeight: 700, fontSize: 12.5 }}>Pedido {ped ? label(ped) : idxs[0].r.pedido || pid.slice(0, 6)}</td></tr>
+                      <tr><td colSpan={5} style={{ background: "var(--accent-soft, #eef)", fontWeight: 700, fontSize: 12.5 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <span>Pedido {ped ? label(ped) : idxs[0].r.pedido || pid.slice(0, 6)}</span>
+                          <button className="btn btn-soft" style={{ marginLeft: "auto", padding: "4px 10px", fontSize: 12 }} onClick={() => imprimirPedido(pid)}>🖨️ Imprimir etiquetas deste pedido</button>
+                        </div>
+                      </td></tr>
                       {idxs.map(({ r, i }) => {
                         const ln = linhas[i] ?? { qtd: Math.trunc(r.qtd), incluir: true };
                         const foraKit = r.kit && !incluirKits && !ehOT(r.ref); // kit que não vai imprimir (OT sempre entra)
@@ -444,10 +545,12 @@ export function ImpressaoEtiquetas() {
         </div>
       )}
 
-      {/* Configuração da folha de etiquetas (em mm) */}
+      {/* Configuração da etiqueta — só ADMINISTRADOR mexe (trancada p/ o usuário comum não bagunçar). */}
+      {admin && (
       <div className="card pad" style={{ marginTop: 14 }}>
         <div className="row-gap" style={{ alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
           <strong>⚙️ Configuração da etiqueta</strong>
+          <span className="chip" style={{ fontSize: 11, padding: "1px 8px", background: "#fde68a", color: "#78350f" }}>🔒 só administrador</span>
           <span className="muted" style={{ fontSize: 12.5 }}>Medidas em mm. Salva automático.</span>
         </div>
         <div className="row-gap" style={{ alignItems: "flex-end", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
@@ -485,6 +588,7 @@ export function ImpressaoEtiquetas() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Prévia da 1ª folha (proporcional ao tamanho escolhido) */}
       <div style={{ marginTop: 16 }}>
@@ -496,24 +600,24 @@ export function ImpressaoEtiquetas() {
             const y = cfg.margemTopo + row * (cfg.alturaEt + cfg.gapV);
             const style = { position: "absolute" as const, left: pct(x, pag.w) + "%", top: pct(y, pag.h) + "%", width: pct(cfg.larguraEt, pag.w) + "%", height: pct(cfg.alturaEt, pag.h) + "%", overflow: "hidden" };
             if (etqs.length && k < offset) return <div key={k} className="a4-et a4-et-skip" style={style}>usada</div>;
-            const e = etqs.length ? finalCells[k] : ({ cliente: "Cliente", modelo: "(etiqueta)", tamanho: "", cor: "", composicao: "" } as Etq);
+            const e = etqs.length ? finalCells[k] : ({ cliente: "Cliente", modelo: "(etiqueta)", tamanho: "55×35", cor: "AREIA", composicao: "", ref: "KT0000" } as Etq);
             if (!e) return <div key={k} className="a4-et a4-et-empty" style={style}></div>;
             if (e.kit) {
               return (
-                <div key={k} className="a4-et" style={{ ...style, gap: 0, justifyContent: "center" }}>
+                <div key={k} className="a4-et" style={{ ...style, gap: 0, justifyContent: "flex-start" }}>
                   <div className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{e.modelo}</div>
                   <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}><b>{e.tamanho || "—"}</b></div>
-                  <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b>{e.composicao ? <span style={{ color: "#55555e" }}> · {e.composicao}</span> : ""}</div>
-                  <div className="a4-cli" style={{ fontSize: fpt(0.82), lineHeight: 1.15 }}>{e.cliente}</div>
+                  <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
+                  {e.ref ? <div className="prev-bc" dangerouslySetInnerHTML={{ __html: svgBarcode(e.ref, { height: 26, fontSize: 11, width: 1.1 }) }} /> : null}
                 </div>
               );
             }
             return (
-              <div key={k} className="a4-et" style={{ ...style, gap: 0, justifyContent: "center" }}>
+              <div key={k} className="a4-et" style={{ ...style, gap: 0, justifyContent: "flex-start" }}>
                 <div className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{modeloLinha(e.modelo)}</div>
-                <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Tam: <b>{e.tamanho || "—"}</b>{e.composicao ? <span style={{ color: "#55555e" }}> · {e.composicao}</span> : ""}</div>
+                <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>{e.ref ? <>Ref: <b>{e.ref}</b> · </> : null}Tam: <b>{e.tamanho || "—"}</b></div>
                 <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
-                <div className="a4-cli" style={{ fontSize: fpt(0.82), lineHeight: 1.15 }}>{e.cliente}</div>
+                {e.ref ? <div className="prev-bc" dangerouslySetInnerHTML={{ __html: svgBarcode(e.ref, { height: 26, fontSize: 11, width: 1.1 }) }} /> : null}
               </div>
             );
           })}

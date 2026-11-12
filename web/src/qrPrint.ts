@@ -1,7 +1,7 @@
 import qrcode from "qrcode-generator";
 
 // Gera o SVG (escalável) de um QR a partir de um texto/URL.
-function svgQR(text: string): string {
+export function svgQR(text: string): string {
   const qr = qrcode(0, "M");
   qr.addData(text);
   qr.make();

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type CardExpedicao, type Volume } from "../api";
 import { MedidasModal } from "../components/MedidasModal";
+import { ConferenciaBipagemModal } from "../components/ConferenciaExpedicaoModal";
 import { br, opCodigo, tipoDe } from "../expedicaoUtil";
 import { getUser, podeFuncao } from "../auth";
 
@@ -11,6 +12,7 @@ export function Expedicao() {
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [medidas, setMedidas] = useState<CardExpedicao | null>(null);
+  const [conf, setConf] = useState<CardExpedicao | null>(null);
 
   function recarregar() {
     api
@@ -75,7 +77,7 @@ export function Expedicao() {
                   <span className="exp-pcs">{c.pecas || 0} pç</span>
                   <span className="exp-dt">entrega {br(c.data_entrega)}</span>
                   {podeFuncao(getUser(), "expedicao.fase") && (
-                    <button className="kbtn tecer" onClick={() => setMedidas(c)}>▶ Expedir</button>
+                    <button className="kbtn tecer" onClick={() => setConf(c)}>▶ Conferir e expedir</button>
                   )}
                 </div>
               );
@@ -84,8 +86,19 @@ export function Expedicao() {
         </div>
       )}
       <p className="muted" style={{ marginTop: 14, fontSize: 12 }}>
-        Clique em <b>▶ Expedir</b> para abrir a tela de <b>medidas e pesos</b> (caixa/fardo). Ao salvar, o pedido segue para o <b>Fiscal</b> com as medidas prontas para cotar o frete.
+        Clique em <b>▶ Conferir e expedir</b> para <b>bipar peça por peça</b> (cada peça tem um código único — não dá pra bipar a mesma duas vezes). Só depois de tudo conferido abre a tela de <b>medidas e pesos</b>, e o pedido segue para o <b>Fiscal</b>.
       </p>
+
+      {conf && (
+        <ConferenciaBipagemModal
+          pedidoId={conf.pedido_id}
+          cliente={conf.cliente_nome}
+          codigoPedido={opCodigo(conf)}
+          fase="expedicao"
+          onFechar={() => setConf(null)}
+          onConcluir={() => { const c = conf; setConf(null); setMedidas(c); }}
+        />
+      )}
 
       {medidas && (
         <MedidasModal card={medidas} onFechar={() => setMedidas(null)} onSalvar={(vols) => salvarMedidas(medidas, vols)} />
