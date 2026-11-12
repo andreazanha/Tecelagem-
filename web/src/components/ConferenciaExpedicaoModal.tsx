@@ -259,7 +259,7 @@ export function ConferenciaBipagemModal({
                       <div className="conf-grp-hd">
                         <div className="conf-grp-nome">
                           <b>{g.amostra.tipo} {g.amostra.tamanho}</b>
-                          <span className="conf-grp-sub">{g.amostra.produto}{g.amostra.cor ? ` · ${g.amostra.cor}` : ""}</span>
+                          <span className="conf-grp-sub">{g.amostra.produto}{g.amostra.cor ? ` · ${g.amostra.cor}` : ""}{g.amostra.ref ? ` · ${g.amostra.ref}` : ""}</span>
                         </div>
                         <span className={"conf-grp-cont " + (full ? "ok" : "")}>{bip}/{tot}</span>
                       </div>
