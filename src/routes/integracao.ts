@@ -134,6 +134,18 @@ async function posProcessar(env: Env, pedidoId: string, autor?: Autor) {
   await baixarPorPedido(env, pedidoId, await consumoDoPedido(env, pedidoId), autor).catch(() => {});
 }
 
+// TRAVA KIT/ESTOQUE: diz se um número do ERP é, na verdade, uma venda da LOJA (canal 'loja_b2b').
+// Venda de loja = venda de ESTOQUE (kit/catálogo) e NUNCA entra na produção/tecelagem — nem pela
+// entrada automática, nem quando alguém "dá prosseguimento" num pedido parado na fila do PCP.
+async function ehVendaDeLoja(env: Env, numeroErp: string | number | null): Promise<boolean> {
+  const n = String(numeroErp ?? "").trim();
+  if (!n) return false;
+  const r = await env.DB.prepare(
+    "SELECT 1 AS x FROM pedidos WHERE canal='loja_b2b' AND CAST(erp_numero AS TEXT)=CAST(? AS TEXT) LIMIT 1"
+  ).bind(n).first<{ x: number }>().catch(() => null);
+  return !!r;
+}
+
 type ItemIn = { produto?: string; ref?: string; cor?: string; tamanho?: string; qtd?: number | string; preco?: number | string };
 type PedidoIn = {
   numero?: string | number; data?: string; data_entrega?: string; vendedor?: string;
@@ -581,6 +593,19 @@ integracao.post("/pendentes/:id/aceitar", async (c) => {
 integracao.post("/pendentes/:id/aprovar", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const id = c.req.param("id");
+  // TRAVA KIT/ESTOQUE: se este pedido do ERP é, na verdade, uma venda da LOJA (kit/catálogo), ele é
+  // VENDA DE ESTOQUE e NÃO pode entrar na produção. Tira ele da fila e avisa — sem produzir nem
+  // baixar estoque de produção. (Protege contra "restos" que entraram antes do conserto da entrada.)
+  const alvo = await c.env.DB.prepare(
+    "SELECT numero_erp FROM pedidos WHERE id=? AND COALESCE(erp_integracao,0)=1 AND status IN ('aguardando_aprovacao','aguardando_explosao') LIMIT 1"
+  ).bind(id).first<{ numero_erp: string | null }>().catch(() => null);
+  if (alvo && await ehVendaDeLoja(c.env, alvo.numero_erp)) {
+    await c.env.DB.batch([
+      c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(id),
+      c.env.DB.prepare("DELETE FROM pedidos WHERE id=? AND COALESCE(erp_integracao,0)=1 AND status IN ('aguardando_aprovacao','aguardando_explosao')").bind(id),
+    ]).catch(() => {});
+    return c.json({ error: "venda_de_estoque", msg: "Este pedido é venda de estoque (kit/catálogo) e não entra na produção. Ele foi removido da fila." }, 409);
+  }
   const r = await c.env.DB.prepare(
     "UPDATE pedidos SET status = 'novo', bloqueado = 1 WHERE id = ? AND COALESCE(erp_integracao,0) = 1 AND status IN ('aguardando_aprovacao','aguardando_explosao')"
   ).bind(id).run();
@@ -600,6 +625,14 @@ integracao.post("/aprovar-lote", async (c) => {
   const b = await c.req.json<{ ids?: string[] }>().catch(() => ({} as { ids?: string[] }));
   const ids = Array.isArray(b.ids) ? b.ids.filter((x): x is string => typeof x === "string") : [];
   if (ids.length < 2) return c.json({ error: "selecione_dois_ou_mais" }, 400);
+
+  // TRAVA KIT/ESTOQUE: nenhum pedido de venda de loja (kit/catálogo) pode entrar na produção pelo lote.
+  for (const pid of ids) {
+    const p = await c.env.DB.prepare("SELECT numero_erp FROM pedidos WHERE id=? AND COALESCE(erp_integracao,0)=1 LIMIT 1").bind(pid).first<{ numero_erp: string | null }>().catch(() => null);
+    if (p && await ehVendaDeLoja(c.env, p.numero_erp)) {
+      return c.json({ error: "venda_de_estoque_no_lote", msg: "Um ou mais pedidos selecionados são venda de estoque (kit/catálogo) e não entram na produção. Desmarque-os e tente de novo." }, 409);
+    }
+  }
 
   const ph = ids.map(() => "?").join(",");
   const { results: peds } = await c.env.DB.prepare(
