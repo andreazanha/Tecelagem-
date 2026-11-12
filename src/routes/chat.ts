@@ -15,6 +15,7 @@ const SETORES = [
   { id: "expedicao", nome: "Expedição" },
   { id: "estoque", nome: "Estoque" },
   { id: "fiscal", nome: "Fiscal" },
+  { id: "pcp", nome: "PCP" },
 ];
 const IDS = new Set(SETORES.map((s) => s.id));
 const parDe = (a: string, b: string) => [a, b].sort().join("|");
