@@ -2934,3 +2934,13 @@ body.dark .com-badge.off { background: #1e293b; color: #94a3b8; }
   .chatpane { right: 0; bottom: 0; width: 100vw; height: 100vh; border-radius: 0; }
   .chatfab { right: 16px; bottom: 16px; }
 }
+
+/* Popup de nova mensagem do chat (aparece no alto, no meio da tela) */
+.chat-aviso { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 80; display: flex; align-items: center; gap: 12px; background: #128c7e; color: #fff; padding: 12px 14px; border-radius: 14px; box-shadow: 0 12px 40px #0007; cursor: pointer; width: min(440px, 94vw); animation: chatAvisoIn .25s ease; }
+@keyframes chatAvisoIn { from { opacity: 0; transform: translateX(-50%) translateY(-14px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+.chat-aviso-ic { font-size: 26px; flex: none; }
+.chat-aviso-mid { flex: 1; min-width: 0; }
+.chat-aviso-ttl { font-weight: 800; font-size: 12.5px; opacity: .95; }
+.chat-aviso-txt { font-size: 14px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-aviso-cta { font-size: 11.5px; opacity: .9; margin-top: 2px; }
+.chat-aviso-x { background: #ffffff33; border: none; color: #fff; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; flex: none; font-size: 12px; }

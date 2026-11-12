@@ -20,10 +20,70 @@ export function ChatWidget() {
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [texto, setTexto] = useState("");
   const [trocarSetor, setTrocarSetor] = useState(false);
+  const [aviso, setAviso] = useState<{ setor: string; nome: string; autor: string | null; texto: string | null } | null>(null);
   const fimRef = useRef<HTMLDivElement>(null);
   const comRef = useRef(com); comRef.current = com;
   const meuRef = useRef(meu); meuRef.current = meu;
   const abertoRef = useRef(aberto); abertoRef.current = aberto;
+  const ultimoVistoRef = useRef<string>("");   // criado_em da mensagem recebida mais nova já vista
+  const iniciadoRef = useRef(false);            // 1ª carga não dispara aviso (mensagens antigas)
+  const audioRef = useRef<AudioContext | null>(null);
+  const avisoTimerRef = useRef<number>(0);
+
+  // Prepara o som e pede permissão de notificação — só num clique (regra dos navegadores).
+  function prepararAvisos() {
+    try {
+      if (!audioRef.current) { const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext; if (AC) audioRef.current = new AC(); }
+      if (audioRef.current?.state === "suspended") audioRef.current.resume().catch(() => {});
+      if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
+    } catch { /* ok */ }
+  }
+  // Somzinho de aviso (dois tons), sem precisar de arquivo de áudio.
+  function tocarSom() {
+    try {
+      const ac = audioRef.current; if (!ac) return;
+      if (ac.state === "suspended") ac.resume().catch(() => {});
+      const tom = (freq: number, t0: number) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.connect(g); g.connect(ac.destination); o.type = "sine"; o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, ac.currentTime + t0);
+        g.gain.exponentialRampToValueAtTime(0.25, ac.currentTime + t0 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + t0 + 0.32);
+        o.start(ac.currentTime + t0); o.stop(ac.currentTime + t0 + 0.34);
+      };
+      tom(880, 0); tom(1240, 0.17);
+    } catch { /* ok */ }
+  }
+  // Notificação do navegador (aparece no Windows mesmo com a aba atrás).
+  function notificarNavegador(titulo: string, corpo: string) {
+    try {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      if (!document.hidden) return; // na tela, o popup já avisa — não duplica
+      const n = new Notification("💬 " + titulo, { body: corpo, tag: "chat-bigtricot" });
+      n.onclick = () => { try { window.focus(); } catch { /* ok */ } setAberto(true); n.close(); };
+    } catch { /* ok */ }
+  }
+  // Detecta mensagem NOVA recebida (de outro setor) entre uma atualização e outra.
+  function processarNovas(lista: ChatConversa[]) {
+    let maxTs = "", nova: ChatConversa | null = null;
+    for (const c of lista) {
+      const u = c.ultima;
+      if (u && u.de_setor !== meuRef.current && u.criado_em > maxTs) { maxTs = u.criado_em; nova = c; }
+    }
+    if (!iniciadoRef.current) { iniciadoRef.current = true; ultimoVistoRef.current = maxTs; return; }
+    if (maxTs && maxTs > ultimoVistoRef.current && nova) {
+      ultimoVistoRef.current = maxTs;
+      const vendoAgora = comRef.current === nova.setor && abertoRef.current && typeof document !== "undefined" && document.hasFocus();
+      if (!vendoAgora) {
+        const u = nova.ultima!;
+        setAviso({ setor: nova.setor, nome: nova.nome, autor: u.autor, texto: u.texto });
+        tocarSom();
+        notificarNavegador(nova.nome, (u.autor ? u.autor.split(" ")[0] + ": " : "") + (u.texto || "📷 foto"));
+        window.clearTimeout(avisoTimerRef.current);
+        avisoTimerRef.current = window.setTimeout(() => setAviso(null), 8000);
+      }
+    }
+  }
 
   const nomeSetor = (id: string) => setores.find((s) => s.id === id)?.nome || id;
   const totalNaoLidas = useMemo(() => conversas.reduce((s, c) => s + (c.nao_lidas || 0), 0), [conversas]);
@@ -32,7 +92,7 @@ export function ChatWidget() {
 
   function carregarConversas() {
     if (!meuRef.current) return;
-    api.chatConversas(meuRef.current).then((d) => Array.isArray(d) && setConversas(d)).catch(() => {});
+    api.chatConversas(meuRef.current).then((d) => { if (Array.isArray(d)) { setConversas(d); processarNovas(d); } }).catch(() => {});
   }
 
   // Polling: a lista de conversas (para o aviso/badge) sempre; as mensagens da
@@ -74,6 +134,7 @@ export function ChatWidget() {
   }
 
   function escolherSetor(id: string) {
+    prepararAvisos();
     try { localStorage.setItem(LS_SETOR, id); } catch { /* ok */ }
     setMeu(id); setTrocarSetor(false); setCom("");
   }
@@ -82,7 +143,19 @@ export function ChatWidget() {
 
   return (
     <>
-      <button className={"chatfab" + (aberto ? " on" : "")} onClick={() => setAberto((v) => !v)} title="Chat da equipe" aria-label="Chat da equipe">
+      {aviso && (
+        <div className="chat-aviso" role="button" onClick={() => { setAberto(true); abrirConversa(aviso.setor); setAviso(null); }}>
+          <div className="chat-aviso-ic">💬</div>
+          <div className="chat-aviso-mid">
+            <div className="chat-aviso-ttl">Nova mensagem — {aviso.nome}{aviso.autor ? " · " + aviso.autor.split(" ")[0] : ""}</div>
+            <div className="chat-aviso-txt">{aviso.texto || "📷 foto"}</div>
+            <div className="chat-aviso-cta">Toque para abrir ›</div>
+          </div>
+          <button className="chat-aviso-x" onClick={(e) => { e.stopPropagation(); setAviso(null); }} title="Fechar">✕</button>
+        </div>
+      )}
+
+      <button className={"chatfab" + (aberto ? " on" : "")} onClick={() => { prepararAvisos(); setAberto((v) => !v); }} title="Chat da equipe" aria-label="Chat da equipe">
         {aberto
           ? <span style={{ fontSize: 22, fontWeight: 700 }}>✕</span>
           : <svg viewBox="0 0 24 24" width="27" height="27" fill="#fff"><path d="M12 2a10 10 0 0 0-8.63 15.05L2 22l5.1-1.33A10 10 0 1 0 12 2zm0 1.8a8.2 8.2 0 1 1-4.2 15.24l-.3-.18-3 .78.8-2.92-.2-.31A8.2 8.2 0 0 1 12 3.8zM8.2 9a1 1 0 1 0 0 2h7.6a1 1 0 1 0 0-2H8.2zm0 3.4a1 1 0 1 0 0 2h4.8a1 1 0 1 0 0-2H8.2z"/></svg>}
