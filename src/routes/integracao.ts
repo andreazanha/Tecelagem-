@@ -3046,16 +3046,22 @@ const lerCfg = async (env: Env, k: string) => ((await env.DB.prepare("SELECT val
 // Modo de envio da loja → ERP: 'off' (nada), 'teste' (só os liberados), 'on' (todos).
 const modoEnvioLoja = async (env: Env) => { const m = await lerCfg(env, "loja_erp_envio"); return m === "on" || m === "off" ? m : "teste"; };
 
-// Desmembra KITS em PEÇAS (o Syntech não explode pela integração). Usado no envio pro
-// Syntech E na tela "Ver itens", pra os dois mostrarem/enviarem a mesma coisa.
+// Monta os itens que vão pro Syntech. O KIT NÃO é mais aberto em peças: lá o kit é
+// produto SIMPLES (só nome + preço) e a composição/produção fica no NOSSO sistema —
+// então manda o CÓDIGO do kit (uma linha só). A lógica de abrir continua abaixo, mas
+// DESLIGADA (ABRIR_KIT=false), caso um dia precise voltar. Usado no envio E na tela
+// "Ver itens", pra os dois mostrarem/enviarem a mesma coisa.
 type ItemLoja = { ref: string; produto: string | null; cor_grade: string | null; cod_cor: number | null; tamanho?: string | null; erp_tamanho: string | null; qtd: number; valor_unit: number | null };
 async function desmembrarKits(env: Env, itensRaw: ItemLoja[]): Promise<ItemLoja[]> {
   const out: ItemLoja[] = [];
+  // Kit vai FECHADO pro Syntech (lá é produto simples, só nome + preço). Deixe false.
+  // true volta a abrir o kit nas peças aqui (comportamento antigo).
+  const ABRIR_KIT: boolean = false;
   for (const it of itensRaw) {
     const { results: rec } = await env.DB.prepare(
       "SELECT componente_ref, quantidade, tamanho FROM erp_kit_receita WHERE kit_ref = ?"
     ).bind(it.ref).all<{ componente_ref: string; quantidade: number; tamanho: string | null }>().catch(() => ({ results: [] as { componente_ref: string; quantidade: number; tamanho: string | null }[] }));
-    if (rec && rec.length) {
+    if (ABRIR_KIT && rec && rec.length) {
       const refs = [...new Set(rec.map((r) => r.componente_ref))];
       const ph = refs.map(() => "?").join(",");
       const { results: comps } = await env.DB.prepare(
