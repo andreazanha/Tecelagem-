@@ -2892,6 +2892,12 @@ body.dark .com-badge.off { background: #1e293b; color: #94a3b8; }
 .chatpane-sub { font-size: 11.5px; opacity: .92; margin-top: 2px; }
 .chat-mini { background: #ffffff33; border: none; color: #fff; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 10px; margin-left: 8px; cursor: pointer; }
 .chat-x { background: #ffffff2e; border: none; color: #fff; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 13px; flex: none; }
+/* Sua foto (avatar) no topo do chat — clicável pra trocar. */
+.chat-meuav { position: relative; width: 40px; height: 40px; border-radius: 50%; border: 2px solid #ffffff66; background: #0b6b60; padding: 0; cursor: pointer; flex: none; }
+.chat-meuav img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.chat-meuav-ini { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; color: #fff; font-weight: 800; font-size: 16px; }
+.chat-meuav-cam { position: absolute; right: -4px; bottom: -4px; width: 18px; height: 18px; border-radius: 50%; background: #25d366; color: #fff; font-size: 10px; display: grid; place-items: center; border: 2px solid #128c7e; }
+.chat-meuav:disabled { opacity: .7; cursor: default; }
 
 .chat-setorpick { padding: 22px 18px; text-align: center; }
 .chat-setorpick p { font-size: 15px; margin-bottom: 14px; }
@@ -2922,6 +2928,10 @@ body.dark .com-badge.off { background: #1e293b; color: #94a3b8; }
 .chat-bolha.minha { align-self: flex-end; background: #d9fdd3; border-top-right-radius: 2px; }
 .chat-bolha.dele { align-self: flex-start; background: #fff; border-top-left-radius: 2px; }
 .chat-autor { font-size: 11px; font-weight: 800; color: #0d9488; margin-bottom: 1px; }
+.chat-bolha .chat-autor { display: flex; align-items: center; gap: 5px; }
+/* Bolinha com a foto do autor ao lado do nome. */
+.chat-av-msg { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; flex: none; display: inline-grid; place-items: center; }
+.chat-av-msg.ini { background: #0d9488; color: #fff; font-size: 10px; font-weight: 800; }
 .chat-txt { white-space: pre-wrap; word-break: break-word; color: #0f172a; }
 .chat-hora { font-size: 10px; color: #64748b; text-align: right; margin-top: 2px; }
 .chat-input { display: flex; gap: 8px; padding: 9px 10px; background: #f1f5f9; border-top: 1px solid #e2e8f0; }

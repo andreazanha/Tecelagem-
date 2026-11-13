@@ -222,6 +222,38 @@ chat.post("/enviar-figurinha", async (c) => {
   return c.json(row);
 });
 
+// ── FOTO DO USUÁRIO (avatar) ─────────────────────────────────────────────────
+// Lista as fotos de todo mundo (login → foto). O front usa pra mostrar a foto do
+// autor nas mensagens e a sua própria foto no topo do chat.
+chat.get("/avatares", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT usuario, nome, imagem_key FROM chat_avatar LIMIT 500"
+  ).all<{ usuario: string; nome: string | null; imagem_key: string }>();
+  return c.json(results);
+});
+
+// Sobe/atualiza a SUA foto (a do usuário logado). Guarda no R2 e troca a anterior.
+chat.post("/avatar", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u?.usuario) return c.json({ error: "sem_login" }, 401);
+  const form = await c.req.formData().catch(() => null);
+  const file = form?.get("file") as unknown as File | null;
+  if (!file || typeof file.arrayBuffer !== "function") return c.json({ error: "sem_arquivo" }, 400);
+  const ct = file.type || "image/jpeg";
+  if (!ct.startsWith("image/")) return c.json({ error: "so_imagem" }, 400);
+  const buf = await file.arrayBuffer();
+  if (buf.byteLength > 5 * 1024 * 1024) return c.json({ error: "muito_grande" }, 400); // 5 MB
+  const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : ct.includes("gif") ? "gif" : "jpg";
+  const nome = `av-${uid()}.${ext}`;
+  await c.env.BUCKET.put(`chat/${nome}`, buf, { httpMetadata: { contentType: ct } });
+  const antigo = await c.env.DB.prepare("SELECT imagem_key FROM chat_avatar WHERE usuario=?").bind(u.usuario).first<{ imagem_key: string }>();
+  if (antigo?.imagem_key) { try { await c.env.BUCKET.delete(`chat/${antigo.imagem_key}`); } catch { /* ok */ } }
+  await c.env.DB.prepare(
+    "INSERT INTO chat_avatar (usuario, nome, imagem_key, criado_em) VALUES (?,?,?,datetime('now')) ON CONFLICT(usuario) DO UPDATE SET nome=excluded.nome, imagem_key=excluded.imagem_key, criado_em=datetime('now')"
+  ).bind(u.usuario, u.nome || null, nome).run();
+  return c.json({ usuario: u.usuario, nome: u.nome || null, imagem_key: nome });
+});
+
 // Apaga uma figurinha (só admin).
 chat.delete("/figurinha/:id", async (c) => {
   const u = await usuarioLogado(c.env, c);

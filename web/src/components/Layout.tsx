@@ -602,12 +602,12 @@ export function Layout() {
     setSsMin(n);
     localStorage.setItem("ssMin", String(n));
   }
-  // Tema claro/escuro (por dispositivo, igual ao protetor de tela).
-  const [tema, setTema] = useState(() => localStorage.getItem("tema") || "claro");
+  // Modo escuro REMOVIDO: o sistema fica sempre claro. Se algum computador tinha
+  // ficado escuro, isto já volta pro claro.
   useEffect(() => {
-    document.body.classList.toggle("dark", tema === "escuro");
-    localStorage.setItem("tema", tema);
-  }, [tema]);
+    document.body.classList.remove("dark");
+    try { localStorage.setItem("tema", "claro"); } catch { /* ok */ }
+  }, []);
   function sair() {
     setUser(null);
     nav("/login", { replace: true });
@@ -634,13 +634,6 @@ export function Layout() {
             <button className="ur-btn" onClick={() => window.location.reload()} title="Atualizar (recarregar, igual F5)">⟳ Atualizar</button>
           )}
           <SinoPush />
-          <button
-            className="ur-btn"
-            onClick={() => setTema(tema === "escuro" ? "claro" : "escuro")}
-            title="Alternar tema claro / escuro"
-          >
-            {tema === "escuro" ? "☀️ Claro" : "🌙 Escuro"}
-          </button>
           <TvMenu tvs={tvsVisiveis} />
           {/* Protetor de tela (abre para baixo aqui no topo). */}
           <div className="ss-wrap">
