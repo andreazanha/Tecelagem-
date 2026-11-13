@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-11-12.1";
+const PONTE_VERSAO = "2026-11-13.3";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -80,6 +80,19 @@ const STATE_FILE = path.join(DIR, "state.json");
 const UMA_VEZ = process.argv.includes("--once"); // --once = roda uma vez e sai (p/ Agendador de Tarefas)
 
 const STATUS_APROVADO = Number(CONFIG.statusAprovado || 10);
+// Status que contam como pedido REAL pra puxar: 10 aprovado, 20 separado, 30 faturado.
+// Antes só lia 10 — se o pedido pulava pra 20/30 entre uma leitura e outra, era perdido.
+const STATUS_INGEST = (Array.isArray(CONFIG.statusIngest) && CONFIG.statusIngest.length ? CONFIG.statusIngest : [STATUS_APROVADO, 20, 30]).map(Number).filter((n) => Number.isFinite(n));
+// Releitura de folga: relê os últimos N minutos a cada rodada, pra pegar pedido que
+// escapou por segundos. A porta de entrada é idempotente (reenvio = no-op). 0 = desliga.
+const RELER_MIN = Math.max(0, Number((CONFIG.relerMinutos != null) ? CONFIG.relerMinutos : 30));
+function recuarMin(ts, min) {
+  const s = String(ts); if (s.length < 19 || !(+s.slice(0, 4))) return ts;
+  const d = new Date(Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10), +s.slice(11, 13), +s.slice(14, 16), +s.slice(17, 19)));
+  d.setUTCMinutes(d.getUTCMinutes() - min);
+  const p = (n) => (n < 10 ? "0" + n : "" + n);
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
 const INTERVALO = Math.max(30, Number(CONFIG.intervaloSegundos || 120)) * 1000;
 
 const fbOpts = {
@@ -167,12 +180,13 @@ async function autoAtualizar() {
     if (!CONFIG.api || !CONFIG.api.base) return;
     const url = CONFIG.api.base.replace(/\/+$/, "") + "/api/integracao/bridge-sync";
     const r = await fetch(url, { headers: { "X-Integracao-Token": CONFIG.api.token || "", "X-Ponte-Versao": PONTE_VERSAO } });
-    if (!r.ok) return; // 401/404/sem versão no servidor → segue com a atual
+    if (!r.ok) { log("auto-atualização: bridge-sync respondeu " + r.status + " (segue na versão atual)"); return; }
     const novo = await r.text();
     // validações de segurança: conteúdo precisa parecer o sync.js de verdade
     if (!novo || novo.length < 1000 || novo.indexOf("PONTE Syntech") === -1 || novo.indexOf("PONTE_VERSAO") === -1) return;
     const m = novo.match(/PONTE_VERSAO\s*=\s*["']([^"']+)["']/);
     const versaoNova = m && m[1];
+    log("auto-atualização: servidor tem v" + (versaoNova || "?") + ", eu estou na v" + PONTE_VERSAO + ".");
     if (!versaoNova || versaoNova === PONTE_VERSAO) return; // já estou na última
     fs.writeFileSync(__filename, novo);
     log(`ponte ATUALIZADA sozinha: ${PONTE_VERSAO} → ${versaoNova}.`);
@@ -1377,13 +1391,14 @@ async function rodada() {
     // Espelha as formas de pagamento (PRAZO) e cria os clientes aprovados no Syntech (Fase S).
     try { await rodadaPrazos(db); } catch (e) { log("! prazos:", e.message); }
     try { await rodadaGravarClientes(db); } catch (e) { log("! clientes→ERP:", e.message); }
-    // Pedidos APROVADOS, não cancelados, alterados depois da última vez.
+    // Pedidos reais (10 aprovado / 20 separado / 30 faturado), não cancelados, alterados depois da última vez.
     const SQL_PEDIDOS =
       `SELECT NUMERO, DATA, COD_CLI, STATUS, CANC, DATA_ALT_REG
          FROM PEDIDO
-        WHERE STATUS = ? AND COALESCE(CANC, 'N') <> 'S' AND DATA_ALT_REG > ?
+        WHERE STATUS IN (${STATUS_INGEST.join(",")}) AND COALESCE(CANC, 'N') <> 'S' AND DATA_ALT_REG > ?
         ORDER BY DATA_ALT_REG`;
-    const pedidos = await query(db, SQL_PEDIDOS, [STATUS_APROVADO, desde]);
+    const desdeReler = RELER_MIN > 0 ? recuarMin(desde, RELER_MIN) : desde;
+    const pedidos = await query(db, SQL_PEDIDOS, [desdeReler]);
     if (!pedidos.length) { log(`sem pedidos novos (desde ${desde})`); await rodadaRepresentantes(db); await rodadaCarteira(db); await rodadaClientesSync(db); await rodadaProdutos(db, estado); await rodadaEstoque(db); await rodadaKits(db); try { await rodadaStatusPedidos(db); } catch (e) { log("! status-loja:", e.message); } return; }
 
     log(`${pedidos.length} pedido(s) aprovado(s) novo(s)/alterado(s)`);
