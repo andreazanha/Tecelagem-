@@ -605,10 +605,11 @@ export function Layout() {
   }
   // BLOQUEIO DE TELA (por computador): depois de X min SEM uso, tranca a tela e pede a
   // senha da MESMA pessoa pra continuar — NÃO desloga, a pessoa volta pro mesmo lugar.
-  // Útil nos PCs de chão de fábrica. Padrão 2 min; 0 = desligado. Vale só neste computador.
+  // Útil nos PCs de chão de fábrica. Padrão DESLIGADO (0); o gestor liga por PC no botão 🔒.
+  // Vale só neste computador.
   const [lockMin, setLockMin] = useState(() => {
     const raw = localStorage.getItem("bt_lock_min");
-    return raw == null ? 2 : Number(raw) || 0;
+    return raw == null ? 0 : Number(raw) || 0;
   });
   const [lockOpen, setLockOpen] = useState(false);
   const [locked, setLocked] = useState(false);
