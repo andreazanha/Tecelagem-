@@ -107,7 +107,7 @@ export function primeiraPagina(u: Usuario | null): string {
     ["pedidos", "/pedidos"], ["producao", "/producao"], ["passadoria", "/passadoria"],
     ["corte", "/corte"], ["costura", "/costura"], ["revisao", "/revisao"], ["estoque", "/estoque"],
     ["expedicao", "/expedicao"], ["fiscal", "/fiscal"], ["transporte", "/transporte"],
-    ["todos-pedidos", "/todos-pedidos"], ["produtos", "/produtos"], ["atendimento", "/atendimento"], ["comercial", "/clientes"], ["romaneios", "/romaneios"], ["cadastros", "/cadastros"],
+    ["todos-pedidos", "/todos-pedidos"], ["produtos", "/produtos"], ["atendimento", "/atendimento"], ["comercial", "/clientes"], ["catalogo", "/catalogo"], ["romaneios", "/romaneios"], ["cadastros", "/cadastros"],
   ];
   for (const [k, rota] of ordem) if (u.paginas.includes(k)) return rota;
   return "/sem-acesso";
