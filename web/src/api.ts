@@ -1658,6 +1658,9 @@ export const api = {
     ),
   listarExpedicao: (fase: string) =>
     fetch(`/api/expedicao?fase=${encodeURIComponent(fase)}`).then((r) => j<CardExpedicao[]>(r)),
+  // Texto padrão para a transportadora (global). Só o gestor (admin) salva.
+  textoTransportadora: () => fetch("/api/expedicao/texto-transportadora").then((r) => j<{ texto: string }>(r)),
+  salvarTextoTransportadora: (texto: string) => jsonPost("/api/expedicao/texto-transportadora", { texto }).then((r) => j<{ ok: boolean }>(r)),
   atualizarExpedicao: (pedido_id: string, body: ExpedicaoUpdate) =>
     fetch(`/api/expedicao/${pedido_id}`, {
       method: "POST",

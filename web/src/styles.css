@@ -2495,6 +2495,17 @@ body.dark .fis-med-h { background: #1e2748; color: #c7d2fe; }
 .fis-frete-v { margin-top: 8px; font-size: 13px; font-weight: 700; color: #047857; }
 .fis-acoes { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 10px; }
 
+/* Texto pronto para a transportadora (Fiscal copia e manda). */
+.fis-transp { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.fis-transp-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #ecfdf5; color: #065f46; font-weight: 800; font-size: 12px; padding: 7px 10px 7px 12px; }
+body.dark .fis-transp-h { background: #06281f; color: #a7f3d0; }
+.fis-copiar { border: none; background: #059669; color: #fff; font-weight: 800; font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; flex: none; }
+.fis-copiar:hover { background: #047857; }
+.fis-copiar.ok { background: #15803d; }
+.fis-transp-txt { width: 100%; border: none; border-top: 1px solid var(--line); padding: 10px 12px; font-size: 13px; line-height: 1.45; color: var(--ink); background: #fff; resize: vertical; font-family: inherit; display: block; }
+body.dark .fis-transp-txt { background: #0b1220; color: #e5e7eb; }
+.fis-transp-txt:focus { outline: none; }
+
 /* Transporte — tiles fechados + painel + aguardando */
 .tr2-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
 .tr2-tile { display: flex; align-items: center; gap: 10px; background: var(--card); border: 2px solid var(--line); border-radius: 12px; padding: 14px 14px; cursor: pointer; box-shadow: 0 1px 3px #0000000f; }

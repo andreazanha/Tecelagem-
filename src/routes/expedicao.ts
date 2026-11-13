@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { exigirAlgumaFuncao } from "../permissoes";
+import { usuarioLogado } from "../sessao";
 
 export const expedicao = new Hono<{ Bindings: Env }>();
 
@@ -51,6 +52,26 @@ expedicao.get("/", async (c) => {
     .bind(fase)
     .all();
   return c.json(results);
+});
+
+// ── TEXTO PADRÃO PARA A TRANSPORTADORA (um só, global) ────────────────────────
+// O Fiscal copia esse texto (já com as medidas do pedido) pra mandar na transportadora.
+// A parte padrão (saudação/instruções/contato) SÓ o GESTOR (admin) edita; todos leem.
+// Guardado na tabela config (chave 'texto_transportadora'). Precisa vir ANTES do
+// POST "/:pedido_id" pra não cair na rota genérica.
+expedicao.get("/texto-transportadora", async (c) => {
+  const row = await c.env.DB.prepare("SELECT valor FROM config WHERE chave = 'texto_transportadora'").first<{ valor: string | null }>();
+  return c.json({ texto: row?.valor || "" });
+});
+expedicao.post("/texto-transportadora", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u?.admin) return c.json({ error: "so_gestor" }, 403);
+  const b = await c.req.json<{ texto?: string }>().catch(() => ({}) as { texto?: string });
+  const texto = (b.texto || "").slice(0, 4000);
+  await c.env.DB.prepare(
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('texto_transportadora', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(texto).run();
+  return c.json({ ok: true });
 });
 
 // Atualiza a expedição de um pedido: muda fase/status, salva volumes/NF/frete/transportadora.
