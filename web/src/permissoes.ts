@@ -120,6 +120,7 @@ export const TELAS_GERAIS: { key: string; label: string; tv?: boolean }[] = [
   { key: "pedidos", label: "Pedidos" },
   { key: "todos-pedidos", label: "Todos os Pedidos" },
   { key: "produtos", label: "Produtos" },
+  { key: "catalogo", label: "Catálogo de produtos" },
   { key: "romaneios", label: "Romaneios" },
   { key: "representantes", label: "Representantes" },
   { key: "vendas-dashboard", label: "Vendas (Dashboard)" },

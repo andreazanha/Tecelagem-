@@ -108,6 +108,20 @@ export async function exigirAlgumaFuncao(c: Context, chaves: string[]): Promise<
   return { erro: c.json({ error: "sem_permissao", chaves }, 403) };
 }
 
+// Guard de rota por PÁGINA (tela liberada no acesso). Libera se o usuário puder ver
+// PELO MENOS UMA das páginas. Usado em telas que abrem para vários acessos — ex.: o
+// catálogo, liberado por "catalogo", "produtos", "comercial", "pedidos" ou "atendimento".
+export async function exigirAlgumaPagina(c: Context, chaves: string[]): Promise<{ u: UsuarioAuth } | { erro: Response }> {
+  const env = c.env as Env;
+  const u = await usuarioLogado(env, c);
+  if (!u) return { erro: c.json({ error: "sessao_invalida", relogar: true }, 401) };
+  if (u.admin) return { u };
+  const p = await permissoesDoUsuario(env, u.id);
+  if (!p.configurado) return { u };                 // legado: mantém tudo até o gestor configurar
+  if (chaves.some((k) => u.paginas.includes(k))) return { u };
+  return { erro: c.json({ error: "sem_permissao", chaves }, 403) };
+}
+
 // Guard de rota por EDIÇÃO de um setor (ver vs. editar). Ex.: alterar algo dentro de Revisão exige
 // editar do setor 'revisao'.
 export async function exigirEditarSetor(c: Context, setorId: string): Promise<{ u: UsuarioAuth } | { erro: Response }> {

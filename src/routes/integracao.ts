@@ -8,7 +8,7 @@
 // cai na produção sem conferência.
 import { Hono } from "hono";
 import type { Env } from "../index";
-import { exigirFuncao, permissoesDoUsuario } from "../permissoes";
+import { exigirFuncao, exigirAlgumaPagina, permissoesDoUsuario } from "../permissoes";
 import { usuarioLogado } from "../sessao";
 import { proximoCodigoPai } from "./pedidos";
 import { cadastrarProdutosDoPedido } from "./produtos";
@@ -3618,7 +3618,8 @@ integracao.post("/produtos", async (c) => {
 
 // LÊ o catálogo (pra exibir). Junta o saldo total (erp_estoque) e a base das fotos.
 integracao.get("/produtos", async (c) => {
-  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  // Catálogo de produtos: liberado pra quem tem o acesso ao catálogo (ou telas que já abriam).
+  const g = await exigirAlgumaPagina(c, ["catalogo", "produtos", "comercial", "pedidos", "atendimento"]); if ("erro" in g) return g.erro;
   const busca = (c.req.query("busca") || "").trim().toLowerCase();
   const grupo = (c.req.query("grupo") || "").trim();
   let sql =

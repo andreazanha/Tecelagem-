@@ -227,7 +227,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/estoque-syntech" element={<Protegido page="pedidos"><EstoqueSyntech /></Protegido>} />
           <Route path="/precisa-produzir" element={<Protegido page="pedidos"><ProducaoNecessidade /></Protegido>} />
           <Route path="/diag-syntech" element={<Protegido admin><DiagSyntech /></Protegido>} />
-          <Route path="/catalogo" element={<Protegido page={["produtos", "comercial", "pedidos", "atendimento"]}><Catalogo /></Protegido>} />
+          <Route path="/catalogo" element={<Protegido page={["catalogo", "produtos", "comercial", "pedidos", "atendimento"]}><Catalogo /></Protegido>} />
           <Route path="/config-loja" element={<Protegido admin><ConfigLoja /></Protegido>} />
           <Route path="/imagens-loja" element={<Protegido admin><ImagensLoja /></Protegido>} />
           <Route path="/auditoria-catalogo" element={<Protegido admin><AuditoriaCatalogo /></Protegido>} />

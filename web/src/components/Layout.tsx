@@ -2,7 +2,7 @@ import { useEffect, useReducer, useState } from "react";
 import { NavLink, Outlet, Link, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { VERSION } from "../version";
 import { historico } from "../historico";
-import { getUser, setUser, pode, podeFuncao } from "../auth";
+import { getUser, setUser, pode, podeAlgum, podeFuncao } from "../auth";
 import { api, type MaterialCategoriaDef } from "../api";
 import { pushSuportado, pushAtivo, ativarPush, desativarPush } from "../push";
 import { Icon } from "./Icon";
@@ -150,7 +150,7 @@ function UndoRedo() {
 // Item do menu. `page` = permissão da tela (se ausente e sem `soon`, é livre).
 // `soon` = página ainda não existe → aparece só para admin, desabilitada (sem 404).
 // `admin` = link REAL visível só para o dono (admin). Diferente de `soon` (que aparece desabilitado).
-interface MenuItem { to?: string; icon: string; label: string; page?: string; func?: string; soon?: boolean; admin?: boolean; ext?: boolean; children?: MenuItem[]; dyn?: string; acc?: boolean }
+interface MenuItem { to?: string; icon: string; label: string; page?: string; pages?: string[]; func?: string; soon?: boolean; admin?: boolean; ext?: boolean; children?: MenuItem[]; dyn?: string; acc?: boolean }
 interface MenuGrupo { id: string; icon: string; label: string; itens: MenuItem[] }
 
 // Menu em grupos sanfonados. Itens existentes apontam para rotas reais (alguns
@@ -162,7 +162,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/navegador-crm", icon: "🌐", label: "Navegador CRM", page: "atendimento" },
       { to: "/painel-atendimento", icon: "📊", label: "Painel do Gestor", page: "atendimento-gestor" },
       { to: "/clientes", icon: "👥", label: "Clientes", page: "comercial" },
-      { to: "/catalogo", icon: "🛍️", label: "Catálogo de produtos", page: "atendimento" },
+      { to: "/catalogo", icon: "🛍️", label: "Catálogo de produtos", pages: ["catalogo", "atendimento"] },
       { to: "/lojas-parceiras", icon: "🏬", label: "Lojas Parceiras", page: "comercial" },
       { to: "/treinar-bia", icon: "🎓", label: "Treinar a Big (IA)", page: "treinar-ia" },
       { to: "/setores-atendimento", icon: "🏢", label: "Setores do Atendimento", page: "atendimento-gestor" },
@@ -291,6 +291,7 @@ function itemVisivel(u: ReturnType<typeof getUser>, it: MenuItem): boolean {
   if (it.soon) return !!u?.admin;
   if (it.admin) return !!u?.admin;          // só o dono vê (menu Gestão)
   if (it.func) return podeFuncao(u, it.func); // tela liberada por FUNÇÃO (ex.: ordem de compra)
+  if (it.pages) return podeAlgum(u, it.pages); // tela liberada por QUALQUER UMA de várias permissões
   if (it.page) return pode(u, it.page);
   return true;
 }
