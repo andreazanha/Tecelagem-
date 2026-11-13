@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
-import { api, type ChatSetor, type ChatConversa, type ChatMsg, type ChatParResumo, type ChatFigurinha } from "../api";
+import { api, type ChatSetor, type ChatConversa, type ChatMsg, type ChatParResumo, type ChatFigurinha, type ChatAvatar } from "../api";
 import { getUser } from "../auth";
 
 // CHAT INTERNO da equipe — botão flutuante + painel estilo WhatsApp. Os setores
@@ -31,13 +31,22 @@ export function ChatWidget() {
   const [todas, setTodas] = useState<ChatParResumo[]>([]);
   const [parAberto, setParAberto] = useState<{ a: string; b: string; nomeA: string; nomeB: string } | null>(null);
   const [msgsPar, setMsgsPar] = useState<ChatMsg[]>([]);
-  const admin = !!getUser()?.admin;
+  const eu = getUser();
+  const admin = !!eu?.admin;
+  const meuUsuario = eu?.usuario || "";
+  const meuNome = eu?.nome || "";
+  // Só o Boss (admin) ou o acesso de montagem ("setup") podem TROCAR o setor do PC.
+  // Depois de configurado, a equipe não mexe mais nisso.
+  const podeTrocarSetor = admin || meuUsuario === "setup";
   const [abrirFig, setAbrirFig] = useState(false);
   const [figurinhas, setFigurinhas] = useState<ChatFigurinha[]>([]);
   const [subindoFig, setSubindoFig] = useState(false);
+  const [avatares, setAvatares] = useState<ChatAvatar[]>([]);
+  const [subindoAv, setSubindoAv] = useState(false);
   const fimRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const figFileRef = useRef<HTMLInputElement>(null);
+  const avatarFileRef = useRef<HTMLInputElement>(null);
   const comRef = useRef(com); comRef.current = com;
   const meuRef = useRef(meu); meuRef.current = meu;
   const abertoRef = useRef(aberto); abertoRef.current = aberto;
@@ -63,11 +72,12 @@ export function ChatWidget() {
         const o = ac.createOscillator(), g = ac.createGain();
         o.connect(g); g.connect(ac.destination); o.type = "sine"; o.frequency.value = freq;
         g.gain.setValueAtTime(0.0001, ac.currentTime + t0);
-        g.gain.exponentialRampToValueAtTime(0.25, ac.currentTime + t0 + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + t0 + 0.32);
-        o.start(ac.currentTime + t0); o.stop(ac.currentTime + t0 + 0.34);
+        g.gain.exponentialRampToValueAtTime(0.42, ac.currentTime + t0 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + t0 + 0.34);
+        o.start(ac.currentTime + t0); o.stop(ac.currentTime + t0 + 0.36);
       };
-      tom(880, 0); tom(1240, 0.17);
+      // Três toques (bem perceptível) estilo "ding-dong-ding".
+      tom(880, 0); tom(1240, 0.18); tom(1040, 0.36);
     } catch { /* ok */ }
   }
   // Notificação do navegador (aparece no Windows mesmo com a aba atrás).
@@ -103,10 +113,38 @@ export function ChatWidget() {
 
   const nomeSetor = (id: string) => setores.find((s) => s.id === id)?.nome || id;
   const totalNaoLidas = useMemo(() => conversas.reduce((s, c) => s + (c.nao_lidas || 0), 0), [conversas]);
+  // Mapa nome-da-pessoa → foto (as mensagens guardam o NOME do autor).
+  const avaMap = useMemo(() => { const m: Record<string, string> = {}; for (const a of avatares) if (a.nome) m[a.nome] = a.imagem_key; return m; }, [avatares]);
+  const meuAvatar = useMemo(() => avatares.find((a) => a.usuario === meuUsuario)?.imagem_key || null, [avatares, meuUsuario]);
+  // Bolinha com a foto do autor (ou a inicial, se ainda não tiver foto).
+  function avMsg(autor: string | null) {
+    const k = autor ? avaMap[autor] : null;
+    return k
+      ? <img className="chat-av-msg" src={`/api/chat/foto/${k}`} alt="" loading="lazy" />
+      : <span className="chat-av-msg ini">{(autor || "—").slice(0, 1).toUpperCase()}</span>;
+  }
 
   useEffect(() => { api.chatSetores().then((d) => Array.isArray(d) && setSetores(d)).catch(() => {}); }, []);
+  function carregarAvatares() { api.chatAvatares().then((d) => Array.isArray(d) && setAvatares(d)).catch(() => {}); }
+  useEffect(() => { carregarAvatares(); }, []);
+  // Libera o som no 1º toque/tecla em qualquer lugar (regra dos navegadores), pra o
+  // aviso sonoro de mensagem nova tocar mesmo sem abrir o chat antes.
+  useEffect(() => {
+    const unlock = () => prepararAvisos();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => { window.removeEventListener("pointerdown", unlock); window.removeEventListener("keydown", unlock); };
+  }, []);
   // Acesso de montagem ("setup"): abre o chat sozinho pra cair direto na escolha do setor.
   useEffect(() => { try { if (getUser()?.usuario === "setup") setAberto(true); } catch { /* ok */ } }, []);
+  async function subirAvatar(file?: File | null) {
+    if (!file || subindoAv) return;
+    setSubindoAv(true);
+    try {
+      const a = await api.chatSubirAvatar(file);
+      if (a && a.imagem_key) setAvatares((prev) => [...prev.filter((x) => x.usuario !== a.usuario), a]);
+    } catch { /* ok */ } finally { setSubindoAv(false); }
+  }
 
   function carregarConversas() {
     if (!meuRef.current) return;
@@ -135,7 +173,7 @@ export function ChatWidget() {
   useEffect(() => { if (com) setTimeout(scrollFim, 30); /* eslint-disable-next-line */ }, [msgs.length, com]);
 
   function abrirConversa(setorId: string) {
-    setCom(setorId); setMsgs([]);
+    setCom(setorId); setMsgs([]); carregarAvatares();
     api.chatMensagens(meu, setorId).then((d) => { if (Array.isArray(d)) setMsgs(d); }).catch(() => {});
     setTimeout(carregarConversas, 300); // zera o não-lido depois de marcar leitura
   }
@@ -247,9 +285,19 @@ export function ChatWidget() {
       {aberto && (
         <div className="chatpane">
           <div className="chatpane-hd">
-            <div style={{ minWidth: 0 }}>
+            {meuUsuario && meuUsuario !== "setup" && (
+              <>
+                <button className="chat-meuav" onClick={() => avatarFileRef.current?.click()} disabled={subindoAv} title="Sua foto — toque para trocar">
+                  {meuAvatar ? <img src={`/api/chat/foto/${meuAvatar}`} alt="" /> : <span className="chat-meuav-ini">{(meuNome || "?").slice(0, 1).toUpperCase()}</span>}
+                  <span className="chat-meuav-cam">{subindoAv ? "⏳" : "📷"}</span>
+                </button>
+                <input type="file" accept="image/*" ref={avatarFileRef} style={{ display: "none" }}
+                  onChange={(e) => { const f = e.target.files?.[0]; const el = e.currentTarget; subirAvatar(f); if (el) el.value = ""; }} />
+              </>
+            )}
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div className="chatpane-ttl">💬 Chat da equipe</div>
-              <div className="chatpane-sub">Este PC: <b>{meu ? nomeSetor(meu) : "—"}</b>{meu && <button className="chat-mini" onClick={() => setTrocarSetor(true)}>trocar setor</button>}</div>
+              <div className="chatpane-sub">{meuNome && meuUsuario !== "setup" ? <>Você: <b>{meuNome.split(" ")[0]}</b> · </> : null}Este PC: <b>{meu ? nomeSetor(meu) : "—"}</b>{meu && podeTrocarSetor && <button className="chat-mini" onClick={() => setTrocarSetor(true)}>trocar setor</button>}</div>
             </div>
             <button className="chat-x" onClick={() => setAberto(false)}>✕</button>
           </div>
@@ -276,7 +324,7 @@ export function ChatWidget() {
                   {msgsPar.length === 0 && <div className="chat-vazio" style={{ margin: "auto" }}>Sem mensagens nesta conversa.</div>}
                   {msgsPar.map((m) => (
                     <div key={m.id} className={"chat-bolha " + (m.de_setor === parAberto.a ? "dele" : "minha") + (ehFigurinha(m.imagem_key) ? " fig" : "")}>
-                      <div className="chat-autor">{m.autor || "—"} · {nomeSetor(m.de_setor)}</div>
+                      <div className="chat-autor">{avMsg(m.autor)}{m.autor || "—"} · {nomeSetor(m.de_setor)}</div>
                       {m.imagem_key ? <img className={ehFigurinha(m.imagem_key) ? "chat-sticker" : "chat-img"} src={`/api/chat/foto/${m.imagem_key}`} alt="" loading="lazy" onClick={() => window.open(`/api/chat/foto/${m.imagem_key}`, "_blank")} /> : null}
                       {m.texto ? <div className="chat-txt">{m.texto}</div> : null}
                       <div className="chat-hora">{horaDe(m.criado_em)}</div>
@@ -331,7 +379,7 @@ export function ChatWidget() {
                 {msgs.length === 0 && <div className="chat-vazio" style={{ margin: "auto" }}>Nenhuma mensagem ainda. Mande a primeira!</div>}
                 {msgs.map((m) => (
                   <div key={m.id} className={"chat-bolha " + (m.de_setor === meu ? "minha" : "dele") + (ehFigurinha(m.imagem_key) ? " fig" : "")}>
-                    {m.de_setor !== meu && m.autor ? <div className="chat-autor">{m.autor}</div> : null}
+                    {m.de_setor !== meu && m.autor ? <div className="chat-autor">{avMsg(m.autor)}{m.autor}</div> : null}
                     {m.imagem_key ? <img className={ehFigurinha(m.imagem_key) ? "chat-sticker" : "chat-img"} src={`/api/chat/foto/${m.imagem_key}`} alt="" loading="lazy" onClick={() => window.open(`/api/chat/foto/${m.imagem_key}`, "_blank")} /> : null}
                     {m.texto ? <div className="chat-txt">{m.texto}</div> : null}
                     <div className="chat-hora">{horaDe(m.criado_em)}</div>

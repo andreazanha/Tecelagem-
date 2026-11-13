@@ -539,6 +539,7 @@ export interface ChatConversa {
   nao_lidas: number;
 }
 export interface ChatFigurinha { id: string; imagem_key: string; }
+export interface ChatAvatar { usuario: string; nome: string | null; imagem_key: string; }
 // Controle do Boss (admin): resumo de uma conversa entre dois setores quaisquer.
 export interface ChatParResumo {
   a: string; b: string; nomeA: string; nomeB: string; total: number;
@@ -1696,6 +1697,12 @@ export const api = {
     jsonPost("/api/chat/enviar-figurinha", { de, para, imagem_key }).then((r) => j<ChatMsg>(r)),
   chatApagarFigurinha: (id: string) =>
     fetch(`/api/chat/figurinha/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  // Foto do usuário (avatar) do chat.
+  chatAvatares: () => fetch("/api/chat/avatares").then((r) => j<ChatAvatar[]>(r)),
+  chatSubirAvatar: (file: File) => {
+    const fd = new FormData(); fd.append("file", file);
+    return fetch("/api/chat/avatar", { method: "POST", body: fd }).then((r) => j<ChatAvatar>(r));
+  },
   todosPedidos: (params?: { mes?: string; setor?: string }) => {
     const q = new URLSearchParams();
     if (params?.mes) q.set("mes", params.mes);
