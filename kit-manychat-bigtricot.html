@@ -1,0 +1,510 @@
+<title>Kit ManyChat Big Tricot</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: kit de configuração em seções-cartão, nav fixa no topo, cada mensagem em bloco copiável */
+  :root{
+    --bg:#f5f2ef;         /* papel/lã claro, levemente quente */
+    --surface:#ffffff;
+    --surface-2:#efe9e4;
+    --ink:#241c20;
+    --muted:#6f6269;
+    --line:#e3dad3;
+    --accent:#c2355f;     /* rosa-amora */
+    --accent-soft:#f6e2ea;
+    --sage:#4f7d6a;       /* verde-sálvia (secundário) */
+    --code-bg:#fbf9f7;
+    --chip:#efe6e9;
+    --shadow:0 1px 2px rgba(36,28,32,.06), 0 8px 24px rgba(36,28,32,.05);
+    --font-head:"Space Grotesk",system-ui,sans-serif;
+    --font-body:"Inter",system-ui,-apple-system,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#171216; --surface:#20191d; --surface-2:#2a2126;
+      --ink:#f1e7eb; --muted:#b19aa4; --line:#33282e;
+      --accent:#ec6a93; --accent-soft:#3a222d; --sage:#7fb79f;
+      --code-bg:#1b1519; --chip:#2e242a;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#171216; --surface:#20191d; --surface-2:#2a2126;
+    --ink:#f1e7eb; --muted:#b19aa4; --line:#33282e;
+    --accent:#ec6a93; --accent-soft:#3a222d; --sage:#7fb79f;
+    --code-bg:#1b1519; --chip:#2e242a;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);font-family:var(--font-body);line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:900px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
+
+  /* top bar */
+  body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:20;background:var(--surface)}
+  header.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:15;background:var(--surface);border-bottom:1px solid var(--line)}
+  .bar .wrap{padding-block:10px;display:flex;flex-direction:column;gap:8px}
+  .brand{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .brand .dot{width:26px;height:26px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:15px;flex:none}
+  .brand h1{font-family:var(--font-head);font-size:1.05rem;margin:0;letter-spacing:-.01em}
+  .brand .tag{font-size:.72rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 9px}
+  nav.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:thin;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+  nav.chips a{flex:none;font-size:.78rem;text-decoration:none;color:var(--muted);background:var(--chip);border-radius:999px;padding:5px 11px;white-space:nowrap;border:1px solid transparent;transition:.15s}
+  nav.chips a:hover{color:var(--accent);border-color:var(--line)}
+
+  main{padding-block:26px 56px}
+
+  /* hero / intro */
+  .hero{margin-bottom:22px}
+  .hero h2{font-family:var(--font-head);font-size:clamp(1.5rem,5vw,2.1rem);line-height:1.1;margin:.2em 0 .35em;text-wrap:balance;letter-spacing:-.02em}
+  .hero p{color:var(--muted);margin:.2em 0;max-width:62ch}
+  .note{display:flex;gap:12px;background:var(--accent-soft);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:12px;padding:14px 16px;margin:18px 0}
+  .note .ic{flex:none;font-size:1.1rem;line-height:1.4}
+  .note b{color:var(--ink)}
+  .note small{color:var(--muted)}
+
+  section.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px;margin:16px 0;box-shadow:var(--shadow);scroll-margin-top:120px}
+  section.card > h3{font-family:var(--font-head);font-size:1.18rem;margin:0 0 4px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:9px}
+  section.card > h3 .n{font-size:.72rem;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:7px;padding:3px 8px;flex:none;font-family:var(--font-body)}
+  section.card > .lead{color:var(--muted);margin:.2em 0 2px;font-size:.92rem}
+  .where{font-size:.78rem;color:var(--sage);background:color-mix(in srgb,var(--sage) 12%,transparent);border-radius:8px;padding:6px 10px;margin:12px 0;display:inline-block;font-weight:500}
+
+  .block{margin:14px 0}
+  .block .lbl{font-size:.8rem;font-weight:600;color:var(--muted);margin-bottom:6px;display:block}
+  .trg{font-size:.82rem;margin:0 0 8px}
+  .trg code{background:var(--chip);border-radius:5px;padding:2px 7px;font-size:.82em;margin:2px 3px 2px 0;display:inline-block}
+  .msgwrap{position:relative}
+  pre.msg{background:var(--code-bg);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0;white-space:pre-wrap;word-wrap:break-word;font-family:var(--font-body);font-size:.9rem;line-height:1.5;overflow-x:auto}
+  pre.msg .ph{color:var(--accent);font-weight:600;background:var(--accent-soft);border-radius:4px;padding:0 3px}
+  button.copy{position:absolute;top:8px;right:8px;font-family:var(--font-body);font-size:.74rem;font-weight:600;color:var(--surface);background:var(--accent);border:none;border-radius:8px;padding:6px 11px;cursor:pointer;transition:.15s;opacity:.92}
+  button.copy:hover{opacity:1}
+  button.copy.ok{background:var(--sage)}
+  button.copy:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+  .btns{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 2px}
+  .btns .b{font-size:.82rem;border:1px solid var(--accent);color:var(--accent);border-radius:999px;padding:5px 13px;background:transparent;font-weight:500}
+  .btns .cap{width:100%;font-size:.76rem;color:var(--muted);margin-bottom:-2px}
+
+  ul.clean{margin:8px 0;padding-left:18px}
+  ul.clean li{margin:5px 0}
+  ul.clean code{background:var(--chip);border-radius:5px;padding:1px 6px;font-size:.85em}
+  .hr{height:1px;background:var(--line);border:0;margin:18px 0}
+  footer{color:var(--muted);font-size:.82rem;text-align:center;padding:10px 0 4px}
+  a{color:var(--accent)}
+</style>
+
+<header class="bar">
+  <div class="wrap">
+    <div class="brand">
+      <span class="dot">🧶</span>
+      <h1>Kit ManyChat · Big Tricot</h1>
+      <span class="tag">pronto pra colar</span>
+    </div>
+    <nav class="chips" aria-label="Seções">
+      <a href="#setup">1 · Ajustes</a>
+      <a href="#boas-vindas">2 · Boas-vindas</a>
+      <a href="#palavras">3 · Palavras-chave</a>
+      <a href="#comentarios">4 · Comentários</a>
+      <a href="#pedido">5 · Pedido</a>
+      <a href="#horario">6 · Fora do horário</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="hero">
+    <h2>Seu atendimento automático, escrito e organizado</h2>
+    <p>Todos os textos, palavras-chave e fluxos da Big Tricot prontos. Copie cada bloco e cole no campo correspondente do ManyChat. Onde aparecer <span style="color:var(--accent);font-weight:600">[entre colchetes]</span>, troque pelo seu dado real (preço, link, chave Pix).</p>
+    <div class="note">
+      <span class="ic">⚠️</span>
+      <div>
+        <b>Duas coisas só você faz (precisam do seu login):</b><br>
+        <small>1. Conectar o Instagram da Big Tricot ao ManyChat · 2. Confirmar a conta Meta / 2FA. O resto é colar o que está aqui.</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1 -->
+  <section class="card" id="setup">
+    <h3><span class="n">1</span> Ajustes antes dos fluxos</h3>
+    <p class="lead">Deixe a base pronta pra tudo funcionar.</p>
+
+    <span class="where">📍 Settings → Business Hours (horário)</span>
+    <ul class="clean">
+      <li><b>Conecte o Instagram:</b> ManyChat → <i>Connect Channels</i> → Instagram → autorize pela conta Meta da Big Tricot.</li>
+      <li><b>Horário de atendimento:</b> defina seus dias/horas (ex.: Seg–Sex 9h–18h, Sáb 9h–13h). É o que liga a resposta de "fora do horário".</li>
+    </ul>
+
+    <span class="where">📍 Contacts → Tags (crie estas etiquetas)</span>
+    <ul class="clean">
+      <li><code>lead</code> · <code>pediu-catalogo</code> · <code>interesse-manta</code> · <code>interesse-capa</code> · <code>interesse-almofada</code> · <code>atacado</code> · <code>cliente</code></li>
+    </ul>
+
+    <span class="where">📍 Settings → Fields → Custom Fields (crie estes campos)</span>
+    <ul class="clean">
+      <li><code>produto</code> (texto) · <code>cor</code> (texto) · <code>tamanho</code> (texto) · <code>cep</code> (texto)</li>
+    </ul>
+  </section>
+
+  <!-- 2 -->
+  <section class="card" id="boas-vindas">
+    <h3><span class="n">2</span> Boas-vindas &amp; menu de entrada</h3>
+    <p class="lead">A primeira mensagem de quem chama no direct, com botões.</p>
+
+    <span class="where">📍 Automation → Main Menu / mensagem de boas-vindas (fluxo inicial)</span>
+
+    <div class="block">
+      <span class="lbl">Mensagem de boas-vindas</span>
+      <div class="msgwrap">
+<pre class="msg">Oi! 🧶 Que bom te ver por aqui — aqui é o atendimento da Big Tricot.
+
+A gente faz mantas, capas de almofada e almofadas em tricô, tudo feito à mão com muito carinho. 💛
+
+Me conta: o que você procura hoje?</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <div class="btns">
+        <span class="cap">Botões abaixo da mensagem:</span>
+        <span class="b">Ver catálogo e preços</span>
+        <span class="b">Mantas</span>
+        <span class="b">Capas e almofadas</span>
+        <span class="b">Falar com atendente</span>
+      </div>
+    </div>
+
+    <hr class="hr">
+
+    <div class="block">
+      <span class="lbl">Ícebreakers / Conversation Starters (as perguntas que aparecem no perfil)</span>
+      <div class="msgwrap">
+<pre class="msg">Ver catálogo e preços 🧶
+Quero uma manta
+Capas de almofada
+Falar com uma atendente</pre>
+        <button class="copy">Copiar</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="card" id="palavras">
+    <h3><span class="n">3</span> Palavras-chave (respostas automáticas)</h3>
+    <p class="lead">Cada grupo: você cadastra as palavras-gatilho e cola a resposta. O cliente digita qualquer uma das palavras e recebe o texto.</p>
+    <span class="where">📍 Automation → Keywords → New Keyword (um pra cada grupo abaixo)</span>
+
+    <!-- preço -->
+    <div class="block">
+      <span class="lbl">💰 Preços</span>
+      <p class="trg"><b>Gatilhos:</b>
+        <code>preço</code><code>preco</code><code>preços</code><code>valor</code><code>valores</code><code>quanto</code><code>quanto custa</code><code>tabela</code></p>
+      <div class="msgwrap">
+<pre class="msg">Claro! 💛 Aqui vão nossos valores:
+
+🧶 Manta — a partir de [R$ XX]
+🛋️ Capa de almofada — [R$ XX] (unidade)
+☁️ Almofada completa (com enchimento) — [R$ XX]
+
+👉 Catálogo com todas as fotos e cores: [LINK DO CATÁLOGO]
+
+Quer que eu te ajude a escolher a cor e o tamanho?</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <div class="btns"><span class="cap">Botões:</span><span class="b">Quero escolher</span><span class="b">Ver catálogo</span><span class="b">Falar com atendente</span></div>
+    </div>
+
+    <hr class="hr">
+
+    <!-- manta -->
+    <div class="block">
+      <span class="lbl">🧶 Mantas</span>
+      <p class="trg"><b>Gatilhos:</b>
+        <code>manta</code><code>mantas</code><code>coberta</code><code>xale</code></p>
+      <div class="msgwrap">
+<pre class="msg">Nossas mantas são feitas à mão em tricô, pontos bem fechadinhos e super aconchegantes 🧶
+
+Tamanhos:
+• Solteiro — [medida]
+• Casal / Queen — [medida]
+
+Disponíveis em várias cores. Me diz o tamanho e a cor que você quer que eu já te passo o valor e o prazo. 💛</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <p class="trg" style="color:var(--muted)"><b>Ação:</b> adicione a tag <code>interesse-manta</code> neste fluxo.</p>
+    </div>
+
+    <hr class="hr">
+
+    <!-- capa -->
+    <div class="block">
+      <span class="lbl">🛋️ Capas &amp; almofadas</span>
+      <p class="trg"><b>Gatilhos:</b>
+        <code>capa</code><code>capas</code><code>almofada</code><code>almofadas</code></p>
+      <div class="msgwrap">
+<pre class="msg">As capas de almofada da Big Tricot deixam qualquer cantinho mais charmoso 🛋️
+
+Temos de dois jeitos:
+• Capa avulsa (só a capa)
+• Almofada completa (capa + enchimento)
+
+Tamanho padrão: [45x45] — outras medidas sob encomenda.
+Você quer capa avulsa ou completa? E qual cor?</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <p class="trg" style="color:var(--muted)"><b>Ação:</b> tag <code>interesse-capa</code>.</p>
+    </div>
+
+    <hr class="hr">
+
+    <!-- tamanho -->
+    <div class="block">
+      <span class="lbl">📏 Tamanhos / medidas</span>
+      <p class="trg"><b>Gatilhos:</b>
+        <code>tamanho</code><code>tamanhos</code><code>medida</code><code>medidas</code><code>dimensão</code></p>
+      <div class="msgwrap">
+<pre class="msg">Boa pergunta! 📏 Nossas medidas:
+
+• Manta solteiro — [medida]
+• Manta casal — [medida]
+• Capa de almofada — [45x45] (ou sob medida)
+
+Me fala o que você quer que eu confirmo a medida certinha. 😉</pre>
+        <button class="copy">Copiar</button>
+      </div>
+    </div>
+
+    <hr class="hr">
+
+    <!-- frete -->
+    <div class="block">
+      <span class="lbl">📦 Frete &amp; entrega</span>
+      <p class="trg"><b>Gatilhos:</b>
+        <code>frete</code><code>entrega</code><code>envio</code><code>cep</code><code>prazo</code><code>correios</code></p>
+      <div class="msgwrap">
+<pre class="msg">A gente envia pra todo o Brasil 📦
+
+Pra calcular o frete certinho eu preciso do seu CEP. Qual é o seu CEP?
+
+⏱️ Prazo: produção em [X dias úteis] + o tempo de envio dos Correios.</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <p class="trg" style="color:var(--muted)"><b>Ação:</b> adicione um passo <i>"User Input"</i> que salva a resposta no campo <code>cep</code>.</p>
+    </div>
+
+    <hr class="hr">
+
+    <!-- pix -->
+    <div class="block">
+      <span class="lbl">💳 Pagamento / Pix</span>
+      <p class="trg"><b>Gatilhos:</b>
+        <code>pix</code><code>pagamento</code><code>pagar</code><code>cartão</code><code>parcela</code><code>forma de pagamento</code></p>
+      <div class="msgwrap">
+<pre class="msg">Facilitamos pra você 💳
+
+• Pix (confirmação na hora)
+• Cartão em até [Xx]
+
+Chave Pix: [SUA CHAVE PIX]
+
+Assim que confirmar o pedido eu te passo o total certinho. 💛</pre>
+        <button class="copy">Copiar</button>
+      </div>
+    </div>
+
+    <hr class="hr">
+
+    <!-- atacado -->
+    <div class="block">
+      <span class="lbl">🤝 Atacado / revenda</span>
+      <p class="trg"><b>Gatilhos:</b>
+        <code>atacado</code><code>revenda</code><code>revender</code><code>revendedor</code><code>lojista</code></p>
+      <div class="msgwrap">
+<pre class="msg">Que ótimo que você quer revender a Big Tricot! 🤝
+
+Temos condições especiais pra atacado a partir de [X peças].
+
+Me conta seu nome e sua cidade que uma atendente te chama com a tabela de revenda. 💛</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <p class="trg" style="color:var(--muted)"><b>Ação:</b> tag <code>atacado</code> + notifique a equipe (handoff).</p>
+    </div>
+
+    <hr class="hr">
+
+    <!-- catalogo -->
+    <div class="block">
+      <span class="lbl">📖 Catálogo</span>
+      <p class="trg"><b>Gatilhos:</b>
+        <code>catálogo</code><code>catalogo</code><code>fotos</code><code>ver tudo</code><code>produtos</code></p>
+      <div class="msgwrap">
+<pre class="msg">Aqui está nosso catálogo completo, com fotos, cores e preços 🧶👇
+
+[LINK DO CATÁLOGO]
+
+Qualquer dúvida é só me chamar por aqui!</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <p class="trg" style="color:var(--muted)"><b>Ação:</b> tag <code>pediu-catalogo</code>.</p>
+    </div>
+
+    <hr class="hr">
+
+    <!-- default -->
+    <div class="block">
+      <span class="lbl">🔁 Resposta padrão (quando nada bate) — <span class="where" style="margin:0">📍 Automation → Default Reply</span></span>
+      <div class="msgwrap">
+<pre class="msg">Oi! 💛 Posso te ajudar com:
+
+• Catálogo e preços
+• Mantas
+• Capas e almofadas
+• Falar com atendente
+
+É só tocar em uma opção aqui embaixo 👇</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <div class="btns"><span class="cap">Botões:</span><span class="b">Ver catálogo e preços</span><span class="b">Mantas</span><span class="b">Capas e almofadas</span><span class="b">Falar com atendente</span></div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="card" id="comentarios">
+    <h3><span class="n">4</span> Comentou no post → recebe no direct</h3>
+    <p class="lead">Quando alguém comenta num post/reel, responde no público e manda o catálogo no direct. Ótimo pra transformar comentário em venda.</p>
+    <span class="where">📍 Automation → New Automation → gatilho "User comments on your post or reel"</span>
+
+    <div class="block">
+      <span class="lbl">Resposta pública no comentário (cadastre 3, o ManyChat alterna)</span>
+      <div class="msgwrap">
+<pre class="msg">Te chamei no direct! 💌</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <div class="msgwrap" style="margin-top:8px">
+<pre class="msg">Oiê! Acabei de te mandar tudo no direct 🧶</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <div class="msgwrap" style="margin-top:8px">
+<pre class="msg">Respondi no seu direct, dá uma olhadinha 💛</pre>
+        <button class="copy">Copiar</button>
+      </div>
+    </div>
+
+    <div class="block">
+      <span class="lbl">Mensagem enviada no direct (DM)</span>
+      <div class="msgwrap">
+<pre class="msg">Oi! Vi seu comentário no nosso post 🧶
+
+Aqui está o catálogo com todas as cores e preços 👉 [LINK DO CATÁLOGO]
+
+Quer que eu te ajude a escolher? Me diz se é manta, capa ou almofada. 💛</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <p class="trg" style="color:var(--muted)"><b>Ação:</b> tag <code>lead</code> + <code>pediu-catalogo</code>.</p>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="card" id="pedido">
+    <h3><span class="n">5</span> Captura de pedido → passa pra você</h3>
+    <p class="lead">Fluxo que pergunta produto, cor e tamanho, salva tudo e chama uma atendente pra fechar.</p>
+    <span class="where">📍 Automation → novo Flow, ligado ao botão "Quero escolher" / "Falar com atendente"</span>
+
+    <div class="block">
+      <span class="lbl">Passo 1 — pergunta o produto</span>
+      <div class="msgwrap">
+<pre class="msg">Perfeito! Vou montar seu pedido 📝
+
+1) Qual produto você quer? (manta, capa ou almofada)</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <p class="trg" style="color:var(--muted)">Salvar resposta no campo <code>produto</code>.</p>
+    </div>
+
+    <div class="block">
+      <span class="lbl">Passo 2 — pergunta a cor</span>
+      <div class="msgwrap">
+<pre class="msg">Que cor você quer? 🎨</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <p class="trg" style="color:var(--muted)">Salvar no campo <code>cor</code>.</p>
+    </div>
+
+    <div class="block">
+      <span class="lbl">Passo 3 — pergunta o tamanho</span>
+      <div class="msgwrap">
+<pre class="msg">E qual tamanho? 📏</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <p class="trg" style="color:var(--muted)">Salvar no campo <code>tamanho</code>.</p>
+    </div>
+
+    <div class="block">
+      <span class="lbl">Passo 4 — confirma e chama a atendente</span>
+      <div class="msgwrap">
+<pre class="msg">Anotado! 📝
+
+Produto: {{produto}}
+Cor: {{cor}}
+Tamanho: {{tamanho}}
+
+Já chamei uma atendente pra fechar com você o valor e o frete. Em instantes a gente te responde 💛</pre>
+        <button class="copy">Copiar</button>
+      </div>
+      <p class="trg" style="color:var(--muted)"><b>Ação:</b> tag <code>lead</code>, notifique a equipe (Live Chat / e-mail) e, se usar, marque a conversa pra atendimento humano.</p>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section class="card" id="horario">
+    <h3><span class="n">6</span> Fora do horário</h3>
+    <p class="lead">Resposta automática quando a loja está fechada — adianta o catálogo e segura o cliente.</p>
+    <span class="where">📍 Condição "fora do Business Hours" no início do fluxo de boas-vindas</span>
+
+    <div class="block">
+      <div class="msgwrap">
+<pre class="msg">Oi! 💛 Agora estamos fora do horário de atendimento ([seu horário]).
+
+Mas já adianto pra você: catálogo, cores e preços aqui 👉 [LINK DO CATÁLOGO]
+
+Pode me deixar sua dúvida que, assim que abrirmos, uma atendente te responde. 🧶</pre>
+        <button class="copy">Copiar</button>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Kit feito pra Big Tricot · troque tudo que estiver entre colchetes antes de publicar no ManyChat 🧶
+  </footer>
+
+</main>
+
+<script>
+  document.querySelectorAll('button.copy').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var pre = btn.parentElement.querySelector('pre.msg');
+      if(!pre) return;
+      var text = pre.innerText;
+      var done = function(){
+        var old = btn.textContent;
+        btn.textContent = '✓ Copiado';
+        btn.classList.add('ok');
+        setTimeout(function(){ btn.textContent = old; btn.classList.remove('ok'); }, 1600);
+      };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done).catch(function(){ selectFallback(pre, done); });
+      } else {
+        selectFallback(pre, done);
+      }
+    });
+  });
+  function selectFallback(pre, done){
+    try{
+      var r = document.createRange();
+      r.selectNodeContents(pre);
+      var sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(r);
+      done();
+    }catch(e){}
+  }
+</script>
