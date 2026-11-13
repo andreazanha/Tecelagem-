@@ -121,20 +121,32 @@ function kitPecas(produto: string, tamanho: string | null): { tipo: string; tama
   return pecas.length ? pecas : [{ tipo: "Peça", tamanho: fmtMedida(mainSize) }];
 }
 function conteudoEt(e: Etq, comBarcode: boolean): string {
-  // Código de barras (Code 128) da referência — SÓ na etiqueta de ROLO (térmica).
-  // Na folha (Pimaco) a etiqueta volta a ser só texto, como era antes.
-  const bc = comBarcode && e.ref ? `<div class="bc">${svgBarcode(e.ref, { height: 34, fontSize: 13, width: 1.3 })}</div>` : "";
-  if (e.kit) {
-    // Cada etiqueta do kit é uma peça (peseira/manta ou almofada).
-    return `<div class="mod">${e.modelo}</div>
-      <div class="lin"><b>${e.tamanho || "—"}</b></div>
+  const comp = e.composicao ? ` · ${e.composicao}` : "";
+  // TÉRMICA (rolo): referência + CÓDIGO DE BARRAS (pra ler no leitor/câmera).
+  if (comBarcode) {
+    const bc = e.ref ? `<div class="bc">${svgBarcode(e.ref, { height: 34, fontSize: 13, width: 1.3 })}</div>` : "";
+    if (e.kit) {
+      return `<div class="mod">${e.modelo}</div>
+        <div class="lin"><b>${e.tamanho || "—"}</b></div>
+        <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
+        ${bc}`;
+    }
+    return `<div class="mod">${modeloLinha(e.modelo)}</div>
+      <div class="lin">${e.ref ? `Ref: <b>${e.ref}</b> · ` : ""}Tam: <b>${e.tamanho || "—"}</b></div>
       <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
       ${bc}`;
   }
+  // FOLHA (Pimaco): como era antes — modelo, tam/cor + composição, e o CLIENTE embaixo. Sem código de barras.
+  if (e.kit) {
+    return `<div class="mod">${e.modelo}</div>
+      <div class="lin"><b>${e.tamanho || "—"}</b></div>
+      <div class="lin">Cor: <b>${e.cor || "—"}</b><span class="comp">${comp}</span></div>
+      <div class="cli">${e.cliente || ""}</div>`;
+  }
   return `<div class="mod">${modeloLinha(e.modelo)}</div>
-    <div class="lin">${e.ref ? `Ref: <b>${e.ref}</b> · ` : ""}Tam: <b>${e.tamanho || "—"}</b></div>
+    <div class="lin">Tam: <b>${e.tamanho || "—"}</b><span class="comp">${comp}</span></div>
     <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
-    ${bc}`;
+    <div class="cli">${e.cliente || ""}</div>`;
 }
 
 export function ImpressaoEtiquetas() {
@@ -633,22 +645,24 @@ export function ImpressaoEtiquetas() {
             const y = cfg.margemTopo + row * (cfg.alturaEt + cfg.gapV);
             const style = { position: "absolute" as const, left: pct(x, pag.w) + "%", top: pct(y, pag.h) + "%", width: pct(cfg.larguraEt, pag.w) + "%", height: pct(cfg.alturaEt, pag.h) + "%", overflow: "hidden" };
             if (etqs.length && k < offset) return <div key={k} className="a4-et a4-et-skip" style={style}>usada</div>;
-            const e = etqs.length ? finalCells[k] : ({ cliente: "Cliente", modelo: "(etiqueta)", tamanho: "55×35", cor: "AREIA", composicao: "", ref: "KT0000" } as Etq);
+            const e = etqs.length ? finalCells[k] : ({ cliente: "Cliente Exemplo Ltda", modelo: "(etiqueta)", tamanho: "55×35", cor: "AREIA", composicao: "100% Poliéster", ref: "KT0000" } as Etq);
             if (!e) return <div key={k} className="a4-et a4-et-empty" style={style}></div>;
             if (e.kit) {
               return (
                 <div key={k} className="a4-et" style={{ ...style, gap: 0, justifyContent: "flex-start" }}>
                   <div className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{e.modelo}</div>
                   <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}><b>{e.tamanho || "—"}</b></div>
-                  <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
+                  <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b>{e.composicao ? <span style={{ color: "#55555e" }}> · {e.composicao}</span> : ""}</div>
+                  <div className="a4-cli" style={{ fontSize: fpt(0.82), lineHeight: 1.15 }}>{e.cliente}</div>
                 </div>
               );
             }
             return (
               <div key={k} className="a4-et" style={{ ...style, gap: 0, justifyContent: "flex-start" }}>
                 <div className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{modeloLinha(e.modelo)}</div>
-                <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>{e.ref ? <>Ref: <b>{e.ref}</b> · </> : null}Tam: <b>{e.tamanho || "—"}</b></div>
+                <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Tam: <b>{e.tamanho || "—"}</b>{e.composicao ? <span style={{ color: "#55555e" }}> · {e.composicao}</span> : ""}</div>
                 <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
+                <div className="a4-cli" style={{ fontSize: fpt(0.82), lineHeight: 1.15 }}>{e.cliente}</div>
               </div>
             );
           })}
