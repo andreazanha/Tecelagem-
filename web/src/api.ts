@@ -462,6 +462,13 @@ export interface CardExpedicao {
   pecas: number | null;
   partes: string | null;
   resumos: string | null;
+  // Dados do destinatário (para o texto da transportadora).
+  cliente_cnpj?: string | null;
+  valor_total?: number | string | null;
+  cliente_razao?: string | null;
+  cliente_cnpj_cad?: string | null;
+  cliente_cep?: string | null;
+  cliente_uf?: string | null;
 }
 export interface PedidoTimeline {
   pedido_id: string;

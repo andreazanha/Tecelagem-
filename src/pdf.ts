@@ -35,6 +35,11 @@ export interface PedidoInfo {
   emissao: string;
   entrega: string;
   observacao?: string; // exibida em VERMELHO no cabeçalho
+  // Dados do cliente para o cabeçalho da Ordem de Produção (opcionais).
+  razaoSocial?: string; // razão social (usada no lugar do nome quando houver)
+  cnpj?: string;
+  cep?: string;
+  cidadeUf?: string; // "Cidade - UF"
 }
 
 // Quebra um texto em linhas que cabem em `maxW` (pdf-lib não tem wrap automático).
@@ -163,7 +168,8 @@ export async function gerarPdfParte(
       T(fit(v, bld, 10, iw - 140 - 4), ix + 140, y, 10, bld, vc);
       y += 20;
     };
-    info("CLIENTE", ped.cliente);
+    info("CLIENTE", ped.razaoSocial && ped.razaoSocial.trim() ? ped.razaoSocial : ped.cliente);
+    if (ped.cnpj && ped.cnpj.trim()) info("CNPJ", ped.cnpj);
     info("REPRESENTANTE", ped.representante);
     if (ped.pedidos && ped.pedidos.trim()) {
       info("CÓDIGO PAI", ped.numero);
@@ -171,6 +177,9 @@ export async function gerarPdfParte(
     } else {
       info(ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
     }
+    // CEP + Cidade/Estado numa linha só (compacto). Só aparece se tiver dado.
+    const cepCidade = [ped.cep, ped.cidadeUf].map((s) => (s || "").trim()).filter(Boolean).join("  ·  ");
+    if (cepCidade) info("CEP / CIDADE", cepCidade);
     T("DATAS", ix, y, 8.5, bld, MUTE);
     T(`Emissão: ${ped.emissao}`, ix + 140, y, 10, bld);
     T(`Entrega: ${ped.entrega}`, ix + 320, y, 10, bld);

@@ -133,14 +133,30 @@ export function Fiscal() {
   );
 }
 
+// Formata o VALOR NF (vem como número ou texto) em "R$ 1.234,56".
+function valorNF(v: number | string | null | undefined): string {
+  if (v == null || v === "") return "";
+  let n = typeof v === "number" ? v : Number(v);
+  if (!isFinite(n)) n = Number(String(v).replace(/\./g, "").replace(",", ".")); // caso venha "1.234,56"
+  if (!isFinite(n) || n <= 0) return "";
+  return "R$ " + n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 // Monta o texto pronto pra mandar na transportadora: cabeçalho (Cliente + Pedido),
-// as medidas que a Expedição colocou e, no final, o texto padrão do gestor (se houver).
+// os dados do destinatário (CNPJ/CEP/Estado/Valor NF/Qtde volume), as medidas que a
+// Expedição colocou e, no final, o texto padrão do gestor (se houver).
 function montarTextoTransp(c: CardExpedicao, vols: Volume[], peso: number, cub: number, padrao: string): string {
+  const razao = c.cliente_razao || c.cliente_nome || "—";
+  const cnpj = c.cliente_cnpj_cad || c.cliente_cnpj || "";
   const L: string[] = [];
-  L.push(`Cliente: ${c.cliente_nome || "—"}`);
+  L.push(`Cliente: ${razao}`);
   L.push(`Pedido: ${c.numero_erp || c.codigo_pai || "—"}`);
+  L.push(`CNPJ DEST: ${cnpj}`);
+  L.push(`CEP DEST: ${c.cliente_cep || ""}`);
+  L.push(`ESTADO DEST: ${c.cliente_uf || ""}`);
+  L.push(`VALOR NF: ${valorNF(c.valor_total)}`);
+  L.push(`QTDE DE VOLUME: ${vols.length}`);
   L.push("");
-  L.push(`Volumes: ${vols.length}`);
   L.push("Medidas (altura × largura × comprimento):");
   vols.forEach((v, i) => {
     const dims = `${v.altura || "?"} × ${v.largura || "?"} × ${v.comprimento || "?"} cm`;

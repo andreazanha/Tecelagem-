@@ -186,8 +186,8 @@ export function ConferenciaBipagemModal({
   }
 
   return (
-    <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
-      <div className="modal-card" style={{ maxWidth: 760, padding: 0 }} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-bg cexp-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
+      <div className="modal-card cexp-full" style={{ padding: 0 }} onClick={(e) => e.stopPropagation()}>
         <div className={"modal-hd " + (completo ? "kit" : "unica")}>
           <div className="modal-hd-top">
             <span className="modal-pills">
