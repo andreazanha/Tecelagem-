@@ -573,6 +573,15 @@ body.dark .kcard-estoque.urg-ok      { background: #10281a; border-color: #14532
 .modal-hd-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
 .modal-cli { font-size: 22px; font-weight: 800; }
 .modal-bd { padding: 16px 18px; }
+/* Conferência de Expedição em TELA INTEIRA (janela ocupa a tela toda). */
+/* z-index acima do botão do chat (70), pra ele não cobrir o "Expedir". */
+.modal-bg.cexp-bg { padding: 0; z-index: 90; }
+.modal-card.cexp-full { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; display: flex; flex-direction: column; overflow: hidden; }
+.modal-card.cexp-full > .modal-hd { flex: none; }
+.modal-card.cexp-full > .modal-bd { flex: 1 1 auto; overflow: auto; }
+.modal-card.cexp-full > .modal-ft { flex: none; border-top: 1px solid var(--line); }
+/* Conteúdo centralizado e legível, sem esticar demais no monitor largo. */
+.modal-card.cexp-full > .modal-bd > * { max-width: 900px; margin-left: auto; margin-right: auto; }
 .modal-boxes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; margin-top: 16px; }
 .campo-l { font-size: 10px; font-weight: 800; color: var(--muted); letter-spacing: .4px; }
@@ -2494,6 +2503,17 @@ body.dark .fis-med-h { background: #1e2748; color: #c7d2fe; }
 .fis-tab .fis-tot { font-weight: 800; background: var(--body); }
 .fis-frete-v { margin-top: 8px; font-size: 13px; font-weight: 700; color: #047857; }
 .fis-acoes { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 10px; }
+
+/* Texto pronto para a transportadora (Fiscal copia e manda). */
+.fis-transp { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.fis-transp-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #ecfdf5; color: #065f46; font-weight: 800; font-size: 12px; padding: 7px 10px 7px 12px; }
+body.dark .fis-transp-h { background: #06281f; color: #a7f3d0; }
+.fis-copiar { border: none; background: #059669; color: #fff; font-weight: 800; font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; flex: none; }
+.fis-copiar:hover { background: #047857; }
+.fis-copiar.ok { background: #15803d; }
+.fis-transp-txt { width: 100%; border: none; border-top: 1px solid var(--line); padding: 10px 12px; font-size: 13px; line-height: 1.45; color: var(--ink); background: #fff; resize: vertical; font-family: inherit; display: block; }
+body.dark .fis-transp-txt { background: #0b1220; color: #e5e7eb; }
+.fis-transp-txt:focus { outline: none; }
 
 /* Transporte — tiles fechados + painel + aguardando */
 .tr2-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }

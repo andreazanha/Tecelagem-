@@ -1009,6 +1009,13 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   const cl = classificar(itens, modelos);
 
   const baseNum = ped.codigo_pai || ped.numero_erp || id.slice(0, 8);
+  // Dados do cliente (razão social, CNPJ, CEP, cidade/UF) para o cabeçalho da OP.
+  const cli = ped.cliente_id
+    ? await c.env.DB.prepare("SELECT razao_social, cnpj, cep, cidade, uf FROM clientes WHERE id = ?")
+        .bind(ped.cliente_id)
+        .first<{ razao_social: string | null; cnpj: string | null; cep: string | null; cidade: string | null; uf: string | null }>()
+    : null;
+  const cidadeUf = [cli?.cidade, cli?.uf].map((s) => (s || "").trim()).filter(Boolean).join(" - ");
   const info: PedidoInfo = {
     cliente: ped.cliente_nome,
     representante: ped.vendedor || "—",
@@ -1017,6 +1024,10 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     emissao: br(ped.data_pedido),
     entrega: br(ped.data_entrega),
     observacao: ped.observacao || "",
+    razaoSocial: cli?.razao_social || "",
+    cnpj: cli?.cnpj || ped.cliente_cnpj || "",
+    cep: cli?.cep || "",
+    cidadeUf,
   };
 
   const cores = await coresParaPdf(c.env, coresUsadas(itens));

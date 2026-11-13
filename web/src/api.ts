@@ -462,6 +462,13 @@ export interface CardExpedicao {
   pecas: number | null;
   partes: string | null;
   resumos: string | null;
+  // Dados do destinatário (para o texto da transportadora).
+  cliente_cnpj?: string | null;
+  valor_total?: number | string | null;
+  cliente_razao?: string | null;
+  cliente_cnpj_cad?: string | null;
+  cliente_cep?: string | null;
+  cliente_uf?: string | null;
 }
 export interface PedidoTimeline {
   pedido_id: string;
@@ -1658,6 +1665,9 @@ export const api = {
     ),
   listarExpedicao: (fase: string) =>
     fetch(`/api/expedicao?fase=${encodeURIComponent(fase)}`).then((r) => j<CardExpedicao[]>(r)),
+  // Texto padrão para a transportadora (global). Só o gestor (admin) salva.
+  textoTransportadora: () => fetch("/api/expedicao/texto-transportadora").then((r) => j<{ texto: string }>(r)),
+  salvarTextoTransportadora: (texto: string) => jsonPost("/api/expedicao/texto-transportadora", { texto }).then((r) => j<{ ok: boolean }>(r)),
   atualizarExpedicao: (pedido_id: string, body: ExpedicaoUpdate) =>
     fetch(`/api/expedicao/${pedido_id}`, {
       method: "POST",

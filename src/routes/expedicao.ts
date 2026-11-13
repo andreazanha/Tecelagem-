@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import { exigirAlgumaFuncao } from "../permissoes";
+import { usuarioLogado } from "../sessao";
 
 export const expedicao = new Hono<{ Bindings: Env }>();
 
@@ -38,10 +39,13 @@ expedicao.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT e.pedido_id, e.fase, e.status, e.volumes, e.nf_numero, e.frete, e.transportadora, e.entrou_em,
             p.numero_erp, p.codigo_pai, p.cliente_nome, p.data_pedido, p.data_entrega, p.observacao,
+            p.cliente_cnpj, p.valor_total,
+            cl.razao_social AS cliente_razao, cl.cnpj AS cliente_cnpj_cad, cl.cep AS cliente_cep, cl.uf AS cliente_uf,
             (SELECT SUM(pecas) FROM producao pr WHERE pr.pedido_id = e.pedido_id) AS pecas,
             (SELECT GROUP_CONCAT(DISTINCT parte) FROM producao pr WHERE pr.pedido_id = e.pedido_id) AS partes,
             (SELECT GROUP_CONCAT(DISTINCT resumo) FROM producao pr WHERE pr.pedido_id = e.pedido_id) AS resumos
        FROM expedicao e JOIN pedidos p ON p.id = e.pedido_id
+       LEFT JOIN clientes cl ON cl.id = p.cliente_id
       WHERE e.fase = ?
         -- Transporte: cards já despachados numa transportadora somem após 15 dias.
         AND NOT (e.fase = 'transporte' AND e.transportadora IS NOT NULL
@@ -51,6 +55,26 @@ expedicao.get("/", async (c) => {
     .bind(fase)
     .all();
   return c.json(results);
+});
+
+// ── TEXTO PADRÃO PARA A TRANSPORTADORA (um só, global) ────────────────────────
+// O Fiscal copia esse texto (já com as medidas do pedido) pra mandar na transportadora.
+// A parte padrão (saudação/instruções/contato) SÓ o GESTOR (admin) edita; todos leem.
+// Guardado na tabela config (chave 'texto_transportadora'). Precisa vir ANTES do
+// POST "/:pedido_id" pra não cair na rota genérica.
+expedicao.get("/texto-transportadora", async (c) => {
+  const row = await c.env.DB.prepare("SELECT valor FROM config WHERE chave = 'texto_transportadora'").first<{ valor: string | null }>();
+  return c.json({ texto: row?.valor || "" });
+});
+expedicao.post("/texto-transportadora", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u?.admin) return c.json({ error: "so_gestor" }, 403);
+  const b = await c.req.json<{ texto?: string }>().catch(() => ({}) as { texto?: string });
+  const texto = (b.texto || "").slice(0, 4000);
+  await c.env.DB.prepare(
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('texto_transportadora', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(texto).run();
+  return c.json({ ok: true });
 });
 
 // Atualiza a expedição de um pedido: muda fase/status, salva volumes/NF/frete/transportadora.
