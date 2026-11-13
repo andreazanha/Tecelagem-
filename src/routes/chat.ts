@@ -141,3 +141,94 @@ chat.get("/foto/:nome", async (c) => {
   const ct = obj.httpMetadata?.contentType || "image/jpeg";
   return new Response(obj.body, { headers: { "Content-Type": ct, "Cache-Control": "public, max-age=86400" } });
 });
+
+const nomeSetor = (id: string) => SETORES.find((s) => s.id === id)?.nome || id;
+
+// CONTROLE DO BOSS (só ADMIN): lista TODAS as conversas (todos os pares de setores
+// que já trocaram mensagem), pra ele poder acompanhar tudo. Só leitura.
+chat.get("/todas", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u?.admin) return c.json({ error: "so_admin" }, 403);
+  const { results } = await c.env.DB.prepare(
+    "SELECT par, COUNT(*) AS n, MAX(criado_em) AS ultima_em FROM chat_mensagens GROUP BY par ORDER BY ultima_em DESC"
+  ).all<{ par: string; n: number; ultima_em: string }>();
+  const out = [];
+  for (const r of results) {
+    const [a, b] = r.par.split("|");
+    if (!IDS.has(a) || !IDS.has(b)) continue;
+    const ultima = await c.env.DB.prepare(
+      "SELECT texto, de_setor, autor, imagem_key, criado_em FROM chat_mensagens WHERE par=? ORDER BY criado_em DESC, rowid DESC LIMIT 1"
+    ).bind(r.par).first<Partial<Msg>>();
+    out.push({ a, b, nomeA: nomeSetor(a), nomeB: nomeSetor(b), total: Number(r.n || 0), ultima: ultima || null });
+  }
+  return c.json(out);
+});
+
+// CONTROLE DO BOSS (só ADMIN): mensagens de QUALQUER par de setores (só leitura).
+chat.get("/conversa-par", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u?.admin) return c.json({ error: "so_admin" }, 403);
+  const a = (c.req.query("a") || "").trim(), b = (c.req.query("b") || "").trim();
+  if (!IDS.has(a) || !IDS.has(b) || a === b) return c.json({ error: "setor inválido" }, 400);
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, de_setor, para_setor, autor, texto, imagem_key, criado_em FROM chat_mensagens WHERE par=? ORDER BY criado_em, rowid LIMIT 500"
+  ).bind(parDe(a, b)).all<Msg>();
+  return c.json(results);
+});
+
+// ── FIGURINHAS (stickers) do chat, compartilhadas por toda a equipe ──────────
+// Lista as figurinhas disponíveis.
+chat.get("/figurinhas", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, imagem_key FROM chat_figurinha ORDER BY criado_em DESC LIMIT 300"
+  ).all<{ id: string; imagem_key: string }>();
+  return c.json(results);
+});
+
+// Sobe uma figurinha nova (imagem) — fica disponível pra todos.
+chat.post("/figurinha", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  const form = await c.req.formData().catch(() => null);
+  const file = form?.get("file") as unknown as File | null;
+  if (!file || typeof file.arrayBuffer !== "function") return c.json({ error: "sem_arquivo" }, 400);
+  const ct = file.type || "image/png";
+  if (!ct.startsWith("image/")) return c.json({ error: "so_imagem" }, 400);
+  const buf = await file.arrayBuffer();
+  if (buf.byteLength > 5 * 1024 * 1024) return c.json({ error: "muito_grande" }, 400); // 5 MB
+  const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : ct.includes("gif") ? "gif" : "jpg";
+  const nome = `fig-${uid()}.${ext}`;
+  await c.env.BUCKET.put(`chat/${nome}`, buf, { httpMetadata: { contentType: ct } });
+  const id = uid();
+  await c.env.DB.prepare("INSERT INTO chat_figurinha (id, imagem_key, criado_por) VALUES (?,?,?)").bind(id, nome, u?.nome || null).run();
+  return c.json({ id, imagem_key: nome });
+});
+
+// Envia uma figurinha numa conversa (vira uma mensagem com o imagem_key dela).
+chat.post("/enviar-figurinha", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  const b = (await c.req.json<{ de?: string; para?: string; imagem_key?: string }>().catch(() => ({}))) as { de?: string; para?: string; imagem_key?: string };
+  const de = (b.de || "").trim(), para = (b.para || "").trim(), ik = (b.imagem_key || "").trim();
+  if (!IDS.has(de) || !IDS.has(para) || de === para) return c.json({ error: "setor inválido" }, 400);
+  if (!/^fig-[A-Za-z0-9._-]+$/.test(ik)) return c.json({ error: "figurinha_invalida" }, 400);
+  const existe = await c.env.DB.prepare("SELECT 1 AS x FROM chat_figurinha WHERE imagem_key=?").bind(ik).first();
+  if (!existe) return c.json({ error: "figurinha_nao_existe" }, 400);
+  const id = uid();
+  await c.env.DB.prepare(
+    "INSERT INTO chat_mensagens (id, par, de_setor, para_setor, autor, imagem_key) VALUES (?,?,?,?,?,?)"
+  ).bind(id, parDe(de, para), de, para, u?.nome || null, ik).run();
+  const row = await c.env.DB.prepare(
+    "SELECT id, de_setor, para_setor, autor, texto, imagem_key, criado_em FROM chat_mensagens WHERE id=?"
+  ).bind(id).first<Msg>();
+  return c.json(row);
+});
+
+// Apaga uma figurinha (só admin).
+chat.delete("/figurinha/:id", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u?.admin) return c.json({ error: "so_admin" }, 403);
+  const id = c.req.param("id");
+  const r = await c.env.DB.prepare("SELECT imagem_key FROM chat_figurinha WHERE id=?").bind(id).first<{ imagem_key: string }>();
+  if (r?.imagem_key) { try { await c.env.BUCKET.delete(`chat/${r.imagem_key}`); } catch { /* ok */ } }
+  await c.env.DB.prepare("DELETE FROM chat_figurinha WHERE id=?").bind(id).run();
+  return c.json({ ok: true });
+});
