@@ -603,6 +603,23 @@ export function Layout() {
     setSsMin(n);
     localStorage.setItem("ssMin", String(n));
   }
+  // BLOQUEIO DE TELA (por computador): depois de X min SEM uso, tranca a tela e pede a
+  // senha da MESMA pessoa pra continuar — NÃO desloga, a pessoa volta pro mesmo lugar.
+  // Útil nos PCs de chão de fábrica. Padrão 2 min; 0 = desligado. Vale só neste computador.
+  const [lockMin, setLockMin] = useState(() => {
+    const raw = localStorage.getItem("bt_lock_min");
+    return raw == null ? 2 : Number(raw) || 0;
+  });
+  const [lockOpen, setLockOpen] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const [lockSenha, setLockSenha] = useState("");
+  const [lockErro, setLockErro] = useState("");
+  const [lockBusy, setLockBusy] = useState(false);
+  function mudarLock(v: number) {
+    const n = Math.max(0, Math.min(120, Math.floor(v) || 0));
+    setLockMin(n);
+    try { localStorage.setItem("bt_lock_min", String(n)); } catch { /* ok */ }
+  }
   // Modo escuro REMOVIDO: o sistema fica sempre claro. Se algum computador tinha
   // ficado escuro, isto já volta pro claro.
   useEffect(() => {
@@ -612,6 +629,40 @@ export function Layout() {
   function sair() {
     setUser(null);
     nav("/login", { replace: true });
+  }
+  // Conta o tempo SEM uso: passou de lockMin (e não está trancada) → tranca a tela.
+  // Mexer no mouse/teclado/toque/rolagem zera a contagem. Depois de destrancar, conta de novo.
+  useEffect(() => {
+    if (!lockMin || lockMin <= 0) return;
+    let ultimo = Date.now();
+    const marcar = () => { ultimo = Date.now(); };
+    const eventos: (keyof WindowEventMap)[] = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "wheel"];
+    eventos.forEach((e) => window.addEventListener(e, marcar, { passive: true }));
+    const t = window.setInterval(() => {
+      if (!locked && Date.now() - ultimo >= lockMin * 60000) setLocked(true);
+    }, 5000);
+    return () => { window.clearInterval(t); eventos.forEach((e) => window.removeEventListener(e, marcar)); };
+  }, [lockMin, locked]);
+  // Desbloquear: confere a senha da MESMA pessoa no servidor (igual o login). Certo →
+  // destranca e segue de onde parou (não recarrega). Errada → avisa.
+  async function desbloquear() {
+    if (lockBusy) return;
+    const atual = getUser();
+    if (!atual) { setUser(null); nav("/login", { replace: true }); return; }
+    setLockBusy(true); setLockErro("");
+    try {
+      const r = await api.login(atual.usuario, lockSenha);
+      if (r.ok && "user" in r && r.user) {
+        setUser(r.user);
+        setLocked(false); setLockSenha(""); setLockErro(""); setLockBusy(false);
+        return;
+      }
+      setLockErro("bloqueado" in r && r.bloqueado ? (r.erro || "Acesso bloqueado.") : "Senha incorreta.");
+      setLockBusy(false);
+    } catch {
+      setLockErro("Erro ao conferir. Tente de novo.");
+      setLockBusy(false);
+    }
   }
   // Rodando como app instalado (PWA/standalone)? Aí não tem o F5 do navegador,
   // então mostramos um botão "Atualizar" que recarrega igual F5.
@@ -659,6 +710,30 @@ export function Layout() {
               </>
             )}
           </div>
+          {/* Bloquear tela: após esse tempo sem uso, tranca e pede a senha pra continuar. */}
+          <div className="ss-wrap">
+            <button
+              className={"ur-btn ss-mini" + (lockOpen ? " on" : "")}
+              onClick={() => setLockOpen((o) => !o)}
+              title="Bloqueio de tela: depois desse tempo sem uso, tranca e pede a senha pra continuar. Clique para ligar/ajustar."
+            >
+              🔒<span className="ss-mini-v">{lockMin > 0 ? `${lockMin} min` : "off"}</span>
+            </button>
+            {lockOpen && (
+              <>
+                <div className="ss-pop-bg" onClick={() => setLockOpen(false)} />
+                <div className="ss-pop down" onClick={(e) => e.stopPropagation()}>
+                  <div className="ss-pop-top">🔒 Bloquear tela</div>
+                  <div className="ss-pop-row">
+                    <input type="number" min={0} max={120} value={lockMin} onChange={(e) => mudarLock(Number(e.target.value))} autoFocus />
+                    <span>min sem uso</span>
+                  </div>
+                  <div className="ss-pop-hint">0 = desligado. Depois desse tempo parado, tranca a tela e pede a senha da pessoa pra continuar (não desloga). Vale só neste computador.</div>
+                  <button className="ur-btn" style={{ marginTop: 8, width: "100%" }} onClick={() => { setLockOpen(false); setLocked(true); }}>Testar agora 🔒</button>
+                </div>
+              </>
+            )}
+          </div>
           <PonteStatus />
           <InstalarApp />
           <span className="avatar" title={`${u.nome} · ${VERSION}`}>{iniciais || "?"}</span>
@@ -678,6 +753,28 @@ export function Layout() {
       {pode(u, "pedidos") && <PcpNovoPedidoPopup />}
       <CrmPedidoPopup />
       <ChatWidget />
+      {locked && (
+        <div className="lock-screen" role="dialog" aria-modal="true">
+          <form className="lock-card" onSubmit={(e) => { e.preventDefault(); desbloquear(); }}>
+            <div className="lock-ico">🔒</div>
+            <div className="lock-title">Tela bloqueada</div>
+            <div className="lock-nome">Olá, {u.nome.split(/\s+/)[0]}!</div>
+            <div className="lock-sub">Digite a sua senha para continuar.</div>
+            <input
+              className="lock-input"
+              type="password"
+              value={lockSenha}
+              onChange={(e) => { setLockSenha(e.target.value); setLockErro(""); }}
+              placeholder="Sua senha"
+              autoFocus
+              autoComplete="current-password"
+            />
+            {lockErro && <div className="lock-erro">{lockErro}</div>}
+            <button className="lock-btn" type="submit" disabled={lockBusy}>{lockBusy ? "Conferindo…" : "Desbloquear"}</button>
+            <button className="lock-sair" type="button" onClick={() => { setLocked(false); setLockSenha(""); setLockErro(""); sair(); }}>Não sou eu — trocar de pessoa</button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
