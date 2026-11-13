@@ -48,6 +48,7 @@ export function ConferenciaBipagemModal({
   cliente,
   codigoPedido,
   fase,
+  info,
   onFechar,
   onConcluir,
 }: {
@@ -55,6 +56,8 @@ export function ConferenciaBipagemModal({
   cliente: string | null;
   codigoPedido: string;
   fase: FaseConf;
+  // Dados do pedido (iguais ao impresso) para mostrar no cabeçalho — opcional.
+  info?: { cnpj?: string | null; representante?: string | null; cepCidade?: string | null; entrega?: string | null };
   onFechar: () => void;
   onConcluir: () => void;
 }) {
@@ -200,6 +203,14 @@ export function ConferenciaBipagemModal({
             <span className="modal-cli">{cliente || "—"}</span>
             <span className={"conf-chip " + (completo ? "ok" : "")}>{bipados} / {total} {t.unidade}</span>
           </div>
+          {info && (info.cnpj || info.representante || info.cepCidade || info.entrega) && (
+            <div className="cexp-info">
+              {info.cnpj && <span><b>CNPJ</b> {info.cnpj}</span>}
+              {info.representante && <span><b>Representante</b> {info.representante}</span>}
+              {info.cepCidade && <span><b>CEP / Cidade</b> {info.cepCidade}</span>}
+              {info.entrega && <span><b>Entrega</b> {info.entrega}</span>}
+            </div>
+          )}
         </div>
 
         <div className="modal-bd">
