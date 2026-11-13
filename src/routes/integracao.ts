@@ -3141,20 +3141,26 @@ integracao.get("/pedidos-para-erp", async (c) => {
   const filtroLiberado = modo === "on"
     ? " AND (COALESCE(p.vendedor,'') = '' OR COALESCE(p.erp_liberado,0) = 1)"
     : " AND COALESCE(p.erp_liberado,0) = 1";
+  // cod_guia = código do representante no Syntech (GUIAS.CODIGO), achado pelo NOME do
+  // vendedor do pedido. A ponte grava isso no campo GUIA do pedido → comissão no ERP.
+  // Pedido sem vendedor (cliente direto) fica sem GUIA (null), como antes.
   const { results: peds } = await c.env.DB.prepare(
-    `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.valor_total, p.data_pedido, cl.codigo_erp AS cod_cli
+    `SELECT p.id, p.cliente_nome, p.cliente_cnpj, p.valor_total, p.data_pedido, cl.codigo_erp AS cod_cli,
+            (SELECT r.codigo_erp FROM representantes r
+              WHERE COALESCE(p.vendedor,'') <> '' AND COALESCE(r.codigo_erp,'') <> ''
+                AND LOWER(TRIM(r.nome)) = LOWER(TRIM(p.vendedor)) LIMIT 1) AS cod_guia
        FROM pedidos p LEFT JOIN clientes cl ON cl.id = p.cliente_id
       WHERE (p.canal='loja_b2b' OR (p.canal='baixa' AND COALESCE(p.cliente_cnpj,'')<>''))
         AND COALESCE(p.erp_sync_status,'pendente')='pendente'${filtroLiberado}
       ORDER BY p.created_at LIMIT 20`
-  ).all<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; valor_total: number | null; data_pedido: string | null; cod_cli: string | null }>();
+  ).all<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; valor_total: number | null; data_pedido: string | null; cod_cli: string | null; cod_guia: string | null }>();
   const pedidos = [];
   for (const p of peds) {
     const { results: itensRaw } = await c.env.DB.prepare(
       "SELECT ref, erp_tamanho, cod_cor, qtd, valor_unit, produto, cor_grade FROM pedido_itens WHERE pedido_id = ? ORDER BY rowid"
     ).bind(p.id).all<ItemLoja>();
     const itens = await desmembrarKits(c.env, itensRaw);   // kit vira as peças aqui
-    pedidos.push({ id: p.id, cliente_nome: p.cliente_nome, cnpj: p.cliente_cnpj, cod_cli: p.cod_cli, valor_total: p.valor_total, data: p.data_pedido, itens });
+    pedidos.push({ id: p.id, cliente_nome: p.cliente_nome, cnpj: p.cliente_cnpj, cod_cli: p.cod_cli, cod_guia: p.cod_guia, valor_total: p.valor_total, data: p.data_pedido, itens });
   }
   return c.json({ modo, pedidos });
 });

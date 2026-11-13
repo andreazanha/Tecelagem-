@@ -72,7 +72,7 @@ function log0(...a) { console.log(new Date().toISOString(), ...a); }
 // Versão desta ponte. O servidor também guarda uma cópia; se a de lá for mais
 // nova, a ponte baixa e se atualiza sozinha (veja autoAtualizar). Ao mudar o
 // sync.js, suba este número — é isso que dispara a atualização nos PCs.
-const PONTE_VERSAO = "2026-11-13.3";
+const PONTE_VERSAO = "2026-11-13.4";
 
 const DIR = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DIR, "config.json"), "utf8"));
@@ -1120,7 +1120,7 @@ async function gravarUmPedido(db, p) {
         "Pedido Loja B2B (site)",      // 5  OBS_PED
         codPrazo || null,              // 6  COD_PRAZO (NULL se o cliente não tem prazo)
         "A",                           // 7  OPCAO_PRECO (atacado)
-        null,                          // 8  GUIA
+        (p.cod_guia != null && String(p.cod_guia).trim() !== "") ? String(p.cod_guia).trim() : null, // 8 GUIA = representante (p/ comissão no Syntech)
         frete,                         // 9  FRETE (0 CIF / 1 FOB)
         null,                          // 10 COD_DIG
         null,                          // 11 COD_VEND
