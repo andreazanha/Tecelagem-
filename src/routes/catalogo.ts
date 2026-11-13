@@ -784,6 +784,18 @@ async function respostaLogin(c: Context<{ Bindings: Env }>, row: { id: string; n
   });
 }
 
+// PÚBLICO (tela de login): nomes das pessoas de um setor, pra aparecerem como
+// botões no login do computador daquele setor. Só devolve nome + usuário (nada
+// sensível) de quem está ativo e tem aquele setor como PRINCIPAL (definido em Acessos).
+usuarios.get("/por-setor", async (c) => {
+  const setor = (c.req.query("setor") || "").trim().toLowerCase();
+  if (!setor) return c.json([]);
+  const { results } = await c.env.DB.prepare(
+    "SELECT nome, usuario FROM usuarios WHERE LOWER(COALESCE(setor_principal,'')) = ? AND COALESCE(bloqueado,0)=0 AND usuario <> 'setup' ORDER BY nome"
+  ).bind(setor).all<{ nome: string; usuario: string }>();
+  return c.json(results);
+});
+
 usuarios.post("/login", async (c) => {
   const b = await c.req.json<{ usuario?: string; senha?: string }>().catch(() => ({}) as { usuario?: string; senha?: string });
   const usuario = (b.usuario || "").trim().toLowerCase();

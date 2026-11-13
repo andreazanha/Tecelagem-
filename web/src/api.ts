@@ -1775,6 +1775,9 @@ export const api = {
     }).then((r) => j<{ id: string; nome: string; setor: string | null }>(r)),
   removerOperador: (id: string) =>
     fetch(`/api/operadores/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
+  // Nomes das pessoas de um setor (tela de login — público, só nome + usuário).
+  usuariosPorSetor: (setor: string) =>
+    fetch(`/api/usuarios/por-setor?setor=${encodeURIComponent(setor)}`).then((r) => j<{ nome: string; usuario: string }[]>(r)).catch(() => [] as { nome: string; usuario: string }[]),
   login: async (usuario: string, senha: string) => {
     const r = await fetch("/api/usuarios/login", {
       method: "POST",
