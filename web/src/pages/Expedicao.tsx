@@ -92,9 +92,15 @@ export function Expedicao() {
       {conf && (
         <ConferenciaBipagemModal
           pedidoId={conf.pedido_id}
-          cliente={conf.cliente_nome}
+          cliente={conf.cliente_razao || conf.cliente_nome}
           codigoPedido={opCodigo(conf)}
           fase="expedicao"
+          info={{
+            cnpj: conf.cliente_cnpj_cad || conf.cliente_cnpj,
+            representante: conf.vendedor,
+            cepCidade: [conf.cliente_cep, [conf.cliente_cidade, conf.cliente_uf].filter(Boolean).join(" - ")].filter(Boolean).join("  ·  "),
+            entrega: conf.data_entrega ? br(conf.data_entrega) : "",
+          }}
           onFechar={() => setConf(null)}
           onConcluir={() => { const c = conf; setConf(null); setMedidas(c); }}
         />
