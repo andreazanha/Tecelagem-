@@ -603,6 +603,14 @@ export function Layout() {
     setSsMin(n);
     localStorage.setItem("ssMin", String(n));
   }
+  // SAIR SOZINHO (por computador): depois de X min SEM uso, volta pra tela de login.
+  const [logoutMin, setLogoutMin] = useState(() => Number(localStorage.getItem("bt_logout_min") || "0"));
+  const [logoutOpen, setLogoutOpen] = useState(false);
+  function mudarLogout(v: number) {
+    const n = Math.max(0, Math.min(120, Math.floor(v) || 0));
+    setLogoutMin(n);
+    try { localStorage.setItem("bt_logout_min", String(n)); } catch { /* ok */ }
+  }
   // Modo escuro REMOVIDO: o sistema fica sempre claro. Se algum computador tinha
   // ficado escuro, isto já volta pro claro.
   useEffect(() => {
@@ -613,6 +621,23 @@ export function Layout() {
     setUser(null);
     nav("/login", { replace: true });
   }
+  // SAIR SOZINHO: se ligado (logoutMin>0), desloga depois desse tempo SEM uso.
+  // Qualquer mexida (mouse/teclado/toque/rolagem) zera a contagem.
+  useEffect(() => {
+    if (!logoutMin || logoutMin <= 0) return;
+    let ultimo = Date.now();
+    const marcar = () => { ultimo = Date.now(); };
+    const eventos: (keyof WindowEventMap)[] = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "wheel"];
+    eventos.forEach((e) => window.addEventListener(e, marcar, { passive: true }));
+    const t = window.setInterval(() => {
+      if (Date.now() - ultimo >= logoutMin * 60000) {
+        window.clearInterval(t);
+        setUser(null);
+        nav("/login", { replace: true });
+      }
+    }, 5000);
+    return () => { window.clearInterval(t); eventos.forEach((e) => window.removeEventListener(e, marcar)); };
+  }, [logoutMin, nav]);
   // Rodando como app instalado (PWA/standalone)? Aí não tem o F5 do navegador,
   // então mostramos um botão "Atualizar" que recarrega igual F5.
   const ehApp = typeof window !== "undefined" && (window.matchMedia?.("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true);
@@ -655,6 +680,29 @@ export function Layout() {
                     <span>minutos</span>
                   </div>
                   <div className="ss-pop-hint">0 = desligado. Abre o Painel TV após esse tempo parado.</div>
+                </div>
+              </>
+            )}
+          </div>
+          {/* Sair sozinho: deslogar após tempo SEM uso (por computador). */}
+          <div className="ss-wrap">
+            <button
+              className={"ur-btn ss-mini" + (logoutOpen ? " on" : "")}
+              onClick={() => setLogoutOpen((o) => !o)}
+              title="Sair sozinho: depois desse tempo sem uso, volta pra tela de login. Clique para ligar/ajustar."
+            >
+              🚪<span className="ss-mini-v">{logoutMin > 0 ? `${logoutMin} min` : "off"}</span>
+            </button>
+            {logoutOpen && (
+              <>
+                <div className="ss-pop-bg" onClick={() => setLogoutOpen(false)} />
+                <div className="ss-pop down" onClick={(e) => e.stopPropagation()}>
+                  <div className="ss-pop-top">🚪 Sair sozinho</div>
+                  <div className="ss-pop-row">
+                    <input type="number" min={0} max={120} value={logoutMin} onChange={(e) => mudarLogout(Number(e.target.value))} autoFocus />
+                    <span>min sem uso</span>
+                  </div>
+                  <div className="ss-pop-hint">0 = desligado. Depois desse tempo parado, o computador volta pra tela de login. Vale só neste computador.</div>
                 </div>
               </>
             )}
