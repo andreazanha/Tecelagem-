@@ -120,9 +120,10 @@ function kitPecas(produto: string, tamanho: string | null): { tipo: string; tama
   if (almSize && count) for (let i = 0; i < count; i++) pecas.push({ tipo: almTipo, tamanho: fmtMedida(almSize) });
   return pecas.length ? pecas : [{ tipo: "Peça", tamanho: fmtMedida(mainSize) }];
 }
-function conteudoEt(e: Etq): string {
-  // Código de barras (Code 128) da referência — lê no leitor USB e na câmera do celular.
-  const bc = e.ref ? `<div class="bc">${svgBarcode(e.ref, { height: 34, fontSize: 13, width: 1.3 })}</div>` : "";
+function conteudoEt(e: Etq, comBarcode: boolean): string {
+  // Código de barras (Code 128) da referência — SÓ na etiqueta de ROLO (térmica).
+  // Na folha (Pimaco) a etiqueta volta a ser só texto, como era antes.
+  const bc = comBarcode && e.ref ? `<div class="bc">${svgBarcode(e.ref, { height: 34, fontSize: 13, width: 1.3 })}</div>` : "";
   if (e.kit) {
     // Cada etiqueta do kit é uma peça (peseira/manta ou almofada).
     return `<div class="mod">${e.modelo}</div>
@@ -349,7 +350,7 @@ export function ImpressaoEtiquetas() {
         const col = k % cfg.colunas, row = Math.floor(k / cfg.colunas);
         const x = cfg.margemEsq + col * (cfg.larguraEt + cfg.gapH);
         const y = cfg.margemTopo + row * (cfg.alturaEt + cfg.gapV);
-        labels += `<div class="et" style="left:${x}mm;top:${y}mm;width:${cfg.larguraEt}mm;height:${cfg.alturaEt}mm">${conteudoEt(cel)}</div>`;
+        labels += `<div class="et" style="left:${x}mm;top:${y}mm;width:${cfg.larguraEt}mm;height:${cfg.alturaEt}mm">${conteudoEt(cel, false)}</div>`;
       }
       body += `<div class="pg">${labels}</div>`;
     }
@@ -372,7 +373,7 @@ export function ImpressaoEtiquetas() {
       let rowHtml = "";
       for (let c = 0; c < cols; c++) {
         const e = lista[i + c]; if (!e) continue;
-        rowHtml += `<div class="et" style="left:${c * (w + gap)}mm;top:0;width:${w}mm;height:${h}mm">${conteudoEt(e)}</div>`;
+        rowHtml += `<div class="et" style="left:${c * (w + gap)}mm;top:0;width:${w}mm;height:${h}mm">${conteudoEt(e, true)}</div>`;
       }
       body += `<div class="pg" style="width:${pageW}mm;height:${h}mm">${rowHtml}</div>`;
     }
@@ -640,7 +641,6 @@ export function ImpressaoEtiquetas() {
                   <div className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{e.modelo}</div>
                   <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}><b>{e.tamanho || "—"}</b></div>
                   <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
-                  {e.ref ? <div className="prev-bc" dangerouslySetInnerHTML={{ __html: svgBarcode(e.ref, { height: 26, fontSize: 11, width: 1.1 }) }} /> : null}
                 </div>
               );
             }
@@ -649,7 +649,6 @@ export function ImpressaoEtiquetas() {
                 <div className="a4-mod" style={{ fontSize: fpt(1.3), lineHeight: 1.05 }}>{modeloLinha(e.modelo)}</div>
                 <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>{e.ref ? <>Ref: <b>{e.ref}</b> · </> : null}Tam: <b>{e.tamanho || "—"}</b></div>
                 <div className="a4-lin" style={{ fontSize: fpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
-                {e.ref ? <div className="prev-bc" dangerouslySetInnerHTML={{ __html: svgBarcode(e.ref, { height: 26, fontSize: 11, width: 1.1 }) }} /> : null}
               </div>
             );
           })}
