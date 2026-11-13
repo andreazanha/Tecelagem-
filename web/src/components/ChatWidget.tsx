@@ -105,6 +105,8 @@ export function ChatWidget() {
   const totalNaoLidas = useMemo(() => conversas.reduce((s, c) => s + (c.nao_lidas || 0), 0), [conversas]);
 
   useEffect(() => { api.chatSetores().then((d) => Array.isArray(d) && setSetores(d)).catch(() => {}); }, []);
+  // Acesso de montagem ("setup"): abre o chat sozinho pra cair direto na escolha do setor.
+  useEffect(() => { try { if (getUser()?.usuario === "setup") setAberto(true); } catch { /* ok */ } }, []);
 
   function carregarConversas() {
     if (!meuRef.current) return;
