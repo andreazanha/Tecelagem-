@@ -205,7 +205,7 @@ function DetalheRep({ detalhe, carregando }: { detalhe: ComercialDetalhe | null;
 }
 
 // ── REPRESENTANTES — listagem profissional + cadastro ────────────────────────────
-const VAZIO: Partial<Representante> = { nome: "", whatsapp: "", email: "", observacao: "", ufs: "", cidades: "", comissao: null, meta_pecas: 0, instagram: "", ativo: 1 };
+const VAZIO: Partial<Representante> = { nome: "", whatsapp: "", email: "", observacao: "", ufs: "", cidades: "", comissao: null, meta_pecas: 0, instagram: "", ativo: 1, ve_todos: 0 };
 
 function AbaRepresentantes() {
   const [lista, setLista] = useState<Representante[]>([]);
@@ -604,6 +604,14 @@ function ModalRep({ edit, setEdit, salvar, salvando }: { edit: Partial<Represent
 
           <div className="com-sec">Meta</div>
           <label className="campo"><span>Meta mensal (peças)</span><input type="number" step="1" min="0" value={edit.meta_pecas ?? ""} onChange={(e) => set({ meta_pecas: e.target.value === "" ? 0 : Math.max(0, Math.round(Number(e.target.value))) })} placeholder="ex.: 300" /><small className="muted">Quantas peças o representante deve vender no mês. Aparece no acompanhamento e no relatório semanal. Deixe 0 pra sem meta.</small></label>
+
+          <div className="com-sec">Acesso aos clientes</div>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+            <input type="checkbox" style={{ marginTop: 3 }} checked={!!(edit.ve_todos ? 1 : 0)} onChange={(e) => set({ ve_todos: e.target.checked ? 1 : 0 })} />
+            <span>Vendedor interno (vê <b>todos os clientes</b>)
+              <small className="muted" style={{ display: "block" }}>Marque quando for alguém da casa (ex.: você). No portal de vendas, essa pessoa enxerga a <b>base inteira</b> de clientes, em vez de só a carteira dela. Representante normal fica desmarcado (vê só os dele).</small>
+            </span>
+          </label>
 
           <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={!!(edit.ativo ?? 1)} onChange={(e) => set({ ativo: e.target.checked ? 1 : 0 })} /><span>Representante ativo</span></label>
         </div>

@@ -50,11 +50,17 @@ function clienteLiberado(codigoErp?: string | null, lojaStatus?: string | null, 
 // representantes.codigo_erp) quando o cliente veio ligado do ERP; senão cai no
 // casamento por nome (clientes sem código). Assim a grafia do nome não importa.
 async function carteiraDoRep(env: Env, repNome: string) {
-  const repRow = await env.DB.prepare("SELECT codigo_erp FROM representantes WHERE TRIM(LOWER(nome)) = TRIM(LOWER(?)) LIMIT 1").bind(repNome).first<{ codigo_erp: string | null }>();
+  const repRow = await env.DB.prepare("SELECT COALESCE(codigo_erp,'') AS codigo_erp, COALESCE(ve_todos,0) AS ve_todos FROM representantes WHERE TRIM(LOWER(nome)) = TRIM(LOWER(?)) LIMIT 1").bind(repNome).first<{ codigo_erp: string; ve_todos: number }>();
   const codigo = (repRow?.codigo_erp || "").trim();
+  // VENDEDOR INTERNO (ve_todos=1): enxerga TODOS os clientes. Representante normal vê só a carteira dele.
+  const veTodos = Number(repRow?.ve_todos || 0) === 1;
+  const filtro = veTodos
+    ? "1=1"
+    : `(? <> '' AND c.rep_codigo = ?)
+         OR (COALESCE(c.rep_codigo,'') = '' AND TRIM(LOWER(COALESCE(c.representante,''))) = TRIM(LOWER(?)))`;
   // last_pedido = data do pedido mais recente da loja (canal loja_b2b) daquele CNPJ.
   // Os pedidos guardam o CNPJ só com dígitos; o cadastro guarda formatado — normaliza os dois.
-  const { results } = await env.DB.prepare(
+  const consulta = env.DB.prepare(
     `SELECT c.id, c.nome, c.fantasia, c.cnpj, c.cidade, c.uf, c.loja_regiao, COALESCE(c.codigo_erp,'') AS codigo_erp,
             COALESCE(c.rep_codigo,'') AS rep_codigo,
             COALESCE(c.loja_status,'') AS loja_status, COALESCE(c.bloqueado,0) AS bloqueado,
@@ -64,10 +70,10 @@ async function carteiraDoRep(env: Env, repNome: string) {
                    = REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.cnpj,''),'.',''),'/',''),'-',''),' ','')
             ) AS ultimo_pedido
        FROM clientes c
-      WHERE (? <> '' AND c.rep_codigo = ?)
-         OR (COALESCE(c.rep_codigo,'') = '' AND TRIM(LOWER(COALESCE(c.representante,''))) = TRIM(LOWER(?)))
+      WHERE ${filtro}
       ORDER BY c.nome`
-  ).bind(codigo, codigo, repNome).all<{ id: string; nome: string | null; fantasia: string | null; cnpj: string | null; cidade: string | null; uf: string | null; loja_regiao: string | null; codigo_erp: string; rep_codigo: string; loja_status: string; bloqueado: number; ultimo_pedido: string | null }>();
+  );
+  const { results } = await (veTodos ? consulta : consulta.bind(codigo, codigo, repNome)).all<{ id: string; nome: string | null; fantasia: string | null; cnpj: string | null; cidade: string | null; uf: string | null; loja_regiao: string | null; codigo_erp: string; rep_codigo: string; loja_status: string; bloqueado: number; ultimo_pedido: string | null }>();
   return results.map((r) => ({
     id: r.id, nome: r.nome, fantasia: r.fantasia, cnpj: r.cnpj, cidade: r.cidade, uf: r.uf,
     regiao: regiaoDoCliente(r.loja_regiao, r.uf),
