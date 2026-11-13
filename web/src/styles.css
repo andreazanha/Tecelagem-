@@ -86,6 +86,13 @@ a { color: inherit; }
 .login-card input { margin-top: 4px; padding: 11px 13px; border: 1px solid #e2e8f0; border-radius: 10px; font: inherit; }
 .login-card .btn-primary { margin-top: 18px; padding: 12px; font-size: 15px; }
 .login-erro { margin-top: 12px; color: #b91c1c; font-weight: 700; font-size: 13px; }
+/* Login por NOMES (pessoas do setor do computador). */
+.login-nomes { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow-y: auto; margin: 4px 0 6px; }
+.login-nome { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 11px 13px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; font: inherit; font-weight: 700; color: #0f172a; cursor: pointer; }
+.login-nome:hover { border-color: #4338ca; background: #f5f6ff; }
+.login-nome-ini { flex: none; width: 34px; height: 34px; border-radius: 50%; background: #4338ca; color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 15px; }
+.login-outro { margin-top: 10px; background: none; border: none; color: #4338ca; font-weight: 700; font-size: 13px; cursor: pointer; padding: 6px; }
+.login-outro:hover { text-decoration: underline; }
 @media (max-width: 720px) {
   .page-head .row-gap { display: flex; gap: 8px; width: 100%; align-items: stretch; }
   .busca-ped { min-width: 0; flex: 1 1 auto; width: auto; }
