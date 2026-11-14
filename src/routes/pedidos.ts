@@ -20,6 +20,7 @@ import {
   type Catalogo,
 } from "../classificar";
 import { gerarPdfParte, gerarPdfCliente, mergePdfs, gerarRomaneioTassel, type PedidoInfo } from "../pdf";
+import { fotosProdutoDoPedido } from "../catalogo-fotos";
 import { enviarPushNovoPedido, enviarPush } from "../push-send";
 import { baixaProntaEntrega, localizacaoProducao, cadastrarProdutosDoPedido } from "./produtos";
 import { consumoDoPedido, baixarPorPedido, estornarPedido } from "../estoque-baixa";
@@ -1177,6 +1178,17 @@ pedidos.get("/:id/pdf-cliente", async (c) => {
   const modelos = await catalogos(c.env);
   const blocos = agrupar(itens, modelos);
   const baseNum = ped.codigo_pai || ped.numero_erp || id.slice(0, 8);
+  // Dados completos do cliente (cadastro) pro cabeçalho do Espelho do Pedido.
+  const cli = ped.cliente_id
+    ? await c.env.DB.prepare(
+        "SELECT razao_social, cnpj, cep, cidade, uf, endereco, numero, complemento, bairro, telefone FROM clientes WHERE id = ?"
+      )
+        .bind(ped.cliente_id)
+        .first<{
+          razao_social: string | null; cnpj: string | null; cep: string | null; cidade: string | null; uf: string | null;
+          endereco: string | null; numero: string | null; complemento: string | null; bairro: string | null; telefone: string | null;
+        }>()
+    : null;
   const info: PedidoInfo = {
     cliente: ped.cliente_nome,
     representante: ped.vendedor || "—",
@@ -1185,9 +1197,16 @@ pedidos.get("/:id/pdf-cliente", async (c) => {
     emissao: br(ped.data_pedido),
     entrega: br(ped.data_entrega),
     observacao: ped.observacao || "",
+    razaoSocial: cli?.razao_social || "",
+    cnpj: cli?.cnpj || ped.cliente_cnpj || "",
+    telefone: cli?.telefone || ped.cliente_fone || "",
+    endereco: enderecoLinha(cli),
+    cep: cli?.cep || "",
+    cidadeUf: [cli?.cidade, cli?.uf].map((s) => (s || "").trim()).filter(Boolean).join(" - "),
   };
   const cores = await coresParaPdf(c.env, coresUsadas(itens));
-  const bytes = await gerarPdfCliente(info, blocos, cores);
+  const fotosProduto = await fotosProdutoDoPedido(c.env, blocos.map((b) => b.modelo));
+  const bytes = await gerarPdfCliente(info, blocos, cores, fotosProduto);
   return new Response(bytes, {
     headers: {
       "Content-Type": "application/pdf",
