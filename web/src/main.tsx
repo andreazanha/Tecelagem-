@@ -259,3 +259,13 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </BrowserRouter>
   </React.StrictMode>
 );
+
+// Registra o service worker ao abrir o app. Isso é o que deixa o sistema
+// INSTALÁVEL (o navegador só oferece "Instalar" com um SW ativo), dá o OFFLINE
+// (página "Sem conexão") e prepara as NOTIFICAÇÕES. A auto-atualização continua:
+// o SW usa "rede primeiro" nas páginas, então toda publicação chega sozinha.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => { /* sem SW: o app funciona igual, só não instala/offline */ });
+  });
+}

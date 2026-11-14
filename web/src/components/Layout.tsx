@@ -682,6 +682,7 @@ export function Layout() {
   const iniciais = u.nome.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
   return (
     <div className={"app " + (ehCRM ? "sidenav-app" + (sideOpen ? " side-open" : "") : "topnav-app")}>
+      <OfflineBanner />
       <header className="topbar">
         {ehCRM && <button className="side-burger" onClick={() => setSideOpen((o) => !o)} title="Menu" aria-label="Abrir menu">☰</button>}
         <Link to="/" className="brand" title="Início">
@@ -785,6 +786,30 @@ export function Layout() {
           </form>
         </div>
       )}
+    </div>
+  );
+}
+
+// Aviso fixo no topo quando o computador fica SEM internet (com o sistema aberto).
+// Some sozinho quando a conexão volta. Não altera nenhuma tela — é só um aviso.
+function OfflineBanner() {
+  const [offline, setOffline] = useState(typeof navigator !== "undefined" && navigator.onLine === false);
+  useEffect(() => {
+    const online = () => setOffline(false);
+    const off = () => setOffline(true);
+    window.addEventListener("online", online);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", online); window.removeEventListener("offline", off); };
+  }, []);
+  if (!offline) return null;
+  return (
+    <div style={{
+      position: "sticky", top: 0, zIndex: 9999,
+      background: "#b45309", color: "#fff",
+      font: "600 13.5px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif",
+      textAlign: "center", padding: "7px 12px",
+    }}>
+      ⚠️ Sem conexão com a internet — algumas informações podem não carregar. Tentando reconectar…
     </div>
   );
 }

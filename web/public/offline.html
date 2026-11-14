@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sem conexão — Big Tricot</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: #f4f4f5; color: #171717;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px; text-align: center;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b0b0c; color: #ededed; }
+      .card { background: #18181b !important; border-color: #27272a !important; }
+      .btn { background: #ededed !important; color: #171717 !important; }
+    }
+    .card {
+      background: #fff; border: 1px solid #e4e4e7; border-radius: 20px;
+      padding: 40px 28px; max-width: 420px; width: 100%;
+      box-shadow: 0 10px 40px rgba(0,0,0,.08);
+    }
+    img.logo { width: 120px; height: auto; margin-bottom: 8px; opacity: .9; }
+    h1 { font-size: 22px; margin: 16px 0 6px; }
+    p { font-size: 15px; line-height: 1.5; color: #52525b; margin: 0 0 22px; }
+    @media (prefers-color-scheme: dark) { p { color: #a1a1aa; } }
+    .btn {
+      display: inline-block; border: 0; border-radius: 12px;
+      background: #171717; color: #fff; font-size: 15px; font-weight: 700;
+      padding: 13px 22px; cursor: pointer;
+    }
+    .dica { margin-top: 18px; font-size: 13px; color: #71717a; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="/icon-512.png" alt="Big Tricot" onerror="this.style.display='none'" />
+    <h1>📡 Sem conexão</h1>
+    <p>O sistema da Big Tricot não conseguiu falar com a internet agora.
+       Verifique o Wi-Fi ou o cabo de rede e tente de novo.</p>
+    <button class="btn" onclick="location.reload()">🔄 Tentar de novo</button>
+    <div class="dica">Assim que a internet voltar, é só clicar em "Tentar de novo".</div>
+  </div>
+  <script>
+    // Quando a internet voltar, recarrega sozinho.
+    window.addEventListener("online", function () { location.reload(); });
+  </script>
+</body>
+</html>
