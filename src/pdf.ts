@@ -399,6 +399,15 @@ function drawQRTopRight(page: PDFPage, payload: string, xRight: number, yTop: nu
   }
 }
 
+// Código BASE: tira a LETRA do fim (A = almofada, C = capa) — ela existe só por
+// limitação do cadastro no Syntech e não é relevante pro cliente/produção.
+// Ex.: "1091A"/"1091C" -> "1091"; "1012" -> "1012". Código sem número fica como está.
+const codigoBase = (ref: string): string => {
+  const r = (ref || "").trim();
+  const base = r.replace(/[A-Za-z]+$/, "");
+  return base || r;
+};
+
 // Agrupa os blocos por MODELO + COR num card só (ex.: Daytona Areia Almofada 45X45
 // + Daytona Areia Capa 50X50 viram UM card com 2 linhas). Compacta pedidos grandes.
 // Só pro Espelho do Pedido (cliente) — a produção continua separada.
@@ -417,11 +426,12 @@ function agruparPorModeloCor(blocos: Bloco[]): Bloco[] {
     g.total += b.total;
     g.valorTotal = (g.valorTotal || 0) + (b.valorTotal || 0);
     if (!g.comp && b.comp) g.comp = b.comp;
-    if (b.ref && !g._refs.includes(b.ref)) g._refs.push(b.ref);
+    const rb = codigoBase(b.ref); // só o número, sem a letra A/C
+    if (rb && !g._refs.includes(rb)) g._refs.push(rb);
   }
   return ordem.map((k) => {
     const { _refs, ...g } = mapa.get(k)!;
-    return { ...g, ref: _refs.join(" · ") || g.ref }; // junta os códigos (ex.: "1091A · 1091C")
+    return { ...g, ref: _refs.join(" · ") || codigoBase(g.ref) }; // ex.: "1091" (1091A+1091C juntos)
   });
 }
 
