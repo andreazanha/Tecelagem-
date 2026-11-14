@@ -18,7 +18,7 @@ import { SITE_ONLINE_HTML } from "../siteTemplate";
 import { SITE_FULL_HTML } from "../siteTemplateFull";
 import { SITE_LOJA_HTML } from "../siteLoja";
 import { lerDocumento, gravarDocumento } from "../firestore";
-import { limparReservasRefletidas, kitAlertas, FILTRO_RESERVA_ATIVA, necessidadeProducao, listarOpsAbertas, tipoPeca } from "../loja-estoque";
+import { limparReservasRefletidas, kitAlertas, FILTRO_RESERVA_ATIVA, necessidadeProducao, listarOpsAbertas } from "../loja-estoque";
 import { avisarRecebidoSyntech, notificarVendedorInterno } from "../reserva-avisos";
 import { flagLigado, FLAG_RESERVAS, FLAG_PCP_POPUP } from "../flags";
 import { enviarWhatsapp } from "./atendimento";
@@ -3054,9 +3054,10 @@ const modoEnvioLoja = async (env: Env) => { const m = await lerCfg(env, "loja_er
 type ItemLoja = { ref: string; produto: string | null; cor_grade: string | null; cod_cor: number | null; tamanho?: string | null; erp_tamanho: string | null; qtd: number; valor_unit: number | null };
 async function desmembrarKits(env: Env, itensRaw: ItemLoja[]): Promise<ItemLoja[]> {
   const out: ItemLoja[] = [];
-  // Kit é ABERTO nas PEÇAS pro Syntech (itens separados), com o preço de cada peça. A
-  // "almofada com enchimento" vira a CAPA (mesma peça física; o enchimento é só +preço),
-  // senão o Syntech tenta explodir a almofada e vira 2 capas. false = manda o kit fechado.
+  // Kit é ABERTO nas PEÇAS pro Syntech (itens separados), com o preço de cada peça —
+  // manda a peça COMO ESTÁ na receita. A ALMOFADA tem cadastro próprio no Syntech (com o
+  // enchimento já no preço, por tamanho). O ESTOQUE é controlado pela CAPA à parte
+  // (loja-estoque), regra dos produtos. false = manda o kit fechado (uma linha só).
   const ABRIR_KIT: boolean = true;
   for (const it of itensRaw) {
     const { results: rec } = await env.DB.prepare(
@@ -3096,15 +3097,8 @@ async function desmembrarKits(env: Env, itensRaw: ItemLoja[]): Promise<ItemLoja[
       for (const r of rec) {
         const cp = cmap.get(r.componente_ref);
         const tcod = (String(r.tamanho || "").trim() || "UN").slice(0, 10);
-        // Almofada com enchimento = CAPA (mesma peça física). Manda a CAPA (código …C, que
-        // é produto SIMPLES no Syntech) com o preço da almofada (já com o enchimento). Assim
-        // o Syntech não tenta explodir a almofada. Mesma regra do estoque (loja-estoque).
-        let refPeca = r.componente_ref;
-        if (tipoPeca(cp?.nome || r.componente_ref) === "almofada" && /A$/i.test(refPeca)) {
-          refPeca = refPeca.replace(/A$/i, "C");
-        }
         out.push({
-          ref: refPeca, produto: cp?.nome || r.componente_ref, cor_grade: it.cor_grade, cod_cor: it.cod_cor,
+          ref: r.componente_ref, produto: cp?.nome || r.componente_ref, cor_grade: it.cor_grade, cod_cor: it.cod_cor,
           tamanho: tcod, erp_tamanho: tcod, qtd: (Number(r.quantidade) || 1) * (Number(it.qtd) || 0),
           valor_unit: Math.round(baseDe(r) * fator * 100) / 100,
         });
