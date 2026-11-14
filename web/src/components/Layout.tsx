@@ -573,6 +573,7 @@ function PonteStatus() {
 // Menu "Painel TV" no topo: um botão que abre a lista de telas de TV.
 function TvMenu({ tvs }: { tvs: typeof TVS }) {
   const [aberto, setAberto] = useState(false);
+  const nav = useNavigate();
   useEffect(() => {
     function onDoc(e: MouseEvent) {
       if (!(e.target as HTMLElement).closest?.(".tvmenu")) setAberto(false);
@@ -587,7 +588,7 @@ function TvMenu({ tvs }: { tvs: typeof TVS }) {
       {aberto && (
         <div className="topnav-dd tv">
           {tvs.map((t) => (
-            <a key={t.to} className="topnav-dd-i" href={t.to} target="_blank" rel="noopener noreferrer" onClick={() => setAberto(false)}>
+            <a key={t.to} className="topnav-dd-i" href={t.to} onClick={(e) => { e.preventDefault(); setAberto(false); nav(t.to); }}>
               <span className="tn-dd-ic"><Icon emoji={t.icon} /></span>
               <span className="tn-dd-lbl">{t.label}</span>
             </a>
