@@ -18,6 +18,7 @@ import { etiquetas } from "./routes/etiquetas";
 import { atendimento, followupAtendimento, sincronizarPedidos, posVendaRecompra, prospeccaoCatalogo, processarCampanhas, processarAgendamentos, processarGruposPosts, parabensAniversario, juntarDuplicadosAtend, cruzarContatosBase, sincronizarNomesWhatsapp, enriquecerClientesCnpj, fecharInativos24h } from "./routes/atendimento";
 import { assistente } from "./routes/assistente";
 import { relatorios } from "./routes/relatorios";
+import { placar } from "./routes/placar";
 import { tecelagem } from "./routes/tecelagem";
 import { setores } from "./routes/setores";
 import { integracao, construirLojaHtml } from "./routes/integracao";
@@ -102,6 +103,7 @@ app.route("/api/parceiros", parceiros);
 app.route("/api/atendimento", atendimento);
 app.route("/api/assistente", assistente);
 app.route("/api/relatorios", relatorios);
+app.route("/api/placar", placar); // leitura externa (Ryze): só total de vendas/pedidos, com chave própria
 app.route("/api/tecelagem", tecelagem);
 app.route("/api/integracao", integracao);
 app.route("/api/loja", loja);
