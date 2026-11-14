@@ -463,16 +463,16 @@ loja.get("/rep-pedidos", async (c) => {
   ).bind(rep.nome).all<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; valor_total: number | null; created_at: string | null; sync: string; liberado: number; forma: string; erp_numero: number | null; expira_em: string | null; aprovado: string; pecas: number }>();
   const pedidos = (peds || []).map((p) => {
     // Status AUTOMÁTICO: segue a aprovação real (aprovado_erp_em) e o retorno do Syntech
-    // (faturado/cancelado, atualizados pela ponte). Vira "Confirmado" sozinho quando a Big aprova.
+    // (faturado/cancelado, atualizados pela ponte). Vira "Aprovado" sozinho quando a Big aprova.
     const aprovadoDeVerdade = !!String(p.aprovado || "").trim();
     const nSuf = p.erp_numero ? (" · nº " + p.erp_numero) : "";
     let status: string, label: string;
     if (p.sync === "cancelado") { status = "cancelado"; label = "Cancelado"; }
     else if (p.sync === "rascunho") { status = "espera"; label = "Em espera"; }
-    else if (aprovadoDeVerdade || p.sync === "faturado") { status = "aprovado"; label = "Confirmado" + nSuf; }
-    else if (p.sync === "enviado") { status = "syntech"; label = "Aguardando aprovação" + nSuf; }
+    else if (aprovadoDeVerdade || p.sync === "faturado") { status = "aprovado"; label = "Aprovado" + nSuf; }
+    else if (p.sync === "enviado") { status = "syntech"; label = "Enviado para a Big Tricot" + nSuf; }
     else if (p.sync === "erro") { status = "erro"; label = "Com erro — a Big resolve"; }
-    else if (Number(p.liberado) === 1) { status = "aguardando"; label = "Aprovado · indo pro Syntech"; }
+    else if (Number(p.liberado) === 1) { status = "aguardando"; label = "Enviado para a Big Tricot"; }
     else { status = "aguardando"; label = "Enviado · aguardando a Big"; }
     return {
       id: p.id, cliente: p.cliente_nome, cnpj: p.cliente_cnpj, data: p.created_at,
@@ -514,12 +514,12 @@ loja.post("/rep-pedido-acao", async (c) => {
     ]);
     return c.json({ ok: true, msg: "Pedido cancelado. As peças voltaram para o estoque." });
   }
-  // APROVAR: o rep confirma o PRÓPRIO pedido enviado (status "Aguardando aprovação"). Vira "Confirmado".
+  // APROVAR: o rep confirma o PRÓPRIO pedido enviado (status "Enviado para a Big Tricot"). Vira "Aprovado".
   if (acao === "aprovar") {
     if (String(ped.aprovado || "").trim()) return c.json({ ok: true, msg: "Pedido já aprovado." });
     if (!["enviado", "pendente"].includes(String(ped.sync))) return c.json({ erro: "nao_aprovavel", msg: "Esse pedido não pode ser aprovado agora." }, 409);
     await c.env.DB.prepare("UPDATE pedidos SET aprovado_erp_em=datetime('now'), erp_liberado=1 WHERE id=? AND canal='loja_b2b'").bind(pid).run();
-    return c.json({ ok: true, msg: "Pedido aprovado! Confirmado para produção." });
+    return c.json({ ok: true, msg: "Pedido aprovado! Aprovado para produção." });
   }
   if (ped.sync !== "rascunho") return c.json({ erro: "nao_rascunho", msg: "Esse pedido já foi enviado." }, 409);
   if (acao === "excluir") {
@@ -615,8 +615,8 @@ loja.get("/rep-pedido-detalhe", async (c) => {
   if (ped.sync === "cancelado") { status = "cancelado"; label = "Cancelado"; }
   else if (ped.sync === "rascunho") { status = "espera"; label = "Em espera"; }
   else if (ped.sync === "enviado" || ped.sync === "pendente") {
-    if (foiAprovado) { status = "aprovado"; label = ped.erp_numero ? ("Confirmado · nº " + ped.erp_numero) : "Confirmado"; }
-    else { status = "syntech"; label = ped.erp_numero ? ("Aguardando aprovação · nº " + ped.erp_numero) : "Aguardando aprovação"; }
+    if (foiAprovado) { status = "aprovado"; label = ped.erp_numero ? ("Aprovado · nº " + ped.erp_numero) : "Aprovado"; }
+    else { status = "syntech"; label = ped.erp_numero ? ("Enviado para a Big Tricot · nº " + ped.erp_numero) : "Enviado para a Big Tricot"; }
   }
   else if (ped.sync === "erro") { status = "erro"; label = "Com erro — a Big resolve"; }
   else { status = "aguardando"; label = "Enviado · aguardando a Big"; }
@@ -989,16 +989,16 @@ loja.get("/pedido-pdf/:id", async (c) => {
     const w = await c.env.DB.prepare("SELECT valor FROM config WHERE chave IN ('loja_whatsapp','numero_whatsapp') ORDER BY CASE chave WHEN 'loja_whatsapp' THEN 0 ELSE 1 END LIMIT 1").first<{ valor: string | null }>();
     whatsapp = String(w?.valor || "").replace(/\D/g, "");
   } catch { whatsapp = ""; }
-  // "enviado" no Syntech = recebido, AGUARDANDO a Big aprovar. Só vira "Confirmado" quando o pedido
-  // aprovado RETORNA da integração (aprovado_erp_em preenchido). Antes mostrava "Confirmado" cedo demais.
+  // "enviado" no Syntech = recebido, AGUARDANDO a Big aprovar. Só vira "Aprovado" quando o pedido
+  // aprovado RETORNA da integração (aprovado_erp_em preenchido). Antes mostrava "Aprovado" cedo demais.
   const aprovadoDeVerdade = !!String(ped.aprovado || "").trim();
   const nSuf = ped.erp_numero ? " · nº " + ped.erp_numero : "";
   const statusLabel =
     ped.sync === "cancelado" ? "Cancelado"
     : ped.sync === "rascunho" ? "Em espera"
-      : (ped.sync === "enviado" || ped.sync === "pendente") ? ((aprovadoDeVerdade ? "Confirmado" : "Aguardando aprovação") + nSuf)
+      : (ped.sync === "enviado" || ped.sync === "pendente") ? ((aprovadoDeVerdade ? "Aprovado" : "Enviado para a Big Tricot") + nSuf)
         : ped.sync === "erro" ? "Em processamento"
-          : Number(ped.liberado) === 1 ? "Aprovado pela Big Tricot"
+          : Number(ped.liberado) === 1 ? "Enviado para a Big Tricot"
             : ped.fase === "enviado" ? "Aguardando confirmacao"
               : "Pedido recebido";
   // Logotipo (versão branca) pro cabeçalho do PDF — servido como asset estático.
@@ -1104,11 +1104,11 @@ loja.get("/meus-pedidos", async (c) => {
   }
   // Status REAL do nosso fluxo (não inventa etapas): rascunho→carrinho não finalizado,
   // enviado→confirmado, erro→em processamento, resto→recebido. 'status' é a chave pra cor.
-  // "enviado" = está no Syntech AGUARDANDO a Big aprovar — NÃO é "Confirmado" ainda. Só vira
-  // "Confirmado" quando o pedido aprovado RETORNA da integração (aprovado_erp_em preenchido).
+  // "enviado" = está no Syntech AGUARDANDO a Big aprovar — NÃO é "Aprovado" ainda. Só vira
+  // "Aprovado" quando o pedido aprovado RETORNA da integração (aprovado_erp_em preenchido).
   const statusKey = (sync: string, aprovado: string) => sync === "cancelado" ? "cancelado" : sync === "rascunho" ? "aberto" : (sync === "enviado" || sync === "pendente") ? (String(aprovado || "").trim() ? "producao" : "analise") : sync === "erro" ? "processando" : "recebido";
   // "aberto" = carrinho que o cliente montou e NÃO finalizou (expira sozinho; não é pedido feito).
-  const statusLabel = (st: string) => st === "aberto" ? "Carrinho não finalizado" : st === "producao" ? "Confirmado" : st === "analise" ? "Aguardando aprovação" : st === "cancelado" ? "Cancelado" : st === "processando" ? "Em processamento" : "Pedido recebido";
+  const statusLabel = (st: string) => st === "aberto" ? "Carrinho não finalizado" : st === "producao" ? "Aprovado" : st === "analise" ? "Enviado para a Big Tricot" : st === "cancelado" ? "Cancelado" : st === "processando" ? "Em processamento" : "Pedido recebido";
   const pedidos = peds.map((p) => {
     const its = porPed.get(p.id) || [];
     const st = statusKey(p.sync, p.aprovado);
@@ -1149,8 +1149,8 @@ loja.post("/meus-pedidos/:id/cancelar", async (c) => {
   return c.json({ ok: true });
 });
 
-// CLIENTE aprova/confirma o PRÓPRIO pedido (foi ele que fez). Marca como "Confirmado" e mantém
-// o estoque reservado. Só enquanto está "Aguardando aprovação" (enviado e ainda não aprovado).
+// CLIENTE aprova/confirma o PRÓPRIO pedido (foi ele que fez). Marca como "Aprovado" e mantém
+// o estoque reservado. Só enquanto está "Enviado para a Big Tricot" (enviado e ainda não aprovado).
 loja.post("/meus-pedidos/:id/aprovar", async (c) => {
   const id = c.req.param("id");
   const b = await c.req.json<{ cnpj?: string }>().catch(() => ({} as { cnpj?: string }));
@@ -1165,7 +1165,7 @@ loja.post("/meus-pedidos/:id/aprovar", async (c) => {
   if (ped.cnpjped !== cnpj) return c.json({ erro: "nao_autorizado" }, 403);
   if (String(ped.aprovado || "").trim()) return c.json({ ok: true, jaAprovado: true });
   if (!["enviado", "pendente"].includes(String(ped.sync))) return c.json({ erro: "nao_aprovavel", msg: "Esse pedido não pode ser aprovado agora." }, 409);
-  // aprovado_erp_em → "Confirmado"; erp_liberado=1 → libera o envio pro Syntech (sem esperar o gestor).
+  // aprovado_erp_em → "Aprovado"; erp_liberado=1 → libera o envio pro Syntech (sem esperar o gestor).
   await c.env.DB.prepare("UPDATE pedidos SET aprovado_erp_em=datetime('now'), erp_liberado=1 WHERE id=? AND canal='loja_b2b'").bind(id).run();
   return c.json({ ok: true });
 });
