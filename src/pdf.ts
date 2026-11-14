@@ -399,6 +399,32 @@ function drawQRTopRight(page: PDFPage, payload: string, xRight: number, yTop: nu
   }
 }
 
+// Agrupa os blocos por MODELO + COR num card só (ex.: Daytona Areia Almofada 45X45
+// + Daytona Areia Capa 50X50 viram UM card com 2 linhas). Compacta pedidos grandes.
+// Só pro Espelho do Pedido (cliente) — a produção continua separada.
+function agruparPorModeloCor(blocos: Bloco[]): Bloco[] {
+  const ordem: string[] = [];
+  const mapa = new Map<string, Bloco & { _refs: string[] }>();
+  for (const b of blocos) {
+    const k = (b.modelo || "").trim().toUpperCase() + "||" + (b.cor || "").trim().toUpperCase();
+    let g = mapa.get(k);
+    if (!g) {
+      g = { modelo: b.modelo, ref: b.ref, comp: b.comp, cor: b.cor, sizes: [], total: 0, valorTotal: 0, guias: b.guias, _refs: [] };
+      mapa.set(k, g);
+      ordem.push(k);
+    }
+    g.sizes.push(...b.sizes);
+    g.total += b.total;
+    g.valorTotal = (g.valorTotal || 0) + (b.valorTotal || 0);
+    if (!g.comp && b.comp) g.comp = b.comp;
+    if (b.ref && !g._refs.includes(b.ref)) g._refs.push(b.ref);
+  }
+  return ordem.map((k) => {
+    const { _refs, ...g } = mapa.get(k)!;
+    return { ...g, ref: _refs.join(" · ") || g.ref }; // junta os códigos (ex.: "1091A · 1091C")
+  });
+}
+
 // ── Espelho do Pedido (CLIENTE) — documento ÚNICO, sem Parte 1/2, com valores ──
 // Mesmo visual da Ordem de Produção, mas lista TODOS os itens num só PDF e mostra
 // Vl Unit. / Vl Total por linha e o TOTAL do pedido em R$ (para enviar ao cliente).
@@ -542,10 +568,12 @@ export async function gerarPdfCliente(
   }
 
   let y = header();
-  const totalPecas = blocos.reduce((a, b) => a + b.total, 0);
-  const totalValor = blocos.reduce((a, b) => a + (b.valorTotal || 0), 0);
+  // Agrupa mesmo modelo + mesma cor num card só (mesmo com tamanhos/códigos diferentes).
+  const grupos = agruparPorModeloCor(blocos);
+  const totalPecas = grupos.reduce((a, b) => a + b.total, 0);
+  const totalValor = grupos.reduce((a, b) => a + (b.valorTotal || 0), 0);
 
-  for (const b of blocos) {
+  for (const b of grupos) {
     const prodImg = prodImgs.get((b.modelo || "").toUpperCase().trim());
     const hh = prodImg ? 58 : 26; // card mais alto quando tem foto do produto
     const blocoH = hh + 16 + b.sizes.length * 18 + 24;
