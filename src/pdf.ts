@@ -58,6 +58,10 @@ export interface PedidoInfo {
   endereco?: string; // logradouro, número - complemento - bairro (uma linha)
   cep?: string;
   cidadeUf?: string; // "Cidade - UF"
+  // Extras do PDF do CATÁLOGO/loja (opcionais — não aparecem na produção/interno).
+  formaPagamento?: string; // forma de pagamento escolhida na loja
+  statusLabel?: string; // situação do pedido (ex.: "Enviado para a Big Tricot")
+  whatsapp?: string; // contato da Big no rodapé (só dígitos)
 }
 
 // Quebra um texto em linhas que cabem em `maxW` (pdf-lib não tem wrap automático).
@@ -522,6 +526,16 @@ export async function gerarPdfCliente(
     T("Pedido", ix + 230, 44, 17, bld, WHITE);
     T("Confirmação de pedido", ix + 230, 62, 10, reg, hx("#c7d2e0"));
     TR(`Gerado em ${geradoEm()}`, ix + iw, 36, 8.5, reg, hx("#aab8cc"));
+    // Situação do pedido (só no PDF do catálogo) — pílula colorida no canto direito.
+    if (ped.statusLabel && ped.statusLabel.trim()) {
+      const st = ped.statusLabel.trim();
+      const sw = bld.widthOfTextAtSize(st, 9) + 18;
+      const ap = st.toLowerCase();
+      const bg = ap.includes("aprovad") || ap.includes("fatur") ? GREEN : ap.includes("cancel") ? hx("#b4232a") : GOLD;
+      const fg = bg === GOLD ? hx("#3a2f12") : WHITE;
+      R(ix + iw - sw, 50, sw, 17, bg);
+      T(st, ix + iw - sw + 9, 62, 9, bld, fg);
+    }
 
     // Cabeçalho COMPACTO (2 colunas) — junta campos na mesma linha pra não ficar comprido.
     let y = bh + 24;
@@ -559,6 +573,7 @@ export async function gerarPdfCliente(
       rowPair("REPRESENTANTE", ped.representante, ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
     }
     rowPair("EMISSÃO", ped.emissao, "ENTREGA", ped.entrega);
+    if (ped.formaPagamento && ped.formaPagamento.trim()) rowFull("FORMA DE PAGTO", ped.formaPagamento);
     if (ped.observacao && ped.observacao.trim()) {
       y += 4;
       lab("OBSERVAÇÃO", ix);
@@ -654,6 +669,10 @@ export async function gerarPdfCliente(
   R(ix, y + 6, iw, 34, NAVY);
   T(`TOTAL: ${totalPecas} ${totalPecas === 1 ? "peça" : "peças"}`, ix + 14, y + 28, 13, bld, WHITE);
   TR(`TOTAL: ${money(totalValor)}`, ix + iw - 14, y + 28, 15, bld, WHITE);
+  // Rodapé com o contato da Big (só no PDF do catálogo, quando houver WhatsApp).
+  if (ped.whatsapp && ped.whatsapp.trim()) {
+    T(`Dúvidas? Fale com a Big Tricot no WhatsApp: ${telBr(ped.whatsapp)}`, ix, y + 58, 9, reg, MUTE);
+  }
 
   return await doc.save();
 }
