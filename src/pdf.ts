@@ -6,6 +6,8 @@ import {
   pushGraphicsState,
   popGraphicsState,
   moveTo,
+  lineTo,
+  closePath,
   appendBezierCurve,
   clip,
   endPath,
@@ -130,6 +132,26 @@ function drawCircleImage(page: PDFPage, img: PDFImage, cx: number, cy: number, r
   page.drawImage(img, { x: cx - w / 2, y: cy - h / 2, width: w, height: h });
   page.pushOperators(popGraphicsState());
   page.drawCircle({ x: cx, y: cy, size: r, borderColor: hx("#94a3b8"), borderWidth: 0.7 });
+}
+
+// Desenha uma imagem recortada num RETÂNGULO (cover/center-crop) — a miniatura do PRODUTO.
+// x/y em coordenadas do PDF (y pra cima, canto inferior-esquerdo do retângulo).
+function drawRectImage(page: PDFPage, img: PDFImage, x: number, y: number, w: number, h: number): void {
+  page.pushOperators(
+    pushGraphicsState(),
+    moveTo(x, y),
+    lineTo(x + w, y),
+    lineTo(x + w, y + h),
+    lineTo(x, y + h),
+    closePath(),
+    clip(),
+    endPath()
+  );
+  const s = Math.max(w / img.width, h / img.height);
+  const dw = img.width * s;
+  const dh = img.height * s;
+  page.drawImage(img, { x: x + (w - dw) / 2, y: y + (h - dh) / 2, width: dw, height: dh });
+  page.pushOperators(popGraphicsState());
 }
 
 // Junta vários PDFs (um por parte) num único arquivo de várias páginas — usado na PRÉVIA.
@@ -383,7 +405,8 @@ function drawQRTopRight(page: PDFPage, payload: string, xRight: number, yTop: nu
 export async function gerarPdfCliente(
   ped: PedidoInfo,
   blocos: Bloco[],
-  cores: Record<string, { hex?: string; foto?: Uint8Array }> = {}
+  cores: Record<string, { hex?: string; foto?: Uint8Array }> = {},
+  fotosProduto: Record<string, Uint8Array> = {} // chave = nome do modelo em MAIÚSCULA → foto do produto
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
@@ -393,6 +416,18 @@ export async function gerarPdfCliente(
     logoImg = await doc.embedPng(LOGO_BT_PNG);
   } catch {
     logoImg = null; // sem logo: cai no texto "BIG TRICOT"
+  }
+
+  // Fotos dos PRODUTOS (miniatura no card de cada modelo). Embute uma vez cada.
+  const prodImgs = new Map<string, PDFImage>();
+  for (const [k, bytes] of Object.entries(fotosProduto)) {
+    if (!bytes || bytes.length < 4) continue;
+    try {
+      const img = bytes[0] === 0x89 && bytes[1] === 0x50 ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+      prodImgs.set(k, img);
+    } catch {
+      /* imagem inválida: ignora (card fica sem miniatura) */
+    }
   }
 
   const fotos = new Map<string, PDFImage>();
@@ -511,28 +546,41 @@ export async function gerarPdfCliente(
   const totalValor = blocos.reduce((a, b) => a + (b.valorTotal || 0), 0);
 
   for (const b of blocos) {
-    const blocoH = 26 + 16 + b.sizes.length * 18 + 24;
+    const prodImg = prodImgs.get((b.modelo || "").toUpperCase().trim());
+    const hh = prodImg ? 58 : 26; // card mais alto quando tem foto do produto
+    const blocoH = hh + 16 + b.sizes.length * 18 + 24;
     if (y + blocoH > A4H - 70) {
       page = doc.addPage([A4W, A4H]);
       y = headerCont();
     }
-    R(ix, y, iw, 26, GREY);
-    let tx = ix + 10;
-    T("Modelo:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Modelo:", 9.5) + 6;
-    T(b.modelo, tx, y + 17, 11, bld); tx += bld.widthOfTextAtSize(b.modelo, 11) + 14;
-    T("Ref:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Ref:", 9.5) + 5;
-    T(b.ref || "—", tx, y + 17, 10, bld); tx += bld.widthOfTextAtSize(b.ref || "—", 10) + 10;
-    if (b.comp) T("· " + b.comp, tx, y + 17, 8.5, bld, REDC);
+    R(ix, y, iw, hh, GREY);
+    // Miniatura do PRODUTO (foto do catálogo), recortada num quadrado com borda fina.
+    const t1 = prodImg ? ix + 60 : ix + 10; // onde começa o texto (abre espaço pra foto)
+    if (prodImg) {
+      const ps = 48;
+      drawRectImage(page, prodImg, ix + 6, A4H - (y + 6) - ps, ps, ps);
+      RB(ix + 6, y + 6, ps, ps, hx("#cfd4da"), 0.8);
+    }
+    const linhaModelo = prodImg ? y + 24 : y + 17;
+    let tx = t1;
+    T("Modelo:", tx, linhaModelo, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Modelo:", 9.5) + 6;
+    T(b.modelo, tx, linhaModelo, 11, bld); tx += bld.widthOfTextAtSize(b.modelo, 11) + 14;
+    T("Ref:", tx, linhaModelo, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Ref:", 9.5) + 5;
+    T(b.ref || "—", tx, linhaModelo, 10, bld); tx += bld.widthOfTextAtSize(b.ref || "—", 10) + 10;
+    if (b.comp) T("· " + b.comp, tx, linhaModelo, 8.5, bld, REDC);
+    // Cor: bolinha com a FOTO + nome. Quando tem foto do produto, vai na 2ª linha do card.
     const corKey = (b.cor || "").toUpperCase();
     const foto = fotos.get(corKey);
+    const corCy = prodImg ? y + 42 : y + 13;
+    const corX = prodImg ? t1 : qx;
     if (foto) {
-      drawCircleImage(page, foto, qx + 7, A4H - (y + 13), 7); // bolinha com a FOTO da cor
+      drawCircleImage(page, foto, corX + 7, A4H - corCy, 7);
     } else {
-      Circle(qx + 7, y + 13, 7, hx(cores[corKey]?.hex || SW[corKey] || "#c9cdd3"));
+      Circle(corX + 7, corCy, 7, hx(cores[corKey]?.hex || SW[corKey] || "#c9cdd3"));
     }
-    T(b.cor, qx + 20, y + 17, 10.5, bld);
+    T(b.cor, corX + 20, corCy + 4, 10.5, bld);
     // cabeçalho da tabela
-    let ry = y + 26;
+    let ry = y + hh;
     T("PRODUTO / TAMANHO", ix + 10, ry + 13, 8, bld, MUTE);
     TR("QTD", cQtd + 26, ry + 13, 8, bld, MUTE);
     TR("VL UNIT.", cUnit, ry + 13, 8, bld, MUTE);
