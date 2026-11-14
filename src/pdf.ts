@@ -38,6 +38,8 @@ export interface PedidoInfo {
   // Dados do cliente para o cabeçalho da Ordem de Produção (opcionais).
   razaoSocial?: string; // razão social (usada no lugar do nome quando houver)
   cnpj?: string;
+  telefone?: string;
+  endereco?: string; // logradouro, número - complemento - bairro (uma linha)
   cep?: string;
   cidadeUf?: string; // "Cidade - UF"
 }
@@ -168,8 +170,14 @@ export async function gerarPdfParte(
       T(fit(v, bld, 10, iw - 140 - 4), ix + 140, y, 10, bld, vc);
       y += 20;
     };
+    // Bloco do cliente (cabeçalho completo): nome/razão, CNPJ, telefone, endereço, CEP/cidade.
     info("CLIENTE", ped.razaoSocial && ped.razaoSocial.trim() ? ped.razaoSocial : ped.cliente);
     if (ped.cnpj && ped.cnpj.trim()) info("CNPJ", ped.cnpj);
+    if (ped.telefone && ped.telefone.trim()) info("TELEFONE", ped.telefone);
+    if (ped.endereco && ped.endereco.trim()) info("ENDEREÇO", ped.endereco);
+    // CEP + Cidade/Estado numa linha só (compacto). Só aparece se tiver dado.
+    const cepCidade = [ped.cep, ped.cidadeUf].map((s) => (s || "").trim()).filter(Boolean).join("  ·  ");
+    if (cepCidade) info("CEP / CIDADE", cepCidade);
     info("REPRESENTANTE", ped.representante);
     if (ped.pedidos && ped.pedidos.trim()) {
       info("CÓDIGO PAI", ped.numero);
@@ -177,9 +185,6 @@ export async function gerarPdfParte(
     } else {
       info(ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
     }
-    // CEP + Cidade/Estado numa linha só (compacto). Só aparece se tiver dado.
-    const cepCidade = [ped.cep, ped.cidadeUf].map((s) => (s || "").trim()).filter(Boolean).join("  ·  ");
-    if (cepCidade) info("CEP / CIDADE", cepCidade);
     T("DATAS", ix, y, 8.5, bld, MUTE);
     T(`Emissão: ${ped.emissao}`, ix + 140, y, 10, bld);
     T(`Entrega: ${ped.entrega}`, ix + 320, y, 10, bld);

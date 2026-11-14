@@ -33,6 +33,15 @@ function br(iso?: string | null): string {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }
+// Monta o endereço do cliente numa linha só pro cabeçalho da Ordem de Produção:
+// "logradouro, número - complemento - bairro" (pula o que estiver vazio).
+function enderecoLinha(
+  cli?: { endereco?: string | null; numero?: string | null; complemento?: string | null; bairro?: string | null } | null
+): string {
+  if (!cli) return "";
+  const rua = [cli.endereco, cli.numero].map((s) => (s || "").trim()).filter(Boolean).join(", ");
+  return [rua, (cli.complemento || "").trim(), (cli.bairro || "").trim()].filter(Boolean).join(" - ");
+}
 async function catalogos(env: Env): Promise<Catalogo> {
   // Os 12 modelos base da Parte 1 entram sempre; o catálogo do banco (tela de Cadastros)
   // sobrescreve parte/composição/código. O código (ref) permite casar o modelo pela grade.
@@ -1011,9 +1020,22 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   const baseNum = ped.codigo_pai || ped.numero_erp || id.slice(0, 8);
   // Dados do cliente (razão social, CNPJ, CEP, cidade/UF) para o cabeçalho da OP.
   const cli = ped.cliente_id
-    ? await c.env.DB.prepare("SELECT razao_social, cnpj, cep, cidade, uf FROM clientes WHERE id = ?")
+    ? await c.env.DB.prepare(
+        "SELECT razao_social, cnpj, cep, cidade, uf, endereco, numero, complemento, bairro, telefone FROM clientes WHERE id = ?"
+      )
         .bind(ped.cliente_id)
-        .first<{ razao_social: string | null; cnpj: string | null; cep: string | null; cidade: string | null; uf: string | null }>()
+        .first<{
+          razao_social: string | null;
+          cnpj: string | null;
+          cep: string | null;
+          cidade: string | null;
+          uf: string | null;
+          endereco: string | null;
+          numero: string | null;
+          complemento: string | null;
+          bairro: string | null;
+          telefone: string | null;
+        }>()
     : null;
   const cidadeUf = [cli?.cidade, cli?.uf].map((s) => (s || "").trim()).filter(Boolean).join(" - ");
   const info: PedidoInfo = {
@@ -1026,6 +1048,8 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     observacao: ped.observacao || "",
     razaoSocial: cli?.razao_social || "",
     cnpj: cli?.cnpj || ped.cliente_cnpj || "",
+    telefone: cli?.telefone || ped.cliente_fone || "",
+    endereco: enderecoLinha(cli),
     cep: cli?.cep || "",
     cidadeUf,
   };
