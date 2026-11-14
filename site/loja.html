@@ -2132,8 +2132,9 @@
     if(d.editavel){ botoes+='<button class="pd2-act" onclick="__fecharPed();__repReabrir(\''+esc(id)+'\')">✏️ Reabrir</button>'+
       '<button class="pd2-act go" onclick="__repPedEnviar(\''+esc(id)+'\',\''+(d.forma?"1":"")+'\')">✅ Enviar à Big</button>'+
       '<button class="pd2-act del" onclick="__repPedExcluir(\''+esc(id)+'\')">Excluir</button>'; }
-    // Rep aprova OU cancela o pedido JÁ ENVIADO enquanto a Big não aprovou ('syntech' = aguardando).
-    if(d.status==='syntech' && !d.aprovado){ botoes='<button class="pd2-aprovar" onclick="__repAprovarPedido(\''+esc(id)+'\')">✓ Aprovar pedido</button>'+'<button class="pd2-cancel" onclick="__repCancelarPedido(\''+esc(id)+'\')">✗ Cancelar pedido</button>'+botoes; }
+    // Depois que o pedido foi pro Syntech ('syntech' = "Enviado para a Big Tricot"), o rep NÃO
+    // vê mais Aprovar/Cancelar — cancelar aqui não cancelaria no Syntech. Fica só o Baixar PDF.
+    // (Quem aprova é a Big, no Syntech. O envio do rep é o botão "✅ Enviar à Big" acima.)
     return __pedSheetHTML({
       numero:d.numero||'—', statusLabel:d.label||'', badgeCls:badge,
       cliente:d.cliente||'', cnpj:(d.cnpj?fmtCnpjBr(d.cnpj):''), data:fmtDataHora(d.data),
