@@ -10,7 +10,9 @@
 // O envio pro Syntech é feito DEPOIS pela ponte (passo 4), atrás da trava erp_liberado.
 import { Hono } from "hono";
 import type { Env } from "../index";
-import { gerarPdfPedidoLoja, type PedidoLojaItem } from "../pdf";
+import { gerarPdfCliente, type PedidoInfo } from "../pdf";
+import { agrupar, criarCatalogo, type ItemBase } from "../classificar";
+import { fotosProdutoDoPedido } from "../catalogo-fotos";
 import { montarReservaAtomica, faltasDaReserva, expirarCarrinhosVencidos } from "../loja-estoque";
 import { calcularJanela12h } from "../noite";
 import { flagLigado, FLAG_RESERVAS } from "../flags";
@@ -972,12 +974,17 @@ loja.get("/pedido-pdf/:id", async (c) => {
   // segurança leve: se veio CNPJ, tem que bater com o do pedido.
   if (cnpjDig && soDigitos(ped.cliente_cnpj) !== cnpjDig) return c.json({ erro: "nao_autorizado" }, 403);
   const { results: itensRaw } = await c.env.DB.prepare(
-    "SELECT produto, cor_grade, tamanho, qtd, valor_unit FROM pedido_itens WHERE pedido_id=? ORDER BY rowid"
-  ).bind(id).all<{ produto: string | null; cor_grade: string | null; tamanho: string | null; qtd: number | null; valor_unit: number | null }>();
-  const itens: PedidoLojaItem[] = (itensRaw || []).map((r) => ({
-    produto: String(r.produto || ""), cor: String(r.cor_grade || ""), tamanho: String(r.tamanho || ""),
-    qtd: Number(r.qtd) || 0, valor: Number(r.valor_unit) || 0,
+    "SELECT produto, ref, cor_grade, tamanho, qtd, valor_unit FROM pedido_itens WHERE pedido_id=? ORDER BY rowid"
+  ).bind(id).all<{ produto: string | null; ref: string | null; cor_grade: string | null; tamanho: string | null; qtd: number | null; valor_unit: number | null }>();
+  // Classifica igual ao PDF interno → cards agrupados por modelo+cor, com valores.
+  const itensBase: ItemBase[] = (itensRaw || []).map((r) => ({
+    produto: String(r.produto || ""), ref: r.ref || null, cor_grade: r.cor_grade || null,
+    tamanho: r.tamanho || null, qtd: Number(r.qtd) || 0, parte: "unico", origem: null, valor_unit: Number(r.valor_unit) || 0,
   }));
+  const mcat = await c.env.DB.prepare(
+    "SELECT nome, parte, composicao, ref, tassel_peseira, tassel_almofada, pronta_entrega FROM modelos"
+  ).all<{ nome: string; parte: number; composicao: string | null; ref: string | null; tassel_peseira: number | null; tassel_almofada: number | null }>();
+  const blocos = agrupar(itensBase, criarCatalogo(mcat.results));
   const emissao = (() => { const m = String(ped.created_at || "").match(/(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ""; })();
   const cnpjFmt = (() => { const d2 = soDigitos(ped.cliente_cnpj); return d2.length === 14 ? d2.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5") : (ped.cliente_cnpj || ""); })();
   // Fotos reais das cores do pedido + WhatsApp da Big pro rodapé + situação do pedido.
@@ -1000,26 +1007,36 @@ loja.get("/pedido-pdf/:id", async (c) => {
             : Number(ped.liberado) === 1 ? "Enviado para a Big Tricot"
               : ped.fase === "enviado" ? "Aguardando confirmacao"
                 : "Pedido recebido";
-  // Logotipo (versão branca) pro cabeçalho do PDF — servido como asset estático.
-  let logoBytes: Uint8Array | undefined;
-  try {
-    const u = new URL(c.req.url);
-    const resp = await c.env.ASSETS.fetch(new Request(`${u.protocol}//${u.host}/logo-bt-mark.png`));
-    if (resp.ok) logoBytes = new Uint8Array(await resp.arrayBuffer());
-  } catch { logoBytes = undefined; }
-  const bytes = await gerarPdfPedidoLoja({
-    numero: String(ped.id).slice(0, 8).toUpperCase(),
+  // Dados completos do cliente (cadastro) pro cabeçalho — casa pelo CNPJ (sem pontuação).
+  const cliCad = await c.env.DB.prepare(
+    "SELECT razao_social, telefone, endereco, numero, complemento, bairro, cep, cidade, uf FROM clientes " +
+    "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
+  ).bind(soDigitos(ped.cliente_cnpj)).first<{
+    razao_social: string | null; telefone: string | null; endereco: string | null; numero: string | null;
+    complemento: string | null; bairro: string | null; cep: string | null; cidade: string | null; uf: string | null;
+  }>();
+  const rua = [cliCad?.endereco, cliCad?.numero].map((s) => (s || "").trim()).filter(Boolean).join(", ");
+  const enderecoCliente = [rua, (cliCad?.complemento || "").trim(), (cliCad?.bairro || "").trim()].filter(Boolean).join(" - ");
+  // Mesmo layout do Espelho do Pedido (com valor) + status e WhatsApp da loja.
+  const info: PedidoInfo = {
     cliente: ped.cliente_nome || "Cliente",
-    cnpj: cnpjFmt,
-    representante: ped.vendedor || "",
-    formaPagamento: ped.forma || "",
+    representante: ped.vendedor || "—",
+    numero: ped.erp_numero ? String(ped.erp_numero) : String(ped.id).slice(0, 8).toUpperCase(),
     emissao,
+    entrega: "—",
     observacao: ped.obs || "",
-    itens,
-    total: Number(ped.valor_total) || itens.reduce((s, i) => s + i.qtd * i.valor, 0),
-    whatsapp,
+    razaoSocial: cliCad?.razao_social || "",
+    cnpj: cnpjFmt,
+    telefone: cliCad?.telefone || "",
+    endereco: enderecoCliente,
+    cep: cliCad?.cep || "",
+    cidadeUf: [cliCad?.cidade, cliCad?.uf].map((s) => (s || "").trim()).filter(Boolean).join(" - "),
+    formaPagamento: ped.forma || "",
     statusLabel,
-  }, cores, logoBytes);
+    whatsapp,
+  };
+  const fotosProduto = await fotosProdutoDoPedido(c.env, blocos.map((b) => b.modelo));
+  const bytes = await gerarPdfCliente(info, blocos, cores, fotosProduto);
   const nomeArq = "pedido-" + String(ped.id).slice(0, 8) + ".pdf";
   // dl=1 → força o DOWNLOAD direto (sem abrir o visualizador/impressora); senão abre inline.
   const baixar = !!c.req.query("dl");

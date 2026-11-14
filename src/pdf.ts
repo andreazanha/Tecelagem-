@@ -1,7 +1,23 @@
 // Gera o PDF de produção/pronta-entrega no padrão Big Tricot (pdf-lib, roda no Worker).
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
+import {
+  PDFDocument,
+  StandardFonts,
+  rgb,
+  pushGraphicsState,
+  popGraphicsState,
+  moveTo,
+  lineTo,
+  closePath,
+  appendBezierCurve,
+  clip,
+  endPath,
+  type PDFFont,
+  type PDFPage,
+  type PDFImage,
+} from "pdf-lib";
 import qrcode from "qrcode-generator";
 import type { Bloco, TasselRomaneio, RomaneioCostura } from "./classificar";
+import { LOGO_BT_PNG, LOGO_BT_ASPECT } from "./brand";
 
 const A4W = 595.28;
 const A4H = 841.89;
@@ -38,8 +54,14 @@ export interface PedidoInfo {
   // Dados do cliente para o cabeçalho da Ordem de Produção (opcionais).
   razaoSocial?: string; // razão social (usada no lugar do nome quando houver)
   cnpj?: string;
+  telefone?: string;
+  endereco?: string; // logradouro, número - complemento - bairro (uma linha)
   cep?: string;
   cidadeUf?: string; // "Cidade - UF"
+  // Extras do PDF do CATÁLOGO/loja (opcionais — não aparecem na produção/interno).
+  formaPagamento?: string; // forma de pagamento escolhida na loja
+  statusLabel?: string; // situação do pedido (ex.: "Enviado para a Big Tricot")
+  whatsapp?: string; // contato da Big no rodapé (só dígitos)
 }
 
 // Quebra um texto em linhas que cabem em `maxW` (pdf-lib não tem wrap automático).
@@ -94,6 +116,48 @@ function geradoEm(): string {
   return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}, ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 }
 
+// Desenha uma imagem recortada em CÍRCULO — a "bolinha" da cor com a FOTO real do tecido
+// (center-crop/cover pra não distorcer). cx/cy já em coordenadas do PDF (y pra cima).
+function drawCircleImage(page: PDFPage, img: PDFImage, cx: number, cy: number, r: number): void {
+  const k = 0.5522847498 * r; // constante mágica do círculo com bézier
+  page.pushOperators(
+    pushGraphicsState(),
+    moveTo(cx + r, cy),
+    appendBezierCurve(cx + r, cy + k, cx + k, cy + r, cx, cy + r),
+    appendBezierCurve(cx - k, cy + r, cx - r, cy + k, cx - r, cy),
+    appendBezierCurve(cx - r, cy - k, cx - k, cy - r, cx, cy - r),
+    appendBezierCurve(cx + k, cy - r, cx + r, cy - k, cx + r, cy),
+    clip(),
+    endPath()
+  );
+  const s = Math.max((2 * r) / img.width, (2 * r) / img.height); // cobre o círculo
+  const w = img.width * s;
+  const h = img.height * s;
+  page.drawImage(img, { x: cx - w / 2, y: cy - h / 2, width: w, height: h });
+  page.pushOperators(popGraphicsState());
+  page.drawCircle({ x: cx, y: cy, size: r, borderColor: hx("#94a3b8"), borderWidth: 0.7 });
+}
+
+// Desenha uma imagem recortada num RETÂNGULO (cover/center-crop) — a miniatura do PRODUTO.
+// x/y em coordenadas do PDF (y pra cima, canto inferior-esquerdo do retângulo).
+function drawRectImage(page: PDFPage, img: PDFImage, x: number, y: number, w: number, h: number): void {
+  page.pushOperators(
+    pushGraphicsState(),
+    moveTo(x, y),
+    lineTo(x + w, y),
+    lineTo(x + w, y + h),
+    lineTo(x, y + h),
+    closePath(),
+    clip(),
+    endPath()
+  );
+  const s = Math.max(w / img.width, h / img.height);
+  const dw = img.width * s;
+  const dh = img.height * s;
+  page.drawImage(img, { x: x + (w - dw) / 2, y: y + (h - dh) / 2, width: dw, height: dh });
+  page.pushOperators(popGraphicsState());
+}
+
 // Junta vários PDFs (um por parte) num único arquivo de várias páginas — usado na PRÉVIA.
 export async function mergePdfs(lista: Uint8Array[]): Promise<Uint8Array> {
   const out = await PDFDocument.create();
@@ -116,6 +180,12 @@ export async function gerarPdfParte(
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
   const bld = await doc.embedFont(StandardFonts.HelveticaBold);
+  let logoImg: PDFImage | null = null;
+  try {
+    logoImg = await doc.embedPng(LOGO_BT_PNG);
+  } catch {
+    logoImg = null; // sem logo: cai no texto "BIG TRICOT"
+  }
 
   // pré-embute as fotos das cores (quando houver)
   const fotos = new Map<string, PDFImage>();
@@ -153,15 +223,23 @@ export async function gerarPdfParte(
   function header(): number {
     const bh = 88;
     R(0, 0, A4W, bh, NAVY);
-    T("BIG TRICOT", ix, 44, 24, bld, WHITE);
-    T("HOME DECOR", ix + 2, 60, 8, reg, hx("#c7d2e0"));
-    T("Ordem de Produção", ix + 210, 40, 16, bld, WHITE);
-    T(subtitulo, ix + 210, 58, 10, reg, hx("#c7d2e0"));
+    // Logotipo da marca (branco) no lugar do nome "BIG TRICOT".
+    if (logoImg) {
+      const lh = 40;
+      const lw = lh * LOGO_BT_ASPECT;
+      page.drawImage(logoImg, { x: ix, y: A4H - (bh - lh) / 2 - lh, width: lw, height: lh });
+    } else {
+      T("BIG TRICOT", ix, 44, 24, bld, WHITE);
+      T("HOME DECOR", ix + 2, 60, 8, reg, hx("#c7d2e0"));
+    }
+    T("Ordem de Produção", ix + 230, 40, 16, bld, WHITE);
+    T(subtitulo, ix + 230, 58, 10, reg, hx("#c7d2e0"));
     TR(`Gerado em ${geradoEm()}`, ix + iw, 34, 8.5, reg, hx("#aab8cc"));
     const pw = 16 + bld.widthOfTextAtSize(parteLabel, 9);
     R(ix + iw - pw, 46, pw, 20, bandaColor);
     T(parteLabel, ix + iw - pw + 8, 60, 9, bld, bandaTxt);
-    // dados
+    // dados — CABEÇALHO CURTO na produção: só NOME do cliente + NÚMERO do pedido
+    // (+ datas e observação, que a produção precisa). Sem CNPJ/endereço/telefone etc.
     let y = bh + 26;
     const info = (k: string, v: string, vc = INK) => {
       T(k, ix, y, 8.5, bld, MUTE);
@@ -169,17 +247,12 @@ export async function gerarPdfParte(
       y += 20;
     };
     info("CLIENTE", ped.razaoSocial && ped.razaoSocial.trim() ? ped.razaoSocial : ped.cliente);
-    if (ped.cnpj && ped.cnpj.trim()) info("CNPJ", ped.cnpj);
-    info("REPRESENTANTE", ped.representante);
     if (ped.pedidos && ped.pedidos.trim()) {
       info("CÓDIGO PAI", ped.numero);
       info("PEDIDOS", ped.pedidos);
     } else {
       info(ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
     }
-    // CEP + Cidade/Estado numa linha só (compacto). Só aparece se tiver dado.
-    const cepCidade = [ped.cep, ped.cidadeUf].map((s) => (s || "").trim()).filter(Boolean).join("  ·  ");
-    if (cepCidade) info("CEP / CIDADE", cepCidade);
     T("DATAS", ix, y, 8.5, bld, MUTE);
     T(`Emissão: ${ped.emissao}`, ix + 140, y, 10, bld);
     T(`Entrega: ${ped.entrega}`, ix + 320, y, 10, bld);
@@ -235,7 +308,8 @@ export async function gerarPdfParte(
     T("Modelo:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Modelo:", 9.5) + 6;
     T(b.modelo, tx, y + 17, 11, bld); tx += bld.widthOfTextAtSize(b.modelo, 11) + 14;
     T("Ref:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Ref:", 9.5) + 5;
-    T(b.ref || "—", tx, y + 17, 10, bld); tx += bld.widthOfTextAtSize(b.ref || "—", 10) + 10;
+    const refProd = codigoBase(b.ref) || "—"; // só o número (sem a letra A/C)
+    T(refProd, tx, y + 17, 10, bld); tx += bld.widthOfTextAtSize(refProd, 10) + 10;
     if (b.comp) T("· " + b.comp, tx, y + 17, 8.5, bld, REDC);
     const corKey = (b.cor || "").toUpperCase();
     const foto = fotos.get(corKey);
@@ -304,7 +378,16 @@ export async function gerarPdfParte(
 }
 
 // ── Romaneio de TASSEL — 3 vias na mesma página, só a quantidade total ───────
-const money = (v: number) => "R$ " + v.toFixed(2).replace(".", ",");
+const money = (v: number) => {
+  // "R$ 1.465,60" — com separador de milhar, pra ficar profissional no PDF do cliente.
+  const [ip, dp] = Math.abs(Math.round(v * 100) / 100).toFixed(2).split(".");
+  let out = "";
+  for (let i = 0; i < ip.length; i++) {
+    if (i > 0 && (ip.length - i) % 3 === 0) out += ".";
+    out += ip[i];
+  }
+  return (v < 0 ? "-" : "") + "R$ " + out + "," + dp;
+};
 
 // Desenha um QR Code com o canto SUPERIOR-DIREITO em (xRight, yTop) — usado no
 // romaneio para "dar baixa" pelo leitor embutido (lê o token e marca o retorno).
@@ -327,17 +410,72 @@ function drawQRTopRight(page: PDFPage, payload: string, xRight: number, yTop: nu
   }
 }
 
+// Código BASE: tira a LETRA do fim (A = almofada, C = capa) — ela existe só por
+// limitação do cadastro no Syntech e não é relevante pro cliente/produção.
+// Ex.: "1091A"/"1091C" -> "1091"; "1012" -> "1012". Código sem número fica como está.
+const codigoBase = (ref: string): string => {
+  const r = (ref || "").trim();
+  const base = r.replace(/[A-Za-z]+$/, "");
+  return base || r;
+};
+
+// Agrupa os blocos por MODELO + COR num card só (ex.: Daytona Areia Almofada 45X45
+// + Daytona Areia Capa 50X50 viram UM card com 2 linhas). Compacta pedidos grandes.
+// Só pro Espelho do Pedido (cliente) — a produção continua separada.
+function agruparPorModeloCor(blocos: Bloco[]): Bloco[] {
+  const ordem: string[] = [];
+  const mapa = new Map<string, Bloco & { _refs: string[] }>();
+  for (const b of blocos) {
+    const k = (b.modelo || "").trim().toUpperCase() + "||" + (b.cor || "").trim().toUpperCase();
+    let g = mapa.get(k);
+    if (!g) {
+      g = { modelo: b.modelo, ref: b.ref, comp: b.comp, cor: b.cor, sizes: [], total: 0, valorTotal: 0, guias: b.guias, _refs: [] };
+      mapa.set(k, g);
+      ordem.push(k);
+    }
+    g.sizes.push(...b.sizes);
+    g.total += b.total;
+    g.valorTotal = (g.valorTotal || 0) + (b.valorTotal || 0);
+    if (!g.comp && b.comp) g.comp = b.comp;
+    const rb = codigoBase(b.ref); // só o número, sem a letra A/C
+    if (rb && !g._refs.includes(rb)) g._refs.push(rb);
+  }
+  return ordem.map((k) => {
+    const { _refs, ...g } = mapa.get(k)!;
+    return { ...g, ref: _refs.join(" · ") || codigoBase(g.ref) }; // ex.: "1091" (1091A+1091C juntos)
+  });
+}
+
 // ── Espelho do Pedido (CLIENTE) — documento ÚNICO, sem Parte 1/2, com valores ──
 // Mesmo visual da Ordem de Produção, mas lista TODOS os itens num só PDF e mostra
 // Vl Unit. / Vl Total por linha e o TOTAL do pedido em R$ (para enviar ao cliente).
 export async function gerarPdfCliente(
   ped: PedidoInfo,
   blocos: Bloco[],
-  cores: Record<string, { hex?: string; foto?: Uint8Array }> = {}
+  cores: Record<string, { hex?: string; foto?: Uint8Array }> = {},
+  fotosProduto: Record<string, Uint8Array> = {} // chave = nome do modelo em MAIÚSCULA → foto do produto
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
   const bld = await doc.embedFont(StandardFonts.HelveticaBold);
+  let logoImg: PDFImage | null = null;
+  try {
+    logoImg = await doc.embedPng(LOGO_BT_PNG);
+  } catch {
+    logoImg = null; // sem logo: cai no texto "BIG TRICOT"
+  }
+
+  // Fotos dos PRODUTOS (miniatura no card de cada modelo). Embute uma vez cada.
+  const prodImgs = new Map<string, PDFImage>();
+  for (const [k, bytes] of Object.entries(fotosProduto)) {
+    if (!bytes || bytes.length < 4) continue;
+    try {
+      const img = bytes[0] === 0x89 && bytes[1] === 0x50 ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+      prodImgs.set(k, img);
+    } catch {
+      /* imagem inválida: ignora (card fica sem miniatura) */
+    }
+  }
 
   const fotos = new Map<string, PDFImage>();
   for (const [k, v] of Object.entries(cores)) {
@@ -374,42 +512,79 @@ export async function gerarPdfCliente(
     page.drawCircle({ x: cx, y: A4H - cyTop, size: r, color: c, borderColor: hx("#94a3b8"), borderWidth: 0.7 });
 
   function header(): number {
-    const bh = 88;
+    const bh = 94;
     R(0, 0, A4W, bh, NAVY);
-    T("BIG TRICOT", ix, 44, 24, bld, WHITE);
-    T("HOME DECOR", ix + 2, 60, 8, reg, hx("#c7d2e0"));
-    T("Pedido", ix + 210, 40, 16, bld, WHITE);
-    T("Confirmação de pedido", ix + 210, 58, 10, reg, hx("#c7d2e0"));
-    TR(`Gerado em ${geradoEm()}`, ix + iw, 34, 8.5, reg, hx("#aab8cc"));
-    let y = bh + 26;
-    const info = (k: string, v: string, vc = INK) => {
-      T(k, ix, y, 8.5, bld, MUTE);
-      T(fit(v, bld, 10, iw - 140 - 4), ix + 140, y, 10, bld, vc);
-      y += 20;
-    };
-    info("CLIENTE", ped.cliente);
-    info("REPRESENTANTE", ped.representante);
-    if (ped.pedidos && ped.pedidos.trim()) {
-      info("CÓDIGO PAI", ped.numero);
-      info("PEDIDOS", ped.pedidos);
+    // Logotipo da marca (branco) no lugar do nome "BIG TRICOT".
+    if (logoImg) {
+      const lh = 42;
+      const lw = lh * LOGO_BT_ASPECT;
+      page.drawImage(logoImg, { x: ix, y: A4H - (bh - lh) / 2 - lh, width: lw, height: lh });
     } else {
-      info(ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
+      T("BIG TRICOT", ix, 44, 24, bld, WHITE);
+      T("HOME DECOR", ix + 2, 60, 8, reg, hx("#c7d2e0"));
     }
-    T("DATAS", ix, y, 8.5, bld, MUTE);
-    T(`Emissão: ${ped.emissao}`, ix + 140, y, 10, bld);
-    T(`Entrega: ${ped.entrega}`, ix + 320, y, 10, bld);
-    y += 20;
-    if (ped.observacao && ped.observacao.trim()) {
-      y += 6;
-      T("OBSERVAÇÃO", ix, y, 8.5, bld, MUTE);
-      const linhas = wrap(ped.observacao.trim().toUpperCase(), bld, 10.5, iw - 140);
-      for (const ln of linhas) {
-        T(ln, ix + 140, y, 10.5, bld, REDC);
-        y += 15;
+    T("Pedido", ix + 230, 44, 17, bld, WHITE);
+    T("Confirmação de pedido", ix + 230, 62, 10, reg, hx("#c7d2e0"));
+    TR(`Gerado em ${geradoEm()}`, ix + iw, 36, 8.5, reg, hx("#aab8cc"));
+    // Situação do pedido (só no PDF do catálogo) — pílula colorida no canto direito.
+    if (ped.statusLabel && ped.statusLabel.trim()) {
+      const st = ped.statusLabel.trim();
+      const sw = bld.widthOfTextAtSize(st, 9) + 18;
+      const ap = st.toLowerCase();
+      const bg = ap.includes("aprovad") || ap.includes("fatur") ? GREEN : ap.includes("cancel") ? hx("#b4232a") : GOLD;
+      const fg = bg === GOLD ? hx("#3a2f12") : WHITE;
+      R(ix + iw - sw, 50, sw, 17, bg);
+      T(st, ix + iw - sw + 9, 62, 9, bld, fg);
+    }
+
+    // Cabeçalho COMPACTO (2 colunas) — junta campos na mesma linha pra não ficar comprido.
+    let y = bh + 24;
+    const colR = ix + iw * 0.52; // início da coluna da direita
+    const vL = ix + 96; // x do valor na coluna esquerda
+    const vR = colR + 96; // x do valor na coluna direita
+    const lab = (k: string, x: number) => T(k, x, y, 8, bld, MUTE);
+    const rowFull = (k: string, v: string, c = INK) => {
+      lab(k, ix);
+      T(fit(v, bld, 10, ix + iw - vL), vL, y, 10, bld, c);
+      y += 18;
+    };
+    const rowPair = (k1: string, v1: string, k2: string, v2: string) => {
+      lab(k1, ix);
+      T(fit(v1, bld, 10, colR - vL - 12), vL, y, 10, bld);
+      if (k2) {
+        lab(k2, colR);
+        T(fit(v2, bld, 10, ix + iw - vR), vR, y, 10, bld);
       }
-      y += 5;
+      y += 18;
+    };
+    // Cliente (razão social quando houver) — linha inteira (costuma ser longo).
+    rowFull("CLIENTE", ped.razaoSocial && ped.razaoSocial.trim() ? ped.razaoSocial : ped.cliente);
+    const temCnpj = !!(ped.cnpj && ped.cnpj.trim());
+    const temTel = !!(ped.telefone && ped.telefone.trim());
+    if (temCnpj || temTel) rowPair("CNPJ", ped.cnpj || "—", temTel ? "TELEFONE" : "", ped.telefone || "");
+    if (ped.endereco && ped.endereco.trim()) rowFull("ENDEREÇO", ped.endereco);
+    const temCid = !!(ped.cidadeUf && ped.cidadeUf.trim());
+    const temCep = !!(ped.cep && ped.cep.trim());
+    if (temCid || temCep) rowPair("CIDADE", ped.cidadeUf || "—", temCep ? "CEP" : "", ped.cep || "");
+    if (ped.pedidos && ped.pedidos.trim()) {
+      rowPair("REPRESENTANTE", ped.representante, "CÓDIGO PAI", ped.numero);
+      rowFull("PEDIDOS", ped.pedidos);
     } else {
-      y += 8;
+      rowPair("REPRESENTANTE", ped.representante, ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
+    }
+    rowPair("EMISSÃO", ped.emissao, "ENTREGA", ped.entrega);
+    if (ped.formaPagamento && ped.formaPagamento.trim()) rowFull("FORMA DE PAGTO", ped.formaPagamento);
+    if (ped.observacao && ped.observacao.trim()) {
+      y += 4;
+      lab("OBSERVAÇÃO", ix);
+      const linhas = wrap(ped.observacao.trim().toUpperCase(), bld, 10, ix + iw - vL);
+      for (const ln of linhas) {
+        T(ln, vL, y, 10, bld, REDC);
+        y += 14;
+      }
+      y += 4;
+    } else {
+      y += 6;
     }
     T("ITENS DO PEDIDO", ix, y, 13, bld, NAVY);
     R(ix, y + 6, iw, 2.5, NAVY);
@@ -425,32 +600,47 @@ export async function gerarPdfCliente(
   }
 
   let y = header();
-  const totalPecas = blocos.reduce((a, b) => a + b.total, 0);
-  const totalValor = blocos.reduce((a, b) => a + (b.valorTotal || 0), 0);
+  // Agrupa mesmo modelo + mesma cor num card só (mesmo com tamanhos/códigos diferentes).
+  const grupos = agruparPorModeloCor(blocos);
+  const totalPecas = grupos.reduce((a, b) => a + b.total, 0);
+  const totalValor = grupos.reduce((a, b) => a + (b.valorTotal || 0), 0);
 
-  for (const b of blocos) {
-    const blocoH = 26 + 16 + b.sizes.length * 18 + 24;
+  for (const b of grupos) {
+    const prodImg = prodImgs.get((b.modelo || "").toUpperCase().trim());
+    const hh = prodImg ? 58 : 26; // card mais alto quando tem foto do produto
+    const blocoH = hh + 16 + b.sizes.length * 18 + 24;
     if (y + blocoH > A4H - 70) {
       page = doc.addPage([A4W, A4H]);
       y = headerCont();
     }
-    R(ix, y, iw, 26, GREY);
-    let tx = ix + 10;
-    T("Modelo:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Modelo:", 9.5) + 6;
-    T(b.modelo, tx, y + 17, 11, bld); tx += bld.widthOfTextAtSize(b.modelo, 11) + 14;
-    T("Ref:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Ref:", 9.5) + 5;
-    T(b.ref || "—", tx, y + 17, 10, bld); tx += bld.widthOfTextAtSize(b.ref || "—", 10) + 10;
-    if (b.comp) T("· " + b.comp, tx, y + 17, 8.5, bld, REDC);
+    R(ix, y, iw, hh, GREY);
+    // Miniatura do PRODUTO (foto do catálogo), recortada num quadrado com borda fina.
+    const t1 = prodImg ? ix + 60 : ix + 10; // onde começa o texto (abre espaço pra foto)
+    if (prodImg) {
+      const ps = 48;
+      drawRectImage(page, prodImg, ix + 6, A4H - (y + 6) - ps, ps, ps);
+      RB(ix + 6, y + 6, ps, ps, hx("#cfd4da"), 0.8);
+    }
+    const linhaModelo = prodImg ? y + 24 : y + 17;
+    let tx = t1;
+    T("Modelo:", tx, linhaModelo, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Modelo:", 9.5) + 6;
+    T(b.modelo, tx, linhaModelo, 11, bld); tx += bld.widthOfTextAtSize(b.modelo, 11) + 14;
+    T("Ref:", tx, linhaModelo, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Ref:", 9.5) + 5;
+    T(b.ref || "—", tx, linhaModelo, 10, bld); tx += bld.widthOfTextAtSize(b.ref || "—", 10) + 10;
+    if (b.comp) T("· " + b.comp, tx, linhaModelo, 8.5, bld, REDC);
+    // Cor: bolinha com a FOTO + nome. Quando tem foto do produto, vai na 2ª linha do card.
     const corKey = (b.cor || "").toUpperCase();
     const foto = fotos.get(corKey);
+    const corCy = prodImg ? y + 42 : y + 13;
+    const corX = prodImg ? t1 : qx;
     if (foto) {
-      page.drawImage(foto, { x: qx, y: A4H - (y + 7) - 13, width: 13, height: 13 });
+      drawCircleImage(page, foto, corX + 7, A4H - corCy, 7);
     } else {
-      Circle(qx + 6, y + 13, 6, hx(cores[corKey]?.hex || SW[corKey] || "#c9cdd3"));
+      Circle(corX + 7, corCy, 7, hx(cores[corKey]?.hex || SW[corKey] || "#c9cdd3"));
     }
-    T(b.cor, qx + 18, y + 17, 10.5, bld);
+    T(b.cor, corX + 20, corCy + 4, 10.5, bld);
     // cabeçalho da tabela
-    let ry = y + 26;
+    let ry = y + hh;
     T("PRODUTO / TAMANHO", ix + 10, ry + 13, 8, bld, MUTE);
     TR("QTD", cQtd + 26, ry + 13, 8, bld, MUTE);
     TR("VL UNIT.", cUnit, ry + 13, 8, bld, MUTE);
@@ -479,6 +669,10 @@ export async function gerarPdfCliente(
   R(ix, y + 6, iw, 34, NAVY);
   T(`TOTAL: ${totalPecas} ${totalPecas === 1 ? "peça" : "peças"}`, ix + 14, y + 28, 13, bld, WHITE);
   TR(`TOTAL: ${money(totalValor)}`, ix + iw - 14, y + 28, 15, bld, WHITE);
+  // Rodapé com o contato da Big (só no PDF do catálogo, quando houver WhatsApp).
+  if (ped.whatsapp && ped.whatsapp.trim()) {
+    T(`Dúvidas? Fale com a Big Tricot no WhatsApp: ${telBr(ped.whatsapp)}`, ix, y + 58, 9, reg, MUTE);
+  }
 
   return await doc.save();
 }
