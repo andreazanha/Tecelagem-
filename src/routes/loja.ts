@@ -614,10 +614,8 @@ loja.get("/rep-pedido-detalhe", async (c) => {
   let status: string, label: string;
   if (ped.sync === "cancelado") { status = "cancelado"; label = "Cancelado"; }
   else if (ped.sync === "rascunho") { status = "espera"; label = "Em espera"; }
-  else if (ped.sync === "enviado" || ped.sync === "pendente") {
-    if (foiAprovado) { status = "aprovado"; label = ped.erp_numero ? ("Aprovado · nº " + ped.erp_numero) : "Aprovado"; }
-    else { status = "syntech"; label = ped.erp_numero ? ("Enviado para a Big Tricot · nº " + ped.erp_numero) : "Enviado para a Big Tricot"; }
-  }
+  else if (foiAprovado || ped.sync === "faturado") { status = "aprovado"; label = ped.erp_numero ? ("Aprovado · nº " + ped.erp_numero) : "Aprovado"; }
+  else if (ped.sync === "enviado" || ped.sync === "pendente") { status = "syntech"; label = ped.erp_numero ? ("Enviado para a Big Tricot · nº " + ped.erp_numero) : "Enviado para a Big Tricot"; }
   else if (ped.sync === "erro") { status = "erro"; label = "Com erro — a Big resolve"; }
   else { status = "aguardando"; label = "Enviado · aguardando a Big"; }
   const { results: itensRaw } = await c.env.DB.prepare(
@@ -996,11 +994,12 @@ loja.get("/pedido-pdf/:id", async (c) => {
   const statusLabel =
     ped.sync === "cancelado" ? "Cancelado"
     : ped.sync === "rascunho" ? "Em espera"
-      : (ped.sync === "enviado" || ped.sync === "pendente") ? ((aprovadoDeVerdade ? "Aprovado" : "Enviado para a Big Tricot") + nSuf)
-        : ped.sync === "erro" ? "Em processamento"
-          : Number(ped.liberado) === 1 ? "Enviado para a Big Tricot"
-            : ped.fase === "enviado" ? "Aguardando confirmacao"
-              : "Pedido recebido";
+      : (aprovadoDeVerdade || ped.sync === "faturado") ? ("Aprovado" + nSuf)
+        : (ped.sync === "enviado" || ped.sync === "pendente") ? ("Enviado para a Big Tricot" + nSuf)
+          : ped.sync === "erro" ? "Em processamento"
+            : Number(ped.liberado) === 1 ? "Enviado para a Big Tricot"
+              : ped.fase === "enviado" ? "Aguardando confirmacao"
+                : "Pedido recebido";
   // Logotipo (versão branca) pro cabeçalho do PDF — servido como asset estático.
   let logoBytes: Uint8Array | undefined;
   try {
@@ -1106,7 +1105,7 @@ loja.get("/meus-pedidos", async (c) => {
   // enviado→confirmado, erro→em processamento, resto→recebido. 'status' é a chave pra cor.
   // "enviado" = está no Syntech AGUARDANDO a Big aprovar — NÃO é "Aprovado" ainda. Só vira
   // "Aprovado" quando o pedido aprovado RETORNA da integração (aprovado_erp_em preenchido).
-  const statusKey = (sync: string, aprovado: string) => sync === "cancelado" ? "cancelado" : sync === "rascunho" ? "aberto" : (sync === "enviado" || sync === "pendente") ? (String(aprovado || "").trim() ? "producao" : "analise") : sync === "erro" ? "processando" : "recebido";
+  const statusKey = (sync: string, aprovado: string) => sync === "cancelado" ? "cancelado" : sync === "rascunho" ? "aberto" : (String(aprovado || "").trim() || sync === "faturado") ? "producao" : (sync === "enviado" || sync === "pendente") ? "analise" : sync === "erro" ? "processando" : "recebido";
   // "aberto" = carrinho que o cliente montou e NÃO finalizou (expira sozinho; não é pedido feito).
   const statusLabel = (st: string) => st === "aberto" ? "Carrinho não finalizado" : st === "producao" ? "Aprovado" : st === "analise" ? "Enviado para a Big Tricot" : st === "cancelado" ? "Cancelado" : st === "processando" ? "Em processamento" : "Pedido recebido";
   const pedidos = peds.map((p) => {
