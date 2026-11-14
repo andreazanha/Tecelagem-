@@ -2,6 +2,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
 import qrcode from "qrcode-generator";
 import type { Bloco, TasselRomaneio, RomaneioCostura } from "./classificar";
+import { LOGO_BT_PNG, LOGO_BT_ASPECT } from "./brand";
 
 const A4W = 595.28;
 const A4H = 841.89;
@@ -309,7 +310,16 @@ export async function gerarPdfParte(
 }
 
 // ── Romaneio de TASSEL — 3 vias na mesma página, só a quantidade total ───────
-const money = (v: number) => "R$ " + v.toFixed(2).replace(".", ",");
+const money = (v: number) => {
+  // "R$ 1.465,60" — com separador de milhar, pra ficar profissional no PDF do cliente.
+  const [ip, dp] = Math.abs(Math.round(v * 100) / 100).toFixed(2).split(".");
+  let out = "";
+  for (let i = 0; i < ip.length; i++) {
+    if (i > 0 && (ip.length - i) % 3 === 0) out += ".";
+    out += ip[i];
+  }
+  return (v < 0 ? "-" : "") + "R$ " + out + "," + dp;
+};
 
 // Desenha um QR Code com o canto SUPERIOR-DIREITO em (xRight, yTop) — usado no
 // romaneio para "dar baixa" pelo leitor embutido (lê o token e marca o retorno).
@@ -343,6 +353,12 @@ export async function gerarPdfCliente(
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
   const bld = await doc.embedFont(StandardFonts.HelveticaBold);
+  let logoImg: PDFImage | null = null;
+  try {
+    logoImg = await doc.embedPng(LOGO_BT_PNG);
+  } catch {
+    logoImg = null; // sem logo: cai no texto "BIG TRICOT"
+  }
 
   const fotos = new Map<string, PDFImage>();
   for (const [k, v] of Object.entries(cores)) {
@@ -379,42 +395,68 @@ export async function gerarPdfCliente(
     page.drawCircle({ x: cx, y: A4H - cyTop, size: r, color: c, borderColor: hx("#94a3b8"), borderWidth: 0.7 });
 
   function header(): number {
-    const bh = 88;
+    const bh = 94;
     R(0, 0, A4W, bh, NAVY);
-    T("BIG TRICOT", ix, 44, 24, bld, WHITE);
-    T("HOME DECOR", ix + 2, 60, 8, reg, hx("#c7d2e0"));
-    T("Pedido", ix + 210, 40, 16, bld, WHITE);
-    T("Confirmação de pedido", ix + 210, 58, 10, reg, hx("#c7d2e0"));
-    TR(`Gerado em ${geradoEm()}`, ix + iw, 34, 8.5, reg, hx("#aab8cc"));
-    let y = bh + 26;
-    const info = (k: string, v: string, vc = INK) => {
-      T(k, ix, y, 8.5, bld, MUTE);
-      T(fit(v, bld, 10, iw - 140 - 4), ix + 140, y, 10, bld, vc);
-      y += 20;
-    };
-    info("CLIENTE", ped.cliente);
-    info("REPRESENTANTE", ped.representante);
-    if (ped.pedidos && ped.pedidos.trim()) {
-      info("CÓDIGO PAI", ped.numero);
-      info("PEDIDOS", ped.pedidos);
+    // Logotipo da marca (branco) no lugar do nome "BIG TRICOT".
+    if (logoImg) {
+      const lh = 42;
+      const lw = lh * LOGO_BT_ASPECT;
+      page.drawImage(logoImg, { x: ix, y: A4H - (bh - lh) / 2 - lh, width: lw, height: lh });
     } else {
-      info(ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
+      T("BIG TRICOT", ix, 44, 24, bld, WHITE);
+      T("HOME DECOR", ix + 2, 60, 8, reg, hx("#c7d2e0"));
     }
-    T("DATAS", ix, y, 8.5, bld, MUTE);
-    T(`Emissão: ${ped.emissao}`, ix + 140, y, 10, bld);
-    T(`Entrega: ${ped.entrega}`, ix + 320, y, 10, bld);
-    y += 20;
-    if (ped.observacao && ped.observacao.trim()) {
-      y += 6;
-      T("OBSERVAÇÃO", ix, y, 8.5, bld, MUTE);
-      const linhas = wrap(ped.observacao.trim().toUpperCase(), bld, 10.5, iw - 140);
-      for (const ln of linhas) {
-        T(ln, ix + 140, y, 10.5, bld, REDC);
-        y += 15;
+    T("Pedido", ix + 230, 44, 17, bld, WHITE);
+    T("Confirmação de pedido", ix + 230, 62, 10, reg, hx("#c7d2e0"));
+    TR(`Gerado em ${geradoEm()}`, ix + iw, 36, 8.5, reg, hx("#aab8cc"));
+
+    // Cabeçalho COMPACTO (2 colunas) — junta campos na mesma linha pra não ficar comprido.
+    let y = bh + 24;
+    const colR = ix + iw * 0.52; // início da coluna da direita
+    const vL = ix + 96; // x do valor na coluna esquerda
+    const vR = colR + 96; // x do valor na coluna direita
+    const lab = (k: string, x: number) => T(k, x, y, 8, bld, MUTE);
+    const rowFull = (k: string, v: string, c = INK) => {
+      lab(k, ix);
+      T(fit(v, bld, 10, ix + iw - vL), vL, y, 10, bld, c);
+      y += 18;
+    };
+    const rowPair = (k1: string, v1: string, k2: string, v2: string) => {
+      lab(k1, ix);
+      T(fit(v1, bld, 10, colR - vL - 12), vL, y, 10, bld);
+      if (k2) {
+        lab(k2, colR);
+        T(fit(v2, bld, 10, ix + iw - vR), vR, y, 10, bld);
       }
-      y += 5;
+      y += 18;
+    };
+    // Cliente (razão social quando houver) — linha inteira (costuma ser longo).
+    rowFull("CLIENTE", ped.razaoSocial && ped.razaoSocial.trim() ? ped.razaoSocial : ped.cliente);
+    const temCnpj = !!(ped.cnpj && ped.cnpj.trim());
+    const temTel = !!(ped.telefone && ped.telefone.trim());
+    if (temCnpj || temTel) rowPair("CNPJ", ped.cnpj || "—", temTel ? "TELEFONE" : "", ped.telefone || "");
+    if (ped.endereco && ped.endereco.trim()) rowFull("ENDEREÇO", ped.endereco);
+    const temCid = !!(ped.cidadeUf && ped.cidadeUf.trim());
+    const temCep = !!(ped.cep && ped.cep.trim());
+    if (temCid || temCep) rowPair("CIDADE", ped.cidadeUf || "—", temCep ? "CEP" : "", ped.cep || "");
+    if (ped.pedidos && ped.pedidos.trim()) {
+      rowPair("REPRESENTANTE", ped.representante, "CÓDIGO PAI", ped.numero);
+      rowFull("PEDIDOS", ped.pedidos);
     } else {
-      y += 8;
+      rowPair("REPRESENTANTE", ped.representante, ped.numero.includes(",") ? "PEDIDOS" : "PEDIDO", ped.numero);
+    }
+    rowPair("EMISSÃO", ped.emissao, "ENTREGA", ped.entrega);
+    if (ped.observacao && ped.observacao.trim()) {
+      y += 4;
+      lab("OBSERVAÇÃO", ix);
+      const linhas = wrap(ped.observacao.trim().toUpperCase(), bld, 10, ix + iw - vL);
+      for (const ln of linhas) {
+        T(ln, vL, y, 10, bld, REDC);
+        y += 14;
+      }
+      y += 4;
+    } else {
+      y += 6;
     }
     T("ITENS DO PEDIDO", ix, y, 13, bld, NAVY);
     R(ix, y + 6, iw, 2.5, NAVY);
