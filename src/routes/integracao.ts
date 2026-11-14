@@ -2425,8 +2425,24 @@ export async function gerarCatalogoSite(env: Env): Promise<{
         const medida = comp || (pk.variacao ? tituloCaso(pk.variacao) : "Único");
         const fam = pk.familia ? tituloCaso(pk.familia) : (prod.nome || prod.id);
         const l0 = (prod.grupos[0] && prod.grupos[0].linhas[0]) || null;
+        // PREÇO DO KIT NA LOJA = SOMA EXATA dos preços reais das peças (atacado por tamanho),
+        // do Syntech — MESMA conta do envio pro Syntech (desmembrarKits). Assim loja e Syntech
+        // NUNCA divergem. Se faltar preço de alguma peça, cai no preço do cadastro do kit (o
+        // ENVIO pro Syntech é que PARA; o catálogo nunca fica em branco).
+        let precoKit = 0, faltouPreco = false;
+        for (const it of itensR) {
+          const cinfo = compInfo.get(it.comp);
+          const tcod = normTamKey(it.tam);
+          const tt = cinfo?.tamanhos?.find((x) => normTamKey(x.tamanho || "") === tcod || normTamKey(x.medida || "") === tcod);
+          const pUnit = Number(tt?.atacado) || Number(tt?.varejo) || 0;
+          if (!(pUnit > 0)) faltouPreco = true;
+          precoKit += pUnit * (Number(it.qtd) || 1);
+        }
+        const linhaKit = (precoKit > 0 && !faltouPreco)
+          ? { ...(l0 || { id: `${prod.id}-0`, cod: prod.id, id_tamanho: "" }), sul: Math.round(precoKit * 100) / 100, norte: Math.round(precoKit * 100) / 100 }
+          : l0;
         const g = porFamilia.get(fam) || { fam, vars: [] };
-        g.vars.push({ prod, medida, vivo, pecas, variacao: pk.variacao, temEnch, almofada: pk.almofada, linha: l0, estCor, temCor });
+        g.vars.push({ prod, medida, vivo, pecas, variacao: pk.variacao, temEnch, almofada: pk.almofada, linha: linhaKit, estCor, temCor });
         porFamilia.set(fam, g);
       }
 
