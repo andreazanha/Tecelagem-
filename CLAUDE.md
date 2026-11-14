@@ -159,15 +159,23 @@ Frentes abertas / em evolução (atualizar conforme avança):
 
 - **Etiquetas de código de barras / impressão térmica** (`src/routes/etiquetas.ts`).
 - **Expedição e estoque por bipagem** (ler código de barras pra dar entrada/saída) — `expedicao.ts`.
-- **Reorganização dos menus** (navegação do sistema).
 - **Central de avisos no WhatsApp** (notificações pra equipe/cliente).
 - **Chat interno por setor** (`chat.ts`, `setores.ts`).
 
-Já no ar recentemente (loja):
-- Botão do cliente virou **"📤 Enviar para a Big"**; **some** Enviar/Cancelar depois que o pedido
-  vai pro Syntech (status "Enviado para a Big Tricot") — tanto no **cliente** quanto no
-  **representante** (cancelar na loja não cancelaria no Syntech).
-- Ponte lendo os status **10/20/30** e com **auto-atualização** mais confiável.
+Já no ar recentemente:
+- **Menus reorganizados** (`web/src/components/Layout.tsx` + guards de rota em `web/src/main.tsx`):
+  - Novo menu **"Comercial"** (equipe): Cadastros da Loja, Abrir a loja, Representantes, Abrir área
+    do representante. Liberado por permissão `comercial` **ou** `representantes` (tela Acessos).
+  - Menu **"Gestão" trancado só pro admin** — o grupo some pra equipe no menu, e as rotas do Gestão
+    são `admin` (nem pela URL a equipe entra). Quem é admin = 👑 na tela **Acessos**.
+  - **PCP**: "Criar pedido" no topo; "Pedidos do ERP" → **"Pedidos Syntech"**. **Produção**:
+    "Separação Pronta Entrega" em 2º. CRM, Estoque e Configurações: não mexidos.
+- **Placar de vendas pra fora** (`src/routes/placar.ts`): `GET /api/placar` **só-de-leitura** (total
+  de vendas/pedidos rumo à meta), com **chave própria** (só o hash SHA-256 fica no código). Feito pra
+  uma ferramenta externa (ex.: Ryze) ler o placar sem acessar o resto. Nunca dar a chave da ponte.
+- **Loja**: botão do cliente "📤 Enviar para a Big"; Enviar/Cancelar **somem** depois que o pedido
+  vai pro Syntech ("Enviado para a Big Tricot") — no cliente e no representante.
+- **Ponte** lendo os status **10/20/30** e com **auto-atualização** mais confiável.
 
 ---
 
