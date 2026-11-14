@@ -134,16 +134,40 @@ async function posProcessar(env: Env, pedidoId: string, autor?: Autor) {
   await baixarPorPedido(env, pedidoId, await consumoDoPedido(env, pedidoId), autor).catch(() => {});
 }
 
-// TRAVA KIT/ESTOQUE: diz se um número do ERP é, na verdade, uma venda da LOJA (canal 'loja_b2b').
-// Venda de loja = venda de ESTOQUE (kit/catálogo) e NUNCA entra na produção/tecelagem — nem pela
-// entrada automática, nem quando alguém "dá prosseguimento" num pedido parado na fila do PCP.
-async function ehVendaDeLoja(env: Env, numeroErp: string | number | null): Promise<boolean> {
-  const n = String(numeroErp ?? "").trim();
-  if (!n) return false;
-  const r = await env.DB.prepare(
-    "SELECT 1 AS x FROM pedidos WHERE canal='loja_b2b' AND CAST(erp_numero AS TEXT)=CAST(? AS TEXT) LIMIT 1"
-  ).bind(n).first<{ x: number }>().catch(() => null);
-  return !!r;
+// Quando uma VENDA da loja FATURA, cria o registro de conferência em "Pedidos Syntech"
+// (idempotente por numero_erp) — pra você aprovar/juntar e seguir pra SEPARAÇÃO.
+// BLINDAGEM DO CELINE (regra 3.2 do manual): código começa com KT ou ED → kit=1 (vai pra
+// SEPARAÇÃO, nunca tecelagem); código sem sigla (número) → produção (tecelagem). Entra como
+// VENDA (reposicao=0). O estoque não baixa errado: kit não tem ficha → consumo = 0.
+async function garantirConferenciaVenda(env: Env, lojaId: string): Promise<boolean> {
+  const ped = await env.DB.prepare(
+    "SELECT erp_numero, COALESCE(cliente_nome,'') AS cliente_nome, COALESCE(vendedor,'') AS vendedor, data_pedido FROM pedidos WHERE id=? AND canal='loja_b2b' LIMIT 1"
+  ).bind(lojaId).first<{ erp_numero: number | null; cliente_nome: string; vendedor: string; data_pedido: string | null }>().catch(() => null);
+  if (!ped || ped.erp_numero == null) return false;
+  const num = String(ped.erp_numero);
+  const existe = await env.DB.prepare(
+    "SELECT 1 AS x FROM pedidos WHERE CAST(numero_erp AS TEXT)=CAST(? AS TEXT) AND COALESCE(erp_integracao,0)=1 LIMIT 1"
+  ).bind(num).first().catch(() => null);
+  if (existe) return false;
+  const itensRaw = (await env.DB.prepare(
+    "SELECT produto, ref, cor_grade, tamanho, erp_tamanho, qtd, COALESCE(kit,0) AS kit, cod_cor FROM pedido_itens WHERE pedido_id=? ORDER BY rowid"
+  ).bind(lojaId).all<{ produto: string | null; ref: string | null; cor_grade: string | null; tamanho: string | null; erp_tamanho: string | null; qtd: number | null; kit: number; cod_cor: number | null }>().catch(() => ({ results: [] }))).results;
+  if (!itensRaw.length) return false;
+  const confId = uid();
+  const stmts: D1PreparedStatement[] = [
+    env.DB.prepare(
+      "INSERT INTO pedidos (id, numero_erp, cliente_nome, vendedor, tipo, data_pedido, status, erp_integracao, reposicao, bloqueado, created_at) VALUES (?,?,?,?, 'pedido', ?, 'aguardando_aprovacao', 1, 0, 0, datetime('now'))"
+    ).bind(confId, num, ped.cliente_nome, ped.vendedor, ped.data_pedido),
+  ];
+  for (const it of itensRaw) {
+    const sigla = String(it.ref || "").trim().toUpperCase();
+    const vaiSeparar = Number(it.kit) === 1 || sigla.startsWith("KT") || sigla.startsWith("ED");
+    stmts.push(env.DB.prepare(
+      "INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, erp_tamanho, qtd, kit, cod_cor, parte) VALUES (?,?,?,?,?,?,?,?,?,?, 'unico')"
+    ).bind(uid(), confId, it.produto, it.ref, it.cor_grade, it.tamanho, it.erp_tamanho, it.qtd, vaiSeparar ? 1 : 0, it.cod_cor));
+  }
+  await env.DB.batch(stmts);
+  return true;
 }
 
 type ItemIn = { produto?: string; ref?: string; cor?: string; tamanho?: string; qtd?: number | string; preco?: number | string };
@@ -593,19 +617,11 @@ integracao.post("/pendentes/:id/aceitar", async (c) => {
 integracao.post("/pendentes/:id/aprovar", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const id = c.req.param("id");
-  // TRAVA KIT/ESTOQUE: se este pedido do ERP é, na verdade, uma venda da LOJA (kit/catálogo), ele é
-  // VENDA DE ESTOQUE e NÃO pode entrar na produção. Tira ele da fila e avisa — sem produzir nem
-  // baixar estoque de produção. (Protege contra "restos" que entraram antes do conserto da entrada.)
-  const alvo = await c.env.DB.prepare(
-    "SELECT numero_erp FROM pedidos WHERE id=? AND COALESCE(erp_integracao,0)=1 AND status IN ('aguardando_aprovacao','aguardando_explosao') LIMIT 1"
-  ).bind(id).first<{ numero_erp: string | null }>().catch(() => null);
-  if (alvo && await ehVendaDeLoja(c.env, alvo.numero_erp)) {
-    await c.env.DB.batch([
-      c.env.DB.prepare("DELETE FROM pedido_itens WHERE pedido_id=?").bind(id),
-      c.env.DB.prepare("DELETE FROM pedidos WHERE id=? AND COALESCE(erp_integracao,0)=1 AND status IN ('aguardando_aprovacao','aguardando_explosao')").bind(id),
-    ]).catch(() => {});
-    return c.json({ error: "venda_de_estoque", msg: "Este pedido é venda de estoque (kit/catálogo) e não entra na produção. Ele foi removido da fila." }, 409);
-  }
+  // VENDA DA LOJA em "Pedidos Syntech": agora PODE ser aprovada/explodida. O roteamento segue a
+  // REGRA DO CÓDIGO (CLAUDE.md 3.2): item kit (KT/ED → kit=1) vai pra SEPARAÇÃO; código sem sigla
+  // (número) vai pra tecelagem. O kit NUNCA cai na tecelagem (blindagem do Celine) e o estoque não
+  // baixa errado (kit não tem ficha de produção → consumo = 0). Por isso a trava antiga, que APAGAVA
+  // a venda da fila, foi removida daqui.
   const r = await c.env.DB.prepare(
     "UPDATE pedidos SET status = 'novo', bloqueado = 1 WHERE id = ? AND COALESCE(erp_integracao,0) = 1 AND status IN ('aguardando_aprovacao','aguardando_explosao')"
   ).bind(id).run();
@@ -626,13 +642,8 @@ integracao.post("/aprovar-lote", async (c) => {
   const ids = Array.isArray(b.ids) ? b.ids.filter((x): x is string => typeof x === "string") : [];
   if (ids.length < 2) return c.json({ error: "selecione_dois_ou_mais" }, 400);
 
-  // TRAVA KIT/ESTOQUE: nenhum pedido de venda de loja (kit/catálogo) pode entrar na produção pelo lote.
-  for (const pid of ids) {
-    const p = await c.env.DB.prepare("SELECT numero_erp FROM pedidos WHERE id=? AND COALESCE(erp_integracao,0)=1 LIMIT 1").bind(pid).first<{ numero_erp: string | null }>().catch(() => null);
-    if (p && await ehVendaDeLoja(c.env, p.numero_erp)) {
-      return c.json({ error: "venda_de_estoque_no_lote", msg: "Um ou mais pedidos selecionados são venda de estoque (kit/catálogo) e não entram na produção. Desmarque-os e tente de novo." }, 409);
-    }
-  }
+  // VENDA DA LOJA no lote: também PODE ser juntada/explodida (roteamento pelo código — CLAUDE.md 3.2:
+  // KT/ED → separação; número → tecelagem). A trava antiga que bloqueava o lote foi removida.
 
   const ph = ids.map(() => "?").join(",");
   const { results: peds } = await c.env.DB.prepare(
@@ -3287,6 +3298,7 @@ integracao.post("/loja-pedidos-status", async (c) => {
   const ST_FATURADO = (await statusFaturadoCfg(c.env)) ?? 30;
   const stmts: D1PreparedStatement[] = [];
   let soltas = 0, aprovados = 0;
+  const faturados: string[] = [];
   for (const it of itens) {
     const id = String(it.id || "").trim();
     if (!id) continue;
@@ -3310,10 +3322,16 @@ integracao.post("/loja-pedidos-status", async (c) => {
       stmts.push(c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id IN (SELECT id FROM pedidos WHERE id=? AND canal='loja_b2b')").bind(id));
       stmts.push(c.env.DB.prepare("UPDATE pedidos SET erp_sync_status=? WHERE id=? AND canal='loja_b2b' AND COALESCE(erp_sync_status,'')='enviado'").bind(cancelado ? "cancelado" : "faturado", id));
       soltas++;
+      if (faturado) faturados.push(id); // vai aparecer em "Pedidos Syntech" (separação) logo abaixo
     }
   }
   if (stmts.length) await c.env.DB.batch(stmts);
-  return c.json({ ok: true, atualizados: itens.length, reservas_soltas: soltas, aprovados });
+  // VENDA que FATUROU → aparece em "Pedidos Syntech" pra conferência/separação (idempotente).
+  let em_conferencia = 0;
+  for (const id of faturados) {
+    try { if (await garantirConferenciaVenda(c.env, id)) em_conferencia++; } catch { /* não quebra a resposta pra ponte */ }
+  }
+  return c.json({ ok: true, atualizados: itens.length, reservas_soltas: soltas, aprovados, em_conferencia });
 });
 
 // ── Fase S: CLIENTES da loja pra ponte criar no Syntech ─────────────────────────

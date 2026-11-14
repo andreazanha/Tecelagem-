@@ -81,6 +81,15 @@ Confirmado no código e em `FLUXO-PEDIDO-ERP.md`. A ordem é esta:
 - Na dúvida se algo "escreve no Syntech", **não faça** e **pergunte ao André** antes.
 
 ### 3.2 O que vira PRODUÇÃO e o que é ESTOQUE
+- **🏷️ ROTEAMENTO POR CÓDIGO (regra do André, DECISIVA):** o que separa "produzir" de "pegar do
+  estoque" é o **começo do CÓDIGO** do item. Código que começa com **KT** (kit) ou **ED** → vai pra
+  **SEPARAÇÃO / estoque** (NUNCA produz). Qualquer outro código → **PRODUZ na tecelagem**.
+  Ex.: `1012` (Alana) → produz; `KT1012` / `ED1012` → separação. **É a blindagem do Celine:** kit
+  (KT/ED) nunca cai na tecelagem por engano, nem que a classificação por nome/flag falhe.
+  - **⚠️ A regra acima é do PEDIDO DE VENDA** (o que o cliente/representante compra e entra em
+    "Pedidos Syntech"). **Na REPOSIÇÃO é o CONTRÁRIO:** aí o kit **SIM** vai pra **TECELAGEM** (produz
+    pra repor o estoque). Ou seja: o mesmo kit é **separação** quando é VENDA e **tecelagem** quando é
+    REPOSIÇÃO. É o **tipo do pedido** (venda × reposição) + o **código** que decidem.
 - **Item normal da loja (manta, capa, almofada) → vai pra PRODUÇÃO (tecelagem)** sempre que é
   pedido pelo cliente ou representante. É o caminho normal (loja → Syntech → Big aprova → volta →
   produção, seção 2).
@@ -213,6 +222,14 @@ Frentes abertas / em evolução (atualizar conforme avança):
 - **Chat interno por setor** (`chat.ts`, `setores.ts`).
 
 Já no ar recentemente:
+- **Volta do pedido da loja consertada** (`integracao.ts` `/loja-pedidos-status` + `web/src/pages/LojaPedidos.tsx`):
+  a ponte lê o status pelo **NÚMERO** (não por data — fim do furo do carimbo de meia-noite); o cliente
+  passa a ver "Aprovado"/"Faturado"/"Cancelado" e a tela "Pedidos da Loja" mostra o status real com a
+  hora (status oficiais 1/5/10/20/30 — ver 3.5).
+- **Venda da loja → "Pedidos Syntech" → separação:** quando a venda **FATURA**, ela aparece em
+  "Pedidos Syntech" pra conferência (`garantirConferenciaVenda` em `integracao.ts`). Roteia pela regra
+  do **código** (3.2): `KT`/`ED` → separação (kit=1); número → tecelagem. As 2 travas antigas que
+  apagavam a venda ao aprovar foram removidas.
 - **Menus reorganizados** (`web/src/components/Layout.tsx` + guards de rota em `web/src/main.tsx`):
   - Novo menu **"Comercial"** (equipe): Cadastros da Loja, Abrir a loja, Representantes, Abrir área
     do representante. Liberado por permissão `comercial` **ou** `representantes` (tela Acessos).
