@@ -128,8 +128,24 @@ Confirmado no código e em `FLUXO-PEDIDO-ERP.md`. A ordem é esta:
   **A doc NÃO diz** se o Syntech atualiza o DATA_ALT_REG do pedido quando ele é aprovado/faturado —
   por isso a "volta por data" é furada (o carimbo de meia-noite fica atrás da marca-d'água e some).
 - ⚠️ **REGRA:** nunca deduza como a VOLTA funciona a partir do código — ela **não tem fonte
-  oficial**. Qualquer dúvida sobre status ou numeração do pedido no Syntech → **pergunte ao Syntech
-  (Sergio), não chute.**
+  oficial** no PDF. Dúvida sobre status/numeração do pedido no Syntech → confira a seção 3.5 (resposta
+  oficial do Sergio); se não estiver lá, **pergunte ao Syntech, não chute.**
+
+### 3.5 A VOLTA do pedido — resposta oficial do Syntech (Sergio), que o PDF NÃO cobria
+> Confirmado pelo **Sergio (Syntech)**. É a **fonte da verdade da VOLTA** (o PDF só cobria a IDA).
+
+- **`DATA_ALT_REG`:** o Syntech **atualiza** esse campo sempre que o pedido é registrado ou alterado
+  (resolve a dúvida que ficou aberta na 3.4). Mesmo assim, **não** rastreie a volta por data — veja abaixo.
+- **Status do pedido:** a tabela `PEDIDO` tem o campo `STATUS` (liga na tabela `PEDIDO_STATUS`).
+  Códigos oficiais: **1 = Registrado · 5 = Cancelado · 10 = Aprovado · 20 = Separado · 30 = Faturado.**
+- **✅ Jeito CERTO de rastrear o status:** ler a tabela **`PEDIDO_RASTR`**, linkando pelo **NÚMERO** do
+  pedido (o mesmo número que a `APP_PEDIDO_INSERT_V2` devolveu). Lá aparece o `STATUS` e a **DATA com
+  data E HORA** de registro de cada status. ⇒ Rastrear por NÚMERO aqui **não depende de `DATA_ALT_REG`** —
+  acaba o furo do carimbo de meia-noite.
+- **Item a item:** a tabela `ITENS_PEDIDO` tem `QUANT_PED` e `QUANT_ENTR` (a diferença = o que falta
+  entregar) e o campo `BAIXADO` (`' '` = normal; `'B'` = item não será entregue, foi baixado).
+- **Regra de ouro da VOLTA:** rastreie o pedido da loja **pelo NÚMERO na `PEDIDO_RASTR`**, nunca pela
+  data. A tela "Pedidos da Loja" tem que mostrar **todos** os status (inclusive Faturado e Cancelado).
 
 ---
 
