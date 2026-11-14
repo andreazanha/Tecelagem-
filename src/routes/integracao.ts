@@ -3089,18 +3089,20 @@ async function desmembrarKits(env: Env, itensRaw: ItemLoja[]): Promise<ItemLoja[
         } catch { /* usa cabeçalho */ }
         return Number(cp.preco_atacado || cp.preco_varejo || 0);
       };
-      let somaPrecos = 0; for (const r of rec) somaPrecos += precoLinha(r.componente_ref, r.tamanho) * (Number(r.quantidade) || 1);
-      const usarPreco = somaPrecos > 0;
-      const baseDe = (r: { componente_ref: string; tamanho: string | null }) => (usarPreco ? precoLinha(r.componente_ref, r.tamanho) : 1);
-      let somaBase = 0; for (const r of rec) somaBase += baseDe(r) * (Number(r.quantidade) || 1);
-      const fator = somaBase > 0 ? (Number(it.valor_unit) || 0) / somaBase : 0;
+      // REGRA (confirmada pelo André): o preço do kit é a SOMA EXATA dos preços REAIS das peças
+      // (atacado por tamanho), lidos do Syntech. NUNCA aplicar fator nem espremer o preço.
+      // Se uma peça não tiver preço no Syntech, PARA e avisa — nunca chuta.
       for (const r of rec) {
         const cp = cmap.get(r.componente_ref);
         const tcod = (String(r.tamanho || "").trim() || "UN").slice(0, 10);
+        const precoPeca = precoLinha(r.componente_ref, r.tamanho);   // preço REAL do Syntech (atacado/tamanho)
+        if (!(precoPeca > 0)) {
+          throw new Error(`PRECO_NAO_ENCONTRADO: peça ${r.componente_ref} (tamanho ${tcod}) do kit ${it.ref} não tem preço no Syntech. PAREI — não vou chutar.`);
+        }
         out.push({
           ref: r.componente_ref, produto: cp?.nome || r.componente_ref, cor_grade: it.cor_grade, cod_cor: it.cod_cor,
           tamanho: tcod, erp_tamanho: tcod, qtd: (Number(r.quantidade) || 1) * (Number(it.qtd) || 0),
-          valor_unit: Math.round(baseDe(r) * fator * 100) / 100,
+          valor_unit: Math.round(precoPeca * 100) / 100,   // preço CHEIO da peça, sem fator
         });
       }
     } else {
@@ -3163,14 +3165,20 @@ integracao.get("/pedidos-para-erp", async (c) => {
       ORDER BY p.created_at LIMIT 20`
   ).all<{ id: string; cliente_nome: string | null; cliente_cnpj: string | null; valor_total: number | null; data_pedido: string | null; cod_cli: string | null; cod_guia: string | null }>();
   const pedidos = [];
+  const erros: { id: string; cliente: string | null; erro: string }[] = [];
   for (const p of peds) {
     const { results: itensRaw } = await c.env.DB.prepare(
       "SELECT ref, erp_tamanho, cod_cor, qtd, valor_unit, produto, cor_grade FROM pedido_itens WHERE pedido_id = ? ORDER BY rowid"
     ).bind(p.id).all<ItemLoja>();
-    const itens = await desmembrarKits(c.env, itensRaw);   // kit vira as peças aqui
-    pedidos.push({ id: p.id, cliente_nome: p.cliente_nome, cnpj: p.cliente_cnpj, cod_cli: p.cod_cli, cod_guia: p.cod_guia, valor_total: p.valor_total, data: p.data_pedido, itens });
+    try {
+      const itens = await desmembrarKits(c.env, itensRaw);   // kit vira as peças aqui (preço REAL do Syntech)
+      pedidos.push({ id: p.id, cliente_nome: p.cliente_nome, cnpj: p.cliente_cnpj, cod_cli: p.cod_cli, cod_guia: p.cod_guia, valor_total: p.valor_total, data: p.data_pedido, itens });
+    } catch (e) {
+      // Preço de peça não encontrado no Syntech: NÃO manda o pedido (nunca chuta). Fica pendente e avisa.
+      erros.push({ id: p.id, cliente: p.cliente_nome, erro: (e as Error).message });
+    }
   }
-  return c.json({ modo, pedidos });
+  return c.json({ modo, pedidos, erros });
 });
 
 // A PONTE confirma que gravou no ERP (auth token): guarda o NUMERO do Syntech e,

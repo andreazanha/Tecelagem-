@@ -92,6 +92,13 @@ Confirmado no código e em `FLUXO-PEDIDO-ERP.md`. A ordem é esta:
   tem cadastro próprio no Syntech, com o enchimento já no preço) + a **PESEIRA** — **mas o ESTOQUE é
   controlado pela CAPA** (a almofada só diz que tem enchimento; não gera outro item, continua sendo a
   capa). Isso é **regra geral dos produtos**. Ver `src/loja-estoque.ts` e `src/routes/integracao.ts`.
+- **💰 PREÇO DO KIT (regra INQUEBRÁVEL, confirmada pelo André): o preço do kit é a SOMA EXATA dos
+  preços REAIS das peças (atacado por tamanho) lidos do Syntech. NUNCA aplicar fator nem "espremer"
+  o preço.** Se uma peça não tiver preço no Syntech, o sistema **PARA e avisa — nunca chuta**
+  (o pedido fica pendente, não vai com preço inventado). Onde vive: `desmembrarKits` em
+  `src/routes/integracao.ts` usa `precoLinha` (preço por tamanho do espelho `erp_produtos.tamanhos`,
+  que a ponte sincroniza de `TAMANHO_PROD.PRECO_VENDA` do Syntech). **Houve um bug antigo (16/out a
+  14/nov): um `fator` espremia o preço pra somar o valor do kit da loja — REMOVIDO.** Não reintroduza.
 
 ### 3.3 Comissão
 - A comissão é controlada **no Syntech**, então o pedido da loja precisa **levar o representante**
