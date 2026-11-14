@@ -106,6 +106,31 @@ Confirmado no código e em `FLUXO-PEDIDO-ERP.md`. A ordem é esta:
 - A comissão é controlada **no Syntech**, então o pedido da loja precisa **levar o representante**
   (campo GUIA) quando vai pro Syntech. Ver `pedidos-para-erp` e `gravarUmPedido`.
 
+### 3.4 Documentação oficial do Syntech — o que ela cobre (e o que NÃO cobre)
+> **Fonte da verdade:** 2 PDFs oficiais do Syntech ("Integração Produtos e Pedidos" e
+> "Integração Clientes e Comunicação"). Leia esta seção antes de mexer na integração de pedidos.
+
+- **IDA (mandar o pedido) — DOCUMENTADA:** `APP_PEDIDO_INSERT_V2` cria o pedido e **devolve o
+  NÚMERO** (a doc diz textualmente: *"a chave primária é o número que retorna"*) → depois
+  `APP_ITENS_PEDIDO_INSERT` e `APP_CORES_PEDIDO_INSERT`, **nessa ordem**, usando esse mesmo número.
+  É a **ÚNICA escrita documentada** (bate com a regra 3.1: a ponte só insere o pedido novo).
+- **O campo "Nº Ped.Cli./Orig" a doc NÃO usa** — no exemplo oficial ele vai **vazio**, e a procedure
+  nem tem parâmetro pra ele. Deixar vazio está **certo**. **Não** tente ligar o pedido de volta por
+  esse campo (não dá sem o Syntech mudar a procedure, e isso é terreno da Big).
+- **VOLTA (ler o pedido aprovado) — NÃO DOCUMENTADA:** a doc **não** fala de ler pedido de volta,
+  **não** tem os status 10/20/30, **não** cita "orçamento" nem "Ped.Fabr" (só mostra o pedido
+  entrando como **"REGISTRADO"**). **Todo o nosso mecanismo de volta foi reverse-engineered** — por
+  isso é frágil. O **NÚMERO que a IDA devolve** é o único elo oficial com o pedido (guardado em
+  `erp_numero`; é por ele que a ponte consulta o status — `rodadaStatusPedidos`).
+- **DATA_ALT_REG:** documentado **só pra PRODUTOS** (o Syntech atualiza sozinho em qualquer mudança —
+  é o campo de sync incremental de produto). Pro **PEDIDO** é input do insert; o **exemplo oficial
+  manda VAZIO**; nosso código manda a data de hoje (**meia-noite, sem hora**) — commit `45ed8a1`.
+  **A doc NÃO diz** se o Syntech atualiza o DATA_ALT_REG do pedido quando ele é aprovado/faturado —
+  por isso a "volta por data" é furada (o carimbo de meia-noite fica atrás da marca-d'água e some).
+- ⚠️ **REGRA:** nunca deduza como a VOLTA funciona a partir do código — ela **não tem fonte
+  oficial**. Qualquer dúvida sobre status ou numeração do pedido no Syntech → **pergunte ao Syntech
+  (Sergio), não chute.**
+
 ---
 
 ## 4. Como VOCÊ (Claude) deve trabalhar neste projeto
