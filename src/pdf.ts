@@ -1,5 +1,18 @@
 // Gera o PDF de produção/pronta-entrega no padrão Big Tricot (pdf-lib, roda no Worker).
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
+import {
+  PDFDocument,
+  StandardFonts,
+  rgb,
+  pushGraphicsState,
+  popGraphicsState,
+  moveTo,
+  appendBezierCurve,
+  clip,
+  endPath,
+  type PDFFont,
+  type PDFPage,
+  type PDFImage,
+} from "pdf-lib";
 import qrcode from "qrcode-generator";
 import type { Bloco, TasselRomaneio, RomaneioCostura } from "./classificar";
 import { LOGO_BT_PNG, LOGO_BT_ASPECT } from "./brand";
@@ -95,6 +108,28 @@ function geradoEm(): string {
   const d = new Date(Date.now() - 3 * 3600 * 1000); // ~horário de Brasília (UTC-3)
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}, ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+}
+
+// Desenha uma imagem recortada em CÍRCULO — a "bolinha" da cor com a FOTO real do tecido
+// (center-crop/cover pra não distorcer). cx/cy já em coordenadas do PDF (y pra cima).
+function drawCircleImage(page: PDFPage, img: PDFImage, cx: number, cy: number, r: number): void {
+  const k = 0.5522847498 * r; // constante mágica do círculo com bézier
+  page.pushOperators(
+    pushGraphicsState(),
+    moveTo(cx + r, cy),
+    appendBezierCurve(cx + r, cy + k, cx + k, cy + r, cx, cy + r),
+    appendBezierCurve(cx - k, cy + r, cx - r, cy + k, cx - r, cy),
+    appendBezierCurve(cx - r, cy - k, cx - k, cy - r, cx, cy - r),
+    appendBezierCurve(cx + k, cy - r, cx + r, cy - k, cx + r, cy),
+    clip(),
+    endPath()
+  );
+  const s = Math.max((2 * r) / img.width, (2 * r) / img.height); // cobre o círculo
+  const w = img.width * s;
+  const h = img.height * s;
+  page.drawImage(img, { x: cx - w / 2, y: cy - h / 2, width: w, height: h });
+  page.pushOperators(popGraphicsState());
+  page.drawCircle({ x: cx, y: cy, size: r, borderColor: hx("#94a3b8"), borderWidth: 0.7 });
 }
 
 // Junta vários PDFs (um por parte) num único arquivo de várias páginas — usado na PRÉVIA.
@@ -491,11 +526,11 @@ export async function gerarPdfCliente(
     const corKey = (b.cor || "").toUpperCase();
     const foto = fotos.get(corKey);
     if (foto) {
-      page.drawImage(foto, { x: qx, y: A4H - (y + 7) - 13, width: 13, height: 13 });
+      drawCircleImage(page, foto, qx + 7, A4H - (y + 13), 7); // bolinha com a FOTO da cor
     } else {
-      Circle(qx + 6, y + 13, 6, hx(cores[corKey]?.hex || SW[corKey] || "#c9cdd3"));
+      Circle(qx + 7, y + 13, 7, hx(cores[corKey]?.hex || SW[corKey] || "#c9cdd3"));
     }
-    T(b.cor, qx + 18, y + 17, 10.5, bld);
+    T(b.cor, qx + 20, y + 17, 10.5, bld);
     // cabeçalho da tabela
     let ry = y + 26;
     T("PRODUTO / TAMANHO", ix + 10, ry + 13, 8, bld, MUTE);
