@@ -1546,10 +1546,11 @@
     var p=MEUS_PEDS[ix]; if(!p) return;
     var aberto = p.status==='aberto';
     var badge = p.status==='producao'?'ok' : (p.status==='processando'||aberto)?'wait' : 'info';
-    // Enquanto "Aguardando aprovação" (status 'analise'), o CLIENTE aprova ou cancela o próprio
-    // pedido. Depois de aprovado/em produção, some (fala com a Big).
-    var podeDecidir = (p.status==='analise');
-    var btnAprovar  = podeDecidir ? '<button class="pd2-aprovar" onclick="__aprovarPedido(\''+esc(p.id)+'\')">✓ Aprovar pedido</button>' : '';
+    // O CLIENTE só pode enviar/cancelar ENQUANTO o pedido ainda NÃO foi pro Syntech (sem número).
+    // Assim que vira "Enviado para a Big Tricot" (ganha número), os dois botões somem — porque se
+    // o cliente cancelasse aqui, o Syntech não cancelaria do outro lado.
+    var podeDecidir = (p.status==='analise' && !p.numero);
+    var btnAprovar  = podeDecidir ? '<button class="pd2-aprovar" onclick="__aprovarPedido(\''+esc(p.id)+'\')">📤 Enviar para a Big</button>' : '';
     var btnCancelar = podeDecidir ? '<button class="pd2-cancel" onclick="__cancelarPedido(\''+esc(p.id)+'\')">✗ Cancelar pedido</button>' : '';
     document.getElementById("pedSheet").innerHTML=__pedSheetHTML({
       numeroTxt: aberto ? 'Carrinho' : ('Pedido nº '+(p.numero||'—')),
@@ -1580,7 +1581,7 @@
   };
   // CLIENTE aprova/confirma o próprio pedido (enquanto "Aguardando aprovação").
   window.__aprovarPedido=function(id){
-    if(!confirm("Aprovar este pedido? Ele passa a 'Confirmado' e segue para a Big Tricot produzir.")) return;
+    if(!confirm("Enviar este pedido para a Big Tricot? A Big recebe e aprova pra produzir.")) return;
     fetch("/api/loja/meus-pedidos/"+encodeURIComponent(id)+"/aprovar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cnpj:MEUS_CNPJ})})
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j||{}};});})
       .then(function(res){
