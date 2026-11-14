@@ -170,16 +170,24 @@ const GRUPOS: MenuGrupo[] = [
     ],
   },
   {
+    // COMERCIAL — para a EQUIPE usar (loja + representantes). Liberado por permissão
+    // "comercial" OU "representantes" (marcar na tela Acessos). Não é só do dono.
+    id: "comercial", icon: "💼", label: "Comercial", itens: [
+      { to: "/cadastros-loja", icon: "🆕", label: "Cadastros da Loja", pages: ["comercial", "representantes"] },
+      { to: "https://pedidos.bigtricot.com.br", icon: "🏪", label: "Abrir a loja (catálogo)", ext: true, pages: ["comercial", "representantes"] },
+      { to: "/comercial", icon: "👤", label: "Representantes", pages: ["representantes", "comercial"] },
+      { to: "https://vendas.bigtricot.com.br", icon: "🪪", label: "Abrir área do representante", ext: true, pages: ["representantes", "comercial"] },
+    ],
+  },
+  {
     id: "producao", icon: "🏭", label: "Produção", itens: [
       { to: "/todos-pedidos", icon: "📋", label: "Pedidos", page: "todos-pedidos" },
+      { to: "/estoque", icon: "⚡", label: "Separação Pronta Entrega", page: "estoque" },
       { to: "/producao", icon: "🧶", label: "Tecelagem", page: "producao" },
-      { to: "/controle-tecelagem", icon: "📈", label: "Controle da Tecelagem", page: "producao" },
       { to: "/passadoria", icon: "🔥", label: "Passadoria", page: "passadoria" },
       { to: "/corte", icon: "✂️", label: "Corte", page: "corte" },
-      { to: "/avisos-corte", icon: "📱", label: "Aviso do Corte (WhatsApp)", page: "pedidos" },
       { to: "/costura", icon: "🪡", label: "Costura", page: "costura" },
       { to: "/revisao", icon: "🔍", label: "Revisão", page: "revisao" },
-      { to: "/estoque", icon: "⚡", label: "Separação Pronta Entrega", page: "estoque" },
       { to: "/expedicao", icon: "📮", label: "Expedição", page: "expedicao" },
       { to: "/fiscal", icon: "🧾", label: "Fiscal", page: "fiscal" },
       { to: "/transporte", icon: "🚚", label: "Transporte", page: "transporte" },
@@ -203,10 +211,9 @@ const GRUPOS: MenuGrupo[] = [
   },
   {
     id: "pcp", icon: "📋", label: "PCP", itens: [
-      { to: "/pcp", icon: "📦", label: "Pedidos", page: "pedidos" },
-      { to: "/pedidos-erp", icon: "🔗", label: "Pedidos do ERP", page: "pedidos" },
-      { to: "/reservas-protegidas", icon: "🔒", label: "Reservas protegidas", page: "pedidos" },
       { to: "/pedidos/novo", icon: "➕", label: "Criar pedido", page: "pedidos" },
+      { to: "/pcp", icon: "📦", label: "Pedidos", page: "pedidos" },
+      { to: "/pedidos-erp", icon: "🔗", label: "Pedidos Syntech", page: "pedidos" },
       { to: "/romaneios", icon: "📋", label: "Romaneios", page: "romaneios" },
       { to: "/impressao-etiquetas", icon: "🏷️", label: "Impressão de etiquetas", page: "expedicao" },
       { to: "/ordens-compra", icon: "📝", label: "Ordens de compra", func: "compras.ordem" },
@@ -233,16 +240,23 @@ const GRUPOS: MenuGrupo[] = [
     ],
   },
   {
-    // GESTÃO — visível SÓ para o dono (admin). Organizado em CATEGORIAS sanfonadas (acc:true).
-    // Os itens, nomes, destinos e permissões são os mesmos — só a arrumação muda.
+    // GESTÃO — visível e acessível SÓ para o DONO (admin). O grupo INTEIRO é escondido
+    // para quem não é admin (ver o filtro em `grupos` mais abaixo) e as rotas são `admin`.
+    // A equipe NÃO vê nem acessa. Controle de quem é admin = tela "Acessos".
     id: "gestao", icon: "🗝️", label: "Gestão", itens: [
       { icon: "📊", label: "Painéis e vendas", acc: true, children: [
         { to: "/dashboard", icon: "📺", label: "Painel Geral", admin: true },
         { to: "/relatorio-vendas", icon: "🏆", label: "Vendas (o que vende mais)", admin: true },
       ] },
-      { icon: "🧑‍💼", label: "Representantes", acc: true, children: [
-        { to: "/comercial", icon: "👤", label: "Representantes", page: "representantes" },
-        { to: "https://vendas.bigtricot.com.br", icon: "🪪", label: "Abrir área do representante", ext: true, admin: true },
+      { icon: "🛍️", label: "Loja e catálogo", acc: true, children: [
+        { to: "/loja-pedidos", icon: "🛒", label: "Pedidos da Loja (B2B)", admin: true },
+        { to: "/config-loja", icon: "🖼️", label: "Configurar catálogo (banner, vídeos)", admin: true },
+        { to: "/imagens-loja", icon: "🎨", label: "Imagens (fotos de cor e produto)", admin: true },
+      ] },
+      { icon: "🎛️", label: "Controle", acc: true, children: [
+        { to: "/reservas-protegidas", icon: "🔒", label: "Reservas protegidas", admin: true },
+        { to: "/controle-tecelagem", icon: "📈", label: "Controle da Tecelagem", admin: true },
+        { to: "/avisos-corte", icon: "📱", label: "Aviso do Corte (WhatsApp)", admin: true },
       ] },
       { icon: "📈", label: "Relatórios", acc: true, children: [
         { to: "/relatorio-producao", icon: "🏭", label: "Relatório de Produção", admin: true },
@@ -251,17 +265,10 @@ const GRUPOS: MenuGrupo[] = [
         { icon: "🪡", label: "Relatório de Costureiras", soon: true },
         { to: "/relatorio-estoque", icon: "📦", label: "Relatório de Estoque", admin: true },
       ] },
-      { icon: "🛍️", label: "Loja e catálogo", acc: true, children: [
-        { to: "/loja-pedidos", icon: "🛒", label: "Pedidos da Loja (B2B)", admin: true },
-        { to: "/cadastros-loja", icon: "🆕", label: "Cadastros da Loja", admin: true },
-        { to: "/config-loja", icon: "🖼️", label: "Configurar catálogo (banner, vídeos)", admin: true },
-        { to: "/imagens-loja", icon: "🎨", label: "Imagens (fotos de cor e produto)", admin: true },
-        { to: "/auditoria-catalogo", icon: "🔎", label: "Auditoria do catálogo (Syntech)", admin: true },
-        { to: "/diag-syntech", icon: "🔧", label: "Diagnóstico do Syntech (estoque)", admin: true },
-        { to: "https://pedidos.bigtricot.com.br", icon: "🏪", label: "Abrir a loja (catálogo)", ext: true, admin: true },
-      ] },
       { icon: "🧵", label: "Técnico", acc: true, children: [
         { to: "/ficha-programa", icon: "📐", label: "Ficha Técnica de Programa", page: "producao" },
+        { to: "/auditoria-catalogo", icon: "🔎", label: "Auditoria do catálogo (Syntech)", admin: true },
+        { to: "/diag-syntech", icon: "🔧", label: "Diagnóstico do Syntech (estoque)", admin: true },
       ] },
       { icon: "🔐", label: "Acessos", acc: true, children: [
         { to: "/acessos", icon: "🔐", label: "Usuários e acessos", admin: true },
@@ -360,6 +367,8 @@ function TopNav({ u }: { u: NonNullable<ReturnType<typeof getUser>> }) {
   const grupos = GRUPOS.map((g) => {
     let itens = g.itens.map(comDyn);
     if (g.id === "gestao") {
+      // TRANCA: o menu Gestão é SÓ do gestor (admin). Para a equipe o grupo inteiro some.
+      if (!u?.admin) return { ...g, itens: [] };
       // Categorias sanfonadas da Gestão: filtra os FILHOS por permissão e esconde a
       // categoria que ficar vazia (preserva exatamente as permissões de cada item).
       itens = itens

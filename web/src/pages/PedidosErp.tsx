@@ -217,7 +217,7 @@ export function PedidosErp() {
 
   return (
     <>
-      <div className="page-head"><div><h1>Pedidos do ERP</h1><div className="breadcrumb">PCP › Pedidos do ERP (conferência)</div></div>
+      <div className="page-head"><div><h1>Pedidos Syntech</h1><div className="breadcrumb">PCP › Pedidos Syntech (conferência)</div></div>
         <button className="btn btn-soft" onClick={carregar}>↻ Atualizar</button>
       </div>
 

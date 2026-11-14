@@ -205,7 +205,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/compras" element={<Protegido func="compras.ordem"><ComprasMateriais /></Protegido>} />
           <Route path="/ordens-compra" element={<Protegido func="compras.ordem"><OrdensCompra /></Protegido>} />
           <Route path="/produtos" element={<Protegido page="produtos"><Produtos /></Protegido>} />
-          <Route path="/comercial" element={<Protegido page={["representantes", "vendas-dashboard"]}><Comercial /></Protegido>} />
+          <Route path="/comercial" element={<Protegido page={["representantes", "vendas-dashboard", "comercial"]}><Comercial /></Protegido>} />
           <Route path="/clientes" element={<Protegido page="comercial"><Clientes /></Protegido>} />
           <Route path="/clientes/:id" element={<Protegido page="comercial"><ClienteFicha /></Protegido>} />
           <Route path="/funil" element={<Protegido page="comercial"><Funil /></Protegido>} />
@@ -219,7 +219,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/romaneios" element={<Protegido page="romaneios"><Romaneios /></Protegido>} />
           <Route path="/pcp" element={<Protegido page="pedidos"><Pcp /></Protegido>} />
           <Route path="/pedidos-erp" element={<Protegido page="pedidos"><PedidosErp /></Protegido>} />
-          <Route path="/reservas-protegidas" element={<Protegido page="pedidos"><ReservasProtegidas /></Protegido>} />
+          <Route path="/reservas-protegidas" element={<Protegido admin><ReservasProtegidas /></Protegido>} />
           <Route path="/estoque-visao" element={<Protegido page="pedidos"><EstoqueVisao /></Protegido>} />
           <Route path="/estoque-inventario" element={<Protegido page="pedidos"><Inventario /></Protegido>} />
           <Route path="/preparar-entrada" element={<Protegido page="pedidos"><PreparaEntrada /></Protegido>} />
@@ -233,10 +233,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/auditoria-catalogo" element={<Protegido admin><AuditoriaCatalogo /></Protegido>} />
           <Route path="/acessos" element={<Protegido admin><Acessos /></Protegido>} />
           <Route path="/producao" element={<Protegido page="producao"><Producao /></Protegido>} />
-          <Route path="/controle-tecelagem" element={<Protegido page="producao"><ControleTecelagem /></Protegido>} />
+          <Route path="/controle-tecelagem" element={<Protegido admin><ControleTecelagem /></Protegido>} />
           <Route path="/passadoria" element={<Protegido page="passadoria"><Passadoria /></Protegido>} />
           <Route path="/corte" element={<Protegido page="corte"><Corte /></Protegido>} />
-          <Route path="/avisos-corte" element={<Protegido page="pedidos"><AvisosCorte /></Protegido>} />
+          <Route path="/avisos-corte" element={<Protegido admin><AvisosCorte /></Protegido>} />
           <Route path="/costura" element={<Protegido page="costura"><Costura /></Protegido>} />
           <Route path="/revisao" element={<Protegido page="revisao"><Revisao /></Protegido>} />
           <Route path="/estoque" element={<Protegido page="estoque"><Estoque /></Protegido>} />
@@ -247,7 +247,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/relatorio-producao" element={<Protegido admin><RelatorioProducao /></Protegido>} />
           <Route path="/relatorio-estoque" element={<Protegido admin><RelatorioEstoqueMov /></Protegido>} />
           <Route path="/loja-pedidos" element={<Protegido admin><LojaPedidos /></Protegido>} />
-          <Route path="/cadastros-loja" element={<Protegido admin><CadastrosLoja /></Protegido>} />
+          <Route path="/cadastros-loja" element={<Protegido page={["comercial", "representantes"]}><CadastrosLoja /></Protegido>} />
           <Route path="/expedicao" element={<Protegido page="expedicao"><Expedicao /></Protegido>} />
           <Route path="/impressao-etiquetas" element={<Protegido page="expedicao"><ImpressaoEtiquetas /></Protegido>} />
           <Route path="/fiscal" element={<Protegido page="fiscal"><Fiscal /></Protegido>} />
