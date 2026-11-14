@@ -176,6 +176,12 @@ export async function gerarPdfParte(
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
   const bld = await doc.embedFont(StandardFonts.HelveticaBold);
+  let logoImg: PDFImage | null = null;
+  try {
+    logoImg = await doc.embedPng(LOGO_BT_PNG);
+  } catch {
+    logoImg = null; // sem logo: cai no texto "BIG TRICOT"
+  }
 
   // pré-embute as fotos das cores (quando houver)
   const fotos = new Map<string, PDFImage>();
@@ -213,30 +219,30 @@ export async function gerarPdfParte(
   function header(): number {
     const bh = 88;
     R(0, 0, A4W, bh, NAVY);
-    T("BIG TRICOT", ix, 44, 24, bld, WHITE);
-    T("HOME DECOR", ix + 2, 60, 8, reg, hx("#c7d2e0"));
-    T("Ordem de Produção", ix + 210, 40, 16, bld, WHITE);
-    T(subtitulo, ix + 210, 58, 10, reg, hx("#c7d2e0"));
+    // Logotipo da marca (branco) no lugar do nome "BIG TRICOT".
+    if (logoImg) {
+      const lh = 40;
+      const lw = lh * LOGO_BT_ASPECT;
+      page.drawImage(logoImg, { x: ix, y: A4H - (bh - lh) / 2 - lh, width: lw, height: lh });
+    } else {
+      T("BIG TRICOT", ix, 44, 24, bld, WHITE);
+      T("HOME DECOR", ix + 2, 60, 8, reg, hx("#c7d2e0"));
+    }
+    T("Ordem de Produção", ix + 230, 40, 16, bld, WHITE);
+    T(subtitulo, ix + 230, 58, 10, reg, hx("#c7d2e0"));
     TR(`Gerado em ${geradoEm()}`, ix + iw, 34, 8.5, reg, hx("#aab8cc"));
     const pw = 16 + bld.widthOfTextAtSize(parteLabel, 9);
     R(ix + iw - pw, 46, pw, 20, bandaColor);
     T(parteLabel, ix + iw - pw + 8, 60, 9, bld, bandaTxt);
-    // dados
+    // dados — CABEÇALHO CURTO na produção: só NOME do cliente + NÚMERO do pedido
+    // (+ datas e observação, que a produção precisa). Sem CNPJ/endereço/telefone etc.
     let y = bh + 26;
     const info = (k: string, v: string, vc = INK) => {
       T(k, ix, y, 8.5, bld, MUTE);
       T(fit(v, bld, 10, iw - 140 - 4), ix + 140, y, 10, bld, vc);
       y += 20;
     };
-    // Bloco do cliente (cabeçalho completo): nome/razão, CNPJ, telefone, endereço, CEP/cidade.
     info("CLIENTE", ped.razaoSocial && ped.razaoSocial.trim() ? ped.razaoSocial : ped.cliente);
-    if (ped.cnpj && ped.cnpj.trim()) info("CNPJ", ped.cnpj);
-    if (ped.telefone && ped.telefone.trim()) info("TELEFONE", ped.telefone);
-    if (ped.endereco && ped.endereco.trim()) info("ENDEREÇO", ped.endereco);
-    // CEP + Cidade/Estado numa linha só (compacto). Só aparece se tiver dado.
-    const cepCidade = [ped.cep, ped.cidadeUf].map((s) => (s || "").trim()).filter(Boolean).join("  ·  ");
-    if (cepCidade) info("CEP / CIDADE", cepCidade);
-    info("REPRESENTANTE", ped.representante);
     if (ped.pedidos && ped.pedidos.trim()) {
       info("CÓDIGO PAI", ped.numero);
       info("PEDIDOS", ped.pedidos);
@@ -298,7 +304,8 @@ export async function gerarPdfParte(
     T("Modelo:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Modelo:", 9.5) + 6;
     T(b.modelo, tx, y + 17, 11, bld); tx += bld.widthOfTextAtSize(b.modelo, 11) + 14;
     T("Ref:", tx, y + 17, 9.5, reg, hx("#6b7280")); tx += reg.widthOfTextAtSize("Ref:", 9.5) + 5;
-    T(b.ref || "—", tx, y + 17, 10, bld); tx += bld.widthOfTextAtSize(b.ref || "—", 10) + 10;
+    const refProd = codigoBase(b.ref) || "—"; // só o número (sem a letra A/C)
+    T(refProd, tx, y + 17, 10, bld); tx += bld.widthOfTextAtSize(refProd, 10) + 10;
     if (b.comp) T("· " + b.comp, tx, y + 17, 8.5, bld, REDC);
     const corKey = (b.cor || "").toUpperCase();
     const foto = fotos.get(corKey);
