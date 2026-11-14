@@ -106,6 +106,47 @@ Confirmado no código e em `FLUXO-PEDIDO-ERP.md`. A ordem é esta:
 - A comissão é controlada **no Syntech**, então o pedido da loja precisa **levar o representante**
   (campo GUIA) quando vai pro Syntech. Ver `pedidos-para-erp` e `gravarUmPedido`.
 
+### 3.4 Documentação oficial do Syntech — o que ela cobre (e o que NÃO cobre)
+> **Fonte da verdade:** 2 PDFs oficiais do Syntech ("Integração Produtos e Pedidos" e
+> "Integração Clientes e Comunicação"). Leia esta seção antes de mexer na integração de pedidos.
+
+- **IDA (mandar o pedido) — DOCUMENTADA:** `APP_PEDIDO_INSERT_V2` cria o pedido e **devolve o
+  NÚMERO** (a doc diz textualmente: *"a chave primária é o número que retorna"*) → depois
+  `APP_ITENS_PEDIDO_INSERT` e `APP_CORES_PEDIDO_INSERT`, **nessa ordem**, usando esse mesmo número.
+  É a **ÚNICA escrita documentada** (bate com a regra 3.1: a ponte só insere o pedido novo).
+- **O campo "Nº Ped.Cli./Orig" a doc NÃO usa** — no exemplo oficial ele vai **vazio**, e a procedure
+  nem tem parâmetro pra ele. Deixar vazio está **certo**. **Não** tente ligar o pedido de volta por
+  esse campo (não dá sem o Syntech mudar a procedure, e isso é terreno da Big).
+- **VOLTA (ler o pedido aprovado) — NÃO DOCUMENTADA:** a doc **não** fala de ler pedido de volta,
+  **não** tem os status 10/20/30, **não** cita "orçamento" nem "Ped.Fabr" (só mostra o pedido
+  entrando como **"REGISTRADO"**). **Todo o nosso mecanismo de volta foi reverse-engineered** — por
+  isso é frágil. O **NÚMERO que a IDA devolve** é o único elo oficial com o pedido (guardado em
+  `erp_numero`; é por ele que a ponte consulta o status — `rodadaStatusPedidos`).
+- **DATA_ALT_REG:** documentado **só pra PRODUTOS** (o Syntech atualiza sozinho em qualquer mudança —
+  é o campo de sync incremental de produto). Pro **PEDIDO** é input do insert; o **exemplo oficial
+  manda VAZIO**; nosso código manda a data de hoje (**meia-noite, sem hora**) — commit `45ed8a1`.
+  **A doc NÃO diz** se o Syntech atualiza o DATA_ALT_REG do pedido quando ele é aprovado/faturado —
+  por isso a "volta por data" é furada (o carimbo de meia-noite fica atrás da marca-d'água e some).
+- ⚠️ **REGRA:** nunca deduza como a VOLTA funciona a partir do código — ela **não tem fonte
+  oficial** no PDF. Dúvida sobre status/numeração do pedido no Syntech → confira a seção 3.5 (resposta
+  oficial do Sergio); se não estiver lá, **pergunte ao Syntech, não chute.**
+
+### 3.5 A VOLTA do pedido — resposta oficial do Syntech (Sergio), que o PDF NÃO cobria
+> Confirmado pelo **Sergio (Syntech)**. É a **fonte da verdade da VOLTA** (o PDF só cobria a IDA).
+
+- **`DATA_ALT_REG`:** o Syntech **atualiza** esse campo sempre que o pedido é registrado ou alterado
+  (resolve a dúvida que ficou aberta na 3.4). Mesmo assim, **não** rastreie a volta por data — veja abaixo.
+- **Status do pedido:** a tabela `PEDIDO` tem o campo `STATUS` (liga na tabela `PEDIDO_STATUS`).
+  Códigos oficiais: **1 = Registrado · 5 = Cancelado · 10 = Aprovado · 20 = Separado · 30 = Faturado.**
+- **✅ Jeito CERTO de rastrear o status:** ler a tabela **`PEDIDO_RASTR`**, linkando pelo **NÚMERO** do
+  pedido (o mesmo número que a `APP_PEDIDO_INSERT_V2` devolveu). Lá aparece o `STATUS` e a **DATA com
+  data E HORA** de registro de cada status. ⇒ Rastrear por NÚMERO aqui **não depende de `DATA_ALT_REG`** —
+  acaba o furo do carimbo de meia-noite.
+- **Item a item:** a tabela `ITENS_PEDIDO` tem `QUANT_PED` e `QUANT_ENTR` (a diferença = o que falta
+  entregar) e o campo `BAIXADO` (`' '` = normal; `'B'` = item não será entregue, foi baixado).
+- **Regra de ouro da VOLTA:** rastreie o pedido da loja **pelo NÚMERO na `PEDIDO_RASTR`**, nunca pela
+  data. A tela "Pedidos da Loja" tem que mostrar **todos** os status (inclusive Faturado e Cancelado).
+
 ---
 
 ## 4. Como VOCÊ (Claude) deve trabalhar neste projeto

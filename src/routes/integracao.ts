@@ -3278,28 +3278,42 @@ integracao.post("/loja-pedidos-status", async (c) => {
   if (!tokenOk(c)) return c.json({ error: "nao_autorizado" }, 401);
   const b = await c.req.json().catch(() => ({})) as { itens?: { id?: string; numero_erp?: number | string; status?: number | string | null; canc?: string | null }[] };
   const itens = Array.isArray(b.itens) ? b.itens : [];
-  if (!itens.length) return c.json({ ok: true, atualizados: 0, reservas_soltas: 0 });
-  const faturadoNum = await statusFaturadoCfg(c.env);
+  if (!itens.length) return c.json({ ok: true, atualizados: 0, reservas_soltas: 0, aprovados: 0 });
+  // Códigos OFICIAIS do Syntech (confirmados pelo Sergio — ver CLAUDE.md 3.5):
+  //   1=Registrado · 5=Cancelado · 10=Aprovado · 20=Separado · 30=Faturado.
+  // statusFaturadoCfg continua como override opcional; o padrão é o oficial (30).
+  const ST_CANCELADO = 5;
+  const ST_APROVADO = 10;
+  const ST_FATURADO = (await statusFaturadoCfg(c.env)) ?? 30;
   const stmts: D1PreparedStatement[] = [];
-  let soltas = 0;
+  let soltas = 0, aprovados = 0;
   for (const it of itens) {
     const id = String(it.id || "").trim();
     if (!id) continue;
     const status = it.status != null && String(it.status).trim() !== "" ? Math.trunc(Number(it.status)) : null;
     const canc = it.canc != null ? String(it.canc).trim().toUpperCase() : null;
-    // Registra o status lido (pro painel mostrar e pra descobrirmos o número do faturado).
+    // Registra o status real lido (pra tela mostrar o status + a hora).
     stmts.push(c.env.DB.prepare("UPDATE pedidos SET erp_status=?, erp_status_em=datetime('now'), erp_canc=? WHERE id=? AND canal='loja_b2b'").bind(status, canc, id));
-    const cancelado = canc === "S";
-    const faturado = !cancelado && faturadoNum != null && status != null && status >= faturadoNum;
+    const cancelado = canc === "S" || status === ST_CANCELADO;
+    const faturado = !cancelado && status != null && status >= ST_FATURADO;
+    const aprovado = !cancelado && status != null && status >= ST_APROVADO; // 10/20/30 já significam "aprovado"
+    // APROVADO: marca aprovado_erp_em UMA vez → o CLIENTE passa a ver "Aprovado". Mantém a reserva
+    // (as peças seguem comprometidas) e o pedido segue 'enviado' pra ponte continuar acompanhando.
+    // NÃO depende de data: a ponte lê o status pelo NÚMERO (ver rodadaStatusPedidos / PEDIDO_RASTR).
+    if (aprovado) {
+      stmts.push(c.env.DB.prepare("UPDATE pedidos SET aprovado_erp_em=COALESCE(aprovado_erp_em, datetime('now')) WHERE id=? AND canal='loja_b2b'").bind(id));
+      aprovados++;
+    }
+    // TERMINAL (faturado ou cancelado): solta a reserva (faturado já baixou; cancelado nunca baixou)
+    // e fecha o ciclo no nosso lado.
     if (cancelado || faturado) {
-      // Solta a reserva DAQUELE pedido (faturado: estoque já caiu; cancelado: nunca caiu).
       stmts.push(c.env.DB.prepare("DELETE FROM erp_reserva WHERE pedido_id IN (SELECT id FROM pedidos WHERE id=? AND canal='loja_b2b')").bind(id));
       stmts.push(c.env.DB.prepare("UPDATE pedidos SET erp_sync_status=? WHERE id=? AND canal='loja_b2b' AND COALESCE(erp_sync_status,'')='enviado'").bind(cancelado ? "cancelado" : "faturado", id));
       soltas++;
     }
   }
   if (stmts.length) await c.env.DB.batch(stmts);
-  return c.json({ ok: true, atualizados: itens.length, reservas_soltas: soltas });
+  return c.json({ ok: true, atualizados: itens.length, reservas_soltas: soltas, aprovados });
 });
 
 // ── Fase S: CLIENTES da loja pra ponte criar no Syntech ─────────────────────────

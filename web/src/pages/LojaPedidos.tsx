@@ -23,6 +23,8 @@ function precisaLiberar(p: LojaPedido, modo: string): boolean {
 }
 
 function statusTxt(p: LojaPedido, modo: string): { txt: string; cor: string } {
+  if (p.erp_sync_status === "faturado") return { txt: "✅ Concluído no Syntech", cor: "#166534" };
+  if (p.erp_sync_status === "cancelado") return { txt: "🟥 Cancelado no Syntech", cor: "#b91c1c" };
   if (p.erp_sync_status === "enviado") return { txt: "✓ No Syntech" + (p.erp_numero ? " (nº " + p.erp_numero + ")" : ""), cor: "#166534" };
   if (p.erp_sync_status === "erro") return { txt: "⚠ Erro ao enviar", cor: "#b91c1c" };
   if (Number(p.erp_liberado) === 1) return { txt: "Liberado — a ponte envia em ~2 min", cor: "#92610a" };
@@ -30,14 +32,15 @@ function statusTxt(p: LojaPedido, modo: string): { txt: string; cor: string } {
   return { txt: "Aguardando liberação", cor: "#555" };
 }
 
-// Mostra o STATUS lido no Syntech (pela ponte). Rótulos conhecidos: 10 = Aprovado; CANC='S' = Cancelado.
-// O número do "faturado" a gente descobre vendo aqui qual número aparece num pedido que você faturou.
+// Mostra o STATUS real lido no Syntech (pela ponte), pelos códigos OFICIAIS (Sergio / CLAUDE.md 3.5):
+// 1=Registrado · 5=Cancelado · 10=Aprovado · 20=Separado · 30=Faturado. Mostra também a HORA do status.
+const NOMES_STATUS: Record<number, string> = { 1: "🟡 Registrado", 5: "🟥 Cancelado", 10: "✔ Aprovado", 20: "📦 Separado", 30: "✅ Faturado" };
 function statusSyntech(p: LojaPedido): string {
-  if (p.erp_canc && p.erp_canc.toUpperCase() === "S") return "🟥 Cancelado";
+  const quando = p.erp_status_em ? " · " + dataHora(p.erp_status_em) : "";
+  if (p.erp_canc && p.erp_canc.toUpperCase() === "S") return "🟥 Cancelado" + quando;
   if (p.erp_status == null) return "—";
   const n = Number(p.erp_status);
-  const rotulo = n === 10 ? " · Aprovado" : "";
-  return `nº ${n}${rotulo}`;
+  return (NOMES_STATUS[n] || ("status " + n)) + quando;
 }
 
 export function LojaPedidos() {
@@ -157,6 +160,11 @@ export function LojaPedidos() {
             <tbody>
               {pedidos.map((p) => {
                 const s = statusTxt(p, modo);
+                // Pedido já "vivo" no Syntech (aprovado/separado/faturado) NÃO pode ser aprovado à mão
+                // nem cancelado por aqui — "Cancelar" devolveria estoque que já saiu / dessincroniza.
+                const stSyn = p.erp_status == null ? null : Number(p.erp_status);
+                const ativoNoSyntech = (stSyn != null && stSyn >= 10) || p.erp_sync_status === "faturado";
+                const canceladoSyn = (p.erp_canc || "").toUpperCase() === "S" || stSyn === 5 || p.erp_sync_status === "cancelado";
                 return (
                   <Fragment key={p.id}>
                     <tr>
@@ -178,8 +186,12 @@ export function LojaPedidos() {
                         {p.erp_sync_status === "enviado" ? (
                           <button className="btn btn-soft" style={{ padding: "5px 9px", color: "#b45309" }} title="Use só se conferiu que o pedido NÃO está no Syntech" disabled={agindo === p.id} onClick={() => reenviarForcado(p.id)}>{agindo === p.id ? "…" : "↻ Reenviar"}</button>
                         ) : null}
-                        <button className="btn btn-ok" style={{ padding: "5px 9px", marginLeft: 6 }} title="Aprovar manualmente (destrava o pedido parado; conta como Confirmado)" disabled={agindo === p.id} onClick={() => aprovarManual(p.id)}>{agindo === p.id ? "…" : "✓ Aprovar"}</button>
-                        <button className="btn btn-danger" style={{ padding: "5px 9px", marginLeft: 6 }} title="Cancelar pedido (apaga daqui e devolve o estoque)" disabled={agindo === p.id} onClick={() => excluir(p.id)}>{agindo === p.id ? "…" : "✗ Cancelar"}</button>
+                        {!ativoNoSyntech && !canceladoSyn ? (
+                          <button className="btn btn-ok" style={{ padding: "5px 9px", marginLeft: 6 }} title="Aprovar manualmente (destrava o pedido parado; conta como Confirmado)" disabled={agindo === p.id} onClick={() => aprovarManual(p.id)}>{agindo === p.id ? "…" : "✓ Aprovar"}</button>
+                        ) : null}
+                        {!ativoNoSyntech ? (
+                          <button className="btn btn-danger" style={{ padding: "5px 9px", marginLeft: 6 }} title="Cancelar pedido (apaga daqui e devolve o estoque)" disabled={agindo === p.id} onClick={() => excluir(p.id)}>{agindo === p.id ? "…" : "✗ Cancelar"}</button>
+                        ) : null}
                       </td>
                     </tr>
                     {aberto === p.id ? (
