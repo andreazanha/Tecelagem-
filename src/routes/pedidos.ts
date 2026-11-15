@@ -146,16 +146,28 @@ function montarJobsRevisao(cl: ReturnType<typeof classificar>): Job[] {
   const prod = cl.modo === "unica" ? cl.parteUnica || [] : [...(cl.parte1 || []), ...(cl.parte2 || [])];
   if (prod.length)
     jobs.push({ tipo: "revisao-producao", label: "REVISÃO", banda: "gold", sub: "Revisão · Produção (Parte 1 + Parte 2)", blocos: prod, noMerge: true, modo: "revisao" });
-  // Revisão Pronta Entrega: só os itens KT/ED (pronta entrega).
-  if (cl.kits && cl.kits.length)
-    jobs.push({ tipo: "revisao-pe", label: "REVISÃO P.E.", banda: "green", sub: "Revisão · Pronta Entrega (KT / ED)", blocos: cl.kits, noMerge: true, modo: "revisao" });
+  // A Revisão de Pronta Entrega é montada à parte (buildRevisaoPEJobs), 1 doc por pedido.
   return jobs;
 }
 
 const origemDe = (it: ItemBase, baseNum: string) => (it.origem || "").trim() || baseNum;
 
-// Pronta Entrega dividida por pedido: gera PDF de JUNTO e/ou de SEPARADO conforme a escolha
-// de cada pedido (entregas[numero] = 'junto'|'separado'); o resto usa o padrão.
+// Agrupa itens por PEDIDO DE ORIGEM. A pronta entrega NUNCA mistura clientes/pedidos:
+// cada pedido de origem gera seu próprio documento. Pedido único mantém o tipo fixo.
+function porOrigemPE(kitItens: ItemBase[], baseNum: string): { origem: string; itens: ItemBase[] }[] {
+  const map = new Map<string, ItemBase[]>();
+  const ordem: string[] = [];
+  for (const it of kitItens) {
+    const o = origemDe(it, baseNum);
+    if (!map.has(o)) { map.set(o, []); ordem.push(o); }
+    map.get(o)!.push(it);
+  }
+  return ordem.map((o) => ({ origem: o, itens: map.get(o)! }));
+}
+const sufOrigemPE = (origem: string, umaSo: boolean) => (umaSo ? "" : `-${origem.replace(/[^a-zA-Z0-9]/g, "")}`);
+
+// Pronta Entrega (ENVIO) por pedido: JUNTO ou SEPARADO conforme a escolha de cada pedido
+// (entregas[numero]). Numa explosão, 1 documento POR PEDIDO (nunca mistura clientes).
 function buildPEJobs(
   kitItens: ItemBase[],
   entregas: Record<string, string>,
@@ -164,28 +176,40 @@ function buildPEJobs(
   baseNum: string
 ): Job[] {
   if (kitItens.length === 0) return [];
-  const opt = (it: ItemBase) => (entregas[origemDe(it, baseNum)] ?? defOpt) === "separado" ? "separado" : "junto";
-  const sep = kitItens.filter((it) => opt(it) === "separado");
-  const jun = kitItens.filter((it) => opt(it) === "junto");
-  const peds = (arr: ItemBase[]) => [...new Set(arr.map((it) => origemDe(it, baseNum)))].join(", ");
+  const grupos = porOrigemPE(kitItens, baseNum);
+  const umaSo = grupos.length <= 1;
   const jobs: Job[] = [];
-  if (jun.length)
+  for (const { origem, itens } of grupos) {
+    const separado = (entregas[origem] ?? defOpt) === "separado";
+    const tipo = (separado ? "pronta-entrega-sep" : "pronta-entrega") + sufOrigemPE(origem, umaSo);
     jobs.push({
-      tipo: "pronta-entrega",
+      tipo,
       label: "PRONTA ENTREGA",
       banda: "green",
-      sub: `Pronta Entrega · Entregar JUNTO com o pedido — ${peds(jun)}`,
-      blocos: agrupar(jun, cat),
+      sub: `Pronta Entrega · ${separado ? "Entregar SEPARADO (antecipado)" : "Entregar JUNTO com o pedido"} — Pedido ${origem}`,
+      blocos: agrupar(itens, cat),
     });
-  if (sep.length)
-    jobs.push({
-      tipo: "pronta-entrega-sep",
-      label: "PRONTA ENTREGA",
-      banda: "green",
-      sub: `Pronta Entrega · Entregar SEPARADO (antecipado) — ${peds(sep)}`,
-      blocos: agrupar(sep, cat),
-    });
+  }
   return jobs.filter((j) => j.blocos.length > 0);
+}
+
+// Revisão de PRONTA ENTREGA (separação/conferência), SEMPRE separada por pedido/cliente.
+// Numa explosão, 1 documento por pedido de origem. Colunas Separado/Revisado (modo revisão).
+function buildRevisaoPEJobs(kitItens: ItemBase[], cat: Catalogo, baseNum: string): Job[] {
+  if (kitItens.length === 0) return [];
+  const grupos = porOrigemPE(kitItens, baseNum);
+  const umaSo = grupos.length <= 1;
+  return grupos
+    .map(({ origem, itens }) => ({
+      tipo: "revisao-pe" + sufOrigemPE(origem, umaSo),
+      label: "REVISÃO P.E.",
+      banda: "green" as const,
+      sub: `Revisão · Pronta Entrega (KT / ED) — Pedido ${origem}`,
+      blocos: agrupar(itens, cat),
+      noMerge: true,
+      modo: "revisao" as const,
+    }))
+    .filter((j) => j.blocos.length > 0);
 }
 
 // IMPORTAR PDF → extrai texto (PDF digital) ou OCR (Workers AI) → devolve sugestão
@@ -267,10 +291,12 @@ pedidos.post("/previa", async (c) => {
   };
 
   const cores = await coresParaPdf(c.env, coresUsadas(itens));
+  const kitItens = itens.filter((it) => ehKit(it, modelos));
   const jobs = [
     ...montarJobs(cl),
-    ...buildPEJobs(itens.filter((it) => ehKit(it, modelos)), b.entregas || {}, kitOpt, modelos, baseNum),
+    ...buildPEJobs(kitItens, b.entregas || {}, kitOpt, modelos, baseNum),
     ...montarJobsRevisao(cl),
+    ...buildRevisaoPEJobs(kitItens, modelos, baseNum),
   ];
   for (const job of jobs) await anexarCombinacoes(c.env, job.blocos);
   const partes: Uint8Array[] = [];
@@ -1074,12 +1100,16 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   };
 
   const cores = await coresParaPdf(c.env, coresUsadas(itens));
-  const peJobs = buildPEJobs(itens.filter((it) => ehKit(it, modelos)), entregas, kitOpt, modelos, baseNum);
-  const jobs = [...montarJobs(cl), ...peJobs, ...montarJobsRevisao(cl)];
+  const kitItens = itens.filter((it) => ehKit(it, modelos));
+  const peJobs = buildPEJobs(kitItens, entregas, kitOpt, modelos, baseNum);
+  const jobs = [...montarJobs(cl), ...peJobs, ...montarJobsRevisao(cl), ...buildRevisaoPEJobs(kitItens, modelos, baseNum)];
 
-  // limpa PDFs de PE/Revisão antigos (pode ter mudado a divisão junto/separado ou os itens)
-  for (const t of ["pronta-entrega", "pronta-entrega-sep", "revisao-producao", "revisao-pe"]) {
-    await c.env.BUCKET.delete(`pedidos/${id}/${t}.pdf`);
+  // limpa PDFs de PE/Revisão antigos (a divisão por pedido/junto/separado pode ter mudado;
+  // tipos são dinâmicos por origem numa explosão, então varre o R2 pelo prefixo).
+  const antigos = await c.env.BUCKET.list({ prefix: `pedidos/${id}/` });
+  for (const o of antigos.objects) {
+    const f = o.key.split("/").pop() || "";
+    if (/^(pronta-entrega|revisao-pe|revisao-producao)/.test(f) && f.endsWith(".pdf")) await c.env.BUCKET.delete(o.key);
   }
 
   for (const job of jobs) await anexarCombinacoes(c.env, job.blocos);
@@ -1093,8 +1123,8 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
     await c.env.BUCKET.put(key, bytes, { httpMetadata: { contentType: "application/pdf" } });
     arquivos.push({ tipo: job.tipo, label: `${codigo} · ${job.label}`, url: `/api/pedidos/${id}/pdf/${job.tipo}` });
   }
-  const temSep = peJobs.some((j) => j.tipo === "pronta-entrega-sep");
-  const temJun = peJobs.some((j) => j.tipo === "pronta-entrega");
+  const temSep = peJobs.some((j) => j.tipo.startsWith("pronta-entrega-sep"));
+  const temJun = peJobs.some((j) => j.tipo.startsWith("pronta-entrega") && !j.tipo.startsWith("pronta-entrega-sep"));
   const entregaResumo = !peJobs.length ? null : temSep && temJun ? "misto" : temSep ? "separado" : "junto";
   await c.env.DB.prepare("UPDATE pedidos SET status = 'conferido', entrega_pe = ? WHERE id = ?")
     .bind(entregaResumo, id)
@@ -1251,6 +1281,18 @@ function codigoParte(baseNum: string, suf: string): string {
   if (!suf) return baseNum;
   return baseNum.includes(",") ? `${baseNum} (${suf.replace("-", "")})` : `${baseNum}${suf}`;
 }
+// Metadados de um tipo de PDF, inclusive os DINÂMICOS por pedido de origem (explosão):
+// pronta-entrega-<o>, pronta-entrega-sep-<o>, revisao-pe-<o>. null = tipo desconhecido.
+function tipoInfo(tipo: string): { nome: string; suf: string } | null {
+  if (tipo in TIPOS_PDF) return TIPOS_PDF[tipo];
+  let m = tipo.match(/^pronta-entrega-sep-(.+)$/);
+  if (m) return { nome: `PRONTA ENTREGA (SEPARADO) · Pedido ${m[1]}`, suf: `-PE-SEP-${m[1]}` };
+  m = tipo.match(/^pronta-entrega-(.+)$/);
+  if (m) return { nome: `PRONTA ENTREGA (JUNTO) · Pedido ${m[1]}`, suf: `-PE-${m[1]}` };
+  m = tipo.match(/^revisao-pe-(.+)$/);
+  if (m) return { nome: `REVISÃO · PRONTA ENTREGA · Pedido ${m[1]}`, suf: `-REV-PE-${m[1]}` };
+  return null;
+}
 pedidos.get("/:id/pdfs", async (c) => {
   const id = c.req.param("id");
   const ped = await c.env.DB.prepare("SELECT numero_erp, codigo_pai FROM pedidos WHERE id = ?")
@@ -1263,14 +1305,18 @@ pedidos.get("/:id/pdfs", async (c) => {
       .map((o) => o.key.split("/").pop() || "")
       .filter((f) => f.endsWith(".pdf"))
       .map((f) => f.slice(0, -4))
-      .filter((t) => t in TIPOS_PDF)
+      .filter((t) => tipoInfo(t) !== null)
   );
-  const arquivos = ORDEM_PDF.filter((t) => tipos.has(t)).map((tipo) => {
-    const codigo = codigoParte(baseNum, TIPOS_PDF[tipo].suf);
+  // Ordem: os tipos fixos (ORDEM_PDF) primeiro; depois os dinâmicos por pedido (PE/revisão PE).
+  const fixos = ORDEM_PDF.filter((t) => tipos.has(t));
+  const dinamicos = [...tipos].filter((t) => !(t in TIPOS_PDF)).sort();
+  const arquivos = [...fixos, ...dinamicos].map((tipo) => {
+    const ti = tipoInfo(tipo)!;
+    const codigo = codigoParte(baseNum, ti.suf);
     return {
       tipo,
       codigo,
-      label: `${codigo} · ${TIPOS_PDF[tipo].nome}`,
+      label: `${codigo} · ${ti.nome}`,
       url: `/api/pedidos/${id}/pdf/${tipo}`,
     };
   });
@@ -1287,7 +1333,7 @@ pedidos.get("/:id/pdf/:tipo", async (c) => {
     .bind(id)
     .first<{ numero_erp: string | null; codigo_pai: string | null }>();
   const baseNum = ped?.codigo_pai || ped?.numero_erp || id.slice(0, 8);
-  const nome = codigoParte(baseNum, TIPOS_PDF[tipo]?.suf ?? "");
+  const nome = codigoParte(baseNum, tipoInfo(tipo)?.suf ?? "");
   return new Response(obj.body, {
     headers: {
       "Content-Type": "application/pdf",
