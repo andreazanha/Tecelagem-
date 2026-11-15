@@ -264,6 +264,16 @@ async function catalogoDe(env: Env) {
   return criarCatalogo(m.results as never[]);
 }
 
+// Quantidade de peças de uma PARTE a partir de uma classificação (usado no
+// desmembramento e na retirada de emergência — mesma contagem, sem duplicar).
+function pecasDaParte(parteBase: string, cl: ReturnType<typeof classificar>): number {
+  if (parteBase === "pronta-entrega") return cl.kits.reduce((s, b) => s + b.total, 0);
+  if (parteBase === "parte-unica") return (cl.parteUnica || []).reduce((s, b) => s + b.total, 0);
+  if (parteBase === "parte-1") return (cl.parte1 || []).reduce((s, b) => s + b.total, 0);
+  if (parteBase === "parte-2") return (cl.parte2 || []).reduce((s, b) => s + b.total, 0);
+  return 0;
+}
+
 // DESMEMBRA uma OP consolidada: separa o card (pedido_id, parte) em um card por
 // OP de origem (número do pedido original). Cada card vira "<parte>#<op>" e guarda
 // `op`. Segue a produção independente. Idempotente (não redivide o que já tem "#").
@@ -293,27 +303,90 @@ async function desmembrarCard(env: Env, pedidoId: string, parteFull: string): Pr
   };
 
   const cat = await catalogoDe(env);
-  const totalParte = (cl: ReturnType<typeof classificar>): number => {
-    if (parteFull === "pronta-entrega") return cl.kits.reduce((s, b) => s + b.total, 0);
-    if (parteFull === "parte-unica") return (cl.parteUnica || []).reduce((s, b) => s + b.total, 0);
-    if (parteFull === "parte-1") return (cl.parte1 || []).reduce((s, b) => s + b.total, 0);
-    if (parteFull === "parte-2") return (cl.parte2 || []).reduce((s, b) => s + b.total, 0);
-    return 0;
-  };
+  // Origens que JÁ têm card individual desta parte (ex.: retiradas de emergência antes):
+  // não recriar (evita duplicar peças). O desmembramento só divide o que ainda está junto.
+  const { results: jaInd } = await env.DB.prepare(
+    "SELECT parte FROM producao WHERE pedido_id = ? AND parte LIKE ?"
+  ).bind(pedidoId, `${parteFull}#%`).all<{ parte: string }>();
+  const jaSeparadas = new Set(jaInd.map((r) => r.parte.slice(`${parteFull}#`.length)));
   const stmts: D1PreparedStatement[] = [env.DB.prepare("DELETE FROM producao WHERE pedido_id = ? AND parte = ?").bind(pedidoId, parteFull)];
   let criados = 0;
   for (const origem of origens) {
-    const pecas = totalParte(classificar(itens.filter((it) => origemDe(it) === origem), cat));
+    if (jaSeparadas.has(origem)) continue; // já virou card individual
+    const pecas = pecasDaParte(parteFull, classificar(itens.filter((it) => origemDe(it) === origem), cat));
     if (pecas <= 0) continue; // essa OP não tem peça nesta parte
     stmts.push(
       env.DB.prepare(
         `INSERT INTO producao (pedido_id, parte, op, setor, status, pecas, resumo, cliente, operador, prioridade, iniciado_em, finalizado_em, bloqueado)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(pedido_id, parte) DO NOTHING`
       ).bind(pedidoId, `${parteFull}#${origem}`, origem, card.setor, card.status, pecas, `OP ${origem}`, clienteDe(origem), card.operador, card.prioridade, card.iniciado_em, card.finalizado_em, card.bloqueado ? 1 : 0)
     );
     criados++;
   }
-  if (criados <= 1) return { ok: false, motivo: "não há peças em mais de uma OP nesta parte" };
+  // Sem separação anterior, mantém a regra original: só desmembra se há peças em 2+ OPs.
+  // Com separação anterior (retirada de emergência), pode separar o que restou (inclusive 1).
+  if (criados <= 1 && jaSeparadas.size === 0) return { ok: false, motivo: "não há peças em mais de uma OP nesta parte" };
+  await env.DB.batch(stmts);
+  return { ok: true, criados };
+}
+
+// RETIRADA DE EMERGÊNCIA (Tecelagem): tira UM pedido INTEIRO de dentro da explosão,
+// mantendo os outros agrupados. Cria um card individual (parte#origem) para CADA parte
+// do pedido retirado, preservando o setor/status atuais (respeita a produção já feita),
+// e recalcula (sem subtrair incremental) as quantidades do card consolidado que sobrou.
+// Idempotente: repetir não duplica peças nem reduz de novo (recalcula do zero por origem).
+async function retirarPedidoDaExplosao(env: Env, pedidoId: string, origemX: string): Promise<{ ok: boolean; criados?: number; motivo?: string }> {
+  const ox = (origemX || "").trim();
+  if (!ox) return { ok: false, motivo: "pedido inválido" };
+  const ped = await env.DB.prepare("SELECT numero_erp, codigo_pai, cliente_nome FROM pedidos WHERE id = ?").bind(pedidoId).first<{ numero_erp: string | null; codigo_pai: string | null; cliente_nome: string }>();
+  if (!ped) return { ok: false, motivo: "pedido não encontrado" };
+  const { results: itens } = await env.DB.prepare(
+    "SELECT produto, ref, cor_grade, tamanho, qtd, parte, kit, origem, origem_cliente FROM pedido_itens WHERE pedido_id = ?"
+  ).bind(pedidoId).all<ItemBase & { origem_cliente?: string | null }>();
+  const primeiro = (ped.numero_erp || "").split(",")[0].trim();
+  const origemDe = (it: ItemBase) => (it.origem || "").trim() || primeiro || (ped.codigo_pai || "");
+  const origens = [...new Set(itens.map(origemDe).filter(Boolean))];
+  if (origens.length <= 1) return { ok: false, motivo: "este pedido não é uma explosão" };
+  if (!origens.includes(ox)) return { ok: false, motivo: "este pedido não está na explosão" };
+  const clienteDe = (o: string): string => {
+    const it = itens.find((i) => origemDe(i) === o && (i.origem_cliente || "").trim());
+    return (it?.origem_cliente || "").trim() || ped.cliente_nome;
+  };
+  const cat = await catalogoDe(env);
+  // Cards CONSOLIDADOS (sem #) — são os que ainda têm a explosão junta.
+  const { results: cards } = await env.DB.prepare(
+    "SELECT * FROM producao WHERE pedido_id = ? AND parte NOT LIKE '%#%'"
+  ).bind(pedidoId).all<CardRow>();
+  if (!cards.length) return { ok: false, motivo: "não há cards consolidados para retirar" };
+  // Origens que já têm card individual por parte base (já retiradas/desmembradas antes).
+  const { results: individuais } = await env.DB.prepare(
+    "SELECT parte FROM producao WHERE pedido_id = ? AND parte LIKE '%#%'"
+  ).bind(pedidoId).all<{ parte: string }>();
+  const jaIndividual = (parteBase: string) => new Set(individuais.filter((r) => r.parte.startsWith(parteBase + "#")).map((r) => r.parte.slice((parteBase + "#").length)));
+
+  const stmts: D1PreparedStatement[] = [];
+  let criados = 0;
+  for (const card of cards) {
+    const parteBase = card.parte;
+    const pecasX = pecasDaParte(parteBase, classificar(itens.filter((i) => origemDe(i) === ox), cat));
+    if (pecasX <= 0) continue; // o pedido X não tem peça nesta parte
+    // Card individual do pedido X (preserva setor/status atuais — não marca como pronto).
+    stmts.push(
+      env.DB.prepare(
+        `INSERT INTO producao (pedido_id, parte, op, setor, status, pecas, resumo, cliente, operador, prioridade, iniciado_em, finalizado_em, bloqueado)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(pedido_id, parte) DO NOTHING`
+      ).bind(pedidoId, `${parteBase}#${ox}`, ox, card.setor, card.status, pecasX, `OP ${ox}`, clienteDe(ox), card.operador, card.prioridade, card.iniciado_em, card.finalizado_em, card.bloqueado ? 1 : 0)
+    );
+    // Recalcula o consolidado (resto): origens que ainda NÃO têm card individual, sem X.
+    const separadas = jaIndividual(parteBase);
+    separadas.add(ox);
+    const restantes = origens.filter((o) => !separadas.has(o));
+    const pecasResto = pecasDaParte(parteBase, classificar(itens.filter((i) => restantes.includes(origemDe(i))), cat));
+    if (pecasResto <= 0) stmts.push(env.DB.prepare("DELETE FROM producao WHERE pedido_id = ? AND parte = ?").bind(pedidoId, parteBase));
+    else stmts.push(env.DB.prepare("UPDATE producao SET pecas = ? WHERE pedido_id = ? AND parte = ?").bind(pecasResto, pedidoId, parteBase));
+    criados++;
+  }
+  if (!criados) return { ok: false, motivo: "o pedido não tem peças a retirar (talvez já retirado)" };
   await env.DB.batch(stmts);
   return { ok: true, criados };
 }
@@ -543,6 +616,18 @@ const STATUS = ["aguardando", "fazendo", "pronto", "defeito"];
 // "Conclusão instantânea" (burla humana): finalizar SEM ter iniciado, ou em menos que este tempo.
 // Só REGISTRA (não bloqueia) — vira alerta no relatório "quem está burlando". Ajustável.
 const LIMIAR_CONCLUSAO_SUSPEITA_SEG = 60;
+
+// RETIRADA DE EMERGÊNCIA (Tecelagem): tira um PEDIDO INTEIRO de dentro da explosão pra
+// seguir individual até o Corte, mantendo os outros agrupados. Rota com segmento fixo
+// registrada ANTES de /:pedido_id/:parte pra não cair no parâmetro. Sempre o pedido todo.
+producao.post("/retirar-explosao/:pedido_id/:origem", async (c) => {
+  const g = await exigirFuncao(c, "producao.desmembrar"); if ("erro" in g) return g.erro;
+  const pedido_id = c.req.param("pedido_id");
+  const origem = decodeURIComponent(c.req.param("origem"));
+  const r = await retirarPedidoDaExplosao(c.env, pedido_id, origem);
+  if (!r.ok) return c.json({ error: "nao_retirou", msg: r.motivo || "não foi possível retirar o pedido" }, 400);
+  return c.json(r);
+});
 
 // MUDA status/setor de uma parte: Fazer → fazendo, Finalizar → pronto, Enviar → próximo setor.
 producao.post("/:pedido_id/:parte", async (c) => {

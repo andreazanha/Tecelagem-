@@ -148,6 +148,7 @@ export interface QuadroCfg {
   agruparPorPedido?: boolean; // junta as partes do mesmo pedido num card só (ex.: Revisão, pedido misto)
   entradaEstoque?: boolean; // mostra "📥 Dar entrada no estoque" em cards de reposição (setor Estoque)
   desmembrar?: boolean; // mostra "🔀 Desmembrar OP" em cards de OP consolidada (setor Corte)
+  retirarExplosao?: boolean; // mostra "⏏ Retirar pedido" (tira 1 pedido inteiro da explosão) — Tecelagem
   painel?: boolean; // habilita o modo "Painel" (Tecelagem: filas por galga + em produção)
   painelUnico?: boolean; // Painel com 1 menu (galga 3+7 juntas) + lista única c/ Finalizar (Passadoria)
   painelCorte?: boolean; // Painel do Corte: a cortar (cliente/reposição) + cortados + lista
@@ -276,6 +277,23 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
       const r = await api.desmembrarProducao(c.pedido_id, c.parte);
       recarregar();
       if (r.criados) alert(`Explosão desmembrada em ${r.criados} cards.`);
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  }
+
+  // RETIRADA DE EMERGÊNCIA: tira UM pedido inteiro da explosão (nunca peças avulsas).
+  // O usuário escolhe o número do pedido entre os da explosão; o resto fica agrupado.
+  async function retirarPedido(c: CardProducao) {
+    const nums = (c.numero_erp || "").split(",").map((s) => s.trim()).filter(Boolean);
+    const lista = nums.join(", ");
+    const origem = (prompt(`Retirar qual pedido da explosão ${c.codigo_pai || ""}?\nPedidos: ${lista}\n\nDigite o NÚMERO do pedido inteiro a retirar:`, nums[0] || "") || "").trim();
+    if (!origem) return;
+    if (nums.length && !nums.includes(origem)) { alert(`O pedido ${origem} não está nesta explosão (${lista}).`); return; }
+    try {
+      const r = await api.retirarPedidoExplosao(c.pedido_id, origem);
+      recarregar();
+      alert(`Pedido ${origem} retirado da explosão — segue individual até o Corte. (${r.criados || 0} parte(s))`);
     } catch (e) {
       alert((e as Error).message);
     }
@@ -511,7 +529,7 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
       )}
 
       {aberto && (
-        <CardModal card={aberto} cfg={cfg} stLabel={stLabel} onFechar={() => setAberto(null)} onAcao={acaoCard} onPrioridade={alternarPrioridade} onPular={(c, setor) => mudarGrupo([c], { status: "aguardando", setor })} onRecarregar={recarregar} onDesmembrar={cfg.desmembrar ? desmembrar : undefined} />
+        <CardModal card={aberto} cfg={cfg} stLabel={stLabel} onFechar={() => setAberto(null)} onAcao={acaoCard} onPrioridade={alternarPrioridade} onPular={(c, setor) => mudarGrupo([c], { status: "aguardando", setor })} onRecarregar={recarregar} onDesmembrar={cfg.desmembrar ? desmembrar : undefined} onRetirar={cfg.retirarExplosao ? retirarPedido : undefined} />
       )}
 
       {entradaPed && (
@@ -2372,6 +2390,7 @@ function CardModal({
   onPular,
   onRecarregar,
   onDesmembrar,
+  onRetirar,
 }: {
   card: CardProducao;
   cfg: QuadroCfg;
@@ -2382,6 +2401,7 @@ function CardModal({
   onPular?: (c: CardProducao, setor: string) => void;
   onRecarregar?: () => void;
   onDesmembrar?: (c: CardProducao) => void;
+  onRetirar?: (c: CardProducao) => void;
 }) {
   const ehMaster = !!getUser()?.admin;
   const [pularSetor, setPularSetor] = useState(cfg.proxSetor || "revisao");
@@ -2605,6 +2625,11 @@ function CardModal({
           {onDesmembrar && ehConsolidada(card) && (
             <button className="btn btn-soft" onClick={() => { onDesmembrar(card); onFechar(); }} title="Separa os pedidos de explosão em um card por pedido de origem">
               🔀 Desmembrar OP
+            </button>
+          )}
+          {onRetirar && ehConsolidada(card) && (
+            <button className="btn btn-soft" onClick={() => { onRetirar(card); onFechar(); }} title="Tira UM pedido inteiro da explosão pra seguir individual até o Corte (mantém os outros agrupados)">
+              ⏏ Retirar pedido
             </button>
           )}
           {!cfg.semPrioridade && (

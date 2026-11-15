@@ -1450,6 +1450,9 @@ export const api = {
     }).then((r) => j<{ ok: boolean; desmembrou?: boolean; conclusaoSuspeita?: boolean; foraSetor?: boolean }>(r)),
   desmembrarProducao: (pedido_id: string, parte: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/desmembrar`, { method: "POST" }).then((r) => j<{ ok: boolean; criados: number }>(r)),
+  // Retirada de emergência: tira 1 pedido inteiro da explosão (segue individual até o Corte).
+  retirarPedidoExplosao: (pedido_id: string, origem: string) =>
+    fetch(`/api/producao/retirar-explosao/${pedido_id}/${encodeURIComponent(origem)}`, { method: "POST" }).then((r) => j<{ ok: boolean; criados: number }>(r)),
   concluirProducao: (pedido_id: string, parte: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/concluir`, { method: "POST" }).then((r) => j<{ ok: boolean }>(r)),
   avisosPedido: (id: string) => fetch(`/api/pedidos/${encodeURIComponent(id)}/avisos`).then((r) => j<AvisoPedido[]>(r)),

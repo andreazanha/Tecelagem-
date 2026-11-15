@@ -7,6 +7,7 @@ const TECELAGEM: QuadroCfg = {
   fazerLabel: "Tecer",
   fazendoLabel: "Tecendo",
   proxSetor: "passadoria",
+  retirarExplosao: true, // tirar 1 pedido inteiro da explosão (antecipar) direto na Tecelagem
   pedeMaquina: false,
   recursoLabel: "Operador",
   recursoTotal: 8,
