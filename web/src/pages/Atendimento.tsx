@@ -1851,6 +1851,14 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
       carregar(); onMudou();
     } catch { alert("Não consegui editar a mensagem."); } finally { setBusy(false); }
   }
+  async function reenviarMsg(msgId: string) {
+    setMenuMsg(null); setBusy(true);
+    try {
+      const r = await api.atendReenviarMsg(id, msgId);
+      if (!r.enviado) alert("Ainda não consegui enviar" + (r.motivo ? ` (${r.motivo})` : "") + ".\n\nConfira se o WhatsApp está conectado (selo 🟢 verde lá em cima) e tente de novo.");
+      carregar(); onMudou();
+    } catch { alert("Não consegui reenviar a mensagem."); } finally { setBusy(false); }
+  }
   const [sugerindo, setSugerindo] = useState(false);
   async function sugerir() {
     setSugerindo(true);
@@ -2044,6 +2052,9 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                         ? <span title="NÃO foi entregue ao cliente (WhatsApp recusou). Tente reenviar." style={{ marginLeft: 4, color: "#dc2626", fontWeight: 700 }}>⚠️ não entregue</span>
                         : <span title={m.status === "read" ? "Visto" : m.status === "delivered" ? "Entregue" : "Enviado"} style={{ marginLeft: 4, color: m.status === "read" ? "#53bdeb" : "#8696a0", fontWeight: 700 }}>{m.status === "sent" ? "✓" : "✓✓"}</span>
                     )}</span>
+                    {m.direcao === "out" && m.status === "falha" && m.autor !== "sistema" && !m.arquivo_url && (m.texto || "").trim() && (
+                      <button className="at-reply" title="Reenviar esta mensagem pro cliente" onClick={() => reenviarMsg(m.id)} style={{ color: "#dc2626", fontWeight: 700 }}>🔄 Reenviar</button>
+                    )}
                     {humano && m.direcao === "in" && m.tipo !== "arquivo" && (m.texto || "").trim() && (
                       <button className="at-reply" title="Responder esta mensagem" onClick={() => setRespondendo({ id: m.id, texto: (extrairIaNota(m.texto).visivel || "foto").slice(0, 180) })}>↩︎</button>
                     )}

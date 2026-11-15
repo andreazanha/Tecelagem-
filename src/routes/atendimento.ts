@@ -314,6 +314,9 @@ async function enviarBot(env: Env, convId: string, tel: string, saida: { tipo: s
   const msgId = await addMsg(env, convId, "out", autor, saida.tipo, saida.texto);
   const r = await enviarWhatsapp(env, tel, saida);
   if (r.enviado) await env.DB.prepare("UPDATE atend_mensagens SET zap_id=?, zap_id2=?, status='sent' WHERE id=?").bind(r.messageId ?? null, r.zaapId ?? null, msgId).run();
+  // Falhou no envio (Z-API fora, sem credencial, cliente bloqueado...) → marca "falha" pra aparecer
+  // "⚠️ não entregue" no CRM. Antes ficava SEM aviso e parecia que o robô tinha respondido.
+  else await env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run();
   return r;
 }
 
@@ -4456,6 +4459,26 @@ atendimento.post("/:id/mensagem/:msgId/editar", async (c) => {
   // Sempre corrige no CRM (o histórico fica certo pra equipe), mesmo se o WhatsApp recusar por tempo.
   await c.env.DB.prepare("UPDATE atend_mensagens SET texto=? WHERE id=?").bind(novo, msgId).run();
   return c.json({ ok: true, editadoZap, motivo });
+});
+
+// Reenviar uma mensagem de TEXTO que NÓS enviamos (ex.: falhou porque o WhatsApp estava fora):
+// manda de novo pro cliente e atualiza o status (vira ✓ se enviar; segue "falha" se não).
+atendimento.post("/:id/mensagem/:msgId/reenviar", async (c) => {
+  const id = c.req.param("id"), msgId = c.req.param("msgId");
+  const gA = await guardConversa(c, id);
+  if ("erro" in gA) return gA.erro;
+  const conv = await c.env.DB.prepare("SELECT telefone FROM atend_conversas WHERE id=?").bind(id).first<{ telefone: string }>();
+  if (!conv) return c.json({ error: "conversa não encontrada" }, 404);
+  const m = await c.env.DB.prepare("SELECT id, direcao, texto, arquivo_url FROM atend_mensagens WHERE id=? AND conversa_id=?").bind(msgId, id).first<{ id: string; direcao: string; texto: string | null; arquivo_url: string | null }>();
+  if (!m) return c.json({ error: "mensagem não encontrada" }, 404);
+  if (m.direcao !== "out") return c.json({ error: "só dá pra reenviar mensagens que a gente enviou" }, 400);
+  if (m.arquivo_url) return c.json({ error: "por ora só reenvio de texto (pra anexo, use encaminhar)" }, 400);
+  const texto = String(m.texto || "").trim();
+  if (!texto) return c.json({ error: "mensagem sem texto" }, 400);
+  const r = await enviarWhatsapp(c.env, conv.telefone, { tipo: "texto", texto });
+  if (r.enviado) await c.env.DB.prepare("UPDATE atend_mensagens SET status='sent', zap_id=?, zap_id2=? WHERE id=?").bind(r.messageId ?? null, r.zaapId ?? null, msgId).run();
+  else await c.env.DB.prepare("UPDATE atend_mensagens SET status='falha' WHERE id=?").bind(msgId).run();
+  return c.json({ ok: true, enviado: r.enviado, motivo: r.enviado ? undefined : ((r as { motivo?: string }).motivo || "falha") });
 });
 
 // Encaminhar (forward) uma mensagem pra outro contato: manda o MESMO conteúdo (texto ou mídia)
