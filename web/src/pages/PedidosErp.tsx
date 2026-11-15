@@ -34,24 +34,28 @@ export function PedidosErp() {
   // pedido — é só a visão de quanto tricotar. Peseira e demais ficam como estão.
   type ItemIn = { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number; valor_unit?: number };
   type ItemProd = { produto: string; ref: string | null; cor: string | null; tamanho: string | null; qtd: number; valor_unit: number; _junta?: boolean };
+  // Código "base" do produto: tira o sufixo de letra (A = almofada, C = capa) que só existe
+  // por limitação de cadastro no Syntech. 1091A / 1091C → 1091. KT/ED (pronta entrega) ficam.
+  function codigoBase(ref: string | null): string {
+    const r = String(ref || "").trim();
+    const m = r.match(/^(\d+)[A-Za-z]*$/);
+    return m ? m[1] : r;
+  }
+  // Visão de produção: capa e almofada do MESMO código base + cor + tamanho são a mesma peça
+  // tricotada → junta as quantidades e mostra só o código base (sem A/C). Não muda o pedido.
   function juntarCapaAlmofada(itens: ItemIn[]): ItemProd[] {
-    const map = new Map<string, ItemProd & { _tot: number }>();
-    const out: ItemProd[] = [];
+    const map = new Map<string, ItemProd & { _n: number }>();
+    const out: (ItemProd & { _n: number })[] = [];
     for (const it of itens) {
-      const nome = String(it.produto || "").trim();
-      const tipo = (nome.split(/\s+/)[0] || "").toUpperCase();
-      const q = Number(it.qtd) || 0, vu = Number(it.valor_unit) || 0;
-      if (tipo === "CAPA" || tipo === "CAPAS" || tipo === "ALMOFADA" || tipo === "ALMOFADAS") {
-        const modelo = nome.replace(/^\s*(CAPAS?|ALMOFADAS?)\s+/i, "").trim() || nome;
-        const key = `${modelo.toUpperCase()}|${String(it.cor || "").toUpperCase()}|${String(it.tamanho || "").toUpperCase()}`;
-        let g = map.get(key);
-        if (!g) { g = { produto: modelo, ref: "capa+almofada", cor: it.cor, tamanho: it.tamanho, qtd: 0, valor_unit: 0, _junta: true, _tot: 0 }; map.set(key, g); out.push(g); }
-        g.qtd += q; g._tot += q * vu; g.valor_unit = g.qtd > 0 ? Math.round((g._tot / g.qtd) * 100) / 100 : 0;
-      } else {
-        out.push({ produto: it.produto, ref: it.ref, cor: it.cor, tamanho: it.tamanho, qtd: q, valor_unit: vu });
-      }
+      const base = codigoBase(it.ref);
+      const modelo = String(it.produto || "").replace(/^\s*(CAPAS?|ALMOFADAS?)\s+/i, "").trim() || String(it.produto || "");
+      const q = Number(it.qtd) || 0;
+      const key = `${base}|${String(it.cor || "").toUpperCase()}|${String(it.tamanho || "").toUpperCase()}`;
+      let g = map.get(key);
+      if (!g) { g = { produto: modelo, ref: base, cor: it.cor, tamanho: it.tamanho, qtd: 0, valor_unit: 0, _n: 0 }; map.set(key, g); out.push(g); }
+      g.qtd += q; g._n += 1;
     }
-    return out;
+    return out.map(({ _n, ...r }) => ({ ...r, _junta: _n > 1 }));
   }
 
   function carregar() { setCarregando(true); api.erpPendentes().then(setLista).catch(() => setLista([])).finally(() => { setCarregando(false); setSel(new Set()); }); }
@@ -114,11 +118,9 @@ export function PedidosErp() {
   async function visualizar(p: ErpPendente) {
     const d = (aberto === p.id && detalhe) ? detalhe : await api.erpPendenteDetalhe(p.id).catch(() => null);
     if (!d) { alert("Não consegui carregar os itens do pedido."); return; }
-    const itens: ItemProd[] = prodView ? juntarCapaAlmofada(d.itens) : d.itens.map((it) => ({ produto: it.produto, ref: it.ref, cor: it.cor, tamanho: it.tamanho, qtd: Number(it.qtd) || 0, valor_unit: Number(it.valor_unit) || 0 }));
-    const money = (v: number) => "R$ " + (Number(v) || 0).toFixed(2).replace(".", ",");
+    const itens: ItemProd[] = prodView ? juntarCapaAlmofada(d.itens) : d.itens.map((it) => ({ produto: it.produto, ref: it.ref, cor: it.cor, tamanho: it.tamanho, qtd: Number(it.qtd) || 0, valor_unit: 0 }));
     const totPec = itens.reduce((s, it) => s + (Number(it.qtd) || 0), 0);
-    const totVal = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.valor_unit) || 0), 0);
-    const rows = itens.map((it) => { const q = Number(it.qtd) || 0, vu = Number(it.valor_unit) || 0; return `<tr><td class="b">${escH(it.produto)}${it._junta ? '<span class="tag">capa+almofada</span>' : ""}</td><td class="m">${escH(it.ref || "—")}</td><td>${escH(it.cor || "—")}</td><td>${escH(it.tamanho || "—")}</td><td class="n">${q}</td><td class="n">${money(vu)}</td><td class="n">${money(q * vu)}</td></tr>`; }).join("");
+    const rows = itens.map((it) => { const q = Number(it.qtd) || 0; return `<tr><td class="b">${escH(it.produto)}${it._junta ? '<span class="tag">capa+almofada</span>' : ""}</td><td class="m">${escH(it.ref || "—")}</td><td>${escH(it.cor || "—")}</td><td>${escH(it.tamanho || "—")}</td><td class="n">${q}</td></tr>`; }).join("");
     const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pedido ${escH(p.numero_erp)} — Big Tricot</title><style>
       *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#2c2721;margin:0;padding:26px;background:#f3f1ec}
       .doc{max-width:820px;margin:0 auto;background:#fff;border-radius:10px;box-shadow:0 2px 16px rgba(0,0,0,.08);padding:28px 30px}
@@ -145,9 +147,9 @@ export function PedidosErp() {
           <div class="meta"><b>Pedido nº ${escH(p.numero_erp)}</b><br>${escH(p.cliente_nome || "")}<br>Pedido: ${escH(dataBR(p.data_pedido))}${p.data_entrega ? `<br>Entrega: ${escH(dataBR(p.data_entrega))}` : ""}</div>
         </div>
         ${prodView ? '<div style="font-size:12px;color:#8a8278;margin-bottom:6px">🧶 Visão de produção — capa e almofada do mesmo modelo/cor/tamanho estão somadas.</div>' : ""}
-        <table><thead><tr><th>Produto</th><th>Código</th><th>Cor</th><th>Tamanho</th><th class="n">Qtd</th><th class="n">Vlr unit</th><th class="n">Total</th></tr></thead>
+        <table><thead><tr><th>Produto</th><th>Código</th><th>Cor</th><th>Tamanho</th><th class="n">Qtd</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="4">Total · ${totPec} peça(s)</td><td class="n">${totPec}</td><td></td><td class="n">${money(totVal)}</td></tr></tfoot></table>
+        <tfoot><tr><td colspan="4">Total · ${totPec} peça(s)</td><td class="n">${totPec}</td></tr></tfoot></table>
       </div>
     </body></html>`;
     const win = window.open("", "_blank");
@@ -169,18 +171,19 @@ export function PedidosErp() {
     }
     return { prod, pe, both: prod && pe };
   }
-  // PRODUZIR (1 pedido): abre a tela de config se tiver os DOIS tipos; senão vai direto.
+  // PRODUZIR (1 pedido): SEMPRE abre a tela de configuração (confirmação explícita).
+  // NUNCA aprova direto — a aprovação / criação de OP só acontece quando a pessoa clica no
+  // botão "Produzir" DENTRO da tela de config (confirmarConfig). Abrir a config não grava nada:
+  // é só estado de tela (setConfig) depois de LER os itens (erpPendenteDetalhe, consulta).
+  // O junto/separado só aparece quando o pedido tem produção E pronta entrega (temBoth).
   async function produzirUm() {
     if (selecionados.length !== 1) return;
     const p = selecionados[0];
     setPreparando(true);
     try {
       const det = await api.erpPendenteDetalhe(p.id).catch(() => null);
-      if (classificaItens(det?.itens || []).both) {
-        setConfig({ modo: "produzir", pedidos: [p], temBoth: { [p.id]: true }, escolha: { [p.id]: "junto" } });
-      } else {
-        await aprovar(p);
-      }
+      const both = classificaItens(det?.itens || []).both;
+      setConfig({ modo: "produzir", pedidos: [p], temBoth: { [p.id]: both }, escolha: { [p.id]: "junto" } });
     } finally { setPreparando(false); }
   }
   // EXPLODIR (2+): abre a tela de config (envio junto/separado por pedido que tiver os 2 tipos).
