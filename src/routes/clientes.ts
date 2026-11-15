@@ -4,6 +4,7 @@ import { limparVendedor } from "./comercial";
 import { ehClienteInterno } from "./funil";
 import { garantirParceiroPendente } from "./parceiros";
 import { exigirFuncao } from "../permissoes";
+import { usuarioLogado } from "../sessao";
 import { hashSenha } from "./loja";
 
 export const clientes = new Hono<{ Bindings: Env }>();
@@ -47,6 +48,8 @@ async function ultimoVendedorPorCliente(env: Env): Promise<Map<string, string>> 
 // LISTA. Sem `?crm` mantém o formato leve (id+nome) usado no autocomplete do pedido.
 // Com `?crm=1` traz os campos + estatísticas (pedidos, total, última compra, representante).
 clientes.get("/", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "nao_logado" }, 401);
   if (!c.req.query("crm")) {
     const { results } = await c.env.DB.prepare("SELECT id, nome FROM clientes ORDER BY nome").all();
     return c.json(results);
