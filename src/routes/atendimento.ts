@@ -1368,6 +1368,14 @@ atendimento.post("/reset", async (c) => {
 // Configure no painel Z-API (Ao receber) a URL: <seu-dominio>/api/atendimento/webhook
 // Ignora mensagens enviadas por nós (fromMe) e callbacks de status. Só texto por ora.
 atendimento.post("/webhook", async (c) => {
+  // Validação do webhook: quando o segredo ZAPI_WEBHOOK_TOKEN está definido no ambiente,
+  // recusa chamada sem o token (?token= ou header X-Webhook-Token). Assim só a Z-API (com
+  // a URL configurada com o token) consegue injetar eventos; chamada anônima é recusada.
+  const segredoWh = (c.env.ZAPI_WEBHOOK_TOKEN || "").trim();
+  if (segredoWh) {
+    const recebidoWh = (c.req.header("X-Webhook-Token") || c.req.query("token") || "").trim();
+    if (recebidoWh !== segredoWh) return c.json({ error: "nao_autorizado" }, 401);
+  }
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   // Callback de STATUS (entregue/lido) — atualiza os ✓✓ das mensagens que ENVIAMOS.
   // IMPORTANTE: mensagem RECEBIDA da Z-API também traz status:"RECEIVED" — por isso NÃO

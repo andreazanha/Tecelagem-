@@ -4,6 +4,14 @@ import type { Env } from "../index";
 import { DEFAULT_PARTE1, norm } from "../classificar";
 import { colsBulk } from "./materiais";
 import { permissoesDoUsuario, exigirFuncao } from "../permissoes";
+import { usuarioLogado } from "../sessao";
+
+// Guarda de ADMIN: gestão de usuários (listar com senha, criar, apagar, bloquear) é
+// restrita ao admin. Devolve a resposta de erro quando não for admin, ou null quando ok.
+async function exigirAdmin(c: Context<{ Bindings: Env }>): Promise<Response | null> {
+  const u = await usuarioLogado(c.env, c);
+  return u?.admin ? null : c.json({ error: "so_admin" }, 403);
+}
 
 const BASE_P1 = new Set(DEFAULT_PARTE1.map((n) => norm(n)));
 
@@ -704,6 +712,7 @@ operadores.post("/bulk", async (c) => {
 export const usuarios = new Hono<{ Bindings: Env }>();
 
 usuarios.get("/", async (c) => {
+  const neg = await exigirAdmin(c); if (neg) return neg;
   // Inclui a senha: o cadastro é só do admin e as senhas ficam em texto, então o
   // gestor consegue conferir a senha que definiu para cada usuário.
   const { results } = await c.env.DB.prepare(
@@ -718,6 +727,7 @@ usuarios.get("/", async (c) => {
 });
 
 usuarios.post("/", async (c) => {
+  const neg = await exigirAdmin(c); if (neg) return neg;
   const b = await c.req.json<{ id?: string; nome?: string; usuario?: string; senha?: string; admin?: boolean; paginas?: string[]; email?: string }>();
   const nome = (b.nome || "").trim();
   const usuario = (b.usuario || "").trim().toLowerCase();
@@ -749,6 +759,7 @@ usuarios.post("/", async (c) => {
 });
 
 usuarios.delete("/:id", async (c) => {
+  const neg = await exigirAdmin(c); if (neg) return neg;
   await c.env.DB.prepare("DELETE FROM usuarios WHERE id = ? AND usuario <> 'admin'").bind(c.req.param("id")).run();
   return c.json({ ok: true });
 });
@@ -756,6 +767,7 @@ usuarios.delete("/:id", async (c) => {
 // Bloquear / desbloquear acesso (ex-funcionário). Bloquear também APAGA as sessões dele — assim ele
 // é deslogado NA HORA, não só no próximo login. O usuário 'admin' nunca pode ser bloqueado.
 usuarios.post("/:id/bloquear", async (c) => {
+  const neg = await exigirAdmin(c); if (neg) return neg;
   const id = c.req.param("id");
   const b = await c.req.json<{ bloqueado?: boolean }>().catch(() => ({}) as { bloqueado?: boolean });
   const bloq = b.bloqueado ? 1 : 0;

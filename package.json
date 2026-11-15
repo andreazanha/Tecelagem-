@@ -14,7 +14,8 @@
     "db:migrate": "wrangler d1 migrations apply DB --remote",
     "db:seed:local": "wrangler d1 execute DB --local --file=./seed/seed.sql",
     "db:seed:catalogo": "wrangler d1 execute DB --remote --file=./seed/catalogo.sql",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "tsx --test src/auth.test.ts"
   },
   "dependencies": {
     "hono": "^4.6.14",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250109.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.2",
     "wrangler": "^4.103.0"
   }

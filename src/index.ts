@@ -29,6 +29,7 @@ import { loja } from "./routes/loja";
 import compras from "./routes/compras";
 import { fichas } from "./routes/fichas";
 import { chat } from "./routes/chat";
+import { usuarioLogado } from "./sessao";
 
 export interface Env {
   DB: D1Database;
@@ -49,6 +50,10 @@ export interface Env {
   // Definida como SEGREDO do ambiente (não vai no código). A ponte envia no header
   // X-Integracao-Token; se não bater (ou não estiver definida), a entrada é recusada.
   INTEGRACAO_TOKEN?: string;
+  // Token do WEBHOOK da Z-API: SEGREDO de ambiente (não vai no código). Quando definido,
+  // o /api/atendimento/webhook recusa chamada sem esse token (?token= ou header
+  // X-Webhook-Token). A URL do webhook na Z-API precisa incluir ?token=<segredo>.
+  ZAPI_WEBHOOK_TOKEN?: string;
   // Conta de serviço do Firebase (projeto bigtricot-catalogo) para escrever o
   // catálogo no site. É o JSON inteiro da chave, guardado como SEGREDO no
   // Cloudflare. Nunca vai no código/repositório.
@@ -64,9 +69,59 @@ export interface Env {
   AMBIENTE?: string;
 }
 
-const app = new Hono<{ Bindings: Env }>();
+export const app = new Hono<{ Bindings: Env }>();
 
 app.use("/api/*", cors());
+
+// ── AUTENTICAÇÃO CENTRAL — "nega por padrão" ──────────────────────────────────
+// Toda rota /api/* exige SESSÃO de usuário do sistema, EXCETO as públicas abaixo —
+// e cada uma delas tem a sua própria proteção:
+//  • /api/loja/*  → loja pública: cliente autentica por CNPJ/senha, representante por
+//    e-mail/senha ou link. Não usa a sessão do sistema.
+//  • /api/integracao/* → a PONTE do Syntech entra com o token X-Integracao-Token
+//    (segredo de ambiente); as telas internas do grupo entram por sessão.
+//  • /api/placar → leitura externa (Ryze) com chave própria (hash no código).
+//  • webhook da Z-API → valida o próprio token no handler.
+//  • login / 1º acesso (definir-senha) / nomes do setor na tela de login → sem sessão.
+//  • chave pública do push + (des)inscrição → o navegador precisa antes de logar.
+// Os segredos (tokens/senhas) ficam nos Secrets da Cloudflare (env), nunca no código.
+const PUB_EXATAS = new Set<string>([
+  "GET /api/health",
+  "POST /api/usuarios/login",
+  "POST /api/usuarios/definir-senha", // 1º acesso: a pessoa cria a senha (ainda sem sessão)
+  "GET /api/usuarios/por-setor",      // a tela de login mostra os nomes do setor
+  "GET /api/integracao/loja",         // HTML do catálogo público (link antigo)
+  "GET /api/push/public-key",         // o navegador precisa da chave VAPID p/ se inscrever
+  "POST /api/push/subscribe",
+  "POST /api/push/unsubscribe",
+  "POST /api/atendimento/webhook",    // Z-API: valida o próprio token dentro do handler
+]);
+const PUB_PREFIXOS = [
+  "/api/loja/",                     // loja pública (cliente CNPJ / representante)
+  "/api/integracao/loja-arquivo/", // imagens públicas do catálogo (banners/fotos)
+];
+const ehRotaPublica = (method: string, path: string): boolean => {
+  if (PUB_EXATAS.has(`${method} ${path}`)) return true;
+  if (path === "/api/placar" || path.startsWith("/api/placar/")) return true; // leitura externa (chave própria)
+  return PUB_PREFIXOS.some((p) => path.startsWith(p));
+};
+
+app.use("/api/*", async (c, next) => {
+  if (c.req.method === "OPTIONS") return next(); // preflight de CORS não é autenticado
+  const path = new URL(c.req.url).pathname;
+  // 1) rotas públicas (têm proteção própria)
+  if (ehRotaPublica(c.req.method, path)) return next();
+  // 2) sessão de usuário válida (Authorization: Bearer / X-Auth-Token)
+  const u = await usuarioLogado(c.env, c);
+  if (u) return next();
+  // 3) ponte do Syntech: token de integração — só vale em /api/integracao/*
+  if (path.startsWith("/api/integracao/")) {
+    const esperado = (c.env.INTEGRACAO_TOKEN || "").trim();
+    const recebido = (c.req.header("X-Integracao-Token") || c.req.query("token") || "").trim();
+    if (esperado && recebido === esperado) return next();
+  }
+  return c.json({ error: "nao_logado" }, 401);
+});
 
 app.get("/api/health", (c) =>
   c.json({ ok: true, service: "rolagem-de-fase", ts: new Date().toISOString() })
