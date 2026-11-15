@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useState } from "react";
 import { NavLink, Outlet, Link, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { VERSION } from "../version";
+import { VERSION, VERSION_SHA, VERSION_DATA } from "../version";
 import { historico } from "../historico";
 import { getUser, setUser, pode, podeAlgum, podeFuncao } from "../auth";
 import { api, type MaterialCategoriaDef } from "../api";
@@ -748,7 +748,7 @@ export function Layout() {
           <InstalarApp />
           <span className="avatar" title={`${u.nome} · ${VERSION}`}>{iniciais || "?"}</span>
           <span className="topnav-username" title={`Logado como ${u.usuario}`}>{u.nome}</span>
-          <span className="app-ver" title="Versão do sistema">{VERSION}</span>
+          <span className="app-ver" title={`Versão do sistema · ${VERSION_SHA} · ${VERSION_DATA}`}>{VERSION}</span>
           <button className="ur-btn" onClick={sair} title="Sair">Sair</button>
         </div>
       </header>
