@@ -6,7 +6,7 @@
   "scripts": {
     "install:all": "npm install && npm --prefix web install",
     "dev:web": "npm --prefix web run dev",
-    "build:web": "npm --prefix web run build",
+    "build:web": "node scripts/gen-version.mjs && npm --prefix web run build",
     "dev": "wrangler dev",
     "deploy": "npm run db:migrate && npm run build:web && wrangler deploy",
     "deploy:only": "npm run build:web && wrangler deploy",
