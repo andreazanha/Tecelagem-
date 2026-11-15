@@ -1750,6 +1750,9 @@ export async function lerAtividadeCatalogo(env: Env): Promise<number> {
 // ── CONFIG Z-API (ler/salvar/testar) — antes de "/:id" para não ser capturado ────
 const ZAPI_CHAVES = ["zapi_base", "zapi_instance", "zapi_token", "zapi_client_token", "zapi_ativo"] as const;
 const BOOL_CHAVES = new Set(["zapi_ativo", "atendimento_ativo", "atendimento_ia", "followup_ativo", "followup_domingo", "followup_ia", "pos_venda_ativo", "recompra_ativo", "reativacao_ativo", "atend_domingo", "aniversario_ativo", "fechar_inativos_ativo", "encerramento_ativo", "avisos_pedido_ativo", "reservas_ativo", "pcp_popup_ativo", "crm_popup_ativo", "aviso_carrinho_ativo"]);
+// Segredos (tokens e senhas): o GET /config NÃO devolve o valor (só "configurado: sim/não")
+// e o POST /config NÃO apaga o segredo quando o valor vem em branco (mantém o atual).
+const SEGREDO_CHAVES = new Set(["zapi_instance", "zapi_token", "zapi_client_token", "catalogo_senha", "catalogo_varejo_senha", "catalogo_evento_token"]);
 const MSG_ANIVERSARIO_PADRAO = "🎉 Feliz aniversário, {nome}! A equipe da *Big Tricot* deseja um dia cheio de alegria! 💛 Conte com a gente sempre. 🧶";
 // Mensagem enviada ao cliente quando o atendimento é ENCERRADO (na mão ou pelo fecho automático de 24h).
 const MSG_ENCERRAMENTO_PADRAO = "Atendimento finalizado por aqui 💛 Se precisar de mais alguma coisa, é só me mandar uma mensagem que eu te respondo. 😊 — *Big Tricot*";
@@ -1758,12 +1761,15 @@ const MSG_ENCERRAMENTO_PADRAO = "Atendimento finalizado por aqui 💛 Se precisa
 const MSG_CATALOGO_VAREJO_PADRAO = "🎉 Nossa *MEGA promoção*: produtos com *até 50% OFF*, só até *16/09*! 💛\n\nNosso catálogo é *virtual*: é só escolher, adicionar no carrinho e fechar a compra aqui pelo WhatsApp 📲\n💳 Ainda tem *10% de desconto no Pix* ou *até 3x sem juros* no cartão!\n\nDá uma olhada 👇\n{link}";
 
 atendimento.get("/config", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u?.admin) return c.json({ error: "so_admin" }, 403);
   const cfg = await lerConfig(c.env);
   return c.json({
     zapi_base: cfg.zapi_base || "https://api.z-api.io",
-    zapi_instance: cfg.zapi_instance || "",
-    zapi_token: cfg.zapi_token || "",
-    zapi_client_token: cfg.zapi_client_token || "",
+    // Segredos NÃO são devolvidos: só se estão configurados (sim/não).
+    zapi_instance_configurado: !!cfg.zapi_instance,
+    zapi_token_configurado: !!cfg.zapi_token,
+    zapi_client_token_configurado: !!cfg.zapi_client_token,
     zapi_ativo: cfg.zapi_ativo === "1",
     numero_whatsapp: cfg.numero_whatsapp || "",   // número da Big (link "chamar no privado" nos grupos)
     atendimento_ativo: cfg.atendimento_ativo === "1",
@@ -1775,11 +1781,11 @@ atendimento.get("/config", async (c) => {
     ia_prompt: cfg.ia_prompt || "",
     ia_prompt_padrao: IA_SISTEMA,
     catalogo_url: cfg.catalogo_url || "",
-    catalogo_senha: cfg.catalogo_senha || "",
+    catalogo_senha_configurada: !!cfg.catalogo_senha,
     catalogo_msg: cfg.catalogo_msg || "",
     // Catálogo de VAREJO (campanha p/ consumidor final): link + senha + mensagem convidativa da IA.
     catalogo_varejo_url: cfg.catalogo_varejo_url || "",
-    catalogo_varejo_senha: cfg.catalogo_varejo_senha || "",
+    catalogo_varejo_senha_configurada: !!cfg.catalogo_varejo_senha,
     catalogo_varejo_msg: cfg.catalogo_varejo_msg || "",
     catalogo_varejo_msg_padrao: MSG_CATALOGO_VAREJO_PADRAO,
     atend_hora_ini: cfg.atend_hora_ini || "7",
@@ -1823,7 +1829,7 @@ atendimento.get("/config", async (c) => {
     envio_hora_fim: cfg.envio_hora_fim || "20",                   // janela de envio das mensagens proativas (fim)
     desc_el_pct: cfg.desc_el_pct || "0",                          // desconto manual da Edição Limitada (%) no catálogo
     wa_teste_numero: cfg.wa_teste_numero || "",                   // se preenchido, TODO aviso da loja vai pra esse número (teste)
-    catalogo_evento_token: cfg.catalogo_evento_token || "",
+    catalogo_evento_token_configurado: !!cfg.catalogo_evento_token,
     catalogo_evento_url: new URL(c.req.url).origin + "/api/atendimento/catalogo-evento",
     catalogo_log_url: cfg.catalogo_log_url || "",
     webhook_url: new URL(c.req.url).origin + "/api/atendimento/webhook",
@@ -1836,6 +1842,7 @@ atendimento.post("/config", async (c) => {
   for (const k of [...ZAPI_CHAVES, "numero_whatsapp", "atendimento_ativo", "atendimento_ia", "avisos_pedido_ativo", "equipe_numeros", "ia_prompt", "catalogo_url", "catalogo_senha", "catalogo_msg", "catalogo_varejo_url", "catalogo_varejo_senha", "catalogo_varejo_msg", "atend_hora_ini", "atend_hora_fim", "atend_domingo", "followup_ativo", "followup_hora_ini", "followup_hora_fim", "followup_domingo", "followup_ia", "pos_venda_ativo", "pos_venda_dias", "recompra_ativo", "recompra_dias", "reativacao_ativo", "reativacao_dias", "reativacao_limite", "reativacao_intervalo_seg", "reativacao_msg", "aniversario_ativo", "aniversario_msg", "remarket_horas", "remarket_msg", "encerramento_msg", "encerramento_ativo", "fechar_inativos_ativo", "catalogo_evento_token", "catalogo_log_url", "reserva_teste_fwd", "reservas_ativo", "pcp_popup_ativo", "pcp_popup_usuarios", "crm_popup_ativo", "aviso_carrinho_ativo", "aviso_carrinho_minutos", "reserva_janela_minutos", "envio_hora_ini", "envio_hora_fim", "desc_el_pct", "wa_teste_numero"] as const) {
     if (k in b) {
       const v = BOOL_CHAVES.has(k) ? (b[k] ? "1" : "0") : String(b[k] ?? "").trim();
+      if (SEGREDO_CHAVES.has(k) && v === "") continue; // valor em branco não apaga o segredo guardado
       pares.push([k, v]);
     }
   }
@@ -3225,6 +3232,8 @@ atendimento.delete("/setores/:id", async (c) => {
 // ── PAINEL DO GESTOR (métricas de atendimento) — antes de "/:id" ──────────────────
 // Fuso: "hoje" = dia em Brasília (UTC-3). Espera em minutos desde a última msg do cliente.
 atendimento.get("/painel", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "nao_logado" }, 401);
   const db = c.env.DB;
   const g = await db.prepare(
     `SELECT
