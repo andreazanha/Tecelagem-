@@ -86,10 +86,10 @@ export function PedidosErp() {
     try { setDetalhe(await api.erpPendenteDetalhe(id)); } catch { /* ignore */ }
   }
   async function aprovar(p: ErpPendente) {
-    if (!confirm(`Explodir o pedido ${p.numero_erp} (${p.cliente_nome})? Vai pra produção.`)) return;
+    if (!confirm(`Produzir o pedido ${p.numero_erp} (${p.cliente_nome})? Vai pra produção.`)) return;
     setOcupado(p.id);
-    try { await api.erpAprovar(p.id); setLista((xs) => xs.filter((x) => x.id !== p.id)); removeSel(p.id); setMsg(`✓ Pedido ${p.numero_erp} explodido — foi pra produção.`); setTimeout(() => setMsg(""), 4000); }
-    catch { alert("Não consegui explodir."); }
+    try { await api.erpAprovar(p.id); setLista((xs) => xs.filter((x) => x.id !== p.id)); removeSel(p.id); setMsg(`✓ Pedido ${p.numero_erp} foi pra produção.`); setTimeout(() => setMsg(""), 4000); }
+    catch { alert("Não consegui enviar pra produção."); }
     finally { setOcupado(null); }
   }
   async function aceitar(p: ErpPendente) {
@@ -165,6 +165,11 @@ export function PedidosErp() {
 
   const pendentes = lista.filter((p) => p.status === "aguardando_aprovacao");
   const aceitos = lista.filter((p) => p.status === "aguardando_explosao");
+  // Seleção: pedidos marcados + total de peças (recalcula sozinho ao marcar/desmarcar).
+  // Usa a contagem que já vem do backend (p.pecas = soma das qtd), sem duplicar.
+  const selecionados = lista.filter((p) => sel.has(p.id));
+  const totPecasSel = selecionados.reduce((s, p) => s + (Number(p.pecas) || 0), 0);
+  async function produzirUm() { if (selecionados.length === 1) await aprovar(selecionados[0]); }
 
   function Card({ p, held }: { p: ErpPendente; held: boolean }) {
     return (
@@ -302,12 +307,19 @@ export function PedidosErp() {
 
       {msg && <div className="card pad" style={{ marginBottom: 14, background: "#f0fdf4", color: "#15803d", fontWeight: 600 }}>{msg}</div>}
 
-      {sel.size >= 2 && (
-        <div className="card pad" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "#eef2ff", borderColor: "#c7d2fe", position: "sticky", top: 8, zIndex: 5 }}>
-          <b style={{ color: "#3730a3" }}>{sel.size} pedidos selecionados</b>
-          <span className="muted" style={{ fontSize: 12.5, flex: 1, minWidth: 160 }}>Juntar numa explosão (código pai) pra render mais na tecelagem. Desmembra depois por pedido/loja.</span>
+      {sel.size >= 1 && (
+        <div className="card pad" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: "#eef2ff", borderColor: "#c7d2fe", position: "sticky", top: 8, zIndex: 5 }}>
+          <b style={{ color: "#3730a3", fontSize: 15 }}>{sel.size} pedido{sel.size > 1 ? "s" : ""} selecionado{sel.size > 1 ? "s" : ""}</b>
+          <b style={{ color: "#3730a3", fontSize: 15 }}>· {totPecasSel} peça{totPecasSel === 1 ? "" : "s"}</b>
+          <span className="muted" style={{ fontSize: 12.5, flex: 1, minWidth: 120 }}>
+            {sel.size === 1 ? "Enviar este pedido para produção." : "Juntar numa explosão (código pai) — desmembra depois por pedido."}
+          </span>
           <button className="btn btn-soft" onClick={() => setSel(new Set())}>Limpar</button>
-          <button className="btn btn-primary" disabled={explodindo} onClick={explodirJuntos}>{explodindo ? "Explodindo…" : `💥 Explodir juntos (${sel.size})`}</button>
+          {sel.size === 1 ? (
+            <button className="btn btn-primary" disabled={!!ocupado} onClick={produzirUm}>{ocupado ? "…" : "🧶 Produzir"}</button>
+          ) : (
+            <button className="btn btn-primary" disabled={explodindo} onClick={explodirJuntos}>{explodindo ? "Explodindo…" : `💥 Explodir (${sel.size})`}</button>
+          )}
         </div>
       )}
 

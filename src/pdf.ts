@@ -247,6 +247,9 @@ export async function gerarPdfParte(
       y += 20;
     };
     info("CLIENTE", ped.razaoSocial && ped.razaoSocial.trim() ? ped.razaoSocial : ped.cliente);
+    // Cidade + representante: a produção/tecelagem pede esses dois no cabeçalho.
+    if (ped.representante && ped.representante.trim() && ped.representante.trim() !== "—") info("REPRESENTANTE", ped.representante);
+    if (ped.cidadeUf && ped.cidadeUf.trim()) info("CIDADE", ped.cidadeUf);
     if (ped.pedidos && ped.pedidos.trim()) {
       info("CÓDIGO PAI", ped.numero);
       info("PEDIDOS", ped.pedidos);
