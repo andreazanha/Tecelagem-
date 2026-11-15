@@ -2276,6 +2276,8 @@ atendimento.get("/debug-agendas", async (c) => {
 });
 // ── CAMPANHAS (envio em massa aos poucos) ─────────────────────────────────────────
 atendimento.get("/campanhas", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "nao_logado" }, 401);
   const { results } = await c.env.DB.prepare(
     `SELECT c.id, c.nome, c.mensagem, c.intervalo_seg, c.status, c.criado_em, c.ultimo_envio_em, c.iniciar_em, c.no_quadro,
        c.arquivo_url, c.arquivo_tipo, c.arquivo_nome, c.arquivo_ext,
@@ -3748,6 +3750,8 @@ atendimento.post("/:id/agendar-ia", async (c) => {
 // Palavras-chave (interesses detectados) por contato — pra filtrar a lista da campanha por
 // assunto ("manta", "almofada"…). Junta os termos + a última mensagem de cada conversa.
 atendimento.get("/interesses-contatos", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "nao_logado" }, 401);
   const { results } = await c.env.DB.prepare(
     `SELECT co.telefone AS telefone,
             (SELECT GROUP_CONCAT(ai.termo, ' ') FROM atend_interesses ai WHERE ai.conversa_id = co.id) AS termos,
@@ -3762,6 +3766,8 @@ atendimento.get("/interesses-contatos", async (c) => {
 
 // ── CONTATOS salvos no WhatsApp (via Z-API) — pra iniciar conversa com alguém ───────
 atendimento.get("/contatos-whatsapp", async (c) => {
+  const u = await usuarioLogado(c.env, c);
+  if (!u) return c.json({ error: "nao_logado" }, 401);
   const cfg = await lerConfig(c.env);
   const base = (cfg.zapi_base || "https://api.z-api.io").replace(/\/+$/, "");
   const inst = cfg.zapi_instance || "", token = cfg.zapi_token || "";
