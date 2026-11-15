@@ -523,7 +523,7 @@ export function Atendimento({ crmTab, onCrmTab }: { crmTab?: "inbox" | "funil"; 
     catch { alert("Não consegui cruzar com a base agora. Tente de novo."); }
     finally { setCruzando(false); }
   }
-  function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance && !!c.zapi_token)).catch(() => setConectado(false)); }
+  function checarConexao() { api.atendConfig().then((c) => setConectado(c.zapi_ativo && !!c.zapi_instance_configurado && !!c.zapi_token_configurado)).catch(() => setConectado(false)); }
   useEffect(() => {
     recarregar(); checarConexao();
     const t = setInterval(recarregar, 4000);
@@ -983,11 +983,11 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
             </div>
 
             <label className="campo"><span className="campo-label">Instância (Instance ID)</span>
-              <input value={cfg.zapi_instance} onChange={(e) => set("zapi_instance", e.target.value)} placeholder="cole aqui o ID da instância Z-API" /></label>
+              <input value={cfg.zapi_instance || ""} onChange={(e) => set("zapi_instance", e.target.value)} placeholder={cfg.zapi_instance_configurado ? "✓ já configurado — deixe em branco pra manter" : "cole aqui o ID da instância Z-API"} /></label>
             <label className="campo"><span className="campo-label">Token da instância</span>
-              <input value={cfg.zapi_token} onChange={(e) => set("zapi_token", e.target.value)} placeholder="cole o token da instância" /></label>
+              <input value={cfg.zapi_token || ""} onChange={(e) => set("zapi_token", e.target.value)} placeholder={cfg.zapi_token_configurado ? "✓ já configurado — deixe em branco pra manter" : "cole o token da instância"} /></label>
             <label className="campo"><span className="campo-label">Client-Token (segurança da conta)</span>
-              <input value={cfg.zapi_client_token} onChange={(e) => set("zapi_client_token", e.target.value)} placeholder="Account Security Token (menu Segurança do painel)" /></label>
+              <input value={cfg.zapi_client_token || ""} onChange={(e) => set("zapi_client_token", e.target.value)} placeholder={cfg.zapi_client_token_configurado ? "✓ já configurado — deixe em branco pra manter" : "Account Security Token (menu Segurança do painel)"} /></label>
             <label className="campo"><span className="campo-label">URL base (deixe o padrão)</span>
               <input value={cfg.zapi_base} onChange={(e) => set("zapi_base", e.target.value)} placeholder="https://api.z-api.io" /></label>
             <label className="campo"><span className="campo-label">📱 Número da Big (link "chamar no privado" nos grupos)</span>
@@ -995,7 +995,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
             <label className="campo"><span className="campo-label">📒 Link do catálogo (enviado ao lojista)</span>
               <input value={cfg.catalogo_url} onChange={(e) => set("catalogo_url", e.target.value)} placeholder="cole o link público do catálogo" /></label>
             <label className="campo"><span className="campo-label">🔑 Senha do catálogo (única p/ lojistas)</span>
-              <input value={cfg.catalogo_senha} onChange={(e) => set("catalogo_senha", e.target.value)} placeholder="deixe em branco se o catálogo não tem senha" /></label>
+              <input value={cfg.catalogo_senha || ""} onChange={(e) => set("catalogo_senha", e.target.value)} placeholder={cfg.catalogo_senha_configurada ? "✓ já configurada — deixe em branco pra manter" : "deixe em branco se o catálogo não tem senha"} /></label>
             <label className="campo"><span className="campo-label">💬 Mensagem do catálogo (cola a sua — opcional)</span>
               <textarea value={cfg.catalogo_msg} onChange={(e) => set("catalogo_msg", e.target.value)} rows={7} placeholder="Cole aqui a mensagem completa que você já manda (com o link e a senha). Se preencher, o robô envia ela igualzinha. Se deixar em branco, ele monta com o link + senha acima." style={{ resize: "vertical", fontFamily: "inherit" }} /></label>
 
@@ -1005,7 +1005,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
               <label className="campo" style={{ margin: 0 }}><span className="campo-label">🛍️ Link do catálogo de varejo</span>
                 <input value={cfg.catalogo_varejo_url} onChange={(e) => set("catalogo_varejo_url", e.target.value)} placeholder="cole aqui o link do catálogo de varejo" /></label>
               <label className="campo"><span className="campo-label">🔑 Senha do catálogo de varejo (se tiver)</span>
-                <input value={cfg.catalogo_varejo_senha} onChange={(e) => set("catalogo_varejo_senha", e.target.value)} placeholder="deixe em branco se não tem senha" /></label>
+                <input value={cfg.catalogo_varejo_senha || ""} onChange={(e) => set("catalogo_varejo_senha", e.target.value)} placeholder={cfg.catalogo_varejo_senha_configurada ? "✓ já configurada — deixe em branco pra manter" : "deixe em branco se não tem senha"} /></label>
               <label className="campo" style={{ marginBottom: 0 }}><span className="campo-label">💬 Mensagem convidativa (a IA manda com o link)</span>
                 <textarea value={cfg.catalogo_varejo_msg} onChange={(e) => set("catalogo_varejo_msg", e.target.value)} rows={6} placeholder={cfg.catalogo_varejo_msg_padrao} style={{ resize: "vertical", fontFamily: "inherit" }} /></label>
               <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Use <b>{"{link}"}</b> onde entra o link e <b>{"{senha}"}</b> a senha. Se deixar em branco, usa o texto de exemplo acima. Sem o link preenchido, a IA passa direto pro vendedor.</div>
@@ -1116,7 +1116,7 @@ function ConfigZapi({ onFechar, onMudou }: { onFechar: () => void; onMudou: () =
                   <button className="btn btn-soft" style={{ padding: "5px 9px" }} onClick={() => copiar(cfg.catalogo_evento_url)}>Copiar</button>
                 </div>
                 <label className="campo" style={{ margin: 0 }}><span className="campo-label">Token (opcional)</span>
-                  <input value={cfg.catalogo_evento_token} onChange={(e) => set("catalogo_evento_token", e.target.value)} placeholder="vazio = sem checagem" /></label>
+                  <input value={cfg.catalogo_evento_token || ""} onChange={(e) => set("catalogo_evento_token", e.target.value)} placeholder={cfg.catalogo_evento_token_configurado ? "✓ já configurado — deixe em branco pra manter" : "vazio = sem checagem"} /></label>
               </details>
             </div>
 
