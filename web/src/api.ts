@@ -1476,10 +1476,10 @@ export const api = {
   // Integração ERP — pedidos aguardando conferência (porta de entrada).
   erpPendentes: () => fetch("/api/integracao/pendentes").then((r) => j<ErpPendente[]>(r)),
   erpPendenteDetalhe: (id: string) => fetch(`/api/integracao/pendentes/${encodeURIComponent(id)}`).then((r) => j<ErpPendenteDetalhe>(r)),
-  erpAprovar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aprovar`, {}).then((r) => j<{ ok: boolean }>(r)),
+  erpAprovar: (id: string, entrega?: "junto" | "separado") => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aprovar`, entrega ? { entrega } : {}).then((r) => j<{ ok: boolean }>(r)),
   erpAceitar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aceitar`, {}).then((r) => j<{ ok: boolean }>(r)),
   erpRecusar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/recusar`, {}).then((r) => j<{ ok: boolean }>(r)),
-  erpAprovarLote: (ids: string[]) => jsonPost("/api/integracao/aprovar-lote", { ids }).then((r) => j<{ ok: boolean; pedido_id: string; codigo_pai: string; pedidos: number }>(r)),
+  erpAprovarLote: (ids: string[], entregas?: Record<string, string>) => jsonPost("/api/integracao/aprovar-lote", entregas ? { ids, entregas } : { ids }).then((r) => j<{ ok: boolean; pedido_id: string; codigo_pai: string; pedidos: number }>(r)),
   // ETAPA 5 — pop-up do PCP (pedidos recém-chegados em "Para conferir", ainda não tratados).
   pcpNotificacoes: () => fetch("/api/integracao/pcp-notificacoes").then((r) => j<{ agora: string; notificacoes: PcpNotificacao[] }>(r)),
   pcpNotificacaoVista: (id: string) => jsonPost("/api/integracao/pcp-notificacoes/visto", { id }).then((r) => j<{ ok: boolean }>(r)),

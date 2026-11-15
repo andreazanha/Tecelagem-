@@ -1052,7 +1052,11 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   // (não força "junto", que jogava os kits "separado" na coluna errada).
   const kitOpt =
     body.kit === "separado" ? "separado" : body.kit === "junto" ? "junto" : ped.entrega_pe === "separado" ? "separado" : "junto";
-  const entregas = body.entregas || {};
+  // Escolha de envio POR PEDIDO guardada na aprovação/explosão (entregas_pe JSON por origem),
+  // sobreposta pelo que vier explícito no corpo da geração.
+  let entregasSalvas: Record<string, string> = {};
+  try { entregasSalvas = ped.entregas_pe ? JSON.parse(ped.entregas_pe) : {}; } catch { entregasSalvas = {}; }
+  const entregas = { ...entregasSalvas, ...(body.entregas || {}) };
 
   const { results: itens } = await c.env.DB.prepare(
     "SELECT produto, ref, cor_grade, tamanho, qtd, parte, origem FROM pedido_itens WHERE pedido_id = ?"

@@ -617,6 +617,10 @@ integracao.post("/pendentes/:id/aceitar", async (c) => {
 integracao.post("/pendentes/:id/aprovar", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
   const id = c.req.param("id");
+  // Escolha de envio da pronta entrega (tela de configuração do "Produzir"): junto/separado.
+  const body = await c.req.json<{ entrega?: string }>().catch(() => ({} as { entrega?: string }));
+  const entregaPe = body.entrega === "separado" ? "separado" : body.entrega === "junto" ? "junto" : null;
+  if (entregaPe) await c.env.DB.prepare("UPDATE pedidos SET entrega_pe = ? WHERE id = ?").bind(entregaPe, id).run();
   // VENDA DA LOJA em "Pedidos Syntech": agora PODE ser aprovada/explodida. O roteamento segue a
   // REGRA DO CÓDIGO (CLAUDE.md 3.2): item kit (KT/ED → kit=1) vai pra SEPARAÇÃO; código sem sigla
   // (número) vai pra tecelagem. O kit NUNCA cai na tecelagem (blindagem do Celine) e o estoque não
@@ -638,9 +642,10 @@ integracao.post("/pendentes/:id/aprovar", async (c) => {
 // por pedido/loja (inclusive mesma empresa com CNPJs diferentes). Igual aos PDFs.
 integracao.post("/aprovar-lote", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
-  const b = await c.req.json<{ ids?: string[] }>().catch(() => ({} as { ids?: string[] }));
+  const b = await c.req.json<{ ids?: string[]; entregas?: Record<string, string> }>().catch(() => ({} as { ids?: string[]; entregas?: Record<string, string> }));
   const ids = Array.isArray(b.ids) ? b.ids.filter((x): x is string => typeof x === "string") : [];
   if (ids.length < 2) return c.json({ error: "selecione_dois_ou_mais" }, 400);
+  const entregasEscolha = b.entregas && typeof b.entregas === "object" ? b.entregas : {};
 
   // VENDA DA LOJA no lote: também PODE ser juntada/explodida (roteamento pelo código — CLAUDE.md 3.2:
   // KT/ED → separação; número → tecelagem). A trava antiga que bloqueava o lote foi removida.
@@ -664,12 +669,23 @@ integracao.post("/aprovar-lote", async (c) => {
   const dataEntrega = peds.map((p) => p.data_entrega).filter(Boolean).sort()[0] || null;
   const codigoPai = await proximoCodigoPai(c.env);
 
+  // Envio da pronta entrega POR PEDIDO DE ORIGEM (tela de configuração do "Explodir"):
+  // mapeia a escolha de cada pedido (por id) pro número de origem e guarda como JSON.
+  const entregasPorOrigem: Record<string, string> = {};
+  for (const p of peds) {
+    const esc = entregasEscolha[p.id];
+    if (esc === "separado" || esc === "junto") entregasPorOrigem[(p.numero_erp || "").trim()] = esc;
+  }
+  const entregasPeJson = Object.keys(entregasPorOrigem).length ? JSON.stringify(entregasPorOrigem) : null;
+  // Padrão geral do pedido consolidado: separado se qualquer um escolheu separado.
+  const entregaPeDefault = Object.values(entregasPorOrigem).includes("separado") ? "separado" : Object.keys(entregasPorOrigem).length ? "junto" : null;
+
   const novoId = uid();
   const stmts = [
     c.env.DB.prepare(
-      `INSERT INTO pedidos (id, numero_erp, cliente_nome, codigo_pai, tipo, data_pedido, data_entrega, status, erp_integracao, bloqueado, created_at)
-       VALUES (?, ?, ?, ?, 'pedido', ?, ?, 'novo', 1, 1, datetime('now'))`
-    ).bind(novoId, numeros, clienteOP, codigoPai, dataPedido, dataEntrega),
+      `INSERT INTO pedidos (id, numero_erp, cliente_nome, codigo_pai, tipo, data_pedido, data_entrega, status, erp_integracao, bloqueado, entrega_pe, entregas_pe, created_at)
+       VALUES (?, ?, ?, ?, 'pedido', ?, ?, 'novo', 1, 1, ?, ?, datetime('now'))`
+    ).bind(novoId, numeros, clienteOP, codigoPai, dataPedido, dataEntrega, entregaPeDefault, entregasPeJson),
   ];
   for (const it of itens) {
     const org = porId.get(it.pedido_id);
