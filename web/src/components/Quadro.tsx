@@ -258,8 +258,10 @@ export function Quadro({ cfg }: { cfg: QuadroCfg }) {
         desfazer: () => Promise.all(antes.map((a) => api.atualizarProducao(a.pedido_id, a.parte, { status: a.status, setor: a.setor, operador: a.operador }))).then(() => {}),
         refazer: () => Promise.all(cards.map((c) => api.atualizarProducao(c.pedido_id, c.parte, body))).then(() => {}),
       });
-    } catch {
-      alert("Não foi possível atualizar o card. Tente novamente.");
+    } catch (e) {
+      // Mostra a mensagem do backend (ex.: trava da revisão "falta revisar Parte 2").
+      const m = (e as Error)?.message || "";
+      alert(m && m.length < 240 ? m : "Não foi possível atualizar o card. Tente novamente.");
     } finally {
       setAberto(null);
       recarregar();

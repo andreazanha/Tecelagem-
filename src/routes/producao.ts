@@ -563,6 +563,41 @@ producao.post("/:pedido_id/:parte", async (c) => {
   else if (b.setor) { const g = await exigirAlgumaFuncao(c, ["producao.enviar", "producao.voltar", "producao.devolver"]); if ("erro" in g) return g.erro; }
   const status = STATUS.includes(b.status || "") ? (b.status as string) : "aguardando";
 
+  // ── TRAVA DA REVISÃO ──────────────────────────────────────────────────────────
+  // Não FINALIZAR o pedido (enviar pra Expedição) enquanto uma parte de PRODUÇÃO
+  // necessária ainda estiver pendente (antes da revisão, ou na revisão sem ter sido
+  // revisada). Permite revisar uma parte sem a outra; só impede concluir pela metade.
+  // Não exige parte que não existe (pedido de parte única não tem irmã → não trava).
+  // A Pronta Entrega (KT/ED) não conta aqui — ela pode seguir separada.
+  if (b.setor === "expedicao") {
+    const baseX = parte.split("#")[0];
+    const ehProducao = (bp: string) => bp === "parte-1" || bp === "parte-2" || bp === "parte-unica";
+    if (ehProducao(baseX)) {
+      const opX = parte.includes("#") ? parte.slice(parte.indexOf("#") + 1) : "";
+      const ORDEM = ["tecelagem", "passadoria", "corte", "costura", "revisao", "expedicao", "fiscal", "transporte", "entregue"];
+      const iRev = ORDEM.indexOf("revisao");
+      const { results: irmas } = await c.env.DB.prepare(
+        "SELECT parte, COALESCE(setor,'tecelagem') AS setor, COALESCE(status,'aguardando') AS status FROM producao WHERE pedido_id = ? AND parte <> ?"
+      ).bind(pedido_id, parte).all<{ parte: string; setor: string; status: string }>();
+      const rotulo = (p: string) => {
+        const base = p.split("#")[0];
+        const n = base === "parte-1" ? "Parte 1" : base === "parte-2" ? "Parte 2" : base === "parte-unica" ? "Parte única" : base;
+        return p.includes("#") ? `${n} (pedido ${p.slice(p.indexOf("#") + 1)})` : n;
+      };
+      const pendentes = (irmas || []).filter((s) => {
+        if (!ehProducao(s.parte.split("#")[0])) return false; // PE não conta
+        const op = s.parte.includes("#") ? s.parte.slice(s.parte.indexOf("#") + 1) : "";
+        if (op !== opX) return false; // só irmãs do MESMO pedido/OP
+        const idx = ORDEM.indexOf(s.setor);
+        return idx < iRev || (s.setor === "revisao" && s.status !== "pronto"); // ainda não revisada
+      });
+      if (pendentes.length) {
+        const nomes = [...new Set(pendentes.map((p) => rotulo(p.parte)))].join(", ");
+        return c.json({ error: "parte_pendente", msg: `Não dá pra finalizar o pedido ainda: falta revisar ${nomes}.` }, 409);
+      }
+    }
+  }
+
   const sets: string[] = ["status = ?"];
   const binds: (string | null)[] = [status];
   if (b.setor) {

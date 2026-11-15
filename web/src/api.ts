@@ -759,8 +759,9 @@ async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let msg = `Erro ${res.status}`;
     try {
-      const body = (await res.json()) as { error?: string };
-      if (body?.error) msg = body.error;
+      const body = (await res.json()) as { error?: string; msg?: string };
+      if (body?.msg) msg = body.msg;        // mensagem amigável (preferida)
+      else if (body?.error) msg = body.error;
     } catch {
       /* ignore */
     }
