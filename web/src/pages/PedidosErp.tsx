@@ -23,6 +23,10 @@ export function PedidosErp() {
   const [msg, setMsg] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [explodindo, setExplodindo] = useState(false);
+  const [preparando, setPreparando] = useState(false);
+  // Tela de configuração (junto/separado) antes de Produzir/Explodir.
+  type ConfigTela = { modo: "produzir" | "explodir"; pedidos: ErpPendente[]; temBoth: Record<string, boolean>; escolha: Record<string, "junto" | "separado"> };
+  const [config, setConfig] = useState<ConfigTela | null>(null);
   const [prodView, setProdView] = useState(true);  // junta capa+almofada (mesma peça na máquina)
 
   // Para a PRODUÇÃO, capa e almofada do mesmo modelo+cor+tamanho são a MESMA peça
@@ -86,10 +90,10 @@ export function PedidosErp() {
     try { setDetalhe(await api.erpPendenteDetalhe(id)); } catch { /* ignore */ }
   }
   async function aprovar(p: ErpPendente) {
-    if (!confirm(`Explodir o pedido ${p.numero_erp} (${p.cliente_nome})? Vai pra produção.`)) return;
+    if (!confirm(`Produzir o pedido ${p.numero_erp} (${p.cliente_nome})? Vai pra produção.`)) return;
     setOcupado(p.id);
-    try { await api.erpAprovar(p.id); setLista((xs) => xs.filter((x) => x.id !== p.id)); removeSel(p.id); setMsg(`✓ Pedido ${p.numero_erp} explodido — foi pra produção.`); setTimeout(() => setMsg(""), 4000); }
-    catch { alert("Não consegui explodir."); }
+    try { await api.erpAprovar(p.id); setLista((xs) => xs.filter((x) => x.id !== p.id)); removeSel(p.id); setMsg(`✓ Pedido ${p.numero_erp} foi pra produção.`); setTimeout(() => setMsg(""), 4000); }
+    catch { alert("Não consegui enviar pra produção."); }
     finally { setOcupado(null); }
   }
   async function aceitar(p: ErpPendente) {
@@ -150,21 +154,71 @@ export function PedidosErp() {
     if (!win) { alert("O navegador bloqueou a janela. Permita pop-ups pra visualizar o pedido."); return; }
     win.document.open(); win.document.write(html); win.document.close();
   }
-  async function explodirJuntos() {
-    const ids = [...sel];
-    if (ids.length < 2) return;
-    if (!confirm(`Explodir ${ids.length} pedidos JUNTOS numa explosão? Viram uma produção só (código pai) e se desmembram depois por pedido/loja.`)) return;
-    setExplodindo(true);
-    try {
-      const r = await api.erpAprovarLote(ids);
-      setLista((xs) => xs.filter((x) => !sel.has(x.id))); setSel(new Set());
-      setMsg(`✓ ${r.pedidos} pedidos explodidos juntos na Explosão ${r.codigo_pai}.`); setTimeout(() => setMsg(""), 5000);
-    } catch { alert("Não consegui explodir juntos."); }
-    finally { setExplodindo(false); }
-  }
-
   const pendentes = lista.filter((p) => p.status === "aguardando_aprovacao");
   const aceitos = lista.filter((p) => p.status === "aguardando_explosao");
+  // Seleção: pedidos marcados + total de peças (recalcula sozinho ao marcar/desmarcar).
+  // Usa a contagem que já vem do backend (p.pecas = soma das qtd), sem duplicar.
+  const selecionados = lista.filter((p) => sel.has(p.id));
+  const totPecasSel = selecionados.reduce((s, p) => s + (Number(p.pecas) || 0), 0);
+  // Identifica, pelos itens, se o pedido tem PRODUÇÃO e/ou PRONTA ENTREGA (código KT/ED).
+  function classificaItens(itens: { ref: string | null }[]): { prod: boolean; pe: boolean; both: boolean } {
+    let prod = false, pe = false;
+    for (const it of itens) {
+      const r = String(it.ref || "").toUpperCase().trim();
+      if (r.startsWith("KT") || r.startsWith("ED")) pe = true; else prod = true;
+    }
+    return { prod, pe, both: prod && pe };
+  }
+  // PRODUZIR (1 pedido): abre a tela de config se tiver os DOIS tipos; senão vai direto.
+  async function produzirUm() {
+    if (selecionados.length !== 1) return;
+    const p = selecionados[0];
+    setPreparando(true);
+    try {
+      const det = await api.erpPendenteDetalhe(p.id).catch(() => null);
+      if (classificaItens(det?.itens || []).both) {
+        setConfig({ modo: "produzir", pedidos: [p], temBoth: { [p.id]: true }, escolha: { [p.id]: "junto" } });
+      } else {
+        await aprovar(p);
+      }
+    } finally { setPreparando(false); }
+  }
+  // EXPLODIR (2+): abre a tela de config (envio junto/separado por pedido que tiver os 2 tipos).
+  async function explodirConfig() {
+    const peds = lista.filter((p) => sel.has(p.id));
+    if (peds.length < 2) return;
+    setPreparando(true);
+    try {
+      const dets = await Promise.all(peds.map((p) => api.erpPendenteDetalhe(p.id).catch(() => null)));
+      const temBoth: Record<string, boolean> = {};
+      const escolha: Record<string, "junto" | "separado"> = {};
+      peds.forEach((p, i) => { if (classificaItens(dets[i]?.itens || []).both) { temBoth[p.id] = true; escolha[p.id] = "junto"; } });
+      setConfig({ modo: "explodir", pedidos: peds, temBoth, escolha });
+    } finally { setPreparando(false); }
+  }
+  const setEscolha = (id: string, v: "junto" | "separado") => setConfig((c) => c && { ...c, escolha: { ...c.escolha, [id]: v } });
+  // Confirma a tela de config: dispara produzir (1) ou explodir (2+) com as escolhas.
+  async function confirmarConfig() {
+    if (!config) return;
+    const cfg = config;
+    setConfig(null);
+    if (cfg.modo === "produzir") {
+      const p = cfg.pedidos[0];
+      setOcupado(p.id);
+      try { await api.erpAprovar(p.id, cfg.escolha[p.id]); setLista((xs) => xs.filter((x) => x.id !== p.id)); removeSel(p.id); setMsg(`✓ Pedido ${p.numero_erp} foi pra produção.`); setTimeout(() => setMsg(""), 4000); }
+      catch { alert("Não consegui enviar pra produção."); }
+      finally { setOcupado(null); }
+    } else {
+      const ids = cfg.pedidos.map((p) => p.id);
+      const entregas: Record<string, string> = {};
+      for (const p of cfg.pedidos) if (cfg.temBoth[p.id]) entregas[p.id] = cfg.escolha[p.id];
+      setExplodindo(true);
+      try { const r = await api.erpAprovarLote(ids, entregas); setLista((xs) => xs.filter((x) => !sel.has(x.id))); setSel(new Set()); setMsg(`✓ ${r.pedidos} pedidos explodidos na Explosão ${r.codigo_pai}.`); setTimeout(() => setMsg(""), 5000); }
+      catch { alert("Não consegui explodir juntos."); }
+      finally { setExplodindo(false); }
+    }
+  }
+  const totConfig = config ? config.pedidos.reduce((s, p) => s + (Number(p.pecas) || 0), 0) : 0;
 
   function Card({ p, held }: { p: ErpPendente; held: boolean }) {
     return (
@@ -302,12 +356,19 @@ export function PedidosErp() {
 
       {msg && <div className="card pad" style={{ marginBottom: 14, background: "#f0fdf4", color: "#15803d", fontWeight: 600 }}>{msg}</div>}
 
-      {sel.size >= 2 && (
-        <div className="card pad" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "#eef2ff", borderColor: "#c7d2fe", position: "sticky", top: 8, zIndex: 5 }}>
-          <b style={{ color: "#3730a3" }}>{sel.size} pedidos selecionados</b>
-          <span className="muted" style={{ fontSize: 12.5, flex: 1, minWidth: 160 }}>Juntar numa explosão (código pai) pra render mais na tecelagem. Desmembra depois por pedido/loja.</span>
+      {sel.size >= 1 && (
+        <div className="card pad" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: "#eef2ff", borderColor: "#c7d2fe", position: "sticky", top: 8, zIndex: 5 }}>
+          <b style={{ color: "#3730a3", fontSize: 15 }}>{sel.size} pedido{sel.size > 1 ? "s" : ""} selecionado{sel.size > 1 ? "s" : ""}</b>
+          <b style={{ color: "#3730a3", fontSize: 15 }}>· {totPecasSel} peça{totPecasSel === 1 ? "" : "s"}</b>
+          <span className="muted" style={{ fontSize: 12.5, flex: 1, minWidth: 120 }}>
+            {sel.size === 1 ? "Enviar este pedido para produção." : "Juntar numa explosão (código pai) — desmembra depois por pedido."}
+          </span>
           <button className="btn btn-soft" onClick={() => setSel(new Set())}>Limpar</button>
-          <button className="btn btn-primary" disabled={explodindo} onClick={explodirJuntos}>{explodindo ? "Explodindo…" : `💥 Explodir juntos (${sel.size})`}</button>
+          {sel.size === 1 ? (
+            <button className="btn btn-primary" disabled={!!ocupado || preparando} onClick={produzirUm}>{ocupado || preparando ? "…" : "🧶 Produzir"}</button>
+          ) : (
+            <button className="btn btn-primary" disabled={explodindo || preparando} onClick={explodirConfig}>{explodindo ? "Explodindo…" : preparando ? "…" : `💥 Explodir (${sel.size})`}</button>
+          )}
         </div>
       )}
 
@@ -327,6 +388,44 @@ export function PedidosErp() {
             </>
           )}
         </>
+      )}
+
+      {config && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(20,25,40,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }} onClick={() => setConfig(null)}>
+          <div className="card pad" style={{ maxWidth: 560, width: "100%", maxHeight: "86vh", overflow: "auto", background: "#fff" }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 4px" }}>{config.modo === "produzir" ? "🧶 Enviar para produção" : `💥 Explodir ${config.pedidos.length} pedidos`}</h3>
+            <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+              {config.pedidos.length} pedido{config.pedidos.length > 1 ? "s" : ""} · <b>{totConfig}</b> peça{totConfig === 1 ? "" : "s"}
+              {config.modo === "explodir" ? " — viram uma explosão (código pai), desmembra depois por pedido." : ""}
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+              {config.pedidos.map((p) => (
+                <div key={p.id} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ fontWeight: 700 }}>{p.numero_erp} <span className="muted" style={{ fontWeight: 400 }}>· {p.cliente_nome} · {p.pecas} peça(s)</span></div>
+                  {config.temBoth[p.id] ? (
+                    <div style={{ marginTop: 6 }}>
+                      <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>Este pedido tem produção <b>e</b> pronta entrega. Como enviar a pronta entrega?</div>
+                      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginRight: 16, cursor: "pointer" }}>
+                        <input type="radio" name={`e-${p.id}`} checked={config.escolha[p.id] === "junto"} onChange={() => setEscolha(p.id, "junto")} /> Enviar tudo junto
+                      </label>
+                      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                        <input type="radio" name={`e-${p.id}`} checked={config.escolha[p.id] === "separado"} onChange={() => setEscolha(p.id, "separado")} /> Enviar separado (antecipado)
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>Só um tipo de produto — sem opção de envio.</div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
+              <button className="btn btn-soft" onClick={() => setConfig(null)}>Cancelar</button>
+              <button className="btn btn-primary" disabled={explodindo || !!ocupado} onClick={confirmarConfig}>
+                {config.modo === "produzir" ? "🧶 Produzir" : `💥 Explodir (${config.pedidos.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

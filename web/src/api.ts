@@ -759,8 +759,9 @@ async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let msg = `Erro ${res.status}`;
     try {
-      const body = (await res.json()) as { error?: string };
-      if (body?.error) msg = body.error;
+      const body = (await res.json()) as { error?: string; msg?: string };
+      if (body?.msg) msg = body.msg;        // mensagem amigável (preferida)
+      else if (body?.error) msg = body.error;
     } catch {
       /* ignore */
     }
@@ -1449,6 +1450,9 @@ export const api = {
     }).then((r) => j<{ ok: boolean; desmembrou?: boolean; conclusaoSuspeita?: boolean; foraSetor?: boolean }>(r)),
   desmembrarProducao: (pedido_id: string, parte: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/desmembrar`, { method: "POST" }).then((r) => j<{ ok: boolean; criados: number }>(r)),
+  // Retirada de emergência: tira 1 pedido inteiro da explosão (segue individual até o Corte).
+  retirarPedidoExplosao: (pedido_id: string, origem: string) =>
+    fetch(`/api/producao/retirar-explosao/${pedido_id}/${encodeURIComponent(origem)}`, { method: "POST" }).then((r) => j<{ ok: boolean; criados: number }>(r)),
   concluirProducao: (pedido_id: string, parte: string) =>
     fetch(`/api/producao/${pedido_id}/${encodeURIComponent(parte)}/concluir`, { method: "POST" }).then((r) => j<{ ok: boolean }>(r)),
   avisosPedido: (id: string) => fetch(`/api/pedidos/${encodeURIComponent(id)}/avisos`).then((r) => j<AvisoPedido[]>(r)),
@@ -1472,10 +1476,10 @@ export const api = {
   // Integração ERP — pedidos aguardando conferência (porta de entrada).
   erpPendentes: () => fetch("/api/integracao/pendentes").then((r) => j<ErpPendente[]>(r)),
   erpPendenteDetalhe: (id: string) => fetch(`/api/integracao/pendentes/${encodeURIComponent(id)}`).then((r) => j<ErpPendenteDetalhe>(r)),
-  erpAprovar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aprovar`, {}).then((r) => j<{ ok: boolean }>(r)),
+  erpAprovar: (id: string, entrega?: "junto" | "separado") => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aprovar`, entrega ? { entrega } : {}).then((r) => j<{ ok: boolean }>(r)),
   erpAceitar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/aceitar`, {}).then((r) => j<{ ok: boolean }>(r)),
   erpRecusar: (id: string) => jsonPost(`/api/integracao/pendentes/${encodeURIComponent(id)}/recusar`, {}).then((r) => j<{ ok: boolean }>(r)),
-  erpAprovarLote: (ids: string[]) => jsonPost("/api/integracao/aprovar-lote", { ids }).then((r) => j<{ ok: boolean; pedido_id: string; codigo_pai: string; pedidos: number }>(r)),
+  erpAprovarLote: (ids: string[], entregas?: Record<string, string>) => jsonPost("/api/integracao/aprovar-lote", entregas ? { ids, entregas } : { ids }).then((r) => j<{ ok: boolean; pedido_id: string; codigo_pai: string; pedidos: number }>(r)),
   // ETAPA 5 — pop-up do PCP (pedidos recém-chegados em "Para conferir", ainda não tratados).
   pcpNotificacoes: () => fetch("/api/integracao/pcp-notificacoes").then((r) => j<{ agora: string; notificacoes: PcpNotificacao[] }>(r)),
   pcpNotificacaoVista: (id: string) => jsonPost("/api/integracao/pcp-notificacoes/visto", { id }).then((r) => j<{ ok: boolean }>(r)),
