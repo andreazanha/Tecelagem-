@@ -175,7 +175,8 @@ export async function gerarPdfParte(
   banda: "gold" | "green",
   ped: PedidoInfo,
   blocos: Bloco[],
-  cores: Record<string, { hex?: string; foto?: Uint8Array }> = {} // nome(maiúsculo) -> cor visual
+  cores: Record<string, { hex?: string; foto?: Uint8Array }> = {}, // nome(maiúsculo) -> cor visual
+  modo: "producao" | "revisao" = "producao" // "revisao" troca ENVIADO/PASSADORIA por SEPARADO/REVISADO
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
@@ -232,7 +233,7 @@ export async function gerarPdfParte(
       T("BIG TRICOT", ix, 44, 24, bld, WHITE);
       T("HOME DECOR", ix + 2, 60, 8, reg, hx("#c7d2e0"));
     }
-    T("Ordem de Produção", ix + 230, 40, 16, bld, WHITE);
+    T(modo === "revisao" ? "Relação de Revisão" : "Ordem de Produção", ix + 230, 40, 16, bld, WHITE);
     T(subtitulo, ix + 230, 58, 10, reg, hx("#c7d2e0"));
     TR(`Gerado em ${geradoEm()}`, ix + iw, 34, 8.5, reg, hx("#aab8cc"));
     const pw = 16 + bld.widthOfTextAtSize(parteLabel, 9);
@@ -273,7 +274,9 @@ export async function gerarPdfParte(
     } else {
       y += 8;
     }
-    const titulo = banda === "green" ? "ITENS — PRONTA ENTREGA" : "ITENS A PRODUZIR";
+    const titulo = modo === "revisao"
+      ? (banda === "green" ? "PRONTA ENTREGA — SEPARAÇÃO E REVISÃO" : "ITENS PARA REVISÃO")
+      : (banda === "green" ? "ITENS — PRONTA ENTREGA" : "ITENS A PRODUZIR");
     T(titulo, ix, y, 13, bld, NAVY);
     R(ix, y + 6, iw, 2.5, NAVY);
     return y + 22;
@@ -343,10 +346,12 @@ export async function gerarPdfParte(
     const cEnv = ix + iw * 0.58;   // centro do quadradinho "Enviado"
     const cPass = ix + iw * 0.73;  // centro do quadradinho "Passadoria"
     const GOLDLBL = hx("#8a6d2f");
+    const lbl2 = modo === "revisao" ? "SEPARADO" : "ENVIADO";
+    const lbl3 = modo === "revisao" ? "REVISADO" : "PASSADORIA";
     T("PRODUTO / TAMANHO", ix + 10, ry + 13, 8, bld, MUTE);
     T("QUANTIDADE PEDIDA", qpx, ry + 13, 8, bld, MUTE);
-    T("ENVIADO", cEnv - bld.widthOfTextAtSize("ENVIADO", 7.5) / 2, ry + 13, 7.5, bld, GOLDLBL);
-    T("PASSADORIA", cPass - bld.widthOfTextAtSize("PASSADORIA", 7.5) / 2, ry + 13, 7.5, bld, GOLDLBL);
+    T(lbl2, cEnv - bld.widthOfTextAtSize(lbl2, 7.5) / 2, ry + 13, 7.5, bld, GOLDLBL);
+    T(lbl3, cPass - bld.widthOfTextAtSize(lbl3, 7.5) / 2, ry + 13, 7.5, bld, GOLDLBL);
     L(ix, ry + 18, ix + iw, LINEC, 1);
     ry += 18;
     for (const s of b.sizes) {

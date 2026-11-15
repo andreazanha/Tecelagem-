@@ -121,7 +121,7 @@ async function anexarCombinacoes(env: Env, blocos: { modelo: string; cor: string
   }
 }
 
-type Job = { tipo: string; label: string; banda: "gold" | "green"; sub: string; blocos: ReturnType<typeof classificar>["kits"] };
+type Job = { tipo: string; label: string; banda: "gold" | "green"; sub: string; blocos: ReturnType<typeof classificar>["kits"]; noMerge?: boolean; modo?: "producao" | "revisao" };
 // Jobs das PARTES (1/2/Única). A Pronta Entrega (kit) é montada à parte (buildPEJobs),
 // pois pode ser dividida em JUNTO/SEPARADO por pedido.
 function montarJobs(cl: ReturnType<typeof classificar>): Job[] {
@@ -135,6 +135,21 @@ function montarJobs(cl: ReturnType<typeof classificar>): Job[] {
   }
   // não gera PDF de uma parte vazia (ex.: só Parte 1 → não cria Parte 2 em branco)
   return jobs.filter((j) => j.blocos.length > 0);
+}
+
+// Documentos de REVISÃO (separação/conferência). Diferente da Tecelagem: a revisão
+// enxerga o que foi VENDIDO, então capa e almofada ficam SEPARADAS (noMerge=true) e as
+// colunas viram "Separado [ ]" / "Revisado [ ]" (modo="revisao"). Nunca vão pra Tecelagem.
+function montarJobsRevisao(cl: ReturnType<typeof classificar>): Job[] {
+  const jobs: Job[] = [];
+  // Revisão Produção: Parte 1 + Parte 2 reunidas num ÚNICO documento do pedido.
+  const prod = cl.modo === "unica" ? cl.parteUnica || [] : [...(cl.parte1 || []), ...(cl.parte2 || [])];
+  if (prod.length)
+    jobs.push({ tipo: "revisao-producao", label: "REVISÃO", banda: "gold", sub: "Revisão · Produção (Parte 1 + Parte 2)", blocos: prod, noMerge: true, modo: "revisao" });
+  // Revisão Pronta Entrega: só os itens KT/ED (pronta entrega).
+  if (cl.kits && cl.kits.length)
+    jobs.push({ tipo: "revisao-pe", label: "REVISÃO P.E.", banda: "green", sub: "Revisão · Pronta Entrega (KT / ED)", blocos: cl.kits, noMerge: true, modo: "revisao" });
+  return jobs;
 }
 
 const origemDe = (it: ItemBase, baseNum: string) => (it.origem || "").trim() || baseNum;
@@ -248,19 +263,22 @@ pedidos.post("/previa", async (c) => {
     emissao: br(b.data_pedido || null),
     entrega: br(b.data_entrega || null),
     observacao: b.observacao || "",
+    cidadeUf: [b.cliente_cidade, b.cliente_uf].map((s) => (s || "").trim()).filter(Boolean).join(" - "),
   };
 
   const cores = await coresParaPdf(c.env, coresUsadas(itens));
   const jobs = [
     ...montarJobs(cl),
     ...buildPEJobs(itens.filter((it) => ehKit(it, modelos)), b.entregas || {}, kitOpt, modelos, baseNum),
+    ...montarJobsRevisao(cl),
   ];
   for (const job of jobs) await anexarCombinacoes(c.env, job.blocos);
   const partes: Uint8Array[] = [];
   for (const job of jobs) {
     const codigo = codigoParte(baseNum, TIPOS_PDF[job.tipo]?.suf ?? "");
-    // PDF da TECELAGEM: junta capa + almofada (mesma peça na máquina).
-    partes.push(await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, juntarCapaAlmofadaBlocos(job.blocos), cores));
+    const blocosFinais = job.noMerge ? job.blocos : juntarCapaAlmofadaBlocos(job.blocos);
+    // TECELAGEM junta capa+almofada; REVISÃO mantém separado.
+    partes.push(await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, blocosFinais, cores, job.modo ?? "producao"));
   }
   const pdf = await mergePdfs(partes);
   return new Response(pdf, {
@@ -1057,10 +1075,10 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
 
   const cores = await coresParaPdf(c.env, coresUsadas(itens));
   const peJobs = buildPEJobs(itens.filter((it) => ehKit(it, modelos)), entregas, kitOpt, modelos, baseNum);
-  const jobs = [...montarJobs(cl), ...peJobs];
+  const jobs = [...montarJobs(cl), ...peJobs, ...montarJobsRevisao(cl)];
 
-  // limpa PDFs de PE antigos (pode ter mudado a divisão junto/separado)
-  for (const t of ["pronta-entrega", "pronta-entrega-sep"]) {
+  // limpa PDFs de PE/Revisão antigos (pode ter mudado a divisão junto/separado ou os itens)
+  for (const t of ["pronta-entrega", "pronta-entrega-sep", "revisao-producao", "revisao-pe"]) {
     await c.env.BUCKET.delete(`pedidos/${id}/${t}.pdf`);
   }
 
@@ -1068,8 +1086,9 @@ pedidos.post("/:id/gerar-pdfs", async (c) => {
   const arquivos: { tipo: string; label: string; url: string }[] = [];
   for (const job of jobs) {
     const codigo = codigoParte(baseNum, TIPOS_PDF[job.tipo]?.suf ?? "");
-    // PDF da TECELAGEM: junta capa + almofada (mesma peça na máquina).
-    const bytes = await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, juntarCapaAlmofadaBlocos(job.blocos), cores);
+    // TECELAGEM junta capa + almofada (mesma peça na máquina); REVISÃO (noMerge) mantém separado.
+    const blocosFinais = job.noMerge ? job.blocos : juntarCapaAlmofadaBlocos(job.blocos);
+    const bytes = await gerarPdfParte(job.label, job.sub, job.banda, { ...info, numero: codigo }, blocosFinais, cores, job.modo ?? "producao");
     const key = `pedidos/${id}/${job.tipo}.pdf`;
     await c.env.BUCKET.put(key, bytes, { httpMetadata: { contentType: "application/pdf" } });
     arquivos.push({ tipo: job.tipo, label: `${codigo} · ${job.label}`, url: `/api/pedidos/${id}/pdf/${job.tipo}` });
@@ -1223,8 +1242,10 @@ const TIPOS_PDF: Record<string, { nome: string; suf: string }> = {
   "parte-2": { nome: "PARTE 2", suf: "-P2" },
   "pronta-entrega": { nome: "PRONTA ENTREGA (JUNTO)", suf: "-PE" },
   "pronta-entrega-sep": { nome: "PRONTA ENTREGA (SEPARADO)", suf: "-PE-SEP" },
+  "revisao-producao": { nome: "REVISÃO · PRODUÇÃO", suf: "-REV" },
+  "revisao-pe": { nome: "REVISÃO · PRONTA ENTREGA", suf: "-REV-PE" },
 };
-const ORDEM_PDF = ["parte-unica", "parte-1", "parte-2", "pronta-entrega", "pronta-entrega-sep"];
+const ORDEM_PDF = ["parte-unica", "parte-1", "parte-2", "pronta-entrega", "pronta-entrega-sep", "revisao-producao", "revisao-pe"];
 // Código da parte: número único → "2030-P1"; vários números → "2030, 2031 (P1)".
 function codigoParte(baseNum: string, suf: string): string {
   if (!suf) return baseNum;
