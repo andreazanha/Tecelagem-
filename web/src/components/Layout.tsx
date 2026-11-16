@@ -199,6 +199,7 @@ const GRUPOS: MenuGrupo[] = [
       { to: "/estoque-visao", icon: "📊", label: "Visão do Estoque", page: "pedidos" },
       { to: "/estoque-inventario", icon: "🔢", label: "Inventário", page: "pedidos" },
       { to: "/produtos?aba=estoque", icon: "📊", label: "Estoque de Produtos", page: "produtos" },
+      { to: "/estoque-reposicao", icon: "📦", label: "Estoque & Reposição", page: "pedidos" },
       { to: "/estoque-syntech", icon: "🔎", label: "Estoque do Syntech", page: "pedidos" },
       { to: "/precisa-produzir", icon: "🏭", label: "Precisa Produzir", page: "pedidos" },
       { to: "/preparar-entrada", icon: "📥", label: "Preparar Entrada", page: "pedidos" },

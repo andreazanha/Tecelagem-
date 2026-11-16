@@ -934,6 +934,23 @@ integracao.get("/producao-necessidade", async (c) => {
 // Tipo local só pra tipar o filtro acima (espelha UnidadePE do loja-estoque).
 type UnidadePEl = { status: string; op_aberta: boolean; tipo: string; ref: string; em_producao: number };
 
+// ESTOQUE DE PRODUTOS ACABADOS + REPOSIÇÃO: lista COMPLETA (todo kit/avulso de pronta entrega, por
+// cor) com saldo/reservado/disponível/em-produção/mínimo/ideal/necessidade — pra a página agrupar
+// por modelo. Inclui a data da última sincronização do Syntech e se está desatualizada.
+integracao.get("/estoque-reposicao", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const unidades = await necessidadeProducao(c.env);
+  const syncRow = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_sync_em'").first<{ valor: string }>().catch(() => null);
+  const syncEm = syncRow?.valor || null;
+  let desatualizado = true; let minutos: number | null = null;
+  if (syncEm) {
+    const t = new Date(String(syncEm).replace(" ", "T") + (String(syncEm).includes("Z") ? "" : "Z")).getTime();
+    minutos = Math.max(0, Math.round((Date.now() - t) / 60000));
+    desatualizado = minutos > 30; // mais de 30 min sem sincronizar = dados velhos (trava aprovação na etapa 2)
+  }
+  return c.json({ unidades, sync: { em: syncEm, minutos, desatualizado }, agora: new Date().toISOString() });
+});
+
 // CRIA a ORDEM DE PRODUÇÃO (estoque) de uma unidade: um pedido de reposição (reposicao=1)
 // que entra na esteira Tecelagem→Corte→Revisão, igual às reposições que a fábrica já produz.
 // NÃO grava no Syntech (isso é a Etapa 4). Recusa se já houver OP aberta pra o mesmo modelo+cor.
@@ -1023,19 +1040,23 @@ integracao.post("/producao-op-excluir", async (c) => {
 // minimo <= 0 remove o mínimo (volta a só alertar quando zerar).
 integracao.post("/estoque-min", async (c) => {
   const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
-  const b = await c.req.json<{ ref?: string; cor?: string; minimo?: number | string }>().catch(() => ({} as { ref?: string; cor?: string; minimo?: number | string }));
+  const b = await c.req.json<{ ref?: string; cor?: string; minimo?: number | string; ideal?: number | string }>().catch(() => ({} as { ref?: string; cor?: string; minimo?: number | string; ideal?: number | string }));
   const ref = String(b.ref ?? "").trim();
   const cor = String(b.cor ?? "").trim().toLowerCase();
-  const minimo = Math.max(0, Math.round(Number(b.minimo) || 0));
   if (!ref || !cor) return c.json({ error: "ref_cor_obrigatorios" }, 400);
-  if (minimo <= 0) {
-    await c.env.DB.prepare("DELETE FROM estoque_min WHERE ref=? AND cor=?").bind(ref, cor).run();
-    return c.json({ ok: true, removido: true });
-  }
+  // O front edita MÍNIMO e IDEAL separadamente — então só sobrescreve o campo que VEIO no corpo.
+  const temMin = b.minimo !== undefined && b.minimo !== null && String(b.minimo) !== "";
+  const temIdeal = b.ideal !== undefined && b.ideal !== null && String(b.ideal) !== "";
+  const minimo = Math.max(0, Math.round(Number(b.minimo) || 0));
+  const ideal = Math.max(0, Math.round(Number(b.ideal) || 0));
   await c.env.DB.prepare(
-    "INSERT INTO estoque_min (ref, cor, minimo, atualizado_em) VALUES (?, ?, ?, datetime('now')) ON CONFLICT(ref, cor) DO UPDATE SET minimo=excluded.minimo, atualizado_em=datetime('now')"
-  ).bind(ref, cor, minimo).run();
-  return c.json({ ok: true, minimo });
+    `INSERT INTO estoque_min (ref, cor, minimo, ideal, atualizado_em) VALUES (?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(ref, cor) DO UPDATE SET minimo=${temMin ? "excluded.minimo" : "minimo"}, ideal=${temIdeal ? "excluded.ideal" : "ideal"}, atualizado_em=datetime('now')`
+  ).bind(ref, cor, temMin ? minimo : 0, temIdeal ? ideal : 0).run();
+  // Se mínimo E ideal zeraram, remove (volta a só alertar quando faltar).
+  await c.env.DB.prepare("DELETE FROM estoque_min WHERE ref=? AND cor=? AND COALESCE(minimo,0)<=0 AND COALESCE(ideal,0)<=0").bind(ref, cor).run();
+  const row = await c.env.DB.prepare("SELECT COALESCE(minimo,0) AS minimo, COALESCE(ideal,0) AS ideal FROM estoque_min WHERE ref=? AND cor=?").bind(ref, cor).first<{ minimo: number; ideal: number }>();
+  return c.json({ ok: true, minimo: row?.minimo ?? 0, ideal: row?.ideal ?? 0, removido: !row });
 });
 
 // ── BAIXA DE ESTOQUE (ajuste/saída) ──────────────────────────────────────────
