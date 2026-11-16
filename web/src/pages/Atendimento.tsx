@@ -2050,7 +2050,7 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                     <span className="at-tm">{hora(m.criado_em)}{m.direcao === "out" && m.autor !== "sistema" && m.status && (
                       m.status === "falha"
                         ? <span title="NÃO foi entregue ao cliente (WhatsApp recusou). Tente reenviar." style={{ marginLeft: 4, color: "#dc2626", fontWeight: 700 }}>⚠️ não entregue</span>
-                        : <span title={m.status === "read" ? "Visto" : m.status === "delivered" ? "Entregue" : "Enviado"} style={{ marginLeft: 4, color: m.status === "read" ? "#53bdeb" : "#8696a0", fontWeight: 700 }}>{m.status === "sent" ? "✓" : "✓✓"}</span>
+                        : <span title={m.status === "read" ? "Visto (lido)" : m.status === "delivered" ? "Entregue" : "Enviado"} style={{ marginLeft: 4, color: m.status === "read" ? "#34b7f1" : "#8696a0", fontWeight: 800, fontSize: 15, letterSpacing: "-1.5px" }}>{m.status === "sent" ? "✓" : "✓✓"}</span>
                     )}</span>
                     {m.direcao === "out" && m.status === "falha" && m.autor !== "sistema" && !m.arquivo_url && (m.texto || "").trim() && (
                       <button className="at-reply" title="Reenviar esta mensagem pro cliente" onClick={() => reenviarMsg(m.id)} style={{ color: "#dc2626", fontWeight: 700 }}>🔄 Reenviar</button>
