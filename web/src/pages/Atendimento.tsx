@@ -1829,7 +1829,11 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
   // Menu de excluir mensagem (para mim / para todos).
   const [menuMsg, setMenuMsg] = useState<string | null>(null);
   const [imgZoom, setImgZoom] = useState<string | null>(null); // imagem aberta em tela cheia (lightbox)
-  const [encMsg, setEncMsg] = useState<string | null>(null); // mensagem sendo encaminhada
+  const [encMsgs, setEncMsgs] = useState<string[] | null>(null); // mensagem(ns) sendo encaminhada(s)
+  const [selMode, setSelMode] = useState(false);                 // modo "selecionar várias pra encaminhar"
+  const [selMsgs, setSelMsgs] = useState<Set<string>>(new Set());
+  const toggleSelMsg = (mid: string) => setSelMsgs((s) => { const n = new Set(s); n.has(mid) ? n.delete(mid) : n.add(mid); return n; });
+  const sairSelecao = () => { setSelMode(false); setSelMsgs(new Set()); };
   async function excluirMsg(msgId: string, paraTodos: boolean) {
     if (paraTodos && !confirm("Apagar esta mensagem PARA TODOS? Ela some também no WhatsApp do cliente.")) return;
     setMenuMsg(null); setBusy(true);
@@ -2020,7 +2024,10 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                 ? <div className="at-sys" key={m.id}>⚙️ {m.texto}</div>
                 : m.tipo === "nota"
                 ? <div className="at-nota" key={m.id}><span className="at-nota-hd">📝 {m.autor || "Equipe"} · nota interna (o cliente não vê)</span>{formatarMsg(m.texto)}<span className="at-tm">{hora(m.criado_em)}</span></div>
-                : <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className={"at-b " + (m.direcao === "in" ? "in" : "out") + (destacado === m.id ? " at-destaque" : "")} style={{ position: "relative" }}>
+                : <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className={"at-b " + (m.direcao === "in" ? "in" : "out") + (destacado === m.id ? " at-destaque" : "")} style={{ position: "relative", ...(selMode && selMsgs.has(m.id) ? { boxShadow: "0 0 0 2px #16a34a", borderRadius: 10 } : {}) }}>
+                    {selMode && (
+                      <button onClick={(e) => { e.stopPropagation(); toggleSelMsg(m.id); }} title="Selecionar para encaminhar" style={{ position: "absolute", top: -9, left: -9, width: 24, height: 24, borderRadius: "50%", border: "2px solid " + (selMsgs.has(m.id) ? "#16a34a" : "#94a3b8"), background: selMsgs.has(m.id) ? "#16a34a" : "#fff", color: "#fff", fontSize: 14, fontWeight: 800, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 4, padding: 0 }}>{selMsgs.has(m.id) ? "✓" : ""}</button>
+                    )}
                     {m.autor && m.direcao === "out" && (m.autor === "bot"
                       ? <div className="at-aut">🤖 Big (automático) · só você vê</div>
                       : <div className="at-aut" style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -2068,7 +2075,8 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
                         {m.direcao === "out" && m.autor !== "sistema" && !m.arquivo_url && (m.texto || "").trim() && (
                           <button onClick={() => editarMsg(m.id, m.texto || "")}>✏️ Editar (corrigir erro)</button>
                         )}
-                        <button onClick={() => { setEncMsg(m.id); setMenuMsg(null); }}>↪️ Encaminhar</button>
+                        <button onClick={() => { setEncMsgs([m.id]); setMenuMsg(null); }}>↪️ Encaminhar</button>
+                        <button onClick={() => { setSelMode(true); setSelMsgs(new Set([m.id])); setMenuMsg(null); }}>☑️ Selecionar várias pra encaminhar</button>
                         {podeFuncao(getUser(), "crm.excluir_msg") && <button onClick={() => excluirMsg(m.id, false)}>🙈 Excluir para mim</button>}
                         {podeFuncao(getUser(), "crm.excluir_msg") && m.direcao === "out" && m.autor !== "sistema" && (
                           <button className="danger" onClick={() => excluirMsg(m.id, true)}>🗑 Excluir para todos</button>
@@ -2449,7 +2457,14 @@ export function ConversaModal({ id, onFechar, onMudou }: { id: string; onFechar:
       </div>
       {gerenciarResp && <RespostasModal onFechar={() => setGerenciarResp(false)} onSalvo={() => { setGerenciarResp(false); carregarRespostas(); }} />}
       {arqRapidoOpen && <ArquivosRapidosModal convId={id} autor={d?.responsavel || "Big Tricot"} onFechar={() => setArqRapidoOpen(false)} onEnviado={() => { setArqRapidoOpen(false); carregar(); onMudou(); }} />}
-      {encMsg && <EncaminharModal convId={id} msgId={encMsg} onFechar={() => setEncMsg(null)} />}
+      {encMsgs && <EncaminharModal convId={id} msgIds={encMsgs} onFechar={(ok?: boolean) => { setEncMsgs(null); if (ok) sairSelecao(); }} />}
+      {selMode && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 45, background: "var(--card,#fff)", borderTop: "2px solid #16a34a", padding: "10px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "center", boxShadow: "0 -2px 14px rgba(0,0,0,.14)", flexWrap: "wrap" }}>
+          <b style={{ fontSize: 14 }}>{selMsgs.size} selecionada{selMsgs.size === 1 ? "" : "s"}</b>
+          <button className="btn btn-soft" onClick={sairSelecao}>Cancelar</button>
+          <button className="btn btn-primary" disabled={selMsgs.size === 0} onClick={() => setEncMsgs((d?.mensagens || []).filter((mm) => selMsgs.has(mm.id)).map((mm) => mm.id))}>↪️ Encaminhar{selMsgs.size ? ` (${selMsgs.size})` : ""}</button>
+        </div>
+      )}
       {imgZoom && createPortal((
         <div onClick={() => setImgZoom(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.88)", zIndex: 100000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <button onClick={() => setImgZoom(null)} title="Fechar" style={{ position: "fixed", top: 16, right: 20, width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,.15)", color: "#fff", border: "1px solid rgba(255,255,255,.3)", fontSize: 24, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}>×</button>
@@ -2632,7 +2647,7 @@ function RecortarImagemModal({ file, url, onCancelar, onAplicar }: { file: File;
 }
 
 // ── Encaminhar mensagem: escolhe um contato (busca) ou digita um número e reenvia ──
-function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: string; onFechar: () => void }) {
+function EncaminharModal({ convId, msgIds, onFechar }: { convId: string; msgIds: string[]; onFechar: (ok?: boolean) => void }) {
   const [contatos, setContatos] = useState<AtendConversa[]>([]);
   const [busca, setBusca] = useState("");
   const [numero, setNumero] = useState("");
@@ -2647,8 +2662,11 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
   }, [convId]);
   async function enviar(dest: { telefone?: string; conversaId?: string }) {
     setBusy(true); setMsg("");
-    try { await api.atendEncaminharMsg(convId, msgId, dest); setMsg("✓ Encaminhada!"); setTimeout(onFechar, 900); }
-    catch { setMsg("Não consegui encaminhar. Confira o número/conexão."); setBusy(false); }
+    try {
+      for (const mid of msgIds) await api.atendEncaminharMsg(convId, mid, dest);
+      setMsg(`✓ ${msgIds.length > 1 ? msgIds.length + " encaminhadas!" : "Encaminhada!"}`);
+      setTimeout(() => onFechar(true), 900);
+    } catch { setMsg("Não consegui encaminhar tudo. Confira o número/conexão."); setBusy(false); }
   }
   const termo = busca.trim().toLowerCase();
   const casa = (c: AtendConversa) => !termo || [c.contato_nome, c.nome, c.telefone].some((x) => String(x ?? "").toLowerCase().includes(termo));
@@ -2661,13 +2679,13 @@ function EncaminharModal({ convId, msgId, onFechar }: { convId: string; msgId: s
     <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--card,#fff)", color: "var(--ink,#0f172a)", borderRadius: 14, width: "100%", maxWidth: 420, maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "hidden", border: "1px solid var(--line)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: "1px solid var(--line)" }}>
-          <b>↪️ Encaminhar mensagem</b>
-          <button onClick={onFechar} style={{ background: "transparent", border: 0, fontSize: 18, cursor: "pointer", color: "var(--muted)" }}>✕</button>
+          <b>↪️ Encaminhar {msgIds.length > 1 ? `${msgIds.length} mensagens` : "mensagem"}</b>
+          <button onClick={() => onFechar()} style={{ background: "transparent", border: 0, fontSize: 18, cursor: "pointer", color: "var(--muted)" }}>✕</button>
         </div>
         {msg && <div style={{ padding: "8px 14px", fontSize: 13, color: msg[0] === "✓" ? "#15803d" : "#b91c1c" }}>{msg}</div>}
         {confirmar ? (
           <div style={{ padding: "28px 20px", textAlign: "center" }}>
-            <div style={{ fontSize: 14, color: "var(--muted)" }}>Encaminhar esta mensagem para:</div>
+            <div style={{ fontSize: 14, color: "var(--muted)" }}>Encaminhar {msgIds.length > 1 ? `estas ${msgIds.length} mensagens` : "esta mensagem"} para:</div>
             <div style={{ fontSize: 19, fontWeight: 800, margin: "8px 0 22px", wordBreak: "break-word" }}>{confirmar.nome || "este contato"}</div>
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
               <button onClick={() => setConfirmar(null)} disabled={busy} style={{ border: "1px solid var(--line)", background: "var(--card,#fff)", color: "inherit", borderRadius: 10, padding: "10px 18px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>Cancelar</button>
