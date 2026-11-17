@@ -17,7 +17,12 @@ function corModelo(nome: string) {
   let h = 0; for (let i = 0; i < nome.length; i++) h = (h * 31 + nome.charCodeAt(i)) >>> 0;
   return cores[h % cores.length];
 }
-const iniciais = (nome: string) => nome.replace(/^Kit\s+/i, "").trim().split(/\s+/).slice(0, 2).map((p) => p[0] || "").join("").toUpperCase() || "?";
+const iniciais = (nome: string) => {
+  const limpo = nome.replace(/^Kit\s+/i, "").trim();
+  const ws = limpo.split(/\s+/).filter(Boolean);
+  const s = ws.length >= 2 ? ws.slice(0, 2).map((p) => p[0] || "").join("") : limpo.slice(0, 2);
+  return s.toUpperCase() || "?";
+};
 
 // Recalcula necessidade/status local depois de editar mínimo/ideal (mesma regra do backend).
 function recalc(u: UnidadePE, minimo: number, ideal: number): UnidadePE {
@@ -109,25 +114,29 @@ export function EstoqueReposicao() {
   const filtradas = useMemo(() => unidades.filter((u) => {
     if (soAbaixo && !abaixoDe(u)) return false;
     if (!termo) return true;
-    return [u.modelo, u.ref, u.cor].some((x) => String(x || "").toLowerCase().includes(termo));
+    return [u.modelo, u.ref, u.cor, u.designNome, u.variacao].some((x) => String(x || "").toLowerCase().includes(termo));
   }), [unidades, termo, soAbaixo]);
 
-  const modelos = useMemo(() => {
+  // Agrupa por DESIGN (código base, ex. 1078): um card "Balls" com todos os tamanhos/peças dentro.
+  const designs = useMemo(() => {
     const map = new Map<string, UnidadePE[]>();
-    for (const u of filtradas) { const a = map.get(u.modelo) || []; a.push(u); map.set(u.modelo, a); }
-    const arr = [...map.entries()].map(([modelo, cores]) => ({
-      modelo, ref: cores[0]?.ref || "",
-      cores: cores.slice().sort((a, b) => (b.necessidade - a.necessidade) || a.cor.localeCompare(b.cor, "pt-BR")),
-      precisam: cores.filter((c) => c.necessidade > 0).length,
-      totalNec: cores.reduce((s, c) => s + c.necessidade, 0),
-      totalDisp: cores.reduce((s, c) => s + c.disponivel, 0),
+    for (const u of filtradas) { const a = map.get(u.design) || []; a.push(u); map.set(u.design, a); }
+    const arr = [...map.entries()].map(([design, itens]) => ({
+      design,
+      nome: itens[0]?.designNome || itens[0]?.modelo || design,
+      refs: [...new Set(itens.map((i) => i.ref))],
+      // ordena por tamanho/variação, depois por quem precisa repor, depois por cor
+      itens: itens.slice().sort((a, b) => (a.variacao || "").localeCompare(b.variacao || "", "pt-BR") || (b.necessidade - a.necessidade) || a.cor.localeCompare(b.cor, "pt-BR")),
+      precisam: itens.filter((c) => c.necessidade > 0).length,
+      totalNec: itens.reduce((s, c) => s + c.necessidade, 0),
+      totalDisp: itens.reduce((s, c) => s + c.disponivel, 0),
     }));
-    arr.sort((a, b) => (b.totalNec - a.totalNec) || a.modelo.localeCompare(b.modelo, "pt-BR"));
+    arr.sort((a, b) => (b.totalNec - a.totalNec) || a.nome.localeCompare(b.nome, "pt-BR"));
     return arr;
   }, [filtradas]);
 
-  const modelosRepor = modelos.filter((m) => m.precisam > 0).length;
-  const pecasRepor = modelos.reduce((s, m) => s + m.totalNec, 0);
+  const modelosRepor = designs.filter((m) => m.precisam > 0).length;
+  const pecasRepor = designs.reduce((s, m) => s + m.totalNec, 0);
   const s = sync ? syncInfo(sync.em, sync.minutos) : null;
 
   const col: React.CSSProperties = { padding: "6px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" };
@@ -158,7 +167,7 @@ export function EstoqueReposicao() {
           Só abaixo do mínimo
         </label>
         <span className="muted" style={{ fontSize: 12.5 }}>
-          {modelos.length} modelo(s) · <b style={{ color: modelosRepor ? "#b91c1c" : "#15803d" }}>{modelosRepor}</b> precisam repor · <b>{pecasRepor}</b> peça(s) a produzir
+          {designs.length} modelo(s) · <b style={{ color: modelosRepor ? "#b91c1c" : "#15803d" }}>{modelosRepor}</b> precisam repor · <b>{pecasRepor}</b> peça(s) a produzir
         </span>
         {pecasRepor > 0 && !lote && <button className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={gerarSugestao}>💡 Gerar sugestão de reposição</button>}
       </div>
@@ -215,21 +224,22 @@ export function EstoqueReposicao() {
         </div>
       )}
 
-      {carregando ? <p className="muted pad">Carregando estoque…</p> : modelos.length === 0 ? (
+      {carregando ? <p className="muted pad">Carregando estoque…</p> : designs.length === 0 ? (
         <div className="card pad"><p className="muted" style={{ margin: 0 }}>{soAbaixo ? "Nenhum modelo abaixo do mínimo. 👍" : "Nada encontrado."}</p></div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {modelos.map((m) => {
-            const exp = aberto.has(m.modelo);
+          {designs.map((m) => {
+            const exp = aberto.has(m.design);
+            const temVar = m.refs.length > 1; // tem tamanhos/peças diferentes dentro do design
             return (
-              <div key={m.modelo} className="card" style={{ overflow: "hidden" }}>
-                {/* Linha compacta do MODELO */}
-                <div onClick={() => setAberto((a) => { const n = new Set(a); n.has(m.modelo) ? n.delete(m.modelo) : n.add(m.modelo); return n; })}
+              <div key={m.design} className="card" style={{ overflow: "hidden" }}>
+                {/* Linha compacta do DESIGN (ex.: "Balls") */}
+                <div onClick={() => setAberto((a) => { const n = new Set(a); n.has(m.design) ? n.delete(m.design) : n.add(m.design); return n; })}
                   style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", cursor: "pointer" }}>
-                  <span style={{ width: 34, height: 34, borderRadius: 8, background: corModelo(m.modelo), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flex: "0 0 auto" }}>{iniciais(m.modelo)}</span>
+                  <span style={{ width: 34, height: 34, borderRadius: 8, background: corModelo(m.nome), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flex: "0 0 auto" }}>{iniciais(m.nome)}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>{m.modelo}</div>
-                    <div className="muted" style={{ fontSize: 12 }}>{m.ref} · {m.cores.length} cor(es) · {m.totalDisp} disponível(is)</div>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>{m.nome}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>cód. {m.design} · {m.refs.length} {temVar ? "tamanho(s)/peça(s)" : "peça"} · {m.itens.length} variação(ões) · {m.totalDisp} disponível(is)</div>
                   </div>
                   {m.precisam > 0
                     ? <span className="chip" style={{ background: "#fef2f2", color: "#b91c1c", fontWeight: 700 }}>⚠️ repor {m.totalNec}</span>
@@ -237,23 +247,25 @@ export function EstoqueReposicao() {
                   <span className="muted" style={{ fontSize: 16, width: 16, textAlign: "center" }}>{exp ? "▾" : "▸"}</span>
                 </div>
 
-                {/* Variações por COR */}
+                {/* Tamanhos/peças × cor dentro do design */}
                 {exp && (
                   <div style={{ overflowX: "auto", borderTop: "1px solid var(--line,#eee)" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 620 }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 700 }}>
                       <thead><tr>
+                        <th style={{ ...th, textAlign: "left" }}>Tamanho / Peça</th>
                         <th style={{ ...th, textAlign: "left" }}>Cor</th>
                         <th style={th}>Físico</th><th style={th}>Reserv.</th><th style={th}>Dispon.</th>
                         <th style={th}>Em repos.</th><th style={th}>Mínimo</th><th style={th}>Ideal</th><th style={th}>Repor</th>
                       </tr></thead>
                       <tbody>
-                        {m.cores.map((u) => {
+                        {m.itens.map((u) => {
                           const emRepos = (u.op_qtd || 0) + (u.em_producao || 0);
                           const critico = u.status === "zerado" || u.status === "zerado_pedido";
                           const abaixo = u.status === "abaixo";
                           return (
                             <tr key={u.ref + "|" + u.cor} style={{ background: critico ? "#fef2f2" : abaixo ? "#fffbeb" : "transparent", borderBottom: "1px solid var(--line,#f0ece4)" }}>
-                              <td style={{ padding: "6px 8px", fontWeight: 600 }}>{u.cor || "—"}{u.limitante ? <span className="muted" style={{ fontWeight: 400, fontSize: 11 }}> · trava: {u.limitante}</span> : null}</td>
+                              <td style={{ padding: "6px 8px", fontWeight: 600 }}>{u.variacao || "—"}{u.limitante ? <span className="muted" style={{ fontWeight: 400, fontSize: 11 }}> · trava: {u.limitante}</span> : null}</td>
+                              <td style={{ padding: "6px 8px" }}>{u.cor || "—"}</td>
                               <td style={col}>{u.saldo}</td>
                               <td style={col}>{u.reservado || "—"}</td>
                               <td style={{ ...col, fontWeight: 800, color: critico ? "#b91c1c" : abaixo ? "#b45309" : "#15803d" }}>{u.disponivel}</td>

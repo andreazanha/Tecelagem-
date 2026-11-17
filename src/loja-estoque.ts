@@ -293,7 +293,10 @@ export async function kitAlertas(env: Env): Promise<KitAlerta[]> {
 export type UnidadePE = {
   tipo: "kit" | "avulso";
   ref: string;            // chave do mínimo (kit_ref vazio, ou ref do avulso)
-  modelo: string;         // nome amigável do modelo
+  modelo: string;         // nome amigável do modelo (ex.: "Kit Balls King")
+  design: string;         // CÓDIGO BASE que junta as variações/tamanhos (ex.: "1078" p/ todo o Balls)
+  designNome: string;     // nome do design p/ o card (ex.: "Balls")
+  variacao: string;       // tamanho/variação dentro do design (ex.: "King", "Queen", "Manta", "Almofada", "")
   cor: string;
   disponivel: number;     // kit: quantos dá pra montar (c/ reserva descontada); avulso: soma disponível
   saldo: number;          // idem, mas sem descontar reserva (pra detectar demanda)
@@ -312,6 +315,19 @@ export type UnidadePE = {
 
 const ehRefED = (ref: string) => /^ED\d/i.test(String(ref || "").trim());
 const rankStatus: Record<UnidadePE["status"], number> = { zerado_pedido: 0, zerado: 1, abaixo: 2, ok: 3 };
+
+// CÓDIGO BASE (design) de uma ref: o primeiro bloco de dígitos. Ex.: KT1078-A, KC1078-1, MC1078-2,
+// QC1078-1 → "1078" — todas as variações/tamanhos do mesmo design "Balls". Sem dígitos, usa a
+// própria ref. É a chave que junta as variações num card só na tela de reposição (regra do André).
+export const codigoBase = (ref: string): string => {
+  const m = String(ref || "").match(/\d+/);
+  return m ? m[0] : String(ref || "").trim().toUpperCase();
+};
+// Palavras "ruído" que não servem pra nomear o design (tipo de peça, tamanho, ligações).
+const RUIDO_DESIGN = new Set(["kit", "kits", "almofada", "almofadas", "capa", "capas", "manta", "mantas", "peseira", "peseiras", "king", "queen", "super", "com", "sem", "enchimento", "de", "do", "da", "e"]);
+const semAcento = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const palavras = (s: string) => semAcento(s).replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
+const tituloPalavras = (s: string) => String(s || "").split(/\s+/).map((w) => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w).join(" ").trim();
 
 export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
   // 1) receita dos kits
@@ -414,6 +430,30 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
       out.push(montarUnidade("avulso", ref, nomes.get(ref) || ref, cor, dispSum, saldoSum, resSum, minDe(ref, cor), idealDe(ref, cor), "", opDe(ref, cor), prodSum));
     }
   }
+  // ── DESIGN: junta as variações/tamanhos do mesmo modelo num card (regra do André) ──
+  // Chave = código base da ref (ex.: KT1078-A, KC1078-1, MC1078-2, QC1078-1 → "1078").
+  for (const u of out) u.design = codigoBase(u.ref);
+  // Nome do design: com 2+ variações, a palavra significativa compartilhada ("Balls"); com 1 só,
+  // o nome inteiro do modelo (evita apelido estranho em avulso).
+  const modsPorDesign = new Map<string, string[]>();
+  for (const u of out) { const a = modsPorDesign.get(u.design) || []; a.push(u.modelo); modsPorDesign.set(u.design, a); }
+  const nomeDesign = new Map<string, string>();
+  for (const [d, mods] of modsPorDesign) {
+    const uniq = [...new Set(mods)];
+    if (uniq.length <= 1) { nomeDesign.set(d, uniq[0] || d); continue; }
+    const freq = new Map<string, number>();
+    for (const m of uniq) for (const t of new Set(palavras(m).filter((t) => !/^\d+$/.test(t) && !RUIDO_DESIGN.has(t)))) freq.set(t, (freq.get(t) || 0) + 1);
+    let best = "", bestN = 0;
+    for (const [t, n] of freq) if (n > bestN || (n === bestN && t.length > best.length)) { best = t; bestN = n; }
+    nomeDesign.set(d, (bestN >= 2 && best) ? tituloPalavras(best) : uniq.slice().sort((a, b) => a.length - b.length)[0]);
+  }
+  for (const u of out) {
+    u.designNome = nomeDesign.get(u.design) || u.modelo;
+    // variação/tamanho = o que sobra do modelo tirando "kit" e as palavras do nome do design
+    const alvo = new Set(palavras(u.designNome));
+    const resto = palavras(u.modelo).filter((t) => t !== "kit" && !alvo.has(t) && !/^\d+$/.test(t));
+    u.variacao = tituloPalavras(resto.join(" "));
+  }
   out.sort((a, b) => rankStatus[a.status] - rankStatus[b.status] || b.falta - a.falta || b.reservado - a.reservado || a.modelo.localeCompare(b.modelo, "pt-BR"));
   return out;
 }
@@ -445,7 +485,7 @@ function montarUnidade(tipo: "kit" | "avulso", ref: string, modelo: string, cor:
   if (disponivel <= 0) status = reservado > 0 ? "zerado_pedido" : "zerado";
   else if (minimo > 0 && disponivel < minimo) status = "abaixo";
   else status = "ok";
-  return { tipo, ref, modelo, cor, disponivel, saldo, reservado, minimo, ideal: idealN, falta, necessidade, limitante, status, op_aberta: !!op, op_numero: op?.numero || "", op_qtd: op?.qtd || 0, em_producao: Math.max(0, Number(emProducao) || 0) };
+  return { tipo, ref, modelo, design: "", designNome: "", variacao: "", cor, disponivel, saldo, reservado, minimo, ideal: idealN, falta, necessidade, limitante, status, op_aberta: !!op, op_numero: op?.numero || "", op_qtd: op?.qtd || 0, em_producao: Math.max(0, Number(emProducao) || 0) };
 }
 
 // EXPIRAÇÃO DO CARRINHO (Etapa 2) — ao vencer a janela de 12h (sem prorrogação válida e sem ter
