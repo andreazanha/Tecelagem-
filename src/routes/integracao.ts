@@ -948,7 +948,75 @@ integracao.get("/estoque-reposicao", async (c) => {
     minutos = Math.max(0, Math.round((Date.now() - t) / 60000));
     desatualizado = minutos > 30; // mais de 30 min sem sincronizar = dados velhos (trava aprovação na etapa 2)
   }
-  return c.json({ unidades, sync: { em: syncEm, minutos, desatualizado }, agora: new Date().toISOString() });
+  const limRow = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='reposicao_limite_pecas'").first<{ valor: string }>().catch(() => null);
+  const limite = Math.max(0, Math.round(Number(limRow?.valor) || 0)) || 50; // 0/sem config = 50 peças (padrão)
+  return c.json({ unidades, sync: { em: syncEm, minutos, desatualizado }, limite, agora: new Date().toISOString() });
+});
+
+// Salva o LIMITE de peças por ordem de reposição (pra ordens pequenas). 0 = sem limite.
+integracao.post("/reposicao-limite", async (c) => {
+  const g = await exigirFuncao(c, "pedidos"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ limite?: number | string }>().catch(() => ({} as { limite?: number | string }));
+  const limite = Math.max(0, Math.round(Number(b.limite) || 0));
+  await c.env.DB.prepare(
+    "INSERT INTO config (chave, valor, atualizado_em) VALUES ('reposicao_limite_pecas', ?, datetime('now')) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=datetime('now')"
+  ).bind(String(limite)).run();
+  return c.json({ ok: true, limite });
+});
+
+// APROVAÇÃO HUMANA da reposição: cria as OPs de estoque (reposicao=1, BLOQUEADAS no PCP) pela
+// esteira existente — uma por item aprovado. Exige a permissão específica "estoque.aprovar_reposicao".
+// Bloqueia se o estoque estiver desatualizado (>30 min). Anti-duplicata (pula item com OP já aberta).
+// Registra quem/quando/quanto em reposicao_aprovacoes. NÃO grava no Syntech (só depois de fabricado).
+integracao.post("/reposicao-aprovar", async (c) => {
+  const g = await exigirFuncao(c, "estoque.aprovar_reposicao"); if ("erro" in g) return g.erro;
+  const b = await c.req.json<{ itens?: { ref?: string; cor?: string; tamanho?: string; tipo?: string; modelo?: string; qtd?: number | string }[] }>().catch(() => ({} as { itens?: { ref?: string; cor?: string; tamanho?: string; tipo?: string; modelo?: string; qtd?: number | string }[] }));
+  const itens = (b.itens || []).map((it) => ({
+    ref: String(it.ref ?? "").trim(), cor: String(it.cor ?? "").trim(), tamanho: String(it.tamanho ?? "").trim(),
+    tipo: it.tipo === "avulso" ? "avulso" : "kit", modelo: String(it.modelo ?? it.ref ?? "").trim(), qtd: Math.max(0, Math.round(Number(it.qtd) || 0)),
+  })).filter((it) => it.ref && it.cor && it.qtd > 0);
+  if (!itens.length) return c.json({ error: "sem_itens" }, 400);
+  // TRAVA: não aprova com dados desatualizados (mais de 30 min sem sincronizar o Syntech).
+  const syncRow = await c.env.DB.prepare("SELECT valor FROM config WHERE chave='estoque_sync_em'").first<{ valor: string }>().catch(() => null);
+  if (!syncRow?.valor) return c.json({ error: "sem_sincronizacao" }, 409);
+  const tSync = new Date(String(syncRow.valor).replace(" ", "T") + (String(syncRow.valor).includes("Z") ? "" : "Z")).getTime();
+  if ((Date.now() - tSync) / 60000 > 30) return c.json({ error: "dados_desatualizados" }, 409);
+  const usuario = ("u" in g && g.u ? (g.u as { nome?: string }).nome : "") || "";
+  const usuarioId = ("u" in g && g.u ? (g.u as { id?: string }).id : "") || "";
+  const feitos: { ref: string; cor: string; tamanho: string; tipo: string; modelo: string; qtd: number; numero: string }[] = [];
+  let puladas = 0;
+  for (const it of itens) {
+    const existe = await c.env.DB.prepare(
+      `SELECT o.id FROM producao_op_estoque o JOIN pedidos ped ON ped.id=o.pedido_id
+        WHERE o.concluida_em IS NULL AND lower(o.ref)=lower(?) AND lower(o.cor)=lower(?) AND lower(COALESCE(o.tamanho,''))=lower(?)
+          AND COALESCE(ped.status,'') NOT IN ('cancelado','recusado') LIMIT 1`
+    ).bind(it.ref, it.cor, it.tamanho).first<{ id: string }>().catch(() => null);
+    if (existe) { puladas++; continue; }
+    const pedidoId = uid();
+    const numero = "OP-" + pedidoId.slice(0, 6).toUpperCase();
+    const desc = `${it.modelo} ${it.cor}${it.tamanho ? " " + it.tamanho : ""} × ${it.qtd}`;
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        `INSERT INTO pedidos (id, numero_erp, cliente_nome, tipo, reposicao, data_pedido, observacao, status, bloqueado)
+         VALUES (?, ?, 'PRODUÇÃO ESTOQUE', 'auto', 1, date('now'), ?, 'novo', 1)`
+      ).bind(pedidoId, numero, `Reposição aprovada por ${usuario || "equipe"} — ${desc}`),
+      c.env.DB.prepare(
+        `INSERT INTO pedido_itens (id, pedido_id, produto, ref, cor_grade, tamanho, qtd, parte, kit, valor_unit)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'kit', 1, 0)`
+      ).bind(uid(), pedidoId, it.modelo, it.ref, it.cor, it.tamanho || null, it.qtd),
+      c.env.DB.prepare(
+        `INSERT INTO producao_op_estoque (id, ref, cor, tamanho, tipo, modelo, pedido_id, qtd, criado_em, criado_por)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)`
+      ).bind(uid(), it.ref, it.cor.toLowerCase(), it.tamanho || null, it.tipo, it.modelo, pedidoId, it.qtd, usuario),
+    ]);
+    feitos.push({ ...it, numero });
+  }
+  const totalPecas = feitos.reduce((s, x) => s + x.qtd, 0);
+  await c.env.DB.prepare(
+    `INSERT INTO reposicao_aprovacoes (id, criado_em, usuario, usuario_id, total_pecas, ops_criadas, itens_json)
+     VALUES (?, datetime('now'), ?, ?, ?, ?, ?)`
+  ).bind(uid(), usuario, usuarioId, totalPecas, feitos.length, JSON.stringify(feitos)).run();
+  return c.json({ ok: true, criadas: feitos.length, puladas, total_pecas: totalPecas, ops: feitos });
 });
 
 // CRIA a ORDEM DE PRODUÇÃO (estoque) de uma unidade: um pedido de reposição (reposicao=1)

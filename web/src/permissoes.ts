@@ -34,6 +34,7 @@ export const CATEGORIAS_FUNCAO: CategoriaFuncao[] = [
       { key: "estoque.entrada", label: "Dar entrada" },
       { key: "estoque.saida", label: "Dar saída / baixa" },
       { key: "estoque.ajuste", label: "Ajustar estoque" },
+      { key: "estoque.aprovar_reposicao", label: "Aprovar reposição (gerar OP)" },
     ],
   },
   {
