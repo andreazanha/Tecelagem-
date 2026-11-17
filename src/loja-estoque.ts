@@ -299,7 +299,9 @@ export type UnidadePE = {
   saldo: number;          // idem, mas sem descontar reserva (pra detectar demanda)
   reservado: number;      // total reservado nas peças (sinal de demanda)
   minimo: number;
+  ideal: number;          // ALVO da reposição (até onde repor); 0 = não configurado
   falta: number;          // quanto falta pro mínimo (0 se já atende)
+  necessidade: number;    // quanto produzir AGORA (repor até o ideal, menos o que já vem); 0 se não dispara
   limitante: string;      // peça que trava o kit (ou "")
   status: "zerado_pedido" | "zerado" | "abaixo" | "ok";
   op_aberta: boolean;     // já tem ordem de produção rodando na esteira (OP nossa)?
@@ -351,9 +353,11 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
   for (const p of prod) { nomes.set(p.ref, String(p.nome || p.ref)); grupos.set(p.ref, String(p.grupo || "")); }
   // 5) mínimos cadastrados
   const minMap = new Map<string, number>(); // ref(lower)|cor(lower) → minimo
-  const mins = (await env.DB.prepare("SELECT ref, cor, minimo FROM estoque_min").all<{ ref: string; cor: string; minimo: number }>().catch(() => ({ results: [] as { ref: string; cor: string; minimo: number }[] }))).results || [];
-  for (const m of mins) minMap.set(`${String(m.ref).toLowerCase()}|${String(m.cor).toLowerCase()}`, Number(m.minimo) || 0);
+  const idealMap = new Map<string, number>(); // ref(lower)|cor(lower) → ideal
+  const mins = (await env.DB.prepare("SELECT ref, cor, minimo, COALESCE(ideal,0) AS ideal FROM estoque_min").all<{ ref: string; cor: string; minimo: number; ideal: number }>().catch(() => ({ results: [] as { ref: string; cor: string; minimo: number; ideal: number }[] }))).results || [];
+  for (const m of mins) { const k = `${String(m.ref).toLowerCase()}|${String(m.cor).toLowerCase()}`; minMap.set(k, Number(m.minimo) || 0); idealMap.set(k, Number(m.ideal) || 0); }
   const minDe = (ref: string, cor: string) => minMap.get(`${ref.toLowerCase()}|${cor.toLowerCase()}`) || 0;
+  const idealDe = (ref: string, cor: string) => idealMap.get(`${ref.toLowerCase()}|${cor.toLowerCase()}`) || 0;
   // 6) OPs abertas (pedido de reposição ainda ativo) por ref+cor
   const opMap = new Map<string, { numero: string; qtd: number }>(); // ref(lower)|cor(lower) → OP
   const ops = (await env.DB.prepare(
@@ -389,7 +393,7 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
         if (maxD < limMax) { limMax = maxD; limNome = peca(c.ref); }
       }
       if (!isFinite(montDisp)) continue;
-      out.push(montarUnidade("kit", kitRef, modelo, cor, montDisp, montSaldo, resTot, minDe(kitRef, cor), limNome, opDe(kitRef, cor), isFinite(montProd) ? montProd : 0));
+      out.push(montarUnidade("kit", kitRef, modelo, cor, montDisp, montSaldo, resTot, minDe(kitRef, cor), idealDe(kitRef, cor), limNome, opDe(kitRef, cor), isFinite(montProd) ? montProd : 0));
     }
   }
   // ── AVULSOS (pronta entrega estocada solta): produto com grupo "pronta", fora kit/ED/peça-KT ──
@@ -407,7 +411,7 @@ export async function necessidadeProducao(env: Env): Promise<UnidadePE[]> {
         const sld = Number(e.saldo) || 0; const res = resMap.get(`${ref.toLowerCase()}|${cor.toLowerCase()}|${tam}`) || 0;
         saldoSum += sld; resSum += res; dispSum += Math.max(0, sld - res); prodSum += Number(e.producao) || 0;
       }
-      out.push(montarUnidade("avulso", ref, nomes.get(ref) || ref, cor, dispSum, saldoSum, resSum, minDe(ref, cor), "", opDe(ref, cor), prodSum));
+      out.push(montarUnidade("avulso", ref, nomes.get(ref) || ref, cor, dispSum, saldoSum, resSum, minDe(ref, cor), idealDe(ref, cor), "", opDe(ref, cor), prodSum));
     }
   }
   out.sort((a, b) => rankStatus[a.status] - rankStatus[b.status] || b.falta - a.falta || b.reservado - a.reservado || a.modelo.localeCompare(b.modelo, "pt-BR"));
@@ -429,13 +433,19 @@ export async function listarOpsAbertas(env: Env): Promise<OpAberta[]> {
   return rows;
 }
 
-function montarUnidade(tipo: "kit" | "avulso", ref: string, modelo: string, cor: string, disponivel: number, saldo: number, reservado: number, minimo: number, limitante: string, op: { numero: string; qtd: number } | null, emProducao: number): UnidadePE {
+function montarUnidade(tipo: "kit" | "avulso", ref: string, modelo: string, cor: string, disponivel: number, saldo: number, reservado: number, minimo: number, ideal: number, limitante: string, op: { numero: string; qtd: number } | null, emProducao: number): UnidadePE {
   const falta = Math.max(0, minimo - disponivel);
+  const idealN = Math.max(0, Number(ideal) || 0);
+  const emFlight = (op?.qtd || 0) + Math.max(0, Number(emProducao) || 0); // já em reposição (OP nossa) + em produção no Syntech
+  const alvo = idealN > 0 ? idealN : minimo; // sem ideal configurado, repõe só até o mínimo
+  // Necessidade: SÓ dispara quando ABAIXO do mínimo; repõe até o ALVO (ideal), descontando o que
+  // já está vindo (OP nossa + produção no Syntech) pra NÃO duplicar. Ex.: disp 7, min 10, ideal 15 → 8.
+  const necessidade = (minimo > 0 && disponivel < minimo) ? Math.max(0, alvo - disponivel - emFlight) : 0;
   let status: UnidadePE["status"];
   if (disponivel <= 0) status = reservado > 0 ? "zerado_pedido" : "zerado";
   else if (minimo > 0 && disponivel < minimo) status = "abaixo";
   else status = "ok";
-  return { tipo, ref, modelo, cor, disponivel, saldo, reservado, minimo, falta, limitante, status, op_aberta: !!op, op_numero: op?.numero || "", op_qtd: op?.qtd || 0, em_producao: Math.max(0, Number(emProducao) || 0) };
+  return { tipo, ref, modelo, cor, disponivel, saldo, reservado, minimo, ideal: idealN, falta, necessidade, limitante, status, op_aberta: !!op, op_numero: op?.numero || "", op_qtd: op?.qtd || 0, em_producao: Math.max(0, Number(emProducao) || 0) };
 }
 
 // EXPIRAÇÃO DO CARRINHO (Etapa 2) — ao vencer a janela de 12h (sem prorrogação válida e sem ter

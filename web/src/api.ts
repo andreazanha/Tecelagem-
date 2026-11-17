@@ -849,7 +849,7 @@ export interface CatalogoProdutoExtra {
 export interface LojaImagemCor { id_cor: string; nome: string; hex: string; foto: string }
 export interface LojaImagemProduto { id: string; nome: string; foto: string; categoria: string; cores: LojaImagemCor[] }
 export interface EstoqueResumoLinha { produto: string | null; ref: string | null; cor: string | null; tamanho: string | null; medida?: string | null; codigo_tamanho?: string | null; saldo: number; reservado: number; disponivel: number }
-export interface UnidadePE { tipo: "kit" | "avulso"; ref: string; modelo: string; cor: string; disponivel: number; saldo: number; reservado: number; minimo: number; falta: number; limitante: string; status: "zerado_pedido" | "zerado" | "abaixo" | "ok"; op_aberta: boolean; op_numero: string; op_qtd: number; em_producao: number }
+export interface UnidadePE { tipo: "kit" | "avulso"; ref: string; modelo: string; cor: string; disponivel: number; saldo: number; reservado: number; minimo: number; ideal: number; falta: number; necessidade: number; limitante: string; status: "zerado_pedido" | "zerado" | "abaixo" | "ok"; op_aberta: boolean; op_numero: string; op_qtd: number; em_producao: number }
 export interface NecessidadeResumo { zerado_pedido: number; zerado: number; abaixo: number; em_producao: number; em_producao_erp: number; ok: number; kits: number; avulsos: number }
 export interface OpAberta { id: string; pedido_id: string; ref: string; cor: string; tamanho: string; tipo: string; modelo: string; qtd: number; numero: string; criado_em: string; bloqueado: number }
 export interface ProdutoBusca { ref: string; nome: string; cores: string[]; tamanhos: { codigo: string; medida: string }[] }
@@ -1588,6 +1588,12 @@ export const api = {
       }>(r)),
   estoqueMinSalvar: (ref: string, cor: string, minimo: number) =>
     jsonPost("/api/integracao/estoque-min", { ref, cor, minimo }).then((r) => j<{ ok: boolean; minimo?: number; removido?: boolean }>(r)),
+  // Salva MÍNIMO e/ou IDEAL por ref+cor (só os campos passados são alterados).
+  estoqueMinIdeal: (ref: string, cor: string, v: { minimo?: number; ideal?: number }) =>
+    jsonPost("/api/integracao/estoque-min", { ref, cor, ...v }).then((r) => j<{ ok: boolean; minimo: number; ideal: number; removido: boolean }>(r)),
+  // Estoque de produtos acabados + reposição: lista completa (todo kit/avulso por cor) + data de sync.
+  estoqueReposicao: () =>
+    fetch("/api/integracao/estoque-reposicao").then((r) => j<{ unidades: UnidadePE[]; sync: { em: string | null; minutos: number | null; desatualizado: boolean }; agora: string }>(r)),
   // Diagnóstico do Syntech (estrutura das procedures/tabelas de estoque) — pra planejar a Etapa 4.
   diagSyntechEstoque: () =>
     fetch("/api/integracao/diag?pedido=estoque").then((r) =>
