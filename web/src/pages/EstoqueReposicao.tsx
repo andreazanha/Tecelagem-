@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type UnidadePE } from "../api";
+import { podeFuncao, getUser } from "../auth";
 
 // Data amigável da última sincronização + "há quanto tempo".
 function syncInfo(em: string | null, minutos: number | null) {
@@ -50,10 +51,16 @@ export function EstoqueReposicao() {
   const [busca, setBusca] = useState("");
   const [soAbaixo, setSoAbaixo] = useState(false);
   const [aberto, setAberto] = useState<Set<string>>(new Set());
+  const [limite, setLimite] = useState(50);
+  const [lote, setLote] = useState<{ u: UnidadePE; qtd: number }[] | null>(null); // sugestão em revisão
+  const [futuroN, setFuturoN] = useState(0);
+  const [aprovando, setAprovando] = useState(false);
+  const [msgA, setMsgA] = useState("");
+  const podeAprovar = podeFuncao(getUser(), "estoque.aprovar_reposicao");
 
   function carregar() {
     setCarregando(true);
-    api.estoqueReposicao().then((r) => { setUnidades(r.unidades); setSync(r.sync); }).catch(() => setUnidades([])).finally(() => setCarregando(false));
+    api.estoqueReposicao().then((r) => { setUnidades(r.unidades); setSync(r.sync); setLimite(r.limite || 50); }).catch(() => setUnidades([])).finally(() => setCarregando(false));
   }
   useEffect(carregar, []);
 
@@ -63,6 +70,38 @@ export function EstoqueReposicao() {
     setUnidades((xs) => xs.map((x) => (x.ref === u.ref && x.cor === u.cor) ? recalc(x, novoMin, novoIdeal) : x)); // otimista
     try { await api.estoqueMinIdeal(u.ref, u.cor, { [campo]: valor }); }
     catch { alert("Não consegui salvar o valor. Confira a conexão."); carregar(); }
+  }
+
+  // Gera a sugestão CONSOLIDADA: todos os SKUs que precisam repor, priorizando os mais críticos,
+  // enchendo até o LIMITE de peças por ordem. O que passar do limite vira "necessidade futura".
+  const rankS: Record<UnidadePE["status"], number> = { zerado_pedido: 0, zerado: 1, abaixo: 2, ok: 3 };
+  function gerarSugestao() {
+    const crit = unidades.filter((u) => u.necessidade > 0)
+      .sort((a, b) => rankS[a.status] - rankS[b.status] || b.falta - a.falta || b.necessidade - a.necessidade);
+    const novo: { u: UnidadePE; qtd: number }[] = []; let acc = 0, fut = 0;
+    for (const u of crit) {
+      let q = u.necessidade;
+      if (limite > 0) { if (acc >= limite) { fut += u.necessidade; continue; } if (acc + q > limite) q = limite - acc; }
+      if (q > 0) { novo.push({ u, qtd: q }); acc += q; }
+      fut += (u.necessidade - q);
+    }
+    setFuturoN(fut); setLote(novo); setMsgA("");
+  }
+  async function salvarLimite(n: number) { setLimite(n); try { await api.reposicaoLimiteSalvar(n); } catch { /* ok */ } }
+  async function aprovar() {
+    if (!lote) return;
+    const itens = lote.filter((x) => x.qtd > 0).map((x) => ({ ref: x.u.ref, cor: x.u.cor, tipo: x.u.tipo, modelo: x.u.modelo, qtd: x.qtd }));
+    const total = itens.reduce((s, x) => s + x.qtd, 0);
+    if (!itens.length) { setMsgA("Nenhum item com quantidade."); return; }
+    if (!confirm(`Aprovar a reposição e gerar as ordens de produção?\n\n${itens.length} item(ns) · ${total} peça(s).\n\nAs ordens entram na esteira BLOQUEADAS — o PCP libera pra produzir.`)) return;
+    setAprovando(true); setMsgA("");
+    try {
+      const r = await api.reposicaoAprovar(itens);
+      if (r.error === "dados_desatualizados" || r.error === "sem_sincronizacao") { setMsgA("❌ Estoque desatualizado — espere a próxima sincronização do Syntech e tente de novo."); setAprovando(false); return; }
+      if (!r.ok) { setMsgA("❌ Não consegui aprovar: " + (r.error || "erro")); setAprovando(false); return; }
+      setMsgA(`✓ ${r.criadas} ordem(ns) criada(s) (${r.total_pecas} peças)${r.puladas ? ` · ${r.puladas} já tinham OP aberta` : ""}. Entraram na esteira (bloqueadas pro PCP liberar).`);
+      setLote(null); carregar();
+    } catch { setMsgA("❌ Erro ao aprovar. Confira a conexão."); } finally { setAprovando(false); }
   }
 
   const termo = busca.trim().toLowerCase();
@@ -121,7 +160,60 @@ export function EstoqueReposicao() {
         <span className="muted" style={{ fontSize: 12.5 }}>
           {modelos.length} modelo(s) · <b style={{ color: modelosRepor ? "#b91c1c" : "#15803d" }}>{modelosRepor}</b> precisam repor · <b>{pecasRepor}</b> peça(s) a produzir
         </span>
+        {pecasRepor > 0 && !lote && <button className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={gerarSugestao}>💡 Gerar sugestão de reposição</button>}
       </div>
+
+      {/* SUGESTÃO + aprovação humana (a IA prepara; só quem tem permissão libera) */}
+      {lote && (
+        <div className="card pad" style={{ marginBottom: 14, border: "2px solid #c7d2fe", background: "#eef2ff" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+            <b style={{ fontSize: 15, color: "#3730a3" }}>💡 Sugestão de reposição</b>
+            <label style={{ fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              Máx. por ordem:
+              <input value={String(limite)} inputMode="numeric"
+                onChange={(e) => setLimite(Math.max(0, Math.round(Number(e.target.value.replace(/[^\d]/g, "")) || 0)))}
+                onBlur={(e) => salvarLimite(Math.max(0, Math.round(Number(e.target.value.replace(/[^\d]/g, "")) || 0)))}
+                style={{ width: 62, padding: "4px 6px", textAlign: "center", border: "1px solid var(--line,#e2e8f0)", borderRadius: 6, fontSize: 13 }} /> peças
+            </label>
+            <button className="btn btn-soft" style={{ fontSize: 12 }} onClick={gerarSugestao}>↻ Recalcular</button>
+            <button className="btn btn-soft" style={{ marginLeft: "auto" }} onClick={() => { setLote(null); setMsgA(""); }}>Fechar</button>
+          </div>
+          {lote.length === 0 ? <p className="muted" style={{ margin: 0 }}>Nada a repor dentro do limite.</p> : (
+            <>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, background: "var(--card,#fff)", borderRadius: 8 }}>
+                  <thead><tr>
+                    <th style={{ ...th, textAlign: "left" }}>Modelo</th><th style={{ ...th, textAlign: "left" }}>Cor</th>
+                    <th style={th}>Disp.</th><th style={th}>Mín.</th><th style={th}>Ideal</th><th style={th}>Produzir</th>
+                  </tr></thead>
+                  <tbody>
+                    {lote.map((x, i) => (
+                      <tr key={x.u.ref + "|" + x.u.cor} style={{ borderBottom: "1px solid var(--line,#f0ece4)" }}>
+                        <td style={{ padding: "6px 8px", fontWeight: 600 }}>{x.u.modelo}</td>
+                        <td style={{ padding: "6px 8px" }}>{x.u.cor}</td>
+                        <td style={col}>{x.u.disponivel}</td><td style={col}>{x.u.minimo}</td><td style={col}>{x.u.ideal || "—"}</td>
+                        <td style={{ ...col, padding: "4px 8px" }}>
+                          <NumEdit valor={x.qtd} destaque onSalvar={(n) => setLote((l) => l && l.map((y, j) => j === i ? { ...y, qtd: n } : y))} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
+                <b style={{ fontSize: 14 }}>Este lote: {lote.reduce((s, x) => s + x.qtd, 0)} peça(s) · {lote.filter((x) => x.qtd > 0).length} item(ns)</b>
+                {futuroN > 0 && <span className="chip" style={{ background: "#fffbeb", color: "#92400e", fontWeight: 600 }}>+{futuroN} ficam p/ a próxima ordem (necessidade futura)</span>}
+                <span style={{ marginLeft: "auto" }} />
+                {podeAprovar
+                  ? <button className="btn btn-primary" disabled={aprovando || !!sync?.desatualizado} onClick={aprovar}>{aprovando ? "Aprovando…" : `✅ Aprovar e produzir (${lote.reduce((s, x) => s + x.qtd, 0)})`}</button>
+                  : <span className="chip" style={{ background: "#f1f5f9", color: "#64748b", fontWeight: 600 }}>🔒 só quem tem permissão de aprovar reposição</span>}
+              </div>
+              {!!sync?.desatualizado && podeAprovar && <div style={{ fontSize: 12, color: "#b91c1c", marginTop: 6 }}>⚠️ Estoque desatualizado — a aprovação fica travada até a próxima sincronização do Syntech.</div>}
+              {msgA && <div style={{ fontSize: 13, fontWeight: 600, marginTop: 8, color: msgA[0] === "✓" ? "#15803d" : "#b91c1c" }}>{msgA}</div>}
+            </>
+          )}
+        </div>
+      )}
 
       {carregando ? <p className="muted pad">Carregando estoque…</p> : modelos.length === 0 ? (
         <div className="card pad"><p className="muted" style={{ margin: 0 }}>{soAbaixo ? "Nenhum modelo abaixo do mínimo. 👍" : "Nada encontrado."}</p></div>

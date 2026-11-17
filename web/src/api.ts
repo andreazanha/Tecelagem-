@@ -1593,7 +1593,11 @@ export const api = {
     jsonPost("/api/integracao/estoque-min", { ref, cor, ...v }).then((r) => j<{ ok: boolean; minimo: number; ideal: number; removido: boolean }>(r)),
   // Estoque de produtos acabados + reposição: lista completa (todo kit/avulso por cor) + data de sync.
   estoqueReposicao: () =>
-    fetch("/api/integracao/estoque-reposicao").then((r) => j<{ unidades: UnidadePE[]; sync: { em: string | null; minutos: number | null; desatualizado: boolean }; agora: string }>(r)),
+    fetch("/api/integracao/estoque-reposicao").then((r) => j<{ unidades: UnidadePE[]; sync: { em: string | null; minutos: number | null; desatualizado: boolean }; limite: number; agora: string }>(r)),
+  reposicaoLimiteSalvar: (limite: number) =>
+    jsonPost("/api/integracao/reposicao-limite", { limite }).then((r) => j<{ ok: boolean; limite: number }>(r)),
+  reposicaoAprovar: (itens: { ref: string; cor: string; tamanho?: string; tipo: string; modelo: string; qtd: number }[]) =>
+    jsonPost("/api/integracao/reposicao-aprovar", { itens }).then((r) => j<{ ok?: boolean; criadas?: number; puladas?: number; total_pecas?: number; ops?: { numero: string }[]; error?: string }>(r)),
   // Diagnóstico do Syntech (estrutura das procedures/tabelas de estoque) — pra planejar a Etapa 4.
   diagSyntechEstoque: () =>
     fetch("/api/integracao/diag?pedido=estoque").then((r) =>

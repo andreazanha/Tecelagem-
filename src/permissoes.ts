@@ -37,7 +37,7 @@ export const CHAVES_FUNCAO = new Set<string>([
   "producao.defeito", "producao.devolver", "producao.prioridade", "producao.desmembrar",
   "producao.revisadora", "producao.historico",
   // Estoque
-  "estoque.entrada", "estoque.saida", "estoque.ajuste",
+  "estoque.entrada", "estoque.saida", "estoque.ajuste", "estoque.aprovar_reposicao",
   // Expedição
   "expedicao.fase", "expedicao.romaneio", "expedicao.etiquetas",
   // Fiscal
