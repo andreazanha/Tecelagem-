@@ -279,7 +279,12 @@ export async function processarCarrinhoAbandonado(env: Env, sender: Sender): Pro
 // Envia UMA mensagem de recebimento (idempotente via reserva_recebido_aviso_em), ao destinatário
 // certo (cliente direto → cliente; pedido de rep → só o rep, identificando o cliente). NÃO libera
 // estoque e NÃO significa aprovação. Falha de WhatsApp não afeta o pedido (best-effort).
-export async function avisarRecebidoSyntech(env: Env, pedidoId: string, numero: number | string, sender: Sender): Promise<"enviado" | "ja_avisado" | "sem_destino" | "sem_pedido"> {
+export async function avisarRecebidoSyntech(env: Env, pedidoId: string, numero: number | string, sender: Sender): Promise<"enviado" | "ja_avisado" | "sem_destino" | "sem_pedido" | "desligado"> {
+  // RESPEITA o botão "Avisos de pedido ao cliente" (config avisos_pedido_ativo). Padrão LIGADO;
+  // só NÃO envia quando o gestor desligou (valor == "0") — igual às demais msgs de status do pedido
+  // (faturado/saiu pra entrega). Antes esta de "recebido" ignorava o botão e mandava mesmo desligado.
+  const av = await env.DB.prepare("SELECT valor FROM config WHERE chave='avisos_pedido_ativo' LIMIT 1").first<{ valor: string | null }>().catch(() => null);
+  if (String(av?.valor ?? "").trim() === "0") return "desligado";
   // reclama o aviso de forma atômica: só o PRIMEIRO a marcar envia (a ponte pode reenviar).
   const r = await env.DB.prepare(
     "UPDATE pedidos SET reserva_recebido_aviso_em=datetime('now') WHERE id=? AND canal='loja_b2b' AND reserva_recebido_aviso_em IS NULL"
