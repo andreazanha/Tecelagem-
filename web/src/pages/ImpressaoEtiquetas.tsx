@@ -603,6 +603,23 @@ export function ImpressaoEtiquetas() {
         </div>
       )}
 
+      {/* EQUIPE (não-admin): só a LISTA de folhas, pra escolher o modelo certo (ex.: Pimaco A4251 = 5 colunas).
+          Os ajustes finos (colunas, larguras, margens) continuam travados só pro admin. Só aparece na FOLHA. */}
+      {!admin && modoImp !== "termica" && (
+        <div className="card pad" style={{ marginTop: 14 }}>
+          <div className="row-gap" style={{ alignItems: "flex-end", flexWrap: "wrap", gap: 10 }}>
+            <label className="campo" style={{ margin: 0, minWidth: 280 }}>
+              <span className="campo-label">Modelo de folha</span>
+              <select value="" onChange={(e) => { if (e.target.value) aplicarPreset(e.target.value); e.currentTarget.value = ""; }}>
+                <option value="">— escolher a folha —</option>
+                {todosPresets.map((p) => <option key={p.nome} value={p.nome}>{p.nome}</option>)}
+              </select>
+            </label>
+            <span className="muted" style={{ fontSize: 12.5 }}>Folha agora: <strong>{cfg.colunas} × {cfg.linhas}</strong> ({cfg.colunas * cfg.linhas} etiquetas por folha · {cfg.pagina === "carta" ? "Carta" : "A4"})</span>
+          </div>
+        </div>
+      )}
+
       {/* Configuração da etiqueta — só ADMINISTRADOR mexe (trancada p/ o usuário comum não bagunçar). */}
       {admin && (
       <div className="card pad" style={{ marginTop: 14 }}>
