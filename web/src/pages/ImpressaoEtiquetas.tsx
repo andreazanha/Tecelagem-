@@ -139,7 +139,7 @@ function conteudoEt(e: Etq, comBarcode: boolean): string {
   const comp = e.composicao ? ` · ${e.composicao}` : "";
   // TÉRMICA (rolo): referência + CÓDIGO DE BARRAS (pra ler no leitor/câmera).
   if (comBarcode) {
-    const bc = e.ref ? `<div class="bc">${svgBarcode(e.ref, { height: 44, fontSize: 14, width: 1.5 })}</div>` : "";
+    const bc = e.ref ? `<div class="bc">${svgBarcode(e.ref, { height: 50, fontSize: 13, width: 3 })}</div>` : "";
     if (e.kit) {
       return `<div class="mod">${e.modelo}</div>
         <div class="lin"><b>${e.tamanho || "—"}</b></div>
@@ -660,7 +660,7 @@ export function ImpressaoEtiquetas() {
                       ? <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}><b>{e.tamanho || "—"}</b></div>
                       : (() => { const d = descLinhaTermica(e.ref, e.tamanho); return <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>{d.tipo ? <b>{d.texto || "—"}</b> : <>Tam: <b>{d.texto || "—"}</b></>}</div>; })()}
                     <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
-                    {e.ref ? <div className="prev-bc" dangerouslySetInnerHTML={{ __html: svgBarcode(e.ref, { height: 36, fontSize: 12, width: 1.4 }) }} /> : null}
+                    {e.ref ? <div className="prev-bc" dangerouslySetInnerHTML={{ __html: svgBarcode(e.ref, { height: 44, fontSize: 12, width: 2.6 }) }} /> : null}
                   </div>
                 );
               })}
