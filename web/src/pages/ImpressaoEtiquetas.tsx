@@ -135,14 +135,16 @@ function kitPecas(produto: string, tamanho: string | null): { tipo: string; tama
   if (almSize && count) for (let i = 0; i < count; i++) pecas.push({ tipo: almTipo, tamanho: fmtMedida(almSize) });
   return pecas.length ? pecas : [{ tipo: "Peça", tamanho: fmtMedida(mainSize) }];
 }
-function conteudoEt(e: Etq, comBarcode: boolean): string {
+function conteudoEt(e: Etq, comBarcode: boolean, comComp = false, mostrarBarra = true): string {
   const comp = e.composicao ? ` · ${e.composicao}` : "";
-  // TÉRMICA (rolo): referência + CÓDIGO DE BARRAS (pra ler no leitor/câmera).
+  // Composição na MESMA linha do tamanho (só quando pedido — etiqueta de costura).
+  const compTerm = comComp && e.composicao ? `<span class="comp"> · ${e.composicao}</span>` : "";
+  // TÉRMICA (rolo): mesmo layout, com ou sem CÓDIGO DE BARRAS (costura hoje sai sem barra).
   if (comBarcode) {
-    const bc = e.ref ? `<div class="bc">${svgBarcode(e.ref, { height: 50, fontSize: 13, width: 3 })}</div>` : "";
+    const bc = (mostrarBarra && e.ref) ? `<div class="bc">${svgBarcode(e.ref, { height: 50, fontSize: 13, width: 3 })}</div>` : "";
     if (e.kit) {
       return `<div class="mod">${e.modelo}</div>
-        <div class="lin"><b>${e.tamanho || "—"}</b></div>
+        <div class="lin"><b>${e.tamanho || "—"}</b>${compTerm}</div>
         <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
         ${e.cliente ? `<div class="cli">${e.cliente}</div>` : ""}
         ${bc}`;
@@ -151,7 +153,7 @@ function conteudoEt(e: Etq, comBarcode: boolean): string {
     const d = descLinhaTermica(e.ref, e.tamanho);
     const linha = d.tipo ? `<b>${d.texto || "—"}</b>` : `Tam: <b>${d.texto || "—"}</b>`;
     return `<div class="mod">${modeloLinha(e.modelo)}</div>
-      <div class="lin">${linha}</div>
+      <div class="lin">${linha}${compTerm}</div>
       <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
       ${e.cliente ? `<div class="cli">${e.cliente}</div>` : ""}
       ${bc}`;
@@ -193,6 +195,9 @@ export function ImpressaoEtiquetas() {
   const [incluirKits, setIncluirKits] = useState(false); // por padrão os kits ficam de fora
   // MODO de impressão: "folha" (A4/Carta, Pimaco) ou "termica" (rolo). A folha continua igual.
   const [modoImp, setModoImp] = useState<"folha" | "termica">(() => { try { return localStorage.getItem("etq-modo") === "termica" ? "termica" : "folha"; } catch { return "folha"; } });
+  // Tipo da etiqueta térmica: "expedicao" (com código de barras, só pedido real do Syntech) ou
+  // "costura" (com composição, SEM barra por enquanto).
+  const [tipoEtq, setTipoEtq] = useState<"expedicao" | "costura">(() => { try { return localStorage.getItem("etq-tipo") === "costura" ? "costura" : "expedicao"; } catch { return "expedicao"; } });
   const [termica, setTermica] = useState<{ w: number; h: number; cols: number }>(() => { try { const s = localStorage.getItem("etq-termica"); if (s) return { w: 60, h: 40, cols: 1, ...JSON.parse(s) }; } catch { /* ignore */ } return { w: 60, h: 40, cols: 1 }; });
   const [kitInteiro, setKitInteiro] = useState(false); // etiqueta do KIT inteiro (1 por kit) em vez das peças
   const admin = !!getUser()?.admin;                    // só admin mexe na configuração
@@ -270,7 +275,7 @@ export function ImpressaoEtiquetas() {
     setPdfsAbertos((p) => p.filter((x) => x.id !== id));
   }
   useEffect(() => { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } }, [cfg]);
-  useEffect(() => { try { localStorage.setItem("etq-modo", modoImp); localStorage.setItem("etq-termica", JSON.stringify(termica)); } catch { /* ignore */ } }, [modoImp, termica]);
+  useEffect(() => { try { localStorage.setItem("etq-modo", modoImp); localStorage.setItem("etq-termica", JSON.stringify(termica)); localStorage.setItem("etq-tipo", tipoEtq); } catch { /* ignore */ } }, [modoImp, termica, tipoEtq]);
   useEffect(() => { try { localStorage.setItem("etq-comp", composicaoPadrao); } catch { /* ignore */ } }, [composicaoPadrao]);
   // Ao trocar de pedidos, reinicia a edição (tudo marcado, quantidade do pedido).
   useEffect(() => { setLinhas(rows.map((r) => ({ qtd: Math.max(0, Math.trunc(r.qtd)), incluir: true }))); }, [rows]);
@@ -418,7 +423,7 @@ export function ImpressaoEtiquetas() {
       let rowHtml = "";
       for (let c = 0; c < cols; c++) {
         const e = lista[i + c]; if (!e) continue;
-        rowHtml += `<div class="et" style="left:${c * (w2 + gap)}mm;top:0;width:${w2}mm;height:${h}mm">${conteudoEt(e, true)}</div>`;
+        rowHtml += `<div class="et" style="left:${c * (w2 + gap)}mm;top:0;width:${w2}mm;height:${h}mm">${conteudoEt(e, true, tipoEtq === "costura", tipoEtq === "expedicao" && !String(e.pid || "").startsWith("pdf:"))}</div>`;
       }
       body += `<div class="pg" style="width:${pageW}mm;height:${h}mm">${rowHtml}</div>`;
     }
@@ -462,6 +467,13 @@ export function ImpressaoEtiquetas() {
           </div>
           {modoImp === "termica" && (
             <>
+              <div>
+                <div className="campo-label" style={{ marginBottom: 4 }}>Tipo de etiqueta</div>
+                <div style={{ display: "inline-flex", gap: 6 }}>
+                  <button className={"btn " + (tipoEtq === "expedicao" ? "btn-primary" : "btn-soft")} style={{ padding: "8px 14px" }} onClick={() => setTipoEtq("expedicao")} title="Com código de barras (só pedido do Syntech)">📦 Expedição</button>
+                  <button className={"btn " + (tipoEtq === "costura" ? "btn-primary" : "btn-soft")} style={{ padding: "8px 14px" }} onClick={() => setTipoEtq("costura")} title="Com composição, sem código de barras">🧵 Costura</button>
+                </div>
+              </div>
               <label className="campo" style={{ margin: 0, minWidth: 160 }}>
                 <span className="campo-label">Tamanho da etiqueta</span>
                 <select value={`${termica.w}x${termica.h}`} onChange={(e) => { const [w, h] = e.target.value.split("x").map(Number); setTermica((t) => ({ ...t, w, h })); }}>
@@ -657,13 +669,15 @@ export function ImpressaoEtiquetas() {
                 if (!e) return <div key={c} className="a4-et a4-et-empty" style={style}></div>;
                 return (
                   <div key={c} className="a4-et" style={{ ...style, gap: 0, justifyContent: "flex-start" }}>
+                    {(() => { const comC = tipoEtq === "costura"; const compTxt = comC && e.composicao ? <span style={{ fontWeight: 400 }}> · {e.composicao}</span> : null; const verBarra = tipoEtq === "expedicao" && !String(e.pid || "").startsWith("pdf:"); return <>
                     <div className="a4-mod" style={{ fontSize: tfpt(1.3), lineHeight: 1.05 }}>{e.kit ? e.modelo : modeloLinha(e.modelo)}</div>
                     {e.kit
-                      ? <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}><b>{e.tamanho || "—"}</b></div>
-                      : (() => { const d = descLinhaTermica(e.ref, e.tamanho); return <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>{d.tipo ? <b>{d.texto || "—"}</b> : <>Tam: <b>{d.texto || "—"}</b></>}</div>; })()}
+                      ? <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}><b>{e.tamanho || "—"}</b>{compTxt}</div>
+                      : (() => { const d = descLinhaTermica(e.ref, e.tamanho); return <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>{d.tipo ? <b>{d.texto || "—"}</b> : <>Tam: <b>{d.texto || "—"}</b></>}{compTxt}</div>; })()}
                     <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
                     {e.cliente ? <div className="a4-cli" style={{ marginTop: tfpt(1), fontSize: tfpt(0.95), fontWeight: 700, color: "#111", lineHeight: 1.15 }}>{e.cliente}</div> : null}
-                    {e.ref ? <div className="prev-bc" dangerouslySetInnerHTML={{ __html: svgBarcode(e.ref, { height: 44, fontSize: 12, width: 2.6 }) }} /> : null}
+                    {verBarra && e.ref ? <div className="prev-bc" dangerouslySetInnerHTML={{ __html: svgBarcode(e.ref, { height: 44, fontSize: 12, width: 2.6 }) }} /> : null}
+                    </>; })()}
                   </div>
                 );
               })}
