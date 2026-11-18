@@ -397,7 +397,7 @@ export function ImpressaoEtiquetas() {
     const p = PAG[cfg.pagina] || PAG.A4;
     abrirImpressao(`<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas</title><style>
       @page { size: ${p.css}; margin: 0; } *{box-sizing:border-box} body{margin:0}
-      .pg{position:relative;width:${p.w}mm;height:${p.h}mm;overflow:hidden;page-break-after:always}
+      .pg{position:relative;width:${p.w}mm;height:${p.h}mm;overflow:hidden;page-break-after:always} .pg:last-child{page-break-after:auto}
       ${cssEt}
     </style></head><body>${body}</body></html>`);
   }
@@ -422,7 +422,7 @@ export function ImpressaoEtiquetas() {
     }
     abrirImpressao(`<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas</title><style>
       @page { size: ${pageW}mm ${h}mm; margin: 0; } *{box-sizing:border-box} body{margin:0}
-      .pg{position:relative;overflow:hidden;page-break-after:always}
+      .pg{position:relative;overflow:hidden;page-break-after:always} .pg:last-child{page-break-after:auto}
       ${cssEt}
     </style></head><body>${body}</body></html>`);
   }
