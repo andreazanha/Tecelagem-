@@ -364,9 +364,19 @@ export function ImpressaoEtiquetas() {
     .cli{font-size:${(cfg.fonte * 0.82).toFixed(1)}pt;color:#555;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .bc{width:100%;margin-top:auto} .bc svg{display:block;width:100%;height:12mm}`;
 
+  // Imprime SEM abrir aba nova: usa um iframe escondido, dispara a impressão e se remove sozinho.
   function abrirImpressao(html: string) {
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); }
+    const iframe = document.createElement("iframe");
+    Object.assign(iframe.style, { position: "fixed", right: "0", bottom: "0", width: "0", height: "0", border: "0", visibility: "hidden" } as CSSStyleDeclaration);
+    document.body.appendChild(iframe);
+    const win = iframe.contentWindow;
+    const doc = win?.document;
+    if (!win || !doc) { try { document.body.removeChild(iframe); } catch { /* ok */ } return; }
+    const remover = () => { window.setTimeout(() => { try { document.body.removeChild(iframe); } catch { /* ok */ } }, 800); };
+    win.onafterprint = remover;
+    doc.open(); doc.write(html); doc.close();
+    // espera o conteúdo (códigos de barras SVG) renderizar e então imprime
+    window.setTimeout(() => { try { win.focus(); win.print(); } catch { remover(); } }, 400);
   }
   // Imprime em FOLHA (A4/Carta) a partir de uma lista de células (etiqueta ou null = espaço vazio).
   function imprimirFolha(cels: (Etq | null)[]) {
@@ -389,7 +399,7 @@ export function ImpressaoEtiquetas() {
       @page { size: ${p.css}; margin: 0; } *{box-sizing:border-box} body{margin:0}
       .pg{position:relative;width:${p.w}mm;height:${p.h}mm;overflow:hidden;page-break-after:always}
       ${cssEt}
-    </style></head><body>${body}<script>window.onload=function(){window.print()}</script></body></html>`);
+    </style></head><body>${body}</body></html>`);
   }
   // Imprime em TÉRMICA (rolo): cada "página" é uma fileira de `cols` etiquetas no tamanho escolhido.
   function imprimirTermica(lista: Etq[]) {
@@ -414,7 +424,7 @@ export function ImpressaoEtiquetas() {
       @page { size: ${pageW}mm ${h}mm; margin: 0; } *{box-sizing:border-box} body{margin:0}
       .pg{position:relative;overflow:hidden;page-break-after:always}
       ${cssEt}
-    </style></head><body>${body}<script>window.onload=function(){window.print()}</script></body></html>`);
+    </style></head><body>${body}</body></html>`);
   }
   // Imprime TUDO, respeitando o modo. Na folha usa finalCells (com o "começar na etiqueta nº").
   function imprimir() {
