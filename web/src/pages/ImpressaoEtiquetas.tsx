@@ -144,6 +144,7 @@ function conteudoEt(e: Etq, comBarcode: boolean): string {
       return `<div class="mod">${e.modelo}</div>
         <div class="lin"><b>${e.tamanho || "—"}</b></div>
         <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
+        ${e.cliente ? `<div class="cli">${e.cliente}</div>` : ""}
         ${bc}`;
     }
     // Capa/Almofada + medida (ex.: "Almofada 45X45") quando dá pra saber pela ref; senão "Tam: <medida>".
@@ -152,6 +153,7 @@ function conteudoEt(e: Etq, comBarcode: boolean): string {
     return `<div class="mod">${modeloLinha(e.modelo)}</div>
       <div class="lin">${linha}</div>
       <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
+      ${e.cliente ? `<div class="cli">${e.cliente}</div>` : ""}
       ${bc}`;
   }
   // FOLHA (Pimaco): como era antes — modelo, tam/cor + composição, e o CLIENTE embaixo. Sem código de barras.
@@ -362,7 +364,7 @@ export function ImpressaoEtiquetas() {
     .lin b{color:#111}
     .lin .comp{color:#555;font-weight:400}
     .cli{font-size:${(cfg.fonte * 0.82).toFixed(1)}pt;color:#555;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .bc{width:100%;margin-top:auto} .bc svg{display:block;width:100%;height:12mm}`;
+    .bc{width:100%;margin-top:auto} .bc svg{display:block;width:100%;height:10.5mm}`;
 
   // Imprime SEM abrir aba nova: usa um iframe escondido, dispara a impressão e se remove sozinho.
   function abrirImpressao(html: string) {
@@ -660,6 +662,7 @@ export function ImpressaoEtiquetas() {
                       ? <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}><b>{e.tamanho || "—"}</b></div>
                       : (() => { const d = descLinhaTermica(e.ref, e.tamanho); return <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>{d.tipo ? <b>{d.texto || "—"}</b> : <>Tam: <b>{d.texto || "—"}</b></>}</div>; })()}
                     <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
+                    {e.cliente ? <div className="a4-cli" style={{ fontSize: tfpt(0.8), lineHeight: 1.15 }}>{e.cliente}</div> : null}
                     {e.ref ? <div className="prev-bc" dangerouslySetInnerHTML={{ __html: svgBarcode(e.ref, { height: 44, fontSize: 12, width: 2.6 }) }} /> : null}
                   </div>
                 );
