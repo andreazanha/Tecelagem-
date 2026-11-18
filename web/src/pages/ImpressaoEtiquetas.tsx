@@ -396,14 +396,17 @@ export function ImpressaoEtiquetas() {
     if (!lista.length) return;
     const { w, h } = termica;
     const cols = Math.max(1, Math.min(3, Math.trunc(termica.cols) || 1));
-    const gap = 2; // mm entre colunas
-    const pageW = cols * w + (cols - 1) * gap;
+    // Papel = casa com o tamanho configurado na impressora (NÃO muda). O "vão visual" empurra a
+    // 2ª coluna pra direita; a etiqueta fica um tico mais estreita pra não precisar mexer na impressora.
+    const pageW = cols * w + (cols - 1) * 2;
+    const gap = 6; // vão visual entre colunas (maior = empurra a 2ª coluna mais pra direita)
+    const w2 = cols > 1 ? (pageW - (cols - 1) * gap) / cols : w;
     let body = "";
     for (let i = 0; i < lista.length; i += cols) {
       let rowHtml = "";
       for (let c = 0; c < cols; c++) {
         const e = lista[i + c]; if (!e) continue;
-        rowHtml += `<div class="et" style="left:${c * (w + gap)}mm;top:0;width:${w}mm;height:${h}mm">${conteudoEt(e, true)}</div>`;
+        rowHtml += `<div class="et" style="left:${c * (w2 + gap)}mm;top:0;width:${w2}mm;height:${h}mm">${conteudoEt(e, true)}</div>`;
       }
       body += `<div class="pg" style="width:${pageW}mm;height:${h}mm">${rowHtml}</div>`;
     }
@@ -624,9 +627,10 @@ export function ImpressaoEtiquetas() {
       {/* Prévia: na TÉRMICA mostra uma fileira de `cols` etiquetas no tamanho do rolo
           (igual à impressão térmica); na FOLHA mostra a 1ª página A4/Carta. */}
       {modoImp === "termica" ? (() => {
-        const gap = 2; // mm entre colunas (igual ao imprimirTermica)
         const cols = Math.max(1, Math.min(3, Math.trunc(termica.cols) || 1));
-        const pageW = cols * termica.w + (cols - 1) * gap;
+        const pageW = cols * termica.w + (cols - 1) * 2; // papel (casa com a impressora, não muda)
+        const gap = 6; // vão visual (igual ao imprimirTermica) — empurra a 2ª coluna p/ a direita
+        const w2 = cols > 1 ? (pageW - (cols - 1) * gap) / cols : termica.w;
         // Fonte proporcional à LARGURA do rolo (não da folha), senão fica minúscula.
         const tfpt = (mult: number) => `${(cfg.fonte * mult * 0.3528 / pageW * 100).toFixed(3)}cqw`;
         const ph = { cliente: "Cliente", modelo: "(etiqueta)", tamanho: "55×35", cor: "AREIA", composicao: "", ref: "KT0000" } as Etq;
@@ -635,8 +639,8 @@ export function ImpressaoEtiquetas() {
             <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Prévia da térmica {termica.w} × {termica.h} mm · {cols} coluna{cols > 1 ? "s" : ""} no rolo:</div>
             <div className="a4-folha" style={{ padding: 0, position: "relative", aspectRatio: `${pageW} / ${termica.h}`, width: "100%", maxWidth: cols === 1 ? 190 : cols === 2 ? 360 : 500 }}>
               {Array.from({ length: cols }, (_, c) => {
-                const x = c * (termica.w + gap);
-                const style = { position: "absolute" as const, left: pct(x, pageW) + "%", top: 0, width: pct(termica.w, pageW) + "%", height: "100%", overflow: "hidden" };
+                const x = c * (w2 + gap);
+                const style = { position: "absolute" as const, left: pct(x, pageW) + "%", top: 0, width: pct(w2, pageW) + "%", height: "100%", overflow: "hidden" };
                 const e = etqs.length ? etqs[c] : ph;
                 if (!e) return <div key={c} className="a4-et a4-et-empty" style={style}></div>;
                 return (
