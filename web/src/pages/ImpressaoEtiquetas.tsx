@@ -69,6 +69,21 @@ function modeloLinha(modelo: string): string {
   const abrev = low === "almofada" ? "Alm:" : low === "manta" ? "Man:" : tipo;
   return `${abrev} ${resto}`;
 }
+// Tipo da peça pelo FINAL do código (regra do André): termina em C = Capa, A = Almofada.
+// Usado na etiqueta térmica pra escrever "Capa 50X50" / "Almofada 45X45" (sem repetir "Tamanho").
+function tipoPorRef(ref: string | null | undefined): string {
+  const r = String(ref || "").trim().toUpperCase();
+  if (/C$/.test(r)) return "Capa";
+  if (/A$/.test(r)) return "Almofada";
+  return "";
+}
+// Descrição da linha da etiqueta térmica: "Capa 50X50"/"Almofada 45X45" quando dá pra saber o
+// tipo pela ref; senão cai no "Tam: <medida>" de antes.
+function descLinhaTermica(ref: string | null | undefined, tamanho: string | null): { tipo: string; texto: string } {
+  const tipo = tipoPorRef(ref);
+  const tam = (tamanho || "").trim();
+  return tipo ? { tipo, texto: `${tipo} ${tam}`.trim() } : { tipo: "", texto: tam };
+}
 // Kit: extrai o nome ("Kora") e a composição do pacote ("70×2,20 + 2× 55×35 · c/ ench.").
 function kitInfo(produto: string, tamanho: string | null): { nome: string; comp: string } {
   const p = (produto || "").replace(/^\s*KIT\s+/i, "").trim();
@@ -124,15 +139,18 @@ function conteudoEt(e: Etq, comBarcode: boolean): string {
   const comp = e.composicao ? ` · ${e.composicao}` : "";
   // TÉRMICA (rolo): referência + CÓDIGO DE BARRAS (pra ler no leitor/câmera).
   if (comBarcode) {
-    const bc = e.ref ? `<div class="bc">${svgBarcode(e.ref, { height: 34, fontSize: 13, width: 1.3 })}</div>` : "";
+    const bc = e.ref ? `<div class="bc">${svgBarcode(e.ref, { height: 44, fontSize: 14, width: 1.5 })}</div>` : "";
     if (e.kit) {
       return `<div class="mod">${e.modelo}</div>
         <div class="lin"><b>${e.tamanho || "—"}</b></div>
         <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
         ${bc}`;
     }
+    // Capa/Almofada + medida (ex.: "Almofada 45X45") quando dá pra saber pela ref; senão "Tam: <medida>".
+    const d = descLinhaTermica(e.ref, e.tamanho);
+    const linha = d.tipo ? `<b>${d.texto || "—"}</b>` : `Tam: <b>${d.texto || "—"}</b>`;
     return `<div class="mod">${modeloLinha(e.modelo)}</div>
-      <div class="lin">${e.ref ? `Ref: <b>${e.ref}</b> · ` : ""}Tam: <b>${e.tamanho || "—"}</b></div>
+      <div class="lin">${linha}</div>
       <div class="lin">Cor: <b>${e.cor || "—"}</b></div>
       ${bc}`;
   }
@@ -344,7 +362,7 @@ export function ImpressaoEtiquetas() {
     .lin b{color:#111}
     .lin .comp{color:#555;font-weight:400}
     .cli{font-size:${(cfg.fonte * 0.82).toFixed(1)}pt;color:#555;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .bc{width:100%;margin-top:auto} .bc svg{display:block;width:100%;height:8mm}`;
+    .bc{width:100%;margin-top:auto} .bc svg{display:block;width:100%;height:12mm}`;
 
   function abrirImpressao(html: string) {
     const w = window.open("", "_blank");
@@ -626,9 +644,9 @@ export function ImpressaoEtiquetas() {
                     <div className="a4-mod" style={{ fontSize: tfpt(1.3), lineHeight: 1.05 }}>{e.kit ? e.modelo : modeloLinha(e.modelo)}</div>
                     {e.kit
                       ? <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}><b>{e.tamanho || "—"}</b></div>
-                      : <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>{e.ref ? <>Ref: <b>{e.ref}</b> · </> : null}Tam: <b>{e.tamanho || "—"}</b></div>}
+                      : (() => { const d = descLinhaTermica(e.ref, e.tamanho); return <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>{d.tipo ? <b>{d.texto || "—"}</b> : <>Tam: <b>{d.texto || "—"}</b></>}</div>; })()}
                     <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
-                    {e.ref ? <div className="prev-bc" dangerouslySetInnerHTML={{ __html: svgBarcode(e.ref, { height: 26, fontSize: 11, width: 1.1 }) }} /> : null}
+                    {e.ref ? <div className="prev-bc" dangerouslySetInnerHTML={{ __html: svgBarcode(e.ref, { height: 36, fontSize: 12, width: 1.4 }) }} /> : null}
                   </div>
                 );
               })}
