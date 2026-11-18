@@ -628,7 +628,32 @@ pedidos.post("/:id/conferencia-bipar", async (c) => {
   const row = await c.env.DB.prepare(
     `SELECT codigo, pedido_id, produto, ref, cor, tamanho, tipo, nivel, grupo, ${e.em} AS marcado_em FROM peca_codigo WHERE codigo = ?`
   ).bind(codigo).first<{ codigo: string; pedido_id: string; produto: string; ref: string | null; cor: string | null; tamanho: string; tipo: string; nivel: string; grupo: number | null; marcado_em: string | null }>();
-  if (!row) return c.json({ status: "desconhecido", codigo, ...(await progresso(c.env, id, fase)) });
+  if (!row) {
+    // Não é um código ÚNICO de peça. Tenta casar pelo CÓDIGO DO PRODUTO (ref) da etiqueta:
+    // marca a 1ª peça AINDA não bipada desse ref, neste pedido e nesta fase. É o fluxo do André —
+    // a etiqueta de produto (ref) é impressa quando o pedido entra e bipada na expedição.
+    const refRow = await c.env.DB.prepare(
+      `SELECT codigo, pedido_id, produto, ref, cor, tamanho, tipo, nivel, grupo
+         FROM peca_codigo
+        WHERE pedido_id = ? AND ${filtroFase(fase)} AND ${e.em} IS NULL AND upper(trim(ref)) = upper(trim(?))
+        ORDER BY seq LIMIT 1`
+    ).bind(id, codigo).first<{ codigo: string; pedido_id: string; produto: string; ref: string | null; cor: string | null; tamanho: string; tipo: string; nivel: string; grupo: number | null }>();
+    if (refRow) {
+      await c.env.DB.prepare(`UPDATE peca_codigo SET ${e.em} = datetime('now'), ${e.por} = ? WHERE codigo = ?`).bind(u?.nome || null, refRow.codigo).run();
+      return c.json({ status: "ok", peca: { ...refRow, marcado_em: null, bipado_em: new Date().toISOString() }, ...(await progresso(c.env, id, fase)) });
+    }
+    // Tem peça desse ref neste pedido/fase, mas TODAS já foram bipadas → já contou tudo.
+    const temRef = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM peca_codigo WHERE pedido_id = ? AND ${filtroFase(fase)} AND upper(trim(ref)) = upper(trim(?))`
+    ).bind(id, codigo).first<{ n: number }>();
+    if (Number(temRef?.n || 0) > 0) return c.json({ status: "ja_bipada", codigo, ...(await progresso(c.env, id, fase)) });
+    // Esse ref existe, mas em OUTRO pedido?
+    const outro = await c.env.DB.prepare(
+      `SELECT 1 AS x FROM peca_codigo WHERE pedido_id <> ? AND upper(trim(ref)) = upper(trim(?)) LIMIT 1`
+    ).bind(id, codigo).first<{ x: number }>();
+    if (outro) return c.json({ status: "outro_pedido", codigo, ...(await progresso(c.env, id, fase)) });
+    return c.json({ status: "desconhecido", codigo, ...(await progresso(c.env, id, fase)) });
+  }
   if (row.pedido_id !== id) return c.json({ status: "outro_pedido", codigo, ...(await progresso(c.env, id, fase)) });
   if (!pertenceAFase(row.nivel, row.grupo, fase)) {
     const dica = fase === "separacao"

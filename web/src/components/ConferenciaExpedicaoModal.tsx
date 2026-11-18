@@ -105,7 +105,8 @@ export function ConferenciaBipagemModal({
     try {
       const r = await api.biparConferencia(pedidoId, fase, codigo);
       if (r.status === "ok") {
-        aplicar(codigo, true, r.total, r.bipados);
+        // o código lido pode ser o do PRODUTO (ref): marca a peça que o backend confirmou.
+        aplicar(r.peca?.codigo ?? codigo, true, r.total, r.bipados);
         const p = r.peca;
         setFeedback({ tipo: "ok", msg: `✓ Bipado: ${p ? `${p.tipo} ${p.tamanho} · ${p.cor || ""}`.trim() : codigo}` });
       } else if (r.status === "ja_bipada") {
