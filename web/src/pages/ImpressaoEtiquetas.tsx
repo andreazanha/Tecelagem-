@@ -363,7 +363,7 @@ export function ImpressaoEtiquetas() {
     .lin{font-size:${cfg.fonte}pt;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .lin b{color:#111}
     .lin .comp{color:#555;font-weight:400}
-    .cli{font-size:${(cfg.fonte * 0.95).toFixed(1)}pt;font-weight:700;color:#111;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .cli{margin-top:1mm;font-size:${(cfg.fonte * 0.95).toFixed(1)}pt;font-weight:700;color:#111;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .bc{width:100%;margin-top:auto} .bc svg{display:block;width:100%;height:10.5mm}`;
 
   // Imprime SEM abrir aba nova: usa um iframe escondido, dispara a impressão e se remove sozinho.
@@ -662,7 +662,7 @@ export function ImpressaoEtiquetas() {
                       ? <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}><b>{e.tamanho || "—"}</b></div>
                       : (() => { const d = descLinhaTermica(e.ref, e.tamanho); return <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>{d.tipo ? <b>{d.texto || "—"}</b> : <>Tam: <b>{d.texto || "—"}</b></>}</div>; })()}
                     <div className="a4-lin" style={{ fontSize: tfpt(1), lineHeight: 1.15 }}>Cor: <b>{e.cor || "—"}</b></div>
-                    {e.cliente ? <div className="a4-cli" style={{ fontSize: tfpt(0.95), fontWeight: 700, color: "#111", lineHeight: 1.15 }}>{e.cliente}</div> : null}
+                    {e.cliente ? <div className="a4-cli" style={{ marginTop: tfpt(1), fontSize: tfpt(0.95), fontWeight: 700, color: "#111", lineHeight: 1.15 }}>{e.cliente}</div> : null}
                     {e.ref ? <div className="prev-bc" dangerouslySetInnerHTML={{ __html: svgBarcode(e.ref, { height: 44, fontSize: 12, width: 2.6 }) }} /> : null}
                   </div>
                 );
