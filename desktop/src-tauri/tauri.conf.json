@@ -14,6 +14,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
@@ -28,6 +29,17 @@
       },
       "nsis": {
         "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzQkI4N0NGRTZEQkNFNjgKUldSb3p0dm16NGU3byszdWRON1BxUnlLL2JDNm5NREFNNVdEREM1eFBPd3JhQVA3SWlSZ04rQXMK",
+      "endpoints": [
+        "https://github.com/andreazanha/Tecelagem-/releases/download/desktop-preview/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

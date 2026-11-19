@@ -1,8 +1,8 @@
 name: Desktop build (Windows)
 
-# Compila o app desktop (Tauri) no Windows e publica numa "prévia" (pre-release) pra download.
-# NÃO toca na produção: roda só no branch do desktop e em tags próprias (o deploy Cloudflare
-# só dispara no branch de produção/main).
+# Compila o app desktop (Tauri) no Windows, ASSINA pra atualização automática e publica
+# numa "prévia" (pre-release) com o manifesto latest.json. NÃO toca na produção: roda só no
+# branch do desktop (o deploy Cloudflare só dispara no branch de produção/main).
 on:
   push:
     branches:
@@ -43,21 +43,49 @@ jobs:
         working-directory: desktop
         run: npm install
 
-      - name: Compilar o app (Tauri)
+      - name: Compilar e ASSINAR o app (Tauri)
         working-directory: desktop
+        env:
+          # Chave que assina as atualizações (guardada nos Secrets do repositório).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run build
 
-      - name: Juntar os arquivos pra download
+      - name: Juntar arquivos + gerar o manifesto latest.json
         shell: bash
         run: |
+          set -e
           mkdir -p dist-out
-          # Executável "portátil" (roda sem instalar — precisa do WebView2, que já vem no Windows 10/11)
+
+          # Executável portátil (roda sem instalar)
           if [ -f "desktop/src-tauri/target/release/big-tricot-desktop.exe" ]; then
             cp "desktop/src-tauri/target/release/big-tricot-desktop.exe" "dist-out/BigTricot-portatil.exe"
           fi
-          # Instalador (NSIS) — opcional, instala de verdade com ícone/menu Iniciar
-          find desktop/src-tauri/target/release/bundle -name "*-setup.exe" -exec cp {} "dist-out/" \; || true
-          echo "Arquivos gerados:" && ls -la dist-out
+
+          # Instalador NSIS (cria ícone/atalho) — nome fixo pra o auto-update apontar certo
+          SETUP="$(find desktop/src-tauri/target/release/bundle/nsis -name '*-setup.exe' | head -1)"
+          cp "$SETUP" "dist-out/BigTricot-Setup.exe"
+
+          # Assinatura gerada pelo Tauri (fica ao lado do instalador, com extensão .sig)
+          SIG="$(cat "$SETUP.sig")"
+          VER="$(node -p "require('./desktop/src-tauri/tauri.conf.json').version")"
+          URL="https://github.com/andreazanha/Tecelagem-/releases/download/desktop-preview/BigTricot-Setup.exe"
+
+          cat > dist-out/latest.json <<JSON
+          {
+            "version": "$VER",
+            "notes": "Atualização do aplicativo Big Tricot.",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "$SIG",
+                "url": "$URL"
+              }
+            }
+          }
+          JSON
+
+          echo "Arquivos gerados:" && ls -la dist-out && echo "--- latest.json ---" && cat dist-out/latest.json
 
       - name: Guardar como artefato do build
         uses: actions/upload-artifact@v4
@@ -66,7 +94,7 @@ jobs:
           path: dist-out/*
           if-no-files-found: error
 
-      - name: Publicar a prévia pra download
+      - name: Publicar a prévia (com auto-update) pra download
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,4 +104,4 @@ jobs:
             --target "${{ github.sha }}" \
             --prerelease \
             --title "Big Tricot Desktop — prévia de teste" \
-            --notes "Versão de teste do aplicativo desktop (etapas 3 e 4). Baixe o **BigTricot-portatil.exe** e execute. Na 1ª vez o Windows mostra um aviso de editor desconhecido → clique em **Mais informações → Executar assim mesmo** (ainda estamos sem certificado, como combinado). Precisa de internet. O sistema web continua funcionando normalmente."
+            --notes "Versão de teste do app desktop, com **atualização automática**. Instale o **BigTricot-Setup.exe** (cria o ícone com o logo). 1ª vez: aviso de editor desconhecido → Mais informações → Executar assim mesmo. Precisa de internet. O sistema web continua normal."

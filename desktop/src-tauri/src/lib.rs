@@ -12,6 +12,7 @@
 
 use tauri::{Manager, Url, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_updater::UpdaterExt;
 
 // Endereço inicial do sistema (a versão web continua existindo normalmente).
 const URL_INICIAL: &str = "https://sistema.bigtricot.com.br/";
@@ -105,10 +106,34 @@ const NAV_SCRIPT: &str = r#"
 })();
 "#;
 
+// Checa se tem versão nova do APP (o "casco" nativo) e atualiza sozinho — sem reinstalar à mão.
+// (As mudanças do SISTEMA já chegam sozinhas, pois o app carrega a versão viva do servidor.)
+async fn checar_atualizacao(handle: tauri::AppHandle) {
+    let updater = match handle.updater() {
+        Ok(u) => u,
+        Err(_) => return,
+    };
+    if let Ok(Some(update)) = updater.check().await {
+        // Baixa e instala a versão nova em silêncio; depois reinicia o app pra aplicar.
+        if update
+            .download_and_install(|_baixado, _total| {}, || {})
+            .await
+            .is_ok()
+        {
+            handle.restart();
+        }
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            // Atualização automática do app (em segundo plano, logo ao abrir).
+            let up_handle = app.handle().clone();
+            tauri::async_runtime::spawn(checar_atualizacao(up_handle));
+
             let handle = app.handle().clone();
             let inicial = Url::parse(URL_INICIAL).expect("URL inicial inválida");
 
