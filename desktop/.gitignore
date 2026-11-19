@@ -4,3 +4,8 @@ src-tauri/target/
 src-tauri/gen/
 dist-out/
 *.log
+
+# A pasta dist/ aqui NÃO é build: é o "frontendDist" fixo do Tauri (telinha de "abrindo…").
+# O .gitignore da raiz ignora qualquer 'dist/'; aqui re-incluímos só a do desktop.
+!dist/
+!dist/**
