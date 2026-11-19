@@ -27,8 +27,7 @@
         "type": "downloadBootstrapper"
       },
       "nsis": {
-        "installMode": "currentUser",
-        "shortcutName": "Big Tricot"
+        "installMode": "currentUser"
       }
     }
   }
