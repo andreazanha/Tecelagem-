@@ -1,77 +1,44 @@
-# Big Tricot — App Desktop (Electron)
+# Big Tricot Desktop (Windows) — Tauri 2
 
-Camada desktop que abre o **app web existente** numa janela e, na tela
-**Navegador CRM**, coloca um **navegador Chromium REAL** (WebContentsView) na área
-da esquerda — capaz de abrir **WhatsApp Web** de verdade, com login persistente —
-mantendo o **painel CRM** (React) na direita. Não usa iframe.
+Aplicativo desktop que abre o **sistema completo** (`https://sistema.bigtricot.com.br`)
+dentro de uma **janela própria do Windows** — sem abrir Chrome/Edge.
 
-> Nada do app web foi reescrito. O Electron só carrega a URL do app e adiciona a
-> camada desktop. A versão web continua funcionando normalmente (lá usa iframe).
+> **Não é um segundo sistema.** É um "casco" nativo leve (Tauri 2 / WebView2) que mostra o
+> mesmo sistema web. Mesmo backend, mesmo banco, mesmas regras, mesmas permissões, mesmo login.
+> A versão web continua existindo normalmente.
 
-## Como rodar no Windows — o jeito FÁCIL (dois cliques)
+## Como está feito (etapas 3 e 4)
+- **Janela única** carregando o sistema vivo → todos os módulos e o catálogo digital aparecem
+  dentro do app.
+- **Nada abre navegador externo**: links internos navegam no app; `window.open(url)` de
+  PDF/relatório/imagem abre numa **sobreposição interna** (com botão Fechar / tecla Esc);
+  janelas de impressão (`window.open("")` + escrever HTML) imprimem por um **iframe interno**.
+  Links **externos** (fora do Big Tricot) abrem no navegador do sistema, de forma controlada.
+- **Login**: usa a autenticação atual (token). Nada de conta paralela.
 
-**Só precisa ter o Node.js instalado uma vez:** baixe o "LTS" em https://nodejs.org,
-instale (Avançar → Avançar → Concluir).
+Arquivos principais:
+- `src-tauri/src/lib.rs` — cria a janela, injeta o controle de navegação, trata links.
+- `src-tauri/tauri.conf.json` — nome, ícone, instalador, WebView2.
+- `dist/index.html` — telinha de "abrindo…" (o conteúdo real vem do servidor).
 
-Depois, **dê dois cliques** no arquivo:
+## Como testar (sem instalar nada técnico)
+O robô do GitHub compila no Windows. Baixe o resultado:
+1. GitHub do projeto → aba **Releases** → **"Big Tricot Desktop — prévia de teste"**.
+2. Baixe **`BigTricot-portatil.exe`** e dê 2 cliques.
+3. Na 1ª vez o Windows mostra "editor desconhecido" → **Mais informações → Executar assim mesmo**
+   (estamos sem certificado de propósito, por enquanto).
 
-```
-ABRIR-NAVEGADOR-CRM.bat
-```
-
-Ele sozinho: instala o necessário (só na 1ª vez, pode demorar uns minutos) e abre
-o programa **já no Navegador CRM**. Nas próximas vezes, abre na hora.
-
-- Faça login no Big Tricot (só na 1ª vez — depois fica salvo).
-- No Navegador CRM, a esquerda é um **navegador real**: clique no atalho
-  **WhatsApp Web**, escaneie o **QR Code** e pronto. O login do WhatsApp fica
-  salvo entre aberturas.
-
-> Dica: clique com o botão direito no `.bat` → *Enviar para → Área de trabalho
-> (criar atalho)* pra ter um ícone do "Big Tricot" na sua área de trabalho.
-
-### Jeito manual (alternativa)
-
-Na pasta `desktop`, no Prompt de Comando:
-```
+## Rodar/compilar localmente (pra quem é técnico)
+Precisa de **Rust** + **Node** + (Windows) WebView2.
+```bash
+cd desktop
 npm install
-node node_modules\electron\install.js
-npm start
+npm run dev      # abre em modo desenvolvimento
+npm run build    # gera o .exe e o instalador em src-tauri/target/release
 ```
-Trocar a URL do app: variável `NAVCRM_APP_URL`.
 
-### Se a janela abrir e fechar na hora (postinstall bloqueado)
-
-Se aparecer `allow-scripts` / `electron@... (postinstall: node install.js)` e o
-programa fechar sozinho, é porque o npm **bloqueou o download do binário do
-Electron**. O `.bat` já corrige isso sozinho (roda `node node_modules\electron\install.js`).
-Se ainda assim falhar, rode esse comando na mão, na pasta `desktop`:
-```
-node node_modules\electron\install.js
-```
-e depois dê dois cliques no `.bat` de novo.
-
-## Gerar um instalador (.exe) — vira um programa normal
-
-Dê **dois cliques** em **`GERAR-INSTALADOR.bat`** (na pasta `desktop`). Ele cria o
-instalador em `desktop\dist\` — um arquivo tipo **`Big Tricot Setup 0.1.0.exe`**.
-Dê dois cliques nesse `.exe` pra instalar; ele cria **atalho na área de trabalho**
-e no **menu Iniciar**, e daí você abre o "Big Tricot" como qualquer programa
-(sem precisar mais do `.bat`).
-
-> A 1ª geração pode demorar bastante (o electron-builder baixa ferramentas). Precisa
-> ser feito **no Windows**.
-
-## Segurança (já configurado)
-
-- `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`.
-- O conteúdo externo (WhatsApp/sites) roda **sem preload** → sem acesso a Node.
-- IPC restrito a poucos canais (navegar/voltar/avançar/recarregar/bounds).
-- URLs validadas (só http/https); popups abrem no navegador do sistema.
-- Sessão persistente isolada (`persist:navcrm`) só pra guardar o login.
-
-## Limitações desta 1ª etapa
-
-- Apenas **abrir e usar** o WhatsApp Web / sites na área esquerda.
-- **Sem** automação, leitura de DOM, injeção de script ou captura de conversas.
-- A integração do painel CRM com o WhatsApp vem depois.
+## Próximas etapas (ainda não feitas)
+- **E5** — validar navegação, catálogo, PDFs, login e permissões.
+- **E6** — impressão direta TSPL na TSC TE200 (2× 50×30 mm) + leitor de código de barras.
+- **E7** — atualização automática assinada (precisa de certificado).
+- **E8** — instalador final com identidade Big Tricot.

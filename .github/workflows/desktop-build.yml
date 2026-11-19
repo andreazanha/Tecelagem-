@@ -1,0 +1,79 @@
+name: Desktop build (Windows)
+
+# Compila o app desktop (Tauri) no Windows e publica numa "prévia" (pre-release) pra download.
+# NÃO toca na produção: roda só no branch do desktop e em tags próprias (o deploy Cloudflare
+# só dispara no branch de produção/main).
+on:
+  push:
+    branches:
+      - claude/desktop-app
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Instalar Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache do Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "desktop/src-tauri -> target"
+
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalar dependências do desktop
+        working-directory: desktop
+        run: npm install
+
+      - name: Compilar o app (Tauri)
+        working-directory: desktop
+        run: npm run build
+
+      - name: Juntar os arquivos pra download
+        shell: bash
+        run: |
+          mkdir -p dist-out
+          # Executável "portátil" (roda sem instalar — precisa do WebView2, que já vem no Windows 10/11)
+          if [ -f "desktop/src-tauri/target/release/big-tricot-desktop.exe" ]; then
+            cp "desktop/src-tauri/target/release/big-tricot-desktop.exe" "dist-out/BigTricot-portatil.exe"
+          fi
+          # Instalador (NSIS) — opcional, instala de verdade com ícone/menu Iniciar
+          find desktop/src-tauri/target/release/bundle -name "*-setup.exe" -exec cp {} "dist-out/" \; || true
+          echo "Arquivos gerados:" && ls -la dist-out
+
+      - name: Guardar como artefato do build
+        uses: actions/upload-artifact@v4
+        with:
+          name: big-tricot-desktop
+          path: dist-out/*
+          if-no-files-found: error
+
+      - name: Publicar a prévia pra download
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete desktop-preview --yes --cleanup-tag 2>/dev/null || true
+          gh release create desktop-preview dist-out/* \
+            --target "${{ github.sha }}" \
+            --prerelease \
+            --title "Big Tricot Desktop — prévia de teste" \
+            --notes "Versão de teste do aplicativo desktop (etapas 3 e 4). Baixe o **BigTricot-portatil.exe** e execute. Na 1ª vez o Windows mostra um aviso de editor desconhecido → clique em **Mais informações → Executar assim mesmo** (ainda estamos sem certificado, como combinado). Precisa de internet. O sistema web continua funcionando normalmente."

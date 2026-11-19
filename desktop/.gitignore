@@ -1,0 +1,6 @@
+# Dependências e builds do app desktop (não vão pro git)
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+dist-out/
+*.log
