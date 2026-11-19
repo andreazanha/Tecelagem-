@@ -1,6 +1,6 @@
 {
   "productName": "Big Tricot",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "br.com.bigtricot.desktop",
   "build": {
     "frontendDist": "../dist"

@@ -138,7 +138,7 @@ pub fn run() {
             let inicial = Url::parse(URL_INICIAL).expect("URL inicial inválida");
 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(inicial))
-                .title("Big Tricot")
+                .title(concat!("Big Tricot — v", env!("CARGO_PKG_VERSION")))
                 .inner_size(1360.0, 860.0)
                 .min_inner_size(1024.0, 640.0)
                 .center()
