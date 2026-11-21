@@ -150,10 +150,14 @@ loja.post("/entrar", async (c) => {
   if (!cli) return c.json({ erro: "cliente_nao_encontrado", msg: "Não encontramos esse CNPJ. Se é sua primeira vez, cadastre sua loja." }, 404);
   if (Number(cli.bloqueado) === 1) return c.json({ erro: "cliente_bloqueado", msg: "Seu cadastro está bloqueado no momento. Fale com a Big Tricot." }, 403);
 
-  // Sem senha criada ainda: precisa abrir o LINK que a Big Tricot enviou pra criar a senha.
-  if (!cli.senha_hash) return c.json({ erro: "sem_senha", msg: "Seu acesso ainda não tem senha. Abra o link que a Big Tricot te enviou para criar a sua senha." }, 401);
-  if (!senha) return c.json({ erro: "senha_requerida", msg: "Digite sua senha." }, 401);
-  if (!(await conferirSenha(senha, cli.senha_hash))) return c.json({ erro: "senha_invalida", msg: "Senha incorreta." }, 401);
+  if (!senha) return c.json({ erro: "senha_requerida", msg: "Digite a senha." }, 401);
+  // Aceita a SENHA PADRÃO da loja (uma só pra todos — config 'loja_senha_padrao') OU a senha
+  // individual do cliente (quem já criou a sua continua funcionando). Com a padrão, o cliente
+  // entra só com CNPJ + senha padrão, sem precisar do link/criar senha. Padrão vazia = desligada.
+  const senhaPadrao = ((await c.env.DB.prepare("SELECT valor FROM config WHERE chave='loja_senha_padrao' LIMIT 1").first<{ valor: string | null }>().catch(() => null))?.valor || "").trim();
+  const okPadrao = senhaPadrao.length > 0 && senha === senhaPadrao;
+  const okIndividual = !!cli.senha_hash && (await conferirSenha(senha, cli.senha_hash));
+  if (!okPadrao && !okIndividual) return c.json({ erro: "senha_invalida", msg: "Senha incorreta." }, 401);
 
   return c.json({
     ok: true, nome: cli.nome || "", regiao: regiaoDoCliente(cli.loja_regiao, cli.uf),
@@ -172,7 +176,8 @@ loja.get("/sessao", async (c) => {
     "COALESCE(rep_codigo,'') AS rep_codigo, COALESCE(loja_status,'') AS loja_status, COALESCE(codigo_erp,'') AS codigo_erp FROM clientes " +
     "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(cnpj,''),'.',''),'/',''),'-',''),' ','') = ? LIMIT 1"
   ).bind(cnpjDig).first<{ nome: string | null; uf: string | null; loja_regiao: string | null; bloqueado: number; senha_hash: string | null; rep_codigo: string; loja_status: string; codigo_erp: string }>();
-  if (!cli || Number(cli.bloqueado) === 1 || !cli.senha_hash) return c.json({ ok: false });
+  // Não exige mais senha_hash: com a senha padrão, o cliente pode nem ter senha individual.
+  if (!cli || Number(cli.bloqueado) === 1) return c.json({ ok: false });
   return c.json({
     ok: true, nome: cli.nome || "", regiao: regiaoDoCliente(cli.loja_regiao, cli.uf),
     liberado: clienteLiberado(cli.codigo_erp, cli.loja_status, cli.rep_codigo),
