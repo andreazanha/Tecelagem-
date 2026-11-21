@@ -265,6 +265,12 @@ const SENHA_LOGIN_RE = /\bsenhas?\b|\blogins?\b|\busu[áa]rios?\b|\bacesso\b|\ba
 // a gente DESCARTA a fala e passa pro VENDEDOR humano. É o "exatamente como era antes": a IA só triagem.
 const RESPOSTA_INSEGURA_RE = /\bsenhas?\b|\blogins?\b|\bcredencia|\busu[áa]rio\s*:|bigtricot\d|\bR\$\s*\d|\d+\s*rea(l|is)\b|\d+\s*%|\bdesconto\b|\bpromo[çc][ãa]o\b|\boff\b|\bmetade do pre[çc]o|\d+\s*dias?\s*([úu]teis|de|pra|para|até)?\s*(produ|entrega|pronta|fabrica|enviar|despach)|(produ[çc][ãa]o|entrega|pronta entrega|prazo).{0,12}\d+\s*dias?/i;
 
+// 🛒 PEDIDO DO CATÁLOGO ANTIGO: mensagem com o link do catálogo antigo (catalogo.bigtricot.com.br).
+// Esses pedidos NÃO estão no sistema novo — o robô não acha e não deve ficar pedindo CNPJ. Passa
+// DIRETO pro atendente humano pra equipe conferir/lançar. (Decisão André.) O catálogo NOVO usa
+// pedidos./vendas.bigtricot.com.br (não casa com esta regra).
+const CATALOGO_ANTIGO_RE = /catalogo\.bigtricot\.com\.br/i;
+
 async function detectarInteresse(env: Env, convId: string, texto: string, modelosCsv: string): Promise<boolean> {
   const t = texto || "";
   const interessou = INTERESSE_RE.test(t);
@@ -1068,6 +1074,18 @@ async function receberMensagem(env: Env, telRaw: unknown, textoRaw: unknown, ori
     await enviarBot(env, conv.id, tel, { tipo: "texto", texto: ack });
     await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
     return { conversa_id: conv.id, estado: "reclamacao", coluna: "reclamacao", respostas: [{ tipo: "texto", texto: ack }], notificarHumano: true };
+  }
+
+  // 🛒 PEDIDO DO CATÁLOGO ANTIGO (link catalogo.bigtricot.com.br): não está no sistema novo. Passa
+  // DIRETO pro humano pra equipe conferir/lançar — sem ficar pedindo CNPJ (que nunca acha). (Decisão André.)
+  if (CATALOGO_ANTIGO_RE.test(texto)) {
+    await env.DB.prepare("UPDATE atend_conversas SET estado='atendimento-humano', atualizado_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    await garantirCardDaConversa(env, conv.id, "Pedido do catálogo antigo → humano", "atendimento");
+    await avisarHumanoPush(env, conv).catch(() => {});
+    const ack = "Recebi o seu pedido! 💛 Já vou chamar nossa equipe pra conferir e finalizar com você, tá? 😊" + aviso;
+    await enviarBot(env, conv.id, tel, { tipo: "texto", texto: ack });
+    await env.DB.prepare("UPDATE atend_conversas SET ultima_out_em=datetime('now') WHERE id=?").bind(conv.id).run();
+    return { conversa_id: conv.id, estado: "atendimento-humano", coluna: "atendimento-humano", respostas: [{ tipo: "texto", texto: ack }], notificarHumano: true };
   }
 
   // 🔐 SENHA / LOGIN / ACESSO: segurança. A Big (IA) NUNCA mexe com senha/login — nem informa, nem cria,
